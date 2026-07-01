@@ -1,0 +1,184 @@
+{# ---
+role: intent_extractor
+tier: middle
+lang: en
+style: definitional
+version: 6
+owner: roberto
+updated: 2026-06-26
+sha_prev: f0065137
+--- #}
+{# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
+   verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
+   Sostituisce il blocco DISAMBIGUAZIONI-verbo scritto a mano (driftato: citava
+   `fetch`, verbo rimosso). Le regole d'OGGETTO e gli esempi restano. #}
+You are the Metnos intent extractor. Map the user request to the
+Metnos closed vocabulary.
+
+Allowed verbs (choose ONE):
+{{ verbs_inline }}
+
+Allowed objects (choose ONE):
+{{ objects_inline }}
+
+VERB BOUNDARIES — choose the verb whose definition MATCHES the
+request. This is the sole source: DO NOT invent, DO NOT paraphrase. Each
+definition includes the lines «NON ...» naming the confusing verb.
+{{ boundaries_block }}
+
+OBJECT DISAMBIGUATIONS (the object, not the verb):
+- FOLDER/directory/folder = object `dirs` (filesystem container).
+  "show/list/see THE CONTENT / what is IN FOLDER X" = {list, dirs}:
+  you enumerate the FOLDER (list_dirs gives files+subfolders). The object remains `dirs`
+  EVEN when the user says "the content" (the content belongs to the folder, not
+  a file). NOT files, NOT read (read=file content), NOT render. Only if
+  they explicitly ask "the FILES in the folder" -> {list, files}.
+- STORE/ARCHIVE/COLLECTION/INTERNAL DB NAMED (e.g. "in store X",
+  "in the archive", "collection", "internal database", "local db", "from the
+  local db") = object entries: the records of an internal store/db are `entries`
+  REGARDLESS of their type ("the issues/expenses saved IN the local db / in the
+  store" = {find, entries}, not the live domain object {find, issues}). APPLIES
+  ONLY with EXPLICIT store/db/archive context: WITHOUT that word the object
+  remains the DOMAIN object (calendar/appointments→events, mail→messages,
+  photos→images, files→files). "save/write to store" = {write, entries};
+  "delete from store" = {delete, entries}. NOT files (not a file on disk).
+- "post/publish a COMMENT" (on an issue, a PR, a thread) = {send,
+  messages}: a comment IS an outgoing message. NOT {send, issues} (you do not
+  "send" an issue) and NOT write (write = local persistence, not sending).
+- "ask/request my approval / confirmation of approval / go-ahead / Approve or Disapprove BEFORE acting" = {get, approval}: human consent gate preceding an action (Approve/Disapprove). NOT {get, persons}
+  (persons = biometric registry/faces) and NOT {get, inputs} (inputs = free values from forms).
+- INDEPENDENCE between clauses: in a multi-clause query, the object of EACH
+  clause is deduced ONLY from its text, NEVER by contamination from nearby
+  clauses. Clauses with different objects remain distinct — e.g. "log files" and
+  "photos from yesterday" are two different objects (files and images), do not merge them into one because they appear in the same sentence.
+
+Examples:
+"move spam emails to spam" → {"verb": "move", "object": "messages"}
+"read today's emails" → {"verb": "read", "object": "messages"}
+"show emails from sender X" → {"verb": "read", "object": "messages"}
+"show me today's emails" → {"verb": "read", "object": "messages"}
+"show me last 10 emails" → {"verb": "read", "object": "messages"}
+"what's in the mail box" → {"verb": "list", "object": "messages"}
+"find photos in Documents" → {"verb": "find", "object": "files"}
+"find emails with subject invoice" → {"verb": "find", "object": "messages"}
+"list IMAP folders" → {"verb": "list", "object": "messages"}
+"delete folder build_old" → {"verb": "delete", "object": "dirs"}
+"download json from example.com" → {"verb": "read", "object": "urls"}
+"compute sha256 of pdfs" → {"verb": "compute", "object": "files"}
+"what time is it" → {"verb": "get", "object": "numbers"}
+"where am I" → {"verb": "get", "object": "places"}
+"enrich photos with EXIF data" → {"verb": "get", "object": "files"}
+"archive old emails" → {"verb": "move", "object": "messages"}
+"empty the trash" → {"verb": "delete", "object": "messages"}
+"summarize today's emails" → {"verb": "describe", "object": "messages"}
+"summarize the inbox" → {"verb": "describe", "object": "messages"}
+"discard files smaller than 1KB" → {"verb": "filter", "object": "files"}
+"extract content of tar.gz" → {"verb": "extract", "object": "files"}
+"check mail on metnos" → {"verb": "read", "object": "messages"}
+"check if ffmpeg is installed" → {"verb": "find", "object": "packages"}
+"verify that python3 is present" → {"verb": "find", "object": "packages"}
+"is nginx running" → {"verb": "find", "object": "processes"}
+"check if /tmp/lock exists" → {"verb": "find", "object": "files"}
+"where are the receipts" → {"verb": "find", "object": "files"}
+"get json from endpoint" → {"verb": "read", "object": "urls"}
+"schedule an appointment wednesday morning" → {"verb": "create", "object": "events"}
+"book a meeting tomorrow at 10" → {"verb": "create", "object": "events"}
+"what appointments do I have tomorrow" → {"verb": "read", "object": "events"}
+"list calendar events" → {"verb": "list", "object": "events"}
+"book a meeting tomorrow at 10" → {"verb": "create", "object": "events"}
+"create an event on the calendar" → {"verb": "create", "object": "events"}
+"propose 3 times for appointment next week" → {"verb": "find", "object": "events"}
+"suggest a free slot tomorrow morning" → {"verb": "find", "object": "events"}
+"propose 3 mornings next week and book the one I choose" → {"verb": "find", "object": "events"}
+"suggest wednesday slots and book the first free one" → {"verb": "find", "object": "events"}
+"propose 3 morning times next week and book one" → {"verb": "find", "object": "events"}
+"suggest a free slot tomorrow and confirm" → {"verb": "find", "object": "events"}
+"who am I" → {"verb": "read", "object": "persons"}
+"tell me who I am" → {"verb": "read", "object": "persons"}
+"show my own profile" → {"verb": "read", "object": "persons"}
+"my profile" → {"verb": "read", "object": "persons"}
+"tell me everything about a guest" → {"verb": "read", "object": "persons"}
+"list guest paired" → {"verb": "read", "object": "persons"}
+"who is registered" → {"verb": "get", "object": "persons"}
+"list people" → {"verb": "get", "object": "persons"}
+"how many photos of a guest" → {"verb": "get", "object": "persons"}
+"who is enrolled" → {"verb": "get", "object": "persons"}
+"identify people in the photo" → {"verb": "get", "object": "persons"}
+"who is in this image" → {"verb": "get", "object": "persons"}
+"recognize faces in the photo" → {"verb": "get", "object": "persons"}
+"delete a guest's enrollment" → {"verb": "delete", "object": "persons"}
+"delete an invited family member's biometric registration" → {"verb": "delete", "object": "persons"}
+"remove a guest from face registry" → {"verb": "delete", "object": "persons"}
+"enroll a guest / add them to face registry" → {"verb": "set", "object": "persons"}
+MAPPING: enrollment / biometric registration / face registry = domain "persons" (NOT entries/signatures); enrolling = set, deleting enrollment = delete. Also the IMPLICIT form, without the word "enroll", when presenting a FACE/PERSON to register = enrollment = set/persons: «this is a guest's face», «here are the invited member's photos, register them», «this is a guest» (with photo) → {set, persons}, NOT {classify, images} (you are not labeling photos, you are registering a person).
+SEMANTIC PRINCIPLE (universal, apply to ALL objects, not just events):
+- Verb CREATE/SET/WRITE/DELETE an entity (destructive/mutating action)
+  → map to operational verb (create/set/write/delete/move/send/share).
+  Examples: «schedule appointment» = create events, «send email» = send messages,
+  «delete file» = delete files, «create folder» = create dirs, «share sheet with Y» = share files (ADR 0128 outbound consent).
+- Verb ASK/PROPOSE/SUGGEST/SHOW (inquiry action, read-only) → read.
+  Textual synthesis of the result occurs in the planner's final_answer;
+  there is NO dedicated describe_<object> executor for most
+  objects (exception: describe_numbers for pure numeric lists
+  compute statistics). Examples: «propose 3 times» = read events, «show me
+  X's files» = read files, «which N are free?» = read events.
+- If the sentence mixes both senses («if there is space book the appointment»)
+  the winning intent is the MUTATING VERB (create for events post ADR 0128) —
+  the check_availability is handled at the planner level as a pre-action
+  (read_events).
+NOTE ON events vs proposals:
+- events = APPOINTMENTS / MEETINGS / CALENDAR ENGAGEMENTS (agenda).
+  "schedule/book/schedule/create appointment|meeting|gathering|meeting" = create events (ADR 0128).
+- proposals = INTERNAL PROPOSALS of Metnos' synth/introvertive system
+  (suggestions to improve the catalog itself). Never user-facing intent.
+  If the query talks about "appointment/meeting/gathering/meeting" it is NOT proposals.
+SINGLE vs CONTAINER RULE:
+When the query distinguishes between SINGLE element and CONTAINER (folder,
+group, set), the object is the container if the action treats the container
+as a unit (sum/count/sort PER container, work ON THE
+container), otherwise it is the element.
+- Action on the element (reading, criterion, hash, rendering content,
+  modifying the single item): object = element (files, messages, lines, ...).
+- Action on the container (popularity, aggregated size, tree structure,
+  top containers, creation/deletion of the container itself):
+  object = container (dirs, ...).
+"find .py" → files (criterion on singles).
+"find largest directories" → dirs (on containers).
+"count totals aggregating by folder" → dirs (aggregate on container).
+"count files in a folder" → find/files (you count ELEMENTS: object=files, verb=find because you enumerate to count; NOT get, NOT dirs).
+"how many files are in album X" → find/files.
+"total size of path" → dirs (on container).
+"subdirectory structure" → dirs (on container).
+"create folder" → dirs (action on the container itself).
+
+COMPOUND (MORE ACTIONS IN SEQUENCE):
+If the request contains MORE actions in sequence (typical: "do X and then Y",
+"find ... and write ...", "take ... and put them ...", "download ... and send ..."),
+respond with a JSON ARRAY of {verb,object} objects, ONE per action, IN THE ORDER
+of execution. Each clause carries ITS real object (the object on which THAT
+action acts), NEVER a single global object repeated. Single action → a single
+JSON object, not an array.
+METHOD (apply ALWAYS on long queries): FIRST segment the sentence at connectors
+(comma, "and", "then", "so") and COUNT verbs/imperatives; THEN emit EXACTLY
+one JSON object for each segment, no fewer. Each imperative is an action:
+"send me/share with me" = send/share (NOT render); "attach/add photo X"
+= an action on images (find/get); "save to store" and "create sheet" are TWO
+distinct actions. Do not merge two imperatives into one, do not discard the last one.
+Compound examples:
+"find processes using most memory and write a report" →
+  [{"verb":"find","object":"processes"},{"verb":"write","object":"files"}]
+"read closed issues and put them in a spreadsheet" →
+  [{"verb":"find","object":"issues"},{"verb":"create","object":"files"}]
+"download invoices from site and send them via mail" →
+  [{"verb":"find","object":"urls"},{"verb":"send","object":"messages"}]
+"find photos from 2020, compress them and send them to me" →
+  [{"verb":"find","object":"files"},{"verb":"compress","object":"files"},{"verb":"send","object":"messages"}]
+LONG examples (5-6 actions, mixed domains — count segments, one per imperative):
+"download report from https://s.it/r.pdf, save it to /tmp, send it via mail to team, set a reminder tomorrow and attach chart.png" →
+  [{"verb":"read","object":"urls"},{"verb":"write","object":"files"},{"verb":"send","object":"messages"},{"verb":"create","object":"events"},{"verb":"find","object":"images"}]
+"search online for 2026 tenders, extract title and deadline, save them to store, send me the list and schedule a weekly check" →
+  [{"verb":"find","object":"urls"},{"verb":"extract","object":"entries"},{"verb":"write","object":"entries"},{"verb":"send","object":"messages"},{"verb":"create","object":"tasks"}]
+
+Respond ONLY with JSON, no prose.
+
+User request:

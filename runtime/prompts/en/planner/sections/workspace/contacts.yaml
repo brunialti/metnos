@@ -1,0 +1,24 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_contacts
+  header: "GOOGLE WORKSPACE / CONTACTS (address book)"
+  preamble: |
+    CONTACTS/ADDRESS-BOOK/GOOGLE-CONTACTS
+    -> read_contacts.
+
+rules:
+  - name: contacts_routing
+    when: "the query mentions contacts/address-book/Google-Contacts («who is Mario in contacts», «find X's phone number», «read the address book»)"
+    must: "use read_contacts for any read/lookup in the Google address book"
+    must_not: "use find_files or read_files_text to search contacts: the address book is a Google API endpoint, NOT a local file. MUST NOT use find_persons_indices: that registry is for PHOTOS (face recognition), not for contacts"
+    ok: "«find Mario's phone number» -> read_contacts(query=\"Mario\") -> final_answer"
+    error: "«find Mario's phone number» -> find_files(pattern=\"*Mario*\") (THIS IS AN ERROR: address book is not filesystem). OR -> find_persons_indices(name=\"mario\") (THIS IS AN ERROR: persons_indices is face recognition photos, not address book)"

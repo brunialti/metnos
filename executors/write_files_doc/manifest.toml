@@ -1,0 +1,99 @@
+# Manifest dell'executor `write_files_doc` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical Google Docs append (24/5/2026).
+
+manifest_format = "1.0"
+
+name        = "write_files_doc"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "doc", "documento", "google doc", "google docs",
+    "appendi a documento", "aggiungi al doc", "append doc",
+    "scrivi nel doc", "aggiorna documento", "update doc"
+]
+# §2.3 reversibile via module.reverse(): l'append registra inserted_at +
+# characters_appended; l'undo elimina quel range (deleteContentRange).
+revertible  = true
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: appendi testo a un Google Doc esistente (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: creare nuovo doc (-> create_files_doc); file locale (-> write_files). OUT: results=[{document_id, characters_appended}]."
+en = "SCOPO: append text to an existing Google Doc (.doc). PATTERN: write_files_doc(document_id='1abc...', text='...'). NON: create new doc (-> create_files_doc); local file (-> write_files). OUT: results=[{document_id, characters_appended}]."
+
+[code]
+files  = ["write_files_doc.py"]
+digest = "sha256:42de1db92f7d013af7d962afbf9d9c49dd2994bed11e4ba972658f7f1874548d"
+
+[args]
+type     = "object"
+required = ["document_id", "text"]
+
+[args.properties.document_id]
+type    = "string"
+
+[args.properties.document_id.description]
+it = "ID del Google Doc esistente (es. '1abc...XYZ', visibile nell'URL). MATCH ESATTO: stringa opaca, wildcard NON supportati."
+en = "Existing Google Doc ID (e.g. '1abc...XYZ', visible in URL). EXACT MATCH: opaque string, wildcards NOT supported."
+
+[args.properties.text]
+type    = "string"
+
+[args.properties.text.description]
+it = "Testo da appendere alla fine del documento. Markdown NON renderizzato (testo flow). Newline trailing aggiunto automaticamente se mancante."
+en = "Text to append at the end of the document. Markdown NOT rendered (text flow). Trailing newline added automatically if missing."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+
+[args.properties.client.description]
+it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."
+en = "Backend (today only 'google_workspace'). Future external plugins may add others."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  n_written: int,
+  document_id: str,
+  content_length: int,
+  characters_appended: int,
+  results: Array<{ok, document_id, id, characters_appended, kind: 'doc'}>,
+  used: int,
+  files_source: 'google_workspace',
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["doc:remote"]
+
+[[tests]]
+name   = "missing_document_id_fails"
+input  = { text = "abc" }
+expect = { ok = false, error_contains = "document_id" }
+
+[[tests]]
+name   = "missing_text_fails"
+input  = { document_id = "1abc" }
+expect = { ok = false, error_contains = "text" }
+
+[[tests]]
+name   = "empty_text_fails"
+input  = { document_id = "1abc", text = "" }
+expect = { ok = false, error_contains = "text" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { document_id = "1abc", text = "x", client = "dropbox" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
+
+[[tests]]
+name   = "happy_path_oauth_missing_returns_needs_inputs"
+input  = { document_id = "1abc", text = "Paragrafo aggiunto\n" }
+expect = { ok = true }

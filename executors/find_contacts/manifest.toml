@@ -1,0 +1,64 @@
+# Manifest dell'executor `find_contacts` — Metnos v1.1 (24/5/2026)
+# Naming compositivo §2.2: find_contacts. Read-only su rubrica esterna.
+
+manifest_format = "1.0"
+
+name        = "find_contacts"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "find", "trova", "cerca", "search", "ricerca",
+    "contatto", "contatti", "contact", "contacts",
+    "rubrica", "address book", "agenda contatti",
+    "amico", "amici", "persona", "people", "person",
+    "telefono", "numero", "phone", "email", "indirizzo"
+]
+
+[description]
+it = "SCOPO: cerca contatti nella rubrica esterna per nome/email/telefono. PATTERN: find_contacts(query=\"Luca\"). NON: leggere un singolo contatto (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
+en = "SCOPO: search contacts in external address book by name/email/phone. PATTERN: find_contacts(query=\"Luca\"). NON: read a single contact (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
+
+[code]
+files  = ["find_contacts.py"]
+digest = "sha256:09f7f780c1339895c1da56ad6411e67998c44ff5f6d1438a61303fa4f275cb23"
+
+[args]
+type     = "object"
+
+[args.properties.query]
+type    = "string"
+[args.properties.query.description]
+it = "Stringa da matchare in name/emails/phones (substring case-insensitive). Vuota → tutti i contatti."
+en = "String to match in name/emails/phones (substring case-insensitive). Empty → all contacts."
+
+[args.properties.max_results]
+type    = "integer"
+default = 50
+[args.properties.max_results.description]
+it = "Cap risultati ritornati (default 50, max 1000)."
+en = "Returned results cap (default 50, max 1000)."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+[args.properties.client.description]
+it = "Backend rubrica. Default 'google_workspace'. Futuro: 'local' (vCard import)."
+en = "Address book backend. Default 'google_workspace'. Future: 'local' (vCard import)."
+
+[[capabilities]]
+name = "exec_subprocess"
+hint = ["subprocess Python google_api.py contacts list"]
+
+[[capabilities]]
+name = "exec_net"
+hint = ["Google People API HTTPS"]
+
+[reversible]
+value = false
+
+[tests]
+"caso felice" = {args = {query = ""}, expected = {ok = true}}
+"con query"   = {args = {query = "luca", max_results = 5}, expected = {ok = true}}
+"client invalido" = {args = {client = "invalid"}, expected = {ok = false}}
+"max_results piccolo" = {args = {max_results = 1}, expected = {ok = true}}

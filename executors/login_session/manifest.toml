@@ -1,0 +1,78 @@
+# Manifest dell'executor `login_session` — Metnos v1.1
+# Login a form web e persistenza cookie session (ADR 0082, 4/5/2026).
+
+manifest_format = "1.0"
+
+name        = "login_session"
+version     = "0.1.0"
+timeout_s   = 300
+author      = "Roberto Brunialti"
+affinity    = ["login", "auth", "autenticazione", "session", "cookie", "credenziali", "password", "form", "web", "site", "spaggiari", "scuola", "banca"]
+
+[description]
+it = "SCOPO: esegue il login web salvando il cookie session. PATTERN: login_session(domain='portale.example.it'). NON: bypassare l'autenticazione formale. OUT: {ok, cached, session_cookies, cookie_file}."
+en = "SCOPO: performs web login saving the session cookie. PATTERN: login_session(domain='portale.example.it'). NON: bypassing formal authentication. OUT: {ok, cached, session_cookies, cookie_file}."
+
+[code]
+files  = ["login_session.py"]
+digest = "sha256:485c2cd594e692f8f519809f3508d7e210e67c81e14f4848f8bbcdbeb10bdc89"
+
+[args]
+type     = "object"
+required = ["domain"]
+
+[args.properties.domain]
+type        = "string"
+
+[args.properties.domain.description]
+it = "Nome di dominio del sito (es. 'portale.example.it', 'mybank.example.com'). Deve corrispondere a una credenziale gia' salvata via `credentials.store(domain, payload)`."
+en = "Site domain name (e.g., 'portale.example.it', 'mybank.example.com'). It MUST match a credential already saved via `credentials.store(domain, payload)`."
+
+[args.properties.force]
+type        = "boolean"
+default     = false
+
+[args.properties.force.description]
+it = "Se true, esegue login anche se un cookie session valido e' gia' cached. Default false."
+en = "If true, perform login even if a valid session cookie is already cached. Default false."
+
+[args.properties.timeout_s]
+type        = "number"
+default     = 15.0
+minimum     = 1.0
+maximum     = 60.0
+
+[args.properties.timeout_s.description]
+it = "Timeout per ogni richiesta HTTP (GET csrf + POST login). Default 15.0."
+en = "Timeout for each HTTP request (GET csrf + POST login). Default 15.0."
+
+[args.properties.client]
+type        = "string"
+enum        = ["httpx", "playwright"]
+default     = "httpx"
+
+[args.properties.client.description]
+it = "Backend di implementazione (default 'httpx' = urllib stdlib + credentials store). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
+en = "Backend implementation (default 'httpx' = urllib stdlib + credentials store). 'playwright' = stub (not yet active). Future external plugins may add other clients."
+
+[[capabilities]]
+name = "network.read"
+hint = ["http://*", "https://*"]
+
+[[capabilities]]
+name = "network.write"
+hint = ["http://*", "https://*"]
+
+[[capabilities]]
+name = "auth.password_storage"
+hint = ["~/.config/metnos/credentials/*"]
+
+[[tests]]
+name   = "errore_se_domain_assente"
+input  = {}
+expect = { ok = false, error_contains = "domain" }
+
+[[tests]]
+name   = "errore_se_credenziali_assenti"
+input  = { domain = "no.such.domain.metnos.test" }
+expect = { ok = false, error_contains = "no stored credentials" }

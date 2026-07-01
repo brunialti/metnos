@@ -1,0 +1,90 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+FOTO / IMMAGINI / EXIF / GPS / VOLTI (indici unificati, ADR 0117)
+══════════════════════════════════════════════════════════════════════
+
+FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
+  → get_files (per estrarre `dates.semantic`/`place` da JPEG/HEIC).
+
+  (W) IMMAGINI E FOTO (indice unificato, ADR 0117)
+      Per QUALSIASI query foto, usa `find_images_indices` (executor unificato:
+      identita' + contenuto + composizione + EXIF/GPS in UNA passata, top-K
+      corretto sui filtri combinati). Combinare argomenti = pipeline naturale,
+      niente più `paths_filter` / 2 step.
+    DEVI: passare SOLO gli argomenti pertinenti alla query.
+        - `name="bob"` → identita' (persona registrata via set_persons).
+        - `query_text="mare"` → contenuto (la VLM ha descritto cosa si vede).
+        - `min_face_pixels=40000` → primo piano (≈200x200 px).
+        - `min_face_count=2` → ritratti di gruppo. `max_face_count=1` → singoli.
+        - `reference_images=[paths]` → similarita' ArcFace alle foto allegate.
+        - `near_lat`/`near_lon`/`radius_km` → vicinanza geografica EXIF.
+        - `time_window="last-3y"` → filtro temporale.
+        Combinare gli args = combinare i filtri.
+    NON DEVI: passare `idx=` (deprecato post-ADR0117). NON DEVI: passare
+        `paths_filter` come ponte fra due chiamate (un solo executor; gli
+        args si combinano).
+    OK: «Bob al mare» → find_images_indices(name="bob", query_text="mare").
+    OK: «Carol primo piano» → find_images_indices(name="carol", min_face_pixels=40000).
+    OK: «foto del compleanno {{ current_year }}» → find_images_indices(query_text="compleanno", time_window="{{ current_year }}").
+    ERRORE: «Bob al mare» → find_persons_indices(name="bob") → find_images_indices(idx="scene", query_text="mare", paths_filter=from_step:1). E' UN ERRORE: il pattern a 2 step e' superseded da ADR 0117.
+
+  (W.alias) PERSONS THIN ALIAS
+    DEVI: `find_persons_indices(name=...)` resta accettato come alias di
+        `find_images_indices(name=...)`. Stesso engine, stesso risultato.
+    NON DEVI: usare entrambi nello stesso turno (duplicato).
+    OK: «foto di Alice» → find_persons_indices(name="alice") OPPURE
+        find_images_indices(name="alice"). Equivalenti.
+    ERRORE: pipeline find_persons_indices → find_images_indices: E' UN ERRORE
+        (duplicato; un solo step basta).
+
+  (W.gestione) GESTIONE REGISTRO PERSONE (set_persons / delete_persons / get_persons)
+    DEVI: «cancella/dimentica/rimuovi <Nome Cognome>» dove <Nome Cognome> e'
+        un nome proprio (capitalizzato, no estensione file, no path slash) →
+        `delete_persons(name="<Nome Cognome>")` in UNO step.
+        NON DEVI: invocare `find_files` prima — il registro persone NON e'
+        nel filesystem ma in `~/.local/share/metnos/persons.sqlite`.
+    DEVI: «cancella tutte le persone enrolled / svuota il registro» →
+        `delete_persons(all=true)` in UNO step.
+    DEVI: «cancella Carol, Anna e Luca» (lista esplicita) →
+        `delete_persons(names=["Carol","Anna","Luca"])` in UNO step.
+    DEVI: «mostra le persone enrolled / quali sono» → `get_persons()` senza arg.
+    NON DEVI: passare `from_step` a `delete_persons` se l'utente ha gia' dato
+        un nome esplicito. `from_step` su `delete_persons` va usato SOLO dopo
+        `get_persons` (entries del registro), MAI dopo `find_files`.
+    OK: «cancella the owner» → delete_persons(name="the owner").
+    OK: «cancella tutti» (post get_persons) → get_persons → delete_persons(from_step=1).
+    ERRORE: «cancella the owner» → find_files(pattern="*Roberto*") →
+        delete_persons(from_step=1, name=...). E' UN ERRORE: niente find_files,
+        il nome e' nel registro persons.sqlite.
+
+  (W.reverse) REVERSE WEB IMAGE SEARCH (immagini locali → web)
+    Caso d'uso: «cerca sul web immagini simili a <foto locali di X>» — il
+    soggetto e' identificato da FOTO LOCALI (enrollment/cartella/file), non
+    da query testuale. Pipeline: discovery dei FILE → reverse search Google
+    Vision Web Detection (find_images_web).
+    DEVI: usare `find_files` (NON `find_images_indices`) per scoprire foto
+        in una cartella nota dall'utente (es. enrollment, raccolta, archivio).
+        Poi `find_images_web(from_step=N)` per reverse di ciascuna.
+    DEVI: pattern_path / query coerente con la cartella nominata (es. utente
+        dice «foto di enrollment» → find_files(base_path nominata o scope
+        default /home/user/images/<sub>)).
+    NON DEVI: chiamare find_images_indices per questo: il corpus indicizzato
+        e' per ricerca SEMANTICA su libreria globale, non per file in una
+        cartella specifica nominata dall'utente.
+    NON DEVI: chiamare find_images_web SENZA from_step o paths reali (args
+        invalid → loop). Le foto vengono dallo step find_files upstream.
+    OK: «cerca sul web foto simili alle mie enrollment di Roberto» →
+        find_files(query="roberto", base_path="/home/user/images") →
+        find_images_web(from_step=1) → final_answer con pagine web trovate.
+    ERRORE: stesso intent → find_images_indices(name="roberto") →
+        find_images_web(from_step=1). L'indice e' per ricerca semantica
+        globale, non per la cartella enrollment specifica.

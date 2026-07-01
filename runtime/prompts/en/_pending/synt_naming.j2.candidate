@@ -1,0 +1,116 @@
+{# ---
+role: synt_naming
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 3343adb0
+--- #}
+YOU ARE phase 1 (NAMING + CLASSIFICATION) of synt-multistage.
+
+MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown
+fences, NO comments. The response MUST start with `{` and end with `}`.
+
+STRICT NAMING CONVENTION — the name of the new executor follows the schema:
+  {action}_{object}[_{qualifier}]
+
+ALLOWED ACTIONS ({{ n_actions }}, pick ONE — map the user's verb to the canonical verb):
+{{ action_categories_block }}
+
+Canonical MAPPING user verb → vocabulary action (IT + EN equivalents).
+Vocabulary is in English, but user requests come in IT or EN: for
+each verb you find below both the Italian linguistic operands and
+the English ones. DO NOT invent alternatives; if none of the entries below
+fits, return name=null with reason.
+
+{{ action_mapping_block }}
+
+ALLOWED OBJECTS ({{ n_objects }}, plural, pick ONE):
+  {{ objects_inline }}
+
+Optional QUALIFIER (only for real parsing/format variants):
+  {{ qualifiers_inline }}
+
+CLASSIFICATION:
+- revertible (bool):
+                     - move, create → true (revertible by default: swap_src_dst /
+                       delete_created_*).
+                     - delete, write with overwrite → revertible=true ONLY IF
+                       the intent mentions snapshot/backup/blob (reverse_pattern=
+                       restore_blob_backup); otherwise false (safe
+                       irreversibles).
+                     - send → ALWAYS false (remote side-effect, not undoable).
+                     - read/find/list/get/describe/filter/fetch/compute → false
+                       (read-only or pure compute, nothing to revert).
+- critical (bool):   true if it modifies filesystem / network / external state.
+                     false if pure compute or read-only.
+- target_kind:       'path_glob' (fs), 'host' (net), 'exact' (id), 'none'.
+
+If NO combination of the vocabulary fits, return explicitly:
+  {"name": null, "reason_no_name": "<concrete explanation>"}.
+
+Examples of correct OUTPUT:
+
+User: "compute the standard deviation of a list of numbers"
+Output: {"name": "describe_numbers", "action": "describe", "object": "numbers",
+         "qualifier": null, "revertible": false, "critical": false,
+         "target_kind": "none"}
+
+User: "compress /tmp/log.txt with gzip"
+Output: {"name": "compress_files_gz", "action": "compress", "object": "files",
+         "qualifier": "gz", "revertible": false, "critical": true,
+         "target_kind": "path_glob"}
+
+User: "diff between /tmp/a.txt and /tmp/b.txt"
+Output: {"name": "compare_files", "action": "compare", "object": "files",
+         "qualifier": null, "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+User: "extract text from /tmp/page.html removing tags"
+Output: {"name": "extract_files_html", "action": "extract", "object": "files",
+         "qualifier": "html", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+User: "extract frames from /tmp/clip.mp4 at 1 fps"
+Output: {"name": "extract_files_video", "action": "extract", "object": "files",
+         "qualifier": "video", "revertible": false, "critical": true,
+         "target_kind": "path_glob"}
+
+User: "apply regex foo->bar in /tmp/code.py"
+Output: {"name": "filter_texts_lines", "action": "filter", "object": "texts",
+         "qualifier": "lines", "revertible": false, "critical": true,
+         "target_kind": "path_glob"}
+
+User: "check if ffmpeg is installed" (existence check → find subsumes)
+Output: {"name": "find_packages", "action": "find", "object": "packages",
+         "qualifier": null, "revertible": false, "critical": false,
+         "target_kind": "exact"}
+
+User: "resize image to 800x600" (resize NOT in vocab)
+Output: {"name": null, "reason_no_name": "The action 'resize' is not in the closed vocabulary (compress/extract/render cover other scopes). Escalation to Roberto to extend the vocab or to use an external tool."}
+
+QUALIFIER `_empty` (ADR 0127, cross-domain — modality-operation family):
+When the user request identifies domain entities in EMPTY/
+SUB-THRESHOLD/AVAILABLE state (free calendar slots, small files, empty
+folders, short messages, etc.), you MUST use the qualifier `_empty`. Canonical arg:
+`size` (str unit-aware: "1hour"/"10KB"/"100chars"/...). A single
+cross-domain semantics, no forced analogies between domains.
+
+User: "find free one-hour slots next week"
+Output: {"name": "find_events_empty", "action": "find", "object": "events",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "none"}
+
+User: "find empty files under /tmp"
+Output: {"name": "find_files_empty", "action": "find", "object": "files",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+User: "list empty folders in /opt"
+Output: {"name": "find_dirs_empty", "action": "find", "object": "dirs",
+         "qualifier": "empty", "revertible": false, "critical": false,
+         "target_kind": "path_glob"}
+
+NOW produce the JSON for the user request. ONLY JSON, nothing else.

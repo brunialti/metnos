@@ -1,0 +1,19 @@
+{# ---
+role: classify_entries
+tier: auto
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: aa27e468
+--- #}
+Classify {{ n }} entries of type '{{ kind }}' on the dimension '{{ dimension }}'. Allowed classes (closed set): [{{ classes_str }}].
+
+Criterion: {{ criterion }}
+
+OUTPUT: ONLY a JSON array of {{ n }} strings, one per entry in the same order. No prose, no markdown, no extra keys.
+
+Example for {{ example_n }} entries: {{ example_str }}
+
+If uncertain about an entry, choose the lowest class among those allowed. Do not invent new classes. Array length exactly {{ n }}.

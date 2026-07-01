@@ -1,0 +1,84 @@
+# Manifest dell'executor `read_persons` — Metnos v1.1 (ADR 0163, 26/5/2026)
+# Aggregator profilo identitario: JOIN persons.sqlite + users.db.
+
+manifest_format = "1.0"
+
+name        = "read_persons"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["io", "me", "chi sono", "mio profilo", "il mio account",
+                "quali account", "dimmi tutto su", "profilo di", "host", "guest",
+                "who am i", "my profile", "my account", "which accounts",
+                "tell me about", "paired user", "ruolo", "autonomy"]
+
+[description]
+it = "SCOPO: profilo identitario completo. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confondere con get_persons (scheda) o find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
+en = "SCOPO: full identity profile. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confuse with get_persons (card) or find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
+
+[code]
+files  = ["read_persons.py"]
+digest = "sha256:5c3bf9fe4f1c3a2b660d4b914fe6c0b2ed300da1772c4de38b2db4f0a802e2ae"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.name]
+type        = "string"
+
+[args.properties.name.description]
+it = "Nome della persona (string libera, slugify case+accent-insensitive). Accetta placeholder ${RUNTIME:actor} per actor corrente. Es. name='Lucia', name='${RUNTIME:actor}'. Mutualmente esclusivo con role."
+en = "Person name (free string, slugify case+accent-insensitive). Accepts placeholder ${RUNTIME:actor} for current actor. E.g. name='Lucia', name='${RUNTIME:actor}'. Mutually exclusive with role."
+
+[args.properties.role]
+type        = "string"
+
+[args.properties.role.description]
+it = "Filtro per ruolo paired: 'host' o 'guest'. Ritorna lista di TUTTI con quel ruolo. Mutualmente esclusivo con name."
+en = "Filter by paired role: 'host' or 'guest'. Returns list of ALL with that role. Mutually exclusive with name."
+
+[args.properties.include_examples]
+type        = "boolean"
+default     = true
+
+[args.properties.include_examples.description]
+it = "Se true (default), include il campo `examples` (foto enrollate) per ogni entry. Disattivare per performance se non servono."
+en = "If true (default), includes `examples` field (enrolled photos) for each entry. Disable for performance if not needed."
+
+[args.properties.include_channels]
+type        = "boolean"
+default     = true
+
+[args.properties.include_channels.description]
+it = "Se true (default), include il campo `channels` (Telegram/HTTP/mail paired) per ogni entry. Disattivare per performance."
+en = "If true (default), includes `channels` field (paired Telegram/HTTP/mail) for each entry. Disable for performance."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{
+    slug: str,
+    name: str,
+    role?: 'host' | 'guest',
+    autonomy_level?: 'read_only' | 'restricted' | 'full',
+    n_examples: int,
+    examples?: Array<{image_path, face_box, sha256, created_at}>,
+    channels?: Array<{channel, verified, created_at}>,
+    is_self?: bool,
+    email?: str,
+    user_id?: str
+  }>,
+  n_entries?: int,
+  status?: 'unknown_name',
+  final_message_hint?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["~/.local/share/metnos/persons.sqlite",
+         "~/.local/share/metnos/users.db"]
+
+reversible = true

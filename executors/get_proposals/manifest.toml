@@ -1,0 +1,78 @@
+# Manifest dell'executor `get_proposals` — Metnos v1.1
+# 3/5/2026: review pull-on-demand delle proposte introvertive.
+# Legge i JSONL append-only in `~/.local/share/metnos/introvertiva/`
+# (audit di run_all dei processi DEDUPE / GENERALIZE / SPECIALIZE),
+# ritorna entries strutturati. Niente azione: solo lettura.
+
+manifest_format = "1.0"
+
+name        = "get_proposals"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["proposte introvertiva", "proposte introvertive",
+                "proposals introvertiva", "introvertiva", "introvertive",
+                "introvertivo", "review pending", "review introvertiva",
+                "candidati introvertiva", "introvertive candidates",
+                "dedupe mnest", "deduplicazione mnest", "consolidamento mnest",
+                "generalize", "generalizzazione", "macro-executor", "macro",
+                "specialize", "specializzazione", "specializzato",
+                "promozione executor", "consolida mnest", "audit introvertiva",
+                "synt", "mnestoma", "introspezione",
+                "evaluator", "accept proposal", "reject proposal"]
+# Termini ambigui rimossi 11/5/2026 (F4 bonifica): `mostra/mostrami/vedi/
+# elenca/elenco` matchavano qualunque query di consultazione ("mostra le
+# foto", "elenca i file") inquinando il routing. `stanotte/ieri-sera/
+# ultima-volta` matchavano modificatori temporali generici ("annulla
+# l'ultima azione" → tie-break con undo_last_turn). Il PLANNER prompt
+# (Z.due) gia' indirizza esplicitamente queste query al tool corretto.
+# 12/5/2026 (F5 bonifica): termini singoli generici «proposte/proposta/
+# proposals/review/pending/candidati/candidates/dedupe/consolidamento»
+# matchavano «proponi 3 proposte» o «pending appointment». Tutti
+# qualificati con suffisso/prefisso «introvertiva/mnest» discriminante.
+# Bug live turn 35431172: get_proposals iniettato via consumer_match su
+# arg `kind` (fix collaterale in adaptive_rerank._GENERIC_PIPING_ARGS).
+revertible  = true
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: ottiene proposte introvertive (dedupe/generalize/specialize). PATTERN: get_proposals(kind=\"all\", since_iso=\"2026-05-01T00:00:00Z\"). NON: cercare per pattern (-> find); filtrare lista esistente (-> filter). OUT: entries=[{kind,ts,payload}]."
+en = "SCOPO: gets introvertive proposals (dedupe/generalize/specialize). PATTERN: get_proposals(kind=\"all\", since_iso=\"2026-05-01T00:00:00Z\"). NON: search by pattern (-> find); filter existing list (-> filter). OUT: entries=[{kind,ts,payload}]."
+
+[code]
+files  = ["get_proposals.py"]
+digest = "sha256:3ced9fb0fef67f7b028c65beaf73c5e4f3a7fff32a2833a2bd5481af2f68419e"
+
+[args]
+type = "object"
+
+[args.properties.kind]
+type        = "string"
+enum        = ["dedupe", "generalize", "specialize", "all"]
+default     = "all"
+
+[args.properties.kind.description]
+it = "Tipo di proposta da restituire. 'dedupe' = consolidamenti mnest; 'generalize' = catene candidate a macro-executor; 'specialize' = args dominanti che giustificano variante specializzata; 'all' = unione di tutte e tre."
+en = "Type of proposal to return. 'dedupe' = memory consolidations; 'generalize' = candidate chains for macro-executor; 'specialize' = dominant args justifying a specialized variant; 'all' = union of all three."
+
+[args.properties.since_iso]
+type        = "string"
+
+[args.properties.since_iso.description]
+it = "Timestamp ISO (es. '2026-05-01T00:00:00Z') da cui includere le proposte. Default: 7 giorni fa (rolling window settimanale)."
+en = "ISO Timestamp (e.g., '2026-05-01T00:00:00Z') from which to include proposals. Default: 7 days ago (rolling weekly window)."
+
+[args.properties.max_results]
+type        = "integer"
+default     = 50
+minimum     = 1
+
+# revertible e reverse_pattern sono campi TOP-LEVEL del manifest
+# (gia' dichiarati sopra). NIENTE sezione `[capabilities]` qui:
+# `[capabilities]` con membri scalari verrebbe parsata come dict e poi
+# letta dal loader come list[str] dei suoi keys (bug osservato 3/5/2026
+# 22:27). Per dichiarare capabilities reali si usa `[[capabilities]]`
+# (array of tables, ognuna con `name` e `hint`).
+
+[args.properties.max_results.description]
+it = "Cap superiore sulle entries ritornate. Default 50."
+en = "Upper cap on the returned entries. Default 50."

@@ -1,0 +1,50 @@
+manifest_format = "1.0"
+name        = "compute_signatures"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity = ["compute", "canonicalize", "signature", "reversibility", "seed", "bootstrap"]
+
+revertible       = true
+reverse_pattern  = []
+
+[description]
+it = "SCOPO: calcola e trasforma signature. PATTERN: compute_signatures(op='command', argv=[...]). NON: gestire whitelist/blacklist (-> get_signatures); modificare curatela (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
+en = "SCOPO: compute and transform signatures. PATTERN: compute_signatures(op='command', argv=[...]). NON: manage whitelist/blacklist (-> get_signatures); modify curation (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
+
+[code]
+files  = ["compute_signatures.py"]
+digest = "sha256:f07c058248c5a195d1be8643d61fdb608b4e76d497edf471ea9f9c17f01890f4"
+
+[args]
+type     = "object"
+required = ["op"]
+
+[args.properties.op]
+type        = "string"
+enum        = ["command", "reversibility", "seed_apply"]
+
+[args.properties.op.description]
+it = "Operazione da eseguire."
+en = "Operation to be executed."
+
+[args.properties.argv]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.argv.description]
+it = "Per op='command': argv da canonicalizzare. MATCH ESATTO sui token (security): wildcard `*`/`?` NON supportati e non interpretati come glob — un token argv = un token shell letterale."
+en = "For op='command': argv to be canonicalized. EXACT MATCH on tokens (security): wildcards `*`/`?` NOT supported and not interpreted as glob — one argv token = one literal shell token."
+
+[args.properties.signature]
+type        = "string"
+
+[args.properties.signature.description]
+it = "Per op='reversibility': signature da classificare."
+en = "For op='reversibility': signature to classify."
+
+[args.properties.seed_path]
+type        = "string"
+
+[args.properties.seed_path.description]
+it = "Per op='seed_apply': path del seed file. Default runtime/safety_seeds/v1.toml."
+en = "For op='seed_apply': path of the seed file. Default runtime/safety_seeds/v1.toml."

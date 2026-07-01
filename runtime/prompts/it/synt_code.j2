@@ -1,0 +1,167 @@
+{# ---
+role: synt_code
+tier: wise
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 3c68afc4
+--- #}
+Sei la fase 5 (CODE) di synt-multistage.
+Tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa
+l'executor.
+
+Skeleton manifest gia' deciso (NON cambiarlo):
+  name: {{ name }}
+  args required: {{ args_required }}
+  args properties: {{ args_properties }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  description: {{ description }}
+
+PRINCIPI STRUTTURALI (validi per qualunque verbo):
+
+DEVI: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.
+NON DEVI: importare librerie pip oltre PIL/Pillow e openpyxl.
+OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
+ERRORE: `import requests`, `import boto3`, `import paramiko`. E' UN ERRORE.
+
+API REALI DEI MODULI RUNTIME (signature complete — NON inventare
+funzioni assenti, NON cambiare le signature):
+
+  `messages` (modulo Python):
+    `messages.get(code: str) -> str` — UN solo argomento (il code).
+    Ritorna il template; se il code non esiste ritorna stringa che
+    inizia con "[unknown msg".
+    DEVI: `from messages import get as messages_get` (alias esplicito) o
+    `import messages` poi `messages.get(code)`.
+    NON DEVI: `from messages import messages` (auto-reference, modulo non
+    contiene un nome `messages`).
+    NON DEVI: avvolgere import dei moduli runtime in try/except che
+    silenzia ImportError. Se runtime non e' raggiungibile l'executor
+    deve fallire ESPLICITAMENTE al primo invoke, non mascherare il
+    problema con stub che restituiscono errori finti.
+    OK: `import messages` then `messages.get("ERR_X")`.
+    ERRORE: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. E' UN ERRORE.
+
+  `mail_client`:
+    open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL
+    open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL
+    parse_envelope(raw_msg: bytes) -> dict      # campi: from, subject, date, message_id, has_attachment, body_preview, category_hints
+    list_known_accounts() -> list[str]
+
+  `platform_policy`:
+    is_protected_path(path: str) -> bool        # /etc/, /sys/, /proc/, ecc.
+    is_system_file(name: str) -> bool           # Thumbs.db, .DS_Store, desktop.ini
+
+  `nominatim_client`:
+    reverse_geocode(lat: float, lon: float) -> dict   # campi: place, country, city
+
+  `location_store`:
+    get_location() -> dict | None
+    set_location(loc: dict) -> None
+
+CONTRATTO RUNTIME PER `from_step`:
+Se nel manifest stage 2 hai `from_step: integer required`, il runtime
+espande automaticamente la lista nello scratchpad e la inietta nel
+campo `entries` PRIMA di invocare il subprocess. Dentro `invoke(args)`
+TROVI SEMPRE `args["entries"]` (lista di dict). NON cercare in
+`args["messages"]`, `args["paths"]`, `args["mails"]` o altri nomi:
+il runtime usa SEMPRE `entries` come target standard.
+
+CAMPI DICT DELLE ENTRIES (input atteso a invoke quando arrivano da from_step):
+- read_messages: `e["uid"]`, `e["account"]`, `e["folder"]`, `e["from"]`,
+  `e["subject"]`, `e["date"]`, `e["message_id"]`, `e["body_preview"]`,
+  `e["category_hints"]`, `e["has_attachment"]`.
+- find_files / list_dirs: `e["path"]`, `e["name"]`, `e["kind"]`,
+  `e["mime"]`, `e["size"]`, `e["mtime_epoch"]`, `e["type"]`.
+
+PRINCIPIO INTEGRITA' DATI (per verbi destructive: move/delete/write/extract):
+
+DEVI: per move/transfer eseguire COPY-then-CHECK-then-DELETE. Verifica
+  esplicitamente che il COPY (o equivalente: write atomic, append) sia
+  riuscito PRIMA di rimuovere/cancellare la sorgente.
+NON DEVI: eseguire DELETE/unlink/EXPUNGE/drop senza prima aver
+  confermato la copia/append nella destinazione.
+OK: `if copy_status == "OK": delete_source()`.
+ERRORE: `copy_source_to_dst(); delete_source()` senza check tra i due.
+  Se la copy fallisce silently, la source viene distrutta.
+
+DEVI: includere nel `results[]` TUTTI i campi necessari al `reverse_pattern`
+  dichiarato nel manifest. Es. `swap_src_dst` ha bisogno di pair {src, dst}
+  + ID stabile dell'oggetto (path, message_id, ecc.).
+NON DEVI: ritornare results vuoti o parziali sperando che l'undo magicamente
+  ricostruisca lo stato.
+OK: `results.append({"src": s, "dst": d, "id": stable_id})`.
+ERRORE: `results.append({"ok": True})` senza l'info per il reverse.
+
+DEVI: dedurre identita' dell'oggetto (account, folder, path) dalle
+  ENTRIES, non da arg globali con default. Le entries provengono da
+  diverse sorgenti, una sola call puo' coprire piu' account/sorgenti.
+NON DEVI: leggere `args.get("account", "default")` come unica
+  determinazione di account.
+OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
+ERRORE: `account = args.get("account", "metnos_system")`. E' UN ERRORE.
+
+PRINCIPIO BEST-EFFORT (per tutti i verbi vettoriali):
+
+DEVI: gestire ogni entry indipendentemente. Una entry fallita aggiunge
+  un dict a `failed[]`, non blocca le altre.
+NON DEVI: sollevare eccezione che termina il loop sull'intero batch
+  appena una entry fallisce.
+OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
+ERRORE: `for e in entries: process(e)  # senza try/except`. La prima
+  eccezione blocca tutte le altre. E' UN ERRORE.
+- Vettoriale by default: ogni executor accetta liste, anche di un solo elemento o vuota.
+- Output SEMPRE una lista (entries / results), anche degenere (0 o 1 elemento).
+  Niente None, niente dict singolo: il pianificatore riceve sempre una lista
+  e la tratta come fatto compiuto — non deve "esplorare di piu'" se la lista
+  e' corta o vuota.
+- Output forma standard {ok, ok_count, fail_count, results|entries, failed}.
+- LOOP INTERNO ALL'EXECUTOR. Quando l'operazione opera su un volume
+  variabile o non noto (es. mail in finestra temporale, file in directory
+  ricorsiva, fetch paginato), implementa il loop di iterazione (batch /
+  paginazione / stream) DENTRO la funzione invoke(). NON lasciare al
+  planner il compito di iterare: i loop esterni costano step ReAct e
+  non scalano. Esempio: un executor che ritorna le mail di "oggi" deve
+  accettare time_window come parametro e fare il loop di fetch IMAP
+  internamente, restituendo l'intera lista in una sola observation.
+  Aggiungi un cap esplicito (max_total, max_pages, max_bytes) per evitare
+  blow-up di output.
+- Best-effort: una entry fallita non blocca le altre.
+- Se critical (modifica fs/rete/stato esterno): usa
+  `platform_policy.is_protected_path(path)` per blocco hard +
+  `is_system_file(name)` per safety net (override via `allow_system=true`).
+- Errori uniformi: usa `messages.get('ERR_*')` per errori, `messages.get('MSG_*')` per info user-facing. NON inventare nomi creativi: scegli SEMPRE dalla lista qui sotto se semanticamente combacia; inventane di nuovi (UPPER_CASE_SHORT) SOLO se nessuno copre. Il runtime auto-registra le chiavi nuove come stub `<auto-synth: KEY>` per review.
+{% if available_i18n_keys %}
+CHIAVI i18n DISPONIBILI (riusale invece di inventarne):
+{% for fam, keys in available_i18n_keys.items() %}{% if keys %}
+  {{ fam }}: {{ keys | join(', ') }}
+{% endif %}{% endfor %}
+{% endif %}
+- Se revertible=true: il reverse_pattern e' applicato automaticamente dal runtime;
+  basta che i `results` esposti rispettino lo schema atteso del pattern (es.
+  `swap_src_dst` richiede `results: list[{src, dst}]`).
+
+I/O CONTRACT (OBBLIGATORIO — il runtime invoca via subprocess):
+- args arriva via STDIN come UN UNICO oggetto JSON. NON usare sys.argv.
+- output va su STDOUT come UN UNICO oggetto JSON.
+- Pattern fisso di `main()`, copiare letteralmente — usa l'helper condiviso
+  `run_stdio` (legge stdin, chiama invoke, scrive stdout, e gestisce stdin
+  vuoto + JSON invalido in modo uniforme §2.8):
+
+    from executor_helpers import run_stdio
+
+    def main():
+        run_stdio(invoke)
+
+    if __name__ == "__main__":
+        main()
+
+User request originale: {{ user_request }}
+
+Rispondi SOLO con il codice Python completo del file `{{ name }}.py`,
+incluso shebang, docstring, imports, def invoke(args), def main() col pattern
+fisso sopra, e if __name__. NIENTE markdown fences, NIENTE prosa esterna:
+SOLO codice eseguibile.

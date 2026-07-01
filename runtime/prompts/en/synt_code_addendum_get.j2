@@ -1,0 +1,63 @@
+{# ---
+role: synt_code_addendum_get
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 0bf1e02b
+--- #}
+VERB `get` RULES (in addition to generic):
+
+DEFINITION: `get` = ENRICHES existing entries by adding fields.
+Read-only (no mutation of the source). Output `entries` (NOT
+`results`) — preserves original fields, adds only new ones.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      entries_in = args.get("entries", [])
+      fields = args.get("fields", [...])
+      out = []
+      for i, e in enumerate(entries_in):
+          enriched = dict(e)                        # PRESERVE all fields
+          try:
+              for f in fields:
+                  enriched[f] = compute_field(e, f)
+          except Exception as ex:
+              enriched["enrichment_error"] = str(ex)[:200]
+          out.append(enriched)                      # ALWAYS in entries (not failed)
+
+INVARIANTS:
+MUST: output `entries` (NOT `results`). Cross-executor consistency is critical for
+  downstream from_step (see `feedback_executor_io_naming_consistency`).
+MUST: PRESERVE all original fields (`enriched = dict(e)`). Add only
+  the new requested fields.
+MUST: `fields` is an explicit list; reasonable default documented in the manifest.
+MUST: an unenrichable entry remains in `entries` with marker
+  `enrichment_error`, NOT in `failed`.
+MUST: for enrichments with I/O (geo/OCR), per-entry timeout cap (e.g., 5s) +
+  local cache via `location_store` or sqlite.
+MUST NOT: rename the bag to `results` (breaks downstream from_step).
+MUST NOT: filter/remove original fields.
+MUST NOT: write `def reverse(...)`.
+
+file metadata DOMAIN (get_files):
+- entry: `{path, name, ...}`; adds `mime`, `size`, `mtime_epoch`,
+  `image_dimensions` (PIL), `gps` (EXIF), `place`, `kind`.
+date DOMAIN (get_files with fields=['dates.semantic']):
+- entry: `{path, ...}`; adds `date_epoch` (EXIF DateTimeOriginal or mtime).
+geo DOMAIN (get_places):
+- entry: `{lat, lon, ...}`; adds `place`, `country`, `city` via
+  `nominatim_client.reverse_geocode(lat, lon)`.
+time DOMAIN (get_now): degenerate case → single entry `{epoch, iso, tz}`.
+location DOMAIN (get_location): reads `location_store.get_location()`.
+HTTP DOMAIN (get_urls):
+- entry: `{url, headers?}`; output entry with `status, headers, content,
+  truncated, elapsed_ms`.
+- use `urllib.request.urlopen(Request(url, headers=...), timeout=...)`;
+  byte cap (default 5MB) → `truncated:True` on truncated body.
+- best-effort per-entry: timeout/error of one URL does not block the batch.
+- ONLY GET/HEAD. For POST/PUT use verb `send`.
+- MUST NOT: `import requests` or `import httpx`.

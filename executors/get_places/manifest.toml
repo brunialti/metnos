@@ -1,0 +1,67 @@
+# Manifest dell'executor `get_places` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale. Vettoriale per costruzione.
+
+manifest_format = "1.0"
+
+name        = "get_places"
+version     = "0.3.0"
+author      = "Roberto Brunialti"
+affinity    = ["get", "place", "luogo", "reverse", "geocode", "coordinate", "indirizzo", "city", "GPS"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: ottiene il nome del luogo da coordinate GPS. PATTERN: get_places(coords=[{lat,lon}]) o from_step=N. NON: cerca per testo (-> find_places). OUT: entries=[{place}]."
+en = "SCOPO: gets place name from GPS coordinates. PATTERN: get_places(coords=[{lat,lon}]) or from_step=N. NON: text search (-> find_places). OUT: entries=[{place}]."
+
+[code]
+files  = ["get_places.py"]
+digest = "sha256:0f0e5142c98c495738d568dcb7a5fbdf40ae0c400c0bfbcad817560a01c786ba"
+
+[args]
+type     = "object"
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di entries con campo `gps`. Mutuamente esclusivo con coords. Es. al passo 1 get_files estrae gps, al passo 2 get_places riceve from_step=1 e arricchisce ogni entry con `place`."
+en = "Number of the previous step (in this turn) that produced the list of entries with the field `gps`. Mutually exclusive with coords. E.g., at step 1 get_files extracts gps, at step 2 get_places receives from_step=1 and enriches each entry with `place`."
+
+[args.properties.coords]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.coords.description]
+it = "Lista di coordinate {lat, lon} costruite ad hoc. Mutuamente esclusiva con `from_step`. Output: lista {lat, lon, place}."
+en = "List of ad hoc constructed coordinates {lat, lon}. Mutually exclusive with `from_step`. Output: list {lat, lon, place}."
+
+[[capabilities]]
+name = "net:read"
+hint = ["nominatim.openstreetmap.org", "localhost"]
+
+[[tests]]
+name   = "args_invalidi_nessuno_dei_due"
+input  = { }
+expect = { ok = false, error_contains = "Manca un argomento obbligatorio" }
+
+[[tests]]
+name   = "args_invalidi_entrambi"
+input  = { coords = [], entries = [] }
+expect = { ok = false, error_contains = "Argomenti non validi" }
+
+[[tests]]
+name   = "lista_coords_vuota_ok"
+input  = { coords = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "lista_entries_vuota_ok"
+input  = { entries = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "entries_senza_gps_diventa_unknown"
+input  = { entries = [{path = "/tmp/foo.jpg"}, {path = "/tmp/bar.jpg", gps = {}}] }
+expect = { ok = true, ok_count_eq = 2 }

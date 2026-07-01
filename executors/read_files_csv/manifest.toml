@@ -1,0 +1,102 @@
+# Manifest dell'executor `read_files_csv` — Metnos v1.1
+# Naming: verbo_oggetto_qualificatore (CSV come variante reale di parsing).
+
+manifest_format = "1.0"
+
+name        = "read_files_csv"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["read", "csv", "leggi", "tabella", "spreadsheet", "foglio", "dati", "import"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: legge file CSV locali (vettoriale §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: usare per Excel (-> read_files_xlsx) o immagini (-> read_files_ocr). OUT: entries=[...]"
+en = "SCOPO: reads local CSV files (vectorial §2.1). PATTERN: read_files_csv(paths=[\"a.csv\"]). NON: use for Excel (-> read_files_xlsx) or images (-> read_files_ocr). OUT: entries=[...]"
+
+[code]
+files  = ["read_files_csv.py"]
+digest = "sha256:1e9e78095d16dc2290ed7cbb716fcb3190811bec28a467b3bdef7c11c6702130"
+
+[args]
+type     = "object"
+required = ["paths"]
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Lista di path a file CSV. Estensione tipica .csv ma il parser non controlla l'estensione (accetta qualsiasi file testuale CSV-like)."
+en = "List of paths to CSV files. Typical extension is .csv but the parser does not check the extension (accepts any CSV-like text file)."
+
+[args.properties.delimiter]
+type        = "string"
+
+[args.properties.delimiter.description]
+it = "Delimitatore di colonna. Se omesso (default), autodetect fra ',', ';', tab, '|'. Forzare per file con delimitatore inusuale."
+en = "Column delimiter. If omitted (default), autodetect between ',', ';', tab, '|'. Force for files with unusual delimiters."
+
+[args.properties.encoding]
+type        = "string"
+default     = "utf-8"
+
+[args.properties.encoding.description]
+it = "Encoding del file. Default 'utf-8'. Per CSV legacy provare 'latin-1' o 'cp1252'."
+en = "File encoding. Default 'utf-8'. For legacy CSV, try 'latin-1' or 'cp1252'."
+
+[args.properties.has_header]
+type        = "boolean"
+default     = true
+
+[args.properties.has_header.description]
+it = "Se true (default), la prima riga e' header e le righe successive sono dict. Se false, ogni riga e' una lista di stringhe."
+en = "If true (default), the first line is the header and the subsequent lines are dicts. If false, each line is a list of strings."
+
+[args.properties.max_rows]
+type        = "integer"
+default     = 10000
+
+[args.properties.max_rows.description]
+it = "Massimo numero di righe da leggere per file (oltre l'header se presente). Default 10000, range 1..1000000."
+en = "Maximum number of lines to read per file (in addition to the header if present). Default 10000, range 1..1000000."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[tests]]
+name     = "csv_base_con_header"
+setup    = "printf 'name,age\\nAlice,30\\nBob,25\\n' > /tmp/metnos_test.csv"
+input    = { paths = ["/tmp/metnos_test.csv"] }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -f /tmp/metnos_test.csv"
+
+[[tests]]
+name     = "csv_senza_header"
+setup    = "printf '1,2,3\\n4,5,6\\n' > /tmp/metnos_test.csv"
+input    = { paths = ["/tmp/metnos_test.csv"], has_header = false }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -f /tmp/metnos_test.csv"
+
+[[tests]]
+name     = "csv_delimitatore_punto_virgola"
+setup    = "printf 'a;b;c\\n1;2;3\\n' > /tmp/metnos_test.csv"
+input    = { paths = ["/tmp/metnos_test.csv"], delimiter = ";" }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -f /tmp/metnos_test.csv"
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { paths = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "args_invalidi_paths_non_lista"
+input  = { paths = "/tmp/foo.csv" }
+expect = { ok = false, error_contains = "deve essere una lista" }
+
+[[tests]]
+name   = "path_inesistente_fallisce_solo_quella"
+input  = { paths = ["/tmp/metnos_does_not_exist.csv"] }
+expect = { ok = false, fail_count_eq = 1, error_contains = "does not exist" }

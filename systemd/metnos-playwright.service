@@ -1,0 +1,38 @@
+[Unit]
+Description=Metnos Playwright sidecar (JS-rendering for SPA URLs, ADR 0125)
+Documentation=file:///opt/metnos/decisions/0125-playwright-sidecar.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/metnos/runtime
+ExecStart=/opt/suprastructure/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
+Restart=always
+RestartSec=10s
+TimeoutStopSec=15s
+
+# Risorse: chromium headless ~200MB RSS idle. Cap conservativo a 1GB per
+# evitare runaway in caso di pagine pesanti (SPA con frame multipli).
+MemoryMax=1G
+
+# Hardening (user unit, no root) — meno stringente del telegram-daemon
+# perche' chromium ha bisogno di scrivere cache/profile dirs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+# MemoryDenyWriteExecute=false richiesto da chromium (V8 JIT).
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+
+# Output -> journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=metnos-playwright
+
+[Install]
+WantedBy=default.target

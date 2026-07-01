@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Catalogo executor · Console Metnos{% endblock %}
+{% block body %}
+<h1>Catalogo executor ({{ rows|length }})</h1>
+<p class="page-sub">Tutti gli executor installati — handcrafted, sintetizzati
+e importati — con versione, stato di ciclo di vita e reversibilità.</p>
+<p><a class="btn" href="/admin/executors/stats">statistiche &amp; grafici</a></p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>nome</th><th>versione</th><th>ciclo di vita</th><th>origine</th>
+        <th>capability</th><th>reversibile</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td>{{ r.version }}</td>
+      <td>
+        {% if r.lifecycle == "active" %}<span class="chip ok">{{ r.lifecycle }}</span>
+        {% elif r.lifecycle == "deprecated" %}<span class="chip warn">{{ r.lifecycle }}</span>
+        {% elif r.lifecycle == "archived" %}<span class="chip bad">{{ r.lifecycle }}</span>
+        {% else %}<span class="chip">{{ r.lifecycle }}</span>{% endif %}
+      </td>
+      <td><span class="chip">{{ r.source }}</span></td>
+      <td class="muted">{{ r.capabilities|length }}</td>
+      <td>{{ "sì" if r.revertible else "no" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

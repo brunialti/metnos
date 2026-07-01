@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""{{ name }} - executor importato da skill `{{ provenance.imported_from }}`.
+
+Wrapper subprocess su `{{ skill_script }}` con sub-command
+`{{ skill_domain }} {{ skill_action }}`.
+
+§2.1 vettoriale: output sempre `{{ output_kind }}: list` (N=0/1/molti).
+§2.6 produttore: ritorna `{{ output_kind }}`.
+§2.8 no silent failure: error_class deterministico (auth_required/
+rate_limited/network/invalid_args/server_error/missing_dependency/
+not_found/unknown) via skill_wrapper._classify_error.
+{% if reversible %}§2.3 reverse_pattern = "{{ reverse_pattern }}".{% else %}§2.3 reversible=false (modello delete_persons).{% endif %}
+
+§10.5 isolamento: METNOS_USER_DATA e METNOS_SKILL_HOME isolano i path.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+_RUNTIME = Path(__file__).resolve().parent.parent.parent / "runtime"
+if str(_RUNTIME) not in sys.path:
+    sys.path.insert(0, str(_RUNTIME))
+
+from skill_wrapper import (  # noqa: E402
+    _skill_home,
+    _run_api,
+    _classify_error,
+{% if has_oauth_setup %}    _needs_inputs_oauth_setup,
+    _get_skill_oauth_config,
+{% endif %}{% if not has_oauth_setup and has_api_key_setup %}    _needs_inputs_api_key_setup,
+{% endif %}    _normalize_record,
+)
+
+
+SKILL_NAME = "{{ skill_name }}"
+
+
+def _api_script() -> Path:
+    return _skill_home(SKILL_NAME) / "{{ skill_script }}"
+
+
+# ----- ISO 8601 con offset (validazione preventiva, gap §5.4) --------------
+
+_RE_ISO_TZ = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
+)
+
+
+def _validate_iso_tz(s, field):
+    if not isinstance(s, str) or not _RE_ISO_TZ.match(s):
+        return f"{field} must be ISO 8601 with timezone offset (e.g. ...Z or ...+02:00)"
+    return None
+
+
+# ----- time_window resolver (canonicalizza last-Nd/today/...) --------------
+{% if needs_time_window %}
+
+from datetime import datetime, timedelta, timezone
+
+_RE_LAST_ND = re.compile(r"^last-(\d+)d$")
+_RE_NEXT_ND = re.compile(r"^next-(\d+)d$")
+
+
+def _resolve_window(args):
+    """Ritorna (start_iso, end_iso, error). None=successo."""
+    start = args.get("start")
+    end = args.get("end")
+    if isinstance(start, str) and start and isinstance(end, str) and end:
+        if end <= start:
+            return None, None, "end must be strictly after start"
+        return start, end, None
+    if (start and not end) or (end and not start):
+        return None, None, "start and end must be provided together"
+
+    tw = args.get("time_window") or "{{ time_window_default }}"
+    if not isinstance(tw, str):
+        return None, None, "time_window must be a string"
+
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+    if tw == "today":
+        s, e = today_start, today_start + timedelta(days=1)
+    elif tw == "tomorrow":
+        s = today_start + timedelta(days=1)
+        e = s + timedelta(days=1)
+    elif tw == "last-24h":
+        s, e = now - timedelta(hours=24), now
+    elif tw == "all":
+        s = now - timedelta(days=365 * 5)
+        e = now + timedelta(days=365 * 5)
+    else:
+        m = _RE_LAST_ND.match(tw)
+        if m:
+            n = int(m.group(1))
+            s, e = now - timedelta(days=n), now
+        else:
+            m = _RE_NEXT_ND.match(tw)
+            if m:
+                n = int(m.group(1))
+                s, e = now, now + timedelta(days=n)
+            else:
+                return None, None, f"unknown time_window: {tw!r}"
+    return s.strftime("%Y-%m-%dT%H:%M:%SZ"), e.strftime("%Y-%m-%dT%H:%M:%SZ"), None
+{% endif %}
+
+
+# ----- Args coalescing (vettoriale §2.1) -----------------------------------
+{% if vectorial_coalesce %}
+
+def _coalesce_{{ vectorial_coalesce.entity }}(args):
+    """Estrae lista {{ vectorial_coalesce.entity }} da args. Singolare -> list len-1.
+    Ritorna (rows, error). Supporta: <entity>_ids (plurale), <entity>_id
+    (singolare), entries (da from_step di executor produttore).
+    """
+    plural = "{{ vectorial_coalesce.plural }}"
+    singular = "{{ vectorial_coalesce.singular }}"
+    ids = args.get(plural)
+    if ids is not None:
+        if not isinstance(ids, list):
+            return [], f"{plural} must be a list"
+        out = []
+        for i, v in enumerate(ids):
+            if not isinstance(v, str) or not v.strip():
+                return [], f"{plural}[{i}] must be a non-empty string"
+            out.append(v.strip())
+        if not out:
+            return [], f"{plural} must be non-empty"
+        return out, None
+
+    eid = args.get(singular)
+    if isinstance(eid, str) and eid.strip():
+        return [eid.strip()], None
+    if eid is not None:
+        return [], f"{singular} must be a non-empty string"
+
+    entries = args.get("entries")
+    if isinstance(entries, list):
+        out2 = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            v = e.get("id")
+            if isinstance(v, str) and v.strip():
+                out2.append(v.strip())
+        if not out2:
+            return [], "no usable id in entries"
+        return out2, None
+
+    return [], f"must provide one of: {plural}, entries, {singular}"
+{% endif %}
+
+{% if vectorial_entries %}
+def _expand_row_args(args, entry):
+    """Args per UNA entry (vettoriale §2.1). Ogni `<name>_template` viene
+    format-ato coi campi dell'entry; i campi dell'entry riempiono gli args
+    mancanti; gli scalari restano costanti. Rimuove `entries` (no ricorsione)."""
+    out = {k: v for k, v in args.items()
+           if k != "entries" and not (isinstance(k, str) and k.endswith("_template"))}
+    if isinstance(entry, dict):
+        for k, v in args.items():
+            if isinstance(k, str) and k.endswith("_template") and isinstance(v, str):
+                base = k[:-len("_template")]
+                try:
+                    out[base] = v.format(**entry)
+                except Exception:
+                    out[base] = v
+        for k, v in entry.items():
+            out.setdefault(k, v)
+    return out
+{% endif %}
+
+
+# ----- invoke ---------------------------------------------------------------
+
+def invoke(args):
+    if not isinstance(args, dict):
+        return _err_obj("args must be an object", "invalid_args")
+{% if vectorial_entries %}
+    # Vettoriale §2.1: con `entries` (da from_step) UNA invocazione per entry,
+    # args derivati via `<name>_template`/campi entry; aggrega in results. La
+    # forma scalare (sotto) resta il caso degenere N=1.
+    _ents = args.get("entries")
+    if isinstance(_ents, list):
+        _res = []
+        _fail = []
+        _auth = False
+        for _e in _ents:
+            _r = invoke(_expand_row_args(args, _e))
+            if isinstance(_r, dict) and _r.get("decision") == "needs_inputs":
+                _auth = True
+                break
+            if isinstance(_r, dict) and _r.get("ok"):
+                _res.extend(_r.get("results") or _r.get("entries") or [])
+            else:
+                _fail.append({"error": (_r or {}).get("error"),
+                              "error_class": (_r or {}).get("error_class")})
+        if _auth and not _res:
+            return _auth_needs_inputs(dict(args))
+        _out = {"ok": (len(_res) > 0 or not _fail), "results": _res,
+                "used": len(_res)}
+        if _fail:
+            if _res:
+                _out["partial"] = True
+            else:
+                _out["ok"] = False
+                _out["error"] = _fail[0].get("error")
+                _out["error_class"] = _fail[0].get("error_class")
+            _out["failures"] = _fail
+        return _out
+{% endif %}
+
+{% if needs_time_window %}
+    start_iso, end_iso, err = _resolve_window(args)
+    if err:
+        return _err_obj(err, "invalid_args")
+{% endif %}
+
+    # Validazione ISO 8601 quando applicabile (gap §5.4).
+{% for v in iso_validations %}
+    val = args.get("{{ v }}")
+    if val is not None:
+        err = _validate_iso_tz(val, "{{ v }}")
+        if err:
+            return _err_obj(err, "invalid_args")
+{% endfor %}
+
+{% if vectorial_coalesce %}
+    rows, err = _coalesce_{{ vectorial_coalesce.entity }}(args)
+    if err:
+        return _err_obj(err, "invalid_args")
+{% endif %}
+
+    # Top_k §2.7
+{% if has_top_k %}
+    top_k = args.get("top_k")
+    if top_k is None:
+        top_k = {{ top_k_default }}
+    try:
+        top_k_int = int(top_k)
+    except (TypeError, ValueError):
+        return _err_obj("top_k must be an integer", "invalid_args")
+    if top_k_int < 0:
+        return _err_obj("top_k must be >= 0", "invalid_args")
+{% endif %}
+
+    # Costruzione argv per subprocess.
+    argv = ["{{ skill_domain }}", "{{ skill_action }}"]
+{% if needs_time_window %}
+    argv.extend(["--start", start_iso, "--end", end_iso])
+{% endif %}
+{% for f in passthrough_flags %}
+    _v = args.get("{{ f.name }}")
+    if _v is not None{% if f.skip_default %} and _v != {{ f.skip_default | tojson }}{% endif %}:
+        argv.extend(["--{{ f.cli }}", str(_v) if not isinstance(_v, list) else ",".join(str(x) for x in _v)])
+{% endfor %}
+{% if vectorial_coalesce %}
+    # Iterazione per ogni row (vettoriale §2.1).
+    results = []
+    failures = []
+    auth_seen = False
+    for rid in rows:
+        per_argv = list(argv) + [rid]
+        rc, stdout, stderr = _run_api(_api_script(), per_argv, skill_name=SKILL_NAME)
+        if rc != 0:
+            ec = _classify_error(rc, stderr)
+            if ec == "auth_required":
+                auth_seen = True
+                break
+            failures.append({"id": rid, "error": stderr.strip() or f"rc={rc}", "error_class": ec})
+            continue
+        results.append({"status": "{{ status_word }}", "id": rid})
+    if auth_seen and not results:
+        return _auth_needs_inputs(dict(args))
+    n_done = len(results)
+    out = {
+        "ok": n_done > 0 or not failures,
+        "results": results,
+        "n_{{ status_word }}": n_done,
+        "used": n_done,
+    }
+    if failures:
+        if results:
+            out["partial"] = True
+        out["failures"] = failures
+        if not results:
+            out["ok"] = False
+            out["error_class"] = failures[0]["error_class"]
+            out["error"] = failures[0]["error"]
+    return out
+{% else %}
+    rc, stdout, stderr = _run_api(_api_script(), argv, skill_name=SKILL_NAME)
+    if rc != 0:
+        ec = _classify_error(rc, stderr)
+        if ec == "auth_required":
+            return _auth_needs_inputs(dict(args))
+        return _err_obj(stderr.strip() or f"rc={rc}", ec, partial_keys=True)
+
+    try:
+        raw = json.loads(stdout) if stdout.strip() else {{ empty_default }}
+    except json.JSONDecodeError as e:
+        return _err_obj(f"invalid JSON from skill: {e}", "server_error", partial_keys=True)
+
+{% if output_kind == 'entries' %}
+    # Normalizza l'output dello skill script. Alcune skill ritornano un array
+    # nudo (convenzione google_api.py); altre (es. github_api.py) un dict
+    # {ok, results/entries/items, error_class}. §2.8: propaga ok:false invece
+    # di fingere una lista vuota; estrai la lista dal campo canonico.
+    if isinstance(raw, dict):
+        _ec = raw.get("error_class")
+        if raw.get("ok") is False or _ec or raw.get("error"):
+            if _ec == "auth_required":
+                return _auth_needs_inputs(dict(args))
+            return _err_obj(str(raw.get("error") or "skill error"),
+                            _ec or "server_error", partial_keys=True)
+        for _lk in ("results", "entries", "items", "data"):
+            if isinstance(raw.get(_lk), list):
+                raw = raw[_lk]
+                break
+    if not isinstance(raw, list):
+        return _err_obj("skill did not return a JSON array", "server_error", partial_keys=True)
+
+    available_total = len(raw)
+{% if has_top_k %}
+    if top_k_int == 0 or available_total <= top_k_int:
+        kept = raw
+        truncated = False
+    else:
+        kept = raw[:top_k_int]
+        truncated = True
+{% else %}
+    kept = raw
+    truncated = False
+{% endif %}
+    entries = [
+        _normalize_record(e, kind="{{ record_kind }}", extra={{ extra_record_fields_py | safe }})
+        for e in kept if isinstance(e, dict)
+    ]
+    out = {"ok": True, "entries": entries, "used": len(entries), "available_total": available_total}
+{% if has_top_k %}
+    if truncated:
+        out.update({
+            "truncated": True,
+            "truncated_what": "{{ truncated_what }}",
+            "cap_field": "top_k",
+            "cap_value": top_k_int,
+        })
+{% endif %}
+    return out
+{% else %}
+    # Output trasformativo: results (§2.6). Normalizza come per entries:
+    # propaga ok:false (§2.8); estrai la lista dal campo canonico, oppure usa
+    # il dict come singolo result (es. issue creata → {ok, number, url}).
+    if isinstance(raw, dict):
+        _ec = raw.get("error_class")
+        if raw.get("ok") is False or _ec or raw.get("error"):
+            if _ec == "auth_required":
+                return _auth_needs_inputs(dict(args))
+            return _err_obj(str(raw.get("error") or "skill error"),
+                            _ec or "server_error", partial_keys=True)
+        _lst = None
+        for _lk in ("results", "entries", "items", "data"):
+            if isinstance(raw.get(_lk), list):
+                _lst = raw[_lk]
+                break
+        if _lst is not None:
+            results = [r for r in _lst if isinstance(r, dict)]
+        elif raw.get("status"):
+            results = [raw]
+        else:
+            results = [{k: v for k, v in raw.items() if k != "ok"}]
+    elif isinstance(raw, list):
+        results = [r for r in raw if isinstance(r, dict)]
+    else:
+        results = []
+    n_done = len(results)
+    out = {
+        "ok": n_done > 0,
+        "results": results,
+        "n_{{ status_word }}": n_done,
+        "used": n_done,
+    }
+{% if reversible %}
+    if results:
+        out["_undo"] = {
+            "pattern": "{{ reverse_pattern }}",
+            "ids": [r.get("id") for r in results if r.get("id")],
+        }
+{% endif %}
+    return out
+{% endif %}
+{% endif %}
+
+
+# ----- Helper di errore strutturato ----------------------------------------
+
+def _err_obj(msg, ec, partial_keys=False):
+    base = {"ok": False, "error": msg, "error_class": ec}
+{% if output_kind == 'entries' %}
+    base["entries"] = []
+    base["used"] = 0
+{% else %}
+    base["results"] = []
+    base["used"] = 0
+{% if status_word %}
+    base["n_{{ status_word }}"] = 0
+{% endif %}
+{% endif %}
+    return base
+
+
+def _auth_needs_inputs(initial_args):
+{% if has_oauth_setup %}
+    payload = _needs_inputs_oauth_setup(
+        skill_name=SKILL_NAME, executor="{{ name }}", args_base=initial_args,
+        **_get_skill_oauth_config(__file__),
+    )
+{% elif has_api_key_setup %}
+    payload = _needs_inputs_api_key_setup(
+        skill_name=SKILL_NAME, executor="{{ name }}", args_base=initial_args,
+    )
+{% else %}
+    payload = {"title": "MSG_AUTH_REQUIRED", "dialog": [], "fmt": "auto"}
+{% endif %}
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "needs_inputs": payload,
+{% if output_kind == 'entries' %}
+        "entries": [],
+        "used": 0,
+{% else %}
+        "results": [],
+        "used": 0,
+{% if status_word %}        "n_{{ status_word }}": 0,
+{% endif %}
+{% endif %}
+        "error_class": "auth_required",
+        "final_message_hint": payload.get("title", ""),
+    }
+
+
+def main():
+    try:
+        args = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        sys.stdout.write(json.dumps(_err_obj(f"invalid input json: {e}", "invalid_args")))
+        return
+    result = invoke(args)
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, default=str))
+
+
+if __name__ == "__main__":
+    main()

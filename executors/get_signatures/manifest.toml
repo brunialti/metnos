@@ -1,0 +1,77 @@
+manifest_format = "1.0"
+name        = "get_signatures"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["safety", "signatures", "lookup", "verifica permessi",
+                "controllo autorizzazioni", "elenco autorizzati",
+                "elenco vietati", "review pending", "candidati promozione",
+                "differenze seed"]
+
+revertible       = true
+reverse_pattern  = []
+
+[description]
+it = "SCOPO: ottiene signature da liste sicurezza (whitelist/blacklist/graylist/forbidden). PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: calcola sig (-> compute_signatures); imposta permessi (-> set_signatures). OUT: entries=[{negate,matched_pattern,severity,reason,allow,age_class,uses,last_used_at,matched_path}]."
+en = "SCOPO: gets signatures from security lists (whitelist/blacklist/graylist/forbidden). PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: computes sig (-> compute_signatures); sets permissions (-> set_signatures). OUT: entries=[{negate,matched_pattern,severity,reason,allow,age_class,uses,last_used_at,matched_path}]."
+
+[code]
+files  = ["get_signatures.py"]
+digest = "sha256:f35386a293a40a7ea2726bac55b026fac23e0e83b8866ee77f2191c117d2eb9e"
+
+[args]
+type     = "object"
+required = ["kind"]
+
+[args.properties.kind]
+type        = "string"
+enum        = ["blacklist", "whitelist", "graylist", "forbidden", "all", "promotion_candidates", "seed_diff"]
+
+[args.properties.kind.description]
+it = "Modalita' di lookup. Vedi description per dettagli."
+en = "Lookup mode. See description for details."
+
+[args.properties.signature]
+type        = "string"
+
+[args.properties.signature.description]
+it = "Per kind='blacklist'/'whitelist': signature da cercare (formato 'binary:subcmd:target_kind'). Per altri kind: ignorato."
+en = "For kind='blacklist'/'whitelist': signature to search for (format 'binary:subcmd:target_kind'). For other kinds: ignored."
+
+[args.properties.argv]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.argv.description]
+it = "Per kind='forbidden': argv da verificare contro path/dispositivi proibiti. MATCH ESATTO sui token (security): wildcard `*`/`?` NON supportati. Glob/regex sono nei pattern lato DB, non negli argv input."
+en = "For kind='forbidden': argv to be verified against forbidden paths/devices. EXACT MATCH on tokens (security): wildcards `*`/`?` NOT supported. Glob/regex live in DB patterns, not in input argv."
+
+[args.properties.record_use]
+type        = "boolean"
+default     = false
+
+[args.properties.record_use.description]
+it = "Per kind='whitelist': se true e c'e' match, incrementa uses + last_used_at."
+en = "For kind='whitelist': if true and there is a match, increment uses + last_used_at."
+
+[args.properties.min_uses]
+type        = "integer"
+default     = 5
+
+[args.properties.min_uses.description]
+it = "Per kind='promotion_candidates': soglia minima uso. Default 5."
+en = "For kind='promotion_candidates': minimum usage threshold. Default 5."
+
+[args.properties.max_age_days]
+type        = "integer"
+default     = 30
+
+[args.properties.max_age_days.description]
+it = "Per kind='promotion_candidates': finestra in giorni. Default 30."
+en = "For kind='promotion_candidates': window in days. Default 30."
+
+[args.properties.seed_path]
+type        = "string"
+
+[args.properties.seed_path.description]
+it = "Per kind='seed_diff': path del seed file. Default runtime/safety_seeds/v1.toml."
+en = "For kind='seed_diff': path of the seed file. Default runtime/safety_seeds/v1.toml."

@@ -1,0 +1,749 @@
+# /opt/metnos/install/manifest.toml
+#
+# Manifest centrale di installazione di Metnos.
+#
+# E' la "single source of truth" per riprodurre l'ambiente Metnos su un nodo
+# nuovo: pacchetti Python, pacchetti di sistema, modelli ML, servizi systemd,
+# directory, template di config, secret rigenerabili e servizi esterni.
+#
+# Lo script `install/setup.sh` (scaffold) lo legge e applica passi idempotenti.
+# Lo script `install/download_models.sh` (scaffold) usa la sezione [models]
+# per scaricare i blob ML e verificarli via sha256.
+#
+# Nodo di destinazione: una macchina Linux Debian/Ubuntu derivata, con
+# Python >= 3.12, accesso a Internet per il primo download dei modelli e
+# dei pacchetti, e abbastanza spazio per ~1 GB di blob (modelli + venv).
+#
+# IMPORTANTE: questo manifest NON nasconde decisioni nel codice. Tutto cio'
+# che e' "componente da installare" passa di qui. Se aggiungi una dipendenza,
+# un servizio o un modello, dichiaralo qui prima.
+
+# ── Metadati globali ──────────────────────────────────────────────
+
+[meta]
+name        = "metnos"
+version     = "1.1"
+description = "Metnos — assistente personale self-hosted (microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM locale + frontier come fallback). Canale primario Telegram, lingua principale italiano."
+maintainer  = "the owner"
+process_name = "myclaw"
+domain      = "metnos.com"
+generated_at = "2026-05-04T17:00:00Z"
+manifest_schema_version = 1
+
+# ── Runtime di sistema ─────────────────────────────────────────────
+
+[runtime]
+python_min      = "3.12"
+working_dir     = "/opt/metnos"
+data_dir        = "~/.local/share/metnos"
+state_dir       = "~/.local/state/metnos"
+config_dir      = "~/.config/metnos"
+log_dir         = "~/.local/state/metnos"     # log via journald + locations.jsonl
+synthesized_executors_dir = "~/.local/share/metnos/executors"
+history_dir     = "~/.local/share/metnos/_history"
+turn_blob_dir   = "~/.local/share/metnos/_history/{turn_id}/blob"
+suprastructure_path = "/opt/suprastructure/src"  # PYTHONPATH per onnx_embedding e i18n
+giorgio2_models_path = "/opt/giorgio2/models"    # share modelli con giorgio2 (read-only)
+
+# ── Pacchetti Python ────────────────────────────────────────────────
+
+[runtime.python_packages]
+# Required: presupposti del runtime di Metnos. Senza questi, agent_runtime
+# o executor non partono.
+required = [
+    "aiohttp>=3.13",                    # HTTP server e client (admin, agent_server, photon, etc.)
+    "cryptography>=41",                 # Ed25519 sign + Fernet (sign.py, credentials.py)
+    "Jinja2>=3",                        # http_render (admin dashboard, mirror)
+    "numpy>=2.0",                       # embedding service, prefilter, executor
+    "onnxruntime>=1.20",                # MiniLM (suprastructure) + SigLIP scene + ArcFace face
+    "tokenizers>=0.20",                 # tokenizer HF Rust per MiniLM e SigLIP
+    "Pillow>=10",                       # image I/O (read_files_ocr esistente; pipeline immagini nuova)
+]
+
+# Optional: arricchiscono executor specifici. Senza, l'executor degrada o
+# segna fail con messaggio chiaro (es. read_urls_pdf prova pypdf > pdfminer).
+optional = [
+    "pypdf>=4",                         # read_urls_pdf parser preferito
+    "pdfminer.six>=2024",               # read_urls_pdf fallback
+    "openpyxl>=3.1",                    # read_files_xlsx
+    "tomli>=2; python_version<'3.11'",  # tomllib fallback per Python < 3.11
+]
+
+# Dev-only: test runner, lint, debug. NON installati in produzione.
+dev = [
+    "pytest>=8",
+]
+
+# ── Pacchetti di sistema ─────────────────────────────────────────────
+
+[system_packages]
+# Distribuzione di riferimento: Debian/Ubuntu stable. Per Arch/Fedora,
+# l'installazione manuale e' ovvia (i nomi pacchetto sono simili).
+debian = [
+    "python3.12",                       # interprete (>= 3.12)
+    "python3.12-venv",                  # venv per il runtime
+    "python3-pip",                      # installazione pacchetti pip
+    "tesseract-ocr",                    # read_files_ocr (engine)
+    "tesseract-ocr-ita",                # OCR italiano
+    "tesseract-ocr-eng",                # OCR inglese
+    "poppler-utils",                    # pdftoppm per OCR su PDF
+    "imagemagick",                      # convert (test fixtures, OCR utility)
+    "curl",                             # download modelli, mail check, debug
+    "ca-certificates",                  # TLS verify
+    "libgomp1",                         # runtime OpenMP per onnxruntime
+]
+
+# Pacchetti opzionali: aggiungono capacita' periferiche.
+debian_optional = [
+    "tesseract-ocr-fra",                # OCR francese (lingua secondaria)
+    "tesseract-ocr-deu",                # OCR tedesco
+    "ffmpeg",                           # futuri executor audio/video
+    "exiftool",                         # alternativa a PIL.ExifTags per metadata estesi
+]
+
+# ── Modelli ML ────────────────────────────────────────────────────────
+
+# Tutti i modelli sono ONNX (no pytorch nel runtime). I blob sono scaricati
+# da install/download_models.sh con verifica sha256 al primo run. Il flag
+# `required_for` enumera gli executor che dipendono dal modello: se il
+# modello manca, quegli executor risultano `unavailable` al loader.
+
+# ── LLM tier locale (llama.cpp servito) ────────────────────────────
+# 8/5/2026: switch da Ollama a llama.cpp build-vulkan per perf su Strix Halo.
+# Modelli scaricati manualmente da Roberto in /home/user/models/.
+# Future re-installazione: documenta il download manuale + verifica sha256.
+
+[[models.entry]]
+name        = "llm_mid_gemma4_26b"
+purpose     = "LLM tier middle/wise locale per PLANNER + synt + describe + intent + vaglio. Servito da metnos-llm-mid.service su :8080."
+source      = "manual_download"
+local_path  = "/home/user/models/gemma-4-26B-A4B-it-UD-Q4_K_M.gguf"
+size_mb     = 15000
+required_for = ["agent_runtime PLANNER", "synt 5-stage", "describe_entries", "vaglio_llm", "intent_extractor"]
+notes       = "Gemma 4 26B quantizzato Q4_K_M. Throughput ~130 tok/s post-warmup con speculative decoding (draft E2B) e ctx 65K. Acc 0.97 sui prompt strutturati."
+
+[[models.entry]]
+name        = "llm_draft_gemma4_e2b"
+purpose     = "Draft model per speculative decoding del mid tier. Predice token che il modello principale verifica."
+source      = "manual_download"
+local_path  = "/home/user/models/gemma-4-E2B-it-Q4_K_M.gguf"
+size_mb     = 1600
+required_for = ["llm_mid_gemma4_26b speculative decoding"]
+notes       = "Servito inline al mid tier via flag --md di llama-server. Acceptance rate ~0.97 su prompt strutturati Metnos."
+
+[[models.entry]]
+name        = "vlm_qwen3vl_2b"
+purpose     = "Vision-Language Model per unified image enrichment (ADR 0117). Genera description+keywords+location+activity da ogni foto al build time."
+source      = "manual_download"
+local_path  = "/home/user/models/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+mmproj_local = "/home/user/models/mmproj-Qwen3VL-2B-Instruct-F16.gguf"
+size_mb     = 3000
+required_for = ["create_images_indices unified builder (ADR 0117)", "find_images query content/location"]
+notes       = "Servito su :8081 via scripts/vlm_server.sh (avvio lazy on-demand da create_images_indices, auto-stop 10 min idle: nessuna unit systemd). Modello/endpoint virtualizzati in ~/.config/metnos/vlm_tiers.toml (virt.get_vlm). mmproj = proiettore vision→text per la modalita' multimodale di llama-server. ~1-2s/foto su Strix Halo Vulkan."
+
+[[models.entry]]
+name        = "embedding_text_minilm"
+purpose     = "embedding semantico testuale (multilingue, 384 dim, MiniLM-L12-v2). Condiviso con suprastructure e giorgio2."
+source      = "huggingface"
+source_url  = "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+files = [
+  { name = "model.onnx", local = "/opt/giorgio2/models/onnx/model.onnx", sha256 = "<existing-shared>" },
+  { name = "tokenizer.json", local = "/opt/giorgio2/models/onnx/tokenizer.json", sha256 = "<existing-shared>" },
+  { name = "giorgio_meta.json", local = "/opt/giorgio2/models/onnx/giorgio_meta.json", sha256 = "<existing-shared>" },
+]
+local_path  = "/opt/giorgio2/models/onnx"
+size_mb     = 130
+required_for = ["prefilter (rank_with_intent)", "introvertiva", "i18n_translator (similarita' suggerimenti)"]
+notes       = "Condiviso con giorgio2: NON ricopiare. Il path e' assunto presente sul nodo (mount /opt/giorgio2 oppure copia locale)."
+
+[[models.entry]]
+name        = "embedding_image_siglip"
+purpose     = "scene-concept search (CLIP-style multilingue: text-image cross-modal embedding). Quantizzato 8-bit per cpu inference veloce."
+source      = "huggingface"
+source_url  = "https://huggingface.co/Xenova/siglip-base-patch16-224"
+# La pipeline usa due ONNX separati: text_model (codifica query testuale) e
+# vision_model (codifica immagini). Il "model.onnx" combinato esiste ma e'
+# meno pratico per i workflow asimmetrici (1 query : N immagini).
+# sha256 verificati al download del 2026-05-04.
+files = [
+  { name = "onnx/text_model_quantized.onnx", local = "/opt/metnos/models/siglip/text_model_quantized.onnx", sha256 = "ad0329b1f35acc66d8953ff2559ce358da8eb0a7011794cf951523d63a4dbce2", url_path = "onnx/text_model_quantized.onnx" },
+  { name = "onnx/vision_model_quantized.onnx", local = "/opt/metnos/models/siglip/vision_model_quantized.onnx", sha256 = "ef14a954f3d57e1806666432bd9785004c1dc27100aa260eee0cb0f10a5de058", url_path = "onnx/vision_model_quantized.onnx" },
+  { name = "tokenizer.json", local = "/opt/metnos/models/siglip/tokenizer.json", sha256 = "4a17c975210be5ab4c36b47d8dae4eefb866dbfb1e676e394aad85dc30a3ae08", url_path = "tokenizer.json" },
+  { name = "tokenizer_config.json", local = "/opt/metnos/models/siglip/tokenizer_config.json", sha256 = "9a38d3c6b5e26fe5dcc607eda95e38d78d30d9291835bb9e8116e8174c1d4ba2", url_path = "tokenizer_config.json" },
+  { name = "preprocessor_config.json", local = "/opt/metnos/models/siglip/preprocessor_config.json", sha256 = "21ee046a8a52a65e5f9c177bf840bfb39ea66c9c54cf2760630efd58e0a3ec80", url_path = "preprocessor_config.json" },
+  { name = "config.json", local = "/opt/metnos/models/siglip/config.json", sha256 = "e6de71291f181b0b81adc93098787bb4597a79dc18f59737feda8f41671fb6a2", url_path = "config.json" },
+  { name = "special_tokens_map.json", local = "/opt/metnos/models/siglip/special_tokens_map.json", sha256 = "22f82d1c19654c9552ff1368c2c236ebb34f457dbdbc7510d304cebfeb96f3bf", url_path = "special_tokens_map.json" },
+  { name = "spiece.model", local = "/opt/metnos/models/siglip/spiece.model", sha256 = "1e5036bed065526c3c212dfbe288752391797c4bb1a284aa18c9a0b23fcaf8ec", url_path = "spiece.model" },
+]
+local_path  = "/opt/metnos/models/siglip"
+size_mb     = 210
+embedding_dim = 768
+image_size  = 224
+required_for = ["scene-concept search (executor TBD: naming in discussione)", "indici immagini per dedupe semantico"]
+notes       = "Quantizzati int8 a ~210MB totali (text 110MB + vision 100MB). La versione FP32 (~810MB) sta sullo stesso repo se serve qualita' massima. Nota: l'utente aveva indicato '80MB' che riferisce al modello combinato compresso; in pratica i due modelli quantizzati separati sono il preset ergonomico."
+
+[[models.entry]]
+name        = "face_pack_buffalo_l"
+purpose     = "face detection (RetinaFace det_10g.onnx) + face embedding (ArcFace w600k_r50.onnx, 512 dim). Pacchetto buffalo_l di InsightFace."
+source      = "github"
+source_url  = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
+# buffalo_l e' uno zip che include det_10g (RetinaFace, ~17MB), w600k_r50
+# (ArcFace, ~170MB), e altri modelli InsightFace (genderage, 2d106det,
+# 1k3d68). Per Metnos ne usiamo solo det_10g + w600k_r50.
+files = [
+  { name = "buffalo_l.zip", local = "/opt/metnos/models/face/buffalo_l.zip", sha256 = "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f" },
+  # Estratti dallo zip post-download (sha256 verificati 2026-05-04):
+  { name = "det_10g.onnx", local = "/opt/metnos/models/face/det_10g.onnx", sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91", extract_from = "buffalo_l.zip", member = "det_10g.onnx" },
+  { name = "w600k_r50.onnx", local = "/opt/metnos/models/face/w600k_r50.onnx", sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43", extract_from = "buffalo_l.zip", member = "w600k_r50.onnx" },
+]
+local_path  = "/opt/metnos/models/face"
+size_mb     = 280
+embedding_dim = 512
+required_for = ["face detection in immagini (executor TBD)", "indici volti per ricerca similarita' (executor TBD)"]
+notes       = "L'indice volti puo' essere replicato/sincronizzato fra le macchine personali del maintainer (sync fra nodi e' topic futuro). NESSUNA restrizione 'solo locale' codificata qui."
+
+# ── Script eseguibili (symlink in /usr/local/bin) ─────────────────────
+
+[[scripts.entry]]
+name        = "metnos-cli"
+src         = "/opt/metnos/scripts/metnos-cli"
+dest        = "/usr/local/bin/metnos-cli"
+mode        = "0755"
+needs_sudo  = true
+notes       = "CLI utility (Strato 3 ADR 0089): gestione credenziali da terminale (`metnos-cli credentials add cifs_<host>`). Symlink, non copia: aggiornamenti automatici col repo."
+
+# ── Servizi systemd ───────────────────────────────────────────────────
+
+[[services.entry]]
+name            = "metnos-http"
+type            = "systemd-user"
+unit_file_local = "/opt/metnos/install/units/metnos-http.service"
+unit_file_dest  = "~/.config/systemd/user/metnos-http.service"
+description     = "HTTP API + admin dashboard (porta 8770). Co-host scheduler v2 (ADR 0112), persons registry (ADR 0113), unified image index (ADR 0117)."
+enabled_at_install = true
+needs_sudo      = false
+needs_linger    = true
+notes           = "User unit (8/5/2026, ADR 0117 prep): migrato da system→user per consentire systemd-run --user del build_orchestrator (ADR 0093). Richiede `loginctl enable-linger <user>` per startup auto al boot anche senza login."
+
+[[services.entry]]
+name            = "metnos-i18n-translator"
+type            = "systemd-timer"
+unit_file_local = "/opt/metnos/install/units/metnos-i18n-translator.service"
+unit_file_dest  = "/etc/systemd/system/metnos-i18n-translator.service"
+timer_file_local = "/opt/metnos/install/units/metnos-i18n-translator.timer"
+timer_file_dest  = "/etc/systemd/system/metnos-i18n-translator.timer"
+description     = "Traduce lazy le stringhe i18n non ancora tradotte (timer ogni 5min)"
+enabled_at_install = true
+needs_sudo      = true
+
+[[services.entry]]
+name            = "metnos-telegram-daemon"
+type            = "systemd-user"
+unit_file_local = "/opt/metnos/systemd/metnos-telegram-daemon.service"
+unit_file_dest  = "~/.config/systemd/user/metnos-telegram-daemon.service"
+description     = "Daemon canale Telegram (poll, run_turn, send)"
+enabled_at_install = false                  # solo se token Telegram configurato
+needs_sudo      = false
+notes           = "User unit (systemctl --user). Attivato manualmente dopo `pair-channel` di Telegram."
+
+# metnos-scheduler.service ELIMINATA (ADR 0112, 8/5/2026 mattina): scheduler v2
+# asyncio-native co-host nel server HTTP, no piu' processo standalone. Vedi
+# §10.6.39 the design guide + decisions/0112-scheduler-v2-asyncio-cohost.md.
+
+[[services.entry]]
+name            = "metnos-llm-mid"
+type            = "systemd-user"
+unit_file_local = "/opt/metnos/install/units/metnos-llm-mid.service"
+unit_file_dest  = "~/.config/systemd/user/metnos-llm-mid.service"
+description     = "LLM mid/wise tier — llama-server Gemma 4 26B (porta 8080), 65K ctx, speculative decoding con draft E2B."
+enabled_at_install = true
+needs_sudo      = false
+needs_linger    = true
+notes           = "ADR 0112+ tier locale principale. Throughput ~130 tok/s post-warmup (acc 0.97). Vedi runtime/llm_router.py per il routing fast/middle/wise. Cmd reference: llama-server -m gemma-4-26B-A4B-it-UD-Q4_K_M.gguf -ngl 999 -fa on --jinja --reasoning-budget 1024 --host 0.0.0.0 --port 8080 --cache-prompt -c 65536 --cache-type-k f16 --cache-type-v f16 --parallel 2 --cont-batching -md gemma-4-E2B-it-Q4_K_M.gguf --spec-draft-ngl 999 --spec-draft-n-max 4 --spec-draft-p-min 0.75"
+
+# metnos-vlm.service ELIMINATA (task D VLM-uptime, 25/6/2026): il VLM non e' piu'
+# un service systemd persistente ma LAZY-START on-demand (auto-stop-idle) via
+# `scripts/vlm_server.sh`, con owner CENTRALE `runtime/virt.ensure_vlm_up` — ogni
+# consumatore lo condivide, non e' un effetto collaterale di un executor. Il file
+# unit non e' mai esistito in install/units/ (l'entry restava un WARN+skip).
+# Config opzionale (off by default) in ~/.config/metnos/vlm_tiers.toml. Vedi
+# decisions/0117 + project-virt-model-virtualization.
+
+# ── Directory create al setup ─────────────────────────────────────────
+
+[[directories.entry]]
+path = "~/.local/share/metnos"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/_history"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/executors"
+mode = "0755"
+notes = "Executor sintetizzati (synt). ADR 0066: vivono nella user data dir, non nel repo."
+
+[[directories.entry]]
+path = "~/.local/share/metnos/aging"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/cost"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/introvertiva"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/mirror"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/synt_proposals"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/turns"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/vaglio"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/state/metnos"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.config/metnos"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos/credentials"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos/cookies"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos/keys"
+mode = "0700"
+notes = "Keys Ed25519 dei publisher autorizzati di executor (sign.py KEYS_DIR)."
+
+[[directories.entry]]
+path = "~/.config/metnos/mail"
+mode = "0700"
+
+[[directories.entry]]
+path = "/opt/metnos/models/siglip"
+mode = "0755"
+
+[[directories.entry]]
+path = "/opt/metnos/models/face"
+mode = "0755"
+
+# ── Directory aggiunte da review 2026-05-07 ──────────────────────────
+
+[[directories.entry]]
+path = "~/.local/share/metnos/auto_audit"
+mode = "0755"
+notes = "Audit notturno introvertiva (ADR aging)."
+
+[[directories.entry]]
+path = "~/.local/share/metnos/get_inputs"
+mode = "0755"
+notes = "Dialog pending storage (ADR 0090)."
+
+[[directories.entry]]
+path = "~/.local/share/metnos/multilang"
+mode = "0755"
+notes = "Audit log multilang traduzioni (ADR 0092)."
+
+[[directories.entry]]
+path = "~/.local/share/metnos/thumbcache"
+mode = "0755"
+notes = "Thumbnail cache per gallery foto."
+
+[[directories.entry]]
+path = "~/.local/state/metnos/build_progress"
+mode = "0755"
+notes = "Progress checkpoint build asincrono indici (ADR 0093)."
+
+[[directories.entry]]
+path = "~/.local/state/metnos/location_pending"
+mode = "0755"
+notes = "Stato in attesa per richieste posizione (get_location)."
+
+# ── Template di config ────────────────────────────────────────────────
+
+[[config_templates.entry]]
+path = "~/.config/metnos/owned_domains.json"
+mode = "0600"
+template = """{"_doc": "Domini email considerati 'di proprieta'' (no-confirmation outbound). Vedi runtime/policy.py.", "domains": []}"""
+
+[[config_templates.entry]]
+path = "~/.config/metnos/trusted_origins.json"
+mode = "0600"
+template = """{"_doc": "Origini HTTP/Telegram trusted per /agent endpoint. Vedi runtime/http_auth.py.", "origins": {}}"""
+
+[[config_templates.entry]]
+path = "~/.config/metnos/workspace_policy.toml"
+mode = "0600"
+template = """# Policy workspace (override per-utente sul vincolo path).
+# Vedi /opt/metnos/runtime/workspace_policy.py.
+[default]
+home_only = true
+allow_dirs = []
+deny_dirs = []
+"""
+
+[[config_templates.entry]]
+path = "~/.config/metnos/mail/mail.env"
+mode = "0600"
+template = """# Mail credentials (TEMPLATE - va riempito manualmente).
+# Vedi /opt/metnos/scripts/check-mail.sh per lo schema.
+# IMAP_HOST=imap.example.com
+# IMAP_PORT=993
+# IMAP_USER=metnos@example.com
+# IMAP_PASS=...
+# SMTP_HOST=smtp.example.com
+# SMTP_PORT=587
+# SMTP_USER=metnos@example.com
+# SMTP_PASS=...
+"""
+
+# ── Secret rigenerabili al setup ──────────────────────────────────────
+
+[[secrets.entry]]
+name      = "admin_key"
+path      = "~/.config/metnos/admin.key"
+generator = "secrets.token_hex(32)"
+mode      = "0600"
+notes     = "Auth key admin dashboard. Rigenerabile cancellando il file e riavviando metnos-http (auto-create al boot in http_auth.get_or_create_admin_key)."
+
+[[secrets.entry]]
+name      = "executor_signing_key"
+path      = "~/.config/metnos/keys/metnos.ed25519.priv"
+generator = "ed25519_keypair_pem"
+mode      = "0600"
+public_path = "~/.config/metnos/keys/metnos.ed25519.pub"
+notes     = "Chiave Ed25519 per firmare manifest dei nuovi executor. La parte pubblica va nel pool di chiavi trusted (KEYS_DIR). Rigenerare la coppia richiede ri-firmare tutti gli executor sintetizzati."
+
+# ── Servizi esterni ──────────────────────────────────────────────────
+
+[[external_services.entry]]
+name        = "ollama"
+purpose     = "LLM tier middle/wise (Gemma 4 26B think=true). Default per planner, synt stage 1-5, vaglio."
+optional    = true
+service_url = "http://localhost:11434"
+notes       = "Configurabile via runtime/llm_router.py. In alternativa frontier provider (Anthropic/OpenAI) via API key in credentials."
+
+[[external_services.entry]]
+name        = "llama-server"
+purpose     = "LLM gguf inference (alternativa a ollama). i18n_translator usa :8080 per Gemma 4 26B."
+optional    = true
+service_url = "http://localhost:8080"
+notes       = "Solo se preferenza llama.cpp diretto vs ollama wrapper. Vedi metnos-i18n-translator.service."
+
+[[external_services.entry]]
+name        = "photon"
+purpose     = "geocoder OSM-based (find_places, get_files place reverse-geo)."
+optional    = true
+service_url = "http://localhost:2322"
+notes       = "Self-hosted via docker komoot/photon. Vedi runtime/photon_client.py."
+
+[[external_services.entry]]
+name        = "searxng"
+purpose     = "web search self-hostato (executor di ricerca web futuri)."
+optional    = true
+notes       = "Esiste nella seed pool ma non legato a executor in produzione al 4/5/2026."
+
+# ── Multi-nodo (sync fra macchine personali) ─────────────────────────
+
+[multi_node]
+# Roberto ha vari server personali in piu' location (LAN domestica `.33`,
+# laptop, nodi remoti). Il manifest deve essere replicabile su qualsiasi di
+# essi. Il sync di stato (credenziali, cookies, indici, history) NON e' oggi
+# automatico: e' un topic futuro. Qui non codifichiamo paletti che lo
+# blocchino. In particolare:
+#
+# - Models e' sicuro replicarli (blob deterministici, sha256 verificabile).
+# - L'indice volti (face) puo' essere replicato/sincronizzato fra nodi
+#   personali del maintainer.
+# - Credenziali e cookies (~/.config/metnos/credentials, ~/.config/metnos/cookies)
+#   restano per-nodo finche' non avremo un sync esplicito.
+# - History e turns rimangono per-nodo (audit per turno, niente merge automatico).
+node_role          = "primary"          # primary | replica | client
+sync_strategy      = "manual"           # manual | rsync | tba (futuro)
+shareable_paths    = [
+    "/opt/metnos/models/siglip",
+    "/opt/metnos/models/face",
+]
+per_node_paths     = [
+    "~/.config/metnos/credentials",
+    "~/.config/metnos/cookies",
+    "~/.local/state/metnos",
+    "~/.local/share/metnos/_history",
+    "~/.local/share/metnos/turns",
+]
+notes = "Topic futuro: sync esplicito fra nodi (rsync o protocol custom). Oggi placeholder; nessuna assunzione di lock per-nodo."
+
+# ── Environment variables ─────────────────────────────────────────────
+# Tutte le env var che metnos-* services ed executor leggono. Setup.sh
+# le iniettera' nelle unit file via Environment=.
+
+[env_vars]
+# Test isolation (8/5/2026, ADR 0117 prep)
+METNOS_USER_DATA = { default = "~/.local/share/metnos", purpose = "override storage utente. I test setteno a tmp_path per isolation." }
+METNOS_INDEX_ROOT = { default = "${METNOS_USER_DATA}/index", purpose = "override storage indici. Test isolano qui." }
+METNOS_DRY_RUN = { default = "0", purpose = "1 = executor write short-circuitano (no side effects). Per E2E test." }
+# Scheduler v2 (ADR 0112)
+METNOS_SCHEDULER_V2_DB = { default = "~/.local/state/metnos/scheduler_v2.sqlite", purpose = "Override DB scheduler v2. Per test." }
+# Anti-loop (ADR 0114 cap)
+METNOS_CAP_MAX_PER_TURN = { default = "3", purpose = "Cap chiamate stesso tool non-action per turno. Range 2-10 ragionevole." }
+# Synth admission (ADR 0114)
+LLM_VERIFY_MODELS = { default = "", purpose = "Lista modelli (CSV) per multi-model consensus stage 6 verifier. Vuoto = single model." }
+METNOS_SYNT_STAGE6_DISABLED = { default = "0", purpose = "1 = disabilita verifier semantico stage 6. Per fast iteration synth." }
+# HTTP cache (ADR 0105)
+METNOS_HTTP_CACHE_TTL_S = { default = "900", purpose = "TTL cache HTTP disco per crawler/find_urls. 0 = disabilita." }
+# Async tasks
+METNOS_HTTP_DISABLE_BUILD_TASKS = { default = "0", purpose = "1 = disabilita build_dispatcher/sweeper/healthcheck (per test)." }
+# Prompt language (ADR 0092)
+METNOS_LANG = { default = "it", purpose = "Lingua primaria per prompt e messaggi user-facing. Codici ISO 639-1." }
+# VLM endpoint (ADR 0117)
+METNOS_VLM_URL = { default = "http://127.0.0.1:8081", purpose = "Endpoint llama-server VLM (modello config-driven via vlm_tiers.toml). Build unified image index lo invoca; lazy-start via virt.ensure_vlm_up." }
+# LLM mid endpoint (ADR 0112+)
+METNOS_LLM_MID_URL = { default = "http://127.0.0.1:8080", purpose = "Endpoint llama-server mid tier (Gemma 4 26B)." }
+
+# ── Changelog infrastrutturale ────────────────────────────────────────
+# Tracciamento dei cambi infra mossi via sessione (Roberto richiesta 9/5/2026).
+# Ogni voce qui e' un cambiamento "esterno" rispetto al codice runtime puro.
+# OBBLIGATORIO aggiornare quando: nuovo systemd unit, env var nuova, modello
+# nuovo scaricato, porto cambiato, dipendenza pip aggiunta, dir creata.
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "scheduler v2 (ADR 0112)"
+changes = [
+    "ELIMINATA metnos-scheduler.service (user unit), scheduler ora co-host nel server HTTP.",
+    "Eliminata dir ~/.config/systemd/user/metnos-scheduler.service.",
+    "Riformulato env: nessun env var nuovo; scheduler v2 legge persons.sqlite + scheduler_v2.sqlite.",
+    "Stop+disable+rm su metnos-scheduler.service in produzione.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "persons registry + composition + procedural index (ADR 0113)"
+changes = [
+    "Nuovo file ~/.local/share/metnos/persons.sqlite (registro nominale persone).",
+    "Schema indici v2 con 9 enrichment fields (image_w/h, taken_at_iso, bbox_area_fraction, ecc).",
+    "Boot hook upgrade_existing_indices_at_boot in metnos_http_server.make_app.",
+    "9 executor re-firmati: set_persons, get_persons, delete_persons, find_persons_indices, find_images_indices, create_images_indices, describe_entries, get_inputs, find_urls.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "synth admission policy 4 layers (ADR 0114)"
+changes = [
+    "Audit log dirs: ~/.local/share/metnos/synth_audit/.",
+    "5 nuovi env vars: METNOS_CAP_MAX_PER_TURN, LLM_VERIFY_MODELS, METNOS_SYNT_STAGE6_DISABLED.",
+    "loader.py affinity overlap guard al catalog load.",
+    "executor_aging.py efficacy ager.",
+    "smoke.py expanded a 12 case con expected_first_tool.",
+    "Nuovo modulo runtime/synt_stage6_verify.py (LLM semantic verifier).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "find_urls meta-refresh follow + topic ranking"
+changes = [
+    "find_urls.py: aggiunto _META_REFRESH_RE + _extract_meta_refresh per redirect Aruba-style.",
+    "find_urls.py: rimosso drop implicito score=0 (topic = ranking, non filtering). Nuovo arg min_score esplicito.",
+    "User-Agent bumped da 1.0 → 1.2.",
+    "_TIER_DEFAULT[1] alzato 50→1000 max_pages.",
+    "ADR 0098 doc allineato: 'Topic e' RANKING, NON filtering'.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "test isolation conftest + storage cleanup"
+changes = [
+    "Nuovo runtime/tests/conftest.py: autouse fixture che redirige HOME→tmp per 12 file legacy che pollutavano ~/.local/share/metnos/index/ globale.",
+    "Cleanup 47 sha8 dirs orfane di test (base_path=/tmp/tmpXXX).",
+    "Storage delta runtime suite = 0 (verificato).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "metnos-http migrazione system→user"
+changes = [
+    "metnos-http.service: type da 'systemd' (sistema) a 'systemd-user'. Permette systemd-run --user del build_orchestrator.",
+    "Aggiunto needs_linger=true: richiede `loginctl enable-linger <user>` per startup auto.",
+    "Eliminato /etc/systemd/system/metnos-http.service.",
+    "Creato ~/.config/systemd/user/metnos-http.service.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-08"
+session = "find_images_indices fix incrementali (paths_filter, persons composition, build-all-on-missing)"
+changes = [
+    "_query_persons accetta reference_images=None → composition-only mode (ritorna entries con score=1.0 per filtri post-hoc).",
+    "build-all-on-missing reso non-bloccante: companion idx mancanti spawnati in BG, query corrente prosegue se idx richiesto esiste.",
+    "min_face_count/max_face_count derivable on-the-fly (group by path, count) → non richiede schema v3 upgrade.",
+    "_query_scene supporta paths_filter_active=True → disabilita SigLIP floor 0.12 su sotto-set ristretti.",
+    "_expand_nested_from_step in agent_runtime.py: espande 'from_step:N' annidati in liste args (es. paths_filter).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "LLM tier reconfiguration (ctx + Qwen2-VL)"
+changes = [
+    "metnos-llm-mid.service: -c 16384 → -c 65536 (4× context window).",
+    "Cache type: q4_0 → f16 (qualita' KV migliore).",
+    "Speculative decoding draft E2B: --spec-draft-n-max 4 (era 6).",
+    "Throughput post-warmup: 22 tok/s → 131-135 tok/s (acc 0.97).",
+    "Nuovo metnos-vlm.service: llama-server Qwen2-VL-7B su :8081 per ADR 0117.",
+    "2 nuovi env vars: METNOS_VLM_URL, METNOS_LLM_MID_URL.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "ADR 0117 unified image enrichment index (closed)"
+changes = [
+    "Schema v4 unified entry: identity (ArcFace) + visual (VLM description+keywords+location+activity) + EXIF on-demand.",
+    "1 sha8 dir/corpus invece di 3 (scene/persons/gps separate eliminate per build NUOVI).",
+    "Migration tool index_schema_upgrade_v4.py per portare v3→v4 (legge 3 idx, augmenta con VLM, write unified).",
+    "Build runner unified standalone (runtime/build_runner_unified.py).",
+    "find_images_indices riscritto come single-axis search (drop arg `idx`).",
+    "find_persons_indices ridotto a thin alias di find_images_indices.",
+    "create_images_indices riscritto: pipeline EXIF+ArcFace+VLM+BGE in una sola passata.",
+    "Live batch metnos-build-unified-d789c4c0.service: migrazione v3→v4 di 30401 foto in 2s (aggregator).",
+    "Phase 11 cleanup: scene/persons/gps subdirs eliminate; backup /tmp/metnos_v3_legacy_backup_d789c4c0/ rimosso.",
+    "Manifest descriptions stringato/affermativo/pattern (find_images, find_persons, create_images) re-firmati.",
+    "ADR 0086 marcato SUPERSEDED-BY 0117.",
+    "Suite finale: 985 PASS / 0 FAIL.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-10"
+session = "ADR 0120 slot affinity LLM consumer (Metnos id_slot=1)"
+changes = [
+    "runtime/llm_provider.py::LlamaCppProvider: nuovo param id_slot in __init__ + injection in _call payload (`id_slot=N` JSON).",
+    "runtime/llm_helpers.py::call_llm: setta default id_slot=1 (Metnos) via env var METNOS_LLM_SLOT_ID.",
+    "Bypass LCP-similarity di llama-server condiviso (slot 1 = batch Metnos, slot 0 = voice giorgio2).",
+    "Risolve contesa cache osservata 9/5 23:21 (4189 tok prefill ricalcolati per query voice dopo prompt Metnos).",
+    "ADR 0120 documenta la mappa consumer→slot e il razionale (gateway suprastructure :8801 su giorgio2, direct :8080 con id_slot su Metnos).",
+    "Suite 1118/0/1.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "VLM tier scaling: --parallel 8 -c 65536 + fix URL bug"
+changes = [
+    "Bug fix: METNOS_VLM_URL=http://127.0.0.1:8081 (base) era usato letteralmente → 100% HTTP 404 su 30k chiamate del primo batch.",
+    "Patch _resolve_vlm_url() in create_images_indices.py: appende /v1/chat/completions se mancante (compat sia base che full).",
+    "Re-config llama-server VLM: -c 24576 --parallel 2 → -c 65536 --parallel 8 --cont-batching. KV ~4GB totali, VRAM ~11GB su 96GB unified.",
+    "Re-config client: METNOS_VLM_PARALLEL=2 → METNOS_VLM_PARALLEL=8 nel respawn batch.",
+    "Bench: 0.24 f/s (parallel=2 reali) → 5.5 f/s previsti (parallel=8). ETA batch 30k foto: ~35h → ~1.5h.",
+    "find_images_indices popola attachments=[{kind,path,basename,score,caption}] per chat HTTP gallery + Telegram media group.",
+    "Suite finale 1118/0/1.",
+    "Manifest re-firmato create_images_indices (digest 3dc9910a) + find_images_indices (digest 936aa851).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "ADR 0119 describe_entries preserva URL/path"
+changes = [
+    "Nuovo helper runtime/describe_entries.py::_maybe_append_link_section: post-process deterministico.",
+    "Append 'Link diretti'/'Direct links'/'Path'/'Paths' (i18n) se entries hanno url/path E LLM non li ha citati (coverage <60%).",
+    "Cap 10 link, sanitize [/]/\\n, fmt-aware (markdown/html/plain; skip json+bullet_list).",
+    "Risolve UX gap turn 00edaa80 9/5/2026: 'find_urls -> describe_entries' restituiva prosa categorizzata senza link cliccabili.",
+    "10 nuovi test in runtime/tests/test_describe_entries_link_section.py. Suite finale 1118/0/1.",
+    "General-purpose: lingua/kind/dominio-agnostic. Nessun env var, sempre attivo.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "ADR 0118 LLM re-rank find_urls (general-purpose)"
+changes = [
+    "Nuovi prompt template runtime/prompts/{it,en}/web_rerank.j2 (~30 righe ciascuno).",
+    "_searxng_search_full(): ritorna [{url, title, snippet}] preservando metadata SearXNG per re-rank.",
+    "_llm_rerank_candidates(): chiama Gemma 4 26B middle, riceve wide-N candidati, ritorna top_k LLM-scored.",
+    "Env vars: METNOS_FIND_URLS_RERANK (default 1, set 0 per disable) + METNOS_FIND_URLS_RERANK_WIDE (default 30).",
+    "Pipeline general-purpose: lingua/dominio/topic-agnostic, no hardcoded sites/synonyms/regex.",
+    "Latency +5-8s/query (1 LLM call ~900 in / ~220 out token), zero API esterne.",
+    "Fallback graceful: LLM down/JSON invalid/top vuoto → ordine SearXNG originale + meta.used=False + reason.",
+    "8 test mock-LLM in runtime/tests/test_find_urls_llm_rerank.py. Suite finale 1108/0/1.",
+    "Manifest find_urls re-firmato (digest 1cd1706f...).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "ADR 0117 VLM enrichment full pass (background)"
+changes = [
+    "Spawn batch metnos-vlm-enrich-d789c4c0.service: create_images_indices(force=true) su 30687 foto.",
+    "Linger=yes verificato → batch sopravvive a logout sessione.",
+    "Patch progress + done marker: env var METNOS_PROGRESS_FILE → JSON write ogni 25 foto in _progress.json (phase=running con n_processed/ok/fail/last_path/pct), fine task → phase=done con totali.",
+    "Bench 5 foto cold start: 4.01 s/foto. Throughput live warm: ~0.33 s/foto (1850 foto in ~10min).",
+    "Popola description/keywords/location_hint/activity_hint + embeddings_text.npy.",
+    "Modelli locali §10.3: bge-m3 (BGE-M3) + qwen2-vl-7b (llama.cpp) + buffalo_l (insightface). Zero API esterne.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-09"
+session = "ADR 0117 daily refresh via scheduler v2 centralizzato"
+changes = [
+    "8a entry in `_BUILTIN_JOBS` (runtime/scheduler_v2/builtin_callbacks.py): `images_index_refresh` trigger `daily@03:00`.",
+    "Callback `task_images_index_refresh()` invoca `create_images_indices(force=False)` su `~/.local/share/metnos/Immagini`.",
+    "Detection cambiamenti: walk + stat ~11s su 30k foto, processa solo modificate via signature (mtime, size).",
+    "Scheduler v2 centralizzato (ADR 0112): NIENTE systemd-timer/cron/lavoro periodico fuori dal daemon co-host nel server HTTP.",
+    "Test test_install_jobs.py aggiornato: contatore _BUILTIN_JOBS dinamico (era literal 7).",
+    "Suite combined runtime + scheduler_v2: 1100 PASS / 0 FAIL / 1 skip (croniter opt).",
+]
+
+[[changelog.entry]]
+date    = "2026-05-10"
+session = "ADR 0122 proposal auto-evaluator + ETA instrumentation"
+changes = [
+    "Nuovo runtime/path_shape.py (~140 LOC): fingerprint SHA-256(16 hex) della sequenza chosen_tool produttiva di un turno. Esclude final_answer/describe_entries/undo/meta. API: path_shape_hash, extract_path_shape, steps_to_tools, turn_total_ms, is_shape_terminal. Determinismo §7.9.",
+    "Nuovo runtime/proposals_eta_index.py (~220 LOC): SQLite store ~/.local/share/metnos/proposals_eta.sqlite con schema path_eta_index(path_hash PK, sample_count, p50_ms, p95_ms, last_seen, sample_steps_json). API: upsert_aggregate, lookup, aggregate_from_jsonls, count_shape_calls.",
+    "Nuovo runtime/proposal_evaluator.py (~600 LOC): EvaluationResult dataclass + evaluate_proposal(path) -> verdict accept|gray|reject. 6 killer (inflation/affinity_overlap/test_pass_rate/reversibility_parity/error_class_discriminability/observation_schema_stability) + 7 signal weighted score. Audit JSONL synth_audit/proposal_evaluator.jsonl.",
+    "Wiring runtime/synth_request.py: handle_synth_request(..., current_steps=None) calcola path_hash + lookup ETA index e arricchisce il proposal JSON con path_hash/path_steps/path_n_steps/path_eta_p50_ms/path_eta_p95_ms/path_call_count_60d.",
+    "Wiring runtime/agent_runtime.py: passa current_steps=list(log.steps) al call site request_new_executor.",
+    "Scheduler v2: nuovo job proposals_eta_aggregate trigger daily@04:30 in _BUILTIN_JOBS + callback task_proposals_eta_aggregate (rolling 7 giorni).",
+    "CLI: python -m admin.proposals_cli evaluate <id> + python -m admin.proposals_cli aggregate-eta --days N.",
+    "HTTP admin: GET/POST /admin/synth-proposals/{id}/evaluate (JSON o card HTMX).",
+    "ADR 0122 documenta criteri/score/killer/rationale design e alternativa LLM-as-judge rifiutata (§7.9).",
+    "Test 47 nuovi: runtime/tests/test_path_shape.py (13), test_proposals_eta_index.py (9), test_proposal_evaluator.py (22), runtime/scheduler_v2/tests/test_proposals_eta_aggregate.py (3). Tutti verdi.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-10"
+session = "VLM tuning Qwen3-VL Instruct batch (-fa on, parallel=4, c=8192)"
+changes = [
+    "Restart llama-server :8081 con config tuning Qwen Instruct batch: -c 65536 --parallel 8 → -c 8192 --parallel 4 --batch-size 2048 --ubatch-size 512 -fa on.",
+    "Aggiunto flag -fa on (FlashAttention, disponibile da b540) → +30-40% sul decode attention.",
+    "Ridotto ctx 65536→8192: KV cache molto piu' piccolo, prefill veloce, sufficiente per prompt+immagine+JSON Metnos.",
+    "Ridotto parallel 8→4: meno contesa GPU per slot, throughput per-slot piu' alto (sweet spot empirico).",
+    "Patch _call_vlm in create_images_indices: temp 0.0→0.2, max_tokens 400→192, aggiunto top_p 0.8 + top_k 20 + presence_penalty 0.0 + repeat_penalty 1.0 (Qwen Instruct recommended).",
+    "Smoke single-call: avg 1.13s/foto (vs 6.35s pre-tuning) = 5.6x speedup. Quality preserved.",
+    "Re-spawn batch metnos-vlm-enrich-d789c4c0 con METNOS_VLM_PARALLEL=4, force=True (~600 foto del run precedente perse, ma ETA totale ridotta da ~8h a stima ~3-4h).",
+    "Manifest re-firmato create_images_indices.",
+]
+
+[[changelog.entry]]
+date    = "2026-05-10"
+session = "VLM swap Qwen3-VL-2B + llama.cpp upgrade b540"
+changes = [
+    "llama.cpp aggiornato da b508 (7/5/2026) a b540 (5755a100c). Tensor support per Qwen3-VL ora presente.",
+    "Build path: cmake --build /home/user/llama.cpp/build --config Release. Vulkan attivo (gfx1151 unified).",
+    "Download Qwen3-VL-2B-Instruct GGUF ufficiale Qwen: Qwen3VL-2B-Instruct-Q4_K_M.gguf (1.1GB) + mmproj-Qwen3VL-2B-Instruct-F16.gguf (782MB) in ~/models/.",
+    "Swap llama-server :8081: Qwen2-VL-7B → Qwen3-VL-2B. Stessa config -c 65536 --parallel 8 --cont-batching, aggiunto --jinja (chat template Qwen3 lo richiede).",
+    "Bench n=5 stesso seed (foto random Immagini/2014/): Qwen3-VL-2B avg 6.35s (idle parallel=2) vs Qwen2-VL-7B avg 16.87s (sotto carico parallel=8). Speedup 2.66x per-call. Descrizioni 147 vs 80 chars, keyword 9.4 vs 6.8.",
+    "Re-spawn metnos-vlm-enrich-d789c4c0.service con METNOS_VLM_PARALLEL=8, force=True (~21k foto da rifare con il nuovo modello).",
+    "ETA stimata batch completo: ~8h (vs ~22h con 7B saturated).",
+    "Modelli legacy (Qwen2-VL-7B *.gguf) lasciati su disco come fallback, da rimuovere a fine sessione se 2B stabile.",
+]

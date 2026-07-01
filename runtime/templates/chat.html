@@ -1,0 +1,1775 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Metnos</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#f2f4f3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Metnos">
+<link rel="apple-touch-icon" href="/static/icon-apple.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
+{% include "_design_system.html" %}
+<style>
+/* Chat Metnos — skin "verdigris console" sui token del design system
+   (_design_system.html). Gli alias funzionali usati dal JS inline
+   (--border/--navy/--sage/--err-red) vivono nei token condivisi.
+   I comportamenti (autoscroll, lightbox, composer, sessione, feedback)
+   NON vivono qui: solo layer visivo. */
+html,body{min-height:100%}
+body{font-size:var(--fs-3);line-height:1.5;display:flex;flex-direction:column;
+     /* riempi viewport: il composer sticky resta in fondo anche con poco contenuto */
+     min-height:100vh}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:.9rem;padding:.55rem 1rem;
+       background:var(--surface);border-bottom:1px solid var(--border);
+       position:sticky;top:0;z-index:10}
+header .brand{font-weight:650;font-size:var(--fs-3);letter-spacing:-.01em;
+              display:inline-flex;align-items:center;gap:.5rem}
+header .brand::before{content:"";width:10px;height:10px;border-radius:3px;
+              background:var(--accent);flex:none}
+header .grow{flex:1}
+header a{color:var(--muted);text-decoration:none;font-size:var(--fs-1);
+         font-weight:500;transition:color var(--t-1) var(--ease)}
+header a:hover{color:var(--accent);text-decoration:none}
+header .role{font-family:var(--font-mono);font-size:var(--fs-0);
+             color:var(--muted);background:var(--surface-2);
+             border:1px solid var(--border);
+             padding:.05rem .55rem;border-radius:var(--r-pill)}
+header form{display:inline;padding:0;margin:0;background:none;border:none}
+header form button{background:transparent;border:none;color:var(--muted);
+             padding:0;font:500 var(--fs-1) var(--font-ui);cursor:pointer;
+             transition:color var(--t-1) var(--ease)}
+header form button:hover{color:var(--accent)}
+
+/* ---------- log (scroller = body) ----------
+   Il log riempie la finestra come il main della console admin: niente cap
+   esterno centrato. La leggibilita' sta sulla MISURA delle bolle
+   (.msg max-width sotto), non su un cassetto stretto. */
+#log{flex:1;padding:1.1rem 1rem 1.4rem;display:flex;flex-direction:column;
+     gap:.7rem;width:100%}
+/* Stato vuoto (prima query / dopo "pulisci"): invito discreto.
+   Sparisce appena compare il primo messaggio (#log:empty). */
+#log:empty::before{content:"";display:block;width:12px;height:12px;
+     border-radius:4px;background:var(--accent);margin:16vh auto .95rem;
+     opacity:.9}
+#log:empty::after{content:"Scrivi a Metnos qui sotto.\A Trascina una foto per la ricerca visiva \B7 \2191 richiama i comandi recenti \B7 /help per i comandi.";
+     display:block;text-align:center;white-space:pre-line;
+     font-size:var(--fs-2);color:var(--muted);max-width:46ch;
+     margin:0 auto;line-height:1.8}
+/* Separator "— sessione precedente —" / "— ricaricato dal server —" */
+.log-sep{text-align:center;color:var(--muted);font-size:var(--fs-0);
+         font-family:var(--font-mono);letter-spacing:.04em;padding:.4rem 0}
+
+/* ---------- bolle ---------- */
+/* max-width: misura di lettura comoda anche a finestra larga (bolla bot a
+   sinistra, me a destra); su finestre strette vince il 92%. */
+.msg{padding:.62rem .9rem;border-radius:var(--r-3);
+     max-width:min(92%, 960px);
+     border:1px solid var(--border);line-height:1.5;
+     word-wrap:break-word;white-space:pre-wrap}
+/* HTML mode (final_message del bot via to_safe_html_full): struttura
+   semantica gia' wrappata — pre-wrap mostrerebbe i \n come alinee extra. */
+.msg[data-html-mode="true"]{white-space:normal}
+.msg p,.msg h1,.msg h2,.msg h3,.msg h4,.msg h5,.msg h6,
+.msg ul,.msg ol,.msg blockquote,.msg pre,.msg table,.msg hr{margin:.25em 0}
+.msg>:first-child{margin-top:0}
+.msg>:last-child{margin-bottom:0}
+.msg h1,.msg h2,.msg h3{font-size:1.05em}
+.msg table{border-collapse:collapse;width:auto}
+.msg th,.msg td{padding:.15rem .5rem;border-bottom:1px solid var(--border)}
+.msg th{font-weight:600}
+.msg tbody tr:hover{background:transparent}
+.msg.me{align-self:flex-end;background:var(--accent-soft);
+        border-color:var(--accent-line);border-end-end-radius:var(--r-1)}
+.msg.bot{align-self:flex-start;background:var(--surface);
+         box-shadow:var(--shadow-1);border-end-start-radius:var(--r-1);
+         line-height:1.55}
+.msg.bot code,.msg.bot pre{font-size:.88em}
+.msg.tool-info,.msg.tool{align-self:flex-start;background:var(--surface-2);
+          color:var(--ink-2);font-family:var(--font-mono);
+          font-size:.82em;border-color:var(--border);white-space:pre-wrap}
+.msg.err{align-self:flex-start;background:var(--err-soft);
+         color:var(--err-fg);border-color:var(--err-line)}
+.msg.thinking{align-self:flex-start;background:transparent;border:none;
+              color:var(--muted);font-size:.92em;padding:.2rem .9rem;
+              display:flex;align-items:center;gap:.55rem}
+/* Indicatore attivita': punto verderame pulsante davanti alla fase corrente. */
+.msg.thinking::before{content:"";width:8px;height:8px;border-radius:3px;
+              background:var(--accent);flex:none;
+              animation:pulse 1.1s ease-in-out infinite}
+
+/* meta riga sotto la bolla: voce mono dei dati */
+.msg .meta{font-family:var(--font-mono);font-style:normal;
+            font-size:var(--fs-0);color:var(--muted);margin-top:.35rem;
+            display:flex;justify-content:space-between;align-items:baseline;gap:1rem}
+.msg .meta .meta-right{margin-left:auto;white-space:nowrap}
+
+/* ---------- feedback ✓/✗ (E.1): colore SEMPRE visibile, anche a riposo
+   (su touch non esiste hover). Discreti via opacity, mai grigi.
+   Target click ≥24px. ---------- */
+.msg .msg-fb{display:inline-flex;gap:.15rem;margin-left:.4rem}
+.msg .msg-fb-btn{border:none;background:transparent;cursor:pointer;
+                  opacity:.6;font-size:1.15em;line-height:1;
+                  min-width:26px;min-height:24px;padding:0 .25rem;
+                  border-radius:var(--r-1);
+                  transition:opacity var(--t-1) var(--ease),
+                             transform var(--t-1) var(--ease)}
+.msg .msg-fb-btn.ok{color:var(--ok-fg)}
+.msg .msg-fb-btn.err{color:var(--err-fg)}
+.msg .msg-fb-btn:hover{opacity:1;transform:scale(1.12)}
+.msg .msg-fb-btn:disabled{cursor:default;opacity:.2}
+.msg .msg-fb-pending{opacity:.5}
+.msg .msg-fb-done{color:var(--muted);font-size:.95em;margin-left:.4rem;
+                   opacity:.85;white-space:nowrap}
+.msg .msg-fb-done.ok{color:var(--ok-fg);opacity:1}
+.msg .msg-fb-done.err{color:var(--err-fg);opacity:1}
+/* Riprova: discreto, sottolineatura puntinata, target ~24px. */
+.msg .msg-fb-retry{border:none;background:transparent;cursor:pointer;
+                    color:var(--muted);font-size:.95em;padding:.15rem .4rem;
+                    margin-left:.4rem;font-family:inherit;
+                    text-decoration:underline;text-decoration-style:dotted;
+                    text-decoration-color:var(--border-strong);opacity:.85;
+                    transition:opacity var(--t-1) var(--ease),
+                               color var(--t-1) var(--ease),
+                               background var(--t-1) var(--ease);
+                    border-radius:var(--r-1)}
+.msg .msg-fb-retry:hover{opacity:1;color:var(--accent);background:var(--accent-soft)}
+.msg .msg-fb-retry:active{background:var(--surface-3)}
+
+/* ---------- copia testo messaggio (bolle utente): discreto come i badge
+   feedback (visibile a riposo via opacity, niente hover-only per touch).
+   Riga azioni sotto il testo, allineata a destra. ---------- */
+.msg .msg-actions{display:flex;justify-content:flex-end;margin-top:.25rem}
+.msg .msg-copy-btn{border:none;background:transparent;cursor:pointer;
+                    color:var(--muted);font-family:var(--font-mono);
+                    font-size:var(--fs-0);line-height:1;
+                    min-width:24px;min-height:22px;padding:.1rem .3rem;
+                    border-radius:var(--r-1);opacity:.55;
+                    transition:opacity var(--t-1) var(--ease),
+                               color var(--t-1) var(--ease),
+                               background var(--t-1) var(--ease)}
+.msg .msg-copy-btn:hover,.msg .msg-copy-btn:focus-visible{opacity:1;
+                    color:var(--ink-2);background:var(--surface-2)}
+.msg .msg-copy-btn.done{color:var(--ok-fg);opacity:1;cursor:default}
+
+/* ---------- breadcrumb pipeline (badge executor) ---------- */
+.msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
+                   font-size:var(--fs-0);color:var(--muted);margin-top:.35rem}
+.msg .path-badges .arrow{color:var(--border-strong);font-size:.85em;margin:0 .05rem}
+.msg .path-badges .badge{display:inline-block;padding:.05rem .5rem;
+                          background:var(--surface-2);
+                          border:1px solid var(--border);
+                          border-radius:var(--r-pill);color:var(--ink-2);
+                          font-family:var(--font-mono);font-size:.95em;
+                          line-height:1.5}
+.msg .path-badges .badge.failed{background:var(--err-soft);
+                                 border-color:var(--err-line);color:var(--err-fg)}
+.msg .path-badges .badge.active{background:var(--accent-soft);
+                                 border-color:var(--accent);color:var(--accent);
+                                 animation:pulse-badge 1.4s ease-in-out infinite}
+.msg .path-badges .badge.predicted{background:transparent;border-style:dashed;
+                                     border-color:var(--border-strong);
+                                     color:var(--muted);opacity:.75}
+.msg .path-badges .arrow.predicted{color:var(--border)}
+@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:.55}}
+.msg.thinking .path-badges{margin-top:0;font-size:.82em}
+.msg details summary{cursor:pointer;color:var(--muted);font-size:.85em}
+
+/* ---------- composer sticky ---------- */
+form#f{display:flex;gap:.55rem;align-items:flex-end;justify-content:center;
+     padding:.7rem 1rem calc(.7rem + env(safe-area-inset-bottom));
+     border-top:1px solid var(--border);
+     background:var(--surface);width:100%;
+     position:sticky;bottom:0;z-index:10}
+/* textarea auto-grow (Invio invia, Shift+Invio = a capo). 16px: sotto i
+   16px iOS Safari zooma la pagina al focus. */
+#q{flex:1;max-width:780px;padding:.55rem .75rem;
+   font:16px/1.45 var(--font-ui);color:var(--ink);background:var(--surface);
+   border:1px solid var(--border-strong);border-radius:var(--r-2);
+   resize:none;max-height:10em;overflow-y:auto}
+#q:focus{outline:none;border-color:var(--accent);
+         box-shadow:0 0 0 3px var(--accent-soft)}
+button{font:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+#b{padding:.6rem 1.2rem;font-size:var(--fs-2);font-weight:600;
+   background:var(--accent);color:#fff;
+   border:1px solid var(--accent);border-radius:var(--r-2);
+   transition:background var(--t-1) var(--ease)}
+#b:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+#b:disabled{opacity:.45;cursor:not-allowed}
+.dot{display:inline-block;width:8px;height:8px;border-radius:3px;
+     background:var(--accent);margin-right:.4rem;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* ---------- gallery inline (breakout full-bleed, cap 1400px) ---------- */
+.msg.gallery{padding:.45rem;background:var(--surface);max-width:none;
+              border-radius:var(--r-2);box-shadow:var(--shadow-1);
+              width:min(calc(100vw - 2rem), 1400px);
+              margin-left:50%;transform:translateX(-50%)}
+/* minmax(140px,1fr) → 2 col su mobile, 4-5 su laptop, 8-9 su widescreen. */
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+              gap:4px;margin:0;padding:0}
+.gallery-grid img{width:100%;height:100px;object-fit:cover;cursor:zoom-in;
+                  border-radius:4px;background:var(--surface-2);display:block;
+                  transition:opacity var(--t-1) var(--ease)}
+.gallery-grid img:hover{outline:2px solid var(--accent);outline-offset:-2px;
+                  opacity:.92}
+.gallery-link{display:inline-block;margin:.45rem .2rem .15rem;
+              font-size:var(--fs-1);font-weight:600;
+              color:var(--accent);text-decoration:none;
+              border:1px solid var(--accent-line);background:transparent;
+              padding:.32rem .8rem;border-radius:var(--r-1);
+              transition:background var(--t-1) var(--ease),
+                         color var(--t-1) var(--ease),
+                         border-color var(--t-1) var(--ease)}
+.gallery-link:hover{background:var(--accent);border-color:var(--accent);
+              color:#fff;text-decoration:none}
+
+/* ---------- lightbox ---------- */
+#lightbox{position:fixed;inset:0;background:rgba(10,14,13,.94);display:none;
+          align-items:center;justify-content:center;z-index:9999;cursor:zoom-out}
+#lightbox.show{display:flex}
+#lightbox img{max-width:96vw;max-height:94vh;box-shadow:var(--shadow-3);
+          border-radius:4px}
+#lightbox .lbcap{position:absolute;bottom:1rem;left:0;right:0;text-align:center;
+                 color:#cfd6d3;font-size:.85em;font-family:var(--font-mono);
+                 text-shadow:0 1px 2px #000}
+
+/* ---------- drag&drop foto reference (ADR 0092) ---------- */
+#dropOverlay{position:fixed;inset:0;background:var(--accent-soft);
+             border:3px dashed var(--accent);pointer-events:none;
+             display:none;align-items:center;justify-content:center;
+             z-index:9998;color:var(--accent-hover);font-size:1.15em;
+             font-weight:600;text-shadow:0 1px 2px var(--surface)}
+#dropOverlay.show{display:flex}
+#thumbBar{display:none;gap:.4rem;padding:.4rem 1rem 0;width:100%;
+          max-width:880px;margin:0 auto;
+          flex-wrap:wrap;align-items:center;
+          font-size:.82em;color:var(--muted)}
+#thumbBar.show{display:flex}
+#thumbBar .hint{flex-basis:100%;margin:0 0 .2rem 0}
+#thumbBar .thumb{position:relative;width:60px;height:60px;border-radius:var(--r-1);
+                  overflow:hidden;border:1px solid var(--border);
+                  background:var(--surface-2)}
+#thumbBar .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+#thumbBar .thumb .x{position:absolute;top:1px;right:1px;width:18px;height:18px;
+                     border-radius:50%;background:rgba(13,24,21,.65);color:#fff;
+                     border:none;cursor:pointer;font-size:.85em;line-height:18px;
+                     padding:0;display:flex;align-items:center;justify-content:center;
+                     transition:background var(--t-1) var(--ease)}
+#thumbBar .thumb .x:hover{background:var(--err-fg)}
+
+/* ---------- sessione single-active (Phase 7) ---------- */
+#sessionModal{position:fixed;inset:0;background:rgba(13,24,21,.45);display:none;
+              align-items:center;justify-content:center;z-index:10000}
+#sessionModal.show{display:flex}
+#sessionModal .card{background:var(--surface);border:1px solid var(--border);
+                    border-radius:var(--r-3);padding:1.2rem 1.4rem;
+                    max-width:480px;width:90%;box-shadow:var(--shadow-3)}
+#sessionModal h2{margin:0 0 .6rem 0;font-size:var(--fs-4);font-weight:600;
+                 color:var(--ink)}
+#sessionModal p{margin:.4rem 0;color:var(--ink-2);line-height:1.5}
+#sessionModal .countdown{color:var(--warn-fg);font-weight:600;
+                 font-variant-numeric:tabular-nums}
+#sessionModal .actions{margin-top:1rem;display:flex;gap:.6rem;justify-content:flex-end}
+#sessionModal button{padding:.5rem 1.1rem;font:inherit;border-radius:var(--r-1);
+                     border:1px solid var(--border-strong);cursor:pointer;
+                     transition:background var(--t-1) var(--ease),
+                                opacity var(--t-1) var(--ease)}
+#sessionModal button.primary{background:var(--accent);color:#fff;
+                             border-color:var(--accent)}
+#sessionModal button.primary:hover{background:var(--accent-hover)}
+#sessionModal button.secondary{background:var(--surface-2);color:var(--ink-2)}
+#sessionModal button.secondary:hover{background:var(--surface-3)}
+#sessionBanner{display:none;padding:.6rem 1rem;background:var(--warn-soft);
+               color:var(--warn-fg);border-bottom:1px solid var(--warn-line);
+               font-size:.92em;text-align:center}
+#sessionBanner.show{display:block}
+#sessionBanner.revoked{background:var(--err-soft);color:var(--err-fg);
+                       border-bottom-color:var(--err-line)}
+body.readonly form#f{opacity:.5;pointer-events:none}
+body.readonly #q{cursor:not-allowed}
+
+/* ---------- mobile ---------- */
+@media (max-width:640px){
+  #log{padding:.8rem .6rem 1rem}
+  .msg{max-width:97%}
+  header{gap:.6rem;padding:.5rem .7rem}
+  form#f{padding:.55rem .6rem calc(.55rem + env(safe-area-inset-bottom))}
+  #b{padding:.6rem .95rem}
+  #log:empty::before{margin-top:10vh}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">Metnos</span>
+  <span class="role">{{ role }}</span>
+  <span class="grow"></span>
+  <a href="#" id="copyChatBtn" title="copia l'intera conversazione negli appunti">copia chat</a>
+  <a href="#" id="clearBtn" title="pulisci chat locale">pulisci</a>
+  {% if role == "admin" %}
+  <a href="/admin">panoramica</a>
+  <form method="post" action="/admin/logout">
+    <button type="submit">logout</button>
+  </form>
+  {% else %}
+  <a href="/admin/login">admin</a>
+  {% endif %}
+</header>
+
+<div id="sessionBanner"></div>
+
+<div id="log" role="log" aria-live="polite" aria-label="Conversazione"></div>
+
+<div id="sessionModal" role="dialog" aria-modal="true" aria-labelledby="sessionModalTitle">
+  <div class="card">
+    <h2 id="sessionModalTitle">Sessione gia' attiva su un altro dispositivo</h2>
+    <p id="sessionModalBody">Una sessione di chat e' aperta su un altro dispositivo. Vuoi continuarla qui? La sessione precedente passera' in sola lettura.</p>
+    <p class="countdown">Auto-decline in <span id="sessionCountdown">10</span>s.</p>
+    <div class="actions">
+      <button type="button" class="secondary" id="sessionDeclineBtn">Lascia altrove</button>
+      <button type="button" class="primary" id="sessionTakeoverBtn">Prendi posto qui</button>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox" role="dialog" aria-modal="true" aria-label="Immagine ingrandita"><img alt=""><div class="lbcap"></div></div>
+
+<div id="dropOverlay">Rilascia qui le foto per cercare immagini simili</div>
+
+<div id="thumbBar"></div>
+
+<form id="f" autocomplete="off">
+  <textarea id="q" rows="1" enterkeyhint="send" aria-label="Scrivi a Metnos"
+            placeholder="scrivi a Metnos… (o trascina foto per ricerca image-to-image)"
+            autofocus></textarea>
+  <button id="b" type="submit" aria-label="Invia il messaggio">invia</button>
+</form>
+
+<script>
+// PWA: registra service worker. Necessario per il banner "Installa" di Chrome.
+// SW vive a /sw.js (root), scope = "/" implicito.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
+
+// Hook beforeinstallprompt: cattura l'evento per offrire un bottone "Installa"
+// inline (futuro). Per ora il banner nativo Chrome (icona ⊕ nella omnibox)
+// e' sufficiente.
+let _deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+});
+
+const log = document.getElementById('log');
+const form = document.getElementById('f');
+const q = document.getElementById('q');
+const btn = document.getElementById('b');
+const dropOverlay = document.getElementById('dropOverlay');
+const thumbBar = document.getElementById('thumbBar');
+
+// Drag&drop foto reference (ADR 0092). attachedFiles[] = File array,
+// max ATTACH_MAX. preview thumbnail via FileReader.
+// Cap alzato 10→30 il 10/5/2026 perche' enroll persone con dedup cosine
+// (ADR persons_registry.enroll Layer 2): gli esempi quasi-identici sono
+// filtrati lato server, quindi droppare 30 foto e' safe. Limite hard
+// resta sulla payload size HTTP (~100MB).
+const ATTACH_MAX = 30;
+let attachedFiles = [];
+let dragCounter = 0;
+
+// Persistenza locale degli ultimi N messaggi (localStorage, max 100).
+const HISTORY_KEY = 'metnos_chat_history';
+const HISTORY_MAX = 100;
+
+// Buffer separato dei soli COMANDI utente (testo digitato), navigabile
+// con ArrowUp/ArrowDown nella input box (stile shell). Cap 100, dedup
+// di entry uguali consecutive.
+const CMDBUF_KEY = 'metnos_cmd_buffer';
+const CMDBUF_MAX = 100;
+
+function loadHistory(){
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(_){ return []; }
+}
+function saveHistory(items){
+  try {
+    const trimmed = items.slice(-HISTORY_MAX);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+  } catch(_){}
+}
+function pushHistory(rec){
+  const items = loadHistory();
+  items.push(rec);
+  saveHistory(items);
+}
+function clearHistory(){
+  try { localStorage.removeItem(HISTORY_KEY); } catch(_){}
+  log.innerHTML = '';
+}
+
+// --- buffer comandi (solo testo utente) ----------------------------
+function loadCmdBuf(){
+  try {
+    const raw = localStorage.getItem(CMDBUF_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch(_){ return []; }
+}
+function pushCmdBuf(text){
+  if(!text || !text.trim()) return;
+  const buf = loadCmdBuf();
+  if(buf.length && buf[buf.length-1] === text) return; // dedup consecutivi
+  buf.push(text);
+  while(buf.length > CMDBUF_MAX) buf.shift();
+  try { localStorage.setItem(CMDBUF_KEY, JSON.stringify(buf)); } catch(_){}
+}
+function clearCmdBuf(){
+  try { localStorage.removeItem(CMDBUF_KEY); } catch(_){}
+}
+
+// Event delegation per il button "↻ riprova" iniettato dal server.
+// htmx-style: il button ha data-action=retry-turn + data-turn-id. Catturiamo
+// click sul document (capturing-bubble) per intercettare anche elementi
+// inseriti dopo il page load (post-feedback HTML swap).
+document.addEventListener('click', function(ev) {
+  const btn = ev.target.closest('[data-action="retry-turn"]');
+  if(!btn) return;
+  ev.preventDefault();
+  const turnId = btn.dataset.turnId;
+  if(turnId) retryTurn(turnId);
+});
+
+async function retryTurn(turnId){
+  // E.2: dopo feedback ✗ il badge espone "↻ riprova". Click → POST
+  // /agent/turns/{id}/retry recupera la query → submit nuovo turn (riusa
+  // il flow EventSource standard).
+  try {
+    console.log('retryTurn:', turnId);
+    const r = await fetch('/agent/turns/' + turnId + '/retry', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({}),
+    });
+    if(!r.ok){
+      console.error('retry HTTP', r.status, await r.text());
+      return;
+    }
+    const data = await r.json();
+    console.log('retry data:', data);
+    if(!data.query) return;
+    if(typeof q === 'undefined' || !q){
+      console.error('retry: q (input) not in scope');
+      return;
+    }
+    q.value = data.query;
+    q.focus();
+    // Triggera submit via `form.requestSubmit(btn)` (modo canonico,
+    // funziona con addEventListener('submit')) o fallback su btn.click().
+    const form = q.closest('form');
+    const submitBtn = document.getElementById('b');
+    if(form && typeof form.requestSubmit === 'function'){
+      form.requestSubmit(submitBtn || undefined);
+    } else if(submitBtn){
+      submitBtn.click();
+    } else {
+      console.error('retry: form/btn non trovati');
+    }
+  } catch(e){ console.error('retry fail', e); }
+}
+
+async function sendFeedback(turnId, action, container){
+  // POST /agent/turns/{turn_id}/feedback (HX-Request → HTML swap).
+  // Disabilita i button durante la richiesta, rimpiazza con badge "grazie".
+  const btns = container.querySelectorAll('button');
+  btns.forEach(b => b.disabled = true);
+  container.classList.add('msg-fb-pending');
+  try {
+    const r = await fetch('/agent/turns/' + turnId + '/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'HX-Request': 'true'},
+      body: JSON.stringify({action: action}),
+    });
+    if(r.ok){
+      const html = await r.text();
+      container.outerHTML = html;
+    } else {
+      container.classList.remove('msg-fb-pending');
+      btns.forEach(b => b.disabled = false);
+      container.title = 'errore HTTP ' + r.status;
+    }
+  } catch(e) {
+    container.classList.remove('msg-fb-pending');
+    btns.forEach(b => b.disabled = false);
+    container.title = 'errore: ' + e.message;
+  }
+}
+
+// Lo scroll container e' il BODY (#log e' flex senza overflow). Autoscroll
+// SOLO se l'utente e' gia' vicino al fondo: se sta rileggendo messaggi piu'
+// su, un nuovo evento NON deve strapparlo via. I messaggi utente ('me') e i
+// load iniziali forzano sempre lo scroll. RAF garantisce layout calcolato.
+function nearBottom(){
+  return (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 160);
+}
+function scrollToEnd(){
+  requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'auto' }));
+}
+
+// Copia negli appunti con fallback: la chat gira spesso su HTTP LAN
+// (192.168.x.x:8770) dove navigator.clipboard NON esiste (secure context
+// only) → textarea fuori schermo + execCommand('copy').
+function copyMsgText(t){
+  if(navigator.clipboard && window.isSecureContext){
+    return navigator.clipboard.writeText(t);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = t;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      if(document.execCommand('copy')){ resolve(); }
+      else { reject(new Error('execCommand copy failed')); }
+    } catch(e){ reject(e); }
+    finally { ta.remove(); }
+  });
+}
+
+// Bottone copia (bolle utente): icona discreta, conferma transitoria.
+function makeCopyBtn(getText){
+  const cb = document.createElement('button');
+  cb.type = 'button';
+  cb.className = 'msg-copy-btn';
+  cb.title = '{{ msg("MSG_CHAT_COPY_HINT")|e }}';
+  cb.setAttribute('aria-label', cb.title);
+  cb.textContent = '⧉';
+  cb.addEventListener('click', () => {
+    copyMsgText(getText()).then(() => {
+      cb.classList.add('done');
+      cb.textContent = '{{ msg("MSG_CHAT_COPY_DONE")|e }}';
+      setTimeout(() => {
+        cb.classList.remove('done');
+        cb.textContent = '⧉';
+      }, 1200);
+    }).catch(() => {});
+  });
+  return cb;
+}
+
+// Copia l'INTERA conversazione (header "copia chat"). Raccoglie il testo pulito
+// (data-copytext) di ogni bolla con etichetta-ruolo; salta le effimere
+// (thinking) e le gallery. Riusa copyMsgText (fallback non-secure-context).
+function buildChatTranscript(){
+  const parts = [];
+  document.querySelectorAll('#log .msg').forEach((d) => {
+    if(d.classList.contains('thinking') || d.classList.contains('gallery')) return;
+    const t = (d.dataset.copytext || '').trim();
+    if(!t) return;
+    let role = 'Metnos';
+    if(d.classList.contains('me')) role = 'Tu';
+    else if(d.classList.contains('err')) role = 'Errore';
+    else if(d.classList.contains('tool') || d.classList.contains('tool-info')) role = 'Tool';
+    parts.push(role + ': ' + t);
+  });
+  return parts.join('\n\n');
+}
+(function wireCopyChat(){
+  const btn = document.getElementById('copyChatBtn');
+  if(!btn) return;
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    const txt = buildChatTranscript();
+    if(!txt) return;
+    const orig = btn.textContent;
+    copyMsgText(txt).then(() => {
+      btn.textContent = '{{ msg("MSG_CHAT_COPY_DONE")|e }}';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }).catch(() => {});
+  });
+})();
+
+function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
+  const stick = (cls === 'me') || nearBottom();
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  // ADR 0109: htmlMode=true significa che `text` e' gia' HTML safe
+  // prodotto server-side da to_safe_html (escape iniziale + whitelist
+  // b/i/code/pre/a). Solo i bot final_message vanno in htmlMode; user
+  // input, errori e messaggi locali restano textContent (no injection).
+  if(htmlMode === true){
+    d.innerHTML = text;
+    d.setAttribute('data-html-mode', 'true');
+  } else {
+    d.textContent = text;
+  }
+  // Rendi cliccabili i `<code>/comando` per pre-fillare la input bar.
+  // Visivamente: cursor pointer + hover effect. UX: click → q.value = ...
+  // → q.focus() (l'utente puo' editare e Enter per submit).
+  if(htmlMode === true){
+    d.querySelectorAll('code').forEach((el) => {
+      const t = (el.textContent || '').trim();
+      if(t.startsWith('/') && t.length < 80){
+        el.style.cursor = 'pointer';
+        el.style.textDecoration = 'underline';
+        el.style.textDecorationStyle = 'dotted';
+        el.title = 'Click per copiare nella casella di scrittura';
+        el.addEventListener('click', () => {
+          q.value = t;
+          q.focus();
+          q.setSelectionRange(t.length, t.length);
+        });
+      }
+    });
+  }
+  // INLINE_FORM:<path> marker: il server (orchestration._build_final_message_hint
+  // fmt=form) lo emette al posto di un URL assoluto. Rimpiazzo: estraggo
+  // il path, rimuovo la riga, allego un <iframe> in coda al bubble cosi'
+  // l'utente compila il form senza navigare. Path deve iniziare con
+  // /agent/dialog/ per evitare frame di altre origini.
+  if(cls === 'bot'){
+    // Regex senza anchor di linea: textContent puo' collassare \n fra
+    // <p>...</p> in alcuni browser. Tolerante a spazi/newline iniziali.
+    const rxForm = /INLINE_FORM:(\/agent\/dialog\/[A-Za-z0-9._-]+\/form)/;
+    const txt = htmlMode === true ? d.textContent : text;
+    const mF = txt.match(rxForm);
+    if(mF){
+      const formPath = mF[1];
+      // Rimuovi il marker dal display sia da innerHTML che da textContent.
+      const rxRemove = /\s*INLINE_FORM:\/agent\/dialog\/[A-Za-z0-9._-]+\/form\s*/g;
+      if(htmlMode === true){
+        d.innerHTML = d.innerHTML.replace(rxRemove, '');
+      } else {
+        d.textContent = d.textContent.replace(rxRemove, '');
+      }
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin-top:.6rem;border:1px solid var(--border);'
+                        + 'border-radius:.4rem;overflow:hidden;background:#fff;';
+      const ifr = document.createElement('iframe');
+      ifr.src = formPath;
+      ifr.style.cssText = 'width:100%;min-height:520px;border:0;display:block;';
+      ifr.title = 'Modulo dialog';
+      wrap.appendChild(ifr);
+      d.appendChild(wrap);
+      // Auto-resize iframe quando il contenuto cambia (mando un messaggio
+      // dall'iframe via postMessage; vedi dialog_form.html).
+      // Sostituisco l'INTERO bubble bot (non solo wrap) cosi' il form
+      // collassa in una conferma compatta. Il next turn callback risponde
+      // con un bubble separato.
+      const onMsg = (ev) => {
+        if(ev.source !== ifr.contentWindow) return;
+        if(ev.data && ev.data.type === 'metnos.dialog.height'){
+          ifr.style.height = (ev.data.height + 8) + 'px';
+        }
+        if(ev.data && ev.data.type === 'metnos.dialog.done'){
+          const rurl = ev.data.redirect_url || '';
+          const ctxt = ev.data.completion_text || '';
+          if(rurl){
+            d.innerHTML = '<div style="padding:.4rem;color:var(--navy);font-size:.9em;">'
+                        + '→ Apertura pagina di autorizzazione&hellip;'
+                        + '</div>';
+            window.removeEventListener('message', onMsg);
+            window.top.location.href = rurl;
+            return;
+          }
+          if(ctxt){
+            // Sostituisci l'iframe del form con una bolla regolare in chat
+            // contenente il messaggio del callback (errori, info, etc.).
+            // cls='bot' + turn_id → la bolla riaggancia i badge feedback ✓/✗
+            // sul turno che ha emesso il dialog (regressione 3/6 form).
+            d.innerHTML = '';
+            const tid = ev.data.turn_id || '';
+            add('bot', ctxt, tid ? {turn_id: tid, left: '', right: ''} : '', true);
+          } else {
+            d.innerHTML = '<div style="padding:.4rem;color:var(--sage);font-size:.9em;">'
+                        + '✓ Risposta dialog inviata.'
+                        + '</div>';
+          }
+          window.removeEventListener('message', onMsg);
+        }
+        if(ev.data && ev.data.type === 'metnos.dialog.cancelled'){
+          d.innerHTML = '<div style="padding:.4rem;color:var(--err-red);font-size:.9em;">'
+                      + '✗ Dialog annullato.</div>';
+          window.removeEventListener('message', onMsg);
+        }
+      };
+      window.addEventListener('message', onMsg);
+    }
+  }
+  // Snapshot del testo PULITO (prima di meta/azioni/feedback) per la
+  // copia-chat globale dell'header. htmlMode bot → textContent = plain text.
+  d.dataset.copytext = (d.textContent || '').trim();
+  // meta puo' essere:
+  //  - stringa: una riga sola
+  //  - oggetto {path: [{tool, ok}], text: "turn xxx · NNs"}: prima riga
+  //    una sequenza di badge degli executor invocati, sotto la riga testo.
+  if(meta){
+    if(typeof meta === 'string'){
+      const m = document.createElement('div');
+      m.className = 'meta';
+      m.textContent = meta;
+      d.appendChild(m);
+    } else {
+      if(meta.path && meta.path.length){
+        const row = document.createElement('div');
+        row.className = 'path-badges';
+        meta.path.forEach((step, i) => {
+          if(i > 0){
+            const arr = document.createElement('span');
+            arr.className = 'arrow'; arr.textContent = '→';
+            row.appendChild(arr);
+          }
+          const b = document.createElement('span');
+          b.className = 'badge' + (step.ok === false ? ' failed' : '');
+          b.textContent = step.tool || '?';
+          row.appendChild(b);
+        });
+        d.appendChild(row);
+      }
+      if(meta.left || meta.right || meta.turn_id){
+        const m = document.createElement('div');
+        m.className = 'meta';
+        const left = document.createElement('span');
+        left.className = 'meta-left';
+        left.textContent = meta.left || '';
+        m.appendChild(left);
+        const right = document.createElement('span');
+        right.className = 'meta-right';
+        right.textContent = meta.right || '';
+        m.appendChild(right);
+        // Feedback OK/Errore (E.1, 22/5/2026). Solo su messaggi bot con
+        // turn_id valido. Inseriti DOPO il meta-right per non disturbare.
+        if(cls === 'bot' && meta.turn_id){
+          const fb = document.createElement('span');
+          fb.className = 'msg-fb';
+          fb.dataset.turnId = meta.turn_id;
+          fb.innerHTML =
+            '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>'
+          + '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>';
+          fb.querySelector('.ok').addEventListener('click',
+            () => sendFeedback(meta.turn_id, 'ok', fb));
+          fb.querySelector('.err').addEventListener('click',
+            () => sendFeedback(meta.turn_id, 'error', fb));
+          m.appendChild(fb);
+        }
+        d.appendChild(m);
+      } else if(meta.text){
+        const m = document.createElement('div');
+        m.className = 'meta';
+        m.textContent = meta.text;
+        d.appendChild(m);
+      }
+    }
+  }
+  // Copia testo (bolle utente): la query originale e' `text` letterale
+  // (le 'me' non vanno mai in htmlMode). Riga azioni in coda alla bolla,
+  // dopo meta — nessuna interferenza con feedback/lightbox/autoscroll.
+  if(cls === 'me'){
+    const act = document.createElement('div');
+    act.className = 'msg-actions';
+    act.appendChild(makeCopyBtn(() => (text == null ? '' : String(text))));
+    d.appendChild(act);
+  }
+  log.appendChild(d);
+  if(attachments && attachments.length){
+    const imgs = attachments.filter(a => a && a.thumb_url);
+    const files = attachments.filter(a => a && a.download_url);
+    if(imgs.length) addGallery(imgs, galleryInfo);
+    if(files.length) addFileChips(files);
+  }
+  if(stick) scrollToEnd();
+  if(persist !== false && (cls === 'me' || cls === 'bot' || cls === 'err')){
+    pushHistory({ cls, text, meta: meta || '', ts: Date.now(),
+                  attachments: attachments || null,
+                  gallery: galleryInfo || null,
+                  htmlMode: htmlMode === true });
+  }
+  return d;
+}
+
+function addFileChips(files){
+  // Deliverable non-immagine (xlsx/doc/zip/pdf): chip di download.
+  const d = document.createElement('div');
+  d.className = 'msg bot';
+  for(const f of files){
+    const a = document.createElement('a');
+    a.href = f.download_url;
+    a.className = 'gallery-link';
+    a.setAttribute('download', f.basename || '');
+    a.textContent = '⬇️ ' + (f.basename || 'scarica file');
+    d.appendChild(a);
+  }
+  log.appendChild(d);
+}
+
+function addGallery(attachments, galleryInfo){
+  const g = document.createElement('div');
+  g.className = 'msg bot gallery';
+  const grid = document.createElement('div');
+  grid.className = 'gallery-grid';
+  // items[] alimenta la navigazione del lightbox (frecce ←/→ fra le
+  // preview inline dello stesso messaggio).
+  const items = [];
+  for(const a of attachments){
+    if(!a || !a.thumb_url) continue;
+    const idx = items.length;
+    items.push({ full: a.full_url || a.thumb_url,
+                 cap: a.caption || a.basename || '' });
+    const img = document.createElement('img');
+    img.src = a.thumb_url;
+    img.alt = a.basename || '';
+    img.title = a.caption || a.basename || '';
+    img.loading = 'lazy';
+    img.addEventListener('click', () => openLightbox(items, idx));
+    grid.appendChild(img);
+  }
+  g.appendChild(grid);
+  // Link gallery sempre presente quando disponibile (anche se inline ==
+  // total): la gallery e' la UI estesa (paginata, score badge, lightbox
+  // dedicato, link al file originale). Per vedere PIU' foto oltre le
+  // inline, l'utente puo' rilanciare la query con top_k esplicito.
+  if(galleryInfo && galleryInfo.gallery_url){
+    const link = document.createElement('a');
+    link.href = galleryInfo.gallery_url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.className = 'gallery-link';
+    link.textContent =
+      'Apri gallery completa (' + galleryInfo.n_total_matches + ' foto)';
+    g.appendChild(link);
+  }
+  log.appendChild(g);
+}
+
+const lightbox = document.getElementById('lightbox');
+const lbImg = lightbox.querySelector('img');
+const lbCap = lightbox.querySelector('.lbcap');
+// Stato di navigazione: lista delle immagini del gruppo aperto + indice.
+let lbItems = null;
+let lbIdx = -1;
+function lbRender(){
+  const it = lbItems[lbIdx];
+  lbImg.src = it.full;
+  lbImg.alt = it.cap || '';
+  lbCap.textContent = (it.cap ? it.cap + '  ·  ' : '')
+                    + (lbIdx + 1) + ' / ' + lbItems.length;
+}
+function openLightbox(items, idx){
+  lbItems = items;
+  lbIdx = idx;
+  lbRender();
+  lightbox.classList.add('show');
+}
+function lbStep(delta){
+  if(!lbItems || lbItems.length < 2) return;
+  lbIdx = (lbIdx + delta + lbItems.length) % lbItems.length;
+  lbRender();
+}
+function closeLightbox(){
+  lightbox.classList.remove('show');
+  lbImg.src = '';
+  lbItems = null; lbIdx = -1;
+}
+lightbox.addEventListener('click', closeLightbox);
+document.addEventListener('keydown', (e) => {
+  if(!lightbox.classList.contains('show')) return;
+  if(e.key === 'Escape') closeLightbox();
+  else if(e.key === 'ArrowRight'){ e.preventDefault(); lbStep(1); }
+  else if(e.key === 'ArrowLeft'){ e.preventDefault(); lbStep(-1); }
+});
+
+function renderLivePath(path, predicted){
+  // Sostituisce il placeholder thinking con un breadcrumb dei tool fin
+  // qui invocati + step previsti (best-effort, possono cambiare).
+  // Stati badge:
+  //   - completati (tutti tranne l'ultimo di `path`): solido carta-calda
+  //   - corrente (ultimo di `path`): bordo bronzo + pulse
+  //   - previsti (`predicted`, opzionale): tratteggiato + opacita' ridotta
+  const stick = nearBottom();
+  const d = document.createElement('div');
+  d.className = 'msg thinking';
+  const row = document.createElement('div');
+  row.className = 'path-badges';
+  const all = [
+    ...path.map((t, i) => ({tool: t, kind: i === path.length - 1 ? 'active' : 'done'})),
+    ...(predicted || []).map(t => ({tool: t, kind: 'predicted'})),
+  ];
+  all.forEach((step, i) => {
+    if(i > 0){
+      const arr = document.createElement('span');
+      arr.className = 'arrow' + (step.kind === 'predicted' ? ' predicted' : '');
+      arr.textContent = '→';
+      row.appendChild(arr);
+    }
+    const b = document.createElement('span');
+    b.className = 'badge ' + step.kind;
+    b.textContent = step.tool;
+    row.appendChild(b);
+  });
+  d.appendChild(row);
+  log.appendChild(d);
+  if(stick) scrollToEnd();
+  return d;
+}
+
+function addTool(tool, args){
+  const stick = nearBottom();
+  const d = document.createElement('div');
+  d.className = 'msg tool';
+  const sum = document.createElement('details');
+  const s = document.createElement('summary');
+  s.innerHTML = '<span class="dot"></span> ⚙ ' + tool;
+  sum.appendChild(s);
+  const pre = document.createElement('div');
+  pre.textContent = JSON.stringify(args || {}, null, 2);
+  sum.appendChild(pre);
+  d.appendChild(sum);
+  log.appendChild(d);
+  if(stick) scrollToEnd();
+  return d;
+}
+
+// Ricostruisce la chat dai messaggi salvati (su page load).
+function restoreHistory(){
+  const items = loadHistory();
+  if(!items.length) return;
+  for(const it of items){
+    add(it.cls, it.text, it.meta, false,
+        it.attachments || null, it.gallery || null,
+        it.htmlMode === true);
+  }
+  // Separator visivo fra la sessione precedente (sopra) e i nuovi messaggi
+  const sep = document.createElement('div');
+  sep.className = 'log-sep';
+  sep.textContent = '— sessione precedente —';
+  log.appendChild(sep);
+  scrollToEnd();
+}
+restoreHistory();
+
+// Server-side turn fetch (8/5/2026): dopo restore localStorage, fetcha
+// /agent/turns/recent per la conversation_id corrente. Catch tutti i turn
+// che il server ha eseguito mentre la tab era chiusa (compresi quelli
+// in-flight quando l'utente ha chiuso). Idempotent grazie a since_ts:
+// passiamo il ts dell'ultimo item localStorage cosi' non duplichiamo.
+async function fetchServerHistory(){
+  const items = loadHistory();
+  const lastTs = items.length ? Math.max(...items.map(i => i.ts || 0)) : 0;
+  const sinceSec = lastTs ? (lastTs / 1000) : 0;
+  try {
+    const url = '/agent/turns/recent?conversation_id=' + encodeURIComponent(conversationId)
+              + '&limit=50&since_ts=' + sinceSec;
+    const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if(!r.ok) return;
+    const data = await r.json();
+    const turns = (data.turns || []).slice().reverse(); // server desc → render asc
+    if(!turns.length) return;
+    const sep = document.createElement('div');
+    sep.className = 'log-sep';
+    sep.textContent = '— ricaricato dal server —';
+    log.appendChild(sep);
+    for(const t of turns){
+      // User input come messaggio "me"
+      if(t.query) add('me', t.query, '', true);
+      if(t.in_flight){
+        // Turn ancora in esecuzione server-side: riaggancia lo stream
+        // resumable (il `final` arriva dall'event log, robusto al reload e
+        // all'id JSONL diverso). Fallback: pollInFlight via dataset.
+        const ph = add('bot', '⏳ in elaborazione…',
+                       'turn ' + (t.turn_id || '').slice(0,8), false);
+        if(ph) ph.dataset.turnId = t.turn_id;
+        if(ph) ph.dataset.inFlight = '1';
+        reattachTurnStream(t.turn_id, ph);
+      } else if(t.final_message){
+        const metaLeft = 'turn ' + (t.turn_id || '').slice(0,8) +
+                          (t.total_ms ? ' · ' + (t.total_ms/1000).toFixed(1) + 's' : '');
+        add('bot', t.final_message_html || t.final_message,
+            { left: metaLeft, right: '', turn_id: t.turn_id }, true,
+            t.attachments || null, null,
+            !!t.final_message_html);
+      }
+    }
+    scrollToEnd();
+    // Avvia polling per gli in_flight turns
+    if(turns.some(t => t.in_flight)) pollInFlight();
+  } catch(e){
+    console.warn('fetchServerHistory failed', e);
+  }
+}
+
+// Riaggancio a un turn in-flight dopo reload pagina (navigazione chat →
+// dashboard → chat). Apre lo stream resumable: il `final`/`error` è
+// nell'event log keyed by turn_id (submit), quindi arriva anche se il turn
+// è partito su un'altra istanza di pagina. Se l'event log è stato gc-ed dopo
+// il TTL, fallback al risultato persistente via GET /agent/turns/{id}.
+function reattachTurnStream(turnId, ph){
+  if(!turnId || !ph) return;
+  const settle = (html) => {
+    if(!ph) return;
+    delete ph.dataset.inFlight;
+    ph.innerHTML = '';
+    const inner = document.createElement('div');
+    inner.className = 'msg';
+    inner.innerHTML = html;
+    ph.appendChild(inner);
+  };
+  let done = false;
+  const es = new EventSource('/agent/turns/' + turnId + '/stream');
+  ['final', 'error'].forEach(k => es.addEventListener(k, (ev) => {
+    let data = {}; try { data = JSON.parse(ev.data); } catch(_) {}
+    done = true; es.close();
+    settle(k === 'final'
+      ? (data.final_message_html || data.final_message || '(nessuna risposta)')
+      : ('✗ ' + (data.message || 'errore')));
+  }));
+  es.onerror = () => {
+    if(es.readyState === EventSource.CLOSED && !done){
+      // Event log non più disponibile: recupera l'esito persistente.
+      fetch('/agent/turns/' + turnId).then(r => r.ok ? r.json() : null).then(dd => {
+        if(!dd) return;
+        const fin = (dd.events || []).find(e => e.event_type === 'final');
+        if(fin){ settle(fin.payload.final_message_html || fin.payload.final_message || ''); return; }
+        if(dd.persistent && dd.final_message != null){ settle(dd.final_message); return; }
+        // Ancora running (reconnect transitorio): lascia ⏳, il poller riprende.
+      }).catch(() => {});
+    }
+  };
+}
+
+let pollTimer = null;
+async function pollInFlight(){
+  if(pollTimer) clearTimeout(pollTimer);
+  const placeholders = log.querySelectorAll('[data-in-flight="1"]');
+  if(!placeholders.length) return;
+  try {
+    const turnIds = Array.from(placeholders).map(p => p.dataset.turnId).filter(Boolean);
+    const r = await fetch('/agent/turns/recent?conversation_id=' + encodeURIComponent(conversationId)
+                        + '&limit=50', { headers: { 'Accept': 'application/json' } });
+    if(r.ok){
+      const data = await r.json();
+      for(const t of (data.turns || [])){
+        if(!turnIds.includes(t.turn_id)) continue;
+        const ph = log.querySelector('[data-turn-id="' + t.turn_id + '"]');
+        if(!ph) continue;
+        if(!t.in_flight && t.final_message){
+          // Sostituisci placeholder col messaggio reale
+          ph.innerHTML = '';
+          const inner = document.createElement('div');
+          inner.className = 'msg';
+          inner.innerHTML = t.final_message_html || t.final_message;
+          ph.appendChild(inner);
+          delete ph.dataset.inFlight;
+        }
+      }
+    }
+  } catch(e){ console.warn('pollInFlight err', e); }
+  // Continua se ancora in_flight presenti
+  if(log.querySelectorAll('[data-in-flight="1"]').length){
+    pollTimer = setTimeout(pollInFlight, 5000);
+  }
+}
+
+// Al ritorno del focus sulla pagina: se c'e' un turn ⏳ in attesa, ri-sondalo
+// subito (i timer in background sono throttlati → senza questo l'esito puo'
+// tardare fino a 5s dopo il rientro). Idempotente: pollInFlight azzera il timer.
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible'
+     && log.querySelectorAll('[data-in-flight="1"]').length){
+    pollInFlight();
+  }
+});
+
+// Boot di session + history viene fatto in fondo allo script,
+// dopo che tutte le const/let sono fuori dal TDZ (deviceToken, sessionBanner).
+
+document.getElementById('clearBtn').addEventListener('click', (e) => {
+  e.preventDefault();
+  if(confirm('cancellare la chat locale (messaggi e buffer comandi)?')){
+    clearHistory();
+    clearCmdBuf();
+    cmdIdx = -1;
+    cmdDraft = '';
+  }
+});
+
+// Composer textarea auto-grow: 1 riga di base, cresce col contenuto fino
+// a ~10em (poi scrolla). Richiamare dopo OGNI set programmatico di q.value.
+function autoGrowQ(){
+  q.style.height = 'auto';
+  q.style.height = Math.min(q.scrollHeight + 2, 170) + 'px';
+}
+q.addEventListener('input', autoGrowQ);
+
+// Navigazione buffer comandi con frecce su/giù (stile shell):
+// ArrowUp = comando precedente; ArrowDown = comando successivo.
+// Con il composer multi-riga: Invio = invia, Shift+Invio = a capo;
+// le frecce navigano la history SOLO su testo single-line (altrimenti
+// muovono il caret nel testo, comportamento nativo).
+let cmdIdx = -1;       // -1 = nessuna navigazione attiva (input "live")
+let cmdDraft = '';     // testo digitato prima di iniziare la navigazione
+q.addEventListener('keydown', (e) => {
+  if(e.isComposing) return;  // IME attivo: non interferire
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    if(typeof form.requestSubmit === 'function') form.requestSubmit(btn);
+    else btn.click();
+    return;
+  }
+  if(q.value.includes('\n') && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) return;
+  if(e.key === 'ArrowUp'){
+    const buf = loadCmdBuf();
+    if(!buf.length) return;
+    if(cmdIdx === -1){ cmdDraft = q.value; cmdIdx = buf.length; }
+    if(cmdIdx > 0){ cmdIdx--; q.value = buf[cmdIdx]; e.preventDefault();
+      autoGrowQ();
+      requestAnimationFrame(() => q.setSelectionRange(q.value.length, q.value.length));
+    }
+  } else if(e.key === 'ArrowDown'){
+    if(cmdIdx === -1) return;
+    const buf = loadCmdBuf();
+    cmdIdx++;
+    if(cmdIdx >= buf.length){ cmdIdx = -1; q.value = cmdDraft; }
+    else { q.value = buf[cmdIdx]; }
+    e.preventDefault();
+    autoGrowQ();
+    requestAnimationFrame(() => q.setSelectionRange(q.value.length, q.value.length));
+  } else if(e.key !== 'Enter' && cmdIdx !== -1){
+    // appena digiti qualcosa di nuovo, esci dalla modalità navigazione
+    cmdIdx = -1;
+  }
+});
+
+// --- Drag&drop foto reference (ADR 0092) ----------------------------
+function refreshThumbBar(){
+  thumbBar.innerHTML = '';
+  if(!attachedFiles.length){
+    thumbBar.classList.remove('show');
+    return;
+  }
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = attachedFiles.length + ' foto allegate '
+    + '(ricerca image-to-image). '
+    + 'Aggiungi una caption opzionale e premi invia.';
+  thumbBar.appendChild(hint);
+  attachedFiles.forEach((f, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb';
+    const img = document.createElement('img');
+    img.alt = f.name || 'foto';
+    const r = new FileReader();
+    r.onload = () => { img.src = r.result; };
+    r.readAsDataURL(f);
+    wrap.appendChild(img);
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.type = 'button';
+    x.textContent = '×';
+    x.title = 'rimuovi';
+    x.addEventListener('click', () => {
+      attachedFiles.splice(i, 1);
+      refreshThumbBar();
+    });
+    wrap.appendChild(x);
+    thumbBar.appendChild(wrap);
+  });
+  thumbBar.classList.add('show');
+}
+
+function addFiles(fileList){
+  const before = attachedFiles.length;
+  for(const f of fileList){
+    if(!f) continue;
+    if(!f.type || !f.type.startsWith('image/')) continue;
+    if(attachedFiles.length >= ATTACH_MAX){
+      add('err', '⚠ massimo ' + ATTACH_MAX + ' foto per turno; eccesso ignorato.');
+      break;
+    }
+    attachedFiles.push(f);
+  }
+  if(attachedFiles.length > before){
+    refreshThumbBar();
+  }
+}
+
+window.addEventListener('dragenter', (e) => {
+  if(!e.dataTransfer || !e.dataTransfer.types || !e.dataTransfer.types.includes('Files')) return;
+  dragCounter++;
+  dropOverlay.classList.add('show');
+  e.preventDefault();
+});
+window.addEventListener('dragover', (e) => {
+  if(e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('Files')){
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }
+});
+window.addEventListener('dragleave', (e) => {
+  dragCounter = Math.max(0, dragCounter - 1);
+  if(dragCounter === 0) dropOverlay.classList.remove('show');
+});
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  dropOverlay.classList.remove('show');
+  if(!e.dataTransfer || !e.dataTransfer.files) return;
+  addFiles(e.dataTransfer.files);
+});
+
+// Conversation ID stabile per la sessione browser: lega cap-expand
+// pending ("sì" dopo proposta di allargamento) e future approval flow.
+function makeConvId(){
+  return 'c_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+}
+// Persistenza conversation_id in localStorage (8/5/2026): permette di
+// chiudere la tab e riaprirla mantenendo lo stesso conv_id, cosi' /agent/
+// turns/recent puo' filtrare i turn di QUESTA conversazione anche dopo
+// browser restart. Era sessionStorage = clears su tab close = nuovo
+// conv_id ad ogni riapertura = impossibile linkare la storia.
+const CONV_KEY = 'metnos_conv_id';
+let conversationId = localStorage.getItem(CONV_KEY);
+if(!conversationId){
+  // Migrazione da vecchio sessionStorage se presente
+  const old = sessionStorage.getItem('metnos_conv_id');
+  conversationId = old || makeConvId();
+  localStorage.setItem(CONV_KEY, conversationId);
+  sessionStorage.removeItem('metnos_conv_id');
+}
+
+// --- Session registry single-session-per-user (Phase 7 Phase 1, 12/5/2026) ---
+// Roberto: single-active-session + takeover prompt; conflict resolution
+// su edit concorrenti NON in scope (single-writer per costruzione).
+const DEVICE_TOKEN_KEY = 'metnos_device_token';
+let deviceToken = localStorage.getItem(DEVICE_TOKEN_KEY) || '';
+let sessionReadOnly = false;
+let pingTimer = null;
+let sessionSse = null;
+
+function makeDeviceLabel(){
+  const ua = (navigator.userAgent || '').slice(0, 200);
+  // Cerca di estrarre un nome breve "marca + OS"; fallback: UA truncated.
+  const m = ua.match(/(Firefox|Chrome|Edg|Safari)[ \/]([\d.]+)/);
+  const browser = m ? (m[1] + ' ' + (m[2] || '')) : 'Browser';
+  const os = (() => {
+    if(ua.includes('Windows')) return 'Windows';
+    if(ua.includes('Mac OS')) return 'Mac';
+    if(ua.includes('Android')) return 'Android';
+    if(ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+    if(ua.includes('Linux')) return 'Linux';
+    return '';
+  })();
+  return (browser + (os ? ' su ' + os : '')).trim().slice(0, 80);
+}
+
+const sessionBanner = document.getElementById('sessionBanner');
+function showBanner(text, cls){
+  sessionBanner.textContent = text;
+  sessionBanner.className = 'show ' + (cls || '');
+}
+function hideBanner(){
+  sessionBanner.className = '';
+  sessionBanner.textContent = '';
+}
+function enterReadOnly(reason){
+  sessionReadOnly = true;
+  document.body.classList.add('readonly');
+  btn.disabled = true;
+  q.disabled = true;
+  showBanner(reason || 'Sessione attiva su un altro dispositivo, in sola lettura.', '');
+  // Ferma il ping e il SSE: la sessione vecchia non e' piu' valida.
+  if(pingTimer){ clearInterval(pingTimer); pingTimer = null; }
+  if(sessionSse){ try{ sessionSse.close(); }catch(_){} sessionSse = null; }
+}
+function exitReadOnly(){
+  sessionReadOnly = false;
+  document.body.classList.remove('readonly');
+  btn.disabled = false;
+  q.disabled = false;
+  hideBanner();
+}
+
+async function postJson(url, body){
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+    body: JSON.stringify(body || {}),
+  });
+  let data = {};
+  try { data = await r.json(); } catch(_){}
+  return {status: r.status, data};
+}
+
+// Modal takeover: mostra prompt, ritorna Promise<bool> (true = takeover).
+function showTakeoverPrompt(existing){
+  const modal = document.getElementById('sessionModal');
+  const body = document.getElementById('sessionModalBody');
+  const cd = document.getElementById('sessionCountdown');
+  const takeBtn = document.getElementById('sessionTakeoverBtn');
+  const declineBtn = document.getElementById('sessionDeclineBtn');
+  const label = (existing && existing.device_label) || 'un altro dispositivo';
+  const started = (existing && existing.started_at) || '';
+  body.textContent = 'Sessione attiva su ' + label
+    + (started ? ' dal ' + started : '')
+    + '. Vuoi continuarla qui? La sessione precedente passera\' in sola lettura.';
+  modal.classList.add('show');
+  return new Promise((resolve) => {
+    let remaining = 10;
+    cd.textContent = remaining;
+    const tick = setInterval(() => {
+      remaining -= 1;
+      cd.textContent = Math.max(0, remaining);
+      if(remaining <= 0){ done(false); }
+    }, 1000);
+    function done(takeover){
+      clearInterval(tick);
+      modal.classList.remove('show');
+      takeBtn.removeEventListener('click', onTake);
+      declineBtn.removeEventListener('click', onDecline);
+      resolve(takeover);
+    }
+    function onTake(){ done(true); }
+    function onDecline(){ done(false); }
+    takeBtn.addEventListener('click', onTake);
+    declineBtn.addEventListener('click', onDecline);
+  });
+}
+
+// Sottoscrive il SSE eventi sessione per ricevere `session_revoked` quando
+// un altro device fa takeover di noi.
+function subscribeSessionEvents(token){
+  if(!token || sessionSse) return;
+  try {
+    const url = '/agent/session/events?device_token=' + encodeURIComponent(token);
+    sessionSse = new EventSource(url);
+    sessionSse.addEventListener('session_revoked', (ev) => {
+      let info = {};
+      try { info = JSON.parse(ev.data || '{}'); } catch(_){}
+      const newDev = info.new_device_label || 'un altro dispositivo';
+      enterReadOnly('Sessione spostata su ' + newDev + '. Sola lettura.');
+      sessionBanner.classList.add('revoked');
+      // Pulisci device_token: ricarico = ri-acquisizione tramite takeover prompt.
+      try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+      deviceToken = '';
+    });
+    sessionSse.onerror = () => {
+      // Disconnect normale (chiusura server) → riconnect dopo 5s se ancora attivi.
+      if(sessionSse){
+        try { sessionSse.close(); } catch(_){}
+        sessionSse = null;
+      }
+      if(!sessionReadOnly && deviceToken){
+        setTimeout(() => subscribeSessionEvents(deviceToken), 5000);
+      }
+    };
+  } catch(e){
+    console.warn('session SSE subscribe failed', e);
+  }
+}
+
+function startPing(){
+  if(pingTimer) clearInterval(pingTimer);
+  pingTimer = setInterval(async () => {
+    if(!deviceToken || sessionReadOnly) return;
+    try {
+      const r = await postJson('/agent/session/ping', {device_token: deviceToken});
+      if(r.status === 409){
+        // Sessione revocata (race con SSE perso). Force read-only.
+        enterReadOnly('Sessione spostata su altro device. Ricarica la pagina per ri-acquisirla.');
+        sessionBanner.classList.add('revoked');
+        try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+        deviceToken = '';
+      }
+    } catch(e){
+      // Network blip: ignora, riprova al prossimo tick.
+    }
+  }, 30000);
+}
+
+// Boot session: tenta register; se conflict + utente accetta, fa takeover.
+async function bootSession(){
+  // Se gia' abbiamo un device_token, valida con un ping prima di partire.
+  // 409 = ricominciamo da capo (registry ha registrato un revoke).
+  if(deviceToken){
+    const p = await postJson('/agent/session/ping', {device_token: deviceToken});
+    if(p.status === 200){
+      subscribeSessionEvents(deviceToken);
+      startPing();
+      return true;
+    }
+    // Token stantio (server restart o revoked offline): scarta e ri-registra.
+    try { localStorage.removeItem(DEVICE_TOKEN_KEY); } catch(_){}
+    deviceToken = '';
+  }
+  const label = makeDeviceLabel();
+  let r;
+  try {
+    r = await postJson('/agent/session/register', {device_label: label});
+  } catch(e){
+    console.warn('session register failed', e);
+    showBanner('Impossibile registrare la sessione (rete offline?). Funzionalita\' chat ridotta.', 'revoked');
+    return false;
+  }
+  if(r.status === 200 && r.data && r.data.device_token){
+    deviceToken = r.data.device_token;
+    try { localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken); } catch(_){}
+    subscribeSessionEvents(deviceToken);
+    startPing();
+    return true;
+  }
+  if(r.status === 409 && r.data && r.data.conflict){
+    const wantTakeover = await showTakeoverPrompt(r.data.existing);
+    if(!wantTakeover){
+      enterReadOnly('Sessione attiva su un altro dispositivo. Sola lettura qui.');
+      return false;
+    }
+    const t = await postJson('/agent/session/takeover', {
+      takeover_token: r.data.takeover_token,
+      device_label: label,
+    });
+    if(t.status === 200 && t.data && t.data.device_token){
+      deviceToken = t.data.device_token;
+      try { localStorage.setItem(DEVICE_TOKEN_KEY, deviceToken); } catch(_){}
+      subscribeSessionEvents(deviceToken);
+      startPing();
+      return true;
+    }
+    showBanner('Takeover fallito: ' + ((t.data && t.data.message) || 'errore'), 'revoked');
+    return false;
+  }
+  showBanner('Errore registrazione sessione (' + r.status + ').', 'revoked');
+  return false;
+}
+
+let busy = false;
+
+// Slash command dispatcher client-side: i comandi NON viaggiano al server,
+// agiscono solo sulla UI. Restituisce true se il comando e' stato gestito.
+async function handleSlashCommand(text){
+  const [cmd, ...rest] = text.slice(1).trim().split(/\s+/);
+  const arg = rest.join(' ');
+  switch(cmd.toLowerCase()){
+    case 'clear':
+    case 'cls':
+      clearHistory();
+      add('tool-info', '✓ chat pulita (buffer comandi conservato — usa /clearbuf per cancellarlo)', null, false);
+      return true;
+    case 'clearbuf':
+      clearCmdBuf();
+      cmdIdx = -1; cmdDraft = '';
+      add('tool-info', '✓ buffer comandi cancellato', null, false);
+      return true;
+    case 'reload':
+      location.reload();
+      return true;
+    case 'health': {
+      try {
+        const r = await fetch('/agent/health');
+        const d = await r.json();
+        add('tool-info', `✓ server ok · v${d.version} · uptime ${d.uptime_s}s`, null, false);
+      } catch(err){
+        add('err', '✗ /health fallito: ' + err.message);
+      }
+      return true;
+    }
+    // /help e /admin: passano al SERVER (runtime li gestisce in
+    // admin_chat_commands.py). Il server ritorna lista completa che include
+    // sia i comandi client che quelli admin. Ritornare false fa proseguire
+    // il form submit a /agent/turn.
+    case 'help':
+    case '?':
+    case 'admin':
+      return false;
+    default:
+      add('err', `comando sconosciuto: /${cmd} — prova /help`);
+      return true;  // non passare al PLANNER: l'utente intendeva un comando
+  }
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if(busy) return;
+  if(sessionReadOnly){
+    add('err', '⚠ Sessione in sola lettura. Ricarica per ri-acquisirla, oppure usa il bottone takeover dell\'altro device.');
+    return;
+  }
+  const query = q.value.trim();
+  // Allow submit con solo foto (no caption): la query default e' "trova
+  // foto simili" implicitamente via reference_images. Richiediamo testo
+  // SOLO se non ci sono allegati.
+  if(!query && attachedFiles.length === 0) return;
+
+  // Slash command: per default gestito client-side. Se handleSlashCommand
+  // ritorna false (es. /help, /admin), prosegue al form submit normale
+  // cosi' il server runtime lo dispatcha (admin_chat_commands).
+  if(query.startsWith('/')){
+    const handledClientSide = await handleSlashCommand(query);
+    if(handledClientSide){
+      add('me', query);
+      pushCmdBuf(query);
+      cmdIdx = -1; cmdDraft = '';
+      q.value = '';
+      autoGrowQ();
+      q.focus();
+      return;
+    }
+    // Fall through: prosegui al server. Il submit handler standard
+    // fa add('me'), pushCmdBuf, clear q.value, etc.
+  }
+
+  busy = true;
+  btn.disabled = true;
+  // Echo me: testo + indicatore numero foto allegate
+  let displayMe = query || '(solo foto)';
+  if(attachedFiles.length){
+    displayMe += '  📎' + attachedFiles.length;
+  }
+  add('me', displayMe);
+  if(query) pushCmdBuf(query);
+  cmdIdx = -1; cmdDraft = '';
+  q.value = '';
+  autoGrowQ();
+  // Snapshot files per questo turno + clear UI
+  const filesForTurn = attachedFiles.slice();
+  attachedFiles = [];
+  refreshThumbBar();
+
+  const tStart = Date.now();
+  let pending = add('thinking', {{ msg("MSG_PHASE_THINKING")|tojson }});
+  // Cache stato breadcrumb del turno corrente.
+  let lastLivePath = null;
+  let lastPredicted = null;
+
+  // Handler unico per ogni evento SSE (formato {kind, data}), condiviso fra
+  // gli eventi dello stream resumable EventSource. Tutta la logica di
+  // rendering del turno (thinking/tool/final/error) vive qui.
+  let receivedFinal = false;
+  const processSSEEvent = (kind, data) => {
+    if(kind === 'thinking' || kind === 'progress' || kind === 'start'
+       || kind === 'update'){
+      if(lastLivePath) {
+        if(pending){ pending.remove(); }
+        pending = renderLivePath(lastLivePath, lastPredicted || []);
+      } else if(pending) {
+        // Fallback fase-aware (pre-pipeline, nessun tool ancora): se l'evento
+        // non porta message/label, mostra la fase corrente invece del generico
+        // 'lavoro'. thinking = ragionamento LLM; start/progress/update = planner.
+        // Stringhe via i18n DB (§11): MSG_PHASE_THINKING / MSG_PHASE_PLANNING.
+        const phaseMsg = {thinking: {{ msg("MSG_PHASE_THINKING")|tojson }},
+                          start: {{ msg("MSG_PHASE_PLANNING")|tojson }},
+                          progress: {{ msg("MSG_PHASE_PLANNING")|tojson }},
+                          update: {{ msg("MSG_PHASE_PLANNING")|tojson }}};
+        // Niente '…' testuale: l'attivita' la mostra il punto bronzo
+        // animato (CSS .msg.thinking::before).
+        const msg = data.message || data.label || phaseMsg[kind] || {{ msg("MSG_PHASE_PLANNING")|tojson }};
+        if(msg) pending.textContent = msg;
+      }
+    } else if(kind === 'tool_call'){
+      if(pending){ pending.remove(); pending = null; }
+      const livePath = Array.isArray(data.path) && data.path.length
+        ? data.path : [data.tool || '?'];
+      const predicted = Array.isArray(data.predicted_remaining)
+        ? data.predicted_remaining : [];
+      lastLivePath = livePath;
+      lastPredicted = predicted;
+      pending = renderLivePath(livePath, predicted);
+    } else if(kind === 'tool_result'){
+      // nop: il prossimo tool_call (se c'e') sovrascrive il placeholder.
+    } else if(kind === 'final'){
+      receivedFinal = true;
+      if(pending){ pending.remove(); pending = null; }
+      const ms = data.total_ms || (Date.now() - tStart);
+      const galleryInfo = (data.gallery_url && data.n_total_matches)
+        ? { gallery_url: data.gallery_url, n_total_matches: data.n_total_matches }
+        : null;
+      const bodyPlain = data.final_message || '(nessuna risposta)';
+      const bodyHtml = data.final_message_html || null;
+      let body = bodyPlain;
+      let bodyAsHtml = false;
+      if(bodyHtml){ body = bodyHtml; bodyAsHtml = true; }
+      if(bodyAsHtml){
+        body = body.replace(/\n*<i>elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?<\/i>\s*$/, '').trimEnd();
+      } else {
+        body = body.replace(/\n*_elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?_\s*$/, '').trimEnd();
+      }
+      const closeDate = (typeof data.ts_end === 'number')
+        ? new Date(data.ts_end * 1000) : new Date();
+      const closeHms = closeDate.toLocaleTimeString('it-IT', { hour12: false });
+      const metaLeft = (data.turn_id ? 'turn ' + data.turn_id.slice(0,8) + ' · ' : '') +
+                        (ms/1000).toFixed(1) + ' s';
+      const metaRight = closeHms;
+      const path = Array.isArray(data.path) ? data.path
+        : Array.isArray(data.steps_summary)
+          ? data.steps_summary.map(s => ({tool: s.tool, ok: s.ok}))
+          : [];
+      add('bot', body,
+          { path: path, left: metaLeft, right: metaRight, turn_id: data.turn_id },
+          true,
+          data.attachments || null, galleryInfo, bodyAsHtml);
+    } else if(kind === 'error'){
+      receivedFinal = true;
+      if(pending){ pending.remove(); pending = null; }
+      add('err', '✗ ' + (data.message || 'errore'));
+    }
+  };
+
+  // PATH UNICO (resumable): POST /agent/turn/submit -> EventSource.
+  // Vale per testo (JSON) e immagini (multipart): l'esecuzione del turn e'
+  // indipendente dalla connessione — refresh, tab hidden, network drop →
+  // EventSource auto-reconnect con Last-Event-ID. Nessun watchdog client-side.
+  {
+    try {
+      let submitOpts;
+      if(filesForTurn.length){
+        // Multipart: campo `query` + `image_<i>` per ogni file. Il browser
+        // imposta da solo il Content-Type con boundary multipart.
+        const fd = new FormData();
+        fd.append('query', query || 'trova foto simili a queste');
+        fd.append('conversation_id', conversationId);
+        filesForTurn.forEach((f, i) => {
+          fd.append('image_' + i, f, f.name || ('photo_' + i + '.jpg'));
+        });
+        submitOpts = { method: 'POST', body: fd };
+      } else {
+        submitOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, conversation_id: conversationId }),
+        };
+      }
+      const submitResp = await fetch('/agent/turn/submit', submitOpts);
+      if(!submitResp.ok){
+        const text = await submitResp.text();
+        if(pending){ pending.remove(); }
+        add('err', 'errore HTTP ' + submitResp.status + ': ' + text.slice(0, 200));
+        busy = false; btn.disabled = false;
+        return;
+      }
+      const submitBody = await submitResp.json();
+      const turnId = submitBody.turn_id;
+      const streamUrl = submitBody.stream_url;
+      // Apri EventSource. Auto-reconnect con Last-Event-ID se la
+      // connessione cade. Quando il server emette `final` o `error`,
+      // chiudiamo esplicitamente.
+      const es = new EventSource(streamUrl);
+      // NB: 'error' NON va in questa lista. EventSource consegna allo stesso
+      // listener 'error' SIA l'evento SSE `event: error` del server (con data)
+      // SIA gli errori NATIVI di connessione (ev.data undefined, frequenti su
+      // mobile durante turni lunghi). Trattarli insieme faceva apparire
+      // "✗ errore" su un semplice drop di connessione. Gestiti separati sotto.
+      const evtKinds = ['start', 'update', 'tool_call', 'tool_result',
+                         'final', 'thinking', 'progress'];
+      evtKinds.forEach(k => {
+        es.addEventListener(k, (ev) => {
+          let data = {};
+          try { data = JSON.parse(ev.data); } catch(_) {}
+          processSSEEvent(k, data);
+          if(k === 'final'){
+            es.close();
+            busy = false; btn.disabled = false; q.focus();
+          }
+        });
+      });
+      // Errore SSE REALE dal server: ha `data` JSON. L'errore nativo di
+      // connessione (data assente) NON marca ✗ — lo gestisce es.onerror
+      // (recover sotto), così un drop su mobile non distrugge il turno.
+      es.addEventListener('error', (ev) => {
+        if(!ev || ev.data == null) return;  // errore nativo → a es.onerror
+        let data = {};
+        try { data = JSON.parse(ev.data); } catch(_) { return; }
+        processSSEEvent('error', data);
+        es.close();
+        busy = false; btn.disabled = false; q.focus();
+      });
+      // Cede il placeholder ⏳ al poller infinito `pollInFlight` (ogni 5s,
+      // senza scadenza): il turn completa lato server comunque, e il poller
+      // sostituira' il ⏳ con l'esito reale per quanto lungo sia (ricerca web).
+      // NON rimuove il pending (l'esito non deve sparire) e NON marca ✗.
+      const handoffInFlight = () => {
+        busy = false; btn.disabled = false;
+        if(pending){
+          pending.dataset.turnId = turnId;
+          pending.dataset.inFlight = '1';
+          pending = null;
+        }
+        pollInFlight();
+      };
+      // onerror: EventSource gestisce il reconnect automatico. Se la
+      // connessione e' definitivamente chiusa (turn complete + log
+      // gc-ed dopo TTL), il browser smette di riconnettersi.
+      es.onerror = () => {
+        if(es.readyState === EventSource.CLOSED && !receivedFinal){
+          // Connessione SSE chiusa senza `final` — caso tipico: la pagina ha
+          // perso il focus / e' andata in background mentre il turn girava. Il
+          // turn e' RESUMABLE e completa lato server: NON marcare errore.
+          // Recupera l'esito reale via GET /agent/turns/{id}.
+          (async function recover(attempt){
+            try {
+              const rr = await fetch('/agent/turns/' + turnId);
+              if(!rr.ok){
+                // 404 transitorio (log non ancora pronto o gia' gc-ed): qualche
+                // retry, poi affida al poller in-flight (mai ✗, mai vuoto).
+                if(attempt < 8){ setTimeout(() => recover(attempt + 1), 2000); return; }
+                handoffInFlight(); return;
+              }
+              const dd = await rr.json();
+              const evs = dd.events || [];
+              const finalEv = evs.find(e => e.event_type === 'final');
+              const errEv = evs.find(e => e.event_type === 'error');
+              const running = (dd.state === 'running');
+              if(finalEv){ processSSEEvent('final', finalEv.payload); busy = false; btn.disabled = false; return; }
+              if(dd.persistent && dd.final_message != null){ processSSEEvent('final', dd); busy = false; btn.disabled = false; return; }
+              // ✗ SOLO se il turn e' davvero concluso: mai durante l'esecuzione.
+              if(errEv && !running){ processSSEEvent('error', errEv.payload); busy = false; btn.disabled = false; return; }
+              // Ancora in corso (o stato indeterminato): niente ✗, niente
+              // rimozione del pending — il poller infinito porta a casa l'esito.
+              handoffInFlight();
+            } catch(_){
+              handoffInFlight();
+            }
+          })(0);
+        }
+      };
+      return;
+    } catch(err){
+      if(err && err.name === 'AbortError'){
+        if(pending){ pending.remove(); }
+        busy = false; btn.disabled = false;
+        return;
+      }
+      if(pending){ pending.remove(); }
+      add('err', 'errore submit turn: ' + err.message);
+      busy = false; btn.disabled = false;
+      return;
+    }
+  }
+});
+
+q.focus();
+
+// Boot session prima di fetchare la storia: cosi' se l'utente declina il
+// takeover il banner read-only e' gia' visibile prima della history.
+// In coda allo script per evitare TDZ su deviceToken/sessionBanner.
+(async () => {
+  await bootSession();
+  // Anche in read-only mostriamo la history (e' lettura). Solo l'input
+  // resta disabilitato fino a takeover esplicito.
+  fetchServerHistory();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,153 @@
+role: synt_code
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_code
+  header: "Stage 5 CODE of synt-multistage"
+  preamble: |
+    You are phase 5 (CODE) of synt-multistage.
+    Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
+
+context:
+  skeleton_manifest:
+    name: "{{ name }}"
+    args_required: "{{ args_required }}"
+    args_properties: "{{ args_properties }}"
+    capabilities: "{{ capabilities }}"
+    revertible: "{{ revertible }}"
+    reverse_pattern: "{{ reverse_pattern }}"
+    description: "{{ description }}"
+  user_request: "{{ user_request }}"
+
+rules:
+  - name: language_and_stdlib
+    body: |
+      MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.
+      MUST NOT: import pip libraries other than PIL/Pillow and openpyxl.
+      OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
+      ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
+
+  - name: runtime_modules_api
+    body: |
+      REAL RUNTIME MODULE APIs (complete signature — DO NOT invent missing functions, DO NOT change signatures):
+
+        `messages` (Python module):
+          `messages.get(code: str) -> str` — A single argument (the code).
+          Returns the template; if the code does not exist, returns a string starting with "[unknown msg".
+          MUST: `import messages` then `messages.get(code)`.
+          MUST NOT: `from messages import messages` (auto-reference).
+          MUST NOT: wrap runtime module imports in try/except that silences ImportError.
+
+        `mail_client`:
+          open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL
+          open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL
+          parse_envelope(raw_msg: bytes) -> dict
+          list_known_accounts() -> list[str]
+
+        `platform_policy`:
+          is_protected_path(path: str) -> bool
+          is_system_file(name: str) -> bool
+
+        `nominatim_client`:
+          reverse_geocode(lat: float, lon: float) -> dict
+
+        `location_store`:
+          get_location() -> dict | None
+          set_location(loc: dict) -> None
+
+  - name: from_step_contract
+    body: |
+      RUNTIME CONTRACT FOR `from_step`:
+      If in stage 2 manifest you have `from_step: integer required`, the runtime
+      automatically expands the list in the scratchpad and injects it into the
+      field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
+      YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT look in
+      `args["messages"]`, `args["paths"]`, `args["mails"]`.
+
+  - name: entries_fields
+    body: |
+      DICT FIELDS OF ENTRIES (expected input at invoke when arriving from from_step):
+      - read_messages: `e["uid"]`, `e["account"]`, `e["folder"]`, `e["from"]`,
+        `e["subject"]`, `e["date"]`, `e["message_id"]`, `e["body_preview"]`,
+        `e["category_hints"]`, `e["has_attachment"]`.
+      - find_files / list_dirs: `e["path"]`, `e["name"]`, `e["kind"]`,
+        `e["mime"]`, `e["size"]`, `e["mtime_epoch"]`, `e["type"]`.
+
+  - name: destructive_integrity
+    body: |
+      DATA INTEGRITY PRINCIPLE (for destructive verbs: move/delete/write/extract):
+
+      MUST: for move/transfer execute COPY-then-CHECK-then-DELETE.
+      MUST NOT: execute DELETE/unlink/EXPUNGE/drop without first having
+        confirmed the copy/append at the destination.
+      OK: `if copy_status == "OK": delete_source()`.
+      ERROR: `copy_source_to_dst(); delete_source()` without a check.
+
+      MUST: include in `results[]` ALL fields necessary for the `reverse_pattern`.
+      OK: `results.append({"src": s, "dst": d, "id": stable_id})`.
+      ERROR: `results.append({"ok": True})` without the info for the reverse.
+
+      MUST: deduce object identity from ENTRIES, not from global args.
+      OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
+      ERROR: `account = args.get("account", "metnos_system")`.
+
+  - name: best_effort_loop
+    body: |
+      BEST-EFFORT PRINCIPLE (for all vector verbs):
+
+      MUST: handle each entry independently. A failed entry adds a dict to `failed[]`.
+      MUST NOT: raise an exception that terminates the loop on the entire batch.
+      OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
+      ERROR: `for e in entries: process(e)  # without try/except`. THIS IS AN ERROR.
+
+  - name: vectorial_output
+    body: |
+      - Vectorized by default: every executor accepts lists, even of a single element or empty.
+      - Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
+      - Output standard form {ok, ok_count, fail_count, results|entries, failed}.
+
+  - name: internal_loop
+    body: |
+      INTERNAL EXECUTOR LOOP. When the operation operates on a variable volume
+      (mail in a time window, files in a recursive directory, paginated fetch),
+      implement the iteration loop INSIDE the invoke() function. DO NOT leave
+      the planner with the task of iterating. Add an explicit cap (max_total,
+      max_pages, max_bytes) to avoid output blow-up.
+
+  - name: safety_and_errors
+    body: |
+      - If critical (modifying fs/network/external state): use
+        `platform_policy.is_protected_path(path)` for hard block +
+        `is_system_file(name)` for safety net (override via `allow_system=true`).
+      - Uniform errors: use `messages.get('ERR_EXT_SVC_LIMIT')` etc. instead of inline strings.
+      - If revertible=true: the reverse_pattern is applied automatically by the runtime;
+        it is enough that the `results` exposed respect the expected schema of the pattern.
+
+  - name: io_contract
+    body: |
+      I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
+      - args arrives via STDIN as A SINGLE JSON object. DO NOT use sys.argv.
+      - output goes to STDOUT as A SINGLE JSON object.
+      - Fixed pattern of `main()`, copy literally:
+
+          def main():
+              import sys, json
+              args = json.loads(sys.stdin.read())
+              out = invoke(args)
+              print(json.dumps(out, ensure_ascii=False))
+
+          if __name__ == "__main__":
+              main()
+
+footer:
+  instruction: |
+    Respond ONLY with the complete Python code of the file `{{ name }}.py`,
+    including shebang, docstring, imports, def invoke(args), def main() with the fixed pattern
+    above, and if __name__. NO markdown fences, NO external prose:
+    ONLY executable code.

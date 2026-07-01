@@ -1,0 +1,100 @@
+# Manifest dell'executor `delete_persons` — Metnos v1.1
+# Naming compositivo: azione_oggetto. PR2 persons registry.
+
+manifest_format = "1.0"
+
+name        = "delete_persons"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["dimentica", "rimuovi persona", "cancella persona",
+                "cancella enrollment", "enrollment", "enrollement",
+                "cancella tutte le persone", "purge persone",
+                "remove person", "forget", "delete person", "unenroll",
+                "wipe persons", "delete all persons"]
+# §2.3 reversibile via module.reverse(): il forward esporta riga+esempi+
+# biometria in un blob PRIMA di cancellare; reverse() li reinserisce verbatim
+# (restore_person). Top-level (NON dentro [[capabilities]], altrimenti il
+# loader non lo legge). Il loader usa `revertible` (con la v).
+revertible  = true
+
+[description]
+it = "SCOPO: cancella persone/enrollment dal registro biometrico (purge o per nome/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
+en = "SCOPO: deletes persons/enrollment from the biometric registry (purge or by name/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credentials/tokens (-> delete_credentials); photos on filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
+
+[code]
+files  = ["delete_persons.py"]
+digest = "sha256:47db1024d7ffec778229d6daac1a44f1dc8a41174c47326092e90d26155ff8da"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.names]
+type = "array"
+items = { type = "string" }
+
+[args.properties.names.description]
+it = "Lista di nomi da cancellare (plurale canonico §2.1). Per ciascuno: match exact-slug-first, poi token-anywhere. Ambigui → dialog `choice_with_preview` per slug ambiguo."
+en = "List of names to delete (canonical plural §2.1). For each: exact-slug-first match, then token-anywhere. Ambiguous → `choice_with_preview` dialog per ambiguous name."
+
+[args.properties.name]
+type = "string"
+
+[args.properties.name.description]
+it = "Forma singolare (alias di `names=[name]`). Match exact-slug-first, poi token-anywhere."
+en = "Singular form (alias for `names=[name]`). Exact-slug-first match, then token-anywhere."
+
+[args.properties.entries]
+type = "array"
+items = { type = "object" }
+
+[args.properties.entries.description]
+it = "Lista di entries (es. da `from_step: N` dopo `get_persons`). Estrae il campo `name` (o `slug`) di ciascuna."
+en = "List of entries (e.g. from `from_step: N` after `get_persons`). Extracts the `name` (or `slug`) field of each."
+
+[args.properties.all]
+type = "boolean"
+
+[args.properties.all.description]
+it = "Se `true`, cancella TUTTE le persone enrolled (purge totale). Mutuamente esclusivo con `names`/`entries`/`name`."
+en = "If `true`, deletes ALL enrolled persons (full purge). Mutually exclusive with `names`/`entries`/`name`."
+
+[args.properties.chosen_slug]
+type = "string"
+
+[args.properties.chosen_slug.description]
+it = "Slug esatto da cancellare (post-disambig single). Per batch usa `chosen_slugs` o le var multi-step `chosen_slug__<nome>`."
+en = "Exact slug to delete (post-disambig single). For batch use `chosen_slugs` or multi-step vars `chosen_slug__<name>`."
+
+[args.properties.chosen_slugs]
+type = "array"
+items = { type = "string" }
+
+[args.properties.chosen_slugs.description]
+it = "Lista di slug esatti da cancellare (post-disambig batch)."
+en = "List of exact slugs to delete (post-disambig batch)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: 'needs_inputs',
+  needs_inputs?: {title, dialog, fmt, on_complete},
+  results: Array<{slug, name, removed_examples}>,
+  n_removed: int,
+  removed_examples_total: int,
+  unknown_names?: Array<str>,
+  ambiguous?: bool,
+  error?: str,
+  final_message_hint?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:write"
+hint = ["~/.local/share/metnos/persons.sqlite"]
+
+[[tests]]
+name   = "validates_empty_name"
+input  = { name = "" }
+expect = { ok = false, error_contains = "non-empty" }

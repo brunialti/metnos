@@ -1,0 +1,117 @@
+# Manifest dell'executor `compute_files_loc` — Metnos v1.1
+# Naming compositivo: azione=compute, oggetto=files, qualifier=_loc (lines-of-code).
+# Sostituisce il synth read_files_lines (4/5/2026, buggy: contava binari come testo,
+# nessun filtro estensione, output ~7x il valore reale).
+
+manifest_format = "1.0"
+
+name        = "compute_files_loc"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = ["compute", "calcola", "loc", "linee", "righe", "lines", "code", "codice", "count", "conta", "statistiche", "stats", "lines-of-code", "sloc"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: calcola statistiche LOC (linee, blank, commenti) su codice sorgente. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: entries=[{total_files,total_lines,total_blank,total_comment,by_ext,by_path}]."
+en = "SCOPO: compute LOC stats (lines, blank, comments) on source code. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (-> change_files_format); compress into archives (-> compress_files). OUT: entries=[{total_files,total_lines,total_blank,total_comment,by_ext,by_path}]."
+
+[code]
+files  = ["compute_files_loc.py"]
+digest = "sha256:b9f7974d22bb6ec0bd67e589ad70c3d05ee2c8bc3b04c7b99d1aecd9dc75896b"
+
+[args]
+type     = "object"
+required = ["paths"]
+
+[args.properties.paths]
+type        = "array"
+
+[args.properties.paths.description]
+it = "Lista di path: una directory (esplorata ricorsivamente) o un singolo file. Es. ['/opt/metnos'] oppure ['/home/x/main.py', '/home/x/utils.py']. Caso degenere = lista a 1 elemento."
+en = "List of paths: a directory (explored recursively) or a single file. E.g. ['/opt/metnos'] or ['/home/x/main.py', '/home/x/utils.py']. Degenerate case = 1-element list."
+
+[args.properties.include_ext]
+type        = "array"
+
+[args.properties.include_ext.description]
+it = "Lista di estensioni (con il punto, lowercase) da includere. File con estensione non listata vengono skippati silenziosamente. Default: ['.py', '.md', '.html', '.toml', '.sh', '.js', '.css', '.yaml', '.yml', '.rs']."
+en = "List of extensions (with the dot, lowercase) to include. Files with extensions not listed are silently skipped. Default: ['.py', '.md', '.html', '.toml', '.sh', '.js', '.css', '.yaml', '.yml', '.rs']."
+
+[args.properties.exclude_path_substrings]
+type        = "array"
+
+[args.properties.exclude_path_substrings.description]
+it = "Lista di substring: ogni file il cui path contiene una di queste viene skippato. Default: ['__pycache__', '.venv', '.git', 'node_modules', 'target', 'dist', 'build', '.cache']."
+en = "List of substrings: every file whose path contains one of these is skipped. Default: ['__pycache__', '.venv', '.git', 'node_modules', 'target', 'dist', 'build', '.cache']."
+
+[args.properties.count_blank]
+type        = "boolean"
+default     = false
+
+[args.properties.count_blank.description]
+it = "Se true, le righe vuote (dopo strip) sono incluse in `total_lines` ma sempre tracciate separatamente in `total_blank`. Se false (default), le righe vuote sono escluse da `total_lines`."
+en = "If true, empty lines (after strip) are included in `total_lines` but always tracked separately in `total_blank`. If false (default), empty lines are excluded from `total_lines`."
+
+[args.properties.count_comments]
+type        = "boolean"
+default     = true
+
+[args.properties.count_comments.description]
+it = "Se true (default), le righe di commento (heuristica per estensione) sono incluse in `total_lines` ma sempre tracciate in `total_comment`. Se false, le righe di commento sono escluse da `total_lines`. Ignorato per .html/.md (no comment detection)."
+en = "If true (default), comment lines (heuristic by extension) are included in `total_lines` but always tracked in `total_comment`. If false, comment lines are excluded from `total_lines`. Ignored for .html/.md (no comment detection)."
+
+[args.properties.max_files]
+type        = "integer"
+minimum     = 1
+default     = 50000
+
+[args.properties.max_files.description]
+it = "Tetto massimo di file processati. Default 50000. Quando raggiunto, l'output ha truncated=true + cap_field='max_files'."
+en = "Maximum number of processed files. Default 50000. When reached, the output has truncated=true + cap_field='max_files'."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["**/*"]
+
+[[tests]]
+name     = "mix_py_md_html"
+setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\nb\\nc\\n' > /tmp/metnos_loc_test/main.py && printf '# title\\n\\npar\\n' > /tmp/metnos_loc_test/README.md && printf '<html></html>\\n' > /tmp/metnos_loc_test/page.html"
+input    = { paths = ["/tmp/metnos_loc_test"] }
+expect   = { ok = true, field_eq = { total_files = 3 } }
+teardown = "rm -rf /tmp/metnos_loc_test"
+
+[[tests]]
+name     = "skip_pycache"
+setup    = "mkdir -p /tmp/metnos_loc_test/__pycache__ && printf 'x\\ny\\n' > /tmp/metnos_loc_test/__pycache__/cached.py && printf 'a\\nb\\n' > /tmp/metnos_loc_test/main.py"
+input    = { paths = ["/tmp/metnos_loc_test"] }
+expect   = { ok = true, field_eq = { total_files = 1 } }
+teardown = "rm -rf /tmp/metnos_loc_test"
+
+[[tests]]
+name     = "skip_binary"
+setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\nb\\n' > /tmp/metnos_loc_test/main.py && python3 -c \"open('/tmp/metnos_loc_test/data.py','wb').write(b'header\\x00binary\\nrest\\n')\""
+input    = { paths = ["/tmp/metnos_loc_test"] }
+expect   = { ok = true, field_eq = { total_files = 1, fail_count = 1 } }
+teardown = "rm -rf /tmp/metnos_loc_test"
+
+[[tests]]
+name     = "count_blank_toggle"
+setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\n\\nb\\n\\n' > /tmp/metnos_loc_test/main.py"
+input    = { paths = ["/tmp/metnos_loc_test"], count_blank = true }
+expect   = { ok = true, field_eq = { total_lines = 4, total_blank = 2 } }
+teardown = "rm -rf /tmp/metnos_loc_test"
+
+[[tests]]
+name     = "count_comments_off"
+setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\n# comment\\nb\\n' > /tmp/metnos_loc_test/main.py"
+input    = { paths = ["/tmp/metnos_loc_test"], count_comments = false }
+expect   = { ok = true, field_eq = { total_lines = 2, total_comment = 1 } }
+teardown = "rm -rf /tmp/metnos_loc_test"
+
+[[tests]]
+name     = "max_files_truncated"
+setup    = "mkdir -p /tmp/metnos_loc_test && for i in 1 2 3 4 5; do printf 'a\\nb\\n' > /tmp/metnos_loc_test/f$i.py; done"
+input    = { paths = ["/tmp/metnos_loc_test"], max_files = 2 }
+expect   = { ok = true, field_eq = { truncated = true, total_files = 2 } }
+teardown = "rm -rf /tmp/metnos_loc_test"

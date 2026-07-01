@@ -1,0 +1,79 @@
+# Metnos — repertorio dei prompt addendum provider-specifici.
+#
+# Stile obbligatorio degli hint:
+#   - BREVI: una o due righe, non un paragrafo.
+#   - PRESCRITTIVI: imperativo ("Vincoli: X. Y. Z."), niente esempi long-form,
+#     niente rationale ("Why").
+#   - Il "Why" e i bug osservati vivono nelle memorie di progetto, NON qui.
+#
+# Lookup: l'addendum scelto e' il primo che soddisfa
+#   provider == h.provider
+#   fnmatch(model, h.model_pattern)
+#   use_case == h.use_case
+# Mettere prima i pattern piu' specifici.
+#
+# File caricati in ordine (l'ultimo vince per match identico):
+#   1. /opt/metnos/runtime/prompts.toml          (default bundled, questo file)
+#   2. ~/.config/metnos/prompts.toml             (override utente)
+
+# --- Anthropic Claude 4.x: piu' letterale; tende a regex con lookbehind/lookahead.
+[[hint]]
+provider      = "anthropic"
+model_pattern = "claude-*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
+
+# --- Qwen 3.x via llama.cpp (tier locale fast/middle/wise, DEFAULT_TIERS).
+#     Qwen-family: tende a lasciare python_code vuoto / output troncato.
+#     Backend llama.cpp: over-escape di raw string e triple-quote docstring.
+#     fnmatch e' case-sensitive su POSIX: [Qq]wen* matcha sia 'Qwen3.6-...gguf'
+#     (DEFAULT_TIERS) sia 'qwen...'.
+[[hint]]
+provider      = "llamacpp"
+model_pattern = "[Qq]wen*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: compila python_code per intero (def invoke + def main), mai vuoto. raw string r'...' con UN backslash. Niente triple-quote docstring."
+
+# --- Qualunque modello locale via llama.cpp (fallback: copre il nome
+#     placeholder 'local' e ogni GGUF servito dal llama-server condiviso).
+#     Stesso backend, stessi vincoli di code-gen.
+[[hint]]
+provider      = "llamacpp"
+model_pattern = "*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: compila python_code per intero (def invoke + def main), mai vuoto. raw string r'...' con UN backslash. Niente triple-quote docstring."
+
+# --- Qwen 3 via Ollama: tendenza a omettere il campo python_code.
+[[hint]]
+provider      = "ollama"
+model_pattern = "qwen3:*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: compila python_code per intero (def invoke + def main). Mai vuoto."
+
+# --- Qwen 2.5 via Ollama
+[[hint]]
+provider      = "ollama"
+model_pattern = "qwen2.5:*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: compila python_code per intero. Solo stdlib."
+
+# --- OpenAI GPT-5: piu' letterale, predilige istruzioni brevi (cookbook GPT-5).
+[[hint]]
+provider      = "openai"
+model_pattern = "gpt-5*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: content e' stringa (non lista). Codice fedele alla spec. Solo stdlib."
+
+# --- OpenAI GPT-4.1: tendenza a mettere lista in content (osservato 26/4).
+[[hint]]
+provider      = "openai"
+model_pattern = "gpt-4.1*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: content e' stringa (non lista). Codice fedele alla spec. Solo stdlib."
+
+# --- OpenAI GPT generico (fallback)
+[[hint]]
+provider      = "openai"
+model_pattern = "gpt-*"
+use_case      = "code_gen"
+text          = "\n\nVincoli: content e' stringa. Codice fedele alla spec. Solo stdlib."

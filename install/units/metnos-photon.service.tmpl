@@ -1,0 +1,14 @@
+[Unit]
+Description=Metnos Photon offline geocoder (local, self-hosted)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@JAVA@ -Xmx@PHOTON_XMX@ -jar @PHOTON_JAR@ serve -data-dir @PHOTON_DATA@ -listen-ip 127.0.0.1 -listen-port @PHOTON_PORT@ -j 4
+WorkingDirectory=@PHOTON_ROOT@
+Restart=on-failure
+RestartSec=10
+Environment=PHOTON_DATA_DIR=@PHOTON_DATA@
+
+[Install]
+WantedBy=default.target

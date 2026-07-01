@@ -1,0 +1,102 @@
+# Manifest dell'executor `reply_messages` — Metnos v1.1 (24/5/2026).
+# Naming compositivo §2.2: verbo_oggetto_plurale. Vettoriale.
+# Verbo `reply` non e' standalone nel vocab ma usato come variant di
+# send con header In-Reply-To/References + Subject auto 'Re: ...'.
+
+manifest_format = "1.0"
+
+name        = "reply_messages"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity = [
+    "reply", "rispondi", "risposta", "rispondere",
+    "messages", "messaggi", "mail", "email",
+    "in-reply-to", "thread", "discussione",
+]
+
+revertible = false
+lifecycle  = "active"
+
+[description]
+it = "SCOPO: rispondi in-thread a messaggi Gmail. PATTERN: reply_messages(message_ids=[\"id1\"], body=\"testo\"). NON: inviare nuovo thread (-> send_messages); modificare labels (-> set_messages). OUT: entries=[...]."
+en = "SCOPO: reply in-thread to Gmail messages. PATTERN: reply_messages(message_ids=[\"id1\"], body=\"text\"). NON: send new thread (-> send_messages); modify labels (-> set_messages). OUT: entries=[...]."
+
+[code]
+files  = ["reply_messages.py"]
+digest = "sha256:59c817a7406dca995d13d135ca8aaca2ed77877616f61807831c5bf7a04fa5d6"
+
+[args]
+type     = "object"
+required = ["body"]
+
+[args.properties.message_ids]
+type  = "array"
+items = { type = "string" }
+
+[args.properties.message_ids.description]
+it = "Lista di id messaggi a cui rispondere (Gmail). MATCH ESATTO."
+en = "List of message IDs to reply to (Gmail). EXACT MATCH."
+
+[args.properties.message_id]
+type = "string"
+
+[args.properties.message_id.description]
+it = "Singolo id messaggio (alternativo a message_ids per N=1)."
+en = "Single message ID (alternative to message_ids for N=1)."
+
+[args.properties.body]
+type = "string"
+
+[args.properties.body.description]
+it = "Testo plain della risposta. Stesso body per tutti i message_ids in input. Esempio: 'Grazie, confermo'."
+en = "Plain reply text. Same body for all message_ids in input. Example: 'Thanks, confirmed'."
+
+[args.properties.from_header]
+type    = "string"
+default = ""
+
+[args.properties.from_header.description]
+it = "Header From custom (es. '\"Nome\" <user@dominio>'). Opzionale; default: account autenticato."
+en = "Custom From header (e.g. '\"Name\" <user@domain>'). Optional; default: authenticated account."
+
+[args.properties.via_channel]
+type    = "string"
+enum    = ["email", "mail"]
+default = "email"
+
+[args.properties.via_channel.description]
+it = "Canale: 'email' (default). 'mail' alias storico."
+en = "Channel: 'email' (default). 'mail' historical alias."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+
+[args.properties.client.description]
+it = "Backend: solo 'google_workspace' (Gmail API). SMTP reply manuale non supportato in MVP."
+en = "Backend: only 'google_workspace' (Gmail API). Manual SMTP reply not supported in MVP."
+
+[[capabilities]]
+name = "mail:send"
+hint = ["gmail:send"]
+
+[[tests]]
+name   = "args_invalidi_no_ids"
+input  = { body = "ok" }
+expect = { ok = false }
+
+[[tests]]
+name   = "args_invalidi_no_body"
+input  = { message_ids = ["x"] }
+expect = { ok = false }
+
+[[tests]]
+name   = "args_invalidi_body_empty"
+input  = { message_ids = ["x"], body = "" }
+expect = { ok = false }
+
+[[tests]]
+name   = "args_invalidi_client_imap"
+input  = { message_ids = ["x"], body = "ok", client = "metnos" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

@@ -1,0 +1,109 @@
+# Manifest dell'executor `get_approval` — Metnos v1.1
+# Naming compositivo: azione_oggetto. Verbo `get` (canonico) + oggetto
+# `approval` (gate di consenso umano). Builtin cross-skill, general-purpose.
+
+manifest_format = "1.0"
+
+name        = "get_approval"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "approva", "approvazione", "conferma", "confirm", "autorizza", "consenso",
+    "via libera", "ok o no", "approve", "gate", "chiedi conferma", "disapprova",
+]
+
+[description]
+it = "SCOPO: consenso umano (Approva/Disapprova), poi esegue l'executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: valori liberi -> get_inputs; azione senza consenso -> esegui executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}."
+en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: get_approval(prompt=\"...\", on_approve={tool=\"write_entries\", args={...}}). NON: free values -> get_inputs; action without consent -> call the executor. OUT: {ok, decision='input_required', dialog_id, final_message_hint}."
+
+[code]
+files  = ["get_approval.py"]
+digest = "sha256:7f7688d046030d04289ef4a17b25e9dd3536923a12f5169c2a3609404762c787"
+
+[args]
+type     = "object"
+required = ["prompt", "on_approve"]
+
+[args.properties.prompt]
+type = "string"
+
+[args.properties.prompt.description]
+it = "Domanda di consenso mostrata all'utente. 1 frase, max 200 char. Es. \"Approvi la pubblicazione della risposta alla issue #47?\"."
+en = "Consent question shown to the user. 1 sentence, max 200 chars. E.g. \"Do you approve publishing the reply to issue #47?\"."
+
+[args.properties.on_approve]
+type = "object"
+
+[args.properties.on_approve.description]
+it = "Executor da eseguire se l'utente APPROVA. Dict {tool: nome executor, args: dict argomenti}. Es. {tool=\"write_entries\", args={store=\"github_issue_qa\", entries=[{repo=\"o/r\", issue_number=47, status=\"approved\"}]}}."
+en = "Executor to run if the user APPROVES. Dict {tool: executor name, args: args dict}. E.g. {tool=\"write_entries\", args={store=\"github_issue_qa\", entries=[{repo=\"o/r\", issue_number=47, status=\"approved\"}]}}."
+
+[args.properties.on_approve.properties.tool]
+type        = "string"
+description = "Nome dell'executor da eseguire all'approvazione (es. write_entries)."
+
+[args.properties.on_approve.properties.args]
+type        = "object"
+description = "Argomenti passati all'executor (stessa forma di una chiamata diretta)."
+
+[args.properties.on_reject]
+type = "object"
+
+[args.properties.on_reject.description]
+it = "Opzionale. Executor da eseguire se l'utente RIFIUTA. Stessa forma di on_approve {tool, args}. Omesso = nessuna azione al rifiuto."
+en = "Optional. Executor to run if the user REJECTS. Same shape as on_approve {tool, args}. Omitted = no action on reject."
+
+[args.properties.on_reject.properties.tool]
+type        = "string"
+description = "Nome dell'executor da eseguire al rifiuto."
+
+[args.properties.on_reject.properties.args]
+type        = "object"
+description = "Argomenti passati all'executor al rifiuto."
+
+[args.properties.options]
+type = "array"
+
+[args.properties.options.description]
+it = "Opzionale. Due etichette bottoni [approva, disapprova]. Default ['Approva','Disapprova'] (i18n). Il bottone Annulla e' aggiunto automaticamente dal canale."
+en = "Optional. Two button labels [approve, reject]. Default ['Approve','Reject'] (i18n). The Cancel button is added automatically by the channel."
+
+[args.properties.title]
+type = "string"
+
+[args.properties.title.description]
+it = "Opzionale. Titolo del dialogo, max 80 char. Default 'Conferma'."
+en = "Optional. Dialogue title, max 80 chars. Default 'Confirm'."
+
+[args.properties.timeout_s]
+type        = "integer"
+minimum     = 1
+maximum     = 3600
+
+[args.properties.timeout_s.description]
+it = "Opzionale. TTL del dialogo in secondi. Default per forma. Oltre, lo stato pendente viene scartato dal cleanup."
+en = "Optional. Dialogue TTL in seconds. Default by shape. Beyond this, the pending state is discarded by cleanup."
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name   = "manca_prompt_fallisce"
+input  = { on_approve = { tool = "write_entries", args = {} } }
+expect = { ok = false, error_contains = "prompt" }
+
+[[tests]]
+name   = "manca_on_approve_fallisce"
+input  = { prompt = "Approvi?" }
+expect = { ok = false, error_contains = "on_approve" }
+
+[[tests]]
+name   = "on_approve_senza_tool_fallisce"
+input  = { prompt = "Approvi?", on_approve = { args = {} } }
+expect = { ok = false, error_contains = "tool" }
+
+[[tests]]
+name   = "happy_path_approval"
+input  = { prompt = "Approvi la risposta alla issue #47?", on_approve = { tool = "write_entries", args = { store = "github_issue_qa", entries = [{ repo = "o/r", issue_number = 47, status = "approved" }] } } }
+expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }

@@ -1,0 +1,71 @@
+{# ---
+role: synt_code_addendum_create
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: cfc620d5
+--- #}
+REGOLE VERBO `create` (oltre al generic):
+
+DEFINIZIONE: `create` = produce una nuova risorsa (dir/file/folder IMAP).
+Idempotente. Reversibile via `delete_created_dirs` / `delete_created_paths`.
+
+PSEUDOCODICE UNIVERSALE:
+
+  def invoke(args):
+      entries, results, failed = args.get("entries", []), [], []
+      for i, e in enumerate(entries):
+          try:
+              if not allowed_to_create(e): raise PermissionError(...)
+              if dst_exists(e):
+                  if type_mismatch(e):                        # esiste ma di tipo sbagliato
+                      raise TypeError("path exists as different type")
+                  results.append({**identity(e), "created": False})  # idempotente OK
+                  continue
+              ancestors_created = create_with_parents(e)      # tutti i nuovi
+              for a in ancestors_created:
+                  results.append({**identity(a), "created": True})
+              results.append({**identity(e), "created": True})
+          except Exception as ex:
+              failed.append({"index": i, "error": str(ex)})
+
+INVARIANTI:
+DEVI: idempotente. `exist_ok=True` (FS) o ignora "already exists" (IMAP).
+  Esiste gia' (stesso tipo) → `created:False`, `ok:True`. NO failure.
+DEVI: registra in `results` SOLO le risorse REALMENTE create con
+  `created:True`. Le pre-esistenti riportate con `created:False`. Il
+  pattern di undo elimina solo quelle con `created:True`.
+DEVI: per dir nidificate (mkdir parents=True), enumera TUTTI gli ancestor
+  effettivamente creati (bottom-up per delete_created_dirs).
+DEVI: collisione di tipo (path esiste come file ma vuoi dir) → entry
+  fallisce con messaggio chiaro.
+DEVI: rifiuta `is_protected_path()` UNLESS `allow_system=True`.
+NON DEVI: dichiarare `created:True` per risorse pre-esistenti (undo
+  eliminerebbe dati dell'utente).
+NON DEVI: scrivere `def reverse(...)`.
+
+DOMINIO FILESYSTEM (create_dirs):
+- entry: `{"path": "/.../newdir"}`
+- create_with_parents: enumera ancestor non esistenti dal piu' alto al piu'
+  basso, poi `Path(p).mkdir(parents=True, exist_ok=True)`.
+- type check: se `Path(p).exists()` ma `Path(p).is_file()` → fallisce.
+
+DOMINIO IMAP (create_folder):
+- entry: `{"account": ..., "folder_name": ...}`
+- create: `M.create(_q(folder_name))`; ignora "already exists" (server-specific
+  match su error message).
+- DEVI: subito dopo create, `M.subscribe(_q(folder_name))` per render visibile
+  in webmail (best-effort: try/except).
+- AVVERTENZE: definisci helper `_q`:
+
+      def _q(name):
+          if " " in name or any(ord(c) > 127 for c in name):
+              return f'"{name}"'
+          return name
+
+- ridiscovery via `M.list()` per confermare creazione.
+
+DOMINIO file (touch): `Path(p).touch(exist_ok=True)`.

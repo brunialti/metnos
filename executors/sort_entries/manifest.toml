@@ -1,0 +1,76 @@
+# Manifest dell'executor `sort_entries` — Metnos v1.1
+# Pure compute: ordina una lista di entries per un campo, opzionale top-K.
+
+manifest_format = "1.0"
+
+name        = "sort_entries"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity        = ["sort", "ordina", "ordinare", "sort_by", "rank", "classifica", "top", "primi", "first", "ultimi", "last", "biggest", "piu", "grandi", "popolose", "recenti", "vecchi"]
+revertible      = false
+lifecycle       = "active"
+
+[description]
+it = "SCOPO: ordina entries per chiave (vettoriale). PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: calcolare aggregati (-> compute_entries); filtrare (-> filter_entries). OUT: entries=[...], count, total_input, sorted_by, desc, truncated, cap_field."
+en = "SCOPO: sort entries by key (vectorial). PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: compute aggregates (-> compute_entries); filter (-> filter_entries). OUT: entries=[...], count, total_input, sorted_by, desc, truncated, cap_field."
+
+[code]
+files  = ["sort_entries.py"]
+digest = "sha256:d798771276b0dc2f66ada3324ff34fc10a1d573c6b3b1f078ee36a9381970c39"
+
+[args]
+type     = "object"
+required = ["entries", "by"]
+
+[args.properties.entries]
+type        = "array"
+
+[args.properties.entries.description]
+it = "Lista di dict omogenei da ordinare. Tipicamente passata via from_step=N (il runtime espande dallo scratchpad)."
+en = "List of homogeneous dicts to sort. Typically passed via from_step=N (the runtime expands from the scratchpad)."
+
+[args.properties.by]
+type        = "string"
+
+[args.properties.by.description]
+it = "Nome del campo per cui ordinare. Es. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Funziona su qualsiasi campo numerico o stringa presente nelle entries. Un termine utente ('mailbox', 'mittente') viene risolto sul campo reale ('account', 'from')."
+en = "Name of the field by which to sort. E.g. 'size', 'mtime', 'file_count', 'total_bytes', 'date'. Works on any numeric field or string present in the entries. A user term ('mailbox', 'sender') is resolved to the real field ('account', 'from')."
+
+[args.properties.desc]
+type        = "boolean"
+default     = false
+
+[args.properties.desc.description]
+it = "Se true, ordine discendente (piu' grande/recente prima). Default false (ascendente)."
+en = "If true, descending order (larger/more recent first). Default false (ascending)."
+
+[args.properties.top]
+type        = "integer"
+minimum     = 1
+
+[args.properties.top.description]
+it = "Se settato, ritorna solo i primi N elementi dopo il sort. Es. top=3 + desc=true = top-3 piu' grandi. Default null = nessun cap."
+en = "If set, returns only the first N elements after the sort. E.g. top=3 + desc=true = top-3 largest. Default null = no cap."
+
+[[capabilities]]
+name = "compute:pure"
+
+[[tests]]
+name   = "ordina_per_size_desc"
+input  = { entries = [{name = "a", size = 10}, {name = "b", size = 30}, {name = "c", size = 20}], by = "size", desc = true }
+expect = { ok = true, entries_field_eq = { 0 = { name = "b" } } }
+
+[[tests]]
+name   = "top_3_di_5"
+input  = { entries = [{x = 5}, {x = 1}, {x = 4}, {x = 2}, {x = 3}], by = "x", desc = true, top = 3 }
+expect = { ok = true, metadata_field_eq = { count = 3, truncated = true } }
+
+[[tests]]
+name   = "campo_mancante_in_coda"
+input  = { entries = [{a = 1}, {b = 2}, {a = 3}], by = "a", desc = true }
+expect = { ok = true }
+
+[[tests]]
+name   = "missing_by"
+input  = { entries = [{x = 1}] }
+expect = { ok = false, error_contains = "by" }

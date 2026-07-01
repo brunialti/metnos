@@ -1,0 +1,95 @@
+# Manifest dell'executor `{{ name }}` - Metnos v1.1 (importato da skill).
+# Naming compositivo §2.2: azione_oggetto[_qualifier].
+{% if provenance.imported_from %}# Importato da: {{ provenance.imported_from }}{% endif %}
+
+manifest_format = "1.0"
+
+name        = "{{ name }}"
+version     = "0.1.0"
+author      = "Metnos importer <importer@metnos.com>"
+affinity    = [{% for term in affinity %}"{{ term }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+revertible  = {{ reversible | tojson | lower }}
+{%- if reverse_pattern %}
+reverse_pattern = "{{ reverse_pattern }}"
+{%- endif %}
+
+[description]
+it = {{ description_it | tojson }}
+en = {{ description_en | tojson }}
+
+[code]
+files  = ["{{ name }}.py"]
+digest = "sha256:PLACEHOLDER_NOT_SIGNED_IN_WORKTREE"
+
+[args]
+type     = "object"
+required = [{% for a in args if a.required %}"{{ a.name }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+
+{% for arg in args %}
+[args.properties.{{ arg.name }}]
+type    = "{{ arg.type }}"
+{%- if arg.items_type %}
+items   = { type = "{{ arg.items_type }}" }
+{%- endif %}
+{%- if arg.format %}
+format  = "{{ arg.format }}"
+{%- endif %}
+{%- if arg.default is not none %}
+default = {{ arg.default | tojson }}
+{%- endif %}
+
+[args.properties.{{ arg.name }}.description]
+it = {{ (arg.description_it or arg.description) | tojson }}
+en = {{ (arg.description_en or arg.description) | tojson }}
+
+{% endfor %}
+
+[output]
+schema_inline = """
+{{ output_schema_inline }}
+"""
+
+{% for cap in capabilities %}
+[[capabilities]]
+name = "{{ cap.name }}"
+hint = [{% for h in cap.hint %}"{{ h }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+
+{% endfor %}
+
+{% if required_credentials_binding %}
+[required_credentials]
+binding   = "{{ required_credentials_binding }}"
+fields    = [{% for f in required_credentials_fields %}"{{ f }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+form_kind = "{{ required_credentials_form_kind }}"
+prompt_it = {{ required_credentials_prompt_it | tojson }}
+prompt_en = {{ required_credentials_prompt_en | tojson }}
+{% endif %}
+{% if oauth_provider and oauth_provider.scopes_options %}
+[oauth_provider]
+{% if oauth_provider.client_secret_install_path %}client_secret_install_path = "{{ oauth_provider.client_secret_install_path }}"
+{% endif %}{% if oauth_provider.mirror_paths %}mirror_paths = [{% for mp in oauth_provider.mirror_paths %}"{{ mp }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+{% endif %}
+{% for opt in oauth_provider.scopes_options %}
+[[oauth_provider.scopes_options]]
+label  = "{{ opt.label }}"
+scopes = [{% for s in opt.scopes %}"{{ s }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+{% endfor %}
+{% endif %}
+
+[provenance]
+synthesized      = true
+imported_from    = "{{ provenance.imported_from }}"
+source_version   = "{{ provenance.source_version }}"
+source_section   = "{{ provenance.source_section }}"
+source_subcommand = "{{ provenance.source_subcommand }}"
+imported_at      = "{{ provenance.imported_at }}"
+source_sha256    = "{{ provenance.source_sha256 }}"
+importer_version = "{{ provenance.importer_version }}"
+
+{% for t in tests %}
+[[tests]]
+name   = "{{ t.name }}"
+input  = {{ t.input_toml }}
+expect = {{ t.expect_toml }}
+
+{% endfor %}

@@ -1,0 +1,40 @@
+{# ---
+role: synt_description
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: cc40940a
+--- #}
+YOU are phase 4 (DESCRIPTION) of synt-multistage.
+
+MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown fences, NO comments. The response MUST start with `{` and end with `}`.
+
+Previous decisions (DO NOT change them):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+Original user request: {{ user_request }}
+
+MINIMUM CONSTRAINTS for description (you the LLM write the prose, no rigid schema):
+- A single string, NO newline (TOML manifest).
+- Length 2-5 sentences.
+- Must cover: what it does, what output it returns, an example if the API is not obvious.
+- NO Python jargon (no Path(), subprocess, lambda).
+
+RULES for affinity:
+- List of 6-10 keywords in Italian + English, lowercase.
+- Synonyms and variants that the user might use.
+
+OUTPUT EXAMPLE (for name=delete_files):
+{
+  "description": "Deletes one or more files from the filesystem. Vectorial: always accepts a list of paths (even with a single element, or empty). Returns ok/ok_count/fail_count/results/failed; best-effort, one failed entry does not block the others. Example: paths=['/tmp/old.log']. Irreversible critical.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.
