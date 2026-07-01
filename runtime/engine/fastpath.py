@@ -637,9 +637,24 @@ def prune(*, catalog_names: Optional[set] = None,
               "cap_removed": 0, "dead_missing_tool": 0,
               "dead_promoted": 0, "dead_superseded": 0,
               "dead_superseded_prefilter": 0, "inherited_uses": 0,
-              "kept": 0}
+              "requalified": 0, "kept": 0}
     try:
         c = _conn()
+        # RIQUALIFICA query_specific (1/7/2026): il predicato is_query_specific
+        # EVOLVE (nuove chiavi content-bearing, scan nested) ma le righe
+        # registrate prima mantengono il qspec dell'epoca → una riga qspec=0
+        # stantia resterebbe servibile via cosine 0b con literal ormai
+        # riconosciuti come query-specific. Ricalcolo deterministico nightly
+        # (≤ max_rows righe, §7.9); mai downgrade implicito del piano: cambia
+        # solo il canale di serve (0b→0a-only o viceversa).
+        for _rid, _rjson, _rq in c.execute(
+                "SELECT id, framework_json, query_specific "
+                "FROM fastpaths").fetchall():
+            _nq = 1 if is_query_specific(_rjson) else 0
+            if _nq != _rq:
+                c.execute("UPDATE fastpaths SET query_specific = ? "
+                          "WHERE id = ?", (_nq, _rid))
+                report["requalified"] += 1
         report["never_reused_removed"] = c.execute(
             "DELETE FROM fastpaths WHERE last_used IS NULL "
             "AND created_at < ?", (_cutoff(grace_days),)).rowcount

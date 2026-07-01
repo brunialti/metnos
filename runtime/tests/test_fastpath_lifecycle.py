@@ -549,6 +549,67 @@ class TestRecordFromCacheHits(_FastpathDbCase):
             self.assertEqual(rec.call_count, 1)  # hit 0a: NESSUN re-record
 
 
+# ── 1sexies-quater. Query-specificity nested + riqualifica prune (1/7/2026) ─
+
+class TestQuerySpecificNested(unittest.TestCase):
+    """CONTENT_ARG_KEYS copre destinatari/contenuto outbound anche ANNIDATI
+    (send_messages: messages=[{to,subject,body}]) — un piano send con literal
+    non deve mai essere servibile via cosine 0b né promosso a L1."""
+
+    def test_nested_send_literal_is_query_specific(self):
+        import json as _json
+        from engine.executor import is_query_specific
+        fj = _json.dumps({"steps": [
+            {"tool": "send_messages", "args": {"messages": [
+                {"to": "mario@example.com", "subject": "Report",
+                 "body": "testo fisso"}]}},
+            {"tool": "final_answer", "args": {}}]})
+        self.assertTrue(is_query_specific(fj))
+
+    def test_nested_send_placeholders_not_query_specific(self):
+        import json as _json
+        from engine.executor import is_query_specific
+        fj = _json.dumps({"steps": [
+            {"tool": "send_messages", "args": {"from_step": 1, "messages": [
+                {"to": "${RUNTIME:actor}", "body": "${step1.summary}"}]}},
+            {"tool": "final_answer", "args": {}}]})
+        self.assertFalse(is_query_specific(fj))
+
+    def test_toplevel_to_user_literal_is_query_specific(self):
+        import json as _json
+        from engine.executor import is_query_specific
+        fj = _json.dumps({"steps": [
+            {"tool": "send_messages",
+             "args": {"to_user": "lucia", "from_step": 1}}]})
+        self.assertTrue(is_query_specific(fj))
+
+
+class TestPruneRequalifiesQspec(_FastpathDbCase):
+    def test_prune_updates_stale_query_specific(self):
+        """Il predicato is_query_specific evolve: prune ricalcola qspec sulle
+        righe registrate con la versione vecchia (riga qspec=0 con literal
+        ora content-bearing → 1, esce dal canale 0b)."""
+        import json as _json
+        fw = _fw("send_messages",
+                 args_map={"send_messages": {"messages": [
+                     {"to": "mario@example.com", "body": "ciao"}]}})
+        fp_id = eng_fastpath.record_success("manda un saluto a mario", fw)
+        self.assertGreater(fp_id, 0)
+        c = eng_fastpath._conn()
+        # simula la riga d'epoca: qspec=0 (predicato vecchio, top-level-only)
+        c.execute("UPDATE fastpaths SET query_specific = 0 WHERE id = ?",
+                  (fp_id,))
+        c.commit()
+        c.close()
+        report = eng_fastpath.prune()
+        self.assertEqual(report["requalified"], 1)
+        c = eng_fastpath._conn()
+        row = c.execute("SELECT query_specific FROM fastpaths WHERE id = ?",
+                        (fp_id,)).fetchone()
+        c.close()
+        self.assertEqual(row[0], 1)
+
+
 # ── 1sexies. Cacheabilità temporale (misura BGE-M3 12/6/2026) ──────────────
 
 class TestTemporalCacheability(_FastpathDbCase):

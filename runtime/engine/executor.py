@@ -973,6 +973,14 @@ CONTENT_ARG_KEYS = frozenset({
     # Un piano generale userebbe from_step/${...}. NB: `base_path` (radice di
     # RICERCA, riusabile in un cluster «file in /tmp») resta NON query-specific.
     "paths", "path",
+    # Destinatari + contenuto messaggio OUTBOUND (1/7/2026): un piano send/
+    # create con destinatario/oggetto/corpo/titolo LITERAL e' legato a UNA
+    # query — servito via cosine 0b a una query vicina («manda a Mario» vs
+    # «manda a Luigi», stessa classe del pivot 0.9722) manderebbe al
+    # destinatario SBAGLIATO il testo di un'altra query. `_mutating_args_
+    # grounded` non li vede (token solo numerici/slug). NB: send_messages li
+    # annida in messages=[{to,subject,body}] → scansione RICORSIVA sotto.
+    "to", "to_user", "cc", "bcc", "subject", "body", "body_html", "title",
 })
 
 # Arg `pattern`/glob: content-bearing SOLO se NON universale (25/6, turn
@@ -1042,6 +1050,25 @@ def is_query_specific(framework_json: str) -> bool:
         d = json.loads(framework_json)
     except Exception:
         return False
+
+    def _content_in(obj) -> bool:
+        """Scansione RICORSIVA (1/7/2026): i campi content-bearing possono
+        vivere ANNIDATI (send_messages: messages=[{to,subject,body}]) — il
+        check top-level-only li mancava (qspec=0 → 0b servibile)."""
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k in CONTENT_ARG_KEYS:
+                    for item in (v if isinstance(v, list) else [v]):
+                        if (isinstance(item, str) and item.strip()
+                                and "${" not in item):
+                            return True
+                if _content_in(v):
+                    return True
+            return False
+        if isinstance(obj, list):
+            return any(_content_in(x) for x in obj)
+        return False
+
     for step in (d.get("steps") or []):
         if not isinstance(step, dict):
             continue
@@ -1055,11 +1082,8 @@ def is_query_specific(framework_json: str) -> bool:
         # l'ordinamento via cosine 0b.
         if args.get("_ordering_clause"):
             return True
-        for k in CONTENT_ARG_KEYS:
-            v = args.get(k)
-            for item in (v if isinstance(v, list) else [v]):
-                if isinstance(item, str) and item.strip() and "${" not in item:
-                    return True
+        if _content_in(args):
+            return True
         # Glob CONCRETO (non universale): query-specific. `*.py`/`*.md` derivano
         # dal tipo-file nominato nella query → 0a-only. `*`/`*.*` no.
         for k in _GLOB_ARG_KEYS:
