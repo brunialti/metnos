@@ -27,16 +27,16 @@ sys.path.insert(0, str(_ROOT / "runtime"))
 # GOLD (query → "verb/object" atteso). Verificato-corretto al 13/6/2026.
 GOLD = [
     # --- enrollment / persons (residuo storico: object misclass mascherato) ---
-    ("cancella l'enrollment di silvia", "delete/persons"),
-    ("cancella la registrazione biometrica di marco", "delete/persons"),
-    ("elimina l'iscrizione di lucia", "delete/persons"),
-    ("rimuovi lucia dal registro volti", "delete/persons"),
-    ("aggiungi silvia al registro volti", "set/persons"),
+    ("cancella l'enrollment di ospite alfa", "delete/persons"),
+    ("cancella la registrazione biometrica di ospite beta", "delete/persons"),
+    ("elimina l'iscrizione di ospite gamma", "delete/persons"),
+    ("rimuovi ospite gamma dal registro volti", "delete/persons"),
+    ("aggiungi ospite alfa al registro volti", "set/persons"),
     ("chi e' enrollato", "get/persons"),
-    ("delete silvia's enrollment", "delete/persons"),
+    ("delete ospite alfa's enrollment", "delete/persons"),
     ("who is enrolled", "get/persons"),
     # --- persons (read/get) ---
-    ("dimmi tutto su silvia", "read/persons"),
+    ("dimmi tutto su ospite alfa", "read/persons"),
     ("chi sono io", "read/persons"),
     ("elenca le persone registrate", "get/persons"),
     # --- messages ---

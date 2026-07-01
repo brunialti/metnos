@@ -96,7 +96,7 @@ GOLD = [
     # sparisce di nuovo dal pool, il guard diventa rosso. Enumerazione
     # enrollati = get_persons (vincolo §5). Vedi project_bug_delete_persons*.
     {"q": "cancella l'enrollement di roberto brunialti", "tool": "delete_persons"},
-    {"q": "dimentica la persona silvia", "tool": "delete_persons"},
+    {"q": "dimentica la persona Ospite Alfa", "tool": "delete_persons"},
     {"q": "chi è enrollato nel sistema?", "tool": "get_persons"},
 ]
 

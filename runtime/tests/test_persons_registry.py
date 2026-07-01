@@ -418,8 +418,8 @@ def test_resolve_last_token(reg):
 
 
 def test_resolve_middle_token(reg):
-    _enroll_minimal(reg, "Maria Chiara Rossi", seed=1)
-    assert reg.resolve_name("Chiara") == ["maria_chiara_rossi"]
+    _enroll_minimal(reg, "Ospite Alfa Beta", seed=1)
+    assert reg.resolve_name("Alfa") == ["ospite_alfa_beta"]
 
 
 def test_resolve_ambiguous_returns_multiple(reg):

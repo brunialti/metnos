@@ -50,13 +50,13 @@ class UsersTests(unittest.TestCase):
         host = self.users.list_users(role="host")[0]
         u = self.users.create_user(
             "Lucia",
-            display_name="Lucia Rossi",
+            display_name="Lucia",
             role="guest",
             owner_user_id=host["id"],
             autonomy_level="restricted",
         )
         self.assertEqual(u["name"], "lucia")
-        self.assertEqual(u["display_name"], "Lucia Rossi")
+        self.assertEqual(u["display_name"], "Lucia")
         self.assertEqual(u["role"], "guest")
         # Lookup per name
         v = self.users.get_user("lucia")
