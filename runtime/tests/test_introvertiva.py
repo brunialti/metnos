@@ -177,6 +177,77 @@ def test_specialize_skips_system_args(tmp_corpus, monkeypatch):
     assert legit, "il candidato non-sistema deve restare"
 
 
+def test_specialize_skips_pii_values(tmp_corpus):
+    """Review Fable 2/7 (§7.5): il proposed_name deriva dal VALORE dell'arg —
+    un'email/path/token dominante finirebbe in audit/DB e /admin/changes.
+    Il candidato PII-like si SCARTA (non si maschera)."""
+    turns_dir = tmp_corpus / "turns"
+    rows = [{
+        "ts_start": "2026-05-03T10:00:00Z",
+        "user_query": f"manda a ospite {i}",
+        "channel": "telegram",
+        "steps": [
+            {"chosen_tool": "send_messages",
+             "raw_args": {"to": "ospite@example.com"}},
+            {"chosen_tool": "read_files",
+             "raw_args": {"base_path": "/home/ospite/documenti"}},
+        ],
+    } for i in range(12)]
+    with (turns_dir / "2026-05-03.jsonl").open("w") as f:
+        for t in rows:
+            f.write(json.dumps(t) + "\n")
+    from introvertiva import candidates_specialize
+    cands = candidates_specialize(min_uses=3, min_arg_dominance=0.6)
+    pii = [c for c in cands
+           if "@" in c["dominant_value"] or "example_com" in c["proposed_name"]
+           or "home_ospite" in c["proposed_name"]]
+    assert not pii, f"candidati PII-like devono essere scartati: {pii}"
+
+
+def test_pii_like_predicate():
+    from introvertiva import _pii_like
+    assert _pii_like("ospite@example.com")
+    assert _pii_like("/home/ospite/foto")
+    assert _pii_like("~/documenti")
+    assert _pii_like("C:\\Users\\ospite")
+    assert _pii_like("ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4")   # token-like
+    assert not _pii_like("INBOX")
+    assert not _pii_like("work")
+    assert not _pii_like("posta indesiderata")
+    assert not _pii_like(12)
+
+
+def test_prune_old_keeps_rejected(tmp_corpus, monkeypatch):
+    """Review Fable 2/7: il reject umano mappa su state='dormant' — la
+    potatura lo cancellava e il generatore notturno ri-emetteva la proposta
+    come pending FRESCA (memoria della decisione persa)."""
+    import sqlite3
+    import proposals_state as ps
+    db = tmp_corpus / "proposals_state.db"
+    monkeypatch.setattr(ps, "DB_PATH", db)
+    conn = ps._open()
+    old = "2026-04-27T00:00:00Z"
+    conn.execute(
+        "INSERT INTO proposals_state "
+        "(sig_key, kind, state, first_seen, last_seen, last_uses, n_seen, "
+        " last_action) "
+        "VALUES ('[\"specialize\", \"r\", \"x\", \"1\"]', 'specialize', "
+        " 'dormant', ?, ?, 1, 1, 'reject')", (old, old))
+    conn.execute(
+        "INSERT INTO proposals_state "
+        "(sig_key, kind, state, first_seen, last_seen, last_uses, n_seen) "
+        "VALUES ('[\"specialize\", \"s\", \"x\", \"1\"]', 'specialize', "
+        " 'dormant', ?, ?, 1, 1)", (old, old))
+    conn.commit(); conn.close()
+    report = ps.prune_old(days=1, refresh_days=1)
+    assert report["removed_stale"] + report["removed_ttl"] >= 1
+    conn = sqlite3.connect(str(db))
+    left = {r[0] for r in conn.execute(
+        "SELECT last_action FROM proposals_state")}
+    conn.close()
+    assert left == {"reject"}  # il reject sopravvive a R1 E R2
+
+
 def test_window_excludes_old_turns(tmp_corpus, monkeypatch):
     """Finestra rolling: con METNOS_INTROVERTIVA_WINDOW_DAYS attivo i turni
     piu' vecchi del cutoff (il corpus fittizio e' di aprile/maggio 2026)

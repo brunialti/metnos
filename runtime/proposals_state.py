@@ -268,13 +268,23 @@ def prune_old(days: int | None = None, *,
       R2 TTL assoluto — `first_seen` piu' vecchio di `days` (default 180gg):
          rete di sicurezza se il sync e' disattivo.
     `applied` (storia delle decisioni attuate) e `blocked` (anti-resurrezione:
-    «mai piu' riproposta») NON vengono MAI potate.
+    «mai piu' riproposta») NON vengono MAI potate. Idem le righe con
+    `last_action='reject'` (2/7/2026, review Fable): il reject umano mappa su
+    state='dormant' — potarlo cancellava la memoria della decisione e il
+    generatore notturno ri-emetteva la proposta come pending FRESCA.
     Idempotente; ritorna i conteggi rimossi.
     """
     if days is None:
-        days = int(os.environ.get("METNOS_PROPOSALS_STATE_TTL", "180"))
+        try:
+            days = int(os.environ.get("METNOS_PROPOSALS_STATE_TTL", "180"))
+        except ValueError:
+            days = 180
     if refresh_days is None:
-        refresh_days = int(os.environ.get("METNOS_PROPOSALS_REFRESH_DAYS", "30"))
+        try:
+            refresh_days = int(
+                os.environ.get("METNOS_PROPOSALS_REFRESH_DAYS", "30"))
+        except ValueError:
+            refresh_days = 30
     now = datetime.now(timezone.utc)
     conn = _open()
     try:
@@ -284,7 +294,8 @@ def prune_old(days: int | None = None, *,
                 "%Y-%m-%dT%H:%M:%SZ")
             removed_stale = conn.execute(
                 "DELETE FROM proposals_state "
-                "WHERE state IN ('pending','dormant') AND last_seen < ?",
+                "WHERE state IN ('pending','dormant') "
+                "AND COALESCE(last_action,'') != 'reject' AND last_seen < ?",
                 (cut,),
             ).rowcount
         removed_ttl = 0
@@ -292,7 +303,8 @@ def prune_old(days: int | None = None, *,
             cut = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
             removed_ttl = conn.execute(
                 "DELETE FROM proposals_state "
-                "WHERE state IN ('pending','dormant') AND first_seen < ?",
+                "WHERE state IN ('pending','dormant') "
+                "AND COALESCE(last_action,'') != 'reject' AND first_seen < ?",
                 (cut,),
             ).rowcount
         conn.commit()

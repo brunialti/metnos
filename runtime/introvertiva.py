@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -49,11 +50,36 @@ def _window_after_iso() -> str | None:
     aging executor (30gg). Env `METNOS_INTROVERTIVA_WINDOW_DAYS`, 0 = off.
     I turni senza `ts_start` restano esclusi (non possono provare recenza).
     """
-    days = int(os.environ.get("METNOS_INTROVERTIVA_WINDOW_DAYS", "60"))
+    try:
+        days = int(os.environ.get("METNOS_INTROVERTIVA_WINDOW_DAYS", "60"))
+    except ValueError:
+        days = 60
     if days <= 0:
         return None
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=_\-]{20,}$")
+
+
+def _pii_like(v) -> bool:
+    """True se il valore assomiglia a un dato personale/segreto (email,
+    path utente, token/credenziale) — §7.5: non deve derivare nomi né
+    finire nell'audit delle proposte. Deterministico §7.9, conservativo
+    sul lato PII (meglio scartare un candidato che pubblicare un'email)."""
+    s = str(v)
+    if _EMAIL_RE.search(s):
+        return True
+    if s.startswith(("/", "~", "\\")) or ":\\" in s:
+        return True
+    # Token-like: stringa lunga senza spazi con lettere E cifre mescolate
+    # (api key, hash, jwt). Le parole naturali lunghe (solo lettere) passano.
+    if (" " not in s and _TOKEN_RE.match(s)
+            and any(c.isdigit() for c in s) and any(c.isalpha() for c in s)):
+        return True
+    return False
 
 
 def _audit_write(op: str, records: list[dict]) -> Path:
@@ -436,6 +462,14 @@ def candidates_specialize(
             # oppure il proposed_name finisce in `_True`/`_False` che viola
             # il vocabolario (CLAUDE.md §2.2). Niente informazione utile.
             if isinstance(v_obj, bool):
+                continue
+            # Skip valori PII-like (2/7/2026, review Fable, §7.5): il
+            # proposed_name deriva dal VALORE dell'arg — un'email/path/token
+            # dominante (es. send_messages to=ospite@example.com →
+            # send_messages_ospite_example_com) finirebbe in audit/DB e in
+            # /admin/changes. Un candidato specialize su un dato personale
+            # non e' comunque proponibile: si scarta, non si maschera.
+            if _pii_like(v_obj):
                 continue
             slug = str(v_obj).strip("[]\"' ").replace("*", "").replace(".", "_")
             slug = "".join(c if (c.isalnum() or c == "_") else "_"
