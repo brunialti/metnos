@@ -476,25 +476,42 @@ class TestRecordFromCacheHits(_FastpathDbCase):
             self.assertEqual(r2.match_source, "fastpath")
             self.assertEqual(len(lookups), 1)  # solo il primo turno
 
-    def test_l1_hit_failed_run_does_not_record(self):
+    def test_l1_hit_failed_run_falls_through_and_does_not_record(self):
+        """Self-healing 1/7/2026: il champion L1 che esegue in ERRORE non è
+        più ritornato secco (match_source=autopath, error) — fall-through a
+        L3 (re-plan). Invariata la sostanza storica: nessun record L0 dal
+        run fallito, nessuna observation dell'esecuzione fallita."""
         from engine.autopath import AutopathHit
         fw = _fw("read_messages")
         intent = Intent(verb="read", object="messages")
         catalog = self._catalog("read_messages")
         hit = AutopathHit(autopath_id="s", framework=fw, cluster_id="c", uses=1)
+        fake = _FakeProposer(None)  # L3: propose fallisce → terminator
+        fake_terminator = SimpleNamespace(
+            explain=lambda **kw: SimpleNamespace(final_text="ko"))
+        obs_calls = []
         env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1",
                "METNOS_AUTOPATH": "1"}
         with mock.patch.dict(os.environ, env), \
              mock.patch.object(eng_dispatch._ap, "lookup",
                                new=lambda q, i: hit), \
              mock.patch.object(eng_dispatch._ap, "record_observation",
-                               return_value="fh"), \
+                               side_effect=lambda **kw: obs_calls.append(kw)), \
+             mock.patch.object(eng_dispatch._ap, "excluded_framework_hashes",
+                               return_value=set()), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.terminator.get_terminator",
+                        return_value=fake_terminator), \
              mock.patch("engine.cluster.embed", new=lambda q: None):
             r = eng_dispatch.run_turn(
                 query="controlla le mailbox", intent=intent, catalog=catalog,
                 invoke_executor_cb=lambda n, a: {"ok": False, "error": "ko"},
                 turn_id="t1")
-            self.assertEqual(r.final_kind, "error")
+            # fall-through: NON è più servito come hit autopath in errore
+            self.assertNotEqual(r.match_source, "autopath")
+            self.assertEqual(r.match_source, "terminator")
+            self.assertEqual(fake.calls, 1)  # L3 interpellato
+            self.assertEqual(obs_calls, [])  # niente observation dal fallito
             self.assertEqual(eng_fastpath.list_all(), [])
 
     def test_0b_cosine_hit_promotes_to_own_hash(self):
@@ -547,6 +564,61 @@ class TestRecordFromCacheHits(_FastpathDbCase):
                 invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
                 turn_id="t2")
             self.assertEqual(rec.call_count, 1)  # hit 0a: NESSUN re-record
+
+
+# ── 1sexies-bis. Self-healing hit L0 in ERRORE (1/7/2026) ───────────────────
+
+class TestL0ErrorSelfHealing(_FastpathDbCase):
+    """Un piano L0 cachato che ora FALLISCE (drift ambiente/schema) non va
+    ri-servito come errore secco a ogni ripetizione: morte della riga +
+    fall-through a L3 (re-plan con recovery). La riga si ricrea da sola al
+    prossimo turno-successo (economia della potatura)."""
+
+    def test_l0_hit_error_deletes_row_and_falls_through(self):
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = [SimpleNamespace(
+            name="get_now", args_schema={"type": "object", "properties": {}})]
+        fake_recovery = SimpleNamespace(recover=lambda **kw: None)
+        fake_terminator = SimpleNamespace(
+            explain=lambda **kw: SimpleNamespace(final_text="ko"))
+        q = "che ore sono adesso"
+        eng_fastpath.record_success(q, fw)
+        self.assertEqual(len(eng_fastpath.list_all()), 1)
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.recovery.get_recovery",
+                        return_value=fake_recovery), \
+             mock.patch("engine.terminator.get_terminator",
+                        return_value=fake_terminator), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query=q, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": False, "error": "boom"},
+                turn_id="t1")
+            self.assertNotEqual(r.match_source, "fastpath")  # fall-through
+            self.assertEqual(fake.calls, 1)                  # L3 interpellato
+            self.assertEqual(eng_fastpath.list_all(), [])    # riga morta
+
+    def test_l0_hit_success_still_returns_fastpath(self):
+        # controllo positivo: l'hit sano resta servito da L0 (nessun proposer)
+        fw = _fw("get_now")
+        fake = _FakeProposer(fw)
+        catalog = [SimpleNamespace(
+            name="get_now", args_schema={"type": "object", "properties": {}})]
+        q = "che ore sono adesso"
+        eng_fastpath.record_success(q, fw)
+        env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch("engine.proposer.get_proposer", return_value=fake), \
+             mock.patch("engine.cluster.embed", new=lambda q: None):
+            r = eng_dispatch.run_turn(
+                query=q, intent=Intent(), catalog=catalog,
+                invoke_executor_cb=lambda n, a: {"ok": True, "iso": "x"},
+                turn_id="t1")
+            self.assertEqual(r.match_source, "fastpath")
+            self.assertEqual(fake.calls, 0)
 
 
 # ── 1sexies-ter. Igiene _should_cache_plan (1/7/2026) ───────────────────────

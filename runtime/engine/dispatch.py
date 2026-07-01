@@ -2112,19 +2112,30 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
-            _inject_gate_resume_if_paused(run, query, runtime_ctx)
-            # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
-            # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
-            # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
-            # esiste già.
-            if fp_hit.match_kind == "cosine":
-                _maybe_record_fastpath(query, intent, fp_hit.framework, run,
-                                       origin="cosine", catalog=catalog)
-            return DispatchResult(
-                final_text=run.final_text, final_kind=run.final_kind,
-                match_source="fastpath", framework_hash=run.framework_hash,
-                elapsed_ms=int((time.time() - t_start) * 1000),
-                run=run, framework=fp_hit.framework)
+            # Self-healing su ERRORE (1/7/2026, §2.8): un piano cachato che ora
+            # FALLISCE (drift ambiente/schema) non va ri-servito come errore
+            # secco a ogni ripetizione — l'hit rinfresca last_used (l'aging non
+            # lo pota mai) e L0 vince in cascata (la query non raggiunge più il
+            # piano pieno). Delete (economia: si ricrea al prossimo successo) +
+            # fall-through a L1/L3, che ripianificano con recovery.
+            if run.final_kind == "error":
+                log.info("[L0 fastpath] fp_id=%d esegue in ERRORE → morte + "
+                         "fall-through a L1/L3 (re-plan)", fp_hit.fp_id)
+                _fp.delete(fp_hit.fp_id)
+            else:
+                _inject_gate_resume_if_paused(run, query, runtime_ctx)
+                # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
+                # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
+                # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
+                # esiste già.
+                if fp_hit.match_kind == "cosine":
+                    _maybe_record_fastpath(query, intent, fp_hit.framework, run,
+                                           origin="cosine", catalog=catalog)
+                return DispatchResult(
+                    final_text=run.final_text, final_kind=run.final_kind,
+                    match_source="fastpath", framework_hash=run.framework_hash,
+                    elapsed_ms=int((time.time() - t_start) * 1000),
+                    run=run, framework=fp_hit.framework)
 
     # ── Layer 1: Autopath ────────────────────────────────────────────────
     # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
@@ -2159,28 +2170,37 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
                                 progress=progress)
-            _inject_gate_resume_if_paused(run, query, runtime_ctx)
-            # Record observation per future feedback hooks. Skip se il piano non
-            # è cacheabile (single-executor / valore numerico baked dalla query):
-            # L1 non deve avere valori baked (Roberto 15/6).
-            if (turn_id and intent.is_complete()
-                    and _should_cache_plan(ap_hit.framework, query)):
-                _ap.record_observation(
-                    turn_id=turn_id, intent=intent,
-                    framework=ap_hit.framework, query=query,
-                    latency_ms=run.elapsed_ms)
-            # Copertura L0 (bug live 11/6/2026, classe 12/6/2026): un hit L1
-            # è un TURNO-SUCCESSO la cui query esatta non è in cache 0a —
-            # senza record la stessa query ripaga PER SEMPRE embed+scan L1
-            # e il fastpath non si auto-produce mai per le query la cui
-            # famiglia ha già una skill (vedi _maybe_record_fastpath).
-            _maybe_record_fastpath(query, intent, ap_hit.framework, run,
-                                   origin="autopath", catalog=catalog)
-            return DispatchResult(
-                final_text=run.final_text, final_kind=run.final_kind,
-                match_source="autopath", framework_hash=run.framework_hash,
-                elapsed_ms=int((time.time() - t_start) * 1000),
-                run=run, framework=ap_hit.framework)
+            # Self-healing su ERRORE (1/7/2026, gemello di L0): il champion che
+            # ora fallisce NON viene ritornato secco — fall-through a L3
+            # (proposer+recovery). Niente delete qui: il demote del champion
+            # resta governato dal feedback (anti_autopath, 3+ fail). Niente
+            # observation dell'esecuzione fallita: la registra il leg L3.
+            if run.final_kind == "error":
+                log.info("[L1 autopath] champion %s esegue in ERRORE → "
+                         "fall-through a L3 (re-plan)", ap_hit.autopath_id)
+            else:
+                _inject_gate_resume_if_paused(run, query, runtime_ctx)
+                # Record observation per future feedback hooks. Skip se il piano
+                # non è cacheabile (single-executor / valore numerico baked dalla
+                # query): L1 non deve avere valori baked (Roberto 15/6).
+                if (turn_id and intent.is_complete()
+                        and _should_cache_plan(ap_hit.framework, query)):
+                    _ap.record_observation(
+                        turn_id=turn_id, intent=intent,
+                        framework=ap_hit.framework, query=query,
+                        latency_ms=run.elapsed_ms)
+                # Copertura L0 (bug live 11/6/2026, classe 12/6/2026): un hit L1
+                # è un TURNO-SUCCESSO la cui query esatta non è in cache 0a —
+                # senza record la stessa query ripaga PER SEMPRE embed+scan L1
+                # e il fastpath non si auto-produce mai per le query la cui
+                # famiglia ha già una skill (vedi _maybe_record_fastpath).
+                _maybe_record_fastpath(query, intent, ap_hit.framework, run,
+                                       origin="autopath", catalog=catalog)
+                return DispatchResult(
+                    final_text=run.final_text, final_kind=run.final_kind,
+                    match_source="autopath", framework_hash=run.framework_hash,
+                    elapsed_ms=int((time.time() - t_start) * 1000),
+                    run=run, framework=ap_hit.framework)
 
     # ── Layer 3: Engine (Proposer + Executor + Recovery + Terminator) ────
     from .proposer import get_proposer
