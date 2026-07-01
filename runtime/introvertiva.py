@@ -66,12 +66,28 @@ def _audit_write(op: str, records: list[dict]) -> Path:
     return out
 
 
+def _ts_epoch(v) -> float | None:
+    """Normalizza `ts_start` a epoch. Nei turni reali e' un float epoch;
+    nei fixture/test una stringa ISO-Z. None se assente/non parsabile."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str) and v:
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
+    return None
+
+
 def _load_turns(after_iso: str | None = None,
                 exclude_channels: frozenset[str] = SMOKE_CHANNELS) -> list[dict]:
     """Carica TUTTI i turni dai file JSONL.
 
     `exclude_channels`: filtra di default i turni di smoke battery e test
     runner (channel in SMOKE_CHANNELS). Passa frozenset() per disabilitare.
+    `after_iso`: confine inferiore (ISO-Z); il confronto avviene su epoch
+    (`_ts_epoch`) perche' i turni reali portano ts_start float. I turni
+    senza ts_start valido sono esclusi quando il confine e' attivo.
     """
     if not TURNS_DIR.exists():
         return []
@@ -89,7 +105,10 @@ def _load_turns(after_iso: str | None = None,
                 continue
             turns.append(t)
     if after_iso:
-        turns = [t for t in turns if t.get("ts_start", "") >= after_iso]
+        cutoff = _ts_epoch(after_iso)
+        if cutoff is not None:
+            turns = [t for t in turns
+                     if (_ts_epoch(t.get("ts_start")) or 0) >= cutoff]
     return turns
 
 
