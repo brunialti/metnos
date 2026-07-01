@@ -9,7 +9,8 @@ API pubblica:
   - touch_or_insert(sig_key, kind, last_uses)  — chiama al fire del job
   - is_dormant(sig_key)                        — query per get_proposals
   - mark_action(sig_key, action)               — futuro set_proposals
-  - prune_old(days=180)                        — housekeeping (raro)
+  - prune_old()                                — housekeeping (nightly, via
+                                                 task proposals_cleanup)
 """
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ import json
 import os
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
@@ -249,6 +250,55 @@ def mark_action(sig_key, action: str) -> StateRow | None:
             "SELECT * FROM proposals_state WHERE sig_key = ?", (key,)
         ).fetchone()
         return _row(r) if r else None
+    finally:
+        conn.close()
+
+
+def prune_old(days: int | None = None, *,
+              refresh_days: int | None = None) -> dict:
+    """Housekeeping dello store (chiamato dal task proposals_cleanup).
+
+    SOLO stati pending/dormant. Due regole:
+      R1 evidenza morta — `last_seen` piu' vecchio di `refresh_days`: il
+         generatore notturno non ri-emette il candidato da N notti (il sync
+         ri-tocca ogni notte i candidati vivi) → il dato a supporto e'
+         sparito (executor rimosso, pattern cessato, traffico di bench
+         fuori finestra). Default 30gg, allineato agli altri orizzonti di
+         staleness (METNOS_FASTPATH_STALE_DAYS, METNOS_EXECUTOR_DEPRECATED_DAYS).
+      R2 TTL assoluto — `first_seen` piu' vecchio di `days` (default 180gg):
+         rete di sicurezza se il sync e' disattivo.
+    `applied` (storia delle decisioni attuate) e `blocked` (anti-resurrezione:
+    «mai piu' riproposta») NON vengono MAI potate.
+    Idempotente; ritorna i conteggi rimossi.
+    """
+    if days is None:
+        days = int(os.environ.get("METNOS_PROPOSALS_STATE_TTL", "180"))
+    if refresh_days is None:
+        refresh_days = int(os.environ.get("METNOS_PROPOSALS_REFRESH_DAYS", "30"))
+    now = datetime.now(timezone.utc)
+    conn = _open()
+    try:
+        removed_stale = 0
+        if refresh_days > 0:
+            cut = (now - timedelta(days=refresh_days)).strftime(
+                "%Y-%m-%dT%H:%M:%SZ")
+            removed_stale = conn.execute(
+                "DELETE FROM proposals_state "
+                "WHERE state IN ('pending','dormant') AND last_seen < ?",
+                (cut,),
+            ).rowcount
+        removed_ttl = 0
+        if days > 0:
+            cut = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            removed_ttl = conn.execute(
+                "DELETE FROM proposals_state "
+                "WHERE state IN ('pending','dormant') AND first_seen < ?",
+                (cut,),
+            ).rowcount
+        conn.commit()
+        return {"removed_stale": max(0, removed_stale),
+                "removed_ttl": max(0, removed_ttl),
+                "refresh_days": refresh_days, "ttl_days": days}
     finally:
         conn.close()
 

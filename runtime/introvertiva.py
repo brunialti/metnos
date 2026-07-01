@@ -21,8 +21,10 @@ Riferimenti:
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import sys
@@ -36,6 +38,22 @@ AUDIT_DIR = _C.PATH_USER_DATA / "introvertiva"
 # Channel da escludere di default: smoke battery + test runner.
 # Generano traffico massiccio non rappresentativo dell'uso reale.
 SMOKE_CHANNELS = frozenset({"test_uc", "smoke", "test", "e2e-undo-test"})
+
+
+def _window_after_iso() -> str | None:
+    """Confine inferiore (ISO) della finestra rolling dei generatori.
+
+    Le proposte devono riflettere l'uso CORRENTE: senza finestra, lo scan
+    ricopre TUTTA la storia dei turni e il traffico di bench/debug di mesi
+    prima domina i contatori per sempre. Default 60gg = 2x l'orizzonte di
+    aging executor (30gg). Env `METNOS_INTROVERTIVA_WINDOW_DAYS`, 0 = off.
+    I turni senza `ts_start` restano esclusi (non possono provare recenza).
+    """
+    days = int(os.environ.get("METNOS_INTROVERTIVA_WINDOW_DAYS", "60"))
+    if days <= 0:
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _audit_write(op: str, records: list[dict]) -> Path:
@@ -144,7 +162,7 @@ def candidates_generalize(
       - score: float — uses * avg_weight (per ranking)
       - sample_intents: list[str] — fino a 3 query rappresentative
     """
-    turns = _load_turns()
+    turns = _load_turns(after_iso=_window_after_iso())
     if not turns:
         return []
 
@@ -322,7 +340,7 @@ def candidates_specialize(
       - total_uses: int
       - proposed_name: str (suggerimento naming)
     """
-    turns = _load_turns()
+    turns = _load_turns(after_iso=_window_after_iso())
     if not turns:
         return []
     # Catalog filter: scarta executor che non esistono piu' (legacy come
@@ -355,6 +373,12 @@ def candidates_specialize(
                 # Skip flow args (entries, from_step, results) — sono slot di
                 # pipeline, non costanti utente specializzabili.
                 if k in _FLOW_ARGS:
+                    continue
+                # Skip arg di sistema (prefisso "_": _lang, _channel,
+                # _actor_email, _pre_approved... iniettati dal runtime a OGNI
+                # chiamata, nessun manifest li dichiara). Dominance=1.0 per
+                # costruzione: non sono scelte utente e affollano il top-N.
+                if k.startswith("_"):
                     continue
                 # Serializza valore (skip scelte ovviamente troppo varianti)
                 if isinstance(v, (str, int, float, bool)):
@@ -539,6 +563,59 @@ def diff_audit(op: str) -> dict:
 
 
 # --- Orchestrator ----------------------------------------------------------
+
+def _sig_key_for(op: str, cand: dict):
+    """Chiave canonica di un candidato per proposals_state.
+
+    Le shape sono il CONTRATTO con lo storico del DB e con l'adapter
+    change_intent (`change_intent_adapters/introvertiva.py`):
+      dedupe     → ["dedupe", reason, src, dst]
+      generalize → ["generalize", [chain]]
+      specialize → ["specialize", executor, arg_name, dominant_value]
+    Ritorna None per record non candidabili (diagnostici, campi mancanti).
+    """
+    if op == "dedupe":
+        a, b = cand.get("src_executor"), cand.get("dst_executor")
+        if not a or not b:
+            return None
+        return ["dedupe", cand.get("kind", ""), a, b]
+    if op == "generalize":
+        pattern = cand.get("pattern") or []
+        if not pattern:
+            return None
+        return ["generalize", list(pattern)]
+    if op == "specialize":
+        ex, arg = cand.get("executor"), cand.get("arg_name")
+        if not ex or not arg:
+            return None
+        return ["specialize", ex, arg, cand.get("dominant_value")]
+    return None
+
+
+def sync_proposals_state(out: dict) -> dict:
+    """Proietta i candidati di un run in `proposals_state` (touch_or_insert).
+
+    E' il passo che tiene VIVO il lifecycle pending→dormant→riemersione e la
+    vista /admin/changes: senza, i generatori scrivono solo audit JSONL che
+    nessuno consuma. Chiamato dal task notturno `introvertiva_propose`.
+    Ritorna i conteggi per operazione.
+    """
+    import proposals_state as ps
+    counts: dict[str, int] = {}
+    for op in ("dedupe", "generalize", "specialize"):
+        n = 0
+        for cand in out.get(op) or []:
+            if not isinstance(cand, dict) or cand.get("_kind"):
+                continue  # record diagnostici, non candidati
+            key = _sig_key_for(op, cand)
+            if key is None:
+                continue
+            uses = int(cand.get("uses") or cand.get("total_uses") or 0)
+            ps.touch_or_insert(key, op, uses)
+            n += 1
+        counts[op] = n
+    return counts
+
 
 def run_all(*, audit: bool = True) -> dict:
     """Esegue tutte e 3 le ops, ritorna summary + scrive audit JSONL per ognuna."""

@@ -51,18 +51,28 @@ def task_apply_ager() -> dict:
 
 def task_introvertiva_propose() -> dict:
     """Genera candidati introvertiva (dedupe/generalize/specialize) SENZA
-    applicarli. `run_all` scrive solo audit JSONL, non muta il catalog.
+    applicarli: `run_all` scrive audit JSONL e i candidati sono proiettati in
+    proposals_state (`touch_or_insert` → lifecycle pending/dormant e vista
+    /admin/changes). Nessuna mutazione del catalog.
     """
-    from introvertiva import run_all
-    return run_all(audit=True)
+    from introvertiva import run_all, sync_proposals_state
+    out = run_all(audit=True)
+    out["proposals_state_synced"] = sync_proposals_state(out)
+    return out
 
 
 def task_proposals_cleanup() -> dict:
     """Manutenzione lifecycle backlog proposte (ADR 0096): archive aged,
-    keep-latest-N, dedupe, decay orfani. Sempre move, mai delete.
+    keep-latest-N, dedupe, decay orfani. Sempre move, mai delete —
+    ECCETTO proposals_state: prune delle righe pending/dormant con evidenza
+    morta (il generatore non le ri-emette da refresh_days) o oltre TTL;
+    applied/blocked mai toccate (storia + anti-resurrezione).
     """
     from proposals_cleanup import run_cleanup
-    return run_cleanup()
+    out = run_cleanup()
+    import proposals_state
+    out["proposals_state_prune"] = proposals_state.prune_old()
+    return out
 
 
 def task_lifecycle_summary() -> dict:
