@@ -157,12 +157,30 @@ def _should_cache_plan(framework, query) -> bool:
     valori baked. Bug live: delete_tasks(id=42) su «cancella task 40». Tali query
     ri-pianificano (L3) ogni volta. La GARANZIA hard è comunque a serve-time
     (`_mutating_args_grounded`); questa è prevenzione a monte. §7.9 universale.
-    (Generalizzazione+re-bind dei valori in L1 = TODO Fable, fix completo.)"""
+    (Generalizzazione+re-bind dei valori in L1 = TODO Fable, fix completo.)
+
+    ESENZIONE (1/7/2026): le chiavi CONTENT_ARG_KEYS/_GLOB_ARG_KEYS sono
+    query-specific PER COSTRUZIONE (is_query_specific → 0a-only, mai 0b/L1
+    champion) e il replay 0a ri-risolve gli slot (resolve_query_canonical_args):
+    il loro numero non discrimina male. Senza esenzione, `time_window=
+    "last-24h"` per «ultime 24 ore» bloccava la cache dell'INTERA classe
+    «ultimi N giorni/ore/mesi» — progettata cacheabile 0a (fastpath.py, 12/6) —
+    e ogni ripetizione ripagava L3. `delete_tasks(ids=[42])` resta bloccato
+    (chiave non-content)."""
+    # Tool context-dependent (undo/get_inputs/get_approval): il replay fuori
+    # dal turno d'origine è scorretto — L0 li rifiuta già in record_success,
+    # qui si copre anche il record_observation L1 (un champion col consent-gate
+    # baked verrebbe servito a turni interattivi che non lo richiedono).
+    if any((getattr(s, "tool", "") or "") in _fp.NON_CACHEABLE_TOOLS
+           for s in (getattr(framework, "steps", []) or [])):
+        return False
+    from .executor import CONTENT_ARG_KEYS, _GLOB_ARG_KEYS
+    _exempt = CONTENT_ARG_KEYS | _GLOB_ARG_KEYS
     qnums = set(re.findall(r"\d+", query or ""))
     if qnums:
         for s in (getattr(framework, "steps", []) or []):
             for k, v in (getattr(s, "args", {}) or {}).items():
-                if k in ("from_step", "from_steps"):
+                if k in ("from_step", "from_steps") or k in _exempt:
                     continue
                 if set(re.findall(r"\d+", str(v))) & qnums:
                     return False

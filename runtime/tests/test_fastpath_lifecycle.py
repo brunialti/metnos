@@ -549,6 +549,40 @@ class TestRecordFromCacheHits(_FastpathDbCase):
             self.assertEqual(rec.call_count, 1)  # hit 0a: NESSUN re-record
 
 
+# ── 1sexies-ter. Igiene _should_cache_plan (1/7/2026) ───────────────────────
+
+class TestShouldCachePlan(unittest.TestCase):
+    """Esenzione chiavi content/glob (già 0a-only per costruzione) dal check
+    numerico + rifiuto dei tool context-dependent (NON_CACHEABLE_TOOLS)."""
+
+    def test_time_window_number_is_cacheable(self):
+        # «ultime 24 ore» + time_window="last-24h": classe progettata
+        # cacheabile 0a (12/6) — il check numerico non deve bloccarla.
+        fw = _fw("read_messages",
+                 args_map={"read_messages": {"time_window": "last-24h",
+                                             "account": "all"}})
+        self.assertTrue(eng_dispatch._should_cache_plan(
+            fw, "controlla tutte le mie mailbox delle ultime 24 ore"))
+
+    def test_concrete_glob_number_is_cacheable(self):
+        fw = _fw("find_files", args_map={"find_files": {"pattern": "*.mp3"}})
+        self.assertTrue(eng_dispatch._should_cache_plan(
+            fw, "trova i file mp3"))
+
+    def test_baked_numeric_id_still_blocked(self):
+        # il caso storico delete_tasks(ids=[42]) resta NON cacheabile
+        fw = _fw("delete_tasks", args_map={"delete_tasks": {"ids": [42]}})
+        self.assertFalse(eng_dispatch._should_cache_plan(
+            fw, "cancella il task 42"))
+
+    def test_consent_gate_step_not_cacheable(self):
+        # un piano col gate get_approval baked (turno schedulato) non va in
+        # cache: il gate si RE-inserisce a serve-time quando serve.
+        fw = _fw("read_messages", "get_approval", "send_messages")
+        self.assertFalse(eng_dispatch._should_cache_plan(
+            fw, "manda il riepilogo delle mail"))
+
+
 # ── 1sexies-quater. Query-specificity nested + riqualifica prune (1/7/2026) ─
 
 class TestQuerySpecificNested(unittest.TestCase):

@@ -46,9 +46,14 @@ log = logging.getLogger(__name__)
 # Step-tool il cui replay fuori dal turno d'origine è semanticamente
 # scorretto: undo_last_turn si riferisce al TURNO PRECEDENTE (replay =
 # annullare un turno arbitrario), get_inputs apre un dialog interattivo
-# (flusso non riproducibile). Set CHIUSO (§2.2): estendere solo per la
+# (flusso non riproducibile), get_approval è il consent-gate che il RUNTIME
+# inserisce per il contesto del turno (schedulato outbound, dispatch.
+# _insert_consent_gate_if_scheduled): baked in cache verrebbe ri-servito a
+# un turno interattivo che non lo richiede (il gate si RE-inserisce a
+# serve-time quando serve). Set CHIUSO (§2.2): estendere solo per la
 # stessa classe di motivi (semantica dipendente dal contesto del turno).
-NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs"})
+NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs",
+                                 "get_approval"})
 
 # Literal temporale ASSOLUTO negli args del piano (ISO date/datetime, es.
 # since_iso="2026-06-11", start="2026-06-15T10:00"): il replay in un giorno
