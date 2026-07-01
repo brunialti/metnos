@@ -544,6 +544,36 @@ class TestAutopathSchema(unittest.TestCase):
         c.close()
         self.assertGreaterEqual(len(rows), 1)
 
+    def test_promote_new_framework_same_intent_no_id_collision(self):
+        """Bug 1/7/2026: id = sig[:40]_v1.0.0 non dipendeva dal framework →
+        stesso intent con framework NUOVO collideva sulla PRIMARY KEY e
+        l'INSERT OR IGNORE lo scartava in silenzio (promoted_autopath_id falso
+        §2.8, il piano nuovo non diventava mai autopath)."""
+        intent = Intent(verb="read", object="messages", keywords=["inbox"])
+        fw_a = Framework(steps=[
+            StepSpec(tool="read_messages", args={"account": "all"}),
+            StepSpec(tool="final_answer", args={})], final_message="a")
+        fw_b = Framework(steps=[
+            StepSpec(tool="read_messages", args={"account": "all"}),
+            StepSpec(tool="describe_entries", args={"from_step": 1}),
+            StepSpec(tool="final_answer", args={})], final_message="b")
+        for i, fw in enumerate((fw_a, fw_b)):
+            tid = f"turn_{i}"
+            eng_autopath.record_observation(
+                turn_id=tid, intent=intent, framework=fw,
+                query=f"leggi la posta variante {i}", latency_ms=10)
+            res = eng_autopath.record_feedback(tid, "ok")
+            self.assertTrue(res["ok"])
+            self.assertIn("promoted_autopath_id", res)
+        c = eng_autopath._conn()
+        rows = c.execute(
+            "SELECT id, framework_hash FROM autopaths").fetchall()
+        c.close()
+        # DUE autopath distinte (id univoci), una per framework_hash
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len({r[0] for r in rows}), 2)
+        self.assertEqual(len({r[1] for r in rows}), 2)
+
     def test_lookup_object_boundary_no_cross_object_serve(self):
         """Regression turn 9805fb61/af045d18/1175b2f8: il match cluster (path 1,
         cosine sul TESTO) NON deve servire un autopath di object DIVERSO. Un

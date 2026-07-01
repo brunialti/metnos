@@ -259,10 +259,15 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                     best_sim = sim
                     best_cid = cid
             if best_sim >= _cluster.COSINE_HIGH and best_cid:
+                # ORDER BY deterministico (1/7): con PIÙ champion attivi nello
+                # stesso cluster (post fix-collisione id) vince il migliore per
+                # merito, non l'ordine fisico delle righe (§11 determinismo).
                 row = c.execute(
                     "SELECT id, framework_json, uses, composite_score, intent_sig "
                     "FROM autopaths WHERE cluster_id = ? AND status = 'active' "
-                    "AND champion = 1 LIMIT 1", (best_cid,)).fetchone()
+                    "AND champion = 1 ORDER BY composite_score DESC, "
+                    "ok_count DESC, uses DESC, id LIMIT 1",
+                    (best_cid,)).fetchone()
                 # CONFINE OGGETTO (16/6, turn 9805fb61/af045d18/1175b2f8): il
                 # match cluster e' puramente cosine sul TESTO → una query
                 # «fatture sulla mail» (object=messages) cade vicino al cluster
@@ -287,7 +292,8 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
         row = c.execute(
             "SELECT id, framework_json, cluster_id, uses, composite_score, "
             "intent_sig FROM autopaths WHERE intent_hash = ? AND status = 'active' "
-            "AND champion = 1 LIMIT 1", (ihash,)).fetchone()
+            "AND champion = 1 ORDER BY composite_score DESC, ok_count DESC, "
+            "uses DESC, id LIMIT 1", (ihash,)).fetchone()
         # CONFINE OGGETTO anche su path-2 (D3-D, 18/6): gemello del path-1.
         # L'ihash e' ora compound-aware (encode tutti gli object), ma il confine
         # esplicito sull'object PRIMARIO e' difesa-in-profondita' contro le
@@ -470,9 +476,17 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
 
 def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
                     cid: Optional[str], ts: str) -> Optional[str]:
-    """Crea autopath ACTIVE se non già presente. Ritorna autopath_id."""
+    """Crea autopath ACTIVE se non già presente. Ritorna autopath_id.
+
+    L'id include ihash+fhash (1/7/2026): il vecchio `{sig[:40]}_v1.0.0` era
+    PRIMARY KEY ma NON dipendeva dal framework — lo stesso intent con un
+    framework NUOVO (champion vecchio demotato, piano migliore appreso)
+    collideva sull'id e l'INSERT OR IGNORE lo scartava IN SILENZIO, riportando
+    comunque `promoted_autopath_id` (§2.8 violata: il piano nuovo non diventava
+    mai autopath). Le righe esistenti restano valide: il lookup non dipende dal
+    formato dell'id."""
     base = sig.replace("|", "_")[:40] or "autopath"
-    autopath_id = f"{base}_v1.0.0"
+    autopath_id = f"{base}_{ihash[:6]}{fhash[:6]}"
     existing = c.execute(
         "SELECT id FROM autopaths WHERE intent_hash = ? AND framework_hash = ?",
         (ihash, fhash)).fetchone()
