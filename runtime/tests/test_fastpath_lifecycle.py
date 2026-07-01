@@ -798,6 +798,40 @@ class TestQuerySpecificNested(unittest.TestCase):
              "args": {"to_user": "lucia", "from_step": 1}}]})
         self.assertTrue(is_query_specific(fj))
 
+    def test_share_files_email_literal_is_query_specific(self):
+        # Review Fable 2/7 (CRITICO 2): share_files(email=...) è un grant ACL
+        # OUTBOUND — servito via cosine 0b a una query vicina concederebbe
+        # l'accesso al destinatario di un'ALTRA query.
+        import json as _json
+        from engine.executor import is_query_specific
+        for arg in ({"email": "ospite@example.com"},
+                    {"domain": "example.com"}):
+            fj = _json.dumps({"steps": [
+                {"tool": "share_files", "args": {"from_step": 1, **arg}}]})
+            self.assertTrue(is_query_specific(fj), arg)
+
+    def test_create_events_content_literal_is_query_specific(self):
+        # Review Fable 2/7 (MEDIO): summary/attendees/location/description
+        # literal legano l'evento alla singola query (titolo/invitati di
+        # un'altra query via 0b col gate temporale scavalcato da data relativa).
+        import json as _json
+        from engine.executor import is_query_specific
+        for arg in ({"summary": "Cena di lavoro"},
+                    {"attendees": ["ospite@example.com"]},
+                    {"location": "Trento"},
+                    {"description": "porta i documenti"}):
+            fj = _json.dumps({"steps": [
+                {"tool": "create_events", "args": dict(arg)}]})
+            self.assertTrue(is_query_specific(fj), arg)
+
+    def test_share_files_placeholder_not_query_specific(self):
+        import json as _json
+        from engine.executor import is_query_specific
+        fj = _json.dumps({"steps": [
+            {"tool": "share_files",
+             "args": {"from_step": 1, "email": "${RUNTIME:actor}"}}]})
+        self.assertFalse(is_query_specific(fj))
+
 
 class TestPruneRequalifiesQspec(_FastpathDbCase):
     def test_prune_updates_stale_query_specific(self):

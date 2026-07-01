@@ -981,6 +981,13 @@ CONTENT_ARG_KEYS = frozenset({
     # grounded` non li vede (token solo numerici/slug). NB: send_messages li
     # annida in messages=[{to,subject,body}] → scansione RICORSIVA sotto.
     "to", "to_user", "cc", "bcc", "subject", "body", "body_html", "title",
+    # Destinatari ACL share_* + contenuto evento/calendario (2/7/2026, review
+    # Fable): stessa classe outbound — share_files(email=...) o create_events
+    # (summary/attendees/location/description literal) serviti via cosine 0b
+    # a una query vicina concederebbero l'ACL o creerebbero l'evento col
+    # target/contenuto di un'ALTRA query. `_mutating_args_grounded` non li
+    # copre (vede solo cifre e slug a/b, non email né testo libero).
+    "email", "domain", "summary", "attendees", "location", "description",
 })
 
 # Arg `pattern`/glob: content-bearing SOLO se NON universale (25/6, turn
