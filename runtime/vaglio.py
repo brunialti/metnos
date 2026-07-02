@@ -140,6 +140,16 @@ def _expand_user(s: str) -> str:
     return os.path.expanduser(s) if isinstance(s, str) and s.startswith("~") else s
 
 
+# Prefissi mutanti per il blocco protected-path (SoT pipeline_effects;
+# fallback identico a dispatch._leg_committed_mutations).
+try:
+    from pipeline_effects import MUTATING_TOOL_PREFIXES as _MUTATING_TOOL_PREFIXES
+except Exception:
+    _MUTATING_TOOL_PREFIXES = ("delete_", "move_", "change_", "send_",
+                               "create_", "set_", "write_", "share_",
+                               "render_")
+
+
 def guard_check(executor_name: str, args: dict, context: dict | None = None) -> tuple[bool, str | None]:
     """Ritorna (ok, reason_se_blocca). True = passa; False = bloccata."""
     args = args or {}
@@ -151,6 +161,22 @@ def guard_check(executor_name: str, args: dict, context: dict | None = None) -> 
         for pat in _FORBIDDEN_PATH_PATTERNS:
             if pat.search(s):
                 return False, f"forbidden path violato: pattern {pat.pattern!r} in args"
+
+    # Alberi di sistema protetti (platform_policy, wired 2/7/2026 — Roberto):
+    # SOLO executor MUTANTI: mai scrivere/spostare/cancellare dentro /etc,
+    # /usr, /var, … (host-aware). Le LETTURE restano libere («leggi
+    # /etc/hosts» è legittimo); admin/sudoer (builtin verb-unique) non hanno
+    # prefisso mutante → non toccati. I valori sotto chiavi di contenuto
+    # sono già esclusi a monte (_flatten_path_candidate_values).
+    if executor_name.startswith(_MUTATING_TOOL_PREFIXES):
+        try:
+            from platform_policy import is_protected_path
+            for s in expanded:
+                if is_protected_path(s):
+                    return False, (f"path protetto di sistema: {s!r} "
+                                   f"(albero riservato al SO host)")
+        except ImportError:
+            pass  # fail-open come il resto della guardia best-effort
 
     # Comandi shell pericolosi (Legge 1)
     if executor_name in ("shell_exec",) or (context or {}).get("capability") == "code:exec":

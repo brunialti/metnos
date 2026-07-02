@@ -48,3 +48,40 @@ def test_entry_path_still_scanned():
     ok, _ = guard_check("delete_files", {"entries": [
         {"path": "/root/.ssh/id_rsa", "name": "id_rsa"}]})
     assert ok is False
+
+
+# ── protected paths (platform_policy wired 2/7/2026, decisione Roberto) ────
+
+def test_mutant_on_protected_tree_blocked():
+    ok, why = guard_check("write_files", {"path": "/etc/nuovo.conf",
+                                          "content": "x"})
+    assert ok is False and "protetto" in (why or "")
+    assert guard_check("delete_files", {"paths": ["/usr/lib/x.so"]})[0] is False
+    assert guard_check("move_files", {"src": "/tmp/a", "dst": "/var/a"})[0] is False
+    assert guard_check("create_dirs", {"path": "/root/nuova"})[0] is False
+
+
+def test_read_on_protected_tree_allowed():
+    # Le letture restano libere: la policy protegge la SCRITTURA.
+    assert guard_check("read_files", {"paths": ["/etc/hosts"]})[0] is True
+    assert guard_check("find_files", {"base_path": "/usr/share"})[0] is True
+
+
+def test_mutant_on_normal_paths_allowed():
+    assert guard_check("write_files", {"path": "/tmp/report.md",
+                                       "content": "x"})[0] is True
+    assert guard_check("delete_files",
+                       {"paths": ["/home/utente/vecchio.txt"]})[0] is True
+    # valori non-path (folder mail) non matchano mai
+    assert guard_check("move_messages", {"dst_folder": "Junk"})[0] is True
+
+
+def test_protected_string_under_content_key_not_blocked():
+    # «scrivi un file che DOCUMENTA /etc/fstab» → /etc nel CONTENUTO è dato.
+    assert guard_check("write_files", {"path": "/tmp/doc.md",
+                                       "content": "vedi /etc/fstab"})[0] is True
+
+
+def test_admin_builtin_not_affected():
+    # admin/sudoer (verb-unique, §2.2) non hanno prefisso mutante.
+    assert guard_check("admin", {"target": "/etc/systemd/system"})[0] is True
