@@ -868,6 +868,12 @@ CREATE INDEX idx_events_ts ON events(ts);
 </code></pre>
 
 <h2>Table <code>canonical_query_log</code></h2>
+<p><strong>Note (2026-07-02, ADR 0180)</strong>: this log no longer has an
+active writer — it was fed by the legacy planner, now gated; its role
+(memoizing canonical queries&rarr;tool) is absorbed by the engine's L0
+fastpath. The table stays documented for its historical rows; the adapter
+towards <code>/admin/changes</code> has been retired.</p>
+
 
 <p>
 A log of user requests in lemma form (ADR 0149). Every time the

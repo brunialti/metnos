@@ -108,8 +108,8 @@ observed_metrics metriche periodo di grazia
 <p>
 <strong>Il fingerprint NON include <code>origin_family</code></strong>: cos&iacute;
 due sorgenti diverse che propongono cose equivalenti (es. telos:scamper +
-introvertiva:specialize sullo stesso executor) confluiscono in <em>un solo
-record</em>, con <code>convergence</code> incrementato.
+synt sullo stesso executor) confluiscono in <em>un solo record</em>, con
+<code>convergence</code> incrementato.
 </p>
 
 <h1 id="cap2">2. Il ciclo di vita in 5 atti</h1>
@@ -147,30 +147,43 @@ record</em>, con <code>convergence</code> incrementato.
 (via di fuga per la revisione umana). Da <code>REJECTED</code> &egrave; possibile
 <em>riproporre</em> (transizione a <code>PROPOSED</code>).</p>
 
-<h1 id="cap3">3. Le 6 sorgenti come adapter</h1>
+<h1 id="cap3">3. Le 4 sorgenti vive come adapter</h1>
 
-<p>Le sorgenti storiche <em>non vengono eliminate</em>: continuano a vivere
-come flusso d'ingresso che alimenta il materializer. Ciascuna ha un adapter
-in <code>runtime/change_intent_adapters/</code> che proietta i propri record
-in <code>ChangeIntent</code>.</p>
+<p>Ogni sorgente ha un adapter in <code>runtime/change_intent_adapters/</code>
+che proietta i propri record in <code>ChangeIntent</code>, senza effetti
+collaterali. Dal 2/7/2026 (ADR 0180, regola dei livelli) gli adapter attivi
+sono <strong>quattro</strong>:</p>
 
 <table>
 <thead><tr><th>Sorgente</th><th>Adapter</th><th>Kind output</th></tr></thead>
 <tbody>
-<tr><td>telos (10 lenti)</td><td><code>telos.py</code></td>
- <td>create_executor (default) / extend_executor (parametric) / materialize_pipeline</td></tr>
-<tr><td>introvertiva</td><td><code>introvertiva.py</code></td>
- <td>dedupe_executors / extend_executor (generalize) / cache_pattern (specialize)</td></tr>
+<tr><td>telos (10 lenti, teste di cluster)</td><td><code>telos.py</code></td>
+ <td>create_executor (new_valid) / extend_executor (parametric) /
+ materialize_pipeline (existing_pipeline)</td></tr>
+<tr><td>introvertiva (solo dedupe)</td><td><code>introvertiva.py</code></td>
+ <td>dedupe_executors (le shape storiche generalize/specialize restano
+ leggibili, i generatori sono ritirati)</td></tr>
 <tr><td>synt (request_new_executor)</td><td><code>synt.py</code></td>
  <td>create_executor (importato come FINALIZED se gi&agrave; installato)</td></tr>
-<tr><td>multi_tool_paths (L2)</td><td><code>multi_tool.py</code></td>
- <td>materialize_pipeline</td></tr>
-<tr><td>canonical_query_log (L1)</td><td><code>canonical.py</code></td>
- <td>cache_pattern</td></tr>
 <tr><td>turn_feedback utente</td><td><code>user_feedback.py</code></td>
  <td>reject_pattern (solo se &ge; 2 rifiuti)</td></tr>
 </tbody>
 </table>
+
+<p>L'adapter telos proietta le <strong>teste di cluster</strong>
+(<code>recompose_clusters</code>) e non le righe grezze: circa 27 intenti al
+posto di 500, punteggio = <code>cluster_score</code> (allineamento massimo +
+bonus di convergenza fra lenti distinte), e SOLO i <code>name_status</code>
+azionabili — il rumore (proposte ridondanti o con nome invalido) non arriva
+alla vista.</p>
+
+<p><strong>Adapter ritirati</strong> (2/7/2026, «se un meccanismo non serve
+non serve»): <code>canonical.py</code> (lo store <code>canonical_query_log</code>
+era scritto dal planner storico, disattivato — il suo ruolo &egrave; assorbito
+dal fastpath L0) e <code>multi_tool.py</code> (lo store
+<code>multi_tool_paths</code> non ha pi&ugrave; uno scrittore — le catene reali
+le impara L1 autopath dai turni). I moduli restano nella storia di git; le
+righe residue sono state respinte con ragione esplicita.</p>
 
 <p>Raccolta unificata delle proposte (<code>runtime/proposals_unified.py</code>):
 <code>SUPPORTED_SOURCES = ("telos", "introvertiva")</code> &mdash; le altre
@@ -178,9 +191,7 @@ sorgenti scrivono direttamente senza passare per il centro di raccolta.</p>
 
 <p>Normalizzazione del punteggio per famiglia:</p>
 <ul>
-<li>telos: <code>expected_alignment</code> gi&agrave; 0&ndash;1</li>
-<li>multi_tool / canonical: <code>uses</code> via logaritmo a saturazione mid=20
-(es. uses=20 &rarr; punteggio 0.50, uses=100 &rarr; 0.83)</li>
+<li>telos: <code>cluster_score</code> (allineamento + convergenza), gi&agrave; 0&ndash;1</li>
 <li>introvertiva: <code>n_seen*0.05 + last_uses*0.005</code> (formula storica)</li>
 <li>synt: <code>installed</code>=0.8, <code>abandoned</code>=0.3,
 <code>rejected*</code>=0.05</li>
@@ -199,7 +210,7 @@ Le proposte risultanti sono visibili in <code>/admin/changes</code>.</p>
 <tr>
  <td><code>change_intent_materialize</code></td>
  <td>daily@01:00</td>
- <td>Concat 6 adapter &rarr; upsert con dedup via fingerprint &rarr; bump convergence.</td>
+ <td>Concatena gli adapter vivi &rarr; upsert con dedup via fingerprint &rarr; bump convergence.</td>
 </tr>
 <tr>
  <td><code>change_applier</code></td>
@@ -226,10 +237,15 @@ re-sign via <code>sign.sign_executor</code>.</li>
 <li><strong>dedupe_executors</strong>: alias setup in
 <code>executor_aliases.json</code> + deprecate del duplicato in
 <code>executor_stats.db</code>.</li>
-<li><strong>materialize_pipeline</strong>: <code>UPDATE multi_tool_paths SET
-state='active'</code>.</li>
+<li><strong>materialize_pipeline</strong>: <em>esegue la pipeline una
+volta</em> come turno reale (la <code>suggested_query</code> della proposta,
+dentro <code>scheduled_turn_scope</code>: valgono il gate di consenso per
+l'invio e le guardie del vaglio). L'esito onesto finisce in
+<code>applied_effect</code>; se il turno funziona, L0/L1 imparano da soli dal
+turno vero — niente depositi paralleli (ADR 0180).</li>
 <li><strong>cache_pattern</strong>: <code>UPDATE canonical_query_log SET
-state='active'</code>.</li>
+state='active'</code> (kind storico: la sorgente canonical &egrave; ritirata,
+l'handler resta per le righe accettate in passato).</li>
 <li><strong>reject_pattern</strong>: append in
 <code>~/.local/share/metnos/rejected_patterns.jsonl</code> (agent_runtime
 lo legge come HARD CONSTRAINT del planner).</li>
@@ -240,8 +256,9 @@ lo legge come HARD CONSTRAINT del planner).</li>
 <ul>
 <li>create/extend_executor: <code>last_call_ok=False</code> con &ge;3 chiamate;
 deprecato dall'executor_ager.</li>
-<li>materialize_pipeline / cache_pattern: state ha derivato a
-<code>demoted</code>.</li>
+<li>materialize_pipeline: il turno eseguito &egrave; giudicato come ogni
+altra applicazione (finale in errore &rarr; FAILED gi&agrave; all'apply);
+cache_pattern (storico): stato derivato a <code>demoted</code>.</li>
 <li>dedupe_executors: alias rimosso dal file.</li>
 <li>reject_pattern: nuovi riscontri &#10007; dopo l'applicazione per la stessa
 (canonical_query, tools).</li>

@@ -296,16 +296,18 @@ ones than add another.
 <h2>The formula</h2>
 
 <div class="formula">
-contrib<sub>i</sub> = weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>)<br>
+contrib<sub>i</sub> = weight<sub>i</sub> &middot; gate(fit<sub>i</sub>, threshold<sub>i</sub>) &nbsp;&nbsp;(for fit<sub>i</sub> &ge; 0)<br>
+penalty = &sum;<sub>i</sub> weight<sub>i</sub> &middot; |fit<sub>i</sub>| &nbsp;&nbsp;(for fit<sub>i</sub> &lt; 0, WITHOUT gate)<br>
 top = max(contrib<sub>i</sub>)<br>
 rest = &sum;<sub>i</sub> contrib<sub>i</sub> &minus; top<br>
-expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urgency &middot; confidence &minus; bother_cost
+expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest &minus; &alpha; &middot; penalty) &middot; urgency &middot; confidence &minus; bother_cost
 </div>
 
 <p>Where:</p>
 <ul>
  <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (internal constants in <code>runtime/alignment_engine.py</code>). Constraint <code>&alpha; &gt; 3&gamma;</code> guarantees that a perfect specialist on a heavy telos beats a mediocre generalist.</li>
  <li><code>gate(fit, threshold) = fit</code> if <code>fit &ge; threshold</code>, else <code>0</code>. Gate function &rarr; a telos contributes nothing if <em>fit</em> is below threshold.</li>
+ <li><strong>signed fit (v1.4, 2026-07-02)</strong>: the Judge may declare <code>fit &isin; [-1, 1]</code>. A negative value means the proposal <em>works against</em> that telos (a paid service against <code>t.parsimonia</code>, an interruption against <code>t.discrezione</code>). The penalty does NOT pass through the gate: harm always counts, even below threshold — better to penalise a false conflict than to reward a proposal that violates a declared purpose.</li>
  <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = no time pressure; 2.0 = deadline within 24h; 0.5 = chronic, no urgency. Multiplicative, not additive.</li>
  <li><code>confidence &isin; [0, 1]</code>: how sure Metnos is of its estimate. Proposals based on little data or speculative reasoning &rarr; low confidence.</li>
  <li><code>bother_cost &isin; [0, &infin;)</code>: see ch. 6.</li>
@@ -345,11 +347,15 @@ A proposal must clear both filters: synt produces something good (<code>R &ge; t
 <h2>Publication threshold and triage dashboard</h2>
 
 <p>
-Proposals are ranked by <code>expected_alignment</code> and surfaced to
-the user in the <strong><code>/admin/changes</code>
+Proposals reach the user in the <strong><code>/admin/changes</code>
 dashboard</strong> (wired), where telos proposals are a <em>family</em>
-facet of the unified change registry. For each proposal
-the UI shows:
+facet of the unified change registry. Since 2026-07-02 (ADR 0180) the
+adapter projects <strong>cluster heads</strong> rather than raw rows:
+ranking uses <code>cluster_score</code> (best alignment + a convergence
+bonus across distinct lenses) and only actionable proposals reach the view.
+<strong>Accepting a pipeline proposal runs it once</strong> as a real turn
+(with the consent gate and the guards active): if the turn works, the
+L0/L1 caches learn on their own. For each proposal the UI shows:
 </p>
 
 <ul>
@@ -633,7 +639,7 @@ class Telos:
 @dataclass(frozen=True)
 class FitEstimate:
  telos_id: str
- fit: float # [0,1]
+ fit: float # [-1,1] (v1.4: negative = against the telos)
  why: str # textual explanation (for audit)
 
 @dataclass(frozen=True)

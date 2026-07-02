@@ -904,6 +904,12 @@ CREATE INDEX idx_events_ts ON events(ts);
 </code></pre>
 
 <h2>Tabella <code>canonical_query_log</code></h2>
+<p><strong>Nota (2/7/2026, ADR 0180)</strong>: questo registro non ha pi&ugrave;
+uno scrittore attivo — lo alimentava il planner storico, oggi disattivato; il
+suo ruolo (memoizzare query canoniche&rarr;tool) &egrave; assorbito dal fastpath
+L0 del motore. La tabella resta documentata per le righe storiche; l'adapter
+verso <code>/admin/changes</code> &egrave; stato ritirato.</p>
+
 
 <p>
 Registro delle richieste utente in forma lemma (ADR 0149). Ogni volta

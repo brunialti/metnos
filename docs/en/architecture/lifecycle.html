@@ -5,7 +5,7 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; change lifecycle</title>
  <meta name="description" content="Unified lifecycle of system changes in Metnos: one change_intent object, one state machine (proposed→accepted→applied→observed→finalized), one UI /admin/changes.">
- <meta name="keywords" content="change_intent, lifecycle, proposals, promotions, telos, introvertiva, synt, multi_tool, canonical_query_log, /admin/changes, metnos">
+ <meta name="keywords" content="change_intent, lifecycle, proposals, promotions, telos, introvertiva, synt, fastpath, /admin/changes, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/lifecycle">
@@ -49,7 +49,7 @@
 <ol>
  <li><a href="#cap1">The unified object: <code>change_intent</code></a></li>
  <li><a href="#cap2">Lifecycle in 5 acts</a></li>
- <li><a href="#cap3">The 6 sources as adapters</a></li>
+ <li><a href="#cap3">The 4 live sources as adapters</a></li>
  <li><a href="#cap4">The 3 daemons: materializer, applier, observer</a></li>
  <li><a href="#cap5">End-to-end example: <code>find_recipes</code></a></li>
  <li><a href="#cap6">Operational references</a></li>
@@ -90,7 +90,7 @@ All system changes converge into a single schema in <code>~/.local/state/metnos/
 fingerprint sha256[:32] # deterministic for cross-source dedup
 state PROPOSED|ACCEPTED|APPLIED|OBSERVED|FINALIZED|
  STAGED|REJECTED|FAILED|ROLLED_BACK
-origin_family telos|introvertiva|synt|multi_tool|canonical|user
+origin_family telos|introvertiva|synt|user (multi_tool/canonical: historical rows only)
 origin_module scamper|dedupe|request_new_executor|L1|L2|feedback|...
 intent_kind create_executor|extend_executor|dedupe_executors|
  materialize_pipeline|cache_pattern|reject_pattern
@@ -108,7 +108,7 @@ observed_metrics grace-period metrics
 <p>
 <strong>The fingerprint does NOT include <code>origin_family</code></strong>:
 this way two different sources proposing equivalent things (e.g.
-telos:scamper + introvertiva:specialize on the same executor) coalesce into
+telos:scamper + synt on the same executor) coalesce into
 <em>a single record</em>, with <code>convergence</code> bumped.
 </p>
 
@@ -147,35 +147,48 @@ telos:scamper + introvertiva:specialize on the same executor) coalesce into
 escape hatch). From <code>REJECTED</code> you can <em>re-propose</em>
 (transition back to <code>PROPOSED</code>).</p>
 
-<h1 id="cap3">3. The 6 sources as adapters</h1>
+<h1 id="cap3">3. The 4 live sources as adapters</h1>
 
-<p>Historical sources are <em>not deleted</em>: they continue to exist as
-&laquo;input feed&raquo; that powers the materializer. Each has an adapter
-in <code>runtime/change_intent_adapters/</code> that projects legacy records
-into <code>ChangeIntent</code>.</p>
+<p>Each source has an adapter in <code>runtime/change_intent_adapters/</code>
+that projects its records into <code>ChangeIntent</code>, with no side
+effects. Since 2026-07-02 (ADR 0180, the layer rule) the active adapters
+are <strong>four</strong>:</p>
 
 <table>
 <thead><tr><th>Source</th><th>Adapter</th><th>Output kind</th></tr></thead>
 <tbody>
-<tr><td>telos (10 lenses)</td><td><code>telos.py</code></td>
- <td>create_executor (default) / extend_executor (parametric) / materialize_pipeline</td></tr>
-<tr><td>introvertiva</td><td><code>introvertiva.py</code></td>
- <td>dedupe_executors / extend_executor (generalize) / cache_pattern (specialize)</td></tr>
+<tr><td>telos (10 lenses, cluster heads)</td><td><code>telos.py</code></td>
+ <td>create_executor (new_valid) / extend_executor (parametric) /
+ materialize_pipeline (existing_pipeline)</td></tr>
+<tr><td>introvertiva (dedupe only)</td><td><code>introvertiva.py</code></td>
+ <td>dedupe_executors (the historical generalize/specialize shapes stay
+ readable, their generators are retired)</td></tr>
 <tr><td>synt (request_new_executor)</td><td><code>synt.py</code></td>
  <td>create_executor (imported as FINALIZED if already installed)</td></tr>
-<tr><td>multi_tool_paths (L2)</td><td><code>multi_tool.py</code></td>
- <td>materialize_pipeline</td></tr>
-<tr><td>canonical_query_log (L1)</td><td><code>canonical.py</code></td>
- <td>cache_pattern</td></tr>
 <tr><td>user turn_feedback</td><td><code>user_feedback.py</code></td>
  <td>reject_pattern (only if &ge; 2 rejections)</td></tr>
 </tbody>
 </table>
 
+<p>The telos adapter projects <strong>cluster heads</strong>
+(<code>recompose_clusters</code>) rather than raw rows: roughly 27 intents
+instead of 500, score = <code>cluster_score</code> (best alignment + a
+convergence bonus across distinct lenses), and ONLY the actionable
+<code>name_status</code> values — noise (redundant proposals, invalid names)
+never reaches the view.</p>
+
+<p><strong>Retired adapters</strong> (2026-07-02, «a mechanism that serves no
+purpose serves none»): <code>canonical.py</code> (the
+<code>canonical_query_log</code> store was written by the legacy planner, now
+gated — its role is absorbed by the L0 fastpath) and <code>multi_tool.py</code>
+(the <code>multi_tool_paths</code> store no longer has a writer — real chains
+are learned by the L1 autopath from actual turns). The modules live on in git
+history; the leftover rows were rejected with an explicit reason.</p>
+
 <p>Score normalization per family:</p>
 <ul>
-<li>telos: <code>expected_alignment</code> already 0&ndash;1</li>
-<li>multi_tool / canonical: <code>uses</code> via log-saturating mid=20
+<li>telos: <code>cluster_score</code> (alignment + convergence), already 0&ndash;1</li>
+<li>(retired) multi_tool / canonical: <code>uses</code> via log-saturating mid=20
 (e.g. uses=20 &rarr; score 0.50, uses=100 &rarr; 0.83)</li>
 <li>introvertiva: <code>n_seen*0.05 + last_uses*0.005</code> (historical formula)</li>
 <li>synt: <code>installed</code>=0.8, <code>abandoned</code>=0.3,
@@ -191,7 +204,7 @@ into <code>ChangeIntent</code>.</p>
 <tr>
  <td><code>change_intent_materialize</code></td>
  <td>daily@01:00</td>
- <td>Concat 6 adapters &rarr; upsert with fingerprint dedup &rarr; bump convergence.</td>
+ <td>Concatenates the live adapters &rarr; upsert with fingerprint dedup &rarr; bump convergence.</td>
 </tr>
 <tr>
  <td><code>change_applier</code></td>
@@ -218,10 +231,15 @@ re-sign via <code>sign.sign_executor</code>.</li>
 <li><strong>dedupe_executors</strong>: alias setup in
 <code>executor_aliases.json</code> + deprecate the duplicate in
 <code>executor_stats.db</code>.</li>
-<li><strong>materialize_pipeline</strong>: <code>UPDATE multi_tool_paths SET
-state='active'</code>.</li>
+<li><strong>materialize_pipeline</strong>: <em>runs the pipeline once</em>
+as a real turn (the proposal's <code>suggested_query</code>, inside
+<code>scheduled_turn_scope</code>: the outbound consent gate and the vaglio
+guards apply). The honest outcome lands in <code>applied_effect</code>; if
+the turn works, L0/L1 learn on their own from the real turn — no parallel
+stores (ADR 0180).</li>
 <li><strong>cache_pattern</strong>: <code>UPDATE canonical_query_log SET
-state='active'</code>.</li>
+state='active'</code> (historical kind: the canonical source is retired, the
+handler remains for rows accepted in the past).</li>
 <li><strong>reject_pattern</strong>: append to
 <code>~/.local/share/metnos/rejected_patterns.jsonl</code> (agent_runtime
 reads as HARD CONSTRAINT for the planner).</li>

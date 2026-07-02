@@ -302,16 +302,18 @@ esistenti che aggiungerne.
 <h2>La formula</h2>
 
 <div class="formula">
-contrib<sub>i</sub> = peso<sub>i</sub> &middot; gate(fit<sub>i</sub>, soglia<sub>i</sub>)<br>
+contrib<sub>i</sub> = peso<sub>i</sub> &middot; gate(fit<sub>i</sub>, soglia<sub>i</sub>) &nbsp;&nbsp;(per fit<sub>i</sub> &ge; 0)<br>
+penalit&agrave; = &sum;<sub>i</sub> peso<sub>i</sub> &middot; |fit<sub>i</sub>| &nbsp;&nbsp;(per fit<sub>i</sub> &lt; 0, SENZA gate)<br>
 top = max(contrib<sub>i</sub>)<br>
 rest = &sum;<sub>i</sub> contrib<sub>i</sub> &minus; top<br>
-expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest) &middot; urgency &middot; confidence &minus; bother_cost
+expected_alignment = (&alpha; &middot; top + &gamma; &middot; rest &minus; &alpha; &middot; penalit&agrave;) &middot; urgency &middot; confidence &minus; bother_cost
 </div>
 
 <p>Con:</p>
 <ul>
  <li><code>&alpha; = 2.0</code>, <code>&gamma; = 0.5</code> (costanti interne in <code>runtime/alignment_engine.py</code>). Vincolo <code>&alpha; &gt; 3&gamma;</code> garantisce che uno specialista perfetto su un telos pesante batta un tuttofare medio.</li>
  <li><code>gate(fit, soglia) = fit</code> se <code>fit &ge; soglia</code>, altrimenti <code>0</code>. Funzione gate &rarr; un telos non contribuisce se il fit &egrave; sotto-soglia.</li>
+ <li><strong>fit con segno (v1.4, 2/7/2026)</strong>: il Giudice pu&ograve; dichiarare <code>fit &isin; [-1, 1]</code>. Un valore negativo significa che la proposta <em>lavora contro</em> quel telos (un servizio a pagamento contro <code>t.parsimonia</code>, un'interruzione contro <code>t.discrezione</code>). La penalit&agrave; NON passa dal gate: il danno conta sempre, anche sotto soglia — meglio penalizzare un falso conflitto che premiare una proposta che viola un fine dichiarato.</li>
  <li><code>urgency &isin; [0.5, 2.0]</code>: 1.0 = nessuna pressione temporale; 2.0 = scadenza entro 24h; 0.5 = cronico, nessuna urgenza. Moltiplicatore, non additivo.</li>
  <li><code>confidence &isin; [0, 1]</code>: quanto Metnos &egrave; sicuro della propria stima. Proposte basate su pochi dati o ragionamento speculativo &rarr; confidence bassa.</li>
  <li><code>bother_cost &isin; [0, &infin;)</code>: vedi cap. 6.</li>
@@ -350,10 +352,16 @@ Una proposta passa entrambi i filtri: synt produce qualcosa di buono (<code>R &g
 <h2>Soglia di pubblicazione e cruscotto di smistamento</h2>
 
 <p>
-Le proposte vengono ordinate per <code>expected_alignment</code> e
-sottoposte all'utente nel <strong>cruscotto
+Le proposte raggiungono l'utente nel <strong>cruscotto
 <code>/admin/changes</code></strong> (collegato), dove i telos sono una
-<em>famiglia</em> del registro unico delle modifiche. Per ogni proposta l'interfaccia mostra:
+<em>famiglia</em> del registro unico delle modifiche. Dal 2/7/2026
+(ADR 0180) l'adapter proietta le <strong>teste di cluster</strong> e non le
+righe grezze: l'ordinamento avviene per <code>cluster_score</code>
+(allineamento massimo + bonus di convergenza fra lenti distinte) e solo le
+proposte azionabili arrivano alla vista. <strong>Accettare una proposta di
+pipeline la esegue una volta</strong> come turno reale (con il gate di
+consenso e le guardie attive): se il turno funziona, le cache L0/L1 imparano
+da sole. Per ogni proposta l'interfaccia mostra:
 </p>
 
 <ul>
@@ -648,7 +656,7 @@ class Telos:
 @dataclass(frozen=True)
 class FitEstimate:
  telos_id: str
- fit: float # [0,1]
+ fit: float # [-1,1] (v1.4: negativo = contro il telos)
  why: str # spiegazione testuale (per audit)
 
 @dataclass(frozen=True)
