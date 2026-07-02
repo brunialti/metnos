@@ -18,8 +18,13 @@ import json
 
 # Prefissi dei tool MUTANTI (side-effecting). Stessa famiglia di
 # TurnLog._MUTATE_SUCCESS_KEYS / agent_runtime._detect_false_not_found.
+# `compress_` aggiunto 2/7/2026 (replay job A): compress_files scrive un
+# archivio = side-effect, ma era invisibile a effetti/false-success/
+# committed_mutations. NB `extract_` NON si può aggiungere per prefisso:
+# extract_entries è in-memory (nessun side-effect) — extract_files (zip)
+# resta il limite noto del criterio a prefisso.
 MUTATING_TOOL_PREFIXES = ("delete_", "move_", "change_", "send_", "create_",
-                          "set_", "write_", "share_", "render_")
+                          "set_", "write_", "share_", "render_", "compress_")
 
 # Counter di successo mutating, in ordine di specificità (il primo intero
 # presente vince; fallback len(results)).
