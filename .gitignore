@@ -147,3 +147,4 @@ UTENZE E SPESE/
 
 # --- Artefatto export pubblico (rigenerabile) ---------------------------
 dist/
+to_delete/
