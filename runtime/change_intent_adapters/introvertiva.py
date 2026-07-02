@@ -3,7 +3,10 @@
 Mapping:
   - kind='dedupe'     → KIND_DEDUPE_EXECUTORS (unifica due tool equivalenti)
   - kind='generalize' → KIND_EXTEND_EXECUTOR (generalizza varianti in 1 tool)
-  - kind='specialize' → KIND_EXTEND_EXECUTOR (default arg ad un tool)
+  - kind='specialize' → KIND_EXTEND_EXECUTOR (default arg ad un tool) —
+    SOLO righe STORICHE: il generatore è ritirato (2/7/2026, regola livelli
+    13/6: default-in-arg = L0); l'adapter le proietta perché le decisioni
+    umane (reject/block) restino visibili in /admin/changes.
 
 Sig_key shape (dal generatore introvertiva, vedi runtime/introvertiva.py):
   - dedupe:    `["dedupe", reason, tool_a, tool_b]`

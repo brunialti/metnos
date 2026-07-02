@@ -50,10 +50,11 @@ def task_apply_ager() -> dict:
 
 
 def task_introvertiva_propose() -> dict:
-    """Genera candidati introvertiva (dedupe/generalize/specialize) SENZA
-    applicarli: `run_all` scrive audit JSONL e i candidati sono proiettati in
+    """Genera candidati introvertiva (dedupe/generalize) SENZA applicarli:
+    `run_all` scrive audit JSONL e i candidati sono proiettati in
     proposals_state (`touch_or_insert` → lifecycle pending/dormant e vista
-    /admin/changes). Nessuna mutazione del catalog.
+    /admin/changes). Nessuna mutazione del catalog. (specialize RITIRATA
+    2/7/2026 — regola livelli: default-in-arg = L0, vedi introvertiva.py.)
     """
     from introvertiva import run_all, sync_proposals_state
     out = run_all(audit=True)

@@ -133,90 +133,6 @@ def test_generalize_skips_smoke_channel(tmp_corpus):
         assert found[0]["uses"] == 5
 
 
-def test_specialize_skips_default_value(tmp_corpus):
-    from introvertiva import candidates_specialize
-    # 4/5/2026 (ADR 0077): i candidati con valori booleani sono scartati
-    # perche' lo slug `True`/`False` violerebbe il vocabolario chiuso
-    # (qualifier non puo' essere `True`/`False`). Il test storico si
-    # aspettava che sort_entries(desc=true) apparisse anche se valore !=
-    # default; ora la regola del vocab vince. Verifichiamo la nuova
-    # invariante: niente proposed_name che termini in `_True` o `_False`.
-    cands = candidates_specialize(min_uses=3, min_arg_dominance=0.6)
-    bad = [c for c in cands
-           if c["proposed_name"].endswith(("_True", "_False"))]
-    assert not bad, f"proposed_name with bool slug should be filtered: {bad}"
-
-
-def test_specialize_skips_system_args(tmp_corpus, monkeypatch):
-    """Gli arg di sistema `_`-prefixed (iniettati dal runtime a OGNI chiamata:
-    _lang, _channel, _actor_email...) hanno dominance=1.0 per costruzione e
-    NON sono scelte utente specializzabili. Bug 1/7: 14/20 candidati del run
-    notturno erano rumore _lang/_channel/_actor_email."""
-    turns_dir = tmp_corpus / "turns"
-    rows = [{
-        "ts_start": "2026-05-02T10:00:00Z",
-        "user_query": f"leggi le mail di sistema {i}",
-        "channel": "telegram",
-        "steps": [
-            {"chosen_tool": "read_messages",
-             "raw_args": {"_lang": "it", "_actor_email": "x@example.com",
-                            "account": "work"}},
-        ],
-    } for i in range(12)]
-    with (turns_dir / "2026-05-02.jsonl").open("w") as f:
-        for t in rows:
-            f.write(json.dumps(t) + "\n")
-    from introvertiva import candidates_specialize
-    cands = candidates_specialize(min_uses=3, min_arg_dominance=0.6)
-    system = [c for c in cands if c["arg_name"].startswith("_")]
-    assert not system, f"system args devono essere skippati: {system}"
-    # Il candidato legittimo sullo stesso tool sopravvive (il filtro non
-    # spegne la specializzazione, toglie solo il rumore).
-    legit = [c for c in cands if c["executor"] == "read_messages"
-             and c["arg_name"] == "account"]
-    assert legit, "il candidato non-sistema deve restare"
-
-
-def test_specialize_skips_pii_values(tmp_corpus):
-    """Review Fable 2/7 (§7.5): il proposed_name deriva dal VALORE dell'arg —
-    un'email/path/token dominante finirebbe in audit/DB e /admin/changes.
-    Il candidato PII-like si SCARTA (non si maschera)."""
-    turns_dir = tmp_corpus / "turns"
-    rows = [{
-        "ts_start": "2026-05-03T10:00:00Z",
-        "user_query": f"manda a ospite {i}",
-        "channel": "telegram",
-        "steps": [
-            {"chosen_tool": "send_messages",
-             "raw_args": {"to": "ospite@example.com"}},
-            {"chosen_tool": "read_files",
-             "raw_args": {"base_path": "/home/ospite/documenti"}},
-        ],
-    } for i in range(12)]
-    with (turns_dir / "2026-05-03.jsonl").open("w") as f:
-        for t in rows:
-            f.write(json.dumps(t) + "\n")
-    from introvertiva import candidates_specialize
-    cands = candidates_specialize(min_uses=3, min_arg_dominance=0.6)
-    pii = [c for c in cands
-           if "@" in c["dominant_value"] or "example_com" in c["proposed_name"]
-           or "home_ospite" in c["proposed_name"]]
-    assert not pii, f"candidati PII-like devono essere scartati: {pii}"
-
-
-def test_pii_like_predicate():
-    from introvertiva import _pii_like
-    assert _pii_like("ospite@example.com")
-    assert _pii_like("/home/ospite/foto")
-    assert _pii_like("~/documenti")
-    assert _pii_like("C:\\Users\\ospite")
-    assert _pii_like("ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4")   # token-like
-    assert not _pii_like("INBOX")
-    assert not _pii_like("work")
-    assert not _pii_like("posta indesiderata")
-    assert not _pii_like(12)
-
-
 def test_window_filters_float_ts_start(tmp_corpus):
     """Integration del fix 2ccda51: i turni REALI portano ts_start come float
     epoch (11563/11668 in prod) — il confine after_iso deve filtrare su epoch
@@ -277,11 +193,10 @@ def test_window_excludes_old_turns(tmp_corpus, monkeypatch):
     piu' vecchi del cutoff (il corpus fittizio e' di aprile/maggio 2026)
     escono dai contatori dei generatori."""
     monkeypatch.setenv("METNOS_INTROVERTIVA_WINDOW_DAYS", "1")
-    from introvertiva import candidates_generalize, candidates_specialize
+    from introvertiva import candidates_generalize
     assert candidates_generalize(min_uses=1, min_chain_len=3,
                                    min_distinct_intents=1,
                                    min_avg_weight=0.0) == []
-    assert candidates_specialize(min_uses=1, min_arg_dominance=0.0) == []
 
 
 def test_sync_proposals_state_roundtrip(tmp_corpus, monkeypatch):
@@ -299,15 +214,16 @@ def test_sync_proposals_state_roundtrip(tmp_corpus, monkeypatch):
              "uses": 5},
             {"_kind": "diagnostic", "note": "skip me"},
         ],
+        # specialize RITIRATA (2/7, regola livelli): anche se un chiamante
+        # passa candidati specialize, il sync NON li proietta.
         "specialize": [{"executor": "read_messages", "arg_name": "account",
                          "dominant_value": "\"metnos_system\"",
                          "total_uses": 12}],
     }
     counts = sync_proposals_state(out)
-    assert counts == {"dedupe": 1, "generalize": 1, "specialize": 1}
-    row = ps.lookup(["specialize", "read_messages", "account",
-                      "\"metnos_system\""])
-    assert row is not None and row.state == "pending" and row.last_uses == 12
+    assert counts == {"dedupe": 1, "generalize": 1}
+    assert ps.lookup(["specialize", "read_messages", "account",
+                       "\"metnos_system\""]) is None
     # Shape identica allo storico del DB (contratto adapter change_intent).
     row = ps.lookup(["dedupe", "legacy_orphan", "fetch_urls", "write_files"])
     assert row is not None
@@ -356,14 +272,6 @@ def test_prune_old_removes_dead_evidence_keeps_decisions(tmp_corpus, monkeypatch
     conn.close()
     assert set(left.values()) == {"applied", "blocked", "pending"}
     assert len(left) == 3
-
-
-def test_validator_rejects_uppercase_qualifier():
-    from introvertiva import _is_valid_proposed_name
-    assert _is_valid_proposed_name("move_messages_Posta_indesiderata") is False
-    assert _is_valid_proposed_name("move_messages_posta_indesiderata") is True
-    assert _is_valid_proposed_name("get_files_dates_semantic") is True
-    assert _is_valid_proposed_name("move_messages_True") is False
 
 
 def test_diff_audit_returns_error_with_no_history(tmp_corpus):

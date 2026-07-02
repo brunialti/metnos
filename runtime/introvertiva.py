@@ -5,10 +5,16 @@ L'introvertiva opera DA DENTRO il sistema (cron / soglia / manuale), non da
 query utente. Lavora sul corpus accumulato (mnests + events + turns/jsonl)
 per migliorare il catalogo invece di rispondere a un nuovo turno.
 
-Tre operazioni canoniche (Roberto 30/4/2026):
+Due operazioni canoniche attive:
   - DEDUPE     ritira/consolida doppioni (replay algoritmico bonifica 30/4)
   - GENERALIZE promuove pattern ricorrente di catena → executor macro
-  - SPECIALIZE estrae varianti mirate da analisi args ricorrenti
+
+SPECIALIZE (default-arg dominante → executor esteso) RITIRATA il 2/7/2026
+per la regola dei livelli (Roberto 13/6, VINCOLANTE): «impostare un default
+in una variabile» è SEMPRE compito di L0 (fastpath memoizza query→piano args
+inclusi) — un executor la cui unica differenza è un arg pre-impostato duplica
+L0 e inquina il catalogo. Le righe storiche in proposals_state restano
+leggibili (adapter change_intent invariato); il codice vive in git.
 
 MVP 1/5/2026 sera: identificazione + ranking + audit log JSONL append-only.
 NESSUNA promozione/sintesi automatica (richiede smoke replay + manual review).
@@ -22,7 +28,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -58,28 +63,6 @@ def _window_after_iso() -> str | None:
         return None
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
-_TOKEN_RE = re.compile(r"^[A-Za-z0-9+/=_\-]{20,}$")
-
-
-def _pii_like(v) -> bool:
-    """True se il valore assomiglia a un dato personale/segreto (email,
-    path utente, token/credenziale) — §7.5: non deve derivare nomi né
-    finire nell'audit delle proposte. Deterministico §7.9, conservativo
-    sul lato PII (meglio scartare un candidato che pubblicare un'email)."""
-    s = str(v)
-    if _EMAIL_RE.search(s):
-        return True
-    if s.startswith(("/", "~", "\\")) or ":\\" in s:
-        return True
-    # Token-like: stringa lunga senza spazi con lettere E cifre mescolate
-    # (api key, hash, jwt). Le parole naturali lunghe (solo lettere) passano.
-    if (" " not in s and _TOKEN_RE.match(s)
-            and any(c.isdigit() for c in s) and any(c.isalpha() for c in s)):
-        return True
-    return False
 
 
 def _audit_write(op: str, records: list[dict]) -> Path:
@@ -136,19 +119,6 @@ def _load_turns(after_iso: str | None = None,
             turns = [t for t in turns
                      if (_ts_epoch(t.get("ts_start")) or 0) >= cutoff]
     return turns
-
-
-def _manifest_defaults(catalog) -> dict[str, dict]:
-    """{executor_name: {arg_name: default_value}} per skip-if-default in
-    specialize. Estrae da args_schema.properties.<name>.default."""
-    out = {}
-    for ex in catalog:
-        props = (ex.args_schema or {}).get("properties") or {}
-        defaults = {k: v.get("default") for k, v in props.items()
-                    if isinstance(v, dict) and "default" in v}
-        if defaults:
-            out[ex.name] = defaults
-    return out
 
 
 def _has_consecutive_dup(chain: tuple[str, ...]) -> bool:
@@ -309,195 +279,6 @@ _FLOW_ARGS = frozenset({
 })
 
 
-def _is_template_value(val_str: str) -> bool:
-    """True se il valore e' un placeholder runtime (`{{stepN.field}}`,
-    `{{var}}`) — non specializzabile come costante."""
-    if not isinstance(val_str, str):
-        return False
-    s = val_str.strip().strip('"\'')
-    return "{{" in s and "}}" in s
-
-
-def _is_valid_proposed_name(name: str) -> bool:
-    """Validator deterministico del proposed_name di una specialize.
-
-    Regola CLAUDE.md §2.2: `azione_oggetto[_qualifier]`. Vocabolario CHIUSO
-    (vocab.ACTIONS x vocab.OBJECTS). 4/5/2026 ADR 0077.
-
-    Rifiuta:
-      - nomi senza underscore o con doppio/triplo underscore
-      - verbo non in ACTIONS
-      - oggetto non in OBJECTS
-      - qualifier che inizia con cifra o e' una stringa booleana (`True`/`False`)
-      - qualifier con caratteri non identifier-friendly
-    """
-    if not name or "__" in name or name.startswith("_") or name.endswith("_"):
-        return False
-    parts = name.split("_")
-    if len(parts) < 2:
-        return False
-    try:
-        from vocab import ACTIONS, OBJECTS
-    except Exception:
-        return True  # fallback permissivo se vocab non importabile
-    verb, obj = parts[0], parts[1]
-    if verb not in ACTIONS:
-        return False
-    if obj not in OBJECTS:
-        return False
-    qualifier = "_".join(parts[2:]) if len(parts) > 2 else ""
-    if qualifier:
-        if qualifier[0].isdigit():
-            return False
-        if qualifier in ("True", "False", "true", "false"):
-            return False
-        if not all(c.isalnum() or c == "_" for c in qualifier):
-            return False
-        if qualifier != qualifier.lower():
-            return False
-    return True
-
-
-def candidates_specialize(
-    *,
-    min_uses: int = 10,
-    min_arg_dominance: float = 0.6,
-    limit: int = 20,
-    only_active_catalog: bool = True,
-    skip_if_matches_default: bool = True,
-) -> list[dict]:
-    """Identifica args ricorrenti negli step di un executor → candidato a
-    variante specializzata.
-
-    Algoritmo:
-      1. Per ogni executor, raccogli tutti i raw_args usati nei turni (degli
-         step con quel chosen_tool).
-      2. Per ogni arg name (es. 'pattern', 'op', 'qualifier'), conta i valori.
-      3. Se UN valore copre >= min_arg_dominance del totale (es. 70% delle
-         chiamate find_files hanno pattern='*.py'), proponi specialize.
-      4. Filtra: total_uses >= min_uses.
-
-    Output: list[dict]:
-      - executor: str
-      - arg_name: str
-      - dominant_value: str (json-serialized)
-      - dominance: float (0-1)
-      - total_uses: int
-      - proposed_name: str (suggerimento naming)
-    """
-    turns = _load_turns(after_iso=_window_after_iso())
-    if not turns:
-        return []
-    # Catalog filter: scarta executor che non esistono piu' (legacy come
-    # fs_write, web_fetch rimasti in turns/jsonl di aprile).
-    # Default-aware filter: scarta arg=valore se valore == default del
-    # manifest (es. get_now timezone=Europe/Rome quando Europe/Rome e'
-    # gia' default — non e' specialize utile, e' "tutti usano il default").
-    catalog_names: set[str] = set()
-    manifest_defaults: dict[str, dict] = {}
-    if only_active_catalog or skip_if_matches_default:
-        from loader import load_catalog
-        cat = load_catalog()
-        catalog_names = {e.name for e in cat}
-        if skip_if_matches_default:
-            manifest_defaults = _manifest_defaults(cat)
-    # tool → arg_name → Counter(value)
-    tool_args: dict[str, dict[str, Counter]] = defaultdict(
-        lambda: defaultdict(Counter))
-    for t in turns:
-        for s in (t.get("steps") or []):
-            tool = (s.get("chosen_tool") if isinstance(s, dict) else
-                    getattr(s, "chosen_tool", "")) or ""
-            if not tool:
-                continue
-            if only_active_catalog and tool not in catalog_names:
-                continue
-            raw = (s.get("raw_args") if isinstance(s, dict) else
-                   getattr(s, "raw_args", {})) or {}
-            for k, v in raw.items():
-                # Skip flow args (entries, from_step, results) — sono slot di
-                # pipeline, non costanti utente specializzabili.
-                if k in _FLOW_ARGS:
-                    continue
-                # Skip arg di sistema (prefisso "_": _lang, _channel,
-                # _actor_email, _pre_approved... iniettati dal runtime a OGNI
-                # chiamata, nessun manifest li dichiara). Dominance=1.0 per
-                # costruzione: non sono scelte utente e affollano il top-N.
-                if k.startswith("_"):
-                    continue
-                # Serializza valore (skip scelte ovviamente troppo varianti)
-                if isinstance(v, (str, int, float, bool)):
-                    val = json.dumps(v, ensure_ascii=False)
-                elif isinstance(v, list) and len(v) == 1 and isinstance(v[0], (str, int, float)):
-                    val = json.dumps(v, ensure_ascii=False)
-                else:
-                    continue  # dict/list-multi non ammessi al MVP
-                # Skip placeholder template `{{stepN.field}}` (runtime value).
-                if _is_template_value(val):
-                    continue
-                tool_args[tool][k][val] += 1
-
-    cands = []
-    for tool, args_dict in tool_args.items():
-        tool_defaults = manifest_defaults.get(tool, {})
-        for arg_name, val_counter in args_dict.items():
-            total = sum(val_counter.values())
-            if total < min_uses:
-                continue
-            top_val, top_count = val_counter.most_common(1)[0]
-            dominance = top_count / total
-            if dominance < min_arg_dominance:
-                continue
-            # Skip-if-default: se il valore dominante coincide con il default
-            # del manifest, non e' specialize candidate ma "tutti usano il
-            # default" — informazione gia' codificata nel manifest stesso.
-            try:
-                v_obj = json.loads(top_val)
-            except (json.JSONDecodeError, ValueError):
-                v_obj = top_val
-            if skip_if_matches_default and arg_name in tool_defaults:
-                if v_obj == tool_defaults[arg_name]:
-                    continue
-            # Skip booleani: tipicamente val == default (gia' filtrato sopra)
-            # oppure il proposed_name finisce in `_True`/`_False` che viola
-            # il vocabolario (CLAUDE.md §2.2). Niente informazione utile.
-            if isinstance(v_obj, bool):
-                continue
-            # Skip valori PII-like (2/7/2026, review Fable, §7.5): il
-            # proposed_name deriva dal VALORE dell'arg — un'email/path/token
-            # dominante (es. send_messages to=ospite@example.com →
-            # send_messages_ospite_example_com) finirebbe in audit/DB e in
-            # /admin/changes. Un candidato specialize su un dato personale
-            # non e' comunque proponibile: si scarta, non si maschera.
-            if _pii_like(v_obj):
-                continue
-            slug = str(v_obj).strip("[]\"' ").replace("*", "").replace(".", "_")
-            slug = "".join(c if (c.isalnum() or c == "_") else "_"
-                           for c in slug)[:20]
-            # Collassa multipli underscore di seguito a uno (slug puliti)
-            while "__" in slug:
-                slug = slug.replace("__", "_")
-            slug = slug.strip("_")
-            proposed = f"{tool}_{slug}" if slug else tool
-            # Validator deterministico: rifiuta proposed_name che violano
-            # naming convention (vocab chiuso + qualifier ben formato).
-            if not _is_valid_proposed_name(proposed):
-                continue
-            cands.append({
-                "executor": tool,
-                "arg_name": arg_name,
-                "dominant_value": top_val,
-                "dominance": round(dominance, 3),
-                "total_uses": total,
-                "proposed_name": proposed,
-            })
-
-    cands.sort(key=lambda c: -c["dominance"] * c["total_uses"])
-    return cands[:limit]
-
-
-# --- DEDUPE (placeholder per replay algoritmico bonifica 30/4) ------------
-
 def candidates_dedupe(*, min_uses: int = 1) -> list[dict]:
     """Identifica mnest candidati a dedupe (rename / merge / cleanup).
 
@@ -624,7 +405,8 @@ def _sig_key_for(op: str, cand: dict):
     change_intent (`change_intent_adapters/introvertiva.py`):
       dedupe     → ["dedupe", reason, src, dst]
       generalize → ["generalize", [chain]]
-      specialize → ["specialize", executor, arg_name, dominant_value]
+    (specialize → ["specialize", executor, arg, valore] esiste SOLO come
+    shape storica nel DB: il generatore è ritirato, l'adapter la legge.)
     Ritorna None per record non candidabili (diagnostici, campi mancanti).
     """
     if op == "dedupe":
@@ -637,11 +419,6 @@ def _sig_key_for(op: str, cand: dict):
         if not pattern:
             return None
         return ["generalize", list(pattern)]
-    if op == "specialize":
-        ex, arg = cand.get("executor"), cand.get("arg_name")
-        if not ex or not arg:
-            return None
-        return ["specialize", ex, arg, cand.get("dominant_value")]
     return None
 
 
@@ -655,7 +432,7 @@ def sync_proposals_state(out: dict) -> dict:
     """
     import proposals_state as ps
     counts: dict[str, int] = {}
-    for op in ("dedupe", "generalize", "specialize"):
+    for op in ("dedupe", "generalize"):
         n = 0
         for cand in out.get(op) or []:
             if not isinstance(cand, dict) or cand.get("_kind"):
@@ -671,15 +448,14 @@ def sync_proposals_state(out: dict) -> dict:
 
 
 def run_all(*, audit: bool = True) -> dict:
-    """Esegue tutte e 3 le ops, ritorna summary + scrive audit JSONL per ognuna."""
+    """Esegue le ops attive (dedupe, generalize), summary + audit JSONL."""
     out = {
         "ts": int(time.time()),
         "dedupe": candidates_dedupe(),
         "generalize": candidates_generalize(),
-        "specialize": candidates_specialize(),
     }
     if audit:
-        for op in ("dedupe", "generalize", "specialize"):
+        for op in ("dedupe", "generalize"):
             if out[op]:
                 p = _audit_write(f"candidates_{op}", out[op])
                 out[f"{op}_audit"] = str(p)
@@ -689,10 +465,10 @@ def run_all(*, audit: bool = True) -> dict:
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("op", choices=["dedupe", "generalize", "specialize", "all", "diff"])
+    p.add_argument("op", choices=["dedupe", "generalize", "all", "diff"])
     p.add_argument("--no-audit", action="store_true")
     p.add_argument("--limit", type=int, default=20)
-    p.add_argument("--diff-op", choices=["dedupe", "generalize", "specialize"],
+    p.add_argument("--diff-op", choices=["dedupe", "generalize"],
                    help="Per `op=diff`: quale operazione confrontare.")
     args = p.parse_args()
     if args.op == "diff":
@@ -706,8 +482,7 @@ if __name__ == "__main__":
         print(json.dumps(r, ensure_ascii=False, indent=2))
     else:
         fn = {"dedupe": candidates_dedupe,
-              "generalize": candidates_generalize,
-              "specialize": candidates_specialize}[args.op]
+              "generalize": candidates_generalize}[args.op]
         r = fn() if args.op == "dedupe" else fn(limit=args.limit)
         print(json.dumps(r, ensure_ascii=False, indent=2))
         if not args.no_audit and r:
