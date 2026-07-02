@@ -228,3 +228,47 @@ def test_affinity_phrase_recall_excludes_present(catalog):
     names = [getattr(e, "name", None) for e in rec]
     assert "find_credentials" not in names
     assert "read_persons" in names
+
+
+# ── Segregazione modalità immagini (2/7/2026, replay job A) ────────────
+
+def test_image_tools_dropped_from_text_clause(catalog):
+    """«riassumi i file readme su github» (describe|texts): describe_images /
+    find_images_web NON entrano — la query non nomina le immagini."""
+    it = _intent(verb="describe", object="texts",
+                 actions=[{"verb": "find", "object": "files"},
+                          {"verb": "read", "object": "files"},
+                          {"verb": "describe", "object": "texts"}])
+    pool = _build("riassumi tutti i file readme.md su github nel repo o/r",
+                  it, catalog)
+    bad = {n for n in pool if "_images" in n}
+    assert not bad, bad
+
+
+def test_image_tools_dropped_from_web_news_clause(catalog):
+    """«cerca sul web notizie su python» (find|urls): find_images_web fuori."""
+    it = _intent(verb="find", object="urls")
+    pool = _build("cerca sul web notizie su python", it, catalog)
+    assert "find_images_web" not in pool, pool
+
+
+def test_image_tools_kept_for_images_clause(catalog):
+    it = _intent(verb="find", object="images")
+    pool = _build("cerca le foto della gita a venezia", it, catalog)
+    assert any("_images" in n for n in pool), pool
+
+
+def test_image_gate_keeps_when_text_names_photos():
+    """Intent misclassificato (object=files) ma il TESTO nomina le foto →
+    il detector testuale preserva i tool images (nessun falso negativo del
+    GATE; test diretto: il rank per files può non portarli affatto)."""
+    from types import SimpleNamespace
+    from engine.routing_pool import _gate_image_modality
+    pool = [SimpleNamespace(name="find_images_indices"),
+            SimpleNamespace(name="read_files")]
+    it = _intent(verb="describe", object="files")
+    kept = _gate_image_modality(pool, "riassumi le foto della gita", it)
+    assert any(getattr(e, "name", "") == "find_images_indices" for e in kept)
+    # e sulla stessa query SENZA foto nel testo il tool images cade
+    kept2 = _gate_image_modality(pool, "riassumi i documenti della gita", it)
+    assert all(getattr(e, "name", "") != "find_images_indices" for e in kept2)

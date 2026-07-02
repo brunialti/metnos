@@ -32,6 +32,50 @@ _POOL_COMPANIONS = {
 }
 
 
+def _tool_object_of(nm: str) -> str:
+    """Object canonico dal NOME tool (2° token in vocab.OBJECTS; '' se n/d)."""
+    try:
+        from vocab import OBJECTS as _VOBJ
+    except Exception:  # noqa: BLE001
+        return ""
+    for tok in (nm or "").split("_")[1:]:
+        if tok in _VOBJ:
+            return tok
+    return ""
+
+
+def _gate_image_modality(pool: list, query: str, intent) -> list:
+    """SEGREGAZIONE MODALITÀ IMMAGINI (2/7/2026, replay job A su storia reale).
+
+    I tool con object=images hanno affinity magnetiche (riassumi/cerca/web/
+    contenuto) e VINCONO clausole non-immagine: «riassumi i readme su github»
+    → describe_images (VLM su testi), «cerca sul web notizie su python» →
+    find_images_web (clausola find|urls corretta nell'intent, mascherata dal
+    proposer). Le immagini sono una MODALITÀ distinta: una query che le
+    riguarda le NOMINA sempre — per clausola (`actions`), per object
+    dell'intent, o nel testo (detect_canonical_object, SoT _OBJECT_HINTS).
+    Nessun segnale-immagini → i tool images escono dal pool. §7.9
+    deterministico, vocab-driven, zero liste di sinonimi nel prompt
+    ([[feedback-contamination-is-function-not-prompt]]).
+    Fail-open: senza detector testuale il pool resta intatto; mai pool vuoto.
+    """
+    objs = {(a.get("object") or "").lower()
+            for a in (getattr(intent, "actions", None) or [])
+            if isinstance(a, dict)}
+    objs.add((getattr(intent, "object", "") or "").lower())
+    if "images" in objs:
+        return pool
+    try:
+        from prefilter import detect_canonical_object, tokenize as _tok
+        if detect_canonical_object(_tok(query), query) == "images":
+            return pool
+    except Exception:  # noqa: BLE001
+        return pool
+    kept = [e for e in pool
+            if _tool_object_of(getattr(e, "name", "") or "") != "images"]
+    return kept or pool
+
+
 def _provider_recruit_and_gate(names: list[str], query: str, intent,
                                catalog: list) -> list[str]:
     """Recruit + gate PROVIDER simmetrico sul pool (§7.9; modello ADR 0165: il
@@ -351,6 +395,11 @@ def build_routing_pool(query: str, intent, catalog: list, *,
             except Exception as ex:  # §2.8: traccia, pool resta valido
                 log.warning("routing_pool: affinity_phrase_recall fallita: %r",
                             ex)
+            # Segregazione modalità immagini (vedi _gate_image_modality):
+            # DOPO l'affinity recall (che può reintrodurre un tool images
+            # legittimo su query che nominano le foto — il gate lo preserva
+            # via detector testuale), PRIMA di helpers/companions.
+            filtered = _gate_image_modality(filtered, query, intent)
             # Garantisci che fastpath / autopath catalog completo resti
             # disponibile a executor (callback usa il NOME, non il pool).
             # Pool ridotto è SOLO per il prompt Proposer.
