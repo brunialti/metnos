@@ -1,10 +1,10 @@
-"""Smoke test introvertiva — corpus fittizio controllato.
+"""Test introvertiva — post-ritiro specialize+generalize (2/7/2026).
 
-Verifica che generalize identifichi un pattern atteso, che skip filtri
-funzionino (skip default, skip X→X, skip smoke channel), che specialize
-ignori il default match.
+Unica op attiva: DEDUPE (mnest orfani/legacy). Il sync proietta SOLO
+dedupe; le shape storiche (generalize/specialize) restano leggibili
+dall'adapter ma nessun generatore le ri-emette. prune_old: R1/R2 con
+reject umano mai potato.
 """
-import json
 import shutil
 import sys
 import tempfile
@@ -18,149 +18,68 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 @pytest.fixture
 def tmp_corpus(monkeypatch):
-    """Sostituisce TURNS_DIR, AUDIT_DIR, MNESTOMA_DB_PATH con tmpdir + popola
-    turni fittizi + mnest fittizi per le transizioni testate."""
+    """AUDIT_DIR + MNESTOMA_DB_PATH su tmpdir + mnest fittizi."""
     tmp = Path(tempfile.mkdtemp(prefix="introvertiva_test_"))
-    turns = tmp / "turns"
     audit = tmp / "introvertiva"
     mnest_db = tmp / "mnest.sqlite"
-    turns.mkdir()
     audit.mkdir()
     monkeypatch.setenv("MNESTOMA_DB_PATH", str(mnest_db))
-    # Il corpus fittizio ha date FISSE (aprile/maggio 2026): la finestra
-    # rolling dei generatori (default 60gg) va disattivata qui, e testata
-    # esplicitamente in test_window_excludes_old_turns.
-    monkeypatch.setenv("METNOS_INTROVERTIVA_WINDOW_DAYS", "0")
-    # Popola mnest fittizi per le transizioni che il test usa: serve perche'
-    # candidates_generalize calcola avg_weight su mnest reali — senza,
-    # weights=[] → catena scartata.
     from mnestoma import Mnestoma
     m = Mnestoma()
-    for src, dst in [("find_files", "sort_entries"),
-                       ("sort_entries", "describe_entries"),
-                       ("find_dirs", "sort_entries")]:
-        m.record_passing(src, "1.0", dst, "1.0", turn_id="test_seed")
+    # transizione con executor ORFANO (fetch_urls rimosso dal catalog)
+    m.record_passing("fetch_urls", "1.0", "write_files", "1.0",
+                     turn_id="test_seed")
+    # transizione sana (entrambi nel catalog reale)
+    m.record_passing("find_files", "1.0", "sort_entries", "1.0",
+                     turn_id="test_seed2")
     m.close()
-    fixtures = [
-        # 5 turni REALI (channel telegram) con catena identica find→sort→describe
-        # → candidato generalize ATTESO
-        *[{
-            "ts_start": "2026-04-29T08:00:00Z",
-            "user_query": f"trova file py grandi {i}",
-            "channel": "telegram",
-            "steps": [
-                {"chosen_tool": "find_files", "raw_args": {"pattern": "*.py"}},
-                {"chosen_tool": "sort_entries", "raw_args": {"by": "size", "desc": True}},
-                {"chosen_tool": "describe_entries", "raw_args": {}},
-            ],
-        } for i in range(5)],
-        # 1 turno smoke (channel test_uc) con stessa catena → DEVE essere skipped
-        {
-            "ts_start": "2026-04-29T09:00:00Z",
-            "user_query": "smoke test",
-            "channel": "test_uc",
-            "steps": [
-                {"chosen_tool": "find_files", "raw_args": {}},
-                {"chosen_tool": "sort_entries", "raw_args": {}},
-                {"chosen_tool": "describe_entries", "raw_args": {}},
-            ],
-        },
-        # 3 turni REALI con catena RIDONDANTE sort→sort consecutive → diagnostic, no promote
-        *[{
-            "ts_start": "2026-04-30T10:00:00Z",
-            "user_query": f"top dirs {i}",
-            "channel": "telegram",
-            "steps": [
-                {"chosen_tool": "find_dirs", "raw_args": {}},
-                {"chosen_tool": "sort_entries", "raw_args": {}},
-                {"chosen_tool": "sort_entries", "raw_args": {}},
-            ],
-        } for i in range(3)],
-        # 5 turni con sort_entries(desc=true): specialize candidate (default
-        # del manifest e' desc=false → non scartato dal default-skip)
-        *[{
-            "ts_start": "2026-05-01T11:00:00Z",
-            "user_query": f"top {i}",
-            "channel": "telegram",
-            "steps": [
-                {"chosen_tool": "sort_entries", "raw_args": {"by": "size", "desc": True}},
-            ],
-        } for i in range(5)],
-    ]
-    fpath = turns / "2026-04-29.jsonl"
-    with fpath.open("w") as f:
-        for t in fixtures:
-            f.write(json.dumps(t) + "\n")
-    with mock.patch("introvertiva.TURNS_DIR", turns), \
-         mock.patch("introvertiva.AUDIT_DIR", audit):
+    with mock.patch("introvertiva.AUDIT_DIR", audit):
         yield tmp
     shutil.rmtree(tmp)
 
 
-def test_generalize_finds_expected_pattern(tmp_corpus):
-    from introvertiva import candidates_generalize
-    cands = candidates_generalize(min_uses=3, min_chain_len=3,
-                                    min_distinct_intents=2, min_avg_weight=0.0)
-    promo = [c for c in cands if "_kind" not in c]
-    assert promo, "generalize should find at least one promotion candidate"
-    expected = ["find_files", "sort_entries", "describe_entries"]
-    found = [c for c in promo if c["pattern"] == expected]
-    assert found, f"expected pattern {expected} not in {[c['pattern'] for c in promo]}"
-    assert found[0]["uses"] == 5, "should count exactly 5 real turns (smoke skipped)"
+def test_dedupe_finds_legacy_orphan(tmp_corpus):
+    from introvertiva import candidates_dedupe
+    cands = candidates_dedupe()
+    orphans = [c for c in cands if c["kind"] == "legacy_orphan"]
+    assert any(c["src_executor"] == "fetch_urls" for c in orphans)
+    assert not any(c.get("src_executor") == "find_files" for c in orphans)
 
 
-def test_generalize_skips_redundant_xtox(tmp_corpus):
-    from introvertiva import candidates_generalize
-    cands = candidates_generalize(min_uses=3, min_chain_len=3,
-                                    min_distinct_intents=2, min_avg_weight=0.0)
-    redundant = next((c for c in cands if c.get("_kind") == "diagnostic"), None)
-    assert redundant is not None, "redundant patterns block missing"
-    pats = redundant["redundant_patterns"]
-    assert any(rp["pattern"] == ["find_dirs", "sort_entries", "sort_entries"]
-                for rp in pats), \
-        f"X→X pattern should be in diagnostic, got {pats}"
+def test_run_all_is_dedupe_only(tmp_corpus):
+    from introvertiva import run_all
+    out = run_all(audit=False)
+    assert "dedupe" in out
+    assert "generalize" not in out and "specialize" not in out
 
 
-def test_generalize_skips_smoke_channel(tmp_corpus):
-    from introvertiva import candidates_generalize
-    cands = candidates_generalize(min_uses=3, min_chain_len=3,
-                                    min_distinct_intents=1, min_avg_weight=0.0)
-    promo = [c for c in cands if "_kind" not in c]
-    expected = ["find_files", "sort_entries", "describe_entries"]
-    found = [c for c in promo if c["pattern"] == expected]
-    if found:
-        # 5 telegram + 1 test_uc; se filter funziona, uses=5 non 6
-        assert found[0]["uses"] == 5
-
-
-def test_window_filters_float_ts_start(tmp_corpus):
-    """Integration del fix 2ccda51: i turni REALI portano ts_start come float
-    epoch (11563/11668 in prod) — il confine after_iso deve filtrare su epoch
-    per entrambi i formati, escludendo i ts_start non validi."""
-    from datetime import datetime, timezone
-    turns_dir = tmp_corpus / "turns"
-    cutoff_iso = "2026-06-01T00:00:00Z"
-    old_ep = datetime(2026, 5, 1, tzinfo=timezone.utc).timestamp()
-    new_ep = datetime(2026, 6, 15, tzinfo=timezone.utc).timestamp()
-    rows = [
-        {"ts_start": old_ep, "user_query": "vecchio float", "channel": "telegram", "steps": []},
-        {"ts_start": new_ep, "user_query": "nuovo float", "channel": "telegram", "steps": []},
-        {"ts_start": "2026-06-20T10:00:00Z", "user_query": "nuovo iso", "channel": "telegram", "steps": []},
-        {"ts_start": "non-una-data", "user_query": "rotto", "channel": "telegram", "steps": []},
-    ]
-    with (turns_dir / "2026-06-15.jsonl").open("w") as f:
-        for t in rows:
-            f.write(json.dumps(t) + "\n")
-    from introvertiva import _load_turns
-    got = {t["user_query"] for t in _load_turns(after_iso=cutoff_iso)}
-    assert "nuovo float" in got and "nuovo iso" in got
-    assert "vecchio float" not in got and "rotto" not in got
+def test_sync_projects_only_dedupe(tmp_corpus, monkeypatch):
+    """Le shape storiche passate da un chiamante NON vengono proiettate:
+    i generatori sono ritirati (2/7), il sync emette solo dedupe."""
+    import proposals_state as ps
+    db = tmp_corpus / "proposals_state.db"
+    monkeypatch.setattr(ps, "DB_PATH", db)
+    from introvertiva import sync_proposals_state
+    out = {
+        "dedupe": [{"kind": "legacy_orphan", "src_executor": "fetch_urls",
+                     "dst_executor": "write_files", "uses": 7}],
+        "generalize": [{"pattern": ["find_files", "sort_entries"], "uses": 5}],
+        "specialize": [{"executor": "read_messages", "arg_name": "account",
+                         "dominant_value": "\"x\"", "total_uses": 12}],
+    }
+    counts = sync_proposals_state(out)
+    assert counts == {"dedupe": 1}
+    assert ps.lookup(["dedupe", "legacy_orphan", "fetch_urls",
+                       "write_files"]) is not None
+    assert ps.lookup(["generalize", ["find_files", "sort_entries"]]) is None
+    sync_proposals_state(out)
+    row = ps.lookup(["dedupe", "legacy_orphan", "fetch_urls", "write_files"])
+    assert row is not None and row.n_seen == 2
 
 
 def test_prune_old_keeps_rejected(tmp_corpus, monkeypatch):
     """Review Fable 2/7: il reject umano mappa su state='dormant' — la
-    potatura lo cancellava e il generatore notturno ri-emetteva la proposta
-    come pending FRESCA (memoria della decisione persa)."""
+    potatura lo cancellava e la proposta risorgeva come pending fresca."""
     import sqlite3
     import proposals_state as ps
     db = tmp_corpus / "proposals_state.db"
@@ -185,66 +104,17 @@ def test_prune_old_keeps_rejected(tmp_corpus, monkeypatch):
     left = {r[0] for r in conn.execute(
         "SELECT last_action FROM proposals_state")}
     conn.close()
-    assert left == {"reject"}  # il reject sopravvive a R1 E R2
-
-
-def test_window_excludes_old_turns(tmp_corpus, monkeypatch):
-    """Finestra rolling: con METNOS_INTROVERTIVA_WINDOW_DAYS attivo i turni
-    piu' vecchi del cutoff (il corpus fittizio e' di aprile/maggio 2026)
-    escono dai contatori dei generatori."""
-    monkeypatch.setenv("METNOS_INTROVERTIVA_WINDOW_DAYS", "1")
-    from introvertiva import candidates_generalize
-    assert candidates_generalize(min_uses=1, min_chain_len=3,
-                                   min_distinct_intents=1,
-                                   min_avg_weight=0.0) == []
-
-
-def test_sync_proposals_state_roundtrip(tmp_corpus, monkeypatch):
-    """sync_proposals_state proietta i candidati nel DB (touch_or_insert):
-    sig_key canonici compatibili con lo storico/adapter, skip diagnostici."""
-    import proposals_state as ps
-    db = tmp_corpus / "proposals_state.db"
-    monkeypatch.setattr(ps, "DB_PATH", db)
-    from introvertiva import sync_proposals_state
-    out = {
-        "dedupe": [{"kind": "legacy_orphan", "src_executor": "fetch_urls",
-                     "dst_executor": "write_files", "uses": 7}],
-        "generalize": [
-            {"pattern": ["find_files", "sort_entries", "describe_entries"],
-             "uses": 5},
-            {"_kind": "diagnostic", "note": "skip me"},
-        ],
-        # specialize RITIRATA (2/7, regola livelli): anche se un chiamante
-        # passa candidati specialize, il sync NON li proietta.
-        "specialize": [{"executor": "read_messages", "arg_name": "account",
-                         "dominant_value": "\"metnos_system\"",
-                         "total_uses": 12}],
-    }
-    counts = sync_proposals_state(out)
-    assert counts == {"dedupe": 1, "generalize": 1}
-    assert ps.lookup(["specialize", "read_messages", "account",
-                       "\"metnos_system\""]) is None
-    # Shape identica allo storico del DB (contratto adapter change_intent).
-    row = ps.lookup(["dedupe", "legacy_orphan", "fetch_urls", "write_files"])
-    assert row is not None
-    # Secondo run: touch, n_seen avanza (lifecycle vivo).
-    sync_proposals_state(out)
-    row = ps.lookup(["generalize",
-                      ["find_files", "sort_entries", "describe_entries"]])
-    assert row is not None and row.n_seen == 2
+    assert left == {"reject"}
 
 
 def test_prune_old_removes_dead_evidence_keeps_decisions(tmp_corpus, monkeypatch):
-    """prune_old: R1 evidenza morta (last_seen oltre refresh_days) e R2 TTL
-    (first_seen oltre days) SOLO su pending/dormant; applied e blocked
-    (anti-resurrezione) mai toccate."""
+    """prune_old: R1/R2 SOLO su pending/dormant; applied e blocked mai."""
     import sqlite3
     import proposals_state as ps
     db = tmp_corpus / "proposals_state.db"
     monkeypatch.setattr(ps, "DB_PATH", db)
     conn = ps._open()
     rows = [
-        # (sig_key, state, first_seen, last_seen) — vecchie di ~65gg
         ("[\"specialize\", \"a\", \"x\", \"1\"]", "pending",
          "2026-04-27T00:00:00Z", "2026-04-27T00:00:00Z"),
         ("[\"specialize\", \"b\", \"x\", \"1\"]", "dormant",
@@ -259,7 +129,6 @@ def test_prune_old_removes_dead_evidence_keeps_decisions(tmp_corpus, monkeypatch
             "INSERT INTO proposals_state "
             "(sig_key, kind, state, first_seen, last_seen, last_uses, n_seen) "
             "VALUES (?, 'specialize', ?, ?, ?, 1, 1)", (sig, state, fs, ls))
-    # una riga pending FRESCA (ri-toccata dal sync) → deve sopravvivere
     conn.execute(
         "INSERT INTO proposals_state (sig_key, kind, last_uses) "
         "VALUES ('[\"specialize\", \"e\", \"x\", \"1\"]', 'specialize', 1)")
@@ -276,23 +145,16 @@ def test_prune_old_removes_dead_evidence_keeps_decisions(tmp_corpus, monkeypatch
 
 def test_diff_audit_returns_error_with_no_history(tmp_corpus):
     from introvertiva import diff_audit
-    r = diff_audit("generalize")
+    r = diff_audit("dedupe")
     assert "error" in r
 
 
 def test_diff_audit_works_with_two_runs(tmp_corpus):
-    from introvertiva import candidates_generalize, _audit_write, diff_audit
-    # Run 1: snapshot iniziale
-    cands1 = candidates_generalize(min_uses=3, min_chain_len=3, min_distinct_intents=2,
-                                    min_avg_weight=0.0)
-    _audit_write("candidates_generalize", cands1)
-    # Run 2: stesso corpus (idempotente, persisted=tutti)
-    import time; time.sleep(1.1)  # garantisce ts diverso
-    cands2 = candidates_generalize(min_uses=3, min_chain_len=3, min_distinct_intents=2,
-                                    min_avg_weight=0.0)
-    _audit_write("candidates_generalize", cands2)
-    diff = diff_audit("generalize")
-    assert "error" not in diff
-    assert diff["n_added"] == 0
-    assert diff["n_removed"] == 0
-    assert diff["n_persisted"] >= 1
+    import time
+    from introvertiva import candidates_dedupe, _audit_write, diff_audit
+    r1 = candidates_dedupe()
+    _audit_write("candidates_dedupe", r1)
+    time.sleep(1.1)  # ts filename a secondi: due file distinti
+    _audit_write("candidates_dedupe", r1)
+    d = diff_audit("dedupe")
+    assert d.get("added") == [] and d.get("removed") == []
