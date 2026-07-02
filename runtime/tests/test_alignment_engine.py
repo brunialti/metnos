@@ -199,13 +199,18 @@ class ParseFitsTests(unittest.TestCase):
         self.assertEqual(fits[0].telos_id, "t.a")
         self.assertAlmostEqual(fits[0].fit, 0.4)
 
-    def test_parse_fit_clamped_to_0_1(self):
+    def test_parse_fit_clamped_to_range(self):
+        # v1.4: range [-1, 1] — il negativo è un CONFLITTO dichiarato dal
+        # judge (penalità in compose), non più clampato a 0.
         from alignment_engine import _parse_fits
-        t = [_telos("t.a", 1.0), _telos("t.b", 1.0)]
-        raw = '[{"telos_id":"t.a","fit":1.5,"why":"x"},{"telos_id":"t.b","fit":-0.2,"why":"y"}]'
+        t = [_telos("t.a", 1.0), _telos("t.b", 1.0), _telos("t.c", 1.0)]
+        raw = ('[{"telos_id":"t.a","fit":1.5,"why":"x"},'
+               '{"telos_id":"t.b","fit":-0.2,"why":"y"},'
+               '{"telos_id":"t.c","fit":-3,"why":"z"}]')
         fits = _parse_fits(raw, t)
-        self.assertEqual(fits[0].fit, 1.0)  # clamped da 1.5
-        self.assertEqual(fits[1].fit, 0.0)  # clamped da -0.2
+        self.assertEqual(fits[0].fit, 1.0)   # clamped da 1.5
+        self.assertEqual(fits[1].fit, -0.2)  # preservato (conflitto)
+        self.assertEqual(fits[2].fit, -1.0)  # clamped da -3
 
     def test_parse_garbage_returns_empty(self):
         from alignment_engine import _parse_fits

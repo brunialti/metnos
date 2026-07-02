@@ -4,7 +4,7 @@
 Implementa la funzione di allineamento dichiarata in
 `docs/it/architecture/telos.html` cap.4 (v1.3, 22/5/2026):
 
-    contrib_i = peso_i * gate(fit_i, soglia_i)
+    contrib_i = peso_i * gate(fit_i, soglia_i)   [fit_i<0 → penalità senza gate, v1.4]
     top = max(contrib_i)
     rest = sum(contrib_i) - top
     expected_alignment = (ALPHA * top + GAMMA * rest)
@@ -138,15 +138,25 @@ def compose(
         return -bother_cost  # nessun contributo, ma bother_cost ancora applicato
     fits_by_id = {f.telos_id: f for f in fits}
     contribs: list[float] = []
+    penalty = 0.0
     for t in telos_list:
         f = fits_by_id.get(t.id)
         if f is None:
             contribs.append(0.0)
             continue
+        if f.fit < 0:
+            # v1.4 (2/7/2026): fit NEGATIVO = la proposta LAVORA CONTRO il
+            # telos (frontier a pagamento vs t.parsimonia, interruzione vs
+            # t.discrezione). Il danno NON passa dal gate: conta sempre,
+            # anche sotto soglia — meglio penalizzare un falso conflitto
+            # che promuovere una proposta che viola un fine dichiarato.
+            penalty += t.weight * (-f.fit)
+            contribs.append(0.0)
+            continue
         contribs.append(t.weight * _gate(f.fit, t.activation_threshold))
     top = max(contribs)
     rest = sum(contribs) - top
-    ea_base = _ALPHA * top + _GAMMA * rest
+    ea_base = _ALPHA * top + _GAMMA * rest - _ALPHA * penalty
     return ea_base * urgency * confidence - bother_cost
 
 
@@ -164,12 +174,15 @@ LA PROPOSTA:
 - azione proposta: {proposed_action}
 - razionale: {rationale}
 
-DEVI: per ogni telos qui sopra, stimare fit ∈ [0, 1] = quanto la proposta
+DEVI: per ogni telos qui sopra, stimare fit ∈ [-1, 1] = quanto la proposta
 SERVE quel telos. 0 = neutra/irrilevante. 0.5 = aiuta indirettamente.
-1.0 = lo serve in modo diretto e centrale.
+1.0 = lo serve in modo diretto e centrale. NEGATIVO = lavora CONTRO quel
+telos (es. usa un servizio a pagamento → t.parsimonia negativo; interrompe
+l'utente → t.discrezione negativo; espone dati → t.protezione negativo).
 NON DEVI: confondere "buona idea" con "allineata ai telos". Una proposta
 brillante ma fuori dai telos dichiarati ha fit basso su tutti.
 OK: proposta riduce 5 step a 1 → t.tempo fit alto (0.8), t.parsimonia medio (0.5).
+OK: proposta chiama un LLM a pagamento → t.parsimonia fit NEGATIVO (-0.6).
 ERRORE: assegnare fit alto a tutti i telos "per sicurezza" — è rumore.
 
 Output: array JSON, una entry per telos, in QUESTO ordine esatto:
@@ -227,7 +240,7 @@ def _parse_fits(raw: str, telos_list: list) -> list[FitEstimate]:
             fit = float(it.get("fit", 0))
         except (TypeError, ValueError):
             continue
-        fit = max(0.0, min(1.0, fit))
+        fit = max(-1.0, min(1.0, fit))   # negativo = CONTRO il telos (v1.4)
         why = str(it.get("why", ""))[:200]  # cap per audit log size
         fits[tid] = FitEstimate(telos_id=tid, fit=fit, why=why)
     # Telos non presenti in output → fit=0 esplicito (no silent drop)
