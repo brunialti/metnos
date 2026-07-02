@@ -305,7 +305,7 @@ def invoke(args):
     }
     if truncated:
         out["truncated"] = True
-        out["truncated_what"] = "file"
+        out["truncated_what"] = _msg("MSG_OBJECT_FILES")
         out["used"] = total_files
         out["cap_field"] = "max_files"
         out["cap_value"] = max_files

@@ -298,7 +298,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         "available_total": available_total,
         "used": len(entries),
         "truncated": truncated,
-        "truncated_what": "proposal" if truncated else None,
+        "truncated_what": _msg("MSG_OBJECT_PROPOSALS") if truncated else None,
         "truncated_intentional": truncated,  # max_results is user-requested cap
         "cap_field": "max_results" if truncated else None,
         "cap_value": max_results if truncated else None,

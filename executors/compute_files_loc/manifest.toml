@@ -18,7 +18,7 @@ en = "SCOPO: compute LOC stats (lines, blank, comments) on source code. PATTERN:
 
 [code]
 files  = ["compute_files_loc.py"]
-digest = "sha256:b9f7974d22bb6ec0bd67e589ad70c3d05ee2c8bc3b04c7b99d1aecd9dc75896b"
+digest = "sha256:c5713ef1fbf2f8c487f0c459787fd071335e80141a087ebddf5d76aaa9505f7e"
 
 [args]
 type     = "object"

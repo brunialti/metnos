@@ -178,7 +178,8 @@ def test_max_total_caps_with_truncation_visibility(de):
     assert [e["uid"] for e in _read_window("yesterday")] == [uid_y2]
     # §2.7: cap raggiunto -> visibility completa, intentional (cap richiesto).
     assert r["truncated"] is True
-    assert r["truncated_what"] == "events"
+    from messages import get as _msg
+    assert r["truncated_what"] == _msg("MSG_OBJECT_EVENTS")
     assert r["available_total"] == 2
     assert r["cap_field"] == "max_total"
     assert r["cap_value"] == 1

@@ -25,6 +25,7 @@ import re
 
 from llm_helpers import call_llm
 from logging_setup import get_logger
+from messages import get as _msg
 
 log = get_logger(__name__)
 
@@ -375,7 +376,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     if truncated_inputs:
         # §2.7 visibility
         res["truncated"] = True
-        res["truncated_what"] = "input_sources"
+        res["truncated_what"] = _msg("MSG_OBJECT_SOURCES")
         res["available_input_total"] = len(entries)
         res["cap_field"] = "n_sources"
         res["cap_value"] = _MAX_INPUTS
@@ -385,7 +386,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         # Il totale reale non è noto (loop interrotto): `used` = record mostrati.
         res["truncated"] = True
         res["truncated_intentional"] = True
-        res["truncated_what"] = "entries"
+        res["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         res["cap_field"] = "max_total"
         res["cap_value"] = max_total
     return res

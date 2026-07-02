@@ -299,7 +299,8 @@ class TestFindUrls(unittest.TestCase):
         })
         self.assertTrue(out["ok"], out)
         self.assertTrue(out.get("truncated"), out)
-        self.assertEqual(out["truncated_what"], "URL")
+        from messages import get as _msg
+        self.assertEqual(out["truncated_what"], _msg("MSG_OBJECT_URLS"))
         self.assertEqual(out["cap_field"], "max_pages")
         self.assertEqual(out["cap_value"], 5)
         self.assertEqual(out["used"], 5)

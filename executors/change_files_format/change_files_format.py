@@ -295,7 +295,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
     if truncated:
         out.update({
             "truncated": True,
-            "truncated_what": "paths",
+            "truncated_what": _msg("MSG_OBJECT_PATHS"),
             "used": len(in_paths),
             "available_total": available_total,
             "cap_field": "max_files",

@@ -450,7 +450,8 @@ class TestFindImagesUnified(unittest.TestCase):
                 "top_k": 5,
             })
         if out.get("truncated"):
-            self.assertEqual(out["truncated_what"], "entries")
+            from messages import get as _msg
+            self.assertEqual(out["truncated_what"], _msg("MSG_OBJECT_ENTRIES"))
             self.assertEqual(out["cap_field"], "top_k")
             self.assertEqual(out["cap_value"], 5)
 

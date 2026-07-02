@@ -131,7 +131,7 @@ def _delete_by_window(backend, client: str, args: dict) -> dict:
             # §2.7/§2.11 truncation visibility; intentional = cap richiesto
             # esplicitamente via max_total (niente proposta di allargamento).
             out["truncated"] = True
-            out["truncated_what"] = "events"
+            out["truncated_what"] = _msg("MSG_OBJECT_EVENTS")
             out["available_total"] = len(found)
             out["cap_field"] = "max_total"
             out["cap_value"] = max_total

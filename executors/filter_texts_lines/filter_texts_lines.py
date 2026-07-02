@@ -108,7 +108,7 @@ def invoke(args):
     }
     if truncated:
         out["truncated"] = True
-        out["truncated_what"] = "riga"
+        out["truncated_what"] = _msg("MSG_OBJECT_LINES")
         out["used"] = len(lines_out)
         out["available_total"] = available_total
         out["cap_field"] = "max_results"

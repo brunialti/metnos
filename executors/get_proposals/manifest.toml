@@ -40,7 +40,7 @@ en = "SCOPO: gets introvertive proposals (dedupe/generalize/specialize). PATTERN
 
 [code]
 files  = ["get_proposals.py"]
-digest = "sha256:3ced9fb0fef67f7b028c65beaf73c5e4f3a7fff32a2833a2bd5481af2f68419e"
+digest = "sha256:44da611bb529859ac5306c4df221ca521b727072dd622e051a5a68afd9805b1d"
 
 [args]
 type = "object"

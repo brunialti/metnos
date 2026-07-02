@@ -95,7 +95,7 @@ def test_orchestrate_cap_expand_replaces_expandable_caps(isolated_dialog_dir):
 
 def test_orchestrate_cap_expand_uses_default_label_if_no_truncated_what(
         isolated_dialog_dir):
-    """Senza truncated_what, preview_label = 'risultati' (fallback)."""
+    """Senza truncated_what, preview_label = fallback i18n (§11)."""
     log = _make_turnlog_with_truncated_step(truncated_what="")
     # Override: rimuovi truncated_what dallo step result
     log.steps[0].result.pop("truncated_what", None)
@@ -107,7 +107,8 @@ def test_orchestrate_cap_expand_uses_default_label_if_no_truncated_what(
         log.expandable_caps[0]["sender_for_state"],
         log.expandable_caps[0]["dialog_id"],
     )
-    assert state["on_complete"]["preview_label"] == "risultati"
+    from messages import get as _msg
+    assert state["on_complete"]["preview_label"] == _msg("MSG_TRUNCATED_DEFAULT_WHAT")
 
 
 def test_orchestrate_cap_expand_sender_id_no_channel(isolated_dialog_dir):

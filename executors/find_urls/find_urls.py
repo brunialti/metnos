@@ -1979,7 +1979,7 @@ def _invoke_default(args: dict) -> dict:
     }
     if truncated:
         out["truncated"] = True
-        out["truncated_what"] = "URL"
+        out["truncated_what"] = _msg("MSG_OBJECT_URLS")
         out["used"] = used
         if available_total is not None:
             out["available_total"] = available_total

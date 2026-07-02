@@ -34,6 +34,23 @@ _REQUIRED_UPLOAD_KEYS = (
     "MSG_UPLOAD_SIMILAR_COUNT",
 )
 
+# Chiavi user-facing del batch truncation §2.7/§2.11 (2/7): etichette
+# `truncated_what` (MSG_OBJECT_*) + dialog di allargamento cap.
+_REQUIRED_TRUNCATION_KEYS = (
+    "MSG_OBJECT_ENTRIES",
+    "MSG_OBJECT_LINES",
+    "MSG_OBJECT_URLS",
+    "MSG_OBJECT_PATHS",
+    "MSG_OBJECT_FILES",
+    "MSG_OBJECT_EVENTS",
+    "MSG_OBJECT_PROPOSALS",
+    "MSG_OBJECT_IMAGE_FILES",
+    "MSG_OBJECT_SOURCES",
+    "MSG_OBJECT_PROCESSES",
+    "MSG_CAP_EXPAND_ASK",
+    "MSG_CAP_EXPAND_TITLE",
+)
+
 
 class TestSeedHasGateKeys(unittest.TestCase):
     def test_seed_file_exists(self):
@@ -66,6 +83,24 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_UPLOAD_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(
+                        txt and "<missing" not in txt,
+                        f"seed manca {key}[{lang}] (rigenera install/data/"
+                        f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_truncation_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_TRUNCATION_KEYS))),
+                _REQUIRED_TRUNCATION_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_TRUNCATION_KEYS:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     txt = rows.get((key, lang))

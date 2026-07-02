@@ -1287,7 +1287,7 @@ def invoke(args):
         )
     if truncated:
         out["truncated"] = True
-        out["truncated_what"] = "image-file"
+        out["truncated_what"] = _msg("MSG_OBJECT_IMAGE_FILES")
         out["used"] = len(paths)
         out["cap_field"] = "max_files"
         out["cap_value"] = int(max_files)

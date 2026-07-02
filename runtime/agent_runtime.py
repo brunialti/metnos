@@ -3781,8 +3781,8 @@ class TurnLog:
 
         # Etichetta leggibile per la preview ("processi", "foto", "righe")
         # — dal `truncated_what` se l'executor lo dichiara, altrimenti
-        # fallback "risultati".
-        preview_label = "risultati"
+        # fallback i18n.
+        preview_label = msg("MSG_TRUNCATED_DEFAULT_WHAT")
         for s in self.steps:
             if s.chosen_tool == executor:
                 res = s.result if isinstance(s.result, dict) else {}
@@ -3791,12 +3791,10 @@ class TurnLog:
                     preview_label = tw
                 break
 
-        prompt = (
-            f"Hai chiesto un risultato troncato a {used} {preview_label}; "
-            f"in totale ce ne sono {available_total}. "
-            f"Allargo a {cap_suggested}?"
-        )
-        title = "Allargamento risultato"
+        prompt = msg("MSG_CAP_EXPAND_ASK", used=used, label=preview_label,
+                     available_total=available_total,
+                     cap_suggested=cap_suggested)
+        title = msg("MSG_CAP_EXPAND_TITLE")
         dialog = [{
             "var": "confirm",
             "prompt": prompt,

@@ -16,7 +16,7 @@ en = "SCOPO: sort entries by key (vectorial). PATTERN: sort_entries(entries=[...
 
 [code]
 files  = ["sort_entries.py"]
-digest = "sha256:d798771276b0dc2f66ada3324ff34fc10a1d573c6b3b1f078ee36a9381970c39"
+digest = "sha256:8601dfc93e9acb664d55684b6647115226df8511dea90a5e7b0d755c784d3f4f"
 
 [args]
 type     = "object"

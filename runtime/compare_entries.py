@@ -135,7 +135,7 @@ def handle_compare_entries(args, *, verbose: bool = False) -> dict:
         out = out[:top_n]
         # Cap user-richiesto = troncamento INTENZIONALE (§2.7/§2.11).
         res.update({"truncated": True, "truncated_intentional": True,
-                    "truncated_what": "entries", "used": len(out),
+                    "truncated_what": _msg("MSG_OBJECT_ENTRIES"), "used": len(out),
                     "available_total": available_total,
                     "cap_field": "top_n", "cap_value": int(top_n)})
     res["entries"] = out

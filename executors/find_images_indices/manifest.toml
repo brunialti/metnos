@@ -23,7 +23,7 @@ en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_i
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:8aafe27c0fd2a6c985974a7b8ec635f86731084b84e71bbaeced27df19fb3f78"
+digest = "sha256:eda1ad49e19d5fcd3d985b6753ce42e073d5438bf6a39b7bf78dfe91f92f59f3"
 
 [args]
 type     = "object"

@@ -202,7 +202,7 @@ def invoke(args):
     }
     if truncated:
         result["truncated"] = True
-        result["truncated_what"] = "entries"
+        result["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         result["used"] = len(entries)
         result["available_total"] = available_total
         result["cap_field"] = "top_k"

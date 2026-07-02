@@ -1779,7 +1779,7 @@ def invoke(args):
     n_returned = len(out["entries"])
     if n_returned >= top_k and res.get("n_above_threshold", 0) > top_k:
         out["truncated"] = True
-        out["truncated_what"] = "entries"
+        out["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         out["used"] = n_returned
         out["available_total"] = int(res["n_above_threshold"])
         out["cap_field"] = "max_results" if explicit_cap else "top_k"
@@ -1909,7 +1909,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
     # totali senza truncated=True → final_answer "100 foto" inaccurato.
     if int(n_above) > top_k:
         out["truncated"] = True
-        out["truncated_what"] = "entries"
+        out["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         out["used"] = len(truncated_entries)
         out["available_total"] = int(n_above)
         out["cap_field"] = "max_results" if explicit_cap else "top_k"

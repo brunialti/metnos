@@ -113,7 +113,7 @@ def invoke(args):
         # `truncated_intentional` segnala al runtime che il cap e' user-richiesto
         # (top esplicito) e quindi NON deve prepended cap-expand prompt.
         out["truncated"] = True
-        out["truncated_what"] = "entries"
+        out["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         out["used"] = len(sorted_entries)
         out["available_total"] = total_input
         out["truncated_intentional"] = True
