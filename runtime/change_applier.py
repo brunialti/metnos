@@ -170,29 +170,42 @@ def apply_dedupe_executors(ci: ChangeIntent) -> dict:
 # --- Handler: materialize_pipeline ---------------------------------------
 
 def apply_materialize_pipeline(ci: ChangeIntent) -> dict:
-    """Marca pipeline come 'active' in multi_tool_paths (promote da
-    candidate/shadow → active). Idempotente."""
+    """ESEGUE la pipeline proposta UNA volta come turno reale (2/7/2026).
+
+    Regola dei livelli (Roberto 13/6): una pipeline di tool esistenti e'
+    territorio della CACHE (L1 impara dai turni reali con args e feedback),
+    non di un deposito parallelo. L'accept umano = «provala»: il turno gira
+    in `scheduled_turn_scope` (valgono consent-gate outbound, notify-guard
+    e le guardie del vaglio), l'esito onesto finisce nell'effect e
+    l'observer giudica come per ogni apply. Se il turno funziona, L0/L1
+    imparano DA SOLI dal turno vero — zero evidenza sintetica.
+
+    (La vecchia semantica — attivare la riga in multi_tool_paths via
+    path_shape_hash — e' morta con la famiglia multi_tool: store senza
+    writer dall'11/6, adapter ritirato 2/7. Il body telos non aveva
+    comunque mai avuto lo shape_hash: ogni accept falliva.)
+    """
     body = ci.intent_body or {}
-    shape_hash = body.get("path_shape_hash")
-    if not shape_hash:
-        raise ValueError("materialize_pipeline needs path_shape_hash in body")
-    db = C.DB_MULTI_TOOL_PATHS
-    if not db.exists():
-        raise RuntimeError(f"multi_tool_paths.sqlite missing: {db}")
-    cn = sqlite3.connect(str(db), timeout=10.0)
-    try:
-        cur = cn.execute(
-            "UPDATE multi_tool_paths SET state='active' WHERE path_shape_hash=?",
-            (shape_hash,),
-        )
-        n_updated = cur.rowcount
-        cn.commit()
-    finally:
-        cn.close()
-    if n_updated == 0:
-        raise RuntimeError(f"no multi_tool_paths row matching shape {shape_hash}")
-    return {"shape_hash": shape_hash, "state_set_to": "active",
-            "rows_updated": n_updated}
+    query = (body.get("suggested_query") or ci.intent_summary or "").strip()
+    if not query:
+        raise ValueError("materialize_pipeline needs suggested_query in body")
+    from treated_issues_guard import scheduled_turn_scope
+    from agent_runtime import run_turn
+    with scheduled_turn_scope():
+        log = run_turn(query, actor="host", channel="telos_apply")
+    fk = getattr(log, "final_kind", None) or ""
+    effect = {
+        "ran_query": query[:200],
+        "final_kind": fk,
+        "turn_id": getattr(log, "turn_id", None),
+        "final_message": (getattr(log, "final_message", "") or "")[:400],
+        "steps": [getattr(s, "chosen_tool", None)
+                  for s in (getattr(log, "steps", None) or [])][:10],
+    }
+    if fk == "error":
+        raise RuntimeError(
+            f"pipeline run failed: {effect['final_message'][:150]}")
+    return effect
 
 
 # --- Handler: cache_pattern ----------------------------------------------

@@ -71,29 +71,21 @@ class TestAdaptersSmoke(unittest.TestCase):
             if n >= 5:
                 break
 
-    def test_iter_multi_tool_smoke(self):
-        from change_intent_adapters import iter_multi_tool
-        from change_intents import ChangeIntent, KIND_MATERIALIZE_PIPELINE
-        n = 0
-        for ci in iter_multi_tool():
-            self.assertIsInstance(ci, ChangeIntent)
-            self.assertEqual(ci.origin_family, "multi_tool")
-            self.assertEqual(ci.intent_kind, KIND_MATERIALIZE_PIPELINE)
-            n += 1
-            if n >= 5:
-                break
+    def test_retired_adapters_not_exported(self):
+        # 2/7/2026: multi_tool e canonical RITIRATI (store senza writer,
+        # superati da L1/L0). iter_all non deve piu' proiettarli.
+        import change_intent_adapters as A
+        self.assertFalse(hasattr(A, "iter_multi_tool"))
+        self.assertFalse(hasattr(A, "iter_canonical"))
 
-    def test_iter_canonical_smoke(self):
-        from change_intent_adapters import iter_canonical
-        from change_intents import ChangeIntent, KIND_CACHE_PATTERN
-        n = 0
-        for ci in iter_canonical():
-            self.assertIsInstance(ci, ChangeIntent)
-            self.assertEqual(ci.origin_family, "canonical")
-            self.assertEqual(ci.intent_kind, KIND_CACHE_PATTERN)
-            n += 1
-            if n >= 5:
-                break
+    def test_telos_pipeline_head_has_runnable_body(self):
+        # existing_pipeline → body con suggested_query (l'accept ESEGUE).
+        from change_intent_adapters import iter_telos
+        from change_intents import KIND_MATERIALIZE_PIPELINE
+        for ci in iter_telos():
+            if ci.intent_kind == KIND_MATERIALIZE_PIPELINE:
+                self.assertTrue(ci.intent_body.get("suggested_query"))
+                self.assertTrue(ci.intent_body.get("tools_sequence"))
 
     def test_iter_user_feedback_smoke(self):
         from change_intent_adapters import iter_user_feedback

@@ -98,26 +98,66 @@ class TestApplierHandlers(unittest.TestCase):
         self.ci_mod.apply_decision(id_, action="accept", by="test")
         return id_
 
-    def test_materialize_pipeline_promotes_to_active(self):
+    def test_materialize_pipeline_runs_query_once(self):
+        """2/7/2026: accept di una pipeline = ESEGUILA una volta come turno
+        reale (scheduled scope); L0/L1 imparano dal turno vero."""
+        from types import SimpleNamespace
+        from unittest import mock
         id_ = self._make_accepted(
             self.ci_mod.KIND_MATERIALIZE_PIPELINE,
-            "a→b",
-            {"tools_sequence": ["a", "b"], "path_shape_hash": "abc123hash"},
+            "create_events",
+            {"suggested_query": "leggi le scadenze dei file e crea eventi",
+             "tools_sequence": ["get_files", "create_events"]},
         )
-        report = self.ca.task_change_applier()
-        self.assertEqual(report["applied"], 1)
-        self.assertEqual(report["failed"], 0)
+        fake_log = SimpleNamespace(
+            final_kind="answer", turn_id="t-run1",
+            final_message="fatto: 2 eventi creati",
+            steps=[SimpleNamespace(chosen_tool="get_files"),
+                   SimpleNamespace(chosen_tool="create_events")])
+        calls = {}
+        def _fake_run_turn(query, **kw):
+            calls["query"] = query
+            calls["kw"] = kw
+            return fake_log
+        with mock.patch("agent_runtime.run_turn", new=_fake_run_turn):
+            report = self.ca.task_change_applier()
+        self.assertEqual(report["applied"], 1, msg=repr(report))
+        self.assertIn("scadenze", calls["query"])
         ci = self.ci_mod.get_intent(id_)
         self.assertEqual(ci.state, "applied")
-        # Verify DB state changed
+        self.assertEqual(ci.applied_effect.get("final_kind"), "answer")
+        self.assertEqual(ci.applied_effect.get("turn_id"), "t-run1")
+
+    def test_materialize_pipeline_error_run_marks_failed(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        id_ = self._make_accepted(
+            self.ci_mod.KIND_MATERIALIZE_PIPELINE,
+            "create_events",
+            {"suggested_query": "pipeline che fallisce"},
+        )
+        fake_log = SimpleNamespace(final_kind="error", turn_id="t-ko",
+                                   final_message="non ho la capacita'",
+                                   steps=[])
+        with mock.patch("agent_runtime.run_turn",
+                        new=lambda q, **kw: fake_log):
+            report = self.ca.task_change_applier()
+        self.assertEqual(report["failed"], 1, msg=repr(report))
+        ci = self.ci_mod.get_intent(id_)
+        self.assertEqual(ci.state, "failed")
+
+    def test_materialize_pipeline_without_query_fails_early(self):
+        id_ = self._make_accepted(
+            self.ci_mod.KIND_MATERIALIZE_PIPELINE, "x", {})
+        # intent_summary "t" fa da fallback → per forzare il fail-early
+        # svuota anche il summary
         import config as C
-        cn = sqlite3.connect(str(C.DB_MULTI_TOOL_PATHS))
-        state = cn.execute(
-            "SELECT state FROM multi_tool_paths WHERE path_shape_hash=?",
-            ("abc123hash",),
-        ).fetchone()[0]
-        cn.close()
-        self.assertEqual(state, "active")
+        cn = sqlite3.connect(str(C.DB_CHANGE_INTENTS))
+        cn.execute("UPDATE change_intents SET intent_summary='' WHERE id=?",
+                   (id_,))
+        cn.commit(); cn.close()
+        report = self.ca.task_change_applier()
+        self.assertEqual(report["failed"], 1)
 
     def test_cache_pattern_promotes_to_active(self):
         id_ = self._make_accepted(
