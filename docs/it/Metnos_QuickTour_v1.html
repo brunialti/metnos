@@ -531,7 +531,7 @@ footer em { color: inherit; }
 
 <!-- ================= COPERTINA ================= -->
 <div class="hero">
-  <div class="eyebrow">Quick tour &amp; survival kit · giugno 2026</div>
+  <div class="eyebrow">Quick tour &amp; survival kit · luglio 2026</div>
   <h1>Metnos</h1>
   <div class="subtitle">
     Un assistente personale che vive su <strong>un server Linux a casa vostra</strong>.
@@ -544,9 +544,9 @@ footer em { color: inherit; }
 
   <div class="facts">
     <div class="f"><span class="v">77</span><span class="k">executor firmati</span></div>
-    <div class="f"><span class="v">23 × 22</span><span class="k">verbi × oggetti, vocabolario chiuso</span></div>
-    <div class="f"><span class="v">2 660</span><span class="k">test automatici</span></div>
-    <div class="f"><span class="v">21</span><span class="k">documenti canonici IT+EN</span></div>
+    <div class="f"><span class="v">23 × 23</span><span class="k">verbi × oggetti, vocabolario chiuso</span></div>
+    <div class="f"><span class="v">3 074</span><span class="k">test automatici</span></div>
+    <div class="f"><span class="v">30</span><span class="k">documenti canonici IT+EN</span></div>
     <div class="f"><span class="v">0</span><span class="k">cloud richiesto per pensare</span></div>
   </div>
 
@@ -1218,7 +1218,7 @@ Metnos resta fuori dal sistema finché non la riaccendete voi.
 
 <!-- ================= CAP 8 ================= -->
 <section class="cap" id="cap8">
-<h2>8 · Persone e dispositivi: host, ospiti, e la strada verso gli executor remoti</h2>
+<h2>8 · Persone e dispositivi: host, ospiti, executor remoti</h2>
 
 <p class="lead">
 Metnos non è multi-tenant in senso SaaS: è una casa sola. Dentro quella casa c'è un
@@ -1241,16 +1241,17 @@ chiave, la sua storia.</p>
 
 <h3>Executor remoti: dove può arrivare il codice</h3>
 <p>Un solo server, ma non un solo filesystem: tante cose su cui vorreste agire (i file
-del laptop, un'applicazione aperta, uno schermo) vivono altrove. La direzione tracciata
-è tenere gateway, policy e memoria sul server e lasciar girare <em>alcuni executor</em>
-su dispositivi registrati — un client sottile con identità Ed25519 propria, ammesso con
+del laptop, un'applicazione aperta, uno schermo) vivono altrove. Gateway, policy e
+memoria restano sul server; <em>alcuni executor</em> girano su dispositivi
+registrati — un client sottile con identità Ed25519 propria, ammesso con
 un codice firmato monouso, revocabile dal server in un gesto.</p>
 <div class="truth">
-A oggi è una direzione progettata, non un prodotto: il client esiste come prototipo,
-le decisioni di sicurezza (idempotenza su rete intermittente, protezione dai replay,
-revoca) sono scritte, e nessun executor remoto è distribuito. Lo diciamo qui perché il
-disegno del sistema — policy sul server, esecuzione delegata — è pensato per quel
-futuro, non per gonfiare il presente.
+A oggi non è più soltanto una direzione: il client esiste — un piccolo binario Rust,
+con la sua sandbox e una build firmata — e sul server c'è il canale di invocazione
+completo: idempotenza su rete intermittente, protezione dai replay, risultato che
+arriva a destinazione anche dopo una disconnessione. Il tutto è verificato
+end-to-end sull'istanza di riferimento; il rodaggio viene prima della distribuzione,
+non il contrario.
 </div>
 </section>
 
@@ -1287,7 +1288,7 @@ futuro, non per gonfiare il presente.
   <li>Installare un executor senza la vostra conferma esplicita</li>
   <li>Ascoltare da un microfono (canale voce in attesa, per scelta)</li>
   <li>Pilotare un browser o la domotica</li>
-  <li>Eseguire executor su dispositivi remoti (direzione progettata, non distribuita)</li>
+  <li>Eseguire executor su dispositivi remoti (appena implementato, in rodaggio sull'istanza di riferimento)</li>
   <li>Fondere volto + scena in una sola ricerca foto (cantiere aperto)</li>
   <li>Garantire lingue oltre IT/EN: a incastro, ma non ancora testate</li>
 </ul>
@@ -1314,7 +1315,7 @@ homelab e architetture di agenti possa leggerlo, farlo girare, costruirci sopra.
 <table>
 <thead><tr><th style="width:30%">Pezzo</th><th>Stato a giugno 2026</th></tr></thead>
 <tbody>
-<tr><td><strong>Uso quotidiano</strong></td><td>Sì: l'istanza di riferimento è in servizio attivo (mail, foto, scheduler, manutenzione del proprio repo). 75 executor firmati, 2 660 test automatici, 23 documenti canonici bilingui allineati al codice.</td></tr>
+<tr><td><strong>Uso quotidiano</strong></td><td>Sì: l'istanza di riferimento è in servizio attivo (mail, foto, scheduler, manutenzione del proprio repo). 77 executor firmati, 3 074 test automatici, 30 documenti canonici bilingui allineati al codice.</td></tr>
 <tr><td><strong>Installer</strong></td><td>Incluso. Il percorso <em>managed</em> (consigliato) replica un ambiente completo da un checkout pulito — modello, servizi di contorno, dati i18n, executor firmati — profila l'hardware per scegliere un modello adatto e chiude con <em>un turno reale</em>, non un ping. Il percorso <em>custom</em> (dichiarate il vostro LLM) esiste ed è sconsigliato a voce alta.</td></tr>
 <tr><td><strong>Repo pubblico</strong></td><td>Un sotto-insieme deterministico dell'istanza viva — la fetta essenziale per l'esercizio. Può restare indietro fra una pubblicazione e l'altra: è previsto, non trascuratezza.</td></tr>
 <tr><td><strong>Maturità</strong></td><td>pre-1.0: API e default cambiano senza strati di compatibilità quando emerge un disegno migliore. Capacità esistenti ma poco esercitate fuori dall'istanza di riferimento (l'i18n non-italiana su tutte). Se qualcosa si rompe: issue, e un filo di pazienza.</td></tr>
@@ -1419,7 +1420,7 @@ la ricorrenza; può concedere territori revocabili.</dd>
 </section>
 
 <footer>
-Metnos — <em>Quick tour &amp; survival kit</em> · v1.2 · giugno 2026<br>
+Metnos — <em>Quick tour &amp; survival kit</em> · v1.3 · luglio 2026<br>
 mētis + noûs · pensato per essere letto in venti minuti ·
 l'<a href="Metnos_Architettura_Intro_v1.html">Architettura</a> è il seguito naturale<br>
 <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> · <code>metnos.com</code> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>

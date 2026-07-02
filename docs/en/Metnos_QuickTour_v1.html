@@ -531,7 +531,7 @@ footer em { color: inherit; }
 
 <!-- ================= COVER ================= -->
 <div class="hero">
-  <div class="eyebrow">Quick tour &amp; survival kit · June 2026</div>
+  <div class="eyebrow">Quick tour &amp; survival kit · July 2026</div>
   <h1>Metnos</h1>
   <div class="subtitle">
     A personal assistant that lives on <strong>a Linux server in your home</strong>.
@@ -544,9 +544,9 @@ footer em { color: inherit; }
 
   <div class="facts">
     <div class="f"><span class="v">77</span><span class="k">signed executors</span></div>
-    <div class="f"><span class="v">23 × 22</span><span class="k">verbs × objects, closed vocabulary</span></div>
-    <div class="f"><span class="v">2,660</span><span class="k">automated tests</span></div>
-    <div class="f"><span class="v">21</span><span class="k">canonical docs IT+EN</span></div>
+    <div class="f"><span class="v">23 × 23</span><span class="k">verbs × objects, closed vocabulary</span></div>
+    <div class="f"><span class="v">3,074</span><span class="k">automated tests</span></div>
+    <div class="f"><span class="v">30</span><span class="k">canonical docs IT+EN</span></div>
     <div class="f"><span class="v">0</span><span class="k">cloud required to think</span></div>
   </div>
 
@@ -1215,7 +1215,7 @@ Metnos stays out of the system until you switch it back on.
 
 <!-- ================= CH 8 ================= -->
 <section class="cap" id="cap8">
-<h2>8 · People and devices: host, guests, and the road to remote executors</h2>
+<h2>8 · People and devices: host, guests, remote executors</h2>
 
 <p class="lead">
 Metnos is not multi-tenant in the SaaS sense: it is one household. Inside it there is
@@ -1238,16 +1238,17 @@ own history.</p>
 
 <h3>Remote executors: how far the code can reach</h3>
 <p>One server, but not one filesystem: many things you'd want acted upon (laptop
-files, an open application, a screen) live elsewhere. The charted direction is to
-keep gateway, policy and memory on the server and let <em>some executors</em> run on
+files, an open application, a screen) live elsewhere. Gateway, policy and memory
+stay on the server; <em>some executors</em> run on
 registered devices — a thin client with its own Ed25519 identity, admitted with a
 single-use signed code, revocable from the server in one gesture.</p>
 <div class="truth">
-As of today this is a designed direction, not a product: the client exists as a
-prototype, the security decisions (idempotency over flaky networks, replay
-protection, revocation) are written down, and no remote executor is shipped. We say
-it here because the system's shape — policy on the server, delegated execution — is
-built for that future, not to inflate the present.
+Today this is no longer just a direction: the client exists — a small Rust binary
+with its own sandbox and a signed build — and the server carries the full
+invocation channel: idempotency over flaky networks, replay protection, results
+that reach their destination even after a disconnect. All of it is verified
+end-to-end on the reference instance; the shakedown comes before distribution,
+not the other way around.
 </div>
 </section>
 
@@ -1284,7 +1285,7 @@ built for that future, not to inflate the present.
   <li>Install an executor without your explicit approval</li>
   <li>Listen on a microphone (voice channel on hold, by choice)</li>
   <li>Drive a browser or home automation</li>
-  <li>Run executors on remote devices (designed direction, not shipped)</li>
+  <li>Run executors on remote devices (freshly implemented, in shakedown on the reference instance)</li>
   <li>Fuse face + scene in a single photo search (open worksite)</li>
   <li>Guarantee languages beyond IT/EN: drop-in, but not yet tested</li>
 </ul>
@@ -1311,7 +1312,7 @@ agent-architecture enthusiasts can read it, run it, and build on it.
 <table>
 <thead><tr><th style="width:30%">Piece</th><th>Status as of June 2026</th></tr></thead>
 <tbody>
-<tr><td><strong>Daily use</strong></td><td>Yes: the reference instance is in active service (mail, photos, scheduler, maintenance of its own repo). 77 signed executors, 2,660 automated tests, 21 canonical bilingual docs aligned with the code.</td></tr>
+<tr><td><strong>Daily use</strong></td><td>Yes: the reference instance is in active service (mail, photos, scheduler, maintenance of its own repo). 77 signed executors, 3,074 automated tests, 30 canonical bilingual docs aligned with the code.</td></tr>
 <tr><td><strong>Installer</strong></td><td>Included. The <em>managed</em> path (recommended) replicates a complete environment from a clean checkout — model, supporting services, i18n data, signed executors — profiles your hardware to pick a fitting model, and finishes with <em>a real turn</em>, not a ping. The <em>custom</em> path (declare your own LLM) exists and is loudly discouraged.</td></tr>
 <tr><td><strong>Public repo</strong></td><td>A deterministic export-subset of the live instance — the run-essential slice. It can trail the running system between publishes: expected, not neglect.</td></tr>
 <tr><td><strong>Maturity</strong></td><td>pre-1.0: APIs and defaults change without compatibility shims when a better design appears. Capabilities exist but are barely exercised outside the reference instance (non-Italian i18n above all). If something breaks: open an issue, and bring a little patience.</td></tr>
@@ -1414,7 +1415,7 @@ recurrence; it can grant revocable territories.</dd>
 </section>
 
 <footer>
-Metnos — <em>Quick tour &amp; survival kit</em> · v1.2 · June 2026<br>
+Metnos — <em>Quick tour &amp; survival kit</em> · v1.3 · July 2026<br>
 mētis + noûs · meant to be read in twenty minutes ·
 the <a href="Metnos_Architecture_Intro_v1.html">Architecture</a> is the natural sequel<br>
 <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> · <code>metnos.com</code> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
