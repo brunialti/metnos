@@ -11,7 +11,7 @@ Two responsibilities:
 
 2. `install_default_jobs(scheduler)`: idempotent INSERT-OR-IGNORE for the
    7 builtin entries (apply_executor_ager / apply_ager / synt_suggest /
-   introvertiva_propose / introvertiva_apply / proposals_cleanup /
+   introvertiva_propose / proposals_cleanup /
    lifecycle_summary). Returns the number of rows actually inserted; on a
    second run with all rows already present, returns 0 and does not touch
    `last_run_at` / `total_runs` etc.

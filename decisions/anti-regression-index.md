@@ -157,3 +157,17 @@
 **Strato 3 escalation**
 - **Escalation UI ≥3 ✗** (task #30): `agent_runtime._orchestrate_strato3_escalation` early-exit; dialog 4-choice → `strato3_choice_dispatch` (`orchestration.py`); strati 1+2 `_render_rejected_pipelines_block`.
 
+
+**Filiera proposte + guardie 2/7/2026 (ADR 0180 + review Fable)**
+- **Anti-doppia-esecuzione fall-through**: `pipeline_effects.committed_mutations` + guardia su hit L0/L1 in errore (`dispatch._leg_committed_mutations`) — side-effect già committati → errore onesto, mai re-plan.
+- **Qspec outbound esteso**: `CONTENT_ARG_KEYS` += email/domain (share_*) + summary/attendees/location/description (create_events/calendars) — literal = 0a-only.
+- **Aging autopath su segnale vero**: `autopath._touch_served` su lookup; demote ancora `ts_last_used`; finestra observations pota SOLO `verdict IS NULL`.
+- **Reject umano mai potato**: `proposals_state.prune_old` esclude `last_action='reject'` (R1 e R2).
+- **Killer `layer_overlap`** (`proposal_evaluator._check_layer_overlap`): default-bake a parità di chiavi → superseded-by-L0; multi-step sotto `METNOS_HIGHLY_REQUESTED_FREQ_60D` (default 30) → covered-by-L1, solo con evidenza.
+- **Cap esplicito conteggi**: `args_extractor._extract_count` + `detection_lexicon count.cap_pattern` {it,en} — mai il primo intero della query in max_results.
+- **Segregazione modalità immagini**: `routing_pool._gate_image_modality` — tool object=images fuori dal pool se nessuna clausola/testo nomina le immagini.
+- **Alberi di sistema protetti**: `vaglio.guard_check` blocca executor MUTANTI con path-arg in `platform_policy.protected_paths()` (letture libere).
+- **`compress_` mutante**: in `pipeline_effects.MUTATING_TOOL_PREFIXES` (archivio = side-effect); limite noto: `extract_files` non copribile per prefisso.
+- **Accept-pipeline esegue**: `change_applier.apply_materialize_pipeline` = turno reale in `scheduled_turn_scope`; effect onesto, observer giudica.
+- **Adapter telos cluster-head**: `change_intent_adapters.telos.iter_telos` proietta solo `ACTIONABLE_NAME_STATUS`, score=`cluster_score`.
+- **Alignment v1.4 fit con segno**: `alignment_engine.compose` — penalità `α·Σ peso·|fit⁻|` senza gate.
