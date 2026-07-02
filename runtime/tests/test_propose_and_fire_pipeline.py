@@ -213,14 +213,17 @@ def test_propose_only_does_not_require_get_inputs(free_and_gi):
 # --------------------------------------------------------------------------
 
 def test_intent_examples_present_in_prompts():
+    # Contratto: ALMENO UN esempio propose+continuazione-mutating per lingua
+    # che mappa a verb=find (propose_and_fire). v7 (2/7/2026, compattazione
+    # job I): le varianti quasi-duplicate sono state potate — il contratto
+    # resta su un esemplare canonico per lingua, non sull'enumerazione.
     root = Path(__file__).resolve().parents[2]
     p_it = (root / "runtime/prompts/it/intent_extractor_v4.j2").read_text(encoding="utf-8")
     p_en = (root / "runtime/prompts/en/intent_extractor_v4.j2").read_text(encoding="utf-8")
-    # Almeno una variante propose+continuazione mutating mappa a verb=find.
-    assert "prenotami quella che scelgo" in p_it
     assert "fissa il primo libero" in p_it
-    assert "book one" in p_en
-    assert "and confirm" in p_en
+    assert '"suggerisci slot mercoledi e fissa il primo libero" → {"verb": "find"' in p_it
+    assert "book the first free one" in p_en
+    assert '"suggest slots wednesday and book the first free one" → {"verb": "find"' in p_en
 
 
 def test_calendar_section_has_propose_and_fire_hint():
