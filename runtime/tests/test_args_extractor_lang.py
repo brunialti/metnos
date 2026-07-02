@@ -67,3 +67,43 @@ def test_end_to_end_pattern_arg():
     schema = {"properties": {"pattern": {"type": "string"}}}
     out = regex_extract("quanti file python nel repo", schema)
     assert out.get("pattern") == "*.py", out
+
+
+# ── _extract_count (E.2, 2/7/2026): cap esplicito, mai ints[0] ──────────────
+
+def test_count_noun_adjacent_extracts():
+    from args_extractor import _extract_count
+    assert _extract_count("cerca 100 foto di mare") == 100
+    assert _extract_count("le ultime 10 mail") == 10
+    assert _extract_count("mostrami 25 immagini della gita") == 25
+    assert _extract_count("find 30 files in tmp") == 30
+    assert _extract_count("show me 12 photos of venice") == 12
+
+
+def test_count_cap_prefix_extracts():
+    from args_extractor import _extract_count
+    assert _extract_count("le prime 5 mail di oggi") == 5
+    assert _extract_count("i primi 3 risultati") == 3
+    assert _extract_count("top 7 file per dimensione") == 7
+    assert _extract_count("first 10 files by size") == 10
+    assert _extract_count("at most 20 results") == 20
+
+
+def test_count_rejects_years_prices_time():
+    # E.2 (14/6): ints[0] naive iniettava anni/prezzi/finestre come cap.
+    from args_extractor import _extract_count
+    assert _extract_count("le foto del 2020") is None
+    assert _extract_count("le spese da 50 euro") is None
+    assert _extract_count("le mail delle ultime 24 ore") is None
+    assert _extract_count("gli eventi degli ultimi 3 giorni") is None
+    assert _extract_count("photos from 2019") is None
+    assert _extract_count("emails of the last 48 hours") is None
+
+
+def test_regex_extract_max_results_uses_count():
+    schema = {"properties": {"max_results": {"type": "integer"},
+                             "query_text": {"type": "string"}}}
+    out = regex_extract("cerca 100 foto di roberto", schema)
+    assert out.get("max_results") == 100
+    out2 = regex_extract("cerca le foto del 2020", schema)
+    assert "max_results" not in out2

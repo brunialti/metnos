@@ -39,7 +39,6 @@ _PATH_RE = re.compile(
 _URL_RE = re.compile(r"https?://\S+")
 
 # INT: numero standalone (no parte di parola)
-_INT_RE = re.compile(r"(?:^|\s)(\d+)(?:\s|$|[^\w.])")
 
 # EMAIL: standard RFC-light
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
@@ -188,8 +187,24 @@ def _extract_urls(query: str) -> list[str]:
     return _URL_RE.findall(query)
 
 
-def _extract_ints(query: str) -> list[int]:
-    return [int(m) for m in _INT_RE.findall(query)]
+def _extract_count(query: str) -> Optional[int]:
+    """CAP/conteggio ESPLICITO §7.9 (E.2, 2/7/2026): numero adiacente a un
+    sostantivo contabile («100 foto», «10 mail») o preceduto da un prefisso
+    di cap («prime 5», «top 3»). MAI il primo intero qualsiasi della query:
+    «foto del 2020» è un anno, «da 50 euro» un prezzo — l'euristica ints[0]
+    iniettava misroute su max_results. Pattern i18n da detection_lexicon
+    (`count.cap_pattern`, capture group = il numero); lexicon assente →
+    None (conservativo: meglio nessuna iniezione che una sbagliata)."""
+    try:
+        import detection_lexicon as dl
+        m = dl.search("count.cap_pattern", query)
+        if m:
+            for g in m.groups():
+                if g and g.isdigit():
+                    return int(g)
+    except Exception:
+        pass
+    return None
 
 
 def _extract_emails(query: str) -> list[str]:
@@ -303,7 +318,7 @@ def regex_extract(query: str, schema: dict | None) -> dict:
       - args con name='paths' o 'path' → _extract_paths
       - 'url'/'urls' → _extract_urls
       - 'pattern' → _extract_file_ext_glob
-      - 'max_*'/'top'/'limit' → _extract_ints (first)
+      - 'max_*'/'top'/'limit' → _extract_count (cap esplicito, mai ints[0])
       - 'to'/'recipient' → _extract_emails (first)
       - 'date'/'when' → _extract_date_keyword (V1.5 19/5 v5)
       - 'time_window'/'window'/'since' → _extract_time_window (V1.5 19/5 v5)
@@ -352,10 +367,9 @@ def regex_extract(query: str, schema: dict | None) -> dict:
             if r:
                 out[arg_name] = r
         elif lname in ("max_results", "max_total", "top", "limit", "n", "count"):
-            ints = _extract_ints(query)
-            if ints:
-                # Heuristic: il numero piu' piccolo plausibile come cap.
-                out[arg_name] = ints[0]
+            n = _extract_count(query)
+            if n is not None:
+                out[arg_name] = n
         elif lname in ("date", "day", "when", "on_date"):
             d = _extract_date_keyword(query)
             if d:

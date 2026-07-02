@@ -202,6 +202,30 @@ def register_all() -> None:
     R("count.quantifier", "phrases", match_mode="substring",
       it=["quanti ", "quante ", " conta ", "numero di "],
       en=["how many ", " count "])
+    # args_extractor._extract_count (E.2, 2/7/2026): CAP/conteggio ESPLICITO.
+    # Capture group = il numero. Due forme: (a) prefisso di cap + numero
+    # («prime 5», «top 3», «al massimo 10»); (b) numero + sostantivo
+    # CONTABILE adiacente («100 foto», «10 mail»). Il sostantivo adiacente
+    # disambigua conteggio-vs-altro: «foto del 2020» (anno) e «da 50 euro»
+    # (prezzo) NON matchano — mai iniettare il primo intero qualsiasi.
+    R("count.cap_pattern", "regex",
+      it=[r"\b(?:prim[ie]|top|al massimo|massimo|non pi[uù]' ?di|fino a)"
+          r"\s+(\d{1,4})\b",
+          r"\b(\d{1,4})\s+(?:foto|immagini|file|documenti|allegati|mail|"
+          r"email|messaggi|conversazioni|eventi|appuntamenti|contatti|"
+          r"persone|cartelle|directory|task|attivit[aà]|issue|pull|url|"
+          r"link|pagine|righe|voci|elementi|risultati|video|processi|"
+          r"pacchetti|luoghi|posti|calendari|firme|proposte|credenziali|"
+          r"numeri|testi|canzoni|brani)\b"],
+      en=[r"\b(?:first|top|at most|max|maximum|no more than|up to)"
+          r"\s+(\d{1,4})\b",
+          r"\b(\d{1,4})\s+(?:photos?|pictures?|images?|files?|documents?|"
+          r"attachments?|mails?|emails?|messages?|conversations?|events?|"
+          r"appointments?|contacts?|persons?|people|folders?|directories|"
+          r"dirs?|tasks?|issues?|pulls?|urls?|links?|pages?|lines?|entries|"
+          r"items?|results?|videos?|processes|packages?|places?|calendars?|"
+          r"signatures?|proposals?|credentials?|numbers?|texts?|songs?|"
+          r"tracks?)\b"])
     # _RESUME_AFTER_DIALOG_HINTS_IT/EN (substring; gia' separati per lingua)
     R("dialog.resume_hint", "phrases", match_mode="substring",
       it=["mandami", "manda", "inviami", "invia", "notificami", "scrivimi",
