@@ -311,6 +311,23 @@ async def client_file(request: web.Request) -> web.Response:
     return _serve_file(p)
 
 
+async def client_file_versioned(request: web.Request) -> web.Response:
+    """GET /agent/client/{version}/{target}/{filename} — layout build-client.sh.
+
+    Serve binario firmato (+ .sig detached) per versione+target, es.
+    /agent/client/0.1.0/x86_64-unknown-linux-musl/metnos-client.
+    """
+    version = _safe_filename(request.match_info["version"])
+    target = _safe_filename(request.match_info["target"])
+    filename = _safe_filename(request.match_info["filename"])
+    p = MIRROR_CLIENT_DIR / version / target / filename
+    if not p.is_file():
+        raise web.HTTPNotFound(reason="client file not present")
+    _audit("client_serve", version=version, target=target,
+           filename=filename, size=p.stat().st_size)
+    return _serve_file(p)
+
+
 # --- registration helper --------------------------------------------------
 
 def register_routes(app: web.Application) -> None:
@@ -319,4 +336,5 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/agent/pypi/files/{package}/{filename}", wheel_file)
     app.router.add_get("/agent/runtime/{filename}", runtime_file)
     app.router.add_get("/agent/client/manifest.json", client_manifest)
+    app.router.add_get("/agent/client/{version}/{target}/{filename}", client_file_versioned)
     app.router.add_get("/agent/client/{filename}", client_file)

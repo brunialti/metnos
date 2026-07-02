@@ -12,9 +12,14 @@ clap = { version = "4", features = ["derive"] }
 dirs = "5"
 ed25519-dalek = { version = "2", features = ["rand_core", "pem"] }
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "stream"] }
+# MVP: trasporto HTTP dentro l'overlay Headscale (§6 design doc: TLS =
+# fase successiva). Niente feature TLS => niente `ring` (C) => static-link
+# musl PURO Rust, zero cross-gcc (ADR 0037). rustls torna con mTLS (W3+).
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

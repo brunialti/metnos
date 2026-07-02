@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Dispositivi · Console Metnos{% endblock %}
+{% block body %}
+<h1>Dispositivi remoti ({{ rows|length }})</h1>
+<p class="page-sub">Device appaiati che eseguono executor via
+<code>metnos-client</code> — identità Ed25519, heartbeat, revoca.
+Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
+
+<section class="panel">
+  <h2>Aggiungi dispositivo</h2>
+  <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
+    <label>Nome device (senza spazi, es. <code>laptop-windows</code>)
+      <input type="text" name="name" required pattern="\S+" maxlength="40">
+    </label>
+    <button type="submit" class="btn">Genera token (10 min)</button>
+  </form>
+  <div id="token-box"></div>
+</section>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>nome</th><th>id</th><th>owner</th><th>OS</th><th>fingerprint</th>
+        <th>heartbeat</th><th>stato</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td class="muted">{{ r.id[:12] }}</td>
+      <td>{{ r.owner_user_id }}</td>
+      <td>{{ r.os_family or "?" }}/{{ r.os_arch or "?" }}</td>
+      <td class="muted"><code>{{ r.fingerprint[:16] }}</code></td>
+      <td class="muted">{{ r.last_heartbeat or "mai" }}</td>
+      <td>
+        {% if r.available %}<span class="chip ok">raggiungibile</span>
+        {% else %}<span class="chip warn">offline</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="/admin/devices/{{ r.id }}/revoke"
+              onsubmit="return confirm('Revocare {{ r.name }}? I token futuri saranno rifiutati.')">
+          <button type="submit" class="btn danger">Revoca</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">Nessun device appaiato.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

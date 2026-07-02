@@ -3273,6 +3273,26 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     salvato (bug live 12/5/2026: pipeline find_events_empty → get_inputs
     → send_messages perdeva il dialog state).
     """
+    # --- Placement remoto (ADR 0034, design doc executor remoti §10/§14) ---
+    # [placement] scope="device" nel manifest → l'executor NON gira qui:
+    # invocazione firmata al device via coda (remote_exec). Default (nessun
+    # [placement] o scope any/server) = esecuzione locale invariata.
+    _plc = getattr(executor, "placement", None) or {}
+    if (_plc.get("scope") or "").strip().lower() == "device":
+        import devices as _devices
+        import placement as _placement
+        import remote_exec as _remote
+        try:
+            _target = _placement.choose_placement(
+                _plc, None, _devices.list_devices())
+        except _placement.PlacementError as e:
+            from messages import get as _pmsg
+            return {"ok": False, "error": _pmsg(e.code, **e.fmt),
+                    "error_class": "placement"}
+        if _target != _placement.SERVER:
+            return _remote.invoke_remote(
+                executor, args, _target, timeout_s=timeout_s, turn_id=turn_id)
+
     import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]

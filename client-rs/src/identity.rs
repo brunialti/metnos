@@ -1,5 +1,6 @@
-use anyhow::{Context, Result};
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use anyhow::{anyhow, Context, Result};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use std::path::Path;
 
@@ -61,4 +62,30 @@ impl Identity {
         }
         hex
     }
+
+    /// Firma Ed25519 (b64url no-pad) dei bytes dati — stesso encoding del server.
+    pub fn sign_b64(&self, msg: &[u8]) -> String {
+        let sig: Signature = self.signing.sign(msg);
+        URL_SAFE_NO_PAD.encode(sig.to_bytes())
+    }
+}
+
+/// Verifica una firma Ed25519 (b64url no-pad) di `msg` contro una pubkey
+/// (raw 32 byte, b64url no-pad). Usata per `server_sig` (§6.2) e per i bundle.
+pub fn verify_b64(public_key_b64: &str, sig_b64: &str, msg: &[u8]) -> Result<()> {
+    let pub_bytes = URL_SAFE_NO_PAD
+        .decode(public_key_b64)
+        .context("decode server pubkey")?;
+    let arr: [u8; 32] = pub_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("server pubkey non e' 32 byte"))?;
+    let vk = VerifyingKey::from_bytes(&arr).context("bad server pubkey")?;
+    let sig_bytes = URL_SAFE_NO_PAD.decode(sig_b64).context("decode signature")?;
+    let sig_arr: [u8; 64] = sig_bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| anyhow!("firma non e' 64 byte"))?;
+    vk.verify(msg, &Signature::from_bytes(&sig_arr))
+        .map_err(|_| anyhow!("firma non verificata"))
 }

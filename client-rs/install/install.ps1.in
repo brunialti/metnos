@@ -1,0 +1,66 @@
+# metnos-client — installer Windows (§5.4 executor remoti).
+# Incollare in un terminale PowerShell NON-admin; la UI /admin/devices genera
+# il one-liner con METNOS_SERVER e METNOS_TOKEN gia' in ambiente.
+#
+# MVP: il binario e' verificato per INTEGRITA' (sha256 dal manifest firmato
+# server-side) e la fiducia sull'AUTENTICITA' viene dal trasporto (overlay
+# Headscale/mTLS). Authenticode/firma forte lato Windows = W6 (design doc).
+$ErrorActionPreference = 'Stop'
+
+if (-not $env:METNOS_SERVER) { throw 'METNOS_SERVER non impostato (atteso dalla UI)' }
+if (-not $env:METNOS_TOKEN)  { throw 'METNOS_TOKEN non impostato (atteso dalla UI)' }
+$server = $env:METNOS_SERVER.TrimEnd('/')
+
+$target = 'x86_64-pc-windows-gnu'
+Write-Host "==> metnos-client ($target)"
+
+$manifest = Invoke-RestMethod -UseBasicParsing "$server/agent/client/manifest.json"
+$version = $manifest.latest
+if (-not $version) { throw 'impossibile leggere la versione dal manifest' }
+$entry = $manifest.versions.$version.$target
+if (-not $entry) { throw "nessun binario per $target nella versione $version" }
+$expectedSha = $entry.sha256
+Write-Host "==> versione $version"
+
+$tmp = Join-Path $env:TEMP ("metnos-client-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tmp | Out-Null
+$exe = Join-Path $tmp 'metnos-client.exe'
+
+$ok = $false
+for ($i = 1; $i -le 3; $i++) {
+  try {
+    Invoke-WebRequest -UseBasicParsing "$server/agent/client/$version/$target/metnos-client.exe" -OutFile $exe
+    $sha = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+    if ($sha -eq $expectedSha.ToLower()) { $ok = $true; break }
+    Write-Host "==> sha256 non combacia (tentativo $i/3), riscarico"
+  } catch {
+    Write-Host "==> download fallito (tentativo $i/3): $_"
+  }
+}
+if (-not $ok) { throw 'integrita del binario non verificata dopo 3 tentativi' }
+Write-Host '==> sha256 verificato'
+
+$destDir = Join-Path $env:LOCALAPPDATA 'Metnos'
+New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+$dest = Join-Path $destDir 'metnos-client.exe'
+Copy-Item -Force $exe $dest
+Write-Host "==> installato in $dest"
+
+& $dest register --server $server --token $env:METNOS_TOKEN
+if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)' }
+
+# Scheduled Task «At logon» (nessun privilegio admin, account utente corrente).
+$taskName = 'MetnosClient'
+$action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server"
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3
+try {
+  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  Start-ScheduledTask -TaskName $taskName
+  Write-Host '==> task MetnosClient registrato e avviato (At logon)'
+} catch {
+  Write-Host "==> registrazione task fallita: avvia manualmente '$dest run --server $server'"
+}
+
+Write-Host '==> fatto.'
+Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

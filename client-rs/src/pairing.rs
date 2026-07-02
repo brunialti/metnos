@@ -19,6 +19,8 @@ pub struct RegisterResponse {
     pub owner_user_id: String,
     pub fingerprint: String,
     pub paired_at: String,
+    #[serde(default)]
+    pub server_public_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

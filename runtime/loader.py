@@ -437,6 +437,11 @@ class Executor:
     # Usato per audit log skill (runtime/skill_audit.py) e per
     # dormancy check (runtime/skill_credentials.py).
     provenance: dict = field(default_factory=dict)
+    # Placement dal manifest `[placement]` (ADR 0034, executor remoti §11
+    # design doc): {scope: server|device|any, targets: [...], class: ...}.
+    # Vuoto = scope "any" (gira su .33 come oggi). Consumato da
+    # placement.choose_placement nel hook di invoke_executor.
+    placement: dict = field(default_factory=dict)
     # Planning complexity hint (19/5/2026): suggerisce al planner se questa
     # call beneficia di reasoning LLM (think=True) o se la decisione e' ovvia
     # e think=False e' sufficiente (5-10x speedup sul modello locale - bench
@@ -1188,6 +1193,10 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         provenance = manifest.get("provenance") or {}
         if not isinstance(provenance, dict):
             provenance = {}
+        # Placement remoto (ADR 0034): [placement] scope/targets/class.
+        _placement = manifest.get("placement") or {}
+        if not isinstance(_placement, dict):
+            _placement = {}
 
         # Planning complexity hint (19/5/2026): [planning] complexity = "low|medium|high".
         # Vuoto = fallback automatico in agent_runtime su verbo del name.
@@ -1218,6 +1227,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             dormant_reason=_dormant_reason,
             sandbox_profile=sandbox_profile,
             provenance=provenance,
+            placement=_placement,
             complexity=_complexity,
         )
         catalog.executors[name] = ex

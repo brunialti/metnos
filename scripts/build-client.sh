@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
-# build-client.sh — compila metnos-client per i target supportati e
-# pubblica i binari nel mirror server-side.
+# build-client.sh — compila metnos-client per i target supportati, FIRMA i
+# binari Ed25519 con la chiave 'author' del server, e pubblica tutto nel
+# mirror server-side (binari + .sig + install.sh/install.ps1 con pubkey pinnata).
 #
-# Pattern coerente con deploy.sh per il sito: una bash, una chiave, una
-# directory. Niente CI esterna.
+# Pattern coerente con deploy.sh: una bash, una chiave, una directory. Niente
+# CI esterna (ADR 0046). §5.3/§8 del design doc executor remoti.
 #
-# Uso:
-#   ./scripts/build-client.sh <version>
-# es.:
-#   ./scripts/build-client.sh 0.1.0
+# Uso:   ./scripts/build-client.sh <version>
+# es.:   ./scripts/build-client.sh 0.1.0
 #
 # Pre-requisiti su .33:
-#   - rustup (toolchain stable)
-#   - target installati: x86_64-unknown-linux-gnu, x86_64-pc-windows-gnu
-#   - mingw-w64 (per il target windows-gnu)
+#   - rustup (toolchain stable) + target: x86_64-unknown-linux-musl,
+#     x86_64-pc-windows-gnu (mingw-w64 per il target windows).
+#   - chiave 'author' in ~/.config/metnos/keys/ (sign.py keygen).
 #
-# Output:
-#   $METNOS_MIRROR_ROOT/client/<version>/<target>/metnos-client[.exe]
-#   $METNOS_MIRROR_ROOT/client/manifest.json
+# Output in $METNOS_MIRROR_ROOT/client/:
+#   <version>/<target>/metnos-client[.exe]     binario
+#   <version>/<target>/metnos-client[.exe].sig firma Ed25519 (raw)
+#   manifest.json                              indice (latest + sha256)
+#   install.sh, install.ps1                    installer con pubkey pinnata
 
 set -euo pipefail
 
@@ -27,14 +28,14 @@ if [ -z "$VERSION" ]; then
     exit 1
 fi
 
-REPO="/opt/metnos"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$REPO/client-rs"
 MIRROR_ROOT="${METNOS_MIRROR_ROOT:-$HOME/.local/share/metnos/mirror}"
 CLIENT_OUT="$MIRROR_ROOT/client"
+SIGNER="$REPO/scripts/client_signing.py"
 
 echo "==> building metnos-client v$VERSION"
 
-# Carica rustup se serve
 if ! command -v cargo >/dev/null 2>&1; then
     if [ -f "$HOME/.cargo/env" ]; then
         # shellcheck disable=SC1091
@@ -44,10 +45,13 @@ fi
 
 cd "$CLIENT_DIR"
 
-TARGETS=(
-    "x86_64-unknown-linux-gnu"
-    "x86_64-pc-windows-gnu"
-)
+# Target di distribuzione: static-link musl su Linux (§ADR 0037), mingw su
+# Windows. Override con METNOS_CLIENT_TARGETS="a b c".
+read -r -a TARGETS <<< "${METNOS_CLIENT_TARGETS:-x86_64-unknown-linux-musl x86_64-pc-windows-gnu}"
+
+sign_blob() {
+    python3 "$SIGNER" sign "$1" >/dev/null
+}
 
 for TARGET in "${TARGETS[@]}"; do
     echo "==> target: $TARGET"
@@ -59,21 +63,19 @@ for TARGET in "${TARGETS[@]}"; do
     esac
 
     SRC="$CLIENT_DIR/target/$TARGET/release/$BIN_NAME"
-    if [ ! -f "$SRC" ]; then
-        echo "ERROR: $SRC not produced" >&2
-        exit 1
-    fi
+    [ -f "$SRC" ] || { echo "ERROR: $SRC not produced" >&2; exit 1; }
 
     DST_DIR="$CLIENT_OUT/$VERSION/$TARGET"
     mkdir -p "$DST_DIR"
     install -m 0644 "$SRC" "$DST_DIR/$BIN_NAME"
+    sign_blob "$DST_DIR/$BIN_NAME"
 
     SIZE=$(stat -c '%s' "$DST_DIR/$BIN_NAME")
     SHA=$(sha256sum "$DST_DIR/$BIN_NAME" | awk '{print $1}')
-    echo "    OK $BIN_NAME size=$SIZE sha256=$SHA"
+    echo "    OK $BIN_NAME size=$SIZE sha256=$SHA (firmato)"
 done
 
-# Manifest
+# --- manifest.json --------------------------------------------------------
 MANIFEST="$CLIENT_OUT/manifest.json"
 {
     echo "{"
@@ -103,17 +105,17 @@ MANIFEST="$CLIENT_OUT/manifest.json"
     echo "  }"
     echo "}"
 } > "$MANIFEST"
-
-# Latest convenience symlink (one per target) so /agent/client/metnos-client.exe risolve sempre la versione corrente.
-for TARGET in "${TARGETS[@]}"; do
-    case "$TARGET" in
-        *windows*) BIN_NAME="metnos-client.exe" ;;
-        *)         BIN_NAME="metnos-client"     ;;
-    esac
-    ln -sfn "$VERSION/$TARGET/$BIN_NAME" "$CLIENT_OUT/$BIN_NAME-$TARGET"
-done
-ln -sfn "$VERSION/x86_64-pc-windows-gnu/metnos-client.exe" "$CLIENT_OUT/metnos-client.exe"
-ln -sfn "$VERSION/x86_64-unknown-linux-gnu/metnos-client" "$CLIENT_OUT/metnos-client"
-
 echo "==> manifest written: $MANIFEST"
+
+# --- installer con pubkey server pinnata ----------------------------------
+PUBKEY_DER_B64=$(python3 "$SIGNER" pubkey-der-b64)
+[ -n "$PUBKEY_DER_B64" ] || { echo "ERROR: pubkey server non disponibile" >&2; exit 1; }
+
+sed "s|@@SERVER_PUBKEY_DER_B64@@|$PUBKEY_DER_B64|g" \
+    "$CLIENT_DIR/install/install.sh.in" > "$CLIENT_OUT/install.sh"
+sed "s|@@SERVER_PUBKEY_DER_B64@@|$PUBKEY_DER_B64|g" \
+    "$CLIENT_DIR/install/install.ps1.in" > "$CLIENT_OUT/install.ps1"
+chmod 0644 "$CLIENT_OUT/install.sh" "$CLIENT_OUT/install.ps1"
+echo "==> installer generati (pubkey pinnata: ${PUBKEY_DER_B64:0:16}...)"
+
 echo "==> binaries in $CLIENT_OUT (latest: $VERSION)"

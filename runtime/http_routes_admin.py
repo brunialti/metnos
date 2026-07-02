@@ -5,6 +5,7 @@ di middleware in `http_auth.auth_middleware`).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import time
@@ -1285,6 +1286,87 @@ async def admin_timer_action(request: web.Request) -> web.Response:
     raise web.HTTPFound("/admin/timers?flash=" + quote(msg))
 
 
+# --- /admin/devices (executor remoti, design doc §5.2) ----------------------
+
+async def admin_devices(request: web.Request) -> web.Response:
+    """GET /admin/devices — lista device appaiati + stato heartbeat."""
+    import devices as devices_mod
+    import placement as placement_mod
+    loop = asyncio.get_running_loop()
+    devs = await loop.run_in_executor(None, devices_mod.list_devices)
+    rows = [{
+        "id": d.id,
+        "name": d.name,
+        "owner_user_id": d.owner_user_id,
+        "os_family": d.os_family,
+        "os_arch": d.os_arch,
+        "fingerprint": d.public_key_fingerprint,
+        "last_heartbeat": d.last_heartbeat,
+        "available": placement_mod.is_available(d),
+    } for d in devs]
+    return negotiate_collection(
+        request,
+        json_payload={"rows": rows, "total": len(rows)},
+        template="devices.html",
+        template_ctx={"rows": rows},
+    )
+
+
+def _agent_server_url(request: web.Request) -> str:
+    """URL dell'agent_server (porta 8765) visto dal device: stesso host della
+    console, porta METNOS_AGENT_PORT. MVP senza TLS (overlay Headscale)."""
+    import os as _os
+    host = (request.headers.get("Host") or "127.0.0.1").split(":")[0]
+    port = _os.environ.get("METNOS_AGENT_PORT", "8765")
+    return f"http://{host}:{port}"
+
+
+async def admin_devices_token(request: web.Request) -> web.Response:
+    """POST /admin/devices/token — token effimero (TTL 10 min) + one-liner
+    install Linux/Windows (design doc §5.2/§5.3/§5.4)."""
+    import devices as devices_mod
+    if request.content_type == "application/json":
+        body = await request.json()
+        name = (body.get("name") or "").strip()
+    else:
+        form = await request.post()
+        name = (form.get("name") or "").strip()
+    if not name or any(c.isspace() for c in name):
+        return _error(400, "invalid_name",
+                      "nome device non valido (no spazi, non vuoto)")
+    loop = asyncio.get_running_loop()
+    try:
+        token = await loop.run_in_executor(
+            None, lambda: devices_mod.generate_token(name, ttl_seconds=600))
+    except devices_mod.TokenError as e:
+        return _error(400, "token_error", str(e))
+    server_url = _agent_server_url(request)
+    accept = request.headers.get("Accept", "")
+    if "application/json" in accept and "text/html" not in accept:
+        return web.json_response({
+            "name": name, "token": token, "server_url": server_url,
+            "ttl_seconds": 600,
+        })
+    html = render_template(
+        "devices_token.html",
+        name=name, token=token, server_url=server_url,
+        expires_at=int(time.time()) + 600,
+    )
+    return web.Response(text=html, content_type="text/html")
+
+
+async def admin_device_revoke(request: web.Request) -> web.Response:
+    """POST /admin/devices/{id}/revoke — revoca device (token futuri rifiutati)."""
+    import devices as devices_mod
+    device_id = request.match_info["id"]
+    loop = asyncio.get_running_loop()
+    ok = await loop.run_in_executor(
+        None, lambda: devices_mod.revoke_device(device_id))
+    if not ok:
+        return _error(404, "not_found", "device inesistente o gia' revocato")
+    raise web.HTTPFound("/admin/devices")
+
+
 ROUTES = (
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).
     ("GET",  "/admin/timers",                     admin_timers),
@@ -1323,4 +1405,7 @@ ROUTES = (
     ("POST", "/admin/users/{id}/autonomy",        admin_user_set_autonomy),
     ("POST", r"/admin/users/{id}/channels/{channel}/pair",   admin_user_pair_channel),
     ("POST", r"/admin/users/{id}/channels/{channel}/remove", admin_user_remove_channel),
+    ("GET",  "/admin/devices",                    admin_devices),
+    ("POST", "/admin/devices/token",              admin_devices_token),
+    ("POST", r"/admin/devices/{id}/revoke",       admin_device_revoke),
 )

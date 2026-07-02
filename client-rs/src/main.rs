@@ -2,9 +2,14 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 mod config;
+mod executors;
 mod identity;
 mod pairing;
+mod pyenv;
+mod runner;
+mod sandbox_linux;
 mod state;
+mod wire;
 
 #[derive(Parser)]
 #[command(name = "metnos-client", version, about = "Metnos remote executor client")]
@@ -74,15 +79,23 @@ async fn main() -> Result<()> {
             st.server_url = Some(server.clone());
             st.fingerprint = Some(resp.fingerprint.clone());
             st.paired_at = Some(resp.paired_at.clone());
+            st.server_public_key = resp.server_public_key.clone();
             st.save(&paths.state_file)?;
+            if resp.server_public_key.is_none() {
+                tracing::warn!(
+                    "il server non ha fornito server_public_key: \
+                     le invocazioni non potranno essere verificate (run rifiutera')"
+                );
+            }
             println!("paired: device_id={} name={} fingerprint={} owner={}",
                      resp.device_id, resp.name, &resp.fingerprint[..16], resp.owner_user_id);
         }
         Cmd::Run { server } => {
             let url = server.or(st.server_url.clone())
                 .ok_or_else(|| anyhow::anyhow!("no server (pair first or pass --server)"))?;
-            tracing::info!(%url, "run: daemon loop not yet implemented (W1-2 MVP)");
-            anyhow::bail!("daemon loop not wired yet (next milestone)");
+            let r = runner::Runner::new(url, &st, id, paths)
+                .context("init runner")?;
+            r.run().await?;
         }
     }
     Ok(())

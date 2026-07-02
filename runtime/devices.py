@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS devices (
     os_arch TEXT,
     paired_at TEXT NOT NULL,
     last_heartbeat TEXT,
-    revoked_at TEXT
+    revoked_at TEXT,
+    profile_json TEXT
 );
 CREATE TABLE IF NOT EXISTS device_tokens (
     token_id TEXT PRIMARY KEY,
@@ -91,6 +92,7 @@ class Device:
     paired_at: str
     last_heartbeat: str | None
     revoked_at: str | None
+    profile_json: str | None = None
 
 
 # --- helpers --------------------------------------------------------------
@@ -113,7 +115,16 @@ def _open_db(db_path: Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(str(p), isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Migrazioni additive per DB pre-esistenti (CREATE IF NOT EXISTS non
+    aggiorna le colonne). Idempotente."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(devices)")}
+    if "profile_json" not in cols:
+        conn.execute("ALTER TABLE devices ADD COLUMN profile_json TEXT")
 
 
 def fingerprint_of(public_key_b64: str) -> str:
@@ -308,13 +319,24 @@ def revoke_device(device_id: str, *, db_path: Path | None = None) -> bool:
         conn.close()
 
 
-def heartbeat(device_id: str, *, db_path: Path | None = None) -> None:
+def heartbeat(device_id: str, *, profile: dict | None = None,
+              db_path: Path | None = None) -> None:
+    """Aggiorna liveness + profilo carico del device (§10 L2: cpu_bench,
+    ram_free, net_*, has_gpu, current_load). Il profilo e' opaco qui: lo
+    interpreta placement.choose_placement."""
     conn = _open_db(db_path)
     try:
-        conn.execute(
-            "UPDATE devices SET last_heartbeat = ? WHERE id = ? AND revoked_at IS NULL",
-            (_now_iso(), device_id),
-        )
+        if profile is not None:
+            conn.execute(
+                "UPDATE devices SET last_heartbeat = ?, profile_json = ? "
+                "WHERE id = ? AND revoked_at IS NULL",
+                (_now_iso(), json.dumps(profile, ensure_ascii=False), device_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE devices SET last_heartbeat = ? WHERE id = ? AND revoked_at IS NULL",
+                (_now_iso(), device_id),
+            )
     finally:
         conn.close()
 
@@ -331,6 +353,7 @@ def _row_to_device(row) -> Device:
         paired_at=row["paired_at"],
         last_heartbeat=row["last_heartbeat"],
         revoked_at=row["revoked_at"],
+        profile_json=row["profile_json"] if "profile_json" in row.keys() else None,
     )
 
 

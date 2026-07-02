@@ -9,6 +9,9 @@ pub struct State {
     pub server_url: Option<String>,
     pub fingerprint: Option<String>,
     pub paired_at: Option<String>,
+    /// Pubkey del server (raw Ed25519, b64url) pinnata al pairing. Con essa
+    /// il client verifica `server_sig` delle invocazioni e i bundle firmati.
+    pub server_public_key: Option<String>,
 }
 
 impl State {
