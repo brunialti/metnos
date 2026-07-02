@@ -43,7 +43,7 @@ for an admin key on first connect — it's auto-created at
 it for your browser.
 
 <p align="center">
-  <img src="https://metnos.com/assets/architecture-flow.png" alt="Metnos request flow: a user request goes through intent extraction (verb + object), then L0 fastpath (self-learned shortcut), L1 autopath (learned skill), L2 validator (plan check), and L3 engine (propose · execute · recover · admit the limit) before answering; fastpath/autopath hits short-circuit straight to the answer." width="760">
+  <img src="https://metnos.com/assets/architecture-flow.png" alt="Metnos request flow: a user request goes through intent extraction (verb + object), then L0 fastpath (self-learned shortcut), L1 autopath (learned plan), L2 validator (plan check), and L3 engine (propose · execute · recover · admit the limit) before answering; fastpath/autopath hits short-circuit straight to the answer." width="760">
 </p>
 
 A few principles it takes seriously:
