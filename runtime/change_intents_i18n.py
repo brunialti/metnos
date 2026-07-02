@@ -58,6 +58,32 @@ _KEYS_IT_EN: list[tuple[str, str, str]] = [
     ("UI_CHANGE_KIND_CACHE_PATTERN",        "Cache pattern",         "Cache pattern"),
     ("UI_CHANGE_KIND_REJECT_PATTERN",       "Bandisci pattern",      "Reject pattern"),
 
+    # Legenda (D.4 review 13/6: family/kind senza spiegazione + ID nascosto)
+    ("UI_CHANGE_LEGEND", "Legenda", "Legend"),
+    ("UI_CHANGE_LEGEND_FAMILIES",
+     "Sorgente: canonical = promozione fastpath L0 · introvertiva = analisi "
+     "dei turni (dedupe/generalize) · telos = lenti generative notturne · "
+     "synt = richieste di sintesi · multi_tool = catene osservate · "
+     "user = richieste dell'utente.",
+     "Source: canonical = L0 fastpath promotion · introvertiva = turn "
+     "analysis (dedupe/generalize) · telos = nightly generative lenses · "
+     "synt = synthesis requests · multi_tool = observed chains · "
+     "user = user requests."),
+    ("UI_CHANGE_LEGEND_KINDS",
+     "Tipo: crea/estendi/unifica executor · materializza pipeline (piano "
+     "L1) · cache pattern (piano L0) · bandisci pattern.",
+     "Kind: create/extend/dedupe executor · materialize pipeline (L1 "
+     "plan) · cache pattern (L0 plan) · reject pattern."),
+    ("UI_CHANGE_LEGEND_KIND_VS_MODULE",
+     "Il TIPO è l'azione proposta; il modulo sotto la sorgente (es. "
+     "generalize) è il MECCANISMO che l'ha generata. specialize è ritirato "
+     "(2/7/2026): un default d'argomento è compito della cache L0, non di "
+     "un executor nuovo.",
+     "KIND is the proposed action; the module under the source (e.g. "
+     "generalize) is the MECHANISM that produced it. specialize was "
+     "retired (2026-07-02): baking an argument default is the L0 cache's "
+     "job, not a new executor's."),
+
     # Dettagli
     ("UI_CHANGE_DETAILS",          "Dettagli",         "Details"),
     ("UI_CHANGE_DISCOVERED",       "Scoperta",         "Discovered"),

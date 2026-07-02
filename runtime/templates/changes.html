@@ -4,6 +4,13 @@
 <h1>{{ msg('UI_CHANGE_TITLE') }}</h1>
 <p class="page-sub">{{ msg('UI_CHANGE_SUBTITLE') }}</p>
 
+<details class="muted" style="margin:.4rem 0 .8rem">
+  <summary>{{ msg('UI_CHANGE_LEGEND') }}</summary>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_FAMILIES') }}</div>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KINDS') }}</div>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KIND_VS_MODULE') }}</div>
+</details>
+
 <nav class="tp-tiers">
   {% for st in tabs %}
     <a class="tp-tier{% if state == st.key %} current{% endif %}"
@@ -84,6 +91,7 @@
       </td>
       <td>
         <code>{{ r.intent_target }}</code>
+        <div class="muted" title="{{ r.id }}"><code>{{ r.id[:8] }}</code></div>
       </td>
       <td>
         <div><span class="chip">{{ r.origin_family }}</span></div>
@@ -106,6 +114,7 @@
             </table>
             <div class="muted" style="margin-top:.3rem">
               {{ msg('UI_CHANGE_DISCOVERED') }}: {{ r.discovered_at }}
+              · id: <code>{{ r.id }}</code>
               · fp: <code>{{ r.fingerprint[:8] }}</code>
             </div>
             {% if r.applied_effect %}
