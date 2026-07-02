@@ -365,21 +365,23 @@ def test_accept_path_with_high_signals(tmp_path):
 
 
 def test_reject_path_with_low_signals(tmp_path):
-    """Score molto basso (eta poor, freq=0, decid <0.5) → REJECT senza killer."""
+    """Freq=0 su path multi-step → dal 2/7 il killer LAYER_OVERLAP scatta
+    (covered by L1: non highly-requested); il verdetto resta REJECT, con
+    causa esplicita invece del solo score."""
     prop = _make_proposal(
         name="find_files_size",
         path_eta_p50_ms=1000,  # speedup 0.66 < 1.2 → -1
         new_executor_latency_p50_ms=1500,
-        path_call_count_60d=0,  # -0.5
+        path_call_count_60d=0,  # < soglia highly-requested → killer
         path_n_steps=1,  # token saving = 0
         affinity=["a", "b", "c", "d", "e"],  # no overlap
     )
     pf = _write_proposal(tmp_path, prop)
     cat = _make_catalog()
     result = evaluate_proposal(pf, catalog=cat, audit=False)
-    assert result.killers_triggered == []
-    # eta -1, freq -0.5, decid -1 (no catalog match), noising 0, terminal 0,
-    # truncation potenzialmente +1, saving 0 → totale ~ -2.5
+    assert "layer_overlap" in result.killers_triggered
+    assert result.verdict == "reject"
+    # lo score resta calcolato (audit): eta -1, freq -0.5, decid -1 → basso
     assert result.score <= -1.5
 
 
@@ -389,7 +391,7 @@ def test_gray_path(tmp_path):
         name="find_files_size",
         path_eta_p50_ms=2000,  # speedup 1.33 → 0
         new_executor_latency_p50_ms=1500,
-        path_call_count_60d=10,  # < 30 → -0.5
+        path_call_count_60d=35,  # >= 30: +1.5 e NIENTE killer layer_overlap
         path_n_steps=2,  # token saving 50% → +1
         affinity=["a", "b", "c", "d", "e"],
     )
@@ -603,3 +605,91 @@ def test_testability_passes_when_dry_run_preserved(tmp_path):
     pf = _write_proposal(tmp_path, prop)
     result = evaluate_proposal(pf, catalog=cat, audit=False)
     assert "testability" not in result.killers_triggered
+
+
+# ─── Killer 11: LAYER_OVERLAP (regola dei livelli, 2/7/2026) ──────────
+
+
+def test_layer_overlap_default_bake_equal_keys(tmp_path):
+    """Default-bake a PARITÀ di chiavi args (il buco di triviality, che
+    esige il sottoinsieme stretto): superseded by L0."""
+    prop = _make_proposal(
+        name="find_files_size",
+        path_steps=["find_files"],
+        path_call_count_60d=500,  # anche highly-requested: L0 vince comunque
+        args_properties={
+            "pattern": {"type": "string", "default": "*.py"},  # BAKED
+            "base_path": {"type": "string"},
+        },
+    )
+    cat = _CatStub({
+        "find_files": _ExecStub(
+            "find_files",
+            args_schema={"properties": {
+                "pattern": {"type": "string"},
+                "base_path": {"type": "string"},
+            }},
+        ),
+    })
+    pf = _write_proposal(tmp_path, prop)
+    result = evaluate_proposal(pf, catalog=cat, audit=False)
+    assert "layer_overlap" in result.killers_triggered
+    assert result.signals["layer_overlap"]["baked_defaults"] == ["pattern"]
+    assert result.verdict == "reject"
+
+
+def test_layer_overlap_not_triggered_same_default(tmp_path):
+    """Default IDENTICO al parent = nessun bake nuovo → non triggera."""
+    prop = _make_proposal(
+        name="find_files_size",
+        path_steps=["find_files"],
+        path_call_count_60d=500,
+        args_properties={"pattern": {"type": "string", "default": "*"}},
+    )
+    cat = _CatStub({
+        "find_files": _ExecStub(
+            "find_files",
+            args_schema={"properties": {
+                "pattern": {"type": "string", "default": "*"},
+            }},
+        ),
+    })
+    pf = _write_proposal(tmp_path, prop)
+    result = evaluate_proposal(pf, catalog=cat, audit=False)
+    assert "layer_overlap" not in result.killers_triggered
+
+
+def test_layer_overlap_multistep_low_freq(tmp_path):
+    prop = _make_proposal(
+        name="find_files_size",
+        path_steps=["find_files", "filter_entries"],
+        path_call_count_60d=10,  # < 30 → covered by L1
+    )
+    pf = _write_proposal(tmp_path, prop)
+    result = evaluate_proposal(pf, catalog=_make_catalog(), audit=False)
+    assert "layer_overlap" in result.killers_triggered
+    assert result.verdict == "reject"
+
+
+def test_layer_overlap_multistep_freq_absent_not_judged(tmp_path):
+    # Mai bloccare senza evidenza: senza path_call_count_60d non giudica.
+    prop = _make_proposal(
+        name="find_files_size",
+        path_steps=["find_files", "filter_entries"],
+        path_call_count_60d=None,
+    )
+    pf = _write_proposal(tmp_path, prop)
+    result = evaluate_proposal(pf, catalog=_make_catalog(), audit=False)
+    assert "layer_overlap" not in result.killers_triggered
+
+
+def test_layer_overlap_env_zero_disables(tmp_path, monkeypatch):
+    monkeypatch.setenv("METNOS_HIGHLY_REQUESTED_FREQ_60D", "0")
+    prop = _make_proposal(
+        name="find_files_size",
+        path_steps=["find_files", "filter_entries"],
+        path_call_count_60d=1,
+    )
+    pf = _write_proposal(tmp_path, prop)
+    result = evaluate_proposal(pf, catalog=_make_catalog(), audit=False)
+    assert "layer_overlap" not in result.killers_triggered

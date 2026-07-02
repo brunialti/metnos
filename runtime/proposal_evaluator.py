@@ -17,6 +17,11 @@ KILLER (uno solo basta a REJECT):
    almeno 2 classi di errore distinte (description o codice).
 6. **observation_schema_stability**: viola §2.6 (entries vs results)
    per il consumer del path.
+7. **layer_overlap** (regola dei livelli, Roberto 13/6): default-bake su
+   singolo executor = superseded by L0 (a parita' di chiavi args, chiuso
+   il buco di triviality); path multi-step NON highly-requested
+   (`path_call_count_60d` < METNOS_HIGHLY_REQUESTED_FREQ_60D, default 30)
+   = covered by L1. Frequenza assente → non giudicabile → non triggera.
 
 SCORE WEIGHTED (quando nessun killer):
     score =
@@ -39,6 +44,7 @@ usa l'`intent_extractor` BoW + `prefilter.rank_with_intent` (gia' presenti).
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -425,10 +431,80 @@ def _check_triviality(
     if is_strict_smaller:
         return True, (
             f"path-len=1 vs `{orig_name}` con args sottoinsieme stretto "
-            f"({len(new_keys)} < {len(orig_keys)}). Usa SPECIALIZE "
-            f"introvertiva o aggiorna i default del param nell'executor "
-            f"originale."
+            f"({len(new_keys)} < {len(orig_keys)}). Aggiorna i default del "
+            f"param nell'executor originale (default-bake = compito di L0; "
+            f"specialize introvertiva RITIRATA 2/7/2026)."
         ), info
+    return False, "", info
+
+
+# ─── Killer 11: LAYER_OVERLAP (regola dei livelli, Roberto 13/6) ──────
+
+
+def _check_layer_overlap(
+    proposal: dict, *, path_steps: list[str], catalog,
+) -> tuple[bool, str, dict]:
+    """Killer: la proposta duplica un livello piu' economico della cache
+    (regola dei livelli, Roberto 13/6, VINCOLANTE — nessuna sovrapposizione):
+
+    - **L0**: «impostare un default in una variabile» e' SEMPRE compito del
+      fastpath (memoizza query→piano ARGS INCLUSI). Path a 1 step con chiavi
+      args uguali/sottoinsieme del parent e >=1 default NUOVO/diverso baked
+      → superseded by L0. (Il sottoinsieme STRETTO senza default e' gia'
+      TRIVIALITY; qui si chiude il caso a parita' di chiavi.)
+    - **L1**: una pipeline multi-step ricorrente e' territorio autopath;
+      l'executor di prima classe si giustifica SOLO per path
+      HIGHLY-REQUESTED. Trigger SOLO con evidenza (`path_call_count_60d`
+      presente) sotto `METNOS_HIGHLY_REQUESTED_FREQ_60D` (default 30 =
+      CALL_FREQ_60D_ACCEPT; 0 = off); frequenza assente → non giudicabile
+      → NON triggerato (mai bloccare senza evidenza).
+    """
+    info: dict = {"path_len": len(path_steps)}
+    # — L0: default-bake su singolo executor —
+    if len(path_steps) == 1 and catalog:
+        execs = getattr(catalog, "executors", catalog) or {}
+        orig = execs.get(path_steps[0])
+        if orig is not None:
+            s2 = _stage_output(proposal, 2)
+            new_props = s2.get("args_properties")
+            if new_props is None:
+                sch = s2.get("args_schema") or {}
+                new_props = ((sch.get("properties") or {})
+                             if isinstance(sch, dict) else {})
+            orig_schema = getattr(orig, "args_schema", None) or {}
+            orig_props = (orig_schema.get("properties") or {}
+                          if isinstance(orig_schema, dict) else {})
+            if (isinstance(new_props, dict) and new_props
+                    and isinstance(orig_props, dict) and orig_props
+                    and set(new_props).issubset(set(orig_props))):
+                baked = sorted(
+                    k for k, v in new_props.items()
+                    if isinstance(v, dict) and "default" in v
+                    and v.get("default") != (orig_props.get(k) or {}).get("default"))
+                info["baked_defaults"] = baked
+                if baked:
+                    return True, (
+                        f"default-bake su `{path_steps[0]}` (args {baked} con "
+                        f"default nuovo, nessuna capacita' nuova): superseded "
+                        f"by L0 — il fastpath memoizza il piano args inclusi."
+                    ), info
+    # — L1: multi-step non highly-requested —
+    if len(path_steps) >= 2:
+        try:
+            thr = int(os.environ.get("METNOS_HIGHLY_REQUESTED_FREQ_60D",
+                                     str(CALL_FREQ_60D_ACCEPT)))
+        except ValueError:
+            thr = CALL_FREQ_60D_ACCEPT
+        info["highly_requested_threshold"] = thr
+        n = proposal.get("path_call_count_60d")
+        if thr > 0 and isinstance(n, (int, float)):
+            info["path_call_count_60d"] = int(n)
+            if n < thr:
+                return True, (
+                    f"path multi-step con frequenza {int(n)}/60gg < {thr}: "
+                    f"covered by L1 (autopath). L'executor di prima classe "
+                    f"si giustifica solo per path highly-requested."
+                ), info
     return False, "", info
 
 
@@ -871,9 +947,9 @@ def evaluate_proposal(
     signals: dict[str, Any] = {}
 
     # --- Killer checks (run all to populate audit info) ---------------
-    # Naming canonico (10 killer): INFLATION, OVERLAP, DEFECTIVENESS,
+    # Naming canonico (11 killer): INFLATION, OVERLAP, DEFECTIVENESS,
     # REVERSIBILITY, DISCRIMINABILITY, PLUGABILITY, CAPABILITIES, SAFETY,
-    # TESTABILITY, TRIVIALITY. Snake_case nei campi `signals`.
+    # TESTABILITY, TRIVIALITY, LAYER_OVERLAP. Snake_case nei campi `signals`.
     triggered, reason = _check_inflation(proposal)
     signals["inflation"] = {"triggered": triggered, "reason": reason}
     if triggered:
@@ -931,6 +1007,14 @@ def evaluate_proposal(
     if triggered:
         killers.append("triviality")
         rationale_parts.append(f"TRIVIALITY: {reason}")
+
+    triggered, reason, info = _check_layer_overlap(
+        proposal, path_steps=path_steps, catalog=catalog,
+    )
+    signals["layer_overlap"] = {**info, "triggered": triggered, "reason": reason}
+    if triggered:
+        killers.append("layer_overlap")
+        rationale_parts.append(f"LAYER_OVERLAP: {reason}")
 
     triggered, reason, info = _check_capabilities(
         proposal, path_steps=path_steps, catalog=catalog,
