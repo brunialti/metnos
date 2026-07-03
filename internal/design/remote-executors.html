@@ -836,7 +836,7 @@ budget per-device) = W6.</td>
 <tr>
 <td>W3</td>
 <td>Windows base: Job Object sandbox + python-build-std Windows tarball</td>
-<td>⛔ — <strong>progettato in dettaglio: §15</strong> (3/7, sotto-fasi W3.0-W3.3 + ripartizione W4-W6)</td>
+<td>⛔ — <strong>progettato: §15</strong> (fasi) + <strong>§16</strong> (contratti implementativi file-level, 3/7)</td>
 </tr>
 <tr>
 <td>W4</td>
@@ -1041,6 +1041,193 @@ SmartScreen atteso («Ulteriori informazioni → Esegui comunque»).</p>
 <li><strong>Niente CI Windows</strong>: il gate resta l'E2E manuale documentato
   W3.3 sul PC reale; accettato finché la flotta è domestica.</li>
 </ul>
+<hr>
+<h2 id="16-contratti-implementativi-w3">16. Contratti implementativi W3 (per chi scrive il codice — gemello del §14)</h2>
+
+<p>Livello di dettaglio pensato per un agente implementatore che NON ha il
+contesto di questa sessione. I contratti coprono W3.0–W3.3; quelli W4-W6 si
+scrivono ALLA CHIUSURA di W3 (lo spike AppContainer §15.8 decide la forma —
+niente contratti speculativi).</p>
+
+<h3>16.0 Vincoli trasversali (leggere PRIMA di toccare il codice)</h3>
+<ul>
+<li><strong>NON DEVI toccare il wire format §6</strong>: W3 non cambia campi né firme di
+  invocation/result. <code>error_class</code> esiste già nel result: usa QUELLO.</li>
+<li><strong>NON DEVI riscrivere i 77 manifest esistenti</strong> per aggiungere
+  <code>platforms</code>: il default <code>["linux"]</code> vive nel LOADER. Riscriverli =
+  77 re-sign inutili e un diff monstre. Si edita (e ri-firma §7.10) SOLO
+  l'executor che viene PROMOSSO windows-ready in W3.2.</li>
+<li><strong>DEVI ri-firmare dopo ogni edit</strong> a <code>executors/&lt;n&gt;/*.py</code> o
+  <code>manifest.toml</code>: <code>python3 runtime/sign.py sign executors/&lt;n&gt;</code>
+  (da repo root) + restart servizio — altrimenti il loader lo scarta in silenzio.</li>
+<li><strong>NON DEVI cambiare il comportamento Linux</strong>: degrade-con-warn senza
+  bwrap RESTA (su <code>.33</code> è il comportamento in esercizio; l'E2E Linux lo
+  assume). Il deny-by-default è SOLO <code>cfg(windows)</code>.</li>
+<li><strong>Gate ad OGNI sotto-fase</strong> (in quest'ordine, tutti verdi prima di dichiarare
+  chiusa la fase): <code>cargo test</code> (client-rs) ·
+  <code>cargo build --release --target x86_64-pc-windows-gnu</code> (il target di
+  distribuzione DEVE compilare: <code>windows-sys</code> supporta gnu) ·
+  <code>python3 -m pytest runtime/tests -q</code> 0 fail ·
+  <code>bash scripts/e2e-remote-executor.sh</code> tutti PASS (regressione Linux) ·
+  per edit ai .j2: <code>python3 runtime/prompts_lint.py</code>.</li>
+<li><strong>i18n §11</strong>: ogni messaggio user-facing NUOVO = chiave DB IT+EN nel
+  vivo (<code>python3 -m admin.i18n_cli set</code> da <code>runtime/</code>, poi azzera
+  <code>needs_translation</code> su ENTRAMBE le lingue) + stessa riga nel seed
+  <code>install/data/i18n_seed.sqlite</code> + chiave nel gate-test
+  <code>test_seed_i18n_gate_keys.py</code>. Chiavi previste qui sotto:
+  <code>ERR_DEVICE_SANDBOX_UNAVAILABLE</code>, <code>ERR_DEVICE_PLATFORM_UNSUPPORTED</code>,
+  <code>ERR_DEVICE_PYTHON_MISSING</code>.</li>
+<li><strong>Prompt LLM-facing nuovi</strong> (synt stage 5, W3.2): stile §6 CLAUDE.md
+  (DEVI/NON DEVI/OK/ERRORE), IT+EN in PARITÀ (validate_invariant la esige).</li>
+</ul>
+
+<h3>16.1 W3.0 — gate deny-by-default (client + placement)</h3>
+<p><strong>Client</strong> — <code>runner.rs</code>, nel punto UNICO che oggi chiama
+<code>sandbox_linux::run_sandboxed</code>:</p>
+<pre><code>// PRIMA dello spawn, su Windows:
+#[cfg(windows)]
+if !sandbox_optin_none() {   // METNOS_SANDBOX=off esplicito
+    return Ok(refusal_result(inv, &amp;self.device_id,
+        "sandbox_unavailable",
+        "esecuzione rifiutata: nessun sandbox disponibile su questo \
+         dispositivo (arriva con W3.1); opt-in esplicito: METNOS_SANDBOX=off"));
+}
+</code></pre>
+<p><code>refusal_result</code> = result §6.3 con <code>ok:false</code>,
+<code>error_class:"sandbox_unavailable"</code>, <code>sandbox:"refused"</code>,
+<code>n_processed:0</code>, <code>entries:[]</code> — passa da <code>write_pending_result</code>
++ consegna normale (il server chiude il turno con errore ONESTO, niente
+timeout). <code>sandbox_optin_none()</code> riusa ESATTAMENTE la semantica di
+<code>sandbox_linux::sandbox_disabled()</code> (stessi valori: 0/off/no/false).
+Unit: il modulo compila cross (la funzione è testabile su unix dietro
+<code>#[cfg]</code> inverso non serve — basta il build gnu target verde).</p>
+<p><strong>Server</strong> — <code>runtime/placement.py</code>: la funzione che sceglie il
+device (<code>choose_placement</code>) riceve già il manifest/executor: aggiungi il
+gate PRIMA della selezione per nome:</p>
+<pre><code>plats = manifest_platforms(ex)   # loader: default ["linux"] se assente
+fam = (device.os_family or "").lower() or "linux"
+if fam not in plats:
+    raise PlacementError(_msg("ERR_DEVICE_PLATFORM_UNSUPPORTED",
+                              executor=ex.name, name=device.name, os=fam),
+                         code="ERR_DEVICE_PLATFORM_UNSUPPORTED")
+</code></pre>
+<p><code>PlacementError</code> con <code>code=</code> esiste già (stesso pattern di
+<code>ERR_DEVICE_UNREACHABLE</code>). Testi IT/EN brevi, es. IT: «l'executor {executor}
+non supporta il sistema del dispositivo {name} ({os})». Unit in
+<code>runtime/tests/test_placement.py</code>: device windows + executor senza
+platforms → raise; con <code>platforms=["linux","windows"]</code> → passa.
+DEFINITION OF DONE W3.0: un device Windows appaiato riceve rifiuti onesti,
+MAI esecuzioni; suite+E2E Linux invariati.</p>
+
+<h3>16.2 W3.1 — <code>sandbox_windows.rs</code> + pyenv Windows</h3>
+<p><strong>Modulo nuovo</strong> <code>client-rs/src/sandbox_windows.rs</code>,
+<code>#[cfg(windows)]</code>; in <code>main.rs</code>:
+<code>#[cfg(windows)] mod sandbox_windows;</code>. FIRMA IDENTICA a
+<code>sandbox_linux::run_sandboxed</code> (stessi tipi <code>Limits</code>/<code>SandboxOutput</code>,
+che DEVONO migrare in un modulo condiviso o ri-esportati — scegli il minimo
+diff: <code>pub use</code>). In <code>runner.rs</code> il dispatch è:
+</p>
+<pre><code>#[cfg(unix)]    use crate::sandbox_linux as sandbox;
+#[cfg(windows)] use crate::sandbox_windows as sandbox;
+</code></pre>
+<p><strong>Dipendenza</strong>: <code>windows-sys = "0.59"</code> con features
+<code>Win32_Foundation, Win32_System_JobObjects, Win32_System_Threading,
+Win32_System_Diagnostics_ToolHelp</code> sotto
+<code>[target.'cfg(windows)'.dependencies]</code>.</p>
+<p><strong>Sequenza Job Object</strong> (l'ordine è il contratto — evita la finestra
+in cui il figlio gira fuori dal job):</p>
+<ol>
+<li><code>CreateJobObjectW(null, null)</code>; <code>SetInformationJobObject</code> con
+  <code>JOBOBJECT_EXTENDED_LIMIT_INFORMATION</code>: flags
+  <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_PROCESS_MEMORY |
+  JOB_OBJECT_LIMIT_ACTIVE_PROCESS</code>, <code>ProcessMemoryLimit = 512 MiB</code>
+  (env <code>METNOS_EXEC_MEM_MB</code>), <code>ActiveProcessLimit = 8</code>.</li>
+<li>Spawn con std/tokio Command +
+  <code>std::os::windows::process::CommandExt::creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW)</code>
+  e <code>kill_on_drop(true)</code> (cintura, come su unix).</li>
+<li><code>AssignProcessToJobObject(job, child.raw_handle())</code>.</li>
+<li>Resume: il thread primario NON è esposto da std →
+  <code>CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD)</code>, prima entry con
+  <code>th32OwnerProcessID == child.id()</code>, <code>OpenThread(THREAD_SUSPEND_RESUME)</code>
+  → <code>ResumeThread</code> → chiudi gli handle thread/snapshot.</li>
+<li>Timeout (<code>tokio::time::timeout</code> come su unix) →
+  <code>TerminateJobObject(job, 137)</code>: è il gemello del SIGKILL-al-gruppo;
+  <code>KILL_ON_JOB_CLOSE</code> copre anche il crash del client (handle chiuso ⇒
+  albero morto). Label risultato: <code>sandbox:"job-object"</code>.</li>
+</ol>
+<p><strong>Ambiente</strong> (nel modulo windows E in quello unix, uniformi):
+<code>PYTHONPATH</code> con separatore piattaforma — FIX del bug esistente:
+<code>sandbox_linux.rs</code> riga ~68 usa <code>':'</code> hardcoded; estrai
+<code>fn pythonpath_sep() -&gt; char { if cfg!(windows) {';'} else {':'} }</code> in un
+punto condiviso. Aggiungi <code>PYTHONUTF8=1</code> +
+<code>PYTHONIOENCODING=utf-8</code> su ENTRAMBE le piattaforme (su Linux è
+innocuo, su Windows evita CP1252). Working dir = dir scratch per-invocazione
+sotto <code>%TEMP%</code>, rimossa a fine esecuzione.</p>
+<p><strong>pyenv</strong> — <code>pyenv.rs::resolve</code>, firma INVARIATA; dentro:</p>
+<ul>
+<li>ordine su windows: (1) <code>METNOS_PYTHON</code> env (pin utente esplicito,
+  resta); (2) cache <code>find_cached_python</code> — su windows cerca
+  <code>**/python.exe</code> (layout pbs <code>install_only</code>: <code>python/python.exe</code>);
+  (3) download dal mirror se <code>METNOS_PYTHON_RUNTIME_WIN</code> è configurato
+  (nome tarball, es.
+  <code>cpython-3.12.8+20241206-x86_64-pc-windows-msvc-install_only.tar.gz</code>,
+  file PRE-POSIZIONATO in <code>MIRROR_RUNTIME_DIR</code> lato server);
+  (4) <strong>NIENTE fallback al python di sistema</strong>: errore
+  <code>anyhow!</code> che il runner traduce in result onesto
+  <code>error_class:"python_runtime_missing"</code>. (Su unix il fallback 4 resta.)</li>
+<li>Estrazione tarball PURE-Rust: crates <code>tar = "0.4"</code> +
+  <code>flate2 = "1"</code> (default miniz_oxide, zero C, ok mingw). OGGI
+  <code>download_runtime</code> shell-outa a <code>tar -xf</code> di sistema
+  (pyenv.rs:96): SOSTITUISCI quel blocco con l'estrazione in-process, UNICO
+  path di codice per entrambe le piattaforme. Vincolo: pin SOLO
+  <code>.tar.gz</code> (le build pbs <code>install_only</code> lo offrono sempre;
+  niente <code>.tar.zst</code> = niente crate zstd).</li>
+</ul>
+<p>DEFINITION OF DONE W3.1: su PC Windows reale, executor di prova gira in
+job-object; hung-executor → albero morto entro il wall (gemello del test
+<code>timeout_kills_executor_process</code>, eseguito A MANO sul PC: cargo test
+non gira in CI windows); zero finestre console; niente python di sistema
+usato. I gate §16.0 tutti verdi.</p>
+
+<h3>16.3 W3.2 — manifest <code>platforms</code> + audit executor + synt</h3>
+<ul>
+<li><strong>Loader</strong> (<code>runtime/loader.py</code>): campo top-level opzionale
+  <code>platforms</code> nel manifest (accanto a <code>scope</code>). Parsing:
+  assente → <code>["linux"]</code>; presente → DEVE essere lista non vuota con
+  valori in <code>{"linux","windows","macos"}</code>, altrimenti REJECT con
+  reason <code>invalid_platforms</code> (stesso canale degli altri reject).
+  Esporre <code>Executor.platforms</code>. Unit nel file test del loader.</li>
+<li><strong>NON DEVI</strong> far emettere <code>platforms</code> al synt stage 2:
+  l'LLM non sa se il codice è portabile — allucinerebbe compatibilità. Il campo
+  si aggiunge SOLO a mano dopo l'audit. (Regola nel prompt stage 2 NON serve:
+  basta non aggiungerlo allo schema emesso.)</li>
+<li><strong>Audit candidati</strong> (lista chiusa W3):
+  <code>find_files, list_dirs, read_files, get_files, compute_files_loc,
+  write_files</code> (l'ultimo SOLO per il mutante controllato dell'E2E).
+  Checklist per ciascuno: pathlib ovunque? niente <code>/tmp</code> (→
+  <code>tempfile</code>)? niente comandi esterni POSIX? encoding esplicito?
+  separatori via <code>os.sep</code>/pathlib? Poi: test parametrico su
+  <code>tmp_path</code> (gira ovunque), promozione manifest
+  <code>platforms=["linux","windows"]</code>, re-sign §7.10.</li>
+<li><strong>Synt stage 5</strong>: nei template <code>runtime/prompts/it/synt_code.j2</code>
+  + gemello EN, UNA regola §6 nuova, condizionata a <code>scope=device</code>:
+  DEVI pathlib/tempfile; NON DEVI shell POSIX/percorsi hardcoded;
+  OK/ERRORE una riga ciascuno. Frontmatter aggiornato (version+1, updated,
+  sha_prev), lint verde.</li>
+</ul>
+
+<h3>16.4 W3.3 — E2E Windows (runbook, non script)</h3>
+<p>File nuovo <code>internal/design/e2e-windows-runbook.md</code>: il driver è un
+umano col PC + curl da <code>.33</code>. Checklist numerata con comandi copy-paste:
+(1) join dalla UI §5 → install → <code>heartbeat</code> in UI; (2) da .33:
+<code>enqueue find_files</code> su dir di prova → entries corrette +
+<code>sandbox:"job-object"</code> nel result; (3) hung-executor (executor di test
+con sleep) → timeout onesto e albero morto (Task Manager); (4) doppio
+<code>run</code> manuale → errore lock; (5) <code>write_files</code> mutante in dir
+consentita + verifica reverse; (6) revoca dalla UI → poll rifiutato 403;
+(7) SmartScreen: annotare l'attrito reale (decide se anticipare Authenticode).
+DEFINITION OF DONE W3 = runbook TUTTO spuntato sul PC reale, allegato l'esito
+in fondo al runbook stesso (data + esiti), §0.bis aggiornato.</p>
 <hr>
 <h2 id="riferimenti">Riferimenti</h2>
 <ul>
