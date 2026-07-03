@@ -1122,13 +1122,28 @@ W3.1 e W3.2 sono parallelizzabili (file disgiunti: <code>client-rs/</code> vs
   (DEVI/NON DEVI/OK/ERRORE), IT+EN in PARITÀ (validate_invariant la esige).</li>
 </ul>
 
-<h3>16.1 W3.0 — gate deny-by-default (client + placement)</h3>
-<p><strong>Stato</strong>: il lato CLIENT è già IMPLEMENTATO (3/7, client 0.2.2) —
-il gate <code>#[cfg(windows)]</code> in <code>runner.rs::execute</code> rifiuta con
-<code>sandbox:"refused"</code>, <code>error_class:"sandbox_unavailable"</code> salvo
-<code>METNOS_SANDBOX=off</code>. Un device Windows appaiato oggi è SICURO perché
-rifiuta. RESTA il lato SERVER (<code>placement.py</code>, gate <code>platforms</code>) qui
-sotto, che dipende dal campo manifest di W3.2.</p>
+<h3>16.1 W3.0 — gate deny-by-default (client + placement) — client SUPERSEDUTO da W3.1, vedi nota</h3>
+<div class="stop-note"><strong>⚠ Il gate client descritto sotto è STORICO, rimosso 3/7
+pomeriggio.</strong> Era corretto SOLO nella finestra fra la sua scrittura (review-2,
+commit <code>b2ad3ca</code>) e la nascita di <code>sandbox_windows.rs</code> (W3.1,
+<code>6f23a1b</code>): allora "nessun sandbox Windows" era vero per davvero, quindi
+rifiutare di default e riservare l'esecuzione a <code>METNOS_SANDBOX=off</code> era la
+scelta onesta. Con <code>sandbox_windows.rs</code> in vita, il gate è diventato un
+BUG (trovato in review, 3/7 sera): <code>off</code> era l'UNICO modo di arrivare a
+<code>sandbox_windows::run_sandboxed</code> — un flag che su Linux significa "salta
+bwrap, esegui nudo" diventava su Windows "abilita il Job Object", semantica
+INVERTITA. Fix (client <code>0.2.3</code>): il gate è rimosso; il dispatch chiama
+sempre un sandbox reale per costruzione (Job Object è primitiva OS, sempre
+disponibile — a differenza di bwrap non serve un check di disponibilità);
+<code>METNOS_SANDBOX=off</code> ha ora lo STESSO significato su entrambe le
+piattaforme (salta il contenimento, mai l'unico modo di eseguire). Dettaglio in
+§16.2 sotto, sezione "Esito".</div>
+<p><strong>Stato storico</strong>: il lato CLIENT era stato implementato il 3/7 mattina
+(client 0.2.2) — il gate <code>#[cfg(windows)]</code> in <code>runner.rs::execute</code>
+rifiutava con <code>sandbox:"refused"</code>, <code>error_class:"sandbox_unavailable"</code>
+salvo <code>METNOS_SANDBOX=off</code>. RESTA valido il lato SERVER
+(<code>placement.py</code>, gate <code>platforms</code>) qui sotto — quello non è mai
+stato toccato dal fix, chiude con W3.2 (§16.3, implementato).</p>
 <p><strong>Client</strong> (fatto) — <code>runner.rs</code>, in testa a <code>execute</code>,
 prima di scaricare/eseguire qualunque cosa:</p>
 <pre><code>// PRIMA dello spawn, su Windows:
@@ -1243,6 +1258,26 @@ job-object; hung-executor → albero morto entro il wall (gemello del test
 <code>timeout_kills_executor_process</code>, eseguito A MANO sul PC: cargo test
 non gira in CI windows); zero finestre console; niente python di sistema
 usato. I gate §16.0 tutti verdi.</p>
+
+<div class="ok-note"><strong>Esito — fix simmetria sandbox default, 3/7 sera
+(client <code>0.2.3</code>)</strong>: in review è emerso che il gate §16.1
+(scritto PRIMA di questo modulo) rendeva <code>sandbox_windows::run_sandboxed</code>
+raggiungibile SOLO con <code>METNOS_SANDBOX=off</code> — semantica invertita
+rispetto a Linux, dove lo stesso flag vuol dire "salta bwrap", non "abilita il
+sandbox". Fix: <code>run_sandboxed</code> ora decide da sé
+(<code>use_job_object = !sandbox_disabled()</code>, identico a
+<code>use_bwrap</code> in <code>sandbox_linux.rs</code>) — Job Object di
+default (primitiva OS, sempre disponibile, a differenza di bwrap non serve
+un check "installato?"), <code>off</code> lo salta ed esegue diretto
+(<code>sandbox:"none"</code>, warning esplicito). Il gate pre-check in
+<code>runner.rs::execute</code> è stato RIMOSSO (era un fossile della finestra
+pre-W3.1, non più corretto una volta che questo modulo esiste). Asimmetria
+onesta rimasta, documentata in codice: su Linux "off" NON indebolisce il
+kill-al-timeout (process group POSIX, indipendente da bwrap); su Windows
+"off" lo indebolisce davvero (niente Job Object = niente tree-kill, resta
+solo <code>kill_on_drop</code> sul processo diretto) — inerente alla
+piattaforma, non un gap di codice. Gate: cargo test unix 5/5, build
+windows-gnu+musl pulite zero warning, E2E Linux tutto verde.</div>
 
 <h3>16.3 W3.2 — manifest <code>platforms</code> + audit executor + synt — ✅ IMPLEMENTATO 3/7/2026</h3>
 <div class="ok-note"><strong>Esito</strong>: implementato integralmente + una deviazione

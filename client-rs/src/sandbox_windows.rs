@@ -147,6 +147,17 @@ fn resume_primary_thread(pid: u32) -> Result<()> {
 
 /// Esegue `exec` con `python` passando `args_json` su stdin, in un Job
 /// Object. Firma identica a `sandbox_linux::run_sandboxed` (§16.2).
+///
+/// Il Job Object e' una primitiva del kernel Windows, sempre disponibile
+/// (a differenza di `bwrap` su Linux, un tool userspace che puo' mancare):
+/// per costruzione E' IL DEFAULT, nessun opt-in richiesto — simmetrico a
+/// come Linux usa bwrap-se-disponibile senza flag. `METNOS_SANDBOX=off` ha
+/// lo STESSO significato su entrambe le piattaforme: salta il contenimento
+/// ed esegue diretto (opt-out esplicito per debug), MAI l'unico modo di
+/// ottenere un'esecuzione. (Fix 3/7: il gate `#[cfg(windows)]` pre-W3.1 in
+/// `runner.rs` invertiva questa semantica — rifiutava di default e
+/// richiedeva `off` per arrivare qui. Rimosso: era un fossile della
+/// finestra prima che questo modulo esistesse, §16.1/§16.2 storico.)
 pub async fn run_sandboxed(
     exec: &CachedExecutor,
     python: &Path,
@@ -155,7 +166,26 @@ pub async fn run_sandboxed(
     extra_env: &[(String, String)],
     limits: &Limits,
 ) -> Result<SandboxOutput> {
-    let job = create_job().context("creazione job object")?;
+    let use_job_object = !crate::sandbox_linux::sandbox_disabled();
+    let sandbox_label = if use_job_object { "job-object" } else { "none" };
+    if !use_job_object {
+        // Asimmetria onesta (§12): su Linux "off" toglie SOLO il wrapping
+        // bwrap, il kill-al-timeout resta forte (process group, primitiva
+        // POSIX indipendente). Su Windows il Job Object E' il meccanismo di
+        // tree-kill: "off" lo toglie e con esso la garanzia sull'albero —
+        // kill_on_drop resta come rete (SOLO sul figlio diretto).
+        tracing::warn!(
+            "Job Object non attivo (METNOS_SANDBOX off): esecuzione diretta di {} \
+             (kill-al-timeout ridotto al solo processo diretto, niente albero)",
+            exec.name
+        );
+    }
+
+    let job = if use_job_object {
+        Some(create_job().context("creazione job object")?)
+    } else {
+        None
+    };
 
     // Working dir scratch per-invocazione sotto %TEMP% (§16.2), rimossa a
     // fine esecuzione qualunque sia l'esito (guard RAII).
@@ -179,24 +209,32 @@ pub async fn run_sandboxed(
         cmd.env(k, v);
     }
     cmd.current_dir(&scratch.path);
-    cmd.creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW);
+    // CREATE_SUSPENDED solo se dobbiamo assegnare il job PRIMA del resume
+    // (evita la finestra in cui il figlio gira fuori dal contenimento);
+    // senza Job Object non serve sospendere nulla.
+    cmd.creation_flags(if use_job_object {
+        CREATE_SUSPENDED | CREATE_NO_WINDOW
+    } else {
+        CREATE_NO_WINDOW
+    });
     cmd.kill_on_drop(true);
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
     let mut child = cmd.spawn().context("spawn sandboxed executor (windows)")?;
-    let pid = child.id().context("PID del processo appena creato assente")?;
-    let raw_handle: RawHandle = child
-        .raw_handle()
-        .context("raw handle del processo appena creato assente")?;
 
-    // AssignProcessToJobObject PRIMA del resume: il figlio non gira mai
-    // fuori dal contenimento, nemmeno per un istante.
-    let ok = unsafe { AssignProcessToJobObject(job.0, raw_handle as HANDLE) };
-    check_bool("AssignProcessToJobObject", ok)?;
-
-    resume_primary_thread(pid).context("resume del thread primario")?;
+    if let Some(job) = &job {
+        let pid = child.id().context("PID del processo appena creato assente")?;
+        let raw_handle: RawHandle = child
+            .raw_handle()
+            .context("raw handle del processo appena creato assente")?;
+        // AssignProcessToJobObject PRIMA del resume: il figlio non gira mai
+        // fuori dal contenimento, nemmeno per un istante.
+        let ok = unsafe { AssignProcessToJobObject(job.0, raw_handle as HANDLE) };
+        check_bool("AssignProcessToJobObject", ok)?;
+        resume_primary_thread(pid).context("resume del thread primario")?;
+    }
 
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(args_json.as_bytes()).await.ok();
@@ -210,31 +248,35 @@ pub async fn run_sandboxed(
                 stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
                 timed_out: false,
-                sandbox: "job-object".into(),
+                sandbox: sandbox_label.into(),
             }
         }
         Err(_) => {
-            // Deadline superata: gemello Windows del SIGKILL-al-gruppo unix.
-            // KILL_ON_JOB_CLOSE coprirebbe anche il drop del job handle a
-            // fine funzione, ma terminiamo esplicitamente per non aspettare.
-            let ok = unsafe { TerminateJobObject(job.0, 137) };
-            if ok == 0 {
-                tracing::warn!(
-                    executor = %exec.name,
-                    "TerminateJobObject fallita (GetLastError={}); kill_on_drop \
-                     del Child resta come rete di sicurezza",
-                    unsafe { GetLastError() }
-                );
+            // Deadline superata: gemello Windows del SIGKILL-al-gruppo unix,
+            // SOLO se il job esiste. KILL_ON_JOB_CLOSE coprirebbe anche il
+            // drop dell'handle a fine funzione, ma terminiamo esplicitamente
+            // per non aspettare. Senza job, resta kill_on_drop (§12, sopra).
+            if let Some(job) = &job {
+                let ok = unsafe { TerminateJobObject(job.0, 137) };
+                if ok == 0 {
+                    tracing::warn!(
+                        executor = %exec.name,
+                        "TerminateJobObject fallita (GetLastError={}); kill_on_drop \
+                         del Child resta come rete di sicurezza",
+                        unsafe { GetLastError() }
+                    );
+                }
             }
             tracing::warn!(
                 executor = %exec.name, wall_s = limits.wall.as_secs(),
-                "deadline superata: job object terminato"
+                "deadline superata: {}", if job.is_some() { "job object terminato" }
+                                          else { "kill_on_drop sul processo diretto" }
             );
             SandboxOutput {
                 stdout: String::new(),
                 stderr: "deadline exceeded".into(),
                 timed_out: true,
-                sandbox: "job-object".into(),
+                sandbox: sandbox_label.into(),
             }
         }
     };

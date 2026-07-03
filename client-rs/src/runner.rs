@@ -25,16 +25,13 @@ use crate::state::State;
 use crate::wire::{HeartbeatRequest, Invocation, InvocationResult, PollRequest, PollResponse};
 use crate::{executors, pyenv};
 // Dispatch per-piattaforma (§16.2 W3.1): stessa firma su entrambi i moduli
-// (sandbox_windows ri-esporta Limits/SandboxOutput da sandbox_linux).
+// (sandbox_windows ri-esporta Limits/SandboxOutput da sandbox_linux; il
+// check sandbox_disabled() e' condiviso e richiamato DENTRO ciascun modulo
+// — runner.rs non ha piu' bisogno di un import qualificato separato, 3/7).
 #[cfg(unix)]
 use crate::sandbox_linux as sandbox;
 #[cfg(windows)]
 use crate::sandbox_windows as sandbox;
-// Gate W3.0 (client-half, 3/7): sandbox_disabled() e' condiviso, definito
-// solo in sandbox_linux.rs — su windows serve qualificato (il modulo non e'
-// nel dispatch `sandbox`, che punta a sandbox_windows).
-#[cfg(windows)]
-use crate::sandbox_linux;
 
 /// Header con la firma Ed25519 (b64url) del device sui bytes ESATTI del body.
 const SIG_HEADER: &str = "X-Metnos-Device-Sig";
@@ -225,31 +222,15 @@ impl Runner {
     }
 
     async fn execute(&mut self, inv: &Invocation) -> Result<InvocationResult> {
-        // Gate W3.0 (§16.1): su Windows NON esiste ancora un sandbox reale
-        // (sandbox_windows.rs = W3.1). Fail-closed: rifiuta PRIMA di
-        // scaricare/eseguire qualunque cosa, salvo opt-in esplicito
-        // METNOS_SANDBOX=off. Su unix il degrade-con-warn resta (parità con
-        // runtime/sandbox.py; bwrap può mancare ed è il comportamento in
-        // esercizio su .33). Un device Windows appaiato è così SICURO perché
-        // RIFIUTA, non «non operativo di fatto».
-        #[cfg(windows)]
-        if !sandbox_linux::sandbox_disabled() {
-            tracing::error!(executor = %inv.executor,
-                "esecuzione RIFIUTATA: nessun sandbox su Windows (arriva con \
-                 W3.1); opt-in esplicito con METNOS_SANDBOX=off");
-            return Ok(InvocationResult {
-                invocation_id: inv.invocation_id.clone(),
-                device_id: self.device_id.clone(),
-                ok: false,
-                entries: json!([]),
-                n_processed: 0,
-                elapsed_ms: 0,
-                sandbox: "refused".into(),
-                error: Some("nessun sandbox disponibile su questo dispositivo \
-                             (arriva con W3.1); opt-in: METNOS_SANDBOX=off".into()),
-                error_class: Some("sandbox_unavailable".into()),
-            });
-        }
+        // Il gate fail-closed pre-W3.1 (rifiuta salvo METNOS_SANDBOX=off) e'
+        // stato RIMOSSO 3/7: era corretto SOLO nella finestra in cui
+        // sandbox_windows.rs non esisteva ancora (nessun sandbox reale su
+        // Windows = meglio rifiutare che eseguire nudo). Con sandbox_windows
+        // (Job Object, primitiva OS sempre disponibile) il dispatch sotto
+        // chiama SEMPRE un sandbox reale per costruzione, simmetrico a unix
+        // — nessun pre-check ne' env var richiesti per il caso normale.
+        // Tenerlo avrebbe invertito la semantica di METNOS_SANDBOX=off
+        // (da "salta il contenimento" a "unico modo di eseguire qualcosa").
 
         let exec = executors::ensure_executor(
             &self.server,
