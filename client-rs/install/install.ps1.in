@@ -92,7 +92,16 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn
 #   72 ore, un poller morirebbe in silenzio ogni 3 giorni.
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3 -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 try {
-  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  try {
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  } catch {
+    # -Force NON basta se la task esistente fu creata da un contesto
+    # ELEVATO (installer storico eseguito come admin): «Accesso negato».
+    # Rimuovi e ricrea nel contesto corrente (non elevato).
+    Write-Host "==> task esistente non sovrascrivibile ($_); rimuovo e ricreo"
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  }
   Start-ScheduledTask -TaskName $taskName
   # §2.8: mai un [OK] se il client non sta girando davvero — verifica lo
   # stato reale invece di fidarsi dell'assenza di eccezioni.
@@ -107,7 +116,12 @@ try {
   }
 } catch {
   Write-Host "==> task non avviata: $_"
-  Write-Host "==> avvia manualmente: `"$dest`" run --server $server"
+  Write-Host "==> Se l'errore e' 'Accesso negato': una task MetnosClient creata"
+  Write-Host "    in passato da un PowerShell AMMINISTRATORE blocca quella nuova."
+  Write-Host "    Apri PowerShell come amministratore ed esegui UNA volta:"
+  Write-Host "      Unregister-ScheduledTask -TaskName MetnosClient -Confirm:`$false"
+  Write-Host "    poi riapri questo installer (il file .cmd scaricato), NON elevato."
+  Write-Host "==> avvio manuale alternativo: `"$dest`" run --server $server"
   throw 'installazione incompleta: il client non sta girando'
 }
 
