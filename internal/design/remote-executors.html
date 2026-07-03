@@ -1353,7 +1353,25 @@ critico non previsto dal contratto stesso.
   sha_prev), lint verde.</li>
 </ul>
 
-<h3>16.4 W3.3 — E2E Windows (runbook, non script)</h3>
+<h3>16.4 W3.3 — E2E Windows (runbook, non script) — ✅ runbook + trigger pronti (3/7 sera), esecuzione sul PC reale APERTA</h3>
+<div class="ok-note"><strong>Preparazione fatta 3/7 sera</strong> (prerequisito
+sbloccato: una sessione con accesso al PC Windows target + al browser Metnos
+è finalmente disponibile). File <code>internal/design/e2e-windows-runbook.md</code>
+scritto: checklist copy-paste PowerShell, non più solo curl da <code>.33</code>.
+Il gap del trigger e' risolto con un endpoint NUOVO,
+<code>POST /admin/devices/{id}/test-invoke</code> (gemello di
+<code>/admin/jobs/{key}/fire</code>): enqueue+wait bloccante attraverso la
+pipeline REALE (firma, poll, sandbox, result firmato), un solo comando
+PowerShell per verifica. <strong>Due correzioni rispetto alla bozza qui
+sotto</strong> (scritta prima dell'audit W3.2, §16.3): il passo (2) usa
+<code>compute_files_loc</code> — <code>find_files</code> non è bundlabile al
+device (dipende da <code>backends.files.local</code>, mai spedito dallo shim);
+il passo (5) è marcato SKIP esplicito — <code>write_files</code> ha la STESSA
+dipendenza non bundlata, nessun executor MUTANTE può girare sul device oggi
+(gap architetturale nominato, non aggirato: serve estendere lo shim bundle o
+un executor dedicato, follow-up separato). Test 7/7,
+suite 3142/0. Il testo sotto resta la specifica ORIGINALE (storica); il
+runbook effettivo è la fonte aggiornata.</div>
 <p>File nuovo <code>internal/design/e2e-windows-runbook.md</code>: il driver è un
 umano col PC + curl da <code>.33</code>. Checklist numerata con comandi copy-paste:
 (1) join dalla UI §5 → install → <code>heartbeat</code> in UI; (2) da .33:
