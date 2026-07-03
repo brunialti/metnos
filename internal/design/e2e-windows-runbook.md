@@ -46,10 +46,21 @@
    pulsante è già quello giusto (nessun `for_other_pc` da forzare).
 3. Apri il link generato (stessa scheda o una nuova) — la pagina rileva
    Windows, avvia il download dell'installer dopo ~1,2s.
-4. Sul file scaricato (`MetnosClientSetup.ps1`): tasto destro → **Esegui
-   con PowerShell**. Se compare l'avviso SmartScreen, annota il testo
-   esatto (passo 7) e procedi con "Ulteriori informazioni → Esegui
-   comunque".
+4. Esegui il file scaricato (`MetnosClientSetup.ps1`). **NON doppio
+   click**: Windows non esegue mai un `.ps1` col doppio click, apre il
+   selettore "Con quale app vuoi aprire questo file?" (osservato live
+   3/7). Due strade:
+   - da PowerShell (la più affidabile, funziona su ogni versione):
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\MetnosClientSetup.ps1"
+     ```
+     (`-ExecutionPolicy Bypass` previene anche il blocco "l'esecuzione
+     di script è disabilitata nel sistema", default sui client Windows);
+   - col mouse: tasto destro → **Esegui con PowerShell** (su Windows 11
+     spesso nascosto sotto "Mostra altre opzioni", il menu legacy).
+
+   Se compare l'avviso SmartScreen, annota il testo esatto (passo 7) e
+   procedi con "Ulteriori informazioni → Esegui comunque".
 5. Segui l'avanzamento nella pagina join (o su `/admin/devices`): deve
    arrivare a **heartbeat**.
 
