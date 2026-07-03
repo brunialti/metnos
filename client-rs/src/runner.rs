@@ -205,6 +205,7 @@ impl Runner {
                 sandbox: "none".into(),
                 error: Some(format!("{e:#}")),
                 error_class: Some("device_error".into()),
+                payload: json!({}),
             },
         };
 
@@ -283,6 +284,7 @@ impl Runner {
                 sandbox: out.sandbox,
                 error: Some("deadline exceeded".into()),
                 error_class: Some("timeout".into()),
+                payload: json!({}),
             });
         }
 
@@ -371,6 +373,7 @@ fn result_from_executor(
         sandbox,
         error,
         error_class,
+        payload: parsed, // output COMPLETO: il runtime lo consuma come locale
     }
 }
 

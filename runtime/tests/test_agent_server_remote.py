@@ -186,5 +186,66 @@ class AgentServerRemoteTests(AioHTTPTestCase):
         self.assertIn("sig", bundle)
 
 
+class InvokeRemotePayloadTests(unittest.TestCase):
+    """Il round-trip remoto deve consegnare l'output COMPLETO dell'executor
+    (§2.6), non solo `entries`: bug live 3/7 (compute_files_loc → n_processed
+    5 ma entries [] e nessun dato LOC, perché total_lines/by_path/summary
+    venivano scartati). `invoke_remote` espone `payload` come result locale."""
+
+    def _fake_executor(self):
+        class _E:
+            name = "compute_files_loc"
+            revertible = False
+        return _E()
+
+    def test_payload_exposed_as_local_result(self):
+        import remote_exec
+        from unittest import mock
+        # Un client 0.2.6+: il wire result porta `payload` con l'output pieno.
+        wire = {
+            "invocation_id": "inv-x", "device_id": "dev-abc", "ok": True,
+            "entries": [], "n_processed": 5, "elapsed_ms": 42,
+            "sandbox": "job-object",
+            "payload": {
+                "ok": True, "total_files": 5, "total_lines": 900,
+                "by_path": [{"path": "a.py", "lines": 180}], "summary": "5 file",
+            },
+        }
+        with mock.patch.object(remote_exec.invocations, "enqueue_invocation",
+                               return_value="inv-x"), \
+             mock.patch.object(remote_exec.invocations, "wait_result",
+                               return_value=wire), \
+             mock.patch("devices.get_device", return_value=None):
+            out = remote_exec.invoke_remote(
+                self._fake_executor(), {"paths": ["/x"]}, "dev-abc", timeout_s=1)
+        # Le chiavi di dominio sopravvivono (prima perse).
+        self.assertEqual(out["total_lines"], 900)
+        self.assertEqual(out["summary"], "5 file")
+        self.assertEqual(out["by_path"][0]["lines"], 180)
+        self.assertTrue(out["ok"])
+        # Metadati di trasporto namespaced, non collidono con l'executor.
+        self.assertEqual(out["_remote"]["sandbox"], "job-object")
+        self.assertEqual(out["_remote"]["device_id"], "dev-abc")
+
+    def test_thin_body_fallback_when_no_payload(self):
+        import remote_exec
+        from unittest import mock
+        # Client pre-payload (0.2.5): nessun `payload` → thin body invariato.
+        wire = {
+            "invocation_id": "inv-y", "device_id": "dev-abc", "ok": True,
+            "entries": [{"path": "/usr/bin/git"}], "n_processed": 1,
+            "elapsed_ms": 3, "sandbox": "none",
+        }
+        with mock.patch.object(remote_exec.invocations, "enqueue_invocation",
+                               return_value="inv-y"), \
+             mock.patch.object(remote_exec.invocations, "wait_result",
+                               return_value=wire), \
+             mock.patch("devices.get_device", return_value=None):
+            out = remote_exec.invoke_remote(
+                self._fake_executor(), {}, "dev-abc", timeout_s=1)
+        self.assertEqual(out["entries"], [{"path": "/usr/bin/git"}])
+        self.assertNotIn("_remote", out)
+
+
 if __name__ == "__main__":
     unittest.main()

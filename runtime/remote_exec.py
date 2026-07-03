@@ -106,6 +106,25 @@ def invoke_remote(executor, args: dict, device_id: str, *,
         }
 
     # Il result e' gia' verificato (device_sig) da complete_invocation.
-    # Espone i campi §6.3; il runtime consuma entries/results come locale.
+    # L'output COMPLETO dell'executor (§2.6: entries|results MA anche le chiavi
+    # di dominio come total_lines/by_path/summary) viaggia in `payload`: il
+    # runtime lo consuma ESATTAMENTE come un result locale. Senza questo il
+    # round-trip perdeva tutto ciò che non era `entries` (bug live 3/7:
+    # compute_files_loc → n_processed 5 ma entries [] e nessun dato LOC).
+    # I metadati di trasporto (sandbox, elapsed_ms) vanno sotto `_remote`,
+    # namespaced per non collidere con le chiavi dell'executor.
+    payload = result.get("payload")
+    if isinstance(payload, dict) and payload:
+        merged = dict(payload)
+        merged.setdefault("ok", bool(result.get("ok")))
+        merged["_remote"] = {
+            "device_id": device_id,
+            "invocation_id": invocation_id,
+            "sandbox": result.get("sandbox"),
+            "elapsed_ms": result.get("elapsed_ms"),
+        }
+        return merged
+    # Client pre-payload (0.2.5 e precedenti, non ancora reinstallato): thin
+    # body coi soli campi §6.3. Fallback trasparente durante il rollout.
     result.setdefault("ok", False)
     return result

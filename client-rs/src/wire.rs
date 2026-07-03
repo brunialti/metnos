@@ -78,6 +78,12 @@ pub struct InvocationResult {
     pub sandbox: String,
     pub error: Option<String>,
     pub error_class: Option<String>,
+    /// Output COMPLETO dell'executor (§2.6): non solo `entries`, ma anche le
+    /// chiavi di dominio (`total_lines`, `by_path`, `summary`, …) che un
+    /// executor NON-lista produce. Senza questo il round-trip remoto le
+    /// perdeva e il runtime vedeva un result vuoto ma «ok» (§2.8, bug live
+    /// 3/7: compute_files_loc → n_processed 5 ma entries []).
+    pub payload: Value,
 }
 
 impl InvocationResult {
@@ -95,6 +101,7 @@ impl InvocationResult {
         obj.insert("n_processed".into(), Value::from(self.n_processed));
         obj.insert("elapsed_ms".into(), Value::from(self.elapsed_ms));
         obj.insert("sandbox".into(), Value::String(self.sandbox.clone()));
+        obj.insert("payload".into(), self.payload.clone());
         if let Some(e) = &self.error {
             obj.insert("error".into(), Value::String(e.clone()));
         }
