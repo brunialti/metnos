@@ -345,6 +345,11 @@ async def shim_bundle(request: web.Request) -> web.Response:
         sources = {
             "executor_helpers.py": runtime_dir / "executor_helpers.py",
             "messages.py": runtime_dir / "device_shim" / "messages.py",
+            # C7 read-only: path_alias risolve gli alias di path (Documenti,
+            # workspace…). Modulo FLAT stdlib-only a module-load (`messages` è
+            # import lazy, già nel bundle) → sblocca list_dirs sul device senza
+            # albero-package. Firmato dinamicamente col resto del bundle.
+            "path_alias.py": runtime_dir / "path_alias.py",
         }
         files = {fname: base64.b64encode(p.read_bytes()).decode("ascii")
                  for fname, p in sources.items()}

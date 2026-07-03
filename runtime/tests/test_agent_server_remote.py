@@ -183,6 +183,9 @@ class AgentServerRemoteTests(AioHTTPTestCase):
         bundle = await resp.json()
         self.assertIn("executor_helpers.py", bundle["files"])
         self.assertIn("messages.py", bundle["files"])
+        # C7 read-only: path_alias spedito nello shim → sblocca list_dirs
+        # (e i futuri find/read) sul device.
+        self.assertIn("path_alias.py", bundle["files"])
         self.assertIn("sig", bundle)
 
 
