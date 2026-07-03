@@ -61,6 +61,13 @@
     border-radius: 4px; font-family: "Helvetica Neue", Arial, sans-serif;
     font-size: .92rem;
   }
+  .stop-note {
+    background: #fdecea; border: 1px solid #f3b7b1;
+    border-left: 4px solid #b3261e; padding: .75rem 1rem;
+    border-radius: 4px; font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: .92rem;
+  }
+  .stop-note strong { color: #b3261e; }
   @media (max-width: 640px) { body { font-size: 15px; } main { padding: 1.5rem 1rem 4rem; } }
 </style>
 </head>
@@ -874,11 +881,14 @@ multi-user (oggi single-user host+guest, ADR 0035); misura efficacia E2E;
 modi di fallimento formalizzati; disconnect-proof.</p>
 <hr>
 <h2 id="14-contratti-implementativi-per-chi-scrive-il-codice">14. Contratti implementativi W1-2 — ✅ STORICO (implementati 2/7, execute path Linux)</h2>
-<p><strong>Nota di lettura</strong>: questa sezione è il contratto con cui W1-2 è
-stato COSTRUITO ed è ora CHIUSO (stato in §0.bis). Descrive lavoro FATTO — se
-stai implementando, il tuo contratto è <strong>§16</strong> (W3), non questo.
-NON re-implementare poll/result/heartbeat: esistono già in
-<code>agent_server.py</code>. Conservata come traccia di progettazione.</p>
+<div class="stop-note"><strong>⛔ NON IMPLEMENTARE — sezione storica.</strong>
+W1-2 è CHIUSO (stato in §0.bis): <code>poll</code>/<code>result</code>/<code>heartbeat</code>,
+il loop <code>run</code> e <code>verify_server_sig</code> ESISTONO GIÀ in
+<code>agent_server.py</code> / <code>runner.rs</code> / <code>identity.rs</code>. Gli
+imperativi qui sotto («aggiungi…», «sostituisci il <code>bail!</code>…»)
+descrivono lavoro FATTO — NON eseguirli, li ri-creeresti in doppio. Se stai
+implementando, il tuo contratto è <strong>§16</strong> (W3). Sezione conservata
+solo come traccia di progettazione.</div>
 <h3 id="141-server-33-python">14.1 Server (<code>.33</code>, Python)</h3>
 <ul>
 <li><code>agent_server.py</code>: aggiungi <code>poll</code>, <code>result</code>, <code>heartbeat</code> handler
@@ -1063,6 +1073,22 @@ SmartScreen atteso («Ulteriori informazioni → Esegui comunque»).</p>
 contesto di questa sessione. I contratti coprono W3.0–W3.3; quelli W4-W6 si
 scrivono ALLA CHIUSURA di W3 (lo spike AppContainer §15.8 decide la forma —
 niente contratti speculativi).</p>
+<div class="stop-note"><strong>⛔ UNA FASE PER CONSEGNA.</strong> NON dare a un
+agente «implementa tutto W3»: il diff sarebbe ingestibile e le fasi hanno
+dipendenze d'ordine. Assegna UNA sotto-fase per volta, con scope esplicito:
+<ul>
+<li><strong>W3.1</strong> (client, autonomo): «implementa SOLO
+  <code>sandbox_windows.rs</code> + pyenv Windows (§16.2); NON toccare
+  manifest/<code>platforms</code>/placement». È la fetta più grossa e indipendente.</li>
+<li><strong>W3.2</strong> (server, autonomo): «implementa SOLO loader
+  <code>platforms</code> + gate <code>choose_placement</code> + audit executor +
+  synt stage-5 (§16.3); NON toccare la sandbox». Include il lato-server del
+  gate W3.0.</li>
+<li><strong>W3.3</strong> (E2E): solo DOPO W3.1+W3.2, e serve il PC Windows
+  fisico — FERMATI e chiedi.</li>
+</ul>
+W3.1 e W3.2 sono parallelizzabili (file disgiunti: <code>client-rs/</code> vs
+<code>runtime/</code>). Il client-half di W3.0 è GIÀ fatto (3/7).</div>
 
 <h3>16.0 Vincoli trasversali (leggere PRIMA di toccare il codice)</h3>
 <ul>
@@ -1122,10 +1148,17 @@ timeout). <code>sandbox_optin_none()</code> riusa ESATTAMENTE la semantica di
 <code>sandbox_linux::sandbox_disabled()</code> (stessi valori: 0/off/no/false).
 Unit: il modulo compila cross (la funzione è testabile su unix dietro
 <code>#[cfg]</code> inverso non serve — basta il build gnu target verde).</p>
-<p><strong>Server</strong> — <code>runtime/placement.py</code>: la funzione che sceglie il
-device (<code>choose_placement</code>) riceve già il manifest/executor: aggiungi il
-gate PRIMA della selezione per nome:</p>
-<pre><code>plats = manifest_platforms(ex)   # loader: default ["linux"] se assente
+<p><strong>Server</strong> — <code>runtime/placement.py</code>. <strong>⚠ DIPENDENZA
+D'ORDINE</strong>: questo gate usa <code>Executor.platforms</code> /
+<code>manifest_platforms(ex)</code>, che NON esistono ancora — si introducono nel
+LOADER in <strong>§16.3 (W3.2)</strong>. Quindi il lato server del gate W3.0
+<strong>si implementa INSIEME a W3.2</strong>, non prima: chi fa solo W3.1 lascia
+questo pezzo a W3.2. L'ordine reale è: <em>client-half W3.0</em> (già fatto, §16.1
+sopra) → <em>W3.1</em> (sandbox+pyenv, indipendente) → <em>W3.2</em> (loader
+<code>platforms</code> + QUESTO gate server, insieme). La funzione
+<code>choose_placement</code> riceve già il manifest/executor: aggiungi il gate
+PRIMA della selezione per nome:</p>
+<pre><code>plats = manifest_platforms(ex)   # loader §16.3: default ["linux"] se assente
 fam = (device.os_family or "").lower() or "linux"
 if fam not in plats:
     raise PlacementError(_msg("ERR_DEVICE_PLATFORM_UNSUPPORTED",
@@ -1137,8 +1170,9 @@ if fam not in plats:
 non supporta il sistema del dispositivo {name} ({os})». Unit in
 <code>runtime/tests/test_placement.py</code>: device windows + executor senza
 platforms → raise; con <code>platforms=["linux","windows"]</code> → passa.
-DEFINITION OF DONE W3.0: un device Windows appaiato riceve rifiuti onesti,
-MAI esecuzioni; suite+E2E Linux invariati.</p>
+DEFINITION OF DONE W3.0 (client-half, già fatto 3/7): un device Windows appaiato
+riceve rifiuti onesti, MAI esecuzioni; suite+E2E Linux invariati. Il gate
+server (sopra) chiude con W3.2.</p>
 
 <h3>16.2 W3.1 — <code>sandbox_windows.rs</code> + pyenv Windows</h3>
 <p><strong>Modulo nuovo</strong> <code>client-rs/src/sandbox_windows.rs</code>,
