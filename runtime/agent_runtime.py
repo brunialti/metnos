@@ -86,7 +86,7 @@ def _derive_file_attachments(tool, res: dict) -> list:
         out.append({"kind": "image" if mime.startswith("image/") else "file",
                     "path": p, "basename": _P(p).name, "mime": mime})
     return out
-from fast_path import try_fast_path, try_seed_step
+from fast_path import try_fast_path
 
 LOCATION_REQUEST_TOOL = {
     "type": "function",
@@ -5635,7 +5635,7 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
 
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
 
-def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
+def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
              cap_steps=DEFAULT_CAP_STEPS, cap_same=DEFAULT_CAP_SAME_EXECUTOR,
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
              actor="host", channel="", conversation_id="",
@@ -6124,14 +6124,11 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
         # (ADR 0092), bypass Engine v2 e Praxis QUI. ASSORBIMENTO (ADR 0177 M1):
         # le foto allegate sono instradate all'ENGINE in un branch DEDICATO a
         # valle (vedi `_ref_images_for_prompt` prima del PLANNER legacy); questo
-        # ramo resta il path NON-upload (qui `_ref_images_for_prompt` è vuoto per
-        # la guardia del blocco esterno, quindi `_bypass_for_uploads` è no-op).
-        _bypass_for_uploads = bool(_ref_images_for_prompt)
-
+        # ramo resta il path NON-upload (`_ref_images_for_prompt` è vuoto per la
+        # guardia del blocco esterno; gli upload hanno un branch dedicato a valle).
         _engine_v2_res = None
         if (os.environ.get("METNOS_ENGINE_V2", "1") == "1"
-            and not _force_legacy_compound
-            and not _bypass_for_uploads):
+                and not _force_legacy_compound):
             try:
                 _engine_v2_res = _try_engine_v2(
                     _query_for_planning, catalog,
@@ -6241,7 +6238,6 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("query", nargs="+")
-    ap.add_argument("--mode", default="local", choices=["local", "online", "hybrid"])
     ap.add_argument("--model", default=None)
     ap.add_argument("--think", action="store_true", help="Abilita thinking del LLM (qwen3, deepseek)")
     ap.add_argument("--k", type=int, default=10)
@@ -6250,7 +6246,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     query = " ".join(args.query)
-    log = run_turn(query, mode=args.mode, model=args.model, k=args.k,
+    log = run_turn(query, model=args.model, k=args.k,
                    cap_steps=args.cap_steps, think=args.think, verbose=args.verbose)
     print(f"\n>>> {log.final_message}\n")
     if args.verbose:

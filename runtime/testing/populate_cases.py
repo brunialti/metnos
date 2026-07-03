@@ -813,11 +813,6 @@ must_have = {"read_files", "write_files", "get_now", "get_urls"}
 missing = must_have - names
 assert not missing, f"render manca: {missing}"
 """),
-    ("agent_runtime", "mode_router_ritorna_il_mode_di_config", "happy", """
-from agent_runtime import ModeRouter
-r = ModeRouter("hybrid")
-assert r.select("qualunque", None) == "hybrid"
-"""),
     ("agent_runtime", "invoke_executor_ritorna_json", "happy", """
 from loader import load_catalog
 from agent_runtime import invoke_executor

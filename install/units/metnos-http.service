@@ -20,14 +20,13 @@ Environment=METNOS_HTTP_PORT=8770
 # vs ~4.3 min/turn middle baseline, stessa qualita' onesta'. Budget
 # 2048 permette al LLM di convergere prima a final_answer senza retry.
 Environment=METNOS_REASONING_BUDGET=4096
-# Praxis Engine (ADR 0161, 25/5/2026): sostituisce PLANNER step-by-step.
-# Bench strict 25/25 INTENT_OK conferma copertura 100%. PLANNER legacy
-# disabilitato di default. Re-enable temporaneo: METNOS_PLANNER_LEGACY=1.
+# Praxis Engine (ADR 0161): sostituisce il PLANNER step-by-step.
+# Il PLANNER legacy è stato RIMOSSO (ADR 0181-ext, 4/7/2026): il declino del
+# motore moderno dà un esito ONESTO (§2.8), non più un fallback ReAct degenere.
+# (Rimosso `Environment=METNOS_PLANNER_LEGACY=1` — drift dell'installer: avrebbe
+# solo lasciato una variabile morta, il legacy non esiste più nel codice.)
 Environment=METNOS_PRAXIS=1
 Environment=METNOS_PRAXIS_AUTO_PROMOTE=1
-# HYBRID mode (25/5/2026 sera): Praxis fast-path + PLANNER fallback su
-# kind=error. Universale, copre edge case (missing capability, env limit).
-Environment=METNOS_PLANNER_LEGACY=1
 Environment=METNOS_PRAXIS_FALLBACK=1
 
 [Install]
