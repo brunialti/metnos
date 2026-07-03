@@ -1314,10 +1314,35 @@ async def admin_devices(request: web.Request) -> web.Response:
 
 def _agent_server_url(request: web.Request) -> str:
     """URL dell'agent_server (porta 8765) visto dal device: stesso host della
-    console, porta METNOS_AGENT_PORT. MVP senza TLS (overlay Headscale)."""
+    console, porta METNOS_AGENT_PORT. MVP senza TLS (overlay Headscale).
+
+    Se la richiesta e' arrivata attraverso un proxy fidato (tunnel pubblico,
+    es. Cloudflare — `request.remote` e' il tunnel locale, non il browser),
+    l'Host header e' il dominio PUBBLICO: instrada tipicamente solo la porta
+    console (8770), mai la porta device (8765, LAN/overlay-only per design,
+    §6 design doc). Riusarlo per il link di join produce un URL che non
+    risponde mai (bug live 2/7: browser bloccato su chat.metnos.com:8765).
+    In quel caso ripiega su un IP LAN reale del server — il device che si
+    appaia e' per contratto sulla stessa LAN/overlay, mai su Internet
+    pubblico (mai allargare il tunnel a esporre la 8765, §6/ADR 0007)."""
     import os as _os
-    host = (request.headers.get("Host") or "127.0.0.1").split(":")[0]
+    from http_auth import _is_trusted_proxy
     port = _os.environ.get("METNOS_AGENT_PORT", "8765")
+    if _is_trusted_proxy(request.remote):
+        lan_ip = _pick_lan_ip()
+        if lan_ip:
+            log.warning(
+                "[devices] richiesta via proxy fidato (Host=%s): uso IP LAN "
+                "%s per il link device (la porta %s non e' instradata dal "
+                "tunnel pubblico)",
+                request.headers.get("Host", "?"), lan_ip, port)
+            return f"http://{lan_ip}:{port}"
+        log.warning(
+            "[devices] richiesta via proxy fidato ma nessun IP LAN "
+            "rilevato: ripiego sull'Host header (%s) — il link potrebbe "
+            "non rispondere se non instrada la porta %s",
+            request.headers.get("Host", "?"), port)
+    host = (request.headers.get("Host") or "127.0.0.1").split(":")[0]
     return f"http://{host}:{port}"
 
 
@@ -1380,6 +1405,62 @@ def _local_server_ips() -> set[str]:
 
 
 _LOCAL_IPS_CACHE: set[str] | None = None
+
+
+def _default_route_iface() -> str | None:
+    """Interfaccia Linux della default route, quella a METRIC piu' basso
+    fra le righe con Destination=00000000 in `/proc/net/route` (kernel
+    routing table, nessun parsing di `ip route` via subprocess). `None` su
+    non-Linux o senza default route: il chiamante ha un fallback."""
+    try:
+        with open("/proc/net/route") as f:
+            next(f)  # header
+            best_iface, best_metric = None, None
+            for line in f:
+                fields = line.split()
+                if len(fields) < 7 or fields[1] != "00000000":
+                    continue
+                metric = int(fields[6])
+                if best_metric is None or metric < best_metric:
+                    best_iface, best_metric = fields[0], metric
+            return best_iface
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _pick_lan_ip() -> str | None:
+    """IP LAN reale del server (esclude loopback), filtrato sulle stesse
+    reti "LAN" di `http_auth.LAN_NETS` (fonte unica §7.2, no doppia
+    definizione). Con piu' interfacce LAN candidate, preferisce quella
+    della default route del kernel invece di un ordine alfabetico
+    arbitrario — scoperto live 3/7: `enp197s0` (cablata, `.33`, default
+    route reale) vs `wlp195s0` (WiFi secondaria DHCP, `.126`, metric 700);
+    l'ordine alfabetico avrebbe scelto la WiFi secondaria. `None` se il
+    server non ha un'interfaccia LAN rilevabile."""
+    import ipaddress
+    import socket
+    from http_auth import LAN_NETS
+
+    def _in_lan(ip_s: str) -> bool:
+        try:
+            ip = ipaddress.ip_address(ip_s)
+        except ValueError:
+            return False
+        return not ip.is_loopback and any(ip in net for net in LAN_NETS)
+
+    candidates = sorted(ip_s for ip_s in _local_server_ips() if _in_lan(ip_s))
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+    iface = _default_route_iface()
+    if iface:
+        try:
+            import psutil
+            for a in psutil.net_if_addrs().get(iface, []):
+                if a.family == socket.AF_INET and a.address in candidates:
+                    return a.address
+        except Exception:
+            pass
+    return candidates[0]
 
 
 def is_request_from_server(request: web.Request) -> bool:
