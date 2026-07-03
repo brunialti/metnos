@@ -564,7 +564,7 @@ footer em { color: inherit; }
 <ol>
     <li><a href="#cap1"><span class="tn">01</span>Cos'è Metnos, in trenta secondi</a></li>
     <li><a href="#cap2"><span class="tn">02</span>Perché è diverso</a></li>
-    <li><a href="#cap3"><span class="tn">03</span>Otto scene reali</a></li>
+    <li><a href="#cap3"><span class="tn">03</span>Nove scene reali</a></li>
     <li><a href="#cap4"><span class="tn">04</span>Dove vive e come gli si parla</a></li>
     <li><a href="#cap5"><span class="tn">05</span>Cosa succede quando dice «posso?»</a></li>
     <li><a href="#cap6"><span class="tn">06</span>La sua memoria</a></li>
@@ -787,7 +787,7 @@ benissimo.
 
 <!-- ================= CAP 3 ================= -->
 <section class="cap" id="cap3">
-<h2>3 · Otto scene reali</h2>
+<h2>3 · Nove scene reali</h2>
 
 <p class="lead">
 Il modo più rapido per capire è guardare. Ogni scena qui sotto è una richiesta vera
@@ -1036,6 +1036,101 @@ pubblicate, pubblica la risposta come commento su GitHub, segnale «posted».</p
 È un esperimento dichiarato di dogfooding: un'istanza di Metnos che aiuta a mantenere
 Metnos. Se il tier frontier è giù o fuori budget, l'issue resta «new» e viene marcata
 per trattamento manuale — mai una risposta inventata, mai uno skip silenzioso.
+</div>
+</div>
+
+<!-- SCENA 9 -->
+<style>
+/* Scena 9 — finestra di chat, stile a bolle. Tutte le classi hanno il prefisso
+   qt-rx- per non collidere con il foglio di stile della pagina. */
+.qt-rx-chat{background:#fff;border:1px solid #d7dee7;border-radius:16px;overflow:hidden;
+  box-shadow:0 2px 10px rgba(20,40,70,.05);margin:18px 0;
+  font-family:'Segoe UI',Calibri,system-ui,sans-serif;line-height:1.5;color:#1c2430}
+.qt-rx-bar{display:flex;align-items:center;gap:10px;padding:11px 16px;background:#1A477A;color:#fff}
+.qt-rx-bar .qt-rx-dot{width:10px;height:10px;border-radius:50%;background:#7fd39b}
+.qt-rx-bar b{font-weight:600;font-size:14px}
+.qt-rx-dest{margin-left:auto;font-size:11.5px;background:rgba(255,255,255,.15);
+  padding:3px 9px;border-radius:999px}
+.qt-rx-thread{padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#f7f9fc}
+.qt-rx-turn{display:flex;flex-direction:column;gap:6px}
+.qt-rx-turn.qt-rx-user{align-items:flex-end}
+.qt-rx-bubble{max-width:82%;padding:10px 13px;border-radius:14px;font-size:14.5px;text-align:left}
+.qt-rx-user .qt-rx-bubble{background:#1A477A;color:#fff;border-bottom-right-radius:5px}
+.qt-rx-bot .qt-rx-bubble{background:#fff;border:1px solid #d7dee7;border-bottom-left-radius:5px}
+.qt-rx-bubble .qt-rx-mono{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:13px;
+  background:#f2f5f9;border:1px solid #e3e9f1;border-radius:8px;padding:8px 10px;margin-top:8px;
+  white-space:pre-wrap;color:#25303f}
+.qt-rx-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:3px 9px;border-radius:999px;width:max-content}
+.qt-rx-chip.qt-rx-server{background:#eef0f3;color:#4a5568;border:1px solid #cfd6df}
+.qt-rx-chip.qt-rx-device{background:#e8effa;color:#1A477A;border:1px solid #bcd2f0}
+.qt-rx-chip.qt-rx-offline{background:#fdeaea;color:#b23b3b;border:1px solid #eec2c2}
+.qt-rx-route{display:flex;align-items:center;gap:8px;align-self:center;font-size:12.5px;color:#b5730f;
+  background:#fdf3e0;border:1px dashed #e6c187;border-radius:999px;padding:5px 12px}
+.qt-rx-route b{color:#8a5709}
+.qt-rx-sticky{align-self:center;font-size:12px;color:#5b6675;font-style:italic;
+  display:inline-flex;gap:6px;align-items:center}
+</style>
+<div class="scene">
+<div class="group-title">Scena 9 · dal server a un tuo PC — in collaudo 07/2026</div>
+<h3>Dalla chat a un tuo PC, con la destinazione che resta</h3>
+<p>Gli stessi comandi in linguaggio naturale, ma l'esecuzione pu&ograve; spostarsi su un
+PC che avete <em>appaiato</em>. In cima alla chat c'&egrave; sempre la
+<strong>destinazione corrente</strong>: dove finisce il prossimo comando se non
+nominate nessun PC.</p>
+
+<div class="qt-rx-chat" aria-label="Colloquio di esempio: dal server a un PC dell'utente">
+  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · chat di Roberto</b>
+    <span class="qt-rx-dest">📍 destinazione: server</span></div>
+  <div class="qt-rx-thread">
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Quante righe di codice ci sono nel progetto?</div></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-server">🖥 server (.33)</span>
+      <div class="qt-rx-bubble">Il progetto ha <b>48.213</b> righe in 612 file.
+        <div class="qt-rx-mono">primo turno, nessun PC nominato &rarr; destinazione = server</div>
+      </div>
+    </div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Elenca la cartella Documenti sul mio <b>portatile-ufficio</b></div></div>
+    <div class="qt-rx-route">🔀 riconosciuto <b>PORTATILE-UFFICIO</b> &rarr; instrado, e da ora &egrave; la destinazione</div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-device">💻 PORTATILE-UFFICIO</span>
+      <div class="qt-rx-bubble">Su <b>PORTATILE-UFFICIO</b>, in <b>Documenti</b>:
+        <div class="qt-rx-mono">fatture/        (cartella)
+contratti/      (cartella)
+appunti.txt     4 KB
+bilancio.xlsx   88 KB</div>
+      </div>
+    </div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Comprimila in zip</div></div>
+    <div class="qt-rx-sticky">↳ nessun PC nominato &rarr; resta l'ultima destinazione: <b>PORTATILE-UFFICIO</b></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-device">💻 PORTATILE-UFFICIO</span>
+      <div class="qt-rx-bubble">Fatto sul portatile: creato <b>Documenti.zip</b> (1,2 MB) accanto alla cartella.</div>
+    </div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Quanto spazio libero c'&egrave; sul <b>fisso-casa</b>?</div></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-offline">💻 FISSO-CASA · non connesso</span>
+      <div class="qt-rx-bubble"><b>FISSO-CASA non &egrave; connesso</b> (nessun battito da oltre un minuto).
+        Non eseguo altrove di nascosto: accendilo e riprova, oppure dimmi &laquo;sul server&raquo;.
+        <div class="qt-rx-mono">controllo di connessione prima di ogni invio &rarr; errore onesto, mai un ripiego silenzioso</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div class="meta">
+  <b>destinazione</b> appiccicosa: resta sull'ultimo PC finch&eacute; non ne nominate un altro o non dite &laquo;sul server&raquo; ·
+  <b>connessione</b> verificata prima di ogni invio (battito) — se il PC &egrave; spento, errore onesto, nessun ripiego di nascosto ·
+  <b>appaiamento</b> solo i PC che avete registrato voi
+</div>
+<div class="truth">
+Metnos non esegue mai &laquo;alla cieca&raquo; su un PC che non risponde: niente battito
+recente, niente esecuzione. Vi dice che il dispositivo &egrave; scollegato e vi lascia
+scegliere — accenderlo, ripetere altrove, o restare sul server.
 </div>
 </div>
 </section>
