@@ -836,7 +836,7 @@ budget per-device) = W6.</td>
 <tr>
 <td>W3</td>
 <td>Windows base: Job Object sandbox + python-build-std Windows tarball</td>
-<td>⛔</td>
+<td>⛔ — <strong>progettato in dettaglio: §15</strong> (3/7, sotto-fasi W3.0-W3.3 + ripartizione W4-W6)</td>
 </tr>
 <tr>
 <td>W4</td>
@@ -905,6 +905,142 @@ W1-2 (Linux, execute path):</p>
 <li>Server giù a metà: result in-flight bufferato nello spool, consegnato al
    ritorno di <code>.33</code>.</li>
 </ol>
+<hr>
+<h2 id="15-w3-windows-execute-path-progettazione">15. W3+ — Windows execute path: progettazione di dettaglio (3/7/2026)</h2>
+
+<p>Assessment condiviso con Roberto (3/7): dieci mancanze individuate per usare
+la suite executor su un PC Windows, più cinque aggiunte emerse dall'analisi del
+codice. Ogni punto è assegnato a una fase; l'ordine è dettato dalla sicurezza
+(prima il gate che RIFIUTA, poi la capacità).</p>
+
+<h3>15.0 Mappa punti → fasi</h3>
+<table>
+<thead><tr><th style="width:46%">Punto</th><th>Fase</th><th>Nota</th></tr></thead>
+<tbody>
+<tr><td>Gate deny-by-default se sandbox assente <em>(aggiunta)</em></td><td><strong>W3.0</strong></td><td>il prerequisito di tutto: senza, un python locale sul PC esegue NON sandboxato</td></tr>
+<tr><td>5. Kill affidabile su timeout</td><td>✅ 3/7 (unix) / <strong>W3.1</strong> (win)</td><td>su Windows il Job Object con <code>KILL_ON_JOB_CLOSE</code> è il kill d'albero</td></tr>
+<tr><td>6. Lock single-instance client</td><td>✅ 3/7</td><td><code>proclock.rs</code> (fs2: LockFileEx su win) + Task <code>IgnoreNew</code>; da ri-verificare in E2E W3.3</td></tr>
+<tr><td>1. Runtime Python dal mirror (no fallback locale)</td><td><strong>W3.1</strong></td><td>python-build-standalone <code>x86_64-pc-windows-msvc</code>; fallback a python di sistema SOLO con opt-in esplicito</td></tr>
+<tr><td>3. Sandbox Windows reale</td><td><strong>W3.1</strong> (Job Object + token ristretto) → <strong>W4</strong> (AppContainer)</td><td>due livelli DICHIARATI: contenimento risorse ≠ isolamento fs</td></tr>
+<tr><td>Encoding/console/PYTHONPATH <code>;</code> <em>(aggiunta)</em></td><td><strong>W3.1</strong></td><td>bug noto: il join di PYTHONPATH usa <code>:</code> (POSIX); + <code>PYTHONUTF8=1</code>, <code>CREATE_NO_WINDOW</code></td></tr>
+<tr><td>7. Executor path-portabili</td><td><strong>W3.2</strong></td><td>manifest <code>platforms</code> + audit dei device-scope + regola synt stage-5</td></tr>
+<tr><td>10. Placement per compatibilità dichiarata</td><td><strong>W3.2</strong></td><td>gate <code>os_family × platforms</code> in <code>choose_placement</code>, errore onesto</td></tr>
+<tr><td>8. E2E Windows reale</td><td><strong>W3.3</strong></td><td>read-only + mutante controllato, dal flusso join §5</td></tr>
+<tr><td>4. Capability → permessi Windows</td><td><strong>W4</strong></td><td>ha senso SOLO con AppContainer (ACL al SID del container)</td></tr>
+<tr><td>2. Wheel/dipendenze via mirror su Windows</td><td><strong>W5</strong></td><td>tag <code>win_amd64</code>; nessun executor candidato ne ha bisogno in W3</td></tr>
+<tr><td>self_update con swap-file Windows <em>(aggiunta)</em></td><td><strong>W5</strong></td><td>non si sostituisce un exe in esecuzione: rename + restart task (§5.8)</td></tr>
+<tr><td>Observability di flotta <em>(aggiunta)</em></td><td><strong>W5</strong></td><td>/admin/devices: client_version, sandbox label dell'ultimo result, esiti</td></tr>
+<tr><td>9. Firma forte installer/binario Windows</td><td><strong>W6</strong></td><td>PS 5.1 non ha Ed25519: la strada REALE è il canale (TLS pin) che autentica il manifest, + Authenticode se SmartScreen; il pin sha256 baked (3/7) resta il ponte</td></tr>
+<tr><td>Long-poll backpressure; SmartScreen UX <em>(aggiunte)</em></td><td><strong>W6</strong></td><td>cap per-device + jitter; istruzioni oneste «Esegui comunque» nella pagina join finché unsigned</td></tr>
+</tbody>
+</table>
+
+<h3>15.1 W3.0 — Gate di sicurezza immediato (mezza giornata)</h3>
+<p><strong>Client</strong> (<code>runner.rs</code>): su <code>cfg(windows)</code>, se il percorso
+di esecuzione non fornisce un sandbox reale, l'invocazione viene RIFIUTATA con
+<code>ok:false</code>, <code>error_class:"sandbox_unavailable"</code> — salvo opt-in esplicito
+<code>METNOS_SANDBOX=off</code>. Su unix resta il degrade-con-warn (parità con
+<code>runtime/sandbox.py</code>; su <code>.33</code> bwrap può mancare ed è il
+comportamento in esercizio). <strong>Server</strong> (<code>placement.py</code>): un
+executor senza <code>windows</code> in <code>platforms</code> non viene instradato a un
+device <code>os_family=windows</code> → errore onesto «executor X non supporta il
+dispositivo Y». Gate: unit su entrambi; un device Windows appaiato oggi
+diventa <em>sicuro perché rifiuta</em>, non «non operativo» de facto.</p>
+
+<h3>15.2 W3.1 — Esecuzione Windows corretta (~1 settimana)</h3>
+<ul>
+<li><strong><code>sandbox_windows.rs</code></strong> (contratto §9 invariato):
+  <code>CreateProcess</code> con <code>CREATE_SUSPENDED | CREATE_NO_WINDOW</code> →
+  <code>AssignProcessToJobObject</code> → resume. Job Object:
+  <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code> (morte d'albero garantita anche a
+  crash del client), <code>PROCESS_MEMORY</code> (mem cap), <code>ACTIVE_PROCESS</code>
+  (anti fork-bomb). Timeout → <code>TerminateJobObject</code> (equivalente del
+  SIGKILL-al-gruppo unix, 3/7). Token RISTRETTO
+  (<code>CreateRestrictedToken</code>: drop admin/elevated SIDs) quando disponibile.
+  Label onesta: <code>sandbox:"job-object"</code> — contenimento risorse e
+  privilegi, NON isolamento filesystem: la POLICY server (vaglio/§10) decide
+  quali executor lo accettano finché W4.</li>
+<li><strong><code>pyenv.rs</code></strong>: pin per-OS
+  (<code>METNOS_PYTHON_RUNTIME_WIN</code>, tarball
+  <code>cpython-*-x86_64-pc-windows-msvc-install_only.tar.gz</code> nel mirror
+  <code>/agent/runtime/</code>), estrazione pure-Rust (crate <code>tar</code>+<code>flate2</code>,
+  niente dipendenza da tar.exe), discovery <code>python.exe</code>. Il fallback al
+  python DI SISTEMA su Windows sparisce dal default (solo con lo stesso opt-in
+  del gate W3.0).</li>
+<li><strong>Ambiente</strong>: <code>PYTHONPATH</code> con separatore
+  <code>std::env::consts</code>-aware (BUG oggi: join con <code>:</code>),
+  <code>PYTHONUTF8=1</code> + <code>PYTHONIOENCODING=utf-8</code> (console CP1252),
+  scratch in <code>%TEMP%</code> per-invocazione, working dir dedicata.</li>
+<li>Gate: su PC reale, executor di prova in Job Object; hung-executor →
+  job terminato (gemello Windows del test kill 3/7); niente finestre console.</li>
+</ul>
+
+<h3>15.3 W3.2 — Executor portabili + placement per piattaforma (~3-4 giorni, lato server, parallelizzabile)</h3>
+<ul>
+<li><strong>Manifest</strong>: campo <code>platforms = ["linux"]</code> (default ONESTO:
+  tutto il parco esistente è nato POSIX). Schema loader + synt stage 2.</li>
+<li><strong>Audit dei candidati device-scope</strong> (find_files, list_dirs,
+  read_files*, get_files, compute_files_loc, …): pathlib ovunque, niente
+  <code>/tmp</code> (→ <code>tempfile</code>), niente comandi POSIX; test parametrizzato
+  <code>tmp_path</code>; chi passa dichiara <code>platforms=["linux","windows"]</code>.
+  Chi è intrinsecamente Linux (find_packages→dpkg) resta dichiarato tale.</li>
+<li><strong>Synt stage 5</strong>: addendum «<code>scope=device</code> ⇒ cross-platform
+  (pathlib, tempfile, zero shell-ism)» nel prompt verbo.</li>
+<li><strong><code>placement.choose_placement</code></strong>: gate
+  <code>device.os_family ∈ manifest.platforms</code>; violazione = errore onesto,
+  mai fallback silenzioso a esecuzione server (§2.8: l'utente ha chiesto QUEL
+  device).</li>
+</ul>
+
+<h3>15.4 W3.3 — E2E Windows reale (~2-3 giorni, serve il PC bersaglio)</h3>
+<p>Variante Windows di <code>e2e-remote-executor.sh</code> guidata da <code>.33</code>:
+install dal flusso join §5 (UI → link → <code>MetnosClientSetup.ps1</code>) →
+<code>find_files</code> read-only su una dir di prova → mutante CONTROLLATO
+(<code>write_files</code> in dir consentita) con verifica reverse_pattern → doppio
+<code>run</code> manuale respinto dal lock → heartbeat/revoca dalla UI. Gate di
+accettazione = la checklist §14.3 trasposta, TUTTA verde sul PC reale.</p>
+
+<h3>15.5 W4 — Confinamento forte: AppContainer (~1-2 settimane)</h3>
+<p>Profilo AppContainer per il client; traduzione capability→permessi:
+<code>fs:read/write</code> hint → ACL (<code>GrantAccess</code>) al SID del container
+sulle SOLE dir dichiarate; <code>network</code> → capability
+<code>INTERNET_CLIENT</code>; default = deny (fs fuori profilo invisibile).
+Label <code>sandbox:"appcontainer"</code>; la policy alza il tier: mutanti e
+<code>critical</code> solo da questa label in su. Fallback dichiarato a
+<code>job-object</code> dove AppContainer non è praticabile — MAI silenzioso.</p>
+
+<h3>15.6 W5 — Operazioni di flotta</h3>
+<ul>
+<li><code>self_update</code> §5.8 con swap Windows: download verificato →
+  <code>metnos-client.exe.new</code> → rename doppio + riavvio Scheduled Task
+  (un exe in esecuzione non si sovrascrive); Linux: swap + restart unit.</li>
+<li>Wheel Windows dal mirror PEP 503 (tag <code>win_amd64</code>) per executor con
+  dipendenze; <code>pip --index-url</code> verso il mirror, cache hash-keyed.</li>
+<li>Observability: <code>/admin/devices</code> mostra client_version, label sandbox
+  dell'ultimo result, ultimi esiti per device (§2.8 per la flotta).</li>
+</ul>
+
+<h3>15.7 W6 — Autenticità e canale</h3>
+<p>TLS con pin (o mTLS overlay): a quel punto il manifest è AUTENTICATO dal
+canale e lo sha256 Windows smette di essere solo integrità; il pin baked (3/7)
+resta per difesa in profondità. Authenticode (Azure Artifact Signing) SOLO se
+SmartScreen diventa un attrito reale. Long-poll: cap connessioni per-device +
+jitter sul backoff. Fino ad allora la pagina join dichiara l'avviso
+SmartScreen atteso («Ulteriori informazioni → Esegui comunque»).</p>
+
+<h3>15.8 Rischi e decisioni aperte</h3>
+<ul>
+<li><strong>AppContainer con python.exe non-packaged</strong>: da validare presto
+  (spike in W3.1) che l'interprete estratto giri dentro AppContainer; se no,
+  piano B = token ristretto + ACL su dir dedicata (label distinta, onesta).</li>
+<li><strong>Windows PowerShell 5.1 vs pwsh</strong>: l'installer resta 5.1-compatibile
+  (default di ogni Windows); niente dipendenza da pwsh 7.</li>
+<li><strong>Parco executor</strong>: molti non avranno mai senso su Windows
+  (apt, systemd, IMAP locale): <code>platforms</code> è un fatto dichiarato, non un
+  debito da colmare al 100%.</li>
+<li><strong>Niente CI Windows</strong>: il gate resta l'E2E manuale documentato
+  W3.3 sul PC reale; accettato finché la flotta è domestica.</li>
+</ul>
 <hr>
 <h2 id="riferimenti">Riferimenti</h2>
 <ul>
