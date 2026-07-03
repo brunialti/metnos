@@ -82,13 +82,33 @@ $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 # -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la
 # prima gira ancora (il client ha comunque il suo lock single-instance).
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3 -MultipleInstances IgnoreNew
+# I default di Windows sono trappole per un poller sempre-attivo (scoperto
+# live 3/7, portatile: task registrata ma MAI partita):
+# -AllowStartIfOnBatteries: il default BLOCCA l'avvio a batteria (anche
+#   quello manuale di Start-ScheduledTask);
+# -DontStopIfGoingOnBatteries: il default UCCIDE la task quando si stacca
+#   la spina;
+# -ExecutionTimeLimit 0 (= nessun limite): il default ferma la task dopo
+#   72 ore, un poller morirebbe in silenzio ogni 3 giorni.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3 -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 try {
   Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $taskName
-  Write-Host '==> task MetnosClient registrato e avviato (At logon)'
+  # §2.8: mai un [OK] se il client non sta girando davvero — verifica lo
+  # stato reale invece di fidarsi dell'assenza di eccezioni.
+  Start-Sleep -Seconds 2
+  $st = (Get-ScheduledTask -TaskName $taskName).State
+  if ($st -eq 'Running') {
+    Write-Host "==> task MetnosClient avviato (At logon; stato: $st)"
+  } else {
+    Write-Host "==> ATTENZIONE: task registrata ma stato '$st' (non Running)."
+    Write-Host "==> avvia manualmente: `"$dest`" run --server $server"
+    throw "task MetnosClient non in esecuzione (stato: $st)"
+  }
 } catch {
-  Write-Host "==> registrazione task fallita: avvia manualmente '$dest run --server $server'"
+  Write-Host "==> task non avviata: $_"
+  Write-Host "==> avvia manualmente: `"$dest`" run --server $server"
+  throw 'installazione incompleta: il client non sta girando'
 }
 
 Write-Host '==> fatto.'
