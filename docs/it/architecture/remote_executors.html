@@ -209,6 +209,8 @@ garanzie e uno schema del bivio server / PC.
 .rx-route b{ color:#8a5709; }
 .rx-sticky{ align-self:center; font-size:9.5pt; color:var(--rx-muted); font-style:italic;
   display:inline-flex; gap:6px; align-items:center; text-align:center; }
+.rx-destnow{ align-self:center; font-size:9.5pt; font-weight:600; color:var(--rx-navy);
+  background:var(--rx-device-bg); border:1px solid #bcd2f0; border-radius:999px; padding:4px 12px; }
 
 .rx-panel{ background:var(--rx-card); border:1px solid var(--rx-line); border-radius:16px; padding:18px; }
 .rx-panel h4{ font-size:11.5pt; margin:0 0 12px; color:var(--rx-navy); border:0; }
@@ -233,8 +235,7 @@ garanzie e uno schema del bivio server / PC.
 <div class="rx-scope">
  <div class="rx-layout">
   <section class="rx-chat" aria-label="Colloquio di esempio">
-   <div class="rx-bar"><span class="rx-dot"></span><b>Metnos &middot; chat di Roberto</b>
-    <span class="rx-dest">&#128205; destinazione: server</span></div>
+   <div class="rx-bar"><span class="rx-dot"></span><b>Metnos &middot; chat di Roberto</b></div>
    <div class="rx-thread">
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Quante righe di codice ci sono nel progetto?</div></div>
@@ -256,6 +257,8 @@ appunti.txt     4 KB
 bilancio.xlsx   88 KB</div>
      </div>
     </div>
+
+    <div class="rx-destnow">&#128205; destinazione ora: PORTATILE-UFFICIO</div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Comprimila in zip</div></div>
     <div class="rx-sticky">&#8627; nessun PC nominato &rarr; resta l'ultima destinazione: <b>PORTATILE-UFFICIO</b></div>
@@ -279,6 +282,7 @@ bilancio.xlsx   88 KB</div>
      <span class="rx-chip rx-server">&#128421; server (.33)</span>
      <div class="rx-bubble">Sul server girano <b>147</b> processi.</div>
     </div>
+    <div class="rx-destnow">&#128205; destinazione ora: server (.33)</div>
 
    </div>
   </section>

@@ -1070,17 +1070,19 @@ manual treatment — never an invented reply, never a silent skip.
 .qt-rx-route b{color:#8a5709}
 .qt-rx-sticky{align-self:center;font-size:12px;color:#5b6675;font-style:italic;
   display:inline-flex;gap:6px;align-items:center}
+.qt-rx-destnow{align-self:center;font-size:12px;font-weight:600;color:#1A477A;
+  background:#e8effa;border:1px solid #bcd2f0;border-radius:999px;padding:4px 12px}
 </style>
 <div class="scene">
 <div class="group-title">Scene 9 · from the server to one of your PCs — in field testing 2026-07</div>
 <h3>From the chat to one of your PCs, with a destination that sticks</h3>
 <p>The same natural-language commands, except execution can move to a PC you've
-<em>paired</em>. At the top of the chat there is always the
-<strong>current destination</strong>: where the next command lands if you name no PC.</p>
+<em>paired</em>. The chat starts with the destination on the <strong>server</strong>;
+at each change a <strong>&ldquo;destination now: &hellip;&rdquo;</strong> pill appears,
+telling you where the next command lands if you name no PC (the destination is sticky).</p>
 
 <div class="qt-rx-chat" aria-label="Example conversation: from the server to a user's PC">
-  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · Roberto's chat</b>
-    <span class="qt-rx-dest">📍 destination: server</span></div>
+  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · Roberto's chat</b></div>
   <div class="qt-rx-thread">
 
     <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">How many lines of code are in the project?</div></div>
@@ -1102,6 +1104,8 @@ notes.txt       4 KB
 budget.xlsx     88 KB</div>
       </div>
     </div>
+
+    <div class="qt-rx-destnow">📍 destination now: OFFICE-LAPTOP</div>
 
     <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Zip it up</div></div>
     <div class="qt-rx-sticky">↳ no PC named → the last destination stays: <b>OFFICE-LAPTOP</b></div>

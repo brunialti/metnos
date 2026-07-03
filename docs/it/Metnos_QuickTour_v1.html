@@ -1070,18 +1070,20 @@ per trattamento manuale — mai una risposta inventata, mai uno skip silenzioso.
 .qt-rx-route b{color:#8a5709}
 .qt-rx-sticky{align-self:center;font-size:12px;color:#5b6675;font-style:italic;
   display:inline-flex;gap:6px;align-items:center}
+.qt-rx-destnow{align-self:center;font-size:12px;font-weight:600;color:#1A477A;
+  background:#e8effa;border:1px solid #bcd2f0;border-radius:999px;padding:4px 12px}
 </style>
 <div class="scene">
 <div class="group-title">Scena 9 · dal server a un tuo PC — in collaudo 07/2026</div>
 <h3>Dalla chat a un tuo PC, con la destinazione che resta</h3>
 <p>Gli stessi comandi in linguaggio naturale, ma l'esecuzione pu&ograve; spostarsi su un
-PC che avete <em>appaiato</em>. In cima alla chat c'&egrave; sempre la
-<strong>destinazione corrente</strong>: dove finisce il prossimo comando se non
-nominate nessun PC.</p>
+PC che avete <em>appaiato</em>. La chat parte con destinazione <strong>server</strong>;
+a ogni cambio compare una pillola <strong>&laquo;destinazione ora: &hellip;&raquo;</strong>
+che dice dove finisce il prossimo comando se non nominate nessun PC (destinazione
+appiccicosa).</p>
 
 <div class="qt-rx-chat" aria-label="Colloquio di esempio: dal server a un PC dell'utente">
-  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · chat di Roberto</b>
-    <span class="qt-rx-dest">📍 destinazione: server</span></div>
+  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · chat di Roberto</b></div>
   <div class="qt-rx-thread">
 
     <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Quante righe di codice ci sono nel progetto?</div></div>
@@ -1103,6 +1105,8 @@ appunti.txt     4 KB
 bilancio.xlsx   88 KB</div>
       </div>
     </div>
+
+    <div class="qt-rx-destnow">📍 destinazione ora: PORTATILE-UFFICIO</div>
 
     <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Comprimila in zip</div></div>
     <div class="qt-rx-sticky">↳ nessun PC nominato &rarr; resta l'ultima destinazione: <b>PORTATILE-UFFICIO</b></div>
