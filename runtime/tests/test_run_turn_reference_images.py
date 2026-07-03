@@ -212,16 +212,18 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
                 "trova foto simili",
                 reference_images=[str(ref1), str(ref2)],
             )
-        # Lo step 0 virtuale deve essere presente
-        steps_by_num = [s for s in log_obj.steps if s.step_num == 0]
-        self.assertEqual(len(steps_by_num), 1,
-                          f"step 0 virtuale mancante: steps={[s.step_num for s in log_obj.steps]}")
-        v = steps_by_num[0]
-        self.assertEqual(v.chosen_tool, "@uploaded")
-        self.assertTrue(v.result.get("ok"))
-        self.assertEqual(len(v.result.get("entries", [])), 2)
-        self.assertEqual(v.result["entries"][0]["path"], str(ref1))
-        self.assertEqual(v.result["entries"][0]["reference_image"], str(ref1))
+        # NUOVO CONTRATTO (ADR 0181-ext): il PLANNER legacy è stato neutralizzato.
+        # Con l'engine mockato che DECLINA (StubProvider → nessun framework
+        # valido), un turno-upload non ricade più nel ReAct legacy (che iniettava
+        # lo step-0 `@uploaded` in log.steps) — ora dà un esito ONESTO (§2.8).
+        # Gli upload REALI passano dall'engine via seed_state `@uploaded`
+        # (_try_engine_v2, ADR 0177 M1); questo test mockava l'engine a vuoto,
+        # quindi esercitava SOLO il vecchio fallback legacy, ora rimosso.
+        self.assertEqual(log_obj.final_kind, "error",
+                         f"engine declinato su upload → errore onesto atteso, "
+                         f"non fallback legacy (final_kind={log_obj.final_kind})")
+        self.assertNotIn("@uploaded", [s.chosen_tool for s in log_obj.steps],
+                         "il ReAct legacy (step-0 @uploaded) non deve più girare")
 
     # --- 4. run_turn no-op senza reference_images -------------------------
 

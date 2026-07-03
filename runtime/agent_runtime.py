@@ -5115,15 +5115,24 @@ def _try_engine_v2(
 
     # Provider LLM fast (per filler resolve)
     def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
-        try:
-            from llm_router import LLMRouter
-            ck = {"max_tokens": max_tokens, "think": think}
-            if kw.get("grammar") is not None:
-                ck["grammar"] = kw["grammar"]
-            res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
-            return (getattr(res, "text", res) or "").strip()
-        except Exception:
-            return ""
+        # Robustezza + osservabilità (ADR 0181-ext): la fast-call era un
+        # `except: return ""` MUTO — un hiccup di connessione LLM (reset/rifiuto)
+        # spariva senza traccia e faceva declinare il turno (causa-radice del
+        # declino intermittente → legacy). Ora: log + UN retry su errore
+        # transitorio; su fallimento persistente ritorna "" e il chiamante
+        # procede con intent VUOTO (non declina — vedi sotto).
+        for _attempt in (1, 2):
+            try:
+                from llm_router import LLMRouter
+                ck = {"max_tokens": max_tokens, "think": think}
+                if kw.get("grammar") is not None:
+                    ck["grammar"] = kw["grammar"]
+                res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+                return (getattr(res, "text", res) or "").strip()
+            except Exception as _e:  # noqa: BLE001
+                log.warning("engine v2 _llm_call_fast tentativo %d fallito: %r",
+                            _attempt, _e)
+        return ""
 
     # Provider LLM wise (per Proposer)
     def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
@@ -5149,14 +5158,17 @@ def _try_engine_v2(
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
     if not intent_raw:
-        # Upload SENZA testo (foto senza caption): extract_intent(None/"")→None,
-        # ma c'è un INPUT da gestire. NON cadere nel PLANNER legacy (era qui la
-        # causa della sonda upload_fallthrough 25/6): prosegui all'engine con
-        # intent VUOTO → lo short-circuit upload-default di dispatch.run_turn
-        # instrada find_images_indices sul seed @uploaded (deterministico §7.9).
-        # Senza upload, query vuota = niente da fare → None (flusso invariato).
-        if not reference_images:
-            return None
+        # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
+        # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
+        # vuota sia — soprattutto — su un HICCUP TRANSITORIO della fast-call LLM
+        # (connessione resettata → `_llm_call_fast` ritorna ""). Ma l'intent è
+        # solo un HINT del prefilter: `build_routing_pool` degrada a
+        # full-catalog/BoW su intent vuoto (il ramo upload lo prova già). Quindi
+        # NON declinare (era `return None` → cadeva nel legacy con piano
+        # degenere): procedi con intent {} e lascia decidere il PROPOSER dalla
+        # query. Un turno DAVVERO non-pianificabile lo chiude onestamente il
+        # terminator del dispatch (error→answer), non un hiccup del prefilter.
+        # (Il caso upload-senza-testo resta coperto: stesso intent {}.)
         intent_raw = {}
     intent = Intent(
         verb=(intent_raw.get("verb") or "").lower(),
