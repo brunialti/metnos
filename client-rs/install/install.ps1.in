@@ -57,14 +57,27 @@ Write-Host '==> sha256 verificato'
 $destDir = Join-Path $env:LOCALAPPDATA 'Metnos'
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 $dest = Join-Path $destDir 'metnos-client.exe'
-Copy-Item -Force $exe $dest
+
+# Reinstall/update: un metnos-client.exe IN ESECUZIONE tiene il file bloccato
+# (Windows locka l'immagine dell'eseguibile). Ferma la Scheduled Task prima di
+# sovrascrivere; il client ha comunque il lock single-instance a valle.
+$taskName = 'MetnosClient'
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 800
+}
+try {
+  Copy-Item -Force $exe $dest
+} catch {
+  throw "impossibile scrivere $dest (un metnos-client e' ancora in esecuzione? " +
+        "chiudilo e riprova): $_"
+}
 Write-Host "==> installato in $dest"
 
 & $dest register --server $server --token $env:METNOS_TOKEN
 if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)' }
 
 # Scheduled Task «At logon» (nessun privilegio admin, account utente corrente).
-$taskName = 'MetnosClient'
 $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 # -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la

@@ -214,6 +214,32 @@ impl Runner {
     }
 
     async fn execute(&mut self, inv: &Invocation) -> Result<InvocationResult> {
+        // Gate W3.0 (§16.1): su Windows NON esiste ancora un sandbox reale
+        // (sandbox_windows.rs = W3.1). Fail-closed: rifiuta PRIMA di
+        // scaricare/eseguire qualunque cosa, salvo opt-in esplicito
+        // METNOS_SANDBOX=off. Su unix il degrade-con-warn resta (parità con
+        // runtime/sandbox.py; bwrap può mancare ed è il comportamento in
+        // esercizio su .33). Un device Windows appaiato è così SICURO perché
+        // RIFIUTA, non «non operativo di fatto».
+        #[cfg(windows)]
+        if !sandbox_linux::sandbox_disabled() {
+            tracing::error!(executor = %inv.executor,
+                "esecuzione RIFIUTATA: nessun sandbox su Windows (arriva con \
+                 W3.1); opt-in esplicito con METNOS_SANDBOX=off");
+            return Ok(InvocationResult {
+                invocation_id: inv.invocation_id.clone(),
+                device_id: self.device_id.clone(),
+                ok: false,
+                entries: json!([]),
+                n_processed: 0,
+                elapsed_ms: 0,
+                sandbox: "refused".into(),
+                error: Some("nessun sandbox disponibile su questo dispositivo \
+                             (arriva con W3.1); opt-in: METNOS_SANDBOX=off".into()),
+                error_class: Some("sandbox_unavailable".into()),
+            });
+        }
+
         let exec = executors::ensure_executor(
             &self.server,
             &self.server_pubkey,

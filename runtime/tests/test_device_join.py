@@ -216,6 +216,23 @@ class JoinHttpTests(AioHTTPTestCase):
         self.assertNotIn(evil, body)
         self.assertIn("&lt;script&gt;", body)
 
+    async def test_installer_windows_503_without_pin(self):
+        # §5.7 fail-closed: manifest illeggibile → niente installer Windows
+        # senza pin (mai fallback silenzioso al manifest runtime).
+        import agent_mirror
+        s = self._new_session("pc-nopin")
+        empty = Path(self._tmp.name) / "empty-mirror"
+        empty.mkdir(exist_ok=True)
+        (empty / "install.ps1").write_text("x")  # sorgente c'è, manifest no
+        orig = agent_mirror.MIRROR_CLIENT_DIR
+        agent_mirror.MIRROR_CLIENT_DIR = empty
+        try:
+            resp = await self.client.get(
+                f"/agent/client/join/{s['join_id']}/installer?platform=windows")
+            self.assertEqual(resp.status, 503)
+        finally:
+            agent_mirror.MIRROR_CLIENT_DIR = orig
+
     async def test_installer_expired_410(self):
         s = self._new_session("pc-exp", ttl_seconds=1)
         time.sleep(1.2)
@@ -254,6 +271,21 @@ class JoinHttpTests(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data["state"], "created")
         self.assertEqual(data["device_name"], "pc-status")
+
+
+class InstallerQuotingTests(unittest.TestCase):
+    """Quoting robusto del prelude (server_url dall'header Host)."""
+
+    def test_sh_squote_neutralizes_quote(self):
+        import agent_server as A
+        self.assertEqual(A._sh_squote("plain"), "'plain'")
+        # un apice non chiude la stringa: resta UN solo token shell
+        self.assertEqual(A._sh_squote("a'b"), "'a'\\''b'")
+
+    def test_ps_squote_doubles_quote(self):
+        import agent_server as A
+        self.assertEqual(A._ps_squote("plain"), "'plain'")
+        self.assertEqual(A._ps_squote("a'b"), "'a''b'")
 
 
 if __name__ == "__main__":

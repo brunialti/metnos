@@ -510,6 +510,19 @@ async def client_join_status(request: web.Request) -> web.Response:
     return web.json_response(out, headers={"Cache-Control": "no-store"})
 
 
+def _sh_squote(s: str) -> str:
+    """Quoting robusto per stringa dentro apici singoli POSIX: chiudi
+    l'apice, inseriscine uno escapato, riapri. Sicuro anche se `s` contiene
+    apici, spazi, `$`, `;` (server_url viene dall'header Host)."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
+
+def _ps_squote(s: str) -> str:
+    """Quoting robusto per literal single-quoted PowerShell: l'apice si
+    raddoppia. In un literal '...' PS non interpola: niente $()/backtick."""
+    return "'" + s.replace("'", "''") + "'"
+
+
 async def client_join_installer(request: web.Request) -> web.Response:
     """GET /agent/client/join/{join_id}/installer?platform=linux|windows —
     installer PERSONALIZZATO (§5.6/5.7): server URL + token baked, cosi' il
@@ -546,24 +559,29 @@ async def client_join_installer(request: web.Request) -> web.Response:
         # CNG/.NET Framework): il pin di versione+sha256 DENTRO l'installer
         # personalizzato toglie la fiducia dal manifest scaricato — un MITM
         # deve manomettere QUESTO file, stesso livello del pin-pubkey Linux.
-        pin = ""
+        # Nel flusso join il pin e' OBBLIGATORIO: se non generabile, fail-closed
+        # 503 (mai un installer Windows senza pin che ricada sul manifest).
         try:
             m = json.loads(
                 (agent_mirror.MIRROR_CLIENT_DIR / "manifest.json").read_text())
             entry = m["versions"][m["latest"]]["x86_64-pc-windows-gnu"]
-            pin = (f"$env:METNOS_CLIENT_VERSION = '{m['latest']}'\n"
-                   f"$env:METNOS_CLIENT_SHA256 = '{entry['sha256']}'\n")
+            pin = (f"$env:METNOS_CLIENT_VERSION = {_ps_squote(m['latest'])}\n"
+                   f"$env:METNOS_CLIENT_SHA256 = {_ps_squote(entry['sha256'])}\n")
         except Exception as e:
-            log.warning("pin versione/sha256 non disponibile per l'installer "
-                        "windows (manifest mirror illeggibile): %s", e)
-        prelude = (f"$env:METNOS_SERVER = '{server_url}'\n"
-                   f"$env:METNOS_TOKEN = '{token}'\n" + pin)
+            log.error("pin versione/sha256 non generabile per l'installer "
+                      "windows (manifest mirror illeggibile): %s", e)
+            return _error(503, "pin_unavailable",
+                          "impossibile generare l'installer Windows con pin "
+                          "sha256 (manifest mirror illeggibile); rigenera con "
+                          "scripts/build-client.sh e riprova")
+        prelude = (f"$env:METNOS_SERVER = {_ps_squote(server_url)}\n"
+                   f"$env:METNOS_TOKEN = {_ps_squote(token)}\n" + pin)
         text = prelude + body
         fname = "MetnosClientSetup.ps1"
         ctype = "text/plain; charset=utf-8"
     else:
-        prelude = (f"METNOS_SERVER='{server_url}'; export METNOS_SERVER\n"
-                   f"METNOS_TOKEN='{token}'; export METNOS_TOKEN\n")
+        prelude = (f"METNOS_SERVER={_sh_squote(server_url)}; export METNOS_SERVER\n"
+                   f"METNOS_TOKEN={_sh_squote(token)}; export METNOS_TOKEN\n")
         lines = body.split("\n", 1)
         text = (lines[0] + "\n" + prelude + (lines[1] if len(lines) > 1 else "")
                 ) if lines[0].startswith("#!") else prelude + body

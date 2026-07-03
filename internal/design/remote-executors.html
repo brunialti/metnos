@@ -146,6 +146,18 @@ costruiti in questa sessione:</p>
   (14gg, scarto onesto con warn) + purge join session nel reaper unico (7gg);
   (d) long-poll dichiarato dimensionamento domestico, hardening = W6.
   Gate: 5 unit Rust, 15 unit Python join, E2E completo verde (incl. fase F spool).</li>
+<li><strong>Review fixes + anticipo gate W3.0 client — 3/7, client <code>0.2.2</code></strong>:
+  (a) <em>fail-closed Windows</em>: il binary compilava per Windows ma avrebbe
+  eseguito python NUDO (sandbox_linux = no-op fuori da unix); ora il gate
+  <code>#[cfg(windows)]</code> in <code>runner.rs::execute</code> rifiuta
+  (<code>sandbox_unavailable</code>) salvo opt-in — anticipo del client-half di
+  W3.0 (§16.1); (b) installer Windows dal join <em>fail-closed 503</em> se il pin
+  sha256 non è generabile (niente più fallback al manifest runtime); (c) quoting
+  robusto del prelude installer (PowerShell <code>''</code>, POSIX
+  <code>'\''</code>) su server_url/token; (d) installer Windows: stop della
+  Scheduled Task prima di sovrascrivere l'exe (reinstall/update); (e) warning
+  <code>child_pid</code> risolto (binding <code>#[cfg(unix)]</code>). §14 marcata
+  STORICA. +3 test, suite verde, build mingw pulita.</li>
 </ul>
 <p><strong>Due raffinamenti rispetto allo spec originale</strong>, entrambi documentati sotto:
 (1) la firma del device sul <code>result</code> è nell'header <code>X-Metnos-Device-Sig</code> sui
@@ -861,9 +873,12 @@ pinning CA vs leaf; delta-update del binario. Macro-topic fase-7:
 multi-user (oggi single-user host+guest, ADR 0035); misura efficacia E2E;
 modi di fallimento formalizzati; disconnect-proof.</p>
 <hr>
-<h2 id="14-contratti-implementativi-per-chi-scrive-il-codice">14. Contratti implementativi (per chi scrive il codice)</h2>
-<p>Chi implementa parta da questi punti concreti — sono il minimo per chiudere
-W1-2 (Linux, execute path):</p>
+<h2 id="14-contratti-implementativi-per-chi-scrive-il-codice">14. Contratti implementativi W1-2 — ✅ STORICO (implementati 2/7, execute path Linux)</h2>
+<p><strong>Nota di lettura</strong>: questa sezione è il contratto con cui W1-2 è
+stato COSTRUITO ed è ora CHIUSO (stato in §0.bis). Descrive lavoro FATTO — se
+stai implementando, il tuo contratto è <strong>§16</strong> (W3), non questo.
+NON re-implementare poll/result/heartbeat: esistono già in
+<code>agent_server.py</code>. Conservata come traccia di progettazione.</p>
 <h3 id="141-server-33-python">14.1 Server (<code>.33</code>, Python)</h3>
 <ul>
 <li><code>agent_server.py</code>: aggiungi <code>poll</code>, <code>result</code>, <code>heartbeat</code> handler
@@ -1082,8 +1097,14 @@ niente contratti speculativi).</p>
 </ul>
 
 <h3>16.1 W3.0 — gate deny-by-default (client + placement)</h3>
-<p><strong>Client</strong> — <code>runner.rs</code>, nel punto UNICO che oggi chiama
-<code>sandbox_linux::run_sandboxed</code>:</p>
+<p><strong>Stato</strong>: il lato CLIENT è già IMPLEMENTATO (3/7, client 0.2.2) —
+il gate <code>#[cfg(windows)]</code> in <code>runner.rs::execute</code> rifiuta con
+<code>sandbox:"refused"</code>, <code>error_class:"sandbox_unavailable"</code> salvo
+<code>METNOS_SANDBOX=off</code>. Un device Windows appaiato oggi è SICURO perché
+rifiuta. RESTA il lato SERVER (<code>placement.py</code>, gate <code>platforms</code>) qui
+sotto, che dipende dal campo manifest di W3.2.</p>
+<p><strong>Client</strong> (fatto) — <code>runner.rs</code>, in testa a <code>execute</code>,
+prima di scaricare/eseguire qualunque cosa:</p>
 <pre><code>// PRIMA dello spawn, su Windows:
 #[cfg(windows)]
 if !sandbox_optin_none() {   // METNOS_SANDBOX=off esplicito

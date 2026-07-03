@@ -91,6 +91,7 @@ pub async fn run_sandboxed(
     cmd.kill_on_drop(true);
 
     let mut child = cmd.spawn().context("spawn sandboxed executor")?;
+    #[cfg(unix)]
     let child_pid = child.id();
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(args_json.as_bytes()).await.ok();
@@ -239,7 +240,7 @@ pub fn bwrap_available() -> bool {
     which("bwrap").is_some()
 }
 
-fn sandbox_disabled() -> bool {
+pub fn sandbox_disabled() -> bool {
     matches!(
         std::env::var("METNOS_SANDBOX").unwrap_or_default().to_lowercase().as_str(),
         "0" | "off" | "no" | "false"
