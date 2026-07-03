@@ -371,6 +371,18 @@ umana.</p>
 <p class="xref"><strong>Canonico:</strong> <a href="architecture/executor.html">architecture/executor.html</a> <em>(microprogettazione v1.1, approvato 24/4/2026)</em> &middot; <a href="Metnos_Architettura_Intro_v1.html#cap9">Architettura, cap. 9</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
 </div>
 
+<div class="entry" id="executor-remoto">
+<h3>executor remoto <span class="tag concept">componente</span></h3>
+<p>Executor Metnos eseguito non sul server, ma su un dispositivo appaiato:
+per esempio un PC Windows o un portatile Linux nella stessa rete. Non &egrave;
+un secondo Metnos: il server conserva scelta dell'executor, policy, Vaglio,
+firma del payload e audit; il dispositivo, tramite <code>metnos-client</code>,
+verifica la firma, esegue nel contenimento disponibile per il proprio sistema
+operativo e restituisce il risultato. La remotizzazione &egrave; ammessa solo per
+executor firmati e dichiarati compatibili dal manifest.</p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/remote_executors.html">architecture/remote_executors.html</a> &middot; <a href="architecture/pairing.html#cap13">pairing, cap. 13</a> &middot; <a href="architecture/sandbox.html#cap10">sandbox, cap. 10</a></p>
+</div>
+
 <div class="entry" id="execution-trace">
 <h3>ExecutionTrace <span class="tag type">tipo</span></h3>
 <p>Oggetto immutabile che raccoglie <em>tutto</em> ciò che è successo

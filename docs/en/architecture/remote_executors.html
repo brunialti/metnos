@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Metnos &mdash; remote executors</title>
+<meta name="description" content="Microdesign of Metnos remote executors: device pairing, metnos-client, placement, per-OS sandboxing, UI installation and operational limits.">
+<meta name="keywords" content="Metnos, remote executors, metnos-client, devices, placement, sandbox, Windows, Linux, pairing">
+<meta name="author" content="Roberto Brunialti">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="https://metnos.com/en/architecture/remote_executors">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/remote_executors">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/remote_executors">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/remote_executors">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://metnos.com/en/architecture/remote_executors">
+<meta property="og:title" content="Metnos &mdash; remote executors">
+<meta property="og:description" content="How Metnos runs selected executors on registered devices while keeping policy, audit and control on the server.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="it_IT">
+<meta property="og:site_name" content="Metnos">
+<style>
+:root { --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235; --bronze:#A0522D; --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de; --code-bg:#f6f8fa; --muted:#64748B; }
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,BlinkMacSystemFont,Roboto,sans-serif; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; line-height:1.65; font-size:11pt; }
+h1 { color:var(--navy); font-size:22pt; border-bottom:3px solid var(--navy); padding-bottom:10px; margin-top:38px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:15pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+h3 { color:var(--navy); font-size:12.5pt; margin-top:22px; }
+p { margin:10px 0; }
+a { color:var(--navy); text-decoration:none; }
+a:hover { text-decoration:underline; }
+code { font-family:Consolas,'Courier New',monospace; background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:10pt; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--navy); color:white; padding:8px 10px; text-align:left; }
+td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:#f0f4f8; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+.nav { background:#fff; border-bottom:1px solid var(--border); padding:10px 0; font-size:14px; margin:-40px -30px 20px -30px; }
+.nav-inner { max-width:960px; margin:0 auto; padding:0 20px; display:flex; justify-content:space-between; gap:16px; }
+.crumb { color:var(--muted); }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:22px 0; }
+.status { margin:18px 0; border-left:5px solid #16a34a; background:#dcfce7; color:#14532d; padding:14px 20px; border-radius:0 8px 8px 0; font-size:10.5pt; }
+.note { border-left:4px solid #f59e0b; background:#fef3c7; padding:12px 18px; margin:18px 0; border-radius:0 6px 6px 0; font-size:10.5pt; }
+.toc { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 22px; margin:22px 0; }
+.toc ol { margin:4px 0 0 18px; padding:0; }
+.toc li { margin:3px 0; }
+footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
+</style>
+</head>
+<body>
+<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
+<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
+<span style="color:#d0d7de;"> &middot; </span>
+<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+</nav>
+
+<div class="nav">
+ <div class="nav-inner">
+ <a href="../index.html">&larr; Documentation index</a>
+ <span class="crumb">Microdesign &rsaquo; <strong>remote_executors</strong></span>
+ </div>
+</div>
+
+<h1>Remote Executors</h1>
+
+<p class="lead">
+A remote executor is a Metnos executor that is not launched on the server,
+but on a registered device in the same household: a Windows PC, a Linux laptop,
+and later other systems. The server remains the decision point: it checks whether
+the action is allowed, signs the payload, receives the result and writes the
+audit trail.
+</p>
+
+<div class="status">
+Public status: W3.3 validated on a real Windows PC on 2026-07-03, client
+<code>0.2.7</code>, with UI join, Job Object, timeout with process-tree kill,
+single-instance lock and revocation through <code>403</code>. The extended design
+detail remains in the internal document <code>internal/design/remote-executors.html</code>.
+</div>
+
+<div class="toc">
+<strong>On this page</strong>
+<ol>
+ <li><a href="#idea">Core idea</a></li>
+ <li><a href="#identity">Device identity and pairing</a></li>
+ <li><a href="#placement">Placement: when an executor may leave the server</a></li>
+ <li><a href="#installation">Installation from the UI</a></li>
+ <li><a href="#sandbox">Per-OS sandboxing</a></li>
+ <li><a href="#failure">Failures, duplicates and revocation</a></li>
+ <li><a href="#limits">Declared limits</a></li>
+</ol>
+</div>
+
+<h2 id="idea">1. Core Idea</h2>
+
+<p>
+Metnos is designed as a household system: many data live on the server, but not
+all of them. A document may sit on a laptop, a work folder on a Windows PC, a
+screen or an application may exist only there. Remote executors bring a controlled
+part of the catalog to the place where the data actually live, without turning
+each machine into a second Metnos.
+</p>
+
+<p>
+The asymmetry is deliberate: the device executes, but it does not decide. The
+server keeps policy, Vaglio, executor selection, signing, the device registry and
+audit. The remote client, <code>metnos-client</code>, polls the server, verifies
+the signature of the received job, runs it inside the containment available for
+its OS and returns a signed result.
+</p>
+
+<h2 id="identity">2. Device Identity and Pairing</h2>
+
+<p>
+Each device has its own Ed25519 identity. Admission happens through a single-use
+code generated by the server: the client consumes it, registers the device public
+key and receives the server public key for pinning. From that point on the device
+is not "an open browser": it is a known, revocable and recognisable machine.
+</p>
+
+<p>
+The detailed flow lives in <a href="pairing.html#cap13">pairing, ch. 13</a>.
+The essential parts are: short token, one-time consume, unique device fingerprint,
+periodic heartbeat and explicit revocation from the admin panel.
+</p>
+
+<h2 id="placement">3. Placement: When an Executor May Leave the Server</h2>
+
+<p>
+An executor does not become remote by accident. The loader reads its manifest:
+allowed platforms, capabilities, signature and optional placement section. Only
+when the contract is compatible may the runtime assign the job to a device.
+Otherwise the executor stays local or is refused with an honest error.
+</p>
+
+<table>
+<thead><tr><th>Check</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><code>platforms</code></td><td>Prevents sending to Windows an executor written only for Linux, or the reverse.</td></tr>
+<tr><td>server signature</td><td>The client runs only code that matches what the server signed.</td></tr>
+<tr><td>capabilities</td><td>Policy and Vaglio stay server-side; the device does not widen permissions.</td></tr>
+<tr><td>placement</td><td>States whether the job may stay on the server or requires a specific device.</td></tr>
+</tbody>
+</table>
+
+<h2 id="installation">4. Installation from the UI</h2>
+
+<p>
+The natural operational point is <code>/admin/devices</code>: the server shows
+registered devices and can issue a join link. If the user opens the UI directly
+on the server, there is nothing to install: local executors are already available.
+If the UI is instead running on a PC different from the server, the page can offer
+the installer for the current platform and show registration progress.
+</p>
+
+<p>
+The click does not give special privileges to the browser: on Windows it downloads
+<code>MetnosClientSetup.cmd</code>, which installs and starts <code>metnos-client</code>
+as a persistent operating-system process. The UI observes the join: token issued,
+client registered, heartbeat alive, client version, last error.
+</p>
+
+<h2 id="sandbox">5. Per-OS Sandboxing</h2>
+
+<p>
+On the Linux server the canonical sandbox is <code>bwrap</code>. On a remote
+device containment is chosen by the client according to the operating system, but
+the interface is single: run this payload with these limits and return stdout,
+stderr, exit code, timeout and containment metadata.
+</p>
+
+<table>
+<thead><tr><th>System</th><th>Current containment</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Linux</td><td>Client-side <code>bwrap</code> when available</td><td>Strong filesystem and network isolation, consistent with the server model.</td></tr>
+<tr><td>Windows</td><td>Job Object + process limits</td><td>Useful for timeout and process-tree kill; not yet full filesystem/network isolation.</td></tr>
+<tr><td>macOS</td><td>Planned backend</td><td>Enabled only once containment has been verified.</td></tr>
+</tbody>
+</table>
+
+<p>
+See <a href="sandbox.html#cap10">sandbox, ch. 10</a> for the per-OS detail
+and for why Windows AppContainer remains the next hardening step.
+</p>
+
+<h2 id="failure">6. Failures, Duplicates and Revocation</h2>
+
+<p>
+The channel is built for an imperfect home network. The client polls, so it does
+not require open ports on the PC. Each invocation has idempotency and a deadline:
+if the network drops, the server can distinguish between a job not yet picked up,
+a job in progress and a result already delivered. If a client is stuck, the local
+lock prevents a second concurrent instance; if a job exceeds its timeout, the
+client kills the process tree. Since client <code>0.2.7</code>, heartbeat runs in
+a separate task, so the device remains observable even while it is preparing its
+own execution environment.
+</p>
+
+<p>
+Revocation is server-side: the revoked device gets an error on polling or
+heartbeat and stops receiving work. The server does not need to trust that the old
+client will behave well: it simply stops assigning payloads to it.
+</p>
+
+<h2 id="limits">7. Declared Limits</h2>
+
+<div class="note">
+Remote executors do not mean "run arbitrary code on the PC". They mean: run only
+signed executors, compatible with the platform, admitted by policy and sufficiently
+contained by the client. Mutating or unaudited executors stay out of the remote
+path until their containment is explicit.
+</div>
+
+<ul>
+ <li>Windows currently contains duration and process trees well; fine-grained filesystem and network isolation requires a stronger backend.</li>
+ <li>The device must remain reachable by the server on the expected network or an equivalent private network.</li>
+ <li>An executor must declare platforms and placement: absence of declaration is not remote consent.</li>
+ <li>Implementation detail remains internal; this page is the stable public entry point.</li>
+</ul>
+
+<footer>
+Metnos &mdash; microdesign: <code>remote_executors</code>. See also
+<a href="executor.html"><code>executor</code></a>,
+<a href="pairing.html#cap13"><code>pairing</code></a>,
+<a href="sandbox.html#cap10"><code>sandbox</code></a> and
+<a href="http_api.html"><code>http_api</code></a>.
+</footer>
+</body>
+</html>

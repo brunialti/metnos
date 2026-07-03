@@ -55,6 +55,7 @@ and the admin dashboard. Implementation:
 <code>http_render.py</code> + <code>http_routes_agent.py</code> +
 <code>http_routes_admin.py</code> + the Jinja2 templates.
 <div class="seq">It sits alongside, it does not replace, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram stays a primary channel for dialogue). See also <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-user).</div>
+<div class="seq">For the device console and remote-client installation: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
 </div>
 
 <nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -224,6 +225,7 @@ Each path requires at least the role indicated (see ch.&nbsp;3).
 <tr><td>GET/POST</td><td><code>/admin/synth-proposals/{id}/evaluate</code></td><td>Evaluate a single synthesis proposal.</td></tr>
 <tr><td>GET</td><td><code>/admin/praxis</code> + POST <code>/praxis/config</code>, <code>/praxis/fastpaths/{id}/delete</code></td><td>Praxis: engine configuration and fastpath management.</td></tr>
 <tr><td>GET</td><td><code>/admin/executors</code> &middot; <code>/admin/executors/stats</code></td><td>Catalog with lifecycle + counts/events for the uPlot charts.</td></tr>
+<tr><td>GET/POST</td><td><code>/admin/devices</code> + <code>/admin/devices/{id}/revoke</code></td><td>Device console for remote executors: join link, heartbeat status, client version, revocation.</td></tr>
 <tr><td>GET</td><td><code>/admin/timers</code> + POST <code>/{name}/{enable|disable|fire}</code></td><td>All system timers: view, enable, disable, run now.</td></tr>
 <tr><td>GET</td><td><code>/admin/runs</code> &middot; <code>/admin/builds</code> &middot; <code>/admin/safety</code> &middot; <code>/admin/turns</code></td><td>Scheduler runs, builds, safety signatures, recent turns.</td></tr>
 <tr><td>GET</td><td><code>/admin/users</code> (+POST) &middot; <code>/{id}</code> (+ delete/update/autonomy/channels)</td><td>User management (host + guests) and paired channels.</td></tr>

@@ -55,6 +55,7 @@ e il cruscotto di amministrazione. Implementazione:
 <code>http_render.py</code> + <code>http_routes_agent.py</code> +
 <code>http_routes_admin.py</code> + i template Jinja2.
 <div class="seq">Affianca, non sostituisce, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram resta un canale primario per il dialogo). Vedi anche <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-utente).</div>
+<div class="seq">Per console dispositivi e installazione del client remoto: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
 </div>
 
 <nav aria-label="Lingua" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
@@ -224,6 +225,7 @@ path richiede almeno il ruolo indicato (vedi cap.&nbsp;3).
 <tr><td>GET/POST</td><td><code>/admin/synth-proposals/{id}/evaluate</code></td><td>Valutazione di una singola proposta di sintesi.</td></tr>
 <tr><td>GET</td><td><code>/admin/praxis</code> + POST <code>/praxis/config</code>, <code>/praxis/fastpaths/{id}/delete</code></td><td>Praxis: configurazione del motore e gestione dei fastpath.</td></tr>
 <tr><td>GET</td><td><code>/admin/executors</code> &middot; <code>/admin/executors/stats</code></td><td>Catalogo con lifecycle + conteggi/eventi per i grafici uPlot.</td></tr>
+<tr><td>GET/POST</td><td><code>/admin/devices</code> + <code>/admin/devices/{id}/revoke</code></td><td>Console dei dispositivi per executor remoti: join link, stato heartbeat, versione client, revoca.</td></tr>
 <tr><td>GET</td><td><code>/admin/timers</code> + POST <code>/{name}/{enable|disable|fire}</code></td><td>Tutti i timer di sistema: vedi, abilita, disabilita, esegui ora.</td></tr>
 <tr><td>GET</td><td><code>/admin/runs</code> &middot; <code>/admin/builds</code> &middot; <code>/admin/safety</code> &middot; <code>/admin/turns</code></td><td>Esecuzioni scheduler, build, firme di safety, ultimi turni.</td></tr>
 <tr><td>GET</td><td><code>/admin/users</code> (+POST) &middot; <code>/{id}</code> (+ delete/update/autonomy/channels)</td><td>Gestione utenti (host + ospiti) e canali abbinati.</td></tr>

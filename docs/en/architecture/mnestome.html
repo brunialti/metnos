@@ -1120,7 +1120,7 @@ can always know what Metnos thinks it knows.
 <h1 id="cap11">11. Open questions</h1>
 
 <ol>
-<li><strong>Write concurrency.</strong> The gateway is a single process, so writes are naturally serial. When remote executors arrive in the future (ch. 4 of the Architecture), the gateway stays unique but calls may arrive from multiple turns in parallel. Is SQLite WAL enough? Open.</li>
+<li><strong>Write concurrency.</strong> The gateway is a single process, so writes are naturally serial. With <a href="remote_executors.html">remote executors</a>, the gateway stays unique but calls may arrive from multiple turns in parallel. Is SQLite WAL enough? Open.</li>
 <li><strong>Schema migration.</strong> The SQLite file lives long. How do we manage schema migrations across Metnos versions? Numbered declarative migrations, Alembic-style? Open.</li>
 <li><strong>Snapshot privacy.</strong> Monthly snapshots contain executor names and tags, but no contents. The privacy surface is low, but if one wanted to share a snapshot for debug, a tag redaction function would be useful. To be designed if needed.</li>
 <li><strong>Integration with episodic memory.</strong> The mnestome and the episodic memory of conversations are kept separate by design (ch. 3). Does it make sense to have an explicit cross-reference (a mnest citing the turn_id that generated it)? The inverse (a turn citing the mnests it reinforced) is already in the audit. Open.</li>

@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microprogettazione — Metnos</title>
-<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventitr&eacute; documenti canonici allineati al codice.">
+<meta name="description" content="Guida alla microprogettazione di Metnos: cosa sono executor, mnest, mnestoma, agent runtime, http_api; come si parlano fra loro; i ventiquattro documenti canonici allineati al codice.">
 <meta name="keywords" content="Metnos, metnos, microprogettazione, architettura, executor, mnest, mnestoma, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,13 +15,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/architecture/">
 <meta property="og:title" content="Microprogettazione — Metnos">
-<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventitr&eacute; documenti canonici allineati al codice.">
+<meta property="og:description" content="Guida didattica alla microprogettazione di Metnos: termini, mappa dei componenti, ventiquattro documenti canonici allineati al codice.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Microprogettazione — Metnos">
-<meta name="twitter:description" content="Ventitr&eacute; componenti, una mappa, un glossario propedeutico.">
+<meta name="twitter:description" content="Ventiquattro componenti, una mappa, un glossario propedeutico.">
 <style>:root {
  --navy: #1A477A;
  --navy-light: #2B6CB0;
@@ -213,7 +213,7 @@ fissando i termini prima di usarli.
  <li><a href="#parole">Le quattro parole da conoscere prima</a></li>
  <li><a href="#mappa">La mappa dei componenti</a></li>
  <li><a href="#flusso">Come scorre una richiesta dell&rsquo;utente</a></li>
- <li><a href="#canonici">I ventitr&eacute; documenti canonici</a></li>
+ <li><a href="#canonici">I ventiquattro documenti canonici</a></li>
  <li><a href="#stato">Vocabolario e primitive</a></li>
  <li><a href="#convenzioni">Convenzioni di scrittura</a></li>
  </ol>
@@ -304,8 +304,8 @@ proseguire.
 <h2 id="mappa">3. La mappa dei componenti</h2>
 
 <p>
-Sono <strong>ventitr&eacute;</strong> componenti documentati. Lo schema sotto
-li raggruppa per ruolo: il bordo nero spesso &egrave; il motore centrale,
+Sono <strong>ventiquattro</strong> componenti documentati. Lo schema sotto
+raggruppa i nodi principali per ruolo: il bordo nero spesso &egrave; il motore centrale,
 le forme verdi i &laquo;servizi&raquo; che il motore consulta, le forme
 azzurre i &laquo;tessuti&raquo; che memorizzano lo stato, le forme color
 bronzo gli organi periferici verso l&rsquo;utente e verso l&rsquo;ambiente.
@@ -499,10 +499,10 @@ che le due capacit&agrave; sono andate a braccetto? Se le risposte sono
 la mappa &egrave; vostra.
 </div>
 
-<h2 id="canonici">5. I ventitr&eacute; documenti canonici</h2>
+<h2 id="canonici">5. I ventiquattro documenti canonici</h2>
 
 <p>
-Sotto, i ventitr&eacute; documenti raggruppati per ruolo. Tutti hanno la
+Sotto, i ventiquattro documenti raggruppati per ruolo. Tutti hanno la
 controparte inglese in
 <a href="../../en/architecture/"><code>/en/architecture/</code></a>.
 </p>
@@ -549,6 +549,10 @@ controparte inglese in
 <tr>
  <td><a href="executor.html"><code>executor</code></a></td>
  <td>Introduzione didattica: cos'&egrave; un executor, anatomia in cinque file, manifesto firmato, recinto di esecuzione, ciclo di vita, tre origini (a mano / generato / di sistema). Tre esempi concreti. Per chi vuole capire, non per chi deve implementare. Pool corrente: 75 executor scritti a mano.</td>
+</tr>
+<tr>
+ <td><a href="remote_executors.html"><code>remote_executors</code></a></td>
+ <td>Come una parte controllata del catalogo executor pu&ograve; girare su dispositivi registrati: <code>metnos-client</code>, appaiamento del device, placement da manifest, sandbox per sistema operativo, installazione dalla UI e limiti espliciti su Windows/Linux.</td>
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>

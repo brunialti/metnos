@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Microdesign — Metnos</title>
-<meta name="description" content="A guide to Metnos microdesign: what executor, mnest, mnestome, agent runtime and http_api are; how they talk to each other; the twenty-three canonical documents aligned with the code.">
+<meta name="description" content="A guide to Metnos microdesign: what executor, mnest, mnestome, agent runtime and http_api are; how they talk to each other; the twenty-four canonical documents aligned with the code.">
 <meta name="keywords" content="Metnos, metnos, microdesign, architecture, executor, mnest, mnestome, agent runtime, vaglio, synt, telos, http_api, multi-user, web crawler">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,13 +15,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/en/architecture/">
 <meta property="og:title" content="Microdesign — Metnos">
-<meta property="og:description" content="A teaching-style guide to Metnos microdesign: terms, component map, twenty-three canonical documents aligned with the code.">
+<meta property="og:description" content="A teaching-style guide to Metnos microdesign: terms, component map, twenty-four canonical documents aligned with the code.">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="it_IT">
 <meta property="og:site_name" content="Metnos">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Microdesign — Metnos">
-<meta name="twitter:description" content="Twenty-three components, one map, one propaedeutic glossary.">
+<meta name="twitter:description" content="Twenty-four components, one map, one propaedeutic glossary.">
 <style>:root {
  --navy: #1A477A;
  --navy-light: #2B6CB0;
@@ -93,7 +93,7 @@ fixing each term before we use it.
  <li><a href="#words">The four words to learn first</a></li>
  <li><a href="#map">A map of the components</a></li>
  <li><a href="#flow">How a user request flows through the system</a></li>
- <li><a href="#canonical">The twenty-three canonical documents</a></li>
+ <li><a href="#canonical">The twenty-four canonical documents</a></li>
  <li><a href="#status">Vocabulary and primitives</a></li>
  <li><a href="#conventions">Writing conventions</a></li>
  </ol>
@@ -181,8 +181,8 @@ proceed.
 <h2 id="map">3. A map of the components</h2>
 
 <p>
-There are <strong>twenty-three</strong> documented components. The diagram
-below groups them by role: thick black border for the central engine,
+There are <strong>twenty-four</strong> documented components. The diagram
+below groups the main nodes by role: thick black border for the central engine,
 green shapes for the &laquo;services&raquo; the engine consults, blue
 shapes for the &laquo;tissues&raquo; that hold state, bronze shapes for
 the peripheral organs facing the user and the environment. Arrows show
@@ -352,10 +352,10 @@ hand? If your answers are <em>channel, agent runtime, agent runtime,
 vaglio, mnestome</em>, the map is yours.
 </div>
 
-<h2 id="canonical">5. The twenty-three canonical documents</h2>
+<h2 id="canonical">5. The twenty-four canonical documents</h2>
 
 <p>
-Below, the twenty-three documents grouped by role. All have an Italian
+Below, the twenty-four documents grouped by role. All have an Italian
 counterpart at
 <a href="../../it/architecture/"><code>/it/architecture/</code></a>.
 </p>
@@ -402,6 +402,10 @@ counterpart at
 <tr>
  <td><a href="executor.html"><code>executor</code></a></td>
  <td>Anatomy of an executor: TOML manifest, Ed25519 signature, sandbox profile, lifecycle, vector contract (list-in, list-out). Current pool: 75 hand-crafted executors, including the multi-tier crawler (find_urls, read_urls_html, read_urls_pdf, login_session, group_entries) and handcrafted ones such as <code>compute_files_loc</code>.</td>
+</tr>
+<tr>
+ <td><a href="remote_executors.html"><code>remote_executors</code></a></td>
+ <td>How a controlled part of the executor catalog can run on registered devices: <code>metnos-client</code>, device pairing, manifest placement, per-OS sandboxing, UI installation and explicit Windows/Linux limits.</td>
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>

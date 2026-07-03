@@ -375,6 +375,18 @@ an error contract. It can be part of the initial seed or born by
 <p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html">architecture/executor.html</a> <em>(microdesign v1.1, approved 24 Apr 2026)</em> &middot; <a href="Metnos_Architecture_Intro_v1.html#cap9">Architecture, ch. 9</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
 </div>
 
+<div class="entry" id="remote-executor">
+<h3>remote executor <span class="tag concept">component</span></h3>
+<p>A Metnos executor run not on the server, but on a paired device: for example
+a Windows PC or a Linux laptop on the same network. It is not a second Metnos:
+the server keeps executor selection, policy, Vaglio, payload signing and audit;
+the device, through <code>metnos-client</code>, verifies the signature, executes
+inside the containment available for its operating system and returns the result.
+Remote execution is allowed only for signed executors declared compatible by
+their manifest.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/remote_executors.html">architecture/remote_executors.html</a> &middot; <a href="/en/architecture/pairing.html#cap13">pairing, ch. 13</a> &middot; <a href="/en/architecture/sandbox.html#cap10">sandbox, ch. 10</a></p>
+</div>
+
 <div class="entry" id="execution-trace">
 <h3>ExecutionTrace <span class="tag type">type</span></h3>
 <p>An immutable object that gathers <em>everything</em> that happened

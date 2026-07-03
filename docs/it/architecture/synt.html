@@ -892,7 +892,7 @@ Tre invarianti dell'audit di synt, che il loader e il runtime garantiscono:
 <li><strong>Composizioni rinforzate &rarr; promozione.</strong> Quante ricorrenze di una stessa catena innescano una proposta di generalizzazione? Default tentativo: 5 in 30 giorni. Da calibrare.</li>
 <li><strong>Visita del grafo per comporre.</strong> Algoritmo: breadth-first sul mnestoma con pruning per peso minimo? A* con euristica di copertura I/O? Decisione aperta &mdash; per ora BFS semplice.</li>
 <li><strong>Revoca della firma.</strong> Quando Roberto rifiuta una proposta gi&agrave; <code>born</code> dopo n invocazioni, &egrave; un'archiviazione o una quarantena? Lifecycle dell'executor (cap. 6) ammette entrambi; criterio non ancora fissato.</li>
-<li><strong>Synt remoto.</strong> In topologia con executor remoti (Architettura cap. 4), la cascata gira su <code>metnos-server</code> o pu&ograve; spawnare composizioni che attraversano server e laptop? Aperta; default conservativo: tutto su <code>metnos-server</code>, executor remoti chiamati come ogni altro.</li>
+<li><strong>Synt remoto.</strong> In topologia con <a href="remote_executors.html">executor remoti</a>, la cascata gira su <code>metnos-server</code> o pu&ograve; spawnare composizioni che attraversano server e laptop? Aperta; default conservativo: tutto su <code>metnos-server</code>, executor remoti chiamati come ogni altro.</li>
 </ol>
 
 <hr>

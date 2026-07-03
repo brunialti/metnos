@@ -1248,7 +1248,7 @@ with its own sandbox and a signed build — and the server carries the full
 invocation channel: idempotency over flaky networks, replay protection, results
 that reach their destination even after a disconnect. All of it is verified
 end-to-end on the reference instance; the shakedown comes before distribution,
-not the other way around.
+not the other way around. Detail: <a href="architecture/remote_executors.html">remote executors</a>.
 </div>
 </section>
 
@@ -1269,6 +1269,7 @@ not the other way around.
   <li>Web: search and reading via self-hosted services (search, geocoding)</li>
   <li>Recurring tasks in natural language (“every morning at 7…”)</li>
   <li>Multi-user on the same bot, with separate autonomies and audit</li>
+  <li>Remote executors on registered Linux/Windows devices, for executors explicitly enabled for the platform</li>
   <li>Synthesizes new executors when missing; curates the catalog at night</li>
   <li>Speaks Italian and English by construction; every string is data</li>
   <li>Append-only audit of every action + observability dashboards</li>
@@ -1285,7 +1286,7 @@ not the other way around.
   <li>Install an executor without your explicit approval</li>
   <li>Listen on a microphone (voice channel on hold, by choice)</li>
   <li>Drive a browser or home automation</li>
-  <li>Run executors on remote devices (freshly implemented, in shakedown on the reference instance)</li>
+  <li>Run unsigned, unaudited or OS-incompatible executors on remote devices</li>
   <li>Fuse face + scene in a single photo search (open worksite)</li>
   <li>Guarantee languages beyond IT/EN: drop-in, but not yet tested</li>
 </ul>

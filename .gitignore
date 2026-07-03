@@ -81,7 +81,17 @@ x.png
 # (decisions/ volutamente NON ignorato)
 
 # --- Tutta la documentazione (NOT for GitHub, vive su metnos.com) --------
-docs/
+docs/*
+!docs/it/
+!docs/en/
+docs/it/*
+docs/en/*
+!docs/it/architecture/
+!docs/en/architecture/
+docs/it/architecture/*
+docs/en/architecture/*
+!docs/it/architecture/remote_executors.html
+!docs/en/architecture/remote_executors.html
 
 # --- Doc agente / harness Claude (internal) ------------------------------
 AGENTS.md
