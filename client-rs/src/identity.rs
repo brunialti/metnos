@@ -4,6 +4,10 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use rand::rngs::OsRng;
 use std::path::Path;
 
+/// Clone: la chiave di firma va condivisa col task heartbeat (§B5, task tokio
+/// separato) senza spostare l'identita' fuori dal runner. `SigningKey` e'
+/// clonabile (materiale a 32 byte), il clone e' la STESSA identita'.
+#[derive(Clone)]
 pub struct Identity {
     pub signing: SigningKey,
 }

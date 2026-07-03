@@ -1,6 +1,6 @@
 [package]
 name = "metnos-client"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 description = "Metnos remote executor client (Rust)"
 license = "AGPL-3.0-only"
@@ -47,6 +47,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_JobObjects",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
+    # FreeConsole nel path `run` (§B6): la Scheduled Task console-subsystem
+    # lasciava una finestra aperta per tutta la vita del daemon.
+    "Win32_System_Console",
 ] }
 
 [profile.release]

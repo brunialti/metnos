@@ -70,6 +70,18 @@ fn init_tracing(log_file: Option<std::fs::File>) {
     }
 }
 
+/// Sgancia il processo dalla console (§B6, solo Windows). Chiamata all'avvio
+/// del daemon `run`: la Scheduled Task lancia un exe console-subsystem che
+/// altrimenti lascia una finestra aperta per tutta la sua vita. Gli altri
+/// subcomandi (whoami/register/errore-lock) NON la chiamano → conservano
+/// l'output interattivo.
+#[cfg(windows)]
+fn detach_console() {
+    unsafe { windows_sys::Win32::System::Console::FreeConsole() };
+}
+#[cfg(not(windows))]
+fn detach_console() {}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -134,6 +146,11 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             // e' spreco di poll + race su spool/cache. Il lock vive fino
             // all'uscita del processo.
             let _lock = proclock::acquire(&paths.data_dir)?;
+            // §B6: solo DOPO il lock (l'errore «gia' attivo» deve restare
+            // visibile in console). Il daemon di background non deve tenere
+            // una finestra aperta: il log su file (§2.8) resta la fonte di
+            // verita', stdout dopo il detach va nel nulla ed e' accettabile.
+            detach_console();
             let url = server.or(st.server_url.clone())
                 .ok_or_else(|| anyhow::anyhow!("no server (pair first or pass --server)"))?;
             let r = runner::Runner::new(url, &st, id, paths)

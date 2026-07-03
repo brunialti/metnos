@@ -95,20 +95,22 @@ impl Runner {
         if pruned > 0 {
             tracing::warn!(pruned, "spool: result stale scartati (oltre retention)");
         }
+        // Heartbeat su task tokio SEPARATO (§B5): il loop principale si blocca
+        // per decine di secondi durante il primo download+estrazione del runtime
+        // python (pyenv::resolve) e durante l'esecuzione di un executor lungo.
+        // Con l'heartbeat inline il device appariva «offline» per ~1min al primo
+        // giro. Un task dedicato batte ogni HEARTBEAT_EVERY a prescindere da cosa
+        // fa il loop di poll/execute. Runtime multi-thread (tokio full) → i due
+        // task girano davvero in parallelo anche se l'estrazione occupa un worker.
+        spawn_heartbeat(self.http.clone(), self.server.clone(),
+                        self.device_id.clone(), self.id.clone());
+
         let mut backoff = Duration::from_secs(1);
-        let mut last_heartbeat = Instant::now() - HEARTBEAT_EVERY;
         let mut cursor: Option<String> = None;
 
         loop {
             // Ri-consegna i result rimasti nello spool (server tornato su).
             self.flush_pending().await;
-
-            if last_heartbeat.elapsed() >= HEARTBEAT_EVERY {
-                if let Err(e) = self.heartbeat().await {
-                    tracing::warn!("heartbeat fallito: {e:#}");
-                }
-                last_heartbeat = Instant::now();
-            }
 
             match self.poll(cursor.as_deref()).await {
                 Ok(Some(inv)) => {
@@ -329,16 +331,51 @@ impl Runner {
         }
     }
 
-    async fn heartbeat(&self) -> Result<()> {
-        let profile = collect_profile();
-        let body = HeartbeatRequest { device_id: &self.device_id, profile };
-        let value = serde_json::to_value(&body)?;
-        let resp = self.signed_post("/agent/heartbeat", &value)?.send().await?;
-        if !resp.status().is_success() {
-            bail!("heartbeat HTTP {}", resp.status());
+}
+
+/// Task heartbeat indipendente (§B5). Batte subito (device online appena il
+/// runner parte) poi ogni `HEARTBEAT_EVERY`. Vive quanto il processo: il loop
+/// principale non lo attende mai. Un fallimento e' solo un warn — il giro
+/// successivo riprova, e un device momentaneamente muto e' meno grave di uno
+/// mai visto.
+fn spawn_heartbeat(http: reqwest::Client, server: String, device_id: String, id: Identity) {
+    tokio::spawn(async move {
+        // `interval` completa il PRIMO tick immediatamente → primo heartbeat
+        // senza attesa iniziale.
+        let mut ticker = tokio::time::interval(HEARTBEAT_EVERY);
+        loop {
+            ticker.tick().await;
+            if let Err(e) = send_heartbeat(&http, &server, &device_id, &id).await {
+                tracing::warn!("heartbeat fallito: {e:#}");
+            }
         }
-        Ok(())
+    });
+}
+
+/// POST /agent/heartbeat firmato — free function riusabile dal task dedicato
+/// (non ha `&self`). Stesso schema di firma di `signed_body_post`.
+async fn send_heartbeat(
+    http: &reqwest::Client,
+    server: &str,
+    device_id: &str,
+    id: &Identity,
+) -> Result<()> {
+    let profile = collect_profile();
+    let body = HeartbeatRequest { device_id, profile };
+    let bytes = serde_json::to_vec(&body)?;
+    let sig = id.sign_b64(&bytes);
+    let url = format!("{}/agent/heartbeat", server.trim_end_matches('/'));
+    let resp = http
+        .post(&url)
+        .header(SIG_HEADER, sig)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(bytes)
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        bail!("heartbeat HTTP {}", resp.status());
     }
+    Ok(())
 }
 
 /// Traduce l'output dell'executor (shape §2.6: entries | results) nel result
