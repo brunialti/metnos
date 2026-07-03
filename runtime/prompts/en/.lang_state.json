@@ -52,7 +52,7 @@
   "intent_extractor_v4": {
     "source_hash": "sha256:182616b20dc0af208081e3e3165e9ed2bfa9c60cd73cc2eb58ba102beccf4c43",
     "source_lang": "it",
-    "version_hash": "sha256:50f06940e01a81f7be26b51a354c55ffbf337184acf47eb3f65c028ffaf7d3cd"
+    "version_hash": "sha256:6962e421d68f4ba7fd1037a11c0b16faa8a4621b3c7847b45a9ddfe614b9eb67"
   },
   "planner": {
     "source_hash": "sha256:5916a4a34e0b7e9c74b4e9e669d3ad0fbdb9e2ad50d01188c77645190489ff2f",

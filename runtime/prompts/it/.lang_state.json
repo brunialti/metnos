@@ -50,9 +50,9 @@
     "version_hash": "sha256:60f76e1134327f2b14f6a93d97acdbd48b6eb04bfa5acf65d2656bab001ed43b"
   },
   "intent_extractor_v4": {
-    "source_hash": "sha256:50f06940e01a81f7be26b51a354c55ffbf337184acf47eb3f65c028ffaf7d3cd",
+    "source_hash": "sha256:6962e421d68f4ba7fd1037a11c0b16faa8a4621b3c7847b45a9ddfe614b9eb67",
     "source_lang": "en",
-    "version_hash": "sha256:53626f3312e1556c73f25490d54bffee600722925ab414fa62e4c88a736af105"
+    "version_hash": "sha256:d3ab35528c69fd13d17399e4d7f903390b40207ed07dce4dc627053cc9877793"
   },
   "planner": {
     "source_hash": "sha256:e1c7da82ff17b8c5e92f21e9b2cc98f69749bab3e82b3df78419aa772c7a78ad",
