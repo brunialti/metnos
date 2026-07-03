@@ -110,13 +110,14 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/pairing.py</code>, <co
  <li><a href="#cap10">Limiti</a></li>
  <li><a href="#cap11">Multi-user: <code>users.db</code> e <code>/start</code></a></li>
  <li><a href="#cap12">Accesso admin web</a></li>
+ <li><a href="#cap13">Appaiamento di dispositivi per executor remoti</a></li>
 </ol>
 </div>
 
 <h1 id="cap1">1. Cos'&egrave; il pairing</h1>
 
 <p class="lead">
-Il pairing identifica un <em>channel+sender</em>, non una persona fisica. Lo stesso familiare che scrive a Metnos via Telegram e via Signal sono due pairing distinti, indipendenti, ciascuno col proprio livello di autonomia. Cos&iacute; nasce, naturalmente, la possibilit&agrave; di pairare la stessa persona con livelli diversi a seconda del canale (Telegram = Full perch&eacute; il telefono &egrave; sempre con lui; mail = ReadOnly perch&eacute; potrebbe essere stata letta da qualcun altro).
+Il pairing identifica un <em>channel+sender</em>, non una persona fisica. Lo stesso familiare che scrive a Metnos via Telegram e via Signal sono due pairing distinti, indipendenti, ciascuno col proprio livello di autonomia. Cos&igrave; nasce, naturalmente, la possibilit&agrave; di pairare la stessa persona con livelli diversi a seconda del canale (Telegram = Full perch&eacute; il telefono &egrave; sempre con lui; mail = ReadOnly perch&eacute; potrebbe essere stata letta da qualcun altro).
 </p>
 
  <figure>
@@ -134,9 +135,9 @@ Il pairing identifica un <em>channel+sender</em>, non una persona fisica. Lo ste
 <rect x="574" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
 <text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">resolve_recipients</text>
 <text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">instradamento</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
+<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
 
 </svg>
 <figcaption>Figura 1 &mdash; I due percorsi di pairing: codici firmati Ed25519 per i device tecnici e token a vita breve per i guest; entrambi confluiscono nel registro multi-utente.</figcaption>
@@ -217,7 +218,7 @@ Il payload &egrave; un JSON deterministico (chiavi ordinate, separatori senza sp
 }</pre>
 
 <p>
-La firma &egrave; Ed25519 sui bytes del JSON serializzato, prodotta con la chiave <code>author</code> di <code>~/.config/metnos/keys/</code> (vedi <code>sign.py:28-29, 58-60</code>). La verifica scorre tutte le pubbliche trusted in quella stessa directory (<code>list_trusted_publics</code> in <code>sign.py:66-76</code>) e accetta il codice se almeno una verifica passa. Cos&iacute; un Metnos pi&ugrave; vecchio resta capace di accettare codici firmati da una nuova chiave finch&eacute; la pubblica nuova viene aggiunta alla directory.
+La firma &egrave; Ed25519 sui bytes del JSON serializzato, prodotta con la chiave <code>author</code> di <code>~/.config/metnos/keys/</code> (vedi <code>sign.py:28-29, 58-60</code>). La verifica scorre tutte le pubbliche trusted in quella stessa directory (<code>list_trusted_publics</code> in <code>sign.py:66-76</code>) e accetta il codice se almeno una verifica passa. Cos&igrave; un Metnos pi&ugrave; vecchio resta capace di accettare codici firmati da una nuova chiave finch&eacute; la pubblica nuova viene aggiunta alla directory.
 </p>
 
 <div class="callout tip">
@@ -354,7 +355,7 @@ La funzione <code>_try_bootstrap</code> gestisce il caso "Roberto installa Metno
 </ol>
 
 <p>
-Cos&iacute; il bootstrap &egrave; sicuro: dopo che esiste un solo pairing sul canale, ulteriori chiamate falliscono e il bootstrap perde efficacia. Roberto stesso, dopo essersi pairato la prima volta, non pu&ograve; pi&ugrave; usare il bootstrap per pairare nessun altro: i familiari devono ricevere un codice esplicito.
+Cos&igrave; il bootstrap &egrave; sicuro: dopo che esiste un solo pairing sul canale, ulteriori chiamate falliscono e il bootstrap perde efficacia. Roberto stesso, dopo essersi pairato la prima volta, non pu&ograve; pi&ugrave; usare il bootstrap per pairare nessun altro: i familiari devono ricevere un codice esplicito.
 </p>
 
 <div class="callout warning">
@@ -418,7 +419,7 @@ Modulo <code>channels</code> (daemon): 9/9 con un sotto-cluster di 5 case che es
 </ul>
 
 <p>
-Tutti i test girano isolati con un proprio <code>METNOS_PAIRINGS_DB</code> in <code>/tmp</code>, e con una coppia di chiavi di test creata ad hoc, cos&iacute; non si toccano n&eacute; il registro n&eacute; le chiavi di sviluppo dell'autore.
+Tutti i test girano isolati con un proprio <code>METNOS_PAIRINGS_DB</code> in <code>/tmp</code>, e con una coppia di chiavi di test creata ad hoc, cos&igrave; non si toccano n&eacute; il registro n&eacute; le chiavi di sviluppo dell'autore.
 </p>
 
 <h1 id="cap10">10. Limiti</h1>
@@ -521,6 +522,181 @@ chi controlla il file decifra
 Copia di sicurezza offline raccomandata. Nei log compare solo l'impronta
 sha256[:16].
 </p>
+
+<h1 id="cap13">13. Appaiamento di dispositivi per executor remoti</h1>
+
+<p class="lead">
+Finora abbiamo parlato di appaiare una <em>persona</em> che scrive a Metnos.
+Qui appaiamo invece una <em>macchina</em>: un altro computer che esegue gli
+executor di Metnos al posto suo, l&igrave; dove i dati vivono davvero.
+</p>
+
+<p>
+Facciamo un'analogia. Immagina di dare a un corriere di fiducia le chiavi di
+casa, perch&eacute; ritiri un pacco quando tu non ci sei. Vuoi essere sicuro di
+tre cose: che sia davvero lui e non un impostore; che gli ordini che gli arrivano
+vengano davvero da te; e di poter ritirare le chiavi in qualsiasi momento.
+L'appaiamento di un dispositivo risolve esattamente questi tre problemi &mdash;
+identit&agrave;, autenticit&agrave; degli ordini, revoca &mdash; con la
+crittografia al posto delle chiavi di metallo.
+</p>
+
+<p>
+Il &laquo;corriere&raquo; &egrave; un piccolo programma scritto in Rust (la
+cartella <code>client-rs/</code>), che gira sul computer da appaiare &mdash; per
+ora un PC Windows. Il lato Metnos che tiene il registro dei dispositivi vive in
+<code>runtime/devices.py</code>, tabella <code>devices</code> nel database
+<code>devices.db</code>. Riferimento di disegno: ADR 0007 / 0011 / 0046.
+</p>
+
+<div class="callout note">
+<strong>Dispositivo non &egrave; canale.</strong> L'appaiamento di canale
+(capitoli precedenti) lega la coppia <code>(canale, mittente)</code> a un livello
+di autonomia: dice <em>chi pu&ograve; parlare</em> a Metnos. L'appaiamento di un
+dispositivo lega una <em>macchina</em> a Metnos perch&eacute; questa
+<em>esegua</em> il lavoro dove serve (per esempio un PC nella rete di casa). Sono
+due cose diverse: due registri separati, due tabelle, due cicli di vita
+indipendenti.
+</div>
+
+<h2>Prima l'identit&agrave;: come il dispositivo dimostra chi &egrave;</h2>
+
+<p>
+Al primissimo avvio, il programma sul PC genera da s&eacute; una coppia di
+chiavi crittografiche (con l'algoritmo Ed25519): una <em>privata</em> e una
+<em>pubblica</em>. La chiave privata &egrave; il segreto che dimostra
+l'identit&agrave; e <em>non lascia mai</em> il computer. La chiave pubblica,
+invece, pu&ograve; essere mostrata a chiunque: serve solo a verificare le firme,
+non a produrle.
+</p>
+
+<p>
+Da quella chiave pubblica si ricava un'<em>impronta</em>: un codice breve
+(lo sha256 della chiave) che identifica il dispositivo in modo univoco. Nel
+registro l'impronta &egrave; <code>UNIQUE</code>: due dispositivi non possono
+avere la stessa identit&agrave;, e ripresentarsi con la stessa chiave significa
+essere riconosciuti come lo stesso dispositivo.
+</p>
+
+<h2>Il codice monouso: un invito valido una volta sola</h2>
+
+<p>
+Come fa un PC appena arrivato a farsi accettare da Metnos? Con un
+<em>codice monouso</em>: un codice usa-e-getta, esattamente come un invito che
+vale per un solo ingresso. Appena qualcuno lo usa, il codice &egrave; bruciato e
+non funziona pi&ugrave;.
+</p>
+
+<p>
+Lo emette <code>devices.generate_token</code>. Ha una scadenza volutamente
+breve: 30 minuti nel percorso guidato dal pannello, 10 minuti nella variante
+manuale a una riga. Il consumo &egrave; <em>atomico</em> (parola tecnica per
+&laquo;o tutto o niente&raquo;): <code>devices.consume_token</code> lo registra
+dentro un vincolo <code>UNIQUE</code> di SQLite, cos&igrave; anche se due
+richieste arrivassero nello stesso istante, una sola vince e la seconda
+fallisce senza doppioni.
+</p>
+
+<h2>Il flusso, passo per passo</h2>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 210" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-dev" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="8" y="80" width="160" height="60" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="88" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">dispositivo</text>
+<text x="88" y="124" text-anchor="middle" fill="#475569" font-size="9.5">genera chiave Ed25519</text>
+<rect x="187" y="80" width="160" height="60" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="267" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">console /admin</text>
+<text x="267" y="124" text-anchor="middle" fill="#475569" font-size="9.5">emette codice monouso</text>
+<rect x="366" y="80" width="160" height="60" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="446" y="102" text-anchor="middle" fill="#1A477A" font-weight="700">register()</text>
+<text x="446" y="120" text-anchor="middle" fill="#475569" font-size="9.5">server: device_id</text>
+<text x="446" y="133" text-anchor="middle" fill="#475569" font-size="9.5">+ chiave pubblica</text>
+<rect x="545" y="80" width="160" height="60" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="625" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">il dispositivo</text>
+<text x="625" y="124" text-anchor="middle" fill="#475569" font-size="9.5">fissa la chiave server</text>
+<rect x="724" y="80" width="160" height="60" rx="8" fill="#FEE2E2" stroke="#DC2626"/>
+<text x="804" y="106" text-anchor="middle" fill="#991B1B" font-weight="700">battito / revoca</text>
+<text x="804" y="124" text-anchor="middle" fill="#475569" font-size="9.5">403 = il client si ferma</text>
+<line x1="168" y1="110" x2="185" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="347" y1="110" x2="364" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="526" y1="110" x2="543" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="705" y1="110" x2="722" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<text x="450" y="40" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="12">Appaiamento di un dispositivo</text>
+<text x="450" y="58" text-anchor="middle" fill="#64748B" font-size="10">ogni scambio &egrave; firmato; la firma non valida non viene mai eseguita</text>
+</svg>
+<figcaption>Figura 2 &mdash; Il ciclo di appaiamento: il dispositivo genera la propria chiave, la console emette un codice monouso, <code>register</code> lo scambia con l'identit&agrave; e la chiave del server, il dispositivo la fissa; da l&igrave; in avanti battito e revoca.</figcaption>
+</figure>
+
+<ol>
+ <li>Roberto apre <code>/admin/devices</code> nel pannello dell'<a href="http_api.html"><code>http_api</code></a> e sceglie &laquo;Installa su questo PC&raquo;. Si apre una pagina di adesione con il codice monouso appena emesso.</li>
+ <li>Dalla stessa pagina si scarica <code>MetnosClientSetup.cmd</code> (Windows), che installa e avvia il programma sul PC.</li>
+ <li>Il programma chiama <code>register(server, codice)</code>: Metnos consuma il codice e risponde con due cose &mdash; il <code>device_id</code> (il nome interno del dispositivo) e la propria chiave pubblica di server (<code>server_public_key</code>).</li>
+ <li>Il dispositivo <em>fissa</em> quella chiave pubblica del server (la memorizza una volta per tutte) e d'ora in poi la usa per verificare che ogni ordine arrivi davvero da quel server e non da un impostore.</li>
+</ol>
+
+<div class="callout tip">
+<strong>Riappaiarsi &egrave; una ri-autorizzazione voluta.</strong> Ripresentarsi con la
+<em>stessa</em> chiave non crea un secondo dispositivo: aggiorna nome,
+proprietario, sistema operativo e la data di appaiamento, e cancella qualunque
+revoca precedente. &Egrave; il modo esplicito per riammettere una macchina che era
+stata revocata.
+</div>
+
+<h2>Il battito: &laquo;sono ancora qui&raquo;</h2>
+
+<p>
+Un dispositivo appaiato deve far sapere a Metnos di essere vivo e raggiungibile.
+Lo fa con un <em>battito</em>: ogni 30 secondi manda un breve segnale a
+<code>/agent/heartbeat</code>. Come tutto ci&ograve; che il dispositivo invia, il
+battito &egrave; firmato con la chiave privata sui byte esatti del messaggio
+(nell'intestazione <code>X-Metnos-Device-Sig</code>). Nel pannello il
+dispositivo appare cos&igrave; come raggiungibile.
+</p>
+
+<div class="callout note">
+<strong>Un battito che non blocca (client 0.2.7).</strong> Il battito gira in un
+compito separato. Cos&igrave; continua a segnalare &laquo;sono qui&raquo; anche
+mentre il programma, alla prima installazione, sta ancora scaricando il proprio
+ambiente di esecuzione.
+</div>
+
+<h2>La revoca: ritirare le chiavi</h2>
+
+<p>
+Se un PC viene perso, dismesso o semplicemente non deve pi&ugrave; lavorare per
+Metnos, si revoca. Basta una chiamata:
+<code>POST /admin/devices/{id}/revoke</code> (dietro le quinte
+<code>devices.revoke_device</code>), che segna la data di revoca. Da quel
+momento <em>ogni</em> messaggio firmato in arrivo da quel dispositivo &mdash;
+richiesta di lavoro o semplice battito &mdash; viene respinto con un errore
+<code>HTTP 403</code>, e il programma si ferma da solo.
+</p>
+
+<p>
+Non &egrave; teoria: provato dal vivo il 2026-07-03, il battito si &egrave;
+congelato all'istante dopo la revoca. L'operazione &egrave; anche
+<em>idempotente</em> (ripeterla non cambia il risultato): una seconda revoca
+risponde semplicemente &laquo;gi&agrave; revocato&raquo;.
+</p>
+
+<h2>Perch&eacute; &egrave; sicuro</h2>
+
+<p>
+Tre difese lavorano insieme. Le prime due sono firme crittografiche nei due
+sensi; la terza tiene il canale fuori da Internet.
+</p>
+
+<table>
+<tr><th>Difesa</th><th>Da cosa protegge</th></tr>
+<tr><td><strong>Firma dal dispositivo al server</strong>: ogni richiesta del programma &egrave; firmata sui byte esatti del messaggio (intestazione <code>X-Metnos-Device-Sig</code>).</td><td>Da un estraneo che finga di essere il dispositivo. Senza la chiave privata &mdash; che non lascia mai il PC &mdash; non pu&ograve; produrre una firma valida.</td></tr>
+<tr><td><strong>Firma dal server al dispositivo</strong>: ogni ordine di Metnos porta una firma (<code>server_sig</code>), verificata contro la chiave fissata all'appaiamento <em>prima</em> di eseguire. Firma non valida = rifiuto e annotazione, nessuna esecuzione.</td><td>Da un finto server o da un ordine manomesso lungo la strada. Il dispositivo esegue solo comandi firmati dal server che ha memorizzato al momento dell'appaiamento.</td></tr>
+<tr><td><strong>Canale solo interno</strong>: il dialogo coi dispositivi usa la porta 8765 e non &egrave; <em>mai</em> esposto attraverso il tunnel pubblico Cloudflare. Verso l'esterno passa solo la console sulla porta 8770.</td><td>Dall'esposizione su Internet. La capacit&agrave; di far eseguire lavoro a distanza resta confinata alla rete locale (o a una rete privata sovrapposta).</td></tr>
+</table>
+
+<div class="callout tip">
+<strong>Stato.</strong> Fase W3.3 verificata su un PC Windows reale il 2026-07-03, con il client alla versione 0.2.7.
+</div>
 
 </body>
 </html>

@@ -112,6 +112,7 @@ Implementation reference: <code>/opt/metnos/runtime/pairing.py</code>, <code>/op
  <li><a href="#cap10"> limits</a></li>
  <li><a href="#cap11">Multi-user: <code>users.db</code> and <code>/start</code></a></li>
  <li><a href="#cap12">Web admin login</a></li>
+ <li><a href="#cap13">Device pairing for remote executors</a></li>
 </ol>
 </div>
 
@@ -136,9 +137,9 @@ Implementation reference: <code>/opt/metnos/runtime/pairing.py</code>, <code>/op
 <rect x="574" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
 <text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">resolve_recipients</text>
 <text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">routing</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-pr)"/>
+<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
 
 </svg>
 <figcaption>Figure 1 &mdash; The two pairing paths: signed Ed25519 codes for technical devices and short-lived tokens for guests; both feed the multi-user registry.</figcaption>
@@ -523,6 +524,174 @@ whoever holds the file can decrypt
 <code>~/.config/metnos/credentials/&lt;domain&gt;.json.age</code>.
 Offline backup recommended. Logs only show the sha256[:16] fingerprint.
 </p>
+
+<h1 id="cap13">13. Device pairing for remote executors</h1>
+
+<p class="lead">
+So far we have talked about pairing a <em>person</em> who writes to Metnos.
+Here we pair a <em>machine</em> instead: another computer that runs Metnos
+executors on its behalf, right where the data actually lives.
+</p>
+
+<p>
+An analogy. Imagine handing a trusted courier the keys to your house so they can
+pick up a parcel while you are away. You want to be sure of three things: that
+it really is them and not an impostor; that the orders reaching them really come
+from you; and that you can take the keys back at any moment. Device pairing
+solves exactly these three problems &mdash; identity, authenticity of orders,
+revocation &mdash; using cryptography in place of metal keys.
+</p>
+
+<p>
+The &laquo;courier&raquo; is a small program written in Rust (the
+<code>client-rs/</code> folder) that runs on the machine being paired &mdash; for
+now a Windows PC. The Metnos side that keeps the device registry lives in
+<code>runtime/devices.py</code>, table <code>devices</code> in the
+<code>devices.db</code> database. Design reference: ADR 0007 / 0011 / 0046.
+</p>
+
+<div class="callout note">
+<strong>Device is not channel.</strong> Channel pairing (earlier chapters) binds
+the pair <code>(channel, sender)</code> to an autonomy level: it says <em>who may
+speak</em> to Metnos. Device pairing binds a <em>machine</em> to Metnos so that
+it <em>executes</em> work where it is needed (for example a PC on the home
+network). They are two different things: two separate registries, two tables,
+two independent life cycles.
+</div>
+
+<h2>Identity first: how the device proves who it is</h2>
+
+<p>
+On the very first run, the program on the PC generates a cryptographic key pair
+by itself (using the Ed25519 algorithm): a <em>private</em> one and a
+<em>public</em> one. The private key is the secret that proves identity and it
+<em>never leaves</em> the computer. The public key, by contrast, can be shown to
+anyone: it only serves to verify signatures, not to produce them.
+</p>
+
+<p>
+From that public key comes a <em>fingerprint</em>: a short code (the sha256 of
+the key) that identifies the device uniquely. In the registry the fingerprint is
+<code>UNIQUE</code>: two devices cannot share the same identity, and showing up
+again with the same key means being recognised as the same device.
+</p>
+
+<h2>The one-shot code: an invitation valid only once</h2>
+
+<p>
+How does a brand-new PC get accepted by Metnos? With a <em>one-shot code</em>: a
+use-and-discard code, exactly like an invitation good for a single entry. As
+soon as someone uses it, the code is burned and no longer works.
+</p>
+
+<p>
+It is issued by <code>devices.generate_token</code>. It has a deliberately short
+expiry: 30 minutes in the guided flow from the panel, 10 minutes in the manual
+one-liner variant. Its consumption is <em>atomic</em> (a technical word for
+&laquo;all or nothing&raquo;): <code>devices.consume_token</code> records it
+inside a SQLite <code>UNIQUE</code> constraint, so that even if two requests
+arrived at the same instant, only one wins and the second fails with no
+duplicates.
+</p>
+
+<h2>The flow, step by step</h2>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 210" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-dev" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="8" y="80" width="160" height="60" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="88" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">device</text>
+<text x="88" y="124" text-anchor="middle" fill="#475569" font-size="9.5">generates Ed25519 key</text>
+<rect x="187" y="80" width="160" height="60" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="267" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">/admin console</text>
+<text x="267" y="124" text-anchor="middle" fill="#475569" font-size="9.5">issues one-shot code</text>
+<rect x="366" y="80" width="160" height="60" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="446" y="102" text-anchor="middle" fill="#1A477A" font-weight="700">register()</text>
+<text x="446" y="120" text-anchor="middle" fill="#475569" font-size="9.5">server: device_id</text>
+<text x="446" y="133" text-anchor="middle" fill="#475569" font-size="9.5">+ public key</text>
+<rect x="545" y="80" width="160" height="60" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="625" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">the device</text>
+<text x="625" y="124" text-anchor="middle" fill="#475569" font-size="9.5">pins the server key</text>
+<rect x="724" y="80" width="160" height="60" rx="8" fill="#FEE2E2" stroke="#DC2626"/>
+<text x="804" y="106" text-anchor="middle" fill="#991B1B" font-weight="700">heartbeat / revoke</text>
+<text x="804" y="124" text-anchor="middle" fill="#475569" font-size="9.5">403 = client stops</text>
+<line x1="168" y1="110" x2="185" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="347" y1="110" x2="364" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="526" y1="110" x2="543" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<line x1="705" y1="110" x2="722" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
+<text x="450" y="40" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="12">Pairing a device</text>
+<text x="450" y="58" text-anchor="middle" fill="#64748B" font-size="10">every exchange is signed; an invalid signature is never executed</text>
+</svg>
+<figcaption>Figure 2 &mdash; The pairing cycle: the device generates its own key, the console issues a one-shot code, <code>register</code> swaps it for the server's identity and key, the device pins that key; from there on, heartbeat and revoke.</figcaption>
+</figure>
+
+<ol>
+ <li>Roberto opens <code>/admin/devices</code> in the <a href="http_api.html"><code>http_api</code></a> panel and picks &laquo;Install on this PC&raquo;. A join page opens with the freshly issued one-shot code.</li>
+ <li>From the same page you download <code>MetnosClientSetup.cmd</code> (Windows), which installs and starts the program on the PC.</li>
+ <li>The program calls <code>register(server, code)</code>: Metnos consumes the code and replies with two things &mdash; the <code>device_id</code> (the device's internal name) and its own server public key (<code>server_public_key</code>).</li>
+ <li>The device <em>pins</em> that server public key (stores it once and for all) and from then on uses it to verify that every order really comes from that server and not from an impostor.</li>
+</ol>
+
+<div class="callout tip">
+<strong>Re-pairing is a deliberate re-authorisation.</strong> Showing up again with the
+<em>same</em> key does not create a second device: it updates name, owner,
+operating system and the pairing date, and clears any previous revocation. It is
+the explicit way to re-admit a machine that had been revoked.
+</div>
+
+<h2>The heartbeat: &laquo;I am still here&raquo;</h2>
+
+<p>
+A paired device must let Metnos know it is alive and reachable. It does so with a
+<em>heartbeat</em>: every 30 seconds it sends a short signal to
+<code>/agent/heartbeat</code>. Like everything the device sends, the heartbeat is
+signed with the private key over the exact bytes of the message (in the
+<code>X-Metnos-Device-Sig</code> header). In the panel the device thus appears as
+reachable.
+</p>
+
+<div class="callout note">
+<strong>A heartbeat that does not block (client 0.2.7).</strong> The heartbeat
+runs on a separate task. That way it keeps signalling &laquo;I am here&raquo;
+even while the program, on first install, is still downloading its own runtime.
+</div>
+
+<h2>Revocation: taking the keys back</h2>
+
+<p>
+If a PC is lost, decommissioned or simply must no longer work for Metnos, you
+revoke it. A single call is enough:
+<code>POST /admin/devices/{id}/revoke</code> (behind the scenes
+<code>devices.revoke_device</code>), which stamps the revocation date. From that
+moment <em>every</em> signed message arriving from that device &mdash; a work
+request or a plain heartbeat &mdash; is rejected with an <code>HTTP 403</code>
+error, and the program stops by itself.
+</p>
+
+<p>
+This is not theory: tested live on 2026-07-03, the heartbeat froze instantly
+after the revoke. The operation is also <em>idempotent</em> (repeating it does
+not change the result): a second revoke simply replies &laquo;already
+revoked&raquo;.
+</p>
+
+<h2>Why it is safe</h2>
+
+<p>
+Three defences work together. The first two are cryptographic signatures in both
+directions; the third keeps the channel off the public Internet.
+</p>
+
+<table>
+<tr><th>Defence</th><th>Protects against</th></tr>
+<tr><td><strong>Signature from device to server</strong>: every request from the program is signed over the exact bytes of the message (<code>X-Metnos-Device-Sig</code> header).</td><td>A stranger pretending to be the device. Without the private key &mdash; which never leaves the PC &mdash; they cannot produce a valid signature.</td></tr>
+<tr><td><strong>Signature from server to device</strong>: every order from Metnos carries a signature (<code>server_sig</code>), verified against the pinned key <em>before</em> executing. Invalid signature = reject and log, no execution.</td><td>A fake server or an order tampered with along the way. The device only runs commands signed by the server it memorised at pairing time.</td></tr>
+<tr><td><strong>Internal channel only</strong>: the dialogue with devices uses port 8765 and is <em>never</em> exposed through the public Cloudflare tunnel. Only the console on port 8770 faces outward.</td><td>Exposure on the Internet. The ability to run work remotely stays confined to the local network (or a private overlay network).</td></tr>
+</table>
+
+<div class="callout tip">
+<strong>Status.</strong> Phase W3.3 validated on a real Windows PC on 2026-07-03, with the client at version 0.2.7.
+</div>
 
 </body>
 </html>

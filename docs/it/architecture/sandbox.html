@@ -104,6 +104,7 @@ Cluster <code>sandbox</code> 9/9 verde. Riferimento: <code>runtime/sandbox.py</c
  <li><a href="#cap7">Test</a></li>
  <li><a href="#cap8">Stato di bwrap nel sistema</a></li>
  <li><a href="#cap9">Limiti e sviluppi futuri</a></li>
+ <li><a href="#cap10">Sandbox remota per-OS (executor su dispositivo)</a></li>
 </ol>
 </div>
 
@@ -128,9 +129,9 @@ La sandbox &egrave; lo strato 3 dell'architettura di Metnos (cap. 6 dell'<a href
 <rect x="598" y="70" width="178" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="687" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">esecuzione confinata</text>
 <text x="687" y="112" text-anchor="middle" fill="#475569" font-size="9.5">rete isolata se possibile</text>
-<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-sb)"/>
-<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-sb)"/>
-<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-sb)"/>
+<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
 
 </svg>
 <figcaption>Figura 1 &mdash; Il recinto di esecuzione: dal manifest si deriva il profilo <code>bwrap</code>; l'executor viene lanciato confinato, con rete isolata quando nessuna capability la richiede.</figcaption>
@@ -232,7 +233,7 @@ Il file Python dell'executor deve essere leggibile. Si monta in read-only tutta 
 args += ["--ro-bind", str(code_dir), str(code_dir)]</pre>
 
 <p>
-Cos&iacute; l'executor pu&ograve; importare moduli accessori che vivono nello stesso pacchetto, ma non pu&ograve; modificare il proprio codice (<code>runtime/sandbox.py:131-133</code>).
+Cos&igrave; l'executor pu&ograve; importare moduli accessori che vivono nello stesso pacchetto, ma non pu&ograve; modificare il proprio codice (<code>runtime/sandbox.py:131-133</code>).
 </p>
 
 <h2>3.4 Capability fs:read e fs:write</h2>
@@ -403,7 +404,7 @@ Cluster <code>sandbox</code> nel framework di test del runtime: 9/9 verde alla d
 </table>
 
 <p>
-I casi 6-9 esercitano <code>_build_bwrap_args</code> senza chiamare bwrap: si verifica la lista di flag prodotta. Cos&iacute; il cluster gira verde anche su un server di sviluppo dove bwrap non &egrave; installato, mentre coprendo le regole di derivazione che sono il contratto vero del modulo.
+I casi 6-9 esercitano <code>_build_bwrap_args</code> senza chiamare bwrap: si verifica la lista di flag prodotta. Cos&igrave; il cluster gira verde anche su un server di sviluppo dove bwrap non &egrave; installato, mentre coprendo le regole di derivazione che sono il contratto vero del modulo.
 </p>
 
 <h1 id="cap8">8. Stato di bwrap nel sistema</h1>
@@ -439,7 +440,7 @@ Niente cambio di codice, niente riavvio del runtime. Al primo accesso successivo
 <tr><th>Limite</th><th>Quando si toglie</th></tr>
 <tr>
  <td><strong>Niente landlock.</strong> Il filtro filesystem a grana fine via <code>landlock</code> richiede kernel &ge; 5.13 e syscall dedicate. Per ora ci affidiamo ai bind di bwrap.</td>
- <td>Quando si stabilizzer&agrave; il flusso di approvazione con un dispatcher dei callback maturo. Landlock pu&ograve; sostituire alcuni bind read-only con permessi pi&ugrave; granulari (lettura s&iacute;, exec no, ecc.).</td>
+ <td>Quando si stabilizzer&agrave; il flusso di approvazione con un dispatcher dei callback maturo. Landlock pu&ograve; sostituire alcuni bind read-only con permessi pi&ugrave; granulari (lettura s&igrave;, exec no, ecc.).</td>
 </tr>
 <tr>
  <td><strong>Niente Docker namespace.</strong> Per casi che richiedono isolamento ancora pi&ugrave; severo (es. executor che girano LLM locali con dipendenze native pesanti), un container Docker o podman sarebbe pi&ugrave; appropriato.</td>
@@ -468,6 +469,154 @@ La sandbox &egrave; un componente piccolo (~180 righe) ma centrale nella postura
 <p>
 Il ripiego controllato, in particolare, riflette una scelta etica oltre che pragmatica: non si vuole che la sicurezza diventi un ostacolo all'ingresso. Su un laptop di sviluppo o in un container minimale, il sistema gira lo stesso, con la pseudo-sandbox applicativa attiva. Quando si passa al server di produzione, una <code>apt install bubblewrap</code> aggiunge il guscio a livello kernel senza toccare il codice.
 </p>
+
+<h1 id="cap10">10. Sandbox remota per-OS (executor su dispositivo)</h1>
+
+<p class="lead">
+Tutti i capitoli precedenti parlano di un solo luogo: il server <code>.33</code>, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal cliente scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il cliente stesso, e cambia a seconda del sistema operativo del dispositivo.
+</p>
+
+<p>
+L'idea di fondo &egrave; semplice. Il server non sa (e non vuole sapere) come ogni dispositivo isola il codice: si fida di un <strong>contratto unico</strong>. Ogni sistema operativo ha il suo modulo &mdash; <code>sandbox_linux.rs</code>, <code>sandbox_windows.rs</code>, <code>sandbox_macos.rs</code> &mdash; ma tutti espongono la stessa identica funzione. Cambia il motore sotto il cofano; il volante &egrave; lo stesso.
+</p>
+
+<div class="callout note">
+<strong>Un contratto solo, tante implementazioni.</strong> Ogni modulo <code>sandbox_&lt;os&gt;.rs</code> espone questa firma:
+<pre>run_sandboxed(exec, python, shim, args, env, limits) -&gt; Output</pre>
+Il campo <code>limits.wall</code> &egrave; la <em>scadenza</em>: il tempo massimo concesso all'esecuzione. Chi chiama non deve sapere quale isolamento &egrave; stato usato: riceve indietro un <code>Output</code> uniforme, che dichiara in chiaro quale contenimento &egrave; stato applicato. Riferimenti: ADR 0011 / 0037 / 0046.
+</div>
+
+<h2>10.1 Un contenimento diverso per ogni sistema operativo</h2>
+
+<p>
+Ogni sistema operativo offre strumenti di isolamento diversi. Il cliente usa il pi&ugrave; forte disponibile su quella piattaforma. Ecco il quadro completo.
+</p>
+
+<table>
+<tr><th>Sistema</th><th>Contenimento</th><th>Robustezza</th><th>Come si compensa</th></tr>
+<tr>
+ <td><strong>Linux</strong></td>
+ <td><code>bubblewrap</code> + <code>landlock</code> + <code>seccomp</code> + spazio-dei-nomi di montaggio</td>
+ <td>forte (pari al <code>.33</code>)</td>
+ <td>&mdash; (nessuna compensazione necessaria)</td>
+</tr>
+<tr>
+ <td><strong>macOS</strong></td>
+ <td><code>sandbox-exec</code> + entitlements</td>
+ <td>media</td>
+ <td>non ancora realizzata (livello 2)</td>
+</tr>
+<tr>
+ <td><strong>Windows</strong></td>
+ <td>Job Object (in futuro anche AppContainer)</td>
+ <td>media; abbattimento dell'intero albero dei processi garantito</td>
+ <td>firma del server verificata prima di eseguire; solo executor di sola lettura e autosufficienti; quelli che modificano dati e non sono impacchettabili vengono rifiutati</td>
+</tr>
+</table>
+
+<p>
+Su <strong>Linux</strong> il dispositivo remoto usa lo stesso identico guscio del server: <code>bwrap</code> + <code>landlock</code> + <code>seccomp</code> + spazio-dei-nomi di montaggio. Se su quel dispositivo <code>bwrap</code> non c'&egrave;, vale lo stesso ripiego onesto del cap. 4: si esegue in modo diretto, la cosa viene annotata nei registri (&sect;2.8) e il risultato lo dichiara con <code>sandbox:"none"</code>. Niente finzioni: chi legge il risultato sa che il guscio non c'era.
+</p>
+
+<h2>10.2 Windows: il Job Object come una stanza chiusa a chiave</h2>
+
+<p>
+Windows non ha un equivalente di <code>bwrap</code>. Serve un altro strumento del sistema, chiamato <strong>Job Object</strong>. &Egrave; un contenitore del cuore di Windows (il kernel NT) a cui si legano uno o pi&ugrave; processi.
+</p>
+
+<p>
+L'intuizione &egrave; questa: un Job Object &egrave; come una <strong>stanza chiusa a chiave</strong>. Ci metti dentro il processo dell'executor. Se quel processo ne genera altri (processi figli), anche loro nascono dentro la stessa stanza: nessuno pu&ograve; uscire. E quando chiudi la stanza a chiave, tutto ci&ograve; che &egrave; dentro viene spento con certezza &mdash; anche i figli, anche i nipoti. Nessun processo resta acceso di nascosto.
+</p>
+
+<p>
+Il Job Object &egrave; stato realizzato nella fase W3.1 e verificato dal vivo nella W3.3, il 2026-07-03, su un PC Windows reale. Vediamo passo per passo come il cliente costruisce e chiude la stanza.
+</p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 300" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-job" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+
+<!-- riga 1: 1 -> 2 -> 3 -> 4 -->
+<rect x="10" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="110" y="66" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">1. CreateJobObjectW</text>
+<text x="110" y="86" text-anchor="middle" fill="#475569" font-size="9.5">crea la stanza (il Job)</text>
+
+<rect x="240" y="40" width="200" height="62" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="340" y="62" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">2. SetInformationJobObject</text>
+<text x="340" y="80" text-anchor="middle" fill="#475569" font-size="9.5">KILL_ON_JOB_CLOSE</text>
+<text x="340" y="94" text-anchor="middle" fill="#475569" font-size="9.5">+ tetto memoria e processi</text>
+
+<rect x="470" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="570" y="66" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">3. CREATE_SUSPENDED</text>
+<text x="570" y="86" text-anchor="middle" fill="#475569" font-size="9.5">processo creato, ma fermo</text>
+
+<rect x="700" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="800" y="62" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">4. AssignProcessToJobObject</text>
+<text x="800" y="80" text-anchor="middle" fill="#475569" font-size="9.5">metti il processo</text>
+<text x="800" y="94" text-anchor="middle" fill="#475569" font-size="9.5">nella stanza</text>
+
+<!-- riga 2: 5 <- 6 <- 7 (snake) -->
+<rect x="700" y="200" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="800" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">5. ResumeThread</text>
+<text x="800" y="246" text-anchor="middle" fill="#475569" font-size="9.5">l'executor parte davvero</text>
+
+<rect x="470" y="200" width="200" height="62" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="570" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">6. attesa / scadenza</text>
+<text x="570" y="246" text-anchor="middle" fill="#475569" font-size="9.5">fino a limits.wall</text>
+
+<rect x="240" y="200" width="200" height="62" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="340" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">7. TerminateJobObject</text>
+<text x="340" y="246" text-anchor="middle" fill="#475569" font-size="9.5">chiudi la stanza: albero morto</text>
+
+<!-- frecce -->
+<line x1="210" y1="71" x2="238" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+<line x1="440" y1="71" x2="468" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+<line x1="670" y1="71" x2="698" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+<line x1="800" y1="102" x2="800" y2="198" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+<line x1="700" y1="231" x2="672" y2="231" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+<line x1="470" y1="231" x2="442" y2="231" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
+
+</svg>
+<figcaption>Figura 2 &mdash; Ciclo di vita del Job Object su Windows. Il processo nasce fermo (3), entra nella stanza (4) e solo allora parte (5): cos&igrave; nulla pu&ograve; sfuggire prima che la stanza sia chiusa. Alla scadenza (6) si chiude la stanza (7) e l'intero albero dei processi viene spento.</figcaption>
+</figure>
+
+<p>
+Due dettagli rendono robusto questo schema. Primo: il processo viene creato <strong>fermo</strong> (<code>CREATE_SUSPENDED</code>) e messo nella stanza <em>prima</em> di partire. Se partisse subito, per un istante potrebbe generare figli fuori dal contenitore; nascendo fermo, quando lo si avvia &egrave; gi&agrave; dentro. Secondo: al passo 2 si imposta il segnale <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code>. Vuol dire: &laquo;quando l'ultimo riferimento a questa stanza si chiude, spegni tutto&raquo;. Cos&igrave; l'<strong>abbattimento dell'intero albero dei processi</strong> &egrave; garantito anche se il cliente stesso va in errore e muore: chiudendosi, si porta dietro tutto. Il risultato lo dichiara con <code>sandbox:"job-object"</code>.
+</p>
+
+<div class="callout tip">
+<strong>Scadenza onesta.</strong> Quando scatta il tempo massimo (<code>limits.wall</code>), il Job Object viene chiuso: l'albero &egrave; morto. Il risultato &egrave; <code>ok:false</code>, <code>error_class:"timeout"</code>, con un contenuto <strong>vuoto</strong> &mdash; mai un risultato a met&agrave; spacciato per completo (&sect;2.8). Verificato dal vivo: appena chiusa la stanza, il dispositivo &egrave; subito pronto e sano per l'esecuzione successiva.
+</div>
+
+<h2>10.3 Perch&eacute; il Job Object basta, per ora</h2>
+
+<p>
+Onest&agrave;: il Job Object &egrave; forte nello spegnere i processi, ma non isola disco e rete come fa <code>bwrap</code> su Linux. La difesa pi&ugrave; solida (l'AppContainer di Windows) arriver&agrave; nella fase W4. Nel frattempo Metnos compensa <em>prima</em> di eseguire, scegliendo con cura cosa mandare al dispositivo:
+</p>
+
+<ul>
+<li>la <strong>firma del server</strong> viene fissata e ricontrollata sul dispositivo prima di eseguire: se il codice non &egrave; quello firmato dal server, non parte;</li>
+<li>solo gli executor di <strong>sola lettura e autosufficienti</strong> (che non toccano dati e non hanno dipendenze esterne) vengono promossi ai dispositivi;</li>
+<li>gli executor che <strong>modificano dati</strong> e non sono impacchettabili vengono <strong>rifiutati</strong>: non arrivano mai sul dispositivo.</li>
+</ul>
+
+<p>
+In pratica: al dispositivo si affida solo lavoro che, nel peggiore dei casi, non pu&ograve; rovinare nulla. Il contenimento fa il resto.
+</p>
+
+<h2>10.4 Come arriva Python sul dispositivo</h2>
+
+<p>
+Un problema pratico: il dispositivo remoto potrebbe non avere affatto Python installato. Il cliente lo risolve da solo. Scarica <em>al momento del bisogno</em> un Python gi&agrave; pronto (<code>python-build-standalone</code>) e ne verifica l'integrit&agrave; con l'impronta <code>sha256</code> fissata dal server. Poi lo apre con <code>tar</code> + <code>flate2</code>, in puro Rust, senza dipendere da programmi esterni.
+</p>
+
+<p>
+Lo scaricamento &egrave; costruito per resistere a reti instabili: procede a segmenti da 8&nbsp;MB (richieste <code>Range</code>), riprende da dove si era interrotto grazie a un file <code>.part</code>, e se l'impronta non torna riscarica e confronta due copie fino a quando concordano. &Egrave; la stessa disciplina gi&agrave; usata dal server in <code>downloads.py::robust_fetch</code>.
+</p>
+
+<div class="callout note">
+<strong>Stato.</strong> Esecuzione remota validata da capo a capo su un PC Windows reale il 2026-07-03, cliente 0.2.7 (<code>sandbox:"job-object"</code>). Linux ha parit&agrave; col <code>.33</code>; macOS (<code>sandbox-exec</code> + entitlements) &egrave; di livello 2, non ancora realizzata.
+</div>
 
 </body>
 </html>
