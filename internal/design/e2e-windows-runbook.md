@@ -196,13 +196,13 @@ uso domestico fra dispositivi fidati.
 
 | Passo | Data | Esito | Note |
 |---|---|---|---|
-| 1 — join+install | | | |
-| 2 — execute read-only | | | |
-| 3 — timeout+albero morto | | | |
-| 4 — doppio run→lock | | | |
-| 5 — mutante+reverse | | SKIP (gap architetturale, vedi nota) | |
-| 6 — revoca→403 | | | |
-| 7 — SmartScreen | | | (testo esatto del popup) |
+| 1 — join+install | 2026-07-03 | ✅ | client 0.2.6, re-pair stessa chiave → device id `7bd3da08…`; installer `.cmd` one-click, task battery-safe, verifica Running |
+| 2 — execute read-only | 2026-07-03 | ✅ | `compute_files_loc` in `sandbox:"job-object"`, 271ms; payload §2.8 COMPLETO (total_lines/by_ext/by_path/summary — 5 file / 1144 linee) dopo il fix `53ba67e` |
+| 3 — timeout+albero morto | 2026-07-03 | ✅ | deadline 600ms su stdlib intera → `error_class:timeout`, `ok:false`, payload vuoto (nessun parziale spacciato per completo); riprova immediata sana (323ms) = Job Object abbattuto, device non corrotto |
+| 4 — doppio run→lock | 2026-07-03 | ✅ | 2ª istanza `run` esce subito citando `client.lock` (nessun doppio poller) |
+| 5 — mutante+reverse | 2026-07-03 | SKIP (gap architetturale, vedi nota) | nessun executor mutante bundlabile oggi (dipendenza `backends.files.local`/`path_alias` non nello shim) |
+| 6 — revoca→403 | 2026-07-03 | ✅ | `POST /admin/devices/{id}/revoke` → heartbeat congelato (76s su 3 rilevazioni); 2° revoke idempotente `already revoked` |
+| 7 — SmartScreen | 2026-07-03 | — | non annotato in questa sessione (attrito non riportato da Roberto) |
 
 **DEFINITION OF DONE W3** (§16.4): tutti i passi 1-4 e 6 spuntati ✅ sul PC
 reale, 5 esplicitamente SKIP con motivo, 7 annotato. Aggiornare §0.bis del

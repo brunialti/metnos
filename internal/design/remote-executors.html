@@ -1364,7 +1364,17 @@ critico non previsto dal contratto stesso.
   sha_prev), lint verde.</li>
 </ul>
 
-<h3>16.4 W3.3 — E2E Windows (runbook, non script) — ✅ runbook + trigger pronti (3/7 sera), esecuzione sul PC reale APERTA</h3>
+<h3>16.4 W3.3 — E2E Windows (runbook, non script) — ✅ COMPLETO sul PC reale (3/7)</h3>
+<div class="ok-note"><strong>W3.3 CHIUSO (3/7/2026)</strong> sul PC Windows fisico
+di Roberto, client 0.2.6. Esito (tabella in fondo al runbook): passo 1 (join+install)
+✅, 2 (execute read-only, <code>compute_files_loc</code> in <code>sandbox:"job-object"</code>,
+payload §2.8 completo) ✅, 3 (timeout onesto + albero morto via Job Object, device
+non corrotto) ✅, 4 (doppio <code>run</code> → lock <code>client.lock</code>) ✅,
+5 SKIP (gap architetturale: nessun executor mutante bundlabile), 6 (revoca →
+heartbeat congelato, poll 403) ✅. Serata di ~6 reinstall 0.2.3→0.2.6, un fix per
+giro (la finestra onesta dell'installer ha stanato un bug alla volta). Aperti
+non-bloccanti chiusi in coda: heartbeat su task tokio separato (B5) e soppressione
+console client (B6) → client 0.2.7.</div>
 <div class="ok-note"><strong>Preparazione fatta 3/7 sera</strong> (prerequisito
 sbloccato: una sessione con accesso al PC Windows target + al browser Metnos
 è finalmente disponibile). File <code>internal/design/e2e-windows-runbook.md</code>
