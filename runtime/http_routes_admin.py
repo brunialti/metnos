@@ -1467,6 +1467,83 @@ async def admin_device_revoke(request: web.Request) -> web.Response:
     raise web.HTTPFound("/admin/devices")
 
 
+# --- /admin/devices/{id}/test-invoke (manual trigger, gemello di jobs/fire) --
+
+async def admin_device_test_invoke(request: web.Request) -> web.Response:
+    """POST /admin/devices/{id}/test-invoke — invoca manualmente un executor
+    su un device appaiato (W3.3, design doc §16.4: validazione E2E su
+    hardware reale senza il bypass diretto-al-DB dello script bash di test).
+
+    Body: {"executor": "<nome>", "args": {...}, "deadline_ms"?: int}.
+
+    Va attraverso la pipeline REALE (firma Ed25519, poll, sandbox client,
+    result firmato) — bypassa SOLO la decisione di placement (qui il device
+    e' scelto a mano dall'admin, non da choose_placement, che i due
+    executor oggi promossi per Windows non attraverserebbero comunque:
+    nessuno ha ancora [placement] scope="device" nel manifest).
+
+    Blocking: attende il result fino a deadline_ms (+ margine di rete) prima
+    di rispondere, cosi' un solo comando PowerShell/curl basta per il test
+    manuale — niente polling separato lato chiamante. Sincrono per contratto
+    (§12 modalita' di fallimento): se il device non risponde in tempo,
+    l'HTTP risponde comunque (202 pending), mai un timeout silenzioso.
+    """
+    device_id = request.match_info["id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return _error(400, "invalid_json", "request body must be JSON")
+    if not isinstance(body, dict):
+        return _error(400, "invalid_json", "request body must be a JSON object")
+    executor_name = body.get("executor")
+    if not isinstance(executor_name, str) or not executor_name:
+        return _error(400, "missing_field", "'executor' e' obbligatorio")
+    args = body.get("args") if isinstance(body.get("args"), dict) else {}
+    deadline_ms = body.get("deadline_ms")
+    if not isinstance(deadline_ms, int) or deadline_ms <= 0:
+        deadline_ms = 30_000
+
+    import devices as devices_mod
+    import invocations as invocations_mod
+    import loader as loader_mod
+    loop = asyncio.get_running_loop()
+
+    dev = await loop.run_in_executor(None, devices_mod.get_device, device_id)
+    if dev is None or dev.revoked_at is not None:
+        return _error(404, "unknown_device", "device inesistente o revocato")
+
+    # L'executor DEVE esistere firmato e verificato nel catalogo (stessa
+    # garanzia del bundle §8): mai eseguire codice non verificato solo
+    # perche' l'admin lo chiede a mano.
+    catalog = await loop.run_in_executor(None, loader_mod.load_catalog)
+    if catalog.get(executor_name) is None:
+        return _error(404, "unknown_executor",
+                      f"executor '{executor_name}' non nel catalogo (o non verificato)")
+
+    try:
+        inv_id = await loop.run_in_executor(
+            None, lambda: invocations_mod.enqueue_invocation(
+                device_id, executor_name, args, deadline_ms=deadline_ms))
+    except invocations_mod.InvocationError as e:
+        return _error(400, "enqueue_failed", str(e))
+
+    # Attesa sincrona del result (§7.2: riusa wait_result, non re-inventa il
+    # polling). Margine di rete oltre la deadline dell'invocazione stessa.
+    result = await loop.run_in_executor(
+        None, lambda: invocations_mod.wait_result(
+            inv_id, timeout_s=(deadline_ms / 1000.0) + 5.0))
+    if result is None:
+        info = await loop.run_in_executor(None, invocations_mod.get_invocation, inv_id)
+        return web.json_response(
+            {"invocation_id": inv_id,
+             "state": (info or {}).get("state", "queued"),
+             "note": "deadline superato in attesa del result; riprova o "
+                     "controlla il device (heartbeat, log client)"},
+            status=202)
+    return web.json_response({"invocation_id": inv_id, "state": "done",
+                              "result": result})
+
+
 ROUTES = (
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).
     ("GET",  "/admin/timers",                     admin_timers),
@@ -1511,4 +1588,5 @@ ROUTES = (
     ("POST", "/admin/devices/join",               admin_devices_join),
     ("GET",  r"/admin/devices/join/{join_id}/status", admin_devices_join_status),
     ("POST", r"/admin/devices/{id}/revoke",       admin_device_revoke),
+    ("POST", r"/admin/devices/{id}/test-invoke",  admin_device_test_invoke),
 )
