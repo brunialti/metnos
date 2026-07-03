@@ -357,7 +357,8 @@ async def shim_bundle(request: web.Request) -> web.Response:
 # --- join flow (§5.4-5.7 design doc: install-at-the-fly dalla UI) ----------
 #
 # La pagina join NON richiede auth admin: il segreto e' il join_id effimero,
-# che punta a un token DEV. one-shot (TTL 10'). La pagina marca 'opened',
+# che punta a un token DEV. one-shot (TTL 30', DEFAULT_JOIN_TTL_S). La pagina
+# marca 'opened',
 # rileva l'OS dal browser, scarica l'installer PERSONALIZZATO (server+token
 # baked) e segue lo stato fino a 'heartbeat'.
 
@@ -382,7 +383,7 @@ _JOIN_PAGE = """<!DOCTYPE html>
 </style></head><body>
 <h1>Installa Metnos Client su questo PC</h1>
 <p class="muted">Device: <code>__DEVICE_NAME__</code> · il link scade insieme al
-token (10 minuti dall'emissione).</p>
+token (30 minuti dall'emissione).</p>
 <div id="expired" class="err" style="display:none">Sessione scaduta: genera un
 nuovo link dalla console <code>/admin/devices</code>.</div>
 <div id="main">
@@ -408,7 +409,9 @@ nuovo link dalla console <code>/admin/devices</code>.</div>
   document.getElementById("os-label").textContent =
     platform === "windows" ? "Windows" : "Linux";
   document.getElementById("hint").textContent = platform === "windows"
-    ? "Dopo il download: tasto destro sul file → «Esegui con PowerShell»."
+    ? "Dopo il download: clicca sul file scaricato (barra dei download del " +
+      "browser). Se Windows mostra un avviso di sicurezza, scegli «Esegui». " +
+      "Si apre una finestra che mostra l'avanzamento e l'esito."
     : "Dopo il download: apri un terminale ed esegui  sh metnos-client-install.sh";
   var dlUrl = "/agent/client/join/" + joinId + "/installer?platform=" + platform;
   var dl = document.getElementById("dl");
@@ -517,10 +520,67 @@ def _sh_squote(s: str) -> str:
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def _ps_squote(s: str) -> str:
-    """Quoting robusto per literal single-quoted PowerShell: l'apice si
-    raddoppia. In un literal '...' PS non interpola: niente $()/backtick."""
-    return "'" + s.replace("'", "''") + "'"
+# --- installer Windows .cmd (§5.7, one-click) -------------------------------
+#
+# Un .ps1 scaricato NON si esegue col doppio click (Windows apre il selettore
+# app — attrito osservato live 3/7: cartella → tasto destro → menu legacy →
+# execution policy → finestra rossa che si chiude). Un .cmd invece SI esegue
+# con un click dalla barra download del browser. Il file servito e' un
+# poliglotta batch+PowerShell: testa batch ASCII (env baked + bootstrap),
+# marker, poi install.ps1 INTATTO come coda — un solo file, un solo click,
+# e la finestra resta APERTA con l'esito leggibile (pause), mai piu' un
+# errore che sparisce.
+
+_CMD_MARKER = "#::METNOS-PS1::#"
+
+# Charset fail-closed per i valori baked nella testa batch: URL http,
+# token DEV. (base64url + punti), versione semver, sha256 hex. `%`, `"`,
+# `^`, `!`, spazi romperebbero il parsing cmd.exe o aprirebbero injection:
+# meglio un 503 onesto che un installer malformato.
+_CMD_SAFE_RE = re.compile(r"^[A-Za-z0-9._:/\[\]\-]+$")
+
+
+def _cmd_env_line(name: str, value: str) -> str:
+    """Riga `set "NAME=value"` batch-safe; ValueError se il valore esce
+    dal charset chiuso (mai emettere un .cmd col parsing compromesso)."""
+    if not _CMD_SAFE_RE.match(value or ""):
+        raise ValueError(f"valore non batch-safe per {name}: {value!r}")
+    return f'set "{name}={value}"'
+
+
+def _windows_cmd_installer(env: dict, ps_body: str) -> bytes:
+    """Costruisce il .cmd poliglotta: testa batch (CRLF, solo ASCII) che
+    estrae ed esegue la coda PowerShell dopo il marker. Il marker nella
+    testa e' SPEZZATO ('#::METNOS'+'-PS1::#') cosi' IndexOf trova solo
+    quello vero; il path del file passa via env (METNOS_SELF), mai
+    interpolato nel comando: robusto a spazi/apostrofi nel percorso."""
+    m_head, m_tail = _CMD_MARKER[:9], _CMD_MARKER[9:]
+    boot = (
+        'powershell -NoProfile -ExecutionPolicy Bypass -Command '
+        f'"$m=\'{m_head}\'+\'{m_tail}\'; '
+        '$t=[IO.File]::ReadAllText($env:METNOS_SELF); '
+        '$i=$t.IndexOf($m); if ($i -lt 0) { exit 9 }; '
+        'Invoke-Expression $t.Substring($i+$m.Length)"'
+    )
+    head = [
+        "@echo off",
+        "setlocal",
+        "title Metnos Client Setup",
+        "rem Installer Metnos: doppio click per eseguire. La finestra resta",
+        "rem aperta a fine corsa con l'esito (mai un errore che sparisce).",
+        *(_cmd_env_line(k, v) for k, v in env.items()),
+        'set "METNOS_SELF=%~f0"',
+        boot,
+        'set "EC=%ERRORLEVEL%"',
+        "echo.",
+        'if "%EC%"=="0" (echo [OK] Installazione completata. Puoi chiudere '
+        "questa finestra.) else (echo [ERRORE] Installazione NON riuscita: "
+        "leggi il messaggio qui sopra.)",
+        "pause",
+        "exit /b %EC%",
+        _CMD_MARKER,
+    ]
+    return ("\r\n".join(head) + "\r\n" + ps_body).encode("utf-8")
 
 
 async def client_join_installer(request: web.Request) -> web.Response:
@@ -565,8 +625,12 @@ async def client_join_installer(request: web.Request) -> web.Response:
             m = json.loads(
                 (agent_mirror.MIRROR_CLIENT_DIR / "manifest.json").read_text())
             entry = m["versions"][m["latest"]]["x86_64-pc-windows-gnu"]
-            pin = (f"$env:METNOS_CLIENT_VERSION = {_ps_squote(m['latest'])}\n"
-                   f"$env:METNOS_CLIENT_SHA256 = {_ps_squote(entry['sha256'])}\n")
+            env = {
+                "METNOS_SERVER": server_url,
+                "METNOS_TOKEN": token,
+                "METNOS_CLIENT_VERSION": m["latest"],
+                "METNOS_CLIENT_SHA256": entry["sha256"],
+            }
         except Exception as e:
             log.error("pin versione/sha256 non generabile per l'installer "
                       "windows (manifest mirror illeggibile): %s", e)
@@ -574,27 +638,36 @@ async def client_join_installer(request: web.Request) -> web.Response:
                           "impossibile generare l'installer Windows con pin "
                           "sha256 (manifest mirror illeggibile); rigenera con "
                           "scripts/build-client.sh e riprova")
-        prelude = (f"$env:METNOS_SERVER = {_ps_squote(server_url)}\n"
-                   f"$env:METNOS_TOKEN = {_ps_squote(token)}\n" + pin)
-        text = prelude + body
-        fname = "MetnosClientSetup.ps1"
-        ctype = "text/plain; charset=utf-8"
-    else:
-        prelude = (f"METNOS_SERVER={_sh_squote(server_url)}; export METNOS_SERVER\n"
-                   f"METNOS_TOKEN={_sh_squote(token)}; export METNOS_TOKEN\n")
-        lines = body.split("\n", 1)
-        text = (lines[0] + "\n" + prelude + (lines[1] if len(lines) > 1 else "")
-                ) if lines[0].startswith("#!") else prelude + body
-        fname = "metnos-client-install.sh"
-        ctype = "text/x-shellscript; charset=utf-8"
-
+        # .cmd poliglotta: eseguibile con un click dal browser, install.ps1
+        # intatto in coda (stesso corpo del one-liner manuale, §5.7).
+        try:
+            raw = _windows_cmd_installer(env, body)
+        except ValueError as e:
+            log.error("installer windows non generabile: %s", e)
+            return _error(503, "unsafe_value", str(e))
+        await loop.run_in_executor(
+            None, lambda: devices.mark_join_state(join_id, "downloaded"))
+        return web.Response(
+            body=raw,
+            headers={
+                "Content-Type": "application/octet-stream",
+                "Content-Disposition":
+                    'attachment; filename="MetnosClientSetup.cmd"',
+                "Cache-Control": "no-store",
+            })
+    prelude = (f"METNOS_SERVER={_sh_squote(server_url)}; export METNOS_SERVER\n"
+               f"METNOS_TOKEN={_sh_squote(token)}; export METNOS_TOKEN\n")
+    lines = body.split("\n", 1)
+    text = (lines[0] + "\n" + prelude + (lines[1] if len(lines) > 1 else "")
+            ) if lines[0].startswith("#!") else prelude + body
     await loop.run_in_executor(
         None, lambda: devices.mark_join_state(join_id, "downloaded"))
     return web.Response(
         body=text.encode("utf-8"),
         headers={
-            "Content-Type": ctype,
-            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Content-Type": "text/x-shellscript; charset=utf-8",
+            "Content-Disposition":
+                'attachment; filename="metnos-client-install.sh"',
             "Cache-Control": "no-store",
         })
 

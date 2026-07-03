@@ -39,6 +39,10 @@ log = get_logger(__name__)
 
 DEFAULT_DB_PATH = _C.PATH_USER_STATE / "devices.db"
 DEFAULT_TOKEN_TTL_S = 600
+# Il flusso join include un umano che scarica ed esegue con l'attrito
+# Windows in mezzo (avvisi, SmartScreen, ripensamenti): 10' bruciati dal
+# vivo il 3/7 (token scaduto prima del register). 30' resta effimero.
+DEFAULT_JOIN_TTL_S = 1800
 TOKEN_PREFIX = "DEV."
 PROTOCOL_VERSION = 1
 
@@ -316,7 +320,7 @@ _JOIN_ORDER = {s: i for i, s in enumerate(JOIN_STATES)}
 def create_join_session(name: str, *, platform: str = "auto",
                         server_url: str | None = None,
                         owner_user_id: str = "host",
-                        ttl_seconds: int = DEFAULT_TOKEN_TTL_S,
+                        ttl_seconds: int = DEFAULT_JOIN_TTL_S,
                         db_path: Path | None = None) -> dict:
     """Genera token effimero + join session osservabile. Ritorna il record."""
     if platform not in ("auto", "linux", "windows"):

@@ -137,7 +137,8 @@ costruiti in questa sessione:</p>
   <code>created→opened→downloaded→registered→heartbeat</code>, expiry dal TTL token);
   pagina join no-auth <code>/agent/client/join/&lt;join_id&gt;</code> (rileva OS, auto-download,
   polling stato); installer <em>personalizzato</em> (server+token baked nel file scaricato,
-  <code>metnos-client-install.sh</code> / <code>MetnosClientSetup.ps1</code>);
+  <code>metnos-client-install.sh</code> / <code>MetnosClientSetup.cmd</code> — poliglotta
+  one-click dal 3/7 sera, §5.7; TTL join 30&#8242;);
   <code>/admin/devices/current-client</code> (§5.2, browser-sul-server niente install) +
   <code>POST /admin/devices/join</code> + avanzamento live nella UI <code>/admin/devices</code>.
   Mirror rigenerato a <code>0.2.0</code> (musl+windows firmati). 12 unit
@@ -487,8 +488,18 @@ pinnata. Forma compatibile: one-liner POSIX.</p>
 </ol>
 
 <h3 id="57-installer-windows">5.7 Installer Windows</h3>
-<p>Forma preferita: <code>MetnosClientSetup.exe</code> firmato server-side o, in MVP,
-<code>MetnosClientSetup.ps1</code> personalizzato. Il browser scarica il file; l'utente
+<p>Forma preferita: <code>MetnosClientSetup.exe</code> firmato server-side (W6). In MVP:
+<code>MetnosClientSetup.cmd</code> personalizzato — un poliglotta batch+PowerShell
+(testa batch ASCII con env baked + bootstrap che estrae ed esegue la coda
+<code>install.ps1</code> INTATTA dopo un marker). Il <code>.cmd</code> e non il <code>.ps1</code> nudo perché
+un <code>.ps1</code> scaricato NON si esegue col doppio click (Windows apre il selettore
+app — attrito osservato live 3/7: cartella → tasto destro → menu legacy →
+execution policy → errore che sparisce con la finestra). Il <code>.cmd</code> si esegue
+con un click dalla barra download, fa da solo <code>-ExecutionPolicy Bypass</code>, e
+tiene la finestra APERTA a fine corsa con l'esito leggibile (<code>pause</code>), mai un
+fallimento silenzioso (§2.8). I 4 valori baked (<code>server_url</code>, token, versione,
+sha256) passano per un charset fail-closed batch-safe (niente <code>%</code>/<code>"</code>/spazi:
+503 onesto se mai fuori set). Il browser scarica il file; l'utente
 lo apre. L'installer:</p>
 <ol>
 <li>scarica <code>metnos-client.exe</code> per <code>x86_64-pc-windows-gnu</code>;</li>
@@ -1019,7 +1030,7 @@ diventa <em>sicuro perché rifiuta</em>, non «non operativo» de facto.</p>
 
 <h3>15.4 W3.3 — E2E Windows reale (~2-3 giorni, serve il PC bersaglio)</h3>
 <p>Variante Windows di <code>e2e-remote-executor.sh</code> guidata da <code>.33</code>:
-install dal flusso join §5 (UI → link → <code>MetnosClientSetup.ps1</code>) →
+install dal flusso join §5 (UI → link → <code>MetnosClientSetup.cmd</code>) →
 <code>find_files</code> read-only su una dir di prova → mutante CONTROLLATO
 (<code>write_files</code> in dir consentita) con verifica reverse_pattern → doppio
 <code>run</code> manuale respinto dal lock → heartbeat/revoca dalla UI. Gate di

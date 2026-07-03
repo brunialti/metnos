@@ -184,18 +184,36 @@ class JoinHttpTests(AioHTTPTestCase):
         self.assertEqual(
             self.devices.get_join_session(s["join_id"])["state"], "downloaded")
 
-    async def test_installer_windows_prelude_and_pin(self):
-        s = self._new_session("pc-ps1")
+    async def test_installer_windows_cmd_polyglot(self):
+        # §5.7 (rev 3/7): l'artefatto Windows e' un .cmd eseguibile con un
+        # click dal browser — testa batch (env baked + bootstrap) + marker +
+        # install.ps1 INTATTO in coda. Il .ps1 nudo non si esegue col doppio
+        # click (selettore app, attrito osservato live).
+        import agent_server as A
+        s = self._new_session("pc-cmd")
         resp = await self.client.get(
             f"/agent/client/join/{s['join_id']}/installer?platform=windows")
         self.assertEqual(resp.status, 200)
         body = await resp.text()
-        self.assertTrue(body.startswith("$env:METNOS_SERVER"))
-        self.assertIn(s["token"], body)
+        self.assertTrue(body.startswith("@echo off"))
+        # Env baked in testa batch (il .ps1 in coda li legge da $env:).
+        self.assertIn(f'set "METNOS_TOKEN={s["token"]}"', body)
+        self.assertIn('set "METNOS_SERVER=http://', body)
         # Pin version+sha256 baked (§5.7): il manifest scaricato non fa fede.
-        self.assertIn("$env:METNOS_CLIENT_VERSION = '9.9.9'", body)
-        self.assertIn("$env:METNOS_CLIENT_SHA256 = '" + "cafe" * 16 + "'", body)
-        self.assertIn("MetnosClientSetup.ps1",
+        self.assertIn('set "METNOS_CLIENT_VERSION=9.9.9"', body)
+        self.assertIn('set "METNOS_CLIENT_SHA256=' + "cafe" * 16 + '"', body)
+        # Il marker compare UNA volta sola (nel bootstrap e' spezzato,
+        # altrimenti IndexOf troverebbe quello del comando, non il vero).
+        self.assertEqual(body.count(A._CMD_MARKER), 1)
+        head, _, tail = body.partition(A._CMD_MARKER)
+        self.assertIn("Invoke-Expression", head)
+        self.assertIn("-ExecutionPolicy Bypass", head)
+        self.assertIn("pause", head)  # la finestra non sparisce mai
+        # La coda e' install.ps1 INTATTO (stesso corpo del one-liner).
+        self.assertIn("$env:METNOS_SERVER", tail)
+        # Testa batch: solo ASCII (cmd.exe legge ANSI/OEM, mai UTF-8).
+        head.encode("ascii")
+        self.assertIn("MetnosClientSetup.cmd",
                       resp.headers.get("Content-Disposition", ""))
 
     async def test_join_page_escapes_device_name(self):
@@ -274,7 +292,7 @@ class JoinHttpTests(AioHTTPTestCase):
 
 
 class InstallerQuotingTests(unittest.TestCase):
-    """Quoting robusto del prelude (server_url dall'header Host)."""
+    """Quoting/charset robusti dei valori baked (server_url dall'header Host)."""
 
     def test_sh_squote_neutralizes_quote(self):
         import agent_server as A
@@ -282,10 +300,21 @@ class InstallerQuotingTests(unittest.TestCase):
         # un apice non chiude la stringa: resta UN solo token shell
         self.assertEqual(A._sh_squote("a'b"), "'a'\\''b'")
 
-    def test_ps_squote_doubles_quote(self):
+    def test_cmd_env_line_accepts_real_values(self):
         import agent_server as A
-        self.assertEqual(A._ps_squote("plain"), "'plain'")
-        self.assertEqual(A._ps_squote("a'b"), "'a''b'")
+        self.assertEqual(
+            A._cmd_env_line("METNOS_SERVER", "http://192.168.1.33:8765"),
+            'set "METNOS_SERVER=http://192.168.1.33:8765"')
+        A._cmd_env_line("METNOS_TOKEN", "DEV.eyJhbGc.sig-b64_url")
+        A._cmd_env_line("METNOS_CLIENT_SHA256", "cafe" * 16)
+
+    def test_cmd_env_line_rejects_batch_specials(self):
+        # Fail-closed: %/"/spazi/^/! romperebbero cmd.exe o aprirebbero
+        # injection nella testa batch — mai emetterli, 503 a monte.
+        import agent_server as A
+        for evil in ('a"b', "a%b", "a b", "a^b", "a!b", "a&b", ""):
+            with self.assertRaises(ValueError, msg=repr(evil)):
+                A._cmd_env_line("X", evil)
 
 
 if __name__ == "__main__":

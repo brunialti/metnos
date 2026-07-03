@@ -7,7 +7,10 @@
 Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 
 <section class="panel" id="join-panel">
-  <h2>Installa client su un PC</h2>
+  <h2>Installa client su un PC (consigliato)</h2>
+  <p class="muted">Genera un link, aprilo dal PC da installare: la pagina
+  scarica l'installer giusto per l'OS e segue l'avanzamento fino a
+  «client attivo». Un click sul file scaricato completa tutto.</p>
   <div id="join-server-note" style="display:none">
     <p class="muted">Questa UI è aperta <strong>sul server Metnos</strong>: non
     c'è nessun client da installare qui.</p>
@@ -21,7 +24,7 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
     <button type="submit" class="btn" id="join-btn">Genera link di installazione</button>
   </form>
   <div id="join-box" style="display:none">
-    <p>Apri questo link <strong>dal PC da installare</strong> (scade in 10 minuti):</p>
+    <p>Apri questo link <strong>dal PC da installare</strong> (scade in 30 minuti):</p>
     <pre><code id="join-url"></code></pre>
     <ol id="join-steps" style="list-style:none;padding-left:0">
       <li data-s="created">○ link generato</li>
@@ -99,14 +102,21 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 </section>
 
 <section class="panel">
-  <h2>Aggiungi dispositivo (manuale, one-liner)</h2>
-  <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
-    <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
-      <input type="text" name="name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
-    </label>
-    <button type="submit" class="btn">Genera token (10 min)</button>
-  </form>
-  <div id="token-box"></div>
+  <details>
+    <summary style="cursor:pointer"><strong>Alternativa per esperti:</strong>
+    aggiunta manuale via terminale (one-liner)</summary>
+    <p class="muted" style="margin-top:10px">Da usare solo quando
+    l'installazione automatica qui sopra non è possibile: PC target senza
+    browser, server headless, ambienti dove il download non è consentito.
+    Richiede di incollare un comando in un terminale del PC target.</p>
+    <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
+      <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
+        <input type="text" name="name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
+      </label>
+      <button type="submit" class="btn">Genera token (10 min)</button>
+    </form>
+    <div id="token-box"></div>
+  </details>
 </section>
 
 <div class="table-wrap">

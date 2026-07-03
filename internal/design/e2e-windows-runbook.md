@@ -45,22 +45,19 @@
    link di installazione"**. Poiché il browser NON gira sul server, il
    pulsante è già quello giusto (nessun `for_other_pc` da forzare).
 3. Apri il link generato (stessa scheda o una nuova) — la pagina rileva
-   Windows, avvia il download dell'installer dopo ~1,2s.
-4. Esegui il file scaricato (`MetnosClientSetup.ps1`). **NON doppio
-   click**: Windows non esegue mai un `.ps1` col doppio click, apre il
-   selettore "Con quale app vuoi aprire questo file?" (osservato live
-   3/7). Due strade:
-   - da PowerShell (la più affidabile, funziona su ogni versione):
-     ```powershell
-     powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\MetnosClientSetup.ps1"
-     ```
-     (`-ExecutionPolicy Bypass` previene anche il blocco "l'esecuzione
-     di script è disabilitata nel sistema", default sui client Windows);
-   - col mouse: tasto destro → **Esegui con PowerShell** (su Windows 11
-     spesso nascosto sotto "Mostra altre opzioni", il menu legacy).
-
-   Se compare l'avviso SmartScreen, annota il testo esatto (passo 7) e
-   procedi con "Ulteriori informazioni → Esegui comunque".
+   Windows, avvia il download dell'installer dopo ~1,2s. Il link/token
+   dura **30 minuti** (era 10: bruciati dal vivo il 3/7 dall'attrito dei
+   passi seguenti).
+4. **Clicca sul file scaricato** (`MetnosClientSetup.cmd`) nella barra dei
+   download del browser — un `.cmd` si esegue col click, a differenza del
+   `.ps1` che apriva il selettore app (attrito osservato live 3/7, da cui
+   il cambio di artefatto). Se Windows/il browser mostra un avviso di
+   sicurezza ("file scaricato da Internet", SmartScreen, "Conserva
+   comunque"), annota il testo esatto (passo 7) e conferma l'esecuzione.
+   Si apre una finestra console con l'avanzamento; **resta aperta a fine
+   corsa** (successo o errore) finché non premi un tasto — se qualcosa
+   fallisce, l'errore è leggibile, mai più una finestra rossa che
+   sparisce.
 5. Segui l'avanzamento nella pagina join (o su `/admin/devices`): deve
    arrivare a **heartbeat**.
 
