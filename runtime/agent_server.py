@@ -539,10 +539,26 @@ def _sh_squote(s: str) -> str:
 _CMD_MARKER = "#::METNOS-PS1::#"
 
 # Charset fail-closed per i valori baked nella testa batch: URL http,
-# token DEV. (base64url + punti), versione semver, sha256 hex. `%`, `"`,
-# `^`, `!`, spazi romperebbero il parsing cmd.exe o aprirebbero injection:
+# token DEV. (base64url + punti), versione semver, sha256 hex, nome
+# tarball python-build-standalone (contiene `+`). `%`, `"`, `^`, `!`,
+# spazi romperebbero il parsing cmd.exe o aprirebbero injection:
 # meglio un 503 onesto che un installer malformato.
-_CMD_SAFE_RE = re.compile(r"^[A-Za-z0-9._:/\[\]\-]+$")
+_CMD_SAFE_RE = re.compile(r"^[A-Za-z0-9._:/+\[\]\-]+$")
+
+
+def _windows_python_runtime_pin() -> str | None:
+    """Nome del tarball python-build-standalone Windows piu' recente nel
+    mirror (`MIRROR_RUNTIME_DIR`), o None se non ospitato. Il pin viene
+    baked nell'installer: il client lo scarica lazy da /agent/runtime/
+    alla prima invocazione (pyenv.rs, W3.1) — senza pin gli executor
+    falliscono onesti con «nessun interprete Python»."""
+    try:
+        names = sorted(
+            p.name for p in agent_mirror.MIRROR_RUNTIME_DIR.glob(
+                "cpython-*-x86_64-pc-windows-msvc-install_only.tar.gz"))
+    except OSError:
+        return None
+    return names[-1] if names else None
 
 
 def _cmd_env_line(name: str, value: str) -> str:
@@ -636,6 +652,9 @@ async def client_join_installer(request: web.Request) -> web.Response:
                 "METNOS_CLIENT_VERSION": m["latest"],
                 "METNOS_CLIENT_SHA256": entry["sha256"],
             }
+            runtime_pin = _windows_python_runtime_pin()
+            if runtime_pin:
+                env["METNOS_PYTHON_RUNTIME_WIN"] = runtime_pin
         except Exception as e:
             log.error("pin versione/sha256 non generabile per l'installer "
                       "windows (manifest mirror illeggibile): %s", e)

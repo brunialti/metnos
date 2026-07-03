@@ -77,6 +77,17 @@ Write-Host "==> installato in $dest"
 & $dest register --server $server --token $env:METNOS_TOKEN
 if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)' }
 
+# Pin del runtime Python per gli executor (baked dal server se il mirror
+# lo ospita): persistito nell'ambiente UTENTE cosi' il processo della task
+# lo eredita — il client lo scarica lazy da /agent/runtime/ alla prima
+# invocazione. Senza pin gli executor falliscono onesti («nessun
+# interprete Python», visto live 3/7).
+if ($env:METNOS_PYTHON_RUNTIME_WIN) {
+  [Environment]::SetEnvironmentVariable(
+    'METNOS_PYTHON_RUNTIME_WIN', $env:METNOS_PYTHON_RUNTIME_WIN, 'User')
+  Write-Host "==> runtime Python pinnato: $env:METNOS_PYTHON_RUNTIME_WIN (download alla prima esecuzione)"
+}
+
 # Scheduled Task «At logon» (nessun privilegio admin, account utente corrente).
 $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server"
 # -User OBBLIGATORIO: -AtLogOn da solo = trigger «al logon di QUALSIASI

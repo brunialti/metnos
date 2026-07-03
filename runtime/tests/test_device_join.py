@@ -182,6 +182,11 @@ class JoinHttpTests(AioHTTPTestCase):
         importlib.reload(agent_server)
         self.devices = devices
         agent_mirror.MIRROR_CLIENT_DIR = self._mirror
+        # Isola ANCHE la runtime dir: quella reale puo' ospitare il tarball
+        # python-build-standalone e il pin verrebbe baked nei test.
+        rt_empty = Path(self._tmp.name) / "runtime-empty"
+        rt_empty.mkdir(exist_ok=True)
+        agent_mirror.MIRROR_RUNTIME_DIR = rt_empty
         return agent_server.make_app()
 
     def _new_session(self, name="pc-http", **kw):
@@ -245,6 +250,29 @@ class JoinHttpTests(AioHTTPTestCase):
         head.encode("ascii")
         self.assertIn("MetnosClientSetup.cmd",
                       resp.headers.get("Content-Disposition", ""))
+        # Mirror di test SENZA runtime dir: nessun pin runtime baked.
+        self.assertNotIn("METNOS_PYTHON_RUNTIME_WIN", body)
+
+    async def test_installer_windows_bakes_python_runtime_pin(self):
+        # Col tarball python-build-standalone nel mirror runtime, il .cmd
+        # baka il pin: il client lo scarica lazy alla prima invocazione
+        # (fix live 3/7: «nessun interprete Python» sul device reale).
+        import agent_mirror
+        tarball = "cpython-3.12.13+20260623-x86_64-pc-windows-msvc-install_only.tar.gz"
+        rt = Path(self._tmp.name) / "runtime"
+        rt.mkdir(exist_ok=True)
+        (rt / tarball).write_bytes(b"fake")
+        orig = agent_mirror.MIRROR_RUNTIME_DIR
+        agent_mirror.MIRROR_RUNTIME_DIR = rt
+        try:
+            s = self._new_session("pc-pyrt")
+            resp = await self.client.get(
+                f"/agent/client/join/{s['join_id']}/installer?platform=windows")
+            self.assertEqual(resp.status, 200)
+            body = await resp.text()
+            self.assertIn(f'set "METNOS_PYTHON_RUNTIME_WIN={tarball}"', body)
+        finally:
+            agent_mirror.MIRROR_RUNTIME_DIR = orig
 
     async def test_join_page_escapes_device_name(self):
         # Difesa in profondita': nome malevolo NON puo' piu' nascere da
@@ -337,6 +365,11 @@ class InstallerQuotingTests(unittest.TestCase):
             'set "METNOS_SERVER=http://192.168.1.33:8765"')
         A._cmd_env_line("METNOS_TOKEN", "DEV.eyJhbGc.sig-b64_url")
         A._cmd_env_line("METNOS_CLIENT_SHA256", "cafe" * 16)
+        # Il nome tarball python-build-standalone contiene `+` (inerte in
+        # batch): deve passare il charset fail-closed.
+        A._cmd_env_line(
+            "METNOS_PYTHON_RUNTIME_WIN",
+            "cpython-3.12.13+20260623-x86_64-pc-windows-msvc-install_only.tar.gz")
 
     def test_cmd_env_line_rejects_batch_specials(self):
         # Fail-closed: %/"/spazi/^/! romperebbero cmd.exe o aprirebbero
