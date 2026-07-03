@@ -258,10 +258,12 @@ class JoinHttpTests(AioHTTPTestCase):
         # baka il pin: il client lo scarica lazy alla prima invocazione
         # (fix live 3/7: «nessun interprete Python» sul device reale).
         import agent_mirror
+        import hashlib
         tarball = "cpython-3.12.13+20260623-x86_64-pc-windows-msvc-install_only.tar.gz"
         rt = Path(self._tmp.name) / "runtime"
         rt.mkdir(exist_ok=True)
         (rt / tarball).write_bytes(b"fake")
+        want_sha = hashlib.sha256(b"fake").hexdigest()
         orig = agent_mirror.MIRROR_RUNTIME_DIR
         agent_mirror.MIRROR_RUNTIME_DIR = rt
         try:
@@ -271,6 +273,11 @@ class JoinHttpTests(AioHTTPTestCase):
             self.assertEqual(resp.status, 200)
             body = await resp.text()
             self.assertIn(f'set "METNOS_PYTHON_RUNTIME_WIN={tarball}"', body)
+            # sha256 baked accanto al pin (verifica end-to-end lato client) +
+            # sidecar .sha256 memoizzato per non ri-hashare 46 MB ogni volta.
+            self.assertIn(
+                f'set "METNOS_PYTHON_RUNTIME_WIN_SHA256={want_sha}"', body)
+            self.assertTrue((rt / (tarball + ".sha256")).is_file())
         finally:
             agent_mirror.MIRROR_RUNTIME_DIR = orig
 

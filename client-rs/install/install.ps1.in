@@ -93,7 +93,11 @@ if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)'
 if ($env:METNOS_PYTHON_RUNTIME_WIN) {
   [Environment]::SetEnvironmentVariable(
     'METNOS_PYTHON_RUNTIME_WIN', $env:METNOS_PYTHON_RUNTIME_WIN, 'User')
-  Write-Host "==> runtime Python pinnato: $env:METNOS_PYTHON_RUNTIME_WIN (download alla prima esecuzione)"
+  if ($env:METNOS_PYTHON_RUNTIME_WIN_SHA256) {
+    [Environment]::SetEnvironmentVariable(
+      'METNOS_PYTHON_RUNTIME_WIN_SHA256', $env:METNOS_PYTHON_RUNTIME_WIN_SHA256, 'User')
+  }
+  Write-Host "==> runtime Python pinnato: $env:METNOS_PYTHON_RUNTIME_WIN (download robusto alla prima esecuzione)"
 }
 
 # Scheduled Task «At logon» (nessun privilegio admin, account utente corrente).

@@ -546,19 +546,44 @@ _CMD_MARKER = "#::METNOS-PS1::#"
 _CMD_SAFE_RE = re.compile(r"^[A-Za-z0-9._:/+\[\]\-]+$")
 
 
-def _windows_python_runtime_pin() -> str | None:
-    """Nome del tarball python-build-standalone Windows piu' recente nel
-    mirror (`MIRROR_RUNTIME_DIR`), o None se non ospitato. Il pin viene
-    baked nell'installer: il client lo scarica lazy da /agent/runtime/
-    alla prima invocazione (pyenv.rs, W3.1) — senza pin gli executor
-    falliscono onesti con «nessun interprete Python»."""
+def _windows_python_runtime_pin() -> tuple[str, str | None] | None:
+    """(nome_tarball, sha256|None) del python-build-standalone Windows piu'
+    recente nel mirror (`MIRROR_RUNTIME_DIR`), o None se non ospitato. Il pin
+    viene baked nell'installer: il client lo scarica robusto (chunk Range +
+    consenso) da /agent/runtime/ alla prima invocazione (pyenv.rs) — senza
+    pin gli executor falliscono onesti con «nessun interprete Python». Lo
+    sha256 abilita la verifica end-to-end lato client; letto da un sidecar
+    `<tarball>.sha256` se presente (evita di ri-hashare 46 MB a ogni
+    installer), altrimenti calcolato e memoizzato su quel sidecar."""
     try:
         names = sorted(
             p.name for p in agent_mirror.MIRROR_RUNTIME_DIR.glob(
                 "cpython-*-x86_64-pc-windows-msvc-install_only.tar.gz"))
     except OSError:
         return None
-    return names[-1] if names else None
+    if not names:
+        return None
+    tarball = names[-1]
+    path = agent_mirror.MIRROR_RUNTIME_DIR / tarball
+    side = path.with_suffix(path.suffix + ".sha256")
+    sha: str | None = None
+    try:
+        if side.is_file():
+            sha = side.read_text().split()[0].strip().lower() or None
+        else:
+            import hashlib
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for block in iter(lambda: f.read(1024 * 1024), b""):
+                    h.update(block)
+            sha = h.hexdigest()
+            try:
+                side.write_text(sha + "\n")
+            except OSError:
+                pass  # memoizzazione best-effort
+    except OSError:
+        sha = None
+    return tarball, sha
 
 
 def _cmd_env_line(name: str, value: str) -> str:
@@ -654,7 +679,10 @@ async def client_join_installer(request: web.Request) -> web.Response:
             }
             runtime_pin = _windows_python_runtime_pin()
             if runtime_pin:
-                env["METNOS_PYTHON_RUNTIME_WIN"] = runtime_pin
+                tarball_name, runtime_sha = runtime_pin
+                env["METNOS_PYTHON_RUNTIME_WIN"] = tarball_name
+                if runtime_sha:
+                    env["METNOS_PYTHON_RUNTIME_WIN_SHA256"] = runtime_sha
         except Exception as e:
             log.error("pin versione/sha256 non generabile per l'installer "
                       "windows (manifest mirror illeggibile): %s", e)
