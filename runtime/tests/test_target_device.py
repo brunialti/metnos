@@ -83,10 +83,28 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.target, "id-ufficio")
         self.assertFalse(r.explicit)   # riuso, non nuovo esplicito
 
-    def test_sticky_offline_is_unreachable(self):
+    def test_sticky_offline_decays_to_server(self):
+        # #1 assessor: appiccicoso offline (implicito) → server, NON errore
+        # («che ore sono» non deve fallire solo perché l'ultimo PC è spento).
         self.pc.online = False
         r = R("comprimila in zip", [self.pc], last="id-ufficio")
+        self.assertEqual(r.target, td.SERVER)
+        self.assertEqual(r.status, "ok")
+        self.assertFalse(r.explicit)
+
+    def test_explicit_offline_still_unreachable(self):
+        # un riferimento ESPLICITO a un PC offline resta «non connesso» (§2.8).
+        self.pc.online = False
+        r = R("elenca documenti sul portatile-ufficio", [self.pc])
         self.assertEqual(r.status, "unreachable")
+
+    def test_duplicate_names_ambiguous(self):
+        # #5 assessor: due device con lo STESSO nome → ambiguo, non arbitrario.
+        a = FakeDev("id-a", "fisso-casa")
+        b = FakeDev("id-b", "fisso-casa")
+        r = R("elenca la cartella sul fisso-casa", [a, b])
+        self.assertEqual(r.status, "ambiguous")
+        self.assertEqual(len(r.candidates), 2)
 
     def test_sticky_device_gone_decays_to_server(self):
         r = R("comprimila in zip", [self.pc], last="id-sparito")

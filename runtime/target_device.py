@@ -80,20 +80,32 @@ def _find_marker(qn: str, markers) -> str | None:
 
 
 def _find_named_device(qn: str, devices):
-    """Ritorna (device, matched_span_text) se un nome-device compare ANCORATO
-    da una preposizione locativa. Preferisce il match più lungo (nome più
-    specifico) per disambiguare nomi che sono prefisso l'uno dell'altro."""
-    best = None
-    best_len = 0
+    """Trova un device nominato ANCORATO da una preposizione locativa. Ritorna:
+      - `(device, span, None)`          match UNICO (nome più lungo vince, per
+                                        disambiguare nomi prefisso l'uno dell'altro);
+      - `(None, span, [(id,name),…])`   nomi DUPLICATI (stesso nome più lungo su
+                                        device DIVERSI) → ambiguo, non arbitrario
+                                        (§5: unicità per owner o errore ambiguous);
+      - `None`                          nessun match.
+    """
+    matches = []  # (device, span, name)
     for d in devices:
         name = _norm(getattr(d, "name", "") or "")
         if len(name) < 3:
             continue  # nomi troppo corti = rischio falso positivo, salta
         pat = r"(?<![a-z0-9])" + _PREP + r"\s+[\"']?" + re.escape(name) + r"(?![a-z0-9])"
         m = re.search(pat, qn)
-        if m and len(name) > best_len:
-            best, best_len = (d, m.group(0)), len(name)
-    return best  # (device, span) | None
+        if m:
+            matches.append((d, m.group(0), name))
+    if not matches:
+        return None
+    maxlen = max(len(n) for _d, _s, n in matches)
+    best = [(d, s, n) for d, s, n in matches if len(n) == maxlen]
+    if len({d.id for d, _s, _n in best}) > 1:
+        return (None, best[0][1],
+                [(d.id, getattr(d, "name", "")) for d, _s, _n in best])
+    d, s, _n = best[0]
+    return (d, s, None)
 
 
 def resolve_target(query: str,
@@ -129,9 +141,13 @@ def resolve_target(query: str,
     # --- NOME device esplicito (ancorato) ---
     named = _find_named_device(qn, devices)
     if named:
-        dev, span = named
+        dev, span, dup = named
         res.explicit = True
         res.cleaned_query = _strip_span(query, span)
+        if dup is not None:               # nomi duplicati → ambiguo (§5)
+            res.status = "ambiguous"
+            res.candidates = dup
+            return res
         if not is_available(dev, now):
             res.status = "unreachable"
             res.unreachable_name = getattr(dev, "name", None)
@@ -170,9 +186,11 @@ def resolve_target(query: str,
                 res.device_name = getattr(dev, "name", None)
                 res.explicit = False
                 return res
-            # appiccicosa ma offline: onesto, mai fallback silenzioso (§2.8)
-            res.status = "unreachable"
-            res.unreachable_name = getattr(dev, "name", None)
+            # appiccicosa ma OFFLINE: l'utente NON ha nominato il device questo
+            # turno → decadi al SERVER, NON errore (§1: «che ore sono» non deve
+            # fallire solo perché l'ultimo PC usato è spento). Un riferimento
+            # ESPLICITO a un PC offline dà invece «non connesso» (sopra).
+            res.target = SERVER
             return res
         # il device appiccicoso non esiste più → decadi al server
     res.target = SERVER

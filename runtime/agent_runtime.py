@@ -5956,12 +5956,19 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # PC citato → None + query invariata → comportamento IDENTICO a prima.
     _placement_target = None
     _query_for_planning = user_query_for_run
+    _explicit_device_ref = False
     try:
         import devices as _dev_mod
         import target_device as _td_mod
         import chat_target_store as _cts_mod
-        _dl = list(_dev_mod.list_devices())
+        # #2 owner-filter: solo i device dell'ATTORE (isolamento multi-utente —
+        # un utente non può nominare il PC di un altro). Mono-utente: owner='host'
+        # e actor='host' → nessun cambiamento.
+        _who = actor or "host"
+        _dl = [d for d in _dev_mod.list_devices()
+               if (getattr(d, "owner_user_id", "host") or "host") == _who]
         if _dl:
+            _explicit_device_ref = _td_mod.references_device(user_query_for_run, _dl)
             _sid = f"{channel}:{actor}" if channel else (actor or "host")
             _tr = _td_mod.resolve_target(
                 user_query_for_run, _dl, last_target=_cts_mod.get_last_target(_sid))
@@ -5983,7 +5990,15 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _query_for_planning = _tr.cleaned_query or user_query_for_run
             if _tr.explicit:  # destinazione appiccicosa: solo su riferimento esplicito
                 _cts_mod.set_last_target(_sid, _tr.target, _tr.device_name)
-    except Exception:  # noqa: BLE001 — best-effort, mai bloccare il turno
+    except Exception as _pe:  # noqa: BLE001 — best-effort, mai bloccare il turno
+        _LOG.warning("placement resolve fallito: %r", _pe)
+        # #3: se l'utente ha nominato ESPLICITAMENTE un PC ma la risoluzione è
+        # fallita, esito ONESTO — MAI una pianificazione locale silenziosa (§2.8).
+        if _explicit_device_ref:
+            from messages import get as _pm
+            log.final_kind = "error"
+            log.final_message = _pm("ERR_DEVICE_UNREACHABLE", name="?")
+            log.ts_end = time.time(); log.write(); return log
         _placement_target = None
         _query_for_planning = user_query_for_run
 
@@ -6178,13 +6193,14 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         _eng_up_res = None
         try:
             _eng_up_res = _try_engine_v2(
-                user_query_for_run, catalog,
+                _query_for_planning, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
                 lang=DEFAULT_LANG, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
                 forced_object=forced_object,
                 reference_images=_ref_images_for_prompt,
+                placement_target=_placement_target,  # #4 threading (ADR 0034)
             )
         except Exception as _ex:
             import logging as _logging
