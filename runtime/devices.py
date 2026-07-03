@@ -272,12 +272,33 @@ def consume_token(token: str, public_key_b64: str, *,
             conn.execute("ROLLBACK")
             raise ConsumedError("token gia' consumato con un'altra chiave")
 
-        # registra nuovo device (o recupera per fingerprint coincidente, raro caso re-pair)
+        # registra nuovo device (o recupera per fingerprint coincidente: re-pair
+        # di un client che ha conservato la sua identita' Ed25519)
         existing = conn.execute(
             "SELECT * FROM devices WHERE public_key_fingerprint = ?", (fp,)
         ).fetchone()
         if existing is not None:
+            # Il token fresco one-shot emesso dall'admin E' la
+            # ri-autorizzazione esplicita: la riga si aggiorna (nome, owner,
+            # OS, paired_at) e un'eventuale revoca DECADE. Senza questo, un
+            # device revocato che si ri-appaia resta revocato per sempre:
+            # register 200 ma ogni poll/heartbeat respinto 403 in silenzio
+            # (osservato live 3/7: join fermo a 'registered', client di
+            # aprile con la stessa chiave e revoca del pomeriggio).
             device_id = existing["id"]
+            if existing["revoked_at"] is not None:
+                log.warning(
+                    "re-pair di device REVOCATO %s ('%s'->'%s'): revoca "
+                    "rimossa dal token fresco", device_id[:12],
+                    existing["name"], name)
+            conn.execute(
+                """UPDATE devices SET name = ?, owner_user_id = ?,
+                       os_family = COALESCE(?, os_family),
+                       os_arch = COALESCE(?, os_arch),
+                       paired_at = ?, revoked_at = NULL
+                   WHERE id = ?""",
+                (name, owner, os_family, os_arch, _now_iso(), device_id),
+            )
         else:
             device_id = uuid.uuid4().hex
             conn.execute(

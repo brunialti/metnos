@@ -8,9 +8,10 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 
 <section class="panel" id="join-panel">
   <h2>Installa client su un PC (consigliato)</h2>
-  <p class="muted">Genera un link, aprilo dal PC da installare: la pagina
-  scarica l'installer giusto per l'OS e segue l'avanzamento fino a
-  «client attivo». Un click sul file scaricato completa tutto.</p>
+  <p class="muted">Dai un nome al device e premi: si apre la pagina di
+  installazione, che scarica l'installer giusto per l'OS e segue
+  l'avanzamento fino a «client attivo». Un click sul file scaricato
+  completa tutto.</p>
   <div id="join-server-note" style="display:none">
     <p class="muted">Questa UI è aperta <strong>sul server Metnos</strong>: non
     c'è nessun client da installare qui.</p>
@@ -21,11 +22,17 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
     <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
       <input type="text" name="name" id="join-name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
     </label>
-    <button type="submit" class="btn" id="join-btn">Genera link di installazione</button>
+    <button type="submit" class="btn" id="join-btn">Installa su questo PC</button>
   </form>
   <div id="join-box" style="display:none">
     <p>Apri questo link <strong>dal PC da installare</strong> (scade in 30 minuti):</p>
     <pre><code id="join-url"></code></pre>
+    <p>
+      <button type="button" class="btn" id="join-copy">Copia link</button>
+      <a id="join-open" class="btn" target="_blank" rel="noopener">Apri qui</a>
+      <span id="join-copied" style="display:none;color:#2e7d32;font-weight:600">
+        copiato ✓</span>
+    </p>
     <ol id="join-steps" style="list-style:none;padding-left:0">
       <li data-s="created">○ link generato</li>
       <li data-s="opened">○ pagina aperta sul PC target</li>
@@ -56,6 +63,21 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
       }).catch(function(){});
     var ORDER = ["created","opened","downloaded","registered","heartbeat"];
     var timer = null;
+    function copyText(t) {
+      // navigator.clipboard esiste solo in secure context (HTTPS o
+      // localhost): la console gira su http://IP-LAN, serve il fallback.
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(t);
+      }
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); }
+      finally { document.body.removeChild(ta); }
+      return Promise.resolve();
+    }
     function render(state) {
       document.querySelectorAll("#join-steps li").forEach(function (li) {
         var i = ORDER.indexOf(li.getAttribute("data-s"));
@@ -81,8 +103,21 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
                               for_other_pc: forOtherPc}),
       }).then(function(r){return r.json();}).then(function (s) {
         if (!s.join_id) { alert(s.message || "errore"); return; }
+        // Browser = PC da installare (flusso normale): vai DIRETTO alla
+        // pagina di installazione, zero copia-incolla. Il link resta
+        // recuperabile ri-generando. Col gesto «per un altro PC» invece
+        // il link va portato lì: mostra box + copia.
+        if (!forOtherPc) { location.href = s.join_url; return; }
         document.getElementById("join-box").style.display = "block";
         document.getElementById("join-url").textContent = s.join_url;
+        document.getElementById("join-open").href = s.join_url;
+        document.getElementById("join-copy").onclick = function () {
+          copyText(s.join_url).then(function () {
+            var ok = document.getElementById("join-copied");
+            ok.style.display = "inline";
+            setTimeout(function(){ ok.style.display = "none"; }, 2500);
+          });
+        };
         render(s.state);
         if (timer) clearInterval(timer);
         timer = setInterval(function () {

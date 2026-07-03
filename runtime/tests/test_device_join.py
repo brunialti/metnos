@@ -71,6 +71,36 @@ class JoinSessionModelTests(unittest.TestCase):
         self.assertEqual(
             self.devices.get_join_session(s["join_id"])["state"], "expired")
 
+    def test_repair_revoked_device_unrevokes_and_updates(self):
+        # Bug live 3/7: client reinstallato con la STESSA chiave Ed25519 di
+        # un device REVOCATO -> register 200 ma la riga restava revocata
+        # (nome vecchio compreso): ogni poll/heartbeat respinto 403 in
+        # silenzio, join fermo a 'registered'. Il token fresco one-shot
+        # emesso dall'admin E' la ri-autorizzazione: la revoca DECADE.
+        pub = _b64u(b"r" * 32)
+        s1 = self.devices.create_join_session("vecchio-nome")
+        dev = self.devices.consume_token(s1["token"], pub, os_family="windows")
+        self.devices.revoke_device(dev.id)
+        self.assertIsNotNone(self.devices.get_device(dev.id).revoked_at)
+
+        s2 = self.devices.create_join_session("nuovo-nome")
+        dev2 = self.devices.consume_token(s2["token"], pub, os_family="windows")
+        self.assertEqual(dev2.id, dev.id)  # stessa identita', stessa riga
+        self.assertIsNone(dev2.revoked_at)
+        self.assertEqual(dev2.name, "nuovo-nome")
+        fresh = self.devices.get_device(dev.id)
+        self.assertIsNone(fresh.revoked_at)
+        self.assertEqual(fresh.name, "nuovo-nome")
+
+    def test_repair_same_token_stays_idempotent(self):
+        # L'idempotenza (token GIA' consumato + stessa chiave) non deve
+        # cambiare: ritorna il device cosi' com'e', senza ri-scriverlo.
+        pub = _b64u(b"i" * 32)
+        s = self.devices.create_join_session("pc-idem")
+        d1 = self.devices.consume_token(s["token"], pub)
+        d2 = self.devices.consume_token(s["token"], pub)
+        self.assertEqual(d1.id, d2.id)
+
     def test_registered_never_expires(self):
         s = self.devices.create_join_session("pc-4", ttl_seconds=1)
         pub = _b64u(b"j" * 32)

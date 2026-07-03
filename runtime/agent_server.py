@@ -172,6 +172,11 @@ async def _verified_device_body(request: web.Request):
     loop = asyncio.get_running_loop()
     device = await loop.run_in_executor(None, devices.get_device, device_id)
     if device is None or device.revoked_at is not None:
+        # Log esplicito: il client ritenta con backoff e senza questa riga
+        # il rifiuto e' invisibile lato server (diagnosi live 3/7: device
+        # revocato che pollava nel silenzio totale).
+        log.info("device %s respinto su %s: %s", device_id[:12], request.path,
+                 "revocato" if device is not None else "sconosciuto")
         return _error(403, "unknown_device", "device not paired or revoked")
     if not invocations.verify_raw(device.public_key_b64, sig, raw):
         log.warning("firma device NON verificata per %s su %s: rifiuto",
