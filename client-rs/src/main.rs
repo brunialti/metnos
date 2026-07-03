@@ -39,18 +39,54 @@ enum Cmd {
     },
 }
 
+/// Log ANCHE su file (`<data_dir>/client.log`): in Scheduled Task / unit di
+/// sistema lo stdout finisce nel nulla e un fallimento in background sarebbe
+/// invisibile per costruzione (§2.8 lato client — imparato dal vivo 3/7:
+/// task "partita" e client morto senza una riga da nessuna parte).
+/// Rotazione minima senza dipendenze: oltre 5 MB il file diventa `.1`.
+fn open_log_file(dir: &std::path::Path) -> Option<std::fs::File> {
+    let path = dir.join("client.log");
+    if let Ok(md) = std::fs::metadata(&path) {
+        if md.len() > 5 * 1024 * 1024 {
+            let _ = std::fs::rename(&path, dir.join("client.log.1"));
+        }
+    }
+    std::fs::OpenOptions::new().create(true).append(true).open(&path).ok()
+}
+
+fn init_tracing(log_file: Option<std::fs::File>) {
+    use tracing_subscriber::fmt::writer::MakeWriterExt;
+    let filter = || {
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "metnos_client=info".into())
+    };
+    match log_file {
+        Some(f) => tracing_subscriber::fmt()
+            .with_env_filter(filter())
+            .with_ansi(false)
+            .with_writer(std::io::stdout.and(std::sync::Mutex::new(f)))
+            .init(),
+        None => tracing_subscriber::fmt().with_env_filter(filter()).init(),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "metnos_client=info".into()),
-        )
-        .init();
-
     let cli = Cli::parse();
     let paths = config::Paths::resolve()?;
     paths.ensure()?;
+    init_tracing(open_log_file(&paths.data_dir));
+
+    let out = run_cmd(cli, paths).await;
+    if let Err(ref e) = out {
+        // L'errore fatale DEVE finire nel log file, non solo su stderr
+        // (che in task context non legge nessuno).
+        tracing::error!("fatal: {e:#}");
+    }
+    out
+}
+
+async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
     let id = identity::Identity::load_or_create(&paths.key_file)?;
     let mut st = state::State::load_or_default(&paths.state_file)?;
 

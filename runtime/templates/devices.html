@@ -154,7 +154,9 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
   </details>
 </section>
 
-<div class="table-wrap">
+<div class="table-wrap" id="devices-table"
+     hx-get="/admin/devices" hx-select="#devices-table" hx-swap="outerHTML"
+     hx-trigger="every 10s" hx-headers='{"Accept":"text/html"}'>
 <table>
   <thead>
     <tr><th>nome</th><th>id</th><th>owner</th><th>OS</th><th>fingerprint</th>
