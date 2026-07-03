@@ -89,3 +89,40 @@ Validazione: unit 16/16; turno REALE su device Windows fisico
 - **Copertura executor (C7)**: bundlabili al device oggi solo get_files/
   compute_files_loc/list_dirs; find/read (R2) e mutanti (R3) = fasi successive.
 - Report di dettaglio + assessment: `internal/reports/chat_driven_placement_R1_assessment.md`.
+
+---
+
+## Estensione (0181-ext, 2026-07-04): rimozione del PLANNER legacy + robustezza motore
+
+Il lavoro su R1 ha esposto il vecchio **PLANNER legacy** (ReAct step-by-step,
+~3350 LOC nella coda di `run_turn`): quando il motore moderno (`_try_engine_v2`)
+declinava, il turno ci cadeva e mascherava il declino con un piano **degenere**
+(es. `compute_files_loc(machine_name="PC-ROBERTO")`) — violazione §2.8. Roberto:
+«procedi con rimozione senza approvazione, rendi possibile il rollback».
+
+**Analisi** (4 sotto-analisi parallele): control-flow (il guard onesto
+`ERR_QUERY_NOT_UNDERSTOOD` copriva il main-path ma NON i fallthrough resume/upload);
+**causa-radice del declino** = `_llm_call_fast` con `except: return ""` MUTO (un
+hiccup di connessione LLM → intent None → declino), mentre l'intent è solo un
+HINT (`build_routing_pool` degrada già a full-catalog/BoW); audit capacità = SAFE
+(nessuna capacità di produzione persa; legacy-only propose_intent/recovery
+iterativo erano dormienti con `LEGACY=0`); checklist di cancellazione verificata.
+
+**Decisione**:
+1. **Robustezza motore** (causa-radice): la fast-call logga+ritenta; l'intent
+   vuoto NON è più fatale (si procede con `{}`, il proposer pianifica dalla
+   query). Deterministico/universale (§7.3/§7.9).
+2. **Neutralizzazione** poi **cancellazione fisica** del ReAct legacy: il declino
+   del motore dà un esito ONESTO §2.8, mai più un piano degenere. Gate G3 reso
+   incondizionato. `run_turn` 3957 → ~540 righe.
+3. Rimossi: file sonda, param `mode`/`--mode`, `_bypass_for_uploads`, drift
+   installer `METNOS_PLANNER_LEGACY=1`.
+
+**Rollback**: `git revert` dei commit isolati (`3ee8573` neutralizza, `0893171`
+robustezza, `af6c7b8` cancella, `924ef53` pulizia). Il legacy non è più
+riattivabile via flag dopo la cancellazione fisica.
+
+**Osservazioni assessment (#1-5, commit `5e6e828`)**: sticky-offline→server (bug
+live), owner-filter, fallback onesto su resolver-error, threading upload, nomi
+duplicati→ambiguous. Resta edge: threading placement sul ramo resume (precede
+la risoluzione); form per l'ambiguo; `read_tasks_history` in `_BUILTIN_TOOL_HANDLERS`.
