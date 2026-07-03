@@ -84,6 +84,15 @@ class JoinSessionModelTests(unittest.TestCase):
     def test_unknown_join(self):
         self.assertIsNone(self.devices.get_join_session("deadbeef00000000"))
 
+    def test_device_name_slug_enforced(self):
+        # Dominio CHIUSO §2.4: il nome finisce in HTML/unit/log.
+        for bad in ("<script>x</script>", "a'b", 'a"b', "a;b", "x" * 41, ""):
+            with self.subTest(bad=bad):
+                with self.assertRaises(self.devices.TokenError):
+                    self.devices.generate_token(bad)
+        # slug legittimi passano
+        self.devices.generate_token("laptop-windows_2.OK")
+
 
 class JoinHttpTests(AioHTTPTestCase):
     """Route /agent/client/join/* + aggancio register reale."""
@@ -101,6 +110,12 @@ class JoinHttpTests(AioHTTPTestCase):
             "#!/bin/sh\n: \"${METNOS_SERVER:?}\"\n: \"${METNOS_TOKEN:?}\"\n")
         (cls._mirror / "install.ps1").write_text(
             "if (-not $env:METNOS_SERVER) { throw 'x' }\n")
+        (cls._mirror / "manifest.json").write_text(json.dumps({
+            "latest": "9.9.9",
+            "versions": {"9.9.9": {"x86_64-pc-windows-gnu": {
+                "filename": "metnos-client.exe",
+                "sha256": "cafe" * 16}}},
+        }))
 
     @classmethod
     def tearDownClass(cls):
@@ -153,7 +168,7 @@ class JoinHttpTests(AioHTTPTestCase):
         self.assertEqual(
             self.devices.get_join_session(s["join_id"])["state"], "downloaded")
 
-    async def test_installer_windows_prelude(self):
+    async def test_installer_windows_prelude_and_pin(self):
         s = self._new_session("pc-ps1")
         resp = await self.client.get(
             f"/agent/client/join/{s['join_id']}/installer?platform=windows")
@@ -161,8 +176,29 @@ class JoinHttpTests(AioHTTPTestCase):
         body = await resp.text()
         self.assertTrue(body.startswith("$env:METNOS_SERVER"))
         self.assertIn(s["token"], body)
+        # Pin version+sha256 baked (§5.7): il manifest scaricato non fa fede.
+        self.assertIn("$env:METNOS_CLIENT_VERSION = '9.9.9'", body)
+        self.assertIn("$env:METNOS_CLIENT_SHA256 = '" + "cafe" * 16 + "'", body)
         self.assertIn("MetnosClientSetup.ps1",
                       resp.headers.get("Content-Disposition", ""))
+
+    async def test_join_page_escapes_device_name(self):
+        # Difesa in profondita': nome malevolo NON puo' piu' nascere da
+        # generate_token (slug §2.4), ma la pagina e' no-auth e deve fare
+        # escape comunque (riga legacy/manomessa nel DB).
+        s = self._new_session("pc-xss")
+        evil = "<script>alert(1)</script>"
+        import sqlite3 as _sq
+        conn = _sq.connect(os.environ["METNOS_DEVICES_DB"])
+        conn.execute(
+            "UPDATE device_join_sessions SET device_name = ? WHERE join_id = ?",
+            (evil, s["join_id"]))
+        conn.commit(); conn.close()
+        resp = await self.client.get(f"/agent/client/join/{s['join_id']}")
+        self.assertEqual(resp.status, 200)
+        body = await resp.text()
+        self.assertNotIn(evil, body)
+        self.assertIn("&lt;script&gt;", body)
 
     async def test_installer_expired_410(self):
         s = self._new_session("pc-exp", ttl_seconds=1)

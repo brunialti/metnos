@@ -8,12 +8,15 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 
 <section class="panel" id="join-panel">
   <h2>Installa client su un PC</h2>
-  <p class="muted" id="join-server-note" style="display:none">Questa UI è aperta
-  sul server Metnos: non serve installare un client remoto qui. Per un altro PC,
-  genera il link e aprilo da quel PC.</p>
+  <div id="join-server-note" style="display:none">
+    <p class="muted">Questa UI è aperta <strong>sul server Metnos</strong>: non
+    c'è nessun client da installare qui.</p>
+    <button type="button" class="btn" id="join-other-btn">Devo installare su un
+    ALTRO PC — genera il link</button>
+  </div>
   <form id="join-form">
-    <label>Nome device (senza spazi, es. <code>laptop-windows</code>)
-      <input type="text" name="name" id="join-name" required pattern="\S+" maxlength="40">
+    <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
+      <input type="text" name="name" id="join-name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
     </label>
     <button type="submit" class="btn" id="join-btn">Genera link di installazione</button>
   </form>
@@ -30,12 +33,22 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
   </div>
   <script>
   (function () {
+    var forOtherPc = false;
     fetch("/admin/devices/current-client").then(function(r){return r.json();})
       .then(function (c) {
         if (c.is_server_client) {
+          // §5.2: il form «installa su questo PC» sparisce; resta il gesto
+          // ESPLICITO «per un altro PC», che riabilita il form.
+          document.getElementById("join-form").style.display = "none";
           document.getElementById("join-server-note").style.display = "block";
-          document.getElementById("join-btn").textContent =
-            "Genera link per un altro PC";
+          document.getElementById("join-other-btn")
+            .addEventListener("click", function () {
+              forOtherPc = true;
+              document.getElementById("join-form").style.display = "";
+              document.getElementById("join-btn").textContent =
+                "Genera link per l'altro PC";
+              this.disabled = true;
+            });
         }
       }).catch(function(){});
     var ORDER = ["created","opened","downloaded","registered","heartbeat"];
@@ -61,7 +74,8 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
       fetch("/admin/devices/join", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name: name, platform: "auto"}),
+        body: JSON.stringify({name: name, platform: "auto",
+                              for_other_pc: forOtherPc}),
       }).then(function(r){return r.json();}).then(function (s) {
         if (!s.join_id) { alert(s.message || "errore"); return; }
         document.getElementById("join-box").style.display = "block";
@@ -87,8 +101,8 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 <section class="panel">
   <h2>Aggiungi dispositivo (manuale, one-liner)</h2>
   <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
-    <label>Nome device (senza spazi, es. <code>laptop-windows</code>)
-      <input type="text" name="name" required pattern="\S+" maxlength="40">
+    <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
+      <input type="text" name="name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
     </label>
     <button type="submit" class="btn">Genera token (10 min)</button>
   </form>

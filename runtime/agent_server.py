@@ -470,10 +470,15 @@ async def client_join_page(request: web.Request) -> web.Response:
     await loop.run_in_executor(
         None, lambda: devices.mark_join_state(join_id, "opened", client_hint=hint))
     state = "opened" if sess["state"] == "created" else sess["state"]
+    # Escape SEMPRE (XSS): il nome e' slug-validato alla sorgente, ma la
+    # pagina e' no-auth e i dati vengono dal DB — secondo strato qui.
+    import html as _html
+    platform = sess["platform"] if sess["platform"] in ("auto", "linux", "windows") else "auto"
+    state = state if state in devices.JOIN_STATES or state == "expired" else "created"
     html = (_JOIN_PAGE
             .replace("__JOIN_ID__", join_id)
-            .replace("__DEVICE_NAME__", sess["device_name"])
-            .replace("__PLATFORM__", sess["platform"] or "auto")
+            .replace("__DEVICE_NAME__", _html.escape(sess["device_name"]))
+            .replace("__PLATFORM__", platform)
             .replace("__STATE__", state))
     return web.Response(text=html, content_type="text/html",
                         headers={"Cache-Control": "no-store"})
@@ -537,8 +542,22 @@ async def client_join_installer(request: web.Request) -> web.Response:
     body = src.read_text(encoding="utf-8")
     token = sess["token"]
     if platform == "windows":
+        # Windows non puo' verificare Ed25519 in PowerShell (niente supporto
+        # CNG/.NET Framework): il pin di versione+sha256 DENTRO l'installer
+        # personalizzato toglie la fiducia dal manifest scaricato — un MITM
+        # deve manomettere QUESTO file, stesso livello del pin-pubkey Linux.
+        pin = ""
+        try:
+            m = json.loads(
+                (agent_mirror.MIRROR_CLIENT_DIR / "manifest.json").read_text())
+            entry = m["versions"][m["latest"]]["x86_64-pc-windows-gnu"]
+            pin = (f"$env:METNOS_CLIENT_VERSION = '{m['latest']}'\n"
+                   f"$env:METNOS_CLIENT_SHA256 = '{entry['sha256']}'\n")
+        except Exception as e:
+            log.warning("pin versione/sha256 non disponibile per l'installer "
+                        "windows (manifest mirror illeggibile): %s", e)
         prelude = (f"$env:METNOS_SERVER = '{server_url}'\n"
-                   f"$env:METNOS_TOKEN = '{token}'\n")
+                   f"$env:METNOS_TOKEN = '{token}'\n" + pin)
         text = prelude + body
         fname = "MetnosClientSetup.ps1"
         ctype = "text/plain; charset=utf-8"

@@ -93,14 +93,15 @@ nel sandbox più forte che la piattaforma offre e restituisce il risultato.
 volo» dalla UI su Linux e Windows, (b) il protocollo di filo fra core ed
 executor locali, (c) linguaggi, identità, sandbox, distribuzione, modalità
 di fallimento — al livello di dettaglio di firme di funzione e layout file.</p>
-<p><strong>Cosa esiste già</strong> (<code>git grep</code>): il server di pairing <code>agent_server.py</code>
-(porta 8765, <code>/agent/health</code> + <code>/agent/register</code>) ✅; il mirror PEP 503
-<code>agent_mirror.py</code> ✅; il registro dispositivi <code>devices.py</code> (Ed25519 token +
-fingerprint) ✅; lo scaffold del client Rust <code>client-rs/</code> (comandi
-<code>whoami</code>/<code>register</code> ✅, <code>run</code> che ancora fa <code>bail!("not wired")</code> 🟡).
-<strong>Il buco</strong> = il loop di esecuzione (poll/execute), il protocollo di
-invocazione, il sandbox, e il flusso install-at-the-fly. Questo doc li
-specifica.</p>
+<p><strong>Cosa esisteva alla stesura</strong> (28/6, <code>git grep</code> di allora): il server di
+pairing <code>agent_server.py</code> (porta 8765, <code>/agent/health</code> + <code>/agent/register</code>) ✅;
+il mirror PEP 503 <code>agent_mirror.py</code> ✅; il registro dispositivi <code>devices.py</code>
+(Ed25519 token + fingerprint) ✅; lo scaffold del client Rust <code>client-rs/</code>
+(<code>whoami</code>/<code>register</code> ✅, <code>run</code> che faceva <code>bail!("not wired")</code> 🟡).
+<strong>Il buco di allora</strong> — loop di esecuzione (poll/execute), protocollo di
+invocazione, sandbox Linux, flusso install-at-the-fly — è stato CHIUSO:
+W1-2 il 2/7, install-at-the-fly (§5) il 3/7. Stato corrente in §0.bis;
+il resto del documento conserva la specifica.</p>
 <hr>
 <h2 id="0bis-stato-implementazione-272026-w1-2-chiuso">0.bis Stato implementazione (2/7/2026) — W1-2 chiuso</h2>
 <p>Il gate W1-2 (execute path Linux) è <strong>implementato e verificato E2E</strong>. Pezzi
@@ -198,7 +199,7 @@ mTLS, placement multi-device oltre il caso singolo.</p>
 <td><code>metnos-server</code> / <code>agent_server</code></td>
 <td>Python 3.12 (aiohttp bare)</td>
 <td><code>.33</code></td>
-<td>✅ pairing; ⛔ poll/execute</td>
+<td>✅ pairing + poll/result/heartbeat + bundle executor/shim + join §5</td>
 </tr>
 <tr>
 <td><code>agent_mirror</code> (PEP 503 + runtime)</td>
@@ -463,8 +464,12 @@ pinnata. Forma compatibile: one-liner POSIX.</p>
 lo apre. L'installer:</p>
 <ol>
 <li>scarica <code>metnos-client.exe</code> per <code>x86_64-pc-windows-gnu</code>;</li>
-<li>verifica almeno <code>sha256</code> dal manifest; obiettivo W6: verifica Ed25519
-    come Linux + Authenticode se SmartScreen diventa un problema;</li>
+<li>verifica <code>sha256</code>: nel flusso join (§5.5) versione+sha sono <strong>PINNATI
+    dal server dentro l'installer personalizzato</strong> (il manifest scaricato non fa
+    fede — implementato 3/7); nel one-liner manuale lo sha viene dal manifest =
+    sola integrità, autenticità dal trasporto fidato. PowerShell 5.1 non ha
+    Ed25519: firma forte (parità con Linux, o Authenticode se SmartScreen
+    diventa un problema) = obiettivo W6;</li>
 <li>copia in <code>%LOCALAPPDATA%\Metnos\metnos-client.exe</code>;</li>
 <li>esegue <code>register</code> con token one-shot;</li>
 <li>registra una Scheduled Task «At logon» senza privilegi admin;</li>
@@ -702,7 +707,7 @@ blocca i mutanti sugli alberi di sistema) — il client porta una COPIA di
 quella politica (replicata in Rust; il server non assume nulla sull'OS del
 client).</p>
 <hr>
-<h2 id="10-placement-dove-gira-un-executor-adr-0034-deciso-da-wirare">10. Placement — dove gira un executor (ADR 0034) ✅ deciso, ⛔ da wirare</h2>
+<h2 id="10-placement-dove-gira-un-executor-adr-0034-deciso-da-wirare">10. Placement — dove gira un executor (ADR 0034) ✅ deciso e wirato (hook in <code>invoke_executor</code>, attivo per manifest <code>scope="device"</code>)</h2>
 <p>Tre livelli, valutati in ordine; il primo che decide vince. KIS: tabella
 lineare 4×6, niente ML.</p>
 <ul>
@@ -790,7 +795,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 <tr>
 <td>W1-2</td>
 <td>Linux MVP: client Rust + mTLS a <code>.33</code> + python-build-std via mirror + bwrap</td>
-<td>🟡 (register ✅, run/execute/sandbox ⛔)</td>
+<td>✅ chiuso 2/7 (execute path Linux E2E; mTLS deferito a W6, rete = overlay fidato)</td>
 </tr>
 <tr>
 <td>W3</td>

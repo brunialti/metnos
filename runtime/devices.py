@@ -42,6 +42,12 @@ DEFAULT_TOKEN_TTL_S = 600
 TOKEN_PREFIX = "DEV."
 PROTOCOL_VERSION = 1
 
+# Dominio CHIUSO (§2.4): il nome device e' uno slug. Finisce in pagine HTML
+# (join page, console), in unit systemd e in log: charset stretto alla
+# SORGENTE, l'escaping al render e' il secondo strato.
+import re as _re
+DEVICE_NAME_RE = _re.compile(r"^[A-Za-z0-9._-]{1,40}$")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS devices (
     id TEXT PRIMARY KEY,
@@ -158,8 +164,9 @@ def generate_token(name: str, *, owner_user_id: str = "host",
     contiene: token_id, name, owner_user_id, exp, version. La firma garantisce
     che il token venga davvero da Roberto (chiave 'author' in keys/).
     """
-    if not name or any(c.isspace() for c in name):
-        raise TokenError("nome device non valido (no spazi, non vuoto)")
+    if not name or not DEVICE_NAME_RE.match(name):
+        raise TokenError(
+            "nome device non valido (ammessi lettere, cifre, . _ -, max 40)")
     token_id = uuid.uuid4().hex
     payload = {
         "v": PROTOCOL_VERSION,

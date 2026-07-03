@@ -1411,6 +1411,14 @@ async def admin_devices_join(request: web.Request) -> web.Response:
     if not name or any(c.isspace() for c in name):
         return _error(400, "invalid_name",
                       "nome device non valido (no spazi, non vuoto)")
+    # §5.2: browser sul server = niente da installare QUI. La creazione del
+    # link resta legittima solo come gesto esplicito «per un ALTRO PC»
+    # (for_other_pc=true, che la UI manda dal percorso opt-in).
+    if is_request_from_server(request) and not bool(body.get("for_other_pc")):
+        return _error(409, "client_is_server",
+                      "questa UI gira sul server Metnos: non c'e' nessun "
+                      "client da installare qui; per generare un link da "
+                      "aprire su un ALTRO PC ripeti con for_other_pc=true")
     server_url = _agent_server_url(request)
     loop = asyncio.get_running_loop()
     try:

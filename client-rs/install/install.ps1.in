@@ -1,10 +1,17 @@
-# metnos-client — installer Windows (§5.4 executor remoti).
-# Incollare in un terminale PowerShell NON-admin; la UI /admin/devices genera
-# il one-liner con METNOS_SERVER e METNOS_TOKEN gia' in ambiente.
+# metnos-client — installer Windows (§5.4/§5.7 executor remoti).
+# Due modi d'uso:
+#  - scaricato dal flusso join (§5.5): la testa del file ha gia' baked
+#    METNOS_SERVER, METNOS_TOKEN e il PIN version+sha256 del binario;
+#  - one-liner manuale: METNOS_SERVER/METNOS_TOKEN in ambiente, versione e
+#    sha256 letti dal manifest del mirror.
 #
-# MVP: il binario e' verificato per INTEGRITA' (sha256 dal manifest firmato
-# server-side) e la fiducia sull'AUTENTICITA' viene dal trasporto (overlay
-# Headscale/mTLS). Authenticode/firma forte lato Windows = W6 (design doc).
+# THREAT MODEL (onesto, MVP): PowerShell 5.1 non ha Ed25519 (ne' CNG ne'
+# .NET Framework), quindi qui NON c'e' la verifica di firma che fa install.sh.
+# Col PIN baked, lo sha256 NON dipende dal manifest scaricato: un MITM deve
+# manomettere QUESTO file — stesso livello di fiducia del pin-pubkey Linux.
+# SENZA pin (one-liner manuale), sha256 dal manifest = solo INTEGRITA':
+# l'autenticita' viene dal trasporto (LAN/overlay fidato). Firma forte
+# (Ed25519 a parita' con Linux, o Authenticode) = W6 del design doc.
 $ErrorActionPreference = 'Stop'
 
 if (-not $env:METNOS_SERVER) { throw 'METNOS_SERVER non impostato (atteso dalla UI)' }
@@ -14,13 +21,20 @@ $server = $env:METNOS_SERVER.TrimEnd('/')
 $target = 'x86_64-pc-windows-gnu'
 Write-Host "==> metnos-client ($target)"
 
-$manifest = Invoke-RestMethod -UseBasicParsing "$server/agent/client/manifest.json"
-$version = $manifest.latest
-if (-not $version) { throw 'impossibile leggere la versione dal manifest' }
-$entry = $manifest.versions.$version.$target
-if (-not $entry) { throw "nessun binario per $target nella versione $version" }
-$expectedSha = $entry.sha256
-Write-Host "==> versione $version"
+if ($env:METNOS_CLIENT_VERSION -and $env:METNOS_CLIENT_SHA256) {
+  # PIN baked dal server nel flusso join: manifest NON consultato.
+  $version = $env:METNOS_CLIENT_VERSION
+  $expectedSha = $env:METNOS_CLIENT_SHA256
+  Write-Host "==> versione $version (pin baked, manifest non consultato)"
+} else {
+  $manifest = Invoke-RestMethod -UseBasicParsing "$server/agent/client/manifest.json"
+  $version = $manifest.latest
+  if (-not $version) { throw 'impossibile leggere la versione dal manifest' }
+  $entry = $manifest.versions.$version.$target
+  if (-not $entry) { throw "nessun binario per $target nella versione $version" }
+  $expectedSha = $entry.sha256
+  Write-Host "==> versione $version (sha256 dal manifest: integrita', non autenticita')"
+}
 
 $tmp = Join-Path $env:TEMP ("metnos-client-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
