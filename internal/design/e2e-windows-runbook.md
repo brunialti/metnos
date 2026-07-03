@@ -34,8 +34,13 @@
 
 ## 1 — Join e installazione dal browser (§5)
 
-1. Sul PC Windows, apri `$SERVER/admin/devices` nel browser, autentica come
-   admin se richiesto.
+1. Sul PC Windows, apri **`$SERVER/admin/login`** per primo (NON
+   `/admin/devices` direttamente: la console non fa redirect automatico al
+   login, un accesso diretto senza sessione risponde con un JSON secco
+   `{"error":"forbidden","message":"admin role required"}` invece di un
+   form). Inserisci la admin key (`~/.config/metnos/admin.key` su `.33`,
+   esadecimale) e invia — imposta un cookie di sessione. Poi vai su
+   `$SERVER/admin/devices`.
 2. Compila il nome device (es. `laptop-windows-e2e`) e clicca **"Genera
    link di installazione"**. Poiché il browser NON gira sul server, il
    pulsante è già quello giusto (nessun `for_other_pc` da forzare).
