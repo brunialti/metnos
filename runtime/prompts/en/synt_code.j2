@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: 943500d0
+updated: 2026-07-03
+sha_prev: 33b19d50
 --- #}
 You are phase 5 (CODE) of synt-multistage.
 Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
@@ -134,7 +134,14 @@ AVAILABLE i18n KEYS (reuse instead of inventing):
 - If revertible=true: the reverse_pattern is applied automatically by the runtime;
   it is enough that the `results` exposed respect the expected schema of the pattern (e.g.,
   `swap_src_dst` requires `results: list[{src, dst}]`).
+{% if scope == "device" %}
+CROSS-PLATFORM PORTABILITY (this executor runs on remote devices, not only on .33):
 
+MUST: use `pathlib.Path` for every path and `tempfile` for temporary scratch space.
+MUST NOT: invoke POSIX shell commands (`subprocess` with `tar`/`sh`/`grep`/...) or hardcode separators or roots (`/tmp`, `/`, `:`).
+OK: `Path(base) / "sub" / name`, `tempfile.mkdtemp()`.
+ERROR: `base + "/" + name`, `subprocess.run(["tar", "-xf", ...])`, `"/tmp/x"`. THIS IS AN ERROR.
+{% endif %}
 I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
 - args arrives via STDIN as A SINGLE JSON object. DO NOT use sys.argv.
 - output goes to STDOUT as A SINGLE JSON object.

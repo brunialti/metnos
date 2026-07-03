@@ -66,11 +66,35 @@ def _match_device_by_name(name: str, devices: list) -> object | None:
     return None
 
 
+def _platform_of(device) -> str:
+    """os_family del device, normalizzato; assente = 'linux' (§16.1: stesso
+    default onesto del manifest, un device che non ha mai fatto un heartbeat
+    con os_family valorizzato non va trattato come jolly universale)."""
+    return (getattr(device, "os_family", None) or "").strip().lower() or "linux"
+
+
+def _check_platform(device, platforms: list[str] | None, executor_name: str) -> None:
+    """Gate piattaforma (W3.0/W3.2, §16.1/§16.3): l'executor deve dichiarare
+    l'OS del device compatibile. Errore onesto QUI, non un crash a meta'
+    esecuzione remota (ModuleNotFoundError, comando POSIX assente, ...)
+    scoperto solo dopo aver spedito l'invocazione (§2.8)."""
+    plats = platforms or ["linux"]
+    fam = _platform_of(device)
+    if fam not in plats:
+        raise PlacementError(
+            f"executor '{executor_name}' non supporta il dispositivo "
+            f"'{device.name}' (os={fam})",
+            code="ERR_DEVICE_PLATFORM_UNSUPPORTED",
+            fmt={"executor": executor_name, "name": device.name, "os": fam})
+
+
 def choose_placement(manifest_placement: dict | None,
                      intent: dict | None,
                      devices: list,
                      *,
-                     now: datetime | None = None) -> str:
+                     now: datetime | None = None,
+                     platforms: list[str] | None = None,
+                     executor_name: str = "") -> str:
     """Ritorna un device_id oppure `placement.SERVER`.
 
     - manifest_placement: la tabella `[placement]` del manifest
@@ -79,10 +103,15 @@ def choose_placement(manifest_placement: dict | None,
       al pairing). None = nessun override.
     - devices: lista `devices.Device` correnti (anche non disponibili:
       il gate L1.d decide QUI, per dare errori onesti e testabilita').
+    - platforms: `Executor.platforms` (default `["linux"]` se None, stesso
+      default onesto del loader). Un device il cui `os_family` non e' in
+      questa lista viene escluso PRIMA della selezione — mai spedito a
+      un'invocazione che non puo' eseguire (W3.0/W3.2, §16.1/§16.3).
+    - executor_name: solo per il messaggio d'errore (§2.8, diagnosi chiara).
 
     Solleva PlacementError quando la richiesta VINCOLA a un device che non
-    esiste o non e' raggiungibile (§12: attesa o errore onesto, mai
-    silenzioso fallback sul server).
+    esiste, non e' raggiungibile, o non supporta l'OS richiesto (§12: attesa
+    o errore onesto, mai silenzioso fallback sul server).
     """
     p = manifest_placement or {}
     scope = (p.get("scope") or "any").strip().lower()
@@ -102,6 +131,9 @@ def choose_placement(manifest_placement: dict | None,
             raise PlacementError(
                 f"dispositivo '{wanted_name}' non raggiungibile",
                 code="ERR_DEVICE_UNREACHABLE", fmt={"name": str(wanted_name)})
+        # Un nome esplicito NON scavalca l'incompatibilita' di piattaforma:
+        # l'utente ha scelto il device, non il crash che ne conseguirebbe.
+        _check_platform(dev, platforms, executor_name)
         return dev.id
 
     # L1.b — scope vincolante.
@@ -114,10 +146,16 @@ def choose_placement(manifest_placement: dict | None,
             raise PlacementError(
                 "nessun dispositivo raggiungibile per un executor device-only",
                 code="ERR_DEVICE_NONE_AVAILABLE")
-        if len(available) == 1:
-            return available[0].id
-        # Piu' device disponibili e nessun nome nell'intent: ambiguita'
-        # da risolvere con l'utente (§2.11), non a caso.
+        plats = platforms or ["linux"]
+        compatible = [d for d in available if _platform_of(d) in plats]
+        if not compatible:
+            # Almeno un device raggiungibile, ma nessuno supporta l'OS
+            # richiesto: distinto da "nessun device" (§2.8, diagnosi utile).
+            _check_platform(available[0], platforms, executor_name)  # raises
+        if len(compatible) == 1:
+            return compatible[0].id
+        # Piu' device compatibili disponibili e nessun nome nell'intent:
+        # ambiguita' da risolvere con l'utente (§2.11), non a caso.
         raise PlacementError(
             "piu' dispositivi disponibili: serve il nome del device",
             code="ERR_DEVICE_AMBIGUOUS")

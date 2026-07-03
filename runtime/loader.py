@@ -31,6 +31,10 @@ import config as _C  # noqa: E402  (sys.path insert above)
 DEFAULT_EXECUTORS_DIR = _C.PATH_EXECUTORS
 SYNTHESIZED_EXECUTORS_DIR = _C.PATH_USER_DATA / "executors"
 
+# Valori ammessi per il manifest [platforms] (W3.2, executor remoti §16.3
+# design doc). Vocabolario chiuso, come §2.2 — nessuna estensione implicita.
+ALLOWED_PLATFORMS = {"linux", "windows", "macos"}
+
 
 def _resolve_lang_text(value, *, where: str, current_lang: str) -> str:
     """Risolve un campo testuale multilingua del manifest (ADR 0092 Phase 4).
@@ -455,6 +459,13 @@ class Executor:
     # NOTA: validato sul modello locale. Per modelli diversi vedi
     # [[metnos_todo_high_think_per_model]].
     complexity: str = ""
+    # Piattaforme device supportate (W3.2, executor remoti §16.3 design doc):
+    # {"linux","windows","macos"}. Default ["linux"] se il manifest non lo
+    # dichiara (tutto il parco esistente e' nato POSIX, §16.0: default onesto,
+    # non ottimistico). Consumato da placement.choose_placement per rifiutare
+    # un device il cui os_family non e' in questa lista, PRIMA di spedirgli
+    # un'invocazione che crasherebbe (modulo mancante, comando POSIX assente).
+    platforms: list[str] = field(default_factory=lambda: ["linux"])
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -1205,6 +1216,21 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         if _complexity not in ("low", "medium", "high", ""):
             _complexity = ""  # invalid → fallback automatico
 
+        # Piattaforme device supportate (W3.2, §16.3): assente = ["linux"]
+        # default onesto (tutto il parco e' nato POSIX, §16.0 CLAUDE.md);
+        # presente = lista non vuota di valori ammessi, altrimenti REJECT —
+        # mai un default silenzioso su un valore malformato (§2.8).
+        _platforms_raw = manifest.get("platforms")
+        if _platforms_raw is None:
+            _platforms = ["linux"]
+        elif (isinstance(_platforms_raw, list) and _platforms_raw
+              and all(isinstance(x, str) and x in ALLOWED_PLATFORMS
+                      for x in _platforms_raw)):
+            _platforms = list(_platforms_raw)
+        else:
+            catalog.rejected.append((str(sub), "invalid_platforms"))
+            continue
+
         ex = Executor(
             name=name,
             version=manifest.get("version", "0.0.0"),
@@ -1229,6 +1255,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             provenance=provenance,
             placement=_placement,
             complexity=_complexity,
+            platforms=_platforms,
         )
         catalog.executors[name] = ex
 

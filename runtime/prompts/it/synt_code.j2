@@ -3,10 +3,10 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 1
+version: 2
 owner: roberto
-updated: 2026-05-11
-sha_prev: 3c68afc4
+updated: 2026-07-03
+sha_prev: 80c944ae
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
 Tuo UNICO compito: scrivere il file Python `{{ name }}.py` che implementa
@@ -143,7 +143,14 @@ CHIAVI i18n DISPONIBILI (riusale invece di inventarne):
 - Se revertible=true: il reverse_pattern e' applicato automaticamente dal runtime;
   basta che i `results` esposti rispettino lo schema atteso del pattern (es.
   `swap_src_dst` richiede `results: list[{src, dst}]`).
+{% if scope == "device" %}
+PORTABILITA' CROSS-PLATFORM (questo executor gira su device remoti, non solo su .33):
 
+DEVI: usare `pathlib.Path` per ogni path e `tempfile` per lo scratch temporaneo.
+NON DEVI: invocare comandi shell POSIX (`subprocess` con `tar`/`sh`/`grep`/...) ne' hardcodare separatori o radici (`/tmp`, `/`, `:`).
+OK: `Path(base) / "sub" / name`, `tempfile.mkdtemp()`.
+ERRORE: `base + "/" + name`, `subprocess.run(["tar", "-xf", ...])`, `"/tmp/x"`. E' UN ERRORE.
+{% endif %}
 I/O CONTRACT (OBBLIGATORIO — il runtime invoca via subprocess):
 - args arriva via STDIN come UN UNICO oggetto JSON. NON usare sys.argv.
 - output va su STDOUT come UN UNICO oggetto JSON.

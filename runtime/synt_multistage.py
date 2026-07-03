@@ -381,8 +381,16 @@ def run_stage4(user_request: str, stage1: dict, stage2: dict, stage3: dict, llm_
 
 
 def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stage4: dict,
-               llm_call) -> StageResult:
-    """Stage 5 = CODE. Usa wise."""
+               llm_call, *, scope: str | None = None) -> StageResult:
+    """Stage 5 = CODE. Usa wise.
+
+    `scope`: opzionale, "device" attiva la regola di portabilita' cross-
+    platform nel prompt (§16.3 W3.2 executor remoti). NON emesso da nessuno
+    stage precedente oggi (nessun executor synt e' mai device-scope: la
+    promozione a scope=device e' sempre manuale, post-audit, §16.3) — il
+    parametro esiste per il chiamante FUTURO che rigenera un executor gia'
+    promosso. Default None: prompt byte-identico al comportamento pre-W3.2.
+    """
     # Selezione prompt per verbo: `_stage5_prompt_for_verb` ottiene il generico
     # `synt_code` da prompt_loader e ci splica l'addendum specifico del verbo
     # (`synt_code_addendum_<verb>`) prima del marker `I/O CONTRACT` se il verbo
@@ -398,6 +406,7 @@ def run_stage5(user_request: str, stage1: dict, stage2: dict, stage3: dict, stag
         reverse_pattern=str(stage2.get("reverse_pattern")),
         description=stage4["description"],
         user_request=user_request,
+        scope=scope or "",
     )
     res = llm_call("", user_prompt, max_tokens=5000)
     text = res.get("text", "")

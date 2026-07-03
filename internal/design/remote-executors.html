@@ -1244,7 +1244,54 @@ job-object; hung-executor → albero morto entro il wall (gemello del test
 non gira in CI windows); zero finestre console; niente python di sistema
 usato. I gate §16.0 tutti verdi.</p>
 
-<h3>16.3 W3.2 — manifest <code>platforms</code> + audit executor + synt</h3>
+<h3>16.3 W3.2 — manifest <code>platforms</code> + audit executor + synt — ✅ IMPLEMENTATO 3/7/2026</h3>
+<div class="ok-note"><strong>Esito</strong>: implementato integralmente + una deviazione
+consapevole dal contratto letterale (bug che avrebbe introdotto), + un finding
+critico non previsto dal contratto stesso.
+<ul>
+<li><strong>Deviazione dal contratto</strong>: lo snippet §16.1 costruiva il
+  messaggio con <code>_msg(..., executor=ex.name, ...)</code> passato come
+  primo argomento posizionale di <code>PlacementError</code>, SENZA
+  <code>fmt=</code>. Il vero punto di traduzione (<code>agent_runtime.py</code>,
+  verificato leggendo il catch site) e' <code>_pmsg(e.code, **e.fmt)</code> —
+  con <code>fmt</code> vuoto il render avrebbe fallito silenziosamente sui
+  placeholder <code>{executor}/{name}/{os}</code>. Implementato invece nello
+  STESSO stile degli altri raise del file (message f-string per
+  <code>str(exc)</code>/debug, <code>fmt=</code> dict per il render reale).</li>
+<li><strong>Finding non nel contratto</strong>: <code>find_files</code>,
+  <code>read_files</code>, <code>write_files</code> importano
+  <code>backends.files.local</code>; <code>list_dirs</code> importa
+  <code>path_alias</code> — moduli <code>runtime/</code>-tier MAI bundlati al
+  device (lo shim §8 spedisce solo <code>executor_helpers.py</code> +
+  <code>device_shim/messages.py</code>). Promuoverli a
+  <code>platforms=[...]</code> sarebbe stato disonesto: crash
+  <code>ModuleNotFoundError</code> su QUALSIASI OS remoto, non solo Windows —
+  un problema di distribuzione (§8), non di portabilita' del codice.
+  <strong>Promossi solo <code>get_files</code> e <code>compute_files_loc</code></strong>
+  (self-contained: solo stdlib + shim, pathlib ovunque, encoding esplicito,
+  nessun comando POSIX — verificato riga per riga). Gli altri 4 restano
+  <code>platforms=["linux"]</code> default; sbloccarli è un finding per una
+  fase futura (o estendere lo shim bundle, o rendere quei dispatcher
+  self-contained), fuori scope W3.2.</li>
+<li><code>choose_placement</code> non riceveva l'executor (solo il dict
+  <code>[placement]</code> grezzo): firma estesa con
+  <code>platforms=None, executor_name=""</code> (keyword-only, default
+  retro-compatibili — i 10 test esistenti passano invariati). Il gate copre
+  ANCHE l'override nominale L1.c (un nome esplicito non scavalca
+  l'incompatibilita': l'utente ha scelto il device, non il crash), e nel ramo
+  <code>scope=device</code> filtra i device compatibili PRIMA di
+  ambiguo/singolo (due device di cui uno solo compatibile non è ambiguità).</li>
+<li><code>run_stage5</code>: nuovo kwarg opzionale <code>scope=None</code>
+  (default <code>""</code> nei vars) — verificato che l'assenza del kwarg
+  produce output BYTE-IDENTICO al render con <code>scope=""</code> esplicito
+  (nessuna regressione per l'unico call site esistente, che non lo passa
+  ancora: nessuno stage synt emette <code>scope</code> oggi, la promozione
+  resta manuale post-audit).</li>
+<li>Gate: +14 test (6 <code>test_loader_platforms</code>, 7
+  <code>test_placement</code>, 1 seed i18n), suite 3107/0, E2E Linux tutto
+  verde, catalogo prod 105 executor / 0 rejected, turno reale OK.</li>
+</ul>
+</div>
 <ul>
 <li><strong>Loader</strong> (<code>runtime/loader.py</code>): campo top-level opzionale
   <code>platforms</code> nel manifest (accanto a <code>scope</code>). Parsing:

@@ -51,6 +51,12 @@ _REQUIRED_TRUNCATION_KEYS = (
     "MSG_CAP_EXPAND_TITLE",
 )
 
+# Chiave user-facing del gate platforms W3.2 (executor remoti §16.1/§16.3,
+# 3/7): il messaggio quando un executor non supporta l'OS del device.
+_REQUIRED_PLACEMENT_KEYS = (
+    "ERR_DEVICE_PLATFORM_UNSUPPORTED",
+)
+
 
 class TestSeedHasGateKeys(unittest.TestCase):
     def test_seed_file_exists(self):
@@ -101,6 +107,24 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_TRUNCATION_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(
+                        txt and "<missing" not in txt,
+                        f"seed manca {key}[{lang}] (rigenera install/data/"
+                        f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_placement_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_PLACEMENT_KEYS))),
+                _REQUIRED_PLACEMENT_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_PLACEMENT_KEYS:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     txt = rows.get((key, lang))

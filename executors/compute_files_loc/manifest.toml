@@ -11,6 +11,10 @@ author      = "Roberto Brunialti"
 affinity    = ["compute", "calcola", "loc", "linee", "righe", "lines", "code", "codice", "count", "conta", "statistiche", "stats", "lines-of-code", "sloc"]
 revertible  = false
 lifecycle   = "active"
+# W3.2 (executor remoti §16.3): self-contained (solo stdlib + shim
+# messages/executor_helpers, nessuna dipendenza runtime/ non bundlata al
+# device), pathlib ovunque, encoding esplicito, nessun comando POSIX.
+platforms   = ["linux", "windows"]
 
 [description]
 it = "SCOPO: calcola statistiche LOC (linee, blank, commenti) su codice sorgente. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: entries=[{total_files,total_lines,total_blank,total_comment,by_ext,by_path}]."

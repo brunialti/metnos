@@ -3284,7 +3284,9 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         import remote_exec as _remote
         try:
             _target = _placement.choose_placement(
-                _plc, None, _devices.list_devices())
+                _plc, None, _devices.list_devices(),
+                platforms=getattr(executor, "platforms", None),
+                executor_name=executor.name)
         except _placement.PlacementError as e:
             from messages import get as _pmsg
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),

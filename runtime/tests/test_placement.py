@@ -19,6 +19,7 @@ class FakeDevice:
     name: str
     last_heartbeat: str | None
     revoked_at: str | None = None
+    os_family: str | None = None
 
 
 def _iso(dt: datetime) -> str:
@@ -91,6 +92,69 @@ class PlacementTests(unittest.TestCase):
     def test_revoked_device_not_available(self):
         dev = FakeDevice("d-1", "laptop", self.fresh, revoked_at=_iso(self.now))
         self.assertFalse(placement.is_available(dev, self.now))
+
+    # --- gate platforms (W3.0/W3.2, §16.1/§16.3) --------------------------
+
+    def test_scope_device_windows_no_platforms_declared_raises(self):
+        dev = FakeDevice("d-1", "laptop-win", self.fresh, os_family="windows")
+        with self.assertRaises(placement.PlacementError) as cm:
+            placement.choose_placement(
+                {"scope": "device"}, None, [dev], now=self.now,
+                executor_name="find_packages")
+        self.assertEqual(cm.exception.code, "ERR_DEVICE_PLATFORM_UNSUPPORTED")
+        self.assertEqual(cm.exception.fmt["os"], "windows")
+        self.assertEqual(cm.exception.fmt["executor"], "find_packages")
+
+    def test_scope_device_windows_with_platforms_declared_passes(self):
+        dev = FakeDevice("d-1", "laptop-win", self.fresh, os_family="windows")
+        self.assertEqual(
+            placement.choose_placement(
+                {"scope": "device"}, None, [dev], now=self.now,
+                platforms=["linux", "windows"]),
+            "d-1")
+
+    def test_scope_device_no_os_family_defaults_linux(self):
+        # Device pairato ma senza os_family valorizzato: default "linux",
+        # coerente col default del manifest (mai jolly universale).
+        dev = FakeDevice("d-1", "laptop", self.fresh, os_family=None)
+        self.assertEqual(
+            placement.choose_placement({"scope": "device"}, None, [dev], now=self.now),
+            "d-1")
+
+    def test_user_override_platform_mismatch_raises(self):
+        # Il nome esplicito non scavalca l'incompatibilita': l'utente ha
+        # scelto il device, non il crash remoto che ne conseguirebbe.
+        dev = FakeDevice("d-1", "laptop-win", self.fresh, os_family="windows")
+        with self.assertRaises(placement.PlacementError) as cm:
+            placement.choose_placement(
+                {"scope": "device"}, {"device": "laptop-win"}, [dev], now=self.now)
+        self.assertEqual(cm.exception.code, "ERR_DEVICE_PLATFORM_UNSUPPORTED")
+
+    def test_user_override_platform_match_passes(self):
+        dev = FakeDevice("d-1", "laptop-win", self.fresh, os_family="windows")
+        self.assertEqual(
+            placement.choose_placement(
+                {"scope": "device"}, {"device": "laptop-win"}, [dev], now=self.now,
+                platforms=["linux", "windows"]),
+            "d-1")
+
+    def test_scope_device_picks_compatible_among_mixed(self):
+        # Due device disponibili, uno solo compatibile: NON e' ambiguo,
+        # il filtro platforms scarta l'incompatibile prima della scelta.
+        d_linux = FakeDevice("d-1", "server-nas", self.fresh, os_family="linux")
+        d_win = FakeDevice("d-2", "laptop-win", self.fresh, os_family="windows")
+        self.assertEqual(
+            placement.choose_placement(
+                {"scope": "device"}, None, [d_linux, d_win], now=self.now),
+            "d-1")
+
+    def test_scope_device_all_incompatible_raises_platform_not_none(self):
+        # Device raggiungibili ma NESSUNO compatibile: errore distinto da
+        # "nessun device raggiungibile" (diagnosi diversa, §2.8).
+        dev = FakeDevice("d-1", "laptop-win", self.fresh, os_family="windows")
+        with self.assertRaises(placement.PlacementError) as cm:
+            placement.choose_placement({"scope": "device"}, None, [dev], now=self.now)
+        self.assertEqual(cm.exception.code, "ERR_DEVICE_PLATFORM_UNSUPPORTED")
 
 
 if __name__ == "__main__":
