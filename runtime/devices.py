@@ -65,6 +65,20 @@ CREATE TABLE IF NOT EXISTS device_tokens (
     consumed_at TEXT,
     consumed_fingerprint TEXT
 );
+CREATE TABLE IF NOT EXISTS device_join_sessions (
+    join_id TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    token_id TEXT NOT NULL,
+    device_name TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'auto',
+    server_url TEXT,
+    state TEXT NOT NULL DEFAULT 'created',
+    client_hint TEXT,
+    device_id TEXT,
+    created_at TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    updated_at TEXT
+);
 """
 
 
@@ -281,6 +295,128 @@ def consume_token(token: str, public_key_b64: str, *,
         conn.close()
 
 
+# --- join sessions (§5.3 design doc: install-at-the-fly dalla UI) ----------
+#
+# Una join session rende OSSERVABILE l'installazione del client su un device:
+# la UI genera un link /agent/client/join/<join_id>, il PC target lo apre,
+# scarica l'installer personalizzato, registra; ogni passo avanza `state`.
+# Il segreto e' il join_id effimero: punta a un token DEV. one-shot (TTL 10').
+
+JOIN_STATES = ("created", "opened", "downloaded", "registered", "heartbeat")
+_JOIN_ORDER = {s: i for i, s in enumerate(JOIN_STATES)}
+
+
+def create_join_session(name: str, *, platform: str = "auto",
+                        server_url: str | None = None,
+                        owner_user_id: str = "host",
+                        ttl_seconds: int = DEFAULT_TOKEN_TTL_S,
+                        db_path: Path | None = None) -> dict:
+    """Genera token effimero + join session osservabile. Ritorna il record."""
+    if platform not in ("auto", "linux", "windows"):
+        raise TokenError(f"platform non valida: {platform}")
+    token = generate_token(name, owner_user_id=owner_user_id,
+                           ttl_seconds=ttl_seconds, db_path=db_path)
+    token_id = _token_id_of(token)
+    join_id = uuid.uuid4().hex[:16]
+    now = _now_iso()
+    expires_at = int(time.time()) + ttl_seconds
+    conn = _open_db(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO device_join_sessions
+               (join_id, token, token_id, device_name, platform, server_url,
+                state, created_at, expires_at, updated_at)
+               VALUES (?,?,?,?,?,?,'created',?,?,?)""",
+            (join_id, token, token_id, name, platform, server_url,
+             now, expires_at, now),
+        )
+    finally:
+        conn.close()
+    return get_join_session(join_id, db_path=db_path)
+
+
+def _token_id_of(token: str) -> str:
+    """Estrae il token_id (tid) dal payload del token DEV. gia' emesso."""
+    body = token[len(TOKEN_PREFIX):].split(".")[0]
+    return json.loads(_b64u_decode(body).decode("utf-8"))["tid"]
+
+
+def get_join_session(join_id: str, *, db_path: Path | None = None) -> dict | None:
+    """Ritorna la sessione con lo stato EFFETTIVO (expired se il token e'
+    scaduto prima di arrivare a registered)."""
+    conn = _open_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM device_join_sessions WHERE join_id = ?", (join_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return None
+    sess = dict(row)
+    if (sess["state"] in ("created", "opened", "downloaded")
+            and int(sess["expires_at"]) < time.time()):
+        sess["state"] = "expired"
+    return sess
+
+
+def mark_join_state(join_id: str, state: str, *,
+                    client_hint: dict | None = None,
+                    device_id: str | None = None,
+                    db_path: Path | None = None) -> bool:
+    """Avanza lo stato della sessione. MONOTONO: mai regressioni (un secondo
+    GET della pagina join non riporta 'registered' a 'opened')."""
+    if state not in _JOIN_ORDER:
+        raise DeviceError(f"stato join non valido: {state}")
+    conn = _open_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT state FROM device_join_sessions WHERE join_id = ?",
+            (join_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        if _JOIN_ORDER[state] <= _JOIN_ORDER.get(row["state"], -1):
+            return False
+        sets, params = ["state = ?", "updated_at = ?"], [state, _now_iso()]
+        if client_hint is not None:
+            sets.append("client_hint = ?")
+            params.append(json.dumps(client_hint, ensure_ascii=False))
+        if device_id is not None:
+            sets.append("device_id = ?")
+            params.append(device_id)
+        params.append(join_id)
+        conn.execute(
+            f"UPDATE device_join_sessions SET {', '.join(sets)} WHERE join_id = ?",
+            params,
+        )
+        return True
+    finally:
+        conn.close()
+
+
+def mark_join_registered_by_token(token: str, device_id: str, *,
+                                  db_path: Path | None = None) -> bool:
+    """Aggancio register→sessione: chiamato da agent_server.register dopo il
+    consume riuscito. Il token e' gia' verificato a monte."""
+    try:
+        token_id = _token_id_of(token)
+    except Exception:
+        return False
+    conn = _open_db(db_path)
+    try:
+        row = conn.execute(
+            "SELECT join_id FROM device_join_sessions WHERE token_id = ?",
+            (token_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return False
+    return mark_join_state(row["join_id"], "registered",
+                           device_id=device_id, db_path=db_path)
+
+
 # --- query / lifecycle ----------------------------------------------------
 
 def list_devices(*, include_revoked: bool = False,
@@ -337,6 +473,13 @@ def heartbeat(device_id: str, *, profile: dict | None = None,
                 "UPDATE devices SET last_heartbeat = ? WHERE id = ? AND revoked_at IS NULL",
                 (_now_iso(), device_id),
             )
+        # Join session (§5.3): il primo heartbeat chiude il flusso di install
+        # (registered → heartbeat). UPDATE mirato, no-op se nessuna sessione.
+        conn.execute(
+            "UPDATE device_join_sessions SET state = 'heartbeat', updated_at = ? "
+            "WHERE device_id = ? AND state = 'registered'",
+            (_now_iso(), device_id),
+        )
     finally:
         conn.close()
 

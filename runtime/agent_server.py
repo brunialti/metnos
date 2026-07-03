@@ -108,6 +108,14 @@ async def register(request: web.Request) -> web.Response:
         log.exception("register error")
         return _error(500, "internal_error", "registration failed")
 
+    # Join session (§5.3): se il token veniva da un flusso UI, avanza lo
+    # stato a 'registered'. Best-effort: il register resta valido comunque.
+    try:
+        await loop.run_in_executor(
+            None, lambda: devices.mark_join_registered_by_token(token, device.id))
+    except Exception as _e:
+        log.warning("join session non aggiornata su register: %s", _e)
+
     return web.json_response({
         "device_id": device.id,
         "name": device.name,
@@ -346,6 +354,214 @@ async def shim_bundle(request: web.Request) -> web.Response:
     return web.json_response(bundle)
 
 
+# --- join flow (§5.4-5.7 design doc: install-at-the-fly dalla UI) ----------
+#
+# La pagina join NON richiede auth admin: il segreto e' il join_id effimero,
+# che punta a un token DEV. one-shot (TTL 10'). La pagina marca 'opened',
+# rileva l'OS dal browser, scarica l'installer PERSONALIZZATO (server+token
+# baked) e segue lo stato fino a 'heartbeat'.
+
+_JOIN_ID_RE = re.compile(r"^[0-9a-f]{8,32}$")
+
+_JOIN_PAGE = """<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Metnos — installa il client</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:640px;margin:8vh auto;padding:0 20px;color:#1a2733}
+ h1{font-size:1.4rem} .muted{color:#68788a;font-size:.92rem}
+ .btn{display:inline-block;background:#1A477A;color:#fff;padding:14px 26px;border-radius:8px;
+      font-size:1.05rem;text-decoration:none;margin:18px 0}
+ ol.steps{list-style:none;padding:0} ol.steps li{padding:6px 0 6px 28px;position:relative;color:#68788a}
+ ol.steps li::before{content:'○';position:absolute;left:4px}
+ ol.steps li.done{color:#1a2733} ol.steps li.done::before{content:'●';color:#2e7d32}
+ ol.steps li.now{color:#1a2733;font-weight:600} ol.steps li.now::before{content:'◐';color:#1A477A}
+ .ok{color:#2e7d32;font-weight:600} .err{color:#b3261e;font-weight:600}
+ code{background:#eef2f6;padding:2px 6px;border-radius:4px}
+</style></head><body>
+<h1>Installa Metnos Client su questo PC</h1>
+<p class="muted">Device: <code>__DEVICE_NAME__</code> · il link scade insieme al
+token (10 minuti dall'emissione).</p>
+<div id="expired" class="err" style="display:none">Sessione scaduta: genera un
+nuovo link dalla console <code>/admin/devices</code>.</div>
+<div id="main">
+  <p>Sistema rilevato: <strong id="os-label">…</strong></p>
+  <a id="dl" class="btn" href="#">Scarica installer Metnos Client</a>
+  <p class="muted" id="hint"></p>
+  <ol class="steps" id="steps">
+    <li data-s="created">link generato</li>
+    <li data-s="opened">pagina aperta su questo PC</li>
+    <li data-s="downloaded">installer scaricato — <em>aprilo per proseguire</em></li>
+    <li data-s="registered">device registrato (chiave Ed25519)</li>
+    <li data-s="heartbeat">client attivo — installazione completata</li>
+  </ol>
+  <p id="done" class="ok" style="display:none">Fatto: il device è appaiato e
+  raggiungibile. Puoi chiudere questa pagina.</p>
+</div>
+<script>
+(function () {
+  var joinId = "__JOIN_ID__";
+  var isWin = /Windows/i.test(navigator.userAgent);
+  var platform = "__PLATFORM__";
+  if (platform === "auto") platform = isWin ? "windows" : "linux";
+  document.getElementById("os-label").textContent =
+    platform === "windows" ? "Windows" : "Linux";
+  document.getElementById("hint").textContent = platform === "windows"
+    ? "Dopo il download: tasto destro sul file → «Esegui con PowerShell»."
+    : "Dopo il download: apri un terminale ed esegui  sh metnos-client-install.sh";
+  var dlUrl = "/agent/client/join/" + joinId + "/installer?platform=" + platform;
+  var dl = document.getElementById("dl");
+  dl.href = dlUrl;
+  var ORDER = ["created","opened","downloaded","registered","heartbeat"];
+  function render(state) {
+    if (state === "expired") {
+      document.getElementById("expired").style.display = "block";
+      document.getElementById("main").style.display = "none";
+      return true;
+    }
+    var idx = ORDER.indexOf(state);
+    var lis = document.querySelectorAll("#steps li");
+    lis.forEach(function (li) {
+      var i = ORDER.indexOf(li.getAttribute("data-s"));
+      li.className = i < idx ? "done" : (i === idx ? "now" : "");
+      if (i <= idx) li.classList.add("done");
+      if (i === idx) li.classList.add("now");
+    });
+    if (state === "heartbeat") {
+      document.getElementById("done").style.display = "block";
+      return true;
+    }
+    return false;
+  }
+  render("__STATE__");
+  // Auto-download dopo un breve delay (il browser puo' solo scaricare:
+  // l'esecuzione resta un gesto manuale dell'utente).
+  if ("__STATE__" === "created" || "__STATE__" === "opened") {
+    setTimeout(function () { window.location.href = dlUrl; }, 1200);
+  }
+  var t = setInterval(function () {
+    fetch("/agent/client/join/" + joinId + "/status")
+      .then(function (r) { return r.json(); })
+      .then(function (s) { if (render(s.state)) clearInterval(t); })
+      .catch(function () {});
+  }, 2000);
+})();
+</script></body></html>"""
+
+
+def _join_session_or_none(join_id: str):
+    if not _JOIN_ID_RE.match(join_id):
+        return None
+    return devices.get_join_session(join_id)
+
+
+async def client_join_page(request: web.Request) -> web.Response:
+    """GET /agent/client/join/{join_id} — pagina join sul PC target (§5.5)."""
+    join_id = request.match_info["join_id"]
+    loop = asyncio.get_running_loop()
+    sess = await loop.run_in_executor(None, _join_session_or_none, join_id)
+    if sess is None:
+        return web.Response(
+            text="<h1>404</h1><p>Sessione di join inesistente.</p>",
+            status=404, content_type="text/html")
+    hint = {"ip": request.remote,
+            "user_agent": request.headers.get("User-Agent", "")[:300]}
+    await loop.run_in_executor(
+        None, lambda: devices.mark_join_state(join_id, "opened", client_hint=hint))
+    state = "opened" if sess["state"] == "created" else sess["state"]
+    html = (_JOIN_PAGE
+            .replace("__JOIN_ID__", join_id)
+            .replace("__DEVICE_NAME__", sess["device_name"])
+            .replace("__PLATFORM__", sess["platform"] or "auto")
+            .replace("__STATE__", state))
+    return web.Response(text=html, content_type="text/html",
+                        headers={"Cache-Control": "no-store"})
+
+
+async def client_join_status(request: web.Request) -> web.Response:
+    """GET /agent/client/join/{join_id}/status — stato per pagina join e UI."""
+    join_id = request.match_info["join_id"]
+    loop = asyncio.get_running_loop()
+    sess = await loop.run_in_executor(None, _join_session_or_none, join_id)
+    if sess is None:
+        return _error(404, "unknown_join", "join session not found")
+    out = {
+        "join_id": join_id,
+        "state": sess["state"],
+        "device_name": sess["device_name"],
+        "platform": sess["platform"],
+        "expires_at": sess["expires_at"],
+    }
+    if sess.get("device_id"):
+        dev = await loop.run_in_executor(None, devices.get_device, sess["device_id"])
+        if dev is not None:
+            out["device"] = {
+                "id": dev.id, "name": dev.name,
+                "fingerprint": dev.public_key_fingerprint,
+                "os_family": dev.os_family, "os_arch": dev.os_arch,
+                "last_heartbeat": dev.last_heartbeat,
+            }
+    return web.json_response(out, headers={"Cache-Control": "no-store"})
+
+
+async def client_join_installer(request: web.Request) -> web.Response:
+    """GET /agent/client/join/{join_id}/installer?platform=linux|windows —
+    installer PERSONALIZZATO (§5.6/5.7): server URL + token baked, cosi' il
+    file scaricato si esegue senza incollare variabili. Marca 'downloaded'."""
+    join_id = request.match_info["join_id"]
+    loop = asyncio.get_running_loop()
+    sess = await loop.run_in_executor(None, _join_session_or_none, join_id)
+    if sess is None:
+        return _error(404, "unknown_join", "join session not found")
+    if sess["state"] == "expired":
+        return _error(410, "expired", "join session expired; generate a new link")
+
+    platform = request.query.get("platform") or sess["platform"] or "auto"
+    if platform == "auto":
+        platform = "windows" if "Windows" in request.headers.get("User-Agent", "") else "linux"
+    if platform not in ("linux", "windows"):
+        return _error(400, "invalid_platform", "platform must be linux|windows")
+
+    # Il target ha raggiunto QUESTO host:porta: e' l'URL server giusto per lui.
+    host = request.headers.get("Host") or f"127.0.0.1:{DEFAULT_PORT}"
+    server_url = sess.get("server_url") or f"http://{host}"
+    if request.headers.get("Host"):
+        server_url = f"http://{request.headers['Host']}"
+
+    src = agent_mirror.MIRROR_CLIENT_DIR / ("install.ps1" if platform == "windows"
+                                            else "install.sh")
+    if not src.is_file():
+        return _error(503, "installer_missing",
+                      "installer non presente nel mirror (scripts/build-client.sh)")
+    body = src.read_text(encoding="utf-8")
+    token = sess["token"]
+    if platform == "windows":
+        prelude = (f"$env:METNOS_SERVER = '{server_url}'\n"
+                   f"$env:METNOS_TOKEN = '{token}'\n")
+        text = prelude + body
+        fname = "MetnosClientSetup.ps1"
+        ctype = "text/plain; charset=utf-8"
+    else:
+        prelude = (f"METNOS_SERVER='{server_url}'; export METNOS_SERVER\n"
+                   f"METNOS_TOKEN='{token}'; export METNOS_TOKEN\n")
+        lines = body.split("\n", 1)
+        text = (lines[0] + "\n" + prelude + (lines[1] if len(lines) > 1 else "")
+                ) if lines[0].startswith("#!") else prelude + body
+        fname = "metnos-client-install.sh"
+        ctype = "text/x-shellscript; charset=utf-8"
+
+    await loop.run_in_executor(
+        None, lambda: devices.mark_join_state(join_id, "downloaded"))
+    return web.Response(
+        body=text.encode("utf-8"),
+        headers={
+            "Content-Type": ctype,
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Cache-Control": "no-store",
+        })
+
+
 # --- app factory ----------------------------------------------------------
 
 def make_app() -> web.Application:
@@ -359,6 +575,11 @@ def make_app() -> web.Application:
     app.router.add_post("/agent/heartbeat", heartbeat)
     app.router.add_get("/agent/executor/{name}", executor_bundle)
     app.router.add_get("/agent/shim", shim_bundle)
+    # Join flow (§5): PRIMA del mirror, che ha la route catch-all
+    # /agent/client/{filename}.
+    app.router.add_get("/agent/client/join/{join_id}", client_join_page)
+    app.router.add_get("/agent/client/join/{join_id}/status", client_join_status)
+    app.router.add_get("/agent/client/join/{join_id}/installer", client_join_installer)
     agent_mirror.register_routes(app)
     return app
 

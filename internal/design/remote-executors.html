@@ -124,6 +124,18 @@ costruiti in questa sessione:</p>
   canonico cross-linguaggio); E2E reale <code>scripts/e2e-remote-executor.sh</code>
   (pairing → execute <code>find_packages</code> → firma manomessa → dedup → server-restart:
   tutti i gate §14.3 verdi; il gate sandbox è skip onesto dove <code>bwrap</code> manca).</li>
+<li><strong>Install-at-the-fly dalla UI (§5) — implementato 3/7/2026</strong>:
+  join session osservabile (<code>devices.device_join_sessions</code>, stati monotoni
+  <code>created→opened→downloaded→registered→heartbeat</code>, expiry dal TTL token);
+  pagina join no-auth <code>/agent/client/join/&lt;join_id&gt;</code> (rileva OS, auto-download,
+  polling stato); installer <em>personalizzato</em> (server+token baked nel file scaricato,
+  <code>metnos-client-install.sh</code> / <code>MetnosClientSetup.ps1</code>);
+  <code>/admin/devices/current-client</code> (§5.2, browser-sul-server niente install) +
+  <code>POST /admin/devices/join</code> + avanzamento live nella UI <code>/admin/devices</code>.
+  Mirror rigenerato a <code>0.2.0</code> (musl+windows firmati). 12 unit
+  (<code>test_device_join</code>) + E2E harness isolato col binario reale:
+  register→heartbeat verdi. Il download resta un gesto manuale dell'utente
+  (§5.1: il browser non può eseguire).</li>
 </ul>
 <p><strong>Due raffinamenti rispetto allo spec originale</strong>, entrambi documentati sotto:
 (1) la firma del device sul <code>result</code> è nell'header <code>X-Metnos-Device-Sig</code> sui

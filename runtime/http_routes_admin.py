@@ -1355,6 +1355,98 @@ async def admin_devices_token(request: web.Request) -> web.Response:
     return web.Response(text=html, content_type="text/html")
 
 
+def _local_server_ips() -> set[str]:
+    """IP locali del server (§5.2): psutil se disponibile, getaddrinfo come
+    fallback. Cache di modulo: la lista cambia solo a riconfigurazione rete."""
+    global _LOCAL_IPS_CACHE
+    if _LOCAL_IPS_CACHE is not None:
+        return _LOCAL_IPS_CACHE
+    import socket
+    ips: set[str] = {"127.0.0.1", "::1", "localhost"}
+    try:
+        import psutil
+        for addrs in psutil.net_if_addrs().values():
+            for a in addrs:
+                if a.family in (socket.AF_INET, socket.AF_INET6) and a.address:
+                    ips.add(a.address.split("%")[0])
+    except Exception:
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None):
+                ips.add(str(info[4][0]).split("%")[0])
+        except Exception:
+            pass
+    _LOCAL_IPS_CACHE = ips
+    return ips
+
+
+_LOCAL_IPS_CACHE: set[str] | None = None
+
+
+def is_request_from_server(request: web.Request) -> bool:
+    """True se il browser sta girando SUL server (§5.2): in quel caso non
+    c'e' nessun client da installare. X-Forwarded-For NON fa fede (input
+    utente, nessun reverse proxy trusted in questa stesura)."""
+    remote = request.remote or ""
+    return remote in _local_server_ips()
+
+
+async def admin_devices_current_client(request: web.Request) -> web.Response:
+    """GET /admin/devices/current-client — il browser e' sul server? (§5.2)"""
+    return web.json_response({
+        "is_server_client": is_request_from_server(request),
+        "remote": request.remote,
+    })
+
+
+async def admin_devices_join(request: web.Request) -> web.Response:
+    """POST /admin/devices/join {name, platform} — crea la join session e
+    ritorna il link /agent/client/join/<join_id> per il PC target (§5.4)."""
+    import devices as devices_mod
+    if request.content_type == "application/json":
+        body = await request.json()
+    else:
+        body = dict(await request.post())
+    name = (body.get("name") or "").strip()
+    platform = (body.get("platform") or "auto").strip()
+    if not name or any(c.isspace() for c in name):
+        return _error(400, "invalid_name",
+                      "nome device non valido (no spazi, non vuoto)")
+    server_url = _agent_server_url(request)
+    loop = asyncio.get_running_loop()
+    try:
+        sess = await loop.run_in_executor(
+            None, lambda: devices_mod.create_join_session(
+                name, platform=platform, server_url=server_url))
+    except devices_mod.TokenError as e:
+        return _error(400, "token_error", str(e))
+    return web.json_response({
+        "join_id": sess["join_id"],
+        "join_url": f"{server_url}/agent/client/join/{sess['join_id']}",
+        "state": sess["state"],
+        "device_name": sess["device_name"],
+        "platform": sess["platform"],
+        "expires_at": sess["expires_at"],
+    })
+
+
+async def admin_devices_join_status(request: web.Request) -> web.Response:
+    """GET /admin/devices/join/{join_id}/status — polling avanzamento UI."""
+    import devices as devices_mod
+    join_id = request.match_info["join_id"]
+    loop = asyncio.get_running_loop()
+    sess = await loop.run_in_executor(
+        None, lambda: devices_mod.get_join_session(join_id))
+    if sess is None:
+        return _error(404, "unknown_join", "join session inesistente")
+    return web.json_response({
+        "join_id": join_id,
+        "state": sess["state"],
+        "device_name": sess["device_name"],
+        "device_id": sess.get("device_id"),
+        "expires_at": sess["expires_at"],
+    }, headers={"Cache-Control": "no-store"})
+
+
 async def admin_device_revoke(request: web.Request) -> web.Response:
     """POST /admin/devices/{id}/revoke — revoca device (token futuri rifiutati)."""
     import devices as devices_mod
@@ -1406,6 +1498,9 @@ ROUTES = (
     ("POST", r"/admin/users/{id}/channels/{channel}/pair",   admin_user_pair_channel),
     ("POST", r"/admin/users/{id}/channels/{channel}/remove", admin_user_remove_channel),
     ("GET",  "/admin/devices",                    admin_devices),
+    ("GET",  "/admin/devices/current-client",     admin_devices_current_client),
     ("POST", "/admin/devices/token",              admin_devices_token),
+    ("POST", "/admin/devices/join",               admin_devices_join),
+    ("GET",  r"/admin/devices/join/{join_id}/status", admin_devices_join_status),
     ("POST", r"/admin/devices/{id}/revoke",       admin_device_revoke),
 )

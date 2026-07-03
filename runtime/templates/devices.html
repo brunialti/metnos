@@ -6,8 +6,86 @@
 <code>metnos-client</code> — identità Ed25519, heartbeat, revoca.
 Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
 
+<section class="panel" id="join-panel">
+  <h2>Installa client su un PC</h2>
+  <p class="muted" id="join-server-note" style="display:none">Questa UI è aperta
+  sul server Metnos: non serve installare un client remoto qui. Per un altro PC,
+  genera il link e aprilo da quel PC.</p>
+  <form id="join-form">
+    <label>Nome device (senza spazi, es. <code>laptop-windows</code>)
+      <input type="text" name="name" id="join-name" required pattern="\S+" maxlength="40">
+    </label>
+    <button type="submit" class="btn" id="join-btn">Genera link di installazione</button>
+  </form>
+  <div id="join-box" style="display:none">
+    <p>Apri questo link <strong>dal PC da installare</strong> (scade in 10 minuti):</p>
+    <pre><code id="join-url"></code></pre>
+    <ol id="join-steps" style="list-style:none;padding-left:0">
+      <li data-s="created">○ link generato</li>
+      <li data-s="opened">○ pagina aperta sul PC target</li>
+      <li data-s="downloaded">○ installer scaricato</li>
+      <li data-s="registered">○ device registrato</li>
+      <li data-s="heartbeat">○ client attivo — completato</li>
+    </ol>
+  </div>
+  <script>
+  (function () {
+    fetch("/admin/devices/current-client").then(function(r){return r.json();})
+      .then(function (c) {
+        if (c.is_server_client) {
+          document.getElementById("join-server-note").style.display = "block";
+          document.getElementById("join-btn").textContent =
+            "Genera link per un altro PC";
+        }
+      }).catch(function(){});
+    var ORDER = ["created","opened","downloaded","registered","heartbeat"];
+    var timer = null;
+    function render(state) {
+      document.querySelectorAll("#join-steps li").forEach(function (li) {
+        var i = ORDER.indexOf(li.getAttribute("data-s"));
+        var cur = ORDER.indexOf(state);
+        li.textContent = (i <= cur ? "● " : "○ ") + li.textContent.slice(2);
+        li.style.color = i <= cur ? "inherit" : "#888";
+        li.style.fontWeight = i === cur ? "600" : "400";
+      });
+      if (state === "expired") {
+        document.getElementById("join-url").textContent = "SCADUTO — rigenera il link";
+        return true;
+      }
+      return state === "heartbeat";
+    }
+    document.getElementById("join-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = document.getElementById("join-name").value.trim();
+      if (!name) return;
+      fetch("/admin/devices/join", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name: name, platform: "auto"}),
+      }).then(function(r){return r.json();}).then(function (s) {
+        if (!s.join_id) { alert(s.message || "errore"); return; }
+        document.getElementById("join-box").style.display = "block";
+        document.getElementById("join-url").textContent = s.join_url;
+        render(s.state);
+        if (timer) clearInterval(timer);
+        timer = setInterval(function () {
+          fetch("/admin/devices/join/" + s.join_id + "/status")
+            .then(function(r){return r.json();})
+            .then(function (st) {
+              if (render(st.state)) {
+                clearInterval(timer);
+                if (st.state === "heartbeat") location.reload();
+              }
+            }).catch(function(){});
+        }, 2000);
+      }).catch(function(){});
+    });
+  })();
+  </script>
+</section>
+
 <section class="panel">
-  <h2>Aggiungi dispositivo</h2>
+  <h2>Aggiungi dispositivo (manuale, one-liner)</h2>
   <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
     <label>Nome device (senza spazi, es. <code>laptop-windows</code>)
       <input type="text" name="name" required pattern="\S+" maxlength="40">
