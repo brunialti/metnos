@@ -3256,7 +3256,7 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
-                    turn_id=None, actor=None, channel=None):
+                    turn_id=None, actor=None, channel=None, target_device=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
@@ -3277,14 +3277,22 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # [placement] scope="device" nel manifest → l'executor NON gira qui:
     # invocazione firmata al device via coda (remote_exec). Default (nessun
     # [placement] o scope any/server) = esecuzione locale invariata.
+    # Un-gate chat-driven placement (ADR 0034): il blocco parte se il manifest è
+    # scope="device" OPPURE se il turno ha risolto un PC bersaglio dalla chat
+    # (`target_device`, nome del device). Senza target_device e senza scope=device
+    # → nessun cambiamento (esecuzione locale invariata, prod-safe §7.1).
     _plc = getattr(executor, "placement", None) or {}
-    if (_plc.get("scope") or "").strip().lower() == "device":
+    _plc_scope = (_plc.get("scope") or "").strip().lower()
+    if _plc_scope == "device" or target_device:
         import devices as _devices
         import placement as _placement
         import remote_exec as _remote
+        # target_device = NOME device dalla chat → choose_placement L1.c lo abbina
+        # (con gate connessione + piattaforma). Senza, resta la logica scope.
+        _intent = {"device": target_device} if target_device else None
         try:
             _target = _placement.choose_placement(
-                _plc, None, _devices.list_devices(),
+                _plc, _intent, _devices.list_devices(),
                 platforms=getattr(executor, "platforms", None),
                 executor_name=executor.name)
         except _placement.PlacementError as e:
@@ -5177,6 +5185,41 @@ def _try_engine_v2(
     except Exception as _de:  # noqa: BLE001 — disambiguazione best-effort
         log.debug("route_disambiguation noop: %r", _de)
 
+    # --- Chat-driven placement (ADR 0034): risolvi il PC bersaglio dalla query.
+    # `_target_name` (nome device) viene passato a invoke_executor via _invoke.
+    # Senza riferimento a un PC (né appiccicoso) resta None → esecuzione sul
+    # server, INVARIATA (prod-safe). Il controllo di connessione è nel resolver.
+    _target_name = None
+    _sender_id = f"{channel}:{actor}" if channel else (actor or "host")
+    try:
+        import target_device as _td
+        import chat_target_store as _cts
+        import devices as _devs
+        _dev_list = list(_devs.list_devices())  # owner-filter multi-utente: follow-up
+        if _dev_list:
+            _tr = _td.resolve_target(
+                query, _dev_list, last_target=_cts.get_last_target(_sender_id))
+            if _tr.status in ("unreachable", "ambiguous"):
+                from messages import get as _m
+                if _tr.status == "unreachable":
+                    _ftxt = _m("ERR_DEVICE_UNREACHABLE", name=_tr.unreachable_name or "?")
+                else:
+                    _names = ", ".join(n for _i, n in _tr.candidates if n)
+                    _ftxt = _m("ERR_DEVICE_AMBIGUOUS") + (f" ({_names})" if _names else "")
+                return {
+                    "steps": [], "final_text": _ftxt, "final_kind": "answer",
+                    "framework_hash": "", "verb": intent.verb, "object": intent.object,
+                    "keywords": intent.keywords, "match_source": f"target_device_{_tr.status}",
+                    "elapsed_ms": 0, "error_class": None, "gate_obs": None,
+                    "needs_inputs_obs": None, "target_device": _tr.unreachable_name}
+            if _tr.target != _td.SERVER:
+                _target_name = _tr.device_name
+            query = _tr.cleaned_query or query        # adjunct di destinazione rimosso
+            if _tr.explicit:                          # appiccicosa: solo su riferimento esplicito
+                _cts.set_last_target(_sender_id, _tr.target, _tr.device_name)
+    except Exception as _te:  # noqa: BLE001 — placement chat best-effort, mai bloccare il turno
+        log.debug("target_device resolve noop: %r", _te)
+
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
         if tool_name in _BUILTIN_TOOL_HANDLERS:
@@ -5193,7 +5236,7 @@ def _try_engine_v2(
                 exec_obj, args,
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
-                actor=actor, channel=channel)
+                actor=actor, channel=channel, target_device=_target_name)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
                      "error_class": "exception"}
@@ -5309,9 +5352,15 @@ def _try_engine_v2(
                     and s.result.get("decision") == "input_required"
                     and s.tool == "get_approval"):
                 gate_obs = s.result
+    # Tag di destinazione (ADR 0034): se il turno è stato instradato a un PC,
+    # esponi il nome (dato) come campo `target_device` e anteponi un marcatore
+    # visibile al messaggio finale. Nessun PC → campo None, testo invariato.
+    _final_text = result.final_text
+    if _target_name and _final_text:
+        _final_text = f"📍 {_target_name}\n\n{_final_text}"
     return {
         "steps": steps_out,
-        "final_text": result.final_text,
+        "final_text": _final_text,
         "final_kind": result.final_kind,
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
@@ -5322,6 +5371,7 @@ def _try_engine_v2(
         "error_class": result.error_class,
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
+        "target_device": _target_name,
     }
 
 
