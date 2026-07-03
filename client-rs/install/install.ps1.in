@@ -59,12 +59,20 @@ New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 $dest = Join-Path $destDir 'metnos-client.exe'
 
 # Reinstall/update: un metnos-client.exe IN ESECUZIONE tiene il file bloccato
-# (Windows locka l'immagine dell'eseguibile). Ferma la Scheduled Task prima di
-# sovrascrivere; il client ha comunque il lock single-instance a valle.
+# (Windows locka l'immagine dell'eseguibile) E il lock single-instance, quindi
+# la task nuova morirebbe sul lock. Ferma la Scheduled Task E ogni processo
+# client residuo — inclusa un'istanza lanciata A MANO in primo piano (trappola
+# vista live 3/7: la finestra manuale teneva il lock, la task appena
+# registrata usciva subito e il device restava muto).
 $taskName = 'MetnosClient'
 if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
   Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-  Start-Sleep -Milliseconds 800
+}
+$running = Get-Process -Name 'metnos-client' -ErrorAction SilentlyContinue
+if ($running) {
+  Write-Host "==> fermo $($running.Count) processo/i metnos-client in esecuzione (task o finestra manuale)"
+  $running | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 1200
 }
 try {
   Copy-Item -Force $exe $dest
