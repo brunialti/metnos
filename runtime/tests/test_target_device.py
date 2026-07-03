@@ -99,6 +99,28 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.target, "b")
 
 
+class ReferencesDeviceTests(unittest.TestCase):
+    """Guardia fast_path: la query che cita un device deve saltare il fast_path."""
+    def setUp(self):
+        self.pc = FakeDev("id-ufficio", "PORTATILE-UFFICIO")
+
+    def test_named_device_is_reference(self):
+        self.assertTrue(td.references_device("elenca documenti sul portatile-ufficio", [self.pc]))
+
+    def test_local_marker_is_reference(self):
+        self.assertTrue(td.references_device("che file ci sono su questo pc", [self.pc]))
+
+    def test_server_marker_is_reference(self):
+        self.assertTrue(td.references_device("quanti processi qui sul server", [self.pc]))
+
+    def test_plain_query_is_not_reference(self):
+        self.assertFalse(td.references_device("quante righe di codice ci sono", [self.pc]))
+
+    def test_bare_name_is_not_reference(self):
+        casa = FakeDev("c", "casa")
+        self.assertFalse(td.references_device("trova le foto di casa", [casa]))
+
+
 class StickyStoreTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()

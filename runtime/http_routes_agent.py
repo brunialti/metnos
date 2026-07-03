@@ -709,6 +709,8 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
         "final_message": log_obj.final_message,
         "final_message_html": _safe_final_html(log_obj.final_message),
         "final_kind": log_obj.final_kind,
+        # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
+        "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
         "ts_end": float(log_obj.ts_end),
         "expandable_caps": getattr(log_obj, "expandable_caps", []) or [],
@@ -949,6 +951,8 @@ async def _turn_json(request: web.Request, agent_runtime, query: str, actor: str
         "final_message": log_obj.final_message,
         "final_message_html": _safe_final_html(log_obj.final_message),
         "final_kind": log_obj.final_kind,
+        # Destinazione risolta (ADR 0034): None = server, altrimenti nome device.
+        "target_device": getattr(log_obj, "target_device", None),
         "total_ms": int((log_obj.ts_end - log_obj.ts_start) * 1000),
         "ts_end": float(log_obj.ts_end),  # epoch seconds, per close-time UI
         "steps_summary": [

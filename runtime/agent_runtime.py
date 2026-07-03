@@ -3279,11 +3279,15 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # [placement] o scope any/server) = esecuzione locale invariata.
     # Un-gate chat-driven placement (ADR 0034): il blocco parte se il manifest è
     # scope="device" OPPURE se il turno ha risolto un PC bersaglio dalla chat
-    # (`target_device`, nome del device). Senza target_device e senza scope=device
-    # → nessun cambiamento (esecuzione locale invariata, prod-safe §7.1).
+    # (`target_device`) E l'executor è IMPACCHETTABILE al device (DEVICE_ELIGIBLE).
+    # Un target device NON impacchettabile (es. get_now con destinazione
+    # appiccicosa) gira LOCALE, non fallisce. Senza target e senza scope=device →
+    # esecuzione locale invariata (prod-safe §7.1).
+    import target_device as _td_elig
     _plc = getattr(executor, "placement", None) or {}
     _plc_scope = (_plc.get("scope") or "").strip().lower()
-    if _plc_scope == "device" or target_device:
+    _device_ok = bool(target_device) and executor.name in _td_elig.DEVICE_ELIGIBLE
+    if _plc_scope == "device" or _device_ok:
         import devices as _devices
         import placement as _placement
         import remote_exec as _remote
@@ -3300,8 +3304,13 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
-            return _remote.invoke_remote(
+            _obs = _remote.invoke_remote(
                 executor, args, _target, timeout_s=timeout_s, turn_id=turn_id)
+            # Marca l'esecuzione REALE sul device: il tag/campo del turno si
+            # basa su questo (mai un tag ottimistico su un'operazione locale).
+            if isinstance(_obs, dict) and target_device:
+                _obs.setdefault("_ran_on_device", target_device)
+            return _obs
 
     import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
@@ -3477,6 +3486,10 @@ class TurnLog:
     # Settati da run_turn ai parametri ricevuti.
     actor: str = "host"
     channel: str = ""
+    # Destinazione risolta del turno (ADR 0034, chat-driven placement): nome del
+    # device su cui è stato instradato, o None = server. Campo STRUTTURATO per
+    # l'UI (chip «destinazione») oltre al marcatore 📍 già nel final_message.
+    target_device: str | None = None
     # Verbo intent estratto dall'intent_extractor (25/5/2026): usato in
     # write() per detection mutating-intent-unfulfilled quando il PLANNER
     # non chiama mai un tool col verbo richiesto (es. utente «cancella X»
@@ -5075,6 +5088,7 @@ def _try_engine_v2(
     forced_object: str = "",
     reference_images=None,
     resume_steps=None,
+    placement_target: str | None = None,
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -5185,40 +5199,12 @@ def _try_engine_v2(
     except Exception as _de:  # noqa: BLE001 — disambiguazione best-effort
         log.debug("route_disambiguation noop: %r", _de)
 
-    # --- Chat-driven placement (ADR 0034): risolvi il PC bersaglio dalla query.
-    # `_target_name` (nome device) viene passato a invoke_executor via _invoke.
-    # Senza riferimento a un PC (né appiccicoso) resta None → esecuzione sul
-    # server, INVARIATA (prod-safe). Il controllo di connessione è nel resolver.
-    _target_name = None
-    _sender_id = f"{channel}:{actor}" if channel else (actor or "host")
-    try:
-        import target_device as _td
-        import chat_target_store as _cts
-        import devices as _devs
-        _dev_list = list(_devs.list_devices())  # owner-filter multi-utente: follow-up
-        if _dev_list:
-            _tr = _td.resolve_target(
-                query, _dev_list, last_target=_cts.get_last_target(_sender_id))
-            if _tr.status in ("unreachable", "ambiguous"):
-                from messages import get as _m
-                if _tr.status == "unreachable":
-                    _ftxt = _m("ERR_DEVICE_UNREACHABLE", name=_tr.unreachable_name or "?")
-                else:
-                    _names = ", ".join(n for _i, n in _tr.candidates if n)
-                    _ftxt = _m("ERR_DEVICE_AMBIGUOUS") + (f" ({_names})" if _names else "")
-                return {
-                    "steps": [], "final_text": _ftxt, "final_kind": "answer",
-                    "framework_hash": "", "verb": intent.verb, "object": intent.object,
-                    "keywords": intent.keywords, "match_source": f"target_device_{_tr.status}",
-                    "elapsed_ms": 0, "error_class": None, "gate_obs": None,
-                    "needs_inputs_obs": None, "target_device": _tr.unreachable_name}
-            if _tr.target != _td.SERVER:
-                _target_name = _tr.device_name
-            query = _tr.cleaned_query or query        # adjunct di destinazione rimosso
-            if _tr.explicit:                          # appiccicosa: solo su riferimento esplicito
-                _cts.set_last_target(_sender_id, _tr.target, _tr.device_name)
-    except Exception as _te:  # noqa: BLE001 — placement chat best-effort, mai bloccare il turno
-        log.debug("target_device resolve noop: %r", _te)
+    # --- Chat-driven placement (ADR 0034): il PC bersaglio è già stato risolto a
+    # livello run_turn (PRIMA di fast_path/engine, così entrambi i path
+    # instradano) e passato qui come `placement_target` (nome device, o None =
+    # server). La `query` in arrivo è già ripulita dell'adjunct di destinazione.
+    # `_target_name` va a invoke_executor via _invoke; None → esecuzione locale.
+    _target_name = placement_target
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
@@ -5352,15 +5338,14 @@ def _try_engine_v2(
                     and s.result.get("decision") == "input_required"
                     and s.tool == "get_approval"):
                 gate_obs = s.result
-    # Tag di destinazione (ADR 0034): se il turno è stato instradato a un PC,
-    # esponi il nome (dato) come campo `target_device` e anteponi un marcatore
-    # visibile al messaggio finale. Nessun PC → campo None, testo invariato.
-    _final_text = result.final_text
-    if _target_name and _final_text:
-        _final_text = f"📍 {_target_name}\n\n{_final_text}"
+    # Tag di destinazione (ADR 0034): NON ottimistico. Il tag/campo del turno si
+    # deriva dagli step che sono REALMENTE girati sul device (marker
+    # `_ran_on_device`), in _finalize_engine_result — così un'operazione non
+    # impacchettabile, girata in locale nonostante la destinazione, non viene
+    # etichettata come remota.
     return {
         "steps": steps_out,
-        "final_text": _final_text,
+        "final_text": result.final_text,
         "final_kind": result.final_kind,
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
@@ -5371,7 +5356,6 @@ def _try_engine_v2(
         "error_class": result.error_class,
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
-        "target_device": _target_name,
     }
 
 
@@ -5444,9 +5428,30 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
         if isinstance(hint, str) and hint:
             log.final_message = hint
     log.intent_verb = _engine_v2_res.get("verb", "") or ""
+    _apply_device_tag(log)   # ADR 0034: tag 📍 + campo dal device REALE degli step
     log.ts_end = time.time()
     log.write()
     return log
+
+
+def _apply_device_tag(log) -> None:
+    """Chat-driven placement (ADR 0034): se uno step è girato DAVVERO su un
+    device (marker `_ran_on_device`, posto da invoke_executor sulla consegna
+    remota), imposta `log.target_device` (campo strutturato per l'UI) e antepone
+    un marcatore 📍<nome> al messaggio finale. Basato sull'esecuzione REALE, mai
+    ottimistico: un'operazione girata in locale nonostante la destinazione non
+    viene etichettata come remota."""
+    _dev = None
+    for _s in (log.steps or []):
+        _r = getattr(_s, "result", None)
+        if isinstance(_r, dict) and _r.get("_ran_on_device"):
+            _dev = _r["_ran_on_device"]
+            break
+    if not _dev:
+        return
+    log.target_device = _dev
+    if log.final_message and not log.final_message.startswith("📍"):
+        log.final_message = f"📍 {_dev}\n\n{log.final_message}"
 
 
 # --- Strato 3 escalation UI (task #30) ----------------------------------
@@ -5931,8 +5936,47 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     # fast path (l'utente ha intenzioni piu' ricche del pattern letterale).
     # resume_with_scratchpad: skip anche fast_path (turno gia' avviato, il
     # PLANNER continua dallo stato in history).
+    # Chat-driven placement (ADR 0034): risolvi il PC bersaglio UNA volta, QUI,
+    # PRIMA di fast_path e engine — così ENTRAMBI i path instradano al device e
+    # il controllo di connessione è anticipato e onesto. `_placement_target` =
+    # nome device (o None = server); `_query_for_planning` = query senza l'adjunct
+    # di destinazione (per il pattern-match fast_path e per il planning). Nessun
+    # PC citato → None + query invariata → comportamento IDENTICO a prima.
+    _placement_target = None
+    _query_for_planning = user_query_for_run
+    try:
+        import devices as _dev_mod
+        import target_device as _td_mod
+        import chat_target_store as _cts_mod
+        _dl = list(_dev_mod.list_devices())
+        if _dl:
+            _sid = f"{channel}:{actor}" if channel else (actor or "host")
+            _tr = _td_mod.resolve_target(
+                user_query_for_run, _dl, last_target=_cts_mod.get_last_target(_sid))
+            if _tr.status in ("unreachable", "ambiguous"):
+                # Bersaglio non raggiungibile o ambiguo → esito onesto, NIENTE
+                # esecuzione (né qui né altrove) §2.8/§2.11.
+                from messages import get as _pm
+                if _tr.status == "unreachable":
+                    _pmsg = _pm("ERR_DEVICE_UNREACHABLE", name=_tr.unreachable_name or "?")
+                else:
+                    _pnm = ", ".join(n for _i, n in _tr.candidates if n)
+                    _pmsg = _pm("ERR_DEVICE_AMBIGUOUS") + (f" ({_pnm})" if _pnm else "")
+                log.final_kind = "answer"
+                log.final_message = _pmsg
+                log.target_device = _tr.unreachable_name
+                log.ts_end = time.time(); log.write(); return log
+            if _tr.target != _td_mod.SERVER:
+                _placement_target = _tr.device_name
+            _query_for_planning = _tr.cleaned_query or user_query_for_run
+            if _tr.explicit:  # destinazione appiccicosa: solo su riferimento esplicito
+                _cts_mod.set_last_target(_sid, _tr.target, _tr.device_name)
+    except Exception:  # noqa: BLE001 — best-effort, mai bloccare il turno
+        _placement_target = None
+        _query_for_planning = user_query_for_run
+
     if not _ref_images_for_prompt and not resume_with_scratchpad:
-        _fp_hit = try_fast_path(user_query_for_run, lang=DEFAULT_LANG,
+        _fp_hit = try_fast_path(_query_for_planning, lang=DEFAULT_LANG,
                                   default_timezone=DEFAULT_TIMEZONE)
         # NB (11/6/2026): ritirato il Layer L1 BGE matcher su
         # canonical_query_log (ADR 0149 step 2c) — ridondante con la cache
@@ -5964,6 +6008,7 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                         timeout_s=getattr(_fp_exec, "timeout_s", None) or 10,
                         autonomy="supervised", turn_id=turn_id,
                         actor=actor, channel=channel,
+                        target_device=_placement_target,  # chat-driven placement (ADR 0034)
                     )
                 except Exception as ex:
                     _fp_obs = {"ok": False,
@@ -5977,7 +6022,15 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
                 if _fp_obs.get("ok"):
                     log.steps.append(_fp_step)
                     log.final_kind = "answer"
-                    log.final_message = _fp_hit["render"](_fp_obs)
+                    _fp_msg = _fp_hit["render"](_fp_obs)
+                    # Chat-driven placement (ADR 0034): tag SOLO se lo step è
+                    # girato DAVVERO sul device (marker da invoke_executor).
+                    _fp_dev = _fp_obs.get("_ran_on_device") if isinstance(_fp_obs, dict) else None
+                    if _fp_dev:
+                        log.target_device = _fp_dev
+                        if _fp_msg and not _fp_msg.startswith("📍"):
+                            _fp_msg = f"📍 {_fp_dev}\n\n{_fp_msg}"
+                    log.final_message = _fp_msg
                     if verbose:
                         print(f"[fast_path] hit pattern='{_fp_hit['pattern']}' "
                               f"executor={_fp_hit['executor']} exec_ms={_fp_step.exec_ms}")
@@ -6069,12 +6122,13 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
             and not _bypass_for_uploads):
             try:
                 _engine_v2_res = _try_engine_v2(
-                    user_query_for_run, catalog,
+                    _query_for_planning, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     lang=DEFAULT_LANG, verbose=verbose, progress=progress,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
                     forced_object=forced_object,
+                    placement_target=_placement_target,  # chat-driven placement (ADR 0034)
                 )
             except Exception as _ex:
                 import logging as _logging

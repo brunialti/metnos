@@ -29,6 +29,14 @@ from dataclasses import dataclass, field
 
 SERVER = "server"
 
+# Executor che POSSONO girare su un device remoto oggi (chiusura shim C7:
+# stdlib + executor_helpers/messages/path_alias). Una destinazione device si
+# applica SOLO a questi; gli altri girano sul server ANCHE con destinazione
+# appiccicosa a un PC — così «che ore sono» dopo un'operazione sul PC non
+# fallisce (get_now non è impacchettabile). TODO: rendere manifest-driven
+# ([placement] device_ok) quando C7 R2/R3 amplia la copertura.
+DEVICE_ELIGIBLE = frozenset({"get_files", "compute_files_loc", "list_dirs"})
+
 # Preposizioni locative che ANCORANO un nome-device (IT + EN). L'ancora è ciò che
 # distingue «sul portatile» (instrada) da «il portatile» (no).
 _PREP = r"(?:su|sul|sullo|sulla|sui|sugli|sulle|nel|su\s+questo|on|onto)"
@@ -169,6 +177,23 @@ def resolve_target(query: str,
         # il device appiccicoso non esiste più → decadi al server
     res.target = SERVER
     return res
+
+
+def references_device(query: str, devices: list) -> bool:
+    """True se la query cita ESPLICITAMENTE una destinazione (nome device
+    ancorato, marcatore locale, marcatore server). Usato PRIMA del fast_path
+    lessicale (target-blind) per saltarlo: una query che nomina un PC deve
+    passare dall'engine, che ri-risolve il placement e ri-controlla la
+    connessione ad OGNI turno (mai una risposta cachata stantia / sul server
+    sbagliato). Economico: solo regex, nessun I/O."""
+    qn = _norm(query)
+    if _find_marker(qn, _SERVER_MARKERS):
+        return True
+    if _find_marker(qn, _LOCAL_MARKERS):
+        return True
+    if devices and _find_named_device(qn, devices):
+        return True
+    return False
 
 
 def _strip_span(query: str, span: str) -> str:
