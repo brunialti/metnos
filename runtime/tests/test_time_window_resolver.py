@@ -18,12 +18,20 @@ _RUNTIME = str(Path(__file__).resolve().parents[1])
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 
-from time_window_resolver import parse_query_time_window, resolve_time_window
+from time_window_resolver import (parse_query_time_window, resolve_time_window,
+                                  _parse_absolute_year, _year_bounds_imap)
 
 _SCHEMA_TW = {"properties": {"time_window": {"type": "string"},
                              "account": {"type": "string"}},
               "required": []}
 _SCHEMA_NO_TW = {"properties": {"path": {"type": "string"}}, "required": []}
+# Schema reale di read_messages (§manifest): time_window + since/before come
+# arg TOP-LEVEL separati — necessario perche' il resolver e' schema-gated
+# anche per l'anno assoluto (solo tool che dichiarano ENTRAMBI since/before).
+_SCHEMA_TW_SINCE_BEFORE = {"properties": {
+    "time_window": {"type": "string"},
+    "since": {"type": "string"}, "before": {"type": "string"},
+    "account": {"type": "string"}}, "required": []}
 
 
 # ── parse: estrazione NL → spec canonica ──────────────────────────────────
@@ -156,3 +164,77 @@ def test_resolve_input_degeneri():
     args = {"x": 1}
     assert resolve_time_window("read_messages", args, None, _SCHEMA_TW) is args
     assert resolve_time_window("", {}, "oggi", _SCHEMA_TW) == {}
+
+
+# ── anno di calendario assoluto (fix bug live 3/7) ─────────────────────────
+# «del 2026»/«dell'anno 2026» genera una stringa "2026-01-01/2026-12-31" che
+# NESSUN consumer riconosce (email_metnos._resolve_window: unknown_preset).
+# Il manifest read_messages dichiara since/before proprio per le finestre
+# custom: qui si valorizzano quelli, MAI un dict dentro time_window
+# (lo schema lo dichiara type=string).
+
+@pytest.mark.parametrize("query,expected_year", [
+    ("le bollette plenitude del 2026", 2026),
+    ("le bollette plenitude ed enel dell'anno 2026", 2026),
+    ("le fatture nell'anno 2025", 2025),
+    ("invoices of 2024", 2024),
+    ("mail received in 2023", 2023),
+])
+def test_parse_absolute_year(query, expected_year):
+    assert _parse_absolute_year(query) == expected_year
+
+
+@pytest.mark.parametrize("query", [
+    "controlla la posta di oggi",       # nessun anno
+    "le mail del 1999",                 # fuori range 2000-2099
+    "ultimi 2026 messaggi",             # numero ma non un anno-di-calendario
+])
+def test_parse_absolute_year_noop(query):
+    assert _parse_absolute_year(query) is None
+
+
+def test_year_bounds_imap_exclusive_before():
+    # BEFORE e' esclusivo per contratto IMAP: il bound superiore e' il 1°
+    # gennaio dell'anno SUCCESSIVO, non il 31 dicembre (altrimenti i
+    # messaggi del 31/12 verrebbero esclusi dalla ricerca).
+    since, before = _year_bounds_imap(2026)
+    assert since == "01-Jan-2026"
+    assert before == "01-Jan-2027"
+
+
+def test_resolve_absolute_year_sets_since_before():
+    args = {"account": "all", "time_window": "2026-01-01/2026-12-31"}
+    out = resolve_time_window(
+        "read_messages", args,
+        "cerca in tutte le mie mailbox le bollette plenitude del 2026",
+        _SCHEMA_TW_SINCE_BEFORE)
+    assert out["since"] == "01-Jan-2026"
+    assert out["before"] == "01-Jan-2027"
+    assert "time_window" not in out  # sostituito, mai lasciato in giro rotto
+
+
+def test_resolve_absolute_year_noop_without_since_before_in_schema():
+    # Tool che non dichiara since/before (es. find_images_indices): mai
+    # emettere il dict, resterebbe inespresso -> noop di proposito.
+    args = {"time_window": "2026-01-01/2026-12-31"}
+    out = resolve_time_window(
+        "find_images_indices", args, "foto del 2026", _SCHEMA_TW)
+    assert out is args
+
+
+def test_resolve_rolling_wins_over_absolute_year_when_both_present():
+    # «ultimi 2 anni» e' una forma esplicita rolling (priority 0): vince
+    # sempre sull'anno di calendario, anche se un anno compare altrove.
+    out = resolve_time_window(
+        "read_messages", {}, "le mail degli ultimi 2 anni, non del 2020",
+        _SCHEMA_TW_SINCE_BEFORE)
+    assert out["time_window"] == "last-2y"
+    assert "since" not in out
+
+
+def test_resolve_absolute_year_idempotent():
+    since, before = _year_bounds_imap(2026)
+    args = {"since": since, "before": before}
+    out = resolve_time_window(
+        "read_messages", args, "le bollette del 2026", _SCHEMA_TW_SINCE_BEFORE)
+    assert out is args  # since/before espliciti gia' corretti: noop, non ri-scrive

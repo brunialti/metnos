@@ -58,6 +58,47 @@ class TestFromContains(unittest.TestCase):
         out = resolve_from_contains("send_messages", {"via_channel": "email"}, "manda a Anthropic")
         self.assertIsNone(out.get("from_contains"))
 
+    # --- recupero autoreferenza (fix bug live 3/7) -------------------------
+    # L'LLM a volte ripete la parola-categoria stessa come from_contains
+    # ("bollette plenitude ed enel" -> from_contains="bollette") invece del
+    # vendor nominato: DEFINIZIONALMENTE sbagliato (nessun mittente si
+    # chiama "bollette"), quindi qui NON vince piu' — anche minuscolo.
+
+    def test_self_referential_bollette_corrected_lowercase(self):
+        self.assertEqual(
+            _r("cerca in tutte le mie mailbox le bollette plenitude ed enel",
+               from_contains="bollette"),
+            "plenitude")
+
+    def test_self_referential_bolletta_singolare_corrected(self):
+        self.assertEqual(
+            _r("cerca in tutte le mie mailbox le bollette enel",
+               from_contains="bolletta"),
+            "enel")
+
+    def test_self_referential_fatture_corrected(self):
+        self.assertEqual(
+            _r("le fatture anthropic di questo mese", from_contains="fatture"),
+            "anthropic")
+
+    def test_self_referential_no_candidate_cleared(self):
+        # Autoreferenziale ma nessun nome dopo: azzera invece di garantire
+        # 0 risultati onesti-ma-inutili cercando "da bollette".
+        self.assertIsNone(
+            _r("cerca tutte le mie bollette", from_contains="bollette"))
+
+    def test_self_referential_ambiguous_cleared(self):
+        # Due candidati distinti dopo il recupero minuscolo -> resta ambiguo,
+        # azzerato (mai un default a caso fra i due).
+        self.assertIsNone(
+            _r("le fatture da alpha e da beta", from_contains="fatture"))
+
+    def test_non_self_referential_value_still_wins(self):
+        # Un valore gia' plausibile (non la parola-categoria) resta intatto,
+        # anche se la query contiene un altro nome: "l'LLM/utente vince".
+        self.assertEqual(
+            _r("le bollette plenitude", from_contains="Stripe"), "Stripe")
+
 
 if __name__ == "__main__":
     unittest.main()

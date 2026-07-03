@@ -199,8 +199,8 @@ class Store:
     def _exists(self, row: dict, key: tuple) -> bool:
         """True se un record con la stessa chiave è già nello store. Best-effort:
         chiave non interamente valorizzata → trattato come NUOVO (default
-        applicati). Usato solo per gli insert_defaults (scope: un find per riga,
-        chiave indicizzata)."""
+        applicati). Usato per gli insert_defaults E per `check_new` (stessa
+        query, un find per riga, chiave indicizzata)."""
         try:
             where = {kc: row.get(kc) for kc in key}
             if any(v is None for v in where.values()):
@@ -208,6 +208,26 @@ class Store:
             return bool(self.find(where=where, limit=1))
         except Exception:
             return False
+
+    def check_new(self, rows, key: Optional[Iterable[str]] = None) -> list[bool]:
+        """True per ogni riga ASSENTE (diventerebbe un INSERT se scritta
+        ora), False se gia' presente (diventerebbe un UPDATE/upsert-noop).
+        Riusa `_exists()` — nessuna query in piu' rispetto a quella che
+        `write()` fa comunque per gli insert_defaults (§7.2).
+
+        Fix bug live 3/7 (§2.8): `write()` upserta e ritorna solo un conteggio
+        di RIGHE SCRITTE, indistinguibile fra "creata ora" e "gia' presente,
+        ri-scritta identica" — una pipeline che conta i risultati di write()
+        come "elementi nuovi" mente (upsert su un record esistente conta
+        comunque). Va chiamato PRIMA di `write()` sulle stesse righe/key: il
+        "prima" e' genuino solo finche' il write non e' ancora avvenuto."""
+        self._ensure()
+        if isinstance(rows, dict):
+            rows = [rows]
+        k = tuple(key) if key is not None else tuple(self.schema.primary_key)
+        if not k:
+            return [True] * len(rows)  # niente chiave -> ogni write e' insert puro
+        return [not self._exists(r, k) for r in rows]
 
     def update(self, values: dict, where: dict) -> int:
         self._ensure()

@@ -80,6 +80,31 @@ class _CrudContract:
         finally:
             s.close()
 
+    def test_check_new_before_write(self):
+        """`check_new` (fix bug live 3/7, §2.8): distingue INSERT da UPDATE
+        PRIMA della scrittura — un upsert su un record gia' presente non e'
+        "nuovo", anche se write() lo riscrive identico."""
+        self.store.write({"id": "a", "n": 1})
+        flags = self.store.check_new(
+            [{"id": "a", "n": 9}, {"id": "b", "n": 1}], key=["id"])
+        self.assertEqual(flags, [False, True])  # a esiste gia', b e' nuovo
+
+    def test_check_new_after_write_all_false(self):
+        # Il "prima" e' genuino SOLO prima del write: chiamato DOPO, ogni
+        # riga appena scritta risulta (correttamente) "gia' presente".
+        rows = [{"id": "a", "n": 1}, {"id": "b", "n": 2}]
+        self.store.write(rows, key=["id"])
+        flags = self.store.check_new(rows, key=["id"])
+        self.assertEqual(flags, [False, False])
+
+    def test_check_new_empty_key_is_pure_insert(self):
+        # key=[] esplicita (nessun campo-chiave, gemello di write(): "key
+        # vuota -> INSERT puro"): nessun upsert possibile, sempre True anche
+        # se un record con lo stesso 'id' esiste gia'.
+        self.store.write({"id": "a", "n": 1})
+        flags = self.store.check_new([{"id": "a", "n": 9}], key=[])
+        self.assertEqual(flags, [True])
+
     def test_find_where_eq_and_in(self):
         self.store.write([{"id": x, "n": i}
                           for i, x in enumerate(["a", "b", "c"])])

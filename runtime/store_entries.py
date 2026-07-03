@@ -83,10 +83,18 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     key = a.get("key")
     if isinstance(key, str):
         key = [key]
+    # Fix bug live 3/7 (§2.8): "prima" genuino, va calcolato PRIMA del write
+    # (dopo, ogni riga appena scritta risulterebbe sempre "gia' presente").
+    # was_new[i] = True se entries[i] era ASSENTE dallo store, False se era
+    # gia' presente (l'upsert la aggiorna, non la crea). Un pipeline che
+    # conta n_written come "nuovi" mente su un upsert-noop: n_new e' il dato
+    # onesto per "quante ne ho inserite/scoperte ORA" (vedi manifest).
+    was_new = st.check_new(entries, key=key)
     n = st.write(entries, key=key)
-    return {"ok": True, "n_written": n,
-            "results": [{"written": True} for _ in range(n)],
-            "metadata": {"store": name, "n_written": n}}
+    n_new = sum(1 for w in was_new if w)
+    return {"ok": True, "n_written": n, "n_new": n_new, "n_updated": n - n_new,
+            "results": [{"written": True, "was_new": w} for w in was_new],
+            "metadata": {"store": name, "n_written": n, "n_new": n_new}}
 
 
 def handle_delete_entries(args, *, verbose: bool = False) -> dict:
@@ -148,8 +156,12 @@ WRITE_ENTRIES_TOOL = {
             "generico NOMINATO; aggiorna campi coi set_fields. PATTERN: producer "
             "allo step N poi write_entries(store=\"spese\", from_step=N, "
             "key=[\"id\"], set_fields={\"status\":\"posted\"}). NON: scrivere "
-            "file -> write_files; inviare -> send_messages. Crea lo store e i "
-            "record se mancano. OUT: results, n_written."),
+            "file -> write_files; inviare -> send_messages; per rispondere "
+            "'quanti NUOVI ho inserito' NON contare n_written/results (un "
+            "upsert su un record GIA' presente conta comunque) -> usa SEMPRE "
+            "n_new (record assenti prima di questa call, quindi creati ora). "
+            "Crea lo store e i record se mancano. OUT: results=[{written,"
+            "was_new}], n_written, n_new, n_updated."),
         "parameters": {
             "type": "object",
             "required": ["store", "from_step"],

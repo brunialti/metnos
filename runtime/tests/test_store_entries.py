@@ -48,6 +48,45 @@ class TestStoreEntriesHandlers(unittest.TestCase):
         self.assertEqual(d["n_deleted"], 1)
         self.assertEqual(se.handle_find_entries({"store": "spese"})["entries"], [])
 
+    # --- n_new / was_new (fix bug live 3/7, §2.8) --------------------------
+    # Bug reale: "trova issue GitHub, salva quelle nuove, dimmi quante nuove"
+    # rilanciato due volte diceva "1 nuova" ENTRAMBE le volte — la pipeline
+    # contava n_written (un upsert conta comunque), mai un confronto col
+    # "prima". Qui il gemello minimale del bug: stesso record riscritto.
+
+    def test_first_write_all_new(self):
+        r = se.handle_write_entries(
+            {"store": "spese", "key": ["id"],
+             "entries": [{"id": "a", "importo": 10}, {"id": "b", "importo": 20}]})
+        self.assertEqual(r["n_written"], 2)
+        self.assertEqual(r["n_new"], 2)
+        self.assertEqual(r["n_updated"], 0)
+        self.assertEqual([x["was_new"] for x in r["results"]], [True, True])
+
+    def test_second_write_same_record_zero_new(self):
+        # ESATTAMENTE il bug live: stessa entry riscritta -> n_written=1
+        # (upsert avvenuto) ma n_new DEVE essere 0 (era gia' presente).
+        se.handle_write_entries(
+            {"store": "spese", "key": ["id"],
+             "entries": [{"id": "a", "importo": 10}]})
+        r2 = se.handle_write_entries(
+            {"store": "spese", "key": ["id"],
+             "entries": [{"id": "a", "importo": 10}]})
+        self.assertEqual(r2["n_written"], 1)
+        self.assertEqual(r2["n_new"], 0)
+        self.assertEqual(r2["n_updated"], 1)
+        self.assertEqual(r2["results"], [{"written": True, "was_new": False}])
+
+    def test_mixed_new_and_existing(self):
+        se.handle_write_entries(
+            {"store": "spese", "key": ["id"], "entries": [{"id": "a", "importo": 1}]})
+        r = se.handle_write_entries(
+            {"store": "spese", "key": ["id"],
+             "entries": [{"id": "a", "importo": 99}, {"id": "c", "importo": 5}]})
+        self.assertEqual(r["n_written"], 2)
+        self.assertEqual(r["n_new"], 1)   # solo "c" e' nuovo
+        self.assertEqual(r["n_updated"], 1)
+
     def test_write_set_fields_override(self):
         # set_fields applica un override DETERMINISTICO a OGNI entry prima
         # dell'upsert (FASE 3 "aggiorna a posted"): risolve il §2.8 silent

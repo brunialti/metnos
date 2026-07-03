@@ -66,16 +66,25 @@ _STOP = {
 }
 
 
-def _candidates(query: str) -> list[str]:
+def _candidates(query: str, *, require_capital: bool = True) -> list[str]:
     """NomiPropri (capitalizzati, non-stop) introdotti da «da/from» o da un
-    nome-commerciale. Ordine di apparizione, deduplicati case-insensitive."""
+    nome-commerciale. Ordine di apparizione, deduplicati case-insensitive.
+
+    `require_capital=False` (fix 3/7, recupero autoreferenza sotto): rilassa
+    il segnale-maiuscola SOLO quando gia' sappiamo che il valore attuale e'
+    provatamente sbagliato (vedi `resolve_from_contains`) — la STOP-list resta
+    l'unico guard, come prima."""
     found: list[str] = []
     for pat in (_PAT_FROM, _PAT_VENDOR):
         for m in pat.finditer(query):
             tok = m.group(1)
-            if not tok[:1].isupper():
+            if require_capital and not tok[:1].isupper():
                 continue  # NomeProprio richiede maiuscola iniziale
             if tok.lower() in _STOP:
+                continue
+            # Mai il nome-commerciale stesso come candidato: e' la parola che
+            # INTRODUCE il vendor ("bollette"), non il vendor ("plenitude").
+            if re.fullmatch(_VENDOR_NOUN, tok, re.IGNORECASE):
                 continue
             found.append(tok)
     # dedup preservando l'ordine (case-insensitive)
@@ -90,16 +99,35 @@ def _candidates(query: str) -> list[str]:
 def resolve_from_contains(tool: str, args: dict, query: str) -> dict:
     """Inietta `from_contains=<NomeProprio>` su read_messages quando la query
     nomina il mittente ma l'arg è vuoto. Ritorna args (copia se modificati).
-    Mai eccezioni: su dubbio, noop."""
+    Mai eccezioni: su dubbio, noop.
+
+    Fix 3/7 (bug live): l'LLM a volte ripete la parola-categoria stessa come
+    from_contains ("bollette plenitude ed enel" → from_contains="bollette")
+    invece del vendor nominato — DEFINIZIONALMENTE sbagliato (un mittente non
+    si chiama mai "bollette"/"fatture"/...), quindi qui NON vince: si ritenta
+    la risoluzione (maiuscola non richiesta, il valore e' gia' provato
+    sbagliato) e si sovrascrive; se nessun candidato univoco, si AZZERA il
+    valore (mai tenere un filtro che garantisce 0 risultati onesti ma inutili
+    — meglio una ricerca piu' ampia, §2.8).
+    """
     if tool != "read_messages" or not isinstance(args, dict) or not query:
         return args
-    if args.get("from_contains") or args.get("subject_contains"):
+    existing_from = str(args.get("from_contains") or "").strip()
+    self_referential = bool(existing_from) and bool(
+        re.fullmatch(_VENDOR_NOUN, existing_from, re.IGNORECASE))
+    if args.get("subject_contains"):
         return args  # filtro testuale già presente: l'LLM/utente vince
+    if args.get("from_contains") and not self_referential:
+        return args  # filtro plausibile già presente: l'LLM/utente vince
     via = str(args.get("via_channel") or "").strip().lower()
     if via not in ("", "email", "mail"):
         return args
-    cands = _candidates(query)
+    cands = _candidates(query, require_capital=not self_referential)
     if not cands:
+        if self_referential:
+            out = dict(args)
+            out["from_contains"] = None
+            return out
         return args
     # Escludi gli account configurati (li canonicalizza l'account-resolver).
     try:
@@ -109,6 +137,10 @@ def resolve_from_contains(tool: str, args: dict, query: str) -> dict:
         known = set()
     cands = [c for c in cands if c.lower() not in known]
     if len(cands) != 1:
+        if self_referential:
+            out = dict(args)
+            out["from_contains"] = None
+            return out
         return args  # 0 o ambiguo (≥2 entità distinte) → decide il planner
     out = dict(args)
     out["from_contains"] = cands[0]

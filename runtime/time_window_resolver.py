@@ -138,6 +138,45 @@ _add(r"\bgiorno\s+(?:scorso|passato)\b", lambda m: "last-1d")
 _add(r"\boggi\b|\btoday\b", lambda m: "today", priority=1)
 _add(r"\bieri\b|\byesterday\b", lambda m: "yesterday", priority=1)
 
+# Anno di CALENDARIO assoluto («del 2026», «dell'anno 2026», «in 2026», «of
+# 2026») — fix bug live 3/7: la query nomina un anno assoluto (un BOUND, non
+# un offset rolling da "ora"), l'LLM tenta di esprimerlo come stringa
+# "2026-01-01/2026-12-31" che NESSUN consumer riconosce (email_metnos._resolve_
+# window: unknown_preset). Il manifest read_messages dichiara GIA' `since`/
+# `before` come arg top-level stringa IMAP proprio per le finestre custom
+# ("vince su time_window se entrambi presenti") — qui si valorizzano quelli,
+# MAI un dict dentro time_window (che lo schema dichiara type=string, un
+# dict lo violerebbe). Range 2000-2099: riduce falsi positivi su 4 cifre
+# non-anno; parola-segnale IT/EN richiesta come per il resto del file.
+_YEAR_RE = re.compile(
+    r"\b(?:dell['a]?\s*anno|nell['a]?\s*anno|anno|del|dal|nel|of|in|year)\s+"
+    r"(20\d{2})\b|\b(20\d{2})\s+year\b",
+    re.IGNORECASE,
+)
+_MONTHS_IMAP = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def _parse_absolute_year(query: str) -> int | None:
+    """Anno di calendario assoluto esplicito nella query, o None. Vince solo
+    se non c'e' GIA' un match rolling (vedi `resolve_time_window`): «ultimi
+    2 anni» resta rolling, «del 2026» e' un anno di calendario."""
+    if not query:
+        return None
+    m = _YEAR_RE.search(query)
+    if not m:
+        return None
+    y = int(m.group(1) or m.group(2))
+    return y if 2000 <= y <= 2099 else None
+
+
+def _year_bounds_imap(year: int) -> tuple[str, str]:
+    """(since, before) IMAP (`DD-Mon-YYYY`) per l'intero anno di calendario.
+    BEFORE e' esclusivo per contratto IMAP (RFC 3501): il bound superiore e'
+    il 1° gennaio dell'anno SUCCESSIVO, non il 31 dicembre (altrimenti i
+    messaggi del 31/12 verrebbero esclusi)."""
+    return (f"01-{_MONTHS_IMAP[0]}-{year}", f"01-{_MONTHS_IMAP[0]}-{year + 1}")
+
 
 def parse_query_time_window(query: str) -> str | None:
     """Estrae la finestra temporale RELATIVA espressa nella query NL.
@@ -180,6 +219,23 @@ def resolve_time_window(tool: str, args: dict, query: str,
         return args  # bound assoluti espliciti: vincono per contratto
     spec = parse_query_time_window(query)
     if not spec:
+        # Nessuna finestra ROLLING: prova l'anno di calendario assoluto (fix
+        # 3/7). Valorizza since/before TOP-LEVEL (arg dedicati del manifest,
+        # "vincono su time_window se presenti") — MAI un dict dentro
+        # time_window, che lo schema dichiara type=string. Solo se il tool
+        # dichiara ENTRAMBI since e before (schema-gated come il resto del
+        # file): altri consumer di time_window (find_images_indices, ...)
+        # potrebbero non averli, e restano noop di proposito.
+        if "since" in props and "before" in props:
+            year = _parse_absolute_year(query)
+            if year is not None:
+                since_v, before_v = _year_bounds_imap(year)
+                if args.get("since") != since_v or args.get("before") != before_v:
+                    out = dict(args)
+                    out["since"] = since_v
+                    out["before"] = before_v
+                    out.pop("time_window", None)  # bound espliciti sostituiscono lo spec rotto
+                    return out
         return args  # la query non esprime una finestra: mai spurio
     out = dict(args)
     cur = args.get("time_window")
