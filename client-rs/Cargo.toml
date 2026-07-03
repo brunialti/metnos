@@ -1,6 +1,6 @@
 [package]
 name = "metnos-client"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Metnos remote executor client (Rust)"
 license = "AGPL-3.0-only"
@@ -11,6 +11,9 @@ base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 dirs = "5"
 ed25519-dalek = { version = "2", features = ["rand_core", "pem"] }
+# Lock single-instance cross-platform (flock su unix, LockFileEx su Windows):
+# due `run` con la stessa identita' = doppio poller + race su spool/cache.
+fs2 = "0.4"
 rand = "0.8"
 # MVP: trasporto HTTP dentro l'overlay Headscale (§6 design doc: TLS =
 # fase successiva). Niente feature TLS => niente `ring` (C) => static-link
@@ -23,6 +26,11 @@ toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(unix)'.dependencies]
+# kill(2) sul process GROUP al timeout executor (§12): tokio kill_on_drop
+# uccide solo il figlio diretto; il gruppo copre l'albero senza bwrap.
+libc = "0.2"
 
 [profile.release]
 strip = true

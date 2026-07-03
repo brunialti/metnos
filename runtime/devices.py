@@ -402,6 +402,22 @@ def mark_join_state(join_id: str, state: str, *,
         conn.close()
 
 
+def purge_join_sessions(*, older_than_days: int = 7,
+                        db_path: Path | None = None) -> int:
+    """GC (§12): elimina le join session il cui token e' scaduto da piu' di
+    `older_than_days`. Sono artefatti TRANSIENTI della UI (lo stato durevole
+    e' in devices/device_tokens, che restano per audit): oltre la finestra
+    non osservano piu' nulla. Ritorna il numero di righe rimosse."""
+    cutoff = int(time.time()) - older_than_days * 86400
+    conn = _open_db(db_path)
+    try:
+        cur = conn.execute(
+            "DELETE FROM device_join_sessions WHERE expires_at < ?", (cutoff,))
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
 def mark_join_registered_by_token(token: str, device_id: str, *,
                                   db_path: Path | None = None) -> bool:
     """Aggancio register→sessione: chiamato da agent_server.register dopo il

@@ -80,6 +80,13 @@ impl Runner {
 
     pub async fn run(mut self) -> Result<()> {
         tracing::info!(server = %self.server, device = %&self.device_id[..12.min(self.device_id.len())], "runner avviato");
+        // GC spool (§12): un result mai consegnato oltre la retention e'
+        // stale (il server ha gia' chiuso quel turno con timeout onesto).
+        // Scarto ONESTO: warn per-file, mai silenzioso.
+        let pruned = prune_stale_spool(&self.paths);
+        if pruned > 0 {
+            tracing::warn!(pruned, "spool: result stale scartati (oltre retention)");
+        }
         let mut backoff = Duration::from_secs(1);
         let mut last_heartbeat = Instant::now() - HEARTBEAT_EVERY;
         let mut cursor: Option<String> = None;
@@ -380,6 +387,32 @@ fn pending_result_ids(paths: &Paths) -> HashSet<String> {
         }
     }
     out
+}
+
+/// GC dello spool: elimina result (e .tmp orfani) piu' vecchi della
+/// retention (`METNOS_SPOOL_RETENTION_DAYS`, default 14). Oltre quella
+/// finestra il server ha da tempo chiuso il turno con timeout onesto:
+/// ri-consegnarli non osserva piu' nulla. Ritorna il numero di file rimossi.
+fn prune_stale_spool(paths: &Paths) -> usize {
+    let days: u64 = std::env::var("METNOS_SPOOL_RETENTION_DAYS")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(14);
+    let max_age = std::time::Duration::from_secs(days * 86400);
+    let mut removed = 0;
+    if let Ok(entries) = std::fs::read_dir(results_dir(paths)) {
+        for e in entries.flatten() {
+            let stale = e.metadata().and_then(|m| m.modified()).ok()
+                .and_then(|t| t.elapsed().ok())
+                .map(|age| age > max_age)
+                .unwrap_or(false);
+            if stale && std::fs::remove_file(e.path()).is_ok() {
+                tracing::warn!(file = %e.path().display(),
+                               retention_days = days,
+                               "result stale rimosso dallo spool");
+                removed += 1;
+            }
+        }
+    }
+    removed
 }
 
 /// Scrive il body del result nello spool in modo atomico (tmp + rename).

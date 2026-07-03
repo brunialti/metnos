@@ -235,6 +235,15 @@ def task_state_reaper() -> dict:
         return fastpath.prune(catalog_names=_full_catalog_names())
     _run("fastpath", _fastpath)
 
+    def _join_sessions():
+        # Join session install-at-the-fly (§5.3 remote-executors): transienti
+        # UI, oltre la finestra post-scadenza non osservano piu' nulla.
+        import devices
+        days = int(os.environ.get("METNOS_JOIN_SESSION_RETENTION_DAYS", "7"))
+        return {"removed": devices.purge_join_sessions(older_than_days=days),
+                "retention_days": days}
+    _run("device_join_sessions", _join_sessions)
+
     def _turn_logs():
         tdir = _C.PATH_USER_DATA / "turns"
         if not tdir.exists():

@@ -5,6 +5,7 @@ mod config;
 mod executors;
 mod identity;
 mod pairing;
+mod proclock;
 mod pyenv;
 mod runner;
 mod sandbox_linux;
@@ -91,6 +92,10 @@ async fn main() -> Result<()> {
                      resp.device_id, resp.name, &resp.fingerprint[..16], resp.owner_user_id);
         }
         Cmd::Run { server } => {
+            // Single-instance (§12): un secondo `run` con la stessa identita'
+            // e' spreco di poll + race su spool/cache. Il lock vive fino
+            // all'uscita del processo.
+            let _lock = proclock::acquire(&paths.data_dir)?;
             let url = server.or(st.server_url.clone())
                 .ok_or_else(|| anyhow::anyhow!("no server (pair first or pass --server)"))?;
             let r = runner::Runner::new(url, &st, id, paths)

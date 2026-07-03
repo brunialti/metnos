@@ -67,7 +67,9 @@ if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)'
 $taskName = 'MetnosClient'
 $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3
+# -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la
+# prima gira ancora (il client ha comunque il suo lock single-instance).
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3 -MultipleInstances IgnoreNew
 try {
   Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
   Start-ScheduledTask -TaskName $taskName

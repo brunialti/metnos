@@ -78,7 +78,20 @@ pub async fn run_sandboxed(
 
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
 
+    // Kill REALE al timeout (§12), due strati:
+    // - process group dedicato: kill(-pid) abbatte l'ALBERO anche senza bwrap
+    //   (con bwrap basta il figlio diretto: --die-with-parent smonta il ns);
+    // - kill_on_drop: qualunque drop del Child (timeout incluso) manda
+    //   SIGKILL al figlio diretto e lo reappa in background (no zombie).
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.as_std_mut().process_group(0);
+    }
+    cmd.kill_on_drop(true);
+
     let mut child = cmd.spawn().context("spawn sandboxed executor")?;
+    let child_pid = child.id();
     if let Some(mut stdin) = child.stdin.take() {
         stdin.write_all(args_json.as_bytes()).await.ok();
         drop(stdin);
@@ -95,7 +108,16 @@ pub async fn run_sandboxed(
             })
         }
         Err(_) => {
-            // deadline superata: kill (§12).
+            // Deadline superata: SIGKILL all'intero process group; il drop
+            // del future ha gia' armato kill_on_drop sul figlio diretto.
+            #[cfg(unix)]
+            if let Some(pid) = child_pid {
+                unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+            }
+            tracing::warn!(
+                executor = %exec.name, wall_s = limits.wall.as_secs(),
+                "deadline superata: process group terminato (SIGKILL)"
+            );
             Ok(SandboxOutput {
                 stdout: String::new(),
                 stderr: "deadline exceeded".into(),
@@ -230,4 +252,57 @@ fn which(name: &str) -> Option<PathBuf> {
         let full = dir.join(name);
         full.is_file().then_some(full)
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::executors::CachedExecutor;
+    use std::time::Duration;
+
+    /// §12: al timeout il processo executor DEVE morire davvero (SIGKILL al
+    /// process group), non restare appeso. Percorso degradato (bwrap OFF =
+    /// il caso rischioso): uno script che scrive un heartbeat su file ogni
+    /// 50ms viene interrotto; il file smette di crescere.
+    #[tokio::test]
+    async fn timeout_kills_executor_process() {
+        let python = PathBuf::from("/usr/bin/python3");
+        if !python.is_file() {
+            eprintln!("skip: /usr/bin/python3 assente");
+            return;
+        }
+        std::env::set_var("METNOS_SANDBOX", "off");
+
+        let dir = std::env::temp_dir().join(format!(
+            "metnos-kill-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let beat = dir.join("beat.txt");
+        let script = dir.join("sleeper.py");
+        std::fs::write(&script, format!(
+            "import time\nwhile True:\n    open({beat:?}, 'a').write('x')\n    time.sleep(0.05)\n",
+            beat = beat.to_str().unwrap(),
+        )).unwrap();
+
+        let exec = CachedExecutor {
+            name: "sleeper_test".into(),
+            dir: dir.clone(),
+            entry: script.clone(),
+            capabilities: vec![],
+        };
+        let out = run_sandboxed(
+            &exec, &python, &dir, "{}", &[],
+            &Limits { wall: Duration::from_millis(400) },
+        ).await.expect("run_sandboxed");
+        assert!(out.timed_out, "atteso timeout");
+
+        // Il processo e' morto: il file heartbeat smette di crescere.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let size_a = std::fs::metadata(&beat).map(|m| m.len()).unwrap_or(0);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let size_b = std::fs::metadata(&beat).map(|m| m.len()).unwrap_or(0);
+        assert_eq!(size_a, size_b,
+                   "l'executor scrive ancora dopo il timeout: kill mancato");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

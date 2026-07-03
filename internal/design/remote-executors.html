@@ -137,6 +137,15 @@ costruiti in questa sessione:</p>
   (<code>test_device_join</code>) + E2E harness isolato col binario reale:
   register→heartbeat verdi. Il download resta un gesto manuale dell'utente
   (§5.1: il browser non può eseguire).</li>
+<li><strong>Passata robustezza (§12) — 3/7/2026, client <code>0.2.1</code></strong>:
+  (a) <em>kill reale su timeout</em> — il bug più serio: il child sopravviveva alla
+  deadline; ora process group dedicato + <code>SIGKILL</code> al gruppo +
+  <code>kill_on_drop</code>, test Rust dedicato; (b) <em>lock single-instance</em> nel
+  client (<code>proclock.rs</code>, fs2: flock/LockFileEx, copre Linux e Windows) +
+  Scheduled Task <code>IgnoreNew</code>; (c) <em>GC</em>: retention spool client
+  (14gg, scarto onesto con warn) + purge join session nel reaper unico (7gg);
+  (d) long-poll dichiarato dimensionamento domestico, hardening = W6.
+  Gate: 5 unit Rust, 15 unit Python join, E2E completo verde (incl. fase F spool).</li>
 </ul>
 <p><strong>Due raffinamenti rispetto allo spec originale</strong>, entrambi documentati sotto:
 (1) la firma del device sul <code>result</code> è nell'header <code>X-Metnos-Device-Sig</code> sui
@@ -746,7 +755,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 (gemello <code>importer_verb_verify</code>) controlla che <code>capabilities</code> ⊇ i
 <code>fs_read/fs_write/net_allow</code> che il sandbox concederà.</p>
 <hr>
-<h2 id="12-modalita-di-fallimento-adr-00110046-formalizzare">12. Modalità di fallimento (ADR 0011/0046, formalizzare) ⛔</h2>
+<h2 id="12-modalita-di-fallimento-adr-00110046-formalizzare">12. Modalità di fallimento (ADR 0011/0046) — formalizzate + passata robustezza 3/7</h2>
 <table>
 <thead>
 <tr>
@@ -777,7 +786,34 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 </tr>
 <tr>
 <td><strong>Deadline superata</strong></td>
-<td>Il client killa il sandbox (<code>limits.wall_ms</code>), restituisce <code>ok:false</code> + <code>timeout</code>, onesto §2.8.</td>
+<td>Il client killa DAVVERO l'executor (3/7): process group dedicato +
+<code>SIGKILL</code> al gruppo (abbatte l'albero anche senza bwrap) +
+<code>kill_on_drop</code> tokio (reap, no zombie); con bwrap
+<code>--die-with-parent</code> smonta il namespace. Ritorna <code>ok:false</code> +
+<code>timeout</code>, onesto §2.8. Test: <code>sandbox_linux::tests::timeout_kills_executor_process</code>.</td>
+</tr>
+<tr>
+<td><strong>Doppio poller stessa identità</strong> (unit/Task + lancio manuale)</td>
+<td>Lock single-instance nel client (3/7): <code>&lt;data_dir&gt;/client.lock</code>,
+<code>flock</code> unix / <code>LockFileEx</code> Windows (fs2), rilascio automatico a
+morte processo (no stale pid-file). Secondo <code>run</code> = errore onesto, exit ≠ 0.
+Su Windows anche la Scheduled Task è <code>-MultipleInstances IgnoreNew</code>.
+Il claim atomico server-side resta l'ultima difesa.</td>
+</tr>
+<tr>
+<td><strong>Crescita senza pulizia</strong> (spool/join session)</td>
+<td>GC (3/7): spool client — result mai consegnati oltre
+<code>METNOS_SPOOL_RETENTION_DAYS</code> (default 14) scartati allo startup con warn
+per-file (il server ha già chiuso quel turno con timeout onesto); join session —
+<code>devices.purge_join_sessions</code> nel reaper unico
+(<code>state_reaper</code>, <code>METNOS_JOIN_SESSION_RETENTION_DAYS</code> default 7).
+Cache executor/runtime del client: content-addressed e piccole, nessuna GC in MVP.</td>
+</tr>
+<tr>
+<td><strong>Molti device in long-poll</strong></td>
+<td>Dimensionamento DOMESTICO (pochi device): nessun rate-limit/backpressure
+esplicito in MVP — dichiarato, non nascosto. Hardening (cap connessioni,
+budget per-device) = W6.</td>
 </tr>
 </tbody>
 </table>

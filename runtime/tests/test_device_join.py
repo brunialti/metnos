@@ -84,6 +84,22 @@ class JoinSessionModelTests(unittest.TestCase):
     def test_unknown_join(self):
         self.assertIsNone(self.devices.get_join_session("deadbeef00000000"))
 
+    def test_purge_join_sessions(self):
+        # GC §12: via le sessioni col token scaduto oltre-retention; le
+        # recenti (anche scadute da poco) restano osservabili.
+        old = self.devices.create_join_session("pc-old", ttl_seconds=1)
+        fresh = self.devices.create_join_session("pc-fresh")
+        import sqlite3 as _sq
+        conn = _sq.connect(os.environ["METNOS_DEVICES_DB"])
+        conn.execute(
+            "UPDATE device_join_sessions SET expires_at = ? WHERE join_id = ?",
+            (int(time.time()) - 8 * 86400, old["join_id"]))
+        conn.commit(); conn.close()
+        removed = self.devices.purge_join_sessions(older_than_days=7)
+        self.assertEqual(removed, 1)
+        self.assertIsNone(self.devices.get_join_session(old["join_id"]))
+        self.assertIsNotNone(self.devices.get_join_session(fresh["join_id"]))
+
     def test_device_name_slug_enforced(self):
         # Dominio CHIUSO §2.4: il nome finisce in HTML/unit/log.
         for bad in ("<script>x</script>", "a'b", 'a"b', "a;b", "x" * 41, ""):
