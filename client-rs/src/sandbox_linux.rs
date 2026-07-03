@@ -6,13 +6,19 @@
 //! esegue senza wrapping (parita' col fallback graceful di runtime/sandbox.py),
 //! logando la degradazione (§2.8). landlock/seccomp custom: TODO W6.
 
+#[cfg(unix)]
 use anyhow::{Context, Result};
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::process::Stdio;
 use std::time::Duration;
+#[cfg(unix)]
 use tokio::io::AsyncWriteExt;
+#[cfg(unix)]
 use tokio::process::Command;
 
+#[cfg(unix)]
 use crate::executors::{Capability, CachedExecutor};
 
 pub struct Limits {
@@ -26,13 +32,26 @@ pub struct SandboxOutput {
     pub sandbox: String,
 }
 
+/// Separatore PYTHONPATH per piattaforma (§16.2 W3.1: fix del bug che
+/// hardcodava ':' anche per il target windows). Punto CONDIVISO: questo
+/// modulo compila su entrambe le piattaforme (verificato dal gate
+/// `cargo build --target x86_64-pc-windows-gnu`), quindi e' la sede
+/// naturale — sandbox_windows.rs lo importa da qui.
+pub fn pythonpath_sep() -> char {
+    if cfg!(windows) { ';' } else { ':' }
+}
+
 /// Path di sistema montati read-only in ogni sandbox (solo quelli esistenti).
+#[cfg(unix)]
 const SYSTEM_RO: &[&str] = &[
     "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32", "/etc",
 ];
 
 /// Esegue `exec` con `python` passando `args_json` su stdin, dentro la sandbox.
 /// `extra_env`: coppie (chiave, valore) iniettate (env_injections + PYTHONPATH).
+/// Solo unix: il dispatch per-piattaforma (runner.rs) instrada a
+/// `sandbox_windows::run_sandboxed` su Windows (§16.2 W3.1).
+#[cfg(unix)]
 pub async fn run_sandboxed(
     exec: &CachedExecutor,
     python: &Path,
@@ -65,12 +84,16 @@ pub async fn run_sandboxed(
 
     // PYTHONPATH: shim (executor_helpers + messages) + dir executor. METNOS_RUNTIME
     // = shim dir cosi' il bootstrap sys.path degli executor la trova.
-    let pythonpath = format!("{}:{}", shim_dir.display(), exec.dir.display());
+    let pythonpath = format!("{}{}{}", shim_dir.display(), pythonpath_sep(), exec.dir.display());
     cmd.env_clear();
     cmd.env("PATH", std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into()));
     cmd.env("PYTHONPATH", &pythonpath);
     cmd.env("METNOS_RUNTIME", shim_dir);
     cmd.env("PYTHONDONTWRITEBYTECODE", "1");
+    // UTF-8 esplicito (§16.2): su Linux e' innocuo, previene comunque
+    // ambiguita' di encoding indipendentemente dal LANG del processo padre.
+    cmd.env("PYTHONUTF8", "1");
+    cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("LANG", std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()));
     for (k, v) in extra_env {
         cmd.env(k, v);
@@ -129,6 +152,7 @@ pub async fn run_sandboxed(
     }
 }
 
+#[cfg(unix)]
 fn bwrap_args(exec: &CachedExecutor, python: &Path, shim_dir: &Path) -> Vec<String> {
     let mut a: Vec<String> = Vec::new();
     a.push("--die-with-parent".into());
@@ -168,6 +192,7 @@ fn bwrap_args(exec: &CachedExecutor, python: &Path, shim_dir: &Path) -> Vec<Stri
     a
 }
 
+#[cfg(unix)]
 fn apply_capability(a: &mut Vec<String>, cap: &Capability, share_net: &mut bool) {
     let kind = cap.name.split(':').next().unwrap_or("");
     let mode = cap.name.split(':').nth(1).unwrap_or("");
@@ -193,12 +218,14 @@ fn apply_capability(a: &mut Vec<String>, cap: &Capability, share_net: &mut bool)
     }
 }
 
+#[cfg(unix)]
 fn ro_bind_dir(a: &mut Vec<String>, dir: &Path) {
     a.push("--ro-bind".into());
     a.push(dir.display().to_string());
     a.push(dir.display().to_string());
 }
 
+#[cfg(unix)]
 fn bind_ancestor_ro(a: &mut Vec<String>, file: &Path) {
     // Monta l'ancestor non ancora coperto da /usr, per interpreti in cache.
     if let Ok(canon) = file.canonicalize() {
@@ -214,6 +241,7 @@ fn bind_ancestor_ro(a: &mut Vec<String>, file: &Path) {
 }
 
 /// Radice non-glob di un hint (`~/notes/**` → `~/notes`), con `~` espanso.
+#[cfg(unix)]
 fn glob_root(hint: &str) -> Option<PathBuf> {
     if hint == "*" {
         return None; // troppo largo per un bind mirato
@@ -236,6 +264,7 @@ fn glob_root(hint: &str) -> Option<PathBuf> {
     None
 }
 
+#[cfg(unix)]
 pub fn bwrap_available() -> bool {
     which("bwrap").is_some()
 }
@@ -247,6 +276,7 @@ pub fn sandbox_disabled() -> bool {
     )
 }
 
+#[cfg(unix)]
 fn which(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path).find_map(|dir| {

@@ -23,7 +23,18 @@ use crate::config::Paths;
 use crate::identity::{self, Identity};
 use crate::state::State;
 use crate::wire::{HeartbeatRequest, Invocation, InvocationResult, PollRequest, PollResponse};
-use crate::{executors, pyenv, sandbox_linux};
+use crate::{executors, pyenv};
+// Dispatch per-piattaforma (§16.2 W3.1): stessa firma su entrambi i moduli
+// (sandbox_windows ri-esporta Limits/SandboxOutput da sandbox_linux).
+#[cfg(unix)]
+use crate::sandbox_linux as sandbox;
+#[cfg(windows)]
+use crate::sandbox_windows as sandbox;
+// Gate W3.0 (client-half, 3/7): sandbox_disabled() e' condiviso, definito
+// solo in sandbox_linux.rs — su windows serve qualificato (il modulo non e'
+// nel dispatch `sandbox`, che punta a sandbox_windows).
+#[cfg(windows)]
+use crate::sandbox_linux;
 
 /// Header con la firma Ed25519 (b64url) del device sui bytes ESATTI del body.
 const SIG_HEADER: &str = "X-Metnos-Device-Sig";
@@ -270,11 +281,11 @@ impl Runner {
         let args_json = serde_json::to_string(&inv.args)?;
         let extra_env: Vec<(String, String)> =
             inv.env_injections.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let limits = sandbox_linux::Limits {
+        let limits = sandbox::Limits {
             wall: Duration::from_millis(inv.deadline_ms.max(1000)),
         };
         let start = Instant::now();
-        let out = sandbox_linux::run_sandboxed(
+        let out = sandbox::run_sandboxed(
             &exec, &python, &shim, &args_json, &extra_env, &limits,
         )
         .await?;

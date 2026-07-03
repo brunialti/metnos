@@ -26,11 +26,28 @@ toml = "0.8"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Estrazione runtime python-build-standalone PURE-Rust (§16.2 W3.1):
+# sostituisce lo shell-out a `tar` di sistema in pyenv.rs, unico path di
+# codice per entrambe le piattaforme. Solo .tar.gz (niente crate zstd).
+tar = "0.4"
+flate2 = "1"
 
 [target.'cfg(unix)'.dependencies]
 # kill(2) sul process GROUP al timeout executor (§12): tokio kill_on_drop
 # uccide solo il figlio diretto; il gruppo copre l'albero senza bwrap.
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Job Object sandbox (§16.2 W3.1): kill d'albero garantito anche a crash
+# del client (KILL_ON_JOB_CLOSE), cap memoria/processi. FFI raw, zero
+# runtime C aggiuntivo (coerente con lo static-link mingw esistente).
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
 
 [profile.release]
 strip = true

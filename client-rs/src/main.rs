@@ -9,6 +9,8 @@ mod proclock;
 mod pyenv;
 mod runner;
 mod sandbox_linux;
+#[cfg(windows)]
+mod sandbox_windows;
 mod state;
 mod wire;
 

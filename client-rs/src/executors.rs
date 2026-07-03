@@ -37,13 +37,19 @@ pub struct CachedExecutor {
     pub dir: PathBuf,
     /// file di codice principale (primo in [code].files del manifest).
     pub entry: PathBuf,
-    /// capabilities dal manifest, per la sandbox.
+    /// capabilities dal manifest, per la sandbox. Letto SOLO dal path bwrap
+    /// (sandbox_linux::bwrap_args): su Windows la traduzione capability→ACL
+    /// arriva con AppContainer (§16.2/§15.5 W4), non prima — allow mirato
+    /// invece di un uso fittizio che mentirebbe sul livello di protezione.
+    #[cfg_attr(windows, allow(dead_code))]
     pub capabilities: Vec<Capability>,
 }
 
 #[derive(Debug, Clone)]
 pub struct Capability {
+    #[cfg_attr(windows, allow(dead_code))]
     pub name: String,
+    #[cfg_attr(windows, allow(dead_code))]
     pub hint: Vec<String>,
 }
 
