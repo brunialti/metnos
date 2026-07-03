@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A477A">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos — Censimento componenti infrastrutturali</title>
+<style>
+:root {
+  --fg:#1a1a1a; --muted:#5e6571; --bg:#fdfdfc; --border:#e3e5e8;
+  --accent:#1A477A; --bronze:#92400E; --sage:#548235;
+  --code-bg:#f4f5f7; --code-fg:#2d3338; --pre-bg:#1e2329; --pre-fg:#e6e9ee;
+  --owner-myclaw:#1A477A; --owner-supra:#548235;
+  --owner-host:#92400E; --owner-saas:#6B46C1;
+}
+* { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+html { font-size: 17px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--fg); background: var(--bg);
+  max-width: 920px; margin: 16px auto; padding: 0 16px 80px;
+  line-height: 1.6; font-size: 16px;
+  word-wrap: break-word; overflow-wrap: break-word;
+}
+h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif; color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.75em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-top: 1.5em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 1.8em; }
+h3 { font-size: 1.15em; margin-top: 1.4em; color: #2A5A8A; }
+h4 { font-size: 1.05em; margin-top: 1.2em; color: #3A6A8A; }
+p { margin: 0.7em 0; }
+strong { color: var(--fg); }
+em { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+a:hover, a:active { border-bottom-style: solid; }
+code {
+  font-family: "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--code-bg); color: var(--code-fg);
+  padding: 1px 5px; border-radius: 3px; font-size: 0.88em;
+  word-break: break-all;
+}
+pre {
+  background: var(--pre-bg); color: var(--pre-fg);
+  padding: 12px 14px; border-radius: 6px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  font-size: 0.82em; line-height: 1.45; margin: 0.8em 0;
+}
+pre code { background: transparent; color: inherit; padding: 0; word-break: normal; }
+blockquote {
+  border-left: 3px solid var(--bronze); margin: 1em 0; padding: 4px 14px;
+  background: #fdf6ec; color: #4a3a20; font-style: italic;
+}
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1em 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+th, td {
+  border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  vertical-align: top;
+}
+th { background: #eef2f7; font-weight: 600; color: var(--accent); }
+tr:nth-child(even) td { background: #fafbfc; }
+ul, ol { padding-left: 1.5em; margin: 0.7em 0; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.toc { background: #f7f9fc; border: 1px solid var(--border); padding: 12px 16px; border-radius: 6px; margin: 1.5em 0; font-size: 0.95em; }
+.toc > ul { margin: 0; padding-left: 18px; }
+.toc ul ul { padding-left: 16px; }
+.meta {
+  font-size: 0.85em; color: var(--muted); margin-top: 8px;
+  padding: 6px 10px; background: #f0f4f9; border-radius: 4px;
+  display: inline-block;
+}
+.owner {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 0.78em; font-weight: 600; color: white; white-space: nowrap;
+}
+.o-myclaw { background: var(--owner-myclaw); }
+.o-supra  { background: var(--owner-supra); }
+.o-host   { background: var(--owner-host); }
+.o-saas   { background: var(--owner-saas); }
+.legend {
+  background: #f7f9fc; border: 1px solid var(--border); padding: 12px 16px;
+  border-radius: 6px; margin: 1em 0;
+}
+.legend p { margin: 6px 0; }
+.summary-totals {
+  display: flex; flex-wrap: wrap; gap: 12px; margin: 1em 0;
+}
+.summary-card {
+  flex: 1; min-width: 140px;
+  background: #f7f9fc; border: 1px solid var(--border);
+  border-radius: 6px; padding: 14px 18px; text-align: center;
+}
+.summary-card .n { font-size: 2em; font-weight: 600; line-height: 1; }
+.summary-card .label { font-size: 0.95em; color: var(--muted); margin-top: 4px; }
+.c-myclaw .n { color: var(--owner-myclaw); }
+.c-supra .n  { color: var(--owner-supra); }
+.c-host .n   { color: var(--owner-host); }
+.c-saas .n   { color: var(--owner-saas); }
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  body { padding: 0 12px 60px; margin: 12px auto; }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.1em; }
+  pre { font-size: 0.78em; padding: 10px; }
+  table { font-size: 0.85em; }
+  th, td { padding: 5px 7px; }
+  .summary-card { min-width: 120px; padding: 10px 12px; }
+}
+@media print {
+  body { max-width: none; margin: 0; padding: 20px; font-size: 10pt; }
+  h2 { page-break-before: auto; page-break-after: avoid; }
+  pre, table { page-break-inside: avoid; }
+  .owner { border: 1px solid #ccc; }
+}
+</style>
+</head>
+<body>
+
+<h1>Censimento componenti infrastrutturali Metnos</h1>
+<p class="meta">Snapshot — 2026-05-17 — host <code>.33</code> (Strix Halo 96GB unified) — owner Roberto</p>
+
+<blockquote>
+Mappa di tutte le componenti che fanno funzionare Metnos: runtime, modelli LLM, storage, config, infrastruttura ML condivisa, modelli host-managed, servizi SaaS esterni. Per ciascuna, indicazione esplicita dell'owner di gestione.
+</blockquote>
+
+<h2>Legenda owner</h2>
+<div class="legend">
+<p><span class="owner o-myclaw">myclaw</span> gestita direttamente, codice/config in <code>/opt/myclaw/</code></p>
+<p><span class="owner o-supra">supra</span> delegata a suprastructure (<code>/opt/suprastructure/</code>), Metnos consuma via PYTHONPATH/HTTP</p>
+<p><span class="owner o-host">host</span> systemd system-level fuori da Metnos (storage modelli, GPU drivers, sudo policy)</p>
+<p><span class="owner o-saas">SaaS</span> servizio cloud (Anthropic, OpenAI, Google, Cloudflare, GitHub)</p>
+</div>
+
+<div class="toc">
+<strong>Indice</strong>
+<ul>
+  <li><a href="#runtime">A. Runtime applicativo</a></li>
+  <li><a href="#llm">B. LLM backend</a></li>
+  <li><a href="#supra-infra">C. Infra services delegati a supra</a></li>
+  <li><a href="#storage">D. Storage Metnos</a></li>
+  <li><a href="#config">E. Config Metnos</a></li>
+  <li><a href="#cache">F. Cache (rigenerabile)</a></li>
+  <li><a href="#saas">G. External SaaS</a></li>
+  <li><a href="#hardware">H. Hardware/host non gestito da Metnos</a></li>
+  <li><a href="#sintesi">Sintesi numerica</a></li>
+</ul>
+</div>
+
+<h2 id="runtime">A. Runtime applicativo</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Componente</th><th>Service</th><th>Port</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>HTTP API + admin dashboard</td><td><code>metnos-http.service</code> (user)</td><td>:8770</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td>Telegram channel daemon</td><td><code>metnos-telegram-daemon.service</code> (user)</td><td>—</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td>Pairing daemon (auth users)</td><td>embedded in myclaw process</td><td>:8765</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td>Docs static server</td><td><code>myclaw-docs.service</code> (system)</td><td>—</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td>Cloudflare Tunnel chat.metnos.com → :8770 <em>(dev-only)</em></td><td><code>cloudflared-metnos-chat.service</code> (user)</td><td>—</td><td><span class="owner o-saas">SaaS</span> dev-only</td></tr>
+<tr><td>Docs pubblici metnos.com <em>(dev-only)</em></td><td>Cloudflare Pages (<code>deploy.sh</code>)</td><td>—</td><td><span class="owner o-saas">SaaS</span> dev-only</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="llm">B. LLM backend</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Tier</th><th>Componente</th><th>Service</th><th>Endpoint</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>local middle/wise</td><td>llama-server (Gemma 4 26B think Vulkan)</td><td><code>llama-server.service</code> (system)</td><td>:8080</td><td><span class="owner o-supra">supra</span> (config <code>/opt/suprastructure/config/models.yaml</code>, ADR 0144)</td></tr>
+<tr><td>local VLM</td><td>llama-server (Qwen3-VL-2B)</td><td><code>/opt/suprastructure/scripts/vlm_server.sh</code> (lazy-spawn, NOT systemd-resident)</td><td>:8081 (on-demand, auto-stop 600s idle)</td><td><span class="owner o-supra">supra</span> (ADR 0144)</td></tr>
+<tr><td>frontier wise</td><td>Anthropic Opus 4.7</td><td>—</td><td>api.anthropic.com</td><td><span class="owner o-saas">SaaS</span></td></tr>
+<tr><td>frontier middle</td><td>Anthropic Sonnet 4.6</td><td>—</td><td>api.anthropic.com</td><td><span class="owner o-saas">SaaS</span></td></tr>
+<tr><td>frontier fast</td><td>Anthropic Haiku 4.5</td><td>—</td><td>api.anthropic.com</td><td><span class="owner o-saas">SaaS</span></td></tr>
+<tr><td>frontier fallback</td><td>OpenAI GPT-5</td><td>—</td><td>api.openai.com</td><td><span class="owner o-saas">SaaS</span></td></tr>
+<tr><td>LLM router/tier resolver</td><td><code>runtime/llm_router.py</code> + <code>~/.config/metnos/llm_tiers.toml</code></td><td>—</td><td>—</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="supra-infra">C. Infra services delegati a supra</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Componente</th><th>Path</th><th>Modulo Python</th><th>Usage Metnos</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>BGE-M3 ONNX embedder</td><td><code>/opt/suprastructure/src/suprastructure/embedding/onnx_embedding.py</code></td><td><code>suprastructure.embedding.onnx_embedding</code></td><td>affinity semantic + qa_store + query expansion</td><td><span class="owner o-supra">supra</span></td></tr>
+<tr><td>BGE-M3 server (HTTP wrapper)</td><td><code>/opt/suprastructure/infra_services/embedding/server.py</code></td><td>—</td><td>(alternativa diretta lib)</td><td><span class="owner o-supra">supra</span></td></tr>
+<tr><td>LLM proxy server</td><td><code>/opt/suprastructure/infra_services/llm/server.py</code></td><td>—</td><td>(presente, ruolo da verificare)</td><td><span class="owner o-supra">supra</span></td></tr>
+<tr><td>Geocoding (Photon JAR + Nominatim)</td><td><code>/opt/suprastructure/infra_services/geo/</code></td><td>—</td><td><code>get_location</code> / place lookup</td><td><span class="owner o-supra">supra</span></td></tr>
+<tr><td colspan="5"><em>TTS / Voice backend / STT / Whisper server — mai usati dal runtime Metnos (18/5/2026, ADR 0144). Restano in supra come capacita' per altri client, ma fuori dall'inventory Metnos.</em></td></tr>
+<tr><td>Supra gateway</td><td><code>/opt/suprastructure/gateway/server.py</code></td><td>—</td><td>frontend supra infra services</td><td><span class="owner o-supra">supra</span></td></tr>
+<tr><td>Python venv condiviso</td><td><code>/opt/suprastructure/.venv/</code> (589 MB)</td><td>—</td><td>runtime metnos-http usa questo Python</td><td><span class="owner o-supra">supra</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="storage">D. Storage Metnos</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Path</th><th>Dimensione</th><th>Cosa contiene</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td><code>~/.local/share/metnos/index/</code></td><td>487 MB</td><td>Indici unified image (ADR 0117 v4): SigLIP + ArcFace + EXIF</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/turns/</code></td><td>153 MB</td><td>Turn logs JSONL (audit, undo, debug)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/thumbcache/</code></td><td>31 MB</td><td>Cache thumb foto</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/scratchpad.db</code></td><td>7 MB</td><td>Sqlite scratchpad turn-scope (offload obs grandi)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/scheduler_v2.sqlite</code></td><td>—</td><td>Scheduler v2 (ADR 0112) entry + next_fire_at</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/persons.sqlite</code></td><td>—</td><td>Persons registry (ADR 0113)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/users.sqlite</code></td><td>—</td><td>Multi-user pairing + email</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/i18n.sqlite</code></td><td>276 KB</td><td>Messaggi <code>MSG_*</code> IT+EN</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/github_state.sqlite</code></td><td>16 KB</td><td>Watcher diff state (ADR 0141)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/github_issue_qa.sqlite</code></td><td>24 KB</td><td>Q&amp;A embedding 1024d (dedup ADR 0141)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/credentials/</code></td><td>—</td><td>Fernet+HKDF cifrato (ADR 0131)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/executors/</code></td><td>1 MB</td><td>Synth + import executor (ADR 0123)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/skills/</code></td><td>204 KB</td><td>google-workspace + github</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/host_health.json</code></td><td>—</td><td>Auto-degrade T2 → T1 (ADR 0108)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/mirror/</code></td><td>5 MB</td><td>Mirror corpus locale (web crawl ADR 0081)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/undo.jsonl</code></td><td>872 KB</td><td>Reverse pattern records (ADR 0023)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.local/share/metnos/skill_audit.jsonl</code></td><td>—</td><td>Sandbox mini-version audit (ADR 0140)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="config">E. Config Metnos</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>File</th><th>Contenuto</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td><code>~/.config/metnos/admin.key</code></td><td>HMAC key admin consent (ADR 0088)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/credentials.env</code></td><td>Legacy fallback creds</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/mail.env</code></td><td>IMAP credentials (Metnos + Migadu)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/llm_tiers.toml</code></td><td>Tier → provider mapping</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/translator_tier.toml</code></td><td>Tier separato per traduzione</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/workspace_policy.toml</code></td><td>Path policy + safety</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/owned_domains.json</code></td><td>Web tier T0 (ADR 0081)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/trusted_origins.json</code></td><td>Web tier T1</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/blocked_origins.json</code></td><td>Auto-degrade T2 → T1 (ADR 0108)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/github_watched_repos.json</code></td><td>Repo watcher (ADR 0141)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/github_dedup.json</code></td><td>Dedup threshold</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/metnos/google_maps.env</code></td><td>API key geocoding fallback</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.config/systemd/user/metnos-http.service.d/</code></td><td>drop-in env vars (<code>PREFILTER</code>, <code>GRAMMAR</code>, <code>REASONING</code>)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="cache">F. Cache (rigenerabile)</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Path</th><th>Cosa</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td><code>~/.cache/metnos/http/</code></td><td>HTTP responses sharded TTL 900s (ADR 0105)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.cache/metnos/affinity_emb/</code></td><td>BGE-M3 cached vectors (ADR 0134)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.cache/metnos/query_expansion_llm/</code></td><td>Cache expansion immagini (ADR 0139)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+<tr><td><code>~/.cache/metnos/consult_frontier/</code></td><td>Cache risposte frontier (ADR 0142)</td><td><span class="owner o-myclaw">myclaw</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="saas">G. External SaaS</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Servizio</th><th>Endpoint</th><th>Uso</th><th>Auth</th></tr></thead>
+<tbody>
+<tr><td>Anthropic API</td><td>api.anthropic.com</td><td>consult_frontier wise/middle/fast</td><td>API key (env)</td></tr>
+<tr><td>OpenAI API</td><td>api.openai.com</td><td>fallback frontier</td><td>API key (env)</td></tr>
+<tr><td>Google Workspace (Gmail/Calendar/Drive)</td><td>googleapis.com</td><td>skill <code>google-workspace</code></td><td>OAuth token store</td></tr>
+<tr><td>GitHub API</td><td>api.github.com</td><td>skill <code>github</code></td><td>PAT credentials store</td></tr>
+<tr><td>Cloudflare Pages</td><td>metnos.com / mykleos.pages.dev</td><td>docs publish</td><td>Wrangler CLI token</td></tr>
+<tr><td>Cloudflare Tunnel</td><td>chat.metnos.com → :8770</td><td>reverse proxy chat</td><td>Tunnel ID config</td></tr>
+<tr><td>SearXNG</td><td>(self-hosted ?)</td><td>web search fallback</td><td>—</td></tr>
+<tr><td>Nominatim / Photon</td><td>self-hosted via supra</td><td>geocoding offline</td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="hardware">H. Hardware/host non gestito da Metnos</h2>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Componente</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>GPU Strix Halo Vulkan driver</td><td><span class="owner o-host">host</span> (Ubuntu)</td></tr>
+<tr><td>sudo policy (NOPASSWD limited per mount/umount/gpu-service)</td><td><span class="owner o-host">host</span></td></tr>
+<tr><td>NAS CIFS mount manuale</td><td><span class="owner o-host">host</span> (task #29 pending)</td></tr>
+<tr><td>Python 3.12 dist-packages base</td><td><span class="owner o-host">host</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<hr>
+
+<h2 id="sintesi">Sintesi numerica</h2>
+
+<div class="summary-totals">
+<div class="summary-card c-myclaw"><div class="n">35</div><div class="label"><span class="owner o-myclaw">myclaw</span> direct</div></div>
+<div class="summary-card c-supra"><div class="n">12</div><div class="label"><span class="owner o-supra">supra</span> delegated</div></div>
+<div class="summary-card c-host"><div class="n">4</div><div class="label"><span class="owner o-host">host</span> system</div></div>
+<div class="summary-card c-saas"><div class="n">6</div><div class="label"><span class="owner o-saas">SaaS</span> external <span style="font-size:0.7em;display:block;color:#92400E">+ 2 dev-only</span></div></div>
+</div>
+
+<p style="margin-top:1em;padding:10px 14px;background:#fdf6ec;border-left:3px solid #92400E;border-radius:4px;font-size:0.92em">
+<strong>Aggiornamento 2026-05-18 (ADR 0144 consolidamento):</strong>
+ownership di <code>llama-server.service</code> e VLM (<code>vlm_server.sh</code>)
+spostata da <span class="owner o-host">host</span> a
+<span class="owner o-supra">supra</span> (artefatti versionati in
+<code>/opt/suprastructure/{systemd,scripts}/</code>; i file su
+<code>/etc/systemd/system/</code> restano dove sono, niente symlink).
+Cloudflare tunnel + Pages etichettati <em>dev-only</em>: fuori dal runtime produttivo
+e <strong>esclusi dalla distribuzione pubblica</strong>. Whisper/STT/TTS/voice_backend
+rimangono in supra ma non fanno parte dell'inventario Metnos (mai usati dal runtime).
+Ollama disabled + disattivato. Vedi <code>decisions/0144-supranet-consolidation-33.md</code>.
+</p>
+
+<h3>Frontier di responsabilità</h3>
+<p>Metnos <strong>gestisce direttamente</strong> il proprio runtime + storage + config (database sqlite, indices foto/text, log turn, credentials cifrate, manifest executor, cache rigenerabile).</p>
+<p>Delega a <strong>supra</strong> tutto ciò che è infrastruttura ML condivisa potenzialmente riusabile da altri client: embedder BGE-M3 ONNX, geocoder Photon/Nominatim, STT/TTS, voice backend, Python venv comune. La separazione permette ad altre applicazioni (oggi solo Metnos, domani altri agenti) di consumare gli stessi servizi senza duplicare modelli.</p>
+<p>Delega a <strong>host</strong> il livello sistema operativo (driver GPU Vulkan, systemd LLM serving, sudo policy NOPASSWD limitata) e modelli di grandi dimensioni (Gemma 4 26B GGUF, whisper.cpp).</p>
+<p>Usa <strong>SaaS</strong> solo per capability che non hanno senso self-host: LLM frontier (Anthropic Opus/Sonnet/Haiku + OpenAI GPT-5 fallback) come <em>quality ceiling</em> sopra Gemma locale; Cloudflare per CDN+tunnel; provider opzionali (Google Workspace, GitHub) per skill che si interfacciano a servizi cloud altrui.</p>
+
+<h3>Implicazioni operative</h3>
+<ul>
+<li><strong>Backup priority</strong>: solo <code>~/.local/share/metnos/{credentials,index,scheduler_v2.sqlite,persons.sqlite,users.sqlite,turns}</code> + <code>~/.config/metnos/</code>. Cache rigenerabile, supra ripristinabile da repo.</li>
+<li><strong>Self-hosted footprint</strong>: ~700 MB Metnos storage (index foto domina con 487 MB) + 589 MB supra venv + ~30 GB modelli (Gemma 4 26B + Qwen2-VL + Whisper) sul host.</li>
+<li><strong>Single point of failure</strong>: GPU Vulkan driver host. Se cade, llama-server + whisper-server giù → Metnos resta vivo ma degradato (solo frontier SaaS, niente local middle/wise).</li>
+<li><strong>Costi mensili stimati</strong>: SaaS frontier ~$15-30/mese se uso modesto consult_frontier; Cloudflare gratis; provider skill (Google/GitHub) gratis con account personale; Anthropic/OpenAI variable in base a query volume.</li>
+</ul>
+
+<p class="meta">Doc internal — noindex/nofollow — non parte del corpus pubblico.</p>
+
+</body>
+</html>

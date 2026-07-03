@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A477A">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos — Architettura GitHub Provider</title>
+<style>
+:root {
+  --fg:#1a1a1a; --muted:#5e6571; --bg:#fdfdfc; --border:#e3e5e8;
+  --accent:#1A477A; --bronze:#92400E; --sage:#548235;
+  --code-bg:#f4f5f7; --code-fg:#2d3338; --pre-bg:#1e2329; --pre-fg:#e6e9ee;
+}
+* { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+html { font-size: 17px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--fg); background: var(--bg);
+  max-width: 880px; margin: 16px auto; padding: 0 16px 80px;
+  line-height: 1.6; font-size: 16px;
+  word-wrap: break-word; overflow-wrap: break-word;
+}
+h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif; color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.75em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-top: 1.5em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 1.8em; }
+h3 { font-size: 1.15em; margin-top: 1.4em; color: #2A5A8A; }
+h4 { font-size: 1.05em; margin-top: 1.2em; color: #3A6A8A; }
+p { margin: 0.7em 0; }
+strong { color: var(--fg); }
+em { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+a:hover, a:active { border-bottom-style: solid; }
+code {
+  font-family: "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--code-bg); color: var(--code-fg);
+  padding: 1px 5px; border-radius: 3px; font-size: 0.88em;
+  word-break: break-all;
+}
+pre {
+  background: var(--pre-bg); color: var(--pre-fg);
+  padding: 12px 14px; border-radius: 6px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  font-size: 0.82em; line-height: 1.45;
+  margin: 0.8em 0;
+}
+pre code { background: transparent; color: inherit; padding: 0; word-break: normal; }
+blockquote {
+  border-left: 3px solid var(--bronze); margin: 1em 0; padding: 4px 14px;
+  background: #fdf6ec; color: #4a3a20; font-style: italic;
+}
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1em 0; }
+table {
+  border-collapse: collapse; width: 100%;
+  font-size: 0.9em; min-width: 0;
+}
+th, td {
+  border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  vertical-align: top;
+}
+th { background: #eef2f7; font-weight: 600; color: var(--accent); }
+tr:nth-child(even) td { background: #fafbfc; }
+ul, ol { padding-left: 1.5em; margin: 0.7em 0; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.toc { background: #f7f9fc; border: 1px solid var(--border); padding: 12px 16px; border-radius: 6px; margin: 1.5em 0; font-size: 0.95em; }
+.toc > ul { margin: 0; padding-left: 18px; }
+.toc ul ul { padding-left: 16px; }
+.meta {
+  font-size: 0.85em; color: var(--muted); margin-top: 8px;
+  padding: 6px 10px; background: #f0f4f9; border-radius: 4px;
+  display: inline-block;
+}
+.callout-decision {
+  background: #fff8e6; border-left: 3px solid var(--bronze); padding: 10px 14px;
+  margin: 1em 0; border-radius: 0 4px 4px 0;
+}
+.callout-decision strong { color: var(--bronze); }
+.callout-info {
+  background: #eff6ff; border-left: 3px solid var(--accent); padding: 10px 14px;
+  margin: 1em 0; border-radius: 0 4px 4px 0;
+}
+.callout-warn {
+  background: #fef2f2; border-left: 3px solid #c53030; padding: 10px 14px;
+  margin: 1em 0; border-radius: 0 4px 4px 0;
+}
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px;
+  font-size: 0.8em; font-weight: 600; margin-right: 4px; }
+.badge-done { background: #e6f7ed; color: #2f855a; }
+.badge-meta { background: #f0f4f9; color: var(--accent); }
+.badge-warn { background: #fff5e6; color: #92400E; }
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  body { padding: 0 12px 60px; margin: 12px auto; }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.1em; }
+  pre { font-size: 0.78em; padding: 10px; }
+  table { font-size: 0.85em; }
+  th, td { padding: 5px 7px; }
+}
+@media print {
+  body { max-width: none; margin: 0; padding: 20px; font-size: 10pt; }
+  h2 { page-break-before: auto; page-break-after: avoid; }
+  pre, table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<h1>Architettura GitHub Provider per Metnos</h1>
+<p class="meta">Doc di lavoro — 2026-05-17 (v2 con dedup + agentic frontier) — pre-ADR — owner Roberto</p>
+
+<blockquote>
+Documento di progettazione per integrare GitHub come provider in Metnos.
+Allineato a <code>CLAUDE.md</code> §2.2 (vocab chiuso), ADR 0123 (skill pipeline),
+ADR 0130 (backend tree), ADR 0132 (plugin loader), ADR 0134 (BGE-M3
+embedding), ADR 0136 (provider qualifier). ADR formali 0141 (github
+provider) + 0142 (<code>consult_frontier</code>) dopo approvazione architetturale.
+</blockquote>
+
+<div class="toc">
+<strong>Indice</strong>
+<ul>
+  <li><a href="#scope">0. Scope</a></li>
+  <li><a href="#vocab">1. Vocab decisions</a></li>
+  <li><a href="#architecture">2. Architettura (layered)</a></li>
+  <li><a href="#origin">3. Skill first-party Metnos (NON import esterno)</a></li>
+  <li><a href="#executors">4. Executor inventory Fase 1</a></li>
+  <li><a href="#consult">5. Primitiva <code>consult_frontier</code> agentic</a></li>
+  <li><a href="#watcher">6. Workflow Issue Watcher con dedup</a></li>
+  <li><a href="#auth">7. Authentication + credentials</a></li>
+  <li><a href="#effort">8. Effort breakdown</a></li>
+  <li><a href="#decisions">9. Decisioni residue</a></li>
+</ul>
+</div>
+
+<h2 id="scope">0. Scope</h2>
+
+<h3>In scope — Fase 1</h3>
+<ul>
+  <li>Provider <code>github</code> come <strong>skill first-party Metnos</strong> (non import esterno), suffix <code>_github</code> allineato a <code>_google_workspace</code></li>
+  <li>Issues + PR read/write ops (find/read/create/set/delete + send_messages per commenti)</li>
+  <li>Workflow issue watcher con <strong>dedup semantica</strong> (BGE-M3) + auto-reply su precedenti</li>
+  <li>Primitiva builtin <code>consult_frontier</code> con <strong>modo agentic tool use</strong> (frontier esplora repo autonomamente)</li>
+  <li>Uniformazione approval flow Telegram + HTTP chat UI via <code>get_inputs(fmt="auto")</code> esistente</li>
+</ul>
+
+<h3>Out of scope — Fase 1</h3>
+<ul>
+  <li>Git push/branch ops (richiede git auth separato)</li>
+  <li>Repo settings / admin / billing</li>
+  <li>GitHub Apps multi-user OAuth (non rilevante per <code>.33</code> single-host)</li>
+  <li>Cross-org search avanzata</li>
+</ul>
+
+<hr>
+
+<h2 id="vocab">1. Vocab decisions</h2>
+
+<h3>1.1 OBJECTS nuovi — <strong>+2</strong></h3>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Nuovo OBJECT</th><th>Distinto da</th><th>Motivazione</th></tr></thead>
+<tbody>
+<tr>
+  <td><code>issues</code></td>
+  <td><code>messages</code> (no thread, no recipient), <code>tasks</code> (no schedule)</td>
+  <td>Concetto canonico github, supporta find/read/create/set/delete</td>
+</tr>
+<tr>
+  <td><code>pulls</code></td>
+  <td><code>issues</code> (ha diff, merge, reviews), <code>commits</code> (è proposta non applicata)</td>
+  <td>Distinto perché ha merge ops + diff + reviews. Implementato Fase 1 anche se uso futuro <span class="badge badge-meta">future-ready</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Inflation</strong>: 19 → 21 OBJECTS. Contenuta.</p>
+
+<h3>1.2 Sub-form, <strong>NO nuovo OBJECT</strong></h3>
+<ul>
+  <li><strong>Reviews</strong> → <code>send_messages_github(target="pr:42", body="...", review_event="APPROVE")</code>. Arg opzionale <code>review_event</code> ∈ {APPROVE, REQUEST_CHANGES, COMMENT}</li>
+  <li><strong>Comments</strong> → <code>send_messages_github(target="issue:42")</code> o <code>"pr:42"</code></li>
+  <li><strong>Workflows</strong> → <code>tasks</code> esistente con qualifier <code>_github</code>. <strong>Istanza del pattern multi-backend</strong>, non specializzazione ad-hoc (cfr §2)</li>
+</ul>
+
+<h3>1.3 Meta-verb riservato — <strong><code>consult</code></strong> <span class="badge badge-done">approvato</span></h3>
+<p>Nuova categoria §2.2 <em>system verbs</em>:</p>
+
+<blockquote>
+<strong>System verbs</strong> sono verbi-meta riservati a builtin runtime. Fuori dai 23 verbi canonici §2.2. NON usabili da synt o user-domain executor.
+<ul>
+<li><code>admin</code> — shell privilegiata (ADR 0088)</li>
+<li><code>undo</code> — reverse turn</li>
+<li><code>synthesize</code> — synt multistage</li>
+<li><strong><code>consult</code></strong> — consultazione frontier LLM con role/spec/context strutturati <em>(nuovo)</em></li>
+</ul>
+</blockquote>
+
+<hr>
+
+<h2 id="architecture">2. Architettura (layered)</h2>
+
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│ executors/                                                   │
+│   find_issues_github/     manifest + .py                     │
+│   read_issues_github/                                        │
+│   ...                                                        │
+└──────────────────────────────────────────────────────────────┘
+                            ↓ helper condivisi
+┌──────────────────────────────────────────────────────────────┐
+│ runtime/skill_wrapper.py            (helper GENERICI ADR 0123)│
+│ runtime/skill_wrapper_github.py     (helper SPECIFICI github) │
+└──────────────────────────────────────────────────────────────┘
+                            ↓
+┌──────────────────────────────────────────────────────────────┐
+│ runtime/backends/                   (ADR 0130 backend tree)   │
+│   issues/github.py                                            │
+│   pulls/github.py                                             │
+│   messages/github.py    (comments + reviews)                  │
+│   tasks/github.py       (workflows + runs)                    │
+│   tasks/local.py        (scheduler v2 — default tasks)        │
+└──────────────────────────────────────────────────────────────┘
+                            ↓
+┌──────────────────────────────────────────────────────────────┐
+│ runtime/skill_credentials.py                                  │
+│   check_github_token() → fail → executor dormant (ADR 0136)   │
+└──────────────────────────────────────────────────────────────┘
+                            ↓
+┌──────────────────────────────────────────────────────────────┐
+│ runtime/credentials.py        (ADR 0131 single store)         │
+│   domain="github" → PAT cifrato Fernet+HKDF                   │
+└──────────────────────────────────────────────────────────────┘</code></pre>
+
+<h3>2.1 Naming uniforme wrapper</h3>
+<p>Convenzione §2.2 componibile a 2 livelli:</p>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>File</th><th>Cosa contiene</th><th>Quando creare</th></tr></thead>
+<tbody>
+<tr><td><code>runtime/skill_wrapper.py</code></td><td>helper <strong>generici</strong>: <code>_run_api</code>, <code>_classify_error</code>, <code>_check_credentials</code>, <code>_needs_inputs_oauth_setup</code>, <code>_skill_home</code></td><td>sempre (esiste già, parametrizzato per <code>skill_name</code>)</td></tr>
+<tr><td><code>runtime/skill_wrapper_&lt;provider&gt;.py</code></td><td>helper <strong>specifici</strong>: paginazione, rate-limit, error class custom, headers</td><td>solo quando serve (regola del 3 §7.2)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Per <strong>google-workspace</strong>: tutto già coperto da generic wrapper (subprocess script Python). Niente <code>skill_wrapper_google_workspace.py</code> necessario.</p>
+<p>Per <strong>github</strong>: probabilmente serve <code>skill_wrapper_github.py</code> per X-RateLimit handler, Link header pagination, conditional ETag.</p>
+
+<h3>2.2 <code>tasks</code> con provider <code>_github</code> NON è specializzazione ad-hoc</h3>
+<p>È <strong>istanza del pattern multi-backend</strong> già canonico in Metnos (ADR 0130 + 0136):</p>
+<ul>
+  <li><code>create_tasks</code> (default) → backend <code>local</code> = scheduler v2 in-process</li>
+  <li><code>create_tasks_github</code> → backend <code>github</code> = workflow_dispatch trigger</li>
+  <li><code>create_tasks_jenkins</code> (futuro, se serve) → backend Jenkins</li>
+</ul>
+<p>Identica logica già applicata in <code>messages</code> (smtp/gmail/telegram), <code>files</code> (local/drive), <code>events</code> (ics/gcal). Zero codice ad-hoc per github: rispetta primitive Metnos §7.3.</p>
+
+<hr>
+
+<h2 id="origin">3. Skill first-party Metnos (NON import esterno)</h2>
+
+<div class="callout-info">
+Probabilmente NON esiste una skill <code>github</code> pubblica decente su agentskills.io che copra issue+PR+workflow+comments+reviews. Strada corretta: <strong>skill first-party Metnos</strong> (manifest scritti da noi, vivono nel repo), che usa la <strong>stessa infrastruttura</strong> delle skill importate.
+</div>
+
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Aspetto</th><th>Skill importata (es. <code>_google_workspace</code>)</th><th>Skill first-party Metnos (<code>_github</code>)</th></tr></thead>
+<tbody>
+<tr><td>Source</td><td><code>agentskills.io/&lt;owner&gt;/&lt;name&gt;</code></td><td>repo Metnos <code>skills/github/</code></td></tr>
+<tr><td><code>[provenance]</code></td><td><code>imported_from = "agentskills.io/..."</code></td><td><code>imported_from = "metnos:builtin"</code> o omesso</td></tr>
+<tr><td>Pipeline 5-stadi ADR 0123</td><td>Sì</td><td><strong>Sì</strong> (riusiamo lo stesso engine)</td></tr>
+<tr><td>Vocab map</td><td><code>skill_vocab_map.json::contextual</code></td><td>stesso file, sezione first-party</td></tr>
+<tr><td>Suffix provider <code>_X</code></td><td>Sì</td><td>Sì</td></tr>
+<tr><td>Verifier ADR 0114 (5 layer)</td><td>Sì</td><td>Sì</td></tr>
+<tr><td>Sandbox audit ADR 0140</td><td>Sì</td><td>Sì (<code>provenance.imported_from</code> distingue per audit)</td></tr>
+<tr><td>Dormancy ADR 0136</td><td>Sì</td><td>Sì</td></tr>
+</tbody>
+</table>
+</div>
+
+<p><strong>Vantaggio</strong>: stesso engine (pipeline + sandbox + audit + dormancy + provider qualifier), zero codice ad-hoc. La differenza è solo l'origin del manifest.</p>
+
+<hr>
+
+<h2 id="executors">4. Executor inventory Fase 1</h2>
+
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Executor</th><th>Verbo</th><th>OBJECT</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td><code>find_issues_github</code></td><td>find</td><td>issues</td><td>filter: state, labels, assignee, since, repo</td></tr>
+<tr><td><code>read_issues_github</code></td><td>read</td><td>issues</td><td><code>include_comments=true</code> = thread completo</td></tr>
+<tr><td><code>create_issues_github</code></td><td>create</td><td>issues</td><td>title + body + labels + assignees</td></tr>
+<tr><td><code>set_issues_github</code></td><td>set</td><td>issues</td><td>upsert: state, labels, assignees, milestone</td></tr>
+<tr><td><code>delete_issues_github</code></td><td>delete</td><td>issues</td><td>lock+hide (GitHub no delete vero)</td></tr>
+<tr><td><code>find_pulls_github</code></td><td>find</td><td>pulls</td><td>filter: state, base, head, author <span class="badge badge-meta">future-ready</span></td></tr>
+<tr><td><code>read_pulls_github</code></td><td>read</td><td>pulls</td><td><code>include_diff=true</code> → unified diff</td></tr>
+<tr><td><code>set_pulls_github</code></td><td>set</td><td>pulls</td><td>labels, reviewers, state</td></tr>
+<tr><td><code>change_pulls_github</code></td><td>change</td><td>pulls</td><td><code>merge_method=squash|merge|rebase</code></td></tr>
+<tr><td><code>send_messages_github</code></td><td>send</td><td>messages</td><td><code>target="issue:N"</code> o <code>"pr:N"</code>; opzionale <code>review_event</code></td></tr>
+<tr><td><code>delete_messages_github</code></td><td>delete</td><td>messages</td><td>comment_id</td></tr>
+<tr><td><code>create_tasks_github</code></td><td>create</td><td>tasks</td><td>workflow_dispatch trigger (istanza pattern multi-backend)</td></tr>
+<tr><td><code>read_tasks_github</code></td><td>read</td><td>tasks</td><td>workflow runs status</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Totale Fase 1</strong>: 13 executor — generati dalla skill pipeline.</p>
+
+<hr>
+
+<h2 id="consult">5. Primitiva <code>consult_frontier</code> agentic</h2>
+
+<div class="callout-info">
+<strong>Insight chiave (Roberto)</strong>: se Metnos sapesse quale parte di codebase è rilevante per analizzare issue X, già conoscerebbe la risposta. Quindi <code>remote_context</code> non è qualcosa che Metnos pre-fetcha — è un set di <strong>tool che il frontier può chiamare iterativamente</strong> per esplorare autonomamente.
+</div>
+
+<h3>5.1 Due modi di operare</h3>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Modo</th><th>Quando</th><th>Tier minimo</th><th>Tool exposure</th></tr></thead>
+<tbody>
+<tr><td><strong>A — single-call</strong></td><td>tutto il context in mano (summarize email, draft testo)</td><td>Gemma 26B locale OK</td><td>nessuno</td></tr>
+<tr><td><strong>B — agentic tool use</strong></td><td>frontier deve esplorare repo/URL</td><td>≥ Sonnet (Anthropic/OpenAI con tool API)</td><td>tool set passato da Metnos (read-only)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Selezione automatica via signature: <code>remote_context=None</code> → A, <code>remote_context=[...]</code> → B (+ auto-bump tier se necessario).</p>
+
+<h3>5.2 Flusso Modo B (esempio issue analysis)</h3>
+<pre><code>Metnos invoca frontier con:
+  prompt: «sei reviewer issue/PR Python self-hosted, leggi #42 e
+           i file rilevanti per capire root cause»
+  tools: [github_read_file, github_list_dir, github_read_issue,
+          github_read_pr_diff, github_search_code, fs_read_local_file]
+  tool endpoints implementati da Metnos
+
+Frontier (autonomamente, loop tool use):
+  step1: github_read_issue(metnos/myclaw#42)
+         → Metnos esegue, return body + commenti
+  step2: github_list_dir("runtime/scheduler_v2/")
+         → Metnos esegue, return file list
+  step3: github_read_file("runtime/scheduler_v2/store.py")
+         → Metnos esegue, return contenuto
+  step4: github_read_file("executors/find_events_empty/...")
+  ...
+  stepN: final message:
+         «root cause: race condition perché lock manca a
+          store.py:142. Fix proposto: aggiungere RLock attorno
+          a write_slot. ~5 LOC.»
+
+Metnos: return frontier final_message all'utente nello scratchpad
+         del watcher</code></pre>
+
+<h3>5.3 Signature</h3>
+<pre><code>consult_frontier(
+    role: str,
+    output_spec: dict,
+    local_context: dict | None,        # text/files inline (DNA Metnos)
+    remote_context: list | None,       # repo/URL refs che frontier esplora
+                                        # via tool use loop (modo B)
+    tools_allowed: list[str] | None,   # whitelist tool names; default
+                                        # derivato da remote_context kinds
+    tier: str = "wise",                # auto-bump a wise se remote_context
+                                        # presente e tier=fast
+    max_tool_iters: int = 30,          # cap iterazioni tool use
+    max_remote_bytes: int = 500_000,   # cap totale bytes letti via tool
+    per_call_timeout_s: int = 180,
+    cache_ttl_s: int = 0,
+)
+→ {
+    ok: bool,
+    response_text: str | None,
+    response_structured: dict | None,   # se output_spec.format=json
+    tokens_in: int,
+    tokens_out: int,
+    cost_usd: float,
+    tier_used: str,
+    cached: bool,
+    iters_done: int,                    # quante tool calls ha fatto
+    remote_bytes_read: int,
+    files_read: list[str],              # path file letti dal frontier
+}</code></pre>
+
+<h3>5.4 <code>local_context</code> — DNA Metnos</h3>
+<p>Sub-set canonico del DNA, caricato 1 volta al boot del watcher, riusato in tutti i consult:</p>
+<pre><code>local_context = {
+    "files": [
+        "/opt/myclaw/CLAUDE.md",              # vincoli + decisioni cardine
+        "/opt/myclaw/decisions/_INDEX.md",    # registry ADR canonico
+    ],
+    "adr_subset": [                            # ADR matchati per la issue
+                                                # (keyword match issue↔ADR title)
+        "/opt/myclaw/decisions/0112-scheduler-v2.md",
+        "/opt/myclaw/decisions/0117-image-index.md",
+    ],
+    "inline": {
+        "vocab_section": "§2.2 closed vocab summary",
+        "architecture_layers": "compact layered diagram",
+    },
+}</code></pre>
+<p>Footprint: ~50-80KB sempre passati al frontier. Marginale.</p>
+
+<h3>5.5 Tool set canonico github (read-only)</h3>
+<div class="callout-warn">
+<strong>Constraint duro</strong>: i tool exposed al frontier sono SOLO read-only. Write ops (<code>create_issues</code>, <code>send_messages</code>, <code>change_pulls</code>) restano fuori scope frontier — passano sempre dal Telegram/chat consent dell'utente. Evita scenari "frontier crea issue auto" o "frontier mergia PR".
+</div>
+<pre><code>GITHUB_FRONTIER_TOOLS = [
+    {"name": "github_read_file",
+     "input_schema": {"repo": "str", "path": "str", "ref": "str?"}},
+    {"name": "github_list_dir",
+     "input_schema": {"repo": "str", "path": "str", "ref": "str?"}},
+    {"name": "github_read_issue",
+     "input_schema": {"repo": "str", "number": "int"}},
+    {"name": "github_read_pr_diff",
+     "input_schema": {"repo": "str", "number": "int"}},
+    {"name": "github_search_code",
+     "input_schema": {"repo": "str", "query": "str"}},
+    # niente write/merge/delete
+]</code></pre>
+
+<h3>5.6 Tier requirement</h3>
+<ul>
+  <li>Modo A: qualsiasi tier (anche <code>fast</code> Haiku o locale)</li>
+  <li>Modo B: <code>≥ middle</code> (Anthropic Sonnet con tool use loop). <strong>Gemma 26B locale NON supportata</strong> in modo B (tool use limitato 1 step/turno via llamacpp Metnos, non agentic-loop)</li>
+</ul>
+
+<h3>5.7 Cost stimato</h3>
+<ul>
+  <li>Modo A: $0.05-0.20/call (Sonnet single-call)</li>
+  <li>Modo B: $0.20-0.80/call (Sonnet con 10-30 tool iter, repo grosso)</li>
+  <li>Repo myclaw ~5MB codice rilevante. Cap 500KB letti via tool tutela budget</li>
+</ul>
+
+<hr>
+
+<h2 id="watcher">6. Workflow Issue Watcher con dedup</h2>
+
+<h3>6.1 Pipeline end-to-end</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│ Stage 0 [AUTO]  watcher detecta nuovo commento/issue        │
+└─────────────────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Stage 1a [AUTO]  semantic dedup search                      │
+│   embed_query(issue.title + issue.body) via BGE-M3          │
+│   cosine vs github_issue_qa.sqlite                          │
+│   → top-N candidati con similarity                          │
+└─────────────────────────────────────────────────────────────┘
+                       ↓
+  se 4-AND safety conditions soddisfatte (vedi §6.3):
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Stage 1b-FAST [AUTO]  auto-reply dedup                      │
+│   send_messages_github(target=issue:N, body=                │
+│     «Questa domanda è già stata trattata in #15 e #28.      │
+│      In sintesi: &lt;accepted_reply_top_match&gt;.                │
+│      Se non risolve, rispondi qui ed estenderò l'analisi.») │
+│                                                             │
+│   notify Roberto post-hoc (NO gate):                        │
+│     «✅ auto-risposto a #42 (match 0.91 con #15, #28).      │
+│      Cost $0 (no frontier call). [Vedi reply]»              │
+└─────────────────────────────────────────────────────────────┘
+
+  altrimenti (no match o classification=bug):
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Stage 1c [AUTO]  consult_frontier modo B                    │
+│   local_context = DNA Metnos                                │
+│   remote_context = [repo, issue]                            │
+│   tools = GITHUB_FRONTIER_TOOLS (read-only)                 │
+│   output_spec = SCHEMA_ISSUE_ANALYSIS (json)                │
+│                                                             │
+│   → output: classification, root_cause, proposed_fix,       │
+│              reply_to_user, related_issues, confidence      │
+└─────────────────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Stage 2 [HUMAN GATE]  notify Roberto (Telegram | chat UI)   │
+│   via get_inputs(fmt="auto", kind="choice")                 │
+│   uniformato cross-canale                                   │
+│                                                             │
+│   📥 Issue #42 myclaw — BUG (confidence 0.85, $0.34)        │
+│                                                             │
+│   ISSUE CORRELATE (informativo)                             │
+│   #28 simile (0.78), #15 simile (0.72)                      │
+│                                                             │
+│   TLDR                                                      │
+│   ROOT CAUSE                                                │
+│   PROPOSED FIX                                              │
+│   DRAFT REPLY al richiedente                                │
+│                                                             │
+│   [📤 Posta] [✏ Modifica] [🗑 Scarta]                       │
+└─────────────────────────────────────────────────────────────┘
+                       ↓ tap Posta
+┌─────────────────────────────────────────────────────────────┐
+│ Stage 3 [AUTO]  send_messages_github(target=issue:N, body)  │
+│   + log in github_issue_qa.sqlite (Q+A + embedding)         │
+│   + Telegram ack «✅ postato su #42»                         │
+│                                                             │
+│ NB: la reply diventa knowledge per futuri dedup match.      │
+│     Stesso ciclo di apprendimento sia per dedup-auto sia    │
+│     per gate-approved (entrambi i casi).                    │
+└─────────────────────────────────────────────────────────────┘</code></pre>
+
+<h3>6.2 Storage <code>github_issue_qa.sqlite</code></h3>
+<pre><code>CREATE TABLE issue_qa (
+    id INTEGER PRIMARY KEY,
+    repo TEXT NOT NULL,
+    issue_number INTEGER NOT NULL,
+    classification TEXT,          -- support|bug|question|enhancement|other
+    question_text TEXT,           -- title + body normalizzati
+    question_embedding BLOB,      -- BGE-M3 vec 1024d float32
+    accepted_reply TEXT,          -- reply finale postata
+    posted_at INTEGER,
+    auto_replied BOOLEAN DEFAULT 0,
+    related_refs TEXT,            -- json: [{ref, similarity}]
+    user_satisfied INTEGER,       -- null|1|0 (1 se issue closed, 0 se lamento follow-up)
+    cost_usd REAL,                -- $$ frontier per audit
+    UNIQUE(repo, issue_number)
+);
+CREATE INDEX idx_qa_repo ON issue_qa(repo);
+-- Cosine search via numpy in memoria (cap ~10k issue/repo, fattibile)
+-- OR sqlite-vec extension se cresce</code></pre>
+
+<h3>6.3 Safety: 4 condizioni AND per auto-reply dedup</h3>
+<p>TUTTE devono essere vere, anche una falsa → flow normale gate:</p>
+<ol>
+  <li><code>top.similarity ≥ 0.85</code></li>
+  <li><code>classification_hint ∈ {support, question}</code> (mai <code>bug</code>/<code>enhancement</code>)</li>
+  <li><code>top.user_satisfied == 1</code> (la reply precedente non ha generato lamenti)</li>
+  <li><code>top.accepted_reply.length &gt; 100</code> (no auto su risposte stub)</li>
+</ol>
+
+<h3>6.4 Threshold di similarity (calibrato su BGE-M3 multilingue)</h3>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Range cosine</th><th>Cosa significa</th><th>Comportamento</th></tr></thead>
+<tbody>
+<tr><td><strong>≥ 0.92</strong></td><td>Stesso topic, fraseggio simile</td><td>Auto-reply con 1 riferimento principale</td></tr>
+<tr><td><strong>0.85 — 0.92</strong></td><td>Stesso topic, fraseggio diverso</td><td>Auto-reply con 2-3 riferimenti</td></tr>
+<tr><td><strong>0.75 — 0.85</strong></td><td>Topic correlato ma non identico</td><td>NO auto-reply. Frontier riceve precedenti come <em>hint context</em></td></tr>
+<tr><td><strong>&lt; 0.75</strong></td><td>No match significativo</td><td>Frontier senza hint</td></tr>
+</tbody>
+</table>
+</div>
+<p>Default <code>auto_reply_threshold = 0.85</code>. Configurabile in <code>~/.config/metnos/github_dedup.json</code>.</p>
+
+<h3>6.5 Classification hint pre-frontier</h3>
+<p>Per applicare safety AND condition #2 PRIMA di chiamare il frontier (deterministico §7.9):</p>
+<pre><code>_CLASS_KEYWORDS = {
+    "bug": ["bug", "error", "crash", "exception", "doesn't work",
+            "broken", "regression", "traceback", "NameError",
+            "errore", "non funziona", "crasha"],
+    "support": ["how to", "come si fa", "documentazione", "esempio",
+                "can I", "tutorial", "guida"],
+    "enhancement": ["feature", "would be nice", "proposal",
+                    "enhancement", "potresti aggiungere"],
+}
+# match = primo che fa hit. Ambiguo (no match) → "unknown" → flow gate normale.</code></pre>
+
+<h3>6.6 Uniformazione Telegram + chat UI</h3>
+<p>Tutte le card approval (Stage 2) usano <strong>pattern esistente</strong> <code>get_inputs(fmt="auto", kind="choice")</code> ADR 0090. Il runtime adatta render al canale:</p>
+<ul>
+  <li><strong>Telegram</strong>: inline keyboard nativo (<code>_INLINE_COMPATIBLE_KINDS = {yes_no, choice}</code>)</li>
+  <li><strong>HTTP chat UI</strong>: form standalone <code>/agent/dialog/&lt;id&gt;/form</code> htmx</li>
+</ul>
+<p>Stesso meccanismo riusato per install-on-demand (vedi flusso 2026-05-17) e qualsiasi futuro "sì/no/altro". Niente codice ad-hoc per canale.</p>
+
+<h3>6.7 Config repo monitorati</h3>
+<pre><code># ~/.config/metnos/github_watched_repos.json
+[
+  {"repo": "metnos/myclaw",
+   "events": ["new_issue", "new_comment", "ci_failed"],
+   "poll_interval_business_s": 1800,
+   "poll_interval_night_s": 7200}
+]</code></pre>
+<p>Default empty list = nessun watch attivo finché non configurato.</p>
+
+<h3>6.8 Cost stimato</h3>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Scenario</th><th>Cost/mese</th></tr></thead>
+<tbody>
+<tr><td>100 issue/mese senza dedup × $0.34 medio</td><td>~$34</td></tr>
+<tr><td>Con dedup 30% hit rate (70 frontier × $0.34)</td><td>~$24 <span class="badge badge-done">-29%</span></td></tr>
+<tr><td>Plus latenza zero su domande standard</td><td>UX migliore</td></tr>
+</tbody>
+</table>
+</div>
+
+<hr>
+
+<h2 id="auth">7. Authentication + credentials</h2>
+
+<h3>8.1 Token strategia <span class="badge badge-meta">decisione aperta</span></h3>
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Opzione</th><th>Setup</th><th>UX</th><th>Scope</th></tr></thead>
+<tbody>
+<tr><td><strong>PAT fine-grained</strong> <span class="badge badge-done">raccomandato</span></td><td>github.com/settings/tokens, scope per-repo</td><td>medio</td><td>granulare, blast radius limitato</td></tr>
+<tr><td>PAT classic</td><td>scope manuale (<code>repo, workflow, read:org</code>)</td><td>semplice</td><td>più potere, blast radius più ampio</td></tr>
+<tr><td>gh CLI login</td><td><code>gh auth login</code> interattivo</td><td>semplicissimo</td><td>gh gestisce token, Metnos chiama gh</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>8.2 Storage</h3>
+<ul>
+  <li>Domain <code>github</code> in credentials store (ADR 0131): Fernet+HKDF cifrato</li>
+  <li>File <code>~/.local/share/metnos/credentials/github.fernet</code></li>
+  <li>Helper <code>runtime/skill_credentials.py::check_github_token()</code> verifica presenza + validità (HEAD <code>/user</code>)</li>
+  <li>Dormancy automatica se token assente o invalido (ADR 0136)</li>
+</ul>
+
+<hr>
+
+<h2 id="effort">8. Effort breakdown — fasi indipendenti</h2>
+
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Fase</th><th>Componente</th><th>Effort</th><th>Dipende da</th></tr></thead>
+<tbody>
+<tr><td><strong>A</strong></td><td>Skill first-party <code>github</code> + read-only ops + credential PAT + <code>skill_wrapper_github.py</code></td><td>2h</td><td>—</td></tr>
+<tr><td><strong>B</strong></td><td><code>consult_frontier</code> builtin (modo A + B) + tier config + tool exposure registry</td><td>5h</td><td>task #40</td></tr>
+<tr><td><strong>C</strong></td><td>Write ops github (create_issues, send_messages, set_issues)</td><td>1h</td><td>A</td></tr>
+<tr><td><strong>D</strong></td><td>Watcher scheduler v2 + sqlite state diff + dedup search BGE-M3</td><td>3h</td><td>A</td></tr>
+<tr><td><strong>E</strong></td><td>Telegram + chat UI inline 3-button via <code>get_inputs</code> uniformato</td><td>1h</td><td>D (riusa pattern)</td></tr>
+<tr><td><strong>F</strong></td><td>Analysis pipeline Stage 1c (consult_frontier + classifier deterministico)</td><td>2h</td><td>B, C, E</td></tr>
+<tr><td><strong>G</strong></td><td>Reply approval Stage 2 + send Stage 3 + qa_store update</td><td>1.5h</td><td>F</td></tr>
+<tr><td><strong>H</strong></td><td>ADR formali (0141 github + 0142 consult_frontier)</td><td>1h</td><td>tutte</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Totale</strong>: ~16.5h spalmate. MVP funzionale (notify-only + dedup, no analisi frontier) dopo <code>A+D+E = ~6h</code>.</p>
+
+<hr>
+
+<h2 id="decisions">9. Decisioni residue</h2>
+
+<h3>Risolte <span class="badge badge-done">approvate</span></h3>
+<ul>
+  <li><strong>OBJECTS nuovi</strong>: <code>issues</code> + <code>pulls</code> separati (Fase 1 implementati entrambi, <code>pulls</code> future-ready)</li>
+  <li><strong>Sub-form</strong>: <code>reviews</code> e <code>comments</code> via <code>send_messages_github</code>, <code>workflows</code> via <code>tasks_github</code></li>
+  <li><strong>System verb <code>consult</code></strong>: meta-verb riservato</li>
+  <li><strong>Skill origin</strong>: first-party Metnos (no import esterno)</li>
+  <li><strong>Naming wrapper</strong>: base generic + provider extension solo quando serve</li>
+  <li><strong><code>remote_context</code> semantica</strong>: tool exposure agentic (modo B), NON prefetch</li>
+  <li><strong>Tool exposure read-only</strong>: write ops sempre human-gated</li>
+  <li><strong>Auto-reply dedup</strong>: 4-AND safety + threshold 0.85 + classifier deterministico hint</li>
+  <li><strong>Approval flow</strong>: <code>get_inputs(fmt="auto")</code> uniformato Telegram + chat UI</li>
+  <li><strong>Storage</strong>: sqlite dedicata <code>github_issue_qa.sqlite</code>, embedding entry su ogni reply postata</li>
+</ul>
+
+<h3>Da decidere all'implementazione</h3>
+<div class="callout-decision">
+<strong>D1 — Tier default <code>consult_frontier</code></strong><br>
+<code>tier="wise"</code> (Opus) per max qualità, o <code>tier="middle"</code> (Sonnet) per cost? Auto-bump a wise sempre se <code>remote_context</code> presente?<br>
+Sonnet tipicamente basta per issue analysis. Wise solo per casi complessi.
+</div>
+
+<div class="callout-decision">
+<strong>D2 — Token PAT scope</strong><br>
+Fine-grained per-repo (raccomandato) o classic? Setup user-driven, può anche essere uno per inizio + altri dopo se serve cross-repo.
+</div>
+
+
+<hr>
+
+<h2>Note finali</h2>
+
+<ul>
+  <li><strong>Conoscenza repo</strong>: il frontier vede repo HEAD remoto via tool calls, NON l'ultimo stato non-pushato del <code>.33</code>. Acceptable per la maggior parte delle issue (sono già pushate)</li>
+  <li><strong>Tono reply</strong>: il draft non sarà mai indistinguibile da Roberto. Tu modifichi sempre prima di Invia (Stage 2 gate)</li>
+  <li><strong>Riusabilità <code>consult_frontier</code></strong>: oltre github, primitiva generale per email triage, monthly report, code review delegate, doc draft</li>
+  <li><strong>Sicurezza</strong>: tool exposed al frontier sempre read-only; whitelist + cap iterazioni + cap bytes; write ops sempre user-gated via approval card uniformata cross-canale</li>
+  <li><strong>Apprendimento incrementale</strong>: ogni reply postata (auto-dedup o gate-approved) entra nello store come knowledge per futuri match. Dedup rate cresce nel tempo</li>
+</ul>
+
+<p class="meta">Doc internal — noindex/nofollow — non parte del corpus pubblico.</p>
+
+</body>
+</html>

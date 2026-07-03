@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A477A">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos — Reddit r/LocalLLaMA post draft</title>
+<style>
+:root {
+  --fg:#1a1a1a; --muted:#5e6571; --bg:#fdfdfc; --border:#e3e5e8;
+  --accent:#1A477A; --bronze:#92400E; --sage:#548235;
+  --code-bg:#f4f5f7; --code-fg:#2d3338; --pre-bg:#1e2329; --pre-fg:#e6e9ee;
+  --reddit-bg:#fdf6e8; --reddit-border:#e8d899;
+}
+* { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+html { font-size: 17px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--fg); background: var(--bg);
+  max-width: 880px; margin: 16px auto; padding: 0 16px 80px;
+  line-height: 1.6; font-size: 16px;
+  word-wrap: break-word; overflow-wrap: break-word;
+}
+h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif; color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.75em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-top: 1.5em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 1.8em; }
+h3 { font-size: 1.15em; margin-top: 1.4em; color: #2A5A8A; }
+h4 { font-size: 1.05em; margin-top: 1.2em; color: #3A6A8A; }
+p { margin: 0.7em 0; }
+strong { color: var(--fg); }
+em { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+a:hover, a:active { border-bottom-style: solid; }
+code {
+  font-family: "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--code-bg); color: var(--code-fg);
+  padding: 1px 5px; border-radius: 3px; font-size: 0.88em;
+  word-break: break-all;
+}
+pre {
+  background: var(--pre-bg); color: var(--pre-fg);
+  padding: 12px 14px; border-radius: 6px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  font-size: 0.82em; line-height: 1.45;
+  margin: 0.8em 0;
+}
+pre code { background: transparent; color: inherit; padding: 0; word-break: normal; }
+blockquote {
+  border-left: 3px solid var(--bronze); margin: 1em 0; padding: 4px 14px;
+  background: #fdf6ec; color: #4a3a20; font-style: italic;
+}
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1em 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #eef2f7; font-weight: 600; color: var(--accent); }
+tr:nth-child(even) td { background: #fafbfc; }
+ul, ol { padding-left: 1.5em; margin: 0.7em 0; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.meta {
+  font-size: 0.85em; color: var(--muted); margin-top: 8px;
+  padding: 6px 10px; background: #f0f4f9; border-radius: 4px;
+  display: inline-block;
+}
+.reddit-post {
+  background: var(--reddit-bg);
+  border: 2px solid var(--reddit-border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin: 1.5em 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.reddit-post h2:first-child { margin-top: 0; border-bottom: none; }
+.reddit-post .post-meta {
+  font-size: 0.85em; color: #6c5500; margin-bottom: 12px;
+  font-family: -apple-system, sans-serif;
+}
+.callout-tip {
+  background: #e6f7ed; border-left: 3px solid var(--sage); padding: 10px 14px;
+  margin: 1em 0; border-radius: 0 4px 4px 0;
+}
+.callout-tip strong { color: var(--sage); }
+.callout-warn {
+  background: #fff5e6; border-left: 3px solid var(--bronze); padding: 10px 14px;
+  margin: 1em 0; border-radius: 0 4px 4px 0;
+}
+.title-alt {
+  background: #f7f9fc; border-left: 3px solid var(--accent);
+  padding: 8px 14px; margin: 6px 0; font-style: italic;
+}
+.title-alt strong { font-style: normal; color: var(--bronze); }
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  body { padding: 0 12px 60px; margin: 12px auto; }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.1em; }
+  pre { font-size: 0.78em; padding: 10px; }
+  table { font-size: 0.85em; }
+  th, td { padding: 5px 7px; }
+  .reddit-post { padding: 14px 16px; }
+}
+@media print {
+  body { max-width: none; margin: 0; padding: 20px; font-size: 10pt; }
+  .reddit-post { border: 1px solid #ccc; background: white; }
+}
+</style>
+</head>
+<body>
+
+<h1>Reddit r/LocalLLaMA — bozza post</h1>
+<p class="meta">Doc internal — aggiornato 2026-06-05 — owner Roberto — ~900 parole EN</p>
+
+<div class="callout-warn">
+<strong>⚠️ NON CANONICO.</strong> La fonte di verità è il file Markdown
+<code>docs/drafts/reddit_localllama_closed_vocab_tool_filtering.md</code>. Questo HTML
+è un mirror per anteprima: <strong>modifica prima il .md</strong>. Numeri riverificati
+contro codice e report reali il 2026-06-05 (vedi blocco "Provenance" nel .md).
+</div>
+
+<blockquote>
+Bozza pronta per copy-paste su Reddit. 3 titoli alternativi (scegli prima), corpo del post in formato Reddit-friendly (markdown), note pre-posting in fondo. Tono: tecnico/pratico, hacker-mindset, dichiara onestamente i limiti. <strong>Tutti i numeri sono stati riconciliati con i bench reali</strong> (<code>bench_prefilter_strategies</code> / <code>bench_prefilter_scaling</code>) e con lo stato del sistema.
+</blockquote>
+
+<h2>1. Setup pratico</h2>
+
+<ul>
+<li><strong>Subreddit primario</strong>: <code>r/LocalLLaMA</code></li>
+<li><strong>Subreddit alternativi</strong>: <code>r/MachineLearning</code> (più rigido, usa flair <code>[D]</code>), <code>r/AIagents</code></li>
+<li><strong>Flair suggerito</strong>: <code>[Tutorial]</code> oppure <code>[Discussion]</code> oppure <code>[Research]</code></li>
+<li><strong>Timing</strong>: martedì o mercoledì mattina US (15:00-19:00 CET) per peak engagement</li>
+<li><strong>Account</strong>: usa il tuo account abituale, NON throwaway (penalizzato dall'algoritmo)</li>
+</ul>
+
+<h2>2. Titolo — scegli 1 prima di postare</h2>
+
+<div class="title-alt">
+<strong>#1 (raccomandato — quantifica + cita il paper)</strong><br>
+Closed-vocab tool naming kept our agent's tool-filter recall almost flat from 84 → 1000 tools (−5.7pp Recall@5), where ToolBench-style retrieval drops 50–70%
+</div>
+
+<div class="title-alt">
+<strong>#2 (più narrativo)</strong><br>
+We renamed our tools instead of building a tool-retriever — and it scaled better than RAG to 1000 tools
+</div>
+
+<div class="title-alt">
+<strong>#3 (hacker tone — probabilmente il più cliccato)</strong><br>
+A plain token-match tool filter beats embeddings at 1000-tool scale — if your tool names obey a closed grammar
+</div>
+
+<hr>
+
+<h2>3. Corpo del post (pronto al copy-paste)</h2>
+
+<div class="reddit-post">
+<div class="post-meta">📝 Anteprima rendering Reddit-style</div>
+
+<p><strong>TL;DR</strong> — I'm building a self-hosted personal assistant ("Metnos") whose tools are all named by a <strong>closed grammar</strong>: <code>verb_object[_qualifier]</code>, drawn from a fixed set of <strong>23 verbs × 22 objects × 4 qualifier families</strong>. No free-form tool names, ever — violations are rejected at load time. I benchmarked <strong>14 tool-filtering strategies</strong> across pool sizes <strong>84 / 250 / 500 / 1000</strong> tools (real catalog padded with synthetic distractors built from the <em>same</em> grammar). <strong>The best strategies lost only −5.7pp Recall@5 going from 84 → 1000 tools</strong>, against the <strong>−50% to −70%</strong> collapse reported in the ToolBench/ToolLLM line of work for comparable scale jumps on heterogeneous REST corpora. The kicker: the winner is <strong>plain weighted token matching at ~7ms/query</strong> — no embeddings, no vector DB. The closed vocabulary makes tool names discriminative enough that retrieval is largely over-engineering <em>in this regime</em>. Numbers, method, and exactly where it stops working — below. <strong>It's an engineering observation, not a paper.</strong></p>
+
+<hr>
+
+<h3>Setup (and the honest hardware bill)</h3>
+
+<p>Metnos runs on a single 96 GB unified-memory box (AMD Strix Halo). The agent loop is ReAct-style with a <strong>local planner LLM</strong> served by <code>llama-server</code>; a frontier model (Claude Opus) is an <strong>opt-in fallback</strong>, not the engine. On each turn the planner has to pick which tools to expose in its prompt — so "tool filtering" (the top-K most relevant tools for this query) sits squarely on the hot path.</p>
+
+<p>Two upfront caveats, because this sub rightly hates hand-waving:</p>
+<ul>
+<li>This is a <strong>single-machine, single-user</strong> system. The benchmark below is <em>my</em> production traffic, not a public dataset. Treat the absolute recall numbers as in-domain; the interesting thing is the <strong>slope</strong>, not the level.</li>
+<li>The local model that serves the planner has changed over the project's life (it was a ~26B Gemma, currently a Qwen3-Next-family MoE at ~35B-total/3B-active). <strong>The tool-filter benchmark is deterministic and does not call the LLM at all</strong> — it measures pure retrieval Recall@K against a labeled corpus. So the finding is <em>independent of which planner model is loaded</em>. I'm calling that out precisely because it's the usual "well it's just your model" objection, and here it doesn't apply.</li>
+</ul>
+
+<h3>The constraint that did the work</h3>
+
+<p>At the very start of the project I forced <strong>every</strong> tool name into a closed grammar, <code>verb_object[_qualifier]</code>:</p>
+
+<ul>
+<li><code>verb</code> ∈ a closed set of <strong>23</strong> (find, read, write, send, set, delete, create, get, list, filter, sort, group, classify, describe, render, extract, compress, compute, compare, change, order, share, move)</li>
+<li><code>object</code> ∈ a closed set of <strong>22</strong> (files, dirs, packages, messages, events, calendars, contacts, places, processes, urls, numbers, images, signatures, texts, proposals, inputs, credentials, entries, persons, tasks, issues, pulls)</li>
+<li><code>qualifier</code> ∈ 4 families: format/codec (<code>_csv</code>, <code>_pdf</code>…), modality (<code>_similar</code>, <code>_indices</code>…), safety-policy (<code>_blacklist</code>…), and provider (<code>_google_workspace</code> for a non-default backend; the default backend has no suffix)</li>
+</ul>
+
+<p>So a tool is <code>find_files</code>, <code>read_messages</code>, <code>send_messages_google_workspace</code>, <code>change_files_format</code> — <strong>never</strong> <code>searchDocs</code> or <code>gmailSendEmail</code>. New verbs/objects require a deliberate governance step (necessary, general, and <em>understandable by a mid-size local model without explanation</em>). The grammar is also what a constrained-decoding pass (GBNF) is generated from, so the planner literally cannot emit a name outside it.</p>
+
+<p>I did this originally for <em>planner</em> reasons (a local model is far more reliable when the action space is a small closed vocabulary). The retrieval benefit below was a side-effect I tripped over later.</p>
+
+<h3>What I measured</h3>
+
+<p><code>runtime/bench_prefilter_strategies.py</code>, 14 strategies, runtime-switchable via <code>METNOS_PREFILTER</code>. Two corpora, both from real turn logs: a <strong>comparison bench</strong> (500 deduplicated queries, <code>k_max=8</code>, measures Recall@1/@5 + latency + pool tokens) and a <strong>scaling bench</strong> (300 queries, pools 84/250/500/1000). The padding distractors are synthesized from the <em>same</em> <code>verb × object × qualifier</code> grammar — they look syntactically like real tools, they just don't <em>mean</em> what the queries ask. Both are <strong>deterministic, no LLM in the loop.</strong></p>
+
+<p>Headline — Recall@5 vs pool size (scaling bench, full table, nothing cherry-picked):</p>
+
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Strategy</th><th>pool 84</th><th>250</th><th>500</th><th>1000</th><th>Δ (84→1000)</th></tr></thead>
+<tbody>
+<tr><td><code>token_flat_v2</code> (recommended default)</td><td>0.720</td><td>0.697</td><td>0.687</td><td><strong>0.663</strong></td><td><strong>−5.7pp</strong></td></tr>
+<tr><td><code>token_flat</code></td><td>0.717</td><td>0.697</td><td>0.687</td><td>0.660</td><td>−5.7pp</td></tr>
+<tr><td><code>cached_token_flat</code></td><td>0.717</td><td>0.697</td><td>0.687</td><td>0.660</td><td>−5.7pp</td></tr>
+<tr><td><code>selective_semantic</code> (BGE-M3 hybrid)</td><td>0.717</td><td>0.697</td><td>0.687</td><td>0.660</td><td>−5.7pp</td></tr>
+<tr><td><code>selective_semantic_v2</code></td><td>0.713</td><td>0.693</td><td>0.680</td><td>0.657</td><td>−5.6pp</td></tr>
+<tr><td><code>length_adaptive</code></td><td>0.703</td><td>0.683</td><td>0.673</td><td>0.647</td><td>−5.6pp</td></tr>
+<tr><td><code>constraint</code> (grammar-driven)</td><td>0.693</td><td>0.667</td><td>0.650</td><td>0.630</td><td>−6.3pp</td></tr>
+<tr><td><code>hybrid_cascade</code></td><td>0.667</td><td>0.613</td><td>0.627</td><td>0.597</td><td>−7.0pp</td></tr>
+<tr><td><code>rrf_ensemble</code> (RRF)</td><td>0.673</td><td>0.627</td><td>0.640</td><td>0.603</td><td>−7.0pp</td></tr>
+<tr><td><code>trie</code></td><td>0.667</td><td>0.613</td><td>0.627</td><td>0.593</td><td>−7.4pp</td></tr>
+<tr><td><code>verb_first</code> (vocab-aware)</td><td>0.667</td><td>0.607</td><td>0.610</td><td>0.583</td><td>−8.4pp</td></tr>
+<tr><td><code>fts5</code> (SQLite FTS)</td><td>0.590</td><td>0.583</td><td>0.517</td><td>0.503</td><td>−8.7pp</td></tr>
+<tr><td><code>trie_v2</code></td><td>0.657</td><td>0.600</td><td>0.593</td><td>0.540</td><td>−11.7pp</td></tr>
+<tr><td><code>bloom</code> (neg pre-screen)</td><td>0.527</td><td>0.527</td><td>0.527</td><td>0.527</td><td>±0.0 (degenerate)</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The honest read of <em>my own</em> table: the <strong>token-based</strong> family is the flat-scaling winner at −5.7pp. The things I <em>expected</em> to scale best — the deterministic verb/grammar filters (<code>verb_first</code>, <code>constraint</code>, <code>trie</code>) — actually degrade <strong>more</strong> (−6 to −8pp). <code>bloom</code> is flat only because it's so coarse it barely discriminates at all (0.527 everywhere — a floor, not a win). So the headline is real, but it is <strong>not</strong> "clever structural filters win"; it's "<strong>dumb token matching is enough, and the fancy stuff doesn't beat it.</strong>"</p>
+
+<p>Cost side (comparison bench, 500 queries, <code>k_max=8</code>):</p>
+
+<div class="table-wrapper">
+<table>
+<thead><tr><th>Strategy</th><th>Recall@5</th><th>Recall@1</th><th>mean ms</th><th>p95 ms</th><th>pool tok</th><th>tok vs baseline</th></tr></thead>
+<tbody>
+<tr><td><code>token_flat_v2</code></td><td>0.712</td><td>0.488</td><td><strong>7.4</strong></td><td>48.0</td><td>4096</td><td><strong>−5.8%</strong></td></tr>
+<tr><td><code>cached_token_flat</code></td><td>0.710</td><td>0.472</td><td>5.8</td><td>33.4</td><td>4347</td><td>—</td></tr>
+<tr><td><code>selective_semantic</code> (BGE-M3)</td><td>0.710</td><td>0.472</td><td><strong>63.2</strong></td><td>108.0</td><td>4347</td><td>—</td></tr>
+<tr><td><code>selective_semantic_v2</code></td><td>0.700</td><td>0.484</td><td>24.9</td><td>81.7</td><td>4231</td><td>−2.7%</td></tr>
+<tr><td><code>constraint</code></td><td>0.684</td><td>0.458</td><td>6.3</td><td>45.1</td><td>3791</td><td>−12.8%</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>The full BGE-M3 semantic hybrid costs <strong>~63ms mean / 108ms p95</strong> for <strong>the same 0.710 Recall@5</strong> that plain <code>token_flat_v2</code> hits at <strong>7.4ms</strong> — roughly an <strong>8× latency tax for zero recall gain</strong> here. <code>token_flat_v2</code> also trims the planner's prompt by <strong>−5.8% tokens</strong> vs the legacy baseline (free latency/cost downstream). If you specifically want to <em>minimize</em> tokens, <code>constraint</code> cuts −12.8% for ~−3pp recall — a knob, not the default.</p>
+
+<p>For reference: ToolBench / ToolLLM (Qin et al. 2024, arXiv:2307.16789) report BM25/dense retrieval falling from high recall at ~100 tools to roughly 30–50% by the thousands, on heterogeneous real-world REST APIs. RestGPT (Song et al. 2023) shows a similar collapse. <strong>My pool top strategies lose ~5.7pp from 84 → 1000.</strong> Different corpus, smaller absolute scale (I'm not claiming 16k tools), but the <em>slope</em> is the whole point.</p>
+
+<h3>Why I think it works</h3>
+
+<ol>
+<li><strong>Tool names are highly informative.</strong> <code>find_images_indices</code> already encodes action + object + modality. A semantic retriever has little left to disambiguate when the surface form <em>is</em> the feature vector.</li>
+<li><strong>Distractors share the grammar but not the meaning.</strong> Padding to 1000 with <code>compute_processes</code>, <code>classify_signatures</code>, etc. produces names that are syntactically plausible but lexically don't overlap with what queries ask — so token matching stays separable.</li>
+<li><strong>Closed vocab kills synonym ambiguity.</strong> There is never a second tool with the same purpose under a different name. The query→tool map is many-to-few: queries diverse, tool set small and orthogonal by construction.</li>
+</ol>
+
+<p><code>token_flat_v2</code> just leans into this: weighted token matching over <code>name + affinity-keywords + description</code>, with a small penalty for provider-suffixed names and a name-exact boost. That's the whole "algorithm."</p>
+
+<h3>Where this stops working (read this part)</h3>
+
+<ul>
+<li><strong>You don't have vocab discipline.</strong> If your tool names are LLM-autogenerated, scraped from N integrations, or grown organically, this trick is <strong>dead</strong> — go RAG.</li>
+<li><strong>Scale is in-domain and modest.</strong> I benchmark to 1000, not 16k. Extrapolation suggests recall stays usable well past my current size, but I have <strong>not</strong> measured past 1000 and won't pretend the slope is guaranteed.</li>
+<li><strong>Vocab growth is a real watch-point.</strong> If verbs ~double (46) or objects+qualifiers triple, token-flat starts giving up a couple more points. On the "re-bench when it grows" list, not "solved forever".</li>
+<li><strong>Languages without baked-in vocab equivalence.</strong> IT and EN work (the synonym/affinity layer is bilingual by design). Anything else is <strong>untested</strong> — the system is i18n-by-construction but only IT/EN are validated, and whether this retrieval property survives elsewhere is unknown.</li>
+<li><strong>Tools that legitimately share name fragments across domains.</strong> A pure tokenizer occasionally misfires there; that's the slice where a semantic fallback earns its keep — which is why I keep <code>selective_semantic_v2</code> as an opt-in. (No clean, defensible "% of queries" number, so I'm not quoting one.)</li>
+</ul>
+
+<h3>Stuff I threw out (so you don't have to)</h3>
+
+<ul>
+<li><strong>Bloom filter</strong> for negative pre-screening — too coarse, floors at 0.527, kills precision.</li>
+<li><strong>Trie / radix</strong> for prefix lookup — works, but recall scaling is <em>worse</em> (<code>trie_v2</code> −11.7pp), no win.</li>
+<li><strong>SQLite FTS5</strong> full-text — sub-ms queries but lower recall (0.503 at 1000) and indexing overhead not worth it at this scale.</li>
+<li><strong>Grammar/constraint filter</strong> (<code>constraint</code>, <code>verb_first</code>) — the "right" structural approach and it wins on token economy, but it scales <em>worse</em> on recall than dumb token matching. That surprised me the most.</li>
+</ul>
+
+<h3>Resources</h3>
+
+<ul>
+<li><strong>Repo</strong> (AGPL, self-hosted): <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> — bench harness in <code>runtime/bench_prefilter_strategies.py</code>, strategies in <code>runtime/prefilter_strategies/</code>, design rationale in <code>decisions/0140-prefilter-modular-scaling.md</code>.</li>
+<li>Architecture write-up: <a href="https://metnos.com">metnos.com</a> — the ReAct planner page has the ToolBench/RRF/BGE-M3/ColBERTv2 citations inline. Happy to share the raw bench reports on request.</li>
+</ul>
+
+<p>Citations used in the internal review:</p>
+
+<ul>
+<li>Qin et al., <em>ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs</em>, arXiv:2307.16789, 2024</li>
+<li>Song et al., <em>RestGPT: Connecting LLMs with Real-World RESTful APIs</em>, 2023</li>
+<li>Khattab &amp; Zaharia, <em>ColBERTv2</em>, 2022</li>
+<li>Chen et al., <em>BGE-M3</em>, 2024</li>
+<li>Cormack, Clarke &amp; Buettcher, <em>Reciprocal Rank Fusion outperforms Condorcet and individual rank learning methods</em>, SIGIR 2009</li>
+</ul>
+
+<h3>Open questions for the community</h3>
+
+<ol>
+<li>Anyone else running a <strong>closed-vocab</strong> agent? Do you see the same near-flat scaling regime, or is my slope just a small-corpus artifact?</li>
+<li>What's the right way to <em>measure</em> the closed-vocab benefit <strong>independently of recall</strong>? Vocab compression ratio? Distractor lexical-overlap? I'd love a cleaner metric than "recall didn't fall".</li>
+<li>Anything published on this beyond practitioner posts? The literature I found all asks "how do we <strong>scale retrieval</strong> to N tools" and never "what if we just <strong>don't let the tool names be arbitrary</strong>".</li>
+</ol>
+
+<p>Happy to share more numbers, the bench harness, or the raw per-category breakdown if there's interest. <strong>Not selling anything</strong> — personal-use, self-hosted (AGPL). Tear the methodology apart; that's why I'm posting it.</p>
+
+</div>
+
+<hr>
+
+<h2>4. Note operative pre-posting</h2>
+
+<div class="callout-tip">
+<strong>Self-promo flag</strong>: r/LocalLLaMA accetta self-link se il post è tecnico e dà valore. I link a metnos.com sono accettabili ma tienili nel corpo, NON nel titolo.
+</div>
+
+<div class="callout-warn">
+<strong>Prepara risposte alle obiezioni prevedibili</strong>:
+<ol>
+<li><em>"Does this work with autogenerated/scraped tools?"</em> → NO, già nel post (è il limite #1 in "stops working").</li>
+<li><em>"1000 isn't really scale, ToolBench has 16000"</em> → vero, e lo dico; il punto è la <strong>pendenza</strong> della curva, non il valore assoluto.</li>
+<li><em>"Just use embeddings + reranker"</em> → testato: <strong>stessa</strong> Recall@5 (0.710) a <strong>~8× la latency</strong> (63ms vs 7.4ms). Tabella nel post. Resta fallback opt-in, non default.</li>
+<li><em>"It's just your model / your data"</em> → il bench è <strong>deterministico e non chiama l'LLM</strong>; misura retrieval puro su corpus etichettato, indipendente dal planner caricato. Già nel post.</li>
+</ol>
+</div>
+
+<p><strong>Crossposting</strong>: dopo 24h, se traziona, crosspost a <code>r/MachineLearning</code> (più rigido, dichiara come <code>[D]</code> discussion non <code>[R]</code> research).</p>
+
+<h3>Materiale extra per la discussione</h3>
+
+<ul>
+<li><strong>Se chiedono codice</strong>: bench runner in <code>runtime/bench_prefilter_strategies.py</code>, strategie in <code>runtime/prefilter_strategies/</code>, ADR di design <code>decisions/0140-prefilter-modular-scaling.md</code> — tutto nel repo pubblico <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a>.</li>
+<li><strong>Se chiedono numeri aggiuntivi</strong> (latency, token count, query types): i due report (<code>bench_prefilter_strategies</code>, <code>bench_prefilter_scaling</code>) hanno il breakdown per categoria; condividili on-request finché non c'è un mirror pubblico (vedi warning sotto).</li>
+<li><strong>Se uno chiede "why not just a paper?"</strong>: onestamente, progetto personale, niente cycle per peer review; aperto a una collaborazione se qualcuno vuole formalizzarlo.</li>
+</ul>
+
+<div class="callout-warn">
+<strong>⚠️ DA SISTEMARE PRIMA DI POSTARE (link validity).</strong> I report
+<code>bench_prefilter_strategies</code> / <code>bench_prefilter_scaling</code> vivono in
+<code>internal/docs/it_internal/</code> e sono <strong>noindex,nofollow</strong>: NON sono
+nel deploy pubblico, quindi gli URL <code>https://metnos.com/it/internal/…</code>
+<strong>daranno 404</strong>. O pubblichi un mirror sotto un path pubblico e linki quello,
+o (scelta attuale del post) non li linki e rimandi a GitHub + alla pagina pubblica
+<code>agent_runtime</code>. Non re-introdurre i link <code>/it/internal/</code> senza prima
+averli resi pubblici.
+</div>
+
+<h3>Provenance &amp; verification (2026-06-05)</h3>
+<p>Numeri/claim riconciliati contro codice e report reali. Sintesi delle correzioni
+rispetto alla bozza 2026-05-17 (dettaglio completo nel file <code>.md</code> canonico):</p>
+<ul>
+<li><strong>Modello LLM</strong>: era "Gemma 4 26B" (coerente col default <em>baked-in</em> in <code>llm_router.py</code> ma <strong>stale</strong>). Produzione su <code>:8080</code> swappata a <strong>Qwen3.6-35B-A3B</strong> (Qwen3-Next, MoE ~35B/A3B) il 2026-06-03. Corretto: non si nomina un modello come "il planner" e si nota che <strong>il bench non dipende dal modello</strong>.</li>
+<li><strong>Oggetti</strong>: era 19, reale = <strong>22</strong> (<code>vocab.py</code>; mancavano <code>calendars</code>/<code>issues</code>/<code>pulls</code>). Verbi 23 ✓.</li>
+<li><strong>Tabella scaling</strong>: −5.7pp ✓ reale, ma le righe <code>legacy</code> (strategy inesistente), <code>verb_first</code>, <code>hybrid_cascade</code>, <code>rrf_ensemble</code> erano <strong>gonfiate/inventate</strong>. Sostituita con tutti i 14 valori reali.</li>
+<li><strong>Latency</strong>: era "1–2ms" e "BGE 25ms+". Reali: token_flat_v2 <strong>7.4ms</strong>, BGE-M3 <strong>63ms</strong> (≈8× tax, non 25×). Tokens −5.8% ✓.</li>
+<li><strong>Corpus</strong>: era "301", reale = <strong>500</strong> (comparison) / <strong>300</strong> (scaling).</li>
+<li><strong>"~14% fallback"</strong>: nessun dato → <strong>rimosso</strong>.</li>
+<li><strong>"production default"</strong>: i drop-in attuali usano <code>METNOS_PREFILTER_RULES=1</code>, non <code>token_flat_v2</code> → ammorbidito a "recommended default / bench winner".</li>
+<li><strong>Path</strong>: <code>/opt/myclaw</code> → repo GitHub esplicito.</li>
+</ul>
+
+<p class="meta">Doc internal — noindex/nofollow — non parte del corpus pubblico. Mirror NON canonico del file <code>docs/drafts/reddit_localllama_closed_vocab_tool_filtering.md</code>.</p>
+
+</body>
+</html>

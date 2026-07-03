@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos — Reddit thread preview</title>
+<style>
+:root{--rd-bg:#dae0e6;--card:#fff;--up:#ff4500;--blue:#0079d3;--mut:#7c7c7c;--bord:#ccc;--ln:#1a1a1b;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--rd-bg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ln);font-size:14px;line-height:1.5}
+.wrap{max-width:740px;margin:18px auto;padding:0 12px}
+.note{background:#fff8e1;border:1px solid #e8d899;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#5b4a00}
+.card{background:var(--card);border:1px solid var(--bord);border-radius:6px;display:flex;overflow:hidden}
+.votes{background:#f8f9fa;width:40px;flex:0 0 40px;text-align:center;padding:8px 0;color:var(--mut)}
+.votes .arrow{font-size:16px}.votes .n{font-weight:700;color:var(--ln);font-size:12px;margin:3px 0}
+.post{padding:8px 14px 16px;min-width:0;flex:1}
+.meta{font-size:12px;color:var(--mut);margin-bottom:6px}
+.meta b{color:var(--ln)}
+.flair{background:#edeff1;color:#0079d3;border-radius:3px;padding:1px 6px;font-size:11px;font-weight:600;margin-left:4px}
+h1.title{font-size:20px;font-weight:500;line-height:1.3;margin:2px 0 12px}
+.post p{margin:.7em 0}
+.post h3{font-size:16px;margin:1.3em 0 .4em}
+.post table{border-collapse:collapse;margin:1em 0;font-size:12.5px;display:block;overflow-x:auto}
+.post th,.post td{border:1px solid var(--bord);padding:4px 8px;text-align:left;white-space:nowrap}
+.post th{background:#f6f7f8}
+.post pre{background:#f6f7f8;border:1px solid var(--bord);border-radius:4px;padding:10px;overflow-x:auto;font-size:12.5px}
+.post code{background:#f0f0f0;border-radius:3px;padding:1px 4px;font-size:12.5px}
+.post pre code{background:none;padding:0}
+.post a{color:var(--blue);text-decoration:none}.post a:hover{text-decoration:underline}
+.post blockquote{border-left:3px solid #ccc;margin:.7em 0;padding:.2em 12px;color:#555}
+details{margin-top:16px;background:#fff;border:1px solid var(--bord);border-radius:6px;padding:10px 14px}
+summary{cursor:pointer;font-weight:600;color:var(--blue)}
+.raw{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#1e2329;color:#e6e9ee;padding:14px;border-radius:6px;overflow-x:auto;margin-top:10px;line-height:1.45}
+.tag{display:inline-block;background:#0079d3;color:#fff;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600}
+</style></head>
+<body><div class="wrap">
+
+<div class="note"><b>Anteprima thread Reddit</b> — reso con le stesse regole markdown di Reddit (tabelle, code-fence, blockquote). Titolo = alternativa #1. In fondo trovi il <b>markdown grezzo da incollare</b> nell'editor di Reddit (modalità Markdown). Tabelle e ``` sono supportati dal nuovo editor di Reddit; ricordati di selezionare <b>Markdown Mode</b>, non Fancy Pants.</div>
+
+<div class="card">
+  <div class="votes"><div class="arrow">▲</div><div class="n">•</div><div class="arrow">▼</div></div>
+  <div class="post">
+    <div class="meta">r/LocalLLaMA • Posted by u/you <span class="flair">Discussion</span></div>
+    <h1 class="title">Closed-vocab tool naming kept our agent&#x27;s tool-filter recall almost flat from 84 → 1000 tools (−5.7pp Recall@5), where ToolBench-style retrieval drops 50–70%</h1>
+    <p><strong>TL;DR</strong> — I'm building a self-hosted personal assistant ("Metnos") whose tools are
+all named by a <strong>closed grammar</strong>: <code>verb_object[_qualifier]</code>, drawn from a fixed set
+of <strong>23 verbs × 22 objects × 4 qualifier families</strong>. No free-form tool names, ever —
+violations are rejected at load time. I benchmarked <strong>14 tool-filtering strategies</strong>
+across pool sizes <strong>84 / 250 / 500 / 1000</strong> tools (real catalog padded with synthetic
+distractors built from the <em>same</em> grammar). <strong>The best strategies lost only −5.7pp
+Recall@5 going from 84 → 1000 tools</strong>, against the <strong>−50% to −70%</strong> collapse reported
+in the ToolBench/ToolLLM line of work for comparable scale jumps on heterogeneous REST
+corpora. The kicker: the winner is <strong>plain weighted token matching at ~7ms/query</strong> —
+no embeddings, no vector DB. The closed vocabulary makes tool names discriminative
+enough that retrieval is largely over-engineering <em>in this regime</em>. Numbers, method,
+and exactly where it stops working — below. <strong>It's an engineering observation, not a
+paper.</strong></p>
+<hr />
+<h3>Setup (and the honest hardware bill)</h3>
+<p>Metnos runs on a single 96 GB unified-memory box (AMD Strix Halo). The agent loop is
+ReAct-style with a <strong>local planner LLM</strong> served by <code>llama-server</code>; a frontier model
+(Claude Opus) is an <strong>opt-in fallback</strong>, not the engine. On each turn the planner has
+to pick which tools to expose in its prompt — so "tool filtering" (the top-K most
+relevant tools for this query) sits squarely on the hot path. That's the thing this
+post is about.</p>
+<p>Two upfront caveats, because this sub rightly hates hand-waving:</p>
+<ul>
+<li>This is a <strong>single-machine, single-user</strong> system. The benchmark below is <em>my</em>
+  production traffic, not a public dataset. Treat the absolute recall numbers as
+  in-domain; the interesting thing is the <strong>slope</strong>, not the level.</li>
+<li>The local model that serves the planner has changed over the project's life
+  (it was a ~26B Gemma, currently a Qwen3-Next-family MoE at ~35B-total/3B-active).
+  <strong>The tool-filter benchmark is deterministic and does not call the LLM at all</strong> —
+  it measures pure retrieval Recall@K against a labeled corpus. So the finding is
+  <em>independent of which planner model is loaded</em>. I'm calling that out precisely
+  because it's the usual "well it's just your model" objection, and here it doesn't
+  apply.</li>
+</ul>
+<h3>The constraint that did the work</h3>
+<p>At the very start of the project I forced <strong>every</strong> tool name into a closed grammar:</p>
+<pre><code>verb_object[_qualifier]
+</code></pre>
+<ul>
+<li><code>verb</code> ∈ a closed set of <strong>23</strong>: <code>find, read, write, send, set, delete, create, get,
+  list, filter, sort, group, classify, describe, render, extract, compress, compute,
+  compare, change, order, share, move</code></li>
+<li><code>object</code> ∈ a closed set of <strong>22</strong>: <code>files, dirs, packages, messages, events, calendars,
+  contacts, places, processes, urls, numbers, images, signatures, texts, proposals,
+  inputs, credentials, entries, persons, tasks, issues, pulls</code></li>
+<li><code>qualifier</code> ∈ 4 families: <strong>format/codec</strong> (<code>_csv</code>, <code>_pdf</code>, <code>_xlsx</code>, …), <strong>modality</strong>
+  (<code>_similar</code>, <code>_loc</code>, <code>_lines</code>, <code>_indices</code>, …), <strong>safety-policy</strong> (<code>_blacklist</code>,
+  <code>_whitelist</code>, …), and <strong>provider</strong> (<code>_google_workspace</code> for a non-default backend;
+  the default backend has no suffix).</li>
+</ul>
+<p>So a tool is <code>find_files</code>, <code>read_messages</code>, <code>send_messages_google_workspace</code>,
+<code>change_files_format</code> — <strong>never</strong> <code>searchDocs</code> or <code>gmailSendEmail</code>. New verbs/objects
+require a deliberate governance step (three criteria: necessary, general, and
+<em>understandable by a mid-size local model without explanation</em>); they're not added on a
+whim. The grammar is also what a constrained-decoding pass (GBNF) is generated from, so
+the planner literally cannot emit a name outside it.</p>
+<p>I did this originally for <em>planner</em> reasons (a local model is far more reliable when
+the action space is a small closed vocabulary). The retrieval benefit below was a
+side-effect I tripped over later.</p>
+<h3>What I measured</h3>
+<p><code>runtime/bench_prefilter_strategies.py</code>, 14 strategies, runtime-switchable via a
+<code>METNOS_PREFILTER</code> env var. Two corpora, both pulled from real turn logs:</p>
+<ul>
+<li><strong>Comparison bench</strong>: 500 deduplicated production queries, <code>k_max=8</code>. Measures
+  Recall@1, Recall@5, latency, and <code>mean_pool_tokens</code> (how many tokens the returned
+  pool costs the planner).</li>
+<li><strong>Scaling bench</strong>: 300 production queries, pool sizes <strong>84 / 250 / 500 / 1000</strong>. The
+  real catalog is ~84 tool specs; the padding distractors are synthesized from the
+  <em>same</em> <code>verb × object × qualifier</code> grammar and randomly recombined, so the noise is
+  realistic — distractors look syntactically like real tools, they just don't <em>mean</em>
+  what the queries ask.</li>
+</ul>
+<p>Both are <strong>deterministic, no LLM in the loop.</strong></p>
+<p><strong>Headline — Recall@5 vs pool size (scaling bench, full table, nothing cherry-picked):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>pool 84</th>
+<th>pool 250</th>
+<th>pool 500</th>
+<th>pool 1000</th>
+<th>Δ (84→1000)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>token_flat_v2</code> (recommended default)</td>
+<td>0.720</td>
+<td>0.697</td>
+<td>0.687</td>
+<td><strong>0.663</strong></td>
+<td><strong>−5.7pp</strong></td>
+</tr>
+<tr>
+<td><code>token_flat</code></td>
+<td>0.717</td>
+<td>0.697</td>
+<td>0.687</td>
+<td>0.660</td>
+<td>−5.7pp</td>
+</tr>
+<tr>
+<td><code>cached_token_flat</code></td>
+<td>0.717</td>
+<td>0.697</td>
+<td>0.687</td>
+<td>0.660</td>
+<td>−5.7pp</td>
+</tr>
+<tr>
+<td><code>selective_semantic</code> (BGE-M3 hybrid)</td>
+<td>0.717</td>
+<td>0.697</td>
+<td>0.687</td>
+<td>0.660</td>
+<td>−5.7pp</td>
+</tr>
+<tr>
+<td><code>selective_semantic_v2</code></td>
+<td>0.713</td>
+<td>0.693</td>
+<td>0.680</td>
+<td>0.657</td>
+<td>−5.6pp</td>
+</tr>
+<tr>
+<td><code>length_adaptive</code></td>
+<td>0.703</td>
+<td>0.683</td>
+<td>0.673</td>
+<td>0.647</td>
+<td>−5.6pp</td>
+</tr>
+<tr>
+<td><code>constraint</code> (grammar-driven)</td>
+<td>0.693</td>
+<td>0.667</td>
+<td>0.650</td>
+<td>0.630</td>
+<td>−6.3pp</td>
+</tr>
+<tr>
+<td><code>hybrid_cascade</code></td>
+<td>0.667</td>
+<td>0.613</td>
+<td>0.627</td>
+<td>0.597</td>
+<td>−7.0pp</td>
+</tr>
+<tr>
+<td><code>rrf_ensemble</code> (Reciprocal Rank Fusion)</td>
+<td>0.673</td>
+<td>0.627</td>
+<td>0.640</td>
+<td>0.603</td>
+<td>−7.0pp</td>
+</tr>
+<tr>
+<td><code>trie</code></td>
+<td>0.667</td>
+<td>0.613</td>
+<td>0.627</td>
+<td>0.593</td>
+<td>−7.4pp</td>
+</tr>
+<tr>
+<td><code>verb_first</code> (vocab-aware filter)</td>
+<td>0.667</td>
+<td>0.607</td>
+<td>0.610</td>
+<td>0.583</td>
+<td>−8.4pp</td>
+</tr>
+<tr>
+<td><code>fts5</code> (SQLite full-text)</td>
+<td>0.590</td>
+<td>0.583</td>
+<td>0.517</td>
+<td>0.503</td>
+<td>−8.7pp</td>
+</tr>
+<tr>
+<td><code>trie_v2</code></td>
+<td>0.657</td>
+<td>0.600</td>
+<td>0.593</td>
+<td>0.540</td>
+<td>−11.7pp</td>
+</tr>
+<tr>
+<td><code>bloom</code> (negative pre-screen)</td>
+<td>0.527</td>
+<td>0.527</td>
+<td>0.527</td>
+<td>0.527</td>
+<td>±0.0 (degenerate)</td>
+</tr>
+</tbody>
+</table>
+<p>The honest read of <em>my own</em> table: the <strong>token-based</strong> family (<code>token_flat_v2</code> /
+<code>token_flat</code> / <code>cached_token_flat</code> / <code>selective_semantic</code>) is the flat-scaling winner
+at −5.7pp. The things I <em>expected</em> to scale best — the deterministic
+verb/grammar filters (<code>verb_first</code>, <code>constraint</code>, <code>trie</code>) — actually degrade <strong>more</strong>
+(−6 to −8pp). <code>bloom</code> is flat only because it's so coarse it barely discriminates at
+all (0.527 everywhere — that's a floor, not a win). So the headline is real, but it is
+<strong>not</strong> "clever structural filters win"; it's "<strong>dumb token matching is enough, and the
+fancy stuff doesn't beat it.</strong>"</p>
+<p><strong>Cost side (comparison bench, 500 queries, <code>k_max=8</code>):</strong></p>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Recall@5</th>
+<th>Recall@1</th>
+<th>mean ms</th>
+<th>p95 ms</th>
+<th>pool tokens</th>
+<th>tokens vs baseline</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>token_flat_v2</code></td>
+<td>0.712</td>
+<td>0.488</td>
+<td><strong>7.4</strong></td>
+<td>48.0</td>
+<td>4096</td>
+<td><strong>−5.8%</strong></td>
+</tr>
+<tr>
+<td><code>cached_token_flat</code></td>
+<td>0.710</td>
+<td>0.472</td>
+<td>5.8</td>
+<td>33.4</td>
+<td>4347</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>selective_semantic</code> (BGE-M3)</td>
+<td>0.710</td>
+<td>0.472</td>
+<td><strong>63.2</strong></td>
+<td>108.0</td>
+<td>4347</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>selective_semantic_v2</code></td>
+<td>0.700</td>
+<td>0.484</td>
+<td>24.9</td>
+<td>81.7</td>
+<td>4231</td>
+<td>−2.7%</td>
+</tr>
+<tr>
+<td><code>constraint</code></td>
+<td>0.684</td>
+<td>0.458</td>
+<td>6.3</td>
+<td>45.1</td>
+<td>3791</td>
+<td>−12.8%</td>
+</tr>
+</tbody>
+</table>
+<p>The full BGE-M3 semantic hybrid (<code>selective_semantic</code>) costs <strong>~63ms mean / 108ms p95</strong>
+for <strong>the same 0.710 Recall@5</strong> that plain <code>token_flat_v2</code> hits at <strong>7.4ms</strong>. That's
+roughly an <strong>8× latency tax for zero recall gain</strong> in this regime. <code>token_flat_v2</code> also
+trims the prompt the planner sees by <strong>−5.8% tokens</strong> vs the legacy baseline, which is
+free latency/cost downstream. (If you want to <em>minimize</em> prompt tokens specifically,
+<code>constraint</code> cuts −12.8% for ~−3pp recall — a knob, not the default.)</p>
+<p>For reference: ToolBench / ToolLLM (Qin et al. 2024, arXiv:2307.16789) report BM25 / dense
+retrieval falling from high recall at ~100 tools to roughly 30–50% by the time you reach
+the thousands, on heterogeneous real-world REST APIs. RestGPT (Song et al. 2023) shows a
+similar collapse. <strong>My pool top strategies lose ~5.7pp from 84 → 1000.</strong> Different corpus,
+smaller absolute scale (I'm not claiming 16k tools), but the <em>slope</em> is the whole point.</p>
+<h3>Why I think it works</h3>
+<ol>
+<li><strong>Tool names are highly informative.</strong> <code>find_images_indices</code> already encodes
+   action + object + modality. A semantic retriever has little left to disambiguate when
+   the surface form <em>is</em> the feature vector.</li>
+<li><strong>Distractors share the grammar but not the meaning.</strong> Padding to 1000 with
+   <code>compute_processes</code>, <code>classify_signatures</code>, etc. produces names that are
+   syntactically plausible but lexically don't overlap with what queries actually ask —
+   so token matching stays separable.</li>
+<li><strong>Closed vocab kills synonym ambiguity.</strong> There is never a second tool with the same
+   purpose under a different name. The query→tool map is many-to-few: queries are
+   diverse, but the tool set is small and orthogonal by construction.</li>
+</ol>
+<p><code>token_flat_v2</code> just leans into this: weighted token matching over
+<code>name + affinity-keywords + description</code>, with a small penalty for provider-suffixed
+names and a name-exact boost. That's the whole "algorithm."</p>
+<h3>Where this stops working (read this part)</h3>
+<ul>
+<li><strong>You don't have vocab discipline.</strong> If your tool names are LLM-autogenerated,
+  scraped from N integrations, or grown organically, this trick is <strong>dead</strong> — the whole
+  premise is that names are discriminative. Go RAG.</li>
+<li><strong>Scale is in-domain and modest.</strong> I benchmark to 1000, not 16k. Naive extrapolation of
+  the curve suggests recall stays usable well past my current size, but I have <strong>not</strong>
+  measured past 1000 and I'm not going to pretend the slope is guaranteed to hold.</li>
+<li><strong>Vocab growth is a real watch-point.</strong> I sketched what happens if verbs ~double (46) or
+  objects+qualifiers triple, and token-flat starts giving up a couple more points. Today
+  the catalog is small; this is on the "re-bench when it grows materially" list, not
+  "solved forever."</li>
+<li><strong>Languages without baked-in vocab equivalence.</strong> IT and EN both work because the
+  synonym/affinity layer is bilingual by design. Anything else (the system is i18n-by-
+  construction, but only IT/EN are actually validated) is <strong>untested</strong> — including
+  whether this retrieval property survives. Don't take it on faith for other languages.</li>
+<li><strong>Tools that legitimately share name fragments across domains.</strong> A pure tokenizer will
+  occasionally misfire on those; that's the slice where a semantic fallback earns its
+  keep — which is exactly why I keep <code>selective_semantic_v2</code> available as an opt-in
+  rather than deleting it. (I don't have a clean, defensible "% of queries" number for how
+  often that helps, so I'm not quoting one.)</li>
+</ul>
+<h3>Stuff I threw out (so you don't have to)</h3>
+<ul>
+<li><strong>Bloom filter</strong> for negative pre-screening — too coarse, floors at 0.527, kills precision.</li>
+<li><strong>Trie / radix</strong> for prefix lookup — works, but recall scaling is <em>worse</em> than token-flat
+  (<code>trie_v2</code> −11.7pp), no win.</li>
+<li><strong>SQLite FTS5</strong> full-text index — sub-ms queries but lower recall (0.503 at 1000) and
+  indexing overhead that isn't worth it at this scale.</li>
+<li><strong>Grammar/constraint-based filter</strong> (<code>constraint</code>, <code>verb_first</code>) — intellectually the
+  "right" structural approach, and it <em>does</em> win on token economy, but it scales <strong>worse</strong>
+  on recall than dumb token matching. That surprised me the most.</li>
+</ul>
+<h3>Open questions for the community</h3>
+<ol>
+<li>Anyone else running a <strong>closed-vocab</strong> agent? Do you see the same near-flat scaling
+   regime, or is my slope just a small-corpus artifact?</li>
+<li>What's the right way to <em>measure</em> the closed-vocab benefit <strong>independently of recall</strong>?
+   Vocab compression ratio? Distractor lexical-overlap? I'd love a cleaner metric than
+   "recall didn't fall."</li>
+<li>Is there anything published on this beyond practitioner blog posts? The literature I
+   found all asks "how do we <strong>scale retrieval</strong> to N tools" and never "what if we just
+   <strong>don't let the tool names be arbitrary</strong>."</li>
+</ol>
+<p>Happy to share more numbers, the bench harness, or the raw per-category breakdown if
+there's interest. <strong>Not selling anything</strong> — it's a personal-use, self-hosted project
+(AGPL, repo linked below). Tear the methodology apart; that's why I'm posting it.</p>
+<p><strong>Repo / context:</strong> https://github.com/brunialti/metnos · architecture write-up at
+https://metnos.com (the ReAct planner page has the ToolBench/RRF/BGE-M3/ColBERTv2
+citations inline). Bench harness: <code>runtime/bench_prefilter_strategies.py</code>; strategies in
+<code>runtime/prefilter_strategies/</code>; design rationale in
+<code>decisions/0140-prefilter-modular-scaling.md</code>.</p>
+<p><strong>Citations used in the internal review:</strong></p>
+<ul>
+<li>Qin et al., <em>ToolLLM: Facilitating LLMs to Master 16000+ Real-world APIs</em>, arXiv:2307.16789, 2024</li>
+<li>Song et al., <em>RestGPT: Connecting LLMs with Real-World RESTful APIs</em>, 2023</li>
+<li>Khattab &amp; Zaharia, <em>ColBERTv2</em>, 2022</li>
+<li>Chen et al., <em>BGE-M3</em>, 2024</li>
+<li>Cormack, Clarke &amp; Buettcher, <em>Reciprocal Rank Fusion outperforms Condorcet…</em>, SIGIR 2009</li>
+</ul>
+  </div>
+</div>
+
+<details open>
+<summary>⬇ Markdown grezzo da incollare in Reddit (Markdown Mode)</summary>
+<div class="raw">**TL;DR** — I&#x27;m building a self-hosted personal assistant (&quot;Metnos&quot;) whose tools are
+all named by a **closed grammar**: `verb_object[_qualifier]`, drawn from a fixed set
+of **23 verbs × 22 objects × 4 qualifier families**. No free-form tool names, ever —
+violations are rejected at load time. I benchmarked **14 tool-filtering strategies**
+across pool sizes **84 / 250 / 500 / 1000** tools (real catalog padded with synthetic
+distractors built from the *same* grammar). **The best strategies lost only −5.7pp
+Recall@5 going from 84 → 1000 tools**, against the **−50% to −70%** collapse reported
+in the ToolBench/ToolLLM line of work for comparable scale jumps on heterogeneous REST
+corpora. The kicker: the winner is **plain weighted token matching at ~7ms/query** —
+no embeddings, no vector DB. The closed vocabulary makes tool names discriminative
+enough that retrieval is largely over-engineering *in this regime*. Numbers, method,
+and exactly where it stops working — below. **It&#x27;s an engineering observation, not a
+paper.**
+
+---
+
+### Setup (and the honest hardware bill)
+
+Metnos runs on a single 96 GB unified-memory box (AMD Strix Halo). The agent loop is
+ReAct-style with a **local planner LLM** served by `llama-server`; a frontier model
+(Claude Opus) is an **opt-in fallback**, not the engine. On each turn the planner has
+to pick which tools to expose in its prompt — so &quot;tool filtering&quot; (the top-K most
+relevant tools for this query) sits squarely on the hot path. That&#x27;s the thing this
+post is about.
+
+Two upfront caveats, because this sub rightly hates hand-waving:
+
+- This is a **single-machine, single-user** system. The benchmark below is *my*
+  production traffic, not a public dataset. Treat the absolute recall numbers as
+  in-domain; the interesting thing is the **slope**, not the level.
+- The local model that serves the planner has changed over the project&#x27;s life
+  (it was a ~26B Gemma, currently a Qwen3-Next-family MoE at ~35B-total/3B-active).
+  **The tool-filter benchmark is deterministic and does not call the LLM at all** —
+  it measures pure retrieval Recall@K against a labeled corpus. So the finding is
+  *independent of which planner model is loaded*. I&#x27;m calling that out precisely
+  because it&#x27;s the usual &quot;well it&#x27;s just your model&quot; objection, and here it doesn&#x27;t
+  apply.
+
+### The constraint that did the work
+
+At the very start of the project I forced **every** tool name into a closed grammar:
+
+```
+verb_object[_qualifier]
+```
+
+- `verb` ∈ a closed set of **23**: `find, read, write, send, set, delete, create, get,
+  list, filter, sort, group, classify, describe, render, extract, compress, compute,
+  compare, change, order, share, move`
+- `object` ∈ a closed set of **22**: `files, dirs, packages, messages, events, calendars,
+  contacts, places, processes, urls, numbers, images, signatures, texts, proposals,
+  inputs, credentials, entries, persons, tasks, issues, pulls`
+- `qualifier` ∈ 4 families: **format/codec** (`_csv`, `_pdf`, `_xlsx`, …), **modality**
+  (`_similar`, `_loc`, `_lines`, `_indices`, …), **safety-policy** (`_blacklist`,
+  `_whitelist`, …), and **provider** (`_google_workspace` for a non-default backend;
+  the default backend has no suffix).
+
+So a tool is `find_files`, `read_messages`, `send_messages_google_workspace`,
+`change_files_format` — **never** `searchDocs` or `gmailSendEmail`. New verbs/objects
+require a deliberate governance step (three criteria: necessary, general, and
+*understandable by a mid-size local model without explanation*); they&#x27;re not added on a
+whim. The grammar is also what a constrained-decoding pass (GBNF) is generated from, so
+the planner literally cannot emit a name outside it.
+
+I did this originally for *planner* reasons (a local model is far more reliable when
+the action space is a small closed vocabulary). The retrieval benefit below was a
+side-effect I tripped over later.
+
+### What I measured
+
+`runtime/bench_prefilter_strategies.py`, 14 strategies, runtime-switchable via a
+`METNOS_PREFILTER` env var. Two corpora, both pulled from real turn logs:
+
+- **Comparison bench**: 500 deduplicated production queries, `k_max=8`. Measures
+  Recall@1, Recall@5, latency, and `mean_pool_tokens` (how many tokens the returned
+  pool costs the planner).
+- **Scaling bench**: 300 production queries, pool sizes **84 / 250 / 500 / 1000**. The
+  real catalog is ~84 tool specs; the padding distractors are synthesized from the
+  *same* `verb × object × qualifier` grammar and randomly recombined, so the noise is
+  realistic — distractors look syntactically like real tools, they just don&#x27;t *mean*
+  what the queries ask.
+
+Both are **deterministic, no LLM in the loop.**
+
+**Headline — Recall@5 vs pool size (scaling bench, full table, nothing cherry-picked):**
+
+| Strategy | pool 84 | pool 250 | pool 500 | pool 1000 | Δ (84→1000) |
+|---|---|---|---|---|---|
+| `token_flat_v2` (recommended default) | 0.720 | 0.697 | 0.687 | **0.663** | **−5.7pp** |
+| `token_flat` | 0.717 | 0.697 | 0.687 | 0.660 | −5.7pp |
+| `cached_token_flat` | 0.717 | 0.697 | 0.687 | 0.660 | −5.7pp |
+| `selective_semantic` (BGE-M3 hybrid) | 0.717 | 0.697 | 0.687 | 0.660 | −5.7pp |
+| `selective_semantic_v2` | 0.713 | 0.693 | 0.680 | 0.657 | −5.6pp |
+| `length_adaptive` | 0.703 | 0.683 | 0.673 | 0.647 | −5.6pp |
+| `constraint` (grammar-driven) | 0.693 | 0.667 | 0.650 | 0.630 | −6.3pp |
+| `hybrid_cascade` | 0.667 | 0.613 | 0.627 | 0.597 | −7.0pp |
+| `rrf_ensemble` (Reciprocal Rank Fusion) | 0.673 | 0.627 | 0.640 | 0.603 | −7.0pp |
+| `trie` | 0.667 | 0.613 | 0.627 | 0.593 | −7.4pp |
+| `verb_first` (vocab-aware filter) | 0.667 | 0.607 | 0.610 | 0.583 | −8.4pp |
+| `fts5` (SQLite full-text) | 0.590 | 0.583 | 0.517 | 0.503 | −8.7pp |
+| `trie_v2` | 0.657 | 0.600 | 0.593 | 0.540 | −11.7pp |
+| `bloom` (negative pre-screen) | 0.527 | 0.527 | 0.527 | 0.527 | ±0.0 (degenerate) |
+
+The honest read of *my own* table: the **token-based** family (`token_flat_v2` /
+`token_flat` / `cached_token_flat` / `selective_semantic`) is the flat-scaling winner
+at −5.7pp. The things I *expected* to scale best — the deterministic
+verb/grammar filters (`verb_first`, `constraint`, `trie`) — actually degrade **more**
+(−6 to −8pp). `bloom` is flat only because it&#x27;s so coarse it barely discriminates at
+all (0.527 everywhere — that&#x27;s a floor, not a win). So the headline is real, but it is
+**not** &quot;clever structural filters win&quot;; it&#x27;s &quot;**dumb token matching is enough, and the
+fancy stuff doesn&#x27;t beat it.**&quot;
+
+**Cost side (comparison bench, 500 queries, `k_max=8`):**
+
+| Strategy | Recall@5 | Recall@1 | mean ms | p95 ms | pool tokens | tokens vs baseline |
+|---|---|---|---|---|---|---|
+| `token_flat_v2` | 0.712 | 0.488 | **7.4** | 48.0 | 4096 | **−5.8%** |
+| `cached_token_flat` | 0.710 | 0.472 | 5.8 | 33.4 | 4347 | — |
+| `selective_semantic` (BGE-M3) | 0.710 | 0.472 | **63.2** | 108.0 | 4347 | — |
+| `selective_semantic_v2` | 0.700 | 0.484 | 24.9 | 81.7 | 4231 | −2.7% |
+| `constraint` | 0.684 | 0.458 | 6.3 | 45.1 | 3791 | −12.8% |
+
+The full BGE-M3 semantic hybrid (`selective_semantic`) costs **~63ms mean / 108ms p95**
+for **the same 0.710 Recall@5** that plain `token_flat_v2` hits at **7.4ms**. That&#x27;s
+roughly an **8× latency tax for zero recall gain** in this regime. `token_flat_v2` also
+trims the prompt the planner sees by **−5.8% tokens** vs the legacy baseline, which is
+free latency/cost downstream. (If you want to *minimize* prompt tokens specifically,
+`constraint` cuts −12.8% for ~−3pp recall — a knob, not the default.)
+
+For reference: ToolBench / ToolLLM (Qin et al. 2024, arXiv:2307.16789) report BM25 / dense
+retrieval falling from high recall at ~100 tools to roughly 30–50% by the time you reach
+the thousands, on heterogeneous real-world REST APIs. RestGPT (Song et al. 2023) shows a
+similar collapse. **My pool top strategies lose ~5.7pp from 84 → 1000.** Different corpus,
+smaller absolute scale (I&#x27;m not claiming 16k tools), but the *slope* is the whole point.
+
+### Why I think it works
+
+1. **Tool names are highly informative.** `find_images_indices` already encodes
+   action + object + modality. A semantic retriever has little left to disambiguate when
+   the surface form *is* the feature vector.
+2. **Distractors share the grammar but not the meaning.** Padding to 1000 with
+   `compute_processes`, `classify_signatures`, etc. produces names that are
+   syntactically plausible but lexically don&#x27;t overlap with what queries actually ask —
+   so token matching stays separable.
+3. **Closed vocab kills synonym ambiguity.** There is never a second tool with the same
+   purpose under a different name. The query→tool map is many-to-few: queries are
+   diverse, but the tool set is small and orthogonal by construction.
+
+`token_flat_v2` just leans into this: weighted token matching over
+`name + affinity-keywords + description`, with a small penalty for provider-suffixed
+names and a name-exact boost. That&#x27;s the whole &quot;algorithm.&quot;
+
+### Where this stops working (read this part)
+
+- **You don&#x27;t have vocab discipline.** If your tool names are LLM-autogenerated,
+  scraped from N integrations, or grown organically, this trick is **dead** — the whole
+  premise is that names are discriminative. Go RAG.
+- **Scale is in-domain and modest.** I benchmark to 1000, not 16k. Naive extrapolation of
+  the curve suggests recall stays usable well past my current size, but I have **not**
+  measured past 1000 and I&#x27;m not going to pretend the slope is guaranteed to hold.
+- **Vocab growth is a real watch-point.** I sketched what happens if verbs ~double (46) or
+  objects+qualifiers triple, and token-flat starts giving up a couple more points. Today
+  the catalog is small; this is on the &quot;re-bench when it grows materially&quot; list, not
+  &quot;solved forever.&quot;
+- **Languages without baked-in vocab equivalence.** IT and EN both work because the
+  synonym/affinity layer is bilingual by design. Anything else (the system is i18n-by-
+  construction, but only IT/EN are actually validated) is **untested** — including
+  whether this retrieval property survives. Don&#x27;t take it on faith for other languages.
+- **Tools that legitimately share name fragments across domains.** A pure tokenizer will
+  occasionally misfire on those; that&#x27;s the slice where a semantic fallback earns its
+  keep — which is exactly why I keep `selective_semantic_v2` available as an opt-in
+  rather than deleting it. (I don&#x27;t have a clean, defensible &quot;% of queries&quot; number for how
+  often that helps, so I&#x27;m not quoting one.)
+
+### Stuff I threw out (so you don&#x27;t have to)
+
+- **Bloom filter** for negative pre-screening — too coarse, floors at 0.527, kills precision.
+- **Trie / radix** for prefix lookup — works, but recall scaling is *worse* than token-flat
+  (`trie_v2` −11.7pp), no win.
+- **SQLite FTS5** full-text index — sub-ms queries but lower recall (0.503 at 1000) and
+  indexing overhead that isn&#x27;t worth it at this scale.
+- **Grammar/constraint-based filter** (`constraint`, `verb_first`) — intellectually the
+  &quot;right&quot; structural approach, and it *does* win on token economy, but it scales **worse**
+  on recall than dumb token matching. That surprised me the most.
+
+### Open questions for the community
+
+1. Anyone else running a **closed-vocab** agent? Do you see the same near-flat scaling
+   regime, or is my slope just a small-corpus artifact?
+2. What&#x27;s the right way to *measure* the closed-vocab benefit **independently of recall**?
+   Vocab compression ratio? Distractor lexical-overlap? I&#x27;d love a cleaner metric than
+   &quot;recall didn&#x27;t fall.&quot;
+3. Is there anything published on this beyond practitioner blog posts? The literature I
+   found all asks &quot;how do we **scale retrieval** to N tools&quot; and never &quot;what if we just
+   **don&#x27;t let the tool names be arbitrary**.&quot;
+
+Happy to share more numbers, the bench harness, or the raw per-category breakdown if
+there&#x27;s interest. **Not selling anything** — it&#x27;s a personal-use, self-hosted project
+(AGPL, repo linked below). Tear the methodology apart; that&#x27;s why I&#x27;m posting it.
+
+**Repo / context:** https://github.com/brunialti/metnos · architecture write-up at
+https://metnos.com (the ReAct planner page has the ToolBench/RRF/BGE-M3/ColBERTv2
+citations inline). Bench harness: `runtime/bench_prefilter_strategies.py`; strategies in
+`runtime/prefilter_strategies/`; design rationale in
+`decisions/0140-prefilter-modular-scaling.md`.
+
+**Citations used in the internal review:**
+
+- Qin et al., *ToolLLM: Facilitating LLMs to Master 16000+ Real-world APIs*, arXiv:2307.16789, 2024
+- Song et al., *RestGPT: Connecting LLMs with Real-World RESTful APIs*, 2023
+- Khattab &amp; Zaharia, *ColBERTv2*, 2022
+- Chen et al., *BGE-M3*, 2024
+- Cormack, Clarke &amp; Buettcher, *Reciprocal Rank Fusion outperforms Condorcet…*, SIGIR 2009</div>
+</details>
+
+</div></body></html>

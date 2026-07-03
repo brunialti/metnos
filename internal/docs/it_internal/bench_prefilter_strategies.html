@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="it"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A477A">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos - Bench prefilter strategies</title>
+<style>
+:root { --fg:#1a1a1a; --muted:#5e6571; --bg:#fdfdfc; --border:#e3e5e8;
+--accent:#1A477A; --bronze:#92400E; --code-bg:#f4f5f7; --code-fg:#2d3338;
+--pre-bg:#1e2329; --pre-fg:#e6e9ee; }
+* { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+html { font-size: 17px; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+color: var(--fg); background: var(--bg); max-width: 880px;
+margin: 16px auto; padding: 0 16px 80px; line-height: 1.6; font-size: 16px;
+word-wrap: break-word; }
+h1, h2, h3 { font-family: Georgia, serif; color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.75em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 1.8em; }
+h3 { font-size: 1.15em; color: #2A5A8A; }
+p { margin: 0.7em 0; }
+strong { color: var(--fg); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted; }
+code { font-family: "JetBrains Mono", Menlo, Consolas, monospace;
+background: var(--code-bg); color: var(--code-fg); padding: 1px 5px;
+border-radius: 3px; font-size: 0.88em; word-break: break-all; }
+pre { background: var(--pre-bg); color: var(--pre-fg); padding: 12px 14px;
+border-radius: 6px; overflow-x: auto; font-size: 0.82em; }
+pre code { background: transparent; color: inherit; padding: 0; }
+blockquote { border-left: 3px solid var(--bronze); margin: 1em 0;
+padding: 4px 14px; background: #fdf6ec; color: #4a3a20; font-style: italic; }
+.table-wrapper { overflow-x: auto; margin: 1em 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+th, td { border: 1px solid var(--border); padding: 6px 10px;
+text-align: left; vertical-align: top; }
+th { background: #eef2f7; font-weight: 600; color: var(--accent); }
+tr:nth-child(even) td { background: #fafbfc; }
+td:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+ul, ol { padding-left: 1.5em; margin: 0.7em 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.meta { font-size: 0.85em; color: var(--muted); margin-top: 8px;
+padding: 6px 10px; background: #f0f4f9; border-radius: 4px;
+display: inline-block; }
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  body { padding: 0 12px 60px; }
+  h1 { font-size: 1.5em; } h2 { font-size: 1.25em; }
+  pre { font-size: 0.78em; } table { font-size: 0.82em; }
+  th, td { padding: 4px 6px; }
+}
+</style>
+</head><body>
+<div class="meta">Documento interno - bench tecnico - accesso riservato</div>
+<blockquote>
+<p><strong>Documento interno - bench tecnico v4 (finale, con metrica tokens)</strong></p>
+<p>Comparazione fra <strong>14 strategie</strong> di prefilter Metnos su corpus reale
+di 500 query estratte dai turn log degli ultimi 30 giorni. Generato
+automaticamente da <code>runtime/bench_prefilter_strategies.py</code>.</p>
+<p><strong>v4</strong> (17/5/2026 sera) aggiunge la metrica <strong>token contesto LLM</strong>:
+ogni strategy ora misura anche <code>mean_pool_tokens</code> (tokens del pool
+restituito al PLANNER) e <code>recall_per_ktok</code> (Recall@5 per migliaio
+di tokens). Metrica chiave per minimizzare il prompt LLM downstream
+e ridurre costi/latency frontier.</p>
+<p><strong>Vincitore overall</strong>: <code>token_flat_v2</code> (Recall@5 0.712, Recall@1
+0.488, latency 7.4 ms, -5.8% tokens vs baseline). Strict improvement
+sul baseline. <strong>Attivato come default in produzione</strong> via systemd
+drop-in (<code>METNOS_PREFILTER=token_flat_v2</code>).</p>
+<p><strong>Vincitore efficienza tokens</strong>: <code>constraint</code> (r5/ktok 0.180, -12.8%
+tokens, -3pp recall accettabile). Candidato per produzione futura se
+LLM cost diventa il vincolo dominante.</p>
+<p><strong>Sorpresa</strong>: <code>hybrid_cascade</code> (vincitore v3) e' regredito (0.620)
+in v4. Possibili cause: corpus drift fra v3-v4 (turn log evoluto) o
+regressione nel fix <code>dict.fromkeys → _seen set</code>. Da investigare se
+persistente.</p>
+<p>Vedere <a href="scaling_skill_roadmap">Roadmap scaling skill</a> per il contesto
+architetturale.</p>
+</blockquote>
+<h1>Bench prefilter strategies — confronto comparativo</h1>
+<p><strong>Generato</strong>: 2026-05-17 09:59
+<strong>Corpus</strong>: 500 query reali da turn log Metnos (deduplicate, filtrate)
+<strong>k_max</strong>: 8 (top-K candidati per query)
+<strong>Modalita'</strong>: prefer_intent=False (deterministico, no LLM)</p>
+<h2>Distribuzione corpus</h2>
+<p><strong>Verbi top-10</strong> (frequenza nei first_tool):</p>
+<ul>
+<li><code>find</code>: 163 (32.6%)</li>
+<li><code>read</code>: 137 (27.4%)</li>
+<li><code>get</code>: 83 (16.6%)</li>
+<li><code>list</code>: 35 (7.0%)</li>
+<li><code>@uploaded</code>: 13 (2.6%)</li>
+<li><code>delete</code>: 10 (2.0%)</li>
+<li><code>write</code>: 10 (2.0%)</li>
+<li><code>create</code>: 9 (1.8%)</li>
+<li><code>send</code>: 8 (1.6%)</li>
+<li><code>admin</code>: 8 (1.6%)</li>
+</ul>
+<p><strong>Oggetti top-10</strong>:</p>
+<ul>
+<li><code>messages</code>: 98 (19.6%)</li>
+<li><code>files</code>: 96 (19.2%)</li>
+<li><code>events</code>: 42 (8.4%)</li>
+<li><code>urls</code>: 40 (8.0%)</li>
+<li><code>images</code>: 39 (7.8%)</li>
+<li><code>now</code>: 34 (6.8%)</li>
+<li><code>dirs</code>: 31 (6.2%)</li>
+<li><code>processes</code>: 20 (4.0%)</li>
+<li><code>scheduled</code>: 16 (3.2%)</li>
+<li><code>tasks</code>: 13 (2.6%)</li>
+</ul>
+<h2>Risultati comparativi (ordinati per Recall@5)</h2>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th style="text-align: right;">Recall@1</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">mean ms</th>
+<th style="text-align: right;">p95 ms</th>
+<th style="text-align: right;">n_cand</th>
+<th style="text-align: right;">pool tok</th>
+<th style="text-align: right;">r5/ktok</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>token_flat_v2</code></td>
+<td style="text-align: right;">0.488</td>
+<td style="text-align: right;"><strong>0.712</strong></td>
+<td style="text-align: right;">7.4</td>
+<td style="text-align: right;">48.0</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">4096</td>
+<td style="text-align: right;">0.174</td>
+</tr>
+<tr>
+<td><code>cached_token_flat</code></td>
+<td style="text-align: right;">0.472</td>
+<td style="text-align: right;"><strong>0.710</strong></td>
+<td style="text-align: right;">5.8</td>
+<td style="text-align: right;">33.4</td>
+<td style="text-align: right;">7.7</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">0.163</td>
+</tr>
+<tr>
+<td><code>selective_semantic</code></td>
+<td style="text-align: right;">0.472</td>
+<td style="text-align: right;"><strong>0.710</strong></td>
+<td style="text-align: right;">63.2</td>
+<td style="text-align: right;">108.0</td>
+<td style="text-align: right;">7.7</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">0.163</td>
+</tr>
+<tr>
+<td><code>token_flat</code></td>
+<td style="text-align: right;">0.472</td>
+<td style="text-align: right;"><strong>0.710</strong></td>
+<td style="text-align: right;">6.6</td>
+<td style="text-align: right;">40.0</td>
+<td style="text-align: right;">7.7</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">0.163</td>
+</tr>
+<tr>
+<td><code>length_adaptive</code></td>
+<td style="text-align: right;">0.464</td>
+<td style="text-align: right;"><strong>0.702</strong></td>
+<td style="text-align: right;">34.1</td>
+<td style="text-align: right;">93.3</td>
+<td style="text-align: right;">7.7</td>
+<td style="text-align: right;">4321</td>
+<td style="text-align: right;">0.162</td>
+</tr>
+<tr>
+<td><code>selective_semantic_v2</code></td>
+<td style="text-align: right;">0.484</td>
+<td style="text-align: right;"><strong>0.700</strong></td>
+<td style="text-align: right;">24.9</td>
+<td style="text-align: right;">81.7</td>
+<td style="text-align: right;">7.5</td>
+<td style="text-align: right;">4231</td>
+<td style="text-align: right;">0.165</td>
+</tr>
+<tr>
+<td><code>constraint</code></td>
+<td style="text-align: right;">0.458</td>
+<td style="text-align: right;"><strong>0.684</strong></td>
+<td style="text-align: right;">6.3</td>
+<td style="text-align: right;">45.1</td>
+<td style="text-align: right;">7.0</td>
+<td style="text-align: right;">3791</td>
+<td style="text-align: right;">0.180</td>
+</tr>
+<tr>
+<td><code>trie_v2</code></td>
+<td style="text-align: right;">0.450</td>
+<td style="text-align: right;"><strong>0.666</strong></td>
+<td style="text-align: right;">5.4</td>
+<td style="text-align: right;">34.8</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">3959</td>
+<td style="text-align: right;">0.168</td>
+</tr>
+<tr>
+<td><code>verb_first</code></td>
+<td style="text-align: right;">0.454</td>
+<td style="text-align: right;"><strong>0.664</strong></td>
+<td style="text-align: right;">6.6</td>
+<td style="text-align: right;">49.0</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">3919</td>
+<td style="text-align: right;">0.169</td>
+</tr>
+<tr>
+<td><code>rrf_ensemble</code></td>
+<td style="text-align: right;">0.440</td>
+<td style="text-align: right;"><strong>0.628</strong></td>
+<td style="text-align: right;">62.2</td>
+<td style="text-align: right;">171.0</td>
+<td style="text-align: right;">7.2</td>
+<td style="text-align: right;">4018</td>
+<td style="text-align: right;">0.156</td>
+</tr>
+<tr>
+<td><code>hybrid_cascade</code></td>
+<td style="text-align: right;">0.448</td>
+<td style="text-align: right;"><strong>0.620</strong></td>
+<td style="text-align: right;">6.1</td>
+<td style="text-align: right;">48.0</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">3909</td>
+<td style="text-align: right;">0.159</td>
+</tr>
+<tr>
+<td><code>trie</code></td>
+<td style="text-align: right;">0.438</td>
+<td style="text-align: right;"><strong>0.620</strong></td>
+<td style="text-align: right;">5.7</td>
+<td style="text-align: right;">39.8</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">3909</td>
+<td style="text-align: right;">0.159</td>
+</tr>
+<tr>
+<td><code>fts5</code></td>
+<td style="text-align: right;">0.314</td>
+<td style="text-align: right;"><strong>0.532</strong></td>
+<td style="text-align: right;">0.2</td>
+<td style="text-align: right;">0.3</td>
+<td style="text-align: right;">7.8</td>
+<td style="text-align: right;">3947</td>
+<td style="text-align: right;">0.135</td>
+</tr>
+<tr>
+<td><code>bloom</code></td>
+<td style="text-align: right;">0.402</td>
+<td style="text-align: right;"><strong>0.496</strong></td>
+<td style="text-align: right;">4.9</td>
+<td style="text-align: right;">15.9</td>
+<td style="text-align: right;">5.4</td>
+<td style="text-align: right;">3836</td>
+<td style="text-align: right;">0.129</td>
+</tr>
+</tbody>
+</table></div>
+<h2>Ranking per efficienza (Recall@5 per 1000 tokens del pool LLM)</h2>
+<p>Metrica chiave per minimizzare il contesto LLM downstream (PLANNER).
+Un valore alto = piu' recall con meno tokens nel prompt.</p>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th style="text-align: right;">r5/ktok</th>
+<th style="text-align: right;">Recall@5</th>
+<th style="text-align: right;">pool tok</th>
+<th style="text-align: right;">risparmio vs token_flat</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>constraint</code></td>
+<td style="text-align: right;"><strong>0.180</strong></td>
+<td style="text-align: right;">0.684</td>
+<td style="text-align: right;">3791</td>
+<td style="text-align: right;">+12.8%</td>
+</tr>
+<tr>
+<td><code>token_flat_v2</code></td>
+<td style="text-align: right;"><strong>0.174</strong></td>
+<td style="text-align: right;">0.712</td>
+<td style="text-align: right;">4096</td>
+<td style="text-align: right;">+5.8%</td>
+</tr>
+<tr>
+<td><code>verb_first</code></td>
+<td style="text-align: right;"><strong>0.169</strong></td>
+<td style="text-align: right;">0.664</td>
+<td style="text-align: right;">3919</td>
+<td style="text-align: right;">+9.9%</td>
+</tr>
+<tr>
+<td><code>trie_v2</code></td>
+<td style="text-align: right;"><strong>0.168</strong></td>
+<td style="text-align: right;">0.666</td>
+<td style="text-align: right;">3959</td>
+<td style="text-align: right;">+8.9%</td>
+</tr>
+<tr>
+<td><code>selective_semantic_v2</code></td>
+<td style="text-align: right;"><strong>0.165</strong></td>
+<td style="text-align: right;">0.700</td>
+<td style="text-align: right;">4231</td>
+<td style="text-align: right;">+2.7%</td>
+</tr>
+<tr>
+<td><code>cached_token_flat</code></td>
+<td style="text-align: right;"><strong>0.163</strong></td>
+<td style="text-align: right;">0.710</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">+0.0%</td>
+</tr>
+<tr>
+<td><code>selective_semantic</code></td>
+<td style="text-align: right;"><strong>0.163</strong></td>
+<td style="text-align: right;">0.710</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">+0.0%</td>
+</tr>
+<tr>
+<td><code>token_flat</code></td>
+<td style="text-align: right;"><strong>0.163</strong></td>
+<td style="text-align: right;">0.710</td>
+<td style="text-align: right;">4347</td>
+<td style="text-align: right;">+0.0%</td>
+</tr>
+<tr>
+<td><code>length_adaptive</code></td>
+<td style="text-align: right;"><strong>0.162</strong></td>
+<td style="text-align: right;">0.702</td>
+<td style="text-align: right;">4321</td>
+<td style="text-align: right;">+0.6%</td>
+</tr>
+<tr>
+<td><code>hybrid_cascade</code></td>
+<td style="text-align: right;"><strong>0.159</strong></td>
+<td style="text-align: right;">0.620</td>
+<td style="text-align: right;">3909</td>
+<td style="text-align: right;">+10.1%</td>
+</tr>
+<tr>
+<td><code>trie</code></td>
+<td style="text-align: right;"><strong>0.159</strong></td>
+<td style="text-align: right;">0.620</td>
+<td style="text-align: right;">3909</td>
+<td style="text-align: right;">+10.1%</td>
+</tr>
+<tr>
+<td><code>rrf_ensemble</code></td>
+<td style="text-align: right;"><strong>0.156</strong></td>
+<td style="text-align: right;">0.628</td>
+<td style="text-align: right;">4018</td>
+<td style="text-align: right;">+7.6%</td>
+</tr>
+<tr>
+<td><code>fts5</code></td>
+<td style="text-align: right;"><strong>0.135</strong></td>
+<td style="text-align: right;">0.532</td>
+<td style="text-align: right;">3947</td>
+<td style="text-align: right;">+9.2%</td>
+</tr>
+<tr>
+<td><code>bloom</code></td>
+<td style="text-align: right;"><strong>0.129</strong></td>
+<td style="text-align: right;">0.496</td>
+<td style="text-align: right;">3836</td>
+<td style="text-align: right;">+11.8%</td>
+</tr>
+</tbody>
+</table></div>
+<h2>Analisi</h2>
+<p><strong>Metriche</strong>:
+- <strong>Recall@1</strong>: il tool del ground truth e' al primo posto.
+- <strong>Recall@5</strong>: il tool del ground truth e' nei primi 5 candidati (target del prefilter).
+- <strong>mean rank</strong>: posizione media del ground truth nei candidati (lower = better, idealmente vicino a 1).
+- <strong>distinct top3</strong>: numero di tool diversi che compaiono fra i top-3 di tutte le query (diversita' del pool restituito).</p>
+<p><strong>Note</strong>:
+- Ground truth = first_tool effettivamente chiamato dal PLANNER nei turn log. Approssimazione: non garantisce che sia il tool ottimale, ma misura coerenza con il comportamento attuale di produzione.
+- <code>prefer_intent=False</code> disattiva l'intent_extractor LLM: tutte le strategy lavorano deterministicamente. Differenze fra strategy sono dovute al solo algoritmo di matching/ranking.
+- Strategy che includono fallback al <code>legacy</code> mascherano debolezze proprie (recall pari al legacy quando fallback scatta).</p>
+<p><strong>Interpretazione raccomandata</strong>:
+1. Se due strategy hanno Recall@5 entro 1%, prediligi quella con latenza minore.
+2. Una strategy puo' avere Recall@5 alto ma Recall@1 basso: utile come reducer di pool, da combinare con re-rank fine.
+3. Differenze di latenza sotto 5 ms sono trascurabili.
+4. <code>distinct top3</code> basso = pool meno diversificato (potenziale rischio di rigidita').</p>
+</body></html>

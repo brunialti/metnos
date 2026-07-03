@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1A477A">
+<meta name="robots" content="noindex, nofollow">
+<title>Metnos — Roadmap scaling skill importer</title>
+<style>
+:root {
+  --fg:#1a1a1a; --muted:#5e6571; --bg:#fdfdfc; --border:#e3e5e8;
+  --accent:#1A477A; --bronze:#92400E; --sage:#548235;
+  --code-bg:#f4f5f7; --code-fg:#2d3338; --pre-bg:#1e2329; --pre-fg:#e6e9ee;
+}
+* { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+html { font-size: 17px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  color: var(--fg); background: var(--bg);
+  max-width: 880px; margin: 16px auto; padding: 0 16px 80px;
+  line-height: 1.6; font-size: 16px;
+  word-wrap: break-word; overflow-wrap: break-word;
+}
+h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif; color: var(--accent); line-height: 1.25; }
+h1 { font-size: 1.75em; border-bottom: 2px solid var(--accent); padding-bottom: 8px; margin-top: 1.5em; }
+h2 { font-size: 1.35em; border-bottom: 1px solid var(--border); padding-bottom: 5px; margin-top: 1.8em; }
+h3 { font-size: 1.15em; margin-top: 1.4em; color: #2A5A8A; }
+h4 { font-size: 1.05em; margin-top: 1.2em; color: #3A6A8A; }
+p { margin: 0.7em 0; }
+strong { color: var(--fg); }
+em { color: var(--muted); }
+a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); }
+a:hover, a:active { border-bottom-style: solid; }
+code {
+  font-family: "JetBrains Mono", Menlo, Consolas, "Courier New", monospace;
+  background: var(--code-bg); color: var(--code-fg);
+  padding: 1px 5px; border-radius: 3px; font-size: 0.88em;
+  word-break: break-all;
+}
+pre {
+  background: var(--pre-bg); color: var(--pre-fg);
+  padding: 12px 14px; border-radius: 6px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  font-size: 0.82em; line-height: 1.45;
+  margin: 0.8em 0;
+}
+pre code { background: transparent; color: inherit; padding: 0; word-break: normal; }
+blockquote {
+  border-left: 3px solid var(--bronze); margin: 1em 0; padding: 4px 14px;
+  background: #fdf6ec; color: #4a3a20; font-style: italic;
+}
+.table-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 1em 0; }
+table {
+  border-collapse: collapse; width: 100%;
+  font-size: 0.9em; min-width: 0;
+}
+th, td {
+  border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+  vertical-align: top;
+}
+th { background: #eef2f7; font-weight: 600; color: var(--accent); }
+tr:nth-child(even) td { background: #fafbfc; }
+ul, ol { padding-left: 1.5em; margin: 0.7em 0; }
+li { margin: 4px 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.toc { background: #f7f9fc; border: 1px solid var(--border); padding: 12px 16px; border-radius: 6px; margin: 1.5em 0; font-size: 0.95em; }
+.toc > ul { margin: 0; padding-left: 18px; }
+.toc ul ul { padding-left: 16px; }
+.meta {
+  font-size: 0.85em; color: var(--muted); margin-top: 8px;
+  padding: 6px 10px; background: #f0f4f9; border-radius: 4px;
+  display: inline-block;
+}
+@media (max-width: 640px) {
+  html { font-size: 16px; }
+  body { padding: 0 12px 60px; margin: 12px auto; }
+  h1 { font-size: 1.5em; }
+  h2 { font-size: 1.25em; }
+  h3 { font-size: 1.1em; }
+  pre { font-size: 0.78em; padding: 10px; }
+  table { font-size: 0.85em; }
+  th, td { padding: 5px 7px; }
+}
+@media print {
+  body { max-width: none; margin: 0; padding: 20px; font-size: 10pt; }
+  h2 { page-break-before: auto; page-break-after: avoid; }
+  pre, table { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<div class="meta">Documento interno · accesso riservato · noindex</div>
+<h1 id="metnos-roadmap-di-scaling-per-ecosistema-skill-multi-provider">Metnos — Roadmap di scaling per ecosistema skill multi-provider</h1>
+<p><strong>Committente</strong>: Roberto Brunialti
+<strong>Sistema</strong>: Metnos (metnos.com) — assistente personale self-hosted (Strix Halo 96GB)
+<strong>Data</strong>: 2026-05-16
+<strong>Orizzonte</strong>: 18 mesi, da ~1 skill (oggi) a 100+ skill (long-term)
+<strong>Vincoli</strong>: self-hosted first, vocabolario chiuso §2.2, LLM tier middle locale come default, italiano-first.</p>
+<hr />
+<h2 id="0-indice">0. Indice</h2>
+<ol>
+<li>Survey letteratura e best practices</li>
+<li>Analisi profonda del problema sotto tutti i punti di vista</li>
+<li>Visione architetturale (breve / medio / lungo termine)</li>
+<li>Roadmap dettagliata (8 fasi sequenziali)</li>
+<li>Innovazioni proposte per Metnos</li>
+<li>Sintesi esecutiva</li>
+<li>Note per Roberto</li>
+</ol>
+<hr />
+<h2 id="1-survey-letteratura-e-best-practices">1. Survey letteratura e best practices</h2>
+<h3 id="11-tool-routing-at-scale-il-problema-misurato">1.1 Tool routing at scale: il problema misurato</h3>
+<p>La letteratura recente (2023-2026) converge su un risultato netto: la <strong>accuracy del tool-use degrada drammaticamente</strong> quando il pool supera ~50-100 tool. I numeri pubblicati piu' rigorosi:</p>
+<ul>
+<li><strong>ToolLLM / ToolBench</strong> (Qin et al., arXiv:2307.16789, 2023): il primo benchmark a 16.464 API reali. Mostra che senza retrieval i modelli falliscono sopra le 100 tool. Introduce DFSDT (Depth-First Search Decision Tree) ma soprattutto <strong>API retrieval module</strong> (BGE-base trained) per selezione top-K prima della pianificazione.</li>
+<li><strong>API-Bank</strong> (Li et al., arXiv:2304.08244, 2023): 73 API + 314 dialoghi. Tier evaluation 3-livelli (call, retrieve+call, plan+retrieve+call). Mostra che il retrieval di tool e' un sotto-problema distinto e misurabile.</li>
+<li><strong>Benchmarking Tool Retrieval for LLMs</strong> (ACL 2025 Findings): documenta cali drastici: 50 tool ~85% acc → 200 tool 41-83% → 740 tool 0-20%. Position bias: tool in posizioni 40-60% del prompt 22-52% accuracy vs 31-32% a inizio/fine.</li>
+<li><strong>The Tool Selection Problem</strong> (tianpan.co, 2026-04): bench piu' recente su 70 server MCP / 527 tool: routing flat semantic search degrada &gt;1000 tool; <strong>two-tier coarse→fine</strong> mostra +17-18% retrieval quality.</li>
+<li><strong>Trace-Free+</strong> (curriculum learning, 2025): riduce degrado del 29.23% e migliora success rate +60.89% scaling oltre 150 tool.</li>
+</ul>
+<p><strong>Implicazione per Metnos</strong>: a ~70 tool oggi siamo nella zona sicura, ma il salto a 250 (10 skill) ci porta nella zona di crash documentata. La mitigazione <strong>e' obbligatoria</strong>, non opzionale, oltre le 5 skill.</p>
+<h3 id="12-tool-rag-retrieval-augmented-action-selection">1.2 Tool RAG / Retrieval-Augmented Action Selection</h3>
+<p>Pattern dominante 2024-2026: trasformare il pool flat in <strong>indice vettoriale</strong>, query→top-K tool semanticamente vicini, iniettare SOLO i K nel prompt.</p>
+<ul>
+<li><strong>ToolLLM</strong> (originale): BGE-base retriever ad-hoc, ricava 5-10 candidate da 16K. Senza retrieval il task fallisce, con retrieval ~75% success.</li>
+<li><strong>Tool-to-Agent Retrieval</strong> (arXiv:2511.01854, 2025): generalizza il pattern a multi-agent: si recuperano agenti specializzati invece di singole tool, riducendo prompt e migliorando granularita'.</li>
+<li><strong>Agent-as-a-Graph</strong> (arXiv:2511.18194, 2025): knowledge graph su (tool, agente, capability, dipendenze) per retrieval gerarchico tipato.</li>
+<li><strong>vLLM Semantic Router</strong> (2025, blog): production-grade, semantic + metadata filtering hybrid. Documenta che flat similarity degrada &gt;1000 tool, propone two-stage retrieval.</li>
+<li><strong>GRETEL</strong> (arXiv:2510.17843): goal-driven retrieval con trial/feedback loop.</li>
+</ul>
+<p><strong>Applicabilita' a Metnos</strong>:
+- <strong>Pro</strong>: gia' abbiamo BGE-M3 ONNX int8 in produzione (ADR 0134, semantic affinity fallback). Riuso immediato dell'infrastruttura. Compatibile con grammar GBNF (ADR 0133): il pool inviato al grammar diventa il top-K invece del pool flat.
+- <strong>Contro</strong>: serve indicizzazione <code>tools.idx</code> rebuild su sign/load di executor (gia' abbiamo signing pipeline, manca solo hook).
+- <strong>Costo migrazione</strong>: M (1-2 settimane). Zero rottura vincoli: tutto deterministico §7.9 + self-hosted.</p>
+<h3 id="13-mcp-model-context-protocol-e-precedence">1.3 MCP (Model Context Protocol) e precedence</h3>
+<p>MCP Anthropic supporta server multipli simultaneamente. Pattern documentati:</p>
+<ul>
+<li><strong>Tool merging</strong>: l'agente legge il manifest combinato e routea per server-name. <strong>Nessuna precedence automatica</strong>: collision name = errore esplicito o prefix <code>&lt;server&gt;/&lt;tool&gt;</code> (convenzione filesystem MCP).</li>
+<li><strong>MCP connector</strong> (docs.anthropic.com): supporta <code>allowlist</code>/<code>denylist</code> per server e tool, configurazione manuale gerarchica (request &gt; session &gt; workspace).</li>
+<li><strong>Code execution with MCP</strong> (anthropic.com/engineering, 2025): pattern emergente "tools-on-demand" — il manifest non viene caricato upfront, ma il modello invoca <code>list_tools(server)</code> quando serve. Riduce token consumption ma aumenta round-trip.</li>
+</ul>
+<p><strong>Rilevante per Metnos</strong>: il <code>_PROVIDER_SUFFIX_MARKERS</code> (ADR 0136) e' una versione embrionale del routing MCP. Va promosso a <strong>policy esplicita</strong> di precedence (vedi §5 User-tunable preference profile).</p>
+<h3 id="14-sicurezza-supply-chain-mcp-segnale-forte-2025-2026">1.4 Sicurezza supply-chain MCP — segnale forte 2025-2026</h3>
+<p>La survey sulla sicurezza ha rivelato che il problema <strong>non e' teorico</strong>:</p>
+<ul>
+<li><strong>OWASP MCP Top 10 (2025)</strong>: MCP04 e' "Software Supply Chain Attacks &amp; Dependency Tampering".</li>
+<li><strong>OX Security (2025)</strong>: poisoning 9/11 MCP registry pubblici, RCE su 6 piattaforme paying-customers live.</li>
+<li><strong>Antiy CERT</strong>: 1.184 skill malevole confermate su ClawHub (largest AI agent supply-chain incident).</li>
+<li><strong>postmark-mcp</strong> (npm trojanizzato 2025): silently BCC ogni email outbound al dominio attaccante. Esfiltrazione memo/fatture/password reset.</li>
+<li><strong>EscapeRoute</strong> (Filesystem MCP): bypass prefix check + symlink → full RW.</li>
+<li><strong>VentureBeat (2026)</strong>: "92% exploit probability" su stack MCP enterprise.</li>
+</ul>
+<p><strong>Implicazione per Metnos</strong>: il modello Metnos di skill importer da <code>agentskills.io</code> (ADR 0123) deve <strong>assumere a default che le skill siano untrusted</strong>. Sandbox bubblewrap esistente e' giusto in direzione, ma serve:
+- profilo bubblewrap <strong>per-skill</strong> (oggi unico globale)
+- network whitelist per-skill dichiarativa
+- capability allowlist firmata per-skill (oggi capability_registry e' globale)
+- audit log per-skill separato
+- supply-chain verification: sha256 manifest pinning, optional code signing GPG</p>
+<h3 id="15-hierarchical-agentic-systems">1.5 Hierarchical agentic systems</h3>
+<p>Pattern consolidato 2024-2026 per scalare:</p>
+<ul>
+<li><strong>HuggingGPT</strong> (2023): primo dispatcher LLM verso modelli specializzati.</li>
+<li><strong>AutoGen</strong> (Microsoft, 2024): leader light-weight + group chat di sub-agenti.</li>
+<li><strong>LangGraph</strong> (LangChain, 2025): acyclic graph esplicito per routing condizionale.</li>
+<li><strong>Google ADK</strong> (2025): supervisor-style hierarchy a piu' livelli.</li>
+<li><strong>AgentOrchestra</strong> (arXiv:2506.12508, 2025): framework gerarchico general-purpose.</li>
+<li><strong>HTAA</strong> (arXiv:2604.10917): two-stage "toolset agentization" — gruppi di tool fine-grained astratti come "agent tool" coarse.</li>
+<li><strong>ToolPlanner</strong> (XiaoMi, arXiv:2409.14826): multi-granularity instructions con path planning.</li>
+</ul>
+<p><strong>Applicabilita' a Metnos</strong>: il PLANNER unico Gemma 26B sopravvive bene fino a ~150-200 tool. Oltre, va valutato <strong>two-tier</strong>: dispatcher fast (Qwen3:8B, gia' nei 3 tier) sceglie macro-area (mail/calendar/files/web/system), poi PLANNER middle lavora sul pool della macro-area. Risparmio token 60-70%, latency probabilmente neutrale (un round-trip fast in piu' ma prompt PLANNER molto piu' corto).</p>
+<h3 id="16-plugin-precedence-policies-prior-art-software">1.6 Plugin precedence policies (prior art software)</h3>
+<ul>
+<li><strong>VS Code</strong>: <code>commands</code> registrati in <code>package.json</code>, conflitti gestiti via <code>when</code> clauses (deterministico) + Command Palette mostra tutti i match (l'utente sceglie). Nessuna precedence implicita.</li>
+<li><strong>Eclipse RCP</strong>: extension points con priority numeric esplicita, fallback first-registered-wins.</li>
+<li><strong>IntelliJ Platform</strong>: actions in <code>&lt;action id="..."&gt;</code> univoci; conflict di shortcut → user dialog.</li>
+<li><strong>Zapier</strong>: collision risolta UI-side (user sceglie account/app per ogni step). Default = last-used.</li>
+<li><strong>n8n</strong>: nodes named-unique, niente collision a livello di routing (l'utente disegna il flusso).</li>
+</ul>
+<p><strong>Lezione per Metnos</strong>: tutti i sistemi maturi <strong>non risolvono automaticamente</strong> la collision verb_obj fra provider, ma offrono <strong>default user-configurabile</strong>. La nostra <code>_PROVIDER_SUFFIX_MARKERS</code> e' un compromesso accettabile per query con marker espliciti; per query ambigue serve <strong>preference profile</strong> (vedi §5).</p>
+<h3 id="17-architetture-confrontabili-con-metnos">1.7 Architetture confrontabili con Metnos</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>Sistema</th>
+<th>Pool size</th>
+<th>Routing</th>
+<th>Sandbox</th>
+<th>Self-hosted</th>
+<th>Multi-provider</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude tool-use (Anthropic API)</td>
+<td>&lt;128 per request</td>
+<td>Flat in prompt</td>
+<td>No</td>
+<td>No</td>
+<td>No (single LLM)</td>
+</tr>
+<tr>
+<td>MCP host (Claude Desktop)</td>
+<td>50-500</td>
+<td>Per-server prefix + manuale</td>
+<td>Variabile</td>
+<td>Possibile</td>
+<td>Si'</td>
+</tr>
+<tr>
+<td>LangChain agent</td>
+<td>&lt;100 tipico</td>
+<td>Flat o ToolRetriever</td>
+<td>No</td>
+<td>Si'</td>
+<td>Si'</td>
+</tr>
+<tr>
+<td>AutoGen</td>
+<td>&lt;50 per agent</td>
+<td>Group chat dispatch</td>
+<td>No</td>
+<td>Si'</td>
+<td>Si'</td>
+</tr>
+<tr>
+<td><strong>Metnos (oggi)</strong></td>
+<td>~70</td>
+<td>Flat + prefilter + grammar GBNF</td>
+<td>bubblewrap globale</td>
+<td><strong>Si'</strong></td>
+<td>Embrionale</td>
+</tr>
+<tr>
+<td><strong>Metnos (target)</strong></td>
+<td>250-1000</td>
+<td>Two-tier + Tool RAG + per-skill sandbox</td>
+<td>bubblewrap per-skill</td>
+<td><strong>Si'</strong></td>
+<td>Si' completo</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Posizionamento</strong>: Metnos e' uno dei pochi sistemi che combina (a) self-hosted first, (b) vocabolario chiuso semantico, (c) grammar-constrained generation, (d) sandboxing. La roadmap deve preservare questi differenziatori.</p>
+<hr />
+<h2 id="2-analisi-profonda-del-problema-sotto-tutti-i-punti-di-vista">2. Analisi profonda del problema sotto tutti i punti di vista</h2>
+<h3 id="21-punto-di-vista-del-llm-planner">2.1 Punto di vista del LLM PLANNER</h3>
+<p>Gemma 4 26B con tool-use nativo + grammar GBNF mostra ~22/22 PASS sulla battery attuale (ADR 0135). Cosa cambia a 250-500 tool?</p>
+<ul>
+<li><strong>Token budget prompt</strong>: oggi sezioni planner.j2 IT compose ~30K token. Ogni nuovo tool aggiunge ~150-250 token (manifest description + args_schema). A 250 tool → ~50K, a 500 tool → ~75K. Il modello ha context 32K/slot (ADR 0117 setup llama.cpp <code>--parallel 2 -c 65536</code>). <strong>Crash sicuro</strong> sopra 250 tool senza intervento.</li>
+<li><strong>Position bias</strong> (ACL 2025 Findings): documentato 22-52% accuracy su tool in middle del prompt vs 31-32% a estremi. La sezione <code>mail/calendar/web/photos/system</code> e' relativamente robusta perche' raggruppa, ma <code>_OPT_IN_SECTIONS</code> non risolve scaling.</li>
+<li><strong>Grammar GBNF crescita non-lineare</strong>: il <code>pairTool</code> discriminated union (ADR 0133) ha rule per ogni tool. A 500 tool il grammar passa da ~20KB a ~200KB. Il parser llama.cpp ha overhead lineare per rule lookup ma quadratico per recursive sub-rules <code>{tool}ObjD{d}I{i}</code>. <strong>Stimo +30-50% latency</strong> per step su 500 tool, ma serve bench reale.</li>
+<li><strong>Studi sull'accuracy</strong>: ToolBench documenta degrado anche con grammar constraints — il problema non e' il parsing ma la <strong>scelta semantica</strong>. Il vincolo formale non risolve "quale tool scegliere".</li>
+</ul>
+<p><strong>Conclusione</strong>: il PLANNER attuale e' robusto fino a ~150-200 tool. Oltre, serve <strong>action space pruning a monte</strong> (retrieval) o <strong>two-tier dispatcher</strong>.</p>
+<h3 id="22-punto-di-vista-latency">2.2 Punto di vista latency</h3>
+<p>Numeri attuali (stimati da bench precedenti):
+- Prefilter+intent: ~370ms
+- PLANNER step 1: ~3-4s con grammar (ADR 0133 bench 70s→41s)
+- Vaglio LLM (opt-in): +3-5s per step</p>
+<p>A 500 tool senza intervento:
+- Prefilter: ~600ms (rank lineare token-based scala bene a 500)
+- PLANNER step: probabile +30-50% per parser grammar = 5-6s
+- Total turn 3 step: ~20-25s (oggi ~15s)</p>
+<p>Con Tool RAG + top-K=15:
+- BGE-M3 query embedding: ~30ms
+- KNN su 500 vettori 1024d: ~3ms (numpy dot product)
+- Prefilter ridotto: ~200ms
+- PLANNER step su pool ridotto 15: ~2-3s
+- Total: ~10-12s (<strong>40% miglioramento</strong>)</p>
+<p>Costo locale = energia. Strix Halo a piena potenza ~120W picco. 5s in piu' per turno × 100 turni/giorno = 500s × 120W = 60Wh/giorno = 1.8 kWh/mese. Marginale ma misurabile.</p>
+<h3 id="23-punto-di-vista-semantic-disambiguation">2.3 Punto di vista semantic disambiguation</h3>
+<p>Quando 2+ skill espongono <code>send_messages</code>, cosa significa "manda una mail" dell'utente?</p>
+<p><strong>Ipotesi</strong>:
+1. <strong>L'utente vuole sempre lo stesso provider</strong> (caso 80%): single-user, account principale. Default user-tunable risolve.
+2. <strong>L'utente sceglie context-aware</strong> (caso 15%): "manda mail di lavoro" → outlook account work; "scrivi a Mario" → contact in gmail. Risolvibile via lookup contact → account.
+3. <strong>L'utente vuole essere chiesto ogni volta</strong> (caso 5%): power-user multi-account. Disambiguation dialog (gia' abbiamo <code>request_disambiguation_from_user</code>).</p>
+<p><strong>Default behavior policy</strong> proposta:
+- Single skill installata per <code>(verb, obj)</code>: zero disambiguation, dispatch automatico.
+- 2+ skill installate per <code>(verb, obj)</code>: lookup <code>~/.config/metnos/skill_preferences.toml</code>. Se key match → dispatch. Se non match → dialog <code>choice_with_preview</code>.
+- Marker semantico nella query ("via gmail", "su slack") → bypass preference, usa marker.</p>
+<p>Il <code>_PROVIDER_SUFFIX_MARKERS</code> attuale e' giusto come tier 1. Manca il preference file (tier 2) e il fallback dialog (tier 3, gia' esiste).</p>
+<h3 id="24-punto-di-vista-security">2.4 Punto di vista security</h3>
+<p><strong>Capability inflation</strong>: 13 capabilities canoniche oggi. Ogni skill puo' richiederne 2-5 nuove. A 20 skill → potenziali 100+ capability se non c'e' deduplica strutturale. Mitigazione: <strong>capability vocabulary chiuso</strong> come gli OBJECTS §2.2, con escalation manuale per nuovi termini.</p>
+<p><strong>Sandbox per-skill</strong>: oggi bubblewrap profile e' unico globale (<code>runtime/sandbox/...</code>). Una skill malevola che ottenga code execution puo' interagire con TUTTI i dati Metnos. Mitigazione: profile dichiarativo per-skill nel manifest <code>[sandbox]</code>:</p>
+<pre><code class="language-toml">[sandbox]
+network_allowed = [&quot;api.googleapis.com&quot;, &quot;oauth2.googleapis.com&quot;]
+fs_read = [&quot;~/.local/share/metnos/skills/google-workspace/&quot;]
+fs_write = [&quot;~/.local/share/metnos/skills/google-workspace/cache/&quot;]
+exec_allowed = []
+</code></pre>
+<p>Verifier al load: confronta capability dichiarate vs sandbox profile (es. <code>messaging:send_outbound</code> richiede almeno un <code>network_allowed</code>).</p>
+<p><strong>Credenziali scaling</strong>: ADR 0131 (single store Fernet+HKDF) gia' scala. Verificare: rotation policy per scope (oggi non c'e'), revoke fingerprint via CLI (gia' c'e').</p>
+<p><strong>Audit log noise</strong>: oggi turn JSONL contiene tutto. Filtraggio per <code>skill_origin</code> nei tool importati. Necessario campo <code>tool_provenance</code> strutturato in observation.</p>
+<p><strong>Supply-chain</strong>:
+- sha256 pinning del manifest <code>[provenance].source_sha256</code> (gia' c'e' in ADR 0123).
+- Verifica pre-install: matching sha contro registry trusted (TBD).
+- Code signing opzionale GPG (long-term).</p>
+<h3 id="25-punto-di-vista-manutenzione">2.5 Punto di vista manutenzione</h3>
+<p>Ogni skill importata ha:
+- dipendenze Python (gmail-api-python-client, ecc.)
+- eseguibili CLI esterni (es. <code>gh</code>, <code>aws</code>)
+- credenziali OAuth (refresh token TTL, scope changes upstream)
+- breaking changes upstream API</p>
+<p><strong>Strategia</strong>:
+- Lockfile per-skill: <code>requirements.lock</code> con sha256 wheel.
+- Health check daily per ogni skill installata (dry-run di <code>list_messages</code> con timeout 5s).
+- Skill dormancy detection (ADR 0136) gia' c'e' per credenziali mancanti — estendere a "skill failing health check".
+- Update upstream: snapshot pre-update, rollback su test fail.
+- Maintainer SLA: ogni skill ha <code>[maintenance]</code> con <code>last_upstream_check</code>, <code>compat_tested_until</code>.</p>
+<p><strong>Burden</strong>: con 20 skill, ~20 min/settimana di triage health check failures se tutto va bene. Con upstream incompatibility frequente, fino a 2h/settimana.</p>
+<h3 id="26-punto-di-vista-ux">2.6 Punto di vista UX</h3>
+<ul>
+<li><strong>Discoverability</strong>: a 250 tool nessun utente puo' memorizzare. Serve:</li>
+<li><code>/help &lt;verb&gt;</code>: lista oggetti supportati per verbo + provider.</li>
+<li><code>/help &lt;obj&gt;</code>: lista azioni disponibili per oggetto.</li>
+<li>Gallery executor HTTP gia' c'e' (ADR 0078), va arricchita di filtri per skill_origin.</li>
+<li><strong>Auto-suggestion skill</strong>: query "manda whatsapp a Mario" + nessuna skill WhatsApp installata → suggerisci <code>install whatsapp-skill</code> (richiede registry curato).</li>
+<li><strong>Cognitive overhead</strong>: l'utente NON deve preoccuparsi della scelta provider per default. Single-action mental model: "manda mail" funziona, basta.</li>
+<li><strong>Onboarding</strong>: prima installazione skill → wizard "preferisci Google su Outlook per email?" → popola preference file.</li>
+</ul>
+<h3 id="27-punto-di-vista-testing">2.7 Punto di vista testing</h3>
+<p>Smoke battery attuale ~25 min per ~50 tool. A 250 tool con stessa coverage ratio ~2h. <strong>Non pratico</strong> come canary pre-deploy.</p>
+<p>Strategia:
+- <strong>Smoke battery prioritized</strong>: 30-50 query "must work" cross-skill (15 min target). Esegue sempre.
+- <strong>Per-skill regression suite</strong>: ~10 query per skill. Esegue solo sulla skill modificata (cambio manifest, sign, upstream update).
+- <strong>Property-based testing</strong> (vedi §5 innovazioni): generate input fuzzing dal manifest args_schema, invariants su output schema.
+- <strong>Pipeline cross-skill</strong>: scenari multi-skill ("filtra mail su Gmail, salva allegati su Drive, evento su Calendar"). Cap 5-10 scenari core, ogni nightly.
+- <strong>Sampling statistico</strong>: smoke su sample 20% random delle query del corpus reale (turns/*.jsonl).</p>
+<h3 id="28-punto-di-vista-data-isolation">2.8 Punto di vista data isolation</h3>
+<p>Skill A (es. gmail) puo' leggere data scritto da skill B (es. drive)? Oggi: si', stesso filesystem <code>~/.local/share/metnos/</code>, stesso sqlite.</p>
+<p>Modello proposto:
+- <strong>Capability boundary</strong>: <code>skill_data_scope = "private" | "shared" | "global"</code>. Default <code>private</code>.
+- <strong>Private scope</strong>: <code>~/.local/share/metnos/skills/&lt;skill_id&gt;/data/</code> — accesso solo da quella skill.
+- <strong>Shared scope</strong>: workspace dichiarativo (vedi §5 skill subdomains).
+- <strong>Global scope</strong>: solo per skill <code>trusted_publisher</code> (registry curato).</p>
+<p>Implementazione via bubblewrap fs_read/fs_write (vedi §2.4).</p>
+<hr />
+<h2 id="3-visione-architetturale">3. Visione architetturale</h2>
+<h3 id="31-breve-termine-1-2-mesi-5-10-skill">3.1 Breve termine — 1-2 mesi (5-10 skill)</h3>
+<p><strong>Obiettivo</strong>: chiudere i 9 gap noti, raggiungere 5-10 skill in produzione stabile.</p>
+<ul>
+<li><strong>Bench scaling prefilter</strong> (Fase A) — misurazione decision-gated:
+  decidere se serve switch a Tool RAG basato su dati Metnos a pool 250,
+  non per estrapolazione letteratura. Mantiene il prefilter attuale se
+  token-flat &gt;= 85% Recall@5; switch a Tool RAG full (Fase A.1) SOLO se
+  scende sotto soglia.</li>
+<li>Capability vocabulary chiuso, validazione al load</li>
+<li>Sandbox profile per-skill nel manifest <code>[sandbox]</code></li>
+<li>Smoke battery prioritized + per-skill suite</li>
+<li>Preference profile utente per disambiguation 2+ skill stesso <code>(verb, obj)</code></li>
+<li>Tool provenance strutturato in observation</li>
+<li>Health check daily per skill</li>
+<li>Smoke routing assertion estesa a cross-skill scenarios</li>
+</ul>
+<p><strong>Vincoli rispettati</strong>: tutti. Self-hosted intatto, vocabolario chiuso intatto, prefilter attuale preservato (alterato solo se Fase A.1 attivata da evidenza).</p>
+<p><strong>Capacita' nuove</strong>: gmail+drive+calendar (google-workspace) + slack + outlook + immich + nextcloud, fino a 7 skill third-party stabili.</p>
+<p><strong>Rischi</strong>: refactor descrittivo dei manifest sandbox potrebbe creare regressioni se non rigorosamente testato. Mitigazione: opt-in <code>METNOS_PER_SKILL_SANDBOX=1</code> fase 2 testing.</p>
+<p><strong>Costo</strong>: ~25-30 giorni-uomo.</p>
+<h3 id="32-medio-termine-3-6-mesi-20-50-skill">3.2 Medio termine — 3-6 mesi (20-50 skill)</h3>
+<p><strong>Obiettivo</strong>: refactor strutturale per scaling 20-50 skill.</p>
+<ul>
+<li>Two-tier planning: dispatcher fast (Qwen3:8B) per macro-area + PLANNER middle su pool ridotto</li>
+<li>Skill subdomains (workspace mode: lavoro/personale/casa)</li>
+<li>Hierarchical capability namespace: <code>gmail.read</code>, <code>drive.write</code> invece di global capability set</li>
+<li>Registry curato self-hosted (skill.metnos.com) + skill review pipeline</li>
+<li>Federated skill discovery: indici remoti firmati</li>
+<li>User preference learning passivo (osservare scelte, suggerire default dopo N conferme)</li>
+<li>Auto-suggested skill install per query non risolte (con consent dialog)</li>
+<li>Multi-user data isolation reale (multi-user gia' previsto in pairings.db)</li>
+</ul>
+<p><strong>Vincoli rispettati</strong>: 6 su 7. Il vocabolario chiuso §2.2 resta. Self-hosted resta. Italian-first resta. Vaglio+sandbox+capability resta (con per-skill enhancement). Tier middle default resta. Pattern §7.3 generale (subdomains non hardcoded per skill specifica).</p>
+<p><strong>Capacita' nuove</strong>: marketplace privato di skill, modalita' di lavoro, gestione team/famiglia condivisa con permessi.</p>
+<p><strong>Rischi</strong>: complessita' two-tier (debug, observability). Mitigazione: feature flag, fallback automatico single-tier su error.</p>
+<p><strong>Costo</strong>: ~45-60 giorni-uomo.</p>
+<h3 id="33-lungo-termine-6-18-mesi-100-skill">3.3 Lungo termine — 6-18 mesi (100+ skill)</h3>
+<p><strong>Obiettivo</strong>: ecosistema plugin sostenibile, scaling teorico 100+ skill.</p>
+<ul>
+<li>Tool RAG gerarchico: indice per domain → indice per tool nel domain</li>
+<li>Skill capability sandboxing fine-grained (cgroup + per-skill bubblewrap profiles)</li>
+<li>Code execution on-demand (pattern MCP <code>list_tools</code> lazy)</li>
+<li>Skill marketplace federato (publisher signing GPG)</li>
+<li>Auto-generated property tests dal manifest</li>
+<li>Skill compatibility matrix (alpha/beta/stable, deprecation policy)</li>
+<li>Voice + visione multimodale (ADR 0117 base, espansione)</li>
+<li>Edge runtime (rust client sync-protocol gia' previsto in Phase 7)</li>
+</ul>
+<p><strong>Vincoli rispettati</strong>: 7 su 7. Possibile pivot: a 500+ skill, il PLANNER middle locale potrebbe non bastare anche con Tool RAG; fallback frontier diventa piu' frequente. Mitigazione: speculative-execution o fine-tuning locale del PLANNER su corpus utente reale.</p>
+<p><strong>Rischi</strong>: scope creep. Mitigare con decision gate dopo medio termine.</p>
+<p><strong>Costo</strong>: ~80-120 giorni-uomo.</p>
+<hr />
+<h2 id="4-roadmap-dettagliata-8-fasi">4. Roadmap dettagliata (8 fasi)</h2>
+<h3 id="fase-a-bench-scaling-del-prefilter-decision-gated-non-sostituzione-cieca">Fase A — Bench scaling del prefilter (decision-gated, NON sostituzione cieca)</h3>
+<blockquote>
+<p><strong>Correzione 17/5/2026</strong>: la versione precedente di questa fase prescriveva
+direttamente Tool RAG come Fase 0 obbligatoria. Roberto ha ricordato che
+bench empirico embedding-vs-token del 4/5/2026 (ADR 0075) ha confermato
+<strong>token-based 92.3% Recall@5 sul pool corrente</strong> (~50-70 tool). Il
+vocabolario chiuso §2.2 + ADR 0136 marker provider + ADR 0134 semantic
+fallback gia' offrono un prefilter ibrido in cui il token-rank ha piu'
+segnale del setup tipico ToolBench/ToolLLM. La decisione di switch a Tool
+RAG full va presa SULLA BASE di dati Metnos-specifici, non per
+estrapolazione dalla letteratura su corpus eterogenei.</p>
+</blockquote>
+<ul>
+<li><strong>Obiettivo</strong>: misurare quando (e SE) il token-flat degrada al crescere
+  del pool, prima di decidere il refactor del prefilter.</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>runtime/bench_prefilter_scaling.py</code> (~150 LOC): genera pool sintetico
+    di 100/150/200/250 tool fittizi (descrizione + affinity plausibili,
+    derivati per template dai 70 reali), poi rilancia un corpus di 200
+    query con ground-truth top-K atteso. Misura Recall@5 e MRR su tre
+    ranker: (a) token-flat attuale, (b) BGE-M3 puro, (c) ibrido
+    token+semantic (rerank semantic sui top-30 token).</li>
+<li>Report <code>/tmp/bench_prefilter_scaling.md</code> con 3 curve + soglia di
+    degrado (es. Recall@5 &lt; 80% → switch giustificato).</li>
+<li>ADR nuovo <code>0140-prefilter-scaling-bench.md</code> che documenta la
+    metodologia e i risultati.</li>
+<li><strong>Effort</strong>: S (1-2 gg).</li>
+<li><strong>Pre-requisite</strong>: nessuno.</li>
+<li><strong>Validation criteria</strong>: la decisione di proseguire o sospendere Fase
+  A.1 si basa SOLO sulla soglia di degrado misurata, non su priors.</li>
+<li><strong>Decisione condizionata</strong>:</li>
+<li>Se token-flat resta &gt;= 85% Recall@5 anche a pool 250 → <strong>Fase A.1
+    rimandata</strong>, mantenere ADR 0134 fallback semantic come unica
+    integrazione. Risparmio: 8 gg-uomo.</li>
+<li>Se token-flat scende sotto 80% a pool &gt;= 150 → <strong>Fase A.1 attivata</strong>
+    (Tool RAG full come descritto sotto), gate di soglia esplicito nel
+    codice.</li>
+<li><strong>Test plan</strong>: bench su corpus query reali (4086 turn log degli ultimi
+  30 giorni) per cross-validazione del ground truth sintetico.</li>
+<li><strong>Roll-back</strong>: nessuno, la fase non muta il prefilter di produzione.</li>
+</ul>
+<h3 id="fase-a1-tool-rag-con-bge-m3-condizionata-al-risultato-di-fase-a">Fase A.1 — Tool RAG con BGE-M3 (CONDIZIONATA al risultato di Fase A)</h3>
+<ul>
+<li><strong>Obiettivo</strong>: SOLO se Fase A dimostra degrado token-flat oltre soglia,
+  trasformare pool flat in indice vettoriale + top-K injection nel grammar.</li>
+<li><strong>Deliverable</strong> (invariati):</li>
+<li><code>runtime/tool_index.py</code> (~200 LOC): build/load/query indice tool. Riusa
+    <code>affinity_semantic.py</code> infrastructure (ADR 0134).</li>
+<li>Hook in <code>runtime/sign.py</code> post-sign: rebuild incrementale
+    <code>~/.cache/metnos/tool_index/</code>.</li>
+<li>Modifica <code>runtime/prefilter.py::rank_with_intent</code>: aggiunge semantic
+    top-K candidates, merge con token-rank esistente.</li>
+<li>Modifica <code>runtime/tool_grammar.py::filter_pool_for_grammar</code>: input
+    top-K invece di pool full.</li>
+<li>ADR aggiornato <code>0141-tool-rag-conditional.md</code>.</li>
+<li>Test: 30 unit + integration su query corpus reale (100 query).</li>
+<li><strong>Effort</strong>: M (8-10 gg) SE attivata.</li>
+<li><strong>Pre-requisite</strong>: Fase A con risultato di switch.</li>
+<li><strong>Validation criteria</strong>: smoke battery 22/22 PASS; bench latency P95
+  -20% su query a multi-skill misurato (NON simulato); recall@15 &gt;= 95%
+  su routing label.</li>
+<li><strong>Rischio regressione</strong>: prefilter altera top-K, possibile miss di tool
+  oggi sempre in pool. Mitigazione: fallback "always-keep" per critical
+  tool (<code>_OBJECT_PRIMARY_TOOLS</code> ADR 0075).</li>
+<li><strong>Test plan</strong>: A/B con <code>METNOS_TOOL_RAG=0|1</code> su 200 query reali.</li>
+<li><strong>Roll-back</strong>: feature flag, default 0 in fase iniziale.</li>
+</ul>
+<h3 id="fase-b-capability-namespace-gerarchico">Fase B — Capability namespace gerarchico</h3>
+<ul>
+<li><strong>Obiettivo</strong>: capability <code>&lt;domain&gt;.&lt;action&gt;</code> (es. <code>gmail.read</code>, <code>drive.write</code>) invece di set globale piatto.</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>runtime/capability_registry.py</code> refactor: tabella tipata <code>{domain: {action: description}}</code>.</li>
+<li>Manifest schema: <code>capabilities = ["gmail.read", "files.write_local"]</code>.</li>
+<li>Migration script per i 17 executor google-workspace gia' importati.</li>
+<li>Vaglio aggiornato: check capability prefix.</li>
+<li>ADR nuovo <code>0141-capability-namespace.md</code>.</li>
+<li><strong>Effort</strong>: M (6-8 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase A non bloccante, parallelo.</li>
+<li><strong>Validation criteria</strong>: zero regressione vaglio + smoke; 100% capability esistenti mappate al nuovo namespace.</li>
+<li><strong>Rischio regressione</strong>: vaglio puo' rifiutare tool legacy con vecchio formato. Mitigazione: shim back-compat 30 giorni.</li>
+<li><strong>Test plan</strong>: matrix capability × executor (~50 combinazioni).</li>
+<li><strong>Roll-back</strong>: shim mantiene vecchio formato funzionante.</li>
+</ul>
+<h3 id="fase-c-sandbox-per-skill-dichiarativo">Fase C — Sandbox per-skill dichiarativo</h3>
+<ul>
+<li><strong>Obiettivo</strong>: profile bubblewrap per-skill nel manifest, validazione al load.</li>
+<li><strong>Deliverable</strong>:</li>
+<li>Manifest <code>[sandbox]</code> schema: <code>network_allowed</code>, <code>fs_read</code>, <code>fs_write</code>, <code>exec_allowed</code>.</li>
+<li><code>runtime/sandbox/per_skill.py</code>: builder bubblewrap args da manifest.</li>
+<li><code>runtime/loader.py::verify_sandbox_consistency</code>: check capability vs sandbox (es. <code>messaging:send</code> richiede <code>network_allowed</code> non vuoto).</li>
+<li>Profile default sicuro: solo <code>~/.local/share/metnos/skills/&lt;id&gt;/</code> RW, no network.</li>
+<li>Audit log strutturato: ogni invocazione skill scrive <code>skill_id</code>, <code>sandbox_profile_sha</code>.</li>
+<li>ADR nuovo <code>0142-per-skill-sandbox.md</code>.</li>
+<li><strong>Effort</strong>: L (12-15 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase B (capability namespace).</li>
+<li><strong>Validation criteria</strong>: tutte le skill esistenti dichiarano sandbox profile esplicito; smoke battery PASS; penetration test base (skill malevola simulata che tenta read di <code>~/.ssh</code> → blocked).</li>
+<li><strong>Rischio regressione</strong>: skill esistenti che assumono network universale falliscono. Mitigazione: shim "permissive mode" opt-in per migration grace 60 giorni.</li>
+<li><strong>Test plan</strong>: 10 scenari attacco (read SSH, write <code>/etc</code>, network arbitrario, exec ad-hoc) tutti blocked; 10 scenari legitimate flow pass.</li>
+<li><strong>Roll-back</strong>: feature flag <code>METNOS_PER_SKILL_SANDBOX=0</code>.</li>
+</ul>
+<h3 id="fase-d-preference-profile-utente-disambiguation-policy">Fase D — Preference profile utente + disambiguation policy</h3>
+<ul>
+<li><strong>Obiettivo</strong>: 3-tier disambiguation provider (marker → preference → dialog).</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>~/.config/metnos/skill_preferences.toml</code>: <code>[messaging] default = "google_workspace"</code>.</li>
+<li><code>runtime/skill_preferences.py</code>: lookup helper.</li>
+<li>Modifica <code>prefilter.py</code> / <code>tool_grammar.py</code>: applica preference dopo marker filter.</li>
+<li>CLI <code>metnos-cli preference set messaging google_workspace</code>.</li>
+<li>Wizard onboarding al first-skill-install.</li>
+<li>ADR nuovo <code>0143-skill-preference-policy.md</code>.</li>
+<li><strong>Effort</strong>: S (4-5 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase A (top-K injection).</li>
+<li><strong>Validation criteria</strong>: 3-tier dispatch verificato su 20 query simulate multi-provider; default user-tunable rispettato; fallback dialog solo se preference assente.</li>
+<li><strong>Rischio regressione</strong>: utente confuso da nuova dialog. Mitigazione: messaging UX chiara + skip dialog se preference set.</li>
+<li><strong>Test plan</strong>: e2e con 2 skill messaging simulate (gmail + outlook stub).</li>
+<li><strong>Roll-back</strong>: file <code>skill_preferences.toml</code> assente = comportamento attuale (marker filter).</li>
+</ul>
+<h3 id="fase-e-smoke-battery-scaling-prioritized-per-skill-property-based">Fase E — Smoke battery scaling: prioritized + per-skill + property-based</h3>
+<ul>
+<li><strong>Obiettivo</strong>: smoke &lt;20 min anche con 50+ skill.</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>runtime/smoke.py</code> refactor: tiers <code>critical</code> (30 query, 10 min) / <code>regression</code> (100 query, 40 min) / <code>nightly</code> (full).</li>
+<li><code>runtime/skill_smoke.py</code>: per-skill suite triggered da sign/load.</li>
+<li><code>runtime/property_tests.py</code>: generator dal manifest (input fuzzing + output schema invariants).</li>
+<li>Modifica <code>deploy.sh</code>: esegue <code>critical</code> tier come canary.</li>
+<li>ADR nuovo <code>0144-smoke-battery-tiers.md</code>.</li>
+<li><strong>Effort</strong>: M (8-10 gg).</li>
+<li><strong>Pre-requisite</strong>: nessuno (parallelizzabile).</li>
+<li><strong>Validation criteria</strong>: critical tier &lt;12 min; full nightly &lt;90 min con 30 skill simulate; property tests catturano &gt;= 80% bug noti del test corpus storico.</li>
+<li><strong>Rischio regressione</strong>: nuovo runner potrebbe skippare test critici. Mitigazione: tag esplicito <code>critical=true</code> nei test esistenti, audit pre-merge.</li>
+<li><strong>Test plan</strong>: confronto coverage smoke v1 vs v2 su 100 query historical.</li>
+<li><strong>Roll-back</strong>: <code>METNOS_SMOKE_TIER=full</code> ripristina comportamento monolitico.</li>
+</ul>
+<h3 id="fase-f-two-tier-planning-dispatcher-fast-planner-middle">Fase F — Two-tier planning (dispatcher fast → PLANNER middle)</h3>
+<ul>
+<li><strong>Obiettivo</strong>: ridurre prompt PLANNER del 60-70% scegliendo macro-area a monte.</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>runtime/dispatcher_fast.py</code> (~150 LOC): Qwen3:8B think=false; input query + manifest macro-area; output macro-area scelta (1-3) o <code>multi</code>.</li>
+<li>Schema macro-area: <code>{mail, calendar, files, web, system, photos, contacts, tasks, persons, generic}</code> allineato a <code>_OBJECT_TO_SECTIONS</code>.</li>
+<li>Modifica <code>agent_runtime.py</code>: invocazione dispatcher → compose prompt PLANNER solo con sections macro-area scelte.</li>
+<li>Fallback: dispatcher fail → <code>generic</code> (pool full come oggi).</li>
+<li>Bench A/B latency e accuracy.</li>
+<li>ADR nuovo <code>0145-two-tier-planning.md</code>.</li>
+<li><strong>Effort</strong>: L (15-20 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase A (Tool RAG) e Fase E (smoke tiers).</li>
+<li><strong>Validation criteria</strong>: accuracy routing &gt;= 95% del baseline single-tier (no degrado); latency P50 -25%, P95 -15%; smoke battery PASS.</li>
+<li><strong>Rischio regressione</strong>: dispatcher sbaglia macro-area → tool corretto escluso. Mitigazione: top-3 macro-aree, non top-1; fallback <code>multi</code> su confidence bassa.</li>
+<li><strong>Test plan</strong>: 300 query reali del corpus + 50 query edge (multi-domain).</li>
+<li><strong>Roll-back</strong>: feature flag <code>METNOS_TWO_TIER_PLANNING=0</code>.</li>
+</ul>
+<h3 id="fase-g-skill-subdomains-workspace-mode">Fase G — Skill subdomains (workspace mode)</h3>
+<ul>
+<li><strong>Obiettivo</strong>: caricare skill per "spazio di lavoro" (lavoro / personale / casa).</li>
+<li><strong>Deliverable</strong>:</li>
+<li><code>~/.config/metnos/workspaces.toml</code>: <code>[work] skills = ["google-workspace", "slack"]; [personal] skills = ["nextcloud", "immich"]</code>.</li>
+<li>CLI <code>metnos-cli workspace switch work</code>.</li>
+<li>Telegram comando <code>/workspace work</code>.</li>
+<li>HTTP UI: workspace selector header.</li>
+<li>Modifica <code>loader.py</code>: filter pool per <code>active_workspace</code> (oltre a dormancy).</li>
+<li>ADR nuovo <code>0146-skill-workspaces.md</code>.</li>
+<li><strong>Effort</strong>: M (8-10 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase C (per-skill sandbox per data isolation).</li>
+<li><strong>Validation criteria</strong>: switch workspace istantaneo (no daemon restart); pool effettivo per workspace match dichiarazione; isolation cross-workspace verificata (file scritti in <code>work</code> non leggibili da <code>personal</code>).</li>
+<li><strong>Rischio regressione</strong>: utente confuso "perche' Metnos non vede gmail?" → controllo workspace attivo. Mitigazione: notifica chiara "workspace = personal, gmail non attivo".</li>
+<li><strong>Test plan</strong>: 3 workspace, 6 skill totali, 30 query miste; verifica routing rispetta workspace.</li>
+<li><strong>Roll-back</strong>: workspace <code>default</code> con tutte le skill = comportamento attuale.</li>
+</ul>
+<h3 id="fase-h-skill-registry-federato-health-monitoring">Fase H — Skill registry federato + health monitoring</h3>
+<ul>
+<li><strong>Obiettivo</strong>: marketplace privato di skill self-hosted (skill.metnos.com) + monitoring.</li>
+<li><strong>Deliverable</strong>:</li>
+<li>Server registry minimale (aiohttp, sqlite, sha256 + GPG signature verification).</li>
+<li>CLI <code>metnos-cli skills search &lt;query&gt;</code> / <code>install &lt;skill_id&gt;</code>.</li>
+<li>Daily health check scheduler v2 task <code>skill_health_check</code>.</li>
+<li>Auto-suggestion install per query non risolte (consent dialog).</li>
+<li>Skill compatibility matrix: <code>[compat] metnos_min = "0.5.0"</code>.</li>
+<li>ADR nuovo <code>0147-skill-registry.md</code>.</li>
+<li><strong>Effort</strong>: XL (25-30 gg).</li>
+<li><strong>Pre-requisite</strong>: Fase C, D, G.</li>
+<li><strong>Validation criteria</strong>: registry remoto raggiungibile, install end-to-end di 3 skill demo; health check rileva 100% dormancy + 80% upstream API breaking change in test simulato.</li>
+<li><strong>Rischio regressione</strong>: registry come single-point-of-failure. Mitigazione: registry mirror locale (~/.local/share/metnos/skill_mirror/).</li>
+<li><strong>Test plan</strong>: install/uninstall ciclo + verify signature + e2e su 5 skill demo.</li>
+<li><strong>Roll-back</strong>: registry opt-in, install manuale via filesystem resta supportato.</li>
+</ul>
+<h3 id="critical-path">Critical path</h3>
+<pre><code>Fase A (Tool RAG) ──┬─→ Fase D (preference)
+                    │
+Fase B (capability) ┴─→ Fase C (sandbox) ──→ Fase G (workspaces)
+                                              │
+Fase E (smoke tiers) (parallelo)              │
+                    │                         │
+                    └─→ Fase F (two-tier) ────┴─→ Fase H (registry)
+</code></pre>
+<p><strong>Decision gates</strong>:
+- Pre-Fase F: validare numericamente che Tool RAG (Fase A) sblocca scaling fino a 30 tool senza degrado accuracy. Se no, two-tier diventa P0.
+- Pre-Fase G: validare che 5-10 skill in produzione rispettano sandbox per-skill senza degrade UX (no false positive blocchi). Se no, workspace e' prematuro.
+- Pre-Fase H: bench reale con 20 skill simulate. Se latency P95 &gt;25s, fermarsi e ottimizzare prima.</p>
+<hr />
+<h2 id="5-innovazioni-proposte-per-metnos">5. Innovazioni proposte per Metnos</h2>
+<h3 id="51-tool-rag-ibrido-marker-semantic-token-gia-parzialmente-prior-art-ma-combinazione-originale">5.1 Tool RAG ibrido marker + semantic + token (gia' parzialmente prior art, ma combinazione originale)</h3>
+<p>L'innovazione e' <strong>combinare</strong>:
+1. <strong>Token-rank</strong> esistente (deterministico, ~3ms) come primo filtro coarse (top-50).
+2. <strong>BGE-M3 semantic</strong> (ADR 0134 infra) come fine ranking (top-15).
+3. <strong>Marker provider</strong> (ADR 0136) come precedence override.
+4. <strong>Always-keep</strong> primary tools (<code>_OBJECT_PRIMARY_TOOLS</code>) per recall guarantee.</p>
+<p>Tutti deterministici §7.9 eccetto BGE-M3 (gia' in produzione). Compatibile con grammar GBNF (ADR 0133): il top-15 diventa l'input di <code>filter_pool_for_grammar</code>.</p>
+<p><strong>Differenza vs ToolLLM retriever</strong>: noi non addestriamo un retriever ad-hoc, usiamo BGE-M3 pre-trained + hybrid con token-rank legacy. Zero training, zero infrastruttura GPU per training.</p>
+<h3 id="52-workspace-mode-con-auto-detect-contestuale">5.2 Workspace mode con auto-detect contestuale</h3>
+<p>Estensione: oltre allo switch manuale (<code>/workspace work</code>), Metnos puo' <strong>inferire</strong> il workspace attivo da context:
+- Heuristics deterministica: ora del giorno (work 9-18 → work, altrimenti personal), location (in ufficio → work), calendario (meeting in corso → work).
+- Configurabile in <code>workspaces.toml</code> con <code>auto_rules</code>.
+- Mai bloccante: l'utente puo' sempre override esplicito.</p>
+<p>Pattern §7.9 puro, niente ML.</p>
+<h3 id="53-user-preference-learning-passivo">5.3 User preference learning passivo</h3>
+<p>Quando l'utente dispatcha "manda mail" senza marker, e il sistema chiede "Gmail o Outlook?" e l'utente sceglie Gmail per N volte (N=3 default), Metnos propone "Vuoi che Gmail sia il default per email?" con dialog di consent.</p>
+<p>Deterministico: counter persistente in sqlite per (verb, obj, provider_chosen). Soglia configurabile. Niente ML reale, ma effetto adattivo.</p>
+<h3 id="54-skill-capability-sandboxing-differenziato">5.4 Skill capability sandboxing differenziato</h3>
+<p>(Gia' coperto in Fase C, ma innovazione vs MCP standard: dichiarazione <strong>deduttiva</strong> da capability dichiarate.)</p>
+<p>Esempio: capability <code>messaging:send_outbound</code> deduce automaticamente <code>network_allowed</code> non-vuoto. Capability <code>files:write_local</code> deduce <code>fs_write</code> con scope. Verifier al load valida coerenza.</p>
+<p>Vantaggio vs MCP (oggi tutto manuale per server admin): default sicuro deducibile, riduce burden manuale.</p>
+<h3 id="55-property-based-testing-da-manifest">5.5 Property-based testing da manifest</h3>
+<p>Generatore Python (gia' c'e' <code>hypothesis</code> library, optional dep) che da manifest <code>args_schema</code> genera input random e verifica:
+- output rispetta schema dichiarato
+- <code>ok=true</code> implica almeno un <code>results</code>/<code>entries</code> non-null
+- <code>truncated=true</code> implica <code>available_total</code> presente
+- <code>reverse_pattern</code> dichiarato → reverse effettivamente eseguibile (per executor revertible)</p>
+<p>Sostituisce ~50% dei test smoke statici manualmente scritti. Resta cap su test e2e di flow reale.</p>
+<h3 id="56-two-tier-planning-con-macro-area-locale-qwen38b">5.6 Two-tier planning con macro-area locale (Qwen3:8B)</h3>
+<p>(Gia' coperto in Fase F.) Innovazione vs HTAA / ToolPlanner: usa il tier <code>fast</code> gia' presente nei 3 tier Metnos, zero nuovo modello da scaricare. Riusa stesso process llama.cpp con seconda slot.</p>
+<h3 id="57-skill-provenance-immutable-audit-chain">5.7 Skill provenance + immutable audit chain</h3>
+<p>Ogni invocazione skill scrive observation con campi:
+- <code>tool_provenance = "imported:google-workspace@1.2.3"</code>
+- <code>skill_sha256 = "&lt;digest manifest&gt;"</code>
+- <code>sandbox_profile_sha = "&lt;digest profile&gt;"</code>
+- <code>capability_used = ["gmail.read"]</code></p>
+<p>Audit log JSONL append-only firmato (HMAC chain). Permette post-hoc incident response se skill malevola compromessa upstream.</p>
+<h3 id="58-federated-skill-discovery-con-publisher-trust-tiers">5.8 Federated skill discovery con publisher trust tiers</h3>
+<p><code>skill.metnos.com</code> (o registry federati): publisher classificati <code>verified | community | unverified</code>. Default install: solo <code>verified</code>. Override esplicito per community con consent banner. Unverified = manual install only.</p>
+<p>Trust tier deterministico da sha256 pinning + GPG signature opzionale + community vote (long-term).</p>
+<hr />
+<h2 id="5bis-alternative-scalabili-al-prefilter-oltre-token-vs-tool-rag">5.bis Alternative scalabili al prefilter (oltre token vs Tool RAG)</h2>
+<blockquote>
+<p>Sezione aggiunta 17/5/2026 dopo nota di Roberto: il framing
+originale "token-flat vs Tool RAG semantic" ha ristretto il dominio
+delle soluzioni. La letteratura IR e i sistemi agentici offrono
+almeno 10 approcci alternativi, molti deterministici §7.9 e
+compatibili con vocabolario chiuso §2.2. Bench Fase A dovrebbe
+valutare alcuni di questi in parallelo, NON solo BGE-M3 semantic.</p>
+</blockquote>
+<h3 id="5bis1-verb-first-dispatch-table-deterministico-o1">5.bis.1 Verb-first dispatch table (deterministico, O(1))</h3>
+<p>L'intent extractor gia' produce <code>intent.verb</code> (read/write/find/...).
+Tabella <code>verb → list[tool]</code> pre-calcolata al boot. Query → dispatch
+O(1) al sub-set di tool che hanno quel verbo. Pool ridotto da N a N/23
+(numero verbi canonici).</p>
+<ul>
+<li><strong>Pro</strong>: zero LLM, zero embedding, deterministico. Vocabolario chiuso
+  §2.2 perfettamente adatto. Compatibile grammar GBNF (top-K input).</li>
+<li><strong>Con</strong>: query ambigue verbo ("mostra le foto") richiedono fallback.
+  Risolvibile con prima fase verb-dispatch + seconda fase token-rank
+  sul sub-set.</li>
+<li><strong>Effort</strong>: S (1 gg). Reuse <code>vocab.py::_OBJECT_PRIMARY_TOOLS</code> esteso.</li>
+<li><strong>Letteratura analoga</strong>: Apache Lucene <code>BooleanQuery</code> con MUST/SHOULD
+  clauses; Elasticsearch <code>terms</code> filter pre-aggregation.</li>
+</ul>
+<h3 id="5bis2-sqlite-fts5-inverted-index-battle-tested-scalable">5.bis.2 SQLite FTS5 inverted index (battle-tested, scalable)</h3>
+<p>Indice full-text SQLite FTS5 su <code>(name, description, affinity)</code> di ogni
+tool. Query → SQL FTS5 con BM25 ranking integrato + custom tokenizer
+(porter stemmer IT+EN). SQLite gia' in produzione (mnestoma,
+persons.sqlite, scheduler v2): nessuna nuova dipendenza.</p>
+<ul>
+<li><strong>Pro</strong>: scalable a 10K+ documenti senza degrado, BM25 nativo,
+  persistente. Stesso pattern usato da Notion search, GitHub issues
+  search, VS Code symbol search.</li>
+<li><strong>Con</strong>: serve build/refresh ad ogni sign executor (analogo a
+  ADR 0093 async index build). Re-encoding affinity per stemmer.</li>
+<li><strong>Effort</strong>: M (3-5 gg). 1 nuovo modulo + hook in sign.py.</li>
+<li><strong>Letteratura</strong>: SQLite FTS5 docs (sqlite.org/fts5.html); paper
+  "Anserini: Reproducible Ranking Baselines" (2017).</li>
+</ul>
+<h3 id="5bis3-bloom-filter-pre-screen-cheap-negative-filter">5.bis.3 Bloom filter pre-screen (cheap negative filter)</h3>
+<p>Per ogni tool, costruisci Bloom filter dei suoi token caratteristici
+(name + verbi + oggetti + affinity tokens). Query → check Bloom in O(1)
+per tool. Tool con Bloom miss → escluso senza token-rank. Pool ridotto
+80-95% in O(N) con basso costante (un AND bitwise per tool).</p>
+<ul>
+<li><strong>Pro</strong>: cost-effective screening prima del rank piu' costoso.
+  No false negatives su token esatti (Bloom garantisce). Falsi
+  positivi rari (1-5%) si filtrano comunque a valle.</li>
+<li><strong>Con</strong>: serve update Bloom su sign. Memory footprint ~100 byte/tool.</li>
+<li><strong>Effort</strong>: S (2 gg). <code>runtime/tool_bloom.py</code> standalone.</li>
+<li><strong>Letteratura</strong>: "Bloom filters in Probabilistic Verification" (1970);
+  uso pratico: Bitcoin SPV, Cassandra, Redis filter.</li>
+</ul>
+<h3 id="5bis4-trie-radix-tree-sui-prefissi-verb_object">5.bis.4 Trie / Radix tree sui prefissi verb_object</h3>
+<p>Pre-costruisci trie dei nomi tool: <code>read_messages_google_workspace</code> →
+path <code>read → messages → google → workspace</code>. Query token → traversal
+O(L) (L = lunghezza). Stessa idea di un router HTTP (Express.js, Gin).</p>
+<ul>
+<li><strong>Pro</strong>: O(L) lookup costante in N. Vocabolario chiuso §2.2 amplifica:
+  3-4 levels max. Memory efficient.</li>
+<li><strong>Con</strong>: solo trovare PER PREFISSO esatto. Necessita normalizzazione
+  query (lemmatizzazione IT→canonical verb).</li>
+<li><strong>Effort</strong>: S (1-2 gg) + integration con intent_extractor.</li>
+<li><strong>Letteratura</strong>: trie classico Knuth Vol. 3; Aho-Corasick per
+  multi-pattern matching.</li>
+</ul>
+<h3 id="5bis5-learned-ranker-decision-tree-gradient-boosting">5.bis.5 Learned ranker (decision tree / gradient boosting)</h3>
+<p>Addestra un classifier (XGBoost o random forest) su corpus turn log
+Metnos (4086 turn negli ultimi 30 giorni) per predire top-K tool data
+la query. Features: token features query + intent verb + intent object
++ marker provider + history. Inference ~ms, no LLM.</p>
+<ul>
+<li><strong>Pro</strong>: usa dati REALI Metnos (no estrapolazione letteratura).
+  Cresce con corpus utente. Deterministico a inference time.</li>
+<li><strong>Con</strong>: serve labeled training set (turn log con first_tool come
+  label sintetica). Re-train periodico. Black-box (no spiegazione del
+  match). Overfit possibile a 4K esempi.</li>
+<li><strong>Effort</strong>: M (4-6 gg) + scikit-learn dep.</li>
+<li><strong>Letteratura</strong>: "Learning to Rank" (Liu 2009); industry: Amazon
+  product search ranker, LinkedIn talent search.</li>
+</ul>
+<h3 id="5bis6-hierarchical-skill-routing-dispatcher-skill-scope">5.bis.6 Hierarchical skill routing (dispatcher → skill scope)</h3>
+<p>Two-stage: stage 1 e' un mini-classifier (anche LLM tier fast Qwen3:8B)
+che assegna la query a UN dominio/skill (gmail, calendar, photos,
+files, web). Stage 2: il PLANNER lavora solo sul pool della skill
+scelta (~5-20 tool). Equivalente a "two-tier planning" gia' presente
+in Fase F della roadmap.</p>
+<ul>
+<li><strong>Pro</strong>: scalable a 100+ skill (ogni skill resta self-contained).
+  Native a MCP architecture (Anthropic server-per-domain).</li>
+<li><strong>Con</strong>: errore al stage 1 propaga (query cross-skill misrouting).
+  Latency extra ~200ms per dispatcher.</li>
+<li><strong>Effort</strong>: L (10-15 gg). Gia' descritto in Fase F.</li>
+<li><strong>Letteratura</strong>: HuggingGPT (2023); MCP servers Anthropic; CAMEL
+  multi-agent dispatch.</li>
+</ul>
+<h3 id="5bis7-constraint-based-filtering-smt-style">5.bis.7 Constraint-based filtering (SMT-style)</h3>
+<p>L'intent extractor produce constraint strutturati: <code>{verb in {send,
+write}, object in {messages}, provider != metnos}</code>. Filtro tool come
+risoluzione di constraint (intersection di set). Deterministico,
+spiegabile, niente LLM in fase di filter.</p>
+<ul>
+<li><strong>Pro</strong>: 100% deterministico §7.9. Debugging facile (constraint
+  trace). Audit log perfetto: "tool X escluso perche' violato
+  constraint Y".</li>
+<li><strong>Con</strong>: dipende dalla qualita' di estrazione constraint
+  dall'intent (intent_extractor LLM ha errore ~5%).</li>
+<li><strong>Effort</strong>: M (5-7 gg) + extension intent_extractor schema.</li>
+<li><strong>Letteratura</strong>: SAT/SMT solvers (Z3, CVC4); rule engines (Drools);
+  pratica IT: AWS IAM policy evaluation.</li>
+</ul>
+<h3 id="5bis8-selective-semantic-expansion-cost-aware-hybrid">5.bis.8 Selective semantic expansion (cost-aware hybrid)</h3>
+<p>Token-rank sempre primary. SOLO per query con <code>top_score &lt; threshold</code>
+(es. 0.4) o <code>entropy(top-3) &gt; soglia</code> (incertezza alta), attiva
+fallback semantic BGE-M3. Pattern gia' parzialmente in ADR 0134 per
+affinity; estendere allo stesso prefilter principale.</p>
+<ul>
+<li><strong>Pro</strong>: zero costo aggiuntivo sulle query "facili" (90%+); semantic
+  attivo solo dove serve. Backward compat completo.</li>
+<li><strong>Con</strong>: serve calibration soglia. Misurabile via Fase A bench.</li>
+<li><strong>Effort</strong>: S (1-2 gg). Modifica <code>prefilter.py::rank_with_intent</code>.</li>
+<li><strong>Letteratura</strong>: "Cost-Aware Retrieval" (Carbonell+Goldstein 1998);
+  industry: Google "deep retrieval" + sparse fallback.</li>
+</ul>
+<h3 id="5bis9-cluster-based-pruning-k-means-su-embedding-affinity">5.bis.9 Cluster-based pruning (K-means su embedding affinity)</h3>
+<p>Offline: clusterizza i tool in K cluster (K=10-20) via K-means
+sull'embedding affinity BGE-M3. Online: per ogni query, embedding +
+cluster assignment (1 dot product per K centroidi), poi rank solo
+dentro il cluster scelto. Pool ridotto da N a N/K.</p>
+<ul>
+<li><strong>Pro</strong>: scalabile a N grandi. Cluster centroidi cacheable.</li>
+<li><strong>Con</strong>: cluster boundary issues (query borderline → cluster
+  sbagliato). Approximate KNN sotto-ottimo.</li>
+<li><strong>Effort</strong>: M (3-4 gg). Reuse ADR 0134 BGE-M3.</li>
+<li><strong>Letteratura</strong>: FAISS IVF index; pgvector ivfflat; Annoy.</li>
+</ul>
+<h3 id="5bis10-hybrid-sparse-dense-retrieval-con-bge-m3-state-of-the-art-ir">5.bis.10 Hybrid sparse-dense retrieval con BGE-M3 (state-of-the-art IR)</h3>
+<p>BGE-M3 e' un modello multi-functional: produce SIA dense embeddings
+SIA sparse vectors (lexical weights). Tipico setup IR moderno: combina
+i due con weighted fusion (lambda * dense + (1-lambda) * sparse).
+Equivalente a "ColBERT v2" senza late interaction overhead.</p>
+<ul>
+<li><strong>Pro</strong>: state-of-the-art IR retrieval; recupera meglio query con
+  termini rari (sparse compensa). BGE-M3 lo supporta nativamente.</li>
+<li><strong>Con</strong>: serve embedding sparse calcolato al sign (oggi solo dense
+  usato in ADR 0134). +5-10ms inference per sparse.</li>
+<li><strong>Effort</strong>: M (3-5 gg). Estende infrastruttura ADR 0134.</li>
+<li><strong>Letteratura</strong>: "BGE-M3 Multi-functional Embeddings" (BAAI 2024);
+  "ColBERT v2" (Khattab+Zaharia 2022).</li>
+</ul>
+<h3 id="sintesi-tabella-alternative">Sintesi tabella alternative</h3>
+<div class="table-wrapper"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Approccio</th>
+<th>Det?</th>
+<th>Embed?</th>
+<th>Effort</th>
+<th>Scala a</th>
+<th>Best for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5.bis.1</td>
+<td>Verb-first dispatch</td>
+<td>Si'</td>
+<td>No</td>
+<td>S</td>
+<td>1000+ tool</td>
+<td>first-stage cheap filter</td>
+</tr>
+<tr>
+<td>5.bis.2</td>
+<td>SQLite FTS5</td>
+<td>Si'</td>
+<td>No</td>
+<td>M</td>
+<td>10K tool</td>
+<td>persistent rank, BM25 native</td>
+</tr>
+<tr>
+<td>5.bis.3</td>
+<td>Bloom pre-screen</td>
+<td>Si'</td>
+<td>No</td>
+<td>S</td>
+<td>10K tool</td>
+<td>negative filter pre-rank</td>
+</tr>
+<tr>
+<td>5.bis.4</td>
+<td>Trie/Radix</td>
+<td>Si'</td>
+<td>No</td>
+<td>S</td>
+<td>1000 tool</td>
+<td>exact-prefix routing</td>
+</tr>
+<tr>
+<td>5.bis.5</td>
+<td>Learned ranker</td>
+<td>Quasi</td>
+<td>No</td>
+<td>M</td>
+<td>corpus-dependent</td>
+<td>data-driven if logs grandi</td>
+</tr>
+<tr>
+<td>5.bis.6</td>
+<td>Hierarchical dispatch</td>
+<td>LLM</td>
+<td>Opz.</td>
+<td>L</td>
+<td>100+ skill</td>
+<td>scaling oltre 50 skill</td>
+</tr>
+<tr>
+<td>5.bis.7</td>
+<td>Constraint-based</td>
+<td>Si'</td>
+<td>No</td>
+<td>M</td>
+<td>1000 tool</td>
+<td>audit + explainability</td>
+</tr>
+<tr>
+<td>5.bis.8</td>
+<td>Selective semantic</td>
+<td>Si' (per soglia)</td>
+<td>Si' (fallback)</td>
+<td>S</td>
+<td>250-500 tool</td>
+<td>hybrid minimal cost</td>
+</tr>
+<tr>
+<td>5.bis.9</td>
+<td>Cluster pruning</td>
+<td>Si'</td>
+<td>Si' (offline)</td>
+<td>M</td>
+<td>1000+ tool</td>
+<td>approximate KNN</td>
+</tr>
+<tr>
+<td>5.bis.10</td>
+<td>BGE-M3 sparse+dense</td>
+<td>Si'</td>
+<td>Si' (full)</td>
+<td>M</td>
+<td>500+ tool</td>
+<td>state-of-the-art recall</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="raccomandazione-sostituisce-la-precedente">Raccomandazione (sostituisce la precedente)</h3>
+<p>Fase A bench (1-2 gg) deve includere almeno <strong>3 ranker in confronto</strong>:
+- (a) token-flat attuale (baseline)
+- (b) <strong>selective semantic</strong> §5.bis.8 (estensione minima ADR 0134)
+- (c) <strong>verb-first dispatch + token-rank sui survivors</strong> §5.bis.1+token</p>
+<p>E secondariamente, se i primi 3 mostrano gap:
+- (d) <strong>SQLite FTS5</strong> §5.bis.2 (per scalabilita' a 10K tool sul lungo)</p>
+<p>Tool RAG con BGE-M3 puro (Fase A.1 originale) e' UNA delle opzioni, NON
+l'unica. Sceglie il bench, non la letteratura ToolBench.</p>
+<hr />
+<h2 id="6-sintesi-esecutiva">6. Sintesi esecutiva</h2>
+<h3 id="61-cinque-raccomandazioni-in-ordine-di-priorita">6.1 Cinque raccomandazioni in ordine di priorita'</h3>
+<ol>
+<li><strong>Fase A — Bench prefilter scaling</strong> (1-2 gg). Misura quando token-flat degrada al crescere del pool, prima di committare al refactor. Switch a Tool RAG (Fase A.1) o ad altre soluzioni (vedi §5.bis) SOLO se evidenza empirica Metnos-specifica. Non estrapolare dalla letteratura ToolBench su corpus eterogenei.</li>
+<li><strong>Fase E — Smoke tiers</strong> (10 gg, parallelo a A). Senza canary sub-20-min, deploy con 10+ skill diventa rischioso. Prerequisito per tutto il resto.</li>
+<li><strong>Fase C — Sandbox per-skill</strong> (15 gg). Security debt che si accumula a ogni skill aggiunta. Procrastinare = breach probabilita' crescente (OWASP MCP04 documenta scenari reali).</li>
+<li><strong>Fase D — Preference profile</strong> (5 gg). UX critica: senza, 2 skill messaging = chiede ogni volta. Effort minimo, payoff alto.</li>
+<li><strong>Fase F — Two-tier planning</strong> (20 gg). Sblocca scaling 30→100+. Solo dopo che A, C, E sono stabili.</li>
+</ol>
+<p>Fasi B, G, H sono accessorie di medio/lungo termine; non bloccano i primi 6 mesi.</p>
+<h3 id="62-investment-richiesto">6.2 Investment richiesto</h3>
+<ul>
+<li><strong>Breve termine</strong> (Fasi A+B+C+D+E): ~45 gg-uomo, 2.5-3 mesi calendar con un developer FTE.</li>
+<li><strong>Medio termine</strong> (+F+G): ~30 gg, 1.5-2 mesi addizionali.</li>
+<li><strong>Lungo termine</strong> (+H): ~30 gg, 1.5-2 mesi addizionali.</li>
+<li><strong>Totale 18 mesi</strong>: ~105 gg-uomo (~5-6 mesi calendar FTE).</li>
+</ul>
+<h3 id="63-primi-risultati-misurabili">6.3 Primi risultati misurabili</h3>
+<ul>
+<li>Settimana 4: Tool RAG funzionante, smoke 22/22 PASS con 30 tool simulati.</li>
+<li>Settimana 6: smoke tiers in produzione, deploy con canary &lt;12 min.</li>
+<li>Settimana 10: per-skill sandbox in produzione, penetration test passato.</li>
+<li>Settimana 14: 5 skill third-party stabili in produzione (oltre google-workspace).</li>
+</ul>
+<h3 id="64-porto-sicuro-quantitativo">6.4 Porto sicuro quantitativo</h3>
+<p>Target "porto sicuro" misurabile alla fine di Fase F (medio termine):</p>
+<ul>
+<li><strong>Skill supportate</strong>: 30 stabili, fino a 50 con degrado &lt;10% latency.</li>
+<li><strong>Latency P95 per query</strong>: &lt;12s (oggi ~15s, target -20%).</li>
+<li><strong>Accuracy routing</strong>: &gt;= 95% (baseline current).</li>
+<li><strong>Smoke battery time</strong>: critical tier &lt;12 min, full nightly &lt;90 min.</li>
+<li><strong>Security</strong>: zero shared filesystem cross-skill; sandbox profile dichiarato per il 100% delle skill; audit log firmato.</li>
+<li><strong>UX</strong>: zero disambiguation dialog per single-provider; &lt;=1 dialog per query multi-provider con preference set.</li>
+<li><strong>Manutenzione</strong>: &lt;=30 min/settimana di triage skill health failures.</li>
+</ul>
+<hr />
+<h2 id="7-note-per-roberto">7. Note per Roberto</h2>
+<p>Tre punti da discutere prima di iniziare:</p>
+<p><strong>1. Decisione architetturale fondante — bench prima di scegliere il prefilter.</strong>
+La letteratura 2023-2026 mostra degrado dei pool flat oltre ~100 tool su corpus eterogenei (ToolBench, RestGPT). Ma il prefilter Metnos NON e' un retriever flat letterario: ha vocabolario chiuso §2.2 + ADR 0136 marker provider + ADR 0134 semantic fallback gia' integrato. Il bench embedding-vs-token del 4/5/2026 (ADR 0075) ha confermato <strong>token-based 92.3% Recall@5 sul pool corrente</strong> (~70 tool). Roberto giustamente segnala che l'estrapolazione "letteratura RAG -&gt; Metnos" e' rischiosa. Approccio corretto: <strong>Fase A misura prima</strong> (1-2 gg), poi attiva Tool RAG (Fase A.1) o uno fra le 8 alternative deterministiche scalabili (vedi §5.bis) SOLO se serve. Niente refactor cieco.</p>
+<p><strong>2. Sicurezza supply-chain: fino a che livello?</strong>
+OWASP MCP Top 10 e gli incidenti 2025 (postmark-mcp trojan, OX poisoning 9/11 registry, 1184 skill malevole ClawHub) sono dati duri. La nostra ADR 0123 ha gia' sha256 pinning, ma sandbox bubblewrap e' globale. Tre opzioni: (a) profile dichiarativo per-skill (Fase C, 15 gg, raccomandato); (b) status quo + monitoring (rischio reale); (c) tutto fino a code signing GPG mandatory (eccesso, sproporzionato). Decisione: livello (a) e' il giusto compromesso, ma serve commitment a 15 gg di refactor.</p>
+<p><strong>3. Two-tier planning: quando attivarlo.</strong>
+Fase F (15-20 gg) e' tecnicamente attraente ma rischia over-engineering. La regola d'oro: attivarlo SOLO quando il bench dimostra che il PLANNER middle Gemma 26B degrada misurabilmente. Probabile soglia: 30-50 skill installate. Fino a li', single-tier + Tool RAG (Fase A) basta. Mio suggerimento: includere F nella roadmap come <strong>gate condizionale</strong> dopo Fase A+E, decidere con bench A/B su 200 query reali. Se accuracy single-tier resta &gt;95% a 30 skill con Tool RAG, posticipare F a long-term.</p>
+<p>Sources consultati per la survey:
+- <a href="https://arxiv.org/abs/2307.16789">ToolLLM (arXiv:2307.16789)</a>
+- <a href="https://arxiv.org/abs/2511.01854">Tool-to-Agent Retrieval (arXiv:2511.01854)</a>
+- <a href="https://arxiv.org/abs/2304.08244">API-Bank (arXiv:2304.08244)</a>
+- <a href="https://aclanthology.org/2025.findings-acl.1258.pdf">Benchmarking Tool Retrieval for LLMs (ACL 2025 Findings)</a>
+- <a href="https://tianpan.co/blog/2026-04-09-tool-selection-problem-agent-tool-routing-at-scale">The Tool Selection Problem (tianpan.co 2026-04)</a>
+- <a href="https://arxiv.org/html/2604.10917">HTAA Hierarchical Toolset Agentization (arXiv:2604.10917)</a>
+- <a href="https://arxiv.org/html/2409.14826v2">ToolPlanner (arXiv:2409.14826)</a>
+- <a href="https://arxiv.org/html/2506.12508v1">AgentOrchestra (arXiv:2506.12508)</a>
+- <a href="https://www.anthropic.com/news/model-context-protocol">Introducing MCP (Anthropic)</a>
+- <a href="https://www.anthropic.com/engineering/code-execution-with-mcp">Code execution with MCP (Anthropic)</a>
+- <a href="https://owasp.org/www-project-mcp-top-10/">OWASP MCP Top 10 2025</a>
+- <a href="https://www.ox.security/blog/mcp-supply-chain-advisory-rce-vulnerabilities-across-the-ai-ecosystem/">OX Security MCP Supply Chain Advisory</a>
+- <a href="https://code.visualstudio.com/api/references/contribution-points">VS Code Extension API — Contribution Points</a>
+- <a href="https://vllm-semantic-router.com/blog/semantic-tool-selection/">vLLM Semantic Router blog</a></p>
+</body>
+</html>
