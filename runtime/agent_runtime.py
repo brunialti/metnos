@@ -6226,6 +6226,28 @@ def run_turn(user_query, *, mode="local", model=None, k=None, k_min=5, k_max=8, 
     except Exception as _lpe:  # noqa: BLE001 — osservabilità mai bloccante
         _LOG.debug("legacy_planner_probe noop: %r", _lpe)
 
+    # ══ NEUTRALIZZAZIONE PLANNER LEGACY (ADR 0181-ext, 2026-07-04) ══════════
+    # Questo punto è il CHOKEPOINT UNICO verso il ReAct legacy (~3350 LOC): ci
+    # arrivano TUTTI i path residui in cui il motore moderno ha declinato —
+    # main-path con flag anomalo, engine-None su resume/upload (che scavalcano
+    # il guard onesto §6153 perché fuori dal blocco not-images/not-resume), e il
+    # caso «trigger=unknown» osservato dal vivo. Il vecchio comportamento
+    # (cadere nel legacy) MASCHERAVA il declino con un piano DEGENERE
+    # (es. compute_files_loc(machine_name=...)) — §2.8 violato.
+    #
+    # Ora: esito ONESTO. FAIL-CLOSED: il legacy sotto è irraggiungibile salvo
+    # enable ESPLICITO e ben formato (chiude anche il buco `os.environ.get(k,"0")`
+    # che ritorna "" su env presente-ma-vuoto, analisi A). La sonda sopra conta
+    # ancora i declini per il ciclo analisi→fix del motore. Rollback a runtime:
+    # `METNOS_PLANNER_LEGACY=1` (drop-in systemd) riabilita il legacy senza
+    # redeploy. Rollback codice: git revert di questo commit (isolato).
+    _leg_flag = os.environ.get("METNOS_PLANNER_LEGACY", "").strip().lower()
+    if _leg_flag not in ("1", "true", "yes", "on"):
+        log.final_kind = "error"
+        log.final_message = msg("ERR_QUERY_NOT_UNDERSTOOD")
+        log.intent_verb = ""
+        log.ts_end = time.time(); log.write(); return log
+
     # ModeRouter era un no-op (select() ritornava sempre self.mode); rimosso
     # 23/6. `mode` resta nei param per la CLI/back-compat ma in produzione e'
     # sempre "local" (unica fonte non-local = CLI --mode, vedi __main__).
