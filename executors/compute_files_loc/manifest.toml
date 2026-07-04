@@ -119,3 +119,10 @@ setup    = "mkdir -p /tmp/metnos_loc_test && for i in 1 2 3 4 5; do printf 'a\\n
 input    = { paths = ["/tmp/metnos_loc_test"], max_files = 2 }
 expect   = { ok = true, field_eq = { truncated = true, total_files = 2 } }
 teardown = "rm -rf /tmp/metnos_loc_test"
+
+[placement]
+# F2 (review 2026-07-04): manifest-driven — l'executor puo' girare su
+# un device remoto se la chat lo chiede (ADR 0034). Sostituisce la whitelist
+# hardcoded DEVICE_ELIGIBLE. scope="any" = server di default, device se nominato.
+scope    = "any"
+device_ok = true

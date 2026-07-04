@@ -88,3 +88,10 @@ expect = { ok = false, error_contains = "obbligatorio" }
 name   = "fields_all_keyword"
 input  = { entries = [], fields = "all" }
 expect = { ok = true, ok_count_eq = 0 }
+
+[placement]
+# F2 (review 2026-07-04): manifest-driven — l'executor puo' girare su
+# un device remoto se la chat lo chiede (ADR 0034). Sostituisce la whitelist
+# hardcoded DEVICE_ELIGIBLE. scope="any" = server di default, device se nominato.
+scope    = "any"
+device_ok = true

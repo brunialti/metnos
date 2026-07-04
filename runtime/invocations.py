@@ -242,6 +242,28 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
     return invocation_id
 
 
+def purge_invocations(older_than_days: int = 30, *,
+                      db_path: Path | None = None) -> int:
+    """Elimina le invocazioni TERMINALI (done/failed) più vecchie di
+    `older_than_days` giorni. F5 (review 2026-07-04): la tabella era append-only,
+    a differenza dello spool client (retention) e delle join session (reaper).
+    NON tocca queued/delivered (in volo): confronto sul `delivered_epoch`
+    numerico (wall-clock, robusto al formato). Ritorna le righe rimosse.
+    Idempotente. Agganciato a `jobs/maintenance_tasks.task_state_reaper`."""
+    import time as _t
+    cutoff = _t.time() - int(older_than_days) * 86400
+    conn = _open_db(db_path)
+    try:
+        cur = conn.execute(
+            "DELETE FROM invocations "
+            "WHERE state IN ('done','failed') "
+            "AND delivered_epoch IS NOT NULL AND delivered_epoch < ?",
+            (cutoff,))
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
 def next_invocation(device_id: str, *, cursor: str | None = None,
                     db_path: Path | None = None) -> dict | None:
     """Claim atomico della prossima invocazione per il device.

@@ -3286,17 +3286,30 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     import target_device as _td_elig
     _plc = getattr(executor, "placement", None) or {}
     _plc_scope = (_plc.get("scope") or "").strip().lower()
-    _device_ok = bool(target_device) and executor.name in _td_elig.DEVICE_ELIGIBLE
+    # F2 (review 2026-07-04): eleggibilità al device MANIFEST-DRIVEN
+    # (`[placement] device_ok = true`), con la whitelist DEVICE_ELIGIBLE come
+    # compat-shim temporaneo. Un nuovo executor remoto si dichiara nel proprio
+    # manifest, senza toccare codice centrale (single source of truth = catalogo).
+    _device_ok = bool(target_device) and (
+        bool(_plc.get("device_ok"))
+        or executor.name in _td_elig.DEVICE_ELIGIBLE)
     if _plc_scope == "device" or _device_ok:
         import devices as _devices
         import placement as _placement
         import remote_exec as _remote
         # target_device = NOME device dalla chat → choose_placement L1.c lo abbina
         # (con gate connessione + piattaforma). Senza, resta la logica scope.
+        # F3 (review 2026-07-04): filtra i device per PROPRIETARIO anche QUI (non
+        # solo nella risoluzione chat), altrimenti un executor scope="device"
+        # senza target esplicito vedrebbe i device di TUTTI gli utenti.
+        _who = actor or "host"
+        _devs_for_actor = [
+            d for d in _devices.list_devices()
+            if (getattr(d, "owner_user_id", "host") or "host") == _who]
         _intent = {"device": target_device} if target_device else None
         try:
             _target = _placement.choose_placement(
-                _plc, _intent, _devices.list_devices(),
+                _plc, _intent, _devs_for_actor,
                 platforms=getattr(executor, "platforms", None),
                 executor_name=executor.name)
         except _placement.PlacementError as e:

@@ -260,5 +260,15 @@ def task_state_reaper() -> dict:
         return {"removed_files": removed, "retention_days": turn_days}
     _run("turn_logs", _turn_logs)
 
+    def _invocations():
+        # F5 (review 2026-07-04): la tabella `invocations` (executor remoti) era
+        # append-only, a differenza di spool client / join session. Purga i
+        # terminali (done/failed) oltre retention; NON tocca gli in-volo.
+        import invocations
+        days = int(os.environ.get("METNOS_INVOCATIONS_RETENTION_DAYS", "30"))
+        return {"purged": invocations.purge_invocations(older_than_days=days),
+                "retention_days": days}
+    _run("invocations", _invocations)
+
     log.info("state_reaper report: %s", report)
     return {"ok": True, "report": report}
