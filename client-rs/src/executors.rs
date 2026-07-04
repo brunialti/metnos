@@ -180,7 +180,11 @@ pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp)?;
     for (fname, b64) in &bundle.files {
-        if fname.contains('/') || fname.contains("..") {
+        // Solo un nome di file NUDO: niente separatori (unix '/' o windows '\'),
+        // niente '..', niente drive-letter/ADS windows (':'), niente vuoto
+        // (rilievo #6: hardening, il bundle è già firmato dal server).
+        if fname.is_empty() || fname.contains('/') || fname.contains('\\')
+            || fname.contains("..") || fname.contains(':') {
             bail!("nome file shim non sicuro: {}", fname);
         }
         let data = B64.decode(b64).with_context(|| format!("decode shim {}", fname))?;

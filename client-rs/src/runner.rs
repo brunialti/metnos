@@ -308,22 +308,28 @@ impl Runner {
                         inv, &self.device_id, parsed, elapsed_ms, out.sandbox));
                 }
                 Err(e) => {
-                    let import_failed = out.stderr.contains("ModuleNotFoundError")
-                        || out.stderr.contains("ImportError");
-                    if !refreshed && import_failed {
-                        tracing::warn!(
-                            executor = %inv.executor,
-                            "output non-JSON con import fallito: shim sospetto stantio, \
-                             lo rigenero e riprovo"
-                        );
-                        self.shim_dir = Some(
-                            executors::ensure_shim(
+                    // Auto-guarigione SOLO se manca un modulo DELLO SHIM: quell'
+                    // import è al caricamento del modulo (prima di run_stdio →
+                    // prima di qualsiasi side effect), quindi il retry è sicuro
+                    // anche per futuri executor MUTANTI (rilievo #5). Un import
+                    // fallito altrove NON viene ritentato: il refetch non
+                    // aiuterebbe e un side effect parziale non va ripetuto.
+                    if !refreshed {
+                        if let Some(module) = missing_module(&out.stderr) {
+                            let dir = executors::ensure_shim(
                                 &self.server, &self.server_pubkey, &self.paths.cache_dir,
                             )
-                            .await?,
-                        );
-                        refreshed = true;
-                        continue;
+                            .await?;
+                            if dir.join(format!("{module}.py")).is_file() {
+                                tracing::warn!(
+                                    executor = %inv.executor, module = %module,
+                                    "modulo shim mancante: shim stantio rigenerato, riprovo"
+                                );
+                                self.shim_dir = Some(dir);
+                                refreshed = true;
+                                continue;
+                            }
+                        }
                     }
                     return Err(anyhow::anyhow!(
                         "output executor non-JSON: {e}; stdout={:?} stderr={:?}",
@@ -415,6 +421,18 @@ async fn send_heartbeat(
 
 /// Traduce l'output dell'executor (shape §2.6: entries | results) nel result
 /// di rete (§6.3). `ok`/`entries`/`n_processed` derivano onestamente (§2.8).
+/// Estrae il nome del modulo mancante da uno stderr Python
+/// («ModuleNotFoundError: No module named 'X'»). None se non è quel caso —
+/// così l'auto-guarigione scatta SOLO su modulo assente (import al caricamento),
+/// non su altri errori di import a esecuzione avviata.
+fn missing_module(stderr: &str) -> Option<String> {
+    let marker = "No module named '";
+    let start = stderr.find(marker)? + marker.len();
+    let rest = &stderr[start..];
+    let end = rest.find('\'')?;
+    Some(rest[..end].to_string())
+}
+
 fn result_from_executor(
     inv: &Invocation,
     device_id: &str,

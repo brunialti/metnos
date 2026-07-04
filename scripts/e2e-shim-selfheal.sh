@@ -130,7 +130,7 @@ else
     fail "inv B non completata dopo heal (state=$(inv_state "$INV_B"))"; tail -25 "$TMP/client.log"
 fi
 # prove ANTI-GAMING: il refetch è realmente avvenuto (log) + il modulo è tornato
-grep -qi "rigenero e riprovo\|shim sospetto stantio" "$TMP/client.log" \
+grep -qi "shim stantio rigenerato\|modulo shim mancante" "$TMP/client.log" \
     && pass "log conferma refetch+retry dello shim (heal path esercitato)" \
     || fail "nessuna traccia di auto-guarigione nel log — l'inv B non è passata dal heal"
 [ -f "$SHIM_MOD" ] && pass "executor_helpers.py ripristinato dal refetch" \
