@@ -5,8 +5,8 @@ non esiste nell'entry, prova synonim noti (image_path → path, etc).
 Coerente con vocab compositivo §2.2: campi tecnici hanno spesso varianti
 provider-specifiche (path vs file_path vs image_path).
 
-Shared between runtime/engine/executor.py (Engine v2) e
-runtime/_legacy/praxis_executor.py (Praxis legacy cascade).
+Usato da runtime/engine/executor.py (resolver placeholder/from_step). Il vecchio
+runtime/_legacy/praxis_executor.py è stato rimosso con il planner legacy.
 """
 
 # Synonim chiusi §7.3. Estendere SOLO con varianti documentate da executor
