@@ -154,17 +154,18 @@ pub async fn run_sandboxed(
 
 #[cfg(unix)]
 fn bwrap_args(exec: &CachedExecutor, python: &Path, shim_dir: &Path) -> Vec<String> {
-    let mut a: Vec<String> = Vec::new();
-    a.push("--die-with-parent".into());
-    a.push("--unshare-pid".into());
-    a.push("--new-session".into());
-    a.push("--proc".into());
-    a.push("/proc".into());
-    a.push("--dev".into());
-    a.push("/dev".into());
-    // tmpfs per /tmp (scratch effimero).
-    a.push("--tmpfs".into());
-    a.push("/tmp".into());
+    let mut a: Vec<String> = vec![
+        "--die-with-parent".into(),
+        "--unshare-pid".into(),
+        "--new-session".into(),
+        "--proc".into(),
+        "/proc".into(),
+        "--dev".into(),
+        "/dev".into(),
+        // tmpfs per /tmp (scratch effimero).
+        "--tmpfs".into(),
+        "/tmp".into(),
+    ];
 
     for p in SYSTEM_RO {
         if Path::new(p).exists() {
@@ -253,9 +254,9 @@ fn glob_root(hint: &str) -> Option<PathBuf> {
             break;
         }
     }
-    if h.starts_with("~/") {
+    if let Some(rest) = h.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return Some(home.join(&h[2..]));
+            return Some(home.join(rest));
         }
     }
     if h.starts_with('/') {

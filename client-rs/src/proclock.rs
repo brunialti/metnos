@@ -28,6 +28,7 @@ pub fn acquire(data_dir: &Path) -> Result<ProcLock> {
     let path = data_dir.join("client.lock");
     let mut file = OpenOptions::new()
         .create(true)
+        .truncate(false)  // lock file: apri/crea senza troncare il contenuto
         .write(true)
         .open(&path)
         .with_context(|| format!("apertura lock {}", path.display()))?;

@@ -93,7 +93,7 @@ async fn fetch_executor(server: &str, name: &str) -> Result<ExecutorBundle> {
     if !resp.status().is_success() {
         bail!("executor bundle {} HTTP {}", name, resp.status());
     }
-    Ok(resp.json().await.context("parse executor bundle")?)
+    resp.json().await.context("parse executor bundle")
 }
 
 fn materialize(
