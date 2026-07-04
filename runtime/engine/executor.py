@@ -433,7 +433,22 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     consumer-arg (parità con agent_runtime.resolve_from_step Layer 4)."""
     if "from_step" not in args:
         return args
+    # SAFETY (port da agent_runtime.resolve_from_step, incidente live 16/5/2026):
+    # se l'azione ha già un TARGET ESPLICITO (event_id/paths/ids/…), from_step è
+    # ridondante o contraddittorio. Espandere `entries` accanto sovrascriverebbe
+    # il target → su executor MUTANTI un delete/move troppo largo (allora:
+    # «cancella evento abc-123» espandeva l'intera lista dello step → 15 eventi
+    # reali bruciati). Il target esplicito vince SEMPRE: droppa from_step. §7.3.
+    _ALT_TARGET_KEYS = ("name", "names", "all", "paths", "urls", "ids",
+                        "messages", "patterns", "event_ids", "event_id",
+                        "entries", "to", "to_user")
+    if any(k in args and args[k] not in (None, "", [], {}) for k in _ALT_TARGET_KEYS):
+        return {k: v for k, v in args.items() if k != "from_step"}
     n = args.get("from_step")
+    # Coercizione stringa numerica (parità col legacy): lo schema-guided emette
+    # un int, ma un "1" non deve degradare a no-op silenzioso.
+    if isinstance(n, str) and n.isdigit():
+        n = int(n)
     if not isinstance(n, int) or n < 1 or n > len(history):
         return args
     src = history[n - 1].result
