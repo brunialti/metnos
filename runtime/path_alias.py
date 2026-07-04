@@ -25,8 +25,40 @@ API pubblica:
 """
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Optional
+
+# Path assoluto CROSS-PLATFORM: Unix "/…", Windows "C:\…"/"C:/…", UNC "\\srv\…".
+# `os.path.isabs` usa le regole dell'OS NATIVO dove gira l'executor (sul device
+# Windows riconosce "C:\…"); i pattern espliciti coprono anche il caso in cui il
+# modulo venga valutato sotto un os.path non nativo. §7.3 generale, §7.9 det.
+_WIN_ABS_RE = re.compile(r"^[A-Za-z]:[\\/]|^\\\\")
+
+
+def _is_absolute_path(s: str) -> bool:
+    return bool(s) and (s.startswith("/") or bool(_WIN_ABS_RE.match(s))
+                        or os.path.isabs(s))
+
+
+def _home() -> Path:
+    """Home robusta: `Path.home()` solleva RuntimeError nel sandbox del device
+    (env HOME/USERPROFILE strippato). Fallback ONESTO (§2.8) agli env nativi poi
+    al drive di sistema, per non far crashare la risoluzione di un path assoluto."""
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError):
+        for var in ("HOME", "USERPROFILE"):
+            v = os.environ.get(var)
+            if v and v.strip():
+                return Path(v)
+        updrive = (os.environ.get("HOMEDRIVE", "")
+                   + os.environ.get("HOMEPATH", "")).strip()
+        if updrive:
+            return Path(updrive)
+        drive = os.environ.get("SystemDrive") or ""
+        return Path(drive + os.sep) if drive else Path(os.sep)
 
 
 # Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando
@@ -63,7 +95,7 @@ USER_DIR_ALIASES = {
 # "se non specifico un path esplicitamente, /home/user/.local/share/metnos".
 # Lazy (function) per supportare mocking di Path.home() nei test.
 def workspace_default() -> Path:
-    return Path.home() / ".local" / "share" / "metnos"
+    return _home() / ".local" / "share" / "metnos"
 
 
 def candidate_roots() -> list[Path]:
@@ -76,7 +108,7 @@ def candidate_roots() -> list[Path]:
     """
     cands = [
         workspace_default(),
-        Path.home(),
+        _home(),
         Path("/tmp/nas_public/media"),
         Path("/mnt"),
         Path("/media"),
@@ -102,15 +134,19 @@ def normalize_input_path(input_path: str) -> Path:
     if not input_path:
         return Path()
     s = str(input_path).strip()
-    if s.startswith("/"):
+    # Assoluto CROSS-PLATFORM: Unix "/…" E Windows "C:\…"/UNC. Il bug: un path
+    # Windows assoluto ("C:\Windows\…") NON inizia con "/" → veniva creduto
+    # relativo e anteposto a workspace_default() (che chiama Path.home() → crash
+    # nel sandbox del device). §7.3: riconoscere l'assoluto per ogni OS.
+    if _is_absolute_path(s):
         return Path(s).resolve()
     if s.startswith("~"):
-        # Usa Path.home() invece di os.path.expanduser per supportare mocking
-        # dei test e per coerenza con candidate_roots/workspace_default.
-        rest = s[1:].lstrip("/")
+        # Usa _home() (non os.path.expanduser) per mocking test + coerenza con
+        # candidate_roots/workspace_default e fallback sandbox.
+        rest = s[1:].lstrip("/\\")
         if not rest:
-            return Path.home().resolve()
-        return (Path.home() / rest).resolve()
+            return _home().resolve()
+        return (_home() / rest).resolve()
     # Path relativo: workspace Metnos di default.
     return (workspace_default() / s).resolve()
 
