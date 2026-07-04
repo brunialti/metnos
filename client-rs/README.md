@@ -1,24 +1,48 @@
 # metnos-client
 
-Client Rust per esecuzione remota di executor Metnos. Lazy bootstrap di Python via mirror server, sandbox per piattaforma, mTLS verso il server `.33`.
+Client Rust per l'esecuzione remota di executor Metnos su un dispositivo appaiato
+(PC di casa/ufficio). Bootstrap lazy del runtime Python via mirror server, sandbox
+per piattaforma, **HTTP firmato Ed25519** (device + server) — NON mTLS.
 
-## Build (Linux MVP)
+Versione corrente: **0.2.7**. Windows validato (W3.3, Job Object).
 
+## Autenticazione e trasporto (stato reale)
+- Transport MVP: **HTTP** dentro la LAN/overlay (§6 design doc). TLS/mTLS = fase
+  futura (W6 o overlay Headscale).
+- Ogni richiesta client→server è **firmata Ed25519** sui bytes esatti del body
+  (header `X-Metnos-Device-Sig`); ogni invocazione server→client porta una
+  `server_sig` verificata dal client contro la **pubkey server pinnata** prima
+  dell'esecuzione (firma non valida → rifiuto, nessuna esecuzione).
+- Cache executor content-addressed (manifest sha256 + code sha256), shim firmato.
+
+## Build
 ```
-cargo build --release --target x86_64-unknown-linux-gnu
-cargo build --release --target x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl    # Linux (static musl)
+cargo build --release --target x86_64-pc-windows-gnu         # Windows (mingw-w64)
 ```
+Distribuzione firmata + mirror: `scripts/build-client.sh <versione>` (firma
+Ed25519 con la chiave server + pubblica nel mirror). macOS = tier-2 (build manuale).
 
-Windows cross: arriva alla W3 della roadmap (richiede `mingw-w64`).
-
-## Layout
-
-- `src/main.rs` — entry point, CLI.
+## Layout (moduli reali)
+- `src/main.rs` — entry + CLI (`whoami` / `register` / `run`).
 - `src/config.rs` — path locali (XDG-style cross-platform), file di stato.
 - `src/identity.rs` — chiave Ed25519 del device (gen al primo avvio, persistita).
-- `src/pairing.rs` — flow `register`: token + pubkey → device_id.
-- `src/transport.rs` — HTTP client verso il server.
+- `src/pairing.rs` — flow `register`: token monouso + pubkey → device_id.
+- `src/runner.rs` — loop `run`: flush spool → poll → verify server_sig → pull
+  executor (cache-miss) → sandbox → spool result → consegna; heartbeat su task
+  separato (0.2.7).
+- `src/wire.rs` — tipi wire + canonical JSON (contratto cross-lang col server).
+- `src/executors.rs` — pull + verifica firma di executor e shim.
+- `src/pyenv.rs` — runtime python-build-standalone (download robusto a chunk,
+  estrazione pure-Rust); Windows senza fallback al python di sistema.
+- `src/sandbox_linux.rs` — bubblewrap se presente, altrimenti fallback diretto
+  loggato (§2.8); kill d'albero via process-group.
+- `src/sandbox_windows.rs` — **Job Object** (KILL_ON_JOB_CLOSE + cap mem/proc,
+  spawn CREATE_SUSPENDED → assign → resume → wait/timeout → TerminateJobObject).
+- `src/proclock.rs` — lock single-instance cross-platform (`fs2`).
+- `src/state.rs` — stato appaiamento persistito.
 
 ## Stato
-
-W1-2 MVP Linux in corso.
+W1-2 (execute path Linux) e **W3.1-3.3 (Windows: Job Object, pyenv, E2E sul PC
+reale)** CHIUSI. Prossimo (⛔): AppContainer, self_update swap binario, TLS/mTLS,
+placement multi-device. Vedi `internal/design/remote-executors.html`.

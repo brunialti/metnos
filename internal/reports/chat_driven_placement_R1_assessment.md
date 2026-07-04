@@ -1,3 +1,10 @@
+> **STATO 2026-07-04 — STORICO/AGGIORNATO (D6 review)**: le 5 osservazioni
+> dell'assessment (sticky-offline, owner-filter, fallback silenzioso, threading
+> upload, nomi duplicati) sono **FIXATE** (commit `5e6e828`). Una review esterna
+> successiva (`composer_engine_remote_review_2026-07-04.md`) le ha confermate
+> chiuse e ha aggiunto F1-F10: F1/F2/F3/F5 fixati (`f16e0ef`), il resto
+> tracciato. Questo documento resta come assessment R1 originale.
+
 # Chat-driven placement — R1: report per assessment esterno
 
 **Data:** 2026-07-04 · **Branch:** `session/detection-lexicon-i18n` (non pushato) ·

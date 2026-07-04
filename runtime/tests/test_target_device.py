@@ -139,6 +139,29 @@ class ReferencesDeviceTests(unittest.TestCase):
         self.assertFalse(td.references_device("trova le foto di casa", [casa]))
 
 
+class DeviceEligibleManifestTests(unittest.TestCase):
+    """F1/F2 (review 2026-07-04): ogni executor device-eligibile DEVE dichiarare
+    nel manifest `platforms` (incl. windows, il device reale) e `[placement]
+    device_ok = true` — altrimenti il placement lo rifiuta su Windows o l'
+    eleggibilità resta hardcoded. Guard di regressione."""
+    def test_device_eligible_declare_platforms_and_device_ok(self):
+        import os as _os
+        import sys as _sys
+        _sys.path.insert(0, _os.path.dirname(_os.path.dirname(
+            _os.path.dirname(_os.path.abspath(__file__)))) + "/runtime")
+        import loader
+        cat = {x.name: x for x in loader.load_catalog()}
+        for name in td.DEVICE_ELIGIBLE:
+            e = cat.get(name)
+            self.assertIsNotNone(e, f"{name} device-eligibile ma non in catalog")
+            plats = getattr(e, "platforms", None) or ["linux"]
+            self.assertIn("windows", plats,
+                          f"{name}: manca 'windows' in platforms → rifiutato sul PC (F1)")
+            plc = getattr(e, "placement", None) or {}
+            self.assertTrue(plc.get("device_ok"),
+                            f"{name}: manca [placement] device_ok=true (F2)")
+
+
 class StickyStoreTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
