@@ -385,6 +385,8 @@ def _collect_write_specs(args: dict):
             specs.append({"path": scalar_path, "content": "\n".join(parts),
                           "encoding": enc_default, "mode": mode_default})
             return specs, None
+        _explicit_content = bool(content_field or content_template
+                                 or content_format)
         for entry in entries:
             if isinstance(set_fields, dict) and isinstance(entry, dict):
                 entry = {**entry, **set_fields}
@@ -394,14 +396,38 @@ def _collect_write_specs(args: dict):
                     entry if isinstance(entry, dict) else {"value": entry})
                 if not ok:
                     return None, p
+                ok, c = _derive_content(entry, content_field,
+                                        content_template, content_format)
+                if not ok:
+                    return None, c
             elif isinstance(entry, dict) and entry.get("path"):
+                # §2.8/§2.9: `entry["path"]` localizza un file GIA' ESISTENTE
+                # (output di un producer: i `results` di create_files_spreadsheet
+                # portano path=<xlsx creato>). Riusarlo come OUTPUT scrivendoci il
+                # DEFAULT json.dumps(entry) CORROMPE il file (bug xlsx-clobber,
+                # turn 3da933e5). Consentito SOLO con una fonte di contenuto
+                # esplicita, o se l'entry porta un campo `content` genuino
+                # (write-spec {path,content}); altrimenti è un mis-pipe (§2.10)
+                # → errore onesto, MAI clobber. §7.9 deterministico.
+                if _explicit_content:
+                    ok, c = _derive_content(entry, content_field,
+                                            content_template, content_format)
+                    if not ok:
+                        return None, c
+                elif "content" in entry:
+                    v = entry["content"]
+                    c = (v if isinstance(v, str)
+                         else json.dumps(v, ensure_ascii=False, indent=2))
+                else:
+                    return None, _msg(
+                        "ERR_ARG_INVALID", arg="entries",
+                        reason="entries con 'path' verso file esistenti ma senza "
+                               "contenuto: per creare NUOVI file usa "
+                               "path_template, per scrivere un campo usa "
+                               "content_field")
                 p = entry["path"]
             else:
                 return None, _msg("ERR_ARG_MISSING", arg="path_template")
-            ok, c = _derive_content(entry, content_field,
-                                    content_template, content_format)
-            if not ok:
-                return None, c
             specs.append({"path": p, "content": c,
                           "encoding": enc_default, "mode": mode_default})
         return specs, None
