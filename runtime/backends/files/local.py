@@ -1671,6 +1671,22 @@ def _entries_to_values(entries, columns) -> list:
     return out
 
 
+def _rows_entries_to_values(entries, columns) -> list:
+    """entries = RIGHE (list[list], es. output di read_spreadsheet §2.6) → matrice
+    diretta. §2.8 (bug silent-loss, turn 3da933e5-family): `_entries_to_values`
+    filtra `isinstance(e, dict)` → le righe list[list] venivano SCARTATE →
+    foglio header-only, dati persi in silenzio. Qui le preserviamo. Se `columns`
+    è dato e la larghezza combacia e la riga-0 NON è già quell'header → antepone
+    l'header d'uscita; altrimenti copia le righe as-is (dati > cosmesi)."""
+    rows = _normalize_rows(entries)
+    cols = [c for c in (columns or []) if isinstance(c, str) and c.strip()]
+    if cols and rows and len(rows[0]) == len(cols):
+        head0 = [str(c).strip().lower() for c in rows[0]]
+        if head0 != [c.strip().lower() for c in cols]:
+            return [list(cols)] + rows
+    return rows
+
+
 def _resolve_values(args: dict):
     """Risolve la matrice di celle da `values` (diretta) o `entries`+`columns`
     (pipe §2.10/§4.1). Ritorna list[list] o None se nessuna fonte valida."""
@@ -1679,6 +1695,13 @@ def _resolve_values(args: dict):
         return _normalize_rows(values)
     entries = args.get("entries")
     if isinstance(entries, list) and entries:
+        # §2.8: entries possono essere RECORD (list[dict], da extract/list_*) o
+        # RIGHE (list[list], da read_spreadsheet). Le righe NON vanno scartate:
+        # matrice diretta (dati preservati), i dict via mapping colonne.
+        has_dict = any(isinstance(e, dict) for e in entries)
+        has_rows = any(isinstance(e, (list, tuple)) for e in entries)
+        if has_rows and not has_dict:
+            return _rows_entries_to_values(entries, args.get("columns"))
         return _entries_to_values(entries, args.get("columns"))
     if isinstance(values, list):  # lista vuota esplicita = foglio vuoto
         return []

@@ -129,9 +129,44 @@ def _clean_field_name(text: str) -> str:
     return " ".join(kept[:3]).strip()
 
 
+# Marcatori che DICHIARANO lo schema d'uscita (le colonne del sink) in una
+# clausola create/write: «crea un foglio con (tutti i)? <marker>[:] X, Y, Z».
+# Lessico curato IT+EN. `dati/data` (plurale IT / EN) = marker; NON confondere
+# con il campo «data» (=date IT), distinto lessicalmente da «dati».
+_SCHEMA_MARKER_RE = re.compile(
+    r"\b(?:colonne|campi|intestazioni|voci|columns|fields|headers|dati|data)\b"
+    r"(\s*:)?\s*(.+)$", re.IGNORECASE)
+
+
+def _fields_from_schema_marker(query: str) -> list[str]:
+    """Campi dallo SCHEMA D'USCITA dichiarato nella clausola create/write
+    («…con (tutti i)? colonne/campi/dati: X, Y, Z»). Il field-list è lo schema
+    del sink (arg `columns`), spesso frainteso come spec d'estrazione: qui lo
+    ricaviamo deterministicamente (§7.9) quando NON c'è una clausola «estrai».
+    Anti over-capture: senza «:» esplicito richiedi una LISTA (≥2 elementi)."""
+    m = _SCHEMA_MARKER_RE.search(query or "")
+    if not m:
+        return []
+    has_colon = bool(m.group(1))
+    tail = m.group(2) or ""
+    parts = [p for p in re.split(r"\s*,\s*|\s+e\s+|\s+and\s+", tail) if p.strip()]
+    if not has_colon and len(parts) < 2:
+        return []
+    out: list[str] = []
+    seen: set = set()
+    for p in parts:
+        f = _clean_field_name(p)
+        if f and f not in seen and len(f) <= 40:
+            seen.add(f)
+            out.append(f)
+    return out
+
+
 def derive_extract_fields(query: str) -> list[str]:
     """§7.9 deterministico: estrae i NOMI-CAMPO dalla clausola «estrai X, Y e Z»
-    di una query compound. Serve a riempire `extract_entries.fields` quando il
+    di una query compound — o, in assenza, dallo SCHEMA D'USCITA dichiarato nella
+    clausola create/write («…con colonne/dati: X, Y, Z», vedi
+    `_fields_from_schema_marker`). Serve a riempire `extract_entries.fields` quando il
     proposer DROPPA la clausola e il guard `_ensure_extract_clause` la re-inserisce
     (bug live 22/6: «...estrai titolo e orario...» → extract_entries SENZA fields →
     «missing 'fields'»). Robustezza NL→determinismo §2.4: la clausola e' spezzata
@@ -170,7 +205,8 @@ def derive_extract_fields(query: str) -> list[str]:
         if f and f not in seen and len(f) <= 40:
             seen.add(f)
             out.append(f)
-    return out
+    # Fallback: nessuna clausola «estrai» → schema d'uscita della clausola create.
+    return out or _fields_from_schema_marker(query)
 
 
 def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
