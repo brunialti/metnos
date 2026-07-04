@@ -162,9 +162,15 @@ def find(args: dict) -> dict:
         if isinstance(paths, list) and paths:
             query = str(paths[0])
     if not query:
+        # find_files(local) usa `pattern` per il nome-file: mappalo a query Drive
+        # (name contains). Glob universali ignorati (cercherebbero tutto).
+        pat = args.get("pattern")
+        if isinstance(pat, str) and pat.strip() and pat.strip() not in ("*", "*.*", "**"):
+            query = pat.strip().strip("*")
+    if not query:
         return {"ok": False,
                 "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="query (o 'paths')"),
+                "error": _msg("ERR_ARG_MISSING", arg="query (o 'paths'/'pattern')"),
                 "error_class": "invalid_args",
                 "entries": [], "used": 0}
 
@@ -196,7 +202,10 @@ def find(args: dict) -> dict:
 # --------------------------------------------------------------------------
 
 def read(args: dict) -> dict:
-    """Legge metadata di 1+ file Drive per id (vettoriale §2.1)."""
+    """Legge il CONTENUTO di 1+ file Drive per id (vettoriale §2.1): i Google-native
+    (Doc/Sheet/Slides) sono ESPORTATI a testo, i binari scaricati. Ogni entry porta
+    `content` (testo inline) + metadata. Era metadata-only (`drive get`) fino al
+    4/7/2026: `read` non tornava il testo dei Doc (bug «scrive-ma-non-legge»)."""
     if not isinstance(args, dict):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
@@ -222,7 +231,7 @@ def read(args: dict) -> dict:
 
     entries: list[dict] = []
     for fid in ids:
-        data, err = _run_drive(["drive", "get", fid], executor="read_files",
+        data, err = _run_drive(["drive", "read", fid], executor="read_files",
                                  args_base=dict(args), result_kind="entries")
         if err is not None:
             if err.get("decision") == "needs_inputs":

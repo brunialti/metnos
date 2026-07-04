@@ -1682,6 +1682,79 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
         return framework
 
 
+_GW_CLIENT_TOOLS = frozenset({"find_files", "read_files", "get_files",
+                              "list_dirs", "find_dirs"})
+_GW_PHANTOM_PATHS = frozenset({"gdrive", "google drive", "googledrive",
+                               "google_drive", "google-drive", "drive"})
+
+
+def _drive_search_term(query: str) -> str:
+    """Estrae un termine di ricerca «pulito» (nome-file) da una query Drive NL,
+    togliendo verbo + frase-provider + filler documentali. Deterministico (§7.9),
+    best-effort: il find Drive cerca per name-contains («il documento KAKEBO»→0,
+    «KAKEBO SPESE 2026»→match)."""
+    import re
+    q = " " + (query or "") + " "
+    q = re.sub(r"(?i)\b(su|sul|sullo|sulla|in|nel|nello|dentro|da|dal|dallo|from|on)\s+"
+               r"(google\s*drive|g\s*drive|gdrive|google\s*docs?|google\s*sheets?|"
+               r"google\s*fogli|drive|google)\b", " ", q)
+    q = re.sub(r"(?i)\b(cerca(mi)?|trova(mi)?|search|find|apri|open|leggi|read|"
+               r"scarica|download|mostra(mi)?|show)\b", " ", q)
+    q = re.sub(r"(?i)\b(il|lo|la|i|gli|le|un|uno|una|the|a|an|di|del|della|dei|degli)\b", " ", q)
+    q = re.sub(r"(?i)\b(documento|documenti|document|file|foglio|fogli|"
+               r"spreadsheet|sheet|doc|cartella|folder)\b", " ", q)
+    return re.sub(r"\s+", " ", q).strip()
+
+
+def _align_provider_client(framework: Framework, query: str,
+                           catalog: Optional[list]) -> Framework:
+    """§7.9 deterministico — provider Google via CLIENT-ARG (backend Drive), NON
+    executor-suffisso (approccio ritirato 4/7/2026). Se la query cita Google
+    Drive/Docs (marker `google_workspace`) e uno step usa un file-executor
+    client-capable: imposta `client="google_workspace"`, ripulisce un path locale
+    FANTASMA (`/gdrive`, che il proposer inventa da «google drive») e, se a
+    `find_files` manca il termine di ricerca, lo deriva dalla query. Idempotente,
+    best-effort, non blocca il turno. Bug: «cerca su google drive X» →
+    find_files(local, base_path=/gdrive) → «percorso non trovato»."""
+    try:
+        from tool_grammar import active_provider_suffixes
+        _sfx = active_provider_suffixes(query) or []
+        if not any((x or "").lstrip("_") == "google_workspace" for x in _sfx):
+            return framework
+    except Exception:  # noqa: BLE001
+        return framework
+    try:
+        term = None
+        touched = False
+        for s in framework.steps:
+            if (s.tool or "") not in _GW_CLIENT_TOOLS:
+                continue
+            if s.args.get("client") != "google_workspace":
+                s.args["client"] = "google_workspace"
+            for pk in ("base_path", "path", "paths"):
+                v = s.args.get(pk)
+                if isinstance(v, str) and v.strip().lower().strip("/") in _GW_PHANTOM_PATHS:
+                    s.args.pop(pk, None)
+                elif isinstance(v, list):
+                    v2 = [x for x in v if str(x).strip().lower().strip("/") not in _GW_PHANTOM_PATHS]
+                    s.args[pk] = v2 if v2 else None
+                    if not v2:
+                        s.args.pop(pk, None)
+            if (s.tool == "find_files"
+                    and not any(s.args.get(k) for k in ("query", "pattern", "patterns", "paths"))):
+                if term is None:
+                    term = _drive_search_term(query)
+                if term:
+                    s.args["pattern"] = term
+            touched = True
+        if touched:
+            log.info("[provider_client] google_workspace → client su file-executor (Drive)")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("align_provider_client noop (best-effort): %r", ex)
+        return framework
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -1717,6 +1790,9 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     # path INVENTATO (no path inventato: FIND prima). Generale read/find di ogni
     # object+provider. Fuori dal gate v3 (vale sempre); dopo i guard di struttura.
     framework = _route_filename_pattern_to_find(framework, query, catalog)
+    # Provider Google via client-arg (backend Drive): «google drive/docs» →
+    # client=google_workspace sui file-executor. Dopo gli altri guard di struttura.
+    framework = _align_provider_client(framework, query, catalog)
     return framework
 
 

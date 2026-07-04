@@ -811,6 +811,43 @@ def drive_download(args):
     }, indent=2, ensure_ascii=False))
 
 
+def drive_read(args):
+    """Legge il CONTENUTO di un file Drive INLINE (per il backend files.read()).
+    Google-native → export testo (Doc→text/plain, Sheet→csv, Slides→text/plain);
+    binari → get_media. Output JSON con `content` (testo) o null se binario."""
+    import io
+    from googleapiclient.http import MediaIoBaseDownload
+
+    service = build_service("drive", "v3")
+    meta = service.files().get(fileId=args.file_id, fields="id, name, mimeType").execute()
+    mime = meta.get("mimeType", "")
+    name = meta.get("name", args.file_id)
+    native_text_map = {
+        "application/vnd.google-apps.document": "text/plain",
+        "application/vnd.google-apps.spreadsheet": "text/csv",
+        "application/vnd.google-apps.presentation": "text/plain",
+    }
+    if mime in native_text_map:
+        export_mime = args.export_mime or native_text_map[mime]
+        request = service.files().export_media(fileId=args.file_id, mimeType=export_mime)
+    else:
+        request = service.files().get_media(fileId=args.file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    raw = fh.getvalue()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        content = None  # binario: nessun testo inline
+    print(json.dumps({
+        "id": args.file_id, "name": name, "mimeType": mime,
+        "content": content, "bytes": len(raw),
+    }, ensure_ascii=False))
+
+
 def drive_create_folder(args):
     body = {
         "name": args.name,
@@ -1407,6 +1444,11 @@ def main():
     p.add_argument("--output", default="", help="Local output path (defaults to ./<name> in cwd)")
     p.add_argument("--export-mime", default="", help="Export MIME for Google-native files (overrides defaults: pdf for Docs/Slides, csv for Sheets, png for Drawings)")
     p.set_defaults(func=drive_download)
+
+    p = drv_sub.add_parser("read")
+    p.add_argument("file_id")
+    p.add_argument("--export-mime", default="", help="Override export MIME for Google-native (default: text/plain per Doc, csv per Sheet)")
+    p.set_defaults(func=drive_read)
 
     p = drv_sub.add_parser("create-folder")
     p.add_argument("name")

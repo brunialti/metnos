@@ -119,12 +119,12 @@ en = "Offset (in bytes) from which to start reading. Default 0 (start). Combined
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
+enum        = ["local", "google_workspace"]
 default     = "local"
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: legge file/Google Doc/Sheet su Drive (export a testo), richiede pairing Google."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: reads files/Google Docs/Sheets on Drive (export to text), requires Google pairing."
 
 [[capabilities]]
 name = "fs:read"

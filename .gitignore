@@ -158,3 +158,8 @@ UTENZE E SPESE/
 # --- Artefatto export pubblico (rigenerabile) ---------------------------
 dist/
 to_delete/
+
+# Chiavi service account Google (segreti — mai in git)
+/metnos-*.json
+*-sa.json
+google_*_sa.json

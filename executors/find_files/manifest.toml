@@ -87,12 +87,12 @@ en = "If true, also include directories that match. Default false (files only)."
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
+enum        = ["local", "google_workspace"]
 default     = "local"
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca file su Drive per nome/query, richiede pairing Google."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: search files on Drive by name/query, requires Google pairing."
 
 [output]
 schema_inline = """
