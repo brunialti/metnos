@@ -3279,20 +3279,18 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # [placement] o scope any/server) = esecuzione locale invariata.
     # Un-gate chat-driven placement (ADR 0034): il blocco parte se il manifest è
     # scope="device" OPPURE se il turno ha risolto un PC bersaglio dalla chat
-    # (`target_device`) E l'executor è IMPACCHETTABILE al device (DEVICE_ELIGIBLE).
+    # (`target_device`) E l'executor dichiara `[placement] device_ok=true`.
     # Un target device NON impacchettabile (es. get_now con destinazione
     # appiccicosa) gira LOCALE, non fallisce. Senza target e senza scope=device →
     # esecuzione locale invariata (prod-safe §7.1).
-    import target_device as _td_elig
     _plc = getattr(executor, "placement", None) or {}
     _plc_scope = (_plc.get("scope") or "").strip().lower()
-    # F2 (review 2026-07-04): eleggibilità al device MANIFEST-DRIVEN
-    # (`[placement] device_ok = true`), con la whitelist DEVICE_ELIGIBLE come
-    # compat-shim temporaneo. Un nuovo executor remoto si dichiara nel proprio
-    # manifest, senza toccare codice centrale (single source of truth = catalogo).
-    _device_ok = bool(target_device) and (
-        bool(_plc.get("device_ok"))
-        or executor.name in _td_elig.DEVICE_ELIGIBLE)
+    # F2 + rilievo #4 (2026-07-04): eleggibilità al device PURO MANIFEST-DRIVEN
+    # (`[placement] device_ok = true`). La whitelist DEVICE_ELIGIBLE è stata
+    # RIMOSSA (transizione finita: i 3 executor read-only dichiarano device_ok):
+    # non c'è più fallback che possa mascherare un manifest incompleto. Un nuovo
+    # executor remoto si dichiara nel manifest (single source of truth = catalogo).
+    _device_ok = bool(target_device) and bool(_plc.get("device_ok"))
     if _plc_scope == "device" or _device_ok:
         import devices as _devices
         import placement as _placement

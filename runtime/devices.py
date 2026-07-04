@@ -209,6 +209,12 @@ def owner_user(owner_user_id: str) -> dict | None:
     return None
 
 
+# Sentinel FAIL-CLOSED: un actor non riconosciuto non deve ricadere nel
+# perimetro host (rilievo #1 multi-utente). Nessun device ha mai questo owner
+# (gli owner sono users.id reali o il legacy 'host') → perimetro VUOTO.
+NO_OWNER = "__no_owner__"
+
+
 def owner_id_for_actor(actor: str | None) -> str:
     """Resolver centrale actor→owner_user_id per il filtro device (A3 review).
 
@@ -216,7 +222,9 @@ def owner_id_for_actor(actor: str | None) -> str:
       (identificazione: i turni originati da un device girano come il suo
       proprietario);
     - actor = id o name di un utente del registro → quell'utente;
-    - vuoto / sentinel 'host' → utente host.
+    - vuoto / sentinel 'host' → utente host (default mono-utente);
+    - actor NON riconosciuto → `NO_OWNER` (FAIL-CLOSED, rilievo #1): NON ricade
+      nel perimetro host, il filtro device restituisce vuoto.
 
     Necessario dopo la migrazione owner→users.id: il vecchio confronto
     `owner_user_id == (actor or 'host')` non regge piu' (owner ora e' un uuid,
@@ -233,7 +241,7 @@ def owner_id_for_actor(actor: str | None) -> str:
     u = owner_user(a)
     if u:
         return u["id"]
-    return host_user_id()
+    return NO_OWNER
 
 
 def list_by_owner(owner_user_id: str, *, include_revoked: bool = False,
@@ -258,6 +266,21 @@ def fingerprint_of(public_key_b64: str) -> str:
 
 # --- token issue / consume -----------------------------------------------
 
+def _canonical_owner(owner_user_id: str | None) -> str:
+    """Canonicalizza+valida l'owner al momento della coniazione del token
+    (rilievo #3): il token e' l'UNICO punto di conio (firmato), quindi qui e'
+    la sorgente. Vuoto/sentinel 'host' → id host reale; altrimenti DEVE essere
+    un utente del registro (id o name) → il suo id. Owner sconosciuto = errore
+    (niente device orfani/non-filtrabili anche da CLI/API diretta)."""
+    s = (owner_user_id or "").strip()
+    if not s or s == "host":
+        return host_user_id()
+    u = owner_user(s)
+    if not u:
+        raise TokenError(f"owner_user_id sconosciuto: {s!r}")
+    return u["id"]
+
+
 def generate_token(name: str, *, owner_user_id: str = "host",
                    ttl_seconds: int = DEFAULT_TOKEN_TTL_S,
                    issued_by: str = "author",
@@ -267,10 +290,12 @@ def generate_token(name: str, *, owner_user_id: str = "host",
     Il record `device_tokens` e' creato in stato non-consumato. Il token
     contiene: token_id, name, owner_user_id, exp, version. La firma garantisce
     che il token venga davvero da Roberto (chiave 'author' in keys/).
+    L'owner e' canonicalizzato a un vero users.id (`_canonical_owner`).
     """
     if not name or not DEVICE_NAME_RE.match(name):
         raise TokenError(
             "nome device non valido (ammessi lettere, cifre, . _ -, max 40)")
+    owner_user_id = _canonical_owner(owner_user_id)
     token_id = uuid.uuid4().hex
     payload = {
         "v": PROTOCOL_VERSION,

@@ -29,13 +29,13 @@ from dataclasses import dataclass, field
 
 SERVER = "server"
 
-# Executor che POSSONO girare su un device remoto oggi (chiusura shim C7:
-# stdlib + executor_helpers/messages/path_alias). Una destinazione device si
-# applica SOLO a questi; gli altri girano sul server ANCHE con destinazione
-# appiccicosa a un PC — così «che ore sono» dopo un'operazione sul PC non
-# fallisce (get_now non è impacchettabile). TODO: rendere manifest-driven
-# ([placement] device_ok) quando C7 R2/R3 amplia la copertura.
-DEVICE_ELIGIBLE = frozenset({"get_files", "compute_files_loc", "list_dirs"})
+# Eleggibilità al device = PURO MANIFEST-DRIVEN (`[placement] device_ok=true`),
+# valutata in `agent_runtime.invoke_executor`. La vecchia whitelist hardcoded
+# DEVICE_ELIGIBLE è stata RIMOSSA (rilievo #4, 2026-07-04): un executor si
+# dichiara device-able nel proprio manifest, niente set centrale da mantenere.
+# Una destinazione device si applica SOLO agli executor con device_ok; gli altri
+# girano sul server anche con destinazione appiccicosa a un PC — così «che ore
+# sono» dopo un'operazione sul PC non fallisce (get_now non è impacchettabile).
 
 # Preposizioni locative che ANCORANO un nome-device (IT + EN). L'ancora è ciò che
 # distingue «sul portatile» (instrada) da «il portatile» (no).

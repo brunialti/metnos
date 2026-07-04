@@ -140,26 +140,29 @@ class ReferencesDeviceTests(unittest.TestCase):
 
 
 class DeviceEligibleManifestTests(unittest.TestCase):
-    """F1/F2 (review 2026-07-04): ogni executor device-eligibile DEVE dichiarare
-    nel manifest `platforms` (incl. windows, il device reale) e `[placement]
-    device_ok = true` — altrimenti il placement lo rifiuta su Windows o l'
-    eleggibilità resta hardcoded. Guard di regressione."""
-    def test_device_eligible_declare_platforms_and_device_ok(self):
+    """F1/#4 (review 2026-07-04): l'eleggibilità al device è PURO manifest-driven
+    (`[placement] device_ok=true`), la whitelist hardcoded è stata rimossa.
+    Invariante GENERALE, catalog-driven: OGNI executor che dichiara device_ok
+    DEVE dichiarare anche 'windows' in platforms — altrimenti choose_placement lo
+    rifiuta sul device reale (Windows). Guard di regressione."""
+    def test_device_ok_executors_declare_windows(self):
         import os as _os
         import sys as _sys
         _sys.path.insert(0, _os.path.dirname(_os.path.dirname(
             _os.path.dirname(_os.path.abspath(__file__)))) + "/runtime")
         import loader
-        cat = {x.name: x for x in loader.load_catalog()}
-        for name in td.DEVICE_ELIGIBLE:
-            e = cat.get(name)
-            self.assertIsNotNone(e, f"{name} device-eligibile ma non in catalog")
+        cat = list(loader.load_catalog())
+        device_ok = [e for e in cat
+                     if (getattr(e, "placement", None) or {}).get("device_ok")]
+        names = {e.name for e in device_ok}
+        # sanity: i 3 read-only C7 non devono perdere device_ok nel manifest
+        for expected in ("get_files", "compute_files_loc", "list_dirs"):
+            self.assertIn(expected, names, f"{expected}: perso device_ok nel manifest")
+        # invariante generale: device_ok ⇒ windows in platforms
+        for e in device_ok:
             plats = getattr(e, "platforms", None) or ["linux"]
             self.assertIn("windows", plats,
-                          f"{name}: manca 'windows' in platforms → rifiutato sul PC (F1)")
-            plc = getattr(e, "placement", None) or {}
-            self.assertTrue(plc.get("device_ok"),
-                            f"{name}: manca [placement] device_ok=true (F2)")
+                          f"{e.name}: device_ok=true ma manca 'windows' in platforms (F1)")
 
 
 class StickyStoreTests(unittest.TestCase):

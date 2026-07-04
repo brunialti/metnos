@@ -178,5 +178,92 @@ class InvocationQueueTests(unittest.TestCase):
                 self.device_id, "no_such_executor_xyz", {}, db_path=self.db)
 
 
+class PurgeInvocationsTests(unittest.TestCase):
+    """Rilievo #2 (2026-07-04): purge_invocations basata sul COMPLETAMENTO
+    (`completed_at`), non sulla consegna. Un terminale senza delivered_epoch
+    (es. result da spool su un 'queued') non deve restare orfano per sempre;
+    queued/delivered in volo non vanno mai toccati."""
+
+    def setUp(self):
+        import config as _C
+        self._orig_exec = _C.PATH_EXECUTORS
+        _C.PATH_EXECUTORS = _RUNTIME.parent / "executors"
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self._tmp.name) / "devices.db"
+        self.key = DeviceKey(self.db)
+        self.device_id = self.key.device.id
+
+    def tearDown(self):
+        import config as _C
+        _C.PATH_EXECUTORS = self._orig_exec
+        self._tmp.cleanup()
+
+    def _iso_days_ago(self, days):
+        import time as _t
+        return _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime(_t.time() - days * 86400))
+
+    def _epoch_days_ago(self, days):
+        import time as _t
+        return _t.time() - days * 86400
+
+    def _mk(self, executor="find_packages", args=None):
+        return invocations.enqueue_invocation(
+            self.device_id, executor, args or {"package_name": "git"}, db_path=self.db)
+
+    def _set(self, inv_id, **cols):
+        import sqlite3
+        conn = sqlite3.connect(str(self.db))
+        try:
+            sets = ", ".join(f"{k}=?" for k in cols)
+            conn.execute(f"UPDATE invocations SET {sets} WHERE invocation_id=?",
+                         (*cols.values(), inv_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _states(self):
+        import sqlite3
+        conn = sqlite3.connect(str(self.db))
+        try:
+            return {r[0] for r in conn.execute(
+                "SELECT invocation_id FROM invocations")}
+        finally:
+            conn.close()
+
+    def test_old_terminal_completed_is_purged(self):
+        done = self._mk(); self._set(done, state="done", completed_at=self._iso_days_ago(40))
+        failed = self._mk(); self._set(failed, state="failed", completed_at=self._iso_days_ago(31))
+        n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
+        self.assertEqual(n, 2)
+        self.assertNotIn(done, self._states())
+        self.assertNotIn(failed, self._states())
+
+    def test_recent_terminal_kept(self):
+        done = self._mk(); self._set(done, state="done", completed_at=self._iso_days_ago(5))
+        n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
+        self.assertEqual(n, 0)
+        self.assertIn(done, self._states())
+
+    def test_inflight_never_purged(self):
+        # queued vecchio + delivered vecchio (non terminali) NON si toccano.
+        q = self._mk(); self._set(q, state="queued", created_at=self._iso_days_ago(90))
+        d = self._mk(); self._set(d, state="delivered",
+                                  delivered_epoch=self._epoch_days_ago(90),
+                                  delivered_at=self._iso_days_ago(90))
+        n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
+        self.assertEqual(n, 0)
+        self.assertEqual(self._states(), {q, d})
+
+    def test_terminal_without_completed_at_fallback(self):
+        # IL CASO DEL RILIEVO #2: terminale con completed_at NULL ma
+        # delivered_epoch vecchio → purgato via fallback (prima restava orfano).
+        orphan = self._mk()
+        self._set(orphan, state="done", completed_at=None,
+                  delivered_epoch=self._epoch_days_ago(40))
+        n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
+        self.assertEqual(n, 1)
+        self.assertNotIn(orphan, self._states())
+
+
 if __name__ == "__main__":
     unittest.main()

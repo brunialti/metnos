@@ -244,21 +244,27 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
 
 def purge_invocations(older_than_days: int = 30, *,
                       db_path: Path | None = None) -> int:
-    """Elimina le invocazioni TERMINALI (done/failed) più vecchie di
-    `older_than_days` giorni. F5 (review 2026-07-04): la tabella era append-only,
-    a differenza dello spool client (retention) e delle join session (reaper).
-    NON tocca queued/delivered (in volo): confronto sul `delivered_epoch`
-    numerico (wall-clock, robusto al formato). Ritorna le righe rimosse.
-    Idempotente. Agganciato a `jobs/maintenance_tasks.task_state_reaper`."""
+    """Elimina le invocazioni TERMINALI (done/failed) COMPLETATE da più di
+    `older_than_days` giorni. F5 (review 2026-07-04) + rilievo #2: la retention
+    è sul COMPLETAMENTO (`completed_at`, sempre valorizzato sul terminale via
+    `_now_iso()`), NON sulla consegna — un terminale mai 'delivered' (es. result
+    da spool su un 'queued') non resta più orfano per sempre. Confronto ISO
+    lessicografico (formato unico UTC '...Z' → ordinamento corretto), con
+    fallback su `delivered_epoch` per l'edge terminale senza completed_at. NON
+    tocca queued/delivered (in volo). Ritorna le righe rimosse. Idempotente.
+    Agganciato a `jobs/maintenance_tasks.task_state_reaper`."""
     import time as _t
     cutoff = _t.time() - int(older_than_days) * 86400
+    cutoff_iso = _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime(cutoff))
     conn = _open_db(db_path)
     try:
         cur = conn.execute(
             "DELETE FROM invocations "
-            "WHERE state IN ('done','failed') "
-            "AND delivered_epoch IS NOT NULL AND delivered_epoch < ?",
-            (cutoff,))
+            "WHERE state IN ('done','failed') AND ("
+            "  (completed_at IS NOT NULL AND completed_at < ?) "
+            "  OR (completed_at IS NULL AND delivered_epoch IS NOT NULL "
+            "      AND delivered_epoch < ?))",
+            (cutoff_iso, cutoff))
         return cur.rowcount
     finally:
         conn.close()
