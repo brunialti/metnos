@@ -149,6 +149,106 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(devices)")}
     if "profile_json" not in cols:
         conn.execute("ALTER TABLE devices ADD COLUMN profile_json TEXT")
+    _migrate_owner_to_users_id(conn)
+
+
+def _migrate_owner_to_users_id(conn: sqlite3.Connection) -> None:
+    """Predisposizione multi-utente (2026-07-04): `owner_user_id` deve
+    riferire un VERO `users.id` del registro, non il sentinel legacy 'host'
+    (che non e' un id). Rimappa le righe 'host' all'id reale dell'utente host.
+
+    Guardato: gira solo se esistono righe legacy → no-op a regime. Non
+    distruttivo (host→host, solo id canonico). Best-effort: se il registro
+    utenti non e' disponibile lascia il sentinel (l'owner_user resolver lo
+    tollera comunque)."""
+    has_legacy = conn.execute(
+        "SELECT 1 FROM devices WHERE owner_user_id='host' "
+        "UNION ALL SELECT 1 FROM device_tokens WHERE owner_user_id='host' "
+        "LIMIT 1"
+    ).fetchone()
+    if not has_legacy:
+        return
+    hid = host_user_id()
+    if not hid or hid == "host":
+        return
+    conn.execute("UPDATE devices SET owner_user_id=? WHERE owner_user_id='host'", (hid,))
+    conn.execute("UPDATE device_tokens SET owner_user_id=? WHERE owner_user_id='host'", (hid,))
+
+
+def host_user_id() -> str:
+    """users.id reale dell'utente host — owner di default del pairing quando
+    l'admin non sceglie. Sentinel-safe: ritorna 'host' se il registro utenti
+    non e' raggiungibile (bootstrap non ancora avvenuto)."""
+    try:
+        import users as _users
+        hosts = _users.list_users(role="host")
+        if hosts:
+            return hosts[0]["id"]
+    except Exception:
+        pass
+    return "host"
+
+
+def owner_user(owner_user_id: str) -> dict | None:
+    """Risolve `owner_user_id` → record utente del registro. E' l'aggancio di
+    IDENTIFICAZIONE: quando un device si connette, da qui si risale all'utente
+    (e in futuro ai suoi profili di sicurezza/autonomia). Tollera il sentinel
+    legacy 'host' (→ utente host reale). None se non risolvibile."""
+    if not owner_user_id:
+        return None
+    try:
+        import users as _users
+        u = _users.get_user(owner_user_id)
+        if u:
+            return u
+        if owner_user_id == "host":
+            hosts = _users.list_users(role="host")
+            return hosts[0] if hosts else None
+    except Exception:
+        pass
+    return None
+
+
+def owner_id_for_actor(actor: str | None) -> str:
+    """Resolver centrale actor→owner_user_id per il filtro device (A3 review).
+
+    - actor = device_id di un device pairato → owner di QUEL device
+      (identificazione: i turni originati da un device girano come il suo
+      proprietario);
+    - actor = id o name di un utente del registro → quell'utente;
+    - vuoto / sentinel 'host' → utente host.
+
+    Necessario dopo la migrazione owner→users.id: il vecchio confronto
+    `owner_user_id == (actor or 'host')` non regge piu' (owner ora e' un uuid,
+    actor puo' essere 'host'/device_id). Sentinel-safe."""
+    a = (actor or "").strip()
+    if not a or a == "host":
+        return host_user_id()
+    try:
+        d = get_device(a)
+        if d:
+            return d.owner_user_id
+    except Exception:
+        pass
+    u = owner_user(a)
+    if u:
+        return u["id"]
+    return host_user_id()
+
+
+def list_by_owner(owner_user_id: str, *, include_revoked: bool = False,
+                  db_path: Path | None = None) -> list["Device"]:
+    """Device di proprieta' di uno user — profilo utente in UI + (futuro)
+    filtro placement per owner. Risolve il sentinel legacy 'host' all'id host
+    reale prima del confronto, cosi' un DB non ancora migrato non nasconde i
+    device dell'host."""
+    hid = None
+    if owner_user_id == "host":
+        hid = host_user_id()
+    return [d for d in list_devices(include_revoked=include_revoked, db_path=db_path)
+            if d.owner_user_id == owner_user_id
+            or (d.owner_user_id == "host" and owner_user_id == hid)
+            or (hid and d.owner_user_id == hid and owner_user_id == "host")]
 
 
 def fingerprint_of(public_key_b64: str) -> str:

@@ -3302,7 +3302,9 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         # F3 (review 2026-07-04): filtra i device per PROPRIETARIO anche QUI (non
         # solo nella risoluzione chat), altrimenti un executor scope="device"
         # senza target esplicito vedrebbe i device di TUTTI gli utenti.
-        _who = actor or "host"
+        # A3 (2026-07-04): owner ora e' un vero users.id → risolvi l'actor con il
+        # resolver centrale (actor puo' essere 'host'/device_id/user).
+        _who = _devices.owner_id_for_actor(actor)
         _devs_for_actor = [
             d for d in _devices.list_devices()
             if (getattr(d, "owner_user_id", "host") or "host") == _who]
@@ -5975,9 +5977,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         import target_device as _td_mod
         import chat_target_store as _cts_mod
         # #2 owner-filter: solo i device dell'ATTORE (isolamento multi-utente —
-        # un utente non può nominare il PC di un altro). Mono-utente: owner='host'
-        # e actor='host' → nessun cambiamento.
-        _who = actor or "host"
+        # un utente non può nominare il PC di un altro). A3 (2026-07-04): owner
+        # è un vero users.id → risolvi l'actor col resolver centrale (actor può
+        # essere 'host'/device_id/user).
+        _who = _dev_mod.owner_id_for_actor(actor)
         _dl = [d for d in _dev_mod.list_devices()
                if (getattr(d, "owner_user_id", "host") or "host") == _who]
         if _dl:

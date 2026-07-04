@@ -186,10 +186,18 @@ async def device_self(request: web.Request) -> web.Response:
     d = devices.get_device(device_id)
     if d is None:
         return _error(404, "device_not_found", "device record missing")
+    # Aggancio identificazione (predisposizione multi-utente): da owner_user_id
+    # → utente reale del registro. Base per derivarne profili di sicurezza.
+    _owner = devices.owner_user(d.owner_user_id)
     return web.json_response({
         "device_id": d.id,
         "name": d.name,
         "owner_user_id": d.owner_user_id,
+        "owner": {"id": _owner["id"], "name": _owner["name"],
+                  "display_name": _owner.get("display_name"),
+                  "role": _owner.get("role"),
+                  "autonomy_level": _owner.get("autonomy_level")}
+                 if _owner else None,
         "fingerprint": d.public_key_fingerprint,
         "os_family": d.os_family,
         "os_arch": d.os_arch,

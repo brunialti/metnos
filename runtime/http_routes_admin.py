@@ -866,15 +866,26 @@ async def admin_user_detail(request: web.Request) -> web.Response:
     if not u:
         return _error(404, "not_found", f"user {user_id!r} not found")
     chans = _channels_for(u["id"])
+    import devices as devices_mod
+    import placement as placement_mod
+    owned = devices_mod.list_by_owner(u["id"])
+    dev_rows = [{
+        "id": d.id, "name": d.name,
+        "os": f"{d.os_family or '?'}/{d.os_arch or '?'}",
+        "last_heartbeat": d.last_heartbeat,
+        "available": placement_mod.is_available(d),
+    } for d in owned]
     payload = {
         **_user_to_dict(u),
         "notes": u.get("notes"),
         "channels": [
             {**c, "verified": bool(c.get("verified_at"))} for c in chans
         ],
+        "devices": dev_rows,
     }
     if "text/html" in request.headers.get("Accept", ""):
-        html = render_template("user_detail.html", user=payload, channels=chans)
+        html = render_template("user_detail.html", user=payload,
+                               channels=chans, devices=dev_rows)
         return web.Response(text=html, content_type="text/html")
     return web.json_response(payload)
 
@@ -1294,10 +1305,13 @@ async def admin_devices(request: web.Request) -> web.Response:
     import placement as placement_mod
     loop = asyncio.get_running_loop()
     devs = await loop.run_in_executor(None, devices_mod.list_devices)
+    all_users = await loop.run_in_executor(None, users.list_users)
+    uname = {u["id"]: (u.get("display_name") or u["name"]) for u in all_users}
     rows = [{
         "id": d.id,
         "name": d.name,
         "owner_user_id": d.owner_user_id,
+        "owner_name": uname.get(d.owner_user_id) or d.owner_user_id,
         "os_family": d.os_family,
         "os_arch": d.os_arch,
         "fingerprint": d.public_key_fingerprint,
@@ -1308,7 +1322,7 @@ async def admin_devices(request: web.Request) -> web.Response:
         request,
         json_payload={"rows": rows, "total": len(rows)},
         template="devices.html",
-        template_ctx={"rows": rows},
+        template_ctx={"rows": rows, "users": all_users},
     )
 
 
@@ -1346,6 +1360,22 @@ def _agent_server_url(request: web.Request) -> str:
     return f"http://{host}:{port}"
 
 
+def _resolve_pairing_owner(raw: str | None) -> tuple[str | None, str | None]:
+    """Predisposizione multi-utente (2026-07-04): ogni device appaiato DEVE
+    essere associato a un utente reale del registro. Risolve l'owner scelto
+    dall'admin a un vero `users.id`. Input vuoto → utente host (default
+    esplicito, non piu' il sentinel 'host'). Ritorna (owner_user_id, error):
+    error!=None se l'utente indicato non esiste."""
+    import devices as _devices
+    s = (raw or "").strip()
+    if not s:
+        return _devices.host_user_id(), None
+    u = users.get_user(s)
+    if not u:
+        return None, f"utente {s!r} inesistente"
+    return u["id"], None
+
+
 async def admin_devices_token(request: web.Request) -> web.Response:
     """POST /admin/devices/token — token effimero (TTL 10 min) + one-liner
     install Linux/Windows (design doc §5.2/§5.3/§5.4)."""
@@ -1353,16 +1383,22 @@ async def admin_devices_token(request: web.Request) -> web.Response:
     if request.content_type == "application/json":
         body = await request.json()
         name = (body.get("name") or "").strip()
+        owner_raw = body.get("owner_user_id")
     else:
         form = await request.post()
         name = (form.get("name") or "").strip()
+        owner_raw = form.get("owner_user_id")
     if not name or any(c.isspace() for c in name):
         return _error(400, "invalid_name",
                       "nome device non valido (no spazi, non vuoto)")
+    owner_id, oerr = _resolve_pairing_owner(owner_raw)
+    if oerr:
+        return _error(400, "invalid_owner", oerr)
     loop = asyncio.get_running_loop()
     try:
         token = await loop.run_in_executor(
-            None, lambda: devices_mod.generate_token(name, ttl_seconds=600))
+            None, lambda: devices_mod.generate_token(
+                name, owner_user_id=owner_id, ttl_seconds=600))
     except devices_mod.TokenError as e:
         return _error(400, "token_error", str(e))
     server_url = _agent_server_url(request)
@@ -1492,6 +1528,9 @@ async def admin_devices_join(request: web.Request) -> web.Response:
     if not name or any(c.isspace() for c in name):
         return _error(400, "invalid_name",
                       "nome device non valido (no spazi, non vuoto)")
+    owner_id, oerr = _resolve_pairing_owner(body.get("owner_user_id"))
+    if oerr:
+        return _error(400, "invalid_owner", oerr)
     # §5.2: browser sul server = niente da installare QUI. La creazione del
     # link resta legittima solo come gesto esplicito «per un ALTRO PC»
     # (for_other_pc=true, che la UI manda dal percorso opt-in).
@@ -1505,7 +1544,8 @@ async def admin_devices_join(request: web.Request) -> web.Response:
     try:
         sess = await loop.run_in_executor(
             None, lambda: devices_mod.create_join_session(
-                name, platform=platform, server_url=server_url))
+                name, platform=platform, server_url=server_url,
+                owner_user_id=owner_id))
     except devices_mod.TokenError as e:
         return _error(400, "token_error", str(e))
     return web.json_response({

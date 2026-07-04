@@ -100,6 +100,35 @@
 </div>
 
 <div class="section">
+  <h2>Dispositivi</h2>
+  <p class="muted" style="margin:.3rem 0 .6rem">Device remoti (client
+  <code>metnos-client</code>) di proprietà di questo utente. All'appaiamento
+  (<a href="/admin/devices">Dispositivi</a>) l'admin sceglie il proprietario;
+  ogni connessione del device identifica l'utente.</p>
+  <div class="table-wrap" style="box-shadow:none;margin:.5rem 0 1rem">
+  <table>
+    <thead><tr><th>nome</th><th>id</th><th>OS</th><th>heartbeat</th><th>stato</th></tr></thead>
+    <tbody>
+    {% for d in devices %}
+      <tr>
+        <td><code>{{ d.name }}</code></td>
+        <td class="muted">{{ d.id[:12] }}</td>
+        <td>{{ d.os }}</td>
+        <td class="muted">{{ d.last_heartbeat or "mai" }}</td>
+        <td>
+          {% if d.available %}<span class="chip ok">raggiungibile</span>
+          {% else %}<span class="chip warn">offline</span>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">nessun device</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="section">
   <h2>Operazioni</h2>
   <form method="post" action="/admin/users/{{ user.id }}/delete" style="display:inline">
     <button class="btn bad" type="submit"

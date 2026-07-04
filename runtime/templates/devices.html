@@ -22,6 +22,13 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
     <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
       <input type="text" name="name" id="join-name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
     </label>
+    <label>Utente proprietario (il device comparirà nel suo profilo)
+      <select name="owner_user_id" id="join-owner">
+        {% for u in users %}
+        <option value="{{ u.id }}"{% if u.role == "host" %} selected{% endif %}>{{ u.display_name or u.name }}{% if u.role == "host" %} (host){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
     <button type="submit" class="btn" id="join-btn">Installa su questo PC</button>
   </form>
   <div id="join-box" style="display:none">
@@ -96,10 +103,12 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
       e.preventDefault();
       var name = document.getElementById("join-name").value.trim();
       if (!name) return;
+      var owner = document.getElementById("join-owner").value;
       fetch("/admin/devices/join", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({name: name, platform: "auto",
+                              owner_user_id: owner,
                               for_other_pc: forOtherPc}),
       }).then(function(r){return r.json();}).then(function (s) {
         if (!s.join_id) { alert(s.message || "errore"); return; }
@@ -148,6 +157,13 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
       <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
         <input type="text" name="name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
       </label>
+      <label>Utente proprietario
+        <select name="owner_user_id">
+          {% for u in users %}
+          <option value="{{ u.id }}"{% if u.role == "host" %} selected{% endif %}>{{ u.display_name or u.name }}{% if u.role == "host" %} (host){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
       <button type="submit" class="btn">Genera token (10 min)</button>
     </form>
     <div id="token-box"></div>
@@ -167,7 +183,7 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
     <tr>
       <td><code>{{ r.name }}</code></td>
       <td class="muted">{{ r.id[:12] }}</td>
-      <td>{{ r.owner_user_id }}</td>
+      <td title="{{ r.owner_user_id }}">{{ r.owner_name }}</td>
       <td>{{ r.os_family or "?" }}/{{ r.os_arch or "?" }}</td>
       <td class="muted"><code>{{ r.fingerprint[:16] }}</code></td>
       <td class="muted">{{ r.last_heartbeat or "mai" }}</td>
