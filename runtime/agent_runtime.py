@@ -5462,10 +5462,15 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
 def _apply_device_tag(log) -> None:
     """Chat-driven placement (ADR 0034): se uno step è girato DAVVERO su un
     device (marker `_ran_on_device`, posto da invoke_executor sulla consegna
-    remota), imposta `log.target_device` (campo strutturato per l'UI) e antepone
-    un marcatore 📍<nome> al messaggio finale. Basato sull'esecuzione REALE, mai
-    ottimistico: un'operazione girata in locale nonostante la destinazione non
-    viene etichettata come remota."""
+    remota), imposta `log.target_device` (campo strutturato per l'UI). Basato
+    sull'esecuzione REALE, mai ottimistico: un'operazione girata in locale
+    nonostante la destinazione non viene etichettata come remota.
+
+    Separazione dei livelli (2026-07-04): il marcatore TESTUALE 📍<nome> NON
+    viene più anteposto a `final_message` qui. Il web usa `target_device` nella
+    meta line della risposta; i canali solo-testo (Telegram) lo antepongono nel
+    formattatore (`channels/daemon._format_turn_result`). Così un canale non
+    duplica ciò che l'altro rende in modo strutturato."""
     _dev = None
     for _s in (log.steps or []):
         _r = getattr(_s, "result", None)
@@ -5475,8 +5480,6 @@ def _apply_device_tag(log) -> None:
     if not _dev:
         return
     log.target_device = _dev
-    if log.final_message and not log.final_message.startswith("📍"):
-        log.final_message = f"📍 {_dev}\n\n{log.final_message}"
 
 
 # --- Strato 3 escalation UI (task #30) ----------------------------------

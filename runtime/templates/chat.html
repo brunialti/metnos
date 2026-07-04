@@ -108,6 +108,9 @@ header form button:hover{color:var(--accent)}
             font-size:var(--fs-0);color:var(--muted);margin-top:.35rem;
             display:flex;justify-content:space-between;align-items:baseline;gap:1rem}
 .msg .meta .meta-right{margin-left:auto;white-space:nowrap}
+/* «dove è stato eseguito» nella meta line (sostituisce il badge 📍 in testa) */
+.msg .meta .where{color:var(--ink-2)}
+.msg .meta .where.remote{color:var(--accent);font-weight:600}
 
 /* ---------- feedback ✓/✗ (E.1): colore SEMPRE visibile, anche a riposo
    (su touch non esiste hover). Discreti via opacity, mai grigi.
@@ -761,7 +764,17 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
         m.className = 'meta';
         const left = document.createElement('span');
         left.className = 'meta-left';
-        left.textContent = meta.left || '';
+        if(meta.where){
+          // «dove è stato eseguito»: remoto = nome device in accento (sostituisce
+          // il badge 📍 in testa), locale = "server Metnos" neutro.
+          const w = document.createElement('span');
+          w.className = 'where' + (meta.whereRemote ? ' remote' : '');
+          w.textContent = meta.where;
+          left.appendChild(w);
+          if(meta.left) left.appendChild(document.createTextNode(' · ' + meta.left));
+        } else {
+          left.textContent = meta.left || '';
+        }
         m.appendChild(left);
         const right = document.createElement('span');
         right.className = 'meta-right';
@@ -774,8 +787,8 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           fb.className = 'msg-fb';
           fb.dataset.turnId = meta.turn_id;
           fb.innerHTML =
-            '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>'
-          + '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>';
+            '<button class="msg-fb-btn err" title="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_ERR_HINT")|e }}">✗</button>'
+          + '<button class="msg-fb-btn ok" title="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}" aria-label="{{ msg("MSG_CHAT_FB_OK_HINT")|e }}">✓</button>';
           fb.querySelector('.ok').addEventListener('click',
             () => sendFeedback(meta.turn_id, 'ok', fb));
           fb.querySelector('.err').addEventListener('click',
@@ -1006,15 +1019,23 @@ async function fetchServerHistory(){
         // resumable (il `final` arriva dall'event log, robusto al reload e
         // all'id JSONL diverso). Fallback: pollInFlight via dataset.
         const ph = add('bot', '⏳ in elaborazione…',
-                       'turn ' + (t.turn_id || '').slice(0,8), false);
+                       {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + (t.turn_id || '').slice(0,8), false);
         if(ph) ph.dataset.turnId = t.turn_id;
         if(ph) ph.dataset.inFlight = '1';
         reattachTurnStream(t.turn_id, ph);
       } else if(t.final_message){
-        const metaLeft = 'turn ' + (t.turn_id || '').slice(0,8) +
+        // Stessa forma del percorso live: dove · turn:id · tempo | ora-fine.
+        const where = t.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};
+        const metaLeft = {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + (t.turn_id || '').slice(0,8) +
                           (t.total_ms ? ' · ' + (t.total_ms/1000).toFixed(1) + 's' : '');
+        const closeHms = (typeof t.ts_end === 'number')
+          ? new Date(t.ts_end * 1000).toLocaleTimeString('it-IT', { hour12: false }) : '';
+        const rpath = Array.isArray(t.path) ? t.path
+          : Array.isArray(t.steps_summary)
+            ? t.steps_summary.map(s => ({tool: s.tool, ok: s.ok})) : [];
         add('bot', t.final_message_html || t.final_message,
-            { left: metaLeft, right: '', turn_id: t.turn_id }, true,
+            { path: rpath, where: where, whereRemote: !!t.target_device,
+              left: metaLeft, right: closeHms, turn_id: t.turn_id }, true,
             t.attachments || null, null,
             !!t.final_message_html);
       }
@@ -1640,7 +1661,11 @@ form.addEventListener('submit', async (e) => {
       const closeDate = (typeof data.ts_end === 'number')
         ? new Date(data.ts_end * 1000) : new Date();
       const closeHms = closeDate.toLocaleTimeString('it-IT', { hour12: false });
-      const metaLeft = (data.turn_id ? 'turn ' + data.turn_id.slice(0,8) + ' · ' : '') +
+      // Linea di stato (2026-07-04): SX = dove · turn:id · tempo ; DX = ora-fine.
+      // Il «dove» sostituisce il badge 📍 in testa (rimosso da _apply_device_tag);
+      // remoto = nome device (accento), locale = "server Metnos".
+      const where = data.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};
+      const metaLeft = (data.turn_id ? {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + data.turn_id.slice(0,8) + ' · ' : '') +
                         (ms/1000).toFixed(1) + ' s';
       const metaRight = closeHms;
       const path = Array.isArray(data.path) ? data.path
@@ -1648,7 +1673,8 @@ form.addEventListener('submit', async (e) => {
           ? data.steps_summary.map(s => ({tool: s.tool, ok: s.ok}))
           : [];
       add('bot', body,
-          { path: path, left: metaLeft, right: metaRight, turn_id: data.turn_id },
+          { path: path, where: where, whereRemote: !!data.target_device,
+            left: metaLeft, right: metaRight, turn_id: data.turn_id },
           true,
           data.attachments || null, galleryInfo, bodyAsHtml);
     } else if(kind === 'error'){

@@ -197,9 +197,17 @@ def _format_dialog_completion(dialog, new_state, title: str) -> str:
 def _format_turn_result(result) -> str:
     """Riduce un TurnLog a una risposta testuale per il canale."""
     if hasattr(result, "final_message") and result.final_message:
-        return result.final_message
+        msg = result.final_message
+        # Marcatore device per i canali SOLO-TESTO (Telegram): il web ha la
+        # meta line strutturata (`target_device`), qui invece serve nel testo.
+        # Separazione dei livelli (2026-07-04): `_apply_device_tag` non antepone
+        # più il 📍; lo aggiunge il formattatore di canale.
+        _dev = getattr(result, "target_device", None)
+        if _dev and not msg.startswith("📍"):
+            msg = f"📍 {_dev}\n\n{msg}"
+        return msg
     if hasattr(result, "final_kind"):
-        return f"(turno chiuso senza testo: {result.final_kind})"
+        return _msg("MSG_TURN_NO_TEXT", kind=result.final_kind)
     return str(result)
 
 
