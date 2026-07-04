@@ -191,7 +191,9 @@ form#f{display:flex;gap:.55rem;align-items:flex-end;justify-content:center;
 #q{flex:1;max-width:780px;padding:.55rem .75rem;
    font:16px/1.45 var(--font-ui);color:var(--ink);background:var(--surface);
    border:1px solid var(--border-strong);border-radius:var(--r-2);
-   resize:none;max-height:10em;overflow-y:auto}
+   /* U7: maniglia verticale a mano + cap relativo al viewport (si adatta a
+      rotazione/resize finestra; il JS rifà l'auto-grow su window.resize). */
+   resize:vertical;min-height:2.6em;max-height:45vh;overflow-y:auto}
 #q:focus{outline:none;border-color:var(--accent);
          box-shadow:0 0 0 3px var(--accent-soft)}
 button{font:inherit;cursor:pointer}
@@ -304,6 +306,20 @@ body.readonly #q{cursor:not-allowed}
   #b{padding:.6rem .95rem}
   #log:empty::before{margin-top:10vh}
 }
+
+/* ═══ MIGLIORIE LEGGIBILITÀ (2026-07-04) — tutte sui token esistenti ═══ */
+/* R1 misura di lettura: la prosa del bot a ~640px (comodo); le gallery
+   full-bleed restano larghe (escluse via :not(.gallery)). R2 filetto
+   verderame a sinistra: ancora la risposta sul canvas quasi-bianco. */
+.msg.bot:not(.gallery){max-width:min(92%,640px);
+                       border-left:2px solid var(--accent-line)}
+/* R3 raggruppamento dei turni: più aria PRIMA del messaggio utente, così
+   ogni coppia domanda→risposta si legge come un blocco (il #log ha gap .7). */
+.msg.me{margin-top:.7rem}
+.msg.me:first-child{margin-top:0}
+/* R4 righe tool più scansionabili: +font e prefisso "↳". */
+.msg.tool-info,.msg.tool{font-size:.86em}
+.msg.tool-info::before,.msg.tool::before{content:"↳ ";color:var(--muted)}
 </style>
 </head>
 <body>
@@ -1106,13 +1122,29 @@ document.getElementById('clearBtn').addEventListener('click', (e) => {
   }
 });
 
-// Composer textarea auto-grow: 1 riga di base, cresce col contenuto fino
-// a ~10em (poi scrolla). Richiamare dopo OGNI set programmatico di q.value.
+// Composer textarea auto-grow: 1 riga di base, cresce col contenuto fino al
+// cap relativo al viewport (45vh, si adatta a rotazione/resize; poi scrolla).
+// Richiamare dopo OGNI set programmatico di q.value.
+// U7 (2026-07-04): rifit su window.resize + resize MANUALE (maniglia)
+// preservato (una modifica d'altezza non causata dall'auto-grow → l'utente
+// ha trascinato → non la sovrascriviamo finché non ridigita).
+let _qUserResized = false, _qLastAuto = 0;
+function _qMaxH(){ return Math.round(window.innerHeight * 0.45); }
 function autoGrowQ(){
+  _qLastAuto = Date.now();
   q.style.height = 'auto';
-  q.style.height = Math.min(q.scrollHeight + 2, 170) + 'px';
+  q.style.height = Math.min(q.scrollHeight + 2, _qMaxH()) + 'px';
 }
-q.addEventListener('input', autoGrowQ);
+q.addEventListener('input', () => { _qUserResized = false; autoGrowQ(); });
+window.addEventListener('resize', () => {
+  _qLastAuto = Date.now();
+  if(!_qUserResized) autoGrowQ();
+});
+if(window.ResizeObserver){
+  new ResizeObserver(() => {
+    if(Date.now() - _qLastAuto > 250) _qUserResized = true;
+  }).observe(q);
+}
 
 // Navigazione buffer comandi con frecce su/giù (stile shell):
 // ArrowUp = comando precedente; ArrowDown = comando successivo.
