@@ -246,7 +246,11 @@ impl Runner {
         .await?;
         pyenv::assert_stdlib_only(&exec.dir)?;
 
-        // Shim + interprete: risolti UNA volta per processo (cache).
+        // Shim + interprete: risolti UNA volta per processo (cache). Lo shim
+        // NON e' content-addressed come gli executor: se un modulo runtime
+        // viene aggiunto al bundle server DOPO l'avvio del client, il client
+        // gia' in esecuzione non lo vedrebbe mai (memoizzato una volta). Sotto
+        // c'e' l'auto-guarigione: su import fallito lo shim viene rigenerato.
         if self.shim_dir.is_none() {
             self.shim_dir = Some(
                 executors::ensure_shim(&self.server, &self.server_pubkey, &self.paths.cache_dir)
@@ -258,7 +262,6 @@ impl Runner {
             tracing::info!(python = %env.python.display(), source = %env.source, "interprete risolto (cache)");
             self.python = Some(env.python);
         }
-        let shim = self.shim_dir.clone().unwrap();
         let python = self.python.clone().unwrap();
         tracing::info!(executor = %inv.executor, "esecuzione");
 
@@ -268,36 +271,68 @@ impl Runner {
         let limits = sandbox::Limits {
             wall: Duration::from_millis(inv.deadline_ms.max(1000)),
         };
-        let start = Instant::now();
-        let out = sandbox::run_sandboxed(
-            &exec, &python, &shim, &args_json, &extra_env, &limits,
-        )
-        .await?;
-        let elapsed_ms = start.elapsed().as_millis() as i64;
 
-        if out.timed_out {
-            return Ok(InvocationResult {
-                invocation_id: inv.invocation_id.clone(),
-                device_id: self.device_id.clone(),
-                ok: false,
-                entries: json!([]),
-                n_processed: 0,
-                elapsed_ms,
-                sandbox: out.sandbox,
-                error: Some("deadline exceeded".into()),
-                error_class: Some("timeout".into()),
-                payload: json!({}),
-            });
-        }
-
-        let parsed: Value = serde_json::from_str(out.stdout.trim()).map_err(|e| {
-            anyhow::anyhow!(
-                "output executor non-JSON: {e}; stdout={:?} stderr={:?}",
-                out.stdout,
-                out.stderr
+        // Esecuzione con auto-guarigione dello shim (costo zero sul percorso
+        // felice): se l'executor esce con output non-JSON PERCHE' un import e'
+        // fallito (ModuleNotFoundError/ImportError), lo shim in cache e'
+        // stantio — ri-scarica lo shim UNA volta e riprova. Ogni altro output
+        // non-JSON resta un errore, invariato.
+        let mut refreshed = false;
+        loop {
+            let shim = self.shim_dir.clone().unwrap();
+            let start = Instant::now();
+            let out = sandbox::run_sandboxed(
+                &exec, &python, &shim, &args_json, &extra_env, &limits,
             )
-        })?;
-        Ok(result_from_executor(inv, &self.device_id, parsed, elapsed_ms, out.sandbox))
+            .await?;
+            let elapsed_ms = start.elapsed().as_millis() as i64;
+
+            if out.timed_out {
+                return Ok(InvocationResult {
+                    invocation_id: inv.invocation_id.clone(),
+                    device_id: self.device_id.clone(),
+                    ok: false,
+                    entries: json!([]),
+                    n_processed: 0,
+                    elapsed_ms,
+                    sandbox: out.sandbox,
+                    error: Some("deadline exceeded".into()),
+                    error_class: Some("timeout".into()),
+                    payload: json!({}),
+                });
+            }
+
+            match serde_json::from_str::<Value>(out.stdout.trim()) {
+                Ok(parsed) => {
+                    return Ok(result_from_executor(
+                        inv, &self.device_id, parsed, elapsed_ms, out.sandbox));
+                }
+                Err(e) => {
+                    let import_failed = out.stderr.contains("ModuleNotFoundError")
+                        || out.stderr.contains("ImportError");
+                    if !refreshed && import_failed {
+                        tracing::warn!(
+                            executor = %inv.executor,
+                            "output non-JSON con import fallito: shim sospetto stantio, \
+                             lo rigenero e riprovo"
+                        );
+                        self.shim_dir = Some(
+                            executors::ensure_shim(
+                                &self.server, &self.server_pubkey, &self.paths.cache_dir,
+                            )
+                            .await?,
+                        );
+                        refreshed = true;
+                        continue;
+                    }
+                    return Err(anyhow::anyhow!(
+                        "output executor non-JSON: {e}; stdout={:?} stderr={:?}",
+                        out.stdout,
+                        out.stderr
+                    ));
+                }
+            }
+        }
     }
 
     /// Consegna (o ri-consegna) i result nello spool. Best-effort: un POST
