@@ -48,9 +48,16 @@ OBJECT_BACKENDS: dict[str, dict] = {
     },
     "files": {
         "arg": "client",
-        "providers": ["local"],
-        "available": lambda p: True,
-        "aliases": {},
+        # local = DEFAULT (self-hosted §10.3); google_workspace opt-in solo se
+        # nominato esplicitamente (alias) — vale per find/read/write/... files.
+        "providers": ["local", "google_workspace"],
+        "available": lambda p: _gw_creds() if p == "google_workspace" else True,
+        "aliases": {
+            "google_workspace": ("google drive", "gdrive", "su drive",
+                                  "in drive", "drive google", "google docs",
+                                  "google doc", "google sheet", "google sheets",
+                                  "google fogli", "google workspace"),
+        },
     },
     "contacts": {
         "arg": "client",

@@ -16,8 +16,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge tutte le righe da un foglio LOCALE (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/foglio.xlsx\"). NON: foglio Google online -> client=\"google_workspace\"; testo semplice -> read_files. OUT: entries: list[list] (matrice righe x celle) + values stessa shape."
-en = "SCOPO: reads all rows from a LOCAL spreadsheet (.xlsx/.csv). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/sheet.xlsx\"). NON: online Google sheet -> client=\"google_workspace\"; plain text -> read_files. OUT: entries: list[list] (rows x cells matrix) + values same shape."
+it = "SCOPO: legge tutte le righe da un foglio (.xlsx/.csv LOCALE o Google Sheet online). PATTERN: LOCALE read_files_spreadsheet(spreadsheet_id=\"/path/foglio.xlsx\"); GOOGLE read_files_spreadsheet(name=\"titolo foglio\", client=\"google_workspace\"). NON: inventare id opaco; testo semplice -> read_files. OUT: entries: list[list] (matrice righe x celle) + values stessa shape."
+en = "SCOPO: reads all rows from a spreadsheet (LOCAL .xlsx/.csv or online Google Sheet). PATTERN: LOCAL read_files_spreadsheet(spreadsheet_id=\"/path/sheet.xlsx\"); GOOGLE read_files_spreadsheet(name=\"sheet title\", client=\"google_workspace\"). NON: invent opaque id; plain text -> read_files. OUT: entries: list[list] (rows x cells matrix) + values same shape."
 
 [code]
 files  = ["read_files_spreadsheet.py"]
@@ -25,14 +25,25 @@ digest = "sha256:2f148665a64581c8f2fb966b6596d1a0000633c1a282c4da4db4fcaadddae5e
 
 [args]
 type     = "object"
-required = ["spreadsheet_id"]
+required = []
+# LOCAL: `spreadsheet_id` = PATH del file. google_workspace: l'utente referenzia
+# il foglio per NOME -> `name` (il backend risolve name->id via ricerca Drive,
+# solo Sheet, nome esatto). Disgiunzione §7.3: spreadsheet_id OR name OR entries.
+requires_one_of = [["spreadsheet_id", "name", "entries"]]
 
 [args.properties.spreadsheet_id]
 type    = "string"
 
 [args.properties.spreadsheet_id.description]
-it = "LOCAL: PATH del file .xlsx/.csv (es. '/home/.../foglio.xlsx'). google_workspace: ID Drive (es. '1abc...XYZ'). MATCH ESATTO: wildcard NON supportati."
-en = "LOCAL: PATH of the .xlsx/.csv file (e.g. '/home/.../sheet.xlsx'). google_workspace: Drive ID (e.g. '1abc...XYZ'). EXACT MATCH: wildcards NOT supported."
+it = "LOCAL: PATH del file .xlsx/.csv (es. '/home/.../foglio.xlsx'). google_workspace: ID Drive OPACO (es. '1abc...XYZ', raro; di norma usa `name`). MATCH ESATTO: wildcard NON supportati."
+en = "LOCAL: PATH of the .xlsx/.csv file (e.g. '/home/.../sheet.xlsx'). google_workspace: OPAQUE Drive ID (e.g. '1abc...XYZ', rare; normally use `name`). EXACT MATCH: wildcards NOT supported."
+
+[args.properties.name]
+type    = "string"
+
+[args.properties.name.description]
+it = "google_workspace: titolo/nome del foglio Google (es. 'Budget 2026'); il backend lo risolve all'id via ricerca. USA QUESTO quando non hai l'id opaco. LOCAL: ignorato (usa `spreadsheet_id`=path)."
+en = "google_workspace: Google Sheet title/name (e.g. 'Budget 2026'); the backend resolves it to the id via search. USE THIS when you don't have the opaque id. LOCAL: ignored (use `spreadsheet_id`=path)."
 
 [args.properties.sheet_name]
 type    = "string"
@@ -58,6 +69,13 @@ default = "local"
 [args.properties.client.description]
 it = "Backend: 'local' (default, file .xlsx/.csv) o 'google_workspace' (Google Sheets online, richiede OAuth)."
 en = "Backend: 'local' (default, .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth)."
+
+[args.properties.entries]
+type    = "array"
+
+[args.properties.entries.description]
+it = "Record con `id`/`spreadsheet_id`, tipicamente via `from_step: N` (es. output di find_files su Drive)."
+en = "Records with `id`/`spreadsheet_id`, typically via `from_step: N` (e.g. find_files output on Drive)."
 
 [output]
 schema_inline = """

@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -42,6 +43,239 @@ from backends._google_api_runner import run_with_retry  # noqa: E402
 from messages import get as _msg  # noqa: E402
 
 SKILL_NAME = "google-workspace"
+
+
+_DRIVE_ID_RE = re.compile(r"[A-Za-z0-9_-]{12,}")
+
+
+def _looks_like_drive_id(value) -> bool:
+    """Forma sintattica di un id Drive: token OPACO (>=12 char, alnum/-/_), NIENTE
+    spazi. Un valore con spazi o troppo corto NON e' un id: e' un NOME che il
+    proposer ha messo nell'arg id (es. `spreadsheet_id="KAKEBO SPESE 2026"`) →
+    va trattato come LOCATORE nominale, non come id (che darebbe 404). §7.9."""
+    return bool(isinstance(value, str) and _DRIVE_ID_RE.fullmatch(value.strip()))
+
+
+def _entry_file_id(entry: dict) -> str | None:
+    """ID Drive da una entry prodotta da find/get.
+
+    Nei flussi compound il runtime espande `from_step` in `entries`. Drive pero'
+    non legge per path locale: legge per id. Accettiamo i nomi campo emessi dai
+    backend Google e dai wrapper storici, evitando valori vuoti.
+    """
+    for key in ("id", "file_id", "document_id", "spreadsheet_id", "uid"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _ids_from_args(args: dict) -> list[str]:
+    ids: list[str] = []
+    if isinstance(args.get("file_ids"), list):
+        ids.extend(str(x).strip() for x in args["file_ids"]
+                   if x is not None and str(x).strip())
+    for key in ("file_id", "document_id", "spreadsheet_id"):
+        fid = args.get(key)
+        # Solo se e' un id OPACO: un titolo finito qui (es. il proposer che
+        # scrive il NOME in spreadsheet_id) NON e' un id → lo raccoglie
+        # `_locator_query_from_args` come locatore.
+        if _looks_like_drive_id(fid):
+            ids.append(fid.strip())
+    paths = args.get("paths")
+    if isinstance(paths, list):
+        for p in paths:
+            if isinstance(p, str) and p.strip():
+                ids.append(p.strip())
+    entries = args.get("entries") or []
+    if isinstance(entries, list):
+        for e in entries:
+            if isinstance(e, dict):
+                fid = _entry_file_id(e)
+                if fid:
+                    ids.append(fid)
+    return list(dict.fromkeys(ids))
+
+
+def _locator_query_from_args(args: dict) -> str:
+    """Nome/query Drive fornito esplicitamente al backend.
+
+    Non deriva dalla frase utente: qui il backend accetta solo locatori nominali
+    gia' strutturati (`query`, `name`, `pattern`, `patterns`). L'estrazione dalla
+    lingua naturale resta responsabilita' dell'engine/intent.
+    """
+    for key in ("query", "name", "pattern"):
+        value = args.get(key)
+        if isinstance(value, str) and value.strip() and value.strip() not in ("*", "*.*", "**"):
+            return value.strip().strip("*")
+    patterns = args.get("patterns")
+    if isinstance(patterns, list):
+        for value in patterns:
+            if isinstance(value, str) and value.strip() and value.strip() not in ("*", "*.*", "**"):
+                return value.strip().strip("*")
+    # Un id-arg che NON e' id-shaped (il proposer ha messo il TITOLO in
+    # document_id/spreadsheet_id) e' un locatore nominale, non un id.
+    for key in ("document_id", "spreadsheet_id", "file_id"):
+        value = args.get(key)
+        if isinstance(value, str) and value.strip() and not _looks_like_drive_id(value):
+            return value.strip()
+    return ""
+
+
+_MIME_BY_KIND = {
+    "document": "application/vnd.google-apps.document",
+    "spreadsheet": "application/vnd.google-apps.spreadsheet",
+}
+
+
+def _narrow_locator_entries(entries: list[dict], *, locator: str,
+                            mime_kind: str | None) -> list[dict]:
+    """Restringe i risultati di ricerca Drive per una risoluzione SINGLE-target.
+
+    La ricerca e' `fullText contains` (larga) e Doc/Sheet possono condividere il
+    nome: (1) filtro per TIPO (read_files_doc→document, ..._spreadsheet→
+    spreadsheet); (2) preferenza NOME ESATTO (case-insensitive) fra gli omonimi.
+    Deterministico §7.9. Se il filtro-tipo azzera → lista vuota → not_found
+    onesto (mai leggere un Sheet quando l'utente ha chiesto un Doc)."""
+    out = entries
+    want = _MIME_BY_KIND.get(mime_kind or "")
+    if want:
+        out = [e for e in out
+               if (e.get("mimeType") or e.get("mime_type")) == want]
+    loc = (locator or "").strip().casefold()
+    if loc:
+        exact = [e for e in out
+                 if str(e.get("name") or e.get("title") or "").strip().casefold() == loc]
+        if exact:
+            out = exact
+    return out
+
+
+def _search_entries_for_locator(args: dict, *, max_results: int | None = None,
+                                mime_kind: str | None = None
+                                ) -> tuple[list[dict], dict | None]:
+    query = _locator_query_from_args(args)
+    if not query:
+        return [], None
+    search_args = dict(args)
+    search_args["query"] = query
+    search_args.pop("pattern", None)
+    search_args.pop("patterns", None)
+    if max_results is not None:
+        search_args["max_results"] = max_results
+    out = find(search_args)
+    if out.get("decision") == "needs_inputs":
+        return [], out
+    if not out.get("ok"):
+        return [], out
+    entries = [e for e in (out.get("entries") or []) if isinstance(e, dict)]
+    # Solo per i lettori single-target (mime_kind noto): filtro tipo + nome
+    # esatto. Per `read()` vettoriale (mime_kind=None) nessuna riduzione.
+    if mime_kind:
+        entries = _narrow_locator_entries(entries, locator=query,
+                                          mime_kind=mime_kind)
+    return entries, None
+
+
+def _ids_from_args_or_locator(args: dict, *, max_results: int | None = None,
+                              mime_kind: str | None = None
+                              ) -> tuple[list[str], list[dict], dict | None]:
+    ids = _ids_from_args(args)
+    if ids:
+        entries = [e for e in (args.get("entries") or [])
+                   if isinstance(e, dict)]
+        return ids, entries, None
+    entries, err = _search_entries_for_locator(args, max_results=max_results,
+                                               mime_kind=mime_kind)
+    if err is not None:
+        return [], [], err
+    ids = [_entry_file_id(e) for e in entries]
+    return [i for i in dict.fromkeys(ids) if i], entries, None
+
+
+def _not_found_for_locator(args: dict, *, result_kind: str = "entries") -> dict:
+    query = _locator_query_from_args(args)
+    out = {"ok": False,
+           "error_code": "ERR_PATH_NOT_FOUND",
+           "error": _msg("ERR_PATH_NOT_FOUND", path=query or "file"),
+           "error_class": "not_found",
+           "used": 0}
+    if result_kind == "entries":
+        out["entries"] = []
+    else:
+        out["results"] = []
+    return out
+
+
+def _drive_choice_needed(args: dict, entries: list[dict], *,
+                         executor: str, title: str) -> dict:
+    choices = []
+    for e in entries[:25]:
+        fid = _entry_file_id(e)
+        if not fid:
+            continue
+        label = e.get("name") or e.get("title") or fid
+        mime = e.get("mimeType") or e.get("mime_type")
+        if mime:
+            label = f"{label} ({mime})"
+        choices.append({"value": fid, "label": label})
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "needs_inputs": {
+            "title": title,
+            "dialog": [{
+                "var": "file_id",
+                "prompt": "Scegli il file Drive da usare",
+                "schema": {"kind": "choice", "choices": choices},
+            }],
+            "fmt": "auto",
+            "on_complete": {
+                "type": "resume_executor_with_values",
+                "executor": executor,
+                "args_base": {k: v for k, v in dict(args).items()
+                              if k not in ("query", "name", "pattern", "patterns")},
+            },
+            "timeout_s": 3600,
+        },
+        "entries": entries,
+        "used": 0,
+        "error_class": "ambiguous",
+    }
+
+
+def _single_id_from_args_or_locator(args: dict, *, id_arg: str,
+                                    executor: str, result_kind: str,
+                                    title: str,
+                                    mime_kind: str | None = None
+                                    ) -> tuple[str, dict | None]:
+    """Resolve un singolo ID Drive per operazioni by-id.
+
+    Accetta ID diretto, `entries` da `from_step`, oppure un locatore nominale
+    (`query`, `name`, `pattern`, o un titolo finito nell'arg id). `mime_kind`
+    (document/spreadsheet) restringe la ricerca al tipo giusto + preferisce il
+    nome esatto, cosi' fra omonimi Doc/Sheet non chiede quando non serve.
+    """
+    ids, entries, err = _ids_from_args_or_locator(args, max_results=25,
+                                                  mime_kind=mime_kind)
+    if err is not None:
+        return "", err
+    if not ids:
+        if _locator_query_from_args(args):
+            return "", _not_found_for_locator(args, result_kind=result_kind)
+        out = {"ok": False, "error_code": "ERR_ARG_MISSING",
+               "error": _msg("ERR_ARG_MISSING", arg=id_arg),
+               "error_class": "invalid_args", "used": 0}
+        if result_kind == "entries":
+            out["entries"] = []
+        else:
+            out["results"] = []
+            out["n_written"] = 0
+        return "", out
+    if len(ids) > 1 and not args.get("_confirmed"):
+        return "", _drive_choice_needed(args, entries, executor=executor,
+                                        title=title)
+    return ids[0], None
 
 
 def _has_creds() -> bool:
@@ -158,12 +392,15 @@ def find(args: dict) -> dict:
 
     query = args.get("query")
     if not query:
-        paths = args.get("paths") or []
-        if isinstance(paths, list) and paths:
-            query = str(paths[0])
+        # find_files(local) usa paths/patterns (liste) o pattern (str) per il
+        # nome-file: mappali a query Drive (name contains). Glob universali
+        # ignorati (cercherebbero tutto).
+        for _k in ("paths", "patterns"):
+            _v = args.get(_k)
+            if isinstance(_v, list) and _v and str(_v[0]).strip():
+                query = str(_v[0]).strip().strip("*")
+                break
     if not query:
-        # find_files(local) usa `pattern` per il nome-file: mappalo a query Drive
-        # (name contains). Glob universali ignorati (cercherebbero tutto).
         pat = args.get("pattern")
         if isinstance(pat, str) and pat.strip() and pat.strip() not in ("*", "*.*", "**"):
             query = pat.strip().strip("*")
@@ -211,21 +448,16 @@ def read(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
 
-    ids: list[str] = []
-    if isinstance(args.get("file_ids"), list):
-        ids.extend(str(x).strip() for x in args["file_ids"] if x)
-    fid = args.get("file_id")
-    if isinstance(fid, str) and fid.strip():
-        ids.append(fid.strip())
+    ids, _resolved_entries, err = _ids_from_args_or_locator(args)
+    if err is not None:
+        return err
     if not ids:
-        # Back-compat: paths come list di file_id
-        for p in (args.get("paths") or []):
-            if isinstance(p, str) and p.strip():
-                ids.append(p.strip())
-    if not ids:
+        if _locator_query_from_args(args):
+            return _not_found_for_locator(args, result_kind="entries")
         return {"ok": False,
                 "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids/paths"),
+                "error": _msg("ERR_ARG_MISSING",
+                              arg="file_id/file_ids/paths/entries/query"),
                 "error_class": "invalid_args",
                 "entries": [], "used": 0}
 
@@ -337,24 +569,23 @@ def delete(args: dict) -> dict:
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
 
-    ids: list[str] = []
-    if isinstance(args.get("file_ids"), list):
-        ids.extend(str(x).strip() for x in args["file_ids"] if x)
-    fid = args.get("file_id")
-    if isinstance(fid, str) and fid.strip():
-        ids.append(fid.strip())
-    entries = args.get("entries") or []
-    if isinstance(entries, list):
-        for e in entries:
-            if isinstance(e, dict):
-                v = e.get("id") or e.get("uid")
-                if isinstance(v, str) and v.strip():
-                    ids.append(v.strip())
+    ids, resolved_entries, err = _ids_from_args_or_locator(args, max_results=25)
+    if err is not None:
+        return err
     if not ids:
+        if _locator_query_from_args(args):
+            out = _not_found_for_locator(args, result_kind="results")
+            out["n_deleted"] = 0
+            return out
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids/entries"),
+                "error": _msg("ERR_ARG_MISSING",
+                              arg="file_id/file_ids/entries/query"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_deleted": 0}
+    if len(ids) > 1 and resolved_entries and not args.get("_confirmed"):
+        return _drive_choice_needed(
+            args, resolved_entries, executor="delete_files",
+            title="Scegli il file Drive da cancellare")
 
     permanent = bool(args.get("permanent"))
     results, failed = [], []
@@ -400,17 +631,20 @@ def share(args: dict) -> dict:
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
-    ids: list[str] = []
-    if isinstance(args.get("file_ids"), list):
-        ids.extend(str(x).strip() for x in args["file_ids"] if x)
-    fid = args.get("file_id")
-    if isinstance(fid, str) and fid.strip():
-        ids.append(fid.strip())
+    ids, resolved_entries, err = _ids_from_args_or_locator(args, max_results=25)
+    if err is not None:
+        return err
     if not ids:
+        if _locator_query_from_args(args):
+            return _not_found_for_locator(args, result_kind="results")
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids"),
+                "error": _msg("ERR_ARG_MISSING", arg="file_id/file_ids/query"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
+    if len(ids) > 1 and resolved_entries:
+        return _drive_choice_needed(
+            args, resolved_entries, executor="share_files",
+            title="Scegli il file Drive da condividere")
 
     email = args.get("email") or ""
     role = args.get("role") or "reader"
@@ -722,7 +956,7 @@ def read_spreadsheet(args: dict) -> dict:
 
     Args:
       - `spreadsheet_id`: str (richiesto).
-      - `range`: str A1 (default "Sheet1"; legge tutto il foglio).
+      - `range`: str A1 (default "A:ZZ" non qualificato = tutta la prima tab).
     Output: `{ok, values: [[...]], range, spreadsheet_id, used}`.
     """
     if not isinstance(args, dict):
@@ -734,12 +968,21 @@ def read_spreadsheet(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
                 "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
-    sid = (_sid_raw or "").strip()
-    if not sid:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
-                "error_class": "invalid_args", "entries": [], "used": 0}
-    rng = (args.get("range") or "Sheet1").strip()
+    sid, sid_err = _single_id_from_args_or_locator(
+        args,
+        id_arg="spreadsheet_id",
+        executor="read_files_spreadsheet",
+        result_kind="entries",
+        title="Scegli il foglio Google da leggere",
+        mime_kind="spreadsheet",
+    )
+    if sid_err is not None:
+        return sid_err
+    # Default = range NON qualificato (senza nome-tab): Sheets lo applica alla
+    # PRIMA tab qualunque sia il suo nome (Foglio1/Sheet1/...). "Sheet1" come
+    # default rompeva i fogli a locale IT (tab "Foglio1"). Le celle vuote di coda
+    # sono troncate dall'API, quindi "A:ZZ" = "tutta la prima tab". §7.3 generale.
+    rng = (args.get("range") or "A:ZZ").strip()
     argv = ["sheets", "get", sid, rng]
     data, err = _run_drive(argv, executor="read_files_spreadsheet",
                              args_base=dict(args), result_kind="entries")
@@ -780,12 +1023,16 @@ def write_spreadsheet(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
                 "error": _msg("ERR_ARG_NOT_STRING", arg="spreadsheet_id"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
-    sid = (_sid_raw or "").strip()
-    if not sid:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="spreadsheet_id"),
-                "error_class": "invalid_args",
-                "results": [], "used": 0, "n_written": 0}
+    sid, sid_err = _single_id_from_args_or_locator(
+        args,
+        id_arg="spreadsheet_id",
+        executor="write_files_spreadsheet",
+        result_kind="results",
+        title="Scegli il foglio Google da modificare",
+        mime_kind="spreadsheet",
+    )
+    if sid_err is not None:
+        return sid_err
     rng = (args.get("range") or "").strip()
     if not rng:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
@@ -937,11 +1184,21 @@ def read_doc(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
-    did = (args.get("document_id") or "").strip()
-    if not did:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="document_id"),
+    _did_raw = args.get("document_id")
+    if _did_raw is not None and not isinstance(_did_raw, str):
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="document_id"),
                 "error_class": "invalid_args", "entries": [], "used": 0}
+    did, did_err = _single_id_from_args_or_locator(
+        args,
+        id_arg="document_id",
+        executor="read_files_doc",
+        result_kind="entries",
+        title="Scegli il documento Google da leggere",
+        mime_kind="document",
+    )
+    if did_err is not None:
+        return did_err
     argv = ["docs", "get", did]
     data, err = _run_drive(argv, executor="read_files_doc",
                              args_base=dict(args), result_kind="entries")
@@ -1051,12 +1308,22 @@ def append_doc(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
-    did = (args.get("document_id") or "").strip()
-    if not did:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="document_id"),
+    _did_raw = args.get("document_id")
+    if _did_raw is not None and not isinstance(_did_raw, str):
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="document_id"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
+    did, did_err = _single_id_from_args_or_locator(
+        args,
+        id_arg="document_id",
+        executor="write_files_doc",
+        result_kind="results",
+        title="Scegli il documento Google da modificare",
+        mime_kind="document",
+    )
+    if did_err is not None:
+        return did_err
     text = args.get("text")
     if not isinstance(text, str) or not text:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
