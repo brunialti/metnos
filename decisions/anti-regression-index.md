@@ -211,3 +211,4 @@
 - **Seed shadow solo da ripetizione reale**: `autopath.seed_from_run` — soglie n_steps/n_obs, no-op se autopath active esiste; il ✓ umano conferma (shadow→0), mai degrado inverso. Test `test_learning_loop.py`.
 - **Lacuna→proposta senza resurrezione**: `learning_loop.propose_from_lacuna` nel choke-point `_record_lacuna` — dedup fingerprint + stato REJECTED preservato dall'upsert (testato); classi d'uso (wrong_args) MAI proposte.
 - **get_processes onesto §2.8**: snapshot grezzo vuoto = ERR_EXT_TOOL_FAILED con ragione (mai «ok 0») — è ciò che ha scovato SystemRoot mancante sul device.
+- **Manutenzione=comandi NL (ADR 0186)**: domini esterni via `run_user_query` schedulato (mai job bespoke — github_watcher ritirato, riga scheduler morta rimossa); organi interni=builtin in `NIGHTLY_SEQUENCE`; aging esente alla fonte (executor_aging PROTECTED_NAMES+handcrafted).
