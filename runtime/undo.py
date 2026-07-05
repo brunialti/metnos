@@ -45,9 +45,12 @@ class UndoLog:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def append_pending(self, op_id: str, turn_id: str, executor: str, args: dict, plan: dict, actor: str = "host", channel: str = "") -> None:
+    def append_pending(self, op_id: str, turn_id: str, executor: str, args: dict, plan: dict, actor: str = "host", channel: str = "", device: str = "") -> None:
+        # `device`: id del device remoto quando l'op ha girato LI' (C7 CP4) —
+        # l'undo deve ribaltare sullo STESSO host, mai sul server (§2.9).
         self._append({
             "type": "pending",
+            "device": device,
             "op_id": op_id,
             "turn_id": turn_id,
             "ts": time.time(),

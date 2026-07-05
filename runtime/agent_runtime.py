@@ -3255,6 +3255,41 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
     return bool(_MUTATION_CLAIM_RE.search(final_message))
 
 
+def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
+    """Scrittore del log undo al CHOKE-POINT di invocazione (§2.3/§4.5).
+
+    Era nel loop del PLANNER legacy: la sua cancellazione (af6c7b8, 4/7) aveva
+    lasciato l'undo SENZA scrittore — ogni mutazione era diventata non
+    annullabile in silenzio (§2.8). Qui copre TUTTI i path (engine, device,
+    futuri). `device` = id remoto quando l'op gira su un device: l'undo deve
+    ribaltare sullo STESSO host (§2.9). Fail-open: l'undo non blocca il turno.
+    Ritorna op_id o None."""
+    if not getattr(executor, "revertible", False):
+        return None
+    if executor.name == "undo_last_turn":
+        return None  # §4.5: mai undo dell'undo
+    try:
+        import uuid as _uuid
+        _op = _uuid.uuid4().hex
+        UndoLog().append_pending(
+            _op, turn_id or "", executor.name, args, plan={},
+            actor=actor or "host", channel=channel or "", device=device)
+        return _op
+    except Exception as _ue:
+        log.warning("[undo] append_pending fallita (fail-open): %r", _ue)
+        return None
+
+
+def _undo_done(op_id, obs):
+    """Chiude il record undo dopo un esito ok (pending senza done = crashed)."""
+    if not op_id or not (isinstance(obs, dict) and obs.get("ok")):
+        return
+    try:
+        UndoLog().append_done(op_id, obs)
+    except Exception as _ue:
+        log.warning("[undo] append_done fallita (fail-open): %r", _ue)
+
+
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None, target_device=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
@@ -3317,13 +3352,20 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
+            _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                                     actor=actor, channel=channel,
+                                     device=str(_target))
             _obs = _remote.invoke_remote(
                 executor, args, _target, timeout_s=timeout_s, turn_id=turn_id)
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
                 _obs.setdefault("_ran_on_device", target_device)
+            _undo_done(_undo_op, _obs)
             return _obs
+
+    _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+                             actor=actor, channel=channel, device="")
 
     import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
@@ -3383,6 +3425,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
             )
     except Exception:
         pass
+    _undo_done(_undo_op, parsed_result)
     return parsed_result
 
 
