@@ -435,6 +435,15 @@ def find(args: dict) -> dict:
         return {**err, "entries": [], "used": 0}
 
     entries = data if isinstance(data, list) else []
+    # Confine oggetti §2.2 (non-raw): find_FILES non ritorna CARTELLE — per le
+    # cartelle c'e' find_dirs. Senza, un folder col nome esatto della query
+    # oscurava i file omonimi-fuzzy (preferenza sotto, type-blind) → il reader
+    # single-target andava in not_found invece di proporre la scelta (turn
+    # 9fc0111a, cartella «Richieste effettuate» vs 2 fogli). Il raw resta
+    # sotto controllo del chiamante (find_dirs usa raw_query mimeType=folder).
+    if not raw and entries:
+        entries = [e for e in entries
+                   if (e.get("mimeType") or e.get("mime_type")) != _FOLDER_MIME]
     # Preferenza NOME ESATTO (non-raw): la ricerca Drive e' `fullText contains`
     # (fuzzy: matcha anche i doc che MENZIONANO il termine, es. «KAKEBO SPESE
     # 2025-26» il cui contenuto cita «2026»). Se l'utente ha nominato UN file e
