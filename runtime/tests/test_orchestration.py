@@ -171,7 +171,7 @@ def test_process_completion_callback_save_credentials_and_resume(isolated_dirs):
 
     with mock.patch("loader.invoke_verb_unique") as mocked:
         mocked.return_value = {"ok": True, "summary": "carta vaglio mount"}
-        msg_back = process_completion_callback("host", did, actor="host")
+        msg_back = process_completion_callback("host", did, actor="host").text
 
     payload = _cred.load("cifs_TESTHOST")
     assert payload["username"] == "alice"
@@ -183,7 +183,7 @@ def test_process_completion_callback_save_credentials_and_resume(isolated_dirs):
 def test_process_completion_callback_dialog_not_found():
     """dialog_id sconosciuto → messaggio diagnostico non None."""
     from orchestration import process_completion_callback
-    msg = process_completion_callback("nope", "ffff", actor="host")
+    msg = process_completion_callback("nope", "ffff", actor="host").text
     assert "non trovato" in msg
 
 
@@ -198,7 +198,7 @@ def test_process_completion_callback_dialog_not_completed(isolated_dirs):
         fmt="dialogue", actor="host",
     )
     msg = process_completion_callback("host", res["dialog_id"],
-                                        actor="host")
+                                        actor="host").text
     assert "non ancora completo" in msg
 
 
@@ -221,7 +221,7 @@ def test_process_completion_callback_unknown_type(isolated_dirs):
         "on_complete": {"type": "do_random_thing"},
     }
     dialog_pending.save_pending("host", "abc", state)
-    msg = process_completion_callback("host", "abc", actor="host")
+    msg = process_completion_callback("host", "abc", actor="host").text
     assert "do_random_thing" in msg
 
 
@@ -300,7 +300,7 @@ def test_process_completion_callback_expand_cap_and_resume_yes(isolated_dirs):
 
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
          mock.patch("agent_runtime.invoke_executor", return_value=fake_res) as mocked:
-        msg = process_completion_callback("host", "exp01", actor="host")
+        msg = process_completion_callback("host", "exp01", actor="host").text
 
     mocked.assert_called_once()
     call_args = mocked.call_args
@@ -340,7 +340,7 @@ def test_process_completion_callback_expand_cap_and_resume_no(isolated_dirs):
     dialog_pending.save_pending("host", "exp02", state)
 
     with mock.patch("loader.load_catalog") as mocked_lc:
-        msg = process_completion_callback("host", "exp02", actor="host")
+        msg = process_completion_callback("host", "exp02", actor="host").text
 
     mocked_lc.assert_not_called()
     assert "troncato" in msg.lower() or "lasciato" in msg.lower()
@@ -377,7 +377,7 @@ def test_process_completion_callback_expand_cap_invoke_failure(isolated_dirs):
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
          mock.patch("agent_runtime.invoke_executor",
                      return_value={"ok": False, "error": "boom"}):
-        msg = process_completion_callback("host", "exp03", actor="host")
+        msg = process_completion_callback("host", "exp03", actor="host").text
 
     assert "fallito" in msg.lower()
     assert "boom" in msg
@@ -410,7 +410,7 @@ def test_process_completion_callback_expand_cap_executor_missing(isolated_dirs):
 
     fake_catalog = mock.Mock(); fake_catalog.executors = {}
     with mock.patch("loader.load_catalog", return_value=fake_catalog):
-        msg = process_completion_callback("host", "exp04", actor="host")
+        msg = process_completion_callback("host", "exp04", actor="host").text
 
     assert "ghost_executor" in msg
     assert "non in catalog" in msg
@@ -447,6 +447,6 @@ def test_process_completion_callback_expand_cap_string_yes_tolerant(isolated_dir
 
     with mock.patch("loader.load_catalog", return_value=fake_catalog), \
          mock.patch("agent_runtime.invoke_executor", return_value=fake_res):
-        msg = process_completion_callback("host", "exp05", actor="host")
+        msg = process_completion_callback("host", "exp05", actor="host").text
 
     assert "Rilancio" in msg

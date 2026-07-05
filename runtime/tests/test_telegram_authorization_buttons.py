@@ -155,7 +155,9 @@ def test_orchestrated_http_form_unchanged(isolated_dialog_dir):
     assert res["fmt"] == "form"
 
 
-def test_orchestrated_http_single_step_dialogue(isolated_dialog_dir):
+def test_orchestrated_http_single_step_form(isolated_dialog_dir):
+    """B2 (59f3519, 5/7): su HTTP anche il mono-step choice-like (yes_no
+    incluso) va a FORM cliccabile — «dialogue» degradava a testo."""
     from orchestration import invoke_get_inputs_internal
     res = invoke_get_inputs_internal(
         sender_id="http:host:_", title="Conferma", description=None,
@@ -163,7 +165,7 @@ def test_orchestrated_http_single_step_dialogue(isolated_dialog_dir):
                   "schema": {"kind": "yes_no"}}],
         fmt="auto", on_complete=None, actor="host", channel="http",
     )
-    assert res["fmt"] == "dialogue"
+    assert res["fmt"] == "form"
 
 
 # ── 2. inline_ui ──────────────────────────────────────────────────────────

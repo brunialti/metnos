@@ -215,7 +215,7 @@ def test_dialog_completion_triggers_credentials_store_and_resume(isolated_dirs):
         }
         msg_back = process_completion_callback(
             sender_id, dialog_id, actor=actor, channel=None,
-        )
+        ).text
 
     # 4. credentials store ha le creds cifrate per il dominio target
     payload = _cred.load("cifs_192.168.1.99")

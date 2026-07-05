@@ -177,7 +177,7 @@ def test_process_completion_callback_resume_planner_with_dialog_values(
     with mock.patch("agent_runtime.run_turn",
                      return_value=fake_log) as mocked_rt:
         msg = process_completion_callback(
-            "http:host", "rp01", actor="host", channel="http")
+            "http:host", "rp01", actor="host", channel="http").text
 
     mocked_rt.assert_called_once()
     call_kwargs = mocked_rt.call_args.kwargs
@@ -226,7 +226,7 @@ def test_process_completion_callback_resume_planner_missing_query(
     }
     dialog_pending.save_pending("host", "rp02", state)
 
-    msg = process_completion_callback("host", "rp02", actor="host")
+    msg = process_completion_callback("host", "rp02", actor="host").text
     assert "original_query" in msg
     assert "mancante" in msg
 
@@ -257,7 +257,7 @@ def test_process_completion_callback_resume_planner_run_turn_error(
 
     with mock.patch("agent_runtime.run_turn",
                      side_effect=RuntimeError("planner boom")):
-        msg = process_completion_callback("host", "rp03", actor="host")
+        msg = process_completion_callback("host", "rp03", actor="host").text
 
     assert "Continuation fallita" in msg
     assert "planner boom" in msg
