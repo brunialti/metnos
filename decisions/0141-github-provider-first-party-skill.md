@@ -203,7 +203,7 @@ Sandbox audit (ADR 0140) records every call.
   required scopes `repo`, `workflow`, `read:org`)
 - Provider markers:
   `runtime/tool_grammar.py::_PROVIDER_SUFFIX_MARKERS["_github"]`
-- Watcher: `runtime/jobs/github_watcher.py`, scheduled via scheduler v2
+- Watcher: ~~`runtime/jobs/github_watcher.py`~~ **RITIRATO (ADR 0186)**: la manutenzione issue è una query NL schedulata (`run_user_query`), non un job bespoke
   (`every_30m`)
 - QA / dedup store:
   `runtime/github_issue_qa_store.py` (SQLite + BGE-M3 1024-d embedding,
