@@ -173,13 +173,17 @@ impl Runner {
             bail!("poll HTTP {}", resp.status());
         }
         let parsed: PollResponse = resp.json().await.context("parse poll response")?;
-        // Auto-update §5.5: rilevazione qui, lo swap firmato del binario e' W4.
+        // Self-update W4 (5/7/2026): su mismatch scarica il descrittore
+        // FIRMATO, verifica con la pubkey pinnata, swap atomico e respawn.
+        // Idempotente per sha: nessun loop se il binario e' gia' quello
+        // pubblicato (version string diversa a parita' di build).
         if let Some(v) = &parsed.server_client_version {
             if v.as_str() != env!("CARGO_PKG_VERSION") {
-                tracing::info!(
-                    running = env!("CARGO_PKG_VERSION"), available = %v,
-                    "client aggiornabile (self_update: W4, non ancora attivo)"
-                );
+                match crate::selfupdate::maybe_update(&self.server, &self.server_pubkey).await {
+                    Ok(true) => crate::selfupdate::respawn_and_exit(),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!("self-update fallito (riprovo al prossimo poll): {:#}", e),
+                }
             }
         }
         Ok(parsed.invocation)
