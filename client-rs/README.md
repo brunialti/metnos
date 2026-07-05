@@ -4,8 +4,9 @@ Client Rust per l'esecuzione remota di executor Metnos su un dispositivo appaiat
 (PC di casa/ufficio). Bootstrap lazy del runtime Python via mirror server, sandbox
 per piattaforma, **HTTP firmato Ed25519** (device + server) — NON mTLS.
 
-Versione corrente: **0.2.7**. Su Windows l'esecuzione usa Job Object per
-limitare risorse e spegnere l'intero albero dei processi al timeout.
+Versione corrente: **0.2.9** (Cargo.toml + mirror `latest`). Su Windows
+l'esecuzione usa Job Object per limitare risorse e spegnere l'intero albero dei
+processi al timeout.
 
 ## Autenticazione e trasporto (stato reale)
 - Trasporto attuale: **HTTP** dentro la LAN o una rete privata equivalente.
