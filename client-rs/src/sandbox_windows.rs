@@ -205,6 +205,15 @@ pub async fn run_sandboxed(
     cmd.env("PYTHONDONTWRITEBYTECODE", "1");
     cmd.env("PYTHONUTF8", "1");
     cmd.env("PYTHONIOENCODING", "utf-8");
+    // Home REALE dell'utente della task (0.2.13): senza, `~` non risolve e
+    // Path.home() crasha nei moduli shim — «scrivi in ~/x sul PC» era rotto
+    // (visto live 5/7). Contenimento invariato: niente ACL fs ancora (W4),
+    // conoscere il path della home non allarga nulla.
+    for var in ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"] {
+        if let Ok(v) = std::env::var(var) {
+            cmd.env(var, v);
+        }
+    }
     for (k, v) in extra_env {
         cmd.env(k, v);
     }

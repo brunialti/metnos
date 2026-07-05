@@ -95,6 +95,11 @@ pub async fn run_sandboxed(
     cmd.env("PYTHONUTF8", "1");
     cmd.env("PYTHONIOENCODING", "utf-8");
     cmd.env("LANG", std::env::var("LANG").unwrap_or_else(|_| "C.UTF-8".into()));
+    // Home reale (0.2.13, come sandbox_windows): `~` e Path.home() nei moduli
+    // shim; bwrap comunque limita i bind alle capabilities del manifest.
+    if let Ok(v) = std::env::var("HOME") {
+        cmd.env("HOME", v);
+    }
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
