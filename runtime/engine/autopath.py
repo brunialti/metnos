@@ -154,6 +154,13 @@ def _conn() -> sqlite3.Connection:
             if col not in cols:
                 c.execute(f"ALTER TABLE {tab} ADD COLUMN {col} "
                           "TEXT NOT NULL DEFAULT ''")
+    # W1 learning-loop (ADR 0185): autopath SEMINATO da turni engine riusciti
+    # e costosi (senza ✓ umano) = shadow=1; il primo feedback ✓ lo conferma
+    # champion (la ri-promozione azzera shadow). Additiva preserva-dati.
+    ap_cols = {r[1] for r in c.execute("PRAGMA table_info(autopaths)")}
+    if "shadow" not in ap_cols:
+        c.execute("ALTER TABLE autopaths ADD COLUMN shadow "
+                  "INTEGER NOT NULL DEFAULT 0")
     c.commit()
     return c
 
@@ -567,7 +574,8 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
 
 def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
                     cid: Optional[str], ts: str, *,
-                    tools_sig: str = "", pool_sig: str = "") -> Optional[str]:
+                    tools_sig: str = "", pool_sig: str = "",
+                    shadow: int = 0) -> Optional[str]:
     """Crea autopath ACTIVE se non già presente. Ritorna autopath_id.
 
     L'id include ihash+fhash (1/7/2026): il vecchio `{sig[:40]}_v1.0.0` era
@@ -586,20 +594,25 @@ def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
         # ADR 0182: la ri-promozione RINFRESCA anche le firme del mondo —
         # senza, una riga pre-migrazione (sig vuota) resterebbe invalida per
         # sempre malgrado il nuovo feedback ✓ su un turno del mondo corrente.
+        # W1: la promozione da FEEDBACK UMANO (shadow=0) conferma un seed
+        # shadow → champion pieno; una ri-semina (shadow=1) non degrada mai
+        # una riga già confermata.
         c.execute("UPDATE autopaths SET uses = uses + 1, ok_count = ok_count + 1, "
                   "ts_last_used = ?, "
                   "tools_sig = CASE WHEN ? != '' THEN ? ELSE tools_sig END, "
-                  "pool_sig  = CASE WHEN ? != '' THEN ? ELSE pool_sig END "
+                  "pool_sig  = CASE WHEN ? != '' THEN ? ELSE pool_sig END, "
+                  "shadow    = CASE WHEN ? = 0 THEN 0 ELSE shadow END "
                   "WHERE id = ?",
-                  (ts, tools_sig, tools_sig, pool_sig, pool_sig, existing[0]))
+                  (ts, tools_sig, tools_sig, pool_sig, pool_sig,
+                   shadow, existing[0]))
         return existing[0]
     cur = c.execute(
         "INSERT OR IGNORE INTO autopaths(id, intent_sig, intent_hash, cluster_id, "
         "framework_json, framework_hash, status, uses, ok_count, "
-        "ts_created, ts_last_used, tools_sig, pool_sig) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?, ?, ?)",
+        "ts_created, ts_last_used, tools_sig, pool_sig, shadow) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?, ?, ?, ?)",
         (autopath_id, sig, ihash, cid, fjson, fhash, ts, ts,
-         tools_sig, pool_sig))
+         tools_sig, pool_sig, shadow))
     if cur.rowcount == 0:
         # Collisione id residua (2⁻⁴⁸: stesso prefisso ihash+fhash di un'ALTRA
         # coppia): l'IGNORE ha scartato l'insert — §2.8, non dichiarare una
@@ -608,6 +621,58 @@ def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
                     "scartato", autopath_id)
         return None
     return autopath_id
+
+
+SEED_STEPS = int(os.environ.get("METNOS_SEED_STEPS", "4"))
+SEED_REPEAT = int(os.environ.get("METNOS_SEED_REPEAT", "2"))
+
+
+def seed_from_run(*, intent: Intent, framework: Framework,
+                  n_steps: int, catalog=None) -> Optional[str]:
+    """W1 learning-loop (ADR 0185): semina un autopath SHADOW da turni engine
+    riusciti e COSTOSI, senza aspettare il feedback ✓ umano.
+
+    Condizioni (tutte, deterministiche — [[feedback-no-training-amplify-reality]]:
+    si amplifica un'esecuzione REALE ripetuta, niente ML):
+      - il turno ha n_steps >= SEED_STEPS (default 4: sotto, il cold-start
+        engine costa poco e il ✓ umano resta l'unica via);
+      - lo STESSO (intent, framework) è stato osservato con successo almeno
+        SEED_REPEAT volte (default 2, observations già registrate);
+      - nessun autopath ACTIVE esiste già per l'intent.
+    Il seed entra `shadow=1`: servito come hit normale (guard 0174 + firme
+    0182 lo validano a lettura), il primo ✓ umano lo conferma champion.
+    Ritorna autopath_id o None (condizioni non soddisfatte)."""
+    if n_steps < SEED_STEPS:
+        return None
+    sig, ihash = _compute_intent_sig(intent)
+    fhash = compute_framework_hash(framework)
+    c = _conn()
+    try:
+        if c.execute("SELECT 1 FROM autopaths WHERE intent_hash = ? "
+                     "AND status = 'active' LIMIT 1", (ihash,)).fetchone():
+            return None
+        n_obs = c.execute(
+            "SELECT COUNT(*) FROM observations WHERE intent_hash = ? "
+            "AND framework_hash = ?", (ihash, fhash)).fetchone()[0]
+        if n_obs < SEED_REPEAT:
+            return None
+        row = c.execute(
+            "SELECT framework_json, cluster_id, tools_sig, pool_sig "
+            "FROM observations WHERE intent_hash = ? AND framework_hash = ? "
+            "ORDER BY id DESC LIMIT 1", (ihash, fhash)).fetchone()
+        if not row:
+            return None
+        fjson, cid, _tsig, _psig = row
+        ap_id = _promote_autopath(
+            c, ihash, sig, fhash, fjson, cid, now_iso_z(),
+            tools_sig=_tsig or "", pool_sig=_psig or "", shadow=1)
+        c.commit()
+        if ap_id:
+            log.info("[learning-loop] autopath SHADOW seminato %s "
+                     "(n_obs=%d, n_steps=%d)", ap_id, n_obs, n_steps)
+        return ap_id
+    finally:
+        c.close()
 
 
 # ── Anti-autopath check (per Proposer exclusion) ─────────────────────────────
