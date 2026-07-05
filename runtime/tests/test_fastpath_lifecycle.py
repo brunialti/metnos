@@ -442,8 +442,11 @@ class TestRecordFromCacheHits(_FastpathDbCase):
                                              "max_results": 20}})
         intent = Intent(verb="read", object="messages")
         catalog = self._catalog("read_messages", "describe_entries")
+        from engine.cache_validity import plan_sigs
+        _ts, _ps = plan_sigs(fw, intent, catalog)
         hit = AutopathHit(autopath_id="read_messages__v1.0.0", framework=fw,
-                          cluster_id="cl_x", uses=1)
+                          cluster_id="cl_x", uses=1,
+                          tools_sig=_ts, pool_sig=_ps)
         lookups = []
 
         def _ap_lookup(query, intent):
@@ -528,7 +531,7 @@ class TestRecordFromCacheHits(_FastpathDbCase):
              mock.patch("engine.proposer.get_proposer", return_value=fake), \
              mock.patch("engine.cluster.embed",
                         new=lambda q: table.get(q)):
-            eng_fastpath.record_success(qa, fw)
+            eng_fastpath.record_success(qa, fw, catalog=catalog)
             r1 = eng_dispatch.run_turn(
                 query=qb, intent=Intent(), catalog=catalog,
                 invoke_executor_cb=lambda n, a: {"ok": True, "entries": []},
@@ -608,7 +611,7 @@ class TestL0ErrorSelfHealing(_FastpathDbCase):
         catalog = [SimpleNamespace(
             name="get_now", args_schema={"type": "object", "properties": {}})]
         q = "che ore sono adesso"
-        eng_fastpath.record_success(q, fw)
+        eng_fastpath.record_success(q, fw, catalog=catalog)
         env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
         with mock.patch.dict(os.environ, env), \
              mock.patch("engine.proposer.get_proposer", return_value=fake), \
@@ -651,7 +654,8 @@ class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
         # delete_files senza args = mutante STANDALONE (non consuma
         # liste → il guard _mutating_input_is_empty non lo salta).
         fw = _fw("send_messages", "delete_files")
-        eng_fastpath.record_success(q, fw)
+        catalog = self._catalog("send_messages", "delete_files")
+        eng_fastpath.record_success(q, fw, catalog=catalog)
         fake = _FakeProposer(fw)  # se interpellato, il send verrebbe DUPLICATO
         invoked = []
         env = {"METNOS_ENGINE": "simple", "METNOS_FASTPATH": "1"}
@@ -660,7 +664,7 @@ class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
              mock.patch("engine.cluster.embed", new=lambda q: None):
             r = eng_dispatch.run_turn(
                 query=q, intent=Intent(),
-                catalog=self._catalog("send_messages", "delete_files"),
+                catalog=catalog,
                 invoke_executor_cb=self._invoke_send_ok_delete_ko(invoked),
                 turn_id="t1")
         self.assertEqual(r.match_source, "fastpath")   # errore ONESTO da L0
@@ -676,7 +680,8 @@ class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
         # delete_files senza args = mutante STANDALONE (non consuma
         # liste → il guard _mutating_input_is_empty non lo salta).
         fw = _fw("send_messages", "delete_files")
-        eng_fastpath.record_success(q, fw)
+        eng_fastpath.record_success(
+            q, fw, catalog=self._catalog("send_messages", "delete_files"))
         fake = _FakeProposer(None)  # L3: propose fallisce → terminator
         fake_terminator = SimpleNamespace(
             explain=lambda **kw: SimpleNamespace(final_text="ko"))
@@ -702,8 +707,12 @@ class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
         # liste → il guard _mutating_input_is_empty non lo salta).
         fw = _fw("send_messages", "delete_files")
         intent = Intent(verb="send", object="messages")
+        catalog = self._catalog("send_messages", "delete_files")
+        from engine.cache_validity import plan_sigs
+        _ts, _ps = plan_sigs(fw, intent, catalog)
         hit = AutopathHit(autopath_id="ap_send", framework=fw,
-                          cluster_id="c", uses=1)
+                          cluster_id="c", uses=1,
+                          tools_sig=_ts, pool_sig=_ps)
         fake = _FakeProposer(fw)
         invoked = []
         obs_calls = []
@@ -720,7 +729,7 @@ class TestNoFallthroughAfterCommittedMutation(_FastpathDbCase):
              mock.patch("engine.cluster.embed", new=lambda q: None):
             r = eng_dispatch.run_turn(
                 query="manda il riepilogo e cancella il temporaneo", intent=intent,
-                catalog=self._catalog("send_messages", "delete_files"),
+                catalog=catalog,
                 invoke_executor_cb=self._invoke_send_ok_delete_ko(invoked),
                 turn_id="t1")
         self.assertEqual(r.match_source, "autopath")   # errore ONESTO da L1
