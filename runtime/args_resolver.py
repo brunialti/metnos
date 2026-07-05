@@ -39,6 +39,27 @@ def _is_placeholder(arg_name: str, value) -> bool:
     return False
 
 
+def _is_install_root_path(value) -> bool:
+    """True se `value` è un path DENTRO l'install root di Metnos (PATH_ROOT,
+    es. `/opt/metnos/executors/read_files`). Un path del genere non è MAI uno
+    scope utente: entra dai pattern-by-example del proposer, e se ricordato
+    come default si AUTO-RINFORZA (il listing dell'install dir riesce → viene
+    ri-ricordato — turn 2cd8862a: 46 usi di `executors/read_files` come
+    base_path). Filtro §7.3 su CATTURA e INIEZIONE."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        from pathlib import Path
+        import config as _C
+        v = Path(value.strip())
+        if not v.is_absolute():
+            return False
+        root = Path(_C.PATH_ROOT).resolve()
+        return v.resolve().is_relative_to(root)
+    except Exception:  # noqa: BLE001 — best-effort, mai bloccare
+        return False
+
+
 def _config_default(domain: str, arg_name: str) -> Optional[str]:
     """Default da config: la cred del dominio (keyed per dominio, es. 'github')
     con l'arg come chiave (es. repo). Universale, non github-specifico."""
@@ -82,8 +103,11 @@ def resolve_scope_args(executor_name: str, args: dict, schema: dict | None,
             continue
         if inline is None:
             inline = regex_extract(query or "", schema or {})
+        _remembered = args_defaults.get_default(actor, domain, arg)
+        if _remembered and _is_install_root_path(_remembered):
+            _remembered = None  # default AVVELENATO (install root) → mai iniettare
         val = (inline.get(arg)
-               or args_defaults.get_default(actor, domain, arg)
+               or _remembered
                or _config_default(domain, arg))
         if val:
             out[arg] = val
@@ -183,5 +207,8 @@ def remember_scope_args(executor_name: str, args: dict, *, actor: str) -> None:
     if not domain:
         return
     for arg, val in args.items():
-        if is_scope_arg(arg) and not _is_placeholder(arg, val):
-            args_defaults.set_default(actor, domain, arg, str(val))
+        if not (is_scope_arg(arg) and not _is_placeholder(arg, val)):
+            continue
+        if _is_install_root_path(val):
+            continue  # mai ricordare un path dell'install root come scope utente
+        args_defaults.set_default(actor, domain, arg, str(val))

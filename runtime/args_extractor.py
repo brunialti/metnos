@@ -30,9 +30,17 @@ _LOG = logging.getLogger(__name__)
 # Tipi standard placeholder estraibili via regex chiusa.
 # Conservativi (§7.9): catch false positivi piuttosto che inventare.
 
-# PATH: assoluto (/foo/bar), ~/.foo, ./, ../
+# PATH: assoluto (/foo/bar), ~/.foo, ./, ../ + WINDOWS assoluto (C:\… o UNC
+# \\srv\share — §2.4: una query può nominare un path del PC remoto, turn
+# 8b675402: senza, l'extractor perdeva «C:\Windows\…» e il resolver cadeva su
+# un default appreso).
 _PATH_RE = re.compile(
-    r"(?:^|\s)((?:~|\.{1,2})?/(?:[\w.\-]+/?)+|~/[\w.\-/]*)"
+    r"(?:^|\s)((?:~|\.{1,2})?/(?:[\w.\-]+/?)+|~/[\w.\-/]*"
+    # Windows: i segmenti INTERMEDI (chiusi da \) ammettono lo spazio
+    # («Program Files\»); il segmento FINALE no — altrimenti la regex
+    # mangerebbe il resto della frase («…\etc sul PC-ROBERTO e metti…»).
+    r"|[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[\w.\-]*"
+    r"|\\\\[\w.\-]+\\(?:[^\\/:*?\"<>|\r\n]+\\)*[\w.\-]*)"
 )
 
 # URL: http(s)://...
@@ -399,6 +407,11 @@ _FLAG_DESC_NOISE = {
     "ritorna", "return", "returns", "value", "valore", "campo", "field",
     "email", "emails", "mail", "messaggi", "messages", "file", "files",
     "the", "les", "una", "uno", "con", "non", "per", "del", "della",
+    # Parole-funzione IT: il match a prefisso-4 le rende trappole («delle» in
+    # una description ~ «della» in query → recursive=True spurio, T4 5/7).
+    "delle", "dello", "degli", "dalla", "dalle", "dallo", "dagli",
+    "nella", "nelle", "nello", "negli", "sulla", "sulle", "sullo",
+    "anche", "come", "sono", "questo", "questa", "quando", "dove",
 }
 
 
