@@ -285,19 +285,21 @@ def _decide_fmt(fmt_arg: str, n_steps: int, channel: str | None,
     """Risolve `fmt='auto'` secondo canale, numero step e shape del dialog.
 
     Pattern:
-    - HTTP + ≥2 step → `form` (form HTML standalone con widget nativi).
-    - Telegram + tutti kind in {yes_no, choice, multi_choice} → `telegram_inline`
-      (inline keyboard nativa, no browser, no context-switch).
+    - HTTP + ≥2 step OPPURE tutti gli step cliccabili (choice/yes_no) →
+      `form` (widget nativi: una SCELTA si clicca anche a 1 step).
+    - Telegram + tutti kind in {yes_no, choice, choice_with_preview} →
+      `telegram_inline` (inline keyboard nativa, no browser).
     - Altrimenti → `dialogue` (sequenza messaggi, universale).
 
-    `dialog` puo' essere None: in quel caso skippiamo il check telegram_inline
-    e cadiamo su dialogue.
+    `dialog` puo' essere None: in quel caso skippiamo i check shape-aware
+    e cadiamo su dialogue (o form da soglia n_steps).
     """
     if fmt_arg in ("dialogue", "form", "voice", "telegram_inline"):
         # voice non implementato: stub → degrada a dialogue.
         return "dialogue" if fmt_arg == "voice" else fmt_arg
     # auto
-    if channel == "http" and n_steps >= 2:
+    if channel == "http" and (n_steps >= 2
+                              or (dialog and _all_choice_like(dialog))):
         return "form"
     if channel == "telegram" and dialog and _all_inline_compatible(dialog):
         return "telegram_inline"
@@ -309,7 +311,10 @@ def _decide_fmt(fmt_arg: str, n_steps: int, channel: str | None,
 # ammessi: yes_no, choice, choice_with_preview; multi_choice escluso
 # (toggle ✓ via editMessageReplyMarkup = scope 2×, si rilascia su use
 # case reale); cap alternative per step = INLINE_MAX_CHOICES.
-from channels.inline_ui import all_inline_compatible as _all_inline_compatible  # noqa: E402
+from channels.inline_ui import (  # noqa: E402
+    all_inline_compatible as _all_inline_compatible,
+    all_choice_like as _all_choice_like,
+)
 
 
 def _build_final_message_hint(state: dict, fmt: str) -> str:

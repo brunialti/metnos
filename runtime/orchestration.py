@@ -62,8 +62,8 @@ log = get_logger(__name__)
 def _shape_result_for_chat(res) -> str:
     """Backstop universale no-raw-leak (§output formatter): MAI `json.dumps`
     grezzo in chat (l'utente vedrebbe «{...}», bypassando l'i18n). Testo pulito
-    da final_message_hint/summary → `✗ <err>` → MSG_ACTION_DONE. Single source
-    per tutti i result-shaper di orchestration."""
+    da final_message_hint/summary → `✗ <err>` → entries (reader §2.6) →
+    MSG_ACTION_DONE. Single source per tutti i result-shaper di orchestration."""
     if isinstance(res, dict):
         msg = res.get("final_message_hint") or res.get("summary")
         if msg:
@@ -71,8 +71,48 @@ def _shape_result_for_chat(res) -> str:
         if res.get("ok") is False:
             err = res.get("error") or res.get("error_class") or ""
             return f"✗ {err}" if err else _msg("ERR_GENERIC")
+        # READER (§2.6: `entries` = dati letti, `results` = mutazione): i dati
+        # SONO la risposta — un resume che legge un foglio e risponde solo
+        # «✓ Operazione completata» butta il contenuto (turn 1e895534→«1»).
+        # Render compatto deterministico; i mutanti (results) restano al ✓.
+        entries = res.get("entries")
+        if isinstance(entries, list) and entries:
+            return _fmt_reader_entries(entries)
         return _msg("MSG_ACTION_DONE")
     return str(res)
+
+
+_READER_PREVIEW_CAP = 20
+
+
+def _fmt_reader_entries(entries: list) -> str:
+    """Render compatto delle entries di un reader per la chat (§7.9, no LLM).
+    RIGHE di foglio (list[list], read_spreadsheet §2.6) → tabella markdown
+    (riga-0 = header se tutte etichette non-numeriche, come
+    `extract_entries._looks_like_header_row`); altrimenti lista compatta via
+    `_fmt_entries_block`. Cap §2.7 con nota MSG_TOP_OF."""
+    rows = [e for e in entries if isinstance(e, (list, tuple))]
+    if rows and len(rows) == len(entries):
+        from extract_entries import _looks_like_header_row
+        from output_format import format_table
+        out: list[str] = []
+        body = [list(map(lambda c: "" if c is None else str(c), r))
+                for r in rows]
+        headers = None
+        if _looks_like_header_row(body[0]):
+            headers, body = body[0], body[1:]
+        if len(body) > _READER_PREVIEW_CAP:
+            out.append(_msg("MSG_TOP_OF", top=_READER_PREVIEW_CAP,
+                            total=len(body)))
+            body = body[:_READER_PREVIEW_CAP]
+        if not headers:
+            width = max((len(r) for r in body), default=0)
+            headers = [f"c{i+1}" for i in range(width)]
+        width = len(headers)
+        body = [(r + [""] * (width - len(r)))[:width] for r in body]
+        out.append(format_table(headers=headers, rows=body))
+        return "\n".join(out)
+    return _fmt_entries_block(entries, _READER_PREVIEW_CAP)
 
 
 # ── Helper: sender_id stabile per lo storage ──────────────────────────
@@ -155,8 +195,16 @@ def invoke_get_inputs_internal(*,
         for s in dialog
     )
     if fmt == "auto":
-        if channel == "http" and (has_preview_step or n_steps >= 2):
-            resolved_fmt = "form"
+        if channel == "http":
+            # form anche a 1 SOLO step se tutto e' cliccabile (choice/yes_no):
+            # una scelta si clicca, non si trascrive — parita' con la regola
+            # Telegram (inline keyboard), turn 1e895534. Kind testuali
+            # (text/credentials/...) mono-step restano dialogue.
+            from channels.inline_ui import all_choice_like
+            resolved_fmt = ("form"
+                            if (has_preview_step or n_steps >= 2
+                                or all_choice_like(dialog))
+                            else "dialogue")
         elif channel == "telegram":
             from channels.inline_ui import all_inline_compatible
             resolved_fmt = ("telegram_inline"

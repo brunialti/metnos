@@ -73,6 +73,23 @@ def ensure_i18n_keys() -> None:
         pass
 
 
+def all_choice_like(dialog: list | None) -> bool:
+    """Gemello CHANNEL-AGNOSTIC di `all_inline_compatible`: True se TUTTI gli
+    step sono kind cliccabile (`INLINE_COMPATIBLE_KINDS`), SENZA il cap
+    Telegram sul numero di alternative — un form HTTP con radio regge liste
+    lunghe. Usato dai decider fmt (orchestration + get_inputs) per scegliere
+    `form` su HTTP anche a 1 step: una SCELTA si clicca, non si trascrive
+    («non usa form per selezione scelte», turn 1e895534). Dialog vuoto →
+    False (niente da cliccare)."""
+    if not dialog:
+        return False
+    for s in dialog:
+        schema = (s.get("schema") or {}) if isinstance(s, dict) else {}
+        if schema.get("kind") not in INLINE_COMPATIBLE_KINDS:
+            return False
+    return True
+
+
 def all_inline_compatible(dialog: list | None) -> bool:
     """True se TUTTI gli step del dialog si rendono come inline keyboard
     Telegram (kind compatibile E numero alternative entro il cap)."""
