@@ -305,8 +305,12 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str],
         return canonical
     # 2. READ_FAMILY swap PRIMA dei qualifier variants (find_X canonical più
     # forte che find_X_indices/find_X_empty per query generiche).
+    # Ordine FISSO (§11 routing deterministico): iterare il SET dava un
+    # fratello diverso a seconda dell'hash-seed del processo (find_files vs
+    # get_files fra due restart — turni 2cd8862a/68f28b01). `find` per primo:
+    # il produttore-pattern più generale.
     if verb in PRODUCER_VERBS:
-        for alt_verb in PRODUCER_VERBS:
+        for alt_verb in ("find", "read", "get", "list"):
             alt = f"{alt_verb}_{obj}"
             if alt in available_tools:
                 return alt
@@ -324,6 +328,18 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str],
     # → spreadsheet), non l'alfabetico (che sceglierebbe _doc < _spreadsheet).
     prefix = f"{verb}_{obj}_"
     suffix_variants = sorted(t for t in available_tools if t.startswith(prefix))
+    # MAI una variante PROVIDER dal fallback generico (§2.2 asse provider): il
+    # provider si sceglie SOLO allo step 0 (marker nella query). Senza questo,
+    # derive(delete, messages) — delete_messages non esiste, §5 mail=move —
+    # ripiegava su `delete_messages_github` per una query di POSTA (T4 5/7).
+    try:
+        import detection_lexicon as _dlx
+        _prov_sfx = tuple(_dlx.mapping("provider.markers").keys())
+    except Exception:  # noqa: BLE001
+        _prov_sfx = ()
+    if _prov_sfx:
+        suffix_variants = [t for t in suffix_variants
+                           if not t.endswith(_prov_sfx)]
     if suffix_variants:
         if query:
             ql = query.lower()

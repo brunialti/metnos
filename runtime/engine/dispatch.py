@@ -569,6 +569,22 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         return framework
 
 
+# Fratelli-FILESYSTEM (§2.2): `files` e `dirs` sono facce dello stesso dominio
+# — «elenca i FILE della cartella X» si serve con list_dirs (container enum).
+# Un intent-object `files` NON delegittima uno step `dirs` (e viceversa):
+# senza, l'align DEMOLIVA il piano corretto cachato (list_dirs → get/find_files
+# a seconda dell'ordine-hash del set, turni 2cd8862a/68f28b01) — stesso
+# principio del filesystem-siblings in route_disambiguation.
+_FS_SIBLING_OBJECTS = frozenset({"files", "dirs"})
+
+
+def _fs_equivalent(step_obj: str, intent_objs) -> bool:
+    """True se `step_obj` soddisfa uno degli `intent_objs` via l'equivalenza
+    filesystem files↔dirs."""
+    return (step_obj in _FS_SIBLING_OBJECTS
+            and any(o in _FS_SIBLING_OBJECTS for o in (intent_objs or ())))
+
+
 def _align_framework_objects(framework: Framework, intent,
                              catalog: Optional[list]) -> Framework:
     """§7.9 deterministico: ri-allinea il tool di uno step quando il proposer
@@ -608,8 +624,9 @@ def _align_framework_objects(framework: Framework, intent,
             if not nc:
                 continue
             intent_objs = by_verb.get(nc.verb)
-            if not intent_objs or nc.obj in intent_objs:
-                continue  # verbo non decomposto, o oggetto gia' corretto
+            if not intent_objs or nc.obj in intent_objs \
+                    or _fs_equivalent(nc.obj, intent_objs):
+                continue  # verbo non decomposto, o oggetto gia' corretto/equivalente
             for o2 in intent_objs:
                 cand = "_".join([nc.verb, o2]
                                 + ([nc.qualifier] if nc.qualifier else []))
@@ -750,6 +767,18 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     # object-blind (create_events != write_files): confronto per-object dei
     # CONTEGGI, cosi' «crea un doc E scrivi un csv» (2 clausole files) resta
     # scoperto se il piano ne realizza 1. §7.9 deterministico.
+    # §5 mail: «cancellare mail» = move_messages(Trash) — il rewrite di
+    # `_route_mail_delete_to_trash` SODDISFA la clausola delete. Senza questo,
+    # al giro DOPO (hit cache, ADR 0174) enforce ri-appendeva un delete
+    # spurio (che derive risolveva pure male — T4 5/7). Scoped: solo se
+    # l'intent chiede delete su MESSAGES e un move_messages è nel piano.
+    if "delete" in dropped and any(
+            (s.tool or "") == "move_messages" for s in framework.steps):
+        _del_objs = {(a.get("object") or "") for a in
+                     (getattr(intent, "actions", None) or [])
+                     if isinstance(a, dict) and a.get("verb") == "delete"}
+        if _del_objs <= {"messages", "entries", ""}:
+            dropped.discard("delete")
     _WRITERS = {"create", "write"}
     if _WRITERS & dropped:
         import naming_grammar as _ng
@@ -1019,8 +1048,9 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
     for st in steps:
         tool = getattr(st, "tool", None)
         nc = _ng.parse_name(tool) if tool else None
-        if not nc or nc.verb not in _PRODV or nc.obj in producer_set:
-            continue  # non-produttore o produttore con oggetto-intent legittimo
+        if not nc or nc.verb not in _PRODV or nc.obj in producer_set \
+                or _fs_equivalent(nc.obj, producer_set):
+            continue  # non-produttore o oggetto-intent legittimo/equivalente
         if nc.obj == "entries":
             # `entries` e' il META-oggetto pipe in-memory (§2.2): find/read/
             # get_entries e' una lettura store/memoria LEGITTIMA che precede un
@@ -1218,6 +1248,11 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         added = set()
         for v, o in need:
             if o in produced or o in added:
+                continue
+            if _fs_equivalent(o, produced):
+                # files↔dirs (§2.2 filesystem-siblings): list_dirs nel piano
+                # COPRE l'oggetto-produttore `files` — senza, qui si appendeva
+                # un find_files SPURIO dopo il piano corretto (hit id=246).
                 continue
             tool = derive_tool_name(v, o, names, query=query)
             if not tool:   # fallback: qualunque producer dell'object
@@ -1417,7 +1452,13 @@ def _fill_clause_args(framework: Framework, intent, query: str,
             if not so:
                 continue
             for i, (ch, co) in enumerate(chunk_obj):
-                if not used[i] and co and co == so:
+                # match esatto O equivalenza filesystem files↔dirs (§2.2):
+                # list_dirs (obj=dirs) reclama il chunk «elenca i file della
+                # cartella C:\…» (obj=files) — senza, il chunk col PATH andava
+                # allo step create (stesso obj files) che se lo prendeva come
+                # OUTPUT path (turn a9ec3b06).
+                if not used[i] and co and (co == so
+                                           or _fs_equivalent(so, [co])):
                     used[i] = True
                     step_chunk[pos] = ch
                     break
@@ -1452,6 +1493,17 @@ def _fill_clause_args(framework: Framework, intent, query: str,
                               chunk.lower())
                 if m and m.group(1) not in ("store", "archivio"):
                     extracted.setdefault("store", m.group(1))
+            if not extracted:
+                continue
+            # SINK (create/write): mai auto-riempire un path — sarebbe l'OUTPUT
+            # path, e un path nella query è quasi sempre l'INPUT del produttore
+            # (turn a9ec3b06: create.path=C:\Windows\… → file-mostro senza
+            # estensione). L'output resta al default deliberato dell'executor
+            # (§10.3 workspace) o alla scelta esplicita già nel piano.
+            nc_w = _ng.parse_name(st.tool or "")
+            if nc_w and nc_w.verb in ("create", "write"):
+                for _pk in ("path", "base_path", "paths"):
+                    extracted.pop(_pk, None)
             if not extracted:
                 continue
             cur = dict(st.args or {})
@@ -1794,6 +1846,108 @@ def _clause_scoped_drive_term(query: str, phantom: Optional[str] = None) -> str:
     return _drive_search_term(query)
 
 
+_UNIVERSAL_GLOBS = frozenset({"*", "*.*", "**"})
+
+# Arg path-ish di SCOPE che il proposer/una cache possono avvelenare con un
+# path dell'install root (pattern-by-example / default appreso / piano cachato).
+_PATHISH_SCOPE_ARGS = ("base_path", "path")
+
+
+def _overwrite_phantom_install_args(framework: Framework,
+                                    query: str) -> Framework:
+    """§7.3 (turni 2cd8862a/e130c549): un arg path (`base_path`/`path`) che
+    punta DENTRO l'install root di Metnos (`/opt/metnos/executors/…`) e che la
+    query NON nomina è un FANTASMA — entra dal pattern-by-example del proposer,
+    da un default appreso avvelenato o da un piano L0 cachato rotto. Qui viene
+    RIMOSSO (i guard a valle — `_fill_clause_args` — lo ri-derivano dalla
+    clausola; senza, l'executor chiede/erra ONESTO). Gira anche sugli hit
+    cache (ADR 0174): ripara i piani già avvelenati. Se la query nomina
+    esplicitamente l'install root («conta le LOC di /opt/metnos/runtime») il
+    valore è legittimo e resta."""
+    try:
+        from args_resolver import _is_install_root_path
+        q = (query or "")
+        for s in framework.steps:
+            a = getattr(s, "args", None) or {}
+            for k in _PATHISH_SCOPE_ARGS:
+                v = a.get(k)
+                if isinstance(v, str) and _is_install_root_path(v) \
+                        and v.strip() not in q:
+                    log.info("[phantom_install] %s.%s=%r rimosso "
+                             "(install-root non nominato dalla query)",
+                             s.tool, k, v)
+                    a.pop(k, None)
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("overwrite_phantom_install_args noop (best-effort): %r", ex)
+        return framework
+
+
+def _degenerate_find_to_list(framework: Framework, intent,
+                             catalog: Optional[list]) -> Framework:
+    """§2.2 (turn 8b675402): con intento LIST, un `find_files(base_path=X)`
+    SENZA selettore discriminante (pattern/query/name assenti o glob universale)
+    è un'ENUMERAZIONE DI CONTENITORE — la semantica di `list` («list=container
+    enum», §2.2) — non una ricerca: swap deterministico a `list_dirs(path=X)`.
+
+    Perché conta: «elenca i file della cartella C:\\… sul PC» → l'intent è
+    (list, files) e il proposer sceglie find_files; ma find_files NON è
+    device-eligible (C7 non ancora) → esecuzione LOCALE su un path Windows →
+    errore, mentre list_dirs gira sul device. Il fix è semantico, non di
+    placement: find-senza-selettore = list.
+
+    Conservativo: solo verb `list` nell'intent; solo client locale (un find
+    Drive è un listing gw legittimo); mai con from_step (consuma entries),
+    count_only o selettore reale; tool-existence-safe. `recursive` esplicito
+    preservato (default list_dirs = non-ricorsivo, la lettura onesta di
+    «elenca»); passano solo gli arg dello schema list_dirs."""
+    try:
+        verbs = {(a.get("verb") or "") for a in (getattr(intent, "actions", None) or [])
+                 if isinstance(a, dict)}
+        verbs.add(getattr(intent, "verb", "") or "")
+        if "list" not in verbs:
+            return framework
+        names = catalog_names(catalog)
+        if "list_dirs" not in names:
+            return framework
+        for s in framework.steps:
+            if (s.tool or "") != "find_files":
+                continue
+            a = s.args or {}
+            if a.get("client") not in (None, "", "local"):
+                continue
+            if isinstance(a.get("from_step"), int) or a.get("count_only"):
+                continue
+            base = a.get("base_path")
+            if not (isinstance(base, str) and base.strip()):
+                continue
+            selectors = []
+            for k in ("pattern", "query", "name"):
+                v = a.get(k)
+                if isinstance(v, str) and v.strip():
+                    selectors.append(v.strip())
+            pats = a.get("patterns")
+            if isinstance(pats, list):
+                selectors.extend(str(p).strip() for p in pats if str(p).strip())
+            if any(sel not in _UNIVERSAL_GLOBS for sel in selectors):
+                continue                      # selettore reale → resta find
+            new_args = {"path": base}
+            for k in ("recursive", "sort", "max_results", "max_depth"):
+                if k in a:
+                    new_args[k] = a[k]
+            for k, v in a.items():            # runtime keys (_actor, _lang, …)
+                if isinstance(k, str) and k.startswith("_"):
+                    new_args[k] = v
+            log.info("[degenerate_find §2.2] find_files(base_path=%r, no "
+                     "selettore) -> list_dirs (intent list)", base)
+            s.tool = "list_dirs"
+            s.args = new_args
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("degenerate_find_to_list noop (best-effort): %r", ex)
+        return framework
+
+
 _SINK_VERBS = frozenset({"create", "write", "set", "order"})
 
 # Cap RECORD per un extract che alimenta un SINK BULK (create/write foglio/csv):
@@ -1973,52 +2127,67 @@ def _align_provider_client(framework: Framework, query: str,
         return framework
 
 
+# ── CONTRATTO D'ORDINE della pipeline guard (ADR 0177 T3, CP1·M0) ──────────
+# L'ORDINE è il contratto: ogni entry = (nome, v3_only, fn(fw,intent,query,cat)).
+# `test_guard_pipeline_contract.py` blocca nomi+ordine: chi inserisce/sposta un
+# guard DEVE aggiornare il test consapevolmente. Il razionale di ogni guard vive
+# nel SUO docstring; qui solo il vincolo di posizione quando esiste:
+#   - phantom_install PRIMA di tutto (i guard a valle ri-derivano dalla clausola).
+#   - decontaminate_reader PRIMA di ensure_extract (il read demolito a generico
+#     è il content-reader che fa scattare il trigger strutturale, bb977a14).
+#   - fill_clause_args DOPO conform (opera su step già in ordine-intent);
+#     resolve_store_field_refs DOPO fill (args ormai stabili).
+#   - route_mail/filename/provider DOPO i guard di struttura, sempre (no gate v3).
+#   - scope_sink_provider DOPO align_provider_client (prima i produttori→gw,
+#     poi i sink→clause-scoped local §10.3).
+#   - degenerate_find ULTIMO (un find instradato a gw dal provider-guard non
+#     va toccato; il fill gli ha già dato il base_path di clausola).
+GUARD_PIPELINE: tuple = (
+    ("overwrite_phantom_install_args", False,
+     lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q)),
+    ("align_framework_objects", False,
+     lambda fw, i, q, c: _align_framework_objects(fw, i, c)),
+    ("enforce_missing_clauses", False,
+     lambda fw, i, q, c: _enforce_missing_clauses(fw, i, q, c)),
+    ("enforce_missing_objects", True,
+     lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c)),
+    ("decontaminate_reader_qualifier", True,
+     lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c)),
+    ("ensure_extract_clause", True,
+     lambda fw, i, q, c: _ensure_extract_clause(fw, i, q, c)),
+    ("conform_to_intent_order", True,
+     lambda fw, i, q, c: _conform_to_intent_order(fw, i, q, c)),
+    ("fill_clause_args", True,
+     lambda fw, i, q, c: _fill_clause_args(fw, i, q, c)),
+    ("resolve_store_field_refs", True,
+     lambda fw, i, q, c: _resolve_store_field_refs(fw)),
+    ("route_mail_delete_to_trash", False,
+     lambda fw, i, q, c: _route_mail_delete_to_trash(fw, c)),
+    ("route_filename_pattern_to_find", False,
+     lambda fw, i, q, c: _route_filename_pattern_to_find(fw, q, c)),
+    ("align_provider_client", False,
+     lambda fw, i, q, c: _align_provider_client(fw, q, c)),
+    ("scope_sink_provider_to_clause", False,
+     lambda fw, i, q, c: _scope_sink_provider_to_clause(fw, q, c)),
+    ("degenerate_find_to_list", False,
+     lambda fw, i, q, c: _degenerate_find_to_list(fw, i, c)),
+)
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
-    """Guard DETERMINISTICI di struttura (no LLM, idempotenti), condivisi da
-    L0/L1 (hit cache) e L3 (proposer): `_align_framework_objects` ri-allinea i
-    tool-fratelli all'oggetto dell'intent; `_enforce_missing_clauses` appende le
-    clausole RICHIESTE scoperte. No-op su query mono-azione (entrambi
-    richiedono `intent.actions`). NON include il re-propose LLM dei dropped:
-    quello resta L3-only.
-
-    v3: dopo align+enforce(verb-level), `_enforce_missing_objects` ripristina i
-    produttori-object droppati (multi-dominio), `_conform_to_intent_order`
-    riordina su intent.actions, infine `_fill_clause_args` riempie gli args
-    deducibili per-clausola (gated is_v3() → v2 byte-invariato)."""
-    framework = _align_framework_objects(framework, intent, catalog)
-    framework = _enforce_missing_clauses(framework, intent, query, catalog)
+    """Guard DETERMINISTICI di struttura (no LLM, IDEMPOTENTI — proprietà
+    misurata: 33/33 piani reali L0+L1+flagship, sweep S3 5/7 + test T4),
+    condivisi da L0/L1 (hit cache) e L3 (proposer). L'ordine e i gate v3
+    sono il CONTRATTO dichiarato in `GUARD_PIPELINE` (ADR 0177 T3). NON
+    include il re-propose LLM dei dropped: quello resta L3-only."""
     from . import is_v3
-    if is_v3():
-        framework = _enforce_missing_objects(framework, intent, query, catalog)
-        # De-contamina il qualifier-formato di un reader (read_files_spreadsheet su
-        # una FONTE-Doc) PRIMA di ensure_extract: cosi' il read torna generico e
-        # il trigger STRUTTURALE di extract lo vede come content-reader (bb977a14).
-        framework = _decontaminate_reader_qualifier(framework, query, catalog)
-        framework = _ensure_extract_clause(framework, intent, query, catalog)
-        framework = _conform_to_intent_order(framework, intent, query, catalog)
-        framework = _fill_clause_args(framework, intent, query, catalog)
-        # Ricuce i riferimenti-campo (template/key) degli step a valle di un
-        # produttore store-read allo SCHEMA REALE dello store (20/6): chiude il
-        # misfit {number}/body-letterale/${FILLER:repo} che il proposer fa non
-        # vedendo lo schema. Dopo fill: opera sugli args ormai stabili.
-        framework = _resolve_store_field_refs(framework)
-    # §5: cancellare mail = move_messages(Trash) — riscrive il fallback
-    # delete_entries(store=messages) del proposer. Dopo enforce (gia' visto
-    # il delete come clausola soddisfatta) e fuori dal gate v3 (vale sempre).
-    framework = _route_mail_delete_to_trash(framework, catalog)
-    # §4.3: «i/tutti i file <nome>» → find_<obj>(pattern)+read, non un read di UN
-    # path INVENTATO (no path inventato: FIND prima). Generale read/find di ogni
-    # object+provider. Fuori dal gate v3 (vale sempre); dopo i guard di struttura.
-    framework = _route_filename_pattern_to_find(framework, query, catalog)
-    # Provider Google via client-arg (backend Drive): «google drive/docs» →
-    # client=google_workspace sui file-executor. Dopo gli altri guard di struttura.
-    framework = _align_provider_client(framework, query, catalog)
-    # Provider dei SINK (create/write) clause-scoped: il create non eredita gw
-    # dalla clausola-produttrice → default local §10.3 (bb977a14). Dopo
-    # _align_provider_client (che instrada i PRODUTTORI file su gw via client).
-    framework = _scope_sink_provider_to_clause(framework, query, catalog)
+    _v3 = is_v3()
+    for _name, _v3_only, _fn in GUARD_PIPELINE:
+        if _v3_only and not _v3:
+            continue
+        framework = _fn(framework, intent, query, catalog)
     return framework
 
 
