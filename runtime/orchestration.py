@@ -362,6 +362,12 @@ class CompletionResult:
     turn_id: str = ""
     total_ms: int = 0
     target_device: str = ""
+    # Stessa forma del payload `final` dei turni normali (SoT shape:
+    # http_routes_agent._build_final_event_payload) — la bolla del resume
+    # deve avere gallery-link e breadcrumb executor come ogni turno.
+    gallery_url: str = ""
+    n_total_matches: int = 0
+    path: list = _dcfield(default_factory=list)
 
 
 def _completion_from_turnlog(new_log) -> CompletionResult:
@@ -371,12 +377,26 @@ def _completion_from_turnlog(new_log) -> CompletionResult:
                         - getattr(new_log, "ts_start", 0)) * 1000)
     except Exception:
         total_ms = 0
+    atts = list(getattr(new_log, "attachments", None) or [])
+    turn_id = getattr(new_log, "turn_id", "") or ""
+    n_total = sum(1 for a in atts
+                  if isinstance(a, dict) and a.get("kind") != "file")
+    path_summary = []
+    for st in getattr(new_log, "steps", None) or []:
+        tool = getattr(st, "chosen_tool", "") or ""
+        if not tool or getattr(st, "error", None) == "auto_final_on_duplicate":
+            continue
+        res = st.result if isinstance(getattr(st, "result", None), dict) else {}
+        path_summary.append({"tool": tool, "ok": bool(res.get("ok", True))})
     return CompletionResult(
         text=getattr(new_log, "final_message", "") or "",
-        attachments=list(getattr(new_log, "attachments", None) or []),
-        turn_id=getattr(new_log, "turn_id", "") or "",
+        attachments=atts,
+        turn_id=turn_id,
         total_ms=max(0, total_ms),
         target_device=getattr(new_log, "target_device", None) or "",
+        gallery_url=(f"/agent/gallery/{turn_id}" if (n_total and turn_id) else ""),
+        n_total_matches=n_total,
+        path=path_summary,
     )
 
 

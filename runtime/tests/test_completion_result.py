@@ -35,6 +35,26 @@ def test_completion_from_turnlog_carries_everything():
     assert cr.turn_id == "t123abc"
     assert cr.total_ms == 7200
     assert cr.target_device == ""
+    # forma del payload final dei turni normali (bug dce8a3bc):
+    assert cr.gallery_url == "/agent/gallery/t123abc"
+    assert cr.n_total_matches == 1
+
+
+def test_completion_path_badges_and_no_gallery_for_files():
+    from orchestration import _completion_from_turnlog
+
+    class _Step:
+        def __init__(self, tool, ok=True):
+            self.chosen_tool = tool
+            self.error = None
+            self.result = {"ok": ok}
+    lg = _fake_turnlog(attachments=[{"kind": "file", "path": "/x.xlsx"}])
+    lg.steps = [_Step("find_images_indices"), _Step("describe_entries")]
+    cr = _completion_from_turnlog(lg)
+    assert cr.path == [{"tool": "find_images_indices", "ok": True},
+                       {"tool": "describe_entries", "ok": True}]
+    # solo file → niente gallery (bug 7d2f734f: «gallery 1 foto» vuota)
+    assert cr.gallery_url == "" and cr.n_total_matches == 0
 
 
 def test_completion_from_turnlog_device_tag():

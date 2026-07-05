@@ -721,9 +721,10 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
             const tm = ev.data.turn_meta || null;
             let meta = tid ? {turn_id: tid, left: '', right: ''} : '';
             if(tm && (tm.turn_id || tm.total_ms)){
-              // Stessa forma dei turni normali: where (accento se remoto) +
-              // «turn:id · tempo» in left.
+              // Stessa forma dei turni normali: breadcrumb executor (path) +
+              // where (accento se remoto) + «turn:id · tempo» in left.
               meta = {turn_id: tm.turn_id || tid,
+                      path: Array.isArray(tm.path) ? tm.path : undefined,
                       where: tm.target_device ? tm.target_device : 'server Metnos',
                       whereRemote: !!tm.target_device,
                       left: (tm.turn_id ? 'turn:' + tm.turn_id.slice(0,8) : '')
@@ -731,7 +732,10 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
                       right: ''};
             }
             const atts = Array.isArray(ev.data.attachments) ? ev.data.attachments : null;
-            add('bot', ctxt, meta, true, atts);
+            const gInfo = (tm && tm.gallery_url && tm.n_total_matches)
+              ? { gallery_url: tm.gallery_url, n_total_matches: tm.n_total_matches }
+              : null;
+            add('bot', ctxt, meta, true, atts, gInfo);
           } else {
             d.innerHTML = '<div style="padding:.4rem;color:var(--sage);font-size:.9em;">'
                         + '✓ Risposta dialog inviata.'

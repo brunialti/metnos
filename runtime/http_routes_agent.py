@@ -1259,6 +1259,9 @@ async def dialog_submit(request: web.Request) -> web.Response:
                 "turn_id": _cr.turn_id or "",
                 "total_ms": _cr.total_ms or 0,
                 "target_device": _cr.target_device or "",
+                "gallery_url": _cr.gallery_url or "",
+                "n_total_matches": _cr.n_total_matches or 0,
+                "path": _cr.path or [],
             }
         except (ImportError, RuntimeError) as ex:
             log.exception("dialog_submit: process_completion_callback fallito")
