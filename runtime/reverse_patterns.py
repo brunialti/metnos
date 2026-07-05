@@ -400,6 +400,90 @@ _register_by_id(_sys.modules[__name__])
 del _sys, _register_by_id
 
 
+# ---- Reverse REMOTO come chiamate-executor (C7 CP4, 5/7/2026) --------------
+# Un'op eseguita su un DEVICE si ribalta sullo STESSO device (§2.9): i pattern
+# fs puri-path sono espressi come chiamate agli executor mutanti già
+# device-abili, accodate al device da undo_last_turn. NIENTE replica del
+# catalogo in Rust: i rail (coda firmata + executor firmati) bastano.
+# `restore_blob_backup` NON è remotabile (il blob vive sul device, il log sul
+# server): le op che lo richiedono restano server-only per costruzione
+# (delete_files non è device_ok in CP4).
+
+def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
+    """Traduce i reverse_pattern in chiamate executor eseguibili sul device.
+
+    Ritorna {"calls": [{"executor", "args"}...], "unsupported": [pattern...]}.
+    Deterministico, nessun side-effect. Un pattern senza traduzione finisce
+    in `unsupported` (il chiamante riporta onesto §2.8, mai silenzio)."""
+    if isinstance(names, str):
+        names = [names]
+    calls, unsupported = [], []
+    res = results or {}
+    for n in names or []:
+        if n == "swap_src_dst":
+            pairs = [p for p in (res.get("results") or [])
+                     if isinstance(p, dict) and p.get("src") and p.get("dst")
+                     and "account" not in p and not isinstance(p.get("src"), dict)]
+            # Schema executor: entries=[{src}] + dst_template (§2.2). Reverse
+            # generale: nome INVARIATO → un gruppo per cartella-sorgente con
+            # {name}; RENAME → chiamata singola con template letterale (path
+            # esatto). Semantica = _swap_src_dst_filesystem (parents=True,
+            # overwrite=False → posizione occupata = fallito onesto).
+            # Stringhe ORIGINALI preservate (mai riscrivere i separatori:
+            # il device può essere Windows con '/' o '\\' misti); PurePath
+            # solo per estrarre il NOME.
+            from pathlib import PureWindowsPath, PurePosixPath
+            def _name(x):
+                return (PureWindowsPath(x) if ("\\" in x or ":" == x[1:2])
+                        else PurePosixPath(x)).name
+            groups, singles = {}, []
+            for p in pairs:
+                now, back = str(p["dst"]), str(p["src"])
+                if now == back:
+                    continue
+                n_now, n_back = _name(now), _name(back)
+                if n_now == n_back and len(back) > len(n_back):
+                    parent = back[: -len(n_back)].rstrip("/\\")
+                    groups.setdefault(parent, []).append(now)
+                else:
+                    singles.append((now, back))
+            for parent, paths in groups.items():
+                calls.append({"executor": "move_files",
+                              "args": {"entries": [{"src": x} for x in paths],
+                                       "dst_template": parent + "/{name}",
+                                       "parents": True, "client": "local"}})
+            for now, back in singles:
+                calls.append({"executor": "move_files",
+                              "args": {"entries": [{"src": now}],
+                                       "dst_template": back,
+                                       "parents": True, "client": "local"}})
+        elif n == "delete_created_paths":
+            created = [e["path"] for e in (res.get("results") or [])
+                       if isinstance(e, dict) and e.get("created") and e.get("path")]
+            if created:
+                calls.append({"executor": "delete_files",
+                              "args": {"paths": created, "client": "local"}})
+            parent_dirs = res.get("dirs_created") or []
+            if parent_dirs:
+                calls.append({"executor": "delete_dirs",
+                              "args": {"paths": sorted(
+                                  set(parent_dirs),
+                                  key=lambda d: str(d).count("/"),
+                                  reverse=True),
+                                  "if_empty_only": True}})
+        elif n == "delete_created_dirs":
+            dirs = res.get("dirs_created") or []
+            if dirs:
+                calls.append({"executor": "delete_dirs",
+                              "args": {"paths": sorted(
+                                  set(dirs), key=lambda d: str(d).count("/"),
+                                  reverse=True),
+                                  "if_empty_only": True}})
+        else:
+            unsupported.append(n)
+    return {"calls": calls, "unsupported": unsupported}
+
+
 def apply_pattern(name: str, plan: dict, results: dict) -> dict:
     """Esegue un pattern singolo. Errore esplicito se nome non in catalog."""
     fn = PATTERNS.get(name)
