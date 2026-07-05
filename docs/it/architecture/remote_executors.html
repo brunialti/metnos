@@ -411,8 +411,11 @@ il vecchio client "si comporti bene": smette semplicemente di assegnargli payloa
 <div class="note">
 Gli executor remoti non significano "esegui qualunque codice sul PC". Significano:
 esegui solo executor firmati, compatibili con la piattaforma, ammessi dalla policy
-e sufficientemente contenuti dal client. Gli executor mutanti o non auditati restano
-fuori dal percorso remoto finche' il loro contenimento non e' esplicito.
+e sufficientemente contenuti dal client. Gli executor mutanti ammessi (scrittura e
+spostamento file) portano con se' l'annullamento: l'undo di un'operazione eseguita
+sul dispositivo viene rieseguito <em>sullo stesso dispositivo</em>, mai sul server.
+La cancellazione remota resta esclusa finche' il ripristino dei contenuti
+(backup blob) non ha un percorso di ritorno esplicito.
 </div>
 
 <ul>
