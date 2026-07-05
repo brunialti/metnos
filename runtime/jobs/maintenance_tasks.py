@@ -138,6 +138,50 @@ def task_fastpath_promotion() -> dict:
 
 # --- Reaper unificato dello stato persistente (29/5/2026) ---------------------
 
+def task_learning_loop_review() -> dict:
+    """W1 learning-loop (ADR 0185): review periodica dei SEED shadow.
+
+    - pota gli autopath shadow MAI confermati (nessun ✓ umano) e non usati da
+      METNOS_SHADOW_TTL_DAYS (default 21): un seed che non serve traffico è
+      rumore, non capitale;
+    - riporta i conteggi (shadow attivi, potati, proposte learning_loop
+      aperte) per la dashboard/log. Idempotente, additivo, mai LLM.
+    """
+    import os
+    import sqlite3
+    import time
+    report: dict = {"shadow_active": 0, "shadow_pruned": 0,
+                    "proposals_open": 0}
+    ttl_days = int(os.environ.get("METNOS_SHADOW_TTL_DAYS", "21"))
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from engine import autopath as _ap
+        c = _ap._conn()
+        cut = time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ",
+            time.gmtime(time.time() - ttl_days * 86400))
+        cur = c.execute(
+            "DELETE FROM autopaths WHERE shadow = 1 AND status = 'active' "
+            "AND COALESCE(ts_last_used, ts_created) < ?", (cut,))
+        report["shadow_pruned"] = cur.rowcount
+        report["shadow_active"] = c.execute(
+            "SELECT COUNT(*) FROM autopaths WHERE shadow = 1 "
+            "AND status = 'active'").fetchone()[0]
+        c.commit(); c.close()
+    except Exception as ex:  # noqa: BLE001
+        report["autopath_error"] = repr(ex)
+    try:
+        import change_intents as ci
+        rows = ci.list_intents(state=ci.STATE_PROPOSED,
+                               origin_module="learning_loop", limit=500)
+        report["proposals_open"] = len(rows)
+    except Exception as ex:  # noqa: BLE001
+        report["intents_error"] = repr(ex)
+    return report
+
+
 def task_state_reaper() -> dict:
     """Reaper unico dello stato persistente che cresceva senza pulizia.
 

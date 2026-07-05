@@ -545,9 +545,16 @@ def install_default_callbacks(scheduler) -> None:
         task_lifecycle_summary,
         task_state_reaper,
         task_fastpath_promotion,
+        task_learning_loop_review,
     )
 
     cb = scheduler.callbacks
+    cb.register(
+        "learning_loop_review",
+        _wrap_zero_arg(task_learning_loop_review),
+        "W1 learning-loop: pota seed shadow stantii + conta proposte (ADR 0185)",
+        replace=True,
+    )
     cb.register(
         "apply_executor_ager",
         _wrap_zero_arg(task_apply_executor_ager),
