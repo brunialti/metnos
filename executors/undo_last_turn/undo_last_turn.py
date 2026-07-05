@@ -31,8 +31,79 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from loader import load_catalog
-from reverse_patterns import apply_patterns
+from reverse_patterns import apply_patterns, build_remote_reverse_calls
 from undo import UndoLog
+
+
+def _reverse_on_device(patterns, rec) -> dict:
+    """C7 CP4: ribalta sull O STESSO device (§2.9) un'op che ha girato lì.
+
+    Traduce i pattern in chiamate executor (build_remote_reverse_calls) e le
+    accoda al device via invocations, attesa SINCRONA bounded. Aggregato con
+    la stessa shape di apply_patterns (ok/ok_count/fail_count/stages).
+    Device offline/timeout → fallito ONESTO (l'op resta ritentabile)."""
+    import time as _time
+    import invocations as _inv
+    device_id = rec.get("device") or ""
+    built = build_remote_reverse_calls(
+        patterns, rec.get("plan") or {}, rec.get("results") or {})
+    stages, total_ok, total_fail = [], 0, 0
+    overall_ok = True
+    for pat in built["unsupported"]:
+        stages.append({"pattern": pat, "result": {
+            "ok": False, "ok_count": 0, "fail_count": 1,
+            "error": _msg("ERR_UNDO_REMOTE_UNSUPPORTED", pattern=pat)}})
+        total_fail += 1
+        overall_ok = False
+    for call in built["calls"]:
+        try:
+            inv_id = _inv.enqueue_invocation(
+                device_id, call["executor"], call["args"], scope="device")
+        except Exception as e:
+            stages.append({"pattern": call["executor"], "result": {
+                "ok": False, "ok_count": 0, "fail_count": 1,
+                "error": f"enqueue failed: {e}"}})
+            total_fail += 1
+            overall_ok = False
+            continue
+        deadline = _time.time() + float(os.environ.get(
+            "METNOS_UNDO_DEVICE_TIMEOUT_S", "25"))
+        state, res = "", None
+        while _time.time() < deadline:
+            i = _inv.get_invocation(inv_id)
+            state = (i or {}).get("state") or ""
+            if state in ("done", "failed", "error", "denied", "expired"):
+                res = (i or {}).get("result")
+                break
+            _time.sleep(0.4)
+        if state == "done" and isinstance(res, dict) and res.get("ok"):
+            rok = res.get("ok_count")
+            rok = rok if isinstance(rok, int) else max(
+                1, len(res.get("results") or []))
+            stages.append({"pattern": call["executor"],
+                           "result": {"ok": True, "ok_count": rok,
+                                      "fail_count": res.get("fail_count") or 0,
+                                      "device": device_id,
+                                      "invocation_id": inv_id}})
+            total_ok += rok
+            total_fail += res.get("fail_count") or 0
+        else:
+            # §2.8: distingui «eseguito ma fallito» (state=done, ok:false) da
+            # «mai arrivato» (timeout/error/denied) — e porta l'evidenza.
+            _err = (res or {}).get("error") if isinstance(res, dict) else None
+            stages.append({"pattern": call["executor"], "result": {
+                "ok": False, "ok_count": 0, "fail_count": 1,
+                "error": (_err or _msg("ERR_UNDO_DEVICE_UNREACHABLE",
+                                       device=device_id,
+                                       state=state or "timeout")),
+                "state": state or "timeout",
+                "device_result": (json.dumps(res, default=str)[:300]
+                                   if res is not None else None),
+                "invocation_id": inv_id}})
+            total_fail += 1
+            overall_ok = False
+    return {"ok": overall_ok and total_fail == 0, "ok_count": total_ok,
+            "fail_count": total_fail, "stages": stages}
 
 
 def _load_module(code_path: Path):
@@ -80,7 +151,12 @@ def invoke(args):
         # priority 1: catalogo deterministico (manifest.reverse_pattern)
         if ex.reverse_pattern:
             try:
-                rev_result = apply_patterns(ex.reverse_pattern, rec.get("plan") or {}, rec.get("results") or {})
+                if rec.get("device"):
+                    # C7 CP4: op eseguita su un DEVICE → il reverse gira LI'
+                    # (§2.9), mai sul filesystem del server.
+                    rev_result = _reverse_on_device(ex.reverse_pattern, rec)
+                else:
+                    rev_result = apply_patterns(ex.reverse_pattern, rec.get("plan") or {}, rec.get("results") or {})
             except Exception as e:
                 details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "error", "reason": f"reverse_pattern exception: {e}"})
                 skipped += 1
@@ -128,6 +204,7 @@ def invoke(args):
         details.append({
             "op_id": rec["op_id"],
             "executor": executor_name,
+            "stages": rev_result.get("stages"),
             "status": ustatus,
             "ok_count": rok,
             "fail_count": rfail,
