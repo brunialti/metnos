@@ -381,6 +381,41 @@ async def shim_bundle(request: web.Request) -> web.Response:
     return web.json_response(bundle)
 
 
+async def client_update_descriptor(request: web.Request) -> web.Response:
+    """GET /agent/client/update/{target} — descrittore di self-update FIRMATO.
+
+    W4 (5/7/2026): il client confronta `server_client_version` dal poll con la
+    propria; su mismatch chiama QUESTO endpoint, verifica la firma con la
+    pubkey server PINNATA (stessa ancora di fiducia di shim/invocazioni — a
+    differenza dello sha-solo-integrità di install.ps1) e scarica il binario
+    dal mirror. Idempotenza lato client: sha del proprio exe == sha del
+    descrittore ⇒ già aggiornato, nessun loop."""
+    target = request.match_info.get("target") or ""
+    if not re.fullmatch(r"[a-z0-9_\-]+", target):
+        return _error(400, "bad_target", "target non valido")
+    import json as _json
+    p = agent_mirror.MIRROR_CLIENT_DIR / "manifest.json"
+    if not p.is_file():
+        return _error(404, "no_manifest", "mirror client assente")
+    try:
+        man = _json.loads(p.read_text())
+        version = man.get("latest") or ""
+        entry = ((man.get("versions") or {}).get(version) or {}).get(target)
+    except Exception:
+        return _error(500, "bad_manifest", "manifest illeggibile")
+    if not version or not entry:
+        return _error(404, "no_binary", f"nessun binario {target} in {version!r}")
+    payload = {"version": version, "target": target,
+               "sha256": entry.get("sha256") or ""}
+    return web.json_response({
+        **payload,
+        "url_path": f"/agent/client/{version}/{target}/"
+                    + ("metnos-client.exe" if "windows" in target
+                       else "metnos-client"),
+        "sig": invocations.sign_payload(payload),
+    })
+
+
 # --- join flow (§5.4-5.7 design doc: install-at-the-fly dalla UI) ----------
 #
 # La pagina join NON richiede auth admin: il segreto e' il join_id effimero,
@@ -761,6 +796,7 @@ def make_app() -> web.Application:
     app.router.add_get("/agent/shim", shim_bundle)
     # Join flow (§5): PRIMA del mirror, che ha la route catch-all
     # /agent/client/{filename}.
+    app.router.add_get("/agent/client/update/{target}", client_update_descriptor)
     app.router.add_get("/agent/client/join/{join_id}", client_join_page)
     app.router.add_get("/agent/client/join/{join_id}/status", client_join_status)
     app.router.add_get("/agent/client/join/{join_id}/installer", client_join_installer)
