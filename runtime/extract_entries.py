@@ -407,9 +407,12 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         # non e' installata → non ho potuto drillare.
         res["drill_unavailable"] = True
     if out_truncated:
-        # §2.7 visibility: l'output LLM ha toccato il token-cap su ≥1 sorgente →
-        # qualche record oltre il cap puo' mancare (il parser tollerante ha
-        # salvato i completi). Alza max_per_text o spezza la sorgente.
+        # §2.7/§2.11 visibility: l'output LLM ha toccato il token-cap su ≥1
+        # sorgente → qualche record oltre il cap puo' mancare (il parser tollerante
+        # ha salvato i completi). `truncated:True` fa scattare la NOTIFICA del
+        # runtime (mai silenzio §2.8). Cura: alza max_per_text / spezza la sorgente.
+        res["truncated"] = True
+        res["truncated_what"] = _msg("MSG_OBJECT_ENTRIES")
         res["output_truncated_sources"] = out_truncated
         res["cap_field"] = "max_per_text"
         res["cap_value"] = max_per_text

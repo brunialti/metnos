@@ -499,6 +499,11 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # Riempi `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y». Non
         # ne inseriamo un secondo. Se la query e' opaca → lascia com'e' (errore-
         # guida onesto a valle).
+        # SINK BULK a valle (create/write con `columns`) → l'extract deve prendere
+        # TUTTI i record, non i primi 20 (default): alza max_per_text (turn 8167889d).
+        _bulk_sink = any(_verb(s) in ("create", "write")
+                         and (getattr(s, "args", None) or {}).get("columns")
+                         for s in steps)
         existing = next((s for s in steps
                          if (getattr(s, "tool", "") or "") == "extract_entries"),
                         None)
@@ -508,9 +513,13 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                 _ef = derive_extract_fields(query)
                 if _ef:
                     ea["fields"] = _ef
-                    existing.args = ea
                     log.info("[ensure_extract] fields riempiti su extract_entries "
                              "esistente: %s", _ef)
+            if _bulk_sink and not ea.get("max_per_text"):
+                ea["max_per_text"] = _BULK_EXTRACT_CAP
+                log.info("[ensure_extract] max_per_text=%d (sink bulk) su extract "
+                         "esistente", _BULK_EXTRACT_CAP)
+            existing.args = ea
             return framework
 
         # L'extract va PRIMA del primo CONSUMER mutante (create/write/send/...):
@@ -548,6 +557,8 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         _fields = derive_extract_fields(query)
         if _fields:
             ins_args["fields"] = _fields
+        if _bulk_sink:
+            ins_args["max_per_text"] = _BULK_EXTRACT_CAP
         steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
         framework.steps = steps
         log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
@@ -1784,6 +1795,13 @@ def _clause_scoped_drive_term(query: str, phantom: Optional[str] = None) -> str:
 
 
 _SINK_VERBS = frozenset({"create", "write", "set", "order"})
+
+# Cap RECORD per un extract che alimenta un SINK BULK (create/write foglio/csv):
+# il default extract_entries (20) è per estrazioni piccole (eventi da 1 mail) e
+# TRONCAVA in silenzio un foglio da 77 righe a 20 (turn 8167889d, §2.8). Il budget
+# token (8192) resta il limite reale (~80-100 record/chiamata) e flagga la
+# troncatura oltre; per sorgenti enormi serve il chunking (follow-up).
+_BULK_EXTRACT_CAP = 500
 
 
 def _scope_sink_provider_to_clause(framework: Framework, query: str,
