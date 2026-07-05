@@ -15,6 +15,11 @@
 - cargo 9/9 (unit swap keep/restore) + e2e mutanti re-verdi con 0.2.11.
 - Prod: endpoint live su :8765, mirror `latest=0.2.11` firmato.
 
+## Validazione sul Windows REALE (5/7 sera)
+- PC-ROBERTO: 0.2.11 (install manuale, ultima volta) → **0.2.12 e poi 0.2.13 in autonomia totale** (due migrazioni automatiche consecutive, zero interventi; versione visibile in /admin/devices).
+- Il processo respawnato RESTA l'istanza della task (Start-ScheduledTask → no-op IgnoreNew) ed esegue: mutanti write/move + doppio undo round-trip validati sul PC vero (home reale via USERPROFILE dal runner 0.2.13).
+- Glitch osservato al primo avvio post-install (exit-0, task non rilanciata fino a Start manuale) → **watchdog**: trigger con ripetizione 5' + IgnoreNew nell'installer (i device già installati lo prendono al prossimo reinstall; il self-update del BINARIO non tocca la task).
+
 ## Limiti onesti
 - I client ≤0.2.10 NON si auto-aggiornano (il codice swap non c'è): serve UN ultimo upgrade manuale (join flow) per entrare nel regime automatico.
 - PowerShell-side (install.ps1) resta sha-integrità (Ed25519 in PS = W6); il self-update Rust è già a firma piena.

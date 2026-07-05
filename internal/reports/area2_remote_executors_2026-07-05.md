@@ -2,7 +2,7 @@
 
 **Riferimento**: mandato Fable Area 2 · ADR 0183 · Branch `session/detection-lexicon-i18n` (non pushato) · Prod live · Client 0.2.10 mirrorato.
 
-## Esito: CONSOLIDATO ✓ (CP1-CP4) — validazione Windows reale = unico residuo, da coordinare
+## Esito: CONSOLIDATO ✓ (CP1-CP4) — **VALIDATO ANCHE SUL WINDOWS REALE** (sera)
 
 ### CP1 — Shim a chiusura ad ALBERO (client 0.2.10)
 `shim_bundle` spedisce `backends/{__init__,files/__init__,files/local}.py` + `platform_policy.py` + `config.py` (lista esplicita §7.2; chiusura a module-load misurata: stdlib + moduli già nel bundle). Client: `ensure_shim`→`shim_rel_path` valida ogni segmento (no `..`/`\`/`:`/assoluti) e ricrea l'albero; fn pura + unit; cargo 7/7 + clippy pulito. Buildato, firmato e **mirrorato** (Linux+Windows).
@@ -23,7 +23,12 @@
 ## Prove del cancello §A
 Suite area 495 pass (unico rosso = flaky prefilter pre-esistente, verde isolato) · e2e read-only + mutanti + A-D remote TUTTI VERDI · live server validato · i18n 2 chiavi IT+EN (DB prod + seed installer) · docs pubbliche IT+EN aggiornate e **deployate** · ADR 0183 + CLAUDE §11 v22j + indice +5 · 8 commit (`4592162`…`8b2cb12`) · working tree pulito.
 
+## Aggiunte della sera (dirette di Roberto)
+- **Self-update AUTOMATICO (ADR 0184)**: descrittore firmato + swap atomico + respawn; PC reale migrato 0.2.11→0.2.12→**0.2.13 in autonomia** (2 migrazioni consecutive senza interventi).
+- **Versione client in UI**: `client_version` nel profile del heartbeat → colonna in /admin/devices (— per client vecchi).
+- **Windows REALE validato**: write nella home vera (`~`→`C:\Users\rober\…` via USERPROFILE dal runner 0.2.13) → undo dal server → file+cartelle RIMOSSI sul PC; move → undo → tornato; doppio undo = pulizia completa. Due bug veri scovati e fixati: `config.Path.home()` crash a module-load in sandbox (test ora fedele senza HOME) e home non risolvibile (`~` letterale).
+- **Watchdog installer**: ripetizione 5' + IgnoreNew (exit-0 non lascia più il device muto; il PC attuale la prende al prossimo reinstall).
+
 ## ⚠ Residui / follow-up
-1. **PC-ROBERTO reale**: client 0.2.7 con shim stantio → i turni device falliscono ONESTI (visto live: ModuleNotFoundError nel result). Serve portare il PC a **0.2.10** (reinstall/installer) — da coordinare; poi ripetere la validazione mutanti sul Windows vero.
 2. **Sticky-device + path server-like** (visto live): la destinazione appiccicosa manda al PC anche query con path del server (`/opt/metnos/...`→`C:\opt\...` not-found). Hint forma-path→host nel resolver placement = follow-up.
 3. Blob round-trip per delete remoto (design esplicito, ADR 0183 D3) · ACL scrittura Windows = W4.
