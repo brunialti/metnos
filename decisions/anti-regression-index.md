@@ -171,3 +171,24 @@
 - **Accept-pipeline esegue**: `change_applier.apply_materialize_pipeline` = turno reale in `scheduled_turn_scope`; effect onesto, observer giudica.
 - **Adapter telos cluster-head**: `change_intent_adapters.telos.iter_telos` proietta solo `ACTIONABLE_NAME_STATUS`, score=`cluster_score`.
 - **Alignment v1.4 fit con segno**: `alignment_engine.compose` — penalità `α·Σ peso·|fit⁻|` senza gate.
+
+**Dialog/UX scelte + Drive 5/7/2026 (mandato Fable, Fase 0)**
+- **Scelte cliccabili anche mono-step (HTTP)**: `channels.inline_ui.all_choice_like` (kind cliccabili, senza cap-24 Telegram) nei due decider fmt — `orchestration.invoke_get_inputs_internal` + `get_inputs._decide_fmt`.
+- **Form dict-choices**: `dialog_form.html` rende value/label dai dict ADR 0127 (≤6 → radio, oltre select); prima il submit non validava mai (repr Python).
+- **Resume reader mostra i DATI**: `orchestration._shape_result_for_chat` — `entries` (§2.6 reader) → `_fmt_reader_entries` (tabella/lista, cap 20 + MSG_TOP_OF); `results` (mutante) resta «✓».
+- **find Drive senza cartelle**: `gw.find` esclude mimeType folder (per le cartelle c'è find_dirs) + preferenza NOME ESATTO fra i fullText-fuzzy; trashed=false nel CLI `drive_search`.
+
+**Engine guard-chain hardening 5/7/2026 (CP1·M0 ADR 0177)**
+- **Contratto pipeline guard (T3)**: `dispatch.GUARD_PIPELINE` dichiarativa (14 guard, ordine+gate-v3) + `test_guard_pipeline_contract.py` blocca nomi/ordine.
+- **Idempotenza guard su cache-hit (T4)**: stesso test, double-apply full-chain+per-guard su corpus incorporato; sweep live 33/33.
+- **Arg install-root fantasma**: `dispatch._overwrite_phantom_install_args` (primo della catena) rimuove path dentro PATH_ROOT non nominati dalla query; ripara i piani L0/L1 avvelenati on-hit.
+- **find degenere = list (§2.2)**: `dispatch._degenerate_find_to_list` (ultimo) — intento LIST + find_files(base_path) senza selettore → list_dirs (device-eligible).
+- **Equivalenza files↔dirs**: `dispatch._fs_equivalent` in align pass-1, foreign-producers v3, enforce_missing_objects, chunk-matching di fill — il piano list_dirs non viene demolito da un intent (…, files).
+- **Sibling deterministico**: `compound_decomposer.derive_tool_name` — ordine PRODUCER fisso (find,read,get,list) al posto del SET (§11); fallback suffissi ESCLUDE varianti provider senza marker.
+- **Delete-mail coperta dal move**: `dispatch._dropped_required_verbs` — delete su messages soddisfatta da `move_messages` (§5), niente re-append su hit.
+- **Sink senza path estratti**: `dispatch._fill_clause_args` non riempie path/base_path/paths su create/write (l'output path resta al default §10.3).
+- **Install-root mai scope-default**: `args_resolver._is_install_root_path` filtra cattura E iniezione dei default appresi (avvelenamento auto-rinforzante).
+- **Path Windows/UNC estratti**: `args_extractor._PATH_RE` — segmenti intermedi con spazi, finale senza (no over-capture); assoluto estraneo all'host MAI fuso col CWD (`path_alias.normalize_input_path`).
+- **Simbionte path_alias↔list_dirs**: il bundle di list_dirs co-loca `path_alias.py` via symlink → ogni edit di runtime/path_alias.py OBBLIGA il re-sign di list_dirs (altrimenti scartato in silenzio → misroute al fratello).
+- **create_spreadsheet suffisso**: output senza estensione nota → `.xlsx` (§2.4).
+- **Testa manifest over-budget visibile**: `engine.proposer._render_tool_pool` WARN (1×/tool) se la testa §2.5 supera HEAD_MAX (i sintetizzati/importati sfuggono al test statico).
