@@ -180,19 +180,58 @@ pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -
     let _ = std::fs::remove_dir_all(&tmp);
     std::fs::create_dir_all(&tmp)?;
     for (fname, b64) in &bundle.files {
-        // Solo un nome di file NUDO: niente separatori (unix '/' o windows '\'),
-        // niente '..', niente drive-letter/ADS windows (':'), niente vuoto
-        // (rilievo #6: hardening, il bundle è già firmato dal server).
-        if fname.is_empty() || fname.contains('/') || fname.contains('\\')
-            || fname.contains("..") || fname.contains(':') {
-            bail!("nome file shim non sicuro: {}", fname);
+        let rel = shim_rel_path(fname)?;
+        let dest = tmp.join(&rel);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
         }
         let data = B64.decode(b64).with_context(|| format!("decode shim {}", fname))?;
-        std::fs::write(tmp.join(fname), data)?;
+        std::fs::write(dest, data)?;
     }
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&tmp, &dir)?;
     Ok(dir)
+}
+
+/// C7 CP1 (0.2.10): valida un nome-file del bundle shim e lo mappa a un path
+/// RELATIVO OS-nativo. Il bundle porta anche ALBERI-package (es.
+/// `backends/files/local.py`) — ammessi sotto-path relativi con separatore
+/// '/' (formato wire). Vietati: '..' (traversal), '\' (separatore nativo nel
+/// wire), ':' (drive/ADS windows), slash iniziale/finale (assoluti) e
+/// segmenti vuoti o '.'. Il bundle resta firmato dal server (rilievo #6).
+fn shim_rel_path(fname: &str) -> Result<std::path::PathBuf> {
+    if fname.is_empty() || fname.contains('\\') || fname.contains(':')
+        || fname.starts_with('/') || fname.ends_with('/') {
+        bail!("nome file shim non sicuro: {}", fname);
+    }
+    let mut rel = std::path::PathBuf::new();
+    for seg in fname.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            bail!("segmento shim non sicuro in {}", fname);
+        }
+        rel.push(seg);
+    }
+    Ok(rel)
+}
+
+#[cfg(test)]
+mod shim_tests {
+    use super::shim_rel_path;
+
+    #[test]
+    fn flat_and_tree_ok() {
+        assert!(shim_rel_path("messages.py").is_ok());
+        let p = shim_rel_path("backends/files/local.py").unwrap();
+        assert_eq!(p.iter().count(), 3);
+    }
+
+    #[test]
+    fn traversal_and_bad_forms_rejected() {
+        for bad in ["../evil.py", "a/../b.py", "a/./b.py", "/abs.py",
+                    "dir/", "a//b.py", "c:\\win.py", "a\\b.py", "", "x:y"] {
+            assert!(shim_rel_path(bad).is_err(), "accettato: {}", bad);
+        }
+    }
 }
 
 fn code_file_names(manifest: &toml::Value) -> Vec<String> {

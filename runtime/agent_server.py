@@ -350,6 +350,23 @@ async def shim_bundle(request: web.Request) -> web.Response:
             # import lazy, già nel bundle) → sblocca list_dirs sul device senza
             # albero-package. Firmato dinamicamente col resto del bundle.
             "path_alias.py": runtime_dir / "path_alias.py",
+            # C7 Area-2 CP1: CHIUSURA ad ALBERO per gli executor files
+            # (find/read prima, mutanti poi). Lista ESPLICITA (§7.2, niente
+            # autodiscovery): i dispatcher importano `backends.files.local`,
+            # che a module-load richiede SOLO platform_policy + messages +
+            # config + path_alias (misurato 5/7) — stdlib-only o già nel
+            # bundle. I rami xlsx/google restano import LAZY dentro le
+            # funzioni: sul device degradano onesti (ERR_DEPENDENCY_MISSING),
+            # mai ModuleNotFoundError a module-load. Separatore chiave = '/'
+            # (formato wire); il client mappa al path OS e valida ogni
+            # segmento (niente '..', '\\', ':', assoluti).
+            "backends/__init__.py": runtime_dir / "backends" / "__init__.py",
+            "backends/files/__init__.py":
+                runtime_dir / "backends" / "files" / "__init__.py",
+            "backends/files/local.py":
+                runtime_dir / "backends" / "files" / "local.py",
+            "platform_policy.py": runtime_dir / "platform_policy.py",
+            "config.py": runtime_dir / "config.py",
         }
         files = {fname: base64.b64encode(p.read_bytes()).decode("ascii")
                  for fname, p in sources.items()}
