@@ -1737,6 +1737,11 @@ def create_spreadsheet(args: dict) -> dict:
         path = Path(str(explicit_path)).expanduser()
         if not path.is_absolute():
             path = _spreadsheet_out_dir() / path
+        # §2.4: un output senza estensione nota (o path-verbatim del planner,
+        # es. `C:\Windows\…` finito in `path` — turn a9ec3b06) produrrebbe un
+        # file che nessun reader riapre. Suffisso .xlsx di default.
+        if path.suffix.lower() not in (".xlsx", ".csv"):
+            path = path.with_name(_sanitize_filename(path.name) + ".xlsx")
     else:
         path = _spreadsheet_out_dir() / f"{_sanitize_filename(title)}.xlsx"
     path.parent.mkdir(parents=True, exist_ok=True)
