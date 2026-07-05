@@ -206,3 +206,4 @@
 - **delete_files senza device_ok**: restore_blob_backup non remotabile → placement lo tiene locale; il reverse dell'undo passa da enqueue diretto (asimmetria voluta).
 - **Lazy-gw su TUTTI i dispatcher files/dirs**: find/read/write_files + create/delete/find_dirs — `test_device_shim_closure.py` importa i 9 nel layout device (repo bandito da sys.path); un import eager nuovo fallisce lì, non con un ModuleNotFoundError remoto.
 - **Chiusura shim stdlib-only**: `test_agent_server_remote.test_shim_bundle_signed` valida gli import a module-load del local.py SPEDITO contro la whitelist della chiusura.
+- **Self-update firmato+idempotente (ADR 0184)**: `client selfupdate.rs` — descrittore firmato con chiave server (verify pubkey pinnata), no-loop per sha dell'exe, swap con ripristino su fallimento; e2e `c7-validate-selfupdate.sh` (swap+respawn-che-esegue+un-solo-swap).
