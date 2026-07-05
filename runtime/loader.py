@@ -466,6 +466,12 @@ class Executor:
     # un device il cui os_family non e' in questa lista, PRIMA di spedirgli
     # un'invocazione che crasherebbe (modulo mancante, comando POSIX assente).
     platforms: list[str] = field(default_factory=lambda: ["linux"])
+    # Digest firmato del codice (manifest [code].digest, ADR 0182): la FIRMA
+    # del mondo per la cache-validity — un piano cachato che referenzia questo
+    # executor diventa MISS se il digest cambia (re-sign post-edit §7.10).
+    # Vuoto per builtin/virtual (cambiano solo col deploy+restart, che azzera
+    # la cache in-process; limite onesto documentato in ADR 0182).
+    digest: str = ""
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -1256,6 +1262,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             placement=_placement,
             complexity=_complexity,
             platforms=_platforms,
+            digest=str((manifest.get("code") or {}).get("digest") or ""),
         )
         catalog.executors[name] = ex
 
