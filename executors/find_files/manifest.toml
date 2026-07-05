@@ -5,6 +5,10 @@ manifest_format = "1.0"
 
 name        = "find_files"
 version     = "0.2.0"
+# C7 CP3: il backend local è pathlib/os puro → gira anche su
+# Windows (validato find/read sul device e2e 5/7). Senza questa
+# dichiarazione placement rifiuterebbe un device Windows (F1).
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "search", "ricerca", "file", "documento", "glob", "pattern"
@@ -16,7 +20,7 @@ en = "SCOPO: search files by pattern in directory. PATTERN: find_files(base_path
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:3dd52e4b17ae7f201775a92428f37b05fc7f21cc5d92df57e787d7be49407044"
+digest = "sha256:5c27264ec57995ba025dacd6c4167378cd6d268d6c45bfae025b8aa7e7fc506a"
 
 [args]
 type     = "object"
@@ -215,3 +219,11 @@ default     = ""
 [args.properties.kind.description]
 it = "t"
 en = "t"
+
+[placement]
+# C7 Area-2 CP3 (5/7): manifest-driven come list_dirs (F2, ADR 0034) —
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+# Read-only: chiusura nello shim (backends/files/local + policy + config),
+# lazy-gw nel dispatcher (il device non carica mai il ramo Drive).
+scope    = "any"
+device_ok = true

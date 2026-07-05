@@ -17,7 +17,7 @@ en = "SCOPO: persist records/text to local files (vectorial §2.1). PATTERN: wri
 
 [code]
 files  = ["write_files.py"]
-digest = "sha256:c719b3601bd615f375d43600ebe910f0be40478caa40a468e84130b0cf431e79"
+digest = "sha256:024f59b1324688d2ff75c9f25ff2efbc5b2d64f5ed97c3d7e23d8a22ed1b2984"
 
 [args]
 type     = "object"

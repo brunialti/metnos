@@ -33,19 +33,38 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
-from backends.files import local, google_workspace  # noqa: E402
+from backends.files import local  # noqa: E402
+
+# `google_workspace` è import LAZY (C7 Area-2 CP2): a module-load il modulo gw
+# trascina skill_wrapper/_google_api_runner (SERVER-only) → sul DEVICE questo
+# import farebbe ModuleNotFoundError per OGNI invocazione, anche client=local.
+# Il device non lo carica mai; sul server il primo uso gw lo carica una volta.
 
 # Dispatch table read-side (predisposta a plugin esterni).
 # Valori = modulo: attribute lookup `module.read` a call-time per testabilita'.
 _HANDLERS = {
-    "google_workspace": google_workspace,
     "local": local,
 }
 
 
+def _backend(client: str):
+    b = _HANDLERS.get(client)
+    if b is None and client == "google_workspace":
+        try:
+            from backends.files import google_workspace as _gw  # lazy, server-only
+        except ImportError:
+            # DEVICE: il modulo gw (e la sua chiusura skill_wrapper/…) non è
+            # nello shim → errore STRUTTURATO a valle (ERR_NOT_APPLICABLE),
+            # mai un traceback grezzo al runner (§2.8).
+            return None
+        _HANDLERS[client] = _gw
+        b = _gw
+    return b
+
+
 def invoke(args):
     client = args.get("client") or "local"
-    backend = _HANDLERS.get(client)
+    backend = _backend(client)
     if backend is None:
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}

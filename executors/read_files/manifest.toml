@@ -6,6 +6,10 @@ manifest_format = "1.0"
 
 name        = "read_files"
 version     = "0.1.0"
+# C7 CP3: il backend local è pathlib/os puro → gira anche su
+# Windows (validato find/read sul device e2e 5/7). Senza questa
+# dichiarazione placement rifiuterebbe un device Windows (F1).
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo", "contenuto"]
 
@@ -20,7 +24,7 @@ en = "SCOPO: read local file content (vectorial §2.1). PATTERN: read_files(path
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:c799eaa1b643e201a1e4aa79d6c43d9b32e14a0191684e6a6a1d70de42eb476c"  # sostituito al momento della firma
+digest = "sha256:23f719d26c862690076241ecfd88392a4f82c277b84fa3f087b118dc0cc648e6"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]
@@ -193,3 +197,11 @@ setup    = "mkdir -p /tmp/metnos_test_fs_read && printf 'A' > /tmp/metnos_test_f
 input    = { paths = [ "/tmp/metnos_test_fs_read/a.txt", "/tmp/metnos_test_fs_read/b.txt" ] }
 expect   = { ok = true, field_eq = { ok_count = 2 } }
 teardown = "rm -rf /tmp/metnos_test_fs_read"
+
+[placement]
+# C7 Area-2 CP3 (5/7): manifest-driven come list_dirs (F2, ADR 0034) —
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+# Read-only: chiusura nello shim (backends/files/local + policy + config),
+# lazy-gw nel dispatcher (il device non carica mai il ramo Drive).
+scope    = "any"
+device_ok = true
