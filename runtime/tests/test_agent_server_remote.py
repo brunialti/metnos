@@ -186,6 +186,27 @@ class AgentServerRemoteTests(AioHTTPTestCase):
         # C7 read-only: path_alias spedito nello shim → sblocca list_dirs
         # (e i futuri find/read) sul device.
         self.assertIn("path_alias.py", bundle["files"])
+        # C7 Area-2 CP1: CHIUSURA ad albero per gli executor files — il
+        # dispatcher importa `backends.files.local` (+ platform_policy +
+        # config a module-load). Chiavi col separatore '/' (formato wire).
+        for key in ("backends/__init__.py", "backends/files/__init__.py",
+                    "backends/files/local.py", "platform_policy.py",
+                    "config.py"):
+            self.assertIn(key, bundle["files"])
+        # La chiusura resta stdlib-only a module-load: il local.py spedito
+        # NON deve importare top-level moduli fuori bundle (§2.8 sul device:
+        # meglio scoprirlo qui che con un ModuleNotFoundError remoto).
+        import base64 as _b64
+        local_src = _b64.b64decode(
+            bundle["files"]["backends/files/local.py"]).decode("utf-8")
+        for _line in local_src.splitlines():
+            if _line.startswith(("import ", "from ")) and "__future__" not in _line:
+                _mod = _line.split()[1].split(".")[0].rstrip(",")
+                self.assertIn(_mod, {
+                    "base64", "datetime", "fnmatch", "json", "mimetypes",
+                    "os", "re", "shutil", "sys", "pathlib", "typing",
+                    "platform_policy", "messages", "config", "path_alias",
+                }, f"import a module-load fuori chiusura: {_line}")
         self.assertIn("sig", bundle)
 
 
