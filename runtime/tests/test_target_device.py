@@ -83,6 +83,38 @@ class ResolveTargetTests(unittest.TestCase):
         self.assertEqual(r.target, "id-ufficio")
         self.assertFalse(r.explicit)   # riuso, non nuovo esplicito
 
+    def test_sticky_windows_posix_path_goes_server(self):
+        r"""Hint forma-path→host (5/7): query con path POSIX assoluto (= fs
+        del server) + sticky su device WINDOWS -> SERVER, non il PC
+        (/opt/metnos/x diventava C:/opt/x not-found sul PC)."""
+        self.pc.os_family = "windows"
+        r = R("elenca i file in /opt/metnos/internal/reports",
+              [self.pc], last="id-ufficio")
+        self.assertEqual(r.target, td.SERVER)
+
+    def test_sticky_windows_winpath_stays_device(self):
+        self.pc.os_family = "windows"
+        r = R("elenca C:\\Windows\\System32", [self.pc], last="id-ufficio")
+        self.assertEqual(r.target, "id-ufficio")
+
+    def test_explicit_name_wins_over_path_hint(self):
+        """RESTRIZIONE-only (ADR 0179): il nome esplicito vince sull'hint."""
+        self.pc.os_family = "windows"
+        r = R("elenca /opt/dati sul portatile-ufficio", [self.pc], last=None)
+        self.assertEqual(r.target, "id-ufficio")
+
+    def test_server_nominal_marker_overrides_sticky(self):
+        """«stato DEL server» = riferimento nominale al server: vince sullo
+        sticky (visto live 5/7: finiva sul PC)."""
+        r = R("stato del server e primi 3 processi", [self.pc],
+              last="id-ufficio")
+        self.assertEqual(r.target, td.SERVER)
+
+    def test_sticky_no_path_unchanged(self):
+        self.pc.os_family = "windows"
+        r = R("comprimila in zip", [self.pc], last="id-ufficio")
+        self.assertEqual(r.target, "id-ufficio")
+
     def test_sticky_offline_decays_to_server(self):
         # #1 assessor: appiccicoso offline (implicito) → server, NON errore
         # («che ore sono» non deve fallire solo perché l'ultimo PC è spento).

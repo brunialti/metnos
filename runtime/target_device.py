@@ -52,7 +52,8 @@ _LOCAL_MARKERS = (
 # Marcatori «server / .33» → riporta al server.
 _SERVER_MARKERS = (
     "sul server", "qui sul server", "sul .33", "sul metnos", "lato server",
-    "on the server", "server side",
+    "del server", "dello .33",   # forme nominali: «stato del server» (5/7)
+    "on the server", "server side", "of the server",
 )
 
 
@@ -106,6 +107,22 @@ def _find_named_device(qn: str, devices):
                 [(d.id, getattr(d, "name", "")) for d, _s, _n in best])
     d, s, _n = best[0]
     return (d, s, None)
+
+
+_POSIX_SERVER_PATH_RE = re.compile(
+    r"(?:^|[\s\"'`(])/(?:opt|home|etc|var|usr|srv|mnt|tmp|root)(?:/|\b)")
+_WIN_FORM_PATH_RE = re.compile(r"(?:^|[\s\"'`(])(?:[A-Za-z]:[\\/]|\\\\)")
+
+
+def _path_platform_hints(query: str) -> set[str]:
+    """Forme di path presenti nella query: {'posix','windows'} (può essere
+    vuoto o doppio). Deterministico §7.9 — serve all'hint forma-path→host."""
+    hints: set[str] = set()
+    if _POSIX_SERVER_PATH_RE.search(query or ""):
+        hints.add("posix")
+    if _WIN_FORM_PATH_RE.search(query or ""):
+        hints.add("windows")
+    return hints
 
 
 def resolve_target(query: str,
@@ -182,6 +199,19 @@ def resolve_target(query: str,
         dev = next((d for d in devices if d.id == last_target), None)
         if dev is not None:
             if is_available(dev, now):
+                # Hint forma-path→host (5/7, visto live): lo STICKY non deve
+                # dirottare al device una query con un path in forma POSIX
+                # assoluta (= filesystem del server) se il device è Windows —
+                # «/opt/metnos/...» diventava «C:\opt\...» not-found sul PC.
+                # RESTRIZIONE-only (principio ADR 0179): il nome ESPLICITO nel
+                # turno vince sempre (ramo sopra); un path Windows-form
+                # conferma il device; forma doppia/assente = sticky normale.
+                _hints = _path_platform_hints(query or "")
+                _dev_os = (getattr(dev, "os_family", "") or "").lower()
+                if ("posix" in _hints and "windows" not in _hints
+                        and _dev_os.startswith("win")):
+                    res.target = SERVER
+                    return res
                 res.target = dev.id
                 res.device_name = getattr(dev, "name", None)
                 res.explicit = False
