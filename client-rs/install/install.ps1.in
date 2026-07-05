@@ -108,6 +108,13 @@ $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server
 # prima dal catch-and-continue, poi dalla pista della task legacy).
 # Col -User il trigger vale solo per l'account corrente: niente admin.
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+# WATCHDOG (visto live 5/7): il client puo' uscire con exit-0 (self-update
+# respawn, o un'uscita pulita anomala) e -RestartInterval copre solo i
+# FALLIMENTI -> senza questo trigger il device resta muto fino al logon.
+# Ripetizione ogni 5' con -MultipleInstances IgnoreNew: se il client gira,
+# no-op (lock single-instance come seconda rete); se e' morto, riparte.
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
 # -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la
 # prima gira ancora (il client ha comunque il suo lock single-instance).
 # I default di Windows sono trappole per un poller sempre-attivo (scoperto
