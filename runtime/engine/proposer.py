@@ -57,9 +57,11 @@ _THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
 # regola di taglio. Description verbose distraggono il modello medio (§2.5:
 # description = sola testa). `manifest_lint` e synt importano dalla stessa SoT.
 try:
-    from manifest_rules import RENDER_BUDGET as TOOL_DESC_BUDGET, render_head as _render_head
+    from manifest_rules import (RENDER_BUDGET as TOOL_DESC_BUDGET,
+                                HEAD_MAX as _HEAD_MAX, render_head as _render_head)
 except Exception:  # pragma: no cover — CLI senza runtime sul path
     TOOL_DESC_BUDGET = 260
+    _HEAD_MAX = 240
 
     def _render_head(desc):
         desc = (desc or "").strip().replace("\n", " ")
@@ -67,6 +69,9 @@ except Exception:  # pragma: no cover — CLI senza runtime sul path
             c = desc.find("OUT:")
             return (desc[:c] if c > 0 else desc)[:TOOL_DESC_BUDGET].strip()
         return desc.split(".")[0][:180].strip()
+
+# Rate-limit del WARN testa-over-budget: 1 volta per tool (evita spam a ogni turno).
+_HEAD_OVERBUDGET_SEEN: set = set()
 
 
 def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
@@ -88,7 +93,20 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         # Troncamento via SoT manifest_rules.render_head (DNA): testa §2.5 fino a
         # OUT: (cap RENDER_BUDGET) per i capitoli; prima frase ROBUSTA (cap
         # RENDER_LEGACY_MAX, non spezza a ".html") per i legacy in attesa di bonifica.
-        desc_short = _render_head(substitute_date_tokens(getattr(e, "description", "") or ""))
+        _raw = substitute_date_tokens(getattr(e, "description", "") or "")
+        desc_short = _render_head(_raw)
+        # Guard cheap (§7.3, 5/7): la testa §2.5 oltre HEAD_MAX viene TRONCATA nel
+        # render → rischio taglio del NON:/disambiguazione (misroute, classe
+        # find_images 9400d90). Il test statico copre i manifest del REPO; questo
+        # WARN a runtime intercetta i SINTETIZZATI/IMPORTATI/installati over-budget
+        # (fuori dal test). Controllo O(1) sul render che gia' fai; 1 volta/tool.
+        _oc = _raw.find("OUT:")
+        _hlen = len(_raw[:_oc] if _oc > 0 else _raw)
+        if _hlen > _HEAD_MAX and name not in _HEAD_OVERBUDGET_SEEN:
+            _HEAD_OVERBUDGET_SEEN.add(name)
+            log.warning("[manifest] testa §2.5 di '%s' = %d>%d "
+                        "(troncata a %d nel pool → rischio misroute): accorcia "
+                        "SCOPO/PATTERN/NON", name, _hlen, _HEAD_MAX, TOOL_DESC_BUDGET)
         schema = getattr(e, "args_schema", None) or {}
         required = schema.get("required") or []
         roo = schema.get("requires_one_of") or []
