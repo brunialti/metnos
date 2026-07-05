@@ -157,6 +157,57 @@ def _eval(entry: dict, attr: str, op: str, value: Any) -> bool:
     return False
 
 
+_SNAPSHOT_FAIL_REASON = ""
+
+
+def _set_fail(reason: str) -> None:
+    global _SNAPSHOT_FAIL_REASON
+    _SNAPSHOT_FAIL_REASON = reason
+
+
+def _tasklist_snapshot() -> list[dict]:
+    """Windows (C7 device, 5/7): `tasklist /fo csv` — stdlib only, stessa
+    shape delle entry POSIX (i campi non disponibili restano onesti a 0/"").
+    Prima del fix il device Windows rispondeva ok:true con 0 processi
+    (il ramo POSIX moriva FileNotFoundError silenzioso)."""
+    import csv as _csv
+    import io as _io
+    global _SNAPSHOT_FAIL_REASON
+    try:
+        out = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            capture_output=True, text=True, timeout=15, shell=False)
+    except (subprocess.TimeoutExpired, FileNotFoundError) as ex:
+        _SNAPSHOT_FAIL_REASON = f"tasklist: {type(ex).__name__}"
+        return []
+    if out.returncode != 0:
+        _SNAPSHOT_FAIL_REASON = (
+            f"tasklist rc={out.returncode}: {(out.stderr or '')[:200]}")
+        return []
+    rows: list[dict] = []
+    for rec in _csv.reader(_io.StringIO(out.stdout)):
+        # "Image Name","PID","Session Name","Session#","Mem Usage"
+        if len(rec) < 5:
+            continue
+        try:
+            pid = int(rec[1])
+        except ValueError:
+            continue
+        mem_kb = 0
+        try:
+            mem_kb = int(rec[4].replace(".", "").replace(",", "")
+                         .replace("K", "").strip())
+        except ValueError:
+            pass
+        rows.append({
+            "pid": pid, "ppid": 0, "user": "",
+            "cpu_pct": 0.0, "mem_pct": 0.0,
+            "mem_kb": mem_kb, "etime": "",
+            "comm": rec[0], "args": rec[0],
+        })
+    return rows
+
+
 def _ps_snapshot() -> list[dict]:
     """Run `ps` and parse one entry per line.
 
@@ -164,7 +215,11 @@ def _ps_snapshot() -> list[dict]:
     `lstart` (which has 5 tokens) so each column is a single field.
     Ask for the args column LAST so we can capture it via maxsplit on
     the remaining tail.
+
+    Windows (C7): delega a `_tasklist_snapshot` (ps assente).
     """
+    if os.name == "nt":
+        return _tasklist_snapshot()
     cmd = [
         "ps", "-eo",
         "pid,ppid,user:32,pcpu,pmem,etime,comm,args",
@@ -175,10 +230,13 @@ def _ps_snapshot() -> list[dict]:
             cmd, capture_output=True, text=True, timeout=10, shell=False,
         )
     except subprocess.TimeoutExpired:
+        _set_fail("ps: timeout")
         return []
     except FileNotFoundError:
+        _set_fail("ps: non trovato")
         return []
     if out.returncode != 0:
+        _set_fail(f"ps rc={out.returncode}: {(out.stderr or '')[:200]}")
         return []
 
     rows: list[dict] = []
@@ -677,6 +735,14 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         predicates = []  # ignora i filtri e procedi con health
 
     snapshot = _ps_snapshot()
+    # §2.8: snapshot GREZZO vuoto = strumento fallito (un sistema vivo ha
+    # sempre processi) — mai «ok con 0» che maschera il guasto (visto live
+    # 5/7 sul device Windows: il ramo POSIX moriva in silenzio).
+    if not snapshot:
+        return {"ok": False, "error_code": "ERR_EXT_TOOL_FAILED",
+                "error": _msg("ERR_EXT_TOOL_FAILED",
+                               tool="ps/tasklist",
+                               reason=_SNAPSHOT_FAIL_REASON or "output vuoto")}
     if predicates:
         snapshot = [
             e for e in snapshot

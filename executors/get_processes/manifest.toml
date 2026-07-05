@@ -6,6 +6,7 @@ manifest_format = "1.0"
 
 name        = "get_processes"
 version     = "0.2.0"
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",
                 "salute sistema", "system health", "uptime",
@@ -22,7 +23,7 @@ en = "SCOPO: gets processes snapshot and system health. PATTERN: get_processes(t
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:781f64f5c425df904342d823709f939598f460b1598de4fd0b38dc71bb589538"
+digest = "sha256:5f876928086ab82a292f2b24d49400db3f1adf823bf381e70daf857994fcd7a7"
 
 [args]
 type     = "object"
@@ -152,3 +153,9 @@ expect_full = """
   }
 }
 """
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+scope    = "any"
+device_ok = true
