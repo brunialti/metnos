@@ -154,13 +154,23 @@ class MetisProposer:
         SimpleProposer canonico. La sottoclasse v3 ritorna SimpleProposerV3."""
         return SimpleProposer(prompt_loader=prompt_loader)
 
-    def _cache_key(self, query: str, intent: Intent, lang: str):
-        """Cache key tuple. Fix #2: include lang. Fix #6: full sha256."""
+    def _cache_key(self, query: str, intent: Intent, lang: str,
+                   catalog=None):
+        """Cache key tuple. Fix #2: include lang. Fix #6: full sha256.
+        ADR 0182: include `catalog_epoch` — un framework generato in un
+        MONDO passato (executor editato/aggiunto/rimosso) non viene mai
+        ri-servito dal retry-path: ogni cambio di catalogo azzera di fatto
+        la LRU (costo: un retry-LLM in più; in-process, grana grossa)."""
         import hashlib
         # Fix #6: full sha256 hex (256-bit, no collision risk)
         h = hashlib.sha256(query.encode("utf-8")).hexdigest()
+        try:
+            from .cache_validity import catalog_epoch
+            epoch = catalog_epoch(catalog)
+        except Exception:  # noqa: BLE001 — mai bloccare il propose
+            epoch = ""
         # Fix #2: lang separa IT/EN
-        return (h, intent.verb, intent.object, lang)
+        return (h, intent.verb, intent.object, lang, epoch)
 
     def _cache_put(self, key, value):
         """LRU insert: move to end (most recent), evict oldest if over cap."""
@@ -193,7 +203,7 @@ class MetisProposer:
         _excl = set(exclude_tools or ())
         if _excl:
             pool = [n for n in pool if n not in _excl]
-        cache_key = self._cache_key(query, intent, lang)
+        cache_key = self._cache_key(query, intent, lang, catalog)
 
         # Retry path: serve alternativa cached senza LLM call. SKIP se
         # exclude_tools attivo: la cache NON è filtrata per tool esclusi →

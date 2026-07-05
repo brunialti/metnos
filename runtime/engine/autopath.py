@@ -66,6 +66,10 @@ class AutopathHit:
     cluster_id: str
     uses: int
     composite_score: float = 0.0
+    # ADR 0182: firme del mondo alla promozione — verificate al hit dal
+    # dispatch (cache_validity.validate); vuote = riga pre-migrazione = MISS.
+    tools_sig: str = ""
+    pool_sig: str = ""
 
 
 def _db_path() -> Path:
@@ -141,6 +145,16 @@ def _conn() -> sqlite3.Connection:
         );
         """)
         c.commit()
+    # ADR 0182 (cache-validity): firme del mondo. Sulle OBSERVATIONS al
+    # momento del turno (il mondo visto); copiate su AUTOPATHS alla promozione.
+    # Migrazione additiva preserva-dati; vuote = MISS una volta al hit.
+    for tab in ("observations", "autopaths"):
+        cols = {r[1] for r in c.execute(f"PRAGMA table_info({tab})")}
+        for col in ("tools_sig", "pool_sig"):
+            if col not in cols:
+                c.execute(f"ALTER TABLE {tab} ADD COLUMN {col} "
+                          "TEXT NOT NULL DEFAULT ''")
+    c.commit()
     return c
 
 
@@ -315,7 +329,8 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 # stesso cluster (post fix-collisione id) vince il migliore per
                 # merito, non l'ordine fisico delle righe (§11 determinismo).
                 row = c.execute(
-                    "SELECT id, framework_json, uses, composite_score, intent_sig "
+                    "SELECT id, framework_json, uses, composite_score, intent_sig, "
+                    "tools_sig, pool_sig "
                     "FROM autopaths WHERE cluster_id = ? AND status = 'active' "
                     "AND champion = 1 ORDER BY composite_score DESC, "
                     "ok_count DESC, uses DESC, id LIMIT 1",
@@ -334,7 +349,9 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                     _touch_served(c, row[0])
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
-                                        composite_score=row[3] or 0.5)
+                                        composite_score=row[3] or 0.5,
+                                        tools_sig=row[5] or "",
+                                        pool_sig=row[6] or "")
         # 2. Intent hash fallback (exact) + COSINE-FLOOR di pertinenza (14/6).
         # L'intent_hash (verb|object) coincide anche fra query con SLOT diversi:
         # esige che la query sia cosine ≥ FLOOR al cluster dell'autopath servito,
@@ -344,7 +361,8 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
         # distante. Floor saltato se manca l'embedding o il cluster (no segnale).
         row = c.execute(
             "SELECT id, framework_json, cluster_id, uses, composite_score, "
-            "intent_sig FROM autopaths WHERE intent_hash = ? AND status = 'active' "
+            "intent_sig, tools_sig, pool_sig "
+            "FROM autopaths WHERE intent_hash = ? AND status = 'active' "
             "AND champion = 1 ORDER BY composite_score DESC, ok_count DESC, "
             "uses DESC, id LIMIT 1", (ihash,)).fetchone()
         # CONFINE OGGETTO anche su path-2 (D3-D, 18/6): gemello del path-1.
@@ -362,7 +380,9 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
             _touch_served(c, row[0])
             return AutopathHit(autopath_id=row[0], framework=fw,
                                 cluster_id=ap_cluster or "", uses=row[3],
-                                composite_score=row[4] or 0.5)
+                                composite_score=row[4] or 0.5,
+                                tools_sig=row[6] or "",
+                                pool_sig=row[7] or "")
     finally:
         c.close()
     return None
@@ -371,7 +391,8 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
 # ── Observation recording ─────────────────────────────────────────────────
 
 def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
-                        query: str = "", latency_ms: int = 0) -> str:
+                        query: str = "", latency_ms: int = 0,
+                        catalog=None) -> str:
     """Registra turno per future promote/demote."""
     sig, ihash = _compute_intent_sig(intent)
     fhash = compute_framework_hash(framework)
@@ -381,13 +402,24 @@ def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
     if eb:
         cid = _assign_cluster(eb)
     ts = now_iso_z()
+    # ADR 0182: firma del mondo AL MOMENTO del turno; la promozione la copia
+    # sull'autopath. Best-effort (sig vuote = MISS al primo hit, poi refresh).
+    try:
+        from .cache_validity import plan_sigs
+        # ADR 0182: firma contro il mondo del CHIAMANTE (vedi fastpath).
+        _tsig, _psig = plan_sigs(framework, intent, catalog)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("autopath: plan_sigs fallita (sig vuote): %r", ex)
+        _tsig, _psig = "", ""
     try:
         with closing(_conn()) as c:
             c.execute(
                 "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
                 "framework_json, framework_hash, cluster_id, embedding, "
-                "latency_ms, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (turn_id, ihash, sig, fjson, fhash, cid, eb, latency_ms, ts))
+                "latency_ms, ts, tools_sig, pool_sig) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (turn_id, ihash, sig, fjson, fhash, cid, eb, latency_ms, ts,
+                 _tsig, _psig))
             c.commit()
     except Exception as ex:
         log.warning("autopath.record_observation: %r", ex)
@@ -440,11 +472,12 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
         c = _conn()
         row = c.execute(
             "SELECT intent_hash, intent_sig, framework_json, framework_hash, "
-            "cluster_id, latency_ms FROM observations WHERE turn_id = ? "
+            "cluster_id, latency_ms, tools_sig, pool_sig "
+            "FROM observations WHERE turn_id = ? "
             "ORDER BY id DESC LIMIT 1", (turn_id,)).fetchone()
         if not row:
             return {"ok": False, "reason": "no_observation"}
-        ihash, sig, fjson, fhash, cid, lat = row
+        ihash, sig, fjson, fhash, cid, lat, _tsig, _psig = row
         ts = now_iso_z()
         c.execute("UPDATE observations SET verdict = ?, verdict_ts = ? "
                   "WHERE turn_id = ?", (verdict, ts, turn_id))
@@ -472,7 +505,8 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
                     # non generalizza, non diventa champion (anti-poisoning).
                     out["promotion_skipped"] = "query_specific_literal_args"
                 else:
-                    autopath_id = _promote_autopath(c, ihash, sig, fhash, fjson, cid, ts)
+                    autopath_id = _promote_autopath(c, ihash, sig, fhash, fjson, cid, ts,
+                                                    tools_sig=_tsig or "", pool_sig=_psig or "")
                     if autopath_id:
                         out["promoted_autopath_id"] = autopath_id
         elif verdict == "fail":
@@ -532,7 +566,8 @@ def record_feedback(turn_id: str, verdict: str) -> dict:
 
 
 def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
-                    cid: Optional[str], ts: str) -> Optional[str]:
+                    cid: Optional[str], ts: str, *,
+                    tools_sig: str = "", pool_sig: str = "") -> Optional[str]:
     """Crea autopath ACTIVE se non già presente. Ritorna autopath_id.
 
     L'id include ihash+fhash (1/7/2026): il vecchio `{sig[:40]}_v1.0.0` era
@@ -548,15 +583,23 @@ def _promote_autopath(c, ihash: str, sig: str, fhash: str, fjson: str,
         "SELECT id FROM autopaths WHERE intent_hash = ? AND framework_hash = ?",
         (ihash, fhash)).fetchone()
     if existing:
+        # ADR 0182: la ri-promozione RINFRESCA anche le firme del mondo —
+        # senza, una riga pre-migrazione (sig vuota) resterebbe invalida per
+        # sempre malgrado il nuovo feedback ✓ su un turno del mondo corrente.
         c.execute("UPDATE autopaths SET uses = uses + 1, ok_count = ok_count + 1, "
-                  "ts_last_used = ? WHERE id = ?", (ts, existing[0]))
+                  "ts_last_used = ?, "
+                  "tools_sig = CASE WHEN ? != '' THEN ? ELSE tools_sig END, "
+                  "pool_sig  = CASE WHEN ? != '' THEN ? ELSE pool_sig END "
+                  "WHERE id = ?",
+                  (ts, tools_sig, tools_sig, pool_sig, pool_sig, existing[0]))
         return existing[0]
     cur = c.execute(
         "INSERT OR IGNORE INTO autopaths(id, intent_sig, intent_hash, cluster_id, "
         "framework_json, framework_hash, status, uses, ok_count, "
-        "ts_created, ts_last_used) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?)",
-        (autopath_id, sig, ihash, cid, fjson, fhash, ts, ts))
+        "ts_created, ts_last_used, tools_sig, pool_sig) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1, ?, ?, ?, ?)",
+        (autopath_id, sig, ihash, cid, fjson, fhash, ts, ts,
+         tools_sig, pool_sig))
     if cur.rowcount == 0:
         # Collisione id residua (2⁻⁴⁸: stesso prefisso ihash+fhash di un'ALTRA
         # coppia): l'IGNORE ha scartato l'insert — §2.8, non dichiarare una

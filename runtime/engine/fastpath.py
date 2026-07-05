@@ -92,6 +92,10 @@ class FastpathHit:
     framework: Framework
     match_kind: str  # 'hash' | 'cosine'
     similarity: float = 1.0  # 1.0 per hash, cosine per semantic
+    # ADR 0182: firme del mondo alla registrazione — il dispatch le VERIFICA
+    # al hit (cache_validity.validate); vuote = riga pre-migrazione = MISS.
+    tools_sig: str = ""
+    pool_sig: str = ""
 
 
 def _db_path() -> Path:
@@ -156,6 +160,10 @@ def _migrate_schema(c: sqlite3.Connection) -> None:
             ("intent_object", "TEXT NOT NULL DEFAULT ''"),
             ("query_specific", "INTEGER NOT NULL DEFAULT 0"),
             ("created_at", "TEXT NOT NULL DEFAULT ''"),
+            # ADR 0182 (cache-validity): firme del mondo alla registrazione.
+            # Vuote su righe pre-migrazione → MISS una volta, poi refresh.
+            ("tools_sig", "TEXT NOT NULL DEFAULT ''"),
+            ("pool_sig", "TEXT NOT NULL DEFAULT ''"),
         ):
             if col not in cols:
                 c.execute(f"ALTER TABLE fastpaths ADD COLUMN {col} {decl}")
@@ -186,8 +194,8 @@ def lookup(query: str) -> Optional[FastpathHit]:
     try:
         c = _conn()
         row = c.execute(
-            "SELECT id, canonical_text, framework_json FROM fastpaths "
-            "WHERE canonical_hash = ?", (h,)).fetchone()
+            "SELECT id, canonical_text, framework_json, tools_sig, pool_sig "
+            "FROM fastpaths WHERE canonical_hash = ?", (h,)).fetchone()
         c.close()
         if row:
             try:
@@ -195,7 +203,9 @@ def lookup(query: str) -> Optional[FastpathHit]:
                 _touch(row[0])
                 return FastpathHit(fp_id=row[0], canonical_text=row[1],
                                     framework=fw, match_kind="hash",
-                                    similarity=1.0)
+                                    similarity=1.0,
+                                    tools_sig=row[3] or "",
+                                    pool_sig=row[4] or "")
             except Exception as ex:
                 # §2.8: un match esatto 0a corrotto è un MISS PULITO, non si cade
                 # nel coseno 0b (servirebbe il piano di una query VICINA come hit
@@ -215,7 +225,8 @@ def lookup(query: str) -> Optional[FastpathHit]:
     try:
         c = _conn()
         rows = c.execute(
-            "SELECT id, canonical_text, framework_json, embedding "
+            "SELECT id, canonical_text, framework_json, embedding, "
+            "tools_sig, pool_sig "
             "FROM fastpaths WHERE embedding IS NOT NULL "
             "AND query_specific = 0").fetchall()
         c.close()
@@ -225,27 +236,30 @@ def lookup(query: str) -> Optional[FastpathHit]:
     threshold = _cluster.COSINE_HIGH + 0.02  # leggermente più stretto del cluster
     best = None
     best_sim = 0.0
-    for fp_id, ctext, fjson, stored_eb in rows:
+    for fp_id, ctext, fjson, stored_eb, tsig, psig in rows:
         if not stored_eb:
             continue
         sim = _cluster.cosine(eb, stored_eb)
         if sim > best_sim:
             best_sim = sim
-            best = (fp_id, ctext, fjson)
+            best = (fp_id, ctext, fjson, tsig, psig)
     if best and best_sim >= threshold:
         try:
             fw = Framework.from_dict(json.loads(best[2]))
             _touch(best[0])
             return FastpathHit(fp_id=best[0], canonical_text=best[1],
                                 framework=fw, match_kind="cosine",
-                                similarity=best_sim)
+                                similarity=best_sim,
+                                tools_sig=best[3] or "",
+                                pool_sig=best[4] or "")
         except Exception:
             return None
     return None
 
 
 def record_success(query: str, framework: Framework, *,
-                   intent=None, origin: str = "auto") -> int:
+                   intent=None, origin: str = "auto",
+                   catalog=None) -> int:
     """Auto-produce un fastpath da un turno completato con SUCCESSO dal piano
     pieno (chiamato da dispatch.run_turn sui percorsi engine/recovery).
 
@@ -282,6 +296,17 @@ def record_success(query: str, framework: Framework, *,
     qspec = 1 if is_query_specific(fjson) else 0
     iverb = (getattr(intent, "verb", "") or "").lower().strip()
     iobj = (getattr(intent, "object", "") or "").lower().strip()
+    # ADR 0182: firma del mondo alla registrazione (tool referenziati + famiglie
+    # candidati dell'intent). Best-effort: sig vuote = la riga sarà MISS al
+    # primo hit e si ri-registrerà (mai un piano non verificabile servito).
+    try:
+        from .cache_validity import plan_sigs
+        # ADR 0182: firma contro il MONDO DEL CHIAMANTE (il catalogo con cui il
+        # piano fu deciso e con cui verrà validato al hit) — None → corrente.
+        _tsig, _psig = plan_sigs(framework, intent, catalog)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("fastpath: plan_sigs fallita (sig vuote): %r", ex)
+        _tsig, _psig = "", ""
     try:
         c = _conn()
         # Refresh: oltre al piano, COALESCE ripara un embedding NULL (BGE-M3
@@ -289,15 +314,18 @@ def record_success(query: str, framework: Framework, *,
         c.execute(
             "INSERT INTO fastpaths(canonical_text, canonical_hash, embedding, "
             "framework_json, origin, intent_verb, intent_object, "
-            "query_specific, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "query_specific, created_at, tools_sig, pool_sig) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(canonical_hash) DO UPDATE SET "
             "framework_json = excluded.framework_json, "
             "embedding = COALESCE(excluded.embedding, embedding), "
             "query_specific = excluded.query_specific, "
             "intent_verb = excluded.intent_verb, "
-            "intent_object = excluded.intent_object",
-            (canonical, h, eb, fjson, origin, iverb, iobj, qspec, _now_iso()))
+            "intent_object = excluded.intent_object, "
+            "tools_sig = excluded.tools_sig, "
+            "pool_sig = excluded.pool_sig",
+            (canonical, h, eb, fjson, origin, iverb, iobj, qspec, _now_iso(),
+             _tsig, _psig))
         c.commit()
         # fp_id dal SELECT, non da lastrowid: sull'upsert-UPDATE (refresh)
         # lastrowid NON è la riga aggiornata → telemetria falsa (§2.8).

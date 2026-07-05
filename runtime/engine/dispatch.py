@@ -332,7 +332,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     try:
         framework = _canonical_framework_for_record(query, framework, catalog)
         fp_id = _fp.record_success(query, framework, intent=intent,
-                                   origin=origin)
+                                   origin=origin, catalog=catalog)
         if fp_id:
             log.info("[L0 fastpath] auto-record fp_id=%d (origin=%s)",
                      fp_id, origin)
@@ -2550,18 +2550,19 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     if is_fastpath_enabled() and not seed_state:
         fp_hit = _fp.lookup(query)
         if fp_hit is not None:
-            # Morte C1 a hit-time (§2.8): un piano che riferisce un executor
-            # non più nel catalog (ritirato/rinominato/archiviato) NON va
-            # eseguito (fallirebbe wrong_tool) né tenuto: delete +
-            # fall-through a L1/L3, che ripianificano col catalog corrente;
-            # il successo ri-crea il fastpath col piano nuovo (self-healing).
-            _cat_names = catalog_names(catalog)
-            _missing = [s.tool for s in fp_hit.framework.steps
-                        if s.tool and s.tool != "final_answer"
-                        and s.tool not in _cat_names]
-            if _cat_names and _missing:
-                log.info("[L0 fastpath] fp_id=%d riferisce executor mancanti "
-                         "%s → morte + fall-through", fp_hit.fp_id, _missing)
+            # VALIDITÀ DEL MONDO a hit-time (ADR 0182, sussume la morte C1):
+            # il piano è servibile SOLO se le firme registrate combaciano col
+            # mondo corrente — tool referenziati con lo STESSO digest (§7.10:
+            # re-sign post-edit ⇒ mismatch; sparito ⇒ `!missing`) E famiglie di
+            # candidati invariate per l'intent (capacità nuova ⇒ la decisione
+            # va ripresa). Mismatch/sig-vuota → delete + fall-through a L1/L3;
+            # il successo ri-registra col piano e la firma freschi.
+            from .cache_validity import validate as _cv_validate
+            _ok, _why = _cv_validate(fp_hit.tools_sig, fp_hit.pool_sig,
+                                     fp_hit.framework, intent, catalog)
+            if not _ok:
+                log.info("[L0 fastpath] fp_id=%d INVALIDATO: %s → morte + "
+                         "fall-through", fp_hit.fp_id, _why)
                 _fp.delete(fp_hit.fp_id)
                 fp_hit = None
         # GARANZIA (Roberto 15/6): mai eseguire un piano L0 con step mutante i
@@ -2646,6 +2647,20 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
     if is_autopath_enabled() and intent.is_complete() and not seed_state:
         ap_hit = _ap.lookup(query, intent)
+        if ap_hit is not None:
+            # VALIDITÀ DEL MONDO a hit-time (ADR 0182, gemello di L0): firme
+            # registrate alla promozione vs mondo corrente. Mismatch/sig-vuota
+            # → fall-through a L3 (l'autopath NON viene cancellato qui: la
+            # promozione è capitale di feedback umano — il reaper C3 pota le
+            # righe la cui sig resta stantia; il primo turno L3 riuscito
+            # ri-osserva e la ri-promozione segue il flusso normale).
+            from .cache_validity import validate as _cv_validate
+            _ok, _why = _cv_validate(ap_hit.tools_sig, ap_hit.pool_sig,
+                                     ap_hit.framework, intent, catalog)
+            if not _ok:
+                log.info("[L1 autopath] %s INVALIDATO: %s → fall-through L3",
+                         ap_hit.autopath_id, _why)
+                ap_hit = None
         # GARANZIA (Roberto 15/6): stessa invariante di L0 — un piano L1 con step
         # mutante i cui valori-arg non sono nella query corrente NON va eseguito
         # (un autopath con valore baked servirebbe il target sbagliato).
@@ -2708,7 +2723,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     _ap.record_observation(
                         turn_id=turn_id, intent=intent,
                         framework=ap_hit.framework, query=query,
-                        latency_ms=run.elapsed_ms)
+                        latency_ms=run.elapsed_ms, catalog=catalog)
                 # Copertura L0 (bug live 11/6/2026, classe 12/6/2026): un hit L1
                 # è un TURNO-SUCCESSO la cui query esatta non è in cache 0a —
                 # senza record la stessa query ripaga PER SEMPRE embed+scan L1
@@ -2884,7 +2899,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         try:
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
-                query=query, latency_ms=run.elapsed_ms)
+                query=query, latency_ms=run.elapsed_ms, catalog=catalog)
         except Exception as ex:
             # Feedback best-effort: il fallimento non blocca il turno ma NON è
             # silenzioso (§2.8) — traccia per diagnosticare regressioni di
