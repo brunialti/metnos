@@ -92,6 +92,21 @@ def _record_lacuna(query: str, intent: Intent, error_class: str,
         """, (lid, ts, query, intent.verb, intent.object, error_class,
               root_cause, suggested_action, ts))
         conn.commit()
+        # W1 learning-loop (ADR 0185): lacuna RICORRENTE → proposta di
+        # capacità (change_intent PROPOSED, triage umano su /admin/changes).
+        # Nel choke-point: copre SimpleTerminator E MetisTerminator.
+        try:
+            row = conn.execute(
+                "SELECT n_seen FROM lacune WHERE lacuna_id = ?",
+                (lid,)).fetchone()
+            n_seen = int(row[0]) if row else 1
+            import learning_loop as _ll
+            _ll.propose_from_lacuna(
+                lacuna_id=lid, query=query, verb=intent.verb or "",
+                object_=intent.object or "", error_class=error_class,
+                n_seen=n_seen)
+        except Exception as ex:  # noqa: BLE001 — mai rompere la risposta
+            log.debug("learning_loop hook noop: %r", ex)
         conn.close()
     except Exception as ex:
         log.warning("terminator: record_lacuna failed: %r", ex)

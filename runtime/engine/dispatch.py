@@ -2900,6 +2900,14 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
                 query=query, latency_ms=run.elapsed_ms, catalog=catalog)
+            # W1 learning-loop (ADR 0185): turno engine OK e COSTOSO ripetuto
+            # → autopath SHADOW (senza aspettare il ✓ umano). Deterministico,
+            # soglie METNOS_SEED_STEPS/METNOS_SEED_REPEAT; no-op se un
+            # autopath active esiste già per l'intent.
+            if run.final_kind == "answer":
+                _ap.seed_from_run(
+                    intent=intent, framework=framework,
+                    n_steps=len(run.steps or []), catalog=catalog)
         except Exception as ex:
             # Feedback best-effort: il fallimento non blocca il turno ma NON è
             # silenzioso (§2.8) — traccia per diagnosticare regressioni di
