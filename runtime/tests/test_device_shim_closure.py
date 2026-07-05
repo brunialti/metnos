@@ -40,7 +40,8 @@ _SHIM_SOURCES = {
 }
 
 _EXECUTORS = ("find_files", "read_files", "write_files",
-              "move_files", "delete_files", "list_dirs")
+              "move_files", "delete_files", "list_dirs",
+              "create_dirs", "delete_dirs", "find_dirs")
 
 
 def _build_device_layout(tmp_path: Path) -> tuple[Path, Path]:
@@ -83,7 +84,8 @@ def test_all_file_executors_import_on_device(tmp_path):
     shim, execs = _build_device_layout(tmp_path)
     code = (
         "import find_files, read_files, write_files, "
-        "move_files, delete_files, list_dirs\n"
+        "move_files, delete_files, list_dirs, "
+        "create_dirs, delete_dirs, find_dirs\n"
         "print('IMPORT_OK')\n"
     )
     r = _device_python(code, shim, execs, tmp_path)
