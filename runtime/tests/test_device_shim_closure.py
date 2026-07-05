@@ -71,9 +71,12 @@ def _device_python(code: str, shim: Path, execs: Path, cwd: Path) -> dict:
     proc = subprocess.run(
         [sys.executable, "-c", prelude + code],
         capture_output=True, text=True, cwd=str(cwd), timeout=60,
-        # Contratto REALE del client (sandbox_*: METNOS_RUNTIME=shim_dir):
-        # il bootstrap degli executor lo usa per il sys.path del runtime.
-        env={"PATH": "/usr/bin:/bin", "HOME": str(cwd),
+        # Contratto REALE del client (sandbox_*: env_clear + METNOS_RUNTIME):
+        # NIENTE HOME di default — config/path_alias non devono crashare a
+        # module-load (visto live 5/7 sul PC: Path.home() → RuntimeError).
+        # La home vera arriva dal runner ≥0.2.13 (USERPROFILE/HOME) quando
+        # c'è: qui la simuliamo assente = il caso più duro.
+        env={"PATH": "/usr/bin:/bin",
              "METNOS_RUNTIME": str(shim),
              "PYTHONDONTWRITEBYTECODE": "1"},
     )

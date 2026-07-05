@@ -75,13 +75,35 @@ PATH_WORKSPACE     = PATH_ROOT / "workspace"
 PATH_DECISIONS     = PATH_ROOT / "decisions"
 PATH_DOCS          = PATH_ROOT / "docs"
 
+def _home() -> Path:
+    """Home robusta (specchio di `path_alias._home`, §7.2 senza import inverso):
+    `Path.home()` solleva RuntimeError nella sandbox del device (env
+    HOME/USERPROFILE strippati) e config è nel bundle shim — un crash a
+    MODULE-LOAD ammazzerebbe ogni executor files sul device (visto live 5/7,
+    PC Windows reale). Fallback onesto: env nativi → drive di sistema → cwd.
+    Sul server Path.home() funziona sempre: comportamento invariato."""
+    try:
+        return Path.home()
+    except (RuntimeError, KeyError):
+        for var in ("HOME", "USERPROFILE"):
+            v = os.environ.get(var)
+            if v and v.strip():
+                return Path(v)
+        updrive = (os.environ.get("HOMEDRIVE", "")
+                   + os.environ.get("HOMEPATH", "")).strip()
+        if updrive:
+            return Path(updrive)
+        drive = os.environ.get("SystemDrive") or ""
+        return Path(drive + os.sep) if drive else Path.cwd()
+
+
 # User XDG paths (per-utente, scrivibili senza sudo)
 PATH_USER_DATA     = _env_path("METNOS_USER_DATA",
-                                Path.home() / ".local" / "share" / "metnos")
+                                _home() / ".local" / "share" / "metnos")
 PATH_USER_STATE    = _env_path("METNOS_USER_STATE",
-                                Path.home() / ".local" / "state" / "metnos")
+                                _home() / ".local" / "state" / "metnos")
 PATH_USER_CONFIG   = _env_path("METNOS_USER_CONFIG",
-                                Path.home() / ".config" / "metnos")
+                                _home() / ".config" / "metnos")
 
 # Synth executors (synth on-the-fly, ADR 0066)
 PATH_SYNTH_EXECUTORS = PATH_USER_DATA / "executors"
