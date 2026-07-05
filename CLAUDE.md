@@ -11,7 +11,7 @@
 
 Assistente personale self-hosted (su `.33`, Strix Halo 96GB unified). Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM (Qwen 3.6 35B-A3B fast/middle/wise locale + Opus frontier opt-in come fallback). Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process: SigLIP-base + RetinaFace+ArcFace + EXIF (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `myclaw`. Dominio: `metnos.com`.
 
-ADR registry canonico: `decisions/` (relative alla repo root; `0001-0180`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
+ADR registry canonico: `decisions/` (relative alla repo root; `0001-0182`, `0055`/`0115`/`0116`/`0121` skipped — fonte unica per "perche' abbiamo scelto cosi'").
 
 ## 2. Principi cardine (mai negoziabili)
 
@@ -277,7 +277,7 @@ Server `runtime.metnos_http_server` su porta **8770** (separata da 8765 pairing)
 
 **Riferimenti**
 
-- ADR registry: `decisions/` (`0001-0180`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
+- ADR registry: `decisions/` (`0001-0182`, `0055`/`0115`/`0116`/`0121` skipped) — dettagli implementativi e razionale.
 - Architettura canonica: `docs/it/architecture/` (+ EN bridge simmetrico).
 - Memorie persistenti: `~/.claude/projects/-opt-myclaw/memory/MEMORY.md` (path Claude harness, indipendente dal rename Metnos).
 - Repertorio prompt: `runtime/prompts/<lang>/*.j2` (ADR 0092).
