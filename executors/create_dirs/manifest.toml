@@ -6,6 +6,7 @@ manifest_format = "1.0"
 
 name        = "create_dirs"
 version     = "0.4.0"
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "create", "crea", "mkdir", "make", "nuova", "directory", "cartella", "subdir", "folder",
@@ -112,3 +113,10 @@ expect = { ok = false, error_contains = "outside allowed scope" }
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo" }
 expect = { ok = false, error_contains = "must be a list" }
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): mutante con reverse remotabile
+# (delete_created_dirs → delete_dirs if_empty_only accodato allo stesso
+# device da undo_last_turn, ADR 0183 D2).
+scope    = "any"
+device_ok = true

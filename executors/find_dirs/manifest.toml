@@ -5,6 +5,7 @@ manifest_format = "1.0"
 
 name        = "find_dirs"
 version     = "0.1.0"
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle",
@@ -113,3 +114,9 @@ teardown = "rm -rf /tmp/metnos_test_finddirs"
 name   = "fallisce_su_base_path_inesistente"
 input  = { base_path = "/tmp/metnos_does_not_exist_xyz" }
 expect = { ok = false, error_contains = "Percorso non trovato" }
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+scope    = "any"
+device_ok = true

@@ -4,6 +4,7 @@ manifest_format = "1.0"
 
 name        = "find_packages"
 version     = "0.1.0"
+platforms   = ["linux", "windows"]
 author      = "synt-multistage <synt@metnos.com>"
 affinity    = ["find", "cerca", "package", "pacchetto", "comando", "command", "installato", "installed", "percorso", "path"]
 revertible  = false
@@ -31,3 +32,9 @@ en = "Name of the package or command to check on the operating system (e.g., 'ff
 [[capabilities]]
 name = "code:exec"
 hint = ["*"]
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+scope    = "any"
+device_ok = true
