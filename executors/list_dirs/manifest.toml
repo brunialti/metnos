@@ -27,7 +27,7 @@ en = "SCOPO: list directories and files. PATTERN: list_dirs(path=\"/tmp\", recur
 # sul device non dipende da uno shim aggiornato. §7.2 modulare, §7.3 generale.
 [code]
 files  = ["list_dirs.py", "path_alias.py"]
-digest = "sha256:7f9fb799171c42d686a6b6f018eb9f4f5d878283c32bcc4fb69418581b177e12"
+digest = "sha256:eaff82512818f9fa9f8a2e48ac13123e6f8484e49b35f432ec553c7fcab62da9"
 
 [args]
 type     = "object"

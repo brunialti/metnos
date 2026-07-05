@@ -139,6 +139,16 @@ def normalize_input_path(input_path: str) -> Path:
     # relativo e anteposto a workspace_default() (che chiama Path.home() → crash
     # nel sandbox del device). §7.3: riconoscere l'assoluto per ogni OS.
     if _is_absolute_path(s):
+        # Forma ESTRANEA all'host → NIENTE resolve(): su POSIX un assoluto
+        # Windows ("C:\…") è sintatticamente RELATIVO → resolve() lo FONDE col
+        # CWD (`/opt/metnos/C:\Windows\…`, turn 8b675402). Torna as-is: i
+        # caller (`exists()`/glob) falliscono ONESTAMENTE sul path REALE
+        # dell'utente, mai su un mostro fuso. §2.4/§7.3 host-aware, simmetrico
+        # (assoluto POSIX "/x" su host Windows idem).
+        _is_win_form = bool(_WIN_ABS_RE.match(s))
+        _host_is_win = os.name == "nt"
+        if _is_win_form != _host_is_win:
+            return Path(s)
         return Path(s).resolve()
     if s.startswith("~"):
         # Usa _home() (non os.path.expanduser) per mocking test + coerenza con
