@@ -456,16 +456,43 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         from . import is_v3
         if not is_v3():
             return framework
-        actions = getattr(intent, "actions", None) or []
-        if not any(isinstance(a, dict) and (a.get("verb") or "") == "extract"
-                   for a in actions):
-            return framework
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
         import naming_grammar as _ng
         from compound_decomposer import (PRODUCER_VERBS as _PV,
                                          derive_extract_fields)
+
+        def _verb(s):
+            nc = _ng.parse_name(getattr(s, "tool", "") or "")
+            return nc.verb if nc else ""
+        actions = getattr(intent, "actions", None) or []
+        _has_intent_extract = any(isinstance(a, dict)
+                                  and (a.get("verb") or "") == "extract"
+                                  for a in actions)
+        # STRUTTURA (intent flaky-safe, turn bb977a14): un sink columns-declaring
+        # che consuma un CONTENT-reader (Doc/pdf/mail/url: testo GREZZO) SENZA
+        # extract → i record vanno estratti nelle colonne dichiarate. L'intent
+        # DROPPA spesso la clausola-extract IMPLICITA («crea un foglio con i dati:
+        # X,Y,Z» non ha un verbo «estrai»); la STRUTTURA la impone. NON per
+        # list_/find_/get_files (metadata gia' strutturata) ne' read_*_spreadsheet
+        # (righe, FIX-4 passthrough). Richiede fields derivabili (schema-marker).
+        _CONTENT_READERS = {"read_files", "read_files_doc", "read_files_pdf",
+                            "read_files_html", "read_messages", "read_urls",
+                            "read_urls_html", "get_urls"}
+        _need_by_structure = False
+        if not _has_intent_extract:
+            _has_reader = any((s.tool or "") in _CONTENT_READERS for s in steps)
+            _has_col_sink = any(
+                _verb(s) in ("create", "write")
+                and (getattr(s, "args", None) or {}).get("columns")
+                for s in steps)
+            if _has_reader and _has_col_sink and derive_extract_fields(query):
+                _need_by_structure = True
+                log.info("[ensure_extract] trigger STRUTTURALE (content-reader → "
+                         "columns-sink, intent senza extract)")
+        if not _has_intent_extract and not _need_by_structure:
+            return framework
         from .types import StepSpec
         # extract_entries GIA' presente: il proposer a volte lo emette SENZA
         # l'arg required `fields` (bug live 22/6 → executor «missing 'fields'»).
@@ -486,9 +513,6 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                              "esistente: %s", _ef)
             return framework
 
-        def _verb(s):
-            nc = _ng.parse_name(getattr(s, "tool", "") or "")
-            return nc.verb if nc else ""
         # L'extract va PRIMA del primo CONSUMER mutante (create/write/send/...):
         # cosi' produce i record che il consumer piping-usa. Ignora produttori
         # SPURI dopo il consumer.
@@ -705,6 +729,32 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     _PRODUCERS = {"find", "read", "get", "list"}
     if (dropped & _PRODUCERS) and (fw_verbs & _PRODUCERS):
         dropped -= _PRODUCERS
+    # Famiglia SCRITTORI-FILE interscambiabile (create/write) — OBJECT-scoped
+    # (FIX-5, turn 697d1d08 «...metti i path in uno spreadsheet»): l'intent
+    # decompone (write,files) ma il proposer compone create_files_spreadsheet
+    # (create,files) → `write` resta 'droppato' → enforce appende un write_files
+    # SPURIO. Col guard anti-clobber quel write ora ERRA (§2.8: foglio creato ma
+    # turno a errore). create_<obj> e write_<obj> dello STESSO object sono lo
+    # STESSO sink: un create copre una clausola write e viceversa. NON
+    # object-blind (create_events != write_files): confronto per-object dei
+    # CONTEGGI, cosi' «crea un doc E scrivi un csv» (2 clausole files) resta
+    # scoperto se il piano ne realizza 1. §7.9 deterministico.
+    _WRITERS = {"create", "write"}
+    if _WRITERS & dropped:
+        import naming_grammar as _ng
+        from collections import Counter as _Counter
+        _acts = [a for a in (getattr(intent, "actions", None) or [])
+                 if isinstance(a, dict) and (a.get("verb") or "") in _WRITERS]
+        need: "_Counter" = _Counter((a.get("object") or "") for a in _acts)
+        have: "_Counter" = _Counter()
+        for s in framework.steps:
+            nc = _ng.parse_name(s.tool or "") if (s.tool or "") != "final_answer" else None
+            if nc and nc.verb in _WRITERS:
+                have[nc.obj] += 1
+        for wv in list(_WRITERS & dropped):
+            objs = {(a.get("object") or "") for a in _acts if (a.get("verb") or "") == wv}
+            if objs and all(have[o] >= need[o] for o in objs):
+                dropped.discard(wv)
     return dropped
 
 
@@ -1706,6 +1756,139 @@ def _drive_search_term(query: str) -> str:
     return re.sub(r"\s+", " ", q).strip()
 
 
+def _clause_scoped_drive_term(query: str, phantom: Optional[str] = None) -> str:
+    """Termine di ricerca Drive dalla CLAUSOLA del produttore, non dalla query
+    intera (§7.9, turn bb977a14). `_drive_search_term(query)` su un compound
+    trascina la clausola-sink («KAKEBO SPESE 2026 e crea con i dati data
+    descrizione importo») → termine sporco. Qui si applica al CHUNK giusto: quello
+    che contiene il marker-provider fantasma («google drive») o, in mancanza, la
+    prima clausola-produttrice (find/read/get). Best-effort → whole-query."""
+    try:
+        from compound_decomposer import split_query_chunks, detect_chunk_action
+        chunks = split_query_chunks(query)
+        if phantom:
+            for ch in chunks:
+                if phantom in ch.lower():
+                    t = _drive_search_term(ch)
+                    if t:
+                        return t
+        for ch in chunks:
+            act = detect_chunk_action(ch)
+            if act and act[0] in ("find", "read", "get"):
+                t = _drive_search_term(ch)
+                if t:
+                    return t
+    except Exception:  # noqa: BLE001
+        pass
+    return _drive_search_term(query)
+
+
+_SINK_VERBS = frozenset({"create", "write", "set", "order"})
+
+
+def _scope_sink_provider_to_clause(framework: Framework, query: str,
+                                   catalog: Optional[list]) -> Framework:
+    """§7.9 (turn bb977a14): il provider di un SINK (create/write files) e'
+    CLAUSE-SCOPED, non whole-query. «cerca SU GOOGLE DRIVE X e crea un foglio»:
+    il marker gw e' nella clausola-PRODUTTRICE; la clausola-create NON lo nomina
+    → default LOCAL (§10.3), NON eredita gw dalla query intera (che creerebbe un
+    foglio-doppione su Drive). Se il create nomina gw esplicito («salva SU DRIVE»)
+    → gw. Imposta `client` esplicito sul sink risolvendo dal TESTO delle
+    clausole-sink; `resolve_backend_arg` poi lo RISPETTA (non scavalca). Solo
+    oggetti multi-provider, no-op se client gia' esplicito. Multi-clausola only."""
+    try:
+        import backend_resolver as _br
+        from compound_decomposer import split_query_chunks
+        from prefilter import tokenize as _tok, detect_canonical_verbs_all as _vb
+        import naming_grammar as _ng
+        chunks = split_query_chunks(query)
+        if len(chunks) < 2:
+            return framework
+        sink_text = " ".join(
+            ch.lower() for ch in chunks
+            if ((_vb(_tok(ch)) or [None]) or [None])[0] in _SINK_VERBS)
+        if not sink_text.strip():
+            return framework
+        for s in framework.steps:
+            nc = _ng.parse_name(s.tool or "")
+            if not nc or nc.verb not in _SINK_VERBS:
+                continue
+            spec = _br.OBJECT_BACKENDS.get(nc.obj)
+            if not spec or len(spec.get("providers", [])) < 2:
+                continue
+            arg = spec["arg"]
+            if isinstance(s.args.get(arg), str) and s.args.get(arg):
+                continue                       # gia' esplicito → non toccare
+            prov = _br.resolve(nc.obj, sink_text)   # CLAUSE-scoped (sink only)
+            if prov:
+                s.args[arg] = prov
+                log.info("[sink_provider] %s client=%s (clause-scoped)",
+                         s.tool, prov)
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("scope_sink_provider noop (best-effort): %r", ex)
+        return framework
+
+
+def _decontaminate_reader_qualifier(framework: Framework, query: str,
+                                    catalog: Optional[list]) -> Framework:
+    """§7.9 (turn bb977a14): un `read_<obj>_<fmt>` il cui qualifier-FORMATO non e'
+    nominato dalla SUA clausola-produttrice ma SOLO da una clausola-SINK a valle
+    («cerca il FILE X ... e crea uno SPREADSHEET ...») e' CONTAMINATO: il proposer
+    ha copiato il formato d'USCITA sulla lettura. Demote a `read_<obj>` generico
+    → il read risolve la FONTE reale (un Doc) per nome, invece di forzare il MIME
+    del formato-uscita (che escluderebbe la fonte → ambiguita'/not_found).
+
+    Clause-scoped: il formato e' legittimo se compare in una clausola-produttrice
+    (find/read/get/list) — «leggi il FOGLIO X» tiene read_files_spreadsheet. Scatta
+    solo se il formato compare NELLA/E clausola-sink e in NESSUNA produttrice.
+    Tool-existence-safe (demote solo se `read_<obj>` esiste). No-op su mono-clausola."""
+    try:
+        from compound_decomposer import split_query_chunks, _FORMAT_HINTS
+        from prefilter import tokenize as _tok, detect_canonical_verbs_all as _verbs
+        import naming_grammar as _ng
+        chunks = split_query_chunks(query)
+        if len(chunks) < 2:
+            return framework
+        names = catalog_names(catalog)
+        names.discard(None)
+        # reverse: qualifier-formato → parole-hint che lo nominano (IT+EN).
+        fmt_hints: dict = {}
+        for hint, (_o, qual) in _FORMAT_HINTS.items():
+            fmt_hints.setdefault(qual, set()).add(hint)
+        # Classifica ogni chunk per VERBO (non serve l'oggetto: detect_chunk_action
+        # torna None se l'oggetto non e' riconosciuto — «crea uno spreadsheet» ha
+        # verbo create ma oggetto non lessicalizzato → cadrebbe in prod). Sink =
+        # chunk con verbo create/write; produttore = tutto il resto.
+        prod_blob, sink_blob = [], []
+        for ch in chunks:
+            vs = _verbs(_tok(ch))
+            v = vs[0] if vs else None
+            (sink_blob if v in ("create", "write") else prod_blob).append(ch.lower())
+        prod_blob = " ".join(prod_blob)
+        sink_blob = " ".join(sink_blob)
+        for s in framework.steps:
+            nc = _ng.parse_name(s.tool or "")
+            if not nc or nc.verb != "read" or not nc.qualifier:
+                continue
+            hints = fmt_hints.get(nc.qualifier)
+            if not hints:                       # qualifier non-formato (_ocr…) → skip
+                continue
+            generic = f"read_{nc.obj}"
+            if generic not in names:
+                continue
+            in_prod = any(h in prod_blob for h in hints)
+            in_sink = any(h in sink_blob for h in hints)
+            if (not in_prod) and in_sink:
+                log.info("[reader_decontam] %s -> %s (formato %r solo nel sink)",
+                         s.tool, generic, nc.qualifier)
+                s.tool = generic
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("decontaminate_reader_qualifier noop (best-effort): %r", ex)
+        return framework
+
+
 def _align_provider_client(framework: Framework, query: str,
                            catalog: Optional[list]) -> Framework:
     """§7.9 deterministico — provider Google via CLIENT-ARG (backend Drive), NON
@@ -1724,7 +1907,6 @@ def _align_provider_client(framework: Framework, query: str,
     except Exception:  # noqa: BLE001
         return framework
     try:
-        term = None
         touched = False
         for s in framework.steps:
             if (s.tool or "") not in _GW_CLIENT_TOOLS:
@@ -1740,12 +1922,30 @@ def _align_provider_client(framework: Framework, query: str,
                     s.args[pk] = v2 if v2 else None
                     if not v2:
                         s.args.pop(pk, None)
-            if (s.tool == "find_files"
-                    and not any(s.args.get(k) for k in ("query", "pattern", "patterns", "paths"))):
-                if term is None:
-                    term = _drive_search_term(query)
-                if term:
-                    s.args["pattern"] = term
+            if s.tool == "find_files":
+                # FIX-2: il termine di ricerca del proposer e' spesso il MARKER
+                # PROVIDER stesso («google drive») invece del nome-file → find
+                # torna spazzatura. OVERWRITE clause-scoped quando il valore e'
+                # un fantasma-provider (o assente); i valori legittimi restano.
+                _cur = None
+                _cur_key = None
+                for _k in ("query", "pattern", "patterns", "paths"):
+                    _v = s.args.get(_k)
+                    if isinstance(_v, list):
+                        _v = _v[0] if _v else None
+                    if isinstance(_v, str) and _v.strip():
+                        _cur, _cur_key = _v.strip(), _k
+                        break
+                _phantom = (_cur or "").lower().strip("/") in _GW_PHANTOM_PATHS
+                if _cur is None or _phantom:
+                    _ph = (_cur or "").lower() if _phantom else "google drive"
+                    _t = _clause_scoped_drive_term(query, _ph)
+                    if _t and _t.lower() != (_cur or "").lower():
+                        for _k in ("query", "pattern", "patterns", "paths"):
+                            s.args.pop(_k, None)
+                        s.args["query"] = _t
+                        log.info("[provider_client] find_files term OVERWRITE "
+                                 "%r → %r (clause-scoped)", _cur, _t)
             touched = True
         if touched:
             log.info("[provider_client] google_workspace → client su file-executor (Drive)")
@@ -1774,6 +1974,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     from . import is_v3
     if is_v3():
         framework = _enforce_missing_objects(framework, intent, query, catalog)
+        # De-contamina il qualifier-formato di un reader (read_files_spreadsheet su
+        # una FONTE-Doc) PRIMA di ensure_extract: cosi' il read torna generico e
+        # il trigger STRUTTURALE di extract lo vede come content-reader (bb977a14).
+        framework = _decontaminate_reader_qualifier(framework, query, catalog)
         framework = _ensure_extract_clause(framework, intent, query, catalog)
         framework = _conform_to_intent_order(framework, intent, query, catalog)
         framework = _fill_clause_args(framework, intent, query, catalog)
@@ -1793,6 +1997,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     # Provider Google via client-arg (backend Drive): «google drive/docs» →
     # client=google_workspace sui file-executor. Dopo gli altri guard di struttura.
     framework = _align_provider_client(framework, query, catalog)
+    # Provider dei SINK (create/write) clause-scoped: il create non eredita gw
+    # dalla clausola-produttrice → default local §10.3 (bb977a14). Dopo
+    # _align_provider_client (che instrada i PRODUTTORI file su gw via client).
+    framework = _scope_sink_provider_to_clause(framework, query, catalog)
     return framework
 
 
@@ -2443,7 +2651,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 llm_call=llm_call_wise, lang=lang, catalog=catalog,
                 prior_steps=seed_state or ())
             if framework2 is not None:
-                framework = framework2
+                # Le guardie DETERMINISTICHE (§7.9) devono essere l'ULTIMA parola:
+                # il re-propose del validator produce un piano FRESCO che le
+                # scavalcherebbe (regressione universale, non di un guard
+                # specifico). Ri-applicale — sono idempotenti.
+                framework = _apply_deterministic_structure_guards(
+                    framework2, intent, query, catalog)
 
     # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
     # il runtime — non il proposer — sceglie il TERMINALE di presentazione

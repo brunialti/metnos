@@ -287,6 +287,18 @@ def derive_tool_name(verb: str, obj: str, available_tools: set[str],
                     return _cand
         except Exception:
             pass
+    # 0.5 SCRITTORI format-aware (create/write): se la query nomina un formato
+    #    («foglio»/csv/pdf/...) e la variante `<verb>_<obj>_<qual>` esiste,
+    #    preferiscila AL canonico generico. Simmetria dei due scrittori-file:
+    #    `write_files` esiste totipotente → la `1.` lo short-circuiterebbe a
+    #    write GENERICO senza formato; `create_files` no → cadeva gia' nei suffix
+    #    `4.`. Con questo derive(write, files, «…un foglio») → write_files_spreadsheet
+    #    come create (FIX-5, turn 697d1d08). No-op senza query o senza hint.
+    if query and verb in ("create", "write"):
+        _ql = query.lower()
+        for _hint, (_o, _qual) in _FORMAT_HINTS.items():
+            if _hint in _ql and f"{verb}_{obj}_{_qual}" in available_tools:
+                return f"{verb}_{obj}_{_qual}"
     # 1. Exact match canonical (preferito)
     canonical = f"{verb}_{obj}"
     if canonical in available_tools:

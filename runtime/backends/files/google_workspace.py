@@ -169,11 +169,21 @@ def _search_entries_for_locator(args: dict, *, max_results: int | None = None,
     if not out.get("ok"):
         return [], out
     entries = [e for e in (out.get("entries") or []) if isinstance(e, dict)]
-    # Solo per i lettori single-target (mime_kind noto): filtro tipo + nome
-    # esatto. Per `read()` vettoriale (mime_kind=None) nessuna riduzione.
+    # Lettori single-target (mime_kind noto): filtro tipo + nome esatto.
     if mime_kind:
         entries = _narrow_locator_entries(entries, locator=query,
                                           mime_kind=mime_kind)
+    else:
+        # `read()` vettoriale (mime_kind=None): NIENTE filtro-tipo, ma se il
+        # locatore e' un `name` ESPLICITO (l'utente ha nominato UN file) e fra
+        # gli omonimi ce n'e' uno col nome ESATTO, risolvi a quello — «leggi il
+        # file KAKEBO SPESE 2026» = l'unico esatto, non ogni substring
+        # (Doc + fogli-omonimi «… - Dati»/«… — estratto»). No-op senza `name` o
+        # senza match esatto → resta vettoriale §2.1. §7.9 deterministico.
+        _nm = args.get("name")
+        if isinstance(_nm, str) and _nm.strip():
+            entries = _narrow_locator_entries(entries, locator=_nm.strip(),
+                                              mime_kind=None)
     return entries, None
 
 

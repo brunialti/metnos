@@ -50,7 +50,7 @@ _DEFAULT_MAX_PER_TEXT = 20
 
 
 def _pick_text(entry) -> str:
-    """Estrae il testo da un'entry (dict) o lo usa direttamente (str)."""
+    """Estrae il testo da un'entry (dict/str/riga) per il ramo LLM."""
     if isinstance(entry, str):
         return entry
     if isinstance(entry, dict):
@@ -61,7 +61,42 @@ def _pick_text(entry) -> str:
         # fallback: concatena i valori stringa
         parts = [str(v) for v in entry.values() if isinstance(v, str) and v.strip()]
         return "\n".join(parts)
+    # RIGA di uno spreadsheet (list[list] da read_spreadsheet §2.6): unisci le
+    # celle a una linea di testo cosi' l'LLM puo' estrarne i campi (fogli
+    # headerless). Deterministico > LLM resta preferito via la proiezione.
+    if isinstance(entry, (list, tuple)):
+        return " ".join(str(v) for v in entry if v not in (None, ""))
     return ""
+
+
+def _looks_like_header_row(row) -> bool:
+    """Riga-0 di uno spreadsheet = HEADER se ogni cella e' un'ETICHETTA non
+    vuota e NON puramente numerica/data. Deterministico §7.9 (niente LLM)."""
+    if not (isinstance(row, (list, tuple)) and row):
+        return False
+    cells = [str(c).strip() for c in row]
+    if not all(cells):
+        return False
+    return not any(re.fullmatch(r"[\d.,/:\-\s]+", c) for c in cells)
+
+
+def _rows_to_records(entries: list) -> list:
+    """list[list] (righe di read_spreadsheet §2.6) → list[dict] SE la riga-0 e'
+    un header di etichette: le colonne diventano chiavi → il ramo di PROIEZIONE
+    deterministica (o l'LLM su chiavi reali) vede i `fields` richiesti. Fogli
+    HEADERLESS → invariati (il ramo LLM unisce le celle via `_pick_text`).
+
+    Chiave §7.9: la conversione vive nel CONSUMER (extract_entries), NON in
+    read_spreadsheet — cosi' l'output di read_spreadsheet (list[list]) resta
+    invariato per describe/filter/matcher (nessun ripple). No-op se `entries` non
+    e' uniformemente righe."""
+    rows = [e for e in entries if isinstance(e, (list, tuple))]
+    if not rows or len(rows) != len(entries):
+        return entries                      # non uniformemente righe → invariato
+    if not _looks_like_header_row(rows[0]):
+        return entries                      # headerless → ramo LLM su celle unite
+    cols = [str(c).strip() for c in rows[0]]
+    return [dict(zip(cols, r)) for r in rows[1:]]
 
 
 def _build_prompt(fields, instruction, max_per_text) -> str:
@@ -253,6 +288,11 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 "error": "missing 'fields' (list[str]): i campi di ogni record "
                          "da estrarre, es. fields=[\"summary\",\"start\",\"end\"]",
                 "error_class": "invalid_args", "entries": []}
+
+    # list[list] (righe di read_spreadsheet §2.6) → list[dict] header-aware, cosi'
+    # la proiezione deterministica e l'LLM vedono i `fields` (no ripple su read).
+    if entries and any(isinstance(e, (list, tuple)) for e in entries):
+        entries = _rows_to_records(entries)
 
     instruction = a.get("instruction") or a.get("what") or ""
     max_per_text = int(a.get("max_per_text") or _DEFAULT_MAX_PER_TEXT)

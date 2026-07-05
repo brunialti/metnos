@@ -113,9 +113,23 @@ def resolve_backend_arg(tool_name: str, args: dict, query: str = "") -> dict:
     if obj is None:
         return args
     spec = OBJECT_BACKENDS[obj]
+    arg = spec["arg"]
+    # RISPETTA un client GIA' esplicito e DISPONIBILE: se un guard clause-scoped
+    # (o un executor ripreso) l'ha gia' risolto a un provider valido, il runtime
+    # NON lo scavalca con la risoluzione whole-query. Chiude la contaminazione
+    # provider: «cerca su google drive X e crea un foglio» → il create NON eredita
+    # gw dal marker della clausola-PRODUTTRICE (il default sink resta local §10.3).
+    cur = args.get(arg)
+    if isinstance(cur, str) and cur in (spec.get("providers") or []):
+        avail = spec.get("available", lambda p: True)
+        try:
+            if avail(cur):
+                return args
+        except Exception:  # noqa: BLE001
+            pass
     chosen = resolve(obj, query)
     if chosen is None:
         return args
     out = dict(args)
-    out[spec["arg"]] = chosen
+    out[arg] = chosen
     return out
