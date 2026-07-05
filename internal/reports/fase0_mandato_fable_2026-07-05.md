@@ -30,7 +30,7 @@ Riproduzione HTTP reale a 2 turni (`/agent/turn`, conv persistente). Cause radic
 
 ## Prove del cancello §A
 - Test: 13 nuovi + **127 verdi** cluster dialog/get_inputs/orchestration + gate §2.8 (`test_compound_spreadsheet_execution.py` 4/4) + drive (5/5).
-- Bench compound `compound_extract_create_bench.py` (v3, 2 run): **[esito nel log sessione — lanciato, vedi sotto]**.
+- Bench compound `compound_extract_create_bench.py` (v3, 2 run): **8/8 query STABILI** (piano corretto in tutti i run) — nessuna regressione.
 - Turni reali: `2b470352` (device), flusso A/B Issue-B (HTTP prod), `9fc0111a`→scelta post-fix.
 - Doc: nessuna pagina descriveva le soglie fmt → niente claim stantio; ondata doc committata+deployata (punto 1).
 - Commit: 12 totali Fase 0, modulari, niente Co-Authored-By, branch non pushato.
