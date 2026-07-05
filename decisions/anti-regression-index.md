@@ -192,3 +192,9 @@
 - **Simbionte path_alias↔list_dirs**: il bundle di list_dirs co-loca `path_alias.py` via symlink → ogni edit di runtime/path_alias.py OBBLIGA il re-sign di list_dirs (altrimenti scartato in silenzio → misroute al fratello).
 - **create_spreadsheet suffisso**: output senza estensione nota → `.xlsx` (§2.4).
 - **Testa manifest over-budget visibile**: `engine.proposer._render_tool_pool` WARN (1×/tool) se la testa §2.5 supera HEAD_MAX (i sintetizzati/importati sfuggono al test statico).
+
+**Cache-validity ADR 0182 (5/7/2026)**
+- **Firme del mondo sui piani cachati**: `engine/cache_validity.py` — `tools_sig` (digest §7.10 dei tool referenziati) + `pool_sig` (famiglie candidati intent); stamp a `fastpath.record_success(catalog=…)` / `autopath.record_observation(catalog=…)`.
+- **Verifica a lettura L0/L1**: `dispatch` valida al hit (`cache_validity.validate`, C1 esplicita per tool assenti) — mismatch → L0 morte+fall-through / L1 fall-through (refresh sig alla ri-promozione).
+- **Epoch nella LRU proposer**: `MetisProposer._cache_key` include `catalog_epoch` — mai un framework di un mondo passato dal retry-path.
+- **Mai load_catalog implicito nelle firme**: catalogo sempre esplicito dal chiamante (il fallback timbrava il DB aging `first_seen` — scovato dai test lifecycle).
