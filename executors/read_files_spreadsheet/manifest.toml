@@ -16,8 +16,8 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: legge tutte le righe da un foglio (.xlsx/.csv LOCALE o Google Sheet online). PATTERN: LOCALE read_files_spreadsheet(spreadsheet_id=\"/path/foglio.xlsx\"); GOOGLE read_files_spreadsheet(name=\"titolo foglio\", client=\"google_workspace\"). NON: inventare id opaco; testo semplice -> read_files. OUT: entries: list[list] (matrice righe x celle) + values stessa shape."
-en = "SCOPO: reads all rows from a spreadsheet (LOCAL .xlsx/.csv or online Google Sheet). PATTERN: LOCAL read_files_spreadsheet(spreadsheet_id=\"/path/sheet.xlsx\"); GOOGLE read_files_spreadsheet(name=\"sheet title\", client=\"google_workspace\"). NON: invent opaque id; plain text -> read_files. OUT: entries: list[list] (rows x cells matrix) + values same shape."
+it = "SCOPO: legge le righe di un foglio (.xlsx/.csv locale o Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"titolo\", client=\"google_workspace\"). NON: id inventato; testo -> read_files. OUT: entries=list[list] righe x celle + values."
+en = "SCOPO: reads a spreadsheet rows (local .xlsx/.csv or Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"title\", client=\"google_workspace\"). NON: invented id; text -> read_files. OUT: entries=list[list] rows x cells + values."
 
 [code]
 files  = ["read_files_spreadsheet.py"]
