@@ -1161,6 +1161,60 @@ def _render_is_degenerate(template: str, rendered: str) -> bool:
     return norm(r) == norm(static_only) and bool(norm(static_only) != norm(template))
 
 
+def _finalize_answer_text(framework, steps: list, query: str,
+                          llm_fast) -> str:
+    """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
+    turno `answer`. Strategia dichiarata, in ordine:
+
+      1. RENDER del template del proposer (`${stepN.*}`) sulle observation;
+      2. arricchimento COUNT-ONLY→bullets: render vuoto/solo-conteggio ma
+         l'ultimo step ha `entries` → lista puntata onesta (§2.7,
+         `MSG_RENDER_AND_MORE` per il resto oltre il cap);
+      3. render VUOTO o DEGENERE (placeholder perso/letterale, §2.8) →
+         (a) zero-result DETERMINISTICO i18n (`MSG_NO_RESULTS`: mai una call
+         LLM per dire «niente trovato»), altrimenti (b) sintesi LLM fast
+         dalle observation (`_synthesize_final_from_steps`).
+
+    Era duplicato in DUE punti (S5, ADR 0177: step `final_answer` e fallback
+    post-loop) già DIVERGENTI: il fallback non arricchiva i count-only né
+    passava dai bullets §2.7. i18n:
+    ogni stringa runtime passa da `MSG_*`; il template del proposer è testo
+    generato nella lingua utente (non una stringa runtime).
+
+    NB: `output_policy` (modo di presentazione) opera PRE-esecuzione sul
+    framework (dispatch.normalize_terminal), non qui; `describe_entries` è
+    uno STEP le cui observation alimentano il render — non fonti parallele."""
+    rendered = _render_final_message(framework.final_message, steps)
+    # 2. count-only → bullets (universal §7.9)
+    if steps:
+        last_res = steps[-1].result
+        entries = (last_res.get("entries") if isinstance(last_res, dict)
+                   else None)
+        if isinstance(entries, list) and entries:
+            is_count_only = (
+                not rendered.strip()
+                or re.fullmatch(
+                    r"[\(\s]*\d+\s*(?:elementi|entries|elements|voci)?\s*[\)\s]*",
+                    rendered.strip())
+            )
+            if is_count_only:
+                bullets = _entries_bullet_lines(
+                    entries, fields=_BULLET_FIELDS,
+                    more_key="MSG_RENDER_AND_MORE")
+                rendered = ((rendered.strip() + "\n\n")
+                            if rendered.strip() else "") + bullets
+    # 3. vuoto/degenere → zero-result deterministico, poi synth LLM
+    if (not rendered.strip()
+            or _render_is_degenerate(framework.final_message, rendered)):
+        zero = _deterministic_zero_result(steps)
+        if zero:
+            return zero
+        synth = _synthesize_final_from_steps(query, steps, llm_fast)
+        if synth:
+            return synth
+    return rendered
+
+
 def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
     """Sintesi LLM della risposta finale dalle observation degli step.
 
@@ -1395,43 +1449,11 @@ class Executor:
                     and step.tool in self._seed_done_tools):
                 continue
 
-            # Terminator
+            # Terminator → FINALIZER unico (ADR 0177 T5): render + bullets +
+            # zero/synth in una sola fonte, condivisa col fallback post-loop.
             if step.tool == "final_answer":
-                rendered = _render_final_message(
-                    framework.final_message, result.steps)
-                # Universal §7.9: se rendered è "vuoto"/conteggio-only ma
-                # l'ultimo step ha entries, auto-append entries list.
-                if result.steps:
-                    last_res = result.steps[-1].result
-                    entries = (last_res.get("entries") if isinstance(last_res, dict)
-                               else None)
-                    if isinstance(entries, list) and entries:
-                        # Detect "rendered è solo count" pattern
-                        is_count_only = (
-                            not rendered.strip()
-                            or re.fullmatch(r"[\(\s]*\d+\s*(?:elementi|entries|elements|voci)?\s*[\)\s]*",
-                                            rendered.strip())
-                        )
-                        if is_count_only:
-                            bullets = _entries_bullet_lines(
-                                entries, fields=_BULLET_FIELDS,
-                                more_key="MSG_RENDER_AND_MORE")
-                            rendered = (rendered.strip() + "\n\n" if rendered.strip() else "") + bullets
-                # §2.8: render degenere (placeholder reso vuoto, es. get_now
-                # "Sono le .") → sintetizza dalle observation via LLM fast.
-                if _render_is_degenerate(framework.final_message, rendered):
-                    # §7.9/§2.8: turno a 0 entries → messaggio onesto
-                    # deterministico (no call LLM per dire «niente trovato»);
-                    # la synth resta per i degeneri NON-vuoti (es. get_now).
-                    zero = _deterministic_zero_result(result.steps)
-                    if zero:
-                        rendered = zero
-                    else:
-                        synth = _synthesize_final_from_steps(
-                            query, result.steps, self.llm_fast)
-                        if synth:
-                            rendered = synth
-                result.final_text = rendered
+                result.final_text = _finalize_answer_text(
+                    framework, result.steps, query, self.llm_fast)
                 result.final_kind = "answer"
                 break
 
@@ -1880,18 +1902,9 @@ class Executor:
         if not result.final_kind:
             result.final_kind = "error" if result.aborted_reason else "answer"
         if result.final_kind == "answer" and not result.final_text:
-            result.final_text = _render_final_message(
-                framework.final_message, result.steps)
-            # §2.8: se anche il re-render è vuoto/degenere → sintesi LLM.
-            if (not result.final_text.strip()
-                    or _render_is_degenerate(framework.final_message,
-                                              result.final_text)):
-                zero = _deterministic_zero_result(result.steps)
-                if zero:
-                    result.final_text = zero
-                else:
-                    synth = _synthesize_final_from_steps(
-                        query, result.steps, self.llm_fast)
-                    if synth:
-                        result.final_text = synth
+            # Fallback post-loop (framework SENZA step final_answer): stessa
+            # UNICA fonte del terminator (ADR 0177 T5) — prima era un blocco
+            # gemello divergente (niente arricchimento count-only→bullets).
+            result.final_text = _finalize_answer_text(
+                framework, result.steps, query, self.llm_fast)
         return result
