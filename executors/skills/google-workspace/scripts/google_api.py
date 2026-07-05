@@ -693,7 +693,11 @@ def calendar_update(args):
 
 
 def drive_search(args):
-    query = args.query if args.raw_query else f"fullText contains '{args.query}'"
+    # Escludi SEMPRE i file nel cestino dalla ricerca non-raw: un file trashed
+    # non deve piu' comparire (evita omonimi-fantasma dopo delete → falsa
+    # ambiguita'). Il path raw resta sotto controllo del chiamante.
+    query = (args.query if args.raw_query
+             else f"fullText contains '{args.query}' and trashed = false")
     if _gws_binary():
         results = _run_gws(
             ["drive", "files", "list"],
