@@ -198,3 +198,4 @@
 - **Verifica a lettura L0/L1**: `dispatch` valida al hit (`cache_validity.validate`, C1 esplicita per tool assenti) — mismatch → L0 morte+fall-through / L1 fall-through (refresh sig alla ri-promozione).
 - **Epoch nella LRU proposer**: `MetisProposer._cache_key` include `catalog_epoch` — mai un framework di un mondo passato dal retry-path.
 - **Mai load_catalog implicito nelle firme**: catalogo sempre esplicito dal chiamante (il fallback timbrava il DB aging `first_seen` — scovato dai test lifecycle).
+- **Finalizer unico (T5)**: `engine/executor._finalize_answer_text` — sola fonte del testo `answer` (render→bullets→zero-i18n→synth); `test_finalizer_unico.py` vieta blocchi gemelli (1 sede `_render_is_degenerate`, 2 call-site).
