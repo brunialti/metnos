@@ -207,3 +207,7 @@
 - **Lazy-gw su TUTTI i dispatcher files/dirs**: find/read/write_files + create/delete/find_dirs — `test_device_shim_closure.py` importa i 9 nel layout device (repo bandito da sys.path); un import eager nuovo fallisce lì, non con un ModuleNotFoundError remoto.
 - **Chiusura shim stdlib-only**: `test_agent_server_remote.test_shim_bundle_signed` valida gli import a module-load del local.py SPEDITO contro la whitelist della chiusura.
 - **Self-update firmato+idempotente (ADR 0184)**: `client selfupdate.rs` — descrittore firmato con chiave server (verify pubkey pinnata), no-loop per sha dell'exe, swap con ripristino su fallimento; e2e `c7-validate-selfupdate.sh` (swap+respawn-che-esegue+un-solo-swap).
+**Learning-loop W1 ADR 0185 (5/7/2026)**
+- **Seed shadow solo da ripetizione reale**: `autopath.seed_from_run` — soglie n_steps/n_obs, no-op se autopath active esiste; il ✓ umano conferma (shadow→0), mai degrado inverso. Test `test_learning_loop.py`.
+- **Lacuna→proposta senza resurrezione**: `learning_loop.propose_from_lacuna` nel choke-point `_record_lacuna` — dedup fingerprint + stato REJECTED preservato dall'upsert (testato); classi d'uso (wrong_args) MAI proposte.
+- **get_processes onesto §2.8**: snapshot grezzo vuoto = ERR_EXT_TOOL_FAILED con ragione (mai «ok 0») — è ciò che ha scovato SystemRoot mancante sul device.
