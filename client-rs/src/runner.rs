@@ -478,6 +478,9 @@ fn collect_profile() -> Value {
         "cpu_count": ncpu,
         "os_family": std::env::consts::OS,
         "os_arch": std::env::consts::ARCH,
+        // Versione corrente del client: la UI la mostra per-device e permette
+        // di vedere l'esito del self-update (ADR 0184) senza aprire il PC.
+        "client_version": env!("CARGO_PKG_VERSION"),
     })
 }
 

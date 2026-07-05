@@ -175,8 +175,8 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
      hx-trigger="every 10s" hx-headers='{"Accept":"text/html"}'>
 <table>
   <thead>
-    <tr><th>nome</th><th>id</th><th>owner</th><th>OS</th><th>fingerprint</th>
-        <th>heartbeat</th><th>stato</th><th></th></tr>
+    <tr><th>nome</th><th>id</th><th>owner</th><th>OS</th><th>client</th>
+        <th>fingerprint</th><th>heartbeat</th><th>stato</th><th></th></tr>
   </thead>
   <tbody>
   {% for r in rows %}
@@ -185,6 +185,7 @@ Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
       <td class="muted">{{ r.id[:12] }}</td>
       <td title="{{ r.owner_user_id }}">{{ r.owner_name }}</td>
       <td>{{ r.os_family or "?" }}/{{ r.os_arch or "?" }}</td>
+      <td>{% if r.client_version %}<code>{{ r.client_version }}</code>{% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="muted"><code>{{ r.fingerprint[:16] }}</code></td>
       <td class="muted">{{ r.last_heartbeat or "mai" }}</td>
       <td>

@@ -1307,6 +1307,15 @@ async def admin_devices(request: web.Request) -> web.Response:
     devs = await loop.run_in_executor(None, devices_mod.list_devices)
     all_users = await loop.run_in_executor(None, users.list_users)
     uname = {u["id"]: (u.get("display_name") or u["name"]) for u in all_users}
+    def _client_version(d):
+        # ADR 0184: la versione viaggia nel profile del heartbeat (client
+        # ≥0.2.12); i client più vecchi non la riportano → "—" onesto.
+        try:
+            import json as _json
+            return (_json.loads(d.profile_json or "{}") or {}).get(
+                "client_version") or ""
+        except Exception:
+            return ""
     rows = [{
         "id": d.id,
         "name": d.name,
@@ -1316,6 +1325,7 @@ async def admin_devices(request: web.Request) -> web.Response:
         "os_arch": d.os_arch,
         "fingerprint": d.public_key_fingerprint,
         "last_heartbeat": d.last_heartbeat,
+        "client_version": _client_version(d),
         "available": placement_mod.is_available(d),
     } for d in devs]
     return negotiate_collection(
