@@ -412,7 +412,10 @@ Cases 6-9 exercise <code>_build_bwrap_args</code> without invoking bwrap: the pr
 <h1 id="cap8">8. State of bwrap on the system</h1>
 
 <p>
-For full transparency: on the development server, on the evening, <code>bwrap</code> is <em>not</em> installed. The <code>sandbox</code> module runs in fallback mode (case (a) of ch. 4): every executor command runs as <code>subprocess.run(["python3", &lt;code_path&gt;],...)</code>, with no kernel-level wrapping.
+If <code>bwrap</code> is not installed, the <code>sandbox</code> module uses the
+fallback described in ch. 4: the command runs directly, with no kernel-level
+wrapper, while the application-level checks inside the executors and Vaglio
+remain active. The result must declare this condition instead of hiding it.
 </p>
 
 <p>
@@ -433,7 +436,10 @@ No code changes, no runtime restart. On the next access, <code>bwrap_available</
 </p>
 
 <div class="callout tip">
-<strong>When to activate.</strong> On <code>metnos-server</code> (the project's.33 machine) it makes sense to install <code>bwrap</code> as soon as the pure POC phase ends and synthesised executors begin running on uncontrolled input. The pseudo-sandbox covers normal cases, but a synthesised executor produced from an "exotic" prompt can always step out of expected boundaries: the kernel-level shell is the safety net.
+<strong>When to activate.</strong> On a stable Metnos server it is better to
+install <code>bwrap</code> before running synthesised executors or code that has not
+yet been exercised thoroughly. Application-level checks cover normal cases; the
+kernel-level shell is the safety net when an executor leaves the expected path.
 </div>
 
 <h1 id="cap9">9. Limits and what is deferred to +</h1>
@@ -531,7 +537,9 @@ The intuition is this: a Job Object is like a <strong>room locked with a key</st
 </p>
 
 <p>
-The Job Object was implemented in phase W3.1 and verified live in W3.3, on 2026-07-03, on a real Windows PC. Let us see, step by step, how the client builds and closes the room.
+The Windows client uses this primitive to build containment around the executor.
+Let us see, step by step, how the client creates the room, puts the process
+inside it and closes it when the time limit expires.
 </p>
 
  <figure>
@@ -593,7 +601,7 @@ Two details make this scheme robust. First: the process is created <strong>froze
 <h2>10.3 Why the Job Object is enough, for now</h2>
 
 <p>
-In fairness: the Job Object is strong at shutting processes down, but it does not isolate disk and network the way <code>bwrap</code> does on Linux. The stronger defence (Windows AppContainer) will arrive in phase W4. In the meantime Metnos compensates <em>before</em> running, by carefully choosing what to send to the device:
+In fairness: the Job Object is strong at shutting processes down, but it does not isolate disk and network the way <code>bwrap</code> does on Linux. The stronger Windows defence is AppContainer with explicit file and network permissions. Until that level is active, Metnos compensates <em>before</em> running, by carefully choosing what to send to the device:
 </p>
 
 <ul>
@@ -617,7 +625,10 @@ The download is built to survive unstable networks: it proceeds in 8&nbsp;MB chu
 </p>
 
 <div class="callout note">
-<strong>Status.</strong> Remote execution validated end-to-end on a real Windows PC on 2026-07-03, client 0.2.7 (<code>sandbox:"job-object"</code>). Linux has parity with <code>.33</code>; macOS (<code>sandbox-exec</code> + entitlements) is tier-2, not yet implemented.
+<strong>Status.</strong> On Windows the result declares
+<code>sandbox:"job-object"</code>. Linux uses the same <code>bwrap</code> model as the
+server when available; macOS (<code>sandbox-exec</code> + entitlements) remains a
+planned backend and is not enabled yet.
 </div>
 
 </body>

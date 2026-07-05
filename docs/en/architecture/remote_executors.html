@@ -74,10 +74,10 @@ audit trail.
 </p>
 
 <div class="status">
-Public status: W3.3 validated on a real Windows PC on 2026-07-03, client
-<code>0.2.7</code>, with UI join, Job Object, timeout with process-tree kill,
-single-instance lock and revocation through <code>403</code>. The extended design
-detail remains in the internal document <code>internal/design/remote-executors.html</code>.
+Current status: client <code>0.2.7</code> supports UI join, Windows execution
+through Job Object, process-tree kill on timeout, single-instance locking and
+server-side revocation. Implementation detail remains in the internal document
+<code>internal/design/remote-executors.html</code>.
 </div>
 
 <div class="toc">
@@ -383,12 +383,13 @@ and for why Windows AppContainer remains the next hardening step.
 <h2 id="failure">6. Failures, Duplicates and Revocation</h2>
 
 <p>
-The channel is built for an imperfect home network. The client polls, so it does
+The channel is built for an imperfect home network. The client periodically polls
+the server, so it does
 not require open ports on the PC. Each invocation has idempotency and a deadline:
 if the network drops, the server can distinguish between a job not yet picked up,
 a job in progress and a result already delivered. If a client is stuck, the local
 lock prevents a second concurrent instance; if a job exceeds its timeout, the
-client kills the process tree. Since client <code>0.2.7</code>, heartbeat runs in
+client kills the process tree. Heartbeat runs in
 a separate task, so the device remains observable even while it is preparing its
 own execution environment.
 </p>

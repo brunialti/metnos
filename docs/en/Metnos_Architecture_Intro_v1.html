@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Architecture: Introduction v2</title>
-    <meta name="description" content="The real architecture of Metnos: vectorized executors synthesized on the fly from a closed vocabulary, the Mētis engine with a local LLM planner, deterministic routing (pinned seed, affinity, GBNF), four LLM tiers, an in-process image pipeline, Telegram and web channels. With the full anatomy of a multitool turn.">
-    <meta name="keywords" content="Metnos, architecture, executor, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, ReAct, local planner, Mētis, mnestome, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, personal AI assistant">
+    <meta name="description" content="The real architecture of Metnos: vectorized executors synthesized on the fly from a closed vocabulary, the Mētis engine with a local LLM planner, deterministic routing (pinned seed, affinity, GBNF), remote executors on registered devices, four LLM tiers, an in-process image pipeline, Telegram and web channels. With the full anatomy of a multitool turn.">
+    <meta name="keywords" content="Metnos, architecture, executor, remote executors, devices, placement, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, ReAct, local planner, Mētis, mnestome, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, personal AI assistant">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/en/Metnos_Architecture_Intro_v1">
@@ -413,6 +413,7 @@ switch on, one skill at a time.
 <tr><td><strong>Tools</strong></td><td>About 80 signed executors in the repo, plus those <em>synthesized on the fly</em> by the instance (ch. 7) and those imported behind a gate (ch. 7). All vectorized: list in, list out.</td></tr>
 <tr><td><strong>Brain</strong></td><td>Local LLM served by <code>llama-server</code>; four abstract tiers <code>fast / middle / wise / frontier</code> (ch. 8). Frontier = cloud opt-in.</td></tr>
 <tr><td><strong>Channels</strong></td><td>Telegram (outbound long-poll, no open ports) + web on port 8770 (chat and admin dashboards), ch. 11.</td></tr>
+<tr><td><strong>Devices</strong></td><td>A controlled part of the catalog can run on registered PCs in the same network through <code>metnos-client</code>: the server remains the point of policy, selection, signing and audit; the device runs only executors declared compatible. Detail: <a href="architecture/remote_executors.html">remote executors</a>.</td></tr>
 <tr><td><strong>Senses</strong></td><td>In-process image pipeline: semantics + faces + EXIF in one unified index (ch. 10).</td></tr>
 <tr><td><strong>Language</strong></td><td>i18n by construction: every string and prompt is per-language data. IT + EN validated; other languages = drop-in translation packs (not yet tested).</td></tr>
 <tr><td><strong>License / status</strong></td><td>AGPL-3.0; pre-1.0. Public repo: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; a deterministic export-subset of the daily-driven instance.</td></tr>
@@ -739,7 +740,7 @@ task &mdash; crosses all of them, in order.
   <li><strong>Turn runtime</strong> &mdash; the shell that measures and orchestrates: per-phase telemetry (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>), safety caps, logs.</li>
   <li><strong>The M&emacr;tis engine</strong> &mdash; plans once, executes deterministically, recovers with judgment, and when there is no way out, says so (ch. 5).</li>
   <li><strong>Guards</strong> &mdash; no bare <code>subprocess</code>, ever: every effect passes through policy, vaglio and sandbox (ch. 12).</li>
-  <li><strong>Executors and backends</strong> &mdash; who acts and against what: the skill&harr;backend separation keeps the provider out of the planner's head (ch. 3 and 6).</li>
+  <li><strong>Executors and backends</strong> &mdash; who acts and against what: the skill&harr;backend separation keeps the provider out of the planner's head; placement then decides whether the executor stays on the server or runs on a registered device (ch. 3 and 6).</li>
   <li><strong>Tissues</strong> &mdash; what survives between turns: associative memory, learned shortcuts, undo history, audit.</li>
 </ul>
 
@@ -1193,6 +1194,15 @@ model. Short sentences, literal examples, defaults spelled out; the
 description follows four prescriptive chapters:
 </p>
 
+<p>
+The same manifest also declares where the executor may run. The
+<code>platforms</code> and <code>[placement]</code> fields prevent sending to Windows
+a tool written only for Linux, or running on a PC an executor that has not been
+audited for the device. When the chat names a paired PC, the runtime uses those
+declarations to choose server or device execution; if the target is not
+reachable, the outcome is honest, not a silent fallback.
+</p>
+
 <pre><code>[description]
 en = "SCOPE: search files by pattern in directory.
       PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]).
@@ -1269,6 +1279,96 @@ en = "SCOPE: search files by pattern in directory.
 <figcaption>Figure 8 &mdash; One manifest, four consumers: prefilter, planner pool, grammar and undo each read different fields of the same TOML. The digest binds the manifest to the signed code.</figcaption>
 </figure>
 
+<h2>Execution on the server or on a registered PC</h2>
+
+<p>
+The normal shape remains simple: the plan selects an executor, the runtime sends
+it through policy and vaglio, then invokes it in the server sandbox.
+<strong>Remote executors</strong> add one controlled detour: for selected
+executors declared portable, the execution point may be a registered PC in the
+same LAN or overlay network.
+</p>
+
+<p>
+This is not a new channel and not a generic backend. The channel is still
+Telegram or web; the backend is still files, mail, calendar or another service.
+The remote executor is the <em>place</em> where the small signed program runs.
+Metnos keeps on the server the executor choice, policy checks, device registry,
+payload signing, timeout and audit.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 260" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;">
+<defs>
+  <marker id="f8b-arr-en" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <filter id="f8b-sh-en" x="-8%" y="-8%" width="116%" height="126%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="1.4"/><feOffset dy="1.4"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<rect x="38" y="64" width="150" height="72" rx="10" fill="#FBF6F1" stroke="#A0522D" filter="url(#f8b-sh-en)"/>
+<text x="113" y="94" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">chat</text>
+<text x="113" y="112" text-anchor="middle" fill="#475569" font-size="9">"on office PC"</text>
+
+<rect x="244" y="42" width="210" height="116" rx="10" fill="#dbeafe" stroke="#1A477A" filter="url(#f8b-sh-en)"/>
+<text x="349" y="72" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">Metnos server</text>
+<text x="349" y="92" text-anchor="middle" fill="#1F2937" font-size="9.5">planner + policy + vaglio</text>
+<text x="349" y="110" text-anchor="middle" fill="#1F2937" font-size="9.5">manifest: platforms + placement</text>
+<text x="349" y="128" text-anchor="middle" fill="#475569" font-size="9">signed queue, deadline, audit</text>
+
+<rect x="520" y="64" width="170" height="72" rx="10" fill="#E9EFDB" stroke="#548235" filter="url(#f8b-sh-en)"/>
+<text x="605" y="94" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">metnos-client</text>
+<text x="605" y="112" text-anchor="middle" fill="#475569" font-size="9">outbound poll + signature check</text>
+
+<rect x="752" y="42" width="170" height="116" rx="10" fill="#f6f8fa" stroke="#64748B" filter="url(#f8b-sh-en)"/>
+<text x="837" y="72" text-anchor="middle" fill="#1F2937" font-size="11" font-weight="700">registered PC</text>
+<text x="837" y="94" text-anchor="middle" fill="#475569" font-size="9">compatible executor</text>
+<text x="837" y="112" text-anchor="middle" fill="#475569" font-size="9">Job Object / bwrap</text>
+<text x="837" y="130" text-anchor="middle" fill="#475569" font-size="9">signed result</text>
+
+<line x1="188" y1="100" x2="240" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-en)"/>
+<line x1="454" y1="100" x2="516" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-en)"/>
+<line x1="690" y1="100" x2="748" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-en)"/>
+<path d="M837 158 C837 212 350 212 350 160" fill="none" stroke="#548235" stroke-width="1.8" marker-end="url(#f8b-arr-en)"/>
+<text x="590" y="222" text-anchor="middle" fill="#3F6212" font-size="9.5">signed result: same shape as a local executor</text>
+</svg>
+<figcaption>Figure 8b &mdash; A remote executor does not move the mind: it moves only the execution of an admitted executor. The server remains the authority that decides, signs, waits and records.</figcaption>
+</figure>
+
+<p>
+The choice does not depend on the browser IP address. In the web UI, the
+machine opening the page may be the server, another PC on the network, or a
+browser behind a proxy; from Telegram there is no local browser at all. Metnos
+therefore uses the <strong>name of the paired device</strong> and anchors it in
+the request language: &ldquo;on the laptop&rdquo; is a target, &ldquo;the laptop&rdquo;
+alone is not.
+</p>
+
+<p>
+The remote client does not receive general freedom. It polls the server instead
+of exposing ports; verifies the server signature before execution; downloads
+only signed and compatible executors; writes the result to a local spool before
+delivery. If the server is not reachable, it retries delivery without rerunning
+the work already done.
+</p>
+
+<p>
+The current state is deliberately conservative: active remote executors are
+read-only and limited to cases where the data lives on the PC, such as reading
+files or computing statistics over a local folder. On Windows, the Job Object
+contains duration, memory and process trees; on Linux, the sandbox uses bwrap
+when present. Remote mutating executors still require stronger policy:
+idempotency, audit, reversibility and finer filesystem isolation.
+</p>
+
+<p>
+The operational details &mdash; PC pairing, UI installation, heartbeat, signed
+queue, per-OS sandboxing and current limits &mdash; live in the
+<a href="architecture/remote_executors.html">remote executors</a> microdesign.
+</p>
 
 <h1 id="s7">7. Synt: the tool factory</h1>
 
@@ -2000,6 +2100,11 @@ its code without inventing anything.
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogue &middot; 45 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogue on executors</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The technical foundation: executors, mnest, mnestome, traces, ager, the six original principles.</div>
+  </a>
+  <a href="architecture/remote_executors.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microdesign</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Remote executors</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">How Metnos moves selected executors from the server to a registered PC while keeping policy, audit and explicit limits.</div>
   </a>
   <a href="https://github.com/brunialti/metnos" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">code</span>

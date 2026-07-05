@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Architettura: introduzione v2</title>
-    <meta name="description" content="L'architettura reale di Metnos: executor vettoriali sintetizzati al volo da un vocabolario chiuso, motore Mētis con pianificatore LLM locale, routing deterministico (seed fisso, affinity, GBNF), quattro tier LLM, pipeline immagini nel processo, canali Telegram e web. Con l'anatomia completa di un turno multitool.">
-    <meta name="keywords" content="Metnos, architettura, executor, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, pianificatore locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
+    <meta name="description" content="L'architettura reale di Metnos: executor vettoriali sintetizzati al volo da un vocabolario chiuso, motore Mētis con pianificatore LLM locale, routing deterministico (seed fisso, affinity, GBNF), executor remoti su dispositivi registrati, quattro tier LLM, pipeline immagini nel processo, canali Telegram e web. Con l'anatomia completa di un turno multitool.">
+    <meta name="keywords" content="Metnos, architettura, executor, executor remoti, dispositivi, placement, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, pianificatore locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/it/Metnos_Architettura_Intro_v1">
@@ -411,6 +411,7 @@ calendario, web e GitHub: <em>solo</em> ci&ograve; che attivi, una skill alla vo
 <tr><td><strong>Strumenti</strong></td><td>Circa 80 executor firmati nel repo, pi&ugrave; quelli <em>sintetizzati al volo</em> dall'istanza (cap. 7) e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori.</td></tr>
 <tr><td><strong>Cervello</strong></td><td>LLM locale servito da <code>llama-server</code>; quattro tier astratti <code>fast / middle / wise / frontier</code> (cap. 8). Frontier = cloud facoltativo.</td></tr>
 <tr><td><strong>Canali</strong></td><td>Telegram (long-poll in uscita, niente porte aperte) + web su porta 8770 (chat e cruscotto admin), cap. 11.</td></tr>
+<tr><td><strong>Dispositivi</strong></td><td>Una parte controllata del catalogo puo' girare su PC registrati nella stessa rete tramite <code>metnos-client</code>: il server resta il punto di policy, scelta, firma e audit; il device esegue solo executor dichiarati compatibili. Dettaglio: <a href="architecture/remote_executors.html">executor remoti</a>.</td></tr>
 <tr><td><strong>Sensi</strong></td><td>Pipeline immagini nel processo: semantica + volti + EXIF in un indice unificato (cap. 10).</td></tr>
 <tr><td><strong>Lingua</strong></td><td>i18n per costruzione: ogni stringa e prompt &egrave; dato per-lingua. IT + EN validate; altre lingue = pacchetto di traduzione drop-in (non ancora testate).</td></tr>
 <tr><td><strong>Licenza / stato</strong></td><td>AGPL-3.0; pre-1.0. Repo pubblico: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; subset deterministico dell'istanza in esercizio.</td></tr>
@@ -740,7 +741,7 @@ schedulato &mdash; li attraversa tutti, nell'ordine.
   <li><strong>Runtime del turno</strong> &mdash; il guscio che misura e orchestra: telemetria per sotto-fase (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>), cap di sicurezza, log.</li>
   <li><strong>Motore M&emacr;tis</strong> &mdash; pianifica una volta, esegue deterministicamente, recupera con criterio, e quando non c'&egrave; via d'uscita lo dice (cap. 5).</li>
   <li><strong>Guardie</strong> &mdash; nessun <code>subprocess</code> a mano libera, mai: ogni effetto passa da policy, vaglio e sandbox (cap. 12).</li>
-  <li><strong>Executor e backend</strong> &mdash; chi agisce e contro cosa: la separazione skill&harr;backend tiene il fornitore fuori dalla testa del pianificatore (cap. 3 e 6).</li>
+  <li><strong>Executor e backend</strong> &mdash; chi agisce e contro cosa: la separazione skill&harr;backend tiene il fornitore fuori dalla testa del pianificatore; il placement decide poi se l'executor resta sul server o va a un device registrato (cap. 3 e 6).</li>
   <li><strong>Tessuti</strong> &mdash; ci&ograve; che resta fra un turno e l'altro: memoria associativa, scorciatoie apprese, cronologia per l'undo, audit.</li>
 </ul>
 
@@ -1196,6 +1197,15 @@ non per un modello frontier. Frasi corte, esempi letterali, default in
 chiaro; la descrizione segue quattro capitoli prescrittivi:
 </p>
 
+<p>
+Lo stesso manifest dichiara anche dove l'executor puo' girare. I campi
+<code>platforms</code> e <code>[placement]</code> impediscono di mandare a Windows
+un tool scritto solo per Linux, o di eseguire su un PC un executor non auditato
+per il device. Quando la chat nomina un PC appaiato, il runtime usa queste
+dichiarazioni per decidere se eseguire sul server o sul dispositivo; se il
+bersaglio non e' raggiungibile, l'esito e' onesto, non un fallback silenzioso.
+</p>
+
 <pre><code>[description]
 it = "SCOPO: cerca file per pattern in directory.
       PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]).
@@ -1272,6 +1282,97 @@ it = "SCOPO: cerca file per pattern in directory.
 <figcaption>Figura 8 &mdash; Un solo manifest, quattro consumatori: prefilter, pool del pianificatore, grammatica e undo leggono campi diversi dello stesso TOML. Il digest lega il manifest al codice firmato.</figcaption>
 </figure>
 
+<h2>Esecuzione sul server o su un PC registrato</h2>
+
+<p>
+La forma normale resta semplice: il piano sceglie un executor, il runtime lo
+passa attraverso policy e vaglio, poi lo invoca nella sandbox del server.
+Gli <strong>executor remoti</strong> aggiungono una sola deviazione controllata:
+per alcuni executor dichiarati portabili, il punto di esecuzione puo' essere un
+PC registrato nella stessa rete o overlay.
+</p>
+
+<p>
+Non e' un nuovo canale e non e' un backend qualunque. Il canale resta Telegram
+o web; il backend resta file, posta, calendario o altro servizio. Il remote
+executor e' il <em>luogo</em> in cui gira il piccolo programma firmato. Metnos
+mantiene sul server la scelta dell'executor, il controllo di policy, il
+registro dei device, la firma del payload, il timeout e l'audit.
+</p>
+
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 260" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;">
+<defs>
+  <marker id="f8b-arr-it" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
+  </marker>
+  <filter id="f8b-sh-it" x="-8%" y="-8%" width="116%" height="126%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="1.4"/><feOffset dy="1.4"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.14"/></feComponentTransfer>
+    <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<rect x="38" y="64" width="150" height="72" rx="10" fill="#FBF6F1" stroke="#A0522D" filter="url(#f8b-sh-it)"/>
+<text x="113" y="94" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">chat</text>
+<text x="113" y="112" text-anchor="middle" fill="#475569" font-size="9">"sul PC ufficio"</text>
+
+<rect x="244" y="42" width="210" height="116" rx="10" fill="#dbeafe" stroke="#1A477A" filter="url(#f8b-sh-it)"/>
+<text x="349" y="72" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">server Metnos</text>
+<text x="349" y="92" text-anchor="middle" fill="#1F2937" font-size="9.5">planner + policy + vaglio</text>
+<text x="349" y="110" text-anchor="middle" fill="#1F2937" font-size="9.5">manifest: platforms + placement</text>
+<text x="349" y="128" text-anchor="middle" fill="#475569" font-size="9">coda firmata, deadline, audit</text>
+
+<rect x="520" y="64" width="170" height="72" rx="10" fill="#E9EFDB" stroke="#548235" filter="url(#f8b-sh-it)"/>
+<text x="605" y="94" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">metnos-client</text>
+<text x="605" y="112" text-anchor="middle" fill="#475569" font-size="9">poll in uscita + verifica firma</text>
+
+<rect x="752" y="42" width="170" height="116" rx="10" fill="#f6f8fa" stroke="#64748B" filter="url(#f8b-sh-it)"/>
+<text x="837" y="72" text-anchor="middle" fill="#1F2937" font-size="11" font-weight="700">PC registrato</text>
+<text x="837" y="94" text-anchor="middle" fill="#475569" font-size="9">executor compatibile</text>
+<text x="837" y="112" text-anchor="middle" fill="#475569" font-size="9">Job Object / bwrap</text>
+<text x="837" y="130" text-anchor="middle" fill="#475569" font-size="9">result firmato</text>
+
+<line x1="188" y1="100" x2="240" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-it)"/>
+<line x1="454" y1="100" x2="516" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-it)"/>
+<line x1="690" y1="100" x2="748" y2="100" stroke="#1A477A" stroke-width="1.8" marker-end="url(#f8b-arr-it)"/>
+<path d="M837 158 C837 212 350 212 350 160" fill="none" stroke="#548235" stroke-width="1.8" marker-end="url(#f8b-arr-it)"/>
+<text x="590" y="222" text-anchor="middle" fill="#3F6212" font-size="9.5">result firmato: stesso shape di un executor locale</text>
+</svg>
+<figcaption>Figura 8b &mdash; Il remote executor non sposta il cervello: sposta solo l'esecuzione di un executor ammesso. Il server resta l'autorita' che decide, firma, attende e registra.</figcaption>
+</figure>
+
+<p>
+La scelta non dipende dall'indirizzo IP del browser. In una UI web la macchina
+che apre la pagina puo' coincidere col server, con un altro PC della rete, o
+essere dietro un proxy; da Telegram non c'e' proprio un browser locale. Per
+questo Metnos usa il <strong>nome del device appaiato</strong> e lo ancora al
+linguaggio della richiesta: &laquo;sul portatile&raquo; e' un target, &laquo;il
+portatile&raquo; da solo non lo e'.
+</p>
+
+<p>
+Il client remoto non riceve liberta' generale. Fa polling verso il server, non
+espone porte; verifica la firma del server prima di eseguire; scarica solo
+executor firmati e compatibili; scrive il result nello spool locale prima di
+consegnarlo. Se il server non risponde, ritenta la consegna senza rieseguire il
+lavoro gia' fatto.
+</p>
+
+<p>
+Lo stato corrente e' intenzionalmente prudente: i remote executor attivi sono
+read-only e limitati a casi dove il dato vive sul PC, come leggere file o
+calcolare statistiche su una cartella locale. Su Windows il Job Object contiene
+durata, memoria e albero dei processi; su Linux la sandbox usa bwrap quando
+presente. Gli executor mutanti remoti richiedono ancora policy piu' forti:
+idempotenza, audit, reversibilita' e isolamento filesystem piu' fine.
+</p>
+
+<p>
+Il dettaglio operativo &mdash; pairing del PC, installazione dalla UI,
+heartbeat, coda firmata, sandbox per sistema operativo e limiti attuali &mdash;
+sta nel microdesign <a href="architecture/remote_executors.html">executor
+remoti</a>.
+</p>
 
 <h1 id="s7">7. Synt: la fabbrica degli strumenti</h1>
 
@@ -2004,6 +2105,11 @@ sufficiente a scriverne il codice senza inventare nulla.
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogo &middot; 45 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sugli executor</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">La fondazione tecnica: executor, mnest, mnestoma, tracce, ager, i sei principi originari.</div>
+  </a>
+  <a href="architecture/remote_executors.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microdesign</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Executor remoti</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Come Metnos sposta alcuni executor dal server a un PC registrato, mantenendo policy, audit e limiti espliciti.</div>
   </a>
   <a href="https://github.com/brunialti/metnos" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">codice</span>

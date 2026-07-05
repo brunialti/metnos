@@ -410,7 +410,11 @@ I casi 6-9 esercitano <code>_build_bwrap_args</code> senza chiamare bwrap: si ve
 <h1 id="cap8">8. Stato di bwrap nel sistema</h1>
 
 <p>
-Per onest&agrave;: nel server di sviluppo, alla sera, <code>bwrap</code> <em>non</em> &egrave; installato. Il modulo <code>sandbox</code> gira in modalit&agrave; fallback (caso (a) del cap. 4): tutti i comandi degli executor partono come <code>subprocess.run(["python3", &lt;code_path&gt;],...)</code>, senza involucro a livello kernel.
+Se <code>bwrap</code> non &egrave; installato, il modulo <code>sandbox</code> usa il ripiego
+descritto al cap. 4: il comando viene eseguito direttamente, senza involucro a
+livello kernel, mentre restano attivi i controlli applicativi dentro gli
+executor e Vaglio. Il risultato deve dichiarare questa condizione invece di
+nasconderla.
 </p>
 
 <p>
@@ -431,7 +435,11 @@ Niente cambio di codice, niente riavvio del runtime. Al primo accesso successivo
 </p>
 
 <div class="callout tip">
-<strong>Quando attivare.</strong> Su <code>metnos-server</code> (la macchina.33 del progetto) ha senso installare <code>bwrap</code> appena si esce dalla fase POC pura e si comincia a far girare executor sintetizzati su input non controllato. La pseudo-sandbox copre i casi normali, ma un executor sintetizzato da LLM su prompt "esotico" pu&ograve; sempre uscire dai binari attesi: il guscio a livello kernel &egrave; la rete di sicurezza.
+<strong>Quando attivare.</strong> Su un server Metnos stabile conviene installare
+<code>bwrap</code> prima di eseguire executor sintetizzati o codice non ancora
+molto rodato. I controlli applicativi coprono i casi normali; il guscio a
+livello kernel &egrave; la rete di sicurezza quando un executor esce dal percorso
+atteso.
 </div>
 
 <h1 id="cap9">9. Limiti e sviluppi futuri</h1>
@@ -473,7 +481,7 @@ Il ripiego controllato, in particolare, riflette una scelta etica oltre che prag
 <h1 id="cap10">10. Sandbox remota per-OS (executor su dispositivo)</h1>
 
 <p class="lead">
-Tutti i capitoli precedenti parlano di un solo luogo: il server <code>.33</code>, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal cliente scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il cliente stesso, e cambia a seconda del sistema operativo del dispositivo.
+Tutti i capitoli precedenti parlano di un solo luogo: il server <code>.33</code>, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal client scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il client stesso, e cambia a seconda del sistema operativo del dispositivo.
 </p>
 
 <p>
@@ -489,7 +497,7 @@ Il campo <code>limits.wall</code> &egrave; la <em>scadenza</em>: il tempo massim
 <h2>10.1 Un contenimento diverso per ogni sistema operativo</h2>
 
 <p>
-Ogni sistema operativo offre strumenti di isolamento diversi. Il cliente usa il pi&ugrave; forte disponibile su quella piattaforma. Ecco il quadro completo.
+Ogni sistema operativo offre strumenti di isolamento diversi. Il client usa il pi&ugrave; forte disponibile su quella piattaforma. Ecco il quadro completo.
 </p>
 
 <table>
@@ -529,7 +537,9 @@ L'intuizione &egrave; questa: un Job Object &egrave; come una <strong>stanza chi
 </p>
 
 <p>
-Il Job Object &egrave; stato realizzato nella fase W3.1 e verificato dal vivo nella W3.3, il 2026-07-03, su un PC Windows reale. Vediamo passo per passo come il cliente costruisce e chiude la stanza.
+Il client Windows usa questa primitiva per costruire il contenimento intorno
+all'executor. Vediamo passo per passo come il client crea la stanza, vi inserisce
+il processo e la chiude quando scade il tempo massimo.
 </p>
 
  <figure>
@@ -581,7 +591,7 @@ Il Job Object &egrave; stato realizzato nella fase W3.1 e verificato dal vivo ne
 </figure>
 
 <p>
-Due dettagli rendono robusto questo schema. Primo: il processo viene creato <strong>fermo</strong> (<code>CREATE_SUSPENDED</code>) e messo nella stanza <em>prima</em> di partire. Se partisse subito, per un istante potrebbe generare figli fuori dal contenitore; nascendo fermo, quando lo si avvia &egrave; gi&agrave; dentro. Secondo: al passo 2 si imposta il segnale <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code>. Vuol dire: &laquo;quando l'ultimo riferimento a questa stanza si chiude, spegni tutto&raquo;. Cos&igrave; l'<strong>abbattimento dell'intero albero dei processi</strong> &egrave; garantito anche se il cliente stesso va in errore e muore: chiudendosi, si porta dietro tutto. Il risultato lo dichiara con <code>sandbox:"job-object"</code>.
+Due dettagli rendono robusto questo schema. Primo: il processo viene creato <strong>fermo</strong> (<code>CREATE_SUSPENDED</code>) e messo nella stanza <em>prima</em> di partire. Se partisse subito, per un istante potrebbe generare figli fuori dal contenitore; nascendo fermo, quando lo si avvia &egrave; gi&agrave; dentro. Secondo: al passo 2 si imposta il segnale <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code>. Vuol dire: &laquo;quando l'ultimo riferimento a questa stanza si chiude, spegni tutto&raquo;. Cos&igrave; l'<strong>abbattimento dell'intero albero dei processi</strong> &egrave; garantito anche se il client stesso va in errore e muore: chiudendosi, si porta dietro tutto. Il risultato lo dichiara con <code>sandbox:"job-object"</code>.
 </p>
 
 <div class="callout tip">
@@ -591,7 +601,7 @@ Due dettagli rendono robusto questo schema. Primo: il processo viene creato <str
 <h2>10.3 Perch&eacute; il Job Object basta, per ora</h2>
 
 <p>
-Onest&agrave;: il Job Object &egrave; forte nello spegnere i processi, ma non isola disco e rete come fa <code>bwrap</code> su Linux. La difesa pi&ugrave; solida (l'AppContainer di Windows) arriver&agrave; nella fase W4. Nel frattempo Metnos compensa <em>prima</em> di eseguire, scegliendo con cura cosa mandare al dispositivo:
+Onest&agrave;: il Job Object &egrave; forte nello spegnere i processi, ma non isola disco e rete come fa <code>bwrap</code> su Linux. La difesa pi&ugrave; solida su Windows &egrave; AppContainer con permessi espliciti su file e rete. Finche' quel livello non &egrave; attivo, Metnos compensa <em>prima</em> di eseguire, scegliendo con cura cosa mandare al dispositivo:
 </p>
 
 <ul>
@@ -607,7 +617,7 @@ In pratica: al dispositivo si affida solo lavoro che, nel peggiore dei casi, non
 <h2>10.4 Come arriva Python sul dispositivo</h2>
 
 <p>
-Un problema pratico: il dispositivo remoto potrebbe non avere affatto Python installato. Il cliente lo risolve da solo. Scarica <em>al momento del bisogno</em> un Python gi&agrave; pronto (<code>python-build-standalone</code>) e ne verifica l'integrit&agrave; con l'impronta <code>sha256</code> fissata dal server. Poi lo apre con <code>tar</code> + <code>flate2</code>, in puro Rust, senza dipendere da programmi esterni.
+Un problema pratico: il dispositivo remoto potrebbe non avere affatto Python installato. Il client lo risolve da solo. Scarica <em>al momento del bisogno</em> un Python gi&agrave; pronto (<code>python-build-standalone</code>) e ne verifica l'integrit&agrave; con l'impronta <code>sha256</code> fissata dal server. Poi lo apre con <code>tar</code> + <code>flate2</code>, in puro Rust, senza dipendere da programmi esterni.
 </p>
 
 <p>
@@ -615,7 +625,10 @@ Lo scaricamento &egrave; costruito per resistere a reti instabili: procede a seg
 </p>
 
 <div class="callout note">
-<strong>Stato.</strong> Esecuzione remota validata da capo a capo su un PC Windows reale il 2026-07-03, cliente 0.2.7 (<code>sandbox:"job-object"</code>). Linux ha parit&agrave; col <code>.33</code>; macOS (<code>sandbox-exec</code> + entitlements) &egrave; di livello 2, non ancora realizzata.
+<strong>Stato.</strong> Su Windows il risultato dichiara <code>sandbox:"job-object"</code>.
+Linux usa lo stesso modello di <code>bwrap</code> del server quando disponibile;
+macOS (<code>sandbox-exec</code> + entitlements) resta un backend previsto ma non
+ancora abilitato.
 </div>
 
 </body>

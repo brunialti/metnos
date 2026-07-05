@@ -74,10 +74,11 @@ scrive l'audit.
 </p>
 
 <div class="status">
-Stato pubblico: W3.3 validata su un PC Windows reale il 2026-07-03, client
-<code>0.2.7</code>, con join dalla UI, Job Object, timeout con kill dell'albero,
-lock single-instance e revoca via <code>403</code>. Il dettaglio di progetto esteso
-resta nel documento interno <code>internal/design/remote-executors.html</code>.
+Stato attuale: il client <code>0.2.7</code> supporta l'adesione dalla UI,
+l'esecuzione su Windows con Job Object, lo spegnimento dell'albero dei processi
+al timeout, il blocco dell'istanza doppia e la revoca dal server. Il dettaglio
+implementativo resta nel documento interno
+<code>internal/design/remote-executors.html</code>.
 </div>
 
 <div class="toc">
@@ -85,7 +86,7 @@ resta nel documento interno <code>internal/design/remote-executors.html</code>.
 <ol>
  <li><a href="#idea">Idea</a></li>
  <li><a href="#identita">Identita' e pairing del dispositivo</a></li>
- <li><a href="#placement">Placement: quando un executor puo' uscire dal server</a></li>
+ <li><a href="#placement">Collocazione: quando un executor puo' uscire dal server</a></li>
  <li><a href="#installazione">Installazione dalla UI</a></li>
  <li><a href="#sandbox">Sandbox per sistema operativo</a></li>
  <li><a href="#guasti">Guasti, duplicati e revoca</a></li>
@@ -105,8 +106,8 @@ senza trasformare ogni macchina in un secondo Metnos.
 
 <p>
 L'asimmetria e' intenzionale: il dispositivo esegue, ma non decide. Il server
-mantiene policy, Vaglio, scelta dell'executor, firma, registro dei device e audit.
-Il client remoto, <code>metnos-client</code>, fa polling verso il server, verifica
+mantiene policy, Vaglio, scelta dell'executor, firma, registro dei dispositivi e audit.
+Il client remoto, <code>metnos-client</code>, interroga il server, verifica
 la firma del lavoro ricevuto, esegue nel contenimento disponibile per il suo OS e
 restituisce un risultato firmato.
 </p>
@@ -123,16 +124,17 @@ revocabile e riconoscibile.
 
 <p>
 Il flusso dettagliato vive in <a href="pairing.html#cap13">pairing, cap. 13</a>.
-La parte essenziale e': token breve, consumo una volta sola, impronta del device
+La parte essenziale e': token breve, consumo una volta sola, impronta del dispositivo
 unica, heartbeat periodico, revoca esplicita dal pannello admin.
 </p>
 
-<h2 id="placement">3. Placement: quando un executor puo' uscire dal server</h2>
+<h2 id="placement">3. Collocazione: quando un executor puo' uscire dal server</h2>
 
 <p>
-Un executor non diventa remoto per accidente. Il loader guarda il manifest:
-piattaforme ammesse, capability, firma, eventuale sezione di placement. Solo se
-il contratto e' compatibile il runtime puo' assegnare il lavoro a un dispositivo.
+Un executor non diventa remoto per accidente. Il caricatore legge il manifest:
+piattaforme ammesse, capacita', firma, eventuale sezione di collocazione
+(<code>placement</code>). Solo se il contratto e' compatibile il runtime puo'
+assegnare il lavoro a un dispositivo.
 In caso contrario l'executor resta locale o viene rifiutato con un errore
 onesto.
 </p>
@@ -142,12 +144,12 @@ onesto.
 <tbody>
 <tr><td><code>platforms</code></td><td>Evita di mandare a Windows un executor scritto solo per Linux, o viceversa.</td></tr>
 <tr><td>firma server</td><td>Il client esegue solo codice che corrisponde a cio' che il server ha firmato.</td></tr>
-<tr><td>capability</td><td>Policy e Vaglio restano server-side; il device non amplia i permessi.</td></tr>
-<tr><td>placement</td><td>Indica se il lavoro puo' stare sul server o richiede un dispositivo specifico.</td></tr>
+<tr><td>capacita'</td><td>Policy e Vaglio restano sul server; il dispositivo non amplia i permessi.</td></tr>
+<tr><td>collocazione</td><td>Indica se il lavoro puo' stare sul server o richiede un dispositivo specifico.</td></tr>
 </tbody>
 </table>
 
-<h3 id="placement-chat">3.1 Placement guidato dalla chat: server o un tuo PC</h3>
+<h3 id="placement-chat">3.1 Collocazione guidata dalla chat: server o un tuo PC</h3>
 
 <p>
 La tabella qui sopra dice <em>se</em> un executor puo' uscire dal server. Resta la
@@ -157,8 +159,8 @@ frase. Chiamiamo <b>destinazione</b> la macchina dove verra' eseguito il prossim
 comando &mdash; il server (la macchina <code>.33</code> dove vive Metnos) oppure uno
 dei PC che hai <b>appaiato</b>, cioe' registrato una volta con la procedura di
 pairing. Ogni PC appaiato ha un <b>nome</b> scelto da te (per esempio
-<code>PORTATILE-UFFICIO</code>) e appartiene a un utente: il server sa quali device
-sono tuoi.
+<code>PORTATILE-UFFICIO</code>) e appartiene a un utente: il server sa quali
+dispositivi sono tuoi.
 </p>
 
 <p>
@@ -247,7 +249,7 @@ garanzie e uno schema del bivio server / PC.
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Elenca la cartella Documenti sul mio <b>portatile-ufficio</b></div></div>
-    <div class="rx-route">&#128256; riconosciuto il device <b>PORTATILE-UFFICIO</b> &rarr; instrado e da ora e' la destinazione</div>
+    <div class="rx-route">&#128256; riconosciuto il dispositivo <b>PORTATILE-UFFICIO</b> &rarr; instrado e da ora e' la destinazione</div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; PORTATILE-UFFICIO</span>
      <div class="rx-bubble">Su <b>PORTATILE-UFFICIO</b>, in <b>Documenti</b>:
@@ -292,9 +294,9 @@ bilancio.xlsx   88 KB</div>
    <div class="rx-step"><div class="rx-n">1</div><div class="rx-t">
     <b>Chi sei</b> <span>&mdash; la chat e' autenticata: Metnos conosce l'utente (l'attore) e i PC che gli appartengono.</span></div></div>
    <div class="rx-step"><div class="rx-n">2</div><div class="rx-t">
-    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del device citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Se non nomini nulla, <b>resta l'ultima destinazione</b>; al primo turno e' il server.</span></div></div>
+    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del dispositivo citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Se non nomini nulla, <b>resta l'ultima destinazione</b>; al primo turno e' il server.</span></div></div>
    <div class="rx-step"><div class="rx-n">3</div><div class="rx-t">
-    <b>Etichetta e instrada</b> <span>&mdash; il turno e' etichettato col device risolto; la destinazione corrente e' sempre visibile in cima alla chat.</span></div></div>
+    <b>Etichetta e instrada</b> <span>&mdash; il turno e' etichettato col dispositivo risolto; la destinazione corrente e' sempre visibile in cima alla chat.</span></div></div>
    <div class="rx-safe">
     <b>Il server e' la destinazione iniziale</b> e ci torni quando vuoi con &laquo;sul server&raquo; o &laquo;qui&raquo;.
     Solo un riferimento a un tuo PC (o l'ultima destinazione, che resta appiccicosa) sposta l'esecuzione.
@@ -302,7 +304,7 @@ bilancio.xlsx   88 KB</div>
    <div class="rx-safe rx-warn">
     <b>Prima di ogni invio, Metnos verifica che il PC sia connesso.</b> Se il bersaglio &mdash; nominato o
     l'ultima destinazione &mdash; non risponde (battito oltre un minuto), Metnos lo dice
-    (&laquo;device non connesso&raquo;) e non esegue altrove di nascosto.
+    (&laquo;dispositivo non connesso&raquo;) e non esegue altrove di nascosto.
    </div>
    <figure class="rx-fig">
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 210" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',sans-serif;font-size:11px;">
@@ -338,7 +340,7 @@ bilancio.xlsx   88 KB</div>
 da <em>dove</em> arriva la connessione. Riconoscerlo dall'origine di rete (l'indirizzo
 IP) sarebbe inaffidabile: attraverso il tunnel pubblico il server vede sempre
 <code>127.0.0.1</code>, e da Telegram non c'e' alcun PC dietro il messaggio. Per questo
-l'ancora e' il nome del device &mdash; confrontato con i nomi reali dei tuoi PC appaiati
+l'ancora e' il nome del dispositivo &mdash; confrontato con i nomi reali dei tuoi PC appaiati
 &mdash; e non l'impronta della rete. Un nome citato a meta' frase, senza una
 preposizione di luogo che lo ancori, non sposta la destinazione.
 </div>
@@ -347,7 +349,7 @@ preposizione di luogo che lo ancori, non sposta la destinazione.
 
 <p>
 Il punto operativo naturale e' <code>/admin/devices</code>: il server mostra i
-device registrati e puo' emettere un link di adesione. Se l'utente apre la UI
+dispositivi registrati e puo' emettere un link di adesione. Se l'utente apre la UI
 direttamente sul server, non c'e' nulla da installare: gli executor locali sono
 gia' disponibili. Se invece la UI gira su un PC diverso dal server, la pagina puo'
 proporre l'installer adatto alla piattaforma e mostrare lo stato di avanzamento
@@ -388,19 +390,19 @@ irrobustimento.
 <h2 id="guasti">6. Guasti, duplicati e revoca</h2>
 
 <p>
-Il canale e' costruito per una rete domestica imperfetta. Il client fa polling,
-quindi non richiede porte aperte sul PC. Ogni invocazione ha idempotenza e una
+Il canale e' costruito per una rete domestica imperfetta. Il client interroga
+periodicamente il server, quindi non richiede porte aperte sul PC. Ogni invocazione ha idempotenza e una
 deadline: se la rete cade, il server puo' distinguere fra lavoro non ancora preso,
 lavoro in corso e risultato gia' consegnato. Se un client resta appeso, il lock
 locale impedisce una seconda istanza concorrente; se un job supera il timeout, il
-client spegne l'albero dei processi. Dal client <code>0.2.7</code> il heartbeat
-gira in un task separato, quindi il dispositivo resta osservabile anche mentre
+client spegne l'albero dei processi. Il battito del client
+gira in un compito separato, quindi il dispositivo resta osservabile anche mentre
 sta preparando il proprio ambiente di esecuzione.
 </p>
 
 <p>
-La revoca e' server-side: il dispositivo revocato riceve errore al polling o al
-heartbeat e smette di ricevere lavoro. Il server non deve fidarsi del fatto che
+La revoca avviene sul server: il dispositivo revocato riceve errore quando
+interroga il server o manda il battito, e smette di ricevere lavoro. Il server non deve fidarsi del fatto che
 il vecchio client "si comporti bene": smette semplicemente di assegnargli payload.
 </p>
 
@@ -416,7 +418,7 @@ fuori dal percorso remoto finche' il loro contenimento non e' esplicito.
 <ul>
  <li>Windows oggi contiene bene durata e albero processi; l'isolamento fine di filesystem e rete richiede un backend piu' forte.</li>
  <li>Il dispositivo deve restare raggiungibile dal server sulla rete prevista o tramite rete privata equivalente.</li>
- <li>Un executor deve dichiarare piattaforme e placement: l'assenza di dichiarazione non va interpretata come consenso remoto.</li>
+ <li>Un executor deve dichiarare piattaforme e collocazione: l'assenza di dichiarazione non va interpretata come consenso remoto.</li>
  <li>Il dettaglio implementativo resta interno; questa pagina e' la porta pubblica stabile.</li>
 </ul>
 
