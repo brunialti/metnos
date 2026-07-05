@@ -4228,11 +4228,15 @@ class TurnLog:
         """
         health = None
         entries = None
+        health_host = ""
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             h = res.get("health")
             if isinstance(h, dict):
                 health = h
+                # Host-aware (5/7): se lo step è girato su un device, il
+                # titolo dice il DEVICE, non «server» (§2.8).
+                health_host = str(res.get("_ran_on_device") or "")
                 # Stesso step: prendi anche le entries (lista processi).
                 e = res.get("entries")
                 if isinstance(e, list):
@@ -4243,7 +4247,7 @@ class TurnLog:
         try:
             # runtime/ già su sys.path (agent_runtime VIVE in runtime/).
             from orchestration import _fmt_health_block, _fmt_entries_block
-            block = _fmt_health_block(health)
+            block = _fmt_health_block(health, host=health_host)
             if entries:
                 # Top 10 processi col detail cpu%/mem% (non solo nomi nudi).
                 # Cap 10 perche' health gia' occupa righe; per piu' c'e'
@@ -4253,7 +4257,8 @@ class TurnLog:
                     block = block + "\n\n**" + msg("MSG_HEALTH_TOP_PROCESSES") + "**\n" + proc_block
         except (ImportError, KeyError, AttributeError):
             return
-        if not block or "Stato server" in (self.final_message or ""):
+        if not block or "📊 **Stato" in (self.final_message or "") \
+                or "Stato server" in (self.final_message or ""):
             return  # gia' presente o formatter non funzionante
         # ADR 0111 Level 3 safety net: per query di stato puro (nessuna
         # keyword imperativa nella user_query), il `final_message` LLM
@@ -4327,6 +4332,12 @@ class TurnLog:
                     continue
             what = (res.get("truncated_what") or s.chosen_tool
                     or msg("MSG_TRUNCATED_DEFAULT_WHAT"))
+            # §7.3 (5/7): un executor eseguito sul DEVICE risolve _msg con lo
+            # shim SENZA DB i18n → i campi payload a forma di chiave (es.
+            # truncated_what='MSG_OBJECT_PROCESSES') arrivano CRUDI. Il server
+            # ha il DB: risolvi qui ogni valore chiave-forma, per costruzione.
+            if isinstance(what, str) and re.fullmatch(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+", what):
+                what = msg(what)
             if what == "input_sources":
                 # extract_entries ha capato le SORGENTI in INPUT (non l'output):
                 # i campi corretti sono available_INPUT_total + cap_value (50),

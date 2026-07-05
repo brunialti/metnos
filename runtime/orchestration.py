@@ -658,7 +658,8 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
 
     health = res.get("health") if isinstance(res.get("health"), dict) else None
     if health:
-        body_blocks.append(_fmt_health_block(health))
+        body_blocks.append(_fmt_health_block(
+            health, host=str(res.get("_ran_on_device") or "")))
 
     docs = res.get("discovered_documents") or []
     if isinstance(docs, list) and docs:
@@ -1159,13 +1160,16 @@ def _process_resume_planner_with_dialog_values(
     return msg_out
 
 
-def _fmt_health_block(h: dict) -> str:
+def _fmt_health_block(h: dict, host: str = "") -> str:
     """Rende la sezione health in 4-6 righe leggibili.
 
     Stile per ADR 0095 (output deterministico): KV con label espliciti,
     no slash ambigui per gruppi correlati (load 1m/5m/15m), unita' inline.
+    `host`: nome del DEVICE quando i dati vengono da lì (5/7: il titolo
+    diceva «Stato server» anche per i processi del PC — disonesto §2.8).
     """
-    out = [_msg("MSG_HEALTH_TITLE")]
+    out = [_msg("MSG_HEALTH_TITLE_HOST", host=host) if host
+           else _msg("MSG_HEALTH_TITLE")]
     load = h.get("load") or {}
     if load.get("available"):
         up_h = (load.get("uptime_s") or 0) // 3600
@@ -1280,24 +1284,31 @@ def _fmt_entries_block(entries: list, cap: int) -> str:
     if cap < len(entries):
         out.append(_msg("MSG_TOP_OF", top=cap, total=len(entries)))
     # Special case: get_processes records → tabella markdown.
+    # Il campo nome è `comm` (ps/tasklist) o `name`: il match solo-`name`
+    # rendeva la tabella MORTA da sempre (dict grezzi in chat, visto 5/7).
     proc_records = [
         e for e in entries[:cap]
-        if isinstance(e, dict) and "cpu_pct" in e and "name" in e
+        if isinstance(e, dict) and "cpu_pct" in e
+        and ("name" in e or "comm" in e)
     ]
     if proc_records and len(proc_records) == len([
         e for e in entries[:cap] if isinstance(e, dict)
     ]):
         from output_format import format_table
+        # Windows (tasklist) non ha mem_pct: usa mem_kb→MB come colonna RAM.
+        use_pct = any(e.get("mem_pct") for e in proc_records)
         rows = [
             [
-                str(e.get("name", "?"))[:24],
+                str(e.get("name") or e.get("comm") or "?")[:24],
                 f"{e.get('cpu_pct', 0):.1f}",
-                f"{e.get('mem_pct', 0):.1f}",
+                (f"{e.get('mem_pct', 0):.1f}" if use_pct
+                 else f"{(e.get('mem_kb') or 0) / 1024:.0f}"),
             ]
             for e in proc_records
         ]
         out.append(format_table(
-            headers=[_msg("MSG_PROCESS_HEADER_NAME"), "CPU%", "MEM%"],
+            headers=[_msg("MSG_PROCESS_HEADER_NAME"), "CPU%",
+                     "MEM%" if use_pct else "RAM MB"],
             rows=rows,
             align=["left", "right", "right"],
         ))
