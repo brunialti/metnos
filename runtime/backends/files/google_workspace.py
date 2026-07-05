@@ -435,6 +435,17 @@ def find(args: dict) -> dict:
         return {**err, "entries": [], "used": 0}
 
     entries = data if isinstance(data, list) else []
+    # Preferenza NOME ESATTO (non-raw): la ricerca Drive e' `fullText contains`
+    # (fuzzy: matcha anche i doc che MENZIONANO il termine, es. «KAKEBO SPESE
+    # 2025-26» il cui contenuto cita «2026»). Se l'utente ha nominato UN file e
+    # c'e' un match col nome ESATTO, restringi a quello — «cerca il file X» = il
+    # file X, non ogni doc che lo cita. No-op senza esatto → resta vettoriale §2.1.
+    if not raw and entries:
+        q_exact = str(query).strip().casefold()
+        exact = [e for e in entries
+                 if str(e.get("name") or e.get("title") or "").strip().casefold() == q_exact]
+        if exact:
+            entries = exact
     return {
         "ok": True,
         "entries": entries,
