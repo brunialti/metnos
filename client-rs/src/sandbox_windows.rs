@@ -214,6 +214,18 @@ pub async fn run_sandboxed(
             cmd.env(var, v);
         }
     }
+    // Env di SISTEMA Windows (0.2.14): senza SystemRoot i tool nativi che
+    // toccano WMI falliscono «Impossibile trovare il modulo specificato»
+    // (visto live 5/7: tasklist rc=1 sul device). windir/ComSpec/TEMP sono
+    // lo stesso strato base; TEMP puntato allo scratch della sandbox.
+    for var in ["SystemRoot", "windir", "ComSpec", "SystemDrive",
+                "ProgramFiles", "ProgramData", "NUMBER_OF_PROCESSORS"] {
+        if let Ok(v) = std::env::var(var) {
+            cmd.env(var, v);
+        }
+    }
+    cmd.env("TEMP", &scratch.path);
+    cmd.env("TMP", &scratch.path);
     for (k, v) in extra_env {
         cmd.env(k, v);
     }
