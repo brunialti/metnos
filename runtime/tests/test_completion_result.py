@@ -102,3 +102,45 @@ def test_rerun_disambiguated_returns_structured(monkeypatch):
     assert isinstance(out, orch.CompletionResult)
     assert out.turn_id == "newturn1"
     assert out.attachments and out.text == "74 foto"
+
+
+def test_daemon_sends_resume_media_chunked(monkeypatch):
+    """Telegram: il resume con foto manda sendMediaGroup a chunk di 10
+    (stessa forma dei turni normali); i file restano fuori dall'album."""
+    import types
+    from channels.daemon import ChannelDaemon
+    import orchestration as orch
+
+    sent = []
+
+    class _Chan:
+        name = "telegram"
+        def send_media_group(self, *, chat_id, attachments, turn_id,
+                             caption_first):
+            sent.append((chat_id, len(attachments), caption_first))
+            return {"ok": True}
+
+    d = ChannelDaemon.__new__(ChannelDaemon)   # no __init__ (niente rete)
+    d.channel = _Chan()
+    atts = ([{"kind": "image", "path": f"/x/{i}.jpg"} for i in range(12)]
+            + [{"kind": "file", "path": "/x/doc.xlsx"}])
+    cr = orch.CompletionResult(text="ok", attachments=atts, turn_id="t1")
+    d._send_resume_media("chat9", cr)
+    assert sent == [("chat9", 10, "Foto 1-10 di 12 per la tua query"),
+                    ("chat9", 2, "Foto 11-12 di 12 per la tua query")]
+
+
+def test_daemon_resume_media_noop_non_telegram():
+    from channels.daemon import ChannelDaemon
+    import orchestration as orch
+
+    class _Chan:
+        name = "http"
+        def send_media_group(self, **kw):
+            raise AssertionError("non deve inviare fuori da telegram")
+
+    d = ChannelDaemon.__new__(ChannelDaemon)
+    d.channel = _Chan()
+    cr = orch.CompletionResult(text="ok",
+                               attachments=[{"kind": "image", "path": "/a.jpg"}])
+    d._send_resume_media("c", cr)   # nessuna eccezione, nessun invio

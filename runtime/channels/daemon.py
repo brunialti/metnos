@@ -541,6 +541,37 @@ class ChannelDaemon:
                      prompt=next_prompt, hint=masked_hint),
                 False, None)
 
+    def _send_resume_media(self, sender_id: str, cr) -> None:
+        """Media del resume dialog su Telegram (CompletionResult.attachments).
+
+        Stessa forma dei turni normali: chunk da 10 (limite album Telegram),
+        caption «Foto i-j di N». Solo immagini con path locale; i file restano
+        elencati nel testo. Best-effort: un errore qui non blocca il testo."""
+        try:
+            atts = [a for a in (getattr(cr, "attachments", None) or [])
+                    if isinstance(a, dict) and a.get("path")
+                    and a.get("kind") != "file"]
+            if not atts or getattr(self.channel, "name", "") != "telegram":
+                return
+            CHUNK = 10
+            n_total = len(atts)
+            for i in range(0, n_total, CHUNK):
+                chunk = atts[i:i + CHUNK]
+                caption = f"Foto {i + 1}-{i + len(chunk)} di {n_total} per la tua query"
+                try:
+                    mg = self.channel.send_media_group(
+                        chat_id=sender_id, attachments=chunk,
+                        turn_id=getattr(cr, "turn_id", "") or "",
+                        caption_first=caption)
+                    if not mg.get("ok"):
+                        log.warning("resume media chunk %d failed: %s",
+                                    i // CHUNK, mg.get("error"))
+                except Exception as ex:  # noqa: BLE001
+                    log.warning("resume media chunk %d raised: %s",
+                                i // CHUNK, ex)
+        except Exception as ex:  # noqa: BLE001
+            log.warning("_send_resume_media noop: %r", ex)
+
     def _on_get_inputs_completed(self, state: dict, *,
                                   actor: str = "host") -> str | None:
         """Hook on-completion: applica callback dichiarativo `on_complete`
@@ -569,8 +600,10 @@ class ChannelDaemon:
                     actor=actor or state.get("actor") or "host",
                     channel=state.get("channel") or None,
                 )
-                # Telegram: testo subito; attachments del resume full-turn →
-                # sendMediaGroup = follow-up (il testo elenca già i basename).
+                # Resume full-turn con FOTO (follow-up zip-line, 5/7):
+                # sendMediaGroup come i turni normali — best-effort, il testo
+                # arriva comunque.
+                self._send_resume_media(sender_id, cr)
                 return cr.text
             except (ImportError, RuntimeError) as ex:
                 log.exception("process_completion_callback fallito")
