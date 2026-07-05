@@ -1,20 +1,20 @@
-# Runbook E2E Windows — W3.3 (executor remoti)
+# Runbook E2E Windows — executor remoti
 
 > Driver: un umano (o un agente Sonnet 5.5) col PC Windows target + una
 > sessione PowerShell + il browser Metnos sullo stesso PC. Nessuno script:
 > ogni passo è un comando copy-paste + un'osservazione da annotare.
-> Riferimento: `internal/design/remote-executors.html` §14 (contratti),
-> §15/§16 (fasi), §16.4 (questo runbook nel design doc originale).
+> Riferimento: `internal/design/remote-executors.html`, in particolare lo stato
+> corrente e le appendici tecniche sul percorso Windows.
 
 ## Prima di iniziare — leggere
 
 1. `CLAUDE.md` (radice del repo) — norme di progetto.
-2. `internal/design/remote-executors.html` §16.0 (vincoli trasversali) e
-   §16.4 (il checklist che questo file esegue).
-3. **Non scrivere codice Rust nuovo.** Il client (`0.2.3`) è già completo:
-   Job Object (W3.1), lock single-instance, kill-al-timeout, fail-closed
-   rimosso (sandbox attivo di default, fix 3/7 sera). Questo runbook
-   ESEGUE e OSSERVA, non implementa. Se un passo fallisce per un bug reale
+2. `internal/design/remote-executors.html` — stato corrente e vincoli del
+   percorso remoto.
+3. **Non scrivere codice Rust nuovo.** Il client corrente è già completo per
+   questa prova: Job Object, lock single-instance, spegnimento dell'albero dei
+   processi al timeout e sandbox attivo di default. Questo runbook
+   esegue e osserva, non implementa. Se un passo fallisce per un bug reale
    del client, annotalo nell'Esito in fondo — non tentare un fix Rust
    senza fermarsi e chiedere (è un'altra macchina, altro toolchain, va
    validato di nuovo su Linux prima di distribuirlo).
@@ -46,12 +46,10 @@
    pulsante è già quello giusto (nessun `for_other_pc` da forzare).
 3. Apri il link generato (stessa scheda o una nuova) — la pagina rileva
    Windows, avvia il download dell'installer dopo ~1,2s. Il link/token
-   dura **30 minuti** (era 10: bruciati dal vivo il 3/7 dall'attrito dei
-   passi seguenti).
+   dura **30 minuti**.
 4. **Clicca sul file scaricato** (`MetnosClientSetup.cmd`) nella barra dei
    download del browser — un `.cmd` si esegue col click, a differenza del
-   `.ps1` che apriva il selettore app (attrito osservato live 3/7, da cui
-   il cambio di artefatto). Se Windows/il browser mostra un avviso di
+   `.ps1` che apre il selettore app. Se Windows/il browser mostra un avviso di
    sicurezza ("file scaricato da Internet", SmartScreen, "Conserva
    comunque"), annota il testo esatto (passo 7) e conferma l'esecuzione.
    Si apre una finestra console con l'avanzamento; **resta aperta a fine
@@ -78,8 +76,8 @@ Usa **`compute_files_loc`**, non `find_files`: `find_files`/`read_files`/
 `write_files`/`list_dirs` importano moduli `runtime/`-tier
 (`backends.files.local`/`path_alias`) mai spediti al device dallo shim
 (§8) — crasherebbero con `ModuleNotFoundError` su QUALSIASI OS remoto,
-scoperto durante l'audit W3.2 (3/7). Solo `get_files` e `compute_files_loc`
-sono self-contained e promossi `platforms=["linux","windows"]` oggi.
+emerse durante l'audit di portabilità. Solo `get_files` e `compute_files_loc`
+sono self-contained e promossi `platforms=["linux","windows"]`.
 
 ```powershell
 $body = @{
@@ -150,7 +148,7 @@ silenzioso. `proclock.rs`, verificato su Windows per la prima volta qui
 hanno la STESSA dipendenza non bundlata di `find_files` (§2 sopra) — sono
 mutanti E hanno bisogno di `backends/files/local.py`, quindi oggi
 NESSUN executor mutante può girare sul device. Questo passo del runbook
-originale (§16.4 del design doc, scritto PRIMA dell'audit W3.2) presumeva
+originario presumeva
 `write_files` disponibile — non lo è.
 
 **Non inventare un workaround stasera.** Serve una decisione: (a) estendere
@@ -186,8 +184,8 @@ verrà mai consegnata a questo device_id.
 Annota qui, testualmente, cosa ha mostrato Windows al passo 1.4 (titolo
 esatto del popup, se "Ulteriori informazioni" era visibile subito o
 nascosto, se l'editore risultava "sconosciuto"). Questo dato decide se
-anticipare Authenticode (W6, oggi il pin sha256+Ed25519-pubkey-pinning è
-l'unica difesa, §16 review 2 del 3/7) o se l'attrito è tollerabile per un
+anticipare Authenticode (oggi il pin sha256+Ed25519-pubkey-pinning è
+la difesa disponibile) o se l'attrito è tollerabile per un
 uso domestico fra dispositivi fidati.
 
 ---
@@ -196,7 +194,7 @@ uso domestico fra dispositivi fidati.
 
 | Passo | Data | Esito | Note |
 |---|---|---|---|
-| 1 — join+install | 2026-07-03 | ✅ | client 0.2.6, re-pair stessa chiave → device id `7bd3da08…`; installer `.cmd` one-click, task battery-safe, verifica Running |
+| 1 — join+install | 2026-07-03 | ✅ | re-pair stessa chiave → device id `7bd3da08…`; installer `.cmd` one-click, task battery-safe, verifica Running |
 | 2 — execute read-only | 2026-07-03 | ✅ | `compute_files_loc` in `sandbox:"job-object"`, 271ms; payload §2.8 COMPLETO (total_lines/by_ext/by_path/summary — 5 file / 1144 linee) dopo il fix `53ba67e` |
 | 3 — timeout+albero morto | 2026-07-03 | ✅ | deadline 600ms su stdlib intera → `error_class:timeout`, `ok:false`, payload vuoto (nessun parziale spacciato per completo); riprova immediata sana (323ms) = Job Object abbattuto, device non corrotto |
 | 4 — doppio run→lock | 2026-07-03 | ✅ | 2ª istanza `run` esce subito citando `client.lock` (nessun doppio poller) |
@@ -204,9 +202,9 @@ uso domestico fra dispositivi fidati.
 | 6 — revoca→403 | 2026-07-03 | ✅ | `POST /admin/devices/{id}/revoke` → heartbeat congelato (76s su 3 rilevazioni); 2° revoke idempotente `already revoked` |
 | 7 — SmartScreen | 2026-07-03 | — | non annotato in questa sessione (attrito non riportato da Roberto) |
 
-**DEFINITION OF DONE W3** (§16.4): tutti i passi 1-4 e 6 spuntati ✅ sul PC
-reale, 5 esplicitamente SKIP con motivo, 7 annotato. Aggiornare §0.bis del
-design doc con l'esito quando questo runbook è completo.
+**Esito atteso del runbook**: tutti i passi 1-4 e 6 spuntati sul PC reale, il
+passo 5 esplicitamente saltato con motivo, il passo 7 annotato se Windows mostra
+avvisi di sicurezza.
 
 ## Riferimenti
 

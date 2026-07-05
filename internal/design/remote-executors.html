@@ -72,19 +72,20 @@
 </style>
 </head>
 <body>
-<div class="doc-banner"><strong>DOCUMENTO INTERNO</strong> — internal/design/remote-executors.html (fonte unica, mantenere a mano)</div>
+<div class="doc-banner"><strong>DOCUMENTO INTERNO</strong> — internal/design/remote-executors.html (stato tecnico corrente e contratti implementativi)</div>
 <main>
 <h1 id="executor-remoti-progettazione-di-dettaglio-implementabile">Executor remoti — progettazione di dettaglio (implementabile)</h1>
 <blockquote>
-<p>Documento <strong>interno</strong> di progettazione. Consolida le decisioni sparse negli
-ADR 0007/0011/0034/0037/0046 e le rende ESEGUIBILI: chi implementa (un
-agente coding frontier — Opus 4.8, Claude Code — o un umano) deve poter
-partire da qui senza ricostruire il contesto dagli ADR.</p>
+<p>Documento <strong>interno</strong> di progettazione. Consolida le decisioni sugli
+executor remoti e le rende implementabili: chi modifica il codice deve poter
+capire da qui quali componenti esistono, quali invarianti non vanno violate e
+quali limiti sono ancora aperti.</p>
 <p>Convenzione: prosa in italiano (§1 CLAUDE.md), identificatori di
 protocollo/codice/tipi in inglese verbatim (è ciò che serve a chi
-implementa, §7.8). Stato al 2/7/2026.</p>
-<p><strong>Legenda stato</strong>: ✅ costruito e in repo · 🟡 scaffold parziale · ⛔ da
-costruire (questo doc ne è la specifica).</p>
+implementa, §7.8). Stato corrente: 2026-07-04.</p>
+<p><strong>Nota di lettura</strong>: le sezioni iniziali sono normative. Le parti più
+basse che conservano dettagli di fase servono solo come appendice tecnica; non
+sono una checklist da rieseguire.</p>
 </blockquote>
 <hr>
 <h2 id="0-riepilogo-esecutivo">0. Riepilogo esecutivo</h2>
@@ -100,81 +101,41 @@ nel sandbox più forte che la piattaforma offre e restituisce il risultato.
 volo» dalla UI su Linux e Windows, (b) il protocollo di filo fra core ed
 executor locali, (c) linguaggi, identità, sandbox, distribuzione, modalità
 di fallimento — al livello di dettaglio di firme di funzione e layout file.</p>
-<p><strong>Cosa esisteva alla stesura</strong> (28/6, <code>git grep</code> di allora): il server di
-pairing <code>agent_server.py</code> (porta 8765, <code>/agent/health</code> + <code>/agent/register</code>) ✅;
-il mirror PEP 503 <code>agent_mirror.py</code> ✅; il registro dispositivi <code>devices.py</code>
-(Ed25519 token + fingerprint) ✅; lo scaffold del client Rust <code>client-rs/</code>
-(<code>whoami</code>/<code>register</code> ✅, <code>run</code> che faceva <code>bail!("not wired")</code> 🟡).
-<strong>Il buco di allora</strong> — loop di esecuzione (poll/execute), protocollo di
-invocazione, sandbox Linux, flusso install-at-the-fly — è stato CHIUSO:
-W1-2 il 2/7, install-at-the-fly (§5) il 3/7. Stato corrente in §0.bis;
-il resto del documento conserva la specifica.</p>
+<p><strong>Stato operativo</strong>: pairing, registro dispositivi, invocazioni firmate,
+poll/result/heartbeat, mirror runtime, installazione dalla UI e client Rust sono
+presenti. Linux e Windows possono eseguire executor remoti di sola lettura e
+autosufficienti. Gli executor mutanti restano esclusi finché non sono definiti
+idempotenza, audit e un livello di contenimento adeguato.</p>
 <hr>
-<h2 id="0bis-stato-implementazione-272026-w1-2-chiuso">0.bis Stato implementazione (2/7/2026) — W1-2 chiuso</h2>
-<p>Il gate W1-2 (execute path Linux) è <strong>implementato e verificato E2E</strong>. Pezzi
-costruiti in questa sessione:</p>
+<h2 id="0bis-stato-corrente">0.bis Stato corrente</h2>
+<p>Questa è la fotografia utile a chi deve modificare il sistema oggi.</p>
 <ul>
-<li><strong>Server</strong>: <code>runtime/invocations.py</code> (coda firmata + JSON canonico condiviso
-  col client); endpoint <code>poll</code>/<code>result</code>/<code>heartbeat</code>/<code>executor</code>/<code>shim</code> in
-  <code>agent_server.py</code>; <code>runtime/placement.py</code> (§10 puro, testato); hook remoto in
-  <code>agent_runtime.invoke_executor</code> (attivo solo per manifest <code>scope="device"</code>);
-  <code>runtime/remote_exec.py</code>; UI <code>/admin/devices</code> + token effimero (§5.2).</li>
+<li><strong>Server</strong>: <code>runtime/invocations.py</code> gestisce la coda firmata;
+  <code>agent_server.py</code> espone <code>poll</code>, <code>result</code>, <code>heartbeat</code>,
+  <code>executor</code> e <code>shim</code>; <code>runtime/placement.py</code> decide dove eseguire;
+  <code>runtime/remote_exec.py</code> accoda il lavoro e attende il risultato.</li>
 <li><strong>Client Rust</strong> (<code>client-rs/</code>): <code>wire.rs</code> (tipi + canonico), <code>executors.rs</code>
-  (pull-on-miss + verifica firma/digest), <code>pyenv.rs</code>, <code>sandbox_linux.rs</code>
-  (bwrap), <code>runner.rs</code> (loop poll→verify→execute→result→heartbeat + spool +
-  dedup). <code>run</code> cablato. Binario <strong>musl static 2.45 MB</strong> (ADR 0037), niente
-  dipendenze esotiche.</li>
-<li><strong>Distribuzione</strong>: <code>install.sh</code>/<code>install.ps1</code> (verifica firma) +
-  <code>build-client.sh</code> che firma Ed25519 i binari e genera gli installer con la
-  pubkey pinnata; <code>scripts/client_signing.py</code>.</li>
-<li><strong>Test</strong>: 32 unit Python (<code>test_invocations</code>/<code>test_placement</code>/
-  <code>test_agent_server_remote</code>) nel suite (3074/0); 3 unit Rust (contratto
-  canonico cross-linguaggio); E2E reale <code>scripts/e2e-remote-executor.sh</code>
-  (pairing → execute <code>find_packages</code> → firma manomessa → dedup → server-restart:
-  tutti i gate §14.3 verdi; il gate sandbox è skip onesto dove <code>bwrap</code> manca).</li>
-<li><strong>Install-at-the-fly dalla UI (§5) — implementato 3/7/2026</strong>:
-  join session osservabile (<code>devices.device_join_sessions</code>, stati monotoni
-  <code>created→opened→downloaded→registered→heartbeat</code>, expiry dal TTL token);
-  pagina join no-auth <code>/agent/client/join/&lt;join_id&gt;</code> (rileva OS, auto-download,
-  polling stato); installer <em>personalizzato</em> (server+token baked nel file scaricato,
-  <code>metnos-client-install.sh</code> / <code>MetnosClientSetup.cmd</code> — poliglotta
-  one-click dal 3/7 sera, §5.7; TTL join 30&#8242;);
-  <code>/admin/devices/current-client</code> (§5.2, browser-sul-server niente install) +
-  <code>POST /admin/devices/join</code> + avanzamento live nella UI <code>/admin/devices</code>.
-  Mirror rigenerato a <code>0.2.0</code> (musl+windows firmati). 12 unit
-  (<code>test_device_join</code>) + E2E harness isolato col binario reale:
-  register→heartbeat verdi. Il download resta un gesto manuale dell'utente
-  (§5.1: il browser non può eseguire).</li>
-<li><strong>Passata robustezza (§12) — 3/7/2026, client <code>0.2.1</code></strong>:
-  (a) <em>kill reale su timeout</em> — il bug più serio: il child sopravviveva alla
-  deadline; ora process group dedicato + <code>SIGKILL</code> al gruppo +
-  <code>kill_on_drop</code>, test Rust dedicato; (b) <em>lock single-instance</em> nel
-  client (<code>proclock.rs</code>, fs2: flock/LockFileEx, copre Linux e Windows) +
-  Scheduled Task <code>IgnoreNew</code>; (c) <em>GC</em>: retention spool client
-  (14gg, scarto onesto con warn) + purge join session nel reaper unico (7gg);
-  (d) long-poll dichiarato dimensionamento domestico, hardening = W6.
-  Gate: 5 unit Rust, 15 unit Python join, E2E completo verde (incl. fase F spool).</li>
-<li><strong>Review fixes + anticipo gate W3.0 client — 3/7, client <code>0.2.2</code></strong>:
-  (a) <em>fail-closed Windows</em>: il binary compilava per Windows ma avrebbe
-  eseguito python NUDO (sandbox_linux = no-op fuori da unix); ora il gate
-  <code>#[cfg(windows)]</code> in <code>runner.rs::execute</code> rifiuta
-  (<code>sandbox_unavailable</code>) salvo opt-in — anticipo del client-half di
-  W3.0 (§16.1); (b) installer Windows dal join <em>fail-closed 503</em> se il pin
-  sha256 non è generabile (niente più fallback al manifest runtime); (c) quoting
-  robusto del prelude installer (PowerShell <code>''</code>, POSIX
-  <code>'\''</code>) su server_url/token; (d) installer Windows: stop della
-  Scheduled Task prima di sovrascrivere l'exe (reinstall/update); (e) warning
-  <code>child_pid</code> risolto (binding <code>#[cfg(unix)]</code>). §14 marcata
-  STORICA. +3 test, suite verde, build mingw pulita.</li>
+  (pull-on-miss + verifica firma/digest), <code>pyenv.rs</code>, <code>sandbox_linux.rs</code>,
+  <code>sandbox_windows.rs</code>, <code>runner.rs</code> e <code>proclock.rs</code>.</li>
+<li><strong>Installazione</strong>: <code>/admin/devices</code> crea un link di adesione;
+  la pagina di join rileva la piattaforma, scarica l'installer e mostra lo stato
+  fino al battito del client. Se la UI gira direttamente sul server, non propone
+  installazione locale.</li>
+<li><strong>Trasporto</strong>: oggi è HTTP dentro LAN o rete privata equivalente.
+  L'autenticità viene da Ed25519: il client firma le richieste e verifica la
+  firma server prima di eseguire. TLS/mTLS è un irrobustimento futuro del canale,
+  non una dipendenza corrente.</li>
+<li><strong>Contenimento</strong>: Linux usa <code>bwrap</code> quando disponibile; Windows usa
+  Job Object per limiti di processo, memoria e spegnimento dell'albero al
+  timeout. Job Object non isola ancora filesystem e rete come AppContainer.</li>
+<li><strong>Executor remoti ammessi</strong>: oggi sono executor di sola lettura,
+  autosufficienti, firmati, compatibili con la piattaforma e dichiarati nel
+  manifest. Gli executor mutanti restano fuori dal percorso remoto ordinario.</li>
 </ul>
-<p><strong>Due raffinamenti rispetto allo spec originale</strong>, entrambi documentati sotto:
-(1) la firma del device sul <code>result</code> è nell'header <code>X-Metnos-Device-Sig</code> sui
-bytes trasmessi, non <code>canonical(result)</code> in-body (§6.3, float-safe);
-(2) il client MVP parla <strong>HTTP</strong> (niente <code>ring</code>/TLS) coerente con «bind
-127.0.0.1 senza TLS» del §6 — rustls/mTLS rientra a W3+.</p>
-<p>Restano ⛔ (fasi successive): sandbox Windows AppContainer, <code>self_update</code> dello
-swap binario, python-build-standalone via mirror per executor con wheel, TLS/
-mTLS, placement multi-device oltre il caso singolo.</p>
+<p><strong>Aperti non negoziabili prima dei mutanti remoti</strong>: idempotenza o
+exactly-once per gli effetti, audit/reversibility, policy sul livello minimo di
+sandbox, AppContainer/ACL su Windows o equivalente, e gestione owner completa per
+scenari multi-utente.</p>
 <hr>
 <h2 id="1-architettura-adr-0011-corpo-tecnico">1. Architettura (ADR 0011, corpo tecnico)</h2>
 <pre><code>        ┌──────────────────────────  .33 (metnos-server, Python) ──────────┐
@@ -183,8 +144,8 @@ mTLS, placement multi-device oltre il caso singolo.</p>
         │  agent_mirror (:8765)   ── PEP 503 wheels + python-build-std     │
         │  build-client.sh        ── cross-build + firma Ed25519 binari    │
         └───────────────┬──────────────────────────────────────────────────┘
-                        │  Headscale overlay (mTLS, outbound-only dal client)
-                        │  ADR 0007: il control plane NON dialora nel client
+                        │  LAN/overlay privato (HTTP firmato Ed25519)
+                        │  outbound-only dal client: il server non apre porte sul PC
         ┌───────────────▼──────────────  dispositivo bersaglio ────────────┐
         │  metnos-client (Rust launcher, 5-10 MB)                          │
         │   ├─ Ed25519 device key (mai lascia il disco)                    │
@@ -204,13 +165,15 @@ mTLS, placement multi-device oltre il caso singolo.</p>
    auto-comanda).</li>
 <li><strong>Connettività outbound-only.</strong> Il client long-polla <code>.33</code> dentro
    l'overlay Headscale; <code>.33</code> non compone MAI verso la rete del client.</li>
-<li><strong>Token per-invocazione.</strong> mTLS + token firmato per chiamata: un token
-   trafugato non concede accesso continuo.</li>
+<li><strong>Invocazioni firmate.</strong> Ogni lavoro server→client porta una firma
+   server verificata dal client; ogni risposta client→server è firmata dal
+   dispositivo sui byte trasmessi.</li>
 <li><strong>Segreti solo-server.</strong> Sul dispositivo vivono SOLO: la chiave Ed25519,
    la cache read-only di python-build-standalone, la cache wheel
    hash-keyed, lo spool. Niente SQLite locale, niente stato applicativo,
-   niente secret OAuth (iniettati nell'env del subprocess a execution-time
-   via mTLS, mai persistiti). <strong>Dispositivo rubato ≠ segreti trafugati.</strong></li>
+   niente secret OAuth persistiti sul dispositivo. Quando servono, i segreti
+   vengono iniettati solo per la durata del subprocess. <strong>Dispositivo rubato ≠
+   segreti trafugati.</strong></li>
 </ol>
 <hr>
 <h2 id="2-componenti-e-linguaggi-adr-0046">2. Componenti e linguaggi (ADR 0046)</h2>
@@ -304,9 +267,10 @@ superset di wheel per i 27 seed si stabilizza.</p>
    │ 8. client la preleva al poll, verifica firma+manifest, esegue in sandbox
    │ 9. result firmato torna a .33 → mnestoma/audit → risposta utente
 </code></pre>
-<p>Il primo executor remoto reale (fase 5+) NON si scrive prima che pairing,
-sandbox e questo protocollo siano fissati (ADR 0011). Questo doc è quel
-fissaggio.</p>
+<p>Un nuovo executor remoto si aggiunge solo quando pairing, contenimento,
+manifest, firme e protocollo sono coerenti. Non basta che il codice funzioni in
+locale: deve essere impacchettabile, compatibile con la piattaforma e dichiarato
+nel manifest.</p>
 <hr>
 <h2 id="4-definizioni-glossario-del-sottosistema">4. Definizioni (glossario del sottosistema)</h2>
 <table>
@@ -327,7 +291,9 @@ fissaggio.</p>
 </tr>
 <tr>
 <td><strong>device token</strong></td>
-<td>Token effimero (TTL 10 min) consumabile UNA volta per <code>RegisterDevice</code>. Dopo, l'auth è mTLS + token per-invocazione.</td>
+<td>Token effimero consumabile una volta per <code>RegisterDevice</code>. Dopo la
+registrazione il client usa la propria chiave Ed25519 e verifica la firma del
+server prima di eseguire.</td>
 </tr>
 <tr>
 <td><strong>invocation</strong></td>
@@ -347,7 +313,8 @@ fissaggio.</p>
 </tr>
 <tr>
 <td><strong>spool</strong></td>
-<td>Buffer locale per log/telemetria/result di esecuzioni in-flight quando <code>.33</code> è giù. NON una coda persistente di nuove azioni (quella è fase-7).</td>
+<td>Buffer locale per log/telemetria/result di esecuzioni in-flight quando
+<code>.33</code> è giù. Non è una coda persistente di nuove azioni.</td>
 </tr>
 </tbody>
 </table>
@@ -488,13 +455,11 @@ pinnata. Forma compatibile: one-liner POSIX.</p>
 </ol>
 
 <h3 id="57-installer-windows">5.7 Installer Windows</h3>
-<p>Forma preferita: <code>MetnosClientSetup.exe</code> firmato server-side (W6). In MVP:
-<code>MetnosClientSetup.cmd</code> personalizzato — un poliglotta batch+PowerShell
+<p>Forma attuale: <code>MetnosClientSetup.cmd</code> personalizzato — un poliglotta batch+PowerShell
 (testa batch ASCII con env baked + bootstrap che estrae ed esegue la coda
 <code>install.ps1</code> INTATTA dopo un marker). Il <code>.cmd</code> e non il <code>.ps1</code> nudo perché
 un <code>.ps1</code> scaricato NON si esegue col doppio click (Windows apre il selettore
-app — attrito osservato live 3/7: cartella → tasto destro → menu legacy →
-execution policy → errore che sparisce con la finestra). Il <code>.cmd</code> si esegue
+app e applica regole di esecuzione più scomode). Il <code>.cmd</code> si esegue
 con un click dalla barra download, fa da solo <code>-ExecutionPolicy Bypass</code>, e
 tiene la finestra APERTA a fine corsa con l'esito leggibile (<code>pause</code>), mai un
 fallimento silenzioso (§2.8). I 4 valori baked (<code>server_url</code>, token, versione,
@@ -505,10 +470,9 @@ lo apre. L'installer:</p>
 <li>scarica <code>metnos-client.exe</code> per <code>x86_64-pc-windows-gnu</code>;</li>
 <li>verifica <code>sha256</code>: nel flusso join (§5.5) versione+sha sono <strong>PINNATI
     dal server dentro l'installer personalizzato</strong> (il manifest scaricato non fa
-    fede — implementato 3/7); nel one-liner manuale lo sha viene dal manifest =
-    sola integrità, autenticità dal trasporto fidato. PowerShell 5.1 non ha
-    Ed25519: firma forte (parità con Linux, o Authenticode se SmartScreen
-    diventa un problema) = obiettivo W6;</li>
+    fede); nel one-liner manuale lo sha viene dal manifest = sola integrità.
+    PowerShell 5.1 non ha Ed25519: la firma forte dell'installer Windows richiede
+    un canale autenticato o Authenticode se SmartScreen diventa un problema.</li>
 <li>copia in <code>%LOCALAPPDATA%\Metnos\metnos-client.exe</code>;</li>
 <li>esegue <code>register</code> con token one-shot;</li>
 <li>registra una Scheduled Task «At logon» senza privilegi admin;</li>
@@ -523,16 +487,16 @@ scaricato», non promettere installazione senza conferma locale.</p>
 propria, <code>self_update</code>: scarica il nuovo binario firmato, verifica, scrive
 accanto, riavvia la unit (Linux) / il Service o Scheduled Task (Windows).
 Server-signed, mai auto-generato lato client.</p>
-<p>Nota firma-codice: per l'MVP la fiducia viene dalla firma Ed25519 del
-server (verificata dallo script Linux e da portare a parità su Windows) +
-rete fidata/overlay. Azure
-Artifact Signing ($9.99/mese) è W6+ opzionale se SmartScreen infastidisce.</p>
+<p>Nota firma-codice: la fiducia viene dalla firma Ed25519 del server e dal
+pinning degli hash scaricati. Authenticode o firma equivalente restano un
+irrobustimento futuro se SmartScreen diventa un attrito reale.</p>
 <hr>
 <h2 id="6-protocollo-coreexecutor-wire-format">6. Protocollo core↔executor (wire format)</h2>
-<p><strong>Trasporto</strong>: HTTPS dentro l'overlay Headscale, mTLS. Per l'MVP il bind è
-<code>127.0.0.1</code> senza TLS (già così in <code>agent_server.py</code>), TLS self-signed
-pin-by-fingerprint in fase successiva. Stile aiohttp bare uniforme (§14),
-JSON, envelope <code>_error()</code>.</p>
+<p><strong>Trasporto</strong>: HTTP dentro LAN o rete privata equivalente. L'autenticità
+del lavoro non dipende da TLS: ogni invocazione porta <code>server_sig</code> e ogni
+risultato client→server è firmato dal dispositivo sui byte trasmessi. TLS/mTLS
+resta un irrobustimento futuro del canale. Stile aiohttp bare uniforme, JSON,
+envelope <code>_error()</code>.</p>
 <h3 id="61-endpoint-server-agent_server-8765">6.1 Endpoint server (<code>agent_server</code>, :8765)</h3>
 <table>
 <thead>
@@ -655,7 +619,7 @@ resta dove le due parti costruiscono il payload indipendentemente: il
 attende. <strong>Undo onesto §2.8</strong>: se il device ha eseguito un mutante, il result
 porta i campi per il reverse_pattern (blob_path/sha nel caso restore).</p>
 <h3 id="64-idempotenza-doppia-esecuzione">6.4 Idempotenza &amp; doppia esecuzione</h3>
-<p>Gemello della guardia <code>.33</code> (2/7/2026, <code>committed_mutations</code>): un
+<p>Gemello della guardia <code>.33</code>: un
 <code>invocation_id</code> con side-effect già committato NON si ri-esegue mai. Il
 client tiene un set <code>done_invocations</code> in memoria + spool; il server non
 ri-mette in coda un <code>invocation_id</code> per cui ha già ricevuto un <code>/agent/result</code>.</p>
@@ -668,13 +632,13 @@ ri-mette in coda un <code>invocation_id</code> per cui ha già ricevuto un <code
   (Linux). v2: TPM / Secure Enclave / keyring.</li>
 <li><strong>Pairing</strong>: token effimero (<code>devices.generate_token</code>, TTL 10 min) +
   <code>RegisterDevice(token, public_key)</code> (<code>devices.consume_token</code> ✅, atomico
-  SQLite UNIQUE — a prova di doppia invocazione). Challenge-response è
-  gratis dall'handshake mTLS.</li>
+  SQLite UNIQUE — a prova di doppia invocazione). Il client riceve la chiave
+  pubblica del server e la usa per verificare ogni invocazione firmata.</li>
 <li><strong>Naming multi-device</strong>: nome scelto al pairing (<code>/pair-device
   laptop-windows</code>); <code>device_id</code> numerico interno; <code>/rename-device old new</code>.</li>
 <li><strong>Revoca</strong>: un comando DM/UI rimuove il device dalla lista appaiata
-  (<code>devices.revoke_device</code> ✅); token futuri rifiutati. Unpair esplicito =
-  fase-7 (deferito).</li>
+  (<code>devices.revoke_device</code> ✅); token futuri rifiutati. L'unpair esplicito
+  completo resta da progettare.</li>
 <li><strong>Fingerprint</strong>: <code>devices.fingerprint_of(pubkey)</code> ✅ (sha256), mostrato
   nei log e nella UI.</li>
 </ul>
@@ -741,8 +705,8 @@ verifiche extra.</p>
 </code></pre>
 <p>I <code>fs_read/fs_write/net_allow</code> derivano dalle <code>capabilities</code> del manifest
 (§11) — MAI più larghi di quanto il manifest dichiara. Riusa la disciplina
-<code>platform_policy.protected_paths()</code> di <code>.33</code> (2/7: <code>vaglio.guard_check</code>
-blocca i mutanti sugli alberi di sistema) — il client porta una COPIA di
+<code>platform_policy.protected_paths()</code> di <code>.33</code>: <code>vaglio.guard_check</code>
+blocca i mutanti sugli alberi di sistema. Il client porta una copia di
 quella politica (replicata in Rust; il server non assume nulla sull'OS del
 client).</p>
 <hr>
@@ -785,7 +749,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 (gemello <code>importer_verb_verify</code>) controlla che <code>capabilities</code> ⊇ i
 <code>fs_read/fs_write/net_allow</code> che il sandbox concederà.</p>
 <hr>
-<h2 id="12-modalita-di-fallimento-adr-00110046-formalizzare">12. Modalità di fallimento (ADR 0011/0046) — formalizzate + passata robustezza 3/7</h2>
+<h2 id="12-modalita-di-fallimento-adr-00110046-formalizzare">12. Modalità di fallimento (ADR 0011/0046)</h2>
 <table>
 <thead>
 <tr>
@@ -796,7 +760,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 <tbody>
 <tr>
 <td><strong>Client offline</strong> (device spento/scollegato)</td>
-<td>Il gate heartbeat &lt; 60s (L1.d) esclude il device dal placement → l'invocazione device-only ATTENDE o dà errore ONESTO §2.8 «dispositivo X non raggiungibile». MAI coda persistente in MVP (fase-7).</td>
+<td>Il gate heartbeat &lt; 60s (L1.d) esclude il device dal placement → l'invocazione device-only dà errore onesto §2.8 «dispositivo X non raggiungibile». Mai fallback silenzioso sul server.</td>
 </tr>
 <tr>
 <td><strong>Server offline</strong> (<code>.33</code> giù)</td>
@@ -816,7 +780,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 </tr>
 <tr>
 <td><strong>Deadline superata</strong></td>
-<td>Il client killa DAVVERO l'executor (3/7): process group dedicato +
+<td>Il client termina davvero l'executor: process group dedicato +
 <code>SIGKILL</code> al gruppo (abbatte l'albero anche senza bwrap) +
 <code>kill_on_drop</code> tokio (reap, no zombie); con bwrap
 <code>--die-with-parent</code> smonta il namespace. Ritorna <code>ok:false</code> +
@@ -824,7 +788,7 @@ oggi). La generazione (synt stage 2 SIGNATURE) impara a emettere
 </tr>
 <tr>
 <td><strong>Doppio poller stessa identità</strong> (unit/Task + lancio manuale)</td>
-<td>Lock single-instance nel client (3/7): <code>&lt;data_dir&gt;/client.lock</code>,
+<td>Lock single-instance nel client: <code>&lt;data_dir&gt;/client.lock</code>,
 <code>flock</code> unix / <code>LockFileEx</code> Windows (fs2), rilascio automatico a
 morte processo (no stale pid-file). Secondo <code>run</code> = errore onesto, exit ≠ 0.
 Su Windows anche la Scheduled Task è <code>-MultipleInstances IgnoreNew</code>.
@@ -832,23 +796,27 @@ Il claim atomico server-side resta l'ultima difesa.</td>
 </tr>
 <tr>
 <td><strong>Crescita senza pulizia</strong> (spool/join session)</td>
-<td>GC (3/7): spool client — result mai consegnati oltre
+<td>GC: spool client — result mai consegnati oltre
 <code>METNOS_SPOOL_RETENTION_DAYS</code> (default 14) scartati allo startup con warn
 per-file (il server ha già chiuso quel turno con timeout onesto); join session —
 <code>devices.purge_join_sessions</code> nel reaper unico
 (<code>state_reaper</code>, <code>METNOS_JOIN_SESSION_RETENTION_DAYS</code> default 7).
-Cache executor/runtime del client: content-addressed e piccole, nessuna GC in MVP.</td>
+Cache executor/runtime del client: content-addressed e piccole; la coda server
+purga le invocazioni terminali tramite il reaper di stato.</td>
 </tr>
 <tr>
 <td><strong>Molti device in long-poll</strong></td>
-<td>Dimensionamento DOMESTICO (pochi device): nessun rate-limit/backpressure
-esplicito in MVP — dichiarato, non nascosto. Hardening (cap connessioni,
-budget per-device) = W6.</td>
+<td>Dimensionamento domestico (pochi device): nessun rate-limit/backpressure
+esplicito. Il passo successivo e' introdurre cap connessioni e budget per
+dispositivo.</td>
 </tr>
 </tbody>
 </table>
 <hr>
-<h2 id="13-roadmap-mvp-adr-0046-5-settimane-immutabile-stato">13. Roadmap MVP (ADR 0046, 5 settimane, immutabile) + stato</h2>
+<h2 id="13-appendice-piano-originario">13. Appendice: piano originario e stato derivato</h2>
+<div class="stop-note"><strong>Appendice storica.</strong> La tabella seguente serve
+solo a capire da dove arrivano alcuni nomi interni. Lo stato normativo è in
+§0.bis; non usare questa sezione come piano di lavoro.</div>
 <table>
 <thead>
 <tr>
@@ -891,7 +859,7 @@ pinning CA vs leaf; delta-update del binario. Macro-topic fase-7:
 multi-user (oggi single-user host+guest, ADR 0035); misura efficacia E2E;
 modi di fallimento formalizzati; disconnect-proof.</p>
 <hr>
-<h2 id="14-contratti-implementativi-per-chi-scrive-il-codice">14. Contratti implementativi W1-2 — ✅ STORICO (implementati 2/7, execute path Linux)</h2>
+<h2 id="14-contratti-implementativi-per-chi-scrive-il-codice">14. Appendice: contratti implementativi iniziali</h2>
 <div class="stop-note"><strong>⛔ NON IMPLEMENTARE — sezione storica.</strong>
 W1-2 è CHIUSO (stato in §0.bis): <code>poll</code>/<code>result</code>/<code>heartbeat</code>,
 il loop <code>run</code> e <code>verify_server_sig</code> ESISTONO GIÀ in
@@ -942,7 +910,11 @@ solo come traccia di progettazione.</div>
    ritorno di <code>.33</code>.</li>
 </ol>
 <hr>
-<h2 id="15-w3-windows-execute-path-progettazione">15. W3+ — Windows execute path: progettazione di dettaglio (3/7/2026)</h2>
+<h2 id="15-windows-execute-path-progettazione">15. Appendice: progettazione del percorso Windows</h2>
+<div class="stop-note"><strong>Appendice tecnica.</strong> Questa sezione conserva il
+ragionamento di dettaglio sul percorso Windows. Per lo stato corrente usare
+§0.bis e le pagine pubbliche <code>remote_executors.html</code> e
+<code>sandbox.html</code>.</div>
 
 <p>Assessment condiviso con Roberto (3/7): dieci mancanze individuate per usare
 la suite executor su un PC Windows, più cinque aggiunte emerse dall'analisi del
@@ -1078,7 +1050,7 @@ SmartScreen atteso («Ulteriori informazioni → Esegui comunque»).</p>
   W3.3 sul PC reale; accettato finché la flotta è domestica.</li>
 </ul>
 <hr>
-<h2 id="16-contratti-implementativi-w3">16. Contratti implementativi W3 (per chi scrive il codice — gemello del §14)</h2>
+<h2 id="16-contratti-implementativi-windows">16. Appendice: contratti implementativi Windows</h2>
 
 <p>Livello di dettaglio pensato per un agente implementatore che NON ha il
 contesto di questa sessione. I contratti coprono W3.0–W3.3; quelli W4-W6 si

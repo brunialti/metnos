@@ -4,11 +4,13 @@ Client Rust per l'esecuzione remota di executor Metnos su un dispositivo appaiat
 (PC di casa/ufficio). Bootstrap lazy del runtime Python via mirror server, sandbox
 per piattaforma, **HTTP firmato Ed25519** (device + server) — NON mTLS.
 
-Versione corrente: **0.2.7**. Windows validato (W3.3, Job Object).
+Versione corrente: **0.2.7**. Su Windows l'esecuzione usa Job Object per
+limitare risorse e spegnere l'intero albero dei processi al timeout.
 
 ## Autenticazione e trasporto (stato reale)
-- Transport MVP: **HTTP** dentro la LAN/overlay (§6 design doc). TLS/mTLS = fase
-  futura (W6 o overlay Headscale).
+- Trasporto attuale: **HTTP** dentro la LAN o una rete privata equivalente.
+  TLS/mTLS e' un irrobustimento futuro del canale, non un requisito del client
+  corrente.
 - Ogni richiesta client→server è **firmata Ed25519** sui bytes esatti del body
   (header `X-Metnos-Device-Sig`); ogni invocazione server→client porta una
   `server_sig` verificata dal client contro la **pubkey server pinnata** prima
@@ -43,6 +45,11 @@ Ed25519 con la chiave server + pubblica nel mirror). macOS = tier-2 (build manua
 - `src/state.rs` — stato appaiamento persistito.
 
 ## Stato
-W1-2 (execute path Linux) e **W3.1-3.3 (Windows: Job Object, pyenv, E2E sul PC
-reale)** CHIUSI. Prossimo (⛔): AppContainer, self_update swap binario, TLS/mTLS,
-placement multi-device. Vedi `internal/design/remote-executors.html`.
+Stato operativo: Linux e Windows sono supportati per gli executor remoti di sola
+lettura e autosufficienti. Restano fuori dal percorso ordinario gli executor che
+modificano dati, richiedono dipendenze non impacchettate o pretendono isolamento
+filesystem/rete piu' forte di quello disponibile oggi su Windows.
+
+Prossimi irrobustimenti: AppContainer/ACL su Windows, aggiornamento automatico
+del binario, TLS/mTLS del canale e gestione esplicita di piu' dispositivi per
+utente. Vedi `internal/design/remote-executors.html`.
