@@ -31,7 +31,12 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "runtime"))
 sys.path.insert(0, str(_ROOT / "bench"))
 
-os.environ.setdefault("METNOS_ENGINE", "metis")
+# PROD gira `METNOS_ENGINE=v3` (drop-in proposer-hardening.conf) → i guard
+# compound (ensure_extract, conform, fill_clause, decontam-reader) sono
+# v3-GATED: sotto metis NON girano e il banco misurava un path che prod non usa.
+# ESECUZIONE + check §2.8 (foglio non header-only): runtime/tests/
+# test_compound_spreadsheet_execution.py (deterministico, nel suite).
+os.environ.setdefault("METNOS_ENGINE", "v3")
 os.environ.setdefault("METNOS_PROPOSER_GRAMMAR", "1")
 os.environ.setdefault("METNOS_PROPOSER_VERB_FILTER", "1")
 os.environ.setdefault("METNOS_PREFILTER_RULES", "1")

@@ -23,7 +23,7 @@ sys.path.insert(0, str(_ROOT / "runtime"))
 
 # Env di PRODUZIONE (drop-in proposer-hardening.conf, §11). setdefault: un env
 # esplicito (METNOS_ENGINE=v3) vince. Engine v3 = redesign sotto test.
-os.environ.setdefault("METNOS_ENGINE", "metis")
+os.environ.setdefault("METNOS_ENGINE", "v3")  # default = PROD (drop-in v3); metis via env
 os.environ.setdefault("METNOS_PROPOSER_GRAMMAR", "1")
 os.environ.setdefault("METNOS_PROPOSER_VERB_FILTER", "1")
 os.environ.setdefault("METNOS_PREFILTER_RULES", "1")
