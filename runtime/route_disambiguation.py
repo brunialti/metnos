@@ -96,6 +96,14 @@ def detect_object_ambiguity(query: str, intent=None) -> list[str] | None:
     cands = [obj for obj, sc in ordered if sc >= tau * top]
     if len(cands) < 2:
         return None
+    # Filesystem-siblings: files e dirs NON competono come domini distinti — «i
+    # file DELLA cartella X» è un'unica operazione filesystem (list_dirs elenca i
+    # file di una dir; find_files cerca file dentro dirs). Il form «cartelle vs
+    # file» sarebbe spurio (turn 0264fcf9: score pari 1/1, il gate anti-argomento
+    # non li separa). Se gli UNICI competitori sono {files, dirs} → non è
+    # ambiguità di DOMINIO → non chiedere (il planner risolve a list_dirs/find_files).
+    if set(cands) <= {"files", "dirs"}:
+        return None
     # Anti-compound + anti-argomento (NLU-first §7.9, nessun hardcoding): l'intent
     # NLU ha gia' decomposto la clausola. Un candidato lessicale che l'intent NON
     # ha promosso ad azione e' un ARGOMENTO/secondario (es. «nella cartella X» =
