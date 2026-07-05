@@ -184,6 +184,10 @@ header form button:hover{color:var(--accent)}
 .msg details summary{cursor:pointer;color:var(--muted);font-size:.85em}
 
 /* ---------- composer sticky ---------- */
+#attachBtn{border:1px solid var(--line);background:var(--surface);
+  border-radius:10px;padding:.5rem .6rem;cursor:pointer;font-size:1.05rem;
+  line-height:1;align-self:flex-end}
+#attachBtn:hover{border-color:var(--accent)}
 form#f{display:flex;gap:.55rem;align-items:flex-end;justify-content:center;
      padding:.7rem 1rem calc(.7rem + env(safe-area-inset-bottom));
      border-top:1px solid var(--border);
@@ -366,6 +370,9 @@ body.readonly #q{cursor:not-allowed}
 <div id="thumbBar"></div>
 
 <form id="f" autocomplete="off">
+  <button id="attachBtn" type="button" aria-label="Allega foto"
+          title="Allega foto (ricerca image-to-image)">📎</button>
+  <input id="fileInput" type="file" accept="image/*" multiple hidden>
   <textarea id="q" rows="1" enterkeyhint="send" aria-label="Scrivi a Metnos"
             placeholder="scrivi a Metnos… (o trascina foto per ricerca image-to-image)"
             autofocus></textarea>
@@ -1287,6 +1294,17 @@ window.addEventListener('dragleave', (e) => {
   dragCounter = Math.max(0, dragCounter - 1);
   if(dragCounter === 0) dropOverlay.classList.remove('show');
 });
+// Bottone 📎 (Roberto 5/7): stesso path del drag&drop (addFiles).
+const attachBtn = document.getElementById('attachBtn');
+const fileInput = document.getElementById('fileInput');
+if(attachBtn && fileInput){
+  attachBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if(fileInput.files && fileInput.files.length) addFiles(fileInput.files);
+    fileInput.value = '';  // ri-selezionabile lo stesso file
+  });
+}
+
 window.addEventListener('drop', (e) => {
   e.preventDefault();
   dragCounter = 0;
