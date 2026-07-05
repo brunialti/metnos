@@ -199,3 +199,10 @@
 - **Epoch nella LRU proposer**: `MetisProposer._cache_key` include `catalog_epoch` — mai un framework di un mondo passato dal retry-path.
 - **Mai load_catalog implicito nelle firme**: catalogo sempre esplicito dal chiamante (il fallback timbrava il DB aging `first_seen` — scovato dai test lifecycle).
 - **Finalizer unico (T5)**: `engine/executor._finalize_answer_text` — sola fonte del testo `answer` (render→bullets→zero-i18n→synth); `test_finalizer_unico.py` vieta blocchi gemelli (1 sede `_render_is_degenerate`, 2 call-site).
+
+**Remote mutanti + undo round-trip ADR 0183 (5/7/2026)**
+- **Scrittore undo al choke-point**: `agent_runtime._undo_pending/_undo_done` in `invoke_executor` (pending pre-exec, done post-ok, campo `device`) — la regressione af6c7b8 (writer nel planner cancellato) non può ripetersi: `test_undo_chokepoint.py` fa il round-trip reale.
+- **Reverse sullo stesso host §2.9**: record con `device` → `undo_last_turn._reverse_on_device` accoda le chiamate-reverse AL device (`reverse_patterns.build_remote_reverse_calls`, deterministico); mai apply_patterns sul filesystem del server per op remote.
+- **delete_files senza device_ok**: restore_blob_backup non remotabile → placement lo tiene locale; il reverse dell'undo passa da enqueue diretto (asimmetria voluta).
+- **Lazy-gw su TUTTI i dispatcher files/dirs**: find/read/write_files + create/delete/find_dirs — `test_device_shim_closure.py` importa i 9 nel layout device (repo bandito da sys.path); un import eager nuovo fallisce lì, non con un ModuleNotFoundError remoto.
+- **Chiusura shim stdlib-only**: `test_agent_server_remote.test_shim_bundle_signed` valida gli import a module-load del local.py SPEDITO contro la whitelist della chiusura.
