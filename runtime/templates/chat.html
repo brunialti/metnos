@@ -706,13 +706,25 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
             return;
           }
           if(ctxt){
-            // Sostituisci l'iframe del form con una bolla regolare in chat
-            // contenente il messaggio del callback (errori, info, etc.).
-            // cls='bot' + turn_id → la bolla riaggancia i badge feedback ✓/✗
-            // sul turno che ha emesso il dialog (regressione 3/6 form).
+            // Sostituisci l'iframe del form con una bolla regolare in chat.
+            // Bug zip-line (5/7): il resume full-turn ha gallery + meta —
+            // stessa forma dei turni normali (dove · turn:id · tempo).
             d.innerHTML = '';
             const tid = ev.data.turn_id || '';
-            add('bot', ctxt, tid ? {turn_id: tid, left: '', right: ''} : '', true);
+            const tm = ev.data.turn_meta || null;
+            let meta = tid ? {turn_id: tid, left: '', right: ''} : '';
+            if(tm && (tm.turn_id || tm.total_ms)){
+              // Stessa forma dei turni normali: where (accento se remoto) +
+              // «turn:id · tempo» in left.
+              meta = {turn_id: tm.turn_id || tid,
+                      where: tm.target_device ? tm.target_device : 'server Metnos',
+                      whereRemote: !!tm.target_device,
+                      left: (tm.turn_id ? 'turn:' + tm.turn_id.slice(0,8) : '')
+                            + (tm.total_ms ? ' · ' + (tm.total_ms/1000).toFixed(1) + 's' : ''),
+                      right: ''};
+            }
+            const atts = Array.isArray(ev.data.attachments) ? ev.data.attachments : null;
+            add('bot', ctxt, meta, true, atts);
           } else {
             d.innerHTML = '<div style="padding:.4rem;color:var(--sage);font-size:.9em;">'
                         + '✓ Risposta dialog inviata.'

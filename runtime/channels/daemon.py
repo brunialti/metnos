@@ -564,12 +564,14 @@ class ChannelDaemon:
             try:
                 # runtime/ già su sys.path (channels VIVE in runtime/).
                 from orchestration import process_completion_callback
-                msg_back = process_completion_callback(
+                cr = process_completion_callback(
                     sender_id, dialog_id,
                     actor=actor or state.get("actor") or "host",
                     channel=state.get("channel") or None,
                 )
-                return msg_back
+                # Telegram: testo subito; attachments del resume full-turn →
+                # sendMediaGroup = follow-up (il testo elenca già i basename).
+                return cr.text
             except (ImportError, RuntimeError) as ex:
                 log.exception("process_completion_callback fallito")
                 return f"(Callback fallito: {type(ex).__name__}: {ex})"

@@ -166,6 +166,34 @@
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(form);
+      // UX (Roberto 5/7): il resume può richiedere secondi (ri-esegue un
+      // turno intero) — senza feedback l'utente ri-clicca o crede sia rotto.
+      // Disabilita TUTTO + progress; riabilita solo su errore (il successo
+      // sostituisce l'iframe con la bolla risultato).
+      const _controls = form.querySelectorAll('input, select, textarea, button');
+      _controls.forEach(el => { el.disabled = true; });
+      form.style.opacity = '0.6';
+      let _prog = document.getElementById('_metnos_progress');
+      if(!_prog){
+        _prog = document.createElement('div');
+        _prog.id = '_metnos_progress';
+        _prog.style.cssText = 'margin:.6rem 0;padding:.45rem .6rem;'
+          + 'border-radius:6px;background:rgba(120,120,120,.12);'
+          + 'font-size:.92em;display:flex;align-items:center;gap:.5rem;';
+        _prog.innerHTML = '<span style="display:inline-block;width:1em;height:1em;'
+          + 'border:2px solid currentColor;border-top-color:transparent;'
+          + 'border-radius:50%;animation:mspin .8s linear infinite;"></span>'
+          + '<span>Elaboro la risposta&hellip;</span>'
+          + '<style>@keyframes mspin{to{transform:rotate(360deg)}}</style>';
+        form.parentNode.insertBefore(_prog, form.nextSibling);
+        postHeight();
+      }
+      const _reenable = () => {
+        _controls.forEach(el => { el.disabled = false; });
+        form.style.opacity = '';
+        if(_prog && _prog.parentNode){ _prog.parentNode.removeChild(_prog); }
+        postHeight();
+      };
       try {
         const r = await fetch(form.action, {method:'POST', body: fd});
         if(r.ok){
@@ -186,9 +214,17 @@
           let turn_id = '';
           const mI = txt.match(/data-turn-id="([^"]*)"/);
           if(mI){ turn_id = unescape(mI[1]); }
+          // Bug zip-line (5/7): il resume full-turn porta gallery + meta.
+          let attachments = null, turn_meta = null;
+          const mA = txt.match(/data-attachments-b64="([^"]*)"/);
+          if(mA && mA[1]){ try{ attachments = JSON.parse(atob(mA[1])); }catch(e){} }
+          const mM = txt.match(/data-turn-meta-b64="([^"]*)"/);
+          if(mM && mM[1]){ try{ turn_meta = JSON.parse(atob(mM[1])); }catch(e){} }
           window.parent.postMessage(
-            {type:'metnos.dialog.done', redirect_url, completion_text, turn_id}, '*');
+            {type:'metnos.dialog.done', redirect_url, completion_text, turn_id,
+             attachments, turn_meta}, '*');
         } else {
+          _reenable();
           const t = await r.text();
           // Mostra errore inline nel form
           let err = document.getElementById('_metnos_err');
@@ -203,6 +239,7 @@
           err.textContent = '⚠ Errore submit: ' + (t.substring(0, 200) || r.status);
         }
       } catch(ex) {
+        _reenable();
         alert('Errore di rete: ' + ex);
       }
     });

@@ -345,10 +345,60 @@ def _build_final_message_hint(state: dict, fmt: str) -> str:
 
 # ── process_completion_callback ───────────────────────────────────────
 
+from dataclasses import dataclass as _dc, field as _dcfield
+
+
+@_dc
+class CompletionResult:
+    """Esito STRUTTURATO di un dialog completato (5/7/2026, bug zip-line).
+
+    Prima i consumer ritornavano solo str: un resume che ri-eseguiva un TURNO
+    INTERO (disambiguazione foto) buttava attachments/gallery e la meta del
+    turno — 74 foto rese come testo, senza badge né dati. `text` resta il
+    contratto minimo (i canali senza media lo usano tal quale); attachments
+    e meta viaggiano quando il dispatch li ha."""
+    text: str = ""
+    attachments: list = _dcfield(default_factory=list)
+    turn_id: str = ""
+    total_ms: int = 0
+    target_device: str = ""
+
+
+def _completion_from_turnlog(new_log) -> CompletionResult:
+    """CompletionResult da un TurnLog di run_turn (resume full-turn)."""
+    try:
+        total_ms = int((getattr(new_log, "ts_end", 0)
+                        - getattr(new_log, "ts_start", 0)) * 1000)
+    except Exception:
+        total_ms = 0
+    return CompletionResult(
+        text=getattr(new_log, "final_message", "") or "",
+        attachments=list(getattr(new_log, "attachments", None) or []),
+        turn_id=getattr(new_log, "turn_id", "") or "",
+        total_ms=max(0, total_ms),
+        target_device=getattr(new_log, "target_device", None) or "",
+    )
+
+
 def process_completion_callback(sender_id: str, dialog_id: str,
                                   *, actor: str = "host",
                                   channel: Optional[str] = None,
-                                  host_override: Optional[str] = None) -> str:
+                                  host_override: Optional[str] = None
+                                  ) -> "CompletionResult":
+    """Wrapper pubblico: normalizza l'esito dei dispatch a CompletionResult
+    (i dispatch legacy ritornano str; quelli full-turn CompletionResult)."""
+    out = _dispatch_completion(
+        sender_id, dialog_id, actor=actor, channel=channel,
+        host_override=host_override)
+    if isinstance(out, CompletionResult):
+        return out
+    return CompletionResult(text=str(out) if out is not None else "")
+
+
+def _dispatch_completion(sender_id: str, dialog_id: str,
+                                  *, actor: str = "host",
+                                  channel: Optional[str] = None,
+                                  host_override: Optional[str] = None):
     """Esegue il callback dichiarativo `on_complete` di un dialogo completato.
 
     Chiamato:
@@ -372,8 +422,10 @@ def process_completion_callback(sender_id: str, dialog_id: str,
     Per type non riconosciuti: ritorna messaggio di errore.
 
     Returns:
-      str: messaggio user-facing da mandare nel canale. Mai None: il
-      caller assume che ci sia sempre qualcosa da inviare.
+      CompletionResult: `.text` = messaggio user-facing (mai vuoto per i
+      canali testuali); attachments/turn-meta presenti quando il dispatch
+      ri-esegue un turno completo (resume/disambiguazione). I dispatch
+      legacy che ritornano str vengono normalizzati qui.
     """
     state = dialog_pending.load_pending(sender_id, dialog_id)
     if state is None:
@@ -907,7 +959,9 @@ def _process_restart_turn_with_chosen_query(
         return _msg("MSG_ORCH_CONTINUATION_FAILED", detail=f"{type(ex).__name__}: {ex}")
     if new_log is None:
         return _msg("MSG_ORCH_CONTINUATION_EMPTY")
-    return getattr(new_log, "final_message", "") or ""
+    # Bug zip-line (5/7): il resume È un turno completo — porta su
+    # attachments/gallery e meta, non solo il testo.
+    return _completion_from_turnlog(new_log)
 
 
 def _process_rerun_query_disambiguated(
@@ -946,7 +1000,7 @@ def _process_rerun_query_disambiguated(
                         detail=f"{type(ex).__name__}: {ex}")
         if new_log is None:
             return _msg("MSG_ORCH_CONTINUATION_EMPTY")
-        return getattr(new_log, "final_message", "") or ""
+        return _completion_from_turnlog(new_log)
     chosen_obj = (values or {}).get("object") or ""
     if not isinstance(query, str) or not query.strip() or not chosen_obj:
         return _msg("MSG_ORCH_DISAMB_EMPTY_CHOICE")
@@ -961,7 +1015,7 @@ def _process_rerun_query_disambiguated(
                     detail=f"{type(ex).__name__}: {ex}")
     if new_log is None:
         return _msg("MSG_ORCH_CONTINUATION_EMPTY")
-    return getattr(new_log, "final_message", "") or ""
+    return _completion_from_turnlog(new_log)
 
 
 def _process_resume_planner_with_dialog_values(

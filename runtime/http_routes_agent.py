@@ -374,7 +374,7 @@ def _apply_dialog_pending(sender_id: str, query: str,
             from orchestration import process_completion_callback
             return process_completion_callback(
                 sender_id_used, dialog_id, actor=actor, channel=channel,
-            )
+            ).text
         except Exception as ex:
             import logging
             logging.getLogger(__name__).warning(
@@ -586,7 +586,7 @@ def _consume_http_get_inputs_response(
         # un summary user-facing.
         msg = _orch.process_completion_callback(
             sender_for_state, dialog_id, actor=actor,
-        )
+        ).text
         _cap_pending_clear(sender_id)
         return query, proposal, msg
 
@@ -1227,6 +1227,8 @@ async def dialog_submit(request: web.Request) -> web.Response:
     # riaggancia i badge feedback ✓/✗ (chat.html li mostra solo con turn_id).
     origin_turn_id = final_state.get("origin_turn_id") or ""
     completion_message = ""
+    completion_attachments = []
+    completion_meta = {}
     if on_complete:
         try:
             # Reverse proxy / Cloudflare tunnel: leggi X-Forwarded-Proto per
@@ -1235,10 +1237,29 @@ async def dialog_submit(request: web.Request) -> web.Response:
             xfp = request.headers.get("X-Forwarded-Proto") or request.scheme
             origin_override = f"{xfp}://{request.host}"
             from orchestration import process_completion_callback
-            completion_message = process_completion_callback(
+            _cr = process_completion_callback(
                 sender_id, dialog_id, actor=actor, channel="http",
                 host_override=origin_override,
             )
+            completion_message = _cr.text
+            # Bug zip-line (5/7): il resume full-turn porta attachments e meta
+            # del NUOVO turno — la bolla in chat deve avere gallery + status
+            # line + badge sul turno REALE (non solo testo nudo).
+            completion_attachments = []
+            if _cr.attachments:
+                try:
+                    from types import SimpleNamespace as _SN
+                    completion_attachments = _enrich_attachments(
+                        _SN(attachments=_cr.attachments,
+                            turn_id=_cr.turn_id or origin_turn_id or ""),
+                        request.app.get("admin_key", ""))
+                except Exception as _ea:
+                    log.warning("dialog_submit: enrich attachments noop: %r", _ea)
+            completion_meta = {
+                "turn_id": _cr.turn_id or "",
+                "total_ms": _cr.total_ms or 0,
+                "target_device": _cr.target_device or "",
+            }
         except (ImportError, RuntimeError) as ex:
             log.exception("dialog_submit: process_completion_callback fallito")
             completion_message = (
@@ -1272,10 +1293,25 @@ async def dialog_submit(request: web.Request) -> web.Response:
             # cosi' il parent (chat.html) puo' mostrarlo come bolla regolare in
             # chat invece del laconico "Risposta dialog inviata".
             esc_text = _escape_html(msg_for_display)
-            esc_tid = origin_turn_id.replace('"', "&quot;")
+            # Badge sul turno REALE del resume quando c'è (feedback ✓/✗ sul
+            # risultato); fallback al turno che ha emesso il form.
+            _tid = (completion_meta.get("turn_id") or origin_turn_id or "")
+            esc_tid = _tid.replace('"', "&quot;")
+            import base64 as _b64
+            import json as _json
+            _att_b64 = ""
+            if completion_attachments:
+                _att_b64 = _b64.b64encode(_json.dumps(
+                    completion_attachments, ensure_ascii=False,
+                    default=str).encode("utf-8")).decode("ascii")
+            _meta_b64 = _b64.b64encode(_json.dumps(
+                completion_meta, ensure_ascii=False).encode("utf-8")
+                ).decode("ascii") if completion_meta else ""
             body_html = (
                 f"<div data-completion-text=\"{esc_text}\" "
-                f"data-turn-id=\"{esc_tid}\">"
+                f"data-turn-id=\"{esc_tid}\" "
+                f"data-attachments-b64=\"{_att_b64}\" "
+                f"data-turn-meta-b64=\"{_meta_b64}\">"
                 "<h2>Dialogo completato</h2>"
                 f"<pre>{esc_text}</pre>"
                 "<p><a href=\"/\">Torna a Metnos</a></p>"
