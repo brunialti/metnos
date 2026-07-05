@@ -6,6 +6,10 @@ manifest_format = "1.0"
 
 name        = "move_files"
 version     = "0.9.0"
+# C7 CP4: backend local pathlib/os puro → gira anche su Windows
+# (mutanti validati e2e device 5/7). Senza dichiarazione, placement
+# rifiuterebbe un device Windows (F1).
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare", "ordina",
@@ -170,3 +174,12 @@ setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_mo
 input    = { entries = [{path = "/tmp/metnos_test_move_files/Thumbs.db"}], dst_template = "/tmp/metnos_test_move_files/dst/{name}" }
 expect   = { ok = false, fail_count_eq = 1, error_contains = "system file" }
 teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[placement]
+# C7 Area-2 CP4 (5/7): mutante device-abile — scope="any" = server di
+# default; device SOLO se la chat lo nomina. UNDO round-trip: il reverse
+# (pure-path: swap_src_dst / delete_created_*) viene ACCODATO ALLO STESSO
+# device da undo_last_turn (§2.9 mai ribaltare sul server). delete_files
+# resta server-only (restore_blob_backup non remotabile: blob sul device).
+scope    = "any"
+device_ok = true

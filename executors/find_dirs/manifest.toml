@@ -21,7 +21,7 @@ en = "SCOPO: find directories with aggregated metadata. PATTERN: find_dirs(base_
 
 [code]
 files  = ["find_dirs.py"]
-digest = "sha256:c2437c82dc383ebe156f90bae04ffa295f8b13cfc52ecc6886278d0b60f4c87c"
+digest = "sha256:1d597bbe0b911e2d204755fd5fd280f9d4ef157c8172d04dab359993a900895c"
 
 [args]
 type     = "object"

@@ -30,12 +30,27 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
-from backends.files import local, google_workspace  # noqa: E402
+from backends.files import local  # noqa: E402
+
+# `google_workspace` è import LAZY (C7 Area-2 CP4, come find/read/write_files):
+# a module-load trascina moduli SERVER-only → sul DEVICE farebbe
+# ModuleNotFoundError per ogni invocazione, anche client=local.
 
 _HANDLERS = {
-    "google_workspace": google_workspace,
     "local": local,
 }
+
+
+def _backend(client: str):
+    b = _HANDLERS.get(client)
+    if b is None and client == "google_workspace":
+        try:
+            from backends.files import google_workspace as _gw  # lazy, server-only
+        except ImportError:
+            return None  # device: gw assente → errore strutturato a valle (§2.8)
+        _HANDLERS[client] = _gw
+        b = _gw
+    return b
 
 
 def _backend_for(args):

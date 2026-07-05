@@ -20,7 +20,7 @@ en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=
 
 [code]
 files  = ["create_dirs.py"]
-digest = "sha256:2e6fffac733ec13258807f927a82151bbe97dd1be9a0a2f4f250e2d043f7c57a"
+digest = "sha256:9779b0a5a03bc5faa28434a5fdcf33d88e5055870f50d25334d1d70b5edc8bc4"
 
 [args]
 type     = "object"
