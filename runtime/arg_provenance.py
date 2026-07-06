@@ -21,26 +21,11 @@ deterministico per-clausola.
 """
 from __future__ import annotations
 
-# Nomi-arg che `args_extractor.regex_extract` sa estrarre dal testo (fonte:
-# runtime/args_extractor.py::regex_extract, i rami `lname in (...)`). Tenuto in
-# SYNC con l'extractor — se l'extractor impara un nome nuovo, aggiungerlo qui.
-_CLAUSE_DERIVABLE_NAMES: frozenset[str] = frozenset({
-    # path family
-    "path", "paths", "base_path", "src", "dst",
-    # url family
-    "url", "urls", "src_url",
-    # glob/pattern
-    "pattern", "patterns", "glob",
-    # recipients / email
-    "to", "recipient_id", "recipients", "email", "recipient",
-    # repo slug
-    "repo", "repository",
-    # count / cap
-    "max_results", "max_total", "top", "limit", "n", "count",
-    # date / window
-    "date", "day", "when", "on_date",
-    "time_window", "window", "since", "range",
-})
+# Nomi-arg che `args_extractor.regex_extract` sa estrarre dal testo. FONTE UNICA:
+# `args_extractor.CLAUSE_DERIVABLE_NAMES` (i gruppi accanto ai rami stessi). Niente
+# più copia a mano — se l'extractor impara un nome, la provenienza lo segue per
+# costruzione (chiude il drift `recipient` vs `to_user/to_users`, misurato 6/7).
+from args_extractor import CLAUSE_DERIVABLE_NAMES as _CLAUSE_DERIVABLE_NAMES
 
 PROV_RUNTIME = "runtime"
 PROV_CLAUSE = "clause"

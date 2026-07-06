@@ -317,6 +317,29 @@ def _extract_repo_slug(query: str) -> Optional[str]:
     return None
 
 
+# ── Nomi-arg riconosciuti dall'estrattore, raggruppati per semantica ─────────
+# FONTE UNICA di «quali nomi sono clause-derivabili». I rami di regex_extract
+# sotto E arg_provenance._CLAUSE_DERIVABLE_NAMES derivano ENTRAMBI da qui — niente
+# più copia a mano (drift misurato 6/7: `recipient` vs `to_user/to_users`). Se
+# l'extractor impara un nome nuovo, aggiungilo al gruppo giusto: provenienza e
+# derivazione restano allineate per costruzione (§7.2 DRY, §7.3 sistemico).
+_PATH_NAMES = frozenset({"path", "paths", "base_path", "src", "dst"})
+_URL_NAMES = frozenset({"url", "urls", "src_url"})
+_GLOB_NAMES = frozenset({"pattern", "patterns", "glob"})
+_EMAIL_NAMES = frozenset({"to", "recipient_id", "recipients", "email",
+                          "to_user", "to_users"})
+_REPO_NAMES = frozenset({"repo", "repository"})
+_COUNT_NAMES = frozenset({"max_results", "max_total", "top", "limit", "n", "count"})
+_DATE_NAMES = frozenset({"date", "day", "when", "on_date"})
+_WINDOW_NAMES = frozenset({"time_window", "window", "since", "range"})
+
+#: Unione esportata: tutti i nomi-arg che regex_extract sa estrarre dal testo.
+#: arg_provenance la importa come SoT per la classe `clause` (name-derivable).
+CLAUSE_DERIVABLE_NAMES: frozenset = (
+    _PATH_NAMES | _URL_NAMES | _GLOB_NAMES | _EMAIL_NAMES
+    | _REPO_NAMES | _COUNT_NAMES | _DATE_NAMES | _WINDOW_NAMES)
+
+
 def regex_extract(query: str, schema: dict | None) -> dict:
     """Args extraction deterministica via regex. Ritorna dict (anche vuoto
     se nulla estratto). Solo i tipi standard (path/url/int/email/glob/date).
@@ -359,30 +382,29 @@ def regex_extract(query: str, schema: dict | None) -> dict:
         # Mapping NOME -> ESTRATTORE. Il nome porta semantica
         # (paths/path/base_path/src/dst tutti sono "path"). Niente
         # ipotesi sul plurale dal nome — quello arriva dallo schema.
-        if lname in ("path", "paths", "base_path", "src", "dst"):
+        if lname in _PATH_NAMES:
             _emit(_extract_paths(query))
-        elif lname in ("url", "urls", "src_url"):
+        elif lname in _URL_NAMES:
             _emit(_extract_urls(query))
-        elif lname in ("pattern", "patterns", "glob"):
+        elif lname in _GLOB_NAMES:
             g = _extract_file_ext_glob(query)
             if g:
                 _emit([g])
-        elif lname in ("to", "recipient_id", "recipients", "email",
-                       "to_user", "to_users"):
+        elif lname in _EMAIL_NAMES:
             _emit(_extract_emails(query))
-        elif lname in ("repo", "repository"):
+        elif lname in _REPO_NAMES:
             r = _extract_repo_slug(query)
             if r:
                 out[arg_name] = r
-        elif lname in ("max_results", "max_total", "top", "limit", "n", "count"):
+        elif lname in _COUNT_NAMES:
             n = _extract_count(query)
             if n is not None:
                 out[arg_name] = n
-        elif lname in ("date", "day", "when", "on_date"):
+        elif lname in _DATE_NAMES:
             d = _extract_date_keyword(query)
             if d:
                 out[arg_name] = d
-        elif lname in ("time_window", "window", "since", "range"):
+        elif lname in _WINDOW_NAMES:
             w = _extract_time_window(query) or _extract_date_keyword(query)
             if w:
                 out[arg_name] = w

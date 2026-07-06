@@ -117,3 +117,45 @@ def test_golden_covers_corpus():
 if __name__ == "__main__":
     if "--regen" in sys.argv:
         regen()
+
+
+# ── PROV.3: invariante di proprietà — i guard non scrivono args SEMANTIC ─────
+# Il modello di proprietà (arg_provenance): runtime|clause|semantic. Un guard
+# deterministico può possedere/correggere args `clause` (deducibili) o `runtime`
+# (config), MAI sovrascrivere un arg `semantic` — quello è dell'LLM. Questo
+# invariante, incrociando Guard.writes con arg_provenance, codifica il modello e
+# cattura una classe di bug futuri (un guard che pesta un arg dell'LLM).
+
+# Eccezioni DOCUMENTATE: guard di ROUTING che impongono un arg strutturale per
+# regola di dominio (non un valore-utente). Ognuna con la sua ragione.
+_WRITES_SEMANTIC_ALLOWED = {
+    ("route_mail_delete_to_trash", "dst_folder"),  # §5: delete_messages→Trash fisso
+}
+
+
+def test_guards_do_not_write_semantic_args():
+    import arg_provenance as AP
+    from engine.dispatch import GUARD_PIPELINE
+    cat = _catalog()
+
+    def _prov(argname):
+        provs = set()
+        for e in cat:
+            pm = AP.provenance_map(e)
+            if argname in pm:
+                provs.add(pm[argname])
+        return provs
+
+    violations = []
+    for g in GUARD_PIPELINE:
+        for w in g.writes:
+            if not w.startswith("args.") or w.endswith(".*"):
+                continue  # wildcard/step: si auto-limita via schema
+            arg = w.split(".", 1)[1]
+            provs = _prov(arg)
+            # se l'arg è SOLO semantic nel catalogo → il guard pesterebbe l'LLM
+            if provs == {"semantic"} and (g.name, arg) not in _WRITES_SEMANTIC_ALLOWED:
+                violations.append(f"{g.name} scrive {w} (provenienza semantic, NON in whitelist)")
+    assert not violations, (
+        "INVARIANTE PROPRIETÀ ROTTO — un guard sovrascrive un arg dell'LLM:\n"
+        + "\n".join(violations))
