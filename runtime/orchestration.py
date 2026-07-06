@@ -764,8 +764,14 @@ def _process_resume_engine_gate(on_complete: dict, values: dict, *,
                     detail=f"{type(ex).__name__}: {ex}")
     if new_log is None:
         return _msg("MSG_ORCH_CONTINUATION_EMPTY")
-    msg_out = getattr(new_log, "final_message", "") or ""
-    return msg_out or _msg("MSG_ORCH_CONTINUATION_DONE")
+    # CompletionResult PIENO (6/7, Roberto: «si perdono le info sul turno»):
+    # il resume post-approvazione e' un TURNO INTERO — turn_id/tempo/device/
+    # breadcrumb devono arrivare alla chat come per ogni turno (stessa via
+    # del resume full-turn foto, bug zip-line 5/7).
+    out = _completion_from_turnlog(new_log)
+    if not out.text:
+        out.text = _msg("MSG_ORCH_CONTINUATION_DONE")
+    return out
 
 
 def _process_resume_executor_with_values(on_complete: dict, values: dict,
