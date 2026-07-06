@@ -144,9 +144,22 @@ def test_build_remote_reverse_calls():
                      {"path": "/x/già.txt", "created": False}]})
     assert out2["calls"][0]["executor"] == "delete_files"
     assert out2["calls"][0]["args"]["paths"] == ["/x/new.txt"]
-    # blob → non remotabile, dichiarato
-    out3 = build_remote_reverse_calls("restore_blob_backup", {}, {})
-    assert out3["calls"] == [] and out3["unsupported"] == ["restore_blob_backup"]
+    # blob (ADR 0183 D3 chiuso 6/7): restore = MOVE device-locale blob→path
+    out3 = build_remote_reverse_calls(
+        "restore_blob_backup", {},
+        {"results": [{"path": "C:/docs/f.txt",
+                      "blob_path": "C:/hist/no_turn/blob/ab.bin",
+                      "blob_sha256": "ab"}]})
+    a3 = out3["calls"][0]["args"]
+    assert out3["calls"][0]["executor"] == "move_files"
+    assert a3["entries"] == [{"src": "C:/hist/no_turn/blob/ab.bin"}]
+    assert a3["dst_template"] == "C:/docs/f.txt"
+    assert out3["unsupported"] == []
+    # righe senza blob → dichiarato, mai silenzio
+    out3b = build_remote_reverse_calls(
+        "restore_blob_backup", {}, {"results": [{"path": "/x.txt"}]})
+    assert out3b["calls"] == []
+    assert out3b["unsupported"] == ["restore_blob_backup:righe-senza-blob"]
     # rename: template LETTERALE per-file (niente {name})
     out4 = build_remote_reverse_calls(
         ["swap_src_dst"], {},

@@ -118,22 +118,65 @@ echo "    undo-move: $UOUT2"
 [ -f "$DEVTREE/srcdir/doc.txt" ] && [ ! -f "$DEVTREE/dstdir/doc.txt" ] \
   && pass "undo del move: file TORNATO alla sorgente sul device" || fail "undo move fallito"
 
-# ---- 4) Gate: delete_files con target device gira LOCALE (no device_ok) ----
-GOUT=$(py -c "
-import sys, json, tempfile, pathlib
+# ---- 4) DELETE sul device + UNDO → file RIPRISTINATO dal blob (D3 chiuso) --
+mkdir -p "$DEVTREE/dadelete"; printf 'contenuto-prezioso' > "$DEVTREE/dadelete/prezioso.txt"
+DOUT=$(py -c "
+import sys, json
 import agent_runtime
 from loader import load_catalog
-tmpf = pathlib.Path(tempfile.mkdtemp())/'x.txt'; tmpf.write_text('x')
 ex = next(e for e in load_catalog() if e.name=='delete_files')
 obs = agent_runtime.invoke_executor(
-    ex, {'paths':[str(tmpf)], 'client':'local'},
-    timeout_s=40, turn_id='turn-c7m-3', actor='host', channel='e2e',
+    ex, {'paths':[sys.argv[1]+'/dadelete/prezioso.txt'], 'client':'local'},
+    timeout_s=40, turn_id='turn-c7m-del1', actor='host', channel='e2e',
+    target_device='c7m-laptop')
+r = (obs.get('results') or [{}])[0]
+print(json.dumps({'ok': obs.get('ok'), 'dev': obs.get('_ran_on_device'), 'blob': bool(r.get('blob_path'))}))
+" "$DEVTREE")
+echo "    delete: $DOUT"
+echo "$DOUT" | grep -q '"blob": true' && echo "$DOUT" | grep -q 'c7m-laptop' \
+  && pass "delete_files SUL DEVICE con blob device-locale" || fail "delete device"
+[ ! -f "$DEVTREE/dadelete/prezioso.txt" ] && pass "file cancellato dal device" || fail "file ancora presente"
+
+UOUT3=$(py -c "
+import sys, json
+sys.path.insert(0, '$REPO/executors/undo_last_turn')
+import undo_last_turn as ult
+out = ult.invoke({})
+print(json.dumps({'ok': out.get('ok'), 'undone': out.get('undone_count')}))
+")
+echo "    undo-delete: $UOUT3"
+[ -f "$DEVTREE/dadelete/prezioso.txt" ] && [ "$(cat "$DEVTREE/dadelete/prezioso.txt")" = "contenuto-prezioso" ] \
+  && pass "UNDO delete: file RIPRISTINATO dal blob device-locale (contenuto intatto)" || fail "restore dal blob fallito"
+
+# ---- 5) delete_dirs sul device (rmdir solo-vuote, non revertibile) ----------
+mkdir -p "$DEVTREE/vuota"
+py -c "
+import sys, json
+import agent_runtime
+from loader import load_catalog
+ex = next(e for e in load_catalog() if e.name=='delete_dirs')
+obs = agent_runtime.invoke_executor(
+    ex, {'paths':[sys.argv[1]+'/vuota'], 'if_empty_only': True, 'client':'local'},
+    timeout_s=40, turn_id='turn-c7m-del2', actor='host', channel='e2e',
+    target_device='c7m-laptop')
+print(json.dumps({'dev': obs.get('_ran_on_device')}))
+" "$DEVTREE" | grep -q 'c7m-laptop' && [ ! -d "$DEVTREE/vuota" ] \
+  && pass "delete_dirs sul device (solo-vuote)" || fail "delete_dirs device"
+
+# ---- 6) Gate placement: executor NON device_ok resta locale -----------------
+GOUT=$(py -c "
+import json
+import agent_runtime
+from loader import load_catalog
+ex = next(e for e in load_catalog() if e.name=='get_now')
+obs = agent_runtime.invoke_executor(
+    ex, {}, timeout_s=40, turn_id='turn-c7m-3', actor='host', channel='e2e',
     target_device='c7m-laptop')
 print(json.dumps({'ok': obs.get('ok'), 'dev': obs.get('_ran_on_device', None)}))
 ")
-echo "    delete-gate: $GOUT"
+echo "    gate: $GOUT"
 echo "$GOUT" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d['ok'] and not d['dev'] else 1)" \
-  && pass "delete_files con target device → LOCALE (gate placement, blob non remotabile)" || fail "gate delete violato"
+  && pass "executor NON device_ok (get_now) con target device → LOCALE (gate placement)" || fail "gate placement violato"
 
 echo
 if [ "$FAILED" -eq 0 ]; then printf '\033[32m==> C7 MUTANTI sul device + UNDO round-trip: VALIDATO\033[0m\n'; else printf '\033[31m==> C7 mutanti: FALLITO\033[0m\n'; fi

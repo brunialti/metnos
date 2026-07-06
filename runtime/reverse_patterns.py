@@ -479,6 +479,28 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
                                   set(dirs), key=lambda d: str(d).count("/"),
                                   reverse=True),
                                   "if_empty_only": True}})
+        elif n == "restore_blob_backup":
+            # Round-trip SENZA blob sul filo (ADR 0183 D3 chiuso 6/7): il blob
+            # sta SUL DEVICE (local.delete lo scrive lì prima dell'unlink) →
+            # il restore è un MOVE device-locale blob→path originale
+            # (move_files è device_ok, COPY-check-DELETE §2.9). Una chiamata
+            # per file (dst_template letterale). Righe senza blob_path →
+            # unsupported onesto (mai silenzio §2.8).
+            missing_blob = False
+            for entry in (res.get("results") or []):
+                if not isinstance(entry, dict):
+                    continue
+                bp, path = entry.get("blob_path"), entry.get("path")
+                if bp and path:
+                    calls.append({"executor": "move_files",
+                                  "args": {"entries": [{"src": str(bp)}],
+                                           "dst_template": str(path),
+                                           "parents": True,
+                                           "client": "local"}})
+                elif path:
+                    missing_blob = True
+            if missing_blob:
+                unsupported.append(n + ":righe-senza-blob")
         else:
             unsupported.append(n)
     return {"calls": calls, "unsupported": unsupported}

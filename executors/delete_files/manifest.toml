@@ -6,6 +6,7 @@ manifest_format = "1.0"
 
 name        = "delete_files"
 version     = "0.1.0"
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "delete", "elimina", "cancella", "rimuovi", "remove",
@@ -76,3 +77,11 @@ expect = { ok = false, fail_count_eq = 1 }
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo" }
 expect = { ok = false, error_contains = "must be a list" }
+
+[placement]
+# C7 Area-2 est. (6/7): il reverse è ora REMOTABILE (ADR 0183 D3 chiuso —
+# restore = move device-locale blob→path, vedi reverse_patterns): cade
+# l'asimmetria che teneva delete server-only. Blob scritti dal device nella
+# SUA history prima dell'unlink (§2.9).
+scope    = "any"
+device_ok = true

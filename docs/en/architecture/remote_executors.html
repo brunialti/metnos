@@ -407,8 +407,8 @@ Remote executors do not mean "run arbitrary code on the PC". They mean: run only
 signed executors, compatible with the platform, admitted by policy and sufficiently
 contained by the client. The admitted mutating executors (file write and move)
 carry their own undo: reverting an operation executed on a device runs
-<em>on that same device</em>, never on the server. Remote deletion stays out
-until content restore (blob backup) has an explicit round-trip path.
+<em>on that same device</em>, never on the server. Remote deletion is admitted as well: the backup (blob) is written on the
+device before removal, and undo restores it <em>on that same device</em>.
 </div>
 
 <ul>

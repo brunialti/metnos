@@ -8,6 +8,7 @@ manifest_format = "1.0"
 
 name        = "delete_dirs"
 version     = "0.1.0"
+platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella"
@@ -103,3 +104,9 @@ teardown = "rm -rf /tmp/metnos_test_delete_dirs"
 name   = "args_invalidi_paths_non_lista"
 input  = { paths = "/tmp/foo" }
 expect = { ok = false, error_contains = "must be a list" }
+
+[placement]
+# C7 Area-2 est. (6/7): rmdir SOLO-vuote (if_empty_only default) = danno
+# zero contenuti; non revertibile per contratto (nessun reverse_pattern).
+scope    = "any"
+device_ok = true
