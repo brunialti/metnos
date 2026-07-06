@@ -57,3 +57,9 @@ Contatore per-guard in dispatch.py. I guard args loggano già (`[phantom_install
 ### CP5.5 ▶ PROSSIMO (ultimo)
 Bench A/B: girare N query (banco routing + compound) con METNOS_GUARD_FIRE_COUNT=1, una passata METNOS_PROPOSER_GRAMMAR_ARGS=0 e una =1, confrontare guard_fire_counts totali e per-guard. Cercare il banco: bench/ (routing 29/29 v3, compound_*). Report internal/reports/grammar_args_ab_2026-07-06.md. Verificare parse-rate (nessun None in più) + latenza. Cancello per Roberto: se guard-fire scende senza regressione → proposta default ON + quali guard spegnere.
 NB: il bench deve chiamare il PROPOSER REALE (LLM) per vedere l'effetto della grammar sugli args generati — non basta applicare i guard a piani statici. Riusare l'harness di bench/ esistente che fa run_turn o proposer.propose.
+
+### CP5.5 ▶ IN CORSO (6/7)
+`bench/grammar_args_ab.py` scritto e lanciato in background (bltz9c60e). Corpus 18 query mirate agli enum-args (sort/op/compress/mode) + compound + count. Confronta A (GRAMMAR_ARGS=0) vs B (=1) con GUARD_FIRE_COUNT=1. Misura: guard_fire tot+per-guard, parse_rate, arg_err (ERR_ARG_*), latenza mediana.
+- **ONESTÀ CRUCIALE (§8.3) da mettere nel report**: la grammar-args vincola gli ENUM. Ma i guard-args attuali fixano soprattutto STRUTTURA (base_path fantasma, degenere find→list) e TESTO-LIBERO (pattern, count int, client runtime_resolved) — NON valori enum. Quindi il guard_fire potrebbe NON scendere molto. Il valore VERO della grammar-args è impedire ENUM-INVALIDI (sort:"recent") che l'executor rifiuterebbe a runtime (ERR_ARG) → misurato da `n_arg_err`, non solo da guard_fire. Se guard_fire non scende ma arg_err sì → il valore è "correttezza a runtime", non "meno guard". Il bench deve dire la verità: quale delle due dimensioni si muove.
+- Turno lento (~30-60s cold-start+exec); 36 turni ≈ 20-40 min in background.
+- Esito → report `internal/reports/grammar_args_ab_2026-07-06.md` + ADR-pending + cancello Roberto.
