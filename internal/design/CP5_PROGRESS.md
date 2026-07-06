@@ -79,3 +79,24 @@ CONCLUSIONE: grammar-args NON è il lever (stessa lezione di grammar-on-verbs). 
 RACCOMANDAZIONE AL CANCELLO: NON promuovere grammar-args ON (nessun beneficio); procedere con architettura provenienza args (FASE 1→2), protetta da oracolo equivalenza.
 
 ## CP5 CHIUSO. Prossimo = architettura provenienza args (FASE 1 registro → FASE 2 clause-derive), «un lavoro una volta» come da mandato Roberto.
+
+## FASE 1 + FASE 2 provenienza args ✅ FATTE (6/7) — esito ONESTO
+Commit: PROV.1 `9edc914`, PROV.2 `a298a0e`, PROV.3 `7466fea`.
+
+### PROV.1 (FASE 1) ✅ — registro guard tipizzato
+`GUARD_PIPELINE` da `tuple(name,v3only,fn)` a `tuple[Guard,...]`. Dataclass `Guard` (name/fn/v3_only/scope/writes/reads/rationale/adr). 14 guard annotati. `test_guard_pipeline_contract`: +3 test (metadata completi, writes ⊆ mutazioni osservate, no per-clause write prima di cross-clause sullo stesso campo). Basso rischio, behavior-equivalent.
+
+### PROV.2 (FASE 2) ✅ — oracolo di equivalenza
+`test_provenance_equivalence.py` + golden `data/guard_equivalence_golden.json`. 11 casi (7 strutturali dal contratto + 4 args-pesanti). `regen()` congela l'output ATTUALE della pipeline; il test verifica riproduzione BYTE-IDENTICA. È la rete che protegge errore=0 in ogni fase.
+
+### PROV.3 (FASE 2) ✅ — ESITO ONESTO: NO eliminazione di massa, SÌ leggibilità+invarianti
+**Scoperta chiave**: la premessa «14 accrezioni reattive da spazzar via» NON regge alla prova del codice. `fill_clause_args` è GIÀ lo stage clause-derive ben costruito (split per-chunk, count-cap `_promote/_demote` GIÀ nidificati dentro, non guard separati). `client` è clause-derived (da «google drive»→gw), non runtime puro — la mappa a 3 è più sfumata. Fondere fill/scope_sink/align_provider cambierebbe l'ordine LOAD-BEARING per un guadagno cosmetico → NON fatto (§7.2: no rischio per estetica; §8.3: riporta la verità).
+
+Due interventi concreti e SICURI (oracolo verde):
+1. **Fonte unica nomi clause-derivabili**. `arg_provenance._CLAUSE_DERIVABLE_NAMES` era copia a mano dei rami di `regex_extract` — GIÀ divergente (`recipient` fantasma vs `to_user/to_users` mancanti). Estratti in `args_extractor.CLAUSE_DERIVABLE_NAMES` (gruppi accanto ai rami), importati da provenance. Zero drift per costruzione. Mappa corretta: clause 114→115 (un `to_user` era misclassificato).
+2. **Invariante di proprietà** (`test_guards_do_not_write_semantic_args`): incrocia `Guard.writes` × `arg_provenance` → NESSUN guard sovrascrive un arg `semantic` (dell'LLM). Regge empiricamente, 1 eccezione documentata (`route_mail`→`dst_folder` 'Trash', regola §5). Cattura una classe di bug futuri.
+
+Suite 3334 pass. Oracolo+contratto+invariante verdi.
+
+### FASE 3 (coerce_args_to_schema + rimozione cat. C/D) — RIVALUTARE lo scope
+Roberto aveva chiesto «fasi 1-2», FASE 3 separata. **Ma l'esito PROV.3 cambia il calcolo di FASE 3**: se non c'è eliminazione di massa da fare (i guard sono già principiati), anche «coerce unico + rimozione cat. C/D» va rivalutato — probabilmente più piccolo dello spec. Il substrato (mappa, registro tipizzato, oracolo, invariante, fire-counter) è la vera consegna durevole: rende OGNI cambio futuro ai guard meccanico e sicuro. Decisione di scope FASE 3 → a Roberto.
