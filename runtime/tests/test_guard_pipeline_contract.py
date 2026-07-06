@@ -30,6 +30,9 @@ os.environ.setdefault("METNOS_ENGINE", "v3")
 # ── T3: contratto d'ordine ────────────────────────────────────────────────
 
 EXPECTED_PIPELINE = (
+    # FASE 3.1 provenienza: backstop schema PRIMO per costruzione (tocca solo
+    # l'output grezzo del proposer; i guard a valle scrivono dopo di lui).
+    ("coerce_args_to_schema", True),
     ("overwrite_phantom_install_args", False),
     ("align_framework_objects", False),
     ("enforce_missing_clauses", False),

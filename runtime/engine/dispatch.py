@@ -2192,6 +2192,27 @@ def _align_provider_client(framework: Framework, query: str,
 #     poi i sink→clause-scoped local §10.3).
 #   - degenerate_find ULTIMO (un find instradato a gw dal provider-guard non
 #     va toccato; il fill gli ha già dato il base_path di clausola).
+def _coerce_args_to_schema(framework: Framework,
+                           catalog: Optional[list]) -> Framework:
+    """FASE 3.1 provenienza (spec §3.1): backstop deterministico UNICO sul
+    confine LLM→pipeline — conforma gli args di ogni step allo schema del suo
+    tool. Gli arg che un guard a valle DICHIARA nei suoi `writes` (registro
+    PROV.1) sono esenti: dominio dei guard, toccarli romperebbe l'idempotenza
+    della catena. Implementazione (e razionale) in `engine/coerce_args.py`."""
+    try:
+        from engine.coerce_args import coerce_framework_to_schema
+        owned = frozenset(
+            w.split(".", 1)[1]
+            for g in GUARD_PIPELINE
+            for w in g.writes
+            if w.startswith("args.") and not w.endswith(".*"))
+        return coerce_framework_to_schema(framework, catalog,
+                                          guard_owned_args=owned)
+    except Exception as ex:  # noqa: BLE001 — backstop best-effort
+        log.warning("coerce_args noop (best-effort): %r", ex)
+        return framework
+
+
 @dataclass(frozen=True)
 class Guard:
     """Un guard deterministico di struttura, con metadati DICHIARATI (PROV.1,
@@ -2211,11 +2232,17 @@ class Guard:
 
 
 GUARD_PIPELINE: tuple = (
+    Guard("coerce_args_to_schema",
+          lambda fw, i, q, c: _coerce_args_to_schema(fw, c),
+          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          reads=frozenset({"catalog"}),
+          rationale="FASE 3.1 provenienza: backstop unico sul confine LLM→pipeline — drop chiavi fuori-schema e leak runtime_resolved, enum case-normalize o drop (mai snap). PRIMO per costruzione: tocca solo l'output grezzo del proposer, i guard a valle scrivono dopo",
+          adr="0177"),
     Guard("overwrite_phantom_install_args",
           lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q),
           scope="structure", writes=frozenset({"args.base_path", "args.path"}),
           reads=frozenset({"query"}),
-          rationale="rimuove base_path/path install-root non nominati dalla query (default appreso avvelenato / cache stantia)",
+          rationale="rimuove base_path/path install-root non nominati dalla query (default appreso avvelenato / cache stantia). Cat. C spec provenienza: rimovibile con evidenza journal «[phantom_install]» = 0 fire su >=14 giorni di traffico reale (finestra aperta 7/7/2026, verifica >=21/7)",
           adr="0182"),
     Guard("align_framework_objects",
           lambda fw, i, q, c: _align_framework_objects(fw, i, c),

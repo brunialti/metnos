@@ -83,8 +83,7 @@
       {
         "args": {
           "client": "google_workspace",
-          "query": "KAKEBO SPESE 2026",
-          "top_k": 1
+          "query": "KAKEBO SPESE 2026"
         },
         "tool": "find_files"
       },

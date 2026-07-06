@@ -81,6 +81,12 @@ Oracolo verde (equivalenza su tutto il corpus); i 4 guard sussunti a 0-fire sul 
 
 ## FASE 3 — Chiusura: coerce unico + residuo dichiarato
 
+> ✅ **CONCLUSA (7/7/2026, decisione Roberto «fase 3 concludere»)**:
+> - **3.1 FATTO** — `engine/coerce_args.py`, Guard #0 `coerce_args_to_schema` (v3, PRIMO per costruzione: tocca solo l'output grezzo del proposer). Drop fuori-schema + leak `runtime_resolved`, enum case-normalize o drop (mai snap). **Esenzione load-bearing**: gli arg dichiarati nei `writes` dei guard a valle (registro PROV.1, es. `client`) non vengono MAI toccati — pena l'oscillazione della catena (idempotenza T4, che protegge anche la ri-applicazione sugli hit cache ADR 0174). Il backstop ha subito scovato un buco reale: `read_files` usava `name` (lettura Drive per nome, 4/7) senza dichiararlo nello schema → dichiarato + `requires_one_of` esteso. Oracolo PROV.2: unica divergenza capita = junk `top_k` pulito dal caso dirty → regen deliberato. Test `test_coerce_args.py`.
+> - **3.2 D GIÀ CONCLUSA** — `degenerate_find_to_list` era già `scope="routing"` dal PROV.1.
+> - **3.2 C = criterio datato** — `overwrite_phantom_install_args` logga `[phantom_install]` a ogni fire: rimovibile con evidenza journal 0-fire su ≥14 giorni di traffico reale (finestra dal 7/7/2026, verifica ≥21/7). Niente fire-counter env in prod: il journal è l'evidenza durevole, il counter in-process muore al restart.
+> - **Done 3 raggiunto** nella forma onesta post-PROV.3: runtime-resolve (resolver a esecuzione) · clause-derive (`fill_clause_args`) · coerce-schema (nuovo, #0) · residuo strutturale/routing DICHIARATO nel registro. Nessuna FASE 4: la spec finisce qui.
+
 ### Passo 3.1 — `coerce_args_to_schema(args, schema) -> args`
 Backstop deterministico unico (se grammar-args è off o l'LLM sfugge): scarta args fuori-schema, snap/valida enum (al valore valido più vicino o drop), rimuove leak di `runtime_resolved`. Sostituisce la logica enum sparsa.
 
