@@ -836,7 +836,17 @@ def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> Non
             o = (a.get("object") or "").lower()
             if v not in _STORE_VERBS or o == "entries":
                 continue
-            if derive_tool_name(v, o, names) is None and \
+            # Routabile ANCHE via provider-suffix (ADR 0136): find_issues
+            # liscio non esiste ma find_issues_github sì — derive_tool_name
+            # non compone i qualifier provider e il flip avvelenava la
+            # clausola sorgente a (find, entries) → find_entries sullo store
+            # locale, GitHub mai interrogato (bug live task 35, 6/7:
+            # ri-avvelenava la cache a ogni fire anche dopo la purga).
+            _pfx = f"{v}_{o}"
+            _routable_suffixed = any(
+                n == _pfx or n.startswith(_pfx + "_") for n in names)
+            if not _routable_suffixed and \
+                    derive_tool_name(v, o, names) is None and \
                     derive_tool_name(v, "entries", names):
                 a["object"] = "entries"
                 changed = True

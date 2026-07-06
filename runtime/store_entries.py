@@ -70,9 +70,6 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     set_fields = a.get("set_fields")
     if not isinstance(set_fields, dict):
         set_fields = a.get("fields") if isinstance(a.get("fields"), dict) else None
-    if set_fields:
-        entries = [{**e, **set_fields} if isinstance(e, dict) else e
-                   for e in entries]
     st, err = _resolve(name)
     if err:
         err["results"] = []
@@ -113,6 +110,29 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     # onesto per "quante ne ho inserite/scoperte ORA" (vedi manifest).
     try:
         was_new = st.check_new(entries, key=key)
+    except Exception as ex:  # §2.8: errore SQL onesto, con le colonne valide
+        return {"ok": False, "error_class": "wrong_args",
+                "error": (f"{ex} — colonne dello store «{name}»: "
+                          f"{', '.join(getattr(st.schema, 'columns', {}) or [])}"),
+                "results": []}
+    if set_fields:
+        # VALORE-INIZIALE non regredisce (§7.9, bug live task github 6/7):
+        # un set_fields IDENTICO all'insert_default dello store (es.
+        # status='new' con insert_defaults {'status':'new'}) e' il valore di
+        # NASCITA — applicarlo alle righe ESISTENTI le regrediva (la #53
+        # 'posted' tornava 'new' a ogni fire del task → ri-triage infinito).
+        # Le chiavi iniziali valgono solo per le righe NUOVE; ogni ALTRO
+        # set_fields (es. status='posted') resta upsert pieno (contratto P3).
+        _init = dict(getattr(st, "insert_defaults", None) or {})
+        _initial_keys = {k for k, v in set_fields.items()
+                         if k in _init and _init[k] == v}
+        entries = [
+            ({**e, **(set_fields if is_new else {
+                k: v for k, v in set_fields.items()
+                if k not in _initial_keys})}
+             if isinstance(e, dict) else e)
+            for e, is_new in zip(entries, was_new)]
+    try:
         n = st.write(entries, key=key)
     except Exception as ex:  # §2.8: errore SQL onesto, con le colonne valide
         return {"ok": False, "error_class": "wrong_args",

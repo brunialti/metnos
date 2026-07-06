@@ -65,6 +65,42 @@ class WriteEntriesKeySynonymTests(unittest.TestCase):
         out = self._write(["repo", "issue_number"])
         self.assertTrue(out["ok"], out)
 
+    def test_initial_value_set_fields_does_not_regress_existing(self):
+        # Bug live task github 6/7: set_fields {status:new} (== insert_default)
+        # regrediva la #53 'posted' a 'new' a ogni fire → ri-triage infinito.
+        import store as _s
+        _s.get_store(self.name).insert_defaults = {"status": "new"}
+        st = _s.get_store(self.name)
+        st.write([{"repo": "o/r", "issue_number": 53, "title": "t",
+                   "status": "posted"}], key=["repo", "issue_number"])
+        from store_entries import handle_write_entries
+        out = handle_write_entries({
+            "store": self.name, "key": ["repo", "issue_number"],
+            "set_fields": {"status": "new"},
+            "entries": [
+                {"repo": "o/r", "issue_number": 53, "title": "t"},
+                {"repo": "o/r", "issue_number": 99, "title": "n"},
+            ]})
+        self.assertTrue(out["ok"], out)
+        rows = {r["issue_number"]: r["status"] for r in st.find()}
+        self.assertEqual(rows[53], "posted")  # NON regredita
+        self.assertEqual(rows[99], "new")     # nuova: valore iniziale ok
+
+    def test_non_initial_set_fields_updates_existing(self):
+        # Contratto P3 intatto: set_fields DIVERSO dall'iniziale aggiorna.
+        import store as _s
+        _s.get_store(self.name).insert_defaults = {"status": "new"}
+        st = _s.get_store(self.name)
+        st.write([{"repo": "o/r", "issue_number": 53, "title": "t",
+                   "status": "new"}], key=["repo", "issue_number"])
+        from store_entries import handle_write_entries
+        handle_write_entries({
+            "store": self.name, "key": ["repo", "issue_number"],
+            "set_fields": {"status": "posted"},
+            "entries": [{"repo": "o/r", "issue_number": 53, "title": "t"}]})
+        self.assertEqual(
+            {r["issue_number"]: r["status"] for r in st.find()}[53], "posted")
+
     def test_unknown_key_still_honest_error(self):
         # campo inesistente senza sinonimo-colonna → errore onesto, non magia
         from store_entries import handle_write_entries
