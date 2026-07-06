@@ -6276,7 +6276,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         except Exception as _ex:
             import logging as _logging
             _logging.getLogger(__name__).warning(
-                "engine uploads fallito: %s → fallback PLANNER legacy", _ex)
+                "engine uploads fallito: %s → esito onesto (legacy rimosso)", _ex)
             _eng_up_res = None
         if _eng_up_res is not None:
             return _finalize_engine_result(
