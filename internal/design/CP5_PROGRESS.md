@@ -40,3 +40,11 @@ GOTCHA per il seguito: negli assert usare substring SENZA quote (`"mtime"` nella
 
 ### CP5.3 ▶ PROSSIMO
 flag METNOS_PROPOSER_GRAMMAR_ARGS (default 0). Wiring: proposer.py:522-530 (SimpleProposer) e proposer_metis.py:324-410 (_generate_grammar_multi delega a Simple → un solo punto?). Verificare se basta cambiare in SimpleProposer. Passare il catalog (già disponibile? proposer.propose ha catalog=... param).
+
+### CP5.3 ✅ FATTO (6/7)
+`runtime/engine/proposer.py:~522`: flag `METNOS_PROPOSER_GRAMMAR_ARGS` (default 0). Se 1 → `build_framework_grammar_typed(effective_pool, catalog)`, altrimenti `build_framework_grammar(effective_pool)`. `catalog` e `effective_pool` già in scope.
+- **UN SOLO PUNTO copre entrambi gli engine**: MetisProposer delega a `self._simple.propose` (proposer_metis.py:238,386) → il flag nel SimpleProposer vale anche per Metis/v3.
+- Smoke A/B: solo-nomi len 980 (no enum), typed len 2723 (con enum). Turno reale flag ON: `list_dirs`+`sort_entries` ok, answer. StepLog usa `raw_args`/`resolved_args` (NON `args`).
+
+### CP5.4 ▶ PROSSIMO
+Contatore per-guard in dispatch.py. I guard args loggano già (`[phantom_install]` :1926, `[degenerate_find]` :1991, `[sink_provider]` :2047). Aggiungere dict `_GUARD_FIRE_COUNTS` + `guard_fire_counts()`/`reset_guard_fire_counts()`. Incrementare quando il guard MUTA il framework (confronto pre/post o flag interno). Non cambiare comportamento.

@@ -521,13 +521,22 @@ class SimpleProposer:
         }
         if use_grammar:
             try:
-                from .grammar_framework import build_framework_grammar
+                from .grammar_framework import (build_framework_grammar,
+                                                build_framework_grammar_typed)
                 # Vincola `tool` ai nomi del pool effettivo: l'LLM non puo'
                 # piu' allucinare nomi inesistenti (es. get_issues) ne' uscire
                 # dal pool. Bug 2/6/2026: grammar vincolava solo la FORMA JSON,
                 # non i nomi tool → find_urls/get_issues invece di
                 # find_issues_github (in pool).
-                llm_kwargs["grammar"] = build_framework_grammar(effective_pool)
+                # CP5 (ADR 0177 T2/M4): METNOS_PROPOSER_GRAMMAR_ARGS=1 vincola
+                # ANCHE gli args allo schema (enum→alternation). Default OFF
+                # (spike A/B). Fallback interno a build_framework_grammar se il
+                # catalog manca o nessuno schema è tipizzabile.
+                if os.environ.get("METNOS_PROPOSER_GRAMMAR_ARGS", "0") == "1":
+                    llm_kwargs["grammar"] = build_framework_grammar_typed(
+                        effective_pool, catalog)
+                else:
+                    llm_kwargs["grammar"] = build_framework_grammar(effective_pool)
             except Exception as ex:
                 log.warning("GBNF grammar load fallita: %r — fallback no-grammar", ex)
         try:
