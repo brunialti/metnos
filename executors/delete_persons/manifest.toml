@@ -23,7 +23,7 @@ en = "SCOPO: deletes persons/enrollment from the biometric registry (purge or by
 
 [code]
 files  = ["delete_persons.py"]
-digest = "sha256:47db1024d7ffec778229d6daac1a44f1dc8a41174c47326092e90d26155ff8da"
+digest = "sha256:f2ff10499335406fa3c5eb1fe9f2597cbd06b158675f064b0703eca1f8a5d432"
 
 [args]
 type     = "object"

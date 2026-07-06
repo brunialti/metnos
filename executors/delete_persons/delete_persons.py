@@ -153,7 +153,18 @@ def _coalesce_targets(args) -> tuple[list[str], str | None]:
          `.name` (o `.slug` come fallback). Solo se nessuno dei
          precedenti e' presente.
     """
-    if bool(args.get("all")):
+    # §2.9 (mai delete più ampio del richiesto) + §2.4 (tolleranza al
+    # confine): `all=true` è PURGE totale, ma se c'è un target ESPLICITO
+    # (names/name/entries) il target VINCE e `all` è ignorato come spurio.
+    # Bug live 6/7: il proposer LLM emetteva `{names:["Mario"], all:true}`
+    # → «cancella Mario» purgava TUTTO il registro. Lettura sicura: la
+    # richiesta era mirata, si esegue il mirato. `all` da solo (nessun
+    # target) resta il purge legittimo di «cancella tutti». Difesa
+    # deterministica al confine: protegge da OGNI sorgente (proposer, cache
+    # stantia, chiamata diretta) — §7.9.
+    _has_target = bool(args.get("names") or args.get("name")
+                       or args.get("chosen_slugs") or args.get("entries"))
+    if bool(args.get("all")) and not _has_target:
         return ["__ALL__"], None
 
     names = args.get("names")
