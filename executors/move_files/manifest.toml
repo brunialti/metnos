@@ -53,6 +53,15 @@ default     = false
 it = "Se true, rimpiazza dst se esiste (rimuove prima). Default false: la singola entry fallisce e le altre proseguono."
 en = "If true, replace dst if it exists (removes it first). Default false: the single entry fails and the others proceed."
 
+[args.properties.copy]
+type        = "boolean"
+default     = false
+runtime_resolved = true
+
+[args.properties.copy.description]
+it = "Runtime-only. Se true COPIA invece di spostare (src resta). Usato dal reverse remoto restore_blob_backup: un blob deduplicato serve piu' path."
+en = "Runtime-only. If true COPY instead of move (src remains). Used by the remote restore_blob_backup reverse: a deduplicated blob serves multiple paths."
+
 [args.properties.parents]
 type        = "boolean"
 default     = true

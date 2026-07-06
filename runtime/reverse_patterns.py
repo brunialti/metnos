@@ -481,24 +481,34 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
                                   "if_empty_only": True}})
         elif n == "restore_blob_backup":
             # Round-trip SENZA blob sul filo (ADR 0183 D3 chiuso 6/7): il blob
-            # sta SUL DEVICE (local.delete lo scrive lì prima dell'unlink) →
-            # il restore è un MOVE device-locale blob→path originale
-            # (move_files è device_ok, COPY-check-DELETE §2.9). Una chiamata
-            # per file (dst_template letterale). Righe senza blob_path →
-            # unsupported onesto (mai silenzio §2.8).
+            # sta SUL DEVICE (local.delete lo scrive lì prima dell'unlink).
+            # Restore = COPIA device-locale blob→path (6/7: copy, NON move —
+            # un blob DEDUPLICATO per sha256 serve N path; consumarlo al primo
+            # restore lasciava i duplicati senza sorgente, bug live 33/488).
+            # BATCH a chunk (6/7): una chiamata per-file moriva sul
+            # wall-timeout dell'executor undo con centinaia di file;
+            # entries=[{src,dst}] + template "{dst}" (entry-passthrough in
+            # _entry_fields). Runtime device STANTIO (shim pre-6/7): "{dst}"
+            # → ERR_TEMPLATE_FAIL per-item onesto, ritentabile dopo il
+            # restart del daemon. Righe senza blob_path → unsupported onesto.
+            _CHUNK = 100
+            batch = []
             missing_blob = False
             for entry in (res.get("results") or []):
                 if not isinstance(entry, dict):
                     continue
                 bp, path = entry.get("blob_path"), entry.get("path")
                 if bp and path:
-                    calls.append({"executor": "move_files",
-                                  "args": {"entries": [{"src": str(bp)}],
-                                           "dst_template": str(path),
-                                           "parents": True,
-                                           "client": "local"}})
+                    batch.append({"src": str(bp), "dst": str(path)})
                 elif path:
                     missing_blob = True
+            for i in range(0, len(batch), _CHUNK):
+                calls.append({"executor": "move_files",
+                              "args": {"entries": batch[i:i + _CHUNK],
+                                       "dst_template": "{dst}",
+                                       "parents": True,
+                                       "copy": True,
+                                       "client": "local"}})
             if missing_blob:
                 unsupported.append(n + ":righe-senza-blob")
         else:

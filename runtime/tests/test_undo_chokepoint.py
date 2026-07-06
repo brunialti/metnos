@@ -144,7 +144,8 @@ def test_build_remote_reverse_calls():
                      {"path": "/x/già.txt", "created": False}]})
     assert out2["calls"][0]["executor"] == "delete_files"
     assert out2["calls"][0]["args"]["paths"] == ["/x/new.txt"]
-    # blob (ADR 0183 D3 chiuso 6/7): restore = MOVE device-locale blob→path
+    # blob (ADR 0183 D3 + batch/copy 6/7): restore = COPIA device-locale
+    # blob→path, BATCH entries + template {dst} (blob dedup serve N path).
     out3 = build_remote_reverse_calls(
         "restore_blob_backup", {},
         {"results": [{"path": "C:/docs/f.txt",
@@ -152,8 +153,10 @@ def test_build_remote_reverse_calls():
                       "blob_sha256": "ab"}]})
     a3 = out3["calls"][0]["args"]
     assert out3["calls"][0]["executor"] == "move_files"
-    assert a3["entries"] == [{"src": "C:/hist/no_turn/blob/ab.bin"}]
-    assert a3["dst_template"] == "C:/docs/f.txt"
+    assert a3["entries"] == [{"src": "C:/hist/no_turn/blob/ab.bin",
+                              "dst": "C:/docs/f.txt"}]
+    assert a3["dst_template"] == "{dst}"
+    assert a3["copy"] is True
     assert out3["unsupported"] == []
     # righe senza blob → dichiarato, mai silenzio
     out3b = build_remote_reverse_calls(

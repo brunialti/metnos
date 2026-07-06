@@ -56,9 +56,19 @@ def _reverse_on_device(patterns, rec) -> dict:
         total_fail += 1
         overall_ok = False
     for call in built["calls"]:
+        # Deadline SCALATA con gli item (stessa politica A.0 di remote_exec,
+        # 6/7): un batch-restore da 100 copie non sta nei 30s di default — il
+        # job-object ucciderebbe il restore a metà (failure-mode 1ba8e2c4,
+        # ma sull'UNDO). Attesa server allineata alla deadline device.
+        try:
+            from remote_exec import _scaled_timeout_s
+            _scaled_s = _scaled_timeout_s(30, call["args"], "revertible")
+        except Exception:
+            _scaled_s = 30
         try:
             inv_id = _inv.enqueue_invocation(
-                device_id, call["executor"], call["args"], scope="device")
+                device_id, call["executor"], call["args"], scope="device",
+                deadline_ms=_scaled_s * 1000)
         except Exception as e:
             stages.append({"pattern": call["executor"], "result": {
                 "ok": False, "ok_count": 0, "fail_count": 1,
@@ -66,8 +76,9 @@ def _reverse_on_device(patterns, rec) -> dict:
             total_fail += 1
             overall_ok = False
             continue
-        deadline = _time.time() + float(os.environ.get(
-            "METNOS_UNDO_DEVICE_TIMEOUT_S", "25"))
+        deadline = _time.time() + max(
+            float(os.environ.get("METNOS_UNDO_DEVICE_TIMEOUT_S", "25")),
+            _scaled_s + 15)
         state, res = "", None
         while _time.time() < deadline:
             i = _inv.get_invocation(inv_id)

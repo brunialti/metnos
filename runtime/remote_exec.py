@@ -27,6 +27,30 @@ log = get_logger(__name__)
 # lato server (il client ha bisogno di un giro di poll per prenderla).
 WAIT_MARGIN_S = 15
 
+# Deadline scalata per invocazioni MUTANTI di massa (stopgap A.0, bug live
+# 1ba8e2c4 6/7: delete di 681 file sotto deadline 30s → job-object uccide il
+# processo A METÀ: esecuzione parziale reale, results persi, undo orfano,
+# final che dichiara il falso). 1s/item, cap 10min. Il fix pieno è il
+# chunking per-invocazione (spec fase 7 A.0).
+SCALE_MIN_ITEMS = 10
+SCALE_S_PER_ITEM = 1
+SCALE_CAP_S = 600
+
+
+def _scaled_timeout_s(timeout_s: int, args: dict | None,
+                      reversibility: str) -> int:
+    """Timeout effettivo per l'invocazione remota. Read-only invariati;
+    mutanti con vettori grandi (>SCALE_MIN_ITEMS) → base + 1s/item, cap
+    SCALE_CAP_S. Deterministico §7.9 (conta il max fra gli arg lista)."""
+    if reversibility == "read_only":
+        return int(timeout_s)
+    n_items = max((len(v) for v in (args or {}).values()
+                   if isinstance(v, list)), default=0)
+    if n_items <= SCALE_MIN_ITEMS:
+        return int(timeout_s)
+    return min(SCALE_CAP_S,
+               max(int(timeout_s), 30 + n_items * SCALE_S_PER_ITEM))
+
 
 def _register_i18n_keys() -> None:
     """Chiavi user-facing del sottosistema remoto (§11: mai stringhe
@@ -55,8 +79,12 @@ def _register_i18n_keys() -> None:
             needs_translation=False)
         i18n.register_key_if_missing(
             "ERR_DEVICE_TIMEOUT",
-            "il dispositivo '{name}' non ha risposto entro {seconds} secondi",
-            "device '{name}' did not answer within {seconds} seconds",
+            "il dispositivo '{name}' non ha confermato entro {seconds}s. "
+            "L'operazione potrebbe comunque completarsi appena il dispositivo "
+            "risponde: se è una modifica, resterà annullabile.",
+            "device '{name}' did not confirm within {seconds}s. The operation "
+            "may still complete once the device responds: if it changes data, "
+            "it will remain undoable.",
             needs_translation=False)
     except Exception as _e:
         log.warning("registrazione chiavi i18n remote fallita: %s", _e)
@@ -69,7 +97,8 @@ def invoke_remote(executor, args: dict, device_id: str, *,
                   timeout_s: int = 30,
                   turn_id: str | None = None,
                   reversibility: str | None = None,
-                  env_injections: dict | None = None) -> dict:
+                  env_injections: dict | None = None,
+                  actor: str = "", channel: str = "") -> dict:
     """Esegue `executor` sul device remoto e ritorna il result (shape §2.6).
 
     `executor` e' la dataclass loader.Executor (serve name + revertible).
@@ -79,17 +108,29 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     dev = get_device(device_id)
     dev_name = dev.name if dev else device_id[:12]
 
+    rev = reversibility or (
+        "revertible" if getattr(executor, "revertible", False) else "read_only")
+    timeout_s = _scaled_timeout_s(timeout_s, args, rev)
     deadline_ms = int(timeout_s) * 1000
+    # METNOS_TURN_ID nell'env del sandbox device (bug live 1ba8e2c4, 6/7): il
+    # client fa env_clear() → senza iniezione l'executor revertibile scrive i
+    # blob in `_history/no_turn/blob` invece che per-turno, e l'undo device
+    # (ADR 0183) non li ritrova. Viaggia SOLO nel payload firmato (mTLS), mai a
+    # riposo sul device. `env_injections` esplicito ha precedenza.
+    env = dict(env_injections or {})
+    if turn_id:
+        env.setdefault("METNOS_TURN_ID", turn_id)
     invocation_id = invocations.enqueue_invocation(
         device_id,
         executor.name,
         args or {},
         turn_id=turn_id,
         scope="device",
-        reversibility=reversibility or (
-            "revertible" if getattr(executor, "revertible", False) else "read_only"),
-        env_injections=env_injections,
+        reversibility=rev,
+        env_injections=env or None,
         deadline_ms=deadline_ms,
+        origin_actor=actor or "",
+        origin_channel=channel or "",
     )
 
     wait_s = timeout_s + WAIT_MARGIN_S
@@ -97,6 +138,11 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     if result is None:
         log.warning("invocation %s senza result entro %ds (device %s)",
                     invocation_id, wait_s, device_id[:12])
+        # A.0 (fase 7): il turno smette di attendere ma l'invocazione RESTA in
+        # coda — il device può completarla più tardi. Marcala ABBANDONATA così
+        # il submit tardivo chiude l'undo orfano (§2.8: mai un'op mutante che
+        # gira e resta non annullabile). Messaggio ONESTO sull'incertezza.
+        invocations.mark_abandoned(invocation_id)
         return {
             "ok": False,
             "error": _msg("ERR_DEVICE_TIMEOUT", name=dev_name, seconds=wait_s),

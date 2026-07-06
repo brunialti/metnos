@@ -64,6 +64,30 @@ class UndoLog:
     def append_done(self, op_id: str, results: dict) -> None:
         self._append({"type": "done", "op_id": op_id, "ts": time.time(), "results": results})
 
+    def close_pending_for_turn(self, turn_id: str, results: dict,
+                               device: str | None = None) -> int:
+        """Chiude (append_done) i pending ANCORA aperti (senza done/undone) del
+        turno `turn_id`. Usato dall'A.0 (risultato-tardivo, fase 7): un'op remota
+        di cui il turno aveva perso la conferma (timeout) ma che il device
+        completa PIÙ TARDI → il pending era orfano e l'op non annullabile (§2.8).
+        Alla submit tardiva si chiude qui con l'esito reale, ripristinando
+        l'annullabilità. `device` (se dato) restringe il match. Ritorna il numero
+        di record chiusi. Idempotente: salta i pending già `done`."""
+        if not turn_id:
+            return 0
+        closed = 0
+        for op_id, op in self._aggregate_ops().items():
+            p = op.get("pending")
+            if not p or "done" in op or "undone" in op:
+                continue
+            if p.get("turn_id") != turn_id:
+                continue
+            if device is not None and (p.get("device") or "") != device:
+                continue
+            self.append_done(op_id, results)
+            closed += 1
+        return closed
+
     def append_undone(self, op_id: str, reverse_results: dict) -> None:
         self._append({"type": "undone", "op_id": op_id, "ts": time.time(), "reverse_results": reverse_results})
 

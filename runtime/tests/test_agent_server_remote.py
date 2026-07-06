@@ -271,5 +271,64 @@ class InvokeRemotePayloadTests(unittest.TestCase):
         self.assertNotIn("_remote", out)
 
 
+class InvokeRemoteEnvAndDeadlineTests(unittest.TestCase):
+    """turn_id nell'env del sandbox device + deadline scalata per mutanti di
+    massa (bug live 1ba8e2c4, 6/7). Cattura i kwargs dell'enqueue via mock."""
+
+    def _revertible_exec(self, name="delete_files"):
+        class _E:
+            revertible = True
+        _E.name = name
+        return _E()
+
+    def _capture_enqueue(self, executor, args, **kw):
+        import remote_exec
+        from unittest import mock
+        captured = {}
+
+        def _fake_enqueue(device_id, ex_name, ex_args, **kwargs):
+            captured.update(kwargs)
+            captured["args"] = ex_args
+            return "inv-cap"
+        with mock.patch.object(remote_exec.invocations, "enqueue_invocation",
+                               side_effect=_fake_enqueue), \
+             mock.patch.object(remote_exec.invocations, "wait_result",
+                               return_value={"invocation_id": "inv-cap",
+                                             "device_id": "d", "ok": True}), \
+             mock.patch("devices.get_device", return_value=None):
+            remote_exec.invoke_remote(executor, args, "d", **kw)
+        return captured
+
+    def test_turn_id_injected_into_env(self):
+        cap = self._capture_enqueue(
+            self._revertible_exec(), {"paths": ["/x"]},
+            timeout_s=30, turn_id="abc123")
+        self.assertEqual(cap["env_injections"]["METNOS_TURN_ID"], "abc123")
+
+    def test_explicit_env_injection_wins(self):
+        cap = self._capture_enqueue(
+            self._revertible_exec(), {"paths": ["/x"]},
+            timeout_s=30, turn_id="abc123",
+            env_injections={"METNOS_TURN_ID": "explicit"})
+        self.assertEqual(cap["env_injections"]["METNOS_TURN_ID"], "explicit")
+
+    def test_no_turn_id_no_injection(self):
+        cap = self._capture_enqueue(
+            self._revertible_exec(), {"paths": ["/x"]}, timeout_s=30)
+        self.assertIsNone(cap["env_injections"])
+
+    def test_mass_delete_deadline_scaled(self):
+        cap = self._capture_enqueue(
+            self._revertible_exec(), {"paths": ["/x"] * 681, "client": "local"},
+            timeout_s=30, turn_id="t")
+        self.assertEqual(cap["deadline_ms"], 600_000)
+
+    def test_readonly_deadline_untouched(self):
+        cap = self._capture_enqueue(
+            self._revertible_exec("find_files"), {"paths": ["/x"] * 681},
+            timeout_s=30, reversibility="read_only")
+        self.assertEqual(cap["deadline_ms"], 30_000)
+
+
 if __name__ == "__main__":
     unittest.main()

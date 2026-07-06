@@ -54,11 +54,32 @@ CREATE TABLE IF NOT EXISTS invocations (
     delivered_epoch REAL,
     deadline_ms   INTEGER NOT NULL,
     completed_at  TEXT,
-    result_json   TEXT
+    result_json   TEXT,
+    abandoned_by_turn INTEGER NOT NULL DEFAULT 0,
+    origin_actor  TEXT NOT NULL DEFAULT '',
+    origin_channel TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_invocations_device_state
     ON invocations(device_id, state);
 """
+# abandoned_by_turn (A.0 fase 7): il turno che ha accodato l'invocazione ha
+# smesso di attenderla (timeout) → l'op puo' comunque completarsi PIU' TARDI sul
+# device. Al submit tardivo di una abandoned mutante+ok, il record undo orfano
+# viene chiuso (annullabilita' ripristinata, §2.8).
+
+
+def _migrate_schema(conn) -> None:
+    """Migrazione additiva idempotente (DB esistenti pre-A.0 non hanno la
+    colonna abandoned_by_turn: CREATE TABLE IF NOT EXISTS non la aggiunge)."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(invocations)")}
+    if "abandoned_by_turn" not in cols:
+        conn.execute("ALTER TABLE invocations "
+                     "ADD COLUMN abandoned_by_turn INTEGER NOT NULL DEFAULT 0")
+    if "origin_actor" not in cols:
+        conn.execute("ALTER TABLE invocations "
+                     "ADD COLUMN origin_actor TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE invocations "
+                     "ADD COLUMN origin_channel TEXT NOT NULL DEFAULT ''")
 # delivered_epoch = time.time() a wall-clock (NON monotonic): il confronto per
 # la redelivery deve sopravvivere a restart/reboot del server, dove il clock
 # monotonic si azzera. La finestra (deadline+grace) è ampia: eventuali salti
@@ -182,7 +203,27 @@ def executor_shas(name: str) -> tuple[str, str]:
 def _open_db(db_path: Path | None = None) -> sqlite3.Connection:
     conn = devices._open_db(db_path)
     conn.executescript(SCHEMA)
+    _migrate_schema(conn)
     return conn
+
+
+def mark_abandoned(invocation_id: str, *, db_path: Path | None = None) -> None:
+    """A.0: il turno ha smesso di attendere (timeout). Marca l'invocazione così
+    che, se il device la completa più tardi, il submit tardivo sappia chiudere
+    l'undo orfano. Solo se ancora in volo (queued/delivered): un'op già
+    done/failed non è 'abbandonata'. Fail-open."""
+    try:
+        conn = _open_db(db_path)
+        try:
+            conn.execute(
+                "UPDATE invocations SET abandoned_by_turn = 1 "
+                "WHERE invocation_id = ? AND state IN ('queued','delivered')",
+                (invocation_id,))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("mark_abandoned(%s) fallita: %r", invocation_id, ex)
 
 
 def _new_invocation_id() -> str:
@@ -198,6 +239,8 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
                        reversibility: str = "read_only",
                        env_injections: dict | None = None,
                        deadline_ms: int = DEFAULT_DEADLINE_MS,
+                       origin_actor: str = "",
+                       origin_channel: str = "",
                        db_path: Path | None = None) -> str:
     """Accoda un'invocazione firmata per `device_id`. Ritorna invocation_id.
 
@@ -229,11 +272,12 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         conn.execute(
             """INSERT INTO invocations
                (invocation_id, device_id, payload_json, server_sig, state,
-                created_at, deadline_ms)
-               VALUES (?,?,?,?, 'queued', ?, ?)""",
+                created_at, deadline_ms, origin_actor, origin_channel)
+               VALUES (?,?,?,?, 'queued', ?, ?, ?, ?)""",
             (invocation_id, device_id,
              json.dumps(payload, ensure_ascii=False), sig,
-             _now_iso(), int(deadline_ms)),
+             _now_iso(), int(deadline_ms),
+             origin_actor or "", origin_channel or ""),
         )
     finally:
         conn.close()
@@ -364,10 +408,14 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
 
     state = "done" if result.get("ok") else "failed"
     conn = _open_db(db_path)
+    was_abandoned = False
+    payload_json = None
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
-            "SELECT device_id, state FROM invocations WHERE invocation_id = ?",
+            "SELECT device_id, state, payload_json, abandoned_by_turn, "
+            "origin_actor, origin_channel "
+            "FROM invocations WHERE invocation_id = ?",
             (invocation_id,),
         ).fetchone()
         if row is None:
@@ -379,6 +427,11 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
         if row["state"] in ("done", "failed"):
             conn.execute("COMMIT")
             return True  # idempotente: primo result vince
+        was_abandoned = bool(row["abandoned_by_turn"])
+        payload_json = row["payload_json"]
+        origin = (row["origin_channel"] if "origin_channel" in row.keys()
+                  else "", row["origin_actor"] if "origin_actor" in row.keys()
+                  else "")
         conn.execute(
             """UPDATE invocations
                SET state = ?, completed_at = ?, result_json = ?
@@ -396,7 +449,76 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
     finally:
         conn.close()
     log.info("invocation %s -> %s", invocation_id, state)
+    # A.0 (fase 7): risultato TARDIVO di un'op ABBANDONATA dal turno. Se è una
+    # mutazione RIUSCITA, il pending undo era orfano (il turno l'aveva chiuso
+    # come timeout ok=False) → chiudilo ORA con l'esito reale, ripristinando
+    # l'annullabilità (§2.8). Log PROMINENTE: il notificatore utente (A.2) è il
+    # passo successivo; finché non c'è, la traccia non è silenziosa.
+    if was_abandoned and state == "done":
+        _close_late_undo(payload_json, result)
+    # A.2 (fase 7): l'utente CREDE che l'op sia fallita (il turno ha risposto
+    # «esito incerto») → avvisalo dell'esito reale alla prossima visita sul
+    # suo canale (v1: coda user_notices drenata dal primo turno successivo).
+    if was_abandoned and state in ("done", "failed"):
+        _notify_late_outcome(payload_json, result, state, origin)
     return True
+
+
+# Verbi che LASCIANO UNO STATO reversibile (allineati a reverse_patterns): solo
+# per questi ha senso chiudere un undo tardivo.
+_MUTATING_PREFIXES = ("delete", "move", "write", "create", "send", "share",
+                      "order", "change")
+
+
+def _notify_late_outcome(payload_json, result: dict, state: str,
+                         origin: tuple) -> None:
+    """A.2: accoda l'avviso «l'operazione si è completata DOPO il timeout»
+    per il destinatario d'origine. Testo via i18n (§7.13, chiavi nel seed:
+    MSG_LATE_RESULT_{DONE,FAILED}). Fail-open."""
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+        executor = payload.get("executor") or "?"
+        channel, actor = (origin or ("", ""))
+        from devices import get_device
+        dev = get_device(result.get("device_id") or "")
+        dev_name = getattr(dev, "name", None) or "device"
+        from messages import get as _msg
+        n = result.get("n_processed")
+        if not isinstance(n, int):
+            pl = result.get("payload") or {}
+            n = pl.get("ok_count") if isinstance(pl, dict) else None
+        key = ("MSG_LATE_RESULT_DONE" if state == "done"
+               else "MSG_LATE_RESULT_FAILED")
+        text = _msg(key, tool=executor, device=dev_name,
+                    n=n if isinstance(n, int) else "?")
+        import user_notices
+        user_notices.append(channel or "", actor or "host", text)
+        log.info("A.2 notice accodata per %s:%s (%s %s)",
+                 channel or "any", actor or "host", executor, state)
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("_notify_late_outcome fallita (fail-open): %r", ex)
+
+
+def _close_late_undo(payload_json, result: dict) -> None:
+    """Chiude il record undo orfano di un'op remota completata in ritardo
+    (A.0). Correla per `turn_id` (dal payload) + device. Fail-open, mai blocca
+    il submit."""
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+        executor = payload.get("executor") or ""
+        turn_id = payload.get("turn_id") or ""
+        device_id = result.get("device_id") or ""
+        if not turn_id or not executor.split("_", 1)[0] in _MUTATING_PREFIXES:
+            return
+        import undo
+        n = undo.UndoLog().close_pending_for_turn(
+            turn_id, result, device=device_id)
+        if n:
+            log.warning("A.0 risultato-tardivo: %s (turn %s) completata sul "
+                        "device DOPO il timeout del turno → chiusi %d record "
+                        "undo (op ora annullabile)", executor, turn_id[:12], n)
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("_close_late_undo fallita (fail-open): %r", ex)
 
 
 def get_invocation(invocation_id: str, *,
