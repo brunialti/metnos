@@ -119,6 +119,31 @@ def test_human_feedback_confirms_shadow_to_champion(ap_isolated):
     assert shadow == 0
 
 
+def test_seed_counts_by_intent_not_framework_pair(ap_isolated):
+    """Le parafrasi producono piani DIVERSI (misurato 6/7): il conteggio è
+    per intent — la seconda osservazione, anche con framework diverso,
+    semina il piano del run corrente."""
+    ap = ap_isolated
+    it = _intent("read", "files")
+    fw1 = _fw("find_files", "read_files", "extract_entries", "create_files_doc")
+    fw2 = _fw("find_dirs", "read_files", "extract_entries", "create_files_doc")
+    cat = _catalog("find_files", "find_dirs", "read_files",
+                   "extract_entries", "create_files_doc")
+    ap.record_observation(turn_id="t1", intent=it, framework=fw1,
+                          query="parafrasi uno", catalog=cat)
+    ap.record_observation(turn_id="t2", intent=it, framework=fw2,
+                          query="parafrasi due", catalog=cat)
+    ap_id = ap.seed_from_run(intent=it, framework=fw2, n_steps=4, catalog=cat)
+    assert ap_id
+    c = ap._conn()
+    fj, shadow = c.execute(
+        "SELECT framework_json, shadow FROM autopaths WHERE id=?",
+        (ap_id,)).fetchone()
+    c.close()
+    assert shadow == 1
+    assert "find_dirs" in fj  # seminato il piano del RUN corrente (fw2)
+
+
 # ── Trigger (b): lacuna → proposta ──────────────────────────────────────────
 
 @pytest.fixture()

@@ -636,8 +636,13 @@ def seed_from_run(*, intent: Intent, framework: Framework,
     si amplifica un'esecuzione REALE ripetuta, niente ML):
       - il turno ha n_steps >= SEED_STEPS (default 4: sotto, il cold-start
         engine costa poco e il ✓ umano resta l'unica via);
-      - lo STESSO (intent, framework) è stato osservato con successo almeno
-        SEED_REPEAT volte (default 2, observations già registrate);
+      - lo STESSO INTENT è stato osservato con successo almeno SEED_REPEAT
+        volte (default 2). Il conteggio è per intent, NON per coppia
+        (intent, framework): le parafrasi producono piani leggermente
+        diversi dal proposer (misurato 6/7) e la coppia identica non
+        ricorre quasi mai — scegliere il piano fra varianti è il ruolo
+        champion/challenger di L1. Si semina il framework del RUN CORRENTE
+        (l'ultimo successo osservato);
       - nessun autopath ACTIVE esiste già per l'intent.
     Il seed entra `shadow=1`: servito come hit normale (guard 0174 + firme
     0182 lo validano a lettura), il primo ✓ umano lo conferma champion.
@@ -652,8 +657,8 @@ def seed_from_run(*, intent: Intent, framework: Framework,
                      "AND status = 'active' LIMIT 1", (ihash,)).fetchone():
             return None
         n_obs = c.execute(
-            "SELECT COUNT(*) FROM observations WHERE intent_hash = ? "
-            "AND framework_hash = ?", (ihash, fhash)).fetchone()[0]
+            "SELECT COUNT(*) FROM observations WHERE intent_hash = ?",
+            (ihash,)).fetchone()[0]
         if n_obs < SEED_REPEAT:
             return None
         row = c.execute(
