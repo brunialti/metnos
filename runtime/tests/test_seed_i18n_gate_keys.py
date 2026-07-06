@@ -88,6 +88,75 @@ _REQUIRED_HONESTY_KEYS = (
 )
 
 
+# Chiavi UI /admin/changes (ADR 0158; 7/7): il bootstrap runtime
+# change_intents_i18n è stato RITIRATO (§7.13: testi solo nel seed) — senza
+# queste chiavi la pagina admin renderizza <missing:UI_CHANGE_*>.
+_REQUIRED_UI_CHANGE_KEYS = (
+    "UI_CHANGE_TITLE",
+    "UI_CHANGE_SUBTITLE",
+    "UI_CHANGE_TAB_PROPOSED",
+    "UI_CHANGE_TAB_ACCEPTED",
+    "UI_CHANGE_TAB_APPLIED",
+    "UI_CHANGE_TAB_OBSERVED",
+    "UI_CHANGE_TAB_FINALIZED",
+    "UI_CHANGE_TAB_REJECTED",
+    "UI_CHANGE_TAB_STAGED",
+    "UI_CHANGE_TAB_ROLLED_BACK",
+    "UI_CHANGE_TAB_FAILED",
+    "UI_CHANGE_FILTER_FAMILY",
+    "UI_CHANGE_FILTER_KIND",
+    "UI_CHANGE_FILTER_MIN_SCORE",
+    "UI_CHANGE_FILTER_LIMIT",
+    "UI_CHANGE_FILTER_ALL",
+    "UI_CHANGE_SHOWN",
+    "UI_CHANGE_TOTAL_TAB",
+    "UI_CHANGE_COL_SCORE",
+    "UI_CHANGE_COL_KIND",
+    "UI_CHANGE_COL_TARGET",
+    "UI_CHANGE_COL_ORIGIN",
+    "UI_CHANGE_COL_SUMMARY",
+    "UI_CHANGE_COL_ACTIONS",
+    "UI_CHANGE_KIND_CREATE_EXECUTOR",
+    "UI_CHANGE_KIND_EXTEND_EXECUTOR",
+    "UI_CHANGE_KIND_DEDUPE_EXECUTORS",
+    "UI_CHANGE_KIND_MATERIALIZE_PIPELINE",
+    "UI_CHANGE_KIND_CACHE_PATTERN",
+    "UI_CHANGE_KIND_REJECT_PATTERN",
+    "UI_CHANGE_LEGEND",
+    "UI_CHANGE_LEGEND_FAMILIES",
+    "UI_CHANGE_LEGEND_KINDS",
+    "UI_CHANGE_LEGEND_KIND_VS_MODULE",
+    "UI_CHANGE_DETAILS",
+    "UI_CHANGE_DISCOVERED",
+    "UI_CHANGE_EFFECT",
+    "UI_CHANGE_METRICS",
+    "UI_CHANGE_ROLLBACK_REASON",
+    "UI_CHANGE_FAILED_REASON",
+    "UI_CHANGE_CONVERGENCE_TIP",
+    "UI_CHANGE_BTN_ACCEPT",
+    "UI_CHANGE_BTN_REJECT",
+    "UI_CHANGE_BTN_STAGE",
+    "UI_CHANGE_BTN_ROLLBACK",
+    "UI_CHANGE_BTN_RETRY",
+    "UI_CHANGE_CONFIRM_ROLLBACK",
+    "UI_CHANGE_BADGE_ACCEPTED",
+    "UI_CHANGE_BADGE_APPLIED",
+    "UI_CHANGE_BADGE_OBSERVED",
+    "UI_CHANGE_BADGE_FINALIZED",
+    "UI_CHANGE_BADGE_REJECTED",
+    "UI_CHANGE_BADGE_ROLLED_BACK",
+    "UI_CHANGE_BADGE_FAILED",
+    "UI_CHANGE_AWAITING_APPLY",
+    "UI_CHANGE_EMPTY",
+    "MSG_CHANGE_DECISION_OK",
+    "ERR_CHANGE_NOT_FOUND",
+    "ERR_CHANGE_INVALID_ACTION",
+    "UI_CHANGE_DEPRECATION_TITLE",
+    "UI_CHANGE_DEPRECATION_BODY",
+    "UI_CHANGE_DEPRECATION_LINK",
+)
+
+
 class TestSeedHasGateKeys(unittest.TestCase):
     def test_seed_file_exists(self):
         self.assertTrue(_SEED_DB.is_file(), f"seed mancante: {_SEED_DB}")
@@ -155,6 +224,24 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_PLACEMENT_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(
+                        txt and "<missing" not in txt,
+                        f"seed manca {key}[{lang}] (rigenera install/data/"
+                        f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_ui_change_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_UI_CHANGE_KEYS))),
+                _REQUIRED_UI_CHANGE_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_UI_CHANGE_KEYS:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     txt = rows.get((key, lang))

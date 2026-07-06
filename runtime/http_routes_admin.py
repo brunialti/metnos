@@ -218,8 +218,8 @@ async def admin_changes(request: web.Request) -> web.Response:
       limit: int (default 30)
     """
     import change_intents as ci_mod
-    import change_intents_i18n
-    change_intents_i18n.bootstrap_keys()
+    # chiavi UI_CHANGE_* nel catalogo seed (§7.13; bootstrap ritirato 7/7 —
+    # guard: test_seed_i18n_gate_keys._REQUIRED_UI_CHANGE_KEYS).
 
     state = (request.query.get("state") or "proposed").strip().lower()
     if state not in {t["key"] for t in _CHANGES_TABS}:
@@ -325,8 +325,8 @@ async def admin_change_action(request: web.Request) -> web.Response:
     Body opzionale: {"reason": "..."}.
     """
     import change_intents as ci_mod
-    import change_intents_i18n
-    change_intents_i18n.bootstrap_keys()
+    # chiavi UI_CHANGE_* nel catalogo seed (§7.13; bootstrap ritirato 7/7 —
+    # guard: test_seed_i18n_gate_keys._REQUIRED_UI_CHANGE_KEYS).
 
     from messages import get as _msg
 

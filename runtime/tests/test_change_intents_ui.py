@@ -29,8 +29,8 @@ class TestChangesHandlers(unittest.TestCase):
         C.DB_CHANGE_INTENTS = self.tmpdir / "ci.sqlite"
         _reset_modules()
         import change_intents as ci_mod
-        import change_intents_i18n
-        change_intents_i18n.bootstrap_keys()
+        # chiavi UI_CHANGE_* dal catalogo i18n (seed/live); il bootstrap
+        # runtime è stato ritirato (§7.13, 7/7).
         ci_mod.init_db()
         # Popola 2 intent
         self.id1 = ci_mod.upsert_intent(ci_mod.ChangeIntent.new(

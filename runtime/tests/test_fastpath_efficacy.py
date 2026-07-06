@@ -237,6 +237,29 @@ class TestCommittedMutations(unittest.TestCase):
                          latency_ms=1)]
         self.assertEqual(committed_mutations(steps), [])
 
+    def test_partial_failed_mutant_IS_committed(self):
+        # Bug live fin-1/mat-2 (7/7): delete glob §2.4 rimuove 3 file e
+        # rifiuta il system-file → ok=False MA ok_count=3. Considerarla
+        # non-committata faceva ri-eseguire la pipeline dalla recovery
+        # (leg fantasma). Parziale = committato (criterio 'mutated').
+        steps = [StepRun(
+            step_idx=1, tool="delete_files", args={},
+            result={"ok": False, "ok_count": 3, "fail_count": 1,
+                    "results": [{"path": f"/x{i}", "removed": True}
+                                for i in range(3)],
+                    "failed": [{"error_code": "ERR_REFUSE_MOVE"}]},
+            ok=False, latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), ["delete_files"])
+
+    def test_partial_zero_effect_failed_not_committed(self):
+        # ok=False con ok_count=0 e results vuoti = davvero nulla di fatto.
+        steps = [StepRun(
+            step_idx=1, tool="delete_files", args={},
+            result={"ok": False, "ok_count": 0, "results": [],
+                    "failed": [{"error_code": "ERR_PATH_NOT_FOUND"}]},
+            ok=False, latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), [])
+
     def test_reader_not_committed(self):
         steps = [StepRun(step_idx=1, tool="read_messages", args={},
                          result={"ok": True, "entries": [1]}, ok=True,
@@ -264,6 +287,59 @@ class TestCommittedMutations(unittest.TestCase):
                          result={"ok": True, "n_sent": 1}, ok=True,
                          latency_ms=1, kind="done")]
         self.assertEqual(committed_mutations(steps), [])
+
+
+class TestShouldCachePlanMaterialized(unittest.TestCase):
+    """_should_cache_plan — piani MATERIALIZZATI (7/7): liste PATH-like
+    literal non-in-query negli step MUTANTI = valori risolti dai result del
+    turno → il replay 0b li canonicalizza su path nuovi e serve piani
+    incoerenti. No-cache. Glob esenti per VALORE; slug/id preservati
+    (garanzia serve-time _mutating_args_grounded)."""
+
+    @staticmethod
+    def _fw(*steps):
+        from engine.types import Framework, StepSpec
+        return Framework(steps=[StepSpec(tool=t, args=a) for t, a in steps])
+
+    def _should(self, fw, q):
+        from engine.dispatch import _should_cache_plan
+        return _should_cache_plan(fw, q)
+
+    def test_materialized_paths_not_cacheable(self):
+        fw = self._fw(("find_files", {"base_path": "/tmp/x"}),
+                      ("delete_files", {"paths": ["/tmp/x/a.txt",
+                                                  "/tmp/x/b.txt"]}))
+        self.assertFalse(self._should(
+            fw, "cancella i file nella directory /tmp/x"))
+
+    def test_degenerate_path_in_query_cacheable(self):
+        fw = self._fw(("delete_files", {"paths": ["/tmp/x/a.txt"]}))
+        self.assertTrue(self._should(fw, "cancella /tmp/x/a.txt"))
+
+    def test_from_step_skeleton_cacheable(self):
+        fw = self._fw(("find_files", {"base_path": "/tmp/x"}),
+                      ("delete_files", {"from_step": 1}))
+        self.assertTrue(self._should(
+            fw, "cancella i file nella directory /tmp/x"))
+
+    def test_glob_value_exempt(self):
+        fw = self._fw(("delete_files", {"paths": ["/tmp/gt/*"]}))
+        self.assertTrue(self._should(fw, "cancella i file in /tmp/gt"))
+
+    def test_resolved_slugs_still_cacheable(self):
+        # policy esistente (slug non path-like): garanzia a serve-time.
+        fw = self._fw(("delete_persons", {"chosen_slugs": ["mario-rossi"]}))
+        self.assertTrue(self._should(fw, "cancella l'enrollment di mario"))
+
+    def test_windows_path_not_cacheable(self):
+        fw = self._fw(("delete_files",
+                       {"paths": ["C:\\Users\\rober\\Downloads\\x.pdf"]}))
+        self.assertFalse(self._should(
+            fw, "cancella i file nella directory downloads"))
+
+    def test_producer_literal_untouched(self):
+        fw = self._fw(("read_files", {"paths": ["/tmp/other.txt"]}))
+        self.assertTrue(self._should(fw, "leggi il file"))
 
 
 if __name__ == "__main__":
