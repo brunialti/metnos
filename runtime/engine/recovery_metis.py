@@ -65,6 +65,31 @@ class MetisRecovery:
             log.info("MetisRecovery: inserito find_files (needs_file_discovery)")
             return corrected_ff
 
+        # 1.ter DIRECTORY passata a un consumer di FILE («cancella i file
+        # nella cartella X» → delete_files(paths=[X])): l'executor rifiuta
+        # onestamente (ERR_PATH_WRONG_TYPE expected=file actual=directory,
+        # campi STRUTTURATI nei failed[] — funziona anche per path su device
+        # remoto, dove uno stat locale è impossibile). Ricostruisce
+        # [find_files(base_path=<dir>), <stesso tool>(from_step=N)].
+        corrected_dir = self._fix_dir_passed_as_file(failed_run, intent, catalog)
+        if corrected_dir is not None:
+            log.info("MetisRecovery: espansa directory via find_files "
+                     "(wrong_type_dir)")
+            return corrected_dir
+
+        # 1.quater GLOB passato come path literal («cancella i file in X» →
+        # delete_files(paths=["X/*"]) → ERR_PATH_NOT_FOUND). §2.4 dominio
+        # aperto = wildcard tollerate: il backend NUOVO le espande da solo,
+        # questo copre il runtime device STANTIO. dirname/basename = string
+        # ops pure (niente stat: il path può stare su un device remoto);
+        # find_files arbitra l'esistenza del parent.
+        corrected_glob = self._fix_glob_passed_as_path(failed_run, intent,
+                                                       catalog)
+        if corrected_glob is not None:
+            log.info("MetisRecovery: espanso glob via find_files "
+                     "(glob_not_found)")
+            return corrected_glob
+
         # 2. Re-propose escludendo SOLO il framework fallito (NON il tool: a
         #    differenza di SimpleRecovery, che escludendo il tool dell'ultimo
         #    step peggiora i casi tipo needs_content_fetch). Il Proposer
@@ -171,6 +196,145 @@ class MetisRecovery:
             StepSpec(tool="find_files", args=ff_args),
             StepSpec(tool=last.tool, args={"from_step": 1}),
         ]
+        return Framework(steps=steps, final_message="")
+
+    def _fix_dir_passed_as_file(self, failed_run: RunResult, intent: Intent,
+                                catalog: Optional[list]) -> Optional[Framework]:
+        """L'ultimo step ha ricevuto in `paths` una DIRECTORY dove servivano
+        FILE (failed[] con error_code=ERR_PATH_WRONG_TYPE e actual=directory
+        strutturato): l'intento parla dei file CONTENUTI. Ricostruisce
+        [<step read-only precedenti>, find_files(base_path=<dir>),
+        <stesso tool>(from_step=N)]. Deterministico §7.9: solo campi
+        strutturati, mai parsing dell'error text (multi-lingua).
+
+        Guard-rail:
+        - intent.object == "dirs" → NO-FIRE: l'utente parlava della cartella
+          in sé (misroute verso delete_files: la via giusta è delete_dirs,
+          lasciata al re-propose col pool verb-filtered).
+        - ok_count > 0 o failed misti → NO-FIRE: il re-run perderebbe traccia
+          dei path già processati (§2.8).
+        - più directory distinte → NO-FIRE (from_step punta a UN solo step).
+        - step precedenti con verbo mutating → NO-FIRE (ri-eseguirli
+          duplicherebbe le mutazioni)."""
+        if not failed_run.steps:
+            return None
+        last = failed_run.steps[-1]
+        r = last.result if isinstance(last.result, dict) else {}
+        a = last.args if isinstance(last.args, dict) else {}
+        if last.ok or not isinstance(a.get("paths"), list):
+            return None
+        if getattr(intent, "object", "") == "dirs":
+            return None
+        if r.get("ok_count") or r.get("results"):
+            return None
+        failed = r.get("failed")
+        if not (isinstance(failed, list) and failed):
+            return None
+        # Direzione dell'errore: expected=file. Con i campi strutturati la
+        # certifica l'item; SENZA (runtime device stantio, shim non
+        # content-addressed → il fix di local.py non è ancora arrivato) la
+        # garantisce il NOME del tool (§2.2: <verb>_files consuma FILE) e
+        # l'`actual` lo arbitra find_files a valle (path non-directory →
+        # errore onesto, nessuna mutazione).
+        tool_is_files = (last.tool or "").split("_")[1:2] == ["files"]
+        dirs = set()
+        for it in failed:
+            if not (isinstance(it, dict)
+                    and it.get("error_code") == "ERR_PATH_WRONG_TYPE"
+                    and it.get("path")):
+                return None  # anche UN failed di altra natura → no-fire
+            if "expected" in it or "actual" in it:
+                if not (it.get("expected") == "file"
+                        and it.get("actual") == "directory"):
+                    return None
+            elif not tool_is_files:
+                return None
+            dirs.add(str(it["path"]))
+        if len(dirs) != 1:
+            return None
+        if catalog is not None and not any(
+                getattr(e, "name", None) == "find_files" for e in catalog):
+            return None
+        _MUTATING = ("delete", "move", "write", "create", "send", "share",
+                     "order", "change", "extract", "undo", "admin")
+        steps: list[StepSpec] = []
+        for s in failed_run.steps[:-1]:
+            if (s.tool or "").split("_")[0] in _MUTATING:
+                return None
+            steps.append(StepSpec(tool=s.tool, args=self._clean_args(s.args)))
+        ff_idx = len(steps) + 1
+        steps.append(StepSpec(tool="find_files",
+                              args={"base_path": next(iter(dirs))}))
+        consumer_args = self._clean_args(last.args)
+        consumer_args.pop("paths", None)
+        consumer_args["from_step"] = ff_idx
+        steps.append(StepSpec(tool=last.tool, args=consumer_args))
+        return Framework(steps=steps, final_message="")
+
+    def _fix_glob_passed_as_path(self, failed_run: RunResult, intent: Intent,
+                                 catalog: Optional[list]) -> Optional[Framework]:
+        """L'ultimo step (consumer *_files con arg `paths`) ha ricevuto
+        path GLOB literal (`*`/`?`) falliti ERR_PATH_NOT_FOUND. Ricostruisce
+        [<prefix read-only>, find_files(base_path=<parent>, patterns=[...],
+        recursive=false), <tool>(from_step=N)]. recursive=false = semantica
+        fedele al glob (un solo livello). Vincoli come _fix_dir_passed_as_file
+        + parent UNICO senza wildcard."""
+        if not failed_run.steps:
+            return None
+        last = failed_run.steps[-1]
+        r = last.result if isinstance(last.result, dict) else {}
+        a = last.args if isinstance(last.args, dict) else {}
+        if last.ok or not isinstance(a.get("paths"), list):
+            return None
+        if (last.tool or "").split("_")[1:2] != ["files"]:
+            return None
+        if getattr(intent, "object", "") == "dirs":
+            return None
+        if r.get("ok_count") or r.get("results"):
+            return None
+        failed = r.get("failed")
+        if not (isinstance(failed, list) and failed):
+            return None
+        import ntpath
+        import posixpath
+        parents, patterns = set(), []
+        for it in failed:
+            p = it.get("path") if isinstance(it, dict) else None
+            if not (isinstance(it, dict)
+                    and it.get("error_code") == "ERR_PATH_NOT_FOUND"
+                    and isinstance(p, str)
+                    and any(c in p for c in "*?")):
+                return None
+            # Split OS-agnostico: il path può essere di un device Windows
+            # mentre il server è POSIX (e viceversa).
+            mod = ntpath if ("\\" in p or ":" in p[:3]) else posixpath
+            parent, base = mod.dirname(p), mod.basename(p)
+            if (not parent or not base
+                    or any(c in parent for c in "*?")):
+                return None
+            parents.add(parent)
+            patterns.append(base)
+        if len(parents) != 1:
+            return None
+        if catalog is not None and not any(
+                getattr(e, "name", None) == "find_files" for e in catalog):
+            return None
+        _MUTATING = ("delete", "move", "write", "create", "send", "share",
+                     "order", "change", "extract", "undo", "admin")
+        steps: list[StepSpec] = []
+        for s in failed_run.steps[:-1]:
+            if (s.tool or "").split("_")[0] in _MUTATING:
+                return None
+            steps.append(StepSpec(tool=s.tool, args=self._clean_args(s.args)))
+        ff_idx = len(steps) + 1
+        steps.append(StepSpec(tool="find_files",
+                              args={"base_path": next(iter(parents)),
+                                    "patterns": sorted(set(patterns)),
+                                    "recursive": False}))
+        consumer_args = self._clean_args(last.args)
+        consumer_args.pop("paths", None)
+        consumer_args["from_step"] = ff_idx
+        steps.append(StepSpec(tool=last.tool, args=consumer_args))
         return Framework(steps=steps, final_message="")
 
     @staticmethod

@@ -33,8 +33,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.paths.description]
-it = "Lista di path di file da rimuovere. Path assoluti o ~ espandibile. Tutti devono essere FILE (non directory) e dentro lo scope fs:write autorizzato. Esempio: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
-en = "List of file paths to remove. Absolute paths or ~ expandable. All must be FILES (not directories) and within the authorized fs:write scope. Example: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
+it = "Lista di path di file da rimuovere. Path assoluti o ~ espandibile. Valori con `*`/`?` = glob, espansi a soli file regolari (es. \"/tmp/logs/*.log\"). Tutti devono essere FILE (non directory) e dentro lo scope fs:write autorizzato. Esempio: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
+en = "List of file paths to remove. Absolute paths or ~ expandable. Values with `*`/`?` = glob, expanded to regular files only (e.g. \"/tmp/logs/*.log\"). All must be FILES (not directories) and within the authorized fs:write scope. Example: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
 
 [args.properties.client]
 type        = "string"

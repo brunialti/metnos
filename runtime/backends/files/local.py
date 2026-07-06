@@ -911,7 +911,15 @@ def _entry_fields(entry, src_path):
     place = entry.get("place") or "unknown"
     if not isinstance(place, str) or not place.strip():
         place = "unknown"
+    # Passthrough dei campi STRINGA extra dell'entry (§2.4): il dst_template
+    # può referenziarli (es. entries=[{src, dst}] + "{dst}" — batch restore
+    # del reverse remoto, 6/7). I campi calcolati qui sotto NON sono
+    # sovrascrivibili (vincono sempre).
+    extra = {k: v for k, v in entry.items()
+             if isinstance(v, str) and k not in (
+                 "path", "name", "stem", "ext", "parent", "place")}
     return {
+        **extra,
         "path": str(src_path),
         "name": name,
         "stem": stem,
@@ -924,8 +932,11 @@ def _entry_fields(entry, src_path):
     }
 
 
-def _move_one(src_path, dst_path, overwrite, parents):
-    """Esegue lo spostamento; ritorna (ok, error, dirs_created)."""
+def _move_one(src_path, dst_path, overwrite, parents, copy=False):
+    """Esegue lo spostamento (o la COPIA con copy=True); ritorna
+    (ok, error, dirs_created). copy=True: src resta (usato dal reverse
+    remoto restore_blob_backup — un blob DEDUPLICATO serve più path,
+    consumarlo al primo restore rompeva i duplicati; bug live 6/7)."""
     if not src_path.exists():
         return False, f"src not found: {src_path}", []
     if str(dst_path) == str(src_path):
@@ -956,7 +967,10 @@ def _move_one(src_path, dst_path, overwrite, parents):
             return False, f"os error creating dst parent: {e}", []
         dirs_created = ancestors
     try:
-        shutil.move(str(src_path), str(dst_path))
+        if copy:
+            shutil.copy2(str(src_path), str(dst_path))
+        else:
+            shutil.move(str(src_path), str(dst_path))
     except PermissionError as e:
         return False, f"permission denied (possibly outside allowed scope): {e}", []
     except OSError as e:
@@ -972,6 +986,7 @@ def move(args: dict) -> dict:
     parents = bool(args.get("parents", True))
     allow_dirs = bool(args.get("allow_dirs", False))
     allow_system = bool(args.get("allow_system", False))
+    copy_mode = bool(args.get("copy", False))
 
     if entries is None or not isinstance(entries, list):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
@@ -1045,7 +1060,8 @@ def move(args: dict) -> dict:
                            "error": _msg("ERR_TEMPLATE_FAIL", stage="render", reason=str(e))})
             continue
         dst_path = Path(os.path.expanduser(dst_str)).resolve()
-        ok, err, dirs_created = _move_one(src_path, dst_path, overwrite, parents)
+        ok, err, dirs_created = _move_one(src_path, dst_path, overwrite,
+                                          parents, copy=copy_mode)
         if ok:
             results.append({"src": str(src_path), "dst": str(dst_path)})
             for d in dirs_created:
@@ -1429,6 +1445,22 @@ def delete_files(args: dict) -> dict:
     turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
     blob_dir = Path(history_dir) / turn_id / "blob"
 
+    # §2.4 dominio APERTO: tolleranza wildcard (l'LLM tende ai glob, es.
+    # paths=["/tmp/dir/*"]). Espansione a SOLI file regolari — mai directory
+    # implicite (§2.9). 0 match → resta il path glob e fallisce a valle con
+    # ERR_PATH_NOT_FOUND onesto.
+    import glob as _glob
+    expanded = []
+    for p in paths:
+        if isinstance(p, str) and any(c in p for c in "*?["):
+            hits = sorted(
+                m for m in _glob.glob(os.path.expanduser(p))
+                if Path(m).is_file())
+            expanded.extend(hits or [p])
+        else:
+            expanded.append(p)
+    paths = expanded
+
     results = []
     failed = []
     for i, p in enumerate(paths):
@@ -1453,14 +1485,19 @@ def delete_files(args: dict) -> dict:
                            "error": _msg("ERR_PATH_NOT_FOUND", path=str(abs_path))})
             continue
         if abs_path.is_dir():
+            # `expected`/`actual` STRUTTURATI oltre al testo: il recovery
+            # deterministico (§7.9, mai regex su error multi-lingua) li usa
+            # per riconoscere "directory passata a un consumer di file".
             failed.append({"index": i, "path": str(abs_path),
                            "error_code": "ERR_PATH_WRONG_TYPE",
+                           "expected": "file", "actual": "directory",
                            "error": _msg("ERR_PATH_WRONG_TYPE",
                                           expected="file", actual="directory", path=str(abs_path))})
             continue
         if not abs_path.is_file():
             failed.append({"index": i, "path": str(abs_path),
                            "error_code": "ERR_PATH_WRONG_TYPE",
+                           "expected": "file", "actual": "special",
                            "error": _msg("ERR_PATH_WRONG_TYPE",
                                           expected="file", actual="special", path=str(abs_path))})
             continue
