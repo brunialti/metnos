@@ -3367,6 +3367,13 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     _undo_op = _undo_pending(executor, args, turn_id=turn_id,
                              actor=actor, channel=channel, device="")
 
+    # Isolamento multi-utente dell'undo (7/7/2026): garantisce `_actor` a
+    # undo_last_turn QUI al choke-point — il fast-path «annulla» non passa
+    # dall'injection dell'engine e arriverebbe senza identita' (un guest
+    # filtrerebbe come 'host' e potrebbe ribaltare op altrui).
+    if executor.name == "undo_last_turn" and "_actor" not in args:
+        args = {**args, "_actor": actor or "host"}
+
     import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]

@@ -91,11 +91,15 @@ class UndoLog:
             entry[rec["type"]] = rec
         return ops
 
-    def latest_turn_done(self) -> list[dict]:
+    def latest_turn_done(self, actor: str | None = None) -> list[dict]:
         """Record `done` non `undone` del turno piu' recente con almeno un done.
 
         Ritorna i pending arricchiti con `results` (campo del done corrispondente),
         in ordine cronologico (dal primo all'ultimo eseguito).
+
+        `actor`: isolamento multi-utente (7/7/2026) — se dato, considera SOLO
+        le op emesse da QUEL richiedente (campo `actor` del pending): un guest
+        che dice «annulla» NON deve ribaltare l'operazione di un altro utente.
         """
         ops = self._aggregate_ops()
         # Filtra ops con done E senza undone
@@ -104,6 +108,9 @@ class UndoLog:
             for op in ops.values()
             if "pending" in op and "done" in op and "undone" not in op
         ]
+        if actor is not None:
+            completed_ops = [(p, d) for (p, d) in completed_ops
+                             if (p.get("actor") or "host") == actor]
         if not completed_ops:
             return []
         # Trova l'ultimo turn_id (quello del done piu' recente)

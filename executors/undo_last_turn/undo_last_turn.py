@@ -121,7 +121,10 @@ def _load_module(code_path: Path):
 def invoke(args):
     log_path_arg = args.get("log_path")
     log = UndoLog(Path(log_path_arg)) if log_path_arg else UndoLog()
-    records = log.latest_turn_done()
+    # Isolamento multi-utente (7/7/2026): annulli SOLO le TUE operazioni.
+    # `_actor` e' garantito al choke-point invoke_executor (copre anche il
+    # fast-path «annulla», che non passa dall'injection dell'engine).
+    records = log.latest_turn_done(actor=args.get("_actor") or "host")
     if not records:
         return {
             "ok": True,
