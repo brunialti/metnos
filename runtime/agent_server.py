@@ -197,6 +197,53 @@ def _server_client_version() -> str | None:
     return None
 
 
+_DEFER_RUN: set = set()
+
+
+def _run_deferred_for_device(device_id: str) -> None:
+    """A.1: ri-esegue i turni differiti del device appena torna a pollare.
+    Best-effort, MAI blocca il poll (gira nel thread pool). Il re-run è un
+    run_turn PIENO (planning fresco, gate, undo standard); esito → notice."""
+    try:
+        import deferred_turns as _dt
+        import user_notices as _un
+        from messages import get as _m
+        for rec in _dt.pending_for_device(device_id):
+            rid = rec.get("id")
+            if not rid or rid in _DEFER_RUN:
+                continue
+            if rec.get("state") == "expired":
+                _un.append(rec.get("channel") or "", rec.get("actor") or "host",
+                           _m("MSG_DEFER_EXPIRED",
+                              device=rec.get("device_name") or "?",
+                              query=(rec.get("query") or "")[:80]))
+                continue
+            _DEFER_RUN.add(rid)
+            _dt.mark(rid, "running")
+            try:
+                import agent_runtime as _ar
+                nl = _ar.run_turn(
+                    rec.get("query") or "",
+                    actor=rec.get("actor") or "host",
+                    channel=rec.get("channel") or "",
+                    conversation_id=rec.get("conversation_id") or "")
+                ok = bool(nl is not None
+                          and getattr(nl, "final_kind", "") == "answer")
+                _dt.mark(rid, "done" if ok else "failed")
+                _un.append(
+                    rec.get("channel") or "", rec.get("actor") or "host",
+                    _m("MSG_DEFER_DONE",
+                       device=rec.get("device_name") or "?",
+                       outcome=(getattr(nl, "final_message", "") or "")[:200]))
+            except Exception as ex:
+                _dt.mark(rid, "failed", note=repr(ex)[:200])
+                log.warning("A.1 deferred %s fallito: %r", rid, ex)
+            finally:
+                _DEFER_RUN.discard(rid)
+    except Exception as ex:  # noqa: BLE001 — mai rompere il poll
+        log.warning("A.1 run_deferred noop: %r", ex)
+
+
 async def poll(request: web.Request) -> web.Response:
     """POST /agent/poll — long-poll §6.2.
 
@@ -215,6 +262,10 @@ async def poll(request: web.Request) -> web.Response:
     loop = asyncio.get_running_loop()
     # Il poll e' anche liveness implicita: aggiorna last_heartbeat.
     await loop.run_in_executor(None, lambda: devices.heartbeat(device.id))
+    # Fase 7 A.1: il device è TORNATO (sta pollando) → esegui i turni
+    # DIFFERITI col suo consenso. Fire-and-forget nel thread pool; l'esito
+    # arriva all'utente via user_notices (A.2). Dedup in-process (_DEFER_RUN).
+    loop.run_in_executor(None, _run_deferred_for_device, device.id)
 
     deadline = loop.time() + block_ms / 1000.0
     while True:

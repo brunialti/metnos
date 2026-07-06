@@ -29,6 +29,12 @@ _REQUIRED_KEYS = (
     "MSG_ACTION_DELETE",
     "MSG_ACTION_MOVE",
     "MSG_LOCAL_HERE",
+    # Fase 7 A.1 differito (7/7)
+    "MSG_DEFER_TITLE",
+    "MSG_DEFER_OFFER",
+    "MSG_DEFER_QUEUED",
+    "MSG_DEFER_DONE",
+    "MSG_DEFER_EXPIRED",
 )
 
 # Chiavi user-facing del path upload-default faceless (1/7): la risposta parte

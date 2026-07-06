@@ -3267,6 +3267,56 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
     return bool(_MUTATION_CLAIM_RE.search(final_message))
 
 
+def _offer_defer_dialog(*, query, device_id, device_name, actor, channel,
+                        conversation_id, sender_id):
+    """Fase 7 A.1: dialog yes_no «eseguo appena {device} torna online?».
+
+    Riusa l'infrastruttura dialog_pending/gate: form web (INLINE_FORM),
+    bottoni Telegram, submit → orchestration `defer_turn` → deferred_turns.
+    Ritorna {final_message, expandable_caps} o None (fail-open → errore
+    onesto classico)."""
+    try:
+        import uuid as _uuid
+        import dialog_pending as _dp
+        from messages import get as _m
+        dialog_id = _uuid.uuid4().hex[:16]
+        prompt = _m("MSG_DEFER_OFFER", device=device_name)
+        state = {
+            "dialog_id": dialog_id,
+            "title": _m("MSG_DEFER_TITLE"),
+            "dialog": [{
+                "var": "decision", "prompt": prompt,
+                "schema": {"kind": "choice", "choices": [
+                    {"label": _m("MSG_BTN_APPROVE"), "value": "approve"},
+                    {"label": _m("MSG_BTN_REJECT"), "value": "reject"},
+                ]},
+            }],
+            "fmt": "form" if channel == "http" else "dialogue",
+            "fmt_arg": "auto", "values_collected": {}, "step_index": 0,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "actor": actor, "channel": channel,
+            "timeout_s": 3600, "completed": False, "cancelled": False,
+            "on_complete": {
+                "type": "defer_turn", "original_query": query,
+                "device_id": device_id, "device_name": device_name,
+                "conversation_id": conversation_id,
+            },
+        }
+        _dp.save_pending(sender_id, dialog_id, state)
+        final = prompt
+        if state["fmt"] == "form":
+            final += f"\n\nINLINE_FORM:/agent/dialog/{dialog_id}/form"
+        return {"final_message": final, "expandable_caps": [{
+            "kind": "get_inputs_response", "dialog_id": dialog_id,
+            "step_total": 1, "fmt": state["fmt"],
+            "sender_for_state": sender_id,
+        }]}
+    except Exception as _de:  # noqa: BLE001 — fail-open
+        log = get_logger(__name__)
+        log.warning("A.1 offer_defer fallita (fail-open): %r", _de)
+        return None
+
+
 def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
     """Scrittore del log undo al CHOKE-POINT di invocazione (§2.3/§4.5).
 
@@ -6181,6 +6231,24 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                 # esecuzione (né qui né altrove) §2.8/§2.11.
                 from messages import get as _pm
                 if _tr.status == "unreachable":
+                    # Fase 7 A.1: OFFERTA di differimento col consenso (§2.11,
+                    # mai magia). Dialog yes_no riusando l'infrastruttura
+                    # get_inputs/gate (form web via INLINE_FORM; il submit
+                    # dispatcha orchestration:defer_turn → deferred_turns).
+                    _dfr = _offer_defer_dialog(
+                        query=user_query_for_run,
+                        device_id=(_tr.target
+                                   if _tr.target != _td_mod.SERVER else ""),
+                        device_name=_tr.unreachable_name or "?",
+                        actor=actor or "host", channel=channel or "",
+                        conversation_id=conversation_id or "",
+                        sender_id=_sid)
+                    if _dfr:
+                        log.final_kind = "ask"
+                        log.final_message = _dfr["final_message"]
+                        log.expandable_caps = _dfr["expandable_caps"]
+                        log.target_device = _tr.unreachable_name
+                        log.ts_end = time.time(); log.write(); return log
                     _pmsg = _pm("ERR_DEVICE_UNREACHABLE", name=_tr.unreachable_name or "?")
                 else:
                     _pnm = ", ".join(n for _i, n in _tr.candidates if n)

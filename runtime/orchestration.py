@@ -510,6 +510,27 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor, channel=channel,
         )
 
+    if callback_type == "defer_turn":
+        # Fase 7 A.1: consenso al DIFFERIMENTO di un turno su device offline.
+        # Sì → accoda (deferred_turns) e chiudi; il re-run parte al primo
+        # poll del device (agent_server) e l'esito arriva via user_notices.
+        decision = next(iter((values or {}).values()), None) if values else None
+        if decision != "approve":
+            return _msg("MSG_GATE_NO_ACTION")
+        import deferred_turns as _dt
+        rid = _dt.add(
+            device_id=on_complete.get("device_id") or "",
+            device_name=on_complete.get("device_name") or "?",
+            query=on_complete.get("original_query") or "",
+            actor=actor or "host", channel=channel or "",
+            conversation_id=on_complete.get("conversation_id") or "")
+        log.info("A.1 defer_turn accodato %s per device %s", rid,
+                 (on_complete.get("device_name") or "?"))
+        return _msg("MSG_DEFER_QUEUED",
+                    device=on_complete.get("device_name") or "?",
+                    hours=int(float(__import__("os").environ.get(
+                        "METNOS_DEFER_TTL_H", "24"))))
+
     # github_analyze / github_send_reply: RITIRATI (flusso watcher legacy →
     # executor write/read/find_issues + comandi schedulati).
 
