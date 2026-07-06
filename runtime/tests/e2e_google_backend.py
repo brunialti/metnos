@@ -19,18 +19,25 @@ import sys
 import argparse
 
 sys.path[:0] = ["/opt/metnos", "/opt/metnos/runtime", "/opt/suprastructure/src"]
-os.environ.setdefault("HOME", "/home/roberto")
-for _k, _v in {
-    "METNOS_ENGINE": "v3", "METNOS_INTENT_CLASSIFIER": "1",
-    "METNOS_PROPOSER_GRAMMAR": "1", "METNOS_PROPOSER_VERB_FILTER": "1",
-    "METNOS_PREFILTER_RULES": "1", "METNOS_PROPOSER_FAST_CONFIDENCE": "0.70",
-    "METNOS_DEFAULT_MAIL_ACCOUNT": "knowcastle", "METNOS_PRAXIS": "1",
-    "METNOS_PRAXIS_AUTO_PROMOTE": "1", "METNOS_PLANNER_LEGACY": "0",
-    "METNOS_PRAXIS_FALLBACK": "1",
-}.items():
-    os.environ[_k] = _v
 
-from agent_runtime import run_turn  # noqa: E402
+# ENV di PROD applicati SOLO in esecuzione diretta (6/7): questo è uno SCRIPT
+# e2e manuale, non un test pytest. Col vecchio nome test_* e l'env-block a
+# module-level, la COLLEZIONE pytest della suite completa lo importava e
+# avvelenava i test successivi (grammar/prefilter/praxis forzati) — era LUI
+# il «flaky» di test_X_al_mare + test_find_files_still_top (riproduttore
+# -k "planner_routing_composition or prefilter"). File rinominato senza
+# prefisso test_ + guardia __main__: doppia protezione.
+def _apply_prod_env() -> None:
+    os.environ.setdefault("HOME", "/home/roberto")
+    for _k, _v in {
+        "METNOS_ENGINE": "v3", "METNOS_INTENT_CLASSIFIER": "1",
+        "METNOS_PROPOSER_GRAMMAR": "1", "METNOS_PROPOSER_VERB_FILTER": "1",
+        "METNOS_PREFILTER_RULES": "1", "METNOS_PROPOSER_FAST_CONFIDENCE": "0.70",
+        "METNOS_DEFAULT_MAIL_ACCOUNT": "knowcastle", "METNOS_PRAXIS": "1",
+        "METNOS_PRAXIS_AUTO_PROMOTE": "1", "METNOS_PLANNER_LEGACY": "0",
+        "METNOS_PRAXIS_FALLBACK": "1",
+    }.items():
+        os.environ[_k] = _v
 
 # Token che devono comparire nel contenuto letto del KAKEBO (id reali su Drive).
 KAKEBO_TOKENS = ("kakebo", "spesa", "111,18", "palestra")
@@ -119,6 +126,7 @@ def run():
     rows, failed_must = [], 0
     for sc in SCENARIOS:
         try:
+            from agent_runtime import run_turn  # lazy: solo in esecuzione diretta
             res = run_turn(sc["query"], actor="host", channel="http")
             steps = _steps(res)
             ok, detail = sc["check"](res, steps)
@@ -151,4 +159,5 @@ def run():
 
 
 if __name__ == "__main__":
+    _apply_prod_env()
     sys.exit(run())
