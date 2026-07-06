@@ -51,8 +51,12 @@ pub struct Runner {
     executed: HashSet<String>,
     capabilities: Vec<String>,
     /// Cache per-processo: lo shim (executor_helpers+messages) e l'interprete
-    /// python si risolvono UNA volta, non ad ogni execute.
+    /// python si risolvono UNA volta, non ad ogni execute. Content-addressing
+    /// (0.2.15): `shim_sha` = sha del bundle CARICATO; il poll annuncia lo
+    /// sha corrente del server e su drift lo shim viene invalidato (fix ai
+    /// moduli runtime raggiungono i device senza restart del daemon).
     shim_dir: Option<PathBuf>,
+    shim_sha: Option<String>,
     python: Option<PathBuf>,
 }
 
@@ -82,6 +86,7 @@ impl Runner {
             executed,
             capabilities: vec!["fs".into(), "net".into(), "pkg".into()],
             shim_dir: None,
+            shim_sha: None,
             python: None,
         })
     }
@@ -156,7 +161,7 @@ impl Runner {
             .body(body)
     }
 
-    async fn poll(&self, cursor: Option<&str>) -> Result<Option<Invocation>> {
+    async fn poll(&mut self, cursor: Option<&str>) -> Result<Option<Invocation>> {
         let body = PollRequest {
             device_id: &self.device_id,
             cursor,
@@ -183,6 +188,25 @@ impl Runner {
                     Ok(true) => crate::selfupdate::respawn_and_exit(),
                     Ok(false) => {}
                     Err(e) => tracing::warn!("self-update fallito (riprovo al prossimo poll): {:#}", e),
+                }
+            }
+        }
+        // Content-addressing shim (0.2.15): il server annuncia lo sha del
+        // bundle runtime corrente; se differisce da quello CARICATO, invalida
+        // la cache per-processo -> il prossimo execute ri-scarica lo shim
+        // fresco (i fix runtime arrivano ai device senza restart del daemon).
+        if let Some(server_sha) = parsed.shim_sha256.as_deref() {
+            if !server_sha.is_empty() {
+                if let Some(loaded) = self.shim_sha.as_deref() {
+                    if loaded != server_sha {
+                        tracing::info!(
+                            server = &server_sha[..12.min(server_sha.len())],
+                            caricato = &loaded[..12.min(loaded.len())],
+                            "shim drift: invalido la cache, re-pull al prossimo execute"
+                        );
+                        self.shim_dir = None;
+                        self.shim_sha = None;
+                    }
                 }
             }
         }
@@ -250,16 +274,16 @@ impl Runner {
         .await?;
         pyenv::assert_stdlib_only(&exec.dir)?;
 
-        // Shim + interprete: risolti UNA volta per processo (cache). Lo shim
-        // NON e' content-addressed come gli executor: se un modulo runtime
-        // viene aggiunto al bundle server DOPO l'avvio del client, il client
-        // gia' in esecuzione non lo vedrebbe mai (memoizzato una volta). Sotto
-        // c'e' l'auto-guarigione: su import fallito lo shim viene rigenerato.
+        // Shim: content-addressed dal 0.2.15 — il poll annuncia lo sha del
+        // bundle server; su drift `handle_poll` invalida shim_dir e qui si
+        // ri-scarica. L'auto-guarigione su import fallito (sotto) resta come
+        // rete per i server vecchi che non annunciano lo sha.
         if self.shim_dir.is_none() {
-            self.shim_dir = Some(
+            let (dir, sha) =
                 executors::ensure_shim(&self.server, &self.server_pubkey, &self.paths.cache_dir)
-                    .await?,
-            );
+                    .await?;
+            self.shim_dir = Some(dir);
+            self.shim_sha = if sha.is_empty() { None } else { Some(sha) };
         }
         if self.python.is_none() {
             let env = pyenv::resolve(&self.server, &self.paths.cache_dir).await?;
@@ -320,7 +344,7 @@ impl Runner {
                     // aiuterebbe e un side effect parziale non va ripetuto.
                     if !refreshed {
                         if let Some(module) = missing_module(&out.stderr) {
-                            let dir = executors::ensure_shim(
+                            let (dir, sha) = executors::ensure_shim(
                                 &self.server, &self.server_pubkey, &self.paths.cache_dir,
                             )
                             .await?;
@@ -330,6 +354,8 @@ impl Runner {
                                     "modulo shim mancante: shim stantio rigenerato, riprovo"
                                 );
                                 self.shim_dir = Some(dir);
+                                self.shim_sha =
+                                    if sha.is_empty() { None } else { Some(sha) };
                                 refreshed = true;
                                 continue;
                             }

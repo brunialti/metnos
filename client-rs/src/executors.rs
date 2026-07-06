@@ -29,6 +29,9 @@ struct ExecutorBundle {
 struct ShimBundle {
     files: BTreeMap<String, String>,
     sig: String,
+    /// Content-addressing (0.2.15): sha del bundle dichiarato dal server.
+    #[serde(default)]
+    sha256: String,
 }
 
 /// Un executor pronto all'uso nella cache: dir con manifest+codice verificati.
@@ -153,7 +156,7 @@ fn materialize(
 
 /// Scarica e verifica il bundle shim (executor_helpers + messages fallback)
 /// nella dir data. Ritorna la dir dello shim (da mettere su PYTHONPATH).
-pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -> Result<PathBuf> {
+pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -> Result<(PathBuf, String)> {
     let dir = cache_root.join("shim");
     let url = format!("{}/agent/shim", server.trim_end_matches('/'));
     let client = reqwest::Client::builder()
@@ -190,7 +193,7 @@ pub async fn ensure_shim(server: &str, server_pubkey: &str, cache_root: &Path) -
     }
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::rename(&tmp, &dir)?;
-    Ok(dir)
+    Ok((dir, bundle.sha256))
 }
 
 /// C7 CP1 (0.2.10): valida un nome-file del bundle shim e lo mappa a un path

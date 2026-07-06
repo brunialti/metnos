@@ -63,6 +63,11 @@ pub struct PollResponse {
     pub invocation: Option<Invocation>,
     #[serde(default)]
     pub server_client_version: Option<String>,
+    /// Content-addressing dello shim (0.2.15): sha del bundle runtime lato
+    /// server. Metadato di trasporto (fuori dalla firma per-invocazione);
+    /// assente su server vecchi -> nessun confronto.
+    #[serde(default)]
+    pub shim_sha256: Option<String>,
 }
 
 /// Result inviato dal device (§6.3). Serializzato a mano per controllare la

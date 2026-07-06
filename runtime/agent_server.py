@@ -220,15 +220,22 @@ async def poll(request: web.Request) -> web.Response:
     while True:
         inv = await loop.run_in_executor(
             None, lambda: invocations.next_invocation(device.id, cursor=cursor))
+        # shim_sha256 nell'ENVELOPE (content-addressing 6/7): metadato di
+        # trasporto, NON nel payload firmato per-invocazione (i client 0.2.14
+        # ricostruiscono i bytes firmati da lista fissa: un campo nuovo lì
+        # invaliderebbe la firma). 0.2.14 ignora il campo (serde default).
+        import shim_manifest as _shm
         if inv is not None:
             return web.json_response({
                 "invocation": inv,
                 "server_client_version": _server_client_version(),
+                "shim_sha256": _shm.current_sha(),
             })
         if loop.time() >= deadline:
             return web.json_response({
                 "invocation": None,
                 "server_client_version": _server_client_version(),
+                "shim_sha256": _shm.current_sha(),
             })
         await asyncio.sleep(POLL_CHECK_INTERVAL_S)
 
@@ -341,37 +348,19 @@ async def shim_bundle(request: web.Request) -> web.Response:
 
     def _load() -> dict:
         import base64
-        runtime_dir = Path(__file__).resolve().parent
-        sources = {
-            "executor_helpers.py": runtime_dir / "executor_helpers.py",
-            "messages.py": runtime_dir / "device_shim" / "messages.py",
-            # C7 read-only: path_alias risolve gli alias di path (Documenti,
-            # workspace…). Modulo FLAT stdlib-only a module-load (`messages` è
-            # import lazy, già nel bundle) → sblocca list_dirs sul device senza
-            # albero-package. Firmato dinamicamente col resto del bundle.
-            "path_alias.py": runtime_dir / "path_alias.py",
-            # C7 Area-2 CP1: CHIUSURA ad ALBERO per gli executor files
-            # (find/read prima, mutanti poi). Lista ESPLICITA (§7.2, niente
-            # autodiscovery): i dispatcher importano `backends.files.local`,
-            # che a module-load richiede SOLO platform_policy + messages +
-            # config + path_alias (misurato 5/7) — stdlib-only o già nel
-            # bundle. I rami xlsx/google restano import LAZY dentro le
-            # funzioni: sul device degradano onesti (ERR_DEPENDENCY_MISSING),
-            # mai ModuleNotFoundError a module-load. Separatore chiave = '/'
-            # (formato wire); il client mappa al path OS e valida ogni
-            # segmento (niente '..', '\\', ':', assoluti).
-            "backends/__init__.py": runtime_dir / "backends" / "__init__.py",
-            "backends/files/__init__.py":
-                runtime_dir / "backends" / "files" / "__init__.py",
-            "backends/files/local.py":
-                runtime_dir / "backends" / "files" / "local.py",
-            "platform_policy.py": runtime_dir / "platform_policy.py",
-            "config.py": runtime_dir / "config.py",
-        }
+        import shim_manifest
+        # SoT dei sorgenti spostata in shim_manifest (content-addressing
+        # 6/7): stessa lista usata per lo sha nel poll. Razionale storico dei
+        # moduli inclusi (C7 CP1, chiusura ad albero, import lazy xlsx/google,
+        # validazione segmenti wire) nel docstring di shim_manifest.
+        sources = shim_manifest.shim_sources()
         files = {fname: base64.b64encode(p.read_bytes()).decode("ascii")
                  for fname, p in sources.items()}
         payload = {"files": files}
-        return {"files": files, "sig": invocations.sign_payload(payload)}
+        return {"files": files, "sig": invocations.sign_payload(payload),
+                # sha corrente del bundle: il client ≥0.2.15 lo persiste e lo
+                # confronta con quello annunciato dal poll (re-pull su drift).
+                "sha256": shim_manifest.current_sha()}
 
     try:
         bundle = await loop.run_in_executor(None, _load)
