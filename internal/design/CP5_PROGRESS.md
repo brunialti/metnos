@@ -1,0 +1,42 @@
+# CP5 grammar-on-args — LOG DI AVANZAMENTO (per ripresa da Opus)
+
+> Spec di riferimento: `internal/design/spec_cp5_grammar_on_args.md`.
+> Aggiornato man mano. Se questa sessione si esaurisce, Opus riprende dall'ultimo ▶ IN CORSO.
+> Branch `session/detection-lexicon-i18n` (non pushato). Prod=v3. Restart: `sudo -n systemctl restart metnos-http.service`.
+
+## Stato task
+- [ ] CP5.1 riuso macchina schema→GBNF (tool_grammar.py, orfana, 43 test)
+- [ ] CP5.2 build_framework_grammar_typed
+- [ ] CP5.3 flag METNOS_PROPOSER_GRAMMAR_ARGS + wiring
+- [ ] CP5.4 contatore guard-fire
+- [ ] CP5.5 bench A/B + report + cancello
+
+## Principio (perché CP5 vale, per non perdere il filo)
+Gli args si àncorano allo SCHEMA-MANIFEST (ground-truth deterministica §2.4), NON a intent.actions (output LLM). Per questo grammar-on-args NON amplifica garbage-in come grammar-on-verbs (accantonata ADR 0174 D4). Solo enum/dominio-chiuso; testo libero resta jsonStr. I guard RESTANO come rete — si misura quanti diventano no-op.
+
+## Diario (append-only, il più recente in fondo)
+
+### CP5.1 ✅ FATTO (6/7)
+`runtime/tool_grammar.py` INTEGRA (55 test verdi, non deprecato — usato da Praxis pool-filter). Macchina schema→GBNF verificata:
+- `_emit_tool_args(name, schema) -> (rule_name, lines: list[str], used: set)` — NB ritorna TUPLA, non stringa.
+- `_emit_value(schema, used, depth, _extra_rules, _tool_prefix)` — enum→alternation di literal (`("\"max\"" | "\"min\"" | ...)`), string→jsonStr, int→jsonNum, bool→jsonBool, array→jsonArray. Fallback jsonObject se schema None/oneOf/anyOf/allOf o props vuote.
+- VERIFICATO su catalogo reale: compute_entries.op→6-way alt; list_dirs.sort→3-way; write_files.mode→enum. find_files.pattern→jsonStr (testo libero, corretto).
+- Workaround llama.cpp già dentro: camelCase rule names (`_sanitize_rule_name`), optional ordinati alfabeticamente con `(sep prop)?` una volta sola (anti repeat-loop), no `{n,m}`.
+- `args_complexity`/`is_complex` esistono (soglia COMPLEXITY_THRESHOLD) ma B2-recursive NON usa più is_complex come fallback (esplora ricorsivo).
+- `generate_tool_grammar(tools, allow_final_answer, allow_disambiguation, include_canonical_query)` = union discriminata `{"name":..., "arguments":...}` per il tool_call PROTOCOL (planner legacy). NON è la forma Framework runtime (steps list) — CP5.2 deve adattarla.
+
+RIUSO per CP5.2: `_emit_tool_args` + `_emit_value` + `_emit_string_literal_alt` + `_emit_primitives`/`_expand_deps` (per le regole primitive jsonStr/jsonNum/...). NON riscrivere.
+
+### CP5.2 ✅ FATTO (6/7)
+`runtime/engine/grammar_framework.py`: `build_framework_grammar_typed(pool_names, catalog)` + helper `_strip_runtime_resolved`. Template `_GRAMMAR_FRAMEWORK_TYPED_TMPL` (senza args/kv/value liberi, con string/number/ws/fillers), `_FREE_ARGS_RULES` (argsFree per tool senza schema + final_answer).
+- Union discriminata: `step ::= stepX | stepY | …`, ogni `stepX ::= "{" "tool":"x" "," "args": argsX "}"`.
+- argsX da `_emit_tool_args(x, stripped_schema)`; enum→alternation, testo→jsonStr.
+- runtime_resolved (client/account/provider) STRIPPATI da props+required (marker `.get("runtime_resolved")`).
+- DEDUP per nome-regola OBBLIGATORIA (template vince): `ws` era doppio (template+primitive) → GBNF invalida scartata in silenzio (bug 2/6). Bug trovato e fixato.
+- Fallback: catalog None / typed_count==0 → build_framework_grammar. Empty pool → GRAMMAR_FRAMEWORK.
+- **VALIDATO LIVE**: `prov.chat(grammar=g)` → llama-server accetta, output Framework valido, `sort:"mtime"` (enum rispettato). ChatResult ha `.text`.
+- 9 test `test_grammar_args_typed.py`.
+GOTCHA per il seguito: negli assert usare substring SENZA quote (`"mtime"` nella grammar è `\"mtime\"` escaped → cerca `mtime` nudo). Il pattern `[a-zA-Z]+` sui RHS cattura i valori-enum dentro i literal → maschera i literal (`re.sub(r'"(?:\\.|[^"\\])*"',...)`) prima di cercare dangling.
+
+### CP5.3 ▶ PROSSIMO
+flag METNOS_PROPOSER_GRAMMAR_ARGS (default 0). Wiring: proposer.py:522-530 (SimpleProposer) e proposer_metis.py:324-410 (_generate_grammar_multi delega a Simple → un solo punto?). Verificare se basta cambiare in SimpleProposer. Passare il catalog (già disponibile? proposer.propose ha catalog=... param).
