@@ -74,7 +74,17 @@ Dettaglio narrativo nel session log (ROUND 1-6). Sintesi per file:
 
 ## 3. AREE APERTE — cosa fare, in ordine di valore (dettaglio per Opus)
 
-### 3.1 Shim content-addressing (client 0.2.15) — PRIORITÀ ALTA
+### 3.1 Shim content-addressing (client 0.2.15) — ✅ FATTO (commit 685fe44, sera 6/7)
+Implementato e VALIDATO sul PC reale: `runtime/shim_manifest.py` (SoT+sha,
+cache mtime); poll annuncia `shim_sha256` nell'ENVELOPE (0.2.14-safe);
+client 0.2.15 (wire/executors/runner) confronta e re-pull su drift; build+
+mirror firmati, PC self-aggiornato. Prova live: dopo l'update, l'undo batch
+{dst}+copy di 455 file è riuscito al PRIMO retry (Downloads 1→456).
+RESIDUO COSMETICO: il final dell'undo dice «5 elementi» (conta le STAGE
+del reverse, non i file: aggregazione in undo_last_turn/_reverse_on_device
+o nel formatter del final — total_ok è giusto, è il rendering del final).
+
+### 3.1.bis (storico — design originale, superato)
 **Problema**: `client-rs/src/runner.rs:254-263` — lo shim (runtime subset sul
 device: executor_helpers, messages, path_alias, backends/files/local.py,
 platform_policy, config) è scaricato UNA volta per processo e NON è
