@@ -3666,13 +3666,19 @@ class TurnLog:
         if not not_found and not failed:
             return  # esito pieno: nessun claim da correggere
         # Split failed[] per error_code strutturato: *_NOT_FOUND = target
-        # inesistente («non trovato» legittimo); il RESTO = fallimento reale
-        # su un target che ESISTE (es. ERR_PATH_WRONG_TYPE: è una directory).
-        # Dichiarare «non trovato» un path trovato-ma-rifiutato è falso (§2.8).
-        real_failed = []
+        # inesistente («non trovato» legittimo); ERR_REFUSE_MOVE = SKIP di
+        # PROTEZIONE deliberato (system file, §2.9/platform_policy — non è un
+        # fallimento: presentarlo come «fallito» allarmava, Roberto 6/7 sera);
+        # il RESTO = fallimento reale su un target che ESISTE.
+        real_failed, protected = [], []
         for it in failed:
             code = (it.get("error_code") or "") if isinstance(it, dict) else ""
-            (not_found if code.endswith("_NOT_FOUND") else real_failed).append(it)
+            if code.endswith("_NOT_FOUND"):
+                not_found.append(it)
+            elif code == "ERR_REFUSE_MOVE":
+                protected.append(it)
+            else:
+                real_failed.append(it)
         success = None
         for k in self._MUTATE_SUCCESS_KEYS:
             if isinstance(mut.get(k), int):
@@ -3729,6 +3735,11 @@ class TurnLog:
         # chiavi vivono nel catalogo seed (install/data/i18n_seed.sqlite,
         # IT+EN), NON in-linea nel sorgente. Guard di presenza:
         # runtime/tests/test_seed_i18n_gate_keys.py.
+        _prot_note = ""
+        if protected:
+            _prot_note = msg("MSG_MUTATE_PROTECTED_SKIPPED",
+                             n=len(protected),
+                             detail=_ids(protected))
         if success == 0:
             if real_failed:
                 detail = _failures_detail(real_failed)
@@ -3738,18 +3749,31 @@ class TurnLog:
                         detail=_ids(not_found))
                 self.final_message = msg("MSG_MUTATE_FAILED_NONE_DONE",
                                          detail=detail)
+            elif not_found:
+                self.final_message = msg("MSG_MUTATE_NONE_DONE",
+                                         detail=_ids(not_found))
+            elif protected:
+                # SOLO skip di protezione (es. delete su una dir che
+                # contiene solo desktop.ini): esito informativo, non allarme.
+                self.final_message = msg("MSG_MUTATE_FAILED_NONE_DONE",
+                                         detail=_prot_note)
                 return
-            self.final_message = msg("MSG_MUTATE_NONE_DONE",
-                                     detail=_ids(not_found))
+            if _prot_note and _prot_note not in (self.final_message or ""):
+                self.final_message = ((self.final_message or "").rstrip()
+                                      + "\n\n" + _prot_note).strip()
         else:
             parts = [p for p in (_ids(not_found),
                                  _failures_detail(real_failed)) if p]
-            notice = msg("MSG_MUTATE_PARTIAL",
-                         n=len(not_found) + len(real_failed),
-                         detail="; ".join(parts))
-            if notice not in (self.final_message or ""):
+            if parts:
+                notice = msg("MSG_MUTATE_PARTIAL",
+                             n=len(not_found) + len(real_failed),
+                             detail="; ".join(parts))
+                if notice not in (self.final_message or ""):
+                    self.final_message = ((self.final_message or "").rstrip()
+                                          + "\n\n" + notice).strip()
+            if _prot_note and _prot_note not in (self.final_message or ""):
                 self.final_message = ((self.final_message or "").rstrip()
-                                      + "\n\n" + notice).strip()
+                                      + "\n\n" + _prot_note).strip()
 
     def _collect_failure_notices(self):
         """§2.8 (mai silent failure): rende VISIBILI i fallimenti per-item/account
