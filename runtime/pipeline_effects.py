@@ -216,11 +216,19 @@ def committed_mutations(steps) -> list[str]:
             continue
         if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
             continue
-        if getattr(s, "ok", None) is False:   # StepRun fallito = non committato
-            continue
         res = _step_result(s)
-        if res is not None and (res.get("_duplicate") is True
-                                or res.get("ok") is False):
+        if res is not None and res.get("_duplicate") is True:
+            continue
+        # Esito PARZIALE = COMMITTATO (bug live fin-1/mat-2, 7/7): una delete
+        # glob §2.4 che rimuove 3 file e rifiuta 1 system-file ha ok=False MA
+        # ha mutato — considerarla «non committata» faceva ri-eseguire la
+        # pipeline dal recovery (leg-1 invisibile nel turn record:
+        # «cancellazioni fantasma»). Stesso criterio mutated di _undo_done.
+        _partial = res is not None and (
+            bool(res.get("ok_count")) or bool(res.get("results")))
+        if getattr(s, "ok", None) is False and not _partial:
+            continue
+        if res is not None and res.get("ok") is False and not _partial:
             continue
         _a = _step_args(s)
         if isinstance(_a.get("entries"), list) and len(_a["entries"]) == 0:

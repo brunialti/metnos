@@ -185,6 +185,38 @@ def _should_cache_plan(framework, query) -> bool:
                     continue
                 if set(re.findall(r"\d+", str(v))) & qnums:
                     return False
+    # Piani MATERIALIZZATI (bug live anom-1/anom-2, 7/7): uno step MUTANTE
+    # con una LISTA literal i cui valori NON compaiono nella query = valori
+    # risolti dai RESULT del turno (from_step già materializzato) → il
+    # replay 0b canonicalizza quei literal su path nuovi e serve piani
+    # incoerenti (delete di 1 file su 4; piano «file e directory» a una
+    # query «solo file»). Cacheable SOLO se ogni elemento è nella query
+    # (§4.2 caso degenere N=1 literal). Gemello della policy «L1 no baked».
+    from pipeline_effects import MUTATING_TOOL_PREFIXES as _MUT_PFX
+    _q = (query or "").lower()
+    for s in (getattr(framework, "steps", []) or []):
+        tool = getattr(s, "tool", "") or ""
+        if not any(tool.startswith(p) for p in _MUT_PFX):
+            continue
+        for k, v in (getattr(s, "args", {}) or {}).items():
+            # Esenti SOLO i glob (pattern generici riusabili): i content-key
+            # (paths, names…) NON sono esenti QUI — negli step mutanti sono
+            # proprio i literal materializzati del bug (l'esenzione content
+            # vale per il check numerico, dove il replay ri-risolve gli slot).
+            if k in _GLOB_ARG_KEYS or not isinstance(v, list) or not v:
+                continue
+            if not all(isinstance(x, str) for x in v):
+                continue
+            # Confine: SOLO elementi PATH-like (con separatore / o \) —
+            # il bug è sui path filesystem materializzati; gli slug/id
+            # risolti (es. chosen_slugs=[mario-rossi]) restano cacheable
+            # per policy (test_fastpath_efficacy) con la garanzia hard a
+            # serve-time (_mutating_args_grounded). Wildcard = pattern
+            # generico riusabile, esente per valore.
+            if any(("/" in x or "\\" in x)
+                   and (not any(c in x for c in "*?"))
+                   and x.lower() not in _q for x in v):
+                return False
     return True
 
 
@@ -3282,7 +3314,20 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 run=run, framework=framework, error_class="missing_input",
                 needs_inputs_obs=_form)
         err_class = classify_error(run)
-        if err_class in ("wrong_tool", "wrong_args", "missing_input"):
+        # ANTI-DOPPIA-ESECUZIONE al confine recovery (bug live mat-2/anom,
+        # 7/7): un leg fallito-PARZIALE ha gia' COMMITTATO mutazioni (delete
+        # glob §2.4: 3 file rimossi, 1 system-file refuse → ok=False) — la
+        # recovery rilancerebbe una SECONDA pipeline mutante sugli stessi
+        # target (leg-1 invisibile nel turn record → «cancellazioni
+        # fantasma»). Con mutazioni committate: NIENTE recovery, si passa
+        # dritti all'esito parziale onesto qui sotto (SoT del criterio:
+        # _leg_committed_mutations / pipeline_effects, 2/7).
+        _committed = _leg_committed_mutations(run)
+        if _committed:
+            log.info("[L3 recovery] SKIP: mutazioni gia' committate nel leg "
+                     "fallito %s — esito parziale, no re-run", _committed)
+        if not _committed and err_class in (
+                "wrong_tool", "wrong_args", "missing_input"):
             if verbose:
                 log.info("[L3 recovery] class=%s", err_class)
             framework_alt = recovery.recover(

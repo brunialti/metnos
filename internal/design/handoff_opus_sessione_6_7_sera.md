@@ -172,7 +172,26 @@ Collegato: `project_i18n_translation_quality_fable.md` (sweep prompt corpus).
    find_issues__54f2): se ricompare un piano find_entries-only per «trova
    issue github», la FONTE è a monte (routing pool OVERSIZED 33 per
    (find,issues) — vedi memoria routing_pool oversized).
-2bis. **[DIAGNOSTICATA, fix da fare] Fastpath L0 con piani MATERIALIZZATI**:
+2ter. **[RISOLTO 7/7 00:3x-00:5x] «Cancellazioni fantasma» + piani materializzati — CAUSA VERA E FIX**
+   La causa PRINCIPALE di pv2/anom/mat non era (solo) il fastpath: era la
+   DOPPIA ESECUZIONE del leg fallito-parziale. Catena: delete glob §2.4 →
+   il backend espande e rimuove 3 file, rifiuta desktop.ini → ok=False →
+   classify → RECOVERY rilanciava una seconda pipeline [find,gate,delete]
+   che vedeva solo il residuo (find «1 su 4») — e il turn record mostra
+   SOLO il leg finale → «cancellazioni fantasma» + final «Nessuna operazione».
+   3 fix committati: (a) dispatch: recovery SALTATA se _leg_committed_
+   mutations(run) non vuoto → esito parziale onesto diretto; (b)
+   pipeline_effects.committed_mutations: esito PARZIALE (ok=False ma
+   ok_count>0/results) = COMMITTATO (prima ok=False = non-committato);
+   (c) _should_cache_plan: liste PATH-like literal non-in-query negli step
+   mutanti = piano materializzato → NO cache (glob esenti per valore; slug
+   policy test_fastpath_efficacy preservata). E2E fin-2: UN solo leg,
+   «Operazione completata: 3 + Nota: 1 protetto», conteggi esatti.
+   RESIDUO per Opus: verificare che il ramo partial_mutation non maschi
+   err_class utili per il terminator nei casi NON-delete (es. send parziale
+   multi-account); estendere test_leg_committed a StepRun parziali.
+
+2bis. **[mitigata: 11 fp purgate + fix (c) sopra] Fastpath L0 con piani MATERIALIZZATI**:
    la fp di un turno delete registra il framework con `paths` LITERAL
    (post-risoluzione from_step) invece dello scheletro → il replay 0b
    (coseno) canonicalizza i literal sul path della query nuova → piani
