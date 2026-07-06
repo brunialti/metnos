@@ -164,6 +164,26 @@ Per i BUILTIN: sposta i testi nel seed + `msg()` puro + guard keys (stesso
 pattern di questa sessione). Per synt_multistage è LEGITTIMO (scaffolding).
 Collegato: `project_i18n_translation_quality_fable.md` (sweep prompt corpus).
 
+### 3.6.bis Code aperte ROUND 9-10 (23:00-23:40, ultime della sessione)
+1. **Task github (scheduler_v2 id=35)**: DOPPIO turno per fire (23:16:44 E
+   23:16:45 — il secondo fallisce UNIQUE constraint da INSERT senza key).
+   Perché due run? Guardare il daemon scheduler (max_concurrent/retry).
+   Cache avvelenate purgate 2 volte (fastpath 268+313, autopath
+   find_issues__54f2): se ricompare un piano find_entries-only per «trova
+   issue github», la FONTE è a monte (routing pool OVERSIZED 33 per
+   (find,issues) — vedi memoria routing_pool oversized).
+2. **Anomalia e2e pv2** (turno conv pv2-e2e, 23:3x): gate glob-riscritto →
+   find_files(base=/tmp/metnos_pv2, ["*"], recursive=false) ha visto SOLO
+   desktop.ini mentre nel dir c'erano ANCHE 3 .txt appena creati → gate «1
+   elementi» → delete solo desktop.ini (rifiutato) → final
+   MUTATE_FAILED_NONE_DONE. I 3 .txt risultavano GIÀ spariti: sospetto un
+   replay 0b/cache dal turno gemello pv-e2e o un doppio-run. Riprodurre con
+   conversazioni e path VERGINI e tracciare match_source.
+3. **change_intents_i18n**: bootstrap strutturato di chiavi bilingui nel
+   sorgente — migrare le chiavi nel seed + msg() puro (stesso pattern della
+   sessione), poi ritirare il bootstrap.
+4. Pulizia schedule_entries morte (33/34/36 disabled) — decisione Roberto.
+
 ### 3.7 Cose piccole note
 - Redactor troppo aggressivo sui path Windows nei turn record
   (`C:\User<REDACTED:cred>` — falso positivo pattern user). Solo estetica log.
