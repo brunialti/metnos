@@ -62,13 +62,24 @@ _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 #   REDUCE— una `middle` sintetizza i digest (piccoli → stanno nel budget),
 #           ordinati per salienza; se i digest stessi sforano (N enorme),
 #           ricorsione GERARCHICA (riassunto-di-riassunti) fino a convergenza.
-# Copre TUTTE le entries (niente droppato §2.8). Scatta SOLO over-budget: il
-# caso comune (sotto budget) resta la singola chiamata di prima, invariato.
+# Copre tutte le entries FINO al cap anti-runaway (sotto). Scatta SOLO
+# over-budget: il caso comune (sotto budget) resta la singola chiamata di
+# prima, invariato.
 # Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast/middle
 # (efficiente, no processo monouso ×N) → NON byte-riproducibile, dichiarato
 # onestamente `meta.deterministic=False` (come il fallback HTTP §11).
 _DESCRIBE_MAPREDUCE = os.environ.get("METNOS_DESCRIBE_MAPREDUCE", "1").strip() != "0"
 _MR_MAX_DEPTH = int(os.environ.get("METNOS_DESCRIBE_MR_DEPTH", "3"))
+# Cap ANTI-RUNAWAY del MAP (6/7/2026, Roberto «100 max, configurabile, con
+# indicazione chiara all'utente»): il copre-tutto faceva UNA chiamata LLM per
+# OGNI entry senza tetto — misurato live: «che file ci sono in /tmp?» → 1759
+# chiamate in ~20 min, pipeline turni bloccata (serializza sul llama-server).
+# Il MAP lavora le PRIME N entries in ordine d'arrivo (deterministico); il
+# resto e' dichiarato ALL'UTENTE nel testo del summary (MSG_DESCRIBE_TRUNCATED,
+# stesso pattern §2.8 del path single-call — il notice runtime salta i verbi
+# PROCESSOR, quindi il testo e' il canale affidabile) + campi §2.7 nel result.
+# 0 = illimitato (§2.4 0-as-placeholder, comportamento pre-cap).
+_MR_MAX_ENTRIES = int(os.environ.get("METNOS_DESCRIBE_MR_MAX_ENTRIES", "100"))
 # Campi-identita' da preservare nei digest (per la sintesi REDUCE + link
 # section ADR 0119). Dominio-agnostici: mail (subject/from), file (path/name),
 # issue/url (url/title), eventi (when/date).
@@ -173,12 +184,17 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
                          data_kind, fmt: str, group_by, max_tokens: int,
                          health_context, mr_depth: int) -> dict:
     """Over-budget describe via map-reduce (§7.3, vedi blocco costanti).
-    MAP per-elemento (resume + salienza), copre TUTTE le entries, ordina per
-    salienza; ricorsione gerarchica se i digest sforano. NON byte-determ."""
+    MAP per-elemento (resume + salienza) sulle PRIME `_MR_MAX_ENTRIES` entries
+    (cap anti-runaway; 0 = tutte), ordina per salienza; ricorsione gerarchica
+    se i digest sforano. Oltre il cap: nota chiara ALL'UTENTE nel summary +
+    campi §2.7. NON byte-determ."""
+    total = len(entries)
+    capped = 0 < _MR_MAX_ENTRIES < total
+    mapped_entries = entries[:_MR_MAX_ENTRIES] if capped else entries
     map_prompt = prompt_loader.get("describe_map_salience", DEFAULT_LANG,
                                    context=context or "")
     digests: list = []
-    for e in entries:
+    for e in mapped_entries:
         score, resume = _map_one(e, map_prompt)
         d = {}
         if isinstance(e, dict):
@@ -199,13 +215,38 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
         "health_context": health_context,
     }, _mr_depth=mr_depth + 1, _deterministic=False)
     if isinstance(res, dict) and res.get("ok"):
-        # Coperte TUTTE: niente troncamento, item_count = totale reale.
-        res["item_count"] = len(entries)
-        for k in ("truncated", "truncated_what", "used", "available_total",
-                  "cap_field", "cap_value"):
-            res.pop(k, None)
+        res["item_count"] = total
+        if capped:
+            # Indicazione CHIARA all'utente NEL TESTO (il summary e' il
+            # final_message; il notice runtime salta i verbi PROCESSOR):
+            # riuso del messaggio i18n del path single-call.
+            try:
+                note = _msg("MSG_DESCRIBE_TRUNCATED",
+                            visible=len(mapped_entries),
+                            hidden=total - len(mapped_entries),
+                            cap=_MR_MAX_ENTRIES)
+            except Exception:
+                note = ""
+            s = res.get("summary")
+            if isinstance(s, str) and s.strip() and note:
+                res["summary"] = s.rstrip() + "\n\n" + note
+            elif note:
+                res["summary"] = note
+            res.update({
+                "truncated": True,
+                "truncated_what": "describe",
+                "used": len(mapped_entries),
+                "available_total": total,
+                "cap_field": "METNOS_DESCRIBE_MR_MAX_ENTRIES",
+                "cap_value": _MR_MAX_ENTRIES,
+            })
+        else:
+            # Coperte TUTTE: niente troncamento, item_count = totale reale.
+            for k in ("truncated", "truncated_what", "used", "available_total",
+                      "cap_field", "cap_value"):
+                res.pop(k, None)
         res["map_reduce"] = True
-        res["mapped"] = len(entries)
+        res["mapped"] = len(mapped_entries)
         res["deterministic"] = False
     return res
 

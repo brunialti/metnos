@@ -5,8 +5,10 @@ Contratto (aggiornato 22/6, Roberto «robusto, universale, efficiente»):
   non a conteggio. `_pack_entries` e' la DETECTION pura (prefix-deterministica,
   budget + tetto di sicurezza sul conteggio) — invariante durevole.
 - SOTTO budget: singola chiamata, tutte le entries, nessun troncamento.
-- SOPRA budget (default): MAP-REDUCE — copre TUTTE le entries (niente droppato
-  §2.8), `map_reduce=True`, NESSUN `truncated`.
+- SOPRA budget (default): MAP-REDUCE — copre le entries FINO al cap
+  anti-runaway `_MR_MAX_ENTRIES` (default 100, env, 0=illimitato; 6/7/2026:
+  /tmp → 1759 chiamate LLM senza tetto), `map_reduce=True`; oltre il cap
+  → `truncated` §2.7 + nota chiara all'UTENTE nel summary.
 - SOPRA budget con map-reduce DISABILITATO (gate `_DESCRIBE_MAPREDUCE=False`)
   o LLM non disponibile: fallback al TRONCAMENTO §2.7 (used/truncated/cap_*).
 
@@ -142,6 +144,48 @@ class TestDescribeEntriesCap(unittest.TestCase):
         self.assertEqual(len(self._captured_entries), 11)
         self.assertTrue(all(len(c) == 1 for c in self._captured_entries[:10]))
         self.assertEqual(len(self._captured_entries[10]), 10)
+
+    def test_mapreduce_cap_bounds_llm_calls_and_tells_user(self):
+        """Cap ANTI-RUNAWAY (6/7/2026, Roberto «100 max + indicazione chiara»):
+        oltre `_MR_MAX_ENTRIES` il MAP lavora solo le prime N (bounded per
+        costruzione: N MAP + 1 REDUCE) e l'utente lo LEGGE nel summary
+        (MSG_DESCRIBE_TRUNCATED) + campi §2.7 nel result."""
+        import describe_entries as de
+        with mock.patch.object(de, "_DESCRIBE_MAX_CHARS", 24000), \
+                mock.patch.object(de, "_MR_MAX_ENTRIES", 4):
+            out = de.handle_describe_entries({
+                "entries": self._big_entries(10), "style": "by_importance"})
+        self.assertTrue(out["ok"], out)
+        self.assertTrue(out["map_reduce"])
+        self.assertEqual(out["item_count"], 10)
+        self.assertEqual(out["mapped"], 4)
+        self.assertTrue(out["truncated"])
+        self.assertEqual(out["truncated_what"], "describe")
+        self.assertEqual(out["used"], 4)
+        self.assertEqual(out["available_total"], 10)
+        self.assertEqual(out["cap_field"], "METNOS_DESCRIBE_MR_MAX_ENTRIES")
+        self.assertEqual(out["cap_value"], 4)
+        # 4 MAP (prime 4 in ordine d'arrivo) + 1 REDUCE = 5 chiamate totali.
+        self.assertEqual(len(self._captured_entries), 5)
+        self.assertTrue(all(len(c) == 1 for c in self._captured_entries[:4]))
+        self.assertEqual([c[0].get("id") for c in self._captured_entries[:4]],
+                         [0, 1, 2, 3])
+        # Indicazione CHIARA all'utente nel testo: numeri visti/esclusi.
+        self.assertIn("4", out["summary"])
+        self.assertIn("6", out["summary"])
+
+    def test_mapreduce_cap_zero_is_unlimited(self):
+        """`_MR_MAX_ENTRIES=0` = illimitato (§2.4 0-as-placeholder):
+        comportamento copre-tutto pre-cap, nessun troncamento."""
+        import describe_entries as de
+        with mock.patch.object(de, "_DESCRIBE_MAX_CHARS", 24000), \
+                mock.patch.object(de, "_MR_MAX_ENTRIES", 0):
+            out = de.handle_describe_entries({
+                "entries": self._big_entries(10), "style": "by_importance"})
+        self.assertTrue(out["ok"], out)
+        self.assertEqual(out["mapped"], 10)
+        self.assertNotIn("truncated", out)
+        self.assertEqual(len(self._captured_entries), 11)
 
     def test_over_budget_truncation_fallback_when_mapreduce_off(self):
         """Gate `_DESCRIBE_MAPREDUCE=False`: torna il troncamento §2.7
