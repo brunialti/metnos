@@ -2192,35 +2192,109 @@ def _align_provider_client(framework: Framework, query: str,
 #     poi i sink→clause-scoped local §10.3).
 #   - degenerate_find ULTIMO (un find instradato a gw dal provider-guard non
 #     va toccato; il fill gli ha già dato il base_path di clausola).
+@dataclass(frozen=True)
+class Guard:
+    """Un guard deterministico di struttura, con metadati DICHIARATI (PROV.1,
+    architettura provenienza args). `fn(fw, intent, query, catalog) -> fw`
+    invariata. `scope` classifica il guard (per la lettura + i test di
+    non-collisione); `writes`/`reads` dichiarano cosa tocca/legge (nomi-campo
+    `args.<x>`/`step.tool`/`step`), incrociabili con `arg_provenance`. Zero
+    cambio di comportamento: è documentazione tipizzata + verificabile."""
+    name: str
+    fn: Callable
+    v3_only: bool = False
+    scope: str = "structure"        # per-clause | cross-clause | structure | routing
+    writes: frozenset = frozenset()
+    reads: frozenset = frozenset()
+    rationale: str = ""
+    adr: str = ""
+
+
 GUARD_PIPELINE: tuple = (
-    ("overwrite_phantom_install_args", False,
-     lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q)),
-    ("align_framework_objects", False,
-     lambda fw, i, q, c: _align_framework_objects(fw, i, c)),
-    ("enforce_missing_clauses", False,
-     lambda fw, i, q, c: _enforce_missing_clauses(fw, i, q, c)),
-    ("enforce_missing_objects", True,
-     lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c)),
-    ("decontaminate_reader_qualifier", True,
-     lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c)),
-    ("ensure_extract_clause", True,
-     lambda fw, i, q, c: _ensure_extract_clause(fw, i, q, c)),
-    ("conform_to_intent_order", True,
-     lambda fw, i, q, c: _conform_to_intent_order(fw, i, q, c)),
-    ("fill_clause_args", True,
-     lambda fw, i, q, c: _fill_clause_args(fw, i, q, c)),
-    ("resolve_store_field_refs", True,
-     lambda fw, i, q, c: _resolve_store_field_refs(fw)),
-    ("route_mail_delete_to_trash", False,
-     lambda fw, i, q, c: _route_mail_delete_to_trash(fw, c)),
-    ("route_filename_pattern_to_find", False,
-     lambda fw, i, q, c: _route_filename_pattern_to_find(fw, q, c)),
-    ("align_provider_client", False,
-     lambda fw, i, q, c: _align_provider_client(fw, q, c)),
-    ("scope_sink_provider_to_clause", False,
-     lambda fw, i, q, c: _scope_sink_provider_to_clause(fw, q, c)),
-    ("degenerate_find_to_list", False,
-     lambda fw, i, q, c: _degenerate_find_to_list(fw, i, c)),
+    Guard("overwrite_phantom_install_args",
+          lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q),
+          scope="structure", writes=frozenset({"args.base_path", "args.path"}),
+          reads=frozenset({"query"}),
+          rationale="rimuove base_path/path install-root non nominati dalla query (default appreso avvelenato / cache stantia)",
+          adr="0182"),
+    Guard("align_framework_objects",
+          lambda fw, i, q, c: _align_framework_objects(fw, i, c),
+          scope="structure", writes=frozenset({"step.tool"}),
+          reads=frozenset({"intent", "catalog"}),
+          rationale="allinea l'oggetto degli step all'intent (files↔dirs equivalence)",
+          adr="0177"),
+    Guard("enforce_missing_clauses",
+          lambda fw, i, q, c: _enforce_missing_clauses(fw, i, q, c),
+          scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "catalog", "query"}),
+          rationale="appende il produttore per un verbo RICHIESTO scoperto (usa _align_foreign_producers_v3 come helper interno)",
+          adr="0177"),
+    Guard("enforce_missing_objects",
+          lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "catalog"}),
+          rationale="appende il produttore per un OGGETTO scoperto (drop per-object che il verb-level non vede)",
+          adr="0177"),
+    Guard("decontaminate_reader_qualifier",
+          lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step.tool"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="demote read_<obj>_<fmt>→read_<obj> quando il formato è contaminato da una clausola-sink a valle",
+          adr="0174"),
+    Guard("ensure_extract_clause",
+          lambda fw, i, q, c: _ensure_extract_clause(fw, i, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "query"}),
+          rationale="inserisce lo step extract mancante fra read e create (compound)",
+          adr="0174"),
+    Guard("conform_to_intent_order",
+          lambda fw, i, q, c: _conform_to_intent_order(fw, i, q, c),
+          v3_only=True, scope="structure", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions"}),
+          rationale="riordina gli step nell'ordine di intent.actions",
+          adr="0177"),
+    Guard("fill_clause_args",
+          lambda fw, i, q, c: _fill_clause_args(fw, i, q, c),
+          v3_only=True, scope="per-clause", writes=frozenset({"args.*"}),
+          reads=frozenset({"clause", "catalog"}),
+          rationale="riempie gli args deducibili dal chunk della clausola (pattern/date/store); NON sovrascrive l'LLM. SUSSUMIBILE da clause-derive autoritativo (PROV.3)",
+          adr="0177"),
+    Guard("resolve_store_field_refs",
+          lambda fw, i, q, c: _resolve_store_field_refs(fw),
+          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          reads=frozenset({"step"}),
+          rationale="risolve i riferimenti ${stepN.field} negli args (contesto-turno, resta)",
+          adr="0177"),
+    Guard("route_mail_delete_to_trash",
+          lambda fw, i, q, c: _route_mail_delete_to_trash(fw, c),
+          scope="routing", writes=frozenset({"step.tool", "args.dst_folder"}),
+          reads=frozenset({"catalog"}),
+          rationale="delete_messages→move_messages(dst=Trash) (mail non ha delete, §5)",
+          adr="0177"),
+    Guard("route_filename_pattern_to_find",
+          lambda fw, i, q, c: _route_filename_pattern_to_find(fw, q, c),
+          scope="routing", writes=frozenset({"step.tool", "args.pattern"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="instrada un pattern-nomefile allo step find",
+          adr="0177"),
+    Guard("align_provider_client",
+          lambda fw, i, q, c: _align_provider_client(fw, q, c),
+          scope="cross-clause", writes=frozenset({"args.client"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="allinea l'arg client/provider. SUSSUMIBILE da runtime-resolve (arg config)",
+          adr="0136"),
+    Guard("scope_sink_provider_to_clause",
+          lambda fw, i, q, c: _scope_sink_provider_to_clause(fw, q, c),
+          scope="cross-clause", writes=frozenset({"args.client"}),
+          reads=frozenset({"clause", "query"}),
+          rationale="imposta client esplicito sul sink clause-scoped (no bleed dalla query). SUSSUMIBILE da runtime-resolve",
+          adr="0136"),
+    Guard("degenerate_find_to_list",
+          lambda fw, i, q, c: _degenerate_find_to_list(fw, i, c),
+          scope="routing", writes=frozenset({"step.tool", "args.*"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="find_files(base_path) senza selettore → list_dirs (tool-choice, non args)",
+          adr="0177"),
 )
 
 
@@ -2254,22 +2328,22 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     from . import is_v3
     _v3 = is_v3()
     _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "0") == "1"
-    for _name, _v3_only, _fn in GUARD_PIPELINE:
-        if _v3_only and not _v3:
+    for _g in GUARD_PIPELINE:
+        if _g.v3_only and not _v3:
             continue
         if _count:
             try:
                 _before = framework.to_dict()
             except Exception:
                 _before = None
-            framework = _fn(framework, intent, query, catalog)
+            framework = _g.fn(framework, intent, query, catalog)
             try:
                 if _before is not None and framework.to_dict() != _before:
-                    _GUARD_FIRE_COUNTS[_name] = _GUARD_FIRE_COUNTS.get(_name, 0) + 1
+                    _GUARD_FIRE_COUNTS[_g.name] = _GUARD_FIRE_COUNTS.get(_g.name, 0) + 1
             except Exception:
                 pass
         else:
-            framework = _fn(framework, intent, query, catalog)
+            framework = _g.fn(framework, intent, query, catalog)
     return framework
 
 

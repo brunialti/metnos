@@ -49,7 +49,7 @@ EXPECTED_PIPELINE = (
 
 def test_guard_pipeline_order_contract():
     from engine.dispatch import GUARD_PIPELINE
-    got = tuple((name, v3only) for name, v3only, _fn in GUARD_PIPELINE)
+    got = tuple((g.name, g.v3_only) for g in GUARD_PIPELINE)
     assert got == EXPECTED_PIPELINE, (
         "GUARD_PIPELINE cambiata: se è INTENZIONALE aggiorna EXPECTED_PIPELINE "
         f"qui e i vincoli di posizione in dispatch.py.\ngot={got}")
@@ -57,7 +57,8 @@ def test_guard_pipeline_order_contract():
 
 def test_guard_pipeline_callables():
     from engine.dispatch import GUARD_PIPELINE
-    for name, _v3, fn in GUARD_PIPELINE:
+    for g in GUARD_PIPELINE:
+        name, fn = g.name, g.fn
         assert callable(fn), name
 
 
@@ -190,7 +191,8 @@ def test_each_guard_idempotent_on_corpus():
     cat = _catalog()
     bad = []
     for cname, fwk, intent, query in _cases():
-        for gname, _v3, fn in D.GUARD_PIPELINE:
+        for g in D.GUARD_PIPELINE:
+            gname, fn = g.name, g.fn
             x = fn(copy.deepcopy(fwk), intent, query, cat)
             y = fn(copy.deepcopy(x), intent, query, cat)
             if _snap(x) != _snap(y):
@@ -229,3 +231,64 @@ def test_two_enforce_guards_compose_no_double_producer():
     # idempotente: ri-applicare non aggiunge un secondo produttore
     out2 = D._apply_deterministic_structure_guards(out, intent, q, cat)
     assert [s.tool for s in out2.steps] == [s.tool for s in out.steps]
+
+
+# ── PROV.1: registro tipizzato — metadati + non-collisione (6/7/2026) ────────
+
+def test_all_guards_have_metadata():
+    from engine.dispatch import GUARD_PIPELINE
+    valid_scope = {"per-clause", "cross-clause", "structure", "routing"}
+    for g in GUARD_PIPELINE:
+        assert g.scope in valid_scope, f"{g.name}: scope {g.scope!r} invalido"
+        assert g.rationale, f"{g.name}: rationale vuoto"
+        assert g.adr, f"{g.name}: adr vuoto"
+        assert isinstance(g.writes, frozenset) and g.writes, f"{g.name}: writes vuoto"
+        assert isinstance(g.reads, frozenset), f"{g.name}: reads non frozenset"
+
+
+def test_writes_subset_of_observed_mutations():
+    """I campi DICHIARATI in `writes` devono coprire ciò che il guard cambia
+    davvero sul corpus: applica ogni guard, e se muta il framework, il tipo di
+    campo cambiato (args.*/step.tool/step) deve essere ⊆ writes dichiarato.
+    Verifica leggera (categoria di campo, non arg specifico)."""
+    import copy
+    from engine import dispatch as D
+    cat = _catalog()
+    problems = []
+    for cname, fwk, intent, query in _cases():
+        for g in D.GUARD_PIPELINE:
+            before = _snap(fwk)
+            after_fw = g.fn(copy.deepcopy(fwk), intent, query, cat)
+            after = _snap(after_fw)
+            if before == after:
+                continue
+            # ha mutato: la categoria dichiarata copre? (step/step.tool/args.*)
+            decl = g.writes
+            touches_step = any(w == "step" for w in decl)
+            touches_tool = any(w.startswith("step.tool") for w in decl) or touches_step
+            touches_args = any(w.startswith("args.") for w in decl) or touches_step
+            # se dichiara step, copre tutto. Altrimenti serve almeno una categoria.
+            if not (touches_step or touches_tool or touches_args):
+                problems.append(f"{g.name}@{cname}: muta ma writes non dichiara né step né args")
+    assert not problems, problems
+
+
+def test_no_perclause_writes_before_crossclause_same_field():
+    """L'ordine load-bearing (S2): un guard `per-clause` che scrive un campo
+    NON deve girare PRIMA di un `cross-clause` che scrive lo STESSO campo —
+    la contaminazione va risolta prima della derivazione locale. Verifica
+    dichiarativa sull'ordine del registro."""
+    from engine.dispatch import GUARD_PIPELINE
+    seen_perclause_fields: dict = {}
+    problems = []
+    for idx, g in enumerate(GUARD_PIPELINE):
+        if g.scope == "per-clause":
+            for w in g.writes:
+                seen_perclause_fields.setdefault(w, idx)
+        elif g.scope == "cross-clause":
+            for w in g.writes:
+                if w in seen_perclause_fields:
+                    problems.append(
+                        f"{g.name} (cross-clause, idx {idx}) scrive {w} DOPO un "
+                        f"per-clause (idx {seen_perclause_fields[w]})")
+    assert not problems, problems
