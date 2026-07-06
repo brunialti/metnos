@@ -18,7 +18,7 @@ en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: ge
 
 [code]
 files  = ["get_approval.py"]
-digest = "sha256:7f7688d046030d04289ef4a17b25e9dd3536923a12f5169c2a3609404762c787"
+digest = "sha256:612d7acc3bc93170cece7901c4c2f12d26ff90a1c8a517b673d591f788a3d931"
 
 [args]
 type     = "object"
@@ -83,6 +83,24 @@ maximum     = 3600
 [args.properties.timeout_s.description]
 it = "Opzionale. TTL del dialogo in secondi. Default per forma. Oltre, lo stato pendente viene scartato dal cleanup."
 en = "Optional. Dialogue TTL in seconds. Default by shape. Beyond this, the pending state is discarded by cleanup."
+
+[args.properties.guard_count]
+type        = "integer"
+runtime_resolved = true
+
+[args.properties.guard_count.description]
+it = "Runtime-only. Conteggio degli elementi coinvolti (risolto da ${stepN.@count}). Se ≤ guard_threshold il gate passa trasparente senza dialogo."
+en = "Runtime-only. Count of items involved (resolved from ${stepN.@count}). If ≤ guard_threshold the gate passes through with no dialogue."
+
+[args.properties.guard_threshold]
+type        = "integer"
+minimum     = 0
+default     = 0
+runtime_resolved = true
+
+[args.properties.guard_threshold.description]
+it = "Runtime-only. Soglia: il gate chiede SOLO se guard_count la supera. Default 0 (chiede su ogni conteggio > 0). Usato dal gate mutazioni-di-massa."
+en = "Runtime-only. Threshold: the gate asks ONLY if guard_count exceeds it. Default 0 (asks on any count > 0). Used by the mass-mutation gate."
 
 [[capabilities]]
 name = "dialog.user_input"

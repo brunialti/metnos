@@ -13,6 +13,7 @@ Entry point single: dispatch.run_turn(query, intent, catalog, invoke_executor_cb
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -2458,6 +2459,151 @@ def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
         return framework
 
 
+# Verbi fs DISTRUTTIVI/RILOCANTI (rimuovono o spostano dati esistenti): una
+# operazione di massa su questi merita conferma umana. write/create sono
+# additivi → fuori (primo taglio, bug live 1ba8e2c4 6/7 era una delete).
+_MASS_MUTATION_VERBS = ("delete", "move")
+_MASS_ACTION_KEY = {"delete": "MSG_ACTION_DELETE", "move": "MSG_ACTION_MOVE"}
+
+
+def _mass_mutation_threshold() -> int:
+    """Soglia oltre cui un'op distruttiva di massa chiede conferma. Env
+    METNOS_MASS_MUTATION_THRESHOLD (default 20). ≤0 = gate DISATTIVATO."""
+    try:
+        return int(os.environ.get("METNOS_MASS_MUTATION_THRESHOLD", "20"))
+    except (TypeError, ValueError):
+        return 20
+
+
+def _glob_paths_to_find_files(paths) -> Optional[dict]:
+    """Se `paths` (lista inline di un delete/move) contiene GLOB con un UNICO
+    parent, ritorna gli args find_files che li materializza (base_path +
+    patterns, non ricorsivo = semantica `/dir/*`). None se: nessun glob (il
+    conteggio è già len(paths)), parent multipli, o parent glob-ato. OS-agnostico
+    (ntpath/posixpath) per i path di device Windows. §7.9 string-ops, niente stat
+    (il path può essere remoto)."""
+    if not isinstance(paths, list) or not paths:
+        return None
+    if not any(isinstance(p, str) and any(c in p for c in "*?") for p in paths):
+        return None  # nessun glob → len(paths) è già il conteggio vero
+    import ntpath
+    import posixpath
+    parents, bases = set(), []
+    for p in paths:
+        if not isinstance(p, str) or not p:
+            return None
+        mod = ntpath if ("\\" in p or (len(p) > 1 and p[1] == ":")) else posixpath
+        parent, base = mod.dirname(p), mod.basename(p)
+        if not parent or not base or any(c in parent for c in "*?"):
+            return None
+        parents.add(parent)
+        bases.append(base)
+    if len(parents) != 1:
+        return None
+    return {"base_path": next(iter(parents)),
+            "patterns": sorted(set(bases)), "recursive": False}
+
+
+def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
+    """§2.11/§7.9 (bug live 1ba8e2c4, 6/7: recovery ha espanso una dir in 681
+    delete remote senza conferma → 195 file persi). Inserisce un `get_approval`
+    PRIMA della prima azione DISTRUTTIVA di massa (delete_/move_) con
+    `guard_count`+`guard_threshold`: il gate CHIEDE solo se gli item superano la
+    soglia, altrimenti passa trasparente (una delete di 3 file non disturba).
+
+    Universale §7.9: inserito dal RUNTIME (deterministico) DOPO il coerce (i suoi
+    arg guard_* non sono soggetti a Guard #0). Copre sia i piani normali sia
+    quelli RICOSTRUITI dalla recovery (chiamato in entrambi i path). La pausa+
+    ripresa riusa il gate-resume esistente (on-approve la pipeline si riesegue
+    col gate auto-passato). Skip: ripresa post-approvazione, gate già presente,
+    soglia disattivata, nessuna azione di massa o conteggio sotto soglia."""
+    try:
+        if (runtime_ctx or {}).get("_gate_approved"):
+            return framework
+        thr = _mass_mutation_threshold()
+        if thr <= 0:
+            return framework
+        # Turni SCHEDULATI: azione INTENZIONALE pre-autorizzata da chi l'ha
+        # pianificata, e nessun umano può approvare nell'istante → gate SKIP
+        # (altrimenti la manutenzione notturna resta appesa). Specularmente al
+        # consent-gate outbound, che invece è schedulato-ONLY. La protezione
+        # mira alla delete INTERATTIVA a sorpresa (bug 1ba8e2c4).
+        try:
+            from treated_issues_guard import is_scheduled_turn
+            if is_scheduled_turn():
+                return framework
+        except Exception:
+            pass
+        steps = list(getattr(framework, "steps", None) or [])
+        if any((s.tool or "") == "get_approval" for s in steps):
+            return framework
+        from messages import get as _msg_get
+        from .types import StepSpec
+        rc = runtime_ctx or {}
+        where = rc.get("target_device") or _msg_get("MSG_LOCAL_HERE")
+        for idx, s in enumerate(steps):
+            verb = (s.tool or "").split("_", 1)[0]
+            if verb not in _MASS_MUTATION_VERBS:
+                continue
+            a = s.args if isinstance(s.args, dict) else {}
+            fs = a.get("from_step")
+            prefix = list(steps[:idx])   # step immutati prima dell'azione
+            mut_step = s                 # lo step d'azione (eventualmente riscritto)
+            # (1) consumer di un produttore (from_step): conteggio NOTO solo a
+            #     runtime → guard_count=${stepN.@count}.
+            # (2) inline paths con GLOB (`*?`): il conteggio VERO è post-espansione
+            #     (backend/device), invisibile a plan-time (bug e2e 6/7:
+            #     delete(["/dir/*"]) len=1 sfuggiva). Riscrivi a
+            #     [find_files(dir,pattern), delete(from_step)] così @count lo
+            #     materializza a runtime, locale E su device.
+            # (3) lista inline SENZA glob: conteggio noto ORA → gate solo se >soglia.
+            if isinstance(fs, int) and 1 <= fs <= idx:
+                guard_count = f"${{step{fs}.@count}}"
+                n_display = guard_count
+            else:
+                paths = a.get("paths")
+                ff_args = (_glob_paths_to_find_files(paths)
+                           if isinstance(paths, list) else None)
+                if ff_args is not None:
+                    # riscrittura glob → find_files precursore + delete(from_step)
+                    ff_idx = len(prefix) + 1
+                    consumer_args = {k: v for k, v in a.items()
+                                     if k != "paths" and not k.startswith("_")}
+                    consumer_args["from_step"] = ff_idx
+                    prefix = prefix + [StepSpec(tool="find_files", args=ff_args)]
+                    mut_step = StepSpec(tool=s.tool, args=consumer_args)
+                    guard_count = f"${{step{ff_idx}.@count}}"
+                    n_display = guard_count
+                else:
+                    n_inline = len(paths) if isinstance(paths, list) else None
+                    if n_inline is None:
+                        v = a.get("entries")
+                        n_inline = len(v) if isinstance(v, list) else None
+                    if n_inline is None or n_inline <= thr:
+                        continue  # non contabile, o sotto soglia
+                    guard_count, n_display = n_inline, n_inline
+            action = _msg_get(_MASS_ACTION_KEY.get(verb, "MSG_ACTION_DELETE"))
+            prompt = _msg_get("MSG_CONSENT_GATE_MASS_MUTATION",
+                              action=action, n=n_display, where=where)
+            gate = StepSpec(tool="get_approval", args={
+                "prompt": prompt,
+                "on_approve": {"tool": "final_answer", "args": {}},
+                "guard_count": guard_count,
+                "guard_threshold": thr,
+                "timeout_s": 3600,
+                "channel": rc.get("channel") or "",
+                "actor": rc.get("actor") or "",
+            })
+            framework.steps = prefix + [gate, mut_step] + list(steps[idx + 1:])
+            log.info("[mass_mutation_gate] get_approval inserito prima di %s "
+                     "(soglia %d)", s.tool, thr)
+            return framework
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
+        log.warning("[mass_mutation_gate] noop: %r", ex)
+        return framework
+
+
 def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
     """gate-resume (20/6/2026): se un gate get_approval ha messo in PAUSA la
     pipeline (run.gate_dialog_id), sovrascrive l'on_complete del dialog
@@ -2480,7 +2626,11 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
         oc = st.get("on_complete") or {}
         st["on_complete"] = {
             "type": "resume_engine_gate",
-            "original_query": query,
+            # Query RAW dell'utente (CON la destinazione «su pc-X»): la query
+            # di dispatch è già strippata dell'adjunct — rilanciarla farebbe
+            # dipendere l'host di esecuzione dallo sticky target (bug live
+            # 981ddc9f 6/7: fragile e potenzialmente cross-host).
+            "original_query": rc.get("user_query_raw") or query,
             "conversation_id": rc.get("conversation_id") or "",
             "gate_approve_value": oc.get("approve_value", "approve"),
             "gate_on_reject": oc.get("on_reject"),
@@ -2780,6 +2930,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # schedulato / nessun send_*.
             fp_hit.framework = _insert_consent_gate_if_scheduled(
                 fp_hit.framework, query, runtime_ctx)
+            fp_hit.framework = _insert_mass_mutation_gate(
+                fp_hit.framework, query, runtime_ctx)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -2868,6 +3020,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # anche sull'hit L1 (autopath generalizzato) per i turni schedulati
             # outbound. No-op se non schedulato / nessun send_*.
             ap_hit.framework = _insert_consent_gate_if_scheduled(
+                ap_hit.framework, query, runtime_ctx)
+            ap_hit.framework = _insert_mass_mutation_gate(
                 ap_hit.framework, query, runtime_ctx)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
@@ -3066,6 +3220,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # inserisci get_approval prima del send (FIX 1 mette in pausa, on-approve
     # riprende pulito). Dopo l'ordinamento, prima dell'esecuzione.
     framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
+    # mass-mutation gate (6/7): delete/move di massa → conferma umana prima
+    # dell'azione. No-op sotto soglia / gate disattivato.
+    framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
 
     # Execute
     run = executor.run(framework, query=query,
@@ -3125,10 +3282,27 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             if framework_alt is not None:
                 framework_alt = _apply_ordering_clause(
                     framework_alt, query, catalog)
+                # mass-mutation gate ANCHE sul piano ricostruito dalla recovery
+                # (bug live 1ba8e2c4: la delete di massa NASCEVA proprio qui —
+                # find_files espande la dir → delete_files(from_step=1)).
+                framework_alt = _insert_mass_mutation_gate(
+                    framework_alt, query, runtime_ctx)
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,
                                      remediate_args_cb=remediate_args_cb,
                                 progress=progress)
+                # Gate in PAUSA (final_kind='ask' + gate_dialog_id): la pipeline
+                # attende il consenso umano → cabla il resume e ritorna la
+                # richiesta d'input, NON un errore. §2.11.
+                if getattr(run2, "gate_dialog_id", ""):
+                    _inject_gate_resume_if_paused(run2, query, runtime_ctx)
+                    return DispatchResult(
+                        final_text=run2.final_text, final_kind=run2.final_kind,
+                        match_source="recovery",
+                        framework_hash=run2.framework_hash,
+                        elapsed_ms=int((time.time() - t_start) * 1000),
+                        run=run2, framework=framework_alt,
+                        error_class=err_class)
                 if run2.final_kind == "answer":
                     # Il piano RECUPERATO ha funzionato: cacharlo evita di
                     # ripetere fallimento+recovery alla prossima ripetizione.
@@ -3143,6 +3317,14 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         run=run2, framework=framework_alt,
                         error_class=err_class)
+                # §2.8 (bug live 1ba8e2c4, 6/7): il run di RECOVERY è fallito.
+                # La verità più recente è run2 — che può aver TENTATO una
+                # mutazione (es. delete di massa → timeout con esecuzione
+                # PARZIALE sul device). Spiegare run1 la nasconderebbe: da qui
+                # in poi terminator/TurnLog vedono run2.
+                run = run2
+                framework = framework_alt
+                err_class = classify_error(run2)
         # Recovery failed or out_of_scope → Terminator
         resp = terminator.explain(
             query=query, intent=intent,

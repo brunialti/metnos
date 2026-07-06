@@ -64,15 +64,18 @@ def invoke(args: dict) -> dict:
     if args.get("_pre_approved"):
         return {"ok": True, "decision": "approved", "final_message_hint": ""}
 
-    # §2.11/§2.8 (gate-vuoto, 22/6): un consenso su un outbound di 0 elementi NON
-    # ha nulla da approvare. `guard_count` (iniettato dal consent-gate runtime,
-    # risolto da ${stepN.@count}) == 0 → passa TRASPARENTE senza dialog: l'utente
-    # non viene disturbato con «approvo 0 elementi?», e il send a valle resta un
-    # no-op onesto. Non-numerico / non risolto → gate normale.
+    # §2.11/§2.8 (gate-vuoto 22/6 + soglia mutazioni-di-massa 6/7): `guard_count`
+    # (iniettato dal gate runtime, risolto da ${stepN.@count}) ≤ `guard_threshold`
+    # → passa TRASPARENTE senza dialog. threshold=0 (default) = comportamento
+    # storico del consent-gate outbound (passa solo su 0 elementi: niente «approvo
+    # 0?»). threshold=N>0 = gate mutazioni-di-massa: chiede SOLO oltre N item (una
+    # delete/move di pochi file non disturba). Non-numerico/non risolto → gate
+    # normale (fail-safe: nel dubbio chiedi).
     gc = args.get("guard_count")
     if gc is not None:
         try:
-            if int(gc) == 0:
+            threshold = int(args.get("guard_threshold") or 0)
+            if int(gc) <= threshold:
                 return {"ok": True, "decision": "approved",
                         "final_message_hint": ""}
         except (TypeError, ValueError):
@@ -139,6 +142,11 @@ def invoke(args: dict) -> dict:
         _inline_ok = lambda _d: False  # noqa: E731
     if channel == "telegram" and _inline_ok(dialog):
         fmt = "telegram_inline"
+    elif channel == "http":
+        # Web (bug live 3db55063, 6/7): 'dialogue' lasciava l'utente SENZA UI
+        # di risposta (doveva indovinare e digitare). 'form' → il hint porta il
+        # marker INLINE_FORM e chat.html monta l'iframe del form (bottoni).
+        fmt = "form"
     else:
         fmt = "dialogue"
 
@@ -176,6 +184,12 @@ def invoke(args: dict) -> dict:
     except (OSError, ValueError, TypeError) as ex:
         return {"ok": False, "error": f"save_pending fallito: {ex}"}
 
+    # fmt=form (web): il marker INLINE_FORM viene sostituito da chat.html con
+    # l'iframe di /agent/dialog/<id>/form (stesso contratto di get_inputs).
+    hint = prompt
+    if fmt == "form":
+        hint = f"{prompt}\n\nINLINE_FORM:/agent/dialog/{dialog_id}/form"
+
     return {
         "ok": True,
         "decision": "input_required",
@@ -184,7 +198,7 @@ def invoke(args: dict) -> dict:
         "step_total": 1,
         "values": {},
         "fmt": fmt,
-        "final_message_hint": prompt,
+        "final_message_hint": hint,
         "expandable_caps": [{
             "kind": "get_inputs_response",
             "dialog_id": dialog_id,
