@@ -458,7 +458,15 @@ def _detect_unfulfilled_mutating_intent(log) -> str:
         if step_verb not in DESTRUCTIVE_VERBS:
             continue
         _obs = s.result if isinstance(s.result, dict) else None
-        if isinstance(_obs, dict) and _obs.get("ok") is True:
+        # §2.8 esito PARZIALE = azione AVVENUTA (bug live 8025922, 6/7:
+        # delete di 456 con il solo desktop.ini rifiutato → ok=False ma
+        # ok_count=455; dichiarare «non completata» era falso — la notice
+        # MSG_MUTATE_PARTIAL a valle riporta già il fallito). Stesso
+        # criterio "mutated" di _undo_done.
+        _fulfilled = isinstance(_obs, dict) and (
+            _obs.get("ok") is True or bool(_obs.get("ok_count"))
+            or bool(_obs.get("results")))
+        if _fulfilled:
             if intent_is_mutating and step_verb == intent_verb:
                 return ""
             if not intent_is_mutating:

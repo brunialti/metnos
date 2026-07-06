@@ -3325,6 +3325,28 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 run = run2
                 framework = framework_alt
                 err_class = classify_error(run2)
+        # §2.8 esito PARZIALE (bug live 8025922, 6/7): un run «error» il cui
+        # step MUTANTE ha comunque effetti reali (delete 456: 455 ok, 1
+        # system-file rifiutato) NON è materia da terminator («pipeline
+        # malformata» = falso). final vuoto+kind answer → il finalizer
+        # TurnLog compone la verità (conteggio + notice sul fallito).
+        _pm = 0
+        for _s in reversed(run.steps or []):
+            _r = _s.result if isinstance(_s.result, dict) else {}
+            if ((_s.tool or "").split("_", 1)[0] in
+                    ("delete", "move", "write", "create", "send", "share",
+                     "order", "change")
+                    and (_r.get("ok_count") or _r.get("results"))):
+                _pm = _r.get("ok_count") or len(_r.get("results") or [])
+                break
+        if _pm:
+            from messages import get as _pmsg
+            return DispatchResult(
+                final_text=_pmsg("MSG_DEGENERATE_FINAL_MUTATIONS", n=_pm),
+                final_kind="answer", match_source="partial_mutation",
+                framework_hash=run.framework_hash,
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                run=run, framework=framework, error_class=err_class)
         # Recovery failed or out_of_scope → Terminator
         resp = terminator.explain(
             query=query, intent=intent,

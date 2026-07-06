@@ -68,6 +68,11 @@ _TURNLOG_WRITING_TESTS = frozenset({
     "test_late_result_a0.py",
     "test_zero_entries_final.py",
     "test_finalizer_unico.py",
+    # run_turn completi con query fittizie («query plain», «trova foto
+    # simili»): senza isolamento finiscono nel jsonl di prod (visti 23:18).
+    "test_engine_seed_uploads.py",
+    "test_http_multipart_uploads.py",
+    "test_proposer_cap_demote.py",
 })
 
 

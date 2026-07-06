@@ -102,6 +102,16 @@ def pipeline_effect_counts(steps) -> dict | None:
             continue
         if res.get("ok") is False:
             failures += 1
+            # §2.8 esito PARZIALE (bug live 8025922, 6/7): delete di 456 con
+            # 1 rifiuto → ok=False ma ok_count=455. Saltare lo step intero
+            # azzerava `mutations` → il finalizer degradava a falsa-mutazione
+            # («0 modifiche reali») un turno che ne aveva fatte 455.
+            if any(tool.startswith(pfx) for pfx in MUTATING_TOOL_PREFIXES):
+                mutating_attempted = True
+                _n = _mutation_count(res)
+                if _n:
+                    countable += 1
+                    mutations += max(0, _n)
             continue
         if any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
             mutating_attempted = True
