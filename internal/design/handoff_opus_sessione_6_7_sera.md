@@ -120,7 +120,15 @@ verificano i bytes ESATTI → campo extra ok perché firmato insieme).
 - **`spec_fase7_w4_appcontainer.md`**: sandbox forte Windows (W4.1-4) —
   ortogonale, parallelizzabile.
 
-### 3.3 Compound «file E directory» — pianificazione incompleta
+### 3.3 Compound «file E directory» — ✅ FATTO nel recovery (5955098); residuo main-path
+Il RECOVERY ora accoda find_dirs→delete_dirs quando intent.actions porta
+{delete,dirs} (validato e2e: 24 file+2 dir → 0/0, gate incluso). RESIDUO:
+se il proposer pianifica DIRETTAMENTE find_files→delete_files corretto
+(niente recovery), la clausola dirs è ancora droppata → guarda il guard
+`enforce_missing_clauses` in dispatch (perché non la impone?) o few_shot
+planner. Anche: undo di delete_dirs (le dir rimosse non sono blob-backed).
+
+### 3.3.bis (storico)
 Query «cancella i file e le directory nella directory X»: le DIRECTORY non
 vengono MAI toccate (find_files include_dirs=false; delete_dirs mai
 pianificato). Piano corretto: find_files→delete_files→find_dirs→delete_dirs
