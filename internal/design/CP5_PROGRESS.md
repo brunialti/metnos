@@ -63,3 +63,12 @@ NB: il bench deve chiamare il PROPOSER REALE (LLM) per vedere l'effetto della gr
 - **ONESTÀ CRUCIALE (§8.3) da mettere nel report**: la grammar-args vincola gli ENUM. Ma i guard-args attuali fixano soprattutto STRUTTURA (base_path fantasma, degenere find→list) e TESTO-LIBERO (pattern, count int, client runtime_resolved) — NON valori enum. Quindi il guard_fire potrebbe NON scendere molto. Il valore VERO della grammar-args è impedire ENUM-INVALIDI (sort:"recent") che l'executor rifiuterebbe a runtime (ERR_ARG) → misurato da `n_arg_err`, non solo da guard_fire. Se guard_fire non scende ma arg_err sì → il valore è "correttezza a runtime", non "meno guard". Il bench deve dire la verità: quale delle due dimensioni si muove.
 - Turno lento (~30-60s cold-start+exec); 36 turni ≈ 20-40 min in background.
 - Esito → report `internal/reports/grammar_args_ab_2026-07-06.md` + ADR-pending + cancello Roberto.
+
+## PARALLELO — Architettura provenienza args (mandato Roberto «mira alto, una volta»)
+Spec: `internal/design/spec_args_provenance_architecture.md` (target ambizioso) + `spec_guard_registry.md` (substrato FASE 1).
+### FASE 0 ✅ FATTO in parallelo al bench (6/7, commit 2132aab)
+`runtime/arg_provenance.py` — classify_arg/provenance_map/provenance_report. Zero comportamento (dati puri). Mappa reale 537 args: runtime 38 / clause 114 / semantic 385. Scoperta: 30 config args senza marker runtime_resolved (causa dei guard provider). 7 test. Report `internal/reports/args_provenance_map_2026-07-06.md`.
+### PROSSIMI (dopo cancello CP5, effort focalizzato — NON in parallelo, protetti da oracolo di equivalenza)
+- FASE 1: registro guard tipizzato (Guard dataclass, scope/reads/writes/rationale). Basso rischio.
+- FASE 2: stage clausola AUTORITATIVO (clause_resolver) + ritiro guard sussunti (a 0-fire provato dal counter CP5.4). ALTO rischio → oracolo `test_provenance_equivalence.py` sul corpus esistente.
+- FASE 3: coerce_args_to_schema unico + rimozione categoria C/D.
