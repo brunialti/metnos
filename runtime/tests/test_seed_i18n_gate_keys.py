@@ -15,7 +15,8 @@ from pathlib import Path
 _RUNTIME = Path(__file__).resolve().parent.parent
 _SEED_DB = _RUNTIME.parent / "install" / "data" / "i18n_seed.sqlite"
 
-# Chiavi user-facing introdotte dal flusso gate-resume/consenso (20/6).
+# Chiavi user-facing introdotte dal flusso gate-resume/consenso (20/6) +
+# gate mutazioni-di-massa (6/7).
 _REQUIRED_KEYS = (
     "MSG_CONSENT_GATE_OUTBOUND",
     "MSG_CONSENT_GATE_OUTBOUND_N",
@@ -24,6 +25,10 @@ _REQUIRED_KEYS = (
     "MSG_DIALOG_COMPLETED",
     "MSG_DIALOG_STEP_ERROR",
     "MSG_DIALOG_STEP_REPROMPT",
+    "MSG_CONSENT_GATE_MASS_MUTATION",
+    "MSG_ACTION_DELETE",
+    "MSG_ACTION_MOVE",
+    "MSG_LOCAL_HERE",
 )
 
 # Chiavi user-facing del path upload-default faceless (1/7): la risposta parte
@@ -55,6 +60,25 @@ _REQUIRED_TRUNCATION_KEYS = (
 # 3/7): il messaggio quando un executor non supporta l'OS del device.
 _REQUIRED_PLACEMENT_KEYS = (
     "ERR_DEVICE_PLATFORM_UNSUPPORTED",
+    "ERR_DEVICE_TIMEOUT",  # testo A.0 (risultato-tardivo onesto, 6/7)
+)
+
+# Chiavi user-facing dell'onestà mutating §2.8 + final degenere (6/7): il
+# finalizer (agent_runtime._enforce_mutating_honesty / blocco degenere) le
+# risolve via `msg()` PURO — §7.13, niente più seeding bilingue in-linea nel
+# sorgente. Senza la rete `register_key_if_missing`, un seed che le perde fa
+# uscire «<missing:MSG_*>» su un fresh install. Questo guard lo intercetta.
+_REQUIRED_HONESTY_KEYS = (
+    "MSG_MUTATE_FAILED_NONE_DONE",
+    "MSG_MUTATE_NONE_DONE",
+    "MSG_MUTATE_PARTIAL",
+    "MSG_DEGENERATE_FINAL_MUTATIONS",
+    "MSG_DEGENERATE_FINAL_ITEM_ONE",
+    "MSG_DEGENERATE_FINAL_ITEMS",
+    "MSG_PARTIAL_ITEM_FAILURE",
+    "MSG_FALSE_SUCCESS_NOTICE",
+    "MSG_FALSE_MUTATION_NOTICE",
+    "MSG_MUTATE_TIMEOUT_UNCERTAIN",
 )
 
 
@@ -125,6 +149,24 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_PLACEMENT_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(
+                        txt and "<missing" not in txt,
+                        f"seed manca {key}[{lang}] (rigenera install/data/"
+                        f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_honesty_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_HONESTY_KEYS))),
+                _REQUIRED_HONESTY_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_HONESTY_KEYS:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     txt = rows.get((key, lang))

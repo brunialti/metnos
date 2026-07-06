@@ -3281,8 +3281,18 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
 
 
 def _undo_done(op_id, obs):
-    """Chiude il record undo dopo un esito ok (pending senza done = crashed)."""
-    if not op_id or not (isinstance(obs, dict) and obs.get("ok")):
+    """Chiude il record undo quando l'op ha REALMENTE mutato qualcosa.
+
+    Bug live 981ddc9f (6/7): delete di 489 con 1 rifiuto (desktop.ini system
+    file) → ok=False MA ok_count=488 e results[] pieni di blob. Gating su
+    `ok` puro lasciava l'op ORFANA: 488 file cancellati e non annullabili
+    (§2.8). Esito PARZIALE = comunque done (il reverse ribalta i results
+    presenti); pending senza done resta = crashed/0-effetto."""
+    if not op_id or not isinstance(obs, dict):
+        return
+    mutated = bool(obs.get("ok")) or bool(obs.get("ok_count")) \
+        or bool(obs.get("results"))
+    if not mutated:
         return
     try:
         UndoLog().append_done(op_id, obs)
@@ -3356,7 +3366,8 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                                      actor=actor, channel=channel,
                                      device=str(_target))
             _obs = _remote.invoke_remote(
-                executor, args, _target, timeout_s=timeout_s, turn_id=turn_id)
+                executor, args, _target, timeout_s=timeout_s, turn_id=turn_id,
+                actor=actor or "", channel=channel or "")
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
             if isinstance(_obs, dict) and target_device:
@@ -3605,6 +3616,24 @@ class TurnLog:
         """
         if not self.steps:
             return
+        # §2.8 TIMEOUT su step MUTANTE (bug live 1ba8e2c4, 6/7: delete di
+        # massa sul device uccisa a metà dalla deadline → esecuzione PARZIALE
+        # reale, results/blob-mapping persi, undo orfano): l'esito è INCERTO
+        # — mai dichiarare «nessuna operazione eseguita». Chiave nel catalogo
+        # seed §7.13 (guard: test_seed_i18n_gate_keys.py).
+        from pipeline_effects import MUTATING_TOOL_PREFIXES as _MUT_PREF
+        for s in reversed(self.steps):
+            res = s.result if isinstance(s.result, dict) else {}
+            if (res.get("error_class") in ("timeout", "remote_timeout")
+                    and not res.get("ok", False)
+                    and any((s.chosen_tool or "").startswith(p)
+                            for p in _MUT_PREF)):
+                dev = (res.get("_ran_on_device")
+                       or (res.get("_remote") or {}).get("device_id", "")[:12]
+                       or (res.get("device_id") or "")[:12] or "server")
+                self.final_message = msg("MSG_MUTATE_TIMEOUT_UNCERTAIN",
+                                         tool=s.chosen_tool, device=dev)
+                return
         mut = None
         for s in reversed(self.steps):
             res = s.result if isinstance(s.result, dict) else {}
@@ -3624,10 +3653,18 @@ class TurnLog:
             return
         not_found = mut.get("not_found") or []
         failed = mut.get("failed") or []
-        not_found = not_found if isinstance(not_found, list) else [not_found]
+        not_found = list(not_found) if isinstance(not_found, list) else [not_found]
         failed = failed if isinstance(failed, list) else [failed]
         if not not_found and not failed:
             return  # esito pieno: nessun claim da correggere
+        # Split failed[] per error_code strutturato: *_NOT_FOUND = target
+        # inesistente («non trovato» legittimo); il RESTO = fallimento reale
+        # su un target che ESISTE (es. ERR_PATH_WRONG_TYPE: è una directory).
+        # Dichiarare «non trovato» un path trovato-ma-rifiutato è falso (§2.8).
+        real_failed = []
+        for it in failed:
+            code = (it.get("error_code") or "") if isinstance(it, dict) else ""
+            (not_found if code.endswith("_NOT_FOUND") else real_failed).append(it)
         success = None
         for k in self._MUTATE_SUCCESS_KEYS:
             if isinstance(mut.get(k), int):
@@ -3648,21 +3685,60 @@ class TurnLog:
                     out.append(str(it))
             return ", ".join(out[:8])
 
-        detail = _ids(not_found) or _ids(failed)
-        from i18n import register_key_if_missing as _rk
+        def _describe_failure(it):
+            """«label»: motivo. Ri-renderizza via i18n quando l'item porta
+            error_code + parametri strutturati (i failed[] REMOTI arrivano col
+            fallback grezzo code+kv del device: qui si ri-umanizza, §7.13);
+            altrimenti usa l'error text così com'è."""
+            if not isinstance(it, dict):
+                return str(it)
+            label = str(it.get("path") or it.get("src") or it.get("id")
+                        or it.get("event_id") or it.get("uid") or "?")
+            reason = ""
+            code = it.get("error_code") or ""
+            if code:
+                params = {k: v for k, v in it.items()
+                          if isinstance(v, (str, int, float))}
+                try:
+                    cand = msg(code, **params)
+                except Exception:
+                    cand = ""
+                if cand and "{" not in cand and not cand.startswith("<missing:"):
+                    reason = cand
+            if not reason:
+                reason = str(it.get("error") or code or "")
+            if label != "?" and label in reason:
+                return reason
+            return f"«{label}»: {reason}" if reason else f"«{label}»"
+
+        def _failures_detail(lst, cap=3):
+            parts = [_describe_failure(it) for it in lst[:cap]]
+            if len(lst) > cap:
+                parts.append(f"+{len(lst) - cap}")
+            return "; ".join(parts)
+
+        # §7.13: messaggi risolti via i18n DB nella lingua dell'istanza. Le
+        # chiavi vivono nel catalogo seed (install/data/i18n_seed.sqlite,
+        # IT+EN), NON in-linea nel sorgente. Guard di presenza:
+        # runtime/tests/test_seed_i18n_gate_keys.py.
         if success == 0:
-            _rk("MSG_MUTATE_NONE_DONE",
-                "Nessun elemento «{detail}» trovato: nessuna operazione "
-                "eseguita.",
-                "No item «{detail}» found: no operation performed.")
-            self.final_message = msg("MSG_MUTATE_NONE_DONE", detail=detail)
+            if real_failed:
+                detail = _failures_detail(real_failed)
+                if not_found:
+                    detail += " | " + msg(
+                        "MSG_MUTATE_PARTIAL", n=len(not_found),
+                        detail=_ids(not_found))
+                self.final_message = msg("MSG_MUTATE_FAILED_NONE_DONE",
+                                         detail=detail)
+                return
+            self.final_message = msg("MSG_MUTATE_NONE_DONE",
+                                     detail=_ids(not_found))
         else:
-            _rk("MSG_MUTATE_PARTIAL",
-                "Attenzione: {n} elemento/i non trovato/i o fallito/i "
-                "({detail}).",
-                "Warning: {n} item(s) not found or failed ({detail}).")
+            parts = [p for p in (_ids(not_found),
+                                 _failures_detail(real_failed)) if p]
             notice = msg("MSG_MUTATE_PARTIAL",
-                         n=len(not_found) + len(failed), detail=detail)
+                         n=len(not_found) + len(real_failed),
+                         detail="; ".join(parts))
             if notice not in (self.final_message or ""):
                 self.final_message = ((self.final_message or "").rstrip()
                                       + "\n\n" + notice).strip()
@@ -3704,12 +3780,8 @@ class TurnLog:
             if key in seen:
                 continue
             seen.add(key)
-            from i18n import register_key_if_missing as _rk
-            _rk("MSG_PARTIAL_ITEM_FAILURE",
-                "Attenzione: {n} non controllati per errore ({labels}); il "
-                "risultato è incompleto, il conteggio può non essere reale.",
-                "Warning: {n} not checked due to error ({labels}); the result "
-                "is incomplete, the count may not be real.")
+            # §7.13: chiave nel catalogo seed, risolta via msg() nella lingua
+            # istanza (guard: test_seed_i18n_gate_keys.py).
             notices.append(msg("MSG_PARTIAL_ITEM_FAILURE", n=n,
                                labels=", ".join(labels) or "?"))
         return notices
@@ -4525,14 +4597,6 @@ class TurnLog:
             # a _detect_false_not_found; preserva il messaggio LLM per audit.
             if _detect_false_success(self.final_message, self.effect_counts):
                 self.false_success_detected = True
-                from i18n import register_key_if_missing as _rk
-                _rk("MSG_FALSE_SUCCESS_NOTICE",
-                    "⚠ Nota: in questo turno nessun elemento è stato trovato "
-                    "o processato (0 risultati in tutti gli step): nessuna "
-                    "azione è stata realmente eseguita.",
-                    "⚠ Note: this turn found and processed no items (0 "
-                    "results in every step): no action was actually "
-                    "performed.")
                 _fs_notice = msg("MSG_FALSE_SUCCESS_NOTICE")
                 # SOSTITUISCE (non antepone) il narrato LLM falso: l'utente
                 # deve vedere SOLO la verità (0 risultati), non «ho creato il
@@ -4546,15 +4610,6 @@ class TurnLog:
             # verità (§2.8, bug live 21/6 fatture Anthropic).
             elif _detect_false_mutation(self.final_message, self.effect_counts):
                 self.false_success_detected = True
-                from i18n import register_key_if_missing as _rk
-                _rk("MSG_FALSE_MUTATION_NOTICE",
-                    "⚠ L'azione dichiarata (creazione/invio/salvataggio) NON è "
-                    "stata eseguita: 0 modifiche reali in questo turno. La "
-                    "richiesta non ha prodotto dati su cui agire (nessun file "
-                    "creato, nessun messaggio inviato).",
-                    "⚠ The stated action (create/send/save) was NOT performed: "
-                    "0 actual changes this turn. The request produced no data "
-                    "to act on (no file created, no message sent).")
                 self.final_message = msg("MSG_FALSE_MUTATION_NOTICE")
             # Final DEGENERE §2.8 (23/6, banco #1): un final_message nudo-conteggio
             # («0») o vuoto NON è un esito mostrabile. Sintomo: template-render a
@@ -4570,29 +4625,54 @@ class TurnLog:
                   and not (self.effect_counts or {}).get("failures")):
                 self.false_success_detected = True
                 _ec = self.effect_counts or {}
-                if not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
+                # §2.8: un builtin che dichiara il SUO esito nel result
+                # (`message` i18n, es. undo_last_turn «Nessuna operazione
+                # reversibile da annullare») vince sui generici — bug live
+                # f9cb0033 6/7: l'undo onesto diventava «Nessun risultato
+                # trovato» (falso: non era una ricerca).
+                _exec_msg = ""
+                for _s in reversed(self.steps):
+                    _r = _s.result if isinstance(_s.result, dict) else {}
+                    if isinstance(_r.get("message"), str) and _r["message"].strip():
+                        _exec_msg = _r["message"].strip()
+                        break
+                if _exec_msg:
+                    self.final_message = _exec_msg
+                elif not _ec.get("mutating_attempted") and _ec.get("items", 0) == 0:
                     # niente prodotto, niente mutato → no-results onesto
                     self.final_message = msg("MSG_NO_RESULTS")
                 else:
                     # qualcosa è stato letto/prodotto ma il messaggio è degenere:
                     # render onesto del conteggio + nota se un'azione dichiarata
                     # (mutazione) non è avvenuta. Singolare/plurale corretto.
-                    from i18n import register_key_if_missing as _rk
+                    # §7.13: chiavi risolte via i18n DB (lingua istanza), definite
+                    # nel catalogo seed — mai testo in-linea nel sorgente. Guard:
+                    # runtime/tests/test_seed_i18n_gate_keys.py.
                     _n = _ec.get("items", 0)
-                    if _n == 1:
-                        _rk("MSG_DEGENERATE_FINAL_ITEM_ONE",
-                            "Elaborato 1 elemento. Nessun'altra azione è stata "
-                            "completata in questo turno.",
-                            "Processed 1 item. No further action was completed "
-                            "this turn.")
+                    _muts = _ec.get("mutations", 0)
+                    if _muts:
+                        # Mutazione RIUSCITA (es. piano da recovery, che non
+                        # porta final_message template): dire «nessun'altra
+                        # azione completata» suonerebbe come un fallimento.
+                        # Esito onesto col conteggio reale (§2.8).
+                        self.final_message = msg(
+                            "MSG_DEGENERATE_FINAL_MUTATIONS", n=_muts)
+                    elif _n == 1:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEM_ONE")
                     else:
-                        _rk("MSG_DEGENERATE_FINAL_ITEMS",
-                            "Elaborati {n} elementi. Nessun'altra azione è stata "
-                            "completata in questo turno.",
-                            "Processed {n} items. No further action was completed "
-                            "this turn.")
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
+        # A.2 (fase 7): avvisi fuori-turno pendenti per QUESTO destinatario
+        # (es. op remota completata DOPO il timeout del suo turno) — anteposti
+        # DOPO tutte le riscritture del final (honesty/degenerate/false-success
+        # ASSEGNANO final_message: prima, la notice andava persa). Best-effort.
+        try:
+            import user_notices as _un
+            for _nt in _un.drain(self.channel or "", self.actor or "host"):
+                if _nt not in (self.final_message or ""):
+                    self.final_message = (
+                        _nt + "\n\n" + (self.final_message or "")).strip()
+        except Exception as _ne:
+            log.debug("user_notices drain noop: %r", _ne)
         # Propaga attachments dall ultimo step che ne ha prodotti (use
         # case realistico: un solo find_images_indices per turno).
         for s_step in reversed(self.steps):
@@ -5163,6 +5243,7 @@ def _run_engine(
     reference_images=None,
     resume_steps=None,
     placement_target: str | None = None,
+    user_query_raw: str = "",
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -5319,6 +5400,15 @@ def _run_engine(
         "channel": channel or "",
         "_gate_approved": bool(pre_approved_gate),
         "conversation_id": conversation_id or "",
+        # Destinazione del turno (nome device, ""=server): i gate la usano nel
+        # prompt («su PC-X», non «questo computer») — bug live 3db55063 6/7.
+        "target_device": _target_name or "",
+        # Query RAW dell'utente (CON l'adjunct di destinazione): il gate-resume
+        # DEVE rilanciare questa, non la query strippata — altrimenti la
+        # ri-esecuzione approva su un host diverso solo se lo sticky target
+        # regge (bug live 981ddc9f 6/7: senza «su pc-roberto» nel resume, la
+        # delete sarebbe stata LOCALE senza sticky).
+        "user_query_raw": user_query_raw or query,
     }
 
     # Seed-state (ADR 0177 M1): foto allegate al turno (ADR 0092) → step 0
@@ -6231,6 +6321,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                     conversation_id=conversation_id,
                     forced_object=forced_object,
                     placement_target=_placement_target,  # chat-driven placement (ADR 0034)
+                    user_query_raw=user_query_for_run,
                 )
             except Exception as _ex:
                 import logging as _logging
