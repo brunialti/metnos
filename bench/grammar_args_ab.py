@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
-"""Bench A/B per lo spike CP5 grammar-on-args (ADR 0177 T2/M4).
+"""Bench A/B per lo spike CP5 grammar-on-args (ADR 0177 T2/M4). v2 6/7/2026.
 
-Confronta due passate sullo STESSO corpus di query reali:
-  - A: METNOS_PROPOSER_GRAMMAR_ARGS=0 (baseline, args liberi)
+Misura ISOLATA: chiama il PROPOSER DIRETTAMENTE (no run_turn → no esecuzione,
+no describe/classify fan-out, no cache) su ogni query, in due modi:
+  - A: METNOS_PROPOSER_GRAMMAR_ARGS=0 (args liberi)
   - B: METNOS_PROPOSER_GRAMMAR_ARGS=1 (args vincolati allo schema)
-Con METNOS_GUARD_FIRE_COUNT=1 su entrambe.
+Poi applica i guard deterministici al framework GREZZO e conta i fire +
+verifica la validità degli enum. Così isola l'effetto della grammar sugli
+args generati dal proposer, senza i confondenti (cache/esecuzione/describe)
+della v1.
 
-Misura (per passata):
-  - guard_fire totali e per-guard (dispatch): quanti guard hanno MUTATO il piano
-  - parse-rate: % turni non-error (il proposer ha prodotto un piano eseguibile)
-  - arg-errors: turni con error_code ERR_ARG_* (enum/tipo invalido → grammar li
-    dovrebbe azzerare)
-  - latenza mediana
+Per ogni (query, mode): 1 call intent-extract (condivisa, fatta una volta) +
+1 call proposer wise. ~15 query × 2 mode ≈ 30 proposer-call ≈ 3-5 min.
 
-USO: (girare col MODELLO locale attivo, engine v3)
-  METNOS_ENGINE=v3 python3 bench/grammar_args_ab.py [--n 18]
-
-Onestà (§8.3): il corpus è mirato agli args con ENUM (sort/op/compress/mode/
-via_channel) + qualche compound, perché è LÌ che la grammar-args agisce. Sui
-guard che fixano STRUTTURA o testo-libero (path/pattern/count) la grammar-args
-NON aiuta per costruzione — il bench lo mostrerà onestamente.
+USO: METNOS_ENGINE=v3 python3 bench/grammar_args_ab.py
 """
 from __future__ import annotations
 
-import argparse
+import json
 import os
 import statistics
 import sys
@@ -34,74 +28,93 @@ _RT = Path(__file__).resolve().parent.parent / "runtime"
 if str(_RT) not in sys.path:
     sys.path.insert(0, str(_RT))
 
-# Corpus mirato: query che esercitano args con ENUM (dove la grammar-args
-# agisce) + compound + casi che scatenano i guard args. Tool reali on-disk.
+# Corpus mirato agli args con ENUM + count + provider (dove la grammar-args
+# agisce). NIENTE query che scatenano describe/classify su molte entries.
 CORPUS = [
-    # enum args diretti
     "elenca la cartella /opt/metnos/internal ordinata per dimensione",
     "elenca /opt/metnos/decisions ordinata per data più recente",
-    "quanti file .md ci sono in /opt/metnos/decisions",
     "trova i file .log in /tmp e comprimili in uno zip",
     "trova i file .txt in /tmp e comprimili in un tar",
-    # count/cap args
     "mostrami i primi 3 file .md di /opt/metnos/internal/design",
     "elenca i primi 5 file in /opt/metnos/runtime",
-    # compound con args multipli
     "leggi le mail di oggi e salvale in un file",
-    "trova i processi che consumano più memoria e scrivi un report",
-    "elenca i file in /tmp, filtra quelli più grandi di 1MB",
-    # provider/sink args (client)
+    "elenca i file in /tmp e filtra quelli più grandi di 1MB",
     "cerca su google drive il file KAKEBO e crea uno spreadsheet coi dati",
-    # read con formato
-    "leggi il contenuto di /opt/metnos/README.md",
-    "conta le righe di codice in /opt/metnos/runtime",
-    # write mode
-    "scrivi un file /tmp/nota_ab.txt con contenuto: test",
-    # ordinamento entries
+    "scrivi un file /tmp/nota_ab.txt con contenuto test",
     "trova i file .py in /opt/metnos/runtime ordinati per dimensione decrescente",
-    # find vs list (degenere)
     "elenca i file della cartella /opt/metnos/executors",
-    # sort su processi
-    "che processi girano sul server, i primi 5 per cpu",
-    "trova le foto del 2020 in ~/.local/share/metnos/Immagini",
+    "leggi le ultime 10 mail",
+    "comprimi la cartella /tmp/x in gz",
+    "sposta i file .log da /tmp a /tmp/logs",
 ]
 
 
-def _run_pass(queries, grammar_args: bool) -> dict:
-    os.environ["METNOS_GUARD_FIRE_COUNT"] = "1"
-    os.environ["METNOS_PROPOSER_GRAMMAR_ARGS"] = "1" if grammar_args else "0"
-    # import DOPO aver settato l'env (alcuni moduli leggono a import-time)
-    import agent_runtime
-    from engine import dispatch as D
+def _wise_call():
+    from llm_router import LLMRouter
 
+    def _call(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+        ck = {"max_tokens": max_tokens, "think": think}
+        if "grammar" in kw and kw["grammar"]:
+            ck["grammar"] = kw["grammar"]
+        r = LLMRouter().provider("wise").chat(sys_msg, user_msg, **ck)
+        return r.text if hasattr(r, "text") else str(r)
+    return _call
+
+
+def _run(queries, catalog, intents, grammar_args: bool) -> dict:
+    os.environ["METNOS_GUARD_FIRE_COUNT"] = "1"
+    os.environ["METNOS_PROPOSER_GRAMMAR"] = "1"
+    os.environ["METNOS_PROPOSER_GRAMMAR_ARGS"] = "1" if grammar_args else "0"
+    from engine.proposer import get_proposer
+    from engine.routing_pool import build_routing_pool
+    from engine import dispatch as D
+    import arg_provenance as AP
+
+    wise = _wise_call()
+    prop = get_proposer()
     D.reset_guard_fire_counts()
-    n_ok = 0
-    n_arg_err = 0
+    n_plans = 0
+    n_enum_invalid = 0
     lats = []
-    for q in queries:
+    for q, intent in zip(queries, intents):
+        if intent is None:
+            continue
+        pool = build_routing_pool(q, intent, catalog)
         t0 = time.time()
         try:
-            log = agent_runtime.run_turn(q, actor="host", channel="http")
-            kind = getattr(log, "final_kind", "")
-            if kind == "answer":
-                n_ok += 1
-            # arg-error: uno step con error_code ERR_ARG_*
-            for s in getattr(log, "steps", []) or []:
-                res = getattr(s, "result", None)
-                if isinstance(res, dict):
-                    ec = str(res.get("error_code") or "")
-                    if ec.startswith("ERR_ARG"):
-                        n_arg_err += 1
-                        break
+            fw = prop.propose(query=q, intent=intent, pool=pool,
+                              excluded_hashes=set(), llm_call=wise,
+                              lang="it", catalog=catalog)
         except Exception as ex:
-            print(f"  [err] {q[:50]}: {type(ex).__name__}", file=sys.stderr)
+            print(f"  [err propose] {q[:40]}: {type(ex).__name__}", file=sys.stderr)
+            fw = None
         lats.append(time.time() - t0)
+        if fw is None:
+            continue
+        n_plans += 1
+        # verifica enum-validità sul framework GREZZO (pre-guard)
+        for st in getattr(fw, "steps", []) or []:
+            tool = getattr(st, "tool", "")
+            ex = next((e for e in catalog if getattr(e, "name", "") == tool), None)
+            if not ex:
+                continue
+            sch = getattr(ex, "args_schema", None) or {}
+            props = sch.get("properties", {})
+            for aname, aval in (getattr(st, "args", {}) or {}).items():
+                decl = props.get(aname) or {}
+                enum = decl.get("enum")
+                if enum and aval is not None and aval not in enum:
+                    n_enum_invalid += 1
+        # applica i guard e conta i fire
+        try:
+            D._apply_deterministic_structure_guards(fw, intent, q, catalog)
+        except Exception as ex:
+            print(f"  [err guard] {q[:40]}: {type(ex).__name__}", file=sys.stderr)
     return {
         "grammar_args": grammar_args,
         "n": len(queries),
-        "n_answer": n_ok,
-        "parse_rate": round(n_ok / max(1, len(queries)), 3),
-        "n_arg_err": n_arg_err,
+        "n_plans": n_plans,
+        "n_enum_invalid": n_enum_invalid,
         "guard_fire_total": sum(D.guard_fire_counts().values()),
         "guard_fire_by": dict(sorted(D.guard_fire_counts().items(),
                                      key=lambda kv: -kv[1])),
@@ -110,33 +123,53 @@ def _run_pass(queries, grammar_args: bool) -> dict:
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=len(CORPUS),
-                    help="numero di query dal corpus")
-    args = ap.parse_args()
-    queries = CORPUS[:args.n]
+    os.environ.setdefault("METNOS_ENGINE", "v3")
+    from loader import load_catalog, filter_for_visibility, VISIBILITY_COMPOSER
+    from intent_extractor import extract_intent
+    from engine.types import Intent
 
-    print(f"=== BENCH A/B grammar-on-args — {len(queries)} query, engine={os.environ.get('METNOS_ENGINE')} ===\n")
-    print("PASSATA A (grammar-args OFF, baseline)...")
-    a = _run_pass(queries, grammar_args=False)
+    catalog = filter_for_visibility(load_catalog(verify=True),
+                                    VISIBILITY_COMPOSER)
+    wise = _wise_call()
+
+    print(f"=== BENCH A/B grammar-on-args v2 — {len(CORPUS)} query "
+          f"(proposer diretto, no cache/exec) ===\n")
+    print("Estrazione intent (una volta, condivisa)...")
+    intents = []
+    for q in CORPUS:
+        try:
+            d = extract_intent(q, wise)
+            intents.append(Intent.from_extractor(d) if d and hasattr(Intent, "from_extractor")
+                           else (_intent_from_dict(d) if d else None))
+        except Exception as ex:
+            print(f"  [err intent] {q[:40]}: {type(ex).__name__}", file=sys.stderr)
+            intents.append(None)
+
+    print("PASSATA A (grammar-args OFF)...")
+    a = _run(CORPUS, catalog, intents, grammar_args=False)
     print("PASSATA B (grammar-args ON)...")
-    b = _run_pass(queries, grammar_args=True)
+    b = _run(CORPUS, catalog, intents, grammar_args=True)
 
     print("\n=== RISULTATI ===")
     for label, r in (("A OFF", a), ("B ON ", b)):
-        print(f"[{label}] parse_rate={r['parse_rate']} answer={r['n_answer']}/{r['n']} "
-              f"arg_err={r['n_arg_err']} guard_fire={r['guard_fire_total']} "
-              f"lat_med={r['latency_median_s']}s")
+        print(f"[{label}] plans={r['n_plans']}/{r['n']} "
+              f"enum_invalid={r['n_enum_invalid']} "
+              f"guard_fire={r['guard_fire_total']} lat_med={r['latency_median_s']}s")
     print("\nguard_fire per-guard:")
     print("  A OFF:", a["guard_fire_by"])
     print("  B ON :", b["guard_fire_by"])
-    print(f"\nDELTA guard_fire: {a['guard_fire_total']} → {b['guard_fire_total']} "
+    print(f"\nDELTA enum_invalid: {a['n_enum_invalid']} → {b['n_enum_invalid']} "
+          f"({b['n_enum_invalid'] - a['n_enum_invalid']:+d})")
+    print(f"DELTA guard_fire:   {a['guard_fire_total']} → {b['guard_fire_total']} "
           f"({b['guard_fire_total'] - a['guard_fire_total']:+d})")
-    print(f"DELTA arg_err:    {a['n_arg_err']} → {b['n_arg_err']} "
-          f"({b['n_arg_err'] - a['n_arg_err']:+d})")
-    print(f"DELTA parse_rate: {a['parse_rate']} → {b['parse_rate']}")
-    import json
     print("\nJSON:", json.dumps({"A": a, "B": b}, ensure_ascii=False))
+
+
+def _intent_from_dict(d):
+    from engine.types import Intent
+    return Intent(verb=d.get("verb", ""), object=d.get("object", ""),
+                  keywords=d.get("keywords", []) or [],
+                  actions=d.get("actions", []) or [])
 
 
 if __name__ == "__main__":

@@ -72,3 +72,10 @@ Spec: `internal/design/spec_args_provenance_architecture.md` (target ambizioso) 
 - FASE 1: registro guard tipizzato (Guard dataclass, scope/reads/writes/rationale). Basso rischio.
 - FASE 2: stage clausola AUTORITATIVO (clause_resolver) + ritiro guard sussunti (a 0-fire provato dal counter CP5.4). ALTO rischio → oracolo `test_provenance_equivalence.py` sul corpus esistente.
 - FASE 3: coerce_args_to_schema unico + rimozione categoria C/D.
+
+### CP5.5 ✅ FATTO (6/7) — ESITO NEGATIVO ONESTO per grammar-args, ma spike riuscito
+Bench v2 (proposer diretto, no cache/exec — la v1 aveva cache+describe-fanout che invalidavano l'A/B, ridisegnata). Risultato: A OFF = B ON identici (enum_invalid 0→0, guard_fire 6→6). Probe avversario: baseline mai enum-invalido (RAR→zip, KOI8→latin-1). Il proposer rispetta già gli enum via hint soft; i guard caldi (fill_clause_args×5, align×1) sono clausola/struttura, non raggiungibili dalla grammar.
+CONCLUSIONE: grammar-args NON è il lever (stessa lezione di grammar-on-verbs). Ma lo spike ha INDICATO il lever: fill_clause_args caldo = il clause-derive autoritativo (FASE 2 provenienza) lo sussume. Infra CP5 = capitale (provenance FASE 0, fire-counter, grammar dormiente). Report `internal/reports/grammar_args_ab_2026-07-06.md`.
+RACCOMANDAZIONE AL CANCELLO: NON promuovere grammar-args ON (nessun beneficio); procedere con architettura provenienza args (FASE 1→2), protetta da oracolo equivalenza.
+
+## CP5 CHIUSO. Prossimo = architettura provenienza args (FASE 1 registro → FASE 2 clause-derive), «un lavoro una volta» come da mandato Roberto.
