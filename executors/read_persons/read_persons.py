@@ -150,6 +150,15 @@ def _merge_entry(person: dict | None, user: dict | None,
         entry["user_id"] = user.get("id")
         if user.get("email"):
             entry["email"] = user["email"]
+        # W2 v1 (ADR 0187): le preferenze esplicite fanno parte del profilo
+        # («chi sono io» le mostra). Best-effort: users.db senza tabella → {}.
+        try:
+            import users as _users_mod
+            _prefs = _users_mod.list_prefs(user.get("id") or "")
+            if _prefs:
+                entry["prefs"] = _prefs
+        except Exception:
+            pass
         if include_channels and user.get("channels") is not None:
             entry["channels"] = user["channels"]
     if is_self:

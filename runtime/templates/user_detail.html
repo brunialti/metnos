@@ -100,7 +100,27 @@
 </div>
 
 <div class="section">
-  <h2>Dispositivi</h2>
+  {% if flash %}<div style="margin:.6rem 0;padding:.5rem .8rem;border-radius:8px;
+     background:var(--accent-soft);border:1px solid var(--line)">{{ flash }}</div>{% endif %}
+
+<h2>Preferenze</h2>
+<p class="muted">Stile e unità per QUESTO utente (W2, ADR 0187). Vocabolario
+chiuso; vuoto = non impostata (il sistema usa i default di istanza). Gli
+executor le leggono via <code>${RUNTIME:pref_&lt;chiave&gt;}</code>.</p>
+<form method="post" action="/admin/users/{{ user.id }}/prefs" class="grid-form">
+  {% for key, allowed in pref_allowed.items() %}
+  <label for="pref_{{ key }}">{{ key }}</label>
+  <select id="pref_{{ key }}" name="{{ key }}">
+    <option value=""{% if not prefs.get(key) %} selected{% endif %}>—</option>
+    {% for v in allowed %}
+    <option value="{{ v }}"{% if prefs.get(key) == v %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  {% endfor %}
+  <button class="btn" type="submit">Salva preferenze</button>
+</form>
+
+<h2>Dispositivi</h2>
   <p class="muted" style="margin:.3rem 0 .6rem">Device remoti (client
   <code>metnos-client</code>) di proprietà di questo utente. All'appaiamento
   (<a href="/admin/devices">Dispositivi</a>) l'admin sceglie il proprietario;

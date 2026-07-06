@@ -919,12 +919,40 @@ async def admin_user_detail(request: web.Request) -> web.Response:
             {**c, "verified": bool(c.get("verified_at"))} for c in chans
         ],
         "devices": dev_rows,
+        # W2 v1 (ADR 0187): preferenze esplicite (vocabolario chiuso).
+        "prefs": users.list_prefs(u["id"]),
     }
     if "text/html" in request.headers.get("Accept", ""):
         html = render_template("user_detail.html", user=payload,
-                               channels=chans, devices=dev_rows)
+                               channels=chans, devices=dev_rows,
+                               prefs=payload["prefs"],
+                               pref_allowed=users.PREF_ALLOWED,
+                               flash=request.query.get("flash", ""))
         return web.Response(text=html, content_type="text/html")
     return web.json_response(payload)
+
+
+async def admin_user_prefs(request: web.Request) -> web.Response:
+    """POST /admin/users/{id}/prefs — imposta/azzera le preferenze (W2 v1).
+
+    Form fields = chiavi PREF_ALLOWED; valore vuoto = delete della pref."""
+    user_id = request.match_info["id"]
+    data = await request.post()
+    results = []
+    for key in users.PREF_ALLOWED:
+        if key not in data:
+            continue
+        val = str(data.get(key) or "").strip()
+        if not val:
+            users.delete_pref(user_id, key)
+            results.append(f"{key}=∅")
+        else:
+            r = users.set_pref(user_id, key, val)
+            results.append(f"{key}={val}" if r.get("ok")
+                           else f"{key}: {r.get('error')}")
+    from urllib.parse import quote
+    raise web.HTTPFound(f"/admin/users/{user_id}?flash=" +
+                        quote("prefs: " + ", ".join(results or ["nessuna"])))
 
 
 async def admin_user_delete(request: web.Request) -> web.Response:
@@ -1746,6 +1774,7 @@ ROUTES = (
     ("GET",  "/admin/users",                      admin_users),
     ("POST", "/admin/users",                      admin_users),
     ("GET",  "/admin/users/{id}",                 admin_user_detail),
+    ("POST", "/admin/users/{id}/prefs",          admin_user_prefs),
     ("POST", "/admin/users/{id}/delete",          admin_user_delete),
     ("POST", "/admin/users/{id}/update",           admin_user_update),
     ("POST", "/admin/users/{id}/autonomy",        admin_user_set_autonomy),

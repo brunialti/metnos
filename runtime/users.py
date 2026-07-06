@@ -117,6 +117,8 @@ def init_db() -> None:
     su DB pre-esistenti.
     """
     conn = _open_db()
+    # W2 v1 (ADR 0187): preferenze utente esplicite (vocabolario chiuso).
+    conn.executescript(_PREFS_SCHEMA)
     try:
         # Migration: colonne aggiunte post-genesi. SQLite non supporta
         # ALTER TABLE IF NOT EXISTS COLUMN; usiamo PRAGMA table_info.
@@ -610,3 +612,83 @@ __all__ = [
     "find_user_by_recipient", "resolve_recipients",
     "autobind_host_telegram",
 ]
+
+
+# --- User prefs (W2 v1, ADR 0187) -------------------------------------------
+
+PREF_KEYS = ("lang", "tone", "reply_length", "units")
+PREF_ALLOWED = {
+    "lang": ("it", "en"),
+    "tone": ("neutro", "informale", "formale"),
+    "reply_length": ("breve", "normale", "dettagliata"),
+    "units": ("metric", "imperial"),
+}
+
+_PREFS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_prefs (
+  user_id    TEXT NOT NULL,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  source     TEXT NOT NULL DEFAULT 'explicit',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+"""
+
+
+def set_pref(user_id_or_name: str, key: str, value: str,
+             *, source: str = "explicit") -> dict:
+    """Imposta una preferenza (vocabolario CHIUSO §2.4: PREF_ALLOWED)."""
+    u = get_user(user_id_or_name)
+    if not u:
+        return {"ok": False, "error": f"utente sconosciuto: {user_id_or_name}"}
+    if key not in PREF_ALLOWED:
+        return {"ok": False,
+                "error": f"pref sconosciuta: {key} (valide: {PREF_KEYS})"}
+    v = str(value).strip().lower()
+    if v not in PREF_ALLOWED[key]:
+        return {"ok": False,
+                "error": f"valore '{value}' non valido per {key} "
+                         f"(ammessi: {PREF_ALLOWED[key]})"}
+    import datetime as _dt
+    conn = _open_db()
+    conn.execute(
+        "INSERT INTO user_prefs(user_id, key, value, source, updated_at) "
+        "VALUES (?,?,?,?,?) ON CONFLICT(user_id, key) DO UPDATE SET "
+        "value=excluded.value, source=excluded.source, "
+        "updated_at=excluded.updated_at",
+        (u["id"], key, v, source,
+         _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
+    conn.commit()
+    return {"ok": True, "user_id": u["id"], "key": key, "value": v}
+
+
+def get_pref(user_id_or_name: str, key: str, default: str | None = None):
+    u = get_user(user_id_or_name)
+    if not u:
+        return default
+    row = _open_db().execute(
+        "SELECT value FROM user_prefs WHERE user_id=? AND key=?",
+        (u["id"], key)).fetchone()
+    return row[0] if row else default
+
+
+def list_prefs(user_id_or_name: str) -> dict:
+    u = get_user(user_id_or_name)
+    if not u:
+        return {}
+    rows = _open_db().execute(
+        "SELECT key, value FROM user_prefs WHERE user_id=?",
+        (u["id"],)).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def delete_pref(user_id_or_name: str, key: str) -> bool:
+    u = get_user(user_id_or_name)
+    if not u:
+        return False
+    conn = _open_db()
+    n = conn.execute("DELETE FROM user_prefs WHERE user_id=? AND key=?",
+                     (u["id"], key)).rowcount
+    conn.commit()
+    return n > 0

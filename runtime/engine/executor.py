@@ -176,7 +176,20 @@ def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
         # 1. Static resolver (actor/lang/channel)
         if key in resolvers:
             return resolvers[key]
-        # 2. Dynamic time resolver
+        # 2. User prefs (W2 v1, ADR 0187): ${RUNTIME:pref_<chiave>} →
+        #    users.get_pref dell'utente dell'actor. Best-effort: pref
+        #    assente/attore ignoto → placeholder INTATTO (il chiamante vede
+        #    il buco, §2.8 — mai stringa vuota silenziosa).
+        if key.startswith("pref_"):
+            try:
+                import devices as _dev
+                import users as _users
+                _uid = _dev.owner_id_for_actor(
+                    str(runtime_ctx.get("actor") or "host"))
+                return _users.get_pref(_uid, key[5:], None)
+            except Exception:
+                return None
+        # 3. Dynamic time resolver
         return _resolve_runtime_time_key(key)
     def _sub_str(v: str) -> str:
         m = _RUNTIME_RE.search(v)
