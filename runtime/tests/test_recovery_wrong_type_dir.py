@@ -96,6 +96,29 @@ class FixDirPassedAsFileTests(unittest.TestCase):
         self.assertIsNotNone(fw)
         self.assertEqual(fw.steps[0].tool, "find_files")
 
+    def test_dirs_clause_appends_find_delete_dirs(self):
+        # «cancella i file E LE DIRECTORY in X» (bug live 6/7: le dir non
+        # venivano mai toccate): intent.actions con {delete,dirs} → il piano
+        # ricostruito accoda find_dirs→delete_dirs DOPO lo svuotamento file.
+        run = _failed_run(["/tmp/dirx"], [_wrong_type_item("/tmp/dirx")])
+        intent = Intent(verb="delete", object="files",
+                        actions=[{"verb": "delete", "object": "files"},
+                                 {"verb": "delete", "object": "dirs"}])
+        fw = self.rec._fix_dir_passed_as_file(run, intent, None)
+        self.assertEqual([s.tool for s in fw.steps],
+                         ["find_files", "delete_files",
+                          "find_dirs", "delete_dirs"])
+        self.assertEqual(fw.steps[2].args["base_path"], "/tmp/dirx")
+        self.assertEqual(fw.steps[3].args["from_step"], 3)
+
+    def test_files_only_no_dir_steps(self):
+        run = _failed_run(["/tmp/dirx"], [_wrong_type_item("/tmp/dirx")])
+        intent = Intent(verb="delete", object="files",
+                        actions=[{"verb": "delete", "object": "files"}])
+        fw = self.rec._fix_dir_passed_as_file(run, intent, None)
+        self.assertEqual([s.tool for s in fw.steps],
+                         ["find_files", "delete_files"])
+
     def test_no_fire_intent_object_dirs(self):
         run = _failed_run(["/tmp/dirx"], [_wrong_type_item("/tmp/dirx")])
         prop = _NoneProposer()

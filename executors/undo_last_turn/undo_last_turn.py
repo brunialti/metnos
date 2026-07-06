@@ -88,16 +88,25 @@ def _reverse_on_device(patterns, rec) -> dict:
                 break
             _time.sleep(0.4)
         if state == "done" and isinstance(res, dict) and res.get("ok"):
-            rok = res.get("ok_count")
-            rok = rok if isinstance(rok, int) else max(
-                1, len(res.get("results") or []))
+            # ok_count vive nel PAYLOAD del result wire (§2.6 round-trip):
+            # leggerlo dal body dava 1-per-chiamata → l'undo batch di 455
+            # file diceva «5 elementi» (le stage, 6/7). Fallback onesti:
+            # n_processed (body wire) → len(results).
+            _pl = res.get("payload") if isinstance(res.get("payload"), dict) else {}
+            rok = _pl.get("ok_count")
+            if not isinstance(rok, int):
+                rok = res.get("ok_count") if isinstance(res.get("ok_count"), int) else None
+            if not isinstance(rok, int):
+                rok = res.get("n_processed") if isinstance(res.get("n_processed"), int) else None
+            if not isinstance(rok, int):
+                rok = max(1, len(_pl.get("results") or res.get("results") or []))
             stages.append({"pattern": call["executor"],
                            "result": {"ok": True, "ok_count": rok,
                                       "fail_count": res.get("fail_count") or 0,
                                       "device": device_id,
                                       "invocation_id": inv_id}})
             total_ok += rok
-            total_fail += res.get("fail_count") or 0
+            total_fail += (_pl.get("fail_count") or res.get("fail_count") or 0)
         else:
             # §2.8: distingui «eseguito ma fallito» (state=done, ok:false) da
             # «mai arrivato» (timeout/error/denied) — e porta l'evidenza.

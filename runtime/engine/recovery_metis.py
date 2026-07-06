@@ -262,13 +262,28 @@ class MetisRecovery:
             if (s.tool or "").split("_")[0] in _MUTATING:
                 return None
             steps.append(StepSpec(tool=s.tool, args=self._clean_args(s.args)))
+        base = next(iter(dirs))
         ff_idx = len(steps) + 1
-        steps.append(StepSpec(tool="find_files",
-                              args={"base_path": next(iter(dirs))}))
+        steps.append(StepSpec(tool="find_files", args={"base_path": base}))
         consumer_args = self._clean_args(last.args)
         consumer_args.pop("paths", None)
         consumer_args["from_step"] = ff_idx
         steps.append(StepSpec(tool=last.tool, args=consumer_args))
+        # Clausola «...E LE DIRECTORY» (bug live 6/7: le sottodirectory non
+        # venivano MAI toccate — find_files è files-only): se l'intent porta
+        # ANCHE {delete, dirs}, accoda find_dirs→delete_dirs DOPO lo
+        # svuotamento dei file. Default delete_dirs (niente force): le dir
+        # non vuote (es. system file rifiutati da delete_files) falliscono
+        # per-item ONESTE, mai wipe implicito (§2.9).
+        if last.tool == "delete_files" and any(
+                (a or {}).get("verb") == "delete"
+                and (a or {}).get("object") == "dirs"
+                for a in (getattr(intent, "actions", None) or [])):
+            fd_idx = len(steps) + 1
+            steps.append(StepSpec(tool="find_dirs",
+                                  args={"base_path": base}))
+            steps.append(StepSpec(tool="delete_dirs",
+                                  args={"from_step": fd_idx}))
         return Framework(steps=steps, final_message="")
 
     def _fix_glob_passed_as_path(self, failed_run: RunResult, intent: Intent,
