@@ -1557,7 +1557,9 @@ class Executor:
             # backend non è scelta del planner (ADR 0155: runtime proprietario).
             try:
                 from backend_resolver import resolve_backend_arg
-                args = resolve_backend_arg(step.tool, args, query)
+                args = resolve_backend_arg(
+                    step.tool, args, query,
+                    args_schema=self._schema_map.get(step.tool))
             except Exception as _bre:
                 log.debug("backend_resolver noop: %r", _bre)
             # Self-recipient UNIFORME (§7.9, gemello di backend_resolver): un send

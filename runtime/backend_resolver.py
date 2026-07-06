@@ -79,17 +79,25 @@ def object_of(tool_name: str) -> str | None:
     return None
 
 
+def _explicit_provider(spec: dict, query: str) -> str | None:
+    """Provider NOMINATO esplicitamente nella query (match alias), o None."""
+    q = (query or "").lower()
+    for prov, toks in spec.get("aliases", {}).items():
+        if any(t in q for t in toks):
+            return prov
+    return None
+
+
 def resolve(object_name: str, query: str = "") -> str | None:
     """Provider deterministico per (object, query). Esplicito>default. None se
     object non gestito o nessun provider disponibile."""
     spec = OBJECT_BACKENDS.get(object_name)
     if not spec:
         return None
-    q = (query or "").lower()
     # IDENTIFY esplicito: provider nominato nella query (match alias)
-    for prov, toks in spec.get("aliases", {}).items():
-        if any(t in q for t in toks):
-            return prov
+    explicit = _explicit_provider(spec, query)
+    if explicit:
+        return explicit
     # default: primo provider DISPONIBILE per ordine di preferenza
     avail = spec.get("available", lambda p: True)
     for prov in spec.get("providers", []):
@@ -103,10 +111,14 @@ def resolve(object_name: str, query: str = "") -> str | None:
     return provs[0] if provs else None
 
 
-def resolve_backend_arg(tool_name: str, args: dict, query: str = "") -> dict:
+def resolve_backend_arg(tool_name: str, args: dict, query: str = "",
+                        args_schema: dict | None = None) -> dict:
     """INJECT: se il tool appartiene a un object multi-backend, risolve il
     provider e lo scrive nell'arg di backend (OVERRIDE: il runtime ne è il
-    proprietario, l'LLM non lo sceglie). No-op per tool non gestiti."""
+    proprietario, l'LLM non lo sceglie). No-op per tool non gestiti.
+
+    `args_schema` (lo schema del TOOL, dal chiamante): il DEFAULT per-object
+    non scavalca la capacità del singolo tool — vedi clamp enum sotto."""
     if not isinstance(args, dict):
         return args
     obj = object_of(tool_name)
@@ -127,9 +139,23 @@ def resolve_backend_arg(tool_name: str, args: dict, query: str = "") -> dict:
                 return args
         except Exception:  # noqa: BLE001
             pass
-    chosen = resolve(obj, query)
+    explicit = _explicit_provider(spec, query)
+    chosen = explicit or resolve(obj, query)
     if chosen is None:
         return args
+    # Clamp enum (§2.8/§7.3, misurato 6/7/2026): il DEFAULT per-object non deve
+    # scavalcare la capacità del TOOL. share_files è gw-only ma l'object files
+    # default local → l'injection «local» rompeva OGNI share senza marker drive
+    # (ERR_NOT_APPLICABLE). Default fuori dall'enum dichiarato → NIENTE
+    # injection: il default dell'executor è il proprietario onesto. Un provider
+    # ESPLICITO nella query NON è clampato: se il tool non lo supporta,
+    # l'executor risponde «client non applicabile» — più onesto di un fallback
+    # silenzioso sul default («file non trovato» su un delete chiesto su Drive).
+    if explicit is None and isinstance(args_schema, dict):
+        decl = (args_schema.get("properties") or {}).get(arg)
+        allowed = decl.get("enum") if isinstance(decl, dict) else None
+        if isinstance(allowed, list) and allowed and chosen not in allowed:
+            return args
     out = dict(args)
     out[arg] = chosen
     return out
