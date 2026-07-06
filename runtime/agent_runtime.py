@@ -5140,7 +5140,7 @@ def _maybe_remediate_obs(
 
 # --- L3 Engine v2 dispatcher (ADR 0164) ----------------------------------
 
-def _try_engine_v2(
+def _run_engine(
     query: str,
     catalog: list,
     *,
@@ -5440,7 +5440,7 @@ def _try_engine_v2(
 
 def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
                             conversation_id, turn_id):
-    """Mappa il DispatchResult dell'engine (dict legacy-shape da `_try_engine_v2`)
+    """Mappa il DispatchResult dell'engine (dict legacy-shape da `_run_engine`)
     sul `TurnLog`: estende `steps`, gestisce needs_inputs/gate dialog, setta
     final_kind/message/intent_verb. Ritorna SEMPRE il log pronto (write incluso).
 
@@ -5984,10 +5984,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     if (resume_with_scratchpad and isinstance(resume_with_scratchpad, list)
             and not _ref_images_for_prompt
             and os.environ.get("METNOS_ENGINE_RESUME", "1") == "1"
-            and os.environ.get("METNOS_ENGINE_V2", "1") == "1"):
+            ):  # gate storico METNOS_ENGINE_V2 rimosso (6/7)
         _eng_rs_res = None
         try:
-            _eng_rs_res = _try_engine_v2(
+            _eng_rs_res = _run_engine(
                 user_query_for_run, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
                 lang=DEFAULT_LANG, verbose=verbose, progress=progress,
@@ -6192,7 +6192,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
 
         # ── L3 Engine v2 (ADR 0164) ────────────────────────────────────
         # Dispatcher 4-layer: fastpath → autopath → validator → engine.
-        # Sostituisce Praxis legacy. Feature flag METNOS_ENGINE_V2=1
+        # Sostituisce Praxis legacy. (Il feature flag storico METNOS_ENGINE_V2 è stato rimosso 6/7: engine sempre attivo.)
         # (default ON post-migration).
         # NB (ADR 0177, 24/6): il DECOMPOSER deterministico è stato ELIMINATO.
         # Era un pre-stadio che decomponeva i compound (>=2 verbi) in step senza
@@ -6213,10 +6213,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         # ramo resta il path NON-upload (`_ref_images_for_prompt` è vuoto per la
         # guardia del blocco esterno; gli upload hanno un branch dedicato a valle).
         _engine_v2_res = None
-        if (os.environ.get("METNOS_ENGINE_V2", "1") == "1"
-                and not _force_legacy_compound):
+        # Gate storico METNOS_ENGINE_V2 rimosso (6/7): engine sempre attivo.
+        if not _force_legacy_compound:
             try:
-                _engine_v2_res = _try_engine_v2(
+                _engine_v2_res = _run_engine(
                     _query_for_planning, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
                     lang=DEFAULT_LANG, verbose=verbose, progress=progress,
@@ -6259,11 +6259,10 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # nel PLANNER legacy come fallback. Gate METNOS_ENGINE_UPLOADS (default 1;
     # =0 → solo legacy, per A/B durante il bake).
     if (_ref_images_for_prompt
-            and os.environ.get("METNOS_ENGINE_UPLOADS", "1") == "1"
-            and os.environ.get("METNOS_ENGINE_V2", "1") == "1"):
+            and os.environ.get("METNOS_ENGINE_UPLOADS", "1") == "1"):
         _eng_up_res = None
         try:
-            _eng_up_res = _try_engine_v2(
+            _eng_up_res = _run_engine(
                 _query_for_planning, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
                 lang=DEFAULT_LANG, verbose=verbose, progress=progress,

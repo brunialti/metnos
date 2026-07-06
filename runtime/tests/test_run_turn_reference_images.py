@@ -217,7 +217,7 @@ class RunTurnReferenceImagesTests(unittest.TestCase):
         # valido), un turno-upload non ricade più nel ReAct legacy (che iniettava
         # lo step-0 `@uploaded` in log.steps) — ora dà un esito ONESTO (§2.8).
         # Gli upload REALI passano dall'engine via seed_state `@uploaded`
-        # (_try_engine_v2, ADR 0177 M1); questo test mockava l'engine a vuoto,
+        # (_run_engine, ADR 0177 M1); questo test mockava l'engine a vuoto,
         # quindi esercitava SOLO il vecchio fallback legacy, ora rimosso.
         self.assertEqual(log_obj.final_kind, "error",
                          f"engine declinato su upload → errore onesto atteso, "

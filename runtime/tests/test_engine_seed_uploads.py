@@ -40,7 +40,7 @@ class _StubExec:
 
 
 def _seed():
-    """Seed-state come lo costruisce agent_runtime._try_engine_v2 per le foto."""
+    """Seed-state come lo costruisce agent_runtime._run_engine per le foto."""
     obs = {
         "ok": True,
         "entries": [
@@ -411,7 +411,7 @@ class ResumeSeedBuildTests(unittest.TestCase):
     kind="done". Test sul comportamento osservabile via Executor (no LLM)."""
 
     def test_dialog_markers_filtered_producers_kept(self):
-        # Replica la logica di _try_engine_v2 (resume_steps → seed kind=done).
+        # Replica la logica di _run_engine (resume_steps → seed kind=done).
         from engine.types import StepRun
         resume_steps = [
             {"step": 1, "tool": "read_messages", "args": {"folder": "INBOX"},

@@ -1860,7 +1860,7 @@ class Executor:
                 result.ok_count += 1
 
             # §7.3: needs_inputs decision → terminate immediately. Il caller
-            # (agent_runtime._try_engine_v2) gestisce il dialog_pending +
+            # (agent_runtime._run_engine) gestisce il dialog_pending +
             # form rendering. NON proseguire con steps successivi.
             if r.get("decision") == "needs_inputs":
                 result.final_kind = "ask"

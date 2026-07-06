@@ -1,12 +1,12 @@
 """test_engine_vaglio_guard — §sicurezza (gap confermato 23/6): il path engine
-di produzione girava SENZA vaglio (`_try_engine_v2` non passava `vaglio_judge`),
+di produzione girava SENZA vaglio (`_run_engine` non passava `vaglio_judge`),
 mentre il legacy chiama `judge()` prima dell'invoke. Risultato: una mutazione su
 forbidden-path (~/.ssh, /etc/shadow, .aws/credentials, /boot...) passava
 dall'engine.
 
 Fix: `Executor` ha una GUARDIA deterministica `vaglio_guard` (forbidden-path,
 NON il giudice teleologico) eseguita PRE-invoke → previene l'azione, non la
-blocca a valle. Wirata in `_try_engine_v2` via `vaglio.guard_check`.
+blocca a valle. Wirata in `_run_engine` via `vaglio.guard_check`.
 """
 from __future__ import annotations
 import os, sys, unittest
