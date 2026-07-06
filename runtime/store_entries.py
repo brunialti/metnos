@@ -83,14 +83,42 @@ def handle_write_entries(args, *, verbose: bool = False) -> dict:
     key = a.get("key")
     if isinstance(key, str):
         key = [key]
+    # §2.4 confine NL->determinismo: una key che NON e' colonna dello schema
+    # ma ha un SINONIMO documentato che lo e' viene rimappata (bug live 6/7:
+    # find_issues_github porta `number` E `issue_number`, il proposer sceglie
+    # `number`, la colonna e' `issue_number` -> «no such column»). Mappa
+    # CHIUSA (field_synonyms §7.9); nessun match -> errore onesto a valle.
+    if isinstance(key, list):
+        try:
+            from field_synonyms import FIELD_SYNONYMS
+            cols = set(getattr(st.schema, "columns", {}) or {})
+            key = [next((s for s in FIELD_SYNONYMS.get(k, []) if s in cols),
+                        k) if (cols and k not in cols) else k
+                   for k in key]
+            # Su sqlite l'upsert ON CONFLICT deve matchare ESATTAMENTE una
+            # PK/UNIQUE: una key che e' SOTTOINSIEME proprio della PK (es.
+            # ["issue_number"] con PK (repo, issue_number)) fallirebbe
+            # sempre. Stesso intento di dedup -> completa alla PK. Key con
+            # campi FUORI PK: lasciata intatta (errore onesto a valle).
+            pk = tuple(getattr(st.schema, "primary_key", ()) or ())
+            if pk and key and set(key) < set(pk):
+                key = list(pk)
+        except Exception:
+            pass
     # Fix bug live 3/7 (§2.8): "prima" genuino, va calcolato PRIMA del write
     # (dopo, ogni riga appena scritta risulterebbe sempre "gia' presente").
     # was_new[i] = True se entries[i] era ASSENTE dallo store, False se era
     # gia' presente (l'upsert la aggiorna, non la crea). Un pipeline che
     # conta n_written come "nuovi" mente su un upsert-noop: n_new e' il dato
     # onesto per "quante ne ho inserite/scoperte ORA" (vedi manifest).
-    was_new = st.check_new(entries, key=key)
-    n = st.write(entries, key=key)
+    try:
+        was_new = st.check_new(entries, key=key)
+        n = st.write(entries, key=key)
+    except Exception as ex:  # §2.8: errore SQL onesto, con le colonne valide
+        return {"ok": False, "error_class": "wrong_args",
+                "error": (f"{ex} — colonne dello store «{name}»: "
+                          f"{', '.join(getattr(st.schema, 'columns', {}) or [])}"),
+                "results": []}
     n_new = sum(1 for w in was_new if w)
     return {"ok": True, "n_written": n, "n_new": n_new, "n_updated": n - n_new,
             "results": [{"written": True, "was_new": w} for w in was_new],

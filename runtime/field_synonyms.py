@@ -30,6 +30,12 @@ FIELD_SYNONYMS = {
     "end":        ["end_time", "until", "finish"],
     "basename":   ["name", "filename"],
     "filename":   ["basename", "name"],
+    # ADR 0141 (provider github): le entry issue/pull portano SIA `number`
+    # SIA `issue_number` per contratto; gli store (github_issue_qa) hanno la
+    # colonna `issue_number` (bug live 6/7: write_entries key=["number"] ->
+    # «no such column»).
+    "number":       ["issue_number", "pull_number", "id"],
+    "issue_number": ["number", "id"],
 }
 
 
