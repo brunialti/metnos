@@ -48,3 +48,12 @@ flag METNOS_PROPOSER_GRAMMAR_ARGS (default 0). Wiring: proposer.py:522-530 (Simp
 
 ### CP5.4 ▶ PROSSIMO
 Contatore per-guard in dispatch.py. I guard args loggano già (`[phantom_install]` :1926, `[degenerate_find]` :1991, `[sink_provider]` :2047). Aggiungere dict `_GUARD_FIRE_COUNTS` + `guard_fire_counts()`/`reset_guard_fire_counts()`. Incrementare quando il guard MUTA il framework (confronto pre/post o flag interno). Non cambiare comportamento.
+
+### CP5.4 ✅ FATTO (6/7)
+`runtime/engine/dispatch.py`: `_GUARD_FIRE_COUNTS` + `guard_fire_counts()`/`reset_guard_fire_counts()`. In `_apply_deterministic_structure_guards`: se `METNOS_GUARD_FIRE_COUNT=1` (default off) snapshotta `framework.to_dict()` pre/post ogni guard; se muta → incrementa il contatore per-nome. Passivo, non cambia comportamento. `import os as _os` locale (dispatch non ha `os` a modulo — gotcha).
+- Smoke: piano avvelenato → `{fill_clause_args:1, degenerate_find_to_list:1}`.
+- Contratto+typed test verdi (nessun cambio comportamento).
+
+### CP5.5 ▶ PROSSIMO (ultimo)
+Bench A/B: girare N query (banco routing + compound) con METNOS_GUARD_FIRE_COUNT=1, una passata METNOS_PROPOSER_GRAMMAR_ARGS=0 e una =1, confrontare guard_fire_counts totali e per-guard. Cercare il banco: bench/ (routing 29/29 v3, compound_*). Report internal/reports/grammar_args_ab_2026-07-06.md. Verificare parse-rate (nessun None in più) + latenza. Cancello per Roberto: se guard-fire scende senza regressione → proposta default ON + quali guard spegnere.
+NB: il bench deve chiamare il PROPOSER REALE (LLM) per vedere l'effetto della grammar sugli args generati — non basta applicare i guard a piani statici. Riusare l'harness di bench/ esistente che fa run_turn o proposer.propose.

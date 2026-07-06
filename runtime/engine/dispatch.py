@@ -2224,6 +2224,24 @@ GUARD_PIPELINE: tuple = (
 )
 
 
+# CP5.4 (ADR 0177 T2/M4, 6/7): contatore per-guard = la METRICA dello spike
+# grammar-on-args. Un guard che MUTA il framework «spara» — meno spari con la
+# grammar-args = i guard diventano no-op perché l'LLM non produce più l'errore.
+# Strumentazione passiva (snapshot pre/post): NON cambia il comportamento dei
+# guard. Attiva solo con METNOS_GUARD_FIRE_COUNT=1 (default off, costo zero in
+# prod: to_dict per guard è O(steps)).
+_GUARD_FIRE_COUNTS: dict = {}
+
+
+def guard_fire_counts() -> dict:
+    """Copia dei conteggi di fire per-guard (per il bench A/B)."""
+    return dict(_GUARD_FIRE_COUNTS)
+
+
+def reset_guard_fire_counts() -> None:
+    _GUARD_FIRE_COUNTS.clear()
+
+
 def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           query: str,
                                           catalog: Optional[list]) -> Framework:
@@ -2232,12 +2250,26 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     condivisi da L0/L1 (hit cache) e L3 (proposer). L'ordine e i gate v3
     sono il CONTRATTO dichiarato in `GUARD_PIPELINE` (ADR 0177 T3). NON
     include il re-propose LLM dei dropped: quello resta L3-only."""
+    import os as _os
     from . import is_v3
     _v3 = is_v3()
+    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "0") == "1"
     for _name, _v3_only, _fn in GUARD_PIPELINE:
         if _v3_only and not _v3:
             continue
-        framework = _fn(framework, intent, query, catalog)
+        if _count:
+            try:
+                _before = framework.to_dict()
+            except Exception:
+                _before = None
+            framework = _fn(framework, intent, query, catalog)
+            try:
+                if _before is not None and framework.to_dict() != _before:
+                    _GUARD_FIRE_COUNTS[_name] = _GUARD_FIRE_COUNTS.get(_name, 0) + 1
+            except Exception:
+                pass
+        else:
+            framework = _fn(framework, intent, query, catalog)
     return framework
 
 
