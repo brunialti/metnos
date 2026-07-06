@@ -100,3 +100,11 @@ Suite 3334 pass. Oracolo+contratto+invariante verdi.
 
 ### FASE 3 (coerce_args_to_schema + rimozione cat. C/D) — RIVALUTARE lo scope
 Roberto aveva chiesto «fasi 1-2», FASE 3 separata. **Ma l'esito PROV.3 cambia il calcolo di FASE 3**: se non c'è eliminazione di massa da fare (i guard sono già principiati), anche «coerce unico + rimozione cat. C/D» va rivalutato — probabilmente più piccolo dello spec. Il substrato (mappa, registro tipizzato, oracolo, invariante, fire-counter) è la vera consegna durevole: rende OGNI cambio futuro ai guard meccanico e sicuro. Decisione di scope FASE 3 → a Roberto.
+
+## MARCATURA config-args ✅ FATTA (6/7 sera) — residuo FASE 3 chiuso
+La lista `unmarked_config` (30) è stata lavorata **per-tool alla prova dell'executor**, non per convenzione di nome:
+- **20 MARCATI** `runtime_resolved` (+ re-sign §7.10): dirs×3, contacts×2, find_events_empty, urls×3, login_session, mail-plumbing client×4 (read/send/reply/set_messages), files mono-provider×6 (delete/move/share + trio `*_files_doc` — move e doc-trio riscoperti mono alla lettura dei `_HANDLERS`).
+- **10 ESENTI** (intent-bearing, restano visibili all'LLM): client dei files MULTI-provider (clause-derived, PROV.3), move_messages.client (metnos|gmail, nessun owner runtime → l'LLM è l'unico scrittore del ramo Gmail), `account` mail×3 (il mail_account_resolver delega per costruzione i casi 2+ account al planner; send-from è intento).
+- **Politica = invariante**: `test_config_args_marking_policy.py` (tabella fonte-unica, 6 test) + `arg_provenance.is_intent_bearing_config` (regole) + `n_unmarked_config==0` da qui in poi = drift reale.
+- **Bug adiacente trovato e chiuso**: `resolve_backend_arg` iniettava il default per-OBJECT ignorando l'enum del TOOL → share_files (gw-only, object files default local) rompeva OGNI share senza marker drive. Fix: clamp enum-aware sul DEFAULT (mai sull'esplicito — l'errore onesto resta). `test_backend_resolver_enum_clamp.py` (6 test). Enum stantii allineati: write_files (lazy-gw → multi), find_events_empty (gw handler reale → multi + description famiglia events).
+- **Effetto pool**: su share_files il client esce dalla finestra visibile; sui tool con >8 args il marker libera uno slot del cap `[:8]` per un arg d'intento. Suite 3346 pass. Turni live: mail/calendar/drive/files ok post-restart.

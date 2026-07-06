@@ -12,40 +12,10 @@
 **2 tool** hanno args 100% deterministici (nessun semantic).
 **101 tool** hanno almeno un arg semantic.
 
-## Cleanup manifest scovato
-**30 args config** (client/account/provider) SENZA marker `runtime_resolved` — classificati runtime per convenzione §2.2/0136, ma il marker andrebbe applicato per coerenza (chiude i guard `_scope_sink_provider_to_clause`/`_align_provider_client`):
-```
-create_dirs.client
-create_files_doc.client
-create_files_spreadsheet.client
-delete_dirs.client
-delete_files.client
-find_contacts.client
-find_dirs.client
-find_events_empty.client
-find_files.client
-find_urls.client
-login_session.client
-move_files.client
-move_messages.account
-move_messages.client
-read_contacts.client
-read_files.client
-read_files_doc.client
-read_files_spreadsheet.client
-read_messages.account
-read_messages.client
-read_urls_html.client
-read_urls_pdf.client
-reply_messages.client
-send_messages.account
-send_messages.client
-set_messages.client
-share_files.client
-write_files.client
-write_files_doc.client
-write_files_spreadsheet.client
-```
+## Cleanup manifest scovato → ✅ LAVORATO (6/7 sera)
+I 30 args config (client/account/provider) senza marker sono stati decisi **per-tool alla prova dell'executor** (non per convenzione di nome): **20 marcati** `runtime_resolved` (mono-provider o plumbing; move_files e trio `*_files_doc` riscoperti MONO leggendo i `_HANDLERS`) e **10 esenti intent-bearing** (client files multi-provider = clause-derived; move_messages.client metnos|gmail senza owner runtime; `account` mail — i casi 2+ account sono delegati al planner dal resolver stesso).
+
+Politica = fonte unica in `runtime/tests/test_config_args_marking_policy.py` (+ regole in `arg_provenance.is_intent_bearing_config`); da qui in poi `n_unmarked_config > 0` = drift reale, non backlog. La marcatura ha scovato e chiuso anche il bug d'injection fuori-enum di `resolve_backend_arg` (share_files rotto su ogni share senza marker drive) e 2 enum stantii (write_files lazy-gw, find_events_empty gw handler reale).
 
 ## Lettura per il refactor
 - Il **28%** degli args (runtime+clause) è ciò che i guard-args oggi rincorrono. Rendendo runtime-inject + clause-derive AUTORITATIVI, questi guard diventano no-op.
