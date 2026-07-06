@@ -1821,6 +1821,12 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
         if desc:
             cap = str(desc).strip().replace("\n", " ")
             att["caption"] = cap[:200]
+        # Data della foto (Roberto 6/7): la proiezione entries espone
+        # `taken_at` (EXIF taken_at_iso dall'indice). La UI la mostra
+        # nell'header per-foto della gallery e nel lightbox.
+        taken = e.get("taken_at") or e.get("taken_at_iso")
+        if taken:
+            att["date"] = str(taken)[:19]
         atts.append(att)
     return atts
 

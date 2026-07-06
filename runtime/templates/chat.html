@@ -716,7 +716,9 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
             // Sostituisci l'iframe del form con una bolla regolare in chat.
             // Bug zip-line (5/7): il resume full-turn ha gallery + meta —
             // stessa forma dei turni normali (dove · turn:id · tempo).
-            d.innerHTML = '';
+            // (b) 6/7: RIMUOVI il contenitore .msg del form (svuotarlo
+            // lasciava una bolla vuota col suo padding prima della risposta).
+            d.remove();
             const tid = ev.data.turn_id || '';
             const tm = ev.data.turn_meta || null;
             let meta = tid ? {turn_id: tid, left: '', right: ''} : '';
@@ -879,12 +881,15 @@ function addGallery(attachments, galleryInfo){
   for(const a of attachments){
     if(!a || !a.thumb_url) continue;
     const idx = items.length;
+    const dateTag = a.date ? String(a.date).slice(0, 10) : '';
     items.push({ full: a.full_url || a.thumb_url,
-                 cap: a.caption || a.basename || '' });
+                 cap: (dateTag ? '[' + dateTag + '] ' : '')
+                      + (a.caption || a.basename || '') });
     const img = document.createElement('img');
     img.src = a.thumb_url;
     img.alt = a.basename || '';
-    img.title = a.caption || a.basename || '';
+    img.title = (dateTag ? dateTag + ' · ' : '')
+                + (a.caption || a.basename || '');
     img.loading = 'lazy';
     img.addEventListener('click', () => openLightbox(items, idx));
     grid.appendChild(img);

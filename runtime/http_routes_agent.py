@@ -651,6 +651,7 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
                 "basename": att.get("basename"),
                 "score": att.get("score"),
                 "caption": att.get("caption"),
+                "date": att.get("date"),
                 "thumb_url": proxy,
                 "full_url": proxy,
                 "open_url": web_url,  # link a sorgente reale per click esterno
@@ -674,6 +675,7 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
             "basename": att.get("basename"),
             "score": att.get("score"),
             "caption": att.get("caption"),
+            "date": att.get("date"),
             "thumb_url": photo_endpoint.make_url(
                 log_obj.turn_id, idx, "thumb", admin_key
             ),
@@ -1764,6 +1766,9 @@ async def gallery(request: web.Request) -> web.Response:
             "basename":  att.get("basename") or "",
             "score":     score if isinstance(score, (int, float)) else None,
             "caption":   att.get("caption") or "",
+            # Data foto (Roberto 6/7): EXIF taken_at dall'indice, solo la
+            # parte giorno per l'header compatto della card.
+            "date":      (str(att.get("date"))[:10] if att.get("date") else ""),
         })
 
     has_prev = from_idx > 0
