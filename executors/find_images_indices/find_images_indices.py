@@ -267,6 +267,7 @@ def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, objec
             pass
     emb_text = None
     emb_face = None
+    emb_image = None
     try:
         import numpy as np
         et_p = idx_dir / "embeddings_text.npy"
@@ -275,8 +276,14 @@ def _load_unified_index(idx_dir: Path) -> tuple[list[dict], object | None, objec
         ef_p = idx_dir / "embeddings_face.npy"
         if ef_p.exists():
             emb_face = np.load(str(ef_p))
+        # SigLIP scene embeddings (image-to-image, 6/7): fallback per
+        # reference_images SENZA volto. Lazy = solo se il file c'è.
+        ei_p = idx_dir / "embeddings_image.npy"
+        if ei_p.exists():
+            emb_image = np.load(str(ei_p))
     except Exception:
         pass
+    meta["_emb_image"] = emb_image
     return entries, emb_text, emb_face, meta
 
 
@@ -878,6 +885,58 @@ def _apply_relevance_gate(entries, text_components, text_scores, rel_thr):
     return entries_out, scores_out
 
 
+_SCENE_MATCH_FLOOR = 0.35  # cosine SigLIP: sotto = scena non correlata
+
+
+def _apply_scene_similarity(entries, reference_images, meta, args):
+    """Similarity di SCENA (SigLIP image-to-image, 6/7): codifica le
+    reference con SigLIP e le confronta col corpus (`embeddings_image`).
+    Ritorna un result-dict come il ramo volto, o None se non applicabile
+    (indice senza emb_image / SigLIP assente / reference non codificabili) —
+    il chiamante degrada onesto §2.8. Il floor `_SCENE_MATCH_FLOOR` tiene
+    fuori le scene non correlate."""
+    import numpy as np
+    emb_image = meta.get("_emb_image")
+    if emb_image is None or not len(emb_image):
+        return None
+    try:
+        from clip_embedding import get_clip_engine
+        eng = get_clip_engine()
+        refs = [p for p in reference_images
+                if isinstance(p, str) and os.path.exists(p)]
+        if not refs:
+            return None
+        ref_emb = eng.embed_images(refs, normalize=True)
+    except Exception as ex:
+        log.warning("scene similarity non disponibile: %r", ex)
+        return None
+    if ref_emb is None or not len(ref_emb):
+        return None
+    # media delle reference = query di scena (robusta a più foto input).
+    q = _l2_normalize(np.mean(ref_emb, axis=0))
+    kept = []
+    for e in entries:
+        ii = e.get("embedding_image_idx")
+        if ii is None or ii >= len(emb_image):
+            continue
+        s = float(np.dot(q, _l2_normalize(emb_image[ii])))
+        if s >= _SCENE_MATCH_FLOOR:
+            e["_scene_score"] = s
+            e["_score"] = s
+            kept.append(e)
+    kept.sort(key=lambda e: e.get("_scene_score", 0.0), reverse=True)
+    top_k, _ = _resolve_cap(args)
+    if top_k and top_k > 0:
+        kept = kept[:top_k]
+    return {
+        "entries": kept,
+        "n_above_threshold": len(kept),
+        "match_mode": "scene_similarity",
+        "_msg": (f"Similarity di SCENA (SigLIP) su {len(reference_images)} "
+                 f"foto di riferimento: {len(kept)} risultati."),
+    }
+
+
 def _filter_unified(
     entries: list[dict], emb_text, emb_face, meta: dict, args: dict,
     idx_dir=None,
@@ -1141,14 +1200,21 @@ def _filter_unified(
         # embedding (solo face). Senza face il filtro è NOOP e ritorneremmo
         # TUTTE le entries del corpus, ingannando l'utente. Errore onesto.
         if not target_face_embs:
+            # Nessun VOLTO nelle reference → prova la similarity di SCENA
+            # (SigLIP image-to-image, 6/7): «trova foto simili a QUESTO
+            # paesaggio». Fallback onesto solo se l'indice ha emb_image e
+            # SigLIP sa codificare la reference; altrimenti errore §2.8.
+            scene_res = _apply_scene_similarity(
+                entries, reference_images, meta, args)
+            if scene_res is not None:
+                return scene_res
             return {
                 "entries": [], "n_above_threshold": 0,
                 "error_class": "no_face_in_reference",
                 "_msg": (f"Nessun volto rilevato nelle {len(reference_images)} "
-                         "foto di riferimento. find_images_indices "
-                         "supporta solo similarity per VOLTO (ArcFace), "
-                         "non per scena/oggetto. Per ricerca scena su web "
-                         "usa `find_images_web` (Vision API)."),
+                         "foto di riferimento e similarity di scena non "
+                         "disponibile (indice senza embedding immagine o "
+                         "SigLIP assente)."),
             }
 
     if target_face_embs:

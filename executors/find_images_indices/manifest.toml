@@ -23,7 +23,7 @@ en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_i
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:c6bb8711327178cb365ece3e0a7a1f9a7670e4e887ec8920efa29194e7ce04e6"
+digest = "sha256:bda7714f579549569da57e5f1d2d97290da1726819cae3ca34c53e35b55a8513"
 
 [args]
 type     = "object"
@@ -82,8 +82,8 @@ type        = "array"
 items       = { type = "string" }
 
 [args.properties.reference_images.description]
-it = "Lista di path foto di riferimento. Estrae le facce dalle reference (RetinaFace) e match cosine ArcFace contro l'indice. Alternativa a `name` quando la persona NON e' registrata."
-en = "List of reference photo paths. Extracts faces from references (RetinaFace) and matches ArcFace cosine against the index. Alternative to `name` when the person is NOT registered."
+it = "Lista di path foto di riferimento. Con un VOLTO: match identita' cosine ArcFace. SENZA volto: similarity di SCENA cosine SigLIP (paesaggio/oggetto simile). Alternativa a `name` quando la persona NON e' registrata."
+en = "List of reference photo paths. With a FACE: ArcFace cosine identity match. WITHOUT a face: SigLIP cosine SCENE similarity (similar landscape/object). Alternative to `name` when the person is NOT registered."
 
 [args.properties.min_face_pixels]
 type        = "integer"
