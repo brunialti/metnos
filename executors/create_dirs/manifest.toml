@@ -62,6 +62,9 @@ en = "Permissions for the new directories (decimal format, e.g., 493 for 0o755).
 type        = "string"
 enum        = ["local"]
 default     = "local"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."

@@ -40,6 +40,9 @@ en = "List of file paths to remove. Absolute paths or ~ expandable. All must be 
 type        = "string"
 enum        = ["local"]
 default     = "local"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend (default 'local' = filesystem locale)."

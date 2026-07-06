@@ -47,6 +47,9 @@ en = "Optional initial text to insert into the doc (e.g. agenda, summary). Empty
 type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."

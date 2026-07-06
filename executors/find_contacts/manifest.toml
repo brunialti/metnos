@@ -42,6 +42,9 @@ en = "Returned results cap (default 50, max 1000)."
 type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 [args.properties.client.description]
 it = "Backend rubrica. Default 'google_workspace'. Futuro: 'local' (vCard import)."
 en = "Address book backend. Default 'google_workspace'. Future: 'local' (vCard import)."

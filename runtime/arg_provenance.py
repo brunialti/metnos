@@ -32,13 +32,59 @@ PROV_CLAUSE = "clause"
 PROV_SEMANTIC = "semantic"
 
 # Args di CONFIGURAZIONE backend per CONVENZIONE (§2.2 provider qualifier,
-# ADR 0136): il runtime li risolve SEMPRE, a prescindere dal marker. Il marker
-# `runtime_resolved` è applicato in modo INCOERENTE nei manifest (misurato 6/7:
-# 5/35 marcati) — la convenzione è la fonte di verità più affidabile per
-# QUESTI tre nomi. `provenance_report` segnala gli unmarked come cleanup.
+# ADR 0136). La convenzione per-NOME è un'APPROSSIMAZIONE: su alcuni tool la
+# scelta porta INTENTO e l'LLM (o un guard clause-scoped) è uno scrittore
+# legittimo — vedi `is_intent_bearing_config` (esito PROV.3, marcatura 6/7/2026:
+# 21 marcati + 14 esenzioni; politica bloccata da
+# tests/test_config_args_marking_policy.py). `provenance_report` segnala come
+# cleanup SOLO gli unmarked non-esenti: n_unmarked_config > 0 = drift reale.
 _RUNTIME_CONFIG_NAMES: frozenset[str] = frozenset({
     "client", "account", "provider",
 })
+
+
+def is_intent_bearing_config(tool_name: str, arg_name: str, arg_schema) -> bool:
+    """Config-per-NOME che NON va marcata `runtime_resolved`: la scelta porta
+    intento utente e l'LLM (o un guard clause-scoped) è uno scrittore legittimo.
+    Tre regole (misurate 6/7/2026, razionale in
+    internal/design/spec_args_provenance_architecture.md):
+
+      1. `client` multi-provider sull'object `files`: clause-derived («su
+         drive» → gw), lo scrivono _scope_sink_provider_to_clause /
+         _align_provider_client dal TESTO della clausola (PROV.3) — il default
+         sink resta local §10.3, quindi il runtime NON ne è l'unico owner.
+      2. `client` multi-provider SENZA owner runtime (object fuori da
+         backend_resolver.OBJECT_BACKENDS, es. move_messages metnos|gmail):
+         l'LLM è l'UNICO scrittore del ramo non-default. «Provider» = i valori
+         puntano a SORGENTI-DATI note (local/metnos/google_workspace…), non a
+         implementazioni della stessa sorgente (httpx|playwright = config).
+      3. `account` sugli executor mail: nominato/lista/'all' — il
+         mail_account_resolver delega per costruzione i casi 2+ account al
+         planner («scelta ambigua: decide il planner»), e send-from è intento.
+
+    NB: events multi-provider NON è esente (owner completo = backend_resolver
+    whole-query, famiglia marcata read/delete/create_events)."""
+    spec = arg_schema if isinstance(arg_schema, dict) else {}
+    name = (arg_name or "").lower()
+    tool = (tool_name or "").lower()
+    enum = spec.get("enum") if isinstance(spec.get("enum"), list) else []
+    if name == "client" and len(enum) >= 2:
+        try:
+            from backend_resolver import object_of, OBJECT_BACKENDS
+            obj = object_of(tool)
+            known = {p for s in OBJECT_BACKENDS.values()
+                     for p in s.get("providers", [])}
+        except Exception:  # noqa: BLE001 — classificazione best-effort
+            obj, known = None, set()
+        # `metnos` = nome del provider self-hosted sui canali mail/telegram
+        # (gemello di `local` sui filesystem/calendar, §10.3).
+        known |= {"local", "metnos"}
+        if sum(1 for v in enum if v in known) < 2:
+            return False    # implementazioni (httpx|playwright), non sorgenti
+        return obj == "files" or obj is None
+    if name == "account" and "messages" in tool.split("_"):
+        return True
+    return False
 
 
 def classify_arg(arg_name: str, arg_schema) -> str:
@@ -93,7 +139,8 @@ def provenance_report(catalog) -> dict:
         _props = _sch.get("properties", {}) if isinstance(_sch, dict) else {}
         for _a in _RUNTIME_CONFIG_NAMES:
             _d = _props.get(_a)
-            if isinstance(_d, dict) and not _d.get("runtime_resolved"):
+            if (isinstance(_d, dict) and not _d.get("runtime_resolved")
+                    and not is_intent_bearing_config(name, _a, _d)):
                 unmarked_config.append(f"{name}.{_a}")
         pm = provenance_map(ex)
         if not pm:

@@ -88,6 +88,9 @@ en = "If true, send notification email to recipient. Default false."
 type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend: solo 'google_workspace' (Drive). Local fs non supportato."

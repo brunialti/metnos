@@ -70,6 +70,9 @@ en = "Opt-in JS-rendering via Playwright sidecar (ADR 0125). When true and the s
 type        = "string"
 enum        = ["httpx", "playwright"]
 default     = "httpx"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend di implementazione (default 'httpx' = urllib stdlib + HostThrottle + HttpCache, no JS). 'playwright' = sidecar Chromium headless come dispatcher esclusivo (stub: non ancora attivo). Per JS-render opt-in selettivo usa il flag `js_render=true` con client='httpx'. Plugin esterni futuri potranno aggiungere altri client."

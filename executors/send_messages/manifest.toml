@@ -41,6 +41,9 @@ en = "Sending channel. Canonical: 'email', 'telegram'. Legacy: 'mail' = alias of
 
 [args.properties.client]
 type        = "string"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend del canale (es. 'metnos' per IMAP+SMTP/Telegram locale). Default per channel: email='metnos', telegram='metnos'. Plugin esterni potranno introdurre client aggiuntivi (es. 'gmail') in futuro."

@@ -50,6 +50,9 @@ en = "Timeout for each HTTP request (GET csrf + POST login). Default 15.0."
 type        = "string"
 enum        = ["httpx", "playwright"]
 default     = "httpx"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend di implementazione (default 'httpx' = urllib stdlib + credentials store). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."

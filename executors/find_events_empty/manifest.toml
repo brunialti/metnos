@@ -73,12 +73,17 @@ en = "Calendar identifier. Default 'primary'."
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
-default     = "local"
+# Allineato ai fratelli events (era stantio ["local"]+«stub»: l'executor
+# dispatcha a ENTRAMBI i backend, `backends.events.google_workspace.find_events_empty`
+# esiste — misurato 6/7/2026). Niente default: SoT = default_event_client().
+enum        = ["local", "google_workspace"]
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = calendar locale via ICS file, attualmente stub). Plugin esterni futuri potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local calendar via ICS file, currently stub). Future external plugins may add other clients."
+it = "Backend calendario. DEVI OMETTERLO: il runtime auto-rileva (google_workspace se OAuth, altrimenti local ICS)."
+en = "Calendar backend. YOU MUST OMIT IT: the runtime auto-detects (google_workspace if OAuth, else local ICS)."
 
 [output]
 schema_inline = """

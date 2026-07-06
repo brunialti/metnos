@@ -123,6 +123,9 @@ en = "Channel to read. Default 'email' (IMAP). 'mail' = alias of 'email' (back-c
 
 [args.properties.client]
 type        = "string"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend del canale (es. 'metnos' per IMAP locale). Default per channel: email='metnos'. Plugin esterni futuri potranno aggiungere altri client."
