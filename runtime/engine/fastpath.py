@@ -598,6 +598,20 @@ def _inherit_uses(executor_name: str, n_uses: int) -> int:
         return 0
 
 
+def flush() -> dict:
+    """Svuota L0 COMPLETO (opzione admin, 6/7: «se cambio engine cancello
+    cache»). Ritorna i conteggi rimossi. Il re-record avviene dal traffico
+    (auto-record al primo successo)."""
+    c = _conn()
+    try:
+        n = c.execute("SELECT COUNT(*) FROM fastpaths").fetchone()[0]
+        c.execute("DELETE FROM fastpaths")
+        c.commit()
+        return {"fastpaths_deleted": n}
+    finally:
+        c.close()
+
+
 def prune(*, catalog_names: Optional[set] = None,
           catalog: Optional[list] = None,
           stale_days: int | None = None, grace_days: int | None = None,

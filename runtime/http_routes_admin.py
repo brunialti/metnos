@@ -422,6 +422,43 @@ def _decode_observation_tools(observations: list[dict]) -> None:
             o["tools"] = []
 
 
+async def admin_caches_flush(request: web.Request) -> web.Response:
+    """POST /admin/caches/{layer:l0|l1|all}/flush — svuota le cache di piano.
+
+    Opzione admin (Roberto 6/7): «se cambio engine cancello cache». L0 =
+    fastpaths; L1 = autopaths + anti_autopaths + observations (i cluster
+    semantici restano). Il riapprendimento riparte dal traffico reale.
+    Best-effort: azzera anche la LRU in-process del proposer."""
+    layer = request.match_info.get("layer") or ""
+    loop = asyncio.get_running_loop()
+    report: dict = {"layer": layer}
+
+    def _do() -> None:
+        if layer in ("l0", "all"):
+            from engine import fastpath as _fp
+            report.update(_fp.flush())
+        if layer in ("l1", "all"):
+            from engine import autopath as _ap
+            report.update(_ap.flush())
+
+    await loop.run_in_executor(None, _do)
+    try:
+        from engine.proposer import get_proposer
+        _prop = get_proposer()
+        if hasattr(_prop, "_candidate_cache"):
+            _prop._candidate_cache.clear()
+            report["proposer_lru_cleared"] = True
+    except Exception as ex:
+        log.debug("flush proposer LRU noop: %r", ex)
+    log.info("[admin] cache flush %s: %s", layer, report)
+    if "text/html" in (request.headers.get("Accept") or ""):
+        from urllib.parse import quote
+        raise web.HTTPFound("/admin/praxis?flash=" + quote(
+            f"flush {layer}: " + ", ".join(
+                f"{k}={v}" for k, v in report.items() if k != "layer")))
+    return web.json_response(report)
+
+
 async def admin_praxis(request: web.Request) -> web.Response:
     """GET /admin/praxis — dashboard del motore cognitivo (Engine v2).
 
@@ -471,7 +508,7 @@ async def admin_praxis(request: web.Request) -> web.Response:
         request,
         json_payload=payload,
         template="praxis.html",
-        template_ctx=payload,
+        template_ctx={**payload, "flash": request.query.get("flash", "")},
     )
 
 
@@ -1696,6 +1733,7 @@ ROUTES = (
     ("GET",  "/admin/praxis",                     admin_praxis),
     ("POST", "/admin/praxis/config",              admin_praxis_config),
     ("POST", r"/admin/praxis/fastpaths/{id}/delete", admin_praxis_fastpath_delete),
+    ("POST", r"/admin/caches/{layer:l0|l1|all}/flush", admin_caches_flush),
     # /admin/aporiae* rimosse 13/6/2026: store Aporia dismesso con Engine v2
     # (Bonifica 28/5). Feature ritirata, nessun rimpiazzo.
     ("GET",  "/admin/executors",                  admin_executors),

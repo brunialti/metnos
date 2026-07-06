@@ -11,6 +11,35 @@ sono senza stato e non compaiono qui.</p>
 <p class="muted">storage <code>fastpaths.sqlite</code> + <code>autopath.sqlite</code>
 · architettura: <code>docs/it/architecture/praxis_engine.html</code></p>
 
+{% if flash %}<div style="margin:.6rem 0;padding:.5rem .8rem;border-radius:8px;
+     background:var(--accent-soft);border:1px solid var(--line)">{{ flash }}</div>{% endif %}
+
+<div style="margin:.8rem 0;padding:.7rem .9rem;border:1px solid var(--err-red,#c0392b);
+     border-radius:10px;background:color-mix(in srgb, var(--err-red,#c0392b) 6%, transparent)">
+  <b>⚠ Svuotamento cache di piano</b>
+  <p class="muted" style="margin:.3rem 0 .5rem">
+    Operazione <b>non annullabile</b>. Da usare tipicamente al <b>cambio di engine</b>
+    (i piani appresi sotto un engine non sono garantiti sotto un altro).
+    Conseguenze: <b>L0</b> = si perdono le scorciatoie auto-apprese (il primo turno
+    di ogni query torna lento, poi ri-impara da solo); <b>L1</b> = si perdono
+    <b>anche le autopath promosse dai tuoi ✓</b> e le anti-autopath (le bocciature):
+    il riapprendimento richiede nuovo traffico e nuovi feedback.
+    I cluster semantici e i default appresi degli argomenti restano.
+  </p>
+  <form method="post" action="/admin/caches/l0/flush" style="display:inline"
+        onsubmit="return confirm('Svuotare TUTTA la cache L0 (fastpaths)?\nIl primo turno di ogni query tornerà lento finché non ri-impara.')">
+    <button class="btn bad">🧹 Svuota L0</button>
+  </form>
+  <form method="post" action="/admin/caches/l1/flush" style="display:inline;margin-left:.4rem"
+        onsubmit="return confirm('Svuotare TUTTA la L1?\nPERDERAI anche le autopath promosse dai tuoi ✓ e le bocciature (anti-autopath).')">
+    <button class="btn bad">🧹 Svuota L1</button>
+  </form>
+  <form method="post" action="/admin/caches/all/flush" style="display:inline;margin-left:.4rem"
+        onsubmit="return confirm('Svuotare L0 + L1 (cambio engine)?\nTutti i piani appresi e i feedback ✓/✗ andranno persi. Non annullabile.')">
+    <button class="btn bad">🧹 Svuota tutto (cambio engine)</button>
+  </form>
+</div>
+
 <h2>Stato</h2>
 <div class="kpi-grid">
   <div class="kpi" title="scorciatoie auto-prodotte dai turni riusciti (L0, prime 100 per uso)">

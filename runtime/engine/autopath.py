@@ -165,6 +165,23 @@ def _conn() -> sqlite3.Connection:
     return c
 
 
+def flush() -> dict:
+    """Svuota L1 COMPLETO: autopaths + anti_autopaths + observations
+    (opzione admin, 6/7). I CLUSTER semantici restano (embedding-based,
+    engine-agnostici); il riapprendimento riparte dal traffico e dai ✓."""
+    c = _conn()
+    try:
+        out = {}
+        for tab in ("autopaths", "anti_autopaths", "observations"):
+            out[f"{tab}_deleted"] = c.execute(
+                f"SELECT COUNT(*) FROM {tab}").fetchone()[0]
+            c.execute(f"DELETE FROM {tab}")
+        c.commit()
+        return out
+    finally:
+        c.close()
+
+
 def prune(*, keep_observations: int | None = None) -> dict:
     """Reaper dello storage autopath (chiamato dal state_reaper builtin).
 
