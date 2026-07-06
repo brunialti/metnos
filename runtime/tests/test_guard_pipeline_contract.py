@@ -196,3 +196,36 @@ def test_each_guard_idempotent_on_corpus():
             if _snap(x) != _snap(y):
                 bad.append(f"{gname}@{cname}")
     assert not bad, f"guard NON idempotenti: {bad}"
+
+
+# ── CP3: interazione verb-level × object-level (S2 ADR 0177 chiuso) ──────────
+# I due enforce NON sono ridondanti: verb-level (`enforce_missing_clauses`, con
+# `_align_foreign_producers_v3` come helper interno) copre i verbi RICHIESTI;
+# object-level (`enforce_missing_objects`) copre i drop PER-OGGETTO che il
+# verb-level non vede (N domini stesso verbo). Su un compound multi-dominio
+# entrambi devono comporre SENZA doppioni: ogni oggetto richiesto ottiene
+# ESATTAMENTE un produttore.
+
+def test_two_enforce_guards_compose_no_double_producer():
+    from engine import dispatch as D
+    from engine.types import Framework, StepSpec, Intent
+    cat = _catalog()
+    # compound 2-dominio (files + messages), producer di messages DROPPATO.
+    fw = Framework(steps=[
+        StepSpec(tool="find_files", args={"base_path": "/x", "client": "local"}),
+        StepSpec(tool="final_answer", args={}),
+    ])
+    intent = Intent(verb="find", object="files", actions=[
+        {"verb": "find", "object": "files"},
+        {"verb": "find", "object": "messages"}])
+    q = "trova i file in /x e cerca le mail di ieri"
+    out = D._apply_deterministic_structure_guards(fw, intent, q, cat)
+    tools = [s.tool for s in out.steps if s.tool != "final_answer"]
+    # esattamente UN produttore per oggetto (files + messages), nessun doppione
+    files_prod = [t for t in tools if t.startswith(("find_files", "list_dirs"))]
+    msg_prod = [t for t in tools if "messages" in t]
+    assert len(files_prod) == 1, tools
+    assert len(msg_prod) == 1, tools
+    # idempotente: ri-applicare non aggiunge un secondo produttore
+    out2 = D._apply_deterministic_structure_guards(out, intent, q, cat)
+    assert [s.tool for s in out2.steps] == [s.tool for s in out.steps]

@@ -1203,10 +1203,21 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                              catalog: Optional[list]) -> Framework:
     """§7.9 v3 (drop multi-dominio): per ogni clausola PRODUCER (find/read/get/
     list, object) di intent.actions, garantisce un PRODUTTORE di quell'object nel
-    piano. Il guard verb-level (`_enforce_missing_clauses`) NON vede i drop
-    per-object: con N domini che condividono il verbo `find`, un `find_images`
-    droppato resta nascosto (`find` risulta coperto da un altro dominio) →
-    produttore-dominio perso silenziosamente (causa-radice del limite #domini).
+    piano.
+
+    LAYERING produttore-mancante (CP3, S2 ADR 0177 — NON ridondanza):
+      1. `_enforce_missing_clauses` (VERB-level): copre i verbi RICHIESTI
+         scoperti; usa `_align_foreign_producers_v3` come HELPER INTERNO per
+         allineare un produttore estraneo già presente prima di appendere.
+      2. `_enforce_missing_objects` (OBJECT-level, QUESTO): copre i drop
+         PER-OGGETTO che il verb-level non vede.
+    Complementari per costruzione (test `test_two_enforce_guards_compose_
+    no_double_producer`): ogni oggetto ottiene ESATTAMENTE un produttore.
+
+    Il guard verb-level NON vede i drop per-object: con N domini che condividono
+    il verbo `find`, un `find_images` droppato resta nascosto (`find` risulta
+    coperto da un altro dominio) → produttore-dominio perso silenziosamente
+    (causa-radice del limite #domini).
 
     Appende i produttori-object MANCANTI come step INDIPENDENTI (no from_step:
     sono ricerche distinte, non pipe). `_conform_to_intent_order` li riordina poi
