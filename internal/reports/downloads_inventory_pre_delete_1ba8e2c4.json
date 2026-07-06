@@ -1,0 +1,6137 @@
+{
+ "turn_id": "1ba8e2c40ba14793",
+ "device": "PC-ROBERTO",
+ "when": "2026-07-06T16:48:07Z",
+ "note": "Inventario COMPLETO dei file in C:\\Users\\rober\\Downloads PRIMA della delete parziale (find_files sul device, 681 file). Le directory non erano incluse.",
+ "entries": [
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1742337093.883876,
+   "name": "03c4791e434648b9888ad34f7d26a6dd_16000_mono_16bit.wav",
+   "path": "C:\\Users\\rober\\Downloads\\03c4791e434648b9888ad34f7d26a6dd_16000_mono_16bit.wav",
+   "size": 65238,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1740212746.698243,
+   "name": "1191f24a-c301-427b-aa8d-8c801508bfca.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\1191f24a-c301-427b-aa8d-8c801508bfca.pdf",
+   "size": 11069,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/jpeg",
+   "mtime": 1778278384.0769062,
+   "name": "16.jpeg",
+   "path": "C:\\Users\\rober\\Downloads\\16.jpeg",
+   "size": 218700,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1742337112.449171,
+   "name": "194362977cf44e999269504354533f3a_16000_mono_16bit.wav",
+   "path": "C:\\Users\\rober\\Downloads\\194362977cf44e999269504354533f3a_16000_mono_16bit.wav",
+   "size": 65238,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1766769760.9193468,
+   "name": "2003_Il_cuore_del_Misoghi._finale.txt",
+   "path": "C:\\Users\\rober\\Downloads\\2003_Il_cuore_del_Misoghi._finale.txt",
+   "size": 84301,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1766770206.3203826,
+   "name": "2003_Il_cuore_del_Misoghi_chunks_readable.txt",
+   "path": "C:\\Users\\rober\\Downloads\\2003_Il_cuore_del_Misoghi_chunks_readable.txt",
+   "size": 90789,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744275334.9387407,
+   "name": "2022 Ssentenza provinc.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2022 Ssentenza provinc.pdf",
+   "size": 1368824,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744275748.6955132,
+   "name": "2024 Sentenza_RG_006521_2022_UD_30092024.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2024 Sentenza_RG_006521_2022_UD_30092024.pdf",
+   "size": 100327,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1749915495.3091586,
+   "name": "2025 - marzo - Oman.zip",
+   "path": "C:\\Users\\rober\\Downloads\\2025 - marzo - Oman.zip",
+   "size": 120804852,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1763306553.7778523,
+   "name": "2025 Il nostro cammino - LLMM.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2025 Il nostro cammino - LLMM.pdf",
+   "size": 21667077,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1767132384.7639267,
+   "name": "2025-12-06.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2025-12-06.pdf",
+   "size": 146345,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1773690112.8009858,
+   "name": "2026001179_FK (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001179_FK (1).pdf",
+   "size": 39123,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1774257334.8556845,
+   "name": "2026001179_FK (2).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001179_FK (2).pdf",
+   "size": 39123,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1774257471.3641255,
+   "name": "2026001179_FK (3).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001179_FK (3).pdf",
+   "size": 39123,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1778443307.6099,
+   "name": "2026001179_FK (4).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001179_FK (4).pdf",
+   "size": 39123,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1773177431.358153,
+   "name": "2026001179_FK.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001179_FK.pdf",
+   "size": 39123,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1778443280.5723128,
+   "name": "2026001897_FK.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026001897_FK.pdf",
+   "size": 39096,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1778443243.6837418,
+   "name": "2026002659_FK.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2026002659_FK.pdf",
+   "size": 39257,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1783082490.5108912,
+   "name": "2623103695.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\2623103695.pdf",
+   "size": 926620,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1774909906.393,
+   "name": "3UW0SDP777285 (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\3UW0SDP777285 (1).pdf",
+   "size": 39930,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1773938087.0641663,
+   "name": "3UW0SDP777285.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\3UW0SDP777285.pdf",
+   "size": 39930,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1769285312.7310789,
+   "name": "570c5c52bee4552764d1a3b4c67e0a3c538be8d8037a33f0ee9d80f01c113515-2026-01-24-15-34-19-5927aa8ac6e147f4bbe9dfe215f3dab3.zip",
+   "path": "C:\\Users\\rober\\Downloads\\570c5c52bee4552764d1a3b4c67e0a3c538be8d8037a33f0ee9d80f01c113515-2026-01-24-15-34-19-5927aa8ac6e147f4bbe9dfe215f3dab3.zip",
+   "size": 223728024,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762536689.962543,
+   "name": "ACC_Win_2.1.6.9050.zip",
+   "path": "C:\\Users\\rober\\Downloads\\ACC_Win_2.1.6.9050.zip",
+   "size": 3928,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1773991337.453056,
+   "name": "Aeroitalia_FlightTicket_XY6F4T.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Aeroitalia_FlightTicket_XY6F4T.pdf",
+   "size": 108887,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1768334586.0421286,
+   "name": "Aeroitalia_Pass_FCO_PMO_20260114.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Aeroitalia_Pass_FCO_PMO_20260114.pdf",
+   "size": 125208,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1773991246.2830913,
+   "name": "Aeroitalia_Pass_ROBERTO BRUNIALTI_FCO_GOA_20260320.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Aeroitalia_Pass_ROBERTO BRUNIALTI_FCO_GOA_20260320.pdf",
+   "size": 66761,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1768334520.0816057,
+   "name": "Aeroitalia_Pass_ROBERTO BRUNIALTI_PMO_FCO_20260114.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Aeroitalia_Pass_ROBERTO BRUNIALTI_PMO_FCO_20260114.pdf",
+   "size": 67444,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1782147300.56698,
+   "name": "Anthropic Billing.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Anthropic Billing.xlsx",
+   "size": 5093,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1758821788.3293138,
+   "name": "App Suite_ ACCETTAZIONE_ ISTANZA DI RIMBORSO FONDATA SU SENTENZA Stampa.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\App Suite_ ACCETTAZIONE_ ISTANZA DI RIMBORSO FONDATA SU SENTENZA Stampa.pdf",
+   "size": 62253,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763380289.5901403,
+   "name": "app.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app.zip",
+   "size": 142353,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762987925.0783522,
+   "name": "app_fixed.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_fixed.zip",
+   "size": 141562,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762599191.436978,
+   "name": "app_full_patched_v2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v2.zip",
+   "size": 56160,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762599929.5277505,
+   "name": "app_full_patched_v3.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v3.zip",
+   "size": 56575,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762600107.3885076,
+   "name": "app_full_patched_v4_py39.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v4_py39.zip",
+   "size": 56595,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762605916.5387363,
+   "name": "app_full_patched_v6 (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v6 (1).zip",
+   "size": 22,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762606064.802494,
+   "name": "app_full_patched_v6 (2).zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v6 (2).zip",
+   "size": 54319,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762605898.7245836,
+   "name": "app_full_patched_v6.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v6.zip",
+   "size": 22,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762608154.9961708,
+   "name": "app_full_patched_v7.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_full_patched_v7.zip",
+   "size": 54458,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762777149.2758172,
+   "name": "app_help_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_help_patch.zip",
+   "size": 124090,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762783546.7815547,
+   "name": "app_layout_market_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_layout_market_patch.zip",
+   "size": 123694,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762776504.148911,
+   "name": "app_patched.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_patched.zip",
+   "size": 123305,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762784332.504035,
+   "name": "app_robust_patch_v2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\app_robust_patch_v2.zip",
+   "size": 123519,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1743698342.7320693,
+   "name": "audacity-win-3.7.3-64bit.exe",
+   "path": "C:\\Users\\rober\\Downloads\\audacity-win-3.7.3-64bit.exe",
+   "size": 16959640,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1743698103.5519445,
+   "name": "Audacity_Installer_via_MuseHub.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Audacity_Installer_via_MuseHub.exe",
+   "size": 46041680,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762968287.0825262,
+   "name": "auth_fixes.zip",
+   "path": "C:\\Users\\rober\\Downloads\\auth_fixes.zip",
+   "size": 4985,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762973355.3221457,
+   "name": "auth_mailer_compat_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\auth_mailer_compat_patch.zip",
+   "size": 2154,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762972272.2613304,
+   "name": "auth_patch_fixed.zip",
+   "path": "C:\\Users\\rober\\Downloads\\auth_patch_fixed.zip",
+   "size": 5804,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762970927.8774898,
+   "name": "auth_ui_redirect_email_template_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\auth_ui_redirect_email_template_patch.zip",
+   "size": 5800,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1780491587.371102,
+   "name": "Automtive.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Automtive.pdf",
+   "size": 338680,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1766781292.313954,
+   "name": "b.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\b.pdf",
+   "size": 4551564,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781607854.018664,
+   "name": "Bollette Eniplenitude (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Eniplenitude (1).xlsx",
+   "size": 4783,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781609269.74324,
+   "name": "Bollette Eniplenitude (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Eniplenitude (2).xlsx",
+   "size": 4967,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781617222.7261722,
+   "name": "Bollette Eniplenitude (3).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Eniplenitude (3).xlsx",
+   "size": 4886,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781605266.193549,
+   "name": "Bollette Eniplenitude.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Eniplenitude.xlsx",
+   "size": 4888,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783081952.7762473,
+   "name": "Bollette Plenitude (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Plenitude (1).xlsx",
+   "size": 5009,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783081842.7229817,
+   "name": "Bollette Plenitude.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Bollette Plenitude.xlsx",
+   "size": 4944,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1772790843.3156328,
+   "name": "Bonifico disposto a favore di_ Irene Fioravanti.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico disposto a favore di_ Irene Fioravanti.pdf",
+   "size": 6006,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639765.1866405,
+   "name": "Bonifico Istantaneo Da Voi Disposto (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico Istantaneo Da Voi Disposto (1).pdf",
+   "size": 6538,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639046.6323948,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (1).pdf",
+   "size": 6508,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639080.7671857,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (2).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (2).pdf",
+   "size": 5997,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639138.435632,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (3).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (3).pdf",
+   "size": 6507,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1772790733.3488646,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (4).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (4).pdf",
+   "size": 6051,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1772791007.7210646,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (5).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti (5).pdf",
+   "size": 6029,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639015.0525148,
+   "name": "Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico istantaneo da voi disposto a favore di_ Irene fioravanti.pdf",
+   "size": 6507,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1746639726.269683,
+   "name": "Bonifico Istantaneo Da Voi Disposto.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Bonifico Istantaneo Da Voi Disposto.pdf",
+   "size": 6540,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1761841368.8078756,
+   "name": "brochure-crosstrek-2024-5.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\brochure-crosstrek-2024-5.pdf",
+   "size": 5262723,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1766781384.4377682,
+   "name": "b_converted.docx",
+   "path": "C:\\Users\\rober\\Downloads\\b_converted.docx",
+   "size": 71067,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1766781434.6590998,
+   "name": "b_formattato.docx",
+   "path": "C:\\Users\\rober\\Downloads\\b_formattato.docx",
+   "size": 74335,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1738162469.3744452,
+   "name": "certificato_cin_IT058091C2EPWF2WSU.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\certificato_cin_IT058091C2EPWF2WSU.pdf",
+   "size": 315029,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1763989318.7588358,
+   "name": "ChromeSetup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\ChromeSetup.exe",
+   "size": 10962360,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1776184861.2152257,
+   "name": "Claude Setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Claude Setup.exe",
+   "size": 6942880,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1772187247.6546009,
+   "name": "ClientList_2026-02-27-11-14.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\ClientList_2026-02-27-11-14.xlsx",
+   "size": 8810,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1776184481.8496246,
+   "name": "Codex Installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Codex Installer.exe",
+   "size": 1172536,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "message/rfc822",
+   "mtime": 1758898573.4877975,
+   "name": "CONSEGNA__ISTANZA_DI_RIMBORSO_FONDATA_SU_SENTENZA.eml",
+   "path": "C:\\Users\\rober\\Downloads\\CONSEGNA__ISTANZA_DI_RIMBORSO_FONDATA_SU_SENTENZA.eml",
+   "size": 2927682,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1770742486.0319457,
+   "name": "curl-mingw.zip",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw.zip",
+   "size": 7878673,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1742337144.3502774,
+   "name": "de4bf9b1d80d4cd481d8e6a2022e0834_16000_mono_16bit.wav",
+   "path": "C:\\Users\\rober\\Downloads\\de4bf9b1d80d4cd481d8e6a2022e0834_16000_mono_16bit.wav",
+   "size": 62166,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318469.621266,
+   "name": "deandre_omni_hello.wav",
+   "path": "C:\\Users\\rober\\Downloads\\deandre_omni_hello.wav",
+   "size": 257324,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318473.49776,
+   "name": "deandre_omni_philosophy.wav",
+   "path": "C:\\Users\\rober\\Downloads\\deandre_omni_philosophy.wav",
+   "size": 289964,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1737327833.196557,
+   "name": "desktop.ini",
+   "path": "C:\\Users\\rober\\Downloads\\desktop.ini",
+   "size": 282,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744730299.728274,
+   "name": "Documento-1.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Documento-1.pdf",
+   "size": 1144455,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744730223.9783428,
+   "name": "Documento.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Documento.pdf",
+   "size": 1144455,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1737389123.4364624,
+   "name": "dotNetFx35setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\dotNetFx35setup.exe",
+   "size": 2869264,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1764780355.5512695,
+   "name": "draw.io-29.0.3-windows-installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\draw.io-29.0.3-windows-installer.exe",
+   "size": 125429104,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736940774.822485,
+   "name": "DropboxInstaller.exe",
+   "path": "C:\\Users\\rober\\Downloads\\DropboxInstaller.exe",
+   "size": 802360,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1772395000.2960732,
+   "name": "EdrawMax_Installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\EdrawMax_Installer.exe",
+   "size": 2198504,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764601522.566115,
+   "name": "elenco_nominativo_compilato.docx",
+   "path": "C:\\Users\\rober\\Downloads\\elenco_nominativo_compilato.docx",
+   "size": 38899,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764600493.1028552,
+   "name": "elenco_nominativo_con_immagini.docx",
+   "path": "C:\\Users\\rober\\Downloads\\elenco_nominativo_con_immagini.docx",
+   "size": 949413,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764603557.0895195,
+   "name": "elenco_nominativo_romaji.docx",
+   "path": "C:\\Users\\rober\\Downloads\\elenco_nominativo_romaji.docx",
+   "size": 38663,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764604128.0630507,
+   "name": "elenco_nominativo_romaji_kanji.docx",
+   "path": "C:\\Users\\rober\\Downloads\\elenco_nominativo_romaji_kanji.docx",
+   "size": 39119,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783195813.1257656,
+   "name": "etc_dirs (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\etc_dirs (1).xlsx",
+   "size": 254,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783196735.4033155,
+   "name": "etc_dirs (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\etc_dirs (2).xlsx",
+   "size": 4931,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783195797.4886158,
+   "name": "etc_dirs.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\etc_dirs.xlsx",
+   "size": 254,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783196831.846217,
+   "name": "etc_dir_paths.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\etc_dir_paths.xlsx",
+   "size": 4931,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1771957912.973006,
+   "name": "etoro_statement_adjustments_2025_EN.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\etoro_statement_adjustments_2025_EN.pdf",
+   "size": 3728,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1780914757.805405,
+   "name": "expressvpn-windows-x64-12.201.1.12155_release.exe",
+   "path": "C:\\Users\\rober\\Downloads\\expressvpn-windows-x64-12.201.1.12155_release.exe",
+   "size": 1294880,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1737046858.857551,
+   "name": "expressvpn_windows_12.95.0.42_release.exe",
+   "path": "C:\\Users\\rober\\Downloads\\expressvpn_windows_12.95.0.42_release.exe",
+   "size": 90912864,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1748375260.947507,
+   "name": "Farmaci Omega 3. Quando è appropriato usarli CF AVEC 12.21.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Farmaci Omega 3. Quando è appropriato usarli CF AVEC 12.21.pdf",
+   "size": 167833,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1772790388.210998,
+   "name": "Fattura-149.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Fattura-149.pdf",
+   "size": 16253,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1772790332.886383,
+   "name": "Fattura-296.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\Fattura-296.pdf",
+   "size": 16511,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1775140244.7312822,
+   "name": "fattura_112600835771.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\fattura_112600835771.pdf",
+   "size": 989894,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1775140608.3759637,
+   "name": "fattura_112601116235.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\fattura_112601116235.pdf",
+   "size": 990121,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781609445.895043,
+   "name": "Fatture Anthropic (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (1).xlsx",
+   "size": 4782,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781609503.7074184,
+   "name": "Fatture Anthropic (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (2).xlsx",
+   "size": 4782,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781610112.9466293,
+   "name": "Fatture Anthropic (3).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (3).xlsx",
+   "size": 4783,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781614098.4153104,
+   "name": "Fatture Anthropic (4).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (4).xlsx",
+   "size": 5138,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781616749.3305423,
+   "name": "Fatture Anthropic (5).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (5).xlsx",
+   "size": 5093,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1782061361.7024338,
+   "name": "Fatture Anthropic (6).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (6).xlsx",
+   "size": 5094,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1782061378.1111698,
+   "name": "Fatture Anthropic (7).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic (7).xlsx",
+   "size": 5094,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1781609387.3025844,
+   "name": "Fatture Anthropic.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Fatture Anthropic.xlsx",
+   "size": 4783,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783248817.457314,
+   "name": "File in etc (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\File in etc (1).xlsx",
+   "size": 4943,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783248884.7118745,
+   "name": "File in etc (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\File in etc (2).xlsx",
+   "size": 4943,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783248984.2747295,
+   "name": "File in etc (3).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\File in etc (3).xlsx",
+   "size": 4944,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783248788.168543,
+   "name": "File in etc.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\File in etc.xlsx",
+   "size": 4943,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1746456844.7177384,
+   "name": "FileZilla_3.69.1_win64-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\FileZilla_3.69.1_win64-setup.exe",
+   "size": 12432664,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1762700533.399273,
+   "name": "FileZilla_3.69.3_win64-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\FileZilla_3.69.3_win64-setup.exe",
+   "size": 12458528,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1763980170.1644251,
+   "name": "FileZilla_3.69.5_win64-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\FileZilla_3.69.5_win64-setup.exe",
+   "size": 12733632,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1772571743.4185758,
+   "name": "FileZilla_3.69.6_win64-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\FileZilla_3.69.6_win64-setup.exe",
+   "size": 12742752,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1763368113.2005956,
+   "name": "Firefox Installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Firefox Installer.exe",
+   "size": 383872,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1763665801.3440638,
+   "name": "fixed_app_js",
+   "path": "C:\\Users\\rober\\Downloads\\fixed_app_js",
+   "size": 147,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1762806480.2486787,
+   "name": "fixed_app_js (1)",
+   "path": "C:\\Users\\rober\\Downloads\\fixed_app_js (1)",
+   "size": 9470,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1763366136.2768462,
+   "name": "foglio_domande_simmetrico.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\foglio_domande_simmetrico.pdf",
+   "size": 3122,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760459803.705966,
+   "name": "forma cerimoniale GIAPPONESE.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\forma cerimoniale GIAPPONESE.pdf",
+   "size": 9802,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773259697.2425642,
+   "name": "giorgio_arch_v6 (1).pptx",
+   "path": "C:\\Users\\rober\\Downloads\\giorgio_arch_v6 (1).pptx",
+   "size": 347574,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773259755.3826313,
+   "name": "giorgio_arch_v6 (2).pptx",
+   "path": "C:\\Users\\rober\\Downloads\\giorgio_arch_v6 (2).pptx",
+   "size": 347574,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773259895.589316,
+   "name": "giorgio_arch_v6 (3).pptx",
+   "path": "C:\\Users\\rober\\Downloads\\giorgio_arch_v6 (3).pptx",
+   "size": 34972,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773259671.1477067,
+   "name": "giorgio_arch_v6.pptx",
+   "path": "C:\\Users\\rober\\Downloads\\giorgio_arch_v6.pptx",
+   "size": 347574,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773260762.5260558,
+   "name": "giorgio_arch_v7.pptx",
+   "path": "C:\\Users\\rober\\Downloads\\giorgio_arch_v7.pptx",
+   "size": 47725,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760440994.4973118,
+   "name": "heiwa_cerimoniale.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale.pdf",
+   "size": 6395,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760459697.297358,
+   "name": "heiwa_cerimoniale_pura.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale_pura.pdf",
+   "size": 9802,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760459484.2835417,
+   "name": "heiwa_cerimoniale_seijoban (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale_seijoban (1).pdf",
+   "size": 10836,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760459084.2708094,
+   "name": "heiwa_cerimoniale_seijoban.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale_seijoban.pdf",
+   "size": 4630,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760441547.4624524,
+   "name": "heiwa_cerimoniale_tategaki.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale_tategaki.pdf",
+   "size": 11960,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760442825.0682893,
+   "name": "heiwa_cerimoniale_tategaki_ruby.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\heiwa_cerimoniale_tategaki_ruby.pdf",
+   "size": 13648,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1760440746.8783298,
+   "name": "Heiwa_no_Tame_no_Shugyo.docx",
+   "path": "C:\\Users\\rober\\Downloads\\Heiwa_no_Tame_no_Shugyo.docx",
+   "size": 38091,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764932767.88387,
+   "name": "Il_nostro_cammino_normalizzato.txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_normalizzato.txt",
+   "size": 285154,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764933274.833356,
+   "name": "Il_nostro_cammino_normalizzato_v2.txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_normalizzato_v2.txt",
+   "size": 278087,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764932057.9016232,
+   "name": "Il_nostro_cammino_pulito (1).docx",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito (1).docx",
+   "size": 129208,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764931324.9818175,
+   "name": "Il_nostro_cammino_pulito (1).txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito (1).txt",
+   "size": 1382,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764931405.2056992,
+   "name": "Il_nostro_cammino_pulito (2).txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito (2).txt",
+   "size": 1388458,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764932005.5664628,
+   "name": "Il_nostro_cammino_pulito (3).txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito (3).txt",
+   "size": 280022,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764932090.1125922,
+   "name": "Il_nostro_cammino_pulito (4).txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito (4).txt",
+   "size": 280022,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764931280.694493,
+   "name": "Il_nostro_cammino_pulito.docx",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito.docx",
+   "size": 262181,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1764931307.7697842,
+   "name": "Il_nostro_cammino_pulito.txt",
+   "path": "C:\\Users\\rober\\Downloads\\Il_nostro_cammino_pulito.txt",
+   "size": 1382,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/jpeg",
+   "mtime": 1744820724.799993,
+   "name": "IMG_20220903_080400756.jpg",
+   "path": "C:\\Users\\rober\\Downloads\\IMG_20220903_080400756.jpg",
+   "size": 410123,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1738273583.322437,
+   "name": "import_dependency_tree.png",
+   "path": "C:\\Users\\rober\\Downloads\\import_dependency_tree.png",
+   "size": 472081,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1738273714.327832,
+   "name": "internal_dependency_tree.png",
+   "path": "C:\\Users\\rober\\Downloads\\internal_dependency_tree.png",
+   "size": 203741,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1779736604.7726543,
+   "name": "invoice.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\invoice.pdf",
+   "size": 80392,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1758821500.432817,
+   "name": "ISEE_ATT_PROT_INPS-ISEE-2025-10186468L-00.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\ISEE_ATT_PROT_INPS-ISEE-2025-10186468L-00.pdf",
+   "size": 56939,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783242681.7800577,
+   "name": "KAKEBO SPESE 2026 (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\KAKEBO SPESE 2026 (1).xlsx",
+   "size": 5300,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783248291.7680676,
+   "name": "KAKEBO SPESE 2026 (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\KAKEBO SPESE 2026 (2).xlsx",
+   "size": 6594,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783242606.0117495,
+   "name": "KAKEBO SPESE 2026.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\KAKEBO SPESE 2026.xlsx",
+   "size": 5300,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1780914535.5739827,
+   "name": "Kalisi Installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Kalisi Installer.exe",
+   "size": 1294880,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/vnd.ms-publisher",
+   "mtime": 1780776147.474588,
+   "name": "key.pub",
+   "path": "C:\\Users\\rober\\Downloads\\key.pub",
+   "size": 574,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1782907771.655383,
+   "name": "menu_kanova_italiano_giapponese_senza_prezzi.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\menu_kanova_italiano_giapponese_senza_prezzi.pdf",
+   "size": 440178,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783092832.0513997,
+   "name": "MetnosClientSetup (1).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (1).cmd",
+   "size": 6732,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783090090.5657864,
+   "name": "MetnosClientSetup (1).ps1",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (1).ps1",
+   "size": 4968,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783093485.221151,
+   "name": "MetnosClientSetup (2).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (2).cmd",
+   "size": 6732,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783090170.4736369,
+   "name": "MetnosClientSetup (2).ps1",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (2).ps1",
+   "size": 4968,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783094033.1266117,
+   "name": "MetnosClientSetup (3).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (3).cmd",
+   "size": 8054,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783090422.129634,
+   "name": "MetnosClientSetup (3).ps1",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (3).ps1",
+   "size": 4968,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783094529.556422,
+   "name": "MetnosClientSetup (4).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (4).cmd",
+   "size": 8744,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783095130.1496632,
+   "name": "MetnosClientSetup (5).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (5).cmd",
+   "size": 9217,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783108653.6131752,
+   "name": "MetnosClientSetup (6).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (6).cmd",
+   "size": 9513,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783110689.4329667,
+   "name": "MetnosClientSetup (7).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (7).cmd",
+   "size": 9513,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783263455.27108,
+   "name": "MetnosClientSetup (8).cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup (8).cmd",
+   "size": 9530,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783091540.7064466,
+   "name": "MetnosClientSetup.cmd",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup.cmd",
+   "size": 5619,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1783090063.3318515,
+   "name": "MetnosClientSetup.ps1",
+   "path": "C:\\Users\\rober\\Downloads\\MetnosClientSetup.ps1",
+   "size": 4968,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1776184490.6722698,
+   "name": "Microsoft.Services.Store.winmd",
+   "path": "C:\\Users\\rober\\Downloads\\Microsoft.Services.Store.winmd",
+   "size": 4608,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762785422.9641268,
+   "name": "minimal_ui_backend_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\minimal_ui_backend_patch.zip",
+   "size": 5579,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1744724561.5482965,
+   "name": "mnm-removebg-preview(1).png",
+   "path": "C:\\Users\\rober\\Downloads\\mnm-removebg-preview(1).png",
+   "size": 120852,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1744724504.9130037,
+   "name": "mnm-removebg-preview.png",
+   "path": "C:\\Users\\rober\\Downloads\\mnm-removebg-preview.png",
+   "size": 120852,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1769378044.5463307,
+   "name": "mobiletrans_5.1.0_full6758.exe",
+   "path": "C:\\Users\\rober\\Downloads\\mobiletrans_5.1.0_full6758.exe",
+   "size": 203328360,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744730153.2991066,
+   "name": "MODULO_3.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\MODULO_3.pdf",
+   "size": 118767,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744730201.252697,
+   "name": "MODULO_4.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\MODULO_4.pdf",
+   "size": 61242,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744730210.77292,
+   "name": "MODULO_4TER.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\MODULO_4TER.pdf",
+   "size": 73658,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764572049.1250305,
+   "name": "modulo_avanzamento_grado.docx",
+   "path": "C:\\Users\\rober\\Downloads\\modulo_avanzamento_grado.docx",
+   "size": 36776,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1764572076.5204787,
+   "name": "modulo_avanzamento_grado.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\modulo_avanzamento_grado.xlsx",
+   "size": 4948,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764572418.3736882,
+   "name": "modulo_tabella_layout_esteso.docx",
+   "path": "C:\\Users\\rober\\Downloads\\modulo_tabella_layout_esteso.docx",
+   "size": 37178,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764572308.8940024,
+   "name": "modulo_tabella_layout_fullpage.docx",
+   "path": "C:\\Users\\rober\\Downloads\\modulo_tabella_layout_fullpage.docx",
+   "size": 36996,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1772201628.2844417,
+   "name": "MQTT-Explorer-Setup-0.4.0-beta.6.exe",
+   "path": "C:\\Users\\rober\\Downloads\\MQTT-Explorer-Setup-0.4.0-beta.6.exe",
+   "size": 82849344,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765311744.736209,
+   "name": "my_data_2025-12-09 (1).json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_2025-12-09 (1).json",
+   "size": 1758,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765313683.0433166,
+   "name": "my_data_2025-12-09 (2).json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_2025-12-09 (2).json",
+   "size": 1758,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310506.1722095,
+   "name": "my_data_2025-12-09.json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_2025-12-09.json",
+   "size": 443,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765309862.514516,
+   "name": "my_data_20251209 (1).json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_20251209 (1).json",
+   "size": 357,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310023.431466,
+   "name": "my_data_20251209 (2).json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_20251209 (2).json",
+   "size": 443,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765309839.3467057,
+   "name": "my_data_20251209.json",
+   "path": "C:\\Users\\rober\\Downloads\\my_data_20251209.json",
+   "size": 357,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1763497891.895885,
+   "name": "node-v24.11.1-x64.msi",
+   "path": "C:\\Users\\rober\\Downloads\\node-v24.11.1-x64.msi",
+   "size": 32223232,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1769250725.6018484,
+   "name": "OfficeSetup (1).exe",
+   "path": "C:\\Users\\rober\\Downloads\\OfficeSetup (1).exe",
+   "size": 7400568,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1769252137.3085594,
+   "name": "OfficeSetup (2).exe",
+   "path": "C:\\Users\\rober\\Downloads\\OfficeSetup (2).exe",
+   "size": 7400568,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1744707461.9052231,
+   "name": "OfficeSetup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\OfficeSetup.exe",
+   "size": 7648784,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1777973049.8520231,
+   "name": "OHIRUME_OKAMI_NO_NORI.docx",
+   "path": "C:\\Users\\rober\\Downloads\\OHIRUME_OKAMI_NO_NORI.docx",
+   "size": 37230,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1769883360.8504095,
+   "name": "Omada_Network_Application_v6.1.0.19_linux_x64_20260117100056_1768888358344.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_Network_Application_v6.1.0.19_linux_x64_20260117100056_1768888358344.tar.gz",
+   "size": 307699260,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1775854769.3876455,
+   "name": "Omada_Network_Application_v6.2.0.17_linux_x64_20260331104736_1775036849460.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_Network_Application_v6.2.0.17_linux_x64_20260331104736_1775036849460.tar.gz",
+   "size": 311818450,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1779554891.228721,
+   "name": "Omada_Network_Application_v6.2.10.17_linux_x64_20260428102037_1778119470691.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_Network_Application_v6.2.10.17_linux_x64_20260428102037_1778119470691.tar.gz",
+   "size": 298674053,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1744044832.0422077,
+   "name": "Omada_SDN_Controller_v5.15.20.18_linux_x64_20250324203941_1743391021736.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_SDN_Controller_v5.15.20.18_linux_x64_20250324203941_1743391021736.tar.gz",
+   "size": 282508969,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1739137936.401998,
+   "name": "Omada_SDN_Controller_v5.15.8.2_linux_x64_20241230190010_1736228393870.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_SDN_Controller_v5.15.8.2_linux_x64_20241230190010_1736228393870.tar.gz",
+   "size": 262533371,
+   "type": "file"
+  },
+  {
+   "kind": "archive",
+   "mime": "application/x-tar",
+   "mtime": 1765229838.8266735,
+   "name": "Omada_SDN_Controller_v6.0.0.25_linux_x64_20251120205736_1764216099518.tar.gz",
+   "path": "C:\\Users\\rober\\Downloads\\Omada_SDN_Controller_v6.0.0.25_linux_x64_20251120205736_1764216099518.tar.gz",
+   "size": 325283601,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1760966181.497038,
+   "name": "ordini_amazon_corretto.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\ordini_amazon_corretto.xlsx",
+   "size": 5409,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1746176882.0394795,
+   "name": "PassportMaker.exe",
+   "path": "C:\\Users\\rober\\Downloads\\PassportMaker.exe",
+   "size": 27075064,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762621418.3091092,
+   "name": "patch_async_v1.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_async_v1.zip",
+   "size": 2410,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762611937.4556606,
+   "name": "patch_fixed_only (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (1).zip",
+   "size": 4104,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762621056.2183802,
+   "name": "patch_fixed_only (10).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (10).zip",
+   "size": 2703,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762622410.629543,
+   "name": "patch_fixed_only (11).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (11).zip",
+   "size": 1925,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762622436.819148,
+   "name": "patch_fixed_only (12).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (12).zip",
+   "size": 1925,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762704478.542553,
+   "name": "patch_fixed_only (13).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (13).zip",
+   "size": 4255,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762612044.9069254,
+   "name": "patch_fixed_only (2).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (2).zip",
+   "size": 4104,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762612216.6290257,
+   "name": "patch_fixed_only (3).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (3).zip",
+   "size": 1089,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762618692.7009494,
+   "name": "patch_fixed_only (4).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (4).zip",
+   "size": 1944,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762619181.0579495,
+   "name": "patch_fixed_only (5).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (5).zip",
+   "size": 790,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762619474.3868177,
+   "name": "patch_fixed_only (6).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (6).zip",
+   "size": 967,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762619682.766539,
+   "name": "patch_fixed_only (7).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (7).zip",
+   "size": 1115,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762620092.9935982,
+   "name": "patch_fixed_only (8).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (8).zip",
+   "size": 1066,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762620455.7557733,
+   "name": "patch_fixed_only (9).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only (9).zip",
+   "size": 2360,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762609027.3210864,
+   "name": "patch_fixed_only.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only.zip",
+   "size": 6173,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762610054.3195784,
+   "name": "patch_fixed_only_maxn_alias.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_fixed_only_maxn_alias.zip",
+   "size": 4357,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762638905.81645,
+   "name": "patch_rich_layout_v2 (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_rich_layout_v2 (1).zip",
+   "size": 2648,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762638857.719207,
+   "name": "patch_rich_layout_v2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_rich_layout_v2.zip",
+   "size": 2648,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762638258.873745,
+   "name": "patch_rich_ui.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_rich_ui.zip",
+   "size": 2422,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762640077.1923506,
+   "name": "patch_textual_ui (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_textual_ui (1).zip",
+   "size": 2610,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762640041.3482752,
+   "name": "patch_textual_ui.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_textual_ui.zip",
+   "size": 2610,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762622952.3747015,
+   "name": "patch_tui.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_tui.zip",
+   "size": 3252,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762635834.6489182,
+   "name": "patch_tui_integrated.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_tui_integrated.zip",
+   "size": 2292,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762636544.5306084,
+   "name": "patch_tui_noflicker.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_tui_noflicker.zip",
+   "size": 2874,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762636889.1605065,
+   "name": "patch_tui_scrollable.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_tui_scrollable.zip",
+   "size": 2888,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762537335.0905266,
+   "name": "patch_v2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_v2.zip",
+   "size": 6400,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762537893.3240623,
+   "name": "patch_v3.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_v3.zip",
+   "size": 6861,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762539322.5926578,
+   "name": "patch_v4_momentum_fallbacks.zip",
+   "path": "C:\\Users\\rober\\Downloads\\patch_v4_momentum_fallbacks.zip",
+   "size": 3855,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783242489.346141,
+   "name": "Path C__Windows_System32_drivers_etc (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Path C__Windows_System32_drivers_etc (1).xlsx",
+   "size": 4931,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783202547.4235375,
+   "name": "Path C__Windows_System32_drivers_etc.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Path C__Windows_System32_drivers_etc.xlsx",
+   "size": 4931,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1763904243.418118,
+   "name": "PDFSparkWare_829667.exe",
+   "path": "C:\\Users\\rober\\Downloads\\PDFSparkWare_829667.exe",
+   "size": 12604424,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1771956240.176919,
+   "name": "pianta_vista_dall_alto_pulita.png",
+   "path": "C:\\Users\\rober\\Downloads\\pianta_vista_dall_alto_pulita.png",
+   "size": 6448,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "message/rfc822",
+   "mtime": 1758821860.194707,
+   "name": "postacert2.eml",
+   "path": "C:\\Users\\rober\\Downloads\\postacert2.eml",
+   "size": 2910673,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1760460218.4001837,
+   "name": "preghiera_per_la_pace.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\preghiera_per_la_pace.pdf",
+   "size": 3950,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1775828244.8056347,
+   "name": "prenotazione-80473913.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\prenotazione-80473913.pdf",
+   "size": 53962,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1764774899.21602,
+   "name": "PROTECTLI.md",
+   "path": "C:\\Users\\rober\\Downloads\\PROTECTLI.md",
+   "size": 4523,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/png",
+   "mtime": 1764779893.859697,
+   "name": "protectli_unifi_topology.png",
+   "path": "C:\\Users\\rober\\Downloads\\protectli_unifi_topology.png",
+   "size": 150593,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762545408.2254796,
+   "name": "providers_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\providers_patch.zip",
+   "size": 4452,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762461096.6980574,
+   "name": "providers_patched_fix_cache_ttl.zip",
+   "path": "C:\\Users\\rober\\Downloads\\providers_patched_fix_cache_ttl.zip",
+   "size": 38249,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736959126.8385253,
+   "name": "pycharm-community-2024.3.1.1.exe",
+   "path": "C:\\Users\\rober\\Downloads\\pycharm-community-2024.3.1.1.exe",
+   "size": 542730984,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736958756.6793108,
+   "name": "python-3.13.1-amd64.exe",
+   "path": "C:\\Users\\rober\\Downloads\\python-3.13.1-amd64.exe",
+   "size": 28688288,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1773177809.8279233,
+   "name": "Report Febbraio 2026 - Roberto Brunialti (1).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Report Febbraio 2026 - Roberto Brunialti (1).xlsx",
+   "size": 4932,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1773690165.7407494,
+   "name": "Report Febbraio 2026 - Roberto Brunialti (2).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Report Febbraio 2026 - Roberto Brunialti (2).xlsx",
+   "size": 4932,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1774257601.1131926,
+   "name": "Report Febbraio 2026 - Roberto Brunialti (3).xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Report Febbraio 2026 - Roberto Brunialti (3).xlsx",
+   "size": 4932,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1773177552.2767434,
+   "name": "Report Febbraio 2026 - Roberto Brunialti.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Report Febbraio 2026 - Roberto Brunialti.xlsx",
+   "size": 4932,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1775852278.5948014,
+   "name": "Report Marzo 2026 - Roberto Brunialti.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Report Marzo 2026 - Roberto Brunialti.xlsx",
+   "size": 5216,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1764782651.0302272,
+   "name": "rete_protectli_unifi_mappato.drawio",
+   "path": "C:\\Users\\rober\\Downloads\\rete_protectli_unifi_mappato.drawio",
+   "size": 2456,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1764783542.236786,
+   "name": "rete_protectli_unifi_mapping_v3.drawio",
+   "path": "C:\\Users\\rober\\Downloads\\rete_protectli_unifi_mapping_v3.drawio",
+   "size": 9802,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1764783000.238266,
+   "name": "rete_v2_clean.drawio",
+   "path": "C:\\Users\\rober\\Downloads\\rete_v2_clean.drawio",
+   "size": 4718,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1778057135.5819058,
+   "name": "riassunto_gemma4_mtp_llamacpp_amd395_linux.docx",
+   "path": "C:\\Users\\rober\\Downloads\\riassunto_gemma4_mtp_llamacpp_amd395_linux.docx",
+   "size": 40509,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1741290693.5176263,
+   "name": "ROBERTO-BRUNIALTI-2438585850.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\ROBERTO-BRUNIALTI-2438585850.pdf",
+   "size": 234055,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762787431.60288,
+   "name": "SentimentWeb_fixed (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\SentimentWeb_fixed (1).zip",
+   "size": 121155,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762786437.8727918,
+   "name": "SentimentWeb_fixed.zip",
+   "path": "C:\\Users\\rober\\Downloads\\SentimentWeb_fixed.zip",
+   "size": 121155,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762789748.2481165,
+   "name": "SentimentWeb_fixed2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\SentimentWeb_fixed2.zip",
+   "size": 122441,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763403892.3540175,
+   "name": "sentimentweb_fixed_full (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixed_full (1).zip",
+   "size": 234333,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763403784.11804,
+   "name": "sentimentweb_fixed_full.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixed_full.zip",
+   "size": 234333,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763384828.3886793,
+   "name": "sentimentweb_fixed_mailer_20251117 (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixed_mailer_20251117 (1).zip",
+   "size": 133371,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763384769.7926192,
+   "name": "sentimentweb_fixed_mailer_20251117.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixed_mailer_20251117.zip",
+   "size": 133371,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762981734.8740144,
+   "name": "sentimentweb_fixes (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (1).zip",
+   "size": 9505,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762985701.215601,
+   "name": "sentimentweb_fixes (10).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (10).zip",
+   "size": 13126,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763380255.112611,
+   "name": "sentimentweb_fixes (11).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (11).zip",
+   "size": 7352,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762989890.2823958,
+   "name": "sentimentweb_fixes (2).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (2).zip",
+   "size": 135004,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762983148.7361877,
+   "name": "sentimentweb_fixes (3).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (3).zip",
+   "size": 7893,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762983838.4817464,
+   "name": "sentimentweb_fixes (4).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (4).zip",
+   "size": 8975,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762984180.848034,
+   "name": "sentimentweb_fixes (5).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (5).zip",
+   "size": 9269,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762984518.7316234,
+   "name": "sentimentweb_fixes (6).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (6).zip",
+   "size": 9341,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762984727.626624,
+   "name": "sentimentweb_fixes (7).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (7).zip",
+   "size": 10149,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762985014.1033862,
+   "name": "sentimentweb_fixes (8).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (8).zip",
+   "size": 10363,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762985396.0641017,
+   "name": "sentimentweb_fixes (9).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes (9).zip",
+   "size": 10466,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762981144.1097302,
+   "name": "sentimentweb_fixes.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fixes.zip",
+   "size": 7352,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763379824.710199,
+   "name": "sentimentweb_fix_20251117.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fix_20251117.zip",
+   "size": 1352,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763404379.48481,
+   "name": "sentimentweb_fix_app_and_mailer.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fix_app_and_mailer.zip",
+   "size": 2458,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763401246.2498477,
+   "name": "sentimentweb_fix_web_app (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fix_web_app (1).zip",
+   "size": 1284,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763373485.3753011,
+   "name": "sentimentweb_fix_web_app.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_fix_web_app.zip",
+   "size": 1284,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763405087.85758,
+   "name": "sentimentweb_mailer_tls_fix.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_mailer_tls_fix.zip",
+   "size": 1302,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763401689.213928,
+   "name": "sentimentweb_patch_mailer.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_patch_mailer.zip",
+   "size": 1098,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763385026.3988967,
+   "name": "sentimentweb_patch_only.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_patch_only.zip",
+   "size": 2067,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762991251.454154,
+   "name": "sentimentweb_production_bundle.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_production_bundle.zip",
+   "size": 4230,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762805132.9898226,
+   "name": "sentimentweb_sources_20251110_200458.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_sources_20251110_200458.zip",
+   "size": 7964,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763402779.4113758,
+   "name": "sentimentweb_web_fix_20251117.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_web_fix_20251117.zip",
+   "size": 1162,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1763374616.6840892,
+   "name": "sentimentweb_web_fix_20251117_v2.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentimentweb_web_fix_20251117_v2.zip",
+   "size": 1284,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762549489.0078585,
+   "name": "sentiment_app_fixed (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_app_fixed (1).zip",
+   "size": 55759,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762549595.188419,
+   "name": "sentiment_app_fixed (2).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_app_fixed (2).zip",
+   "size": 55759,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762549390.1256337,
+   "name": "sentiment_app_fixed.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_app_fixed.zip",
+   "size": 55759,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762807802.465051,
+   "name": "sentiment_frontend_fix.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_frontend_fix.zip",
+   "size": 5812,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762808236.0121875,
+   "name": "sentiment_frontend_fix_v4 (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_frontend_fix_v4 (1).zip",
+   "size": 5812,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762808185.1785932,
+   "name": "sentiment_frontend_fix_v4.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_frontend_fix_v4.zip",
+   "size": 5812,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762809334.938588,
+   "name": "sentiment_frontend_v5 (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_frontend_v5 (1).zip",
+   "size": 6220,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762809058.2495656,
+   "name": "sentiment_frontend_v5.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_frontend_v5.zip",
+   "size": 6220,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762720443.7752843,
+   "name": "sentiment_full_auth.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_full_auth.zip",
+   "size": 4938,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762469284.1916037,
+   "name": "sentiment_patch_cfg_cooldown.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_patch_cfg_cooldown.zip",
+   "size": 3578,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762468465.8189125,
+   "name": "sentiment_patch_logging.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_patch_logging.zip",
+   "size": 2780,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762470373.4099655,
+   "name": "sentiment_patch_multithread.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_patch_multithread.zip",
+   "size": 3311,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762468980.3528504,
+   "name": "sentiment_patch_rate_limit.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_patch_rate_limit.zip",
+   "size": 3316,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762471047.3614683,
+   "name": "sentiment_patch_sessions_timeouts_priority.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_patch_sessions_timeouts_priority.zip",
+   "size": 3441,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762729973.058555,
+   "name": "sentiment_web_auth_dashboard_integrated.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_web_auth_dashboard_integrated.zip",
+   "size": 8758,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762701413.8338914,
+   "name": "sentiment_web_package.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_web_package.zip",
+   "size": 5003,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762725914.1794446,
+   "name": "sentiment_web_ui_auth.zip",
+   "path": "C:\\Users\\rober\\Downloads\\sentiment_web_ui_auth.zip",
+   "size": 6769,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/x-python",
+   "mtime": 1762971783.076401,
+   "name": "serve (1).py",
+   "path": "C:\\Users\\rober\\Downloads\\serve (1).py",
+   "size": 965,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/x-python",
+   "mtime": 1762971757.4967625,
+   "name": "serve.py",
+   "path": "C:\\Users\\rober\\Downloads\\serve.py",
+   "size": 965,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762966663.7200725,
+   "name": "smtp_diag_patch (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\smtp_diag_patch (1).zip",
+   "size": 3253,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762966669.2628546,
+   "name": "smtp_diag_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\smtp_diag_patch.zip",
+   "size": 3253,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762965631.8704205,
+   "name": "smtp_fixes_patch.zip",
+   "path": "C:\\Users\\rober\\Downloads\\smtp_fixes_patch.zip",
+   "size": 7524,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762966320.8989167,
+   "name": "smtp_fix_bundle (1).zip",
+   "path": "C:\\Users\\rober\\Downloads\\smtp_fix_bundle (1).zip",
+   "size": 5190,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762966202.522627,
+   "name": "smtp_fix_bundle.zip",
+   "path": "C:\\Users\\rober\\Downloads\\smtp_fix_bundle.zip",
+   "size": 5190,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1783263623.091847,
+   "name": "spreadsheet_20260705_170002.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\spreadsheet_20260705_170002.xlsx",
+   "size": 4930,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1762424737.5454204,
+   "name": "swagger.json",
+   "path": "C:\\Users\\rober\\Downloads\\swagger.json",
+   "size": 218303,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+   "mtime": 1773251638.854217,
+   "name": "system_architecture.pptx",
+   "path": "C:\\Users\\rober\\Downloads\\system_architecture.pptx",
+   "size": 191927,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764573404.571939,
+   "name": "tabella_saniwa_shinseisho.docx",
+   "path": "C:\\Users\\rober\\Downloads\\tabella_saniwa_shinseisho.docx",
+   "size": 37227,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "mtime": 1772120210.40297,
+   "name": "Tavole_misure_di_produttivita.xlsx",
+   "path": "C:\\Users\\rober\\Downloads\\Tavole_misure_di_produttivita.xlsx",
+   "size": 46837,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739371309.3114371,
+   "name": "tenggen_card_A4_final.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_A4_final.pdf",
+   "size": 3540,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739370690.8119369,
+   "name": "tenggen_card_back.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_back.pdf",
+   "size": 2480,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739369648.4833934,
+   "name": "tenggen_card_centered.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_centered.pdf",
+   "size": 2631,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739371009.990896,
+   "name": "tenggen_card_double_sided (1).pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_double_sided (1).pdf",
+   "size": 4044,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739370958.8506455,
+   "name": "tenggen_card_double_sided.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_double_sided.pdf",
+   "size": 4044,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739369269.7841485,
+   "name": "tenggen_card_final_layout.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_final_layout.pdf",
+   "size": 2409,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739369974.4477134,
+   "name": "tenggen_card_japanese_fixed.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_japanese_fixed.pdf",
+   "size": 2740,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739369824.6526246,
+   "name": "tenggen_card_kanji.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_kanji.pdf",
+   "size": 2755,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739370206.9996898,
+   "name": "tenggen_card_with_cut_marks.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_with_cut_marks.pdf",
+   "size": 2804,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1739369782.552699,
+   "name": "tenggen_card_with_kanji.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\tenggen_card_with_kanji.pdf",
+   "size": 2774,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1772493978.1047204,
+   "name": "tesseract-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\tesseract-setup.exe",
+   "size": 50175248,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1779050575.5543134,
+   "name": "ticketdirect1294314771.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\ticketdirect1294314771.pdf",
+   "size": 1948009,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+   "mtime": 1764608641.4516816,
+   "name": "traduzione_revisione_prezzi.docx",
+   "path": "C:\\Users\\rober\\Downloads\\traduzione_revisione_prezzi.docx",
+   "size": 28495,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1737055432.1975808,
+   "name": "tsetup-x64.5.10.3.exe",
+   "path": "C:\\Users\\rober\\Downloads\\tsetup-x64.5.10.3.exe",
+   "size": 47059448,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/vnd.ms-excel",
+   "mtime": 1762464456.1138172,
+   "name": "ucg_mi_d (1).csv",
+   "path": "C:\\Users\\rober\\Downloads\\ucg_mi_d (1).csv",
+   "size": 7,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/vnd.ms-excel",
+   "mtime": 1762464496.139457,
+   "name": "ucg_mi_d (2).csv",
+   "path": "C:\\Users\\rober\\Downloads\\ucg_mi_d (2).csv",
+   "size": 7,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/vnd.ms-excel",
+   "mtime": 1762464444.9837682,
+   "name": "ucg_mi_d.csv",
+   "path": "C:\\Users\\rober\\Downloads\\ucg_mi_d.csv",
+   "size": 7,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741801078.5826118,
+   "name": "VC_redist.x86 (1).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VC_redist.x86 (1).exe",
+   "size": 13949616,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741801137.0430553,
+   "name": "VC_redist.x86 (2).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VC_redist.x86 (2).exe",
+   "size": 13949616,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741801171.7387772,
+   "name": "VC_redist.x86 (3).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VC_redist.x86 (3).exe",
+   "size": 13949616,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741801196.0991604,
+   "name": "VC_redist.x86 (4).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VC_redist.x86 (4).exe",
+   "size": 13949616,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741793571.291134,
+   "name": "VC_redist.x86.exe",
+   "path": "C:\\Users\\rober\\Downloads\\VC_redist.x86.exe",
+   "size": 13949616,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1744809451.8692584,
+   "name": "VERBALI CONVENZIONI INVCIV.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\VERBALI CONVENZIONI INVCIV.pdf",
+   "size": 60227,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736964653.6805067,
+   "name": "VisualStudioSetup (1).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VisualStudioSetup (1).exe",
+   "size": 4439216,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741784126.728623,
+   "name": "VisualStudioSetup (2).exe",
+   "path": "C:\\Users\\rober\\Downloads\\VisualStudioSetup (2).exe",
+   "size": 4450920,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736964592.837201,
+   "name": "VisualStudioSetup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\VisualStudioSetup.exe",
+   "size": 4439216,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1776185057.7371862,
+   "name": "VSCodeUserSetup-x64-1.115.0.exe",
+   "path": "C:\\Users\\rober\\Downloads\\VSCodeUserSetup-x64-1.115.0.exe",
+   "size": 141434432,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1736960270.9350352,
+   "name": "vs_BuildTools.exe",
+   "path": "C:\\Users\\rober\\Downloads\\vs_BuildTools.exe",
+   "size": 4437432,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1741787376.939043,
+   "name": "VulkanSDK-1.4.304.1-Installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\VulkanSDK-1.4.304.1-Installer.exe",
+   "size": 196929416,
+   "type": "file"
+  },
+  {
+   "kind": "document",
+   "mime": "application/pdf",
+   "mtime": 1765284261.4617014,
+   "name": "w8ben.pdf",
+   "path": "C:\\Users\\rober\\Downloads\\w8ben.pdf",
+   "size": 110614,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765309786.6044545,
+   "name": "watchlists (1).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (1).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765309830.7510877,
+   "name": "watchlists (2).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (2).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765309857.8502345,
+   "name": "watchlists (3).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (3).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310021.40553,
+   "name": "watchlists (4).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (4).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310071.9827423,
+   "name": "watchlists (5).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (5).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310503.3095548,
+   "name": "watchlists (6).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (6).json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1765310802.1124065,
+   "name": "watchlists (7).json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists (7).json",
+   "size": 1060,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/json",
+   "mtime": 1764184386.4341598,
+   "name": "watchlists.json",
+   "path": "C:\\Users\\rober\\Downloads\\watchlists.json",
+   "size": 2,
+   "type": "file"
+  },
+  {
+   "kind": "image",
+   "mime": "image/svg+xml",
+   "mtime": 1777373631.534738,
+   "name": "wax_seal.svg",
+   "path": "C:\\Users\\rober\\Downloads\\wax_seal.svg",
+   "size": 36434,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-zip-compressed",
+   "mtime": 1762712096.4043124,
+   "name": "web_patch_chart_scaling.zip",
+   "path": "C:\\Users\\rober\\Downloads\\web_patch_chart_scaling.zip",
+   "size": 3601,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1780075454.350016,
+   "name": "wireguard-installer.exe",
+   "path": "C:\\Users\\rober\\Downloads\\wireguard-installer.exe",
+   "size": 86664,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1739744258.23315,
+   "name": "Xming-6-9-0-31-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Xming-6-9-0-31-setup.exe",
+   "size": 2204914,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1739744210.9171576,
+   "name": "Xming-fonts-7-7-0-10-setup.exe",
+   "path": "C:\\Users\\rober\\Downloads\\Xming-fonts-7-7-0-10-setup.exe",
+   "size": 32623673,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1746517193.0,
+   "name": "Driver audio ad alta definizione HD Realtek Core Ultra serie 57 - sp158115.exe",
+   "path": "C:\\Users\\rober\\Downloads\\HP Downloads\\Driver audio ad alta definizione HD Realtek Core Ultra serie 57 - sp158115.exe",
+   "size": 953314920,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318401.8056836,
+   "name": "deandre_omni_hello.wav",
+   "path": "C:\\Users\\rober\\Downloads\\output_deandre\\deandre_omni_hello.wav",
+   "size": 257324,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318401.7695224,
+   "name": "deandre_omni_philosophy.wav",
+   "path": "C:\\Users\\rober\\Downloads\\output_deandre\\deandre_omni_philosophy.wav",
+   "size": 289964,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318401.7695224,
+   "name": "deandre_omni_status.wav",
+   "path": "C:\\Users\\rober\\Downloads\\output_deandre\\deandre_omni_status.wav",
+   "size": 293804,
+   "type": "file"
+  },
+  {
+   "kind": "audio",
+   "mime": "audio/wav",
+   "mtime": 1778318401.7230778,
+   "name": "deandre_omni_weather.wav",
+   "path": "C:\\Users\\rober\\Downloads\\output_deandre\\deandre_omni_weather.wav",
+   "size": 261164,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "BUILD-HASHES.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\BUILD-HASHES.txt",
+   "size": 11994,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "BUILD-MANIFEST.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\BUILD-MANIFEST.txt",
+   "size": 881,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1739427300.0,
+   "name": "BUILD-README.url",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\BUILD-README.url",
+   "size": 62,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\COPYING.txt",
+   "size": 1088,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "mk-ca-bundle.pl",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\mk-ca-bundle.pl",
+   "size": 22779,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "README.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\README.txt",
+   "size": 1664,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "RELEASE-NOTES.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\RELEASE-NOTES.txt",
+   "size": 7515,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-x509-ca-cert",
+   "mtime": 1735614726.0,
+   "name": "curl-ca-bundle.crt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\bin\\curl-ca-bundle.crt",
+   "size": 231212,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1739427300.0,
+   "name": "curl.exe",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\bin\\curl.exe",
+   "size": 3670120,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "libcurl-x64.def",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\bin\\libcurl-x64.def",
+   "size": 2413,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/x-msdownload",
+   "mtime": 1739427300.0,
+   "name": "libcurl-x64.dll",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\bin\\libcurl-x64.dll",
+   "size": 3223144,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "ALTSVC.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\ALTSVC.md",
+   "size": 1122,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "BINDINGS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\BINDINGS.md",
+   "size": 6428,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "BUG-BOUNTY.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\BUG-BOUNTY.md",
+   "size": 3595,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "BUGS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\BUGS.md",
+   "size": 11942,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CIPHERS-TLS12.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CIPHERS-TLS12.md",
+   "size": 38498,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CIPHERS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CIPHERS.md",
+   "size": 7708,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CODE_OF_CONDUCT.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CODE_OF_CONDUCT.md",
+   "size": 1704,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CODE_REVIEW.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CODE_REVIEW.md",
+   "size": 5998,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CONTRIBUTE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CONTRIBUTE.md",
+   "size": 13303,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "curl-config.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\curl-config.md",
+   "size": 3399,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CURL-DISABLE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CURL-DISABLE.md",
+   "size": 3337,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "CURLDOWN.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\CURLDOWN.md",
+   "size": 5080,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "DEPRECATE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\DEPRECATE.md",
+   "size": 1807,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "DISTROS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\DISTROS.md",
+   "size": 10878,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "EARLY-RELEASE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\EARLY-RELEASE.md",
+   "size": 2937,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "ECH.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\ECH.md",
+   "size": 19166,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "EXPERIMENTAL.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\EXPERIMENTAL.md",
+   "size": 2773,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "FAQ.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\FAQ.txt",
+   "size": 67951,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "FEATURES.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\FEATURES.md",
+   "size": 6163,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "GOVERNANCE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\GOVERNANCE.md",
+   "size": 7716,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HELP-US.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HELP-US.md",
+   "size": 4183,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HISTORY.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HISTORY.md",
+   "size": 13092,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HSTS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HSTS.md",
+   "size": 1268,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HTTP-COOKIES.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HTTP-COOKIES.md",
+   "size": 7004,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HTTP3.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HTTP3.md",
+   "size": 13859,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "HTTPSRR.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\HTTPSRR.md",
+   "size": 3435,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "INFRASTRUCTURE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\INFRASTRUCTURE.md",
+   "size": 7134,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "INSTALL-CMAKE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\INSTALL-CMAKE.md",
+   "size": 28124,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "INSTALL.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\INSTALL.md",
+   "size": 26670,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "INSTALL.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\INSTALL.txt",
+   "size": 315,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "INTERNALS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\INTERNALS.md",
+   "size": 1823,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "IPFS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\IPFS.md",
+   "size": 5927,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "KNOWN_BUGS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\KNOWN_BUGS.txt",
+   "size": 22258,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "MAIL-ETIQUETTE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\MAIL-ETIQUETTE.md",
+   "size": 10812,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "MANUAL.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\MANUAL.md",
+   "size": 36330,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "mk-ca-bundle.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\mk-ca-bundle.md",
+   "size": 3598,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "options-in-versions.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\options-in-versions.txt",
+   "size": 12035,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "README.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\README.md",
+   "size": 593,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "RELEASE-PROCEDURE.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\RELEASE-PROCEDURE.md",
+   "size": 3563,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "RELEASE-TOOLS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\RELEASE-TOOLS.md",
+   "size": 612,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "ROADMAP.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\ROADMAP.md",
+   "size": 384,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "RUSTLS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\RUSTLS.md",
+   "size": 1093,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "SECURITY-ADVISORY.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\SECURITY-ADVISORY.md",
+   "size": 4776,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "SPONSORS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\SPONSORS.md",
+   "size": 2123,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "SSL-PROBLEMS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\SSL-PROBLEMS.md",
+   "size": 3948,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "SSLCERTS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\SSLCERTS.md",
+   "size": 4740,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "THANKS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\THANKS.txt",
+   "size": 50704,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "TheArtOfHttpScripting.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\TheArtOfHttpScripting.md",
+   "size": 28627,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "TODO.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\TODO.txt",
+   "size": 50192,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "URL-SYNTAX.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\URL-SYNTAX.md",
+   "size": 14899,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "VERSIONS.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\VERSIONS.md",
+   "size": 2360,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1739427300.0,
+   "name": "VULN-DISCLOSURE-POLICY.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\VULN-DISCLOSURE-POLICY.md",
+   "size": 14566,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705178618.0,
+   "name": "libpsl.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\libpsl.h",
+   "size": 5792,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "libssh2.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\libssh2.h",
+   "size": 60665,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "libssh2_publickey.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\libssh2_publickey.h",
+   "size": 4942,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "libssh2_sftp.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\libssh2_sftp.h",
+   "size": 17369,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705944758.0,
+   "name": "zconf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\zconf.h",
+   "size": 16546,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1711055152.0,
+   "name": "zdict.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\zdict.h",
+   "size": 26433,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705944758.0,
+   "name": "zlib.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\zlib.h",
+   "size": 96829,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1711055152.0,
+   "name": "zstd.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\zstd.h",
+   "size": 175838,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1711055152.0,
+   "name": "zstd_errors.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\zstd_errors.h",
+   "size": 4532,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1693299630.0,
+   "name": "libbrotlicommon.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libbrotlicommon.a",
+   "size": 134894,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1693299630.0,
+   "name": "libbrotlidec.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libbrotlidec.a",
+   "size": 57530,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1728874274.0,
+   "name": "libcrypto.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libcrypto.a",
+   "size": 3419442,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1739427300.0,
+   "name": "libcurl.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libcurl.a",
+   "size": 1737274,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1739427300.0,
+   "name": "libcurl.dll.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libcurl.dll.a",
+   "size": 21386,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1729505022.0,
+   "name": "libnghttp2.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libnghttp2.a",
+   "size": 315756,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1734605760.0,
+   "name": "libnghttp3.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libnghttp3.a",
+   "size": 262216,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1734606348.0,
+   "name": "libngtcp2.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libngtcp2.a",
+   "size": 472430,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1734606348.0,
+   "name": "libngtcp2_crypto_quictls.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libngtcp2_crypto_quictls.a",
+   "size": 45570,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1705178618.0,
+   "name": "libpsl.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libpsl.a",
+   "size": 69072,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1729058602.0,
+   "name": "libssh2.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libssh2.a",
+   "size": 450510,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1728874274.0,
+   "name": "libssl.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libssl.a",
+   "size": 701668,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1705944758.0,
+   "name": "libz.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libz.a",
+   "size": 125650,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1711055152.0,
+   "name": "libzstd.a",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\lib\\libzstd.a",
+   "size": 861692,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "LICENSE.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\brotli\\LICENSE.txt",
+   "size": 1084,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1693299630.0,
+   "name": "README.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\brotli\\README.md",
+   "size": 4099,
+   "type": "file"
+  },
+  {
+   "kind": "binary",
+   "mime": "application/octet-stream",
+   "mtime": 1735614726.0,
+   "name": "LICENSE.url",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\cacert\\LICENSE.url",
+   "size": 73,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705161618.0,
+   "name": "AUTHORS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libpsl\\AUTHORS.txt",
+   "size": 916,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705166192.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libpsl\\COPYING.txt",
+   "size": 1060,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705178618.0,
+   "name": "NEWS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libpsl\\NEWS.txt",
+   "size": 7917,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ChangeLog.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libressl\\ChangeLog.txt",
+   "size": 126185,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1688537308.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libressl\\COPYING.txt",
+   "size": 6500,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1727227650.0,
+   "name": "README.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libressl\\README.md",
+   "size": 9629,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\COPYING.txt",
+   "size": 1959,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "NEWS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\NEWS.txt",
+   "size": 345188,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "README.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\README.txt",
+   "size": 465,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "RELEASE-NOTES.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\RELEASE-NOTES.txt",
+   "size": 21060,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729505018.0,
+   "name": "AUTHORS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp2\\AUTHORS.txt",
+   "size": 2666,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729505022.0,
+   "name": "ChangeLog.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp2\\ChangeLog.txt",
+   "size": 14130,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729505018.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp2\\COPYING.txt",
+   "size": 1156,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/x-rst",
+   "mtime": 1729505018.0,
+   "name": "README.rst",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp2\\README.rst",
+   "size": 49597,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734605758.0,
+   "name": "AUTHORS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp3\\AUTHORS.txt",
+   "size": 349,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734605760.0,
+   "name": "ChangeLog.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp3\\ChangeLog.txt",
+   "size": 5851,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734605758.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp3\\COPYING.txt",
+   "size": 1081,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/x-rst",
+   "mtime": 1734605758.0,
+   "name": "README.rst",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\nghttp3\\README.rst",
+   "size": 1853,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "AUTHORS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\ngtcp2\\AUTHORS.txt",
+   "size": 837,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "ChangeLog.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\ngtcp2\\ChangeLog.txt",
+   "size": 15969,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "COPYING.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\ngtcp2\\COPYING.txt",
+   "size": 1080,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/x-rst",
+   "mtime": 1734606348.0,
+   "name": "README.rst",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\ngtcp2\\README.rst",
+   "size": 11310,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1705944758.0,
+   "name": "ChangeLog.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\zlib\\ChangeLog.txt",
+   "size": 83837,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1665107000.0,
+   "name": "LICENSE.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\zlib\\LICENSE.txt",
+   "size": 1002,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1711055152.0,
+   "name": "CHANGELOG.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\zstd\\CHANGELOG.txt",
+   "size": 49545,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1711055152.0,
+   "name": "LICENSE.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\zstd\\LICENSE.txt",
+   "size": 1549,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/markdown",
+   "mtime": 1711055152.0,
+   "name": "README.md",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\zstd\\README.md",
+   "size": 11103,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "AUTHORS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\docs\\AUTHORS.txt",
+   "size": 1219,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "HACKING-CRYPTO.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\docs\\HACKING-CRYPTO.txt",
+   "size": 40418,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "INSTALL_AUTOTOOLS.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\docs\\INSTALL_AUTOTOOLS.txt",
+   "size": 11853,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729058602.0,
+   "name": "TODO.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\dep\\libssh2\\docs\\TODO.txt",
+   "size": 6425,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "10-at-a-time.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\10-at-a-time.c",
+   "size": 4426,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "address-scope.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\address-scope.c",
+   "size": 1995,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "altsvc.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\altsvc.c",
+   "size": 1892,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "anyauthput.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\anyauthput.c",
+   "size": 4595,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "block_ip.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\block_ip.c",
+   "size": 8674,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "certinfo.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\certinfo.c",
+   "size": 2323,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "chkspeed.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\chkspeed.c",
+   "size": 6854,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "connect-to.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\connect-to.c",
+   "size": 2587,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "cookie_interface.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\cookie_interface.c",
+   "size": 4064,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "debug.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\debug.c",
+   "size": 4329,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "default-scheme.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\default-scheme.c",
+   "size": 1863,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "externalsocket.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\externalsocket.c",
+   "size": 4940,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "fileupload.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\fileupload.c",
+   "size": 2990,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftp-wildcard.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftp-wildcard.c",
+   "size": 4278,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpget.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpget.c",
+   "size": 2673,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpgetinfo.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpgetinfo.c",
+   "size": 2990,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpgetresp.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpgetresp.c",
+   "size": 2682,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpsget.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpsget.c",
+   "size": 2984,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpupload.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpupload.c",
+   "size": 4648,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpuploadfrommem.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpuploadfrommem.c",
+   "size": 3912,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ftpuploadresume.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ftpuploadresume.c",
+   "size": 4487,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "getinfo.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\getinfo.c",
+   "size": 1678,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "getinmemory.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\getinmemory.c",
+   "size": 3333,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "getredirect.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\getredirect.c",
+   "size": 2374,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "getreferrer.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\getreferrer.c",
+   "size": 1874,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "headerapi.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\headerapi.c",
+   "size": 2582,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "hsts-preload.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\hsts-preload.c",
+   "size": 3564,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http-options.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http-options.c",
+   "size": 1966,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http-post.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http-post.c",
+   "size": 2050,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http2-download.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http2-download.c",
+   "size": 6230,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http2-pushinmemory.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http2-pushinmemory.c",
+   "size": 5092,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http2-serverpush.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http2-serverpush.c",
+   "size": 7363,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http2-upload.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http2-upload.c",
+   "size": 8930,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http3-present.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http3-present.c",
+   "size": 1590,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "http3.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\http3.c",
+   "size": 1766,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "httpcustomheader.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\httpcustomheader.c",
+   "size": 2348,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "httpput-postfields.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\httpput-postfields.c",
+   "size": 3509,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "httpput.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\httpput.c",
+   "size": 3772,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "https.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\https.c",
+   "size": 2719,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-append.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-append.c",
+   "size": 3795,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-authzid.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-authzid.c",
+   "size": 2256,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-copy.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-copy.c",
+   "size": 2403,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-create.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-create.c",
+   "size": 2108,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-delete.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-delete.c",
+   "size": 2111,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-examine.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-examine.c",
+   "size": 2162,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-fetch.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-fetch.c",
+   "size": 1996,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-list.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-list.c",
+   "size": 2135,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-lsub.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-lsub.c",
+   "size": 2132,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-multi.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-multi.c",
+   "size": 2370,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-noop.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-noop.c",
+   "size": 2049,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-search.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-search.c",
+   "size": 2406,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-ssl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-ssl.c",
+   "size": 3326,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-store.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-store.c",
+   "size": 2760,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "imap-tls.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\imap-tls.c",
+   "size": 3577,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "interface.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\interface.c",
+   "size": 1760,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "ipv6.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\ipv6.c",
+   "size": 1460,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "keepalive.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\keepalive.c",
+   "size": 1829,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "localport.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\localport.c",
+   "size": 1778,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "maxconnects.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\maxconnects.c",
+   "size": 2025,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-app.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-app.c",
+   "size": 3528,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-debugcallback.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-debugcallback.c",
+   "size": 4242,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-double.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-double.c",
+   "size": 2629,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-formadd.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-formadd.c",
+   "size": 3600,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-legacy.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-legacy.c",
+   "size": 5600,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-post.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-post.c",
+   "size": 3117,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi-single.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\multi-single.c",
+   "size": 2248,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "netrc.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\netrc.c",
+   "size": 1556,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "parseurl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\parseurl.c",
+   "size": 2197,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "persistent.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\persistent.c",
+   "size": 2200,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-authzid.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-authzid.c",
+   "size": 2229,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-dele.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-dele.c",
+   "size": 2200,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-list.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-list.c",
+   "size": 1984,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-multi.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-multi.c",
+   "size": 2366,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-noop.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-noop.c",
+   "size": 2156,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-retr.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-retr.c",
+   "size": 1968,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-ssl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-ssl.c",
+   "size": 3310,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-stat.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-stat.c",
+   "size": 2185,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-tls.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-tls.c",
+   "size": 3545,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-top.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-top.c",
+   "size": 2158,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "pop3-uidl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\pop3-uidl.c",
+   "size": 2093,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "post-callback.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\post-callback.c",
+   "size": 5293,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "postinmemory.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\postinmemory.c",
+   "size": 3449,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "postit2-formadd.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\postit2-formadd.c",
+   "size": 3896,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "postit2.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\postit2.c",
+   "size": 3507,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "progressfunc.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\progressfunc.c",
+   "size": 3161,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "protofeats.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\protofeats.c",
+   "size": 1618,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "range.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\range.c",
+   "size": 1438,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "resolve.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\resolve.c",
+   "size": 1984,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "rtsp-options.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\rtsp-options.c",
+   "size": 1759,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "sendrecv.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\sendrecv.c",
+   "size": 5198,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "sepheaders.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\sepheaders.c",
+   "size": 2732,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "sftpget.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\sftpget.c",
+   "size": 3355,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "sftpuploadresume.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\sftpuploadresume.c",
+   "size": 3930,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "shared-connection-cache.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\shared-connection-cache.c",
+   "size": 2588,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "simple.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\simple.c",
+   "size": 1736,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "simplepost.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\simplepost.c",
+   "size": 1889,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "simplessl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\simplessl.c",
+   "size": 4900,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-authzid.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-authzid.c",
+   "size": 5465,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-expn.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-expn.c",
+   "size": 2611,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-mail.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-mail.c",
+   "size": 4984,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-mime.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-mime.c",
+   "size": 5723,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-multi.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-multi.c",
+   "size": 4671,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-ssl.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-ssl.c",
+   "size": 5898,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-tls.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-tls.c",
+   "size": 6382,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "smtp-vrfy.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\smtp-vrfy.c",
+   "size": 2677,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "sslbackend.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\sslbackend.c",
+   "size": 2367,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "unixsocket.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\unixsocket.c",
+   "size": 2023,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "url2file.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\url2file.c",
+   "size": 2487,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "urlapi.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\urlapi.c",
+   "size": 2178,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "websocket-cb.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\websocket-cb.c",
+   "size": 2200,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "websocket.c",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\examples\\websocket.c",
+   "size": 3569,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "symbols-in-versions.txt",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\docs\\libcurl\\symbols-in-versions.txt",
+   "size": 47295,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "decode.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\brotli\\decode.h",
+   "size": 16886,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "encode.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\brotli\\encode.h",
+   "size": 19841,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "port.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\brotli\\port.h",
+   "size": 11439,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "shared_dictionary.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\brotli\\shared_dictionary.h",
+   "size": 3535,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1693299630.0,
+   "name": "types.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\brotli\\types.h",
+   "size": 2615,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "curl.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\curl.h",
+   "size": 132202,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "curlver.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\curlver.h",
+   "size": 3045,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "easy.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\easy.h",
+   "size": 4012,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "header.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\header.h",
+   "size": 2910,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "mprintf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\mprintf.h",
+   "size": 3086,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "multi.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\multi.h",
+   "size": 18235,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "options.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\options.h",
+   "size": 2401,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "stdcheaders.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\stdcheaders.h",
+   "size": 1362,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "system.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\system.h",
+   "size": 16655,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "typecheck-gcc.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\typecheck-gcc.h",
+   "size": 43631,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "urlapi.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\urlapi.h",
+   "size": 5802,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1739427300.0,
+   "name": "websockets.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\curl\\websockets.h",
+   "size": 2741,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729505022.0,
+   "name": "nghttp2.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\nghttp2\\nghttp2.h",
+   "size": 249862,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1729505022.0,
+   "name": "nghttp2ver.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\nghttp2\\nghttp2ver.h",
+   "size": 1605,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734605760.0,
+   "name": "nghttp3.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\nghttp3\\nghttp3.h",
+   "size": 93848,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734605760.0,
+   "name": "version.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\nghttp3\\version.h",
+   "size": 1657,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "ngtcp2.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\ngtcp2\\ngtcp2.h",
+   "size": 200862,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "ngtcp2_crypto.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\ngtcp2\\ngtcp2_crypto.h",
+   "size": 36432,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "ngtcp2_crypto_quictls.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\ngtcp2\\ngtcp2_crypto_quictls.h",
+   "size": 4786,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1734606348.0,
+   "name": "version.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\ngtcp2\\version.h",
+   "size": 1662,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "aes.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\aes.h",
+   "size": 5019,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "asn1.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\asn1.h",
+   "size": 43159,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "asn1t.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\asn1t.h",
+   "size": 27708,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "bio.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\bio.h",
+   "size": 30058,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "blowfish.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\blowfish.h",
+   "size": 4617,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "bn.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\bn.h",
+   "size": 21103,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "buffer.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\buffer.h",
+   "size": 4105,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "camellia.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\camellia.h",
+   "size": 4824,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "cast.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\cast.h",
+   "size": 4410,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "chacha.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\chacha.h",
+   "size": 1930,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "cmac.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\cmac.h",
+   "size": 3244,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "cms.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\cms.h",
+   "size": 26530,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "comp.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\comp.h",
+   "size": 169,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "conf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\conf.h",
+   "size": 7108,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "crypto.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\crypto.h",
+   "size": 18409,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ct.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ct.h",
+   "size": 20512,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "curve25519.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\curve25519.h",
+   "size": 3388,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "des.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\des.h",
+   "size": 9623,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "dh.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\dh.h",
+   "size": 9304,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "dsa.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\dsa.h",
+   "size": 10643,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "dtls1.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\dtls1.h",
+   "size": 3859,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ec.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ec.h",
+   "size": 29780,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ecdh.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ecdh.h",
+   "size": 109,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ecdsa.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ecdsa.h",
+   "size": 110,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "engine.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\engine.h",
+   "size": 8577,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "err.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\err.h",
+   "size": 17877,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "evp.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\evp.h",
+   "size": 50980,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "hkdf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\hkdf.h",
+   "size": 2473,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "hmac.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\hmac.h",
+   "size": 4584,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "idea.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\idea.h",
+   "size": 4370,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "kdf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\kdf.h",
+   "size": 5965,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "lhash.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\lhash.h",
+   "size": 7321,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "md4.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\md4.h",
+   "size": 4413,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "md5.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\md5.h",
+   "size": 4412,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "modes.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\modes.h",
+   "size": 4583,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "objects.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\objects.h",
+   "size": 5296,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "obj_mac.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\obj_mac.h",
+   "size": 158573,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ocsp.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ocsp.h",
+   "size": 20726,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "opensslconf.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\opensslconf.h",
+   "size": 4256,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "opensslfeatures.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\opensslfeatures.h",
+   "size": 4541,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "opensslv.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\opensslv.h",
+   "size": 626,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ossl_typ.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ossl_typ.h",
+   "size": 7220,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "pem.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\pem.h",
+   "size": 19527,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "pkcs12.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\pkcs12.h",
+   "size": 10591,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "pkcs7.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\pkcs7.h",
+   "size": 20493,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "poly1305.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\poly1305.h",
+   "size": 1531,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "posix_time.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\posix_time.h",
+   "size": 2011,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "rand.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\rand.h",
+   "size": 4809,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "rc2.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\rc2.h",
+   "size": 4307,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "rc4.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\rc4.h",
+   "size": 3722,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ripemd.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ripemd.h",
+   "size": 4506,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "rsa.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\rsa.h",
+   "size": 25005,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "safestack.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\safestack.h",
+   "size": 120281,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "sha.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\sha.h",
+   "size": 7379,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "sm3.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\sm3.h",
+   "size": 1469,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "sm4.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\sm4.h",
+   "size": 1456,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "srtp.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\srtp.h",
+   "size": 6744,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ssl.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ssl.h",
+   "size": 98539,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ssl3.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ssl3.h",
+   "size": 19079,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "stack.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\stack.h",
+   "size": 4267,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "tls1.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\tls1.h",
+   "size": 36832,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ts.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ts.h",
+   "size": 25712,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "txt_db.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\txt_db.h",
+   "size": 4511,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "ui.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\ui.h",
+   "size": 16534,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "x509.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\x509.h",
+   "size": 41581,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "x509v3.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\x509v3.h",
+   "size": 37523,
+   "type": "file"
+  },
+  {
+   "kind": "text",
+   "mime": "text/plain",
+   "mtime": 1728874274.0,
+   "name": "x509_vfy.h",
+   "path": "C:\\Users\\rober\\Downloads\\curl-mingw\\curl-8.12.1_1-win64-mingw\\include\\openssl\\x509_vfy.h",
+   "size": 19828,
+   "type": "file"
+  }
+ ]
+}
