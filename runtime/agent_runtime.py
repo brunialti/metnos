@@ -161,11 +161,15 @@ SCRATCHPAD_THRESHOLD_BYTES = 4096  # observation oltre questa dimensione vanno i
 # Scrubbing credenziali nel turn log (ADR 0082, 4/5/2026).
 # I pattern si applicano DOPO che il PLANNER ha gia' processato la query
 # (le credenziali restano in RAM per il turn). Output jsonl pulito.
+# Separatore OBBLIGATORIO ([:=] o spazio) fra chiave e valore: con [:=]?
+# opzionale, "C:\\Users\\rober\\..." matchava «User»+«s\\rober\\...» → i path
+# Windows nei turn record diventavano `C:\\User<REDACTED:cred>` (falso
+# positivo, 6/7). Una coppia user/password REALE ha sempre un separatore.
 _CRED_RE = re.compile(
-    r"(\bp(?:wd|assword|sw|ass)\s*[:=]?\s*)(\S+)", re.IGNORECASE
+    r"(\bp(?:wd|assword|sw|ass)\s*(?:[:=]\s*|\s+))(\S+)", re.IGNORECASE
 )
 _USER_RE = re.compile(
-    r"(\bu(?:ser|name|tente)\s*[:=]?\s*)(\S+)", re.IGNORECASE
+    r"(\bu(?:sername|ser|name|tente)\s*(?:[:=]\s*|\s+))(\S+)", re.IGNORECASE
 )
 
 

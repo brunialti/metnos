@@ -172,6 +172,18 @@ Collegato: `project_i18n_translation_quality_fable.md` (sweep prompt corpus).
    find_issues__54f2): se ricompare un piano find_entries-only per «trova
    issue github», la FONTE è a monte (routing pool OVERSIZED 33 per
    (find,issues) — vedi memoria routing_pool oversized).
+2bis. **[DIAGNOSTICATA, fix da fare] Fastpath L0 con piani MATERIALIZZATI**:
+   la fp di un turno delete registra il framework con `paths` LITERAL
+   (post-risoluzione from_step) invece dello scheletro → il replay 0b
+   (coseno) canonicalizza i literal sul path della query nuova → piani
+   incoerenti: turno anom-1 (7/7 00:0x) delete di SOLO desktop.ini su una
+   dir con 4 file; turno anom-2: piano di «file E directory» (fd-e2e)
+   servito a una query «solo file» (delete_files sulla DIR in coda).
+   Riproduzione: 2 conv vergini anom-1/anom-2 nel turn log del 7/7.
+   FIX da fare: _maybe_record_fastpath deve rifiutare (o scheletrizzare)
+   i framework con arg-lista literal in step mutanti (paths senza
+   from_step) — cfr. policy gemella «L1 non deve avere valori baked».
+   IGIENE fatta: 11 fp literal-baked purgate (00:1x).
 2. **Anomalia e2e pv2** (turno conv pv2-e2e, 23:3x): gate glob-riscritto →
    find_files(base=/tmp/metnos_pv2, ["*"], recursive=false) ha visto SOLO
    desktop.ini mentre nel dir c'erano ANCHE 3 .txt appena creati → gate «1
