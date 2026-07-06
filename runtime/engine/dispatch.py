@@ -1352,6 +1352,42 @@ def _demote_overtight_caps(args: dict, schema: dict, clause: str) -> None:
             del args[name]
 
 
+def _promote_count_cap(args: dict, schema: dict, clause: str) -> None:
+    """Gemello di `_demote_overtight_caps` (E.2, 6/7): se la clausola CHIEDE
+    una quantità N («3 foto», «primi 5») e lo step ha un arg-cap DICHIARATO
+    ma il proposer NON l'ha valorizzato (assente) o l'ha messo più largo di N,
+    inietta N. Così «mostrami 3 foto» produce davvero 3, non il default.
+    Muta `args` sul posto. No-op se la clausola non chiede quantità, se il
+    numero è una finestra temporale (escluso da _clause_requests_count), o se
+    lo schema non dichiara un arg-cap. Deterministico §7.9."""
+    if not isinstance(args, dict) or not isinstance(schema, dict):
+        return
+    if not _clause_requests_count(clause or ""):
+        return
+    try:
+        from args_extractor import _extract_count
+        n = _extract_count(clause or "")
+    except Exception:
+        n = None
+    if not isinstance(n, int) or n <= 0:
+        return
+    props = schema.get("properties") if isinstance(
+        schema.get("properties"), dict) else schema
+    # inietta SOLO su un arg-cap DICHIARATO dallo schema (mai inventare args).
+    declared = [nm for nm in _COUNT_CAP_ARGS
+                if isinstance(props.get(nm), dict)]
+    if not declared:
+        return
+    # preferenza deterministica stabile fra i dichiarati.
+    for nm in ("max_results", "max_total", "top_k", "top", "limit"):
+        if nm not in declared:
+            continue
+        cur = args.get(nm)
+        if not isinstance(cur, int) or isinstance(cur, bool) or cur <= 0 or cur > n:
+            args[nm] = n
+        return
+
+
 def _fill_clause_args(framework: Framework, intent, query: str,
                       catalog: Optional[list]) -> Framework:
     """§7.9 v3 (fase ARGS): riempie gli args DEDUCIBILI di ogni step dal testo
@@ -1402,6 +1438,7 @@ def _fill_clause_args(framework: Framework, intent, query: str,
                 # Cap allucinato: la query mono-clausola è la clausola intera.
                 if isinstance(st.args, dict):
                     _demote_overtight_caps(st.args, schema, query)
+                    _promote_count_cap(st.args, schema, query)
             return framework
         chunks = split_query_chunks(query)
         if len(chunks) < 2:
@@ -1415,6 +1452,7 @@ def _fill_clause_args(framework: Framework, intent, query: str,
                 schema = getattr(e, "args_schema", None) if e else None
                 if isinstance(schema, dict) and isinstance(st.args, dict):
                     _demote_overtight_caps(st.args, schema, query)
+                    _promote_count_cap(st.args, schema, query)
             return framework
         cat_by_name = {getattr(e, "name", None): e for e in (catalog or [])}
         # Allinea step↔chunk per OGGETTO (il reorder + gli helper SOFT + le
@@ -1481,6 +1519,7 @@ def _fill_clause_args(framework: Framework, intent, query: str,
             # intera: un numero di un'ALTRA clausola non deve salvare questo cap).
             if isinstance(st.args, dict):
                 _demote_overtight_caps(st.args, schema, chunk)
+                _promote_count_cap(st.args, schema, chunk)
             try:
                 extracted = _ax.regex_extract(chunk, schema)
             except Exception:
