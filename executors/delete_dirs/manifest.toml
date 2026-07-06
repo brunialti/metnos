@@ -44,11 +44,12 @@ en = "If true, recursive rmtree: also removes directories with contents. Default
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
+# dirs mono→multi (7/7/2026): l'executor ha il lazy-gw da C7 Area-2 CP4,
+# l'owner runtime è backend_resolver.OBJECT_BACKENDS["dirs"] (default local
+# §10.3, gw solo se nominato). Multi-provider = clause-derived, NON
+# runtime_resolved (politica test_config_args_marking_policy).
+enum        = ["local", "google_workspace"]
 default     = "local"
-# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
-runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."

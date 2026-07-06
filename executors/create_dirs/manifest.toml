@@ -21,7 +21,7 @@ en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=
 
 [code]
 files  = ["create_dirs.py"]
-digest = "sha256:9779b0a5a03bc5faa28434a5fdcf33d88e5055870f50d25334d1d70b5edc8bc4"
+digest = "sha256:ca41155ecdf942de8fe162e5fd3a1fdbc458b1bad0d0ebc0b0fb4a48e1804c30"
 
 [args]
 type     = "object"
@@ -60,11 +60,12 @@ en = "Permissions for the new directories (decimal format, e.g., 493 for 0o755).
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
+# dirs mono→multi (7/7/2026): l'executor ha il lazy-gw da C7 Area-2 CP4,
+# l'owner runtime è backend_resolver.OBJECT_BACKENDS["dirs"] (default local
+# §10.3, gw solo se nominato). Multi-provider = clause-derived, NON
+# runtime_resolved (politica test_config_args_marking_policy).
+enum        = ["local", "google_workspace"]
 default     = "local"
-# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
-runtime_resolved = true
 
 [args.properties.client.description]
 it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."

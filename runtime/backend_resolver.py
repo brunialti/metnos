@@ -65,6 +65,22 @@ OBJECT_BACKENDS: dict[str, dict] = {
         "available": lambda p: _gw_creds(),
         "aliases": {},
     },
+    "dirs": {
+        "arg": "client",
+        # Come `files` (7/7/2026, dirs mono→multi): local = DEFAULT (§10.3),
+        # google_workspace opt-in solo se nominato — i 3 dispatcher
+        # find/create/delete_dirs hanno il lazy-gw da C7 Area-2 CP4; qui si
+        # registra l'OWNER runtime che mancava (prima gw era raggiungibile
+        # solo via _GW_CLIENT_TOOLS su find_dirs). Alias = subset folder-
+        # pertinente di files (niente docs/sheet).
+        "providers": ["local", "google_workspace"],
+        "available": lambda p: _gw_creds() if p == "google_workspace" else True,
+        "aliases": {
+            "google_workspace": ("google drive", "gdrive", "su drive",
+                                  "in drive", "drive google",
+                                  "google workspace"),
+        },
+    },
 }
 
 
@@ -139,6 +155,14 @@ def resolve_backend_arg(tool_name: str, args: dict, query: str = "",
                 return args
         except Exception:  # noqa: BLE001
             pass
+    # Tool che NON DICHIARA l'arg di backend nel suo schema tipizzato →
+    # niente injection (§7.3, 7/7/2026): scrivergli `client` è junk che
+    # l'executor ignora — caso reale list_dirs (object dirs, ma il tool è
+    # pure-local senza dispatcher client). Vale per default ED esplicito.
+    if isinstance(args_schema, dict):
+        _props = args_schema.get("properties")
+        if isinstance(_props, dict) and _props and arg not in _props:
+            return args
     explicit = _explicit_provider(spec, query)
     chosen = explicit or resolve(obj, query)
     if chosen is None:

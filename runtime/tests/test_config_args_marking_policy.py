@@ -35,8 +35,6 @@ _CONFIG_NAMES = ("client", "account", "provider")
 # MARCATI: config pura — mono-provider (enum 1), plumbing plugin (no enum),
 # o multi-provider con owner runtime COMPLETO (events: backend_resolver).
 EXPECTED_MARKED = frozenset({
-    # dirs (mono local)
-    "create_dirs.client", "delete_dirs.client", "find_dirs.client",
     # contacts (mono gw)
     "find_contacts.client", "read_contacts.client",
     # events/calendars (owner completo = backend_resolver whole-query)
@@ -71,6 +69,9 @@ EXPECTED_VISIBLE = frozenset({
     "find_files.client", "read_files.client", "write_files.client",
     "read_files_spreadsheet.client", "write_files_spreadsheet.client",
     "create_files_spreadsheet.client",
+    # dirs multi dal 7/7/2026 (lazy-gw + owner backend_resolver["dirs"]):
+    # stesso modello clause-derived di files
+    "find_dirs.client", "create_dirs.client", "delete_dirs.client",
     "move_messages.client",
     "read_messages.account", "send_messages.account", "move_messages.account",
 })
@@ -122,14 +123,16 @@ def test_marked_and_visible_match_the_manifests():
 
 def test_multi_provider_files_client_is_never_marked():
     """Invariante generica anti-drift: un flip di enum (mono→multi) su un tool
-    dell'object `files` DEVE far ridiscutere la marcatura, non ereditarla."""
+    degli object `files`/`dirs` DEVE far ridiscutere la marcatura, non
+    ereditarla (dirs multi dal 7/7/2026, stesso modello di files)."""
     for tool, arg, spec, _schema in _iter_config_args():
         if arg != "client":
             continue
         enum = spec.get("enum") if isinstance(spec.get("enum"), list) else []
-        if len(enum) >= 2 and "files" in tool.split("_"):
+        segs = set(tool.split("_"))
+        if len(enum) >= 2 and segs & {"files", "dirs"}:
             assert not spec.get("runtime_resolved"), (
-                f"{tool}.client: multi-provider files è clause-derived "
+                f"{tool}.client: multi-provider files/dirs è clause-derived "
                 f"(PROV.3) — MAI runtime_resolved")
 
 

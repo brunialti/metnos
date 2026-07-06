@@ -55,7 +55,10 @@ def _backend(client: str):
 
 def _backend_for(args):
     client = args.get("client") or "local"
-    return _HANDLERS.get(client), client
+    # DEVE passare dal lazy `_backend` (non da _HANDLERS diretto): il ramo
+    # gw era irraggiungibile — fix 7/7/2026, scovato dal turno reale
+    # «crea una cartella su google drive» (ERR_NOT_APPLICABLE).
+    return _backend(client), client
 
 
 def invoke(args):

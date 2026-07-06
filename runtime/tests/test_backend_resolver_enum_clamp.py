@@ -86,3 +86,29 @@ def test_explicit_already_set_is_respected():
                                  "cerca su google drive il budget",
                                  args_schema=MULTI)
     assert out.get("client") == "local"
+
+
+def test_dirs_object_registered_like_files():
+    """dirs mono→multi (7/7/2026): default local §10.3, gw solo su marker
+    esplicito — stesso modello di files, owner = OBJECT_BACKENDS["dirs"]."""
+    assert br.object_of("create_dirs") == "dirs"
+    plain = br.resolve_backend_arg("find_dirs", {},
+                                   "che cartelle ho in /tmp?",
+                                   args_schema=MULTI)
+    assert plain.get("client") == "local"
+    drive = br.resolve_backend_arg("create_dirs", {},
+                                   "crea una cartella Fatture su google drive",
+                                   args_schema=MULTI)
+    assert drive.get("client") == "google_workspace"
+
+
+def test_undeclared_backend_arg_not_injected():
+    """Tool dell'object che NON dichiara l'arg di backend (caso reale
+    list_dirs, pure-local): niente injection — scrivere `client` a chi lo
+    ignora è junk (§7.3). Vale per default ED esplicito."""
+    no_client = {"type": "object",
+                 "properties": {"path": {"type": "string"}}}
+    for q in ("che file ci sono in ~/note?",
+              "elenca le cartelle su google drive"):
+        out = br.resolve_backend_arg("list_dirs", {}, q, args_schema=no_client)
+        assert "client" not in out, q

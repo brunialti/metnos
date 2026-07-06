@@ -49,10 +49,11 @@ def is_intent_bearing_config(tool_name: str, arg_name: str, arg_schema) -> bool:
     Tre regole (misurate 6/7/2026, razionale in
     internal/design/spec_args_provenance_architecture.md):
 
-      1. `client` multi-provider sull'object `files`: clause-derived («su
-         drive» → gw), lo scrivono _scope_sink_provider_to_clause /
+      1. `client` multi-provider sugli object `files`/`dirs`: clause-derived
+         («su drive» → gw), lo scrivono _scope_sink_provider_to_clause /
          _align_provider_client dal TESTO della clausola (PROV.3) — il default
          sink resta local §10.3, quindi il runtime NON ne è l'unico owner.
+         (`dirs` multi dal 7/7/2026: stesso modello di files.)
       2. `client` multi-provider SENZA owner runtime (object fuori da
          backend_resolver.OBJECT_BACKENDS, es. move_messages metnos|gmail):
          l'LLM è l'UNICO scrittore del ramo non-default. «Provider» = i valori
@@ -81,7 +82,7 @@ def is_intent_bearing_config(tool_name: str, arg_name: str, arg_schema) -> bool:
         known |= {"local", "metnos"}
         if sum(1 for v in enum if v in known) < 2:
             return False    # implementazioni (httpx|playwright), non sorgenti
-        return obj == "files" or obj is None
+        return obj in ("files", "dirs") or obj is None
     if name == "account" and "messages" in tool.split("_"):
         return True
     return False

@@ -85,7 +85,11 @@ def _ids_from_args(args: dict) -> list[str]:
     paths = args.get("paths")
     if isinstance(paths, list):
         for p in paths:
-            if isinstance(p, str) and p.strip():
+            # Stessa regola degli id-arg scalari (fix 7/7, era preso TUTTO):
+            # solo forma id OPACA. Un NOME in paths («report budget.pdf»,
+            # «prova-77») NON è un id → lo risolve il locatore nominale,
+            # non un delete-by-id cieco che fa 404.
+            if isinstance(p, str) and _looks_like_drive_id(p):
                 ids.append(p.strip())
     entries = args.get("entries") or []
     if isinstance(entries, list):
@@ -119,6 +123,17 @@ def _locator_query_from_args(args: dict) -> str:
         value = args.get(key)
         if isinstance(value, str) and value.strip() and not _looks_like_drive_id(value):
             return value.strip()
+    # `path`/`paths` (arg canonico dei dispatcher files/dirs): su Drive un
+    # valore SENZA '/' e' un NOME, non un percorso — «cancella la cartella
+    # prova-metnos-77 da drive» arriva come paths=["prova-metnos-77"] (7/7,
+    # turno reale). Path-shaped (con '/') = locale, NON locatore Drive.
+    _p = args.get("path")
+    _ps = args.get("paths")
+    if _p is None and isinstance(_ps, list) and len(_ps) == 1:
+        _p = _ps[0]
+    if (isinstance(_p, str) and _p.strip() and "/" not in _p
+            and not _looks_like_drive_id(_p)):
+        return _p.strip()
     return ""
 
 
@@ -792,7 +807,9 @@ def find_dirs(args: dict) -> dict:
                 "error_class": "invalid_args", "entries": [], "used": 0}
     query = args.get("query") or ""
     name_match = args.get("name") or query
-    raw_query = f"mimeType='{_FOLDER_MIME}'"
+    # `trashed=false` come la ricerca FILE (fix 5/7 turno bb977a14, esteso ai
+    # folder 7/7: una cartella cestinata riappariva nel find — misurato e2e).
+    raw_query = f"mimeType='{_FOLDER_MIME}' and trashed=false"
     if name_match:
         # Escape singolari per non rompere la query API
         safe = str(name_match).replace("'", "\\'")
@@ -817,9 +834,65 @@ def find_dirs(args: dict) -> dict:
 
 
 def delete_dirs(args: dict) -> dict:
-    """Cancella 1+ cartelle (=file folder mime) su Drive.
-    Alias di `delete(args)` (Drive cancella file e folders allo stesso modo)."""
-    return delete(args)
+    """Cancella 1+ cartelle su Drive. Senza id espliciti risolve i NOMI
+    (`paths`/`path`/`name`) via `find_dirs` (mime folder + trashed=false),
+    preferenza nome esatto; un valore id-shaped SENZA match nominale è usato
+    come id opaco (i nomi utente tipo «prova-77» passano il test id-shape —
+    name-first è l'ordine giusto al confine NL §2.4, misurato 7/7). Default
+    trash (reversibile) come `delete`."""
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_deleted": 0}
+    a = dict(args)
+    # Id ESPLICITI = solo file_ids/file_id/entries (piping): i valori in
+    # `paths` sono NOMI-utente per costruzione qui — anche quelli id-shaped
+    # («prova-metnos-77») vanno risolti name-first via find_dirs.
+    _probe = {k: a[k] for k in ("file_ids", "file_id", "entries") if k in a}
+    if not _ids_from_args(_probe):
+        names = a.get("paths") if isinstance(a.get("paths"), list) else None
+        if names is None:
+            one = a.get("path") or a.get("name")
+            names = [one] if isinstance(one, str) and one.strip() else []
+        ids: list = []
+        misses: list = []
+        for n in names:
+            nn = n.strip() if isinstance(n, str) else ""
+            if not nn or "/" in nn:      # path locale, non un nome Drive
+                misses.append(str(n))
+                continue
+            fr = find_dirs({"name": nn, "max_results": 25})
+            if fr.get("decision") == "needs_inputs":
+                return fr
+            entries = [e for e in (fr.get("entries") or [])
+                       if isinstance(e, dict)]
+            exact = [e for e in entries
+                     if str(e.get("name") or "").strip().casefold()
+                     == nn.casefold()]
+            got = [i for i in dict.fromkeys(
+                _entry_file_id(e) for e in (exact or entries)) if i]
+            if got:
+                ids.extend(got)
+            elif _looks_like_drive_id(nn):
+                ids.append(nn)
+            else:
+                misses.append(nn)
+        if not ids:
+            return _not_found_for_locator(a, result_kind="results")
+        a["file_ids"] = list(dict.fromkeys(ids))
+        for k in ("path", "paths", "pattern", "patterns", "query", "name"):
+            a.pop(k, None)
+        out = delete(a)
+        if misses and isinstance(out, dict):
+            # §2.8: i nomi non risolti NON spariscono in silenzio.
+            out.setdefault("failed", []).extend(
+                {"id": m, "ok": False, "error_class": "not_found",
+                 "error_code": "ERR_PATH_NOT_FOUND",
+                 "error": _msg("ERR_PATH_NOT_FOUND", path=m)} for m in misses)
+            out["ok"] = False
+        return out
+    return delete(a)
 
 
 # --------------------------------------------------------------------------

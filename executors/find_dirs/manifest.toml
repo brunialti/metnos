@@ -71,15 +71,16 @@ en = "If true, include directories that start with '.' (e.g., .git, .cache). Def
 
 [args.properties.client]
 type        = "string"
-enum        = ["local"]
+# dirs mono→multi (7/7/2026): l'executor ha il lazy-gw da C7 Area-2 CP4,
+# l'owner runtime è backend_resolver.OBJECT_BACKENDS["dirs"] (default local
+# §10.3, gw solo se nominato). Multi-provider = clause-derived, NON
+# runtime_resolved (politica test_config_args_marking_policy).
+enum        = ["local", "google_workspace"]
 default     = "local"
-# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
-runtime_resolved = true
 
 [args.properties.client.description]
-it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
-en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca CARTELLE su Drive per nome, richiede pairing Google."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: searches FOLDERS on Drive by name, requires Google pairing."
 
 [[capabilities]]
 name = "fs:read"
