@@ -52,45 +52,9 @@ def _scaled_timeout_s(timeout_s: int, args: dict | None,
                max(int(timeout_s), 30 + n_items * SCALE_S_PER_ITEM))
 
 
-def _register_i18n_keys() -> None:
-    """Chiavi user-facing del sottosistema remoto (§11: mai stringhe
-    hardcoded). Idempotente; il seed bundled le include (test gate)."""
-    try:
-        import i18n
-        i18n.register_key_if_missing(
-            "ERR_DEVICE_UNREACHABLE",
-            "il dispositivo '{name}' non e' raggiungibile (nessun heartbeat recente)",
-            "device '{name}' is not reachable (no recent heartbeat)",
-            needs_translation=False)
-        i18n.register_key_if_missing(
-            "ERR_DEVICE_UNKNOWN",
-            "il dispositivo '{name}' non risulta appaiato",
-            "device '{name}' is not paired",
-            needs_translation=False)
-        i18n.register_key_if_missing(
-            "ERR_DEVICE_AMBIGUOUS",
-            "piu' dispositivi disponibili: specifica il nome del dispositivo",
-            "multiple devices available: specify the device name",
-            needs_translation=False)
-        i18n.register_key_if_missing(
-            "ERR_DEVICE_NONE_AVAILABLE",
-            "nessun dispositivo raggiungibile per questa operazione",
-            "no device is reachable for this operation",
-            needs_translation=False)
-        i18n.register_key_if_missing(
-            "ERR_DEVICE_TIMEOUT",
-            "il dispositivo '{name}' non ha confermato entro {seconds}s. "
-            "L'operazione potrebbe comunque completarsi appena il dispositivo "
-            "risponde: se è una modifica, resterà annullabile.",
-            "device '{name}' did not confirm within {seconds}s. The operation "
-            "may still complete once the device responds: if it changes data, "
-            "it will remain undoable.",
-            needs_translation=False)
-    except Exception as _e:
-        log.warning("registrazione chiavi i18n remote fallita: %s", _e)
-
-
-_register_i18n_keys()
+# §7.13: le 5 chiavi ERR_DEVICE_* vivono nel catalogo seed
+# (install/data/i18n_seed.sqlite, IT+EN) e si risolvono via _msg() puro.
+# Guard di presenza: runtime/tests/test_seed_i18n_gate_keys.py.
 
 
 def invoke_remote(executor, args: dict, device_id: str, *,

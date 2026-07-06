@@ -55,6 +55,43 @@ _POLLUTING_TESTS = frozenset({
 })
 
 
+# Test file che esercitano TurnLog.write() (finalizer honesty/gate/undo):
+# write() persiste in agent_runtime.TURN_LOG_DIR, BOUND a module-load →
+# l'env-redirect non basta (config già importato). Fixture sotto: setattr
+# sul modulo → i turni di test NON finiscono nel jsonl di PRODUZIONE
+# (bug live 6/7 sera: righe spurie «q»/«query plain» nel turn log reale,
+# scambiate per turni utente falliti).
+_TURNLOG_WRITING_TESTS = frozenset({
+    "test_degenerate_final_honesty.py",
+    "test_recovery_wrong_type_dir.py",
+    "test_mass_mutation_gate.py",
+    "test_late_result_a0.py",
+    "test_zero_entries_final.py",
+    "test_finalizer_unico.py",
+})
+
+
+@pytest.fixture(autouse=True)
+def _isolate_turnlog_dir(request, tmp_path, monkeypatch):
+    """I test in _TURNLOG_WRITING_TESTS scrivono i TurnLog in tmp, mai nel
+    turns/ di produzione. setattr (non env): TURN_LOG_DIR è già risolto."""
+    test_file = Path(request.node.fspath).name
+    if test_file not in _TURNLOG_WRITING_TESTS:
+        yield
+        return
+    try:
+        import sys as _sys
+        _rt = str(Path(__file__).resolve().parent.parent)
+        if _rt not in _sys.path:
+            _sys.path.insert(0, _rt)
+        import agent_runtime as _ar
+        monkeypatch.setattr(_ar, "TURN_LOG_DIR", tmp_path / "turns",
+                            raising=True)
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _isolate_home_for_legacy_image_tests(request, tmp_path, monkeypatch):
     """AUTOUSE GLOBALE (8/5/2026 notte): ogni test in runtime/tests/ vede

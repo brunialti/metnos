@@ -60,7 +60,12 @@ _REQUIRED_TRUNCATION_KEYS = (
 # 3/7): il messaggio quando un executor non supporta l'OS del device.
 _REQUIRED_PLACEMENT_KEYS = (
     "ERR_DEVICE_PLATFORM_UNSUPPORTED",
-    "ERR_DEVICE_TIMEOUT",  # testo A.0 (risultato-tardivo onesto, 6/7)
+    # remote_exec §7.13 (6/7): seeding inline rimosso, chiavi SOLO nel seed.
+    "ERR_DEVICE_TIMEOUT",
+    "ERR_DEVICE_UNREACHABLE",
+    "ERR_DEVICE_UNKNOWN",
+    "ERR_DEVICE_AMBIGUOUS",
+    "ERR_DEVICE_NONE_AVAILABLE",
 )
 
 # Chiavi user-facing dell'onestà mutating §2.8 + final degenere (6/7): il
