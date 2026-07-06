@@ -241,3 +241,23 @@ def test_review_prunes_stale_shadow(ap_isolated, monkeypatch):
     assert c.execute("SELECT COUNT(*) FROM autopaths WHERE id=?",
                      (ap_id,)).fetchone()[0] == 0
     c.close()
+
+
+# ── Reaper C3 (ADR 0182 follow-up): morte-da-catalogo per autopath ──────────
+
+def test_prune_kills_autopath_with_missing_tool(ap_isolated):
+    ap = ap_isolated
+    it = _intent("send", "messages")
+    cat = _catalog("send_messages", "tool_sparito")
+    fw = _fw("send_messages", "tool_sparito", "x", "y")
+    for t in ("t1", "t2"):
+        ap.record_observation(turn_id=t, intent=it, framework=fw,
+                              query="q", catalog=cat)
+    ap_id = ap.seed_from_run(intent=it, framework=fw, n_steps=4, catalog=cat)
+    assert ap_id
+    # catalogo SENZA tool_sparito → morte C3
+    rep = ap.prune(catalog_names={"send_messages", "x", "y"})
+    assert rep["autopaths_dead_catalog"] == 1
+    # senza catalog_names → MAI morte (contratto §2.8 no falsi kill)
+    rep2 = ap.prune(catalog_names=None)
+    assert rep2["autopaths_dead_catalog"] == 0

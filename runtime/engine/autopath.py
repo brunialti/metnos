@@ -182,7 +182,8 @@ def flush() -> dict:
         c.close()
 
 
-def prune(*, keep_observations: int | None = None) -> dict:
+def prune(*, keep_observations: int | None = None,
+          catalog_names: Optional[set] = None) -> dict:
     """Reaper dello storage autopath (chiamato dal state_reaper builtin).
 
     - anti_autopaths: rimuove le righe con TTL scaduto (`ttl_expires_at < now`),
@@ -199,6 +200,10 @@ def prune(*, keep_observations: int | None = None) -> dict:
       METNOS_AUTOPATH_STALE_DAYS (90gg = 3x L0 stale: il piano e'
       generalizzato e la ri-promozione costa un feedback ✓ reale, quindi
       orizzonte piu' conservativo). Un ✓ successivo ri-promuove da zero.
+    - MORTE da catalogo (C3, ADR 0182 follow-up 6/7): con `catalog_names`
+      (set COMPLETO dei tool invocabili — None = nessuna morte, mai falsi
+      kill §2.8) rimuove gli autopath che referenziano un tool SPARITO:
+      invaliderebbero a ogni hit per sempre (C1), sono peso morto.
     Idempotente. Ritorna un report dei conteggi rimossi.
     """
     from datetime import datetime, timedelta, timezone
@@ -213,6 +218,24 @@ def prune(*, keep_observations: int | None = None) -> dict:
         anti = c.execute(
             "DELETE FROM anti_autopaths WHERE ttl_expires_at < ?", (now_iso,)
         ).rowcount
+        # C3: morte-da-catalogo (tool sparito ⇒ hit sempre-invalido C1).
+        dead_catalog = 0
+        if catalog_names:
+            rows = c.execute(
+                "SELECT id, framework_json FROM autopaths").fetchall()
+            for ap_id, fj in rows:
+                try:
+                    tools = {st.get("tool") for st in
+                             (json.loads(fj).get("steps") or [])
+                             if isinstance(st, dict) and st.get("tool")}
+                except Exception:
+                    continue
+                missing = tools - set(catalog_names) - {"final_answer"}
+                if missing:
+                    c.execute("DELETE FROM autopaths WHERE id = ?", (ap_id,))
+                    dead_catalog += 1
+                    log.info("[autopath.prune] morte da catalogo %s "
+                             "(tool spariti: %s)", ap_id, sorted(missing))
         # La finestra pota SOLO le righe senza verdict (2/7/2026, review
         # Fable): le observations votate (✓/✗ umano) sono la memoria di
         # promote/demote — poche e preziose; una finestra piena di
@@ -251,7 +274,8 @@ def prune(*, keep_observations: int | None = None) -> dict:
                 "observations_removed": max(0, obs),
                 "kept_observations": int(keep_observations),
                 "autopaths_demoted_removed": max(0, demoted),
-                "autopaths_stale_removed": max(0, stale)}
+                "autopaths_stale_removed": max(0, stale),
+            "autopaths_dead_catalog": dead_catalog}
     finally:
         c.close()
 

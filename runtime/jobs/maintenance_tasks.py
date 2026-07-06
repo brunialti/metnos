@@ -264,7 +264,7 @@ def task_state_reaper() -> dict:
 
     def _autopath():
         from engine import autopath
-        return autopath.prune()
+        return autopath.prune(catalog_names=_full_catalog_names())
     _run("autopath", _autopath)
 
     def _fastpath():
@@ -278,6 +278,16 @@ def task_state_reaper() -> dict:
         from engine import fastpath
         return fastpath.prune(catalog_names=_full_catalog_names())
     _run("fastpath", _fastpath)
+
+    def _args_defaults():
+        # C3-ext (6/7, ADR 0182 follow-up): TTL sui default appresi degli
+        # argomenti — sweep_unused ESISTEVA ma non era mai chiamato (stessa
+        # malattia curata dal reaper: funzione scritta, mai agganciata).
+        import args_defaults
+        days = int(os.environ.get("METNOS_ARGS_DEFAULTS_TTL_DAYS", "90"))
+        return {"removed": args_defaults.sweep_unused(days=days),
+                "ttl_days": days}
+    _run("args_defaults", _args_defaults)
 
     def _join_sessions():
         # Join session install-at-the-fly (§5.3 remote-executors): transienti
