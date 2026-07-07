@@ -94,5 +94,17 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.copy.description": {
+    "it": {
+      "version_hash": "sha256:aa6272df96b276db2b7d39ecb5f73f0c6da7c3ca784a90b344578ea23f1d2951",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:c7aa2afa962b91a0d4658ba62a747ef69c3a3912bcf9053a2eeea3e8d2806386",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

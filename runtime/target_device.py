@@ -66,6 +66,7 @@ class TargetResolution:
     explicit: bool = False            # la query nominava esplicitamente un target?
     candidates: list = field(default_factory=list)   # per status="ambiguous": [(id,name)]
     unreachable_name: str | None = None              # per status="unreachable"
+    unreachable_id: str | None = None                # id del device offline (A.1 defer)
     cleaned_query: str = ""           # query senza l'adjunct di destinazione
 
 
@@ -168,6 +169,7 @@ def resolve_target(query: str,
         if not is_available(dev, now):
             res.status = "unreachable"
             res.unreachable_name = getattr(dev, "name", None)
+            res.unreachable_id = getattr(dev, "id", None)
             return res
         res.target = dev.id
         res.device_name = getattr(dev, "name", None)

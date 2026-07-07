@@ -6237,8 +6237,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                     # dispatcha orchestration:defer_turn → deferred_turns).
                     _dfr = _offer_defer_dialog(
                         query=user_query_for_run,
-                        device_id=(_tr.target
-                                   if _tr.target != _td_mod.SERVER else ""),
+                        device_id=(getattr(_tr, "unreachable_id", None)
+                                   or ""),
                         device_name=_tr.unreachable_name or "?",
                         actor=actor or "host", channel=channel or "",
                         conversation_id=conversation_id or "",

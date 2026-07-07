@@ -82,5 +82,29 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.guard_count.description": {
+    "it": {
+      "version_hash": "sha256:6359d9759643c9fb3ad55ee20089a2a3616307062bb0386b88dfbb57b932116a",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:da7e0dec1b0c88417d34235b66eb277659bbc35de914128f565e96459e51e875",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.guard_threshold.description": {
+    "it": {
+      "version_hash": "sha256:a261ae3726b1b94cef367a997af6db5361d7a9f17069ea1b9dadc53ae489157e",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:1c968f3f7389e45710ea881b26654df7bd19760b414afe18d453f623e188c7a2",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

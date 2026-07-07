@@ -85,14 +85,14 @@
   },
   "args.reference_images.description": {
     "it": {
-      "version_hash": "sha256:26a40cc1deb1edbc928aa4cc3d97cfbe9aef4b1910db5936a2e3a8bf57293265",
+      "version_hash": "sha256:dcd1427e554ce6c53449867500e18fc6914dd9894d26b7bac93386a6b553ff73",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:5ad22dffdcbc367c000b6a2606c48ab9c0f64f0042b74bb30fa78e032ab25eb7",
-      "version_hash": "sha256:e174dce1210c94b2fb1a881124498a04ed7ffa2041ccdbfd7e454928f50033e3"
+      "version_hash": "sha256:1b345e5773d8bf28c475087716c5be5a9097d36599a8c23d635c15f00a6bdc5c"
     }
   },
   "args.query_text.description": {

@@ -73,12 +73,12 @@
   },
   "args.client.description": {
     "it": {
-      "version_hash": "sha256:37b3f7c54f952c5c27ba9cc8f4fbf102820db34b98d85309dc701e08ab019a4b",
+      "version_hash": "sha256:092eef4a8d8e11bc6885652833ba0edaba47061690d4f770abf3245fddfeec78",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:598032ba8ac7aea408c2e871cb31fb818f452e5dc65953926899097b1470c904",
+      "version_hash": "sha256:c725e9a33a56d3cfb558d7ccb852c3ce8d5f0a1d86db3445d6602b5d646bd533",
       "source_lang": "it",
       "source_hash": "sha256:37b3f7c54f952c5c27ba9cc8f4fbf102820db34b98d85309dc701e08ab019a4b"
     }
