@@ -260,6 +260,19 @@ class TestCommittedMutations(unittest.TestCase):
             ok=False, latency_ms=1)]
         self.assertEqual(committed_mutations(steps), [])
 
+    def test_partial_send_multi_account_IS_committed(self):
+        # 2ter (7/7): gemello NON-delete del parziale. send a 3 account →
+        # 1 inviato, 2 falliti (auth) → ok=False MA n_sent=1: la mail È
+        # partita, ri-eseguire la RI-INVIA (§2.8). Parziale = committato.
+        steps = [StepRun(
+            step_idx=1, tool="send_messages", args={},
+            result={"ok": False, "n_sent": 1, "fail_count": 2,
+                    "results": [{"ok": True, "to": "a@x"}],
+                    "failed": [{"to": "b@x", "error_code": "ERR_SMTP_AUTH"},
+                               {"to": "c@x", "error_code": "ERR_SMTP_AUTH"}]},
+            ok=False, latency_ms=1)]
+        self.assertEqual(committed_mutations(steps), ["send_messages"])
+
     def test_reader_not_committed(self):
         steps = [StepRun(step_idx=1, tool="read_messages", args={},
                          result={"ok": True, "entries": [1]}, ok=True,

@@ -3704,11 +3704,28 @@ class TurnLog:
             has_signals = (
                 any(k in res for k in self._MUTATE_SUCCESS_KEYS)
                 or "not_found" in res or "failed" in res)
-            if "results" in res and has_signals:
+            # Un mutante è giudicabile qui se ritorna `results` (trasformativi
+            # §2.6: delete/move/write). CASO 2ter (7/7): un VERBO mutante con
+            # effetto PARZIALE reale (conteggio>0) + falliti ma SENZA lista
+            # `results` (send/share multi-account) — prima sfuggiva e i falliti
+            # restavano MASCHERATI (§2.8). Il gancio è STRETTO al parziale:
+            # un fallimento PIENO (conteggio 0/assente) NON si tocca qui, resta
+            # alla via error_class che lo traduce via i18n (ERR_<CLASS>) — la
+            # mia intercettazione grezza lo avrebbe reso «?: <classe tecnica>».
+            _is_mut_tool = any((s.chosen_tool or "").startswith(p)
+                               for p in _MUT_PREF)
+            _positive_count = any(
+                isinstance(res.get(k), int) and res.get(k) > 0
+                for k in self._MUTATE_SUCCESS_KEYS)
+            _partial_no_results = (
+                _is_mut_tool and _positive_count and "results" not in res
+                and ("failed" in res or "not_found" in res))
+            if ("results" in res and has_signals) or _partial_no_results:
                 mut = res
                 break
             # primo result puramente di lettura (entries, no segnali) → il turno
-            # non e' mutating in coda: non intervenire.
+            # non e' mutating in coda: non intervenire. Un read con failed[]
+            # (account SSL-fail) NON è mutante: lo gestisce _collect_failure_notices.
             if "entries" in res and not has_signals:
                 return
         if mut is None:
@@ -3747,8 +3764,13 @@ class TurnLog:
             out = []
             for it in lst:
                 if isinstance(it, dict):
+                    # `to`/`account`/`recipient`: label dei mutanti non-fs
+                    # (send/share multi-account) — senza, il destinatario
+                    # fallito compariva come «?» (2ter, 7/7).
                     out.append(str(it.get("id") or it.get("event_id")
-                                   or it.get("path") or it.get("error") or it))
+                                   or it.get("path") or it.get("to")
+                                   or it.get("recipient") or it.get("account")
+                                   or it.get("error") or it))
                 else:
                     out.append(str(it))
             return ", ".join(out[:8])
@@ -3761,7 +3783,9 @@ class TurnLog:
             if not isinstance(it, dict):
                 return str(it)
             label = str(it.get("path") or it.get("src") or it.get("id")
-                        or it.get("event_id") or it.get("uid") or "?")
+                        or it.get("event_id") or it.get("uid")
+                        or it.get("to") or it.get("recipient")
+                        or it.get("account") or "?")
             reason = ""
             code = it.get("error_code") or ""
             if code:

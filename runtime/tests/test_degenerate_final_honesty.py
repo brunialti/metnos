@@ -97,5 +97,60 @@ class DegenerateFinalReplacementTests(unittest.TestCase):
         self.assertEqual(log.final_message, "Ho trovato 3 eventi in calendario.")
 
 
+class NonDeletePartialHonestyTests(unittest.TestCase):
+    """2ter (7/7): §2.8 sul PARZIALE non-delete. Il ramo partial_mutation di
+    dispatch produce «Operazione completata: N» su un mutante con effetti reali
+    in un run 'error'; il finalizer DEVE poi rendere visibili i falliti anche
+    quando il mutante NON ritorna una lista `results` (send/share multi-account
+    che ritornano solo un contatore + failed[]). Prima erano MASCHERATI."""
+
+    def _log(self, tool, result, base):
+        import agent_runtime
+        log = agent_runtime.TurnLog(ts_start=0.0, user_query="invia a 3 account")
+        log.actor = "host"
+        log.channel = "http"
+        sl = agent_runtime.StepLog(step_num=1)
+        sl.chosen_tool = tool
+        sl.result = result
+        log.steps.append(sl)
+        log.final_message = base
+        log.final_kind = "answer"
+        log._enforce_mutating_honesty()
+        return log.final_message
+
+    _BASE = "Operazione completata: 1 elemento modificato o rimosso."
+
+    def test_send_partial_with_results_surfaces_recipients(self):
+        out = self._log("send_messages", {
+            "ok": False, "n_sent": 1, "fail_count": 2,
+            "results": [{"ok": True, "to": "a@x"}],
+            "failed": [{"to": "b@x", "error": "auth fallita"},
+                       {"to": "c@x", "error": "auth fallita"}]}, self._BASE)
+        self.assertIn("b@x", out)   # destinatario, non «?»
+        self.assertIn("c@x", out)
+        self.assertNotIn("«?»", out)
+
+    def test_send_partial_without_results_not_masked(self):
+        # IL BUG 2ter: n_sent+failed ma NESSUN `results` → prima il finalizer
+        # saltava (richiedeva "results" in res) e i falliti sparivano.
+        out = self._log("send_messages", {
+            "ok": False, "n_sent": 1, "fail_count": 2,
+            "failed": [{"to": "b@x", "error": "auth fallita"},
+                       {"to": "c@x", "error": "auth fallita"}]}, self._BASE)
+        self.assertIn("b@x", out)
+        self.assertIn("c@x", out)
+        self.assertNotEqual(out.strip(), self._BASE)
+
+    def test_read_with_failed_not_treated_as_mutating(self):
+        # Un READ con failed[] (account SSL-fail) NON è mutante: lo gestisce
+        # _collect_failure_notices, non _enforce_mutating_honesty. Nessun
+        # doppio-avviso, il final di lettura non viene sostituito.
+        out = self._log("read_messages", {
+            "entries": [{"id": 1}],
+            "failed": [{"account": "imap1", "error": "ssl"}]},
+            "Hai 1 messaggio.")
+        self.assertEqual(out, "Hai 1 messaggio.")
+
+
 if __name__ == "__main__":
     unittest.main()
