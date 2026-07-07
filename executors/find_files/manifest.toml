@@ -4,7 +4,12 @@
 manifest_format = "1.0"
 
 name        = "find_files"
-version     = "0.2.0"
+version     = "0.2.1"
+# Il walk ricorsivo su filesystem grandi/lenti (mount di rete) e' legittimamente
+# lento; il default loader di 30s lo fa scadere. Timeout ampio: lo scan e'
+# comunque limitato dall'early-stop su `max_results` (default backend 1000) e da
+# `max_depth`. Stessa classe di get_files (§2.11).
+timeout_s   = 120
 # C7 CP3: il backend local è pathlib/os puro → gira anche su
 # Windows (validato find/read sul device e2e 5/7). Senza questa
 # dichiarazione placement rifiuterebbe un device Windows (F1).
