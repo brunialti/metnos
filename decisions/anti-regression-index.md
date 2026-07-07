@@ -148,6 +148,7 @@
 - **PLANNER skip describe after health** (ADR 0111): 4 difese post `get_processes(include_health=true)`. Safety net `_prepend_health_block_if_any`.
 
 **Smoke / E2E / test infra**
+- **Executor-manifest gate** (7/7/2026): `runtime/tests/test_executor_manifests_gate.py` fa girare `run_all_tests.py` DENTRO pytest → la suite executor-manifest è parte del baseline tracciato, non più orfana (era referenziata solo in `export-public.sh` → 12 regressioni silenziose accumulate). ~30s.
 - **Smoke battery** (`runtime/smoke.py`, ADR 0114 L5): OBBLIGATORIA pre `./deploy.sh`, post synth, daily, e tocchi a `prefilter.py`/`agent_runtime.py`/`synt_multistage.py`/`loader.py`.
 - **E2E driver baseline**: `server._copy_db_with_wal` + `_seed_i18n_baseline` sempre + lint regex `^E*F?$`.
 - **Judge prompt safety-aware**: `prompts/{it,en}/e2e_judge.j2` riconosce consensi (signature/mount/sudoer) come ok.
