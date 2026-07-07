@@ -135,9 +135,19 @@ fn swap_binary(exe: &Path, new_path: &Path) -> Result<()> {
 pub fn respawn_and_exit() -> ! {
     let exe = std::env::current_exe().expect("current_exe");
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // BUG 7/7/2026 (0.2.17→0.2.18): il daemon chiama FreeConsole (B6) → i suoi
+    // std-handle sono INVALIDI; senza redirezione `spawn()` li fa ereditare al
+    // figlio e CreateProcessW fallisce con «Handle non valido (os error 6)»,
+    // lasciando il client giù. Stdio::null() dà al figlio handle freschi sul
+    // device NUL: nessuna eredità di handle invalidi. Cross-platform (innocuo su
+    // Linux, dove non c'è FreeConsole). Il figlio è comunque un daemon (log su
+    // file/tracing), non serve stdout.
     match std::process::Command::new(&exe)
         .args(&args)
         .env("METNOS_RESPAWNED", "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
     {
         Ok(_) => tracing::info!("self-update: nuovo processo avviato, esco"),
