@@ -209,6 +209,45 @@ impl Drop for AttrList {
     }
 }
 
+/// Rollback degli ACE concessi in QUESTA costruzione (§2.8): i grant si
+/// applicano PRIMA di CreateProcessW; se il container non parte (bail su un
+/// qualsiasi passo 4-11 → degrado a job-object), gli ACE resterebbero orfani sul
+/// SID del container — dir utente accessibili a un'identita' che non gira. La
+/// guardia li revoca alla Drop A MENO CHE sia disarmata: la si disarma appena
+/// CreateProcessW riesce, oltre quel punto i grant servono al processo avviato.
+/// Il registro NON si tocca: grant_dir lo ri-applica a ogni invocazione
+/// (idempotente) e l'unpair revoca un ACE gia' assente come no-op.
+struct GrantGuard {
+    sid: PSID,
+    paths: Vec<PathBuf>,
+    armed: bool,
+}
+
+impl GrantGuard {
+    fn new(sid: PSID) -> Self {
+        Self { sid, paths: Vec::new(), armed: true }
+    }
+    fn track(&mut self, root: &Path) {
+        self.paths.push(root.to_path_buf());
+    }
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for GrantGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        for root in &self.paths {
+            if let Err(e) = apply_acl(self.sid, root, 0, REVOKE_ACCESS) {
+                tracing::warn!(path = %root.display(), "rollback ACE (container non avviato) fallito: {e:#}");
+            }
+        }
+    }
+}
+
 /// Wrapper per spostare un HANDLE grezzo in un thread lettore (i raw pointer non
 /// sono Send). Sicuro: il thread e' l'unico proprietario finche' vive.
 struct SendHandle(HANDLE);
@@ -347,6 +386,9 @@ pub struct CleanupReport {
     pub revoked: usize,
     /// Voci NON revocate (mantenute nel registro per un retry, §2.8).
     pub failed: usize,
+    /// Voci scartate perche' il path e' sparito (l'ACE e' morto con la dir):
+    /// niente da revocare, non un fallimento retry-abile.
+    pub dropped: usize,
     /// Profilo AppContainer rimosso.
     pub profile_removed: bool,
 }
@@ -366,8 +408,16 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
     let sid = if records.is_empty() { None } else { derive_sid().ok() };
 
     let mut revoked = 0usize;
+    let mut dropped = 0usize;
     let mut remaining: Vec<AclGrantRecord> = Vec::new();
     for rec in records {
+        // Path sparito → l'ACE e' morto con la dir: niente da revocare, la voce
+        // va SCARTATA (non tenuta per un retry che non potra' mai riuscire).
+        if !Path::new(&rec.path).exists() {
+            tracing::debug!(path = %rec.path, "path assente all'unpair: voce ACL scartata");
+            dropped += 1;
+            continue;
+        }
         match &sid {
             Some(s) => match apply_acl(s.psid, Path::new(&rec.path), 0, REVOKE_ACCESS) {
                 Ok(()) => revoked += 1,
@@ -406,7 +456,7 @@ pub fn cleanup_all_grants() -> Result<CleanupReport> {
         }
     }
 
-    Ok(CleanupReport { total, revoked, failed, profile_removed })
+    Ok(CleanupReport { total, revoked, failed, dropped, profile_removed })
 }
 
 // --- ACL ---------------------------------------------------------------------
@@ -570,18 +620,25 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         "unknown".to_string()
     });
 
+    // Rollback degli ACE se il container non parte oltre questo punto.
+    let mut grant_guard = GrantGuard::new(sid.psid);
+
     // 2. concessioni IMPLICITE (indispensabili: senza, il container e'
     //    inutilizzabile → e' un caso di degrado onesto, non un container zoppo).
     //    Runtime python + shim + codice executor in lettura/esecuzione.
     if let Some(py_root) = p.python.parent() {
         grant_dir(sid.psid, &sid_str, py_root, common::ACCESS_READ)
             .context("ACL lettura runtime python")?;
+        grant_guard.track(py_root);
     }
     grant_dir(sid.psid, &sid_str, &p.shim_dir, common::ACCESS_READ).context("ACL lettura shim")?;
+    grant_guard.track(&p.shim_dir);
     grant_dir(sid.psid, &sid_str, &p.exec_dir, common::ACCESS_READ).context("ACL lettura executor")?;
+    grant_guard.track(&p.exec_dir);
     // Scratch/TEMP in scrittura.
     grant_dir(sid.psid, &sid_str, &p.scratch_dir, common::ACCESS_WRITE)
         .context("ACL scrittura scratch")?;
+    grant_guard.track(&p.scratch_dir);
 
     // 3. concessioni da capability (best-effort: radice inesistente = skip
     //    onesto; un ACL fallito su una radice utente NON e' un degrado — sara'
@@ -593,6 +650,8 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         }
         if let Err(e) = grant_dir(sid.psid, &sid_str, &g.root, g.access_mask()) {
             tracing::warn!(root = %g.root.display(), "ACL capability fallito: {e:#}");
+        } else {
+            grant_guard.track(&g.root);
         }
     }
 
@@ -708,6 +767,8 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         )
     };
     check_bool("CreateProcessW (appcontainer)", ok)?;
+    // Processo avviato: i grant servono ORA al figlio → niente rollback.
+    grant_guard.disarm();
 
     // --- oltre questa linea: processo AVVIATO nel container → sempre Ran ---
     // Chiudi gli estremi-figlio nel padre (necessario per l'EOF ai lettori).

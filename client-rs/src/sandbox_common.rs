@@ -61,7 +61,12 @@ pub fn glob_root(hint: &str) -> Option<PathBuf> {
         return dirs::home_dir().map(|home| home.join(rest));
     }
     if h.starts_with('/') {
-        return Some(PathBuf::from(h));
+        // Anchora solo se ASSOLUTO PER LA PIATTAFORMA: su Linux "/tmp" e'
+        // assoluto → bind bwrap; su Windows "/tmp" NON lo e' (manca drive/UNC),
+        // e' un hint POSIX del manifest che NON deve produrre un ACL spurio su
+        // "\tmp" (§7.3: un default Linux non trapela in un grant Windows).
+        let pb = PathBuf::from(&h);
+        return pb.is_absolute().then_some(pb);
     }
     None
 }
@@ -363,6 +368,11 @@ mod tests {
         assert_eq!(glob_root("/tmp/**"), Some(PathBuf::from("/tmp")));
         assert_eq!(glob_root("*"), None, "wildcard universale non ancorabile");
         assert_eq!(glob_root("relativo/x"), None, "senza ancora ~ o / = None");
+        // Su questa piattaforma (CI Linux) "/tmp" E' assoluto → ancorato. Su
+        // Windows lo stesso hint NON e' assoluto e glob_root ritorna None (niente
+        // grant spurio su \tmp): la logica e' `pb.is_absolute()`, delegata a std.
+        assert!(PathBuf::from("/tmp").is_absolute(), "precondizione del test (Linux)");
+        assert_eq!(glob_root("/var/data/**"), Some(PathBuf::from("/var/data")));
     }
 
     #[test]

@@ -192,8 +192,8 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                 match appcontainer::cleanup_all_grants() {
                     Ok(r) => println!(
                         "sandbox: {} concessioni ACL registrate, {} revocate, \
-                         {} non revocate; profilo rimosso={}",
-                        r.total, r.revoked, r.failed, r.profile_removed
+                         {} scartate (path assente), {} non revocate; profilo rimosso={}",
+                        r.total, r.revoked, r.dropped, r.failed, r.profile_removed
                     ),
                     Err(e) => {
                         tracing::warn!("pulizia sandbox AppContainer fallita: {e:#}");
