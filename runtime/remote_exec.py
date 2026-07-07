@@ -84,6 +84,15 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     env = dict(env_injections or {})
     if turn_id:
         env.setdefault("METNOS_TURN_ID", turn_id)
+    # Lingua istanza (§7.13): il device rende i messaggi user-facing (repertorio
+    # i18n bundleato con lo shim) nella lingua del SERVER. Senza METNOS_LANG
+    # cadrebbe su 'en' (default shim) — un'istanza `it` mostrerebbe messaggi in
+    # inglese. Viaggia nel payload firmato come l'env sopra, mai a riposo.
+    try:
+        import i18n as _i18n
+        env.setdefault("METNOS_LANG", _i18n.current_lang())
+    except Exception:
+        pass
     invocation_id = invocations.enqueue_invocation(
         device_id,
         executor.name,
