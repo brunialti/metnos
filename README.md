@@ -106,6 +106,34 @@ the local planner genuinely needs it.
 > sandboxed model rather than executing it raw. The 5-stage importer is the
 > foundation; hardening it is on the list.
 
+### Least privilege — minted per call, not per policy
+
+A synthesized tool is only as safe as what it can *reach*. Metnos runs each
+executor in an OS sandbox, and — the part that matters — the filesystem grants
+are **minted from the actual call arguments at execution time**, not from a
+static allow-list the tool "holds". `write_files(~/Documents/note.txt)` is
+granted `~/Documents` and nothing else; the executor's own working directories
+are redirected to an isolated location it cannot escape. A compromised or sloppy
+executor cannot *attempt* out-of-scope I/O — there is no ambient authority and
+no shared god credential.
+
+Two enforcement points that fail differently, on purpose:
+
+- **Identity level** — the executor runs as a restricted principal (Linux
+  `bwrap` namespace; Windows job object today, with **AppContainer** strong
+  isolation validated and rolling out) and simply lacks the ACL to touch what
+  wasn't granted for *this* call. "Can't attempt" fails safe.
+- **Call level** — before dispatch, deterministic guards (not another LLM) strip
+  any argument the planner injected that isn't in the tool's declared schema,
+  check the verb/object against the closed vocabulary, and gate anything
+  destructive behind explicit consent.
+
+**Remote execution** extends the same model: a tool can run on a paired device
+(say, your PC) that only ever executes *signed* invocations and enforces the
+sandbox locally. And it degrades **honestly** — if the strong sandbox can't be
+built, it falls back to the weaker one and *says so* in the result, never
+claiming isolation it didn't deliver.
+
 ## Skills: modular capabilities you turn on and off
 
 Everything that ties Metnos to an external service, credential, or model is a
