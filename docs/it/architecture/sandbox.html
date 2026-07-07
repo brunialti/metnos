@@ -606,12 +606,13 @@ Onest&agrave;: il Job Object &egrave; forte nello spegnere i processi, ma non is
 
 <ul>
 <li>la <strong>firma del server</strong> viene fissata e ricontrollata sul dispositivo prima di eseguire: se il codice non &egrave; quello firmato dal server, non parte;</li>
-<li>solo gli executor di <strong>sola lettura e autosufficienti</strong> (che non toccano dati e non hanno dipendenze esterne) vengono promossi ai dispositivi;</li>
-<li>gli executor che <strong>modificano dati</strong> e non sono impacchettabili vengono <strong>rifiutati</strong>: non arrivano mai sul dispositivo.</li>
+<li>vengono promossi gli executor <strong>autosufficienti</strong> (impacchettabili, senza dipendenze non risolvibili sul dispositivo), sia in <strong>sola lettura</strong> sia <strong>mutanti</strong> &mdash; scrittura, spostamento e cancellazione file: da C7 (ADR&nbsp;0183) i remote mutanti sono ammessi, non solo i read-only;</li>
+<li>ogni mutazione remota &egrave; <strong>contenuta</strong> (il Job Object spegne l'albero dei processi, i permessi sono minti per-invocazione) e resa <strong>reversibile device-aware</strong>: i reverse pattern deterministici e i backup blob sono accodati allo STESSO dispositivo per l'annullamento (&sect;2.8; con il gap noto che il restore-da-blob non &egrave; remotabile);</li>
+<li>gli executor <strong>non impacchettabili</strong> (dipendenze non risolvibili sul dispositivo) restano <strong>server-only</strong>: non arrivano mai al dispositivo.</li>
 </ul>
 
 <p>
-In pratica: al dispositivo si affida solo lavoro che, nel peggiore dei casi, non pu&ograve; rovinare nulla. Il contenimento fa il resto.
+In pratica: al dispositivo si affida sia lettura sia scrittura, ma solo lavoro <em>contenuto</em> e <em>annullabile</em>; il contenimento e l'undo device-aware fanno il resto.
 </p>
 
 <h2>10.4 Come arriva Python sul dispositivo</h2>

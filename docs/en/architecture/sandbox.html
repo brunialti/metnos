@@ -606,12 +606,13 @@ In fairness: the Job Object is strong at shutting processes down, but it does no
 
 <ul>
 <li>the <strong>server signature</strong> is pinned and re-checked on the device before running: if the code is not the one the server signed, it does not start;</li>
-<li>only <strong>read-only, self-contained</strong> executors (that touch no data and have no external dependencies) are promoted to devices;</li>
-<li>executors that <strong>modify data</strong> and are not bundlable are <strong>denied</strong>: they never reach the device.</li>
+<li><strong>self-contained</strong> executors (bundlable, with no dependency unresolvable on the device) are promoted &mdash; both <strong>read-only</strong> and <strong>mutating</strong> (file write, move and delete): since C7 (ADR&nbsp;0183) mutating remote executors are admitted, not just read-only ones;</li>
+<li>every remote mutation is <strong>contained</strong> (the Job Object kills the whole process tree, permissions are minted per invocation) and made <strong>reversible, device-aware</strong>: deterministic reverse patterns and blob backups are queued to the SAME device for undo (&sect;2.8; with the known gap that blob-restore is not remotable);</li>
+<li><strong>non-bundlable</strong> executors (dependencies unresolvable on the device) stay <strong>server-only</strong>: they never reach the device.</li>
 </ul>
 
 <p>
-In practice: the device is only trusted with work that, in the worst case, cannot ruin anything. The containment does the rest.
+In practice: the device is trusted with both reads and writes, but only work that is <em>contained</em> and <em>undoable</em>; the containment and device-aware undo do the rest.
 </p>
 
 <h2>10.4 How Python reaches the device</h2>
