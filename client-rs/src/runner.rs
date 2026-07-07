@@ -358,6 +358,11 @@ impl Runner {
         extra_env.push(("METNOS_USER_DATA".into(), shimdata.display().to_string()));
         extra_env.push(("METNOS_USER_STATE".into(), shimdata.join("state").display().to_string()));
         extra_env.push(("METNOS_USER_CONFIG".into(), shimdata.join("config").display().to_string()));
+        // PATH_WORKSPACE (mnestoma/scheduler DB) e' derivato dall'install-root,
+        // NON da _home() → sfugge ai redirect USER_* sopra. Anch'esso sotto
+        // shimdata: un solo grant sulla radice copre tutto l'albero creato da
+        // ensure_dirs.
+        extra_env.push(("METNOS_WORKSPACE".into(), shimdata.join("workspace").display().to_string()));
         let limits = sandbox::Limits {
             wall: Duration::from_millis(inv.deadline_ms.max(1000)),
         };
