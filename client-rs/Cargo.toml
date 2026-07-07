@@ -1,6 +1,6 @@
 [package]
 name = "metnos-client"
-version = "0.2.16"
+version = "0.2.17"
 edition = "2021"
 description = "Metnos remote executor client (Rust)"
 license = "AGPL-3.0-only"
