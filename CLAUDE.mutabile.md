@@ -65,7 +65,7 @@ Vincoli: vocabolario chiuso SOLO in stage 1; ogni stage vede la fetta minima di 
 ## 12. Fasi di sviluppo
 
 - **Fasi 1-5 chiuse** (POC / test framework / synt 5 stadi / reality check+Telegram / vaglio+sandbox+dispatcher).
-- **Fase 6** voce — STANDBY. **Fase 7** topic 1 (client Rust executor remoti): MVP fatto, C7 mutanti in corso; topic 2+ (multi-OS/multi-user/robustezza) DA COMPLETARE. **Fase 8** stress logico — DOPO fase 7.
+- **Fase 6** voce — STANDBY. **Fase 7** (client Rust executor remoti) — QUASI CHIUSA (7/7): topic 1 MVP + C7 mutanti FATTI (write/move/delete remoti validati sul PC reale, undo device-aware ADR 0183); topic 2 multi-user FATTO (device→users.id, owner-filter), multi-OS = Windows+Linux (macOS ESCLUSO da Roberto); robustezza FATTA (W4 AppContainer validato happy-path, task#6 blob-TTL, co-location data-locality consumer↔producer, device-i18n bundleato, client 0.2.17). **RESIDUO**: abilitare W4 in prod (gate default OFF, dormiente) — richiede la validazione dei 3 rami runtime dei bug minori W4 (ACL rollback su fallimento, registry-drop all'unpair; il 3° `/tmp` è deterministico+testato) via injection di fallimento/unpair sul PC reale. **Fase 8** stress logico — DOPO l'enable W4.
 
 ## 14. HTTP API
 
