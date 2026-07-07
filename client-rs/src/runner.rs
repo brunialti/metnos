@@ -143,6 +143,11 @@ impl Runner {
         if pruned > 0 {
             tracing::warn!(pruned, "spool: result stale scartati (oltre retention)");
         }
+        // GC blob undo (task #6): stessa filosofia dello spool GC.
+        let blobs_pruned = prune_history_blobs(&self.paths);
+        if blobs_pruned > 0 {
+            tracing::warn!(turns = blobs_pruned, "history: blob undo stale rimossi (oltre retention)");
+        }
         // Heartbeat su task tokio SEPARATO (§B5): il loop principale si blocca
         // per decine di secondi durante il primo download+estrazione del runtime
         // python (pyenv::resolve) e durante l'esecuzione di un executor lungo.
@@ -624,6 +629,41 @@ fn pending_result_ids(paths: &Paths) -> HashSet<String> {
 /// retention (`METNOS_SPOOL_RETENTION_DAYS`, default 14). Oltre quella
 /// finestra il server ha da tempo chiuso il turno con timeout onesto:
 /// ri-consegnarli non osserva piu' nulla. Ritorna il numero di file rimossi.
+/// GC dei blob undo sul device (task #6 fase7): il backup pre-mutazione lo
+/// scrive lo shim in `$METNOS_HISTORY_DIR/<turn>/blob/<sha>.bin`; col redirect
+/// W4 `METNOS_HISTORY_DIR` cade sotto `<data_dir>/shimdata/_history` (default =
+/// PATH_USER_DATA/_history, e PATH_USER_DATA=shimdata). Il reaper del server non
+/// raggiunge il device → i blob si accumulerebbero. Qui potiamo per turno le
+/// dir oltre la retention undo (`METNOS_HISTORY_RETENTION_DAYS`, default 30).
+/// Onesto (§2.8): warn per-dir, mai silenzioso. Startup-only come lo spool GC —
+/// il device si riavvia spesso (self-update); l'accumulo per-turno e' lento.
+fn prune_history_blobs(paths: &Paths) -> usize {
+    let days: u64 = std::env::var("METNOS_HISTORY_RETENTION_DAYS")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(30);
+    let max_age = std::time::Duration::from_secs(days * 86400);
+    let root = paths.data_dir.join("shimdata").join("_history");
+    let mut removed = 0;
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for e in entries.flatten() {
+            // Ogni <turn> e' una directory; salta i file sciolti.
+            if !e.path().is_dir() {
+                continue;
+            }
+            let stale = e.metadata().and_then(|m| m.modified()).ok()
+                .and_then(|t| t.elapsed().ok())
+                .map(|age| age > max_age)
+                .unwrap_or(false);
+            if stale && std::fs::remove_dir_all(e.path()).is_ok() {
+                tracing::warn!(turn = %e.path().display(),
+                               retention_days = days,
+                               "blob undo stale rimossi dal device");
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
 fn prune_stale_spool(paths: &Paths) -> usize {
     let days: u64 = std::env::var("METNOS_SPOOL_RETENTION_DAYS")
         .ok().and_then(|v| v.parse().ok()).unwrap_or(14);
