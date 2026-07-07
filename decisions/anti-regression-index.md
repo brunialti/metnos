@@ -181,6 +181,7 @@
 
 **Engine guard-chain hardening 5/7/2026 (CP1·M0 ADR 0177)**
 - **Contratto pipeline guard (T3)**: `dispatch.GUARD_PIPELINE` dichiarativa (14 guard, ordine+gate-v3) + `test_guard_pipeline_contract.py` blocca nomi/ordine.
+- **Registro ArgTransform (T3 estensione, 7/7/2026)**: `executor.ARG_TRANSFORM_PIPELINE` — unifica la famiglia resolver deterministica pre-esecuzione (8 entry: 5 query-det + 3 exec-only) in un registro tipizzato gemello di `GUARD_PIPELINE`. Driver unico `apply_arg_transforms(scope=…)`; il campo `scope` rende STRUTTURALE il confine query-det (riapplicabile a esecuzione + record L0) vs exec-only (solo esecuzione) — prima era un commento violabile → avvelenamento L0. `test_argtransform_pipeline.py` blocca contratto+idempotenza. Irregolari (from_step/fillers/placeholders/scope_args/matrix) restano cablati. Spec: `internal/design/spec_argtransform_registry.md`.
 - **Idempotenza guard su cache-hit (T4)**: stesso test, double-apply full-chain+per-guard su corpus incorporato; sweep live 33/33.
 - **Arg install-root fantasma**: `dispatch._overwrite_phantom_install_args` (primo della catena) rimuove path dentro PATH_ROOT non nominati dalla query; ripara i piani L0/L1 avvelenati on-hit.
 - **find degenere = list (§2.2)**: `dispatch._degenerate_find_to_list` (ultimo) — intento LIST + find_files(base_path) senza selettore → list_dirs (device-eligible).

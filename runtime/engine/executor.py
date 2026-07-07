@@ -24,6 +24,7 @@ import logging
 import re
 import sqlite3
 import time
+from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 from .types import Framework, StepSpec, StepRun, RunResult
@@ -1028,6 +1029,91 @@ _GLOB_ARG_KEYS = frozenset({"pattern", "patterns", "glob"})
 _UNIVERSAL_GLOBS = frozenset({"*", "*.*", "**", ""})
 
 
+@dataclass(frozen=True)
+class ArgTransform:
+    """Voce del registro delle trasformazioni-arg deterministiche pre-esecuzione
+    (§7.9), gemello di `dispatch.Guard`. Entry = DATI: la `fn` e' localizzata via
+    (module, func) — lazy import nel driver, niente import-cycle. `scope`:
+    "query-det" (riapplicabile a esecuzione E record L0, idempotente) |
+    "exec-only" (dipende da runtime ctx/creds). `needs_schema`: la fn vuole
+    `args_schema=` kwarg. `reads/writes` dichiarano cosa legge/scrive
+    (incrociabili con arg_provenance, come i Guard). ADR 0177 T3 (estensione)."""
+    name: str
+    module: str
+    func: str
+    scope: str
+    needs_schema: bool = False
+    reads: frozenset = field(default_factory=frozenset)
+    writes: frozenset = field(default_factory=frozenset)
+    rationale: str = ""
+    adr: str = ""
+
+
+ARG_TRANSFORM_PIPELINE: tuple = (
+    # ── query-deterministici: il segnale vive nella QUERY, non negli arg
+    #    ereditati (champion L1 / piano cachato). Riapplicati a esecuzione
+    #    (Executor.run) E al RECORD L0 (dispatch._maybe_record_fastpath), §2.8.
+    ArgTransform("mail_account", "mail_account_resolver", "resolve_mail_account",
+                 "query-det", reads=frozenset({"query"}),
+                 writes=frozenset({"args.account"}),
+                 rationale="«tutta la posta»->all, account nominato->quello (bug live 10-11/6/2026)",
+                 adr="0163"),
+    ArgTransform("from_contains", "from_contains_resolver", "resolve_from_contains",
+                 "query-det", reads=frozenset({"query"}),
+                 writes=frozenset({"args.where_field", "args.where_value", "args.where_in"}),
+                 rationale="predicato «che contiene X» -> where_* (STOP-list conservativa)"),
+    ArgTransform("junk_mail", "junk_mail_resolver", "resolve_junk_mail",
+                 "query-det", reads=frozenset({"query"}),
+                 writes=frozenset({"args.where_field", "args.where_in"}),
+                 rationale="«posta indesiderata»->filtro category_hints bulk (23/6/2026)"),
+    ArgTransform("time_window", "time_window_resolver", "resolve_time_window",
+                 "query-det", needs_schema=True,
+                 reads=frozenset({"query", "args_schema"}),
+                 writes=frozenset({"args.time_window"}),
+                 rationale="«ultime 24 ore»->last-24h; slot query-specific, non ereditato"),
+    ArgTransform("photo_fields", "photo_fields_resolver", "resolve_photo_fields",
+                 "query-det", reads=frozenset({"query", "dl:photo.metadata_fields"}),
+                 writes=frozenset({"args.fields"}),
+                 rationale="sinonimi NL metadata foto -> enum canonico via detection_lexicon (7/7/2026)"),
+    # ── execution-only: dipendono da runtime ctx/creds/actor -> NON riapplicabili
+    #    al record L0 (resterebbero legati allo stato del turno).
+    ArgTransform("backend_arg", "backend_resolver", "resolve_backend_arg",
+                 "exec-only", needs_schema=True,
+                 reads=frozenset({"query", "args_schema", "creds"}),
+                 writes=frozenset({"args.client"}),
+                 rationale="provider multi-backend risolto dal runtime (default creds + esplicito query), LLM-invisibile",
+                 adr="0155"),
+    ArgTransform("self_recipient", "self_recipient_resolver", "resolve_self_recipient",
+                 "exec-only", reads=frozenset({"query", "actor"}),
+                 writes=frozenset({"args.to"}),
+                 rationale="send senza destinatario esterno -> actor («inviami»/«mia email» = identità)",
+                 adr="0163"),
+    ArgTransform("calendar", "calendar_resolver", "resolve_calendar",
+                 "exec-only", reads=frozenset({"query", "creds"}),
+                 writes=frozenset({"args.calendar_id"}),
+                 rationale="quale calendario fra gli owned (default primary) = config runtime, non LLM",
+                 adr="0136"),
+)
+
+
+def apply_arg_transforms(tool: str, args: dict, query: str, *, scope: str,
+                         args_schema: Optional[dict] = None) -> dict:
+    """Driver UNICO del registro ArgTransform (gemello del loop GUARD_PIPELINE):
+    applica in ordine le entry del `scope` dato. Best-effort per entry (noop
+    loggato, come il cablaggio precedente). Lazy import via (module, func)."""
+    import importlib
+    for t in ARG_TRANSFORM_PIPELINE:
+        if t.scope != scope:
+            continue
+        try:
+            fn = getattr(importlib.import_module(t.module), t.func)
+            args = (fn(tool, args, query, args_schema=args_schema)
+                    if t.needs_schema else fn(tool, args, query))
+        except Exception as _e:
+            log.debug("%s noop: %r", t.name, _e)
+    return args
+
+
 def resolve_query_canonical_args(tool: str, args: dict, query: str,
                                  args_schema: Optional[dict] = None) -> dict:
     """Catena dei resolver QUERY-DETERMINISTICI (§7.9): ri-risoluzione degli
@@ -1047,32 +1133,8 @@ def resolve_query_canonical_args(tool: str, args: dict, query: str,
     ctx (actor) o da stato creds, restano execution-only in Executor.run.
     Ogni resolver e' best-effort: il fallimento non blocca (noop loggato).
     """
-    try:
-        from mail_account_resolver import resolve_mail_account
-        args = resolve_mail_account(tool, args, query)
-    except Exception as _mre:
-        log.debug("mail_account_resolver noop: %r", _mre)
-    try:
-        from from_contains_resolver import resolve_from_contains
-        args = resolve_from_contains(tool, args, query)
-    except Exception as _fce:
-        log.debug("from_contains_resolver noop: %r", _fce)
-    try:
-        from junk_mail_resolver import resolve_junk_mail
-        args = resolve_junk_mail(tool, args, query)
-    except Exception as _jme:
-        log.debug("junk_mail_resolver noop: %r", _jme)
-    try:
-        from time_window_resolver import resolve_time_window
-        args = resolve_time_window(tool, args, query, args_schema=args_schema)
-    except Exception as _twe:
-        log.debug("time_window_resolver noop: %r", _twe)
-    try:
-        from photo_fields_resolver import resolve_photo_fields
-        args = resolve_photo_fields(tool, args, query)
-    except Exception as _pfe:
-        log.debug("photo_fields_resolver noop: %r", _pfe)
-    return args
+    return apply_arg_transforms(tool, args, query, scope="query-det",
+                                args_schema=args_schema)
 
 
 def is_query_specific(framework_json: str) -> bool:
@@ -1556,34 +1618,13 @@ class Executor:
             args = {k: _resolve_stepref(v, result.steps) for k, v in args.items()}
             args = _resolve_fillers(args, framework.fillers, self.llm_fast, query)
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
-            # Backend UNIFORME (lessons_learned.md §B): per gli object
-            # multi-provider il RUNTIME risolve il provider (default per-creds +
-            # esplicito da query), LLM-invisibile. Override deterministico — il
-            # backend non è scelta del planner (ADR 0155: runtime proprietario).
-            try:
-                from backend_resolver import resolve_backend_arg
-                args = resolve_backend_arg(
-                    step.tool, args, query,
-                    args_schema=self._schema_map.get(step.tool))
-            except Exception as _bre:
-                log.debug("backend_resolver noop: %r", _bre)
-            # Self-recipient UNIFORME (§7.9, gemello di backend_resolver): un send
-            # via email senza destinatario esplicito esterno → destinatario =
-            # actor ("inviami/alla mia email" = identità, non intento LLM; ADR
-            # 0163/0155). Model-independent. Vedi self_recipient_resolver.py.
-            try:
-                from self_recipient_resolver import resolve_self_recipient
-                args = resolve_self_recipient(step.tool, args, query)
-            except Exception as _sre:
-                log.debug("self_recipient_resolver noop: %r", _sre)
-            # Calendario UNIFORME (gemello backend_resolver): QUALE calendario
-            # (target NL fra gli owned, default primary) è configurazione risolta
-            # dal runtime, non scelta dell'LLM. Vedi calendar_resolver.py.
-            try:
-                from calendar_resolver import resolve_calendar
-                args = resolve_calendar(step.tool, args, query)
-            except Exception as _cre:
-                log.debug("calendar_resolver noop: %r", _cre)
+            # Resolver EXEC-ONLY (backend/self_recipient/calendar): dipendono da
+            # runtime ctx/creds → override deterministico LLM-invisibile. Registro
+            # ArgTransform scope="exec-only" (ADR 0155/0163/0136; razionali
+            # per-entry in ARG_TRANSFORM_PIPELINE). NON riapplicati al record L0.
+            args = apply_arg_transforms(
+                step.tool, args, query, scope="exec-only",
+                args_schema=self._schema_map.get(step.tool))
             # Slot query-specific UNIFORMI (§7.9): account mail («tutta la
             # posta»→"all", account nominato→quello; bug live 10-11/6/2026)
             # + time_window («ultime 24 ore»→"last-24h"). Il segnale vive
