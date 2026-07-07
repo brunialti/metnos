@@ -3397,7 +3397,14 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # RIMOSSA (transizione finita: i 3 executor read-only dichiarano device_ok):
     # non c'è più fallback che possa mascherare un manifest incompleto. Un nuovo
     # executor remoto si dichiara nel manifest (single source of truth = catalogo).
-    _device_ok = bool(target_device) and bool(_plc.get("device_ok"))
+    # Data-locality (co-location consumer↔producer, 7/7/2026): l'engine marca
+    # gli step device_ok che consumano from_step da un producer girato sul
+    # SERVER → restano sul server (i loro entries/path sono dati locali, non
+    # esistono sul device). Il marker e' rimosso qui, prima di raggiungere
+    # l'executor. NON tocca scope="device" (device-only per costruzione).
+    _colocate_server = bool(args.pop("_colocate_server", False))
+    _device_ok = (bool(target_device) and bool(_plc.get("device_ok"))
+                  and not _colocate_server)
     if _plc_scope == "device" or _device_ok:
         import devices as _devices
         import placement as _placement

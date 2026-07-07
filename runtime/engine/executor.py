@@ -441,6 +441,38 @@ def _seed_done_tools(seed_steps) -> set:
     return out
 
 
+_STEP_REF_RE = re.compile(r"(?:\$\{|\{\{)\s*step(\d+)")
+
+
+def _references_server_producer(step, history: list) -> bool:
+    """True se lo step referenzia un PRODUCER girato sul SERVER (host='server'),
+    via `from_step:N` O placeholder `${stepN…}`/`{{stepN…}}` (§4.1). Base della
+    co-location data-locality: un consumer device_ok di dati prodotti sul server
+    deve restare sul server (i path/entries non esistono sul device)."""
+    sa = getattr(step, "args", None)
+    if not isinstance(sa, dict):
+        return False
+    idxs: set = set()
+    fs = sa.get("from_step")
+    if isinstance(fs, str) and fs.isdigit():
+        fs = int(fs)
+    if isinstance(fs, int):
+        idxs.add(fs)
+    try:
+        blob = json.dumps(sa, default=str)
+    except Exception:
+        blob = str(sa)
+    for m in _STEP_REF_RE.finditer(blob):
+        idxs.add(int(m.group(1)))
+    for n in idxs:
+        prod = next((s for s in history if getattr(s, "step_idx", None) == n), None)
+        if prod is None and 1 <= n <= len(history):
+            prod = history[n - 1]
+        if prod is not None and getattr(prod, "host", "server") == "server":
+            return True
+    return False
+
+
 def _resolve_from_step(args: dict, history: list[StepRun],
                        consumer_schema=None) -> dict:
     """Espande from_step: N → entries da step N (1-based), con proiezione
@@ -1868,6 +1900,15 @@ class Executor:
                     result.aborted_reason = f"step_{i+1}_vaglio_guard"
                     result.final_kind = "error"
                     break
+            # Data-locality (co-location consumer↔producer, §7.9): uno step
+            # device_ok che CONSUMA l'output di un producer girato sul SERVER
+            # deve restare sul server — entries/path sono dati LOCALI, inesistenti
+            # sul device (bug 7/7: get_files su `${step1.entries.*.path}` di
+            # find_images_indices@.33 con device sticky → C:\mnt\... → 0 trovati).
+            # Producer via from_step:N O placeholder ${stepN}/{{stepN}} (§4.1).
+            # Marker letto e rimosso da invoke_executor prima del placement.
+            if _references_server_producer(step, result.steps):
+                args = {**args, "_colocate_server": True}
             t0 = time.time()
             if _form_obs is not None:
                 r = _form_obs
@@ -1914,8 +1955,10 @@ class Executor:
                 except Exception as _rse:
                     log.debug("remember_scope_args noop: %r", _rse)
 
+            _host = (r.get("_ran_on_device") or "server") if isinstance(r, dict) else "server"
             sr = StepRun(step_idx=i + 1, tool=step.tool, args=args,
-                          result=r, ok=bool(r.get("ok")), latency_ms=lat_ms)
+                          result=r, ok=bool(r.get("ok")), latency_ms=lat_ms,
+                          host=_host)
             result.steps.append(sr)
             if sr.ok:
                 result.ok_count += 1

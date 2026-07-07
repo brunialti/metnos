@@ -128,6 +128,12 @@ class StepRun:
     #            dialogo/gate): il proposer NON deve ri-emetterlo, gli step a
     #            valle lo referenziano via from_step. Guardia dedup deterministica.
     kind: str = "live"
+    # Host di ESECUZIONE reale dello step (data-locality per la co-location
+    # consumer↔producer, 7/7/2026): "server" (locale su .33) o un device_id
+    # (girato in remoto). Un consumer from_step di un producer "server" deve
+    # restare sul server (i suoi entries/path sono dati locali). Derivato da
+    # `result["_ran_on_device"]` (settato al choke-point invoke_executor).
+    host: str = "server"
 
 
 @dataclass
