@@ -28,6 +28,10 @@ def shim_sources() -> dict[str, Path]:
     return {
         "executor_helpers.py": r / "executor_helpers.py",
         "messages.py": r / "device_shim" / "messages.py",
+        # Repertorio i18n (en+it) bundleato: il device rende i messaggi
+        # user-facing (§7.13) invece del codice grezzo. Generato dal DB
+        # (device_shim/gen_i18n.py), guardia-drift in test_device_shim_i18n.
+        "messages_i18n.json": r / "device_shim" / "messages_i18n.json",
         "path_alias.py": r / "path_alias.py",
         "backends/__init__.py": r / "backends" / "__init__.py",
         "backends/files/__init__.py": r / "backends" / "files" / "__init__.py",
