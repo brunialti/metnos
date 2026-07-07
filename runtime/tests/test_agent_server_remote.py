@@ -312,10 +312,15 @@ class InvokeRemoteEnvAndDeadlineTests(unittest.TestCase):
             env_injections={"METNOS_TURN_ID": "explicit"})
         self.assertEqual(cap["env_injections"]["METNOS_TURN_ID"], "explicit")
 
-    def test_no_turn_id_no_injection(self):
+    def test_no_turn_id_only_lang_injected(self):
+        # §7.13 (7/7): METNOS_LANG (lingua istanza) e' SEMPRE iniettato — il
+        # device non ha il DB i18n e rende i messaggi user-facing nel repertorio
+        # bundleato; senza, cadrebbe su 'en'. METNOS_TURN_ID solo con turn_id.
         cap = self._capture_enqueue(
             self._revertible_exec(), {"paths": ["/x"]}, timeout_s=30)
-        self.assertIsNone(cap["env_injections"])
+        env = cap["env_injections"] or {}
+        self.assertIn("METNOS_LANG", env)
+        self.assertNotIn("METNOS_TURN_ID", env)
 
     def test_mass_delete_deadline_scaled(self):
         cap = self._capture_enqueue(
