@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
+#[cfg(windows)]
+mod appcontainer;
 mod config;
 mod executors;
 mod identity;
@@ -8,6 +10,9 @@ mod pairing;
 mod proclock;
 mod pyenv;
 mod runner;
+// Logica PURA condivisa fra i due sandbox (hint→root, capability→ACL, encoder
+// Win32): compila su entrambe le piattaforme, testabile sotto Linux (W4).
+mod sandbox_common;
 mod sandbox_linux;
 mod selfupdate;
 #[cfg(windows)]
@@ -38,6 +43,10 @@ enum Cmd {
         #[arg(long)]
         server: Option<String>,
     },
+    /// Unpair this device: forget the server pairing and (on Windows) clean up
+    /// the AppContainer sandbox — revoke every ACL grant recorded on user
+    /// directories and delete the container profile (W4.4).
+    Unpair,
 }
 
 /// Log ANCHE su file (`<data_dir>/client.log`): in Scheduled Task / unit di
@@ -173,6 +182,36 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             let r = runner::Runner::new(url, &st, id, paths)
                 .context("init runner")?;
             r.run().await?;
+        }
+        Cmd::Unpair => {
+            // 1. Pulizia sandbox (solo Windows, W4.4): revoca gli ACE concessi
+            //    al SID del container sulle dir utente + rimuove il profilo. Su
+            //    altre piattaforme non c'e' AppContainer: nulla da pulire.
+            #[cfg(windows)]
+            {
+                match appcontainer::cleanup_all_grants() {
+                    Ok(r) => println!(
+                        "sandbox: {} concessioni ACL registrate, {} revocate, \
+                         {} non revocate; profilo rimosso={}",
+                        r.total, r.revoked, r.failed, r.profile_removed
+                    ),
+                    Err(e) => {
+                        tracing::warn!("pulizia sandbox AppContainer fallita: {e:#}");
+                        eprintln!("attenzione: pulizia sandbox non completata: {e:#}");
+                    }
+                }
+            }
+            // 2. Dimentica il pairing: il device torna non-appaiato. L'identita'
+            //    (la chiave) resta, cosi' un nuovo `register` e' possibile.
+            if paths.state_file.exists() {
+                let was = st.device_id.clone().unwrap_or_else(|| "?".into());
+                std::fs::remove_file(&paths.state_file).with_context(|| {
+                    format!("rimozione state {}", paths.state_file.display())
+                })?;
+                println!("pairing rimosso (device {was} non piu' appaiato)");
+            } else {
+                println!("nessun pairing da rimuovere");
+            }
         }
     }
     Ok(())

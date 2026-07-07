@@ -30,6 +30,11 @@ pub struct SandboxOutput {
     pub stderr: String,
     pub timed_out: bool,
     pub sandbox: String,
+    /// Motivo del declassamento del livello di sandbox, quando avvenuto (W4):
+    /// popolato SOLO su Windows quando l'AppContainer non si costruisce e si
+    /// degrada a job-object (§2.8, mai silenzioso). Su Linux sempre `None`
+    /// (bwrap non ha un livello superiore da cui degradare).
+    pub downgrade_reason: Option<String>,
 }
 
 /// Separatore PYTHONPATH per piattaforma (§16.2 W3.1: fix del bug che
@@ -134,6 +139,7 @@ pub async fn run_sandboxed(
                 stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
                 timed_out: false,
                 sandbox: sandbox_label.into(),
+                downgrade_reason: None,
             })
         }
         Err(_) => {
@@ -152,6 +158,7 @@ pub async fn run_sandboxed(
                 stderr: "deadline exceeded".into(),
                 timed_out: true,
                 sandbox: sandbox_label.into(),
+                downgrade_reason: None,
             })
         }
     }
@@ -206,7 +213,9 @@ fn apply_capability(a: &mut Vec<String>, cap: &Capability, share_net: &mut bool)
         "network" => *share_net = true,
         "fs" => {
             for hint in &cap.hint {
-                if let Some(root) = glob_root(hint) {
+                // Derivazione hint→radice CONDIVISA con il path Windows (W4.2):
+                // stessa funzione, un solo comportamento (§9.3 mapping bilingue).
+                if let Some(root) = crate::sandbox_common::glob_root(hint) {
                     if root.exists() {
                         if mode == "write" {
                             a.push("--bind".into());
@@ -246,29 +255,9 @@ fn bind_ancestor_ro(a: &mut Vec<String>, file: &Path) {
     }
 }
 
-/// Radice non-glob di un hint (`~/notes/**` → `~/notes`), con `~` espanso.
-#[cfg(unix)]
-fn glob_root(hint: &str) -> Option<PathBuf> {
-    if hint == "*" {
-        return None; // troppo largo per un bind mirato
-    }
-    let mut h = hint.to_string();
-    for sep in ["/**", "/*", "**"] {
-        if let Some(idx) = h.find(sep) {
-            h.truncate(idx);
-            break;
-        }
-    }
-    if let Some(rest) = h.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return Some(home.join(rest));
-        }
-    }
-    if h.starts_with('/') {
-        return Some(PathBuf::from(h));
-    }
-    None
-}
+// La derivazione hint→radice vive ora in `sandbox_common::glob_root` (W4.2:
+// stessa logica condivisa col path Windows). `apply_capability` sopra la
+// richiama; qui non ne resta una copia locale.
 
 #[cfg(unix)]
 pub fn bwrap_available() -> bool {

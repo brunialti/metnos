@@ -280,6 +280,7 @@ impl Runner {
                 n_processed: 0,
                 elapsed_ms: start.elapsed().as_millis() as i64,
                 sandbox: "none".into(),
+                sandbox_downgrade_reason: None,
                 error: Some(format!("{e:#}")),
                 error_class: Some("device_error".into()),
                 payload: json!({}),
@@ -371,6 +372,7 @@ impl Runner {
                     n_processed: 0,
                     elapsed_ms,
                     sandbox: out.sandbox,
+                    sandbox_downgrade_reason: out.downgrade_reason,
                     error: Some("deadline exceeded".into()),
                     error_class: Some("timeout".into()),
                     payload: json!({}),
@@ -380,7 +382,8 @@ impl Runner {
             match serde_json::from_str::<Value>(out.stdout.trim()) {
                 Ok(parsed) => {
                     return Ok(result_from_executor(
-                        inv, &self.device_id, parsed, elapsed_ms, out.sandbox));
+                        inv, &self.device_id, parsed, elapsed_ms,
+                        out.sandbox, out.downgrade_reason));
                 }
                 Err(e) => {
                     // Auto-guarigione SOLO se manca un modulo DELLO SHIM: quell'
@@ -516,6 +519,7 @@ fn result_from_executor(
     parsed: Value,
     elapsed_ms: i64,
     sandbox: String,
+    sandbox_downgrade_reason: Option<String>,
 ) -> InvocationResult {
     let ok = parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let entries = parsed
@@ -538,6 +542,7 @@ fn result_from_executor(
         n_processed,
         elapsed_ms,
         sandbox,
+        sandbox_downgrade_reason,
         error,
         error_class,
         payload: parsed, // output COMPLETO: il runtime lo consuma come locale
