@@ -81,6 +81,10 @@ pub struct InvocationResult {
     pub n_processed: i64,
     pub elapsed_ms: i64,
     pub sandbox: String,
+    /// W4: motivo del declassamento del livello di sandbox (AppContainer non
+    /// costruito → job-object). Additivo e OPZIONALE: emesso SOLO quando
+    /// presente, cosi' il body resta byte-identico nel caso normale (§2.8).
+    pub sandbox_downgrade_reason: Option<String>,
     pub error: Option<String>,
     pub error_class: Option<String>,
     /// Output COMPLETO dell'executor (§2.6): non solo `entries`, ma anche le
@@ -106,6 +110,14 @@ impl InvocationResult {
         obj.insert("n_processed".into(), Value::from(self.n_processed));
         obj.insert("elapsed_ms".into(), Value::from(self.elapsed_ms));
         obj.insert("sandbox".into(), Value::String(self.sandbox.clone()));
+        // Emesso SOLO quando presente: nel caso normale (nessun declassamento)
+        // il body non guadagna chiavi → wire invariato per i server esistenti.
+        if let Some(reason) = &self.sandbox_downgrade_reason {
+            obj.insert(
+                "sandbox_downgrade_reason".into(),
+                Value::String(reason.clone()),
+            );
+        }
         obj.insert("payload".into(), self.payload.clone());
         if let Some(e) = &self.error {
             obj.insert("error".into(), Value::String(e.clone()));

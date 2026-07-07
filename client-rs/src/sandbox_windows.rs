@@ -8,11 +8,13 @@
 //! `TerminateJobObject` e' il gemello Windows del SIGKILL-al-process-group
 //! di `sandbox_linux.rs`.
 //!
-//! Onestà sul livello di protezione (§9 design doc): questo e' contenimento
-//! di RISORSE e PRIVILEGI (token ristretto quando disponibile), NON
-//! isolamento del filesystem. L'isolamento vero (capability→ACL) arriva con
-//! AppContainer in W4 — qui `exec.capabilities` non e' ancora tradotto in
-//! permessi. Label onesta nel result: `sandbox:"job-object"`.
+//! Onestà sul livello di protezione (§9 design doc): il Job Object e'
+//! contenimento di RISORSE e PRIVILEGI, NON isolamento del filesystem.
+//! L'isolamento vero (capability→ACL) e' l'AppContainer (W4, `appcontainer.rs`),
+//! attivato dal gate `METNOS_SANDBOX_APPCONTAINER=1` (default OFF) e
+//! stratificato SOTTO questo job (i due strati COESISTONO). Label onesta nel
+//! result: `sandbox:"appcontainer"` SOLO se il container e' davvero costruito,
+//! altrimenti `"job-object"` con `sandbox_downgrade_reason` (§2.8).
 //!
 //! Sequenza (l'ordine E' il contratto — evita la finestra in cui il figlio
 //! gira fuori dal job): CreateJobObjectW → SetInformationJobObject → spawn
@@ -22,7 +24,7 @@
 
 use anyhow::{bail, Context, Result};
 use std::os::windows::io::RawHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
@@ -40,7 +42,9 @@ use windows_sys::Win32::System::Threading::{
     OpenThread, ResumeThread, CREATE_NO_WINDOW, CREATE_SUSPENDED, THREAD_SUSPEND_RESUME,
 };
 
-use crate::executors::CachedExecutor;
+use crate::appcontainer;
+use crate::executors::{CachedExecutor, Capability};
+use crate::sandbox_common::HintGrant;
 // Tipi condivisi col modulo linux (§16.2: "minimo diff" = ri-esportati, non
 // duplicati). sandbox_linux.rs compila su entrambe le piattaforme.
 pub use crate::sandbox_linux::{Limits, SandboxOutput};
@@ -52,7 +56,16 @@ const ACTIVE_PROCESS_LIMIT: u32 = 8;
 /// Wrapper RAII su un HANDLE Win32: chiude alla `Drop`, cosi' un `?` in
 /// qualunque punto della sequenza non perde l'handle (leak) ne' lascia il
 /// job/thread/snapshot orfano.
-struct OwnedHandle(HANDLE);
+pub(crate) struct OwnedHandle(HANDLE);
+
+impl OwnedHandle {
+    /// HANDLE grezzo per le API che lo USANO senza prenderne possesso
+    /// (AssignProcessToJobObject/TerminateJobObject dal percorso AppContainer,
+    /// W4). Il possesso resta all'`OwnedHandle`: CloseHandle avviene alla Drop.
+    pub(crate) fn raw(&self) -> HANDLE {
+        self.0
+    }
+}
 
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
@@ -75,7 +88,9 @@ fn check_bool(op: &str, ok: BOOL) -> Result<()> {
 
 /// Crea un Job Object con i limiti di contenimento (§16.2): kill-on-close
 /// (l'albero muore anche se il client crasha), memoria e conteggio processi.
-fn create_job() -> Result<OwnedHandle> {
+/// `pub(crate)`: lo riusa anche il percorso AppContainer (W4), che crea il
+/// proprio job dentro il thread bloccante (l'HANDLE non e' Send).
+pub(crate) fn create_job() -> Result<OwnedHandle> {
     let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
     if job.is_null() {
         return Err(win_err("CreateJobObjectW"));
@@ -159,11 +174,128 @@ fn resume_primary_thread(pid: u32) -> Result<()> {
 /// richiedeva `off` per arrivare qui. Rimosso: era un fossile della
 /// finestra prima che questo modulo esistesse, §16.1/§16.2 storico.)
 /// B.5 (fase 7): livello di contenimento corrente per l'heartbeat — gemello
-/// windows di `sandbox_linux::sandbox_level`. "job-object" quando non
-/// disabilitato, "none" con METNOS_SANDBOX=off. (W4 aggiungera' "appcontainer"
-/// come livello superiore.)
+/// windows di `sandbox_linux::sandbox_level`. "none" con METNOS_SANDBOX=off;
+/// "appcontainer" se il gate W4 e' attivo E il profilo si costruisce davvero
+/// (probe ONESTA cacheata, `appcontainer::probe_supported`); altrimenti
+/// "job-object". Telemetria per il gate `min_sandbox` server-side (W4.4).
 pub fn sandbox_level() -> &'static str {
-    if crate::sandbox_linux::sandbox_disabled() { "none" } else { "job-object" }
+    if crate::sandbox_linux::sandbox_disabled() {
+        "none"
+    } else if appcontainer::probe_supported() {
+        "appcontainer"
+    } else {
+        "job-object"
+    }
+}
+
+/// Environment dell'executor (§16.2): costruito UNA volta e condiviso dai due
+/// percorsi — il job-object (tokio `Command`) e l'AppContainer (blocco UTF-16
+/// per `CreateProcessW`). Stessi valori del wiring precedente, ora in un solo
+/// posto per evitare drift fra i due spawn.
+///
+/// - `USERPROFILE/HOMEDRIVE/HOMEPATH` (0.2.13): senza, `~`/`Path.home()` nei
+///   moduli shim crashavano — «scrivi in ~/x sul PC» era rotto.
+/// - `SystemRoot/windir/ComSpec/...` (0.2.14): senza, i tool nativi che toccano
+///   WMI fallivano «Impossibile trovare il modulo specificato» (tasklist rc=1).
+/// - `LOCALAPPDATA/APPDATA/USERNAME/ALLUSERSPROFILE` (W4): l'AppContainer monta
+///   lo storage redirette sotto `%LOCALAPPDATA%\Packages\<nome>` durante
+///   CreateProcessW; senza `LOCALAPPDATA` nel blocco env fallisce con
+///   `ERROR_ENVVAR_NOT_FOUND` (203). Innocui per il path job-object.
+/// - `TEMP/TMP` puntati allo scratch della sandbox.
+fn build_env(
+    shim_dir: &Path,
+    exec_dir: &Path,
+    scratch: &Path,
+    extra_env: &[(String, String)],
+) -> Vec<(String, String)> {
+    let mut env: Vec<(String, String)> = Vec::new();
+    let pythonpath =
+        format!("{}{}{}", shim_dir.display(), pythonpath_sep(), exec_dir.display());
+    env.push((
+        "PATH".into(),
+        std::env::var("PATH").unwrap_or_else(|_| r"C:\Windows\System32".into()),
+    ));
+    env.push(("PYTHONPATH".into(), pythonpath));
+    env.push(("METNOS_RUNTIME".into(), shim_dir.display().to_string()));
+    env.push(("PYTHONDONTWRITEBYTECODE".into(), "1".into()));
+    env.push(("PYTHONUTF8".into(), "1".into()));
+    env.push(("PYTHONIOENCODING".into(), "utf-8".into()));
+    for var in ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"] {
+        if let Ok(v) = std::env::var(var) {
+            env.push((var.to_string(), v));
+        }
+    }
+    for var in [
+        "SystemRoot", "windir", "ComSpec", "SystemDrive", "ProgramFiles",
+        "ProgramData", "NUMBER_OF_PROCESSORS",
+    ] {
+        if let Ok(v) = std::env::var(var) {
+            env.push((var.to_string(), v));
+        }
+    }
+    // W4 (AppContainer): CreateProcessW monta lo storage redirette del container
+    // sotto `%LOCALAPPDATA%\Packages\<nome>` → senza LOCALAPPDATA nel blocco env
+    // fallisce con ERROR_ENVVAR_NOT_FOUND (203). Gli altri completano l'ambiente
+    // utente. Incondizionati: innocui anche per il percorso job-object.
+    for var in ["LOCALAPPDATA", "APPDATA", "USERNAME", "ALLUSERSPROFILE"] {
+        if let Ok(v) = std::env::var(var) {
+            env.push((var.to_string(), v));
+        }
+    }
+    env.push(("TEMP".into(), scratch.display().to_string()));
+    env.push(("TMP".into(), scratch.display().to_string()));
+    for (k, v) in extra_env {
+        env.push((k.clone(), v.clone()));
+    }
+    env
+}
+
+/// Directory ESISTENTE piu' profonda che copre `cand`: se `cand` e' una dir
+/// esistente la ritorna, se e' un file (o un target ancora da creare) risale
+/// ai genitori fino alla prima dir reale. `~` espanso alla home del device.
+/// `None` se nessun antenato esiste (radice irraggiungibile → grant inutile).
+fn deepest_existing_dir(cand: &str) -> Option<PathBuf> {
+    let expanded = if let Some(rest) =
+        cand.strip_prefix("~/").or_else(|| cand.strip_prefix("~\\"))
+    {
+        dirs::home_dir()?.join(rest)
+    } else if cand == "~" {
+        dirs::home_dir()?
+    } else {
+        PathBuf::from(cand)
+    };
+    let mut p: &Path = &expanded;
+    loop {
+        if p.is_dir() {
+            return Some(p.to_path_buf());
+        }
+        match p.parent() {
+            Some(par) if !par.as_os_str().is_empty() => p = par,
+            _ => return None,
+        }
+    }
+}
+
+/// Grant ACL derivati dai path-target CONCRETI dell'invocazione (§W4: la
+/// sandbox forte concede esattamente le directory che il comando tocca, non
+/// gli hint illustrativi del manifest). Accesso = write se l'executor dichiara
+/// `fs:write`, altrimenti read; un executor senza capability fs non riceve
+/// grant (`caps_fs_access` → None). Ogni target e' risolto alla sua dir
+/// esistente piu' profonda (creabile un file dentro, leggibile una dir).
+fn arg_target_grants(args_json: &str, caps: &[Capability]) -> Vec<HintGrant> {
+    let write = match crate::sandbox_common::caps_fs_access(caps) {
+        Some(w) => w,
+        None => return Vec::new(),
+    };
+    let mut out: Vec<HintGrant> = Vec::new();
+    for cand in crate::sandbox_common::extract_path_args(args_json) {
+        if let Some(root) = deepest_existing_dir(&cand) {
+            if !out.iter().any(|g| g.root == root) {
+                out.push(HintGrant { root, write });
+            }
+        }
+    }
+    out
 }
 
 pub async fn run_sandboxed(
@@ -174,7 +306,83 @@ pub async fn run_sandboxed(
     extra_env: &[(String, String)],
     limits: &Limits,
 ) -> Result<SandboxOutput> {
-    let use_job_object = !crate::sandbox_linux::sandbox_disabled();
+    let disabled = crate::sandbox_linux::sandbox_disabled();
+
+    // Working dir scratch per-invocazione sotto %TEMP% (§16.2), CONDIVISA dai
+    // due percorsi (AppContainer e job-object) e rimossa a fine esecuzione
+    // qualunque sia l'esito (guard RAII).
+    let scratch = ScratchDir::create()?;
+    // Env dell'executor costruito UNA volta: stessi valori per entrambi i path.
+    let env_pairs = build_env(shim_dir, &exec.dir, &scratch.path, extra_env);
+
+    // Motivo di eventuale declassamento (§2.8): None finche' il container non
+    // fallisce la COSTRUZIONE (dopo lo spawn non si degrada piu').
+    let mut downgrade: Option<String> = None;
+
+    // --- Percorso AppContainer (W4): isolamento fs/rete DENTRO il job. Gate
+    // METNOS_SANDBOX_APPCONTAINER=1 (default OFF): a gate spento questo blocco
+    // e' saltato e il percorso job-object sotto resta byte-identico a W3.3.
+    if !disabled && appcontainer::gate_on() {
+        let (mut grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
+        // Grant sui path-target CONCRETI dell'invocazione (Documents, Downloads,
+        // …): senza, la sandbox forte concederebbe solo gli scope-esempio del
+        // manifest e un comando su una dir utente reale fallirebbe Access Denied.
+        grants.extend(arg_target_grants(args_json, &exec.capabilities));
+        // Dir dati dello shim (METNOS_USER_DATA, iniettata dal runner): config.py
+        // ci crea l'albero user a import + ci finiscono i blob undo. Isolata e
+        // client-owned → il container puo' scriverla senza aprire ~/.local/share.
+        if let Some((_, ud)) = env_pairs.iter().find(|(k, _)| k == "METNOS_USER_DATA") {
+            let root = PathBuf::from(ud);
+            if !grants.iter().any(|g| g.root == root) {
+                grants.push(HintGrant { root, write: true });
+            }
+        }
+        let params = appcontainer::ContainerParams {
+            python: python.to_path_buf(),
+            entry: exec.entry.clone(),
+            shim_dir: shim_dir.to_path_buf(),
+            exec_dir: exec.dir.clone(),
+            scratch_dir: scratch.path.clone(),
+            env_pairs: env_pairs.clone(),
+            args_json: args_json.to_string(),
+            deadline_ms: limits.wall.as_millis().min(u128::from(u64::MAX)) as u64,
+            grants,
+            want_net,
+        };
+        // FFI bloccante (job + pipe + CreateProcessW): fuori dai worker async.
+        match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await {
+            Ok(appcontainer::Outcome::Ran { stdout, stderr, timed_out }) => {
+                if timed_out {
+                    tracing::warn!(
+                        executor = %exec.name, wall_s = limits.wall.as_secs(),
+                        "deadline superata (appcontainer): albero terminato via job"
+                    );
+                }
+                return Ok(SandboxOutput {
+                    stdout,
+                    stderr,
+                    timed_out,
+                    sandbox: "appcontainer".into(),
+                    downgrade_reason: None,
+                });
+            }
+            Ok(appcontainer::Outcome::Unsupported(reason)) => {
+                tracing::warn!(
+                    executor = %exec.name,
+                    "AppContainer non costruito: degrado ONESTO a job-object ({reason})"
+                );
+                downgrade = Some(reason);
+            }
+            Err(join_err) => {
+                let reason = format!("task appcontainer interrotto: {join_err}");
+                tracing::warn!("{reason}");
+                downgrade = Some(reason);
+            }
+        }
+    }
+
+    // --- Percorso job-object (W3.3, INVARIATO): default e fallback onesto.
+    let use_job_object = !disabled;
     let sandbox_label = if use_job_object { "job-object" } else { "none" };
     if !use_job_object {
         // Asimmetria onesta (§12): su Linux "off" toglie SOLO il wrapping
@@ -195,46 +403,10 @@ pub async fn run_sandboxed(
         None
     };
 
-    // Working dir scratch per-invocazione sotto %TEMP% (§16.2), rimossa a
-    // fine esecuzione qualunque sia l'esito (guard RAII).
-    let scratch = ScratchDir::create()?;
-
     let mut cmd = Command::new(python);
     cmd.arg(&exec.entry);
-
-    let pythonpath = format!("{}{}{}", shim_dir.display(), pythonpath_sep(), exec.dir.display());
     cmd.env_clear();
-    cmd.env(
-        "PATH",
-        std::env::var("PATH").unwrap_or_else(|_| r"C:\Windows\System32".into()),
-    );
-    cmd.env("PYTHONPATH", &pythonpath);
-    cmd.env("METNOS_RUNTIME", shim_dir);
-    cmd.env("PYTHONDONTWRITEBYTECODE", "1");
-    cmd.env("PYTHONUTF8", "1");
-    cmd.env("PYTHONIOENCODING", "utf-8");
-    // Home REALE dell'utente della task (0.2.13): senza, `~` non risolve e
-    // Path.home() crasha nei moduli shim — «scrivi in ~/x sul PC» era rotto
-    // (visto live 5/7). Contenimento invariato: niente ACL fs ancora (W4),
-    // conoscere il path della home non allarga nulla.
-    for var in ["USERPROFILE", "HOMEDRIVE", "HOMEPATH"] {
-        if let Ok(v) = std::env::var(var) {
-            cmd.env(var, v);
-        }
-    }
-    // Env di SISTEMA Windows (0.2.14): senza SystemRoot i tool nativi che
-    // toccano WMI falliscono «Impossibile trovare il modulo specificato»
-    // (visto live 5/7: tasklist rc=1 sul device). windir/ComSpec/TEMP sono
-    // lo stesso strato base; TEMP puntato allo scratch della sandbox.
-    for var in ["SystemRoot", "windir", "ComSpec", "SystemDrive",
-                "ProgramFiles", "ProgramData", "NUMBER_OF_PROCESSORS"] {
-        if let Ok(v) = std::env::var(var) {
-            cmd.env(var, v);
-        }
-    }
-    cmd.env("TEMP", &scratch.path);
-    cmd.env("TMP", &scratch.path);
-    for (k, v) in extra_env {
+    for (k, v) in &env_pairs {
         cmd.env(k, v);
     }
     cmd.current_dir(&scratch.path);
@@ -278,6 +450,7 @@ pub async fn run_sandboxed(
                 stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
                 timed_out: false,
                 sandbox: sandbox_label.into(),
+                downgrade_reason: downgrade.clone(),
             }
         }
         Err(_) => {
@@ -306,6 +479,7 @@ pub async fn run_sandboxed(
                 stderr: "deadline exceeded".into(),
                 timed_out: true,
                 sandbox: sandbox_label.into(),
+                downgrade_reason: downgrade.clone(),
             }
         }
     };

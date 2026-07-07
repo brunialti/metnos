@@ -280,6 +280,7 @@ impl Runner {
                 n_processed: 0,
                 elapsed_ms: start.elapsed().as_millis() as i64,
                 sandbox: "none".into(),
+                sandbox_downgrade_reason: None,
                 error: Some(format!("{e:#}")),
                 error_class: Some("device_error".into()),
                 payload: json!({}),
@@ -341,8 +342,27 @@ impl Runner {
         tracing::info!(executor = %inv.executor, "esecuzione");
 
         let args_json = serde_json::to_string(&inv.args)?;
-        let extra_env: Vec<(String, String)> =
+        let mut extra_env: Vec<(String, String)> =
             inv.env_injections.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        // Dir dati dello shim isolata e client-owned (§W4): config.py::ensure_dirs
+        // ci crea a import l'albero user (DATA/STATE/CONFIG) e i blob undo ci
+        // restano fra i turni. Senza il redirect lo shim toccherebbe
+        // ~/.local/{share,state}/metnos e ~/.config/metnos, fuori dagli ACL del
+        // container AppContainer → Access Denied. `data_dir` e' persistente (a
+        // differenza dello scratch per-invocazione) quindi l'undo sopravvive.
+        // Tutte e tre sotto `shimdata`: un solo grant sulla radice le copre.
+        let shimdata = self.paths.data_dir.join("shimdata");
+        if let Err(e) = std::fs::create_dir_all(&shimdata) {
+            tracing::warn!(dir = %shimdata.display(), "creazione shimdata fallita: {e:#}");
+        }
+        extra_env.push(("METNOS_USER_DATA".into(), shimdata.display().to_string()));
+        extra_env.push(("METNOS_USER_STATE".into(), shimdata.join("state").display().to_string()));
+        extra_env.push(("METNOS_USER_CONFIG".into(), shimdata.join("config").display().to_string()));
+        // PATH_WORKSPACE (mnestoma/scheduler DB) e' derivato dall'install-root,
+        // NON da _home() → sfugge ai redirect USER_* sopra. Anch'esso sotto
+        // shimdata: un solo grant sulla radice copre tutto l'albero creato da
+        // ensure_dirs.
+        extra_env.push(("METNOS_WORKSPACE".into(), shimdata.join("workspace").display().to_string()));
         let limits = sandbox::Limits {
             wall: Duration::from_millis(inv.deadline_ms.max(1000)),
         };
@@ -371,6 +391,7 @@ impl Runner {
                     n_processed: 0,
                     elapsed_ms,
                     sandbox: out.sandbox,
+                    sandbox_downgrade_reason: out.downgrade_reason,
                     error: Some("deadline exceeded".into()),
                     error_class: Some("timeout".into()),
                     payload: json!({}),
@@ -380,7 +401,8 @@ impl Runner {
             match serde_json::from_str::<Value>(out.stdout.trim()) {
                 Ok(parsed) => {
                     return Ok(result_from_executor(
-                        inv, &self.device_id, parsed, elapsed_ms, out.sandbox));
+                        inv, &self.device_id, parsed, elapsed_ms,
+                        out.sandbox, out.downgrade_reason));
                 }
                 Err(e) => {
                     // Auto-guarigione SOLO se manca un modulo DELLO SHIM: quell'
@@ -516,6 +538,7 @@ fn result_from_executor(
     parsed: Value,
     elapsed_ms: i64,
     sandbox: String,
+    sandbox_downgrade_reason: Option<String>,
 ) -> InvocationResult {
     let ok = parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
     let entries = parsed
@@ -538,6 +561,7 @@ fn result_from_executor(
         n_processed,
         elapsed_ms,
         sandbox,
+        sandbox_downgrade_reason,
         error,
         error_class,
         payload: parsed, // output COMPLETO: il runtime lo consuma come locale
