@@ -264,6 +264,13 @@ def invoke(args):
         "entries": enriched,
         "failed": failed,
     }
+    # §2.8: esito negativo per file FALLITI (non per arg invalidi, gestiti sopra
+    # con return anticipato) → esponi la CAUSA CONCRETA al top-level (il primo
+    # errore, gia' i18n). Senza, il terminator cade sul generico "Pipeline
+    # malformata" che MASCHERA il vero motivo (es. NAS smontato → tutti i path
+    # "non trovati"): l'utente pensa a una regressione, non a un mount assente.
+    if not response["ok"] and failed:
+        response["error"] = failed[0].get("error") or failed[0].get("message")
     if need_geo:
         response["places_resolved"] = p_resolved
         response["places_unknown"] = p_unknown
