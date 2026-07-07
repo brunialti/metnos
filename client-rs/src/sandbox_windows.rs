@@ -11,7 +11,7 @@
 //! Onestà sul livello di protezione (§9 design doc): il Job Object e'
 //! contenimento di RISORSE e PRIVILEGI, NON isolamento del filesystem.
 //! L'isolamento vero (capability→ACL) e' l'AppContainer (W4, `appcontainer.rs`),
-//! attivato dal gate `METNOS_SANDBOX_APPCONTAINER=1` (default OFF) e
+//! attivato dal gate `METNOS_SANDBOX_APPCONTAINER` (default ON su Windows) e
 //! stratificato SOTTO questo job (i due strati COESISTONO). Label onesta nel
 //! result: `sandbox:"appcontainer"` SOLO se il container e' davvero costruito,
 //! altrimenti `"job-object"` con `sandbox_downgrade_reason` (§2.8).
@@ -320,8 +320,8 @@ pub async fn run_sandboxed(
     let mut downgrade: Option<String> = None;
 
     // --- Percorso AppContainer (W4): isolamento fs/rete DENTRO il job. Gate
-    // METNOS_SANDBOX_APPCONTAINER=1 (default OFF): a gate spento questo blocco
-    // e' saltato e il percorso job-object sotto resta byte-identico a W3.3.
+    // METNOS_SANDBOX_APPCONTAINER default ON su Windows (7/7/2026): opt-OUT con
+    // =0 salta questo blocco e il percorso job-object sotto resta byte-identico a W3.3.
     if !disabled && appcontainer::gate_on() {
         let (mut grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
         // Grant sui path-target CONCRETI dell'invocazione (Documents, Downloads,

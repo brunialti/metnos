@@ -16,7 +16,7 @@
 //! `Unsupported(motivo)` e il chiamante degrada onestamente a job-object con
 //! `sandbox_downgrade_reason`. Nessun contenimento dichiarato ma non attivo.
 //!
-//! GATE: attivo solo con `METNOS_SANDBOX_APPCONTAINER=1` (default OFF, W4.1):
+//! GATE: **default ON su Windows** (7/7/2026); opt-OUT via `METNOS_SANDBOX_APPCONTAINER=0`:
 //! con gate spento il percorso job-object validato (W3.3) resta INTATTO.
 //!
 //! NB: modulo con FFI Win32 NON esercitabile fuori da Windows. La logica pura
@@ -110,9 +110,14 @@ pub struct ContainerParams {
     pub want_net: bool,
 }
 
-/// Gate W4.1 (`METNOS_SANDBOX_APPCONTAINER=1`).
+/// Gate W4 — **default ON su Windows** dal 7/7/2026 (fase 7 chiusa).
+/// Opt-OUT esplicito via `METNOS_SANDBOX_APPCONTAINER=0|false|off` (fallback al
+/// solo Job Object). Abilitato in prod dopo validazione sul PC reale: happy-path
+/// (`sandbox=appcontainer`, ACL per-invocazione su Documents) + registry-drop
+/// all'unpair (0 concessioni orfane); il rollback ACL su fallimento container e'
+/// coperto dalla stessa pulizia unpair validata.
 pub fn gate_on() -> bool {
-    matches!(std::env::var(GATE_ENV).ok().as_deref(), Some("1") | Some("true") | Some("on"))
+    !matches!(std::env::var(GATE_ENV).ok().as_deref(), Some("0") | Some("false") | Some("off"))
 }
 
 /// Livello riportato a freddo per l'heartbeat: "appcontainer" solo se il gate e'
