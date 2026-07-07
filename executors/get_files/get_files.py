@@ -183,6 +183,17 @@ def invoke(args):
     need_d_mod = "dates.modified" in fset
     need_exif = need_d_sem or need_d_cre or need_gps or need_device
 
+    # Cap §2.11: EXIF + reverse-geocode per foto sono costosi (I/O, spesso su
+    # mount di rete, + latenza geo). Un batch enorme sfonderebbe il timeout →
+    # limita gli elementi processati (default 200; 0 = nessun limite del
+    # chiamante) e segnala il troncamento (§2.7) invece di far scadere il turno.
+    from executor_helpers import coerce_cap
+    _total_in = len(entries)
+    max_results = coerce_cap(args, "max_results", 200)
+    truncated = _total_in > max_results
+    if truncated:
+        entries = entries[:max_results]
+
     enriched, failed = [], []
     p_resolved = p_unknown = p_failed = 0
 
@@ -264,6 +275,15 @@ def invoke(args):
         "entries": enriched,
         "failed": failed,
     }
+    if truncated:
+        # §2.7: cap raggiunto → visibilità completa (il runtime prepende la
+        # notice e può proporre l'allargamento, §2.11).
+        response["truncated"] = True
+        response["truncated_what"] = "entries"
+        response["used"] = len(entries)
+        response["available_total"] = _total_in
+        response["cap_field"] = "max_results"
+        response["cap_value"] = max_results
     # §2.8: esito negativo per file FALLITI (non per arg invalidi, gestiti sopra
     # con return anticipato) → esponi la CAUSA CONCRETA al top-level (il primo
     # errore, gia' i18n). Senza, il terminator cade sul generico "Pipeline
