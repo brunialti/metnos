@@ -103,4 +103,5 @@ expect = { ok = false, error_contains = "Operazione non applicabile per questo p
 [[tests]]
 name   = "happy_path_oauth_missing_returns_needs_inputs"
 input  = { document_id = "1abc" }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
 expect = { ok = true }

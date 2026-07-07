@@ -160,14 +160,17 @@ def invoke(args):
         return {"ok": False, "error": _msg("ERR_ARG_MISSING_ONE_OF", options="entries, paths")}
     if not isinstance(fields, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="fields", of="strings | 'all'")}
-    # §2.8/§2.4: un campo inventato dall'LLM (es. 'exif_datetime'/'date' invece
-    # del canonico 'dates.semantic') NON deve far fallire l'arricchimento. Scarta
-    # gli sconosciuti e prosegui coi validi; se nessuno resta, default a
-    # 'dates.semantic' (l'intento "dammi i metadata/data della foto" è comunque
-    # soddisfatto). Bug q33 5/6: la lista foto si perdeva per un nome inventato.
-    known = [f for f in fields if f in ALL_FIELDS]
+    # §2.8: un campo non riconosciuto (typo del planner, es. 'date' invece del
+    # canonico 'dates.semantic') NON va mascherato scartandolo in silenzio.
+    # Valida contro l'enum PRIMA di iterare, cosi' l'errore e' onesto anche a
+    # N=0 (entries vuota): senza questo, fields=['pippo'] con entries=[] tornava
+    # ok:true nascondendo l'arg invalido.
     unknown_fields = [f for f in fields if f not in ALL_FIELDS]
-    fields = known or ["dates.semantic"]
+    if unknown_fields:
+        return {"ok": False,
+                "error": _msg("ERR_ARG_ENUM", arg="fields", allowed=", ".join(ALL_FIELDS))}
+    if not fields:
+        fields = ["dates.semantic"]
 
     fset = set(fields)
     need_geo = "place" in fset

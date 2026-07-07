@@ -19,7 +19,7 @@ en = "SCOPO: gets EXIF data (gps, place, camera, date) from KNOWN image paths. P
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:d3a1c7c281f80a5170869b32a77e193a5f67a910e44fe014d2f110c594c774e3"
+digest = "sha256:2353684dcd6a1ff6ba772448a837dd8672661f4d3d3c11868c3d07ba6fdd7087"
 
 [args]
 type     = "object"

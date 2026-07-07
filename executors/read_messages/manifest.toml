@@ -174,9 +174,9 @@ input  = { account = "ghost" }
 expect = { ok = false, error_contains = "metnos_system" }
 
 [[tests]]
-name   = "max_results_invalido"
+name   = "max_results_zero_nessun_limite"
 input  = { account = "metnos_system", max_results = 0 }
-expect = { ok = false, error_contains = "max_results" }
+expect = { ok = true }
 
 # Sample concreto di output (one-shot per synt + fast-path generator).
 # Dummy account/uid: NON rappresenta una mail reale.

@@ -107,14 +107,14 @@ input  = { queries = [] }
 expect = { ok = true, ok_count_eq = 0 }
 
 [[tests]]
-name   = "args_invalidi_queries_non_lista"
+name   = "queries_stringa_coerciata"
 input  = { queries = "Roma" }
-expect = { ok = false, error_contains = "deve essere una lista di strings" }
+expect = { ok = true }
 
 [[tests]]
-name   = "max_results_invalido"
+name   = "max_results_zero_nessun_limite"
 input  = { queries = ["Roma"], max_results = 0 }
-expect = { ok = false, error_contains = "deve essere compreso fra" }
+expect = { ok = true }
 
 [[tests]]
 name   = "query_non_stringa_fallisce_solo_quella"

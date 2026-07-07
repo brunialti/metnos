@@ -72,9 +72,9 @@ input  = { values = [1, 2, 4, 5], fields = ["n", "n_missing", "mean"] }
 expect = { ok = true }
 
 [[tests]]
-name   = "values_non_lista"
+name   = "values_scalare_coerciato"
 input  = { values = 42 }
-expect = { ok = false, error_contains = "deve essere una lista" }
+expect = { ok = true, metadata_field_eq = { n = 1 } }
 
 [[tests]]
 name   = "percentili_su_dataset_grande"

@@ -676,6 +676,23 @@ def share(args: dict) -> dict:
                 "error_class": "invalid_args",
                 "results": [], "used": 0}
 
+    # Ordine (§2.8 no-silent, §7.9): valida la FORMA degli arg obbligatori
+    # PRIMA di risolvere/toccare il file. Per type=user|group l'email e'
+    # obbligatoria: mancante = errore d'arg deterministico, indipendente da
+    # credenziali/I/O (prima la risoluzione locator del file_id mascherava
+    # questo con un fuorviante ERR_PATH_NOT_FOUND). Il check OAuth avviene
+    # nella risoluzione DOPO (find→_run_drive→needs_inputs).
+    email = args.get("email") or ""
+    role = args.get("role") or "reader"
+    grant_type = args.get("type") or "user"
+    notify = bool(args.get("notify"))
+    if grant_type in ("user", "group") and not email:
+        return {"ok": False,
+                "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="email (per type=user|group)"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0}
+
     ids, resolved_entries, err = _ids_from_args_or_locator(args, max_results=25)
     if err is not None:
         return err
@@ -690,17 +707,6 @@ def share(args: dict) -> dict:
         return _drive_choice_needed(
             args, resolved_entries, executor="share_files",
             title="Scegli il file Drive da condividere")
-
-    email = args.get("email") or ""
-    role = args.get("role") or "reader"
-    grant_type = args.get("type") or "user"
-    notify = bool(args.get("notify"))
-    if grant_type in ("user", "group") and not email:
-        return {"ok": False,
-                "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="email (per type=user|group)"),
-                "error_class": "invalid_args",
-                "results": [], "used": 0}
 
     results, failed = [], []
     for fid in ids:
@@ -1417,6 +1423,19 @@ def append_doc(args: dict) -> dict:
                 "error": _msg("ERR_ARG_NOT_STRING", arg="document_id"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "n_written": 0}
+    # Ordine (§2.8 no-silent, §7.9): valida gli arg OBBLIGATORI PRIMA di
+    # risolvere/toccare il doc. `text` mancante/vuoto = errore d'arg
+    # deterministico, indipendente da credenziali e da qualsiasi I/O Drive
+    # (prima invece la risoluzione locator del document_id mascherava questo
+    # con un fuorviante ERR_PATH_NOT_FOUND). La risoluzione — che fa il check
+    # OAuth internamente (find→_run_drive→_ensure_fresh_token→needs_inputs) —
+    # viene DOPO.
+    text = args.get("text")
+    if not isinstance(text, str) or not text:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error": _msg("ERR_ARG_MISSING", arg="text"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "n_written": 0}
     did, did_err = _single_id_from_args_or_locator(
         args,
         id_arg="document_id",
@@ -1427,12 +1446,6 @@ def append_doc(args: dict) -> dict:
     )
     if did_err is not None:
         return did_err
-    text = args.get("text")
-    if not isinstance(text, str) or not text:
-        return {"ok": False, "error_code": "ERR_ARG_MISSING",
-                "error": _msg("ERR_ARG_MISSING", arg="text"),
-                "error_class": "invalid_args",
-                "results": [], "used": 0, "n_written": 0}
     argv = ["docs", "append", did, "--text", text]
     data, err = _run_drive(argv, executor="write_files_doc",
                              args_base=dict(args), result_kind="results")

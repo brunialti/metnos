@@ -96,6 +96,10 @@ input  = { urls = [] }
 expect = { ok = true, metadata_field_eq = { ok_count = 0 } }
 
 [[tests]]
-name   = "errore_se_urls_non_lista"
+name   = "urls_stringa_coerciata_1_elemento"
+# §2.4: "not_a_list" (stringa) e' coerciata a ["not_a_list"] = 1 elemento;
+# non e' un URL scaricabile, quindi il fetch fallisce ONESTAMENTE (§2.8):
+# 1 elemento tentato, 0 riusciti → ok=false (zero contenuto e c'erano URL).
+# Mai ok_count=1 fittizio: sarebbe masking dell'insuccesso.
 input  = { urls = "not_a_list" }
-expect = { ok = true, metadata_field_eq = { ok_count = 1 } }
+expect = { ok = false, metadata_field_eq = { ok_count = 0, fail_count = 1 } }

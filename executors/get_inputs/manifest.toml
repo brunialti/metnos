@@ -140,7 +140,7 @@ expect = { ok = false, error_contains = "almeno uno step" }
 [[tests]]
 name   = "var_duplicate_fallisce"
 input  = { title = "test", dialog = [{ var = "x", prompt = "?", schema = { kind = "text" } }, { var = "x", prompt = "??", schema = { kind = "text" } }] }
-expect = { ok = false, error_contains = "duplicate" }
+expect = { ok = false, error_contains = "duplicata" }
 
 [[tests]]
 name   = "schema_kind_invalido_fallisce"

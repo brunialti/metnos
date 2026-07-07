@@ -42,7 +42,7 @@ def run_shell(cmd):
     return result.returncode, result.stdout, result.stderr
 
 
-def run_executor(executor_path, args):
+def run_executor(executor_path, args, test_env=None):
     payload = json.dumps(args)
     # Stesso contratto env di agent_runtime.invoke_executor: gli executor
     # importano moduli runtime per nome (skill_wrapper, messages, ...) e
@@ -56,6 +56,14 @@ def run_executor(executor_path, args):
         else f"{runtime_path}{os.pathsep}{existing_pp}"
     )
     env.setdefault("METNOS_RUNTIME", runtime_path)
+    # Env per-test (opzionale): rende ERMETICO un test rispetto all'ambiente
+    # del host. Valori con `{RUNTIME}` espanso al path runtime → nessun path
+    # assoluto hardcoded (§7.11), portabile fra macchine. Uso tipico: puntare
+    # METNOS_SKILL_HOME a una dir senza credenziali per esercitare il ramo
+    # needs_inputs (OAuth assente) a prescindere dai token del host.
+    if test_env:
+        for k, v in test_env.items():
+            env[str(k)] = str(v).replace("{RUNTIME}", runtime_path)
     result = subprocess.run(
         ["python3", str(executor_path)],
         input=payload,
@@ -340,6 +348,7 @@ def main():
         teardown = test.get("teardown", "")
         args = test.get("input", {})
         expected = test.get("expect", {})
+        test_env = test.get("env", {})
 
         setup_rc, _, setup_err = run_shell(setup)
         if setup_rc != 0:
@@ -358,7 +367,7 @@ def main():
             actual = {"ok": False, "error": scope_violation,
                       "error_code": "ERR_PERMISSION_DENIED"}
         else:
-            rc, actual, stderr = run_executor(executor_path, args)
+            rc, actual, stderr = run_executor(executor_path, args, test_env)
             if actual is None:
                 print(f"  X {tname}")
                 print(f"      INVOKE FAIL rc={rc} {stderr.strip()}")
