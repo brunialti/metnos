@@ -196,6 +196,10 @@ pub fn sandbox_level() -> &'static str {
 ///   moduli shim crashavano — «scrivi in ~/x sul PC» era rotto.
 /// - `SystemRoot/windir/ComSpec/...` (0.2.14): senza, i tool nativi che toccano
 ///   WMI fallivano «Impossibile trovare il modulo specificato» (tasklist rc=1).
+/// - `LOCALAPPDATA/APPDATA/USERNAME/ALLUSERSPROFILE` (W4): l'AppContainer monta
+///   lo storage redirette sotto `%LOCALAPPDATA%\Packages\<nome>` durante
+///   CreateProcessW; senza `LOCALAPPDATA` nel blocco env fallisce con
+///   `ERROR_ENVVAR_NOT_FOUND` (203). Innocui per il path job-object.
 /// - `TEMP/TMP` puntati allo scratch della sandbox.
 fn build_env(
     shim_dir: &Path,
@@ -224,6 +228,15 @@ fn build_env(
         "SystemRoot", "windir", "ComSpec", "SystemDrive", "ProgramFiles",
         "ProgramData", "NUMBER_OF_PROCESSORS",
     ] {
+        if let Ok(v) = std::env::var(var) {
+            env.push((var.to_string(), v));
+        }
+    }
+    // W4 (AppContainer): CreateProcessW monta lo storage redirette del container
+    // sotto `%LOCALAPPDATA%\Packages\<nome>` → senza LOCALAPPDATA nel blocco env
+    // fallisce con ERROR_ENVVAR_NOT_FOUND (203). Gli altri completano l'ambiente
+    // utente. Incondizionati: innocui anche per il percorso job-object.
+    for var in ["LOCALAPPDATA", "APPDATA", "USERNAME", "ALLUSERSPROFILE"] {
         if let Ok(v) = std::env::var(var) {
             env.push((var.to_string(), v));
         }

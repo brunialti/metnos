@@ -666,6 +666,18 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     let env_w = common::env_block_utf16(&p.env_pairs);
     let cwd_w = common::to_wide_null(&p.scratch_dir.display().to_string());
 
+    // Diagnostica W4 (err 203): l'AppContainer richiede LOCALAPPDATA nel blocco
+    // env per montare lo storage redirette. Logghiamo le CHIAVI presenti (no
+    // valori: niente PII) per distinguere «env incompleto» da «attribute-list»
+    // se CreateProcessW fallisce ancora ERROR_ENVVAR_NOT_FOUND.
+    let has = |k: &str| p.env_pairs.iter().any(|(n, _)| n.eq_ignore_ascii_case(k));
+    tracing::info!(
+        pairs = p.env_pairs.len(),
+        localappdata = has("LOCALAPPDATA"),
+        appdata = has("APPDATA"),
+        "env pronto per CreateProcessW (appcontainer)"
+    );
+
     // 11. spawn CREATE_SUSPENDED (assegna al job PRIMA di risvegliarlo) +
     //     EXTENDED (attribute list) + UNICODE env + niente finestra.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
