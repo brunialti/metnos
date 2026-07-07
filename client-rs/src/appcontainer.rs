@@ -441,28 +441,36 @@ fn grant_dir(sid: PSID, sid_str: &str, root: &Path, mask: u32) -> Result<()> {
     let mut guard = reg
         .lock()
         .map_err(|_| anyhow::anyhow!("registro ACL avvelenato (lock)"))?;
-    if guard.contains(&path_str, sid_str) {
-        return Ok(()); // gia' concesso (persistito): niente ACE duplicato
-    }
-    // Concessione tenuta sotto lock: serializza i grant → niente ACE doppio
-    // anche con invocazioni concorrenti nello stesso processo.
+    // Applica SEMPRE l'ACE: il registro NON e' una cache di "gia' fatto". Una
+    // dir gia' concessa puo' essere stata RICREATA fra due invocazioni (es.
+    // `ensure_shim` rigenera lo shim con remove_dir_all + rename → l'ACE
+    // on-disk sparisce con la vecchia inode mentre la voce di registro resta;
+    // il container non legge piu' lo shim → ModuleNotFoundError al primo import).
+    // `apply_acl` e' idempotente (SetEntriesInAclW fonde l'ACE del SID, niente
+    // duplicato), quindi ri-applicare a ogni invocazione e' sicuro. Il registro
+    // serve SOLO a sapere cosa REVOCARE all'unpair. Sotto lock: serializza i
+    // grant concorrenti nello stesso processo.
     apply_acl(sid, root, mask, GRANT_ACCESS)?;
-    guard.record(AclGrantRecord {
+    // Persisti solo su voce NUOVA (record idempotente su (path,sid)): evita una
+    // scrittura del registro a ogni invocazione per grant gia' noti.
+    let added = guard.record(AclGrantRecord {
         path: path_str,
         sid: sid_str.to_string(),
         access_mask: mask,
         granted_at: common::now_epoch_secs(),
     });
-    match registry_path() {
-        Ok(rp) => {
-            if let Err(e) = guard.save(&rp) {
-                tracing::warn!(
-                    "registro ACL non salvato ({e}): la rimozione all'unpair \
-                     potrebbe perdere questa voce"
-                );
+    if added {
+        match registry_path() {
+            Ok(rp) => {
+                if let Err(e) = guard.save(&rp) {
+                    tracing::warn!(
+                        "registro ACL non salvato ({e}): la rimozione all'unpair \
+                         potrebbe perdere questa voce"
+                    );
+                }
             }
+            Err(e) => tracing::warn!("path registro ACL non risolto ({e:#}): voce non persistita"),
         }
-        Err(e) => tracing::warn!("path registro ACL non risolto ({e:#}): voce non persistita"),
     }
     Ok(())
 }
