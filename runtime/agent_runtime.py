@@ -504,6 +504,13 @@ def _compose_honest_from_last_error(log) -> str:
         if _s.chosen_tool == "final_answer":
             continue
         if _obs.get("ok") is False:
+            # §2.8: `final_message_hint` = messaggio user-facing ESPLICITO
+            # dell'executor (gia' i18n, es. "Nessuna persona 'X' nel registro").
+            # Ha priorita' sull'`error` grezzo (spesso un codice tipo
+            # "unknown_name") e sul fallback generico.
+            _hint = _obs.get("final_message_hint")
+            if isinstance(_hint, str) and _hint.strip():
+                return _hint.strip()
             _err = _obs.get("error") or ""
             _failed = _obs.get("failed") or []
             if not _err and isinstance(_failed, list) and _failed:
@@ -4601,18 +4608,34 @@ class TurnLog:
             # Sostituisci con dichiarazione esplicita di incompletezza.
             _mutating_pending = _detect_unfulfilled_mutating_intent(self)
             if _mutating_pending:
-                try:
-                    self.final_message = msg(
-                        "MSG_MUTATING_INTENT_UNFULFILLED",
-                        verb=_mutating_pending,
-                    )
-                except Exception:
-                    self.final_message = (
-                        f"L'azione `{_mutating_pending}` richiesta non e' "
-                        f"stata completata. Riformula la richiesta con "
-                        f"maggiori dettagli o specifica i target da "
-                        f"modificare."
-                    )
+                # §2.8: se lo step mutante FALLITO porta un messaggio
+                # user-facing ESPLICITO (`final_message_hint`, es. delete_persons
+                # "Nessuna persona 'X' nel registro."), mostralo — NON mascherarlo
+                # col generico "azione non completata" (che maschera la causa
+                # reale e azionabile, come faceva "Pipeline malformata").
+                _mut_hint = ""
+                for _s in reversed(getattr(self, "steps", []) or []):
+                    _o = _s.result if isinstance(_s.result, dict) else None
+                    if isinstance(_o, dict) and _o.get("ok") is False:
+                        _h = _o.get("final_message_hint")
+                        if isinstance(_h, str) and _h.strip():
+                            _mut_hint = _h.strip()
+                            break
+                if _mut_hint:
+                    self.final_message = _mut_hint
+                else:
+                    try:
+                        self.final_message = msg(
+                            "MSG_MUTATING_INTENT_UNFULFILLED",
+                            verb=_mutating_pending,
+                        )
+                    except Exception:
+                        self.final_message = (
+                            f"L'azione `{_mutating_pending}` richiesta non e' "
+                            f"stata completata. Riformula la richiesta con "
+                            f"maggiori dettagli o specifica i target da "
+                            f"modificare."
+                        )
         # 10/5/2026: append lista risultati formattati quando in history
         # c'e' uno step `find_urls` ok con entries. Indipendente da
         # final_kind: anche su loop_break/error l'utente vede i risultati
