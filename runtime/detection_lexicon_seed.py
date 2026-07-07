@@ -114,6 +114,31 @@ def register_all() -> None:
           "telegram": ["telegrami", "messaggio telegram"]},
       en={"email": ["email", "e-mail", "mail"],
           "telegram": ["telegram", "chat"]})
+    # photo_fields_resolver: sinonimi NL -> valore-enum canonico di get_files.
+    # Le CHIAVI sono i valori enum TECNICI (identici fra le lingue, non
+    # tradotti); le FORME sono le superfici NL che il planner puo' emettere,
+    # per lingua. La chiave speciale "all" espande a tutti i campi. Ogni
+    # canonico include se stesso fra le forme (self-map: se il planner emette
+    # gia' il valore corretto, resta invariato).
+    R("photo.metadata_fields", "mapping",
+      it={"dates.semantic": ["dates.semantic", "data", "date", "quando", "datazione"],
+          "dates.created": ["dates.created", "creazione", "creato", "data di creazione", "scatto"],
+          "dates.modified": ["dates.modified", "modifica", "modificato", "data di modifica"],
+          "gps": ["gps", "coordinate", "coordinata", "geolocalizzazione", "posizione gps"],
+          "place": ["place", "luogo", "localita", "posizione", "dove"],
+          "device": ["device", "dispositivo", "fotocamera", "macchina fotografica", "modello", "marca"],
+          "image_dimensions": ["image_dimensions", "dimensioni", "risoluzione", "larghezza", "altezza"],
+          "size": ["size", "dimensione", "peso", "grandezza", "byte"],
+          "all": ["all", "tutto", "tutti", "metadata", "metadati", "exif", "tutti i metadati"]},
+      en={"dates.semantic": ["dates.semantic", "date", "dates", "when", "datetime"],
+          "dates.created": ["dates.created", "created", "creation", "taken", "capture date"],
+          "dates.modified": ["dates.modified", "modified", "modification"],
+          "gps": ["gps", "coordinates", "geo", "geolocation", "latitude", "longitude"],
+          "place": ["place", "location", "where", "city"],
+          "device": ["device", "camera", "make", "model"],
+          "image_dimensions": ["image_dimensions", "dimensions", "resolution", "width", "height"],
+          "size": ["size", "filesize", "bytes", "weight"],
+          "all": ["all", "everything", "metadata", "exif"]})
 
     # ── OUTPUT INTENT ──────────────────────────────────────────────────
     # output_policy._COUNT_MARKERS (regex, split pulito it/en)

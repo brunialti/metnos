@@ -1067,6 +1067,11 @@ def resolve_query_canonical_args(tool: str, args: dict, query: str,
         args = resolve_time_window(tool, args, query, args_schema=args_schema)
     except Exception as _twe:
         log.debug("time_window_resolver noop: %r", _twe)
+    try:
+        from photo_fields_resolver import resolve_photo_fields
+        args = resolve_photo_fields(tool, args, query)
+    except Exception as _pfe:
+        log.debug("photo_fields_resolver noop: %r", _pfe)
     return args
 
 
