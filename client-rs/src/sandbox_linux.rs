@@ -282,6 +282,16 @@ pub fn sandbox_disabled() -> bool {
     )
 }
 
+/// B.5 (fase 7): livello di contenimento che `run_sandboxed` userebbe ORA su
+/// questo device — stessa logica di `sandbox_label` dentro run_sandboxed, ma
+/// interrogabile a freddo per l'heartbeat (telemetria del gate min_sandbox,
+/// W4). Su unix: "bwrap" quando disponibile e non disabilitato, altrimenti
+/// "none".
+#[cfg(unix)]
+pub fn sandbox_level() -> &'static str {
+    if bwrap_available() && !sandbox_disabled() { "bwrap" } else { "none" }
+}
+
 #[cfg(unix)]
 fn which(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;

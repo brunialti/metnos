@@ -158,6 +158,14 @@ fn resume_primary_thread(pid: u32) -> Result<()> {
 /// `runner.rs` invertiva questa semantica — rifiutava di default e
 /// richiedeva `off` per arrivare qui. Rimosso: era un fossile della
 /// finestra prima che questo modulo esistesse, §16.1/§16.2 storico.)
+/// B.5 (fase 7): livello di contenimento corrente per l'heartbeat — gemello
+/// windows di `sandbox_linux::sandbox_level`. "job-object" quando non
+/// disabilitato, "none" con METNOS_SANDBOX=off. (W4 aggiungera' "appcontainer"
+/// come livello superiore.)
+pub fn sandbox_level() -> &'static str {
+    if crate::sandbox_linux::sandbox_disabled() { "none" } else { "job-object" }
+}
+
 pub async fn run_sandboxed(
     exec: &CachedExecutor,
     python: &Path,

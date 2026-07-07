@@ -15,7 +15,7 @@
 
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -38,7 +38,45 @@ const SIG_HEADER: &str = "X-Metnos-Device-Sig";
 
 const POLL_BLOCK_MS: u64 = 25_000;
 const HEARTBEAT_EVERY: Duration = Duration::from_secs(30);
-const BACKOFF_MAX: Duration = Duration::from_secs(30);
+// B.3 (fase 7): cap del backoff su errore di poll. 60s = un server in
+// manutenzione lunga non riceve piu' di un tentativo al minuto per device.
+const BACKOFF_MAX: Duration = Duration::from_secs(60);
+// B.1 (fase 7): tetto del set dedup locale. Il dedup PRIMARIO e' server-side
+// (idempotenza per invocation_id): dimenticare gli id piu' vecchi non
+// rischia un doppio side-effect, evita solo un giro di rete.
+const EXECUTED_CAP: usize = 4096;
+
+/// Set con ordine di inserimento e capienza fissa (B.1): prima era un
+/// HashSet illimitato — un daemon che vive settimane cresceva senza tetto.
+/// Gli invocation_id sono monotoni (time-ordered), quindi eviction FIFO =
+/// eviction dei piu' vecchi.
+struct BoundedSet {
+    set: HashSet<String>,
+    order: VecDeque<String>,
+    cap: usize,
+}
+
+impl BoundedSet {
+    fn new(cap: usize) -> Self {
+        Self { set: HashSet::new(), order: VecDeque::new(), cap }
+    }
+
+    fn contains(&self, id: &str) -> bool {
+        self.set.contains(id)
+    }
+
+    fn insert(&mut self, id: String) {
+        if !self.set.insert(id.clone()) {
+            return; // gia' presente: l'ordine originale resta valido
+        }
+        self.order.push_back(id);
+        while self.order.len() > self.cap {
+            if let Some(old) = self.order.pop_front() {
+                self.set.remove(&old);
+            }
+        }
+    }
+}
 
 pub struct Runner {
     server: String,
@@ -48,7 +86,9 @@ pub struct Runner {
     paths: Paths,
     http: reqwest::Client,
     /// invocation_id già eseguiti in questo processo: non ri-eseguire (§6.4).
-    executed: HashSet<String>,
+    /// Bounded (B.1): oltre EXECUTED_CAP dimentica i più vecchi — il dedup
+    /// vero resta l'idempotenza server per invocation_id.
+    executed: BoundedSet,
     capabilities: Vec<String>,
     /// Cache per-processo: lo shim (executor_helpers+messages) e l'interprete
     /// python si risolvono UNA volta, non ad ogni execute. Content-addressing
@@ -75,7 +115,10 @@ impl Runner {
             .build()?;
         // I result non ancora consegnati (crash precedente) contano come
         // "già eseguiti": non ri-eseguire, solo ri-consegnare.
-        let executed = pending_result_ids(&paths);
+        let mut executed = BoundedSet::new(EXECUTED_CAP);
+        for id in pending_result_ids(&paths) {
+            executed.insert(id);
+        }
         Ok(Self {
             server,
             device_id,
@@ -135,8 +178,12 @@ impl Runner {
                     backoff = Duration::from_secs(1);
                 }
                 Err(e) => {
-                    tracing::warn!("poll fallito (server giu'?): {e:#}; ritento fra {:?}", backoff);
-                    tokio::time::sleep(backoff).await;
+                    // B.3: jitter sul backoff — N client che perdono il server
+                    // nello stesso istante non devono ritentare in fase
+                    // (assalto sincrono al suo ritorno).
+                    let pause = with_jitter(backoff);
+                    tracing::warn!("poll fallito (server giu'?): {e:#}; ritento fra {:?}", pause);
+                    tokio::time::sleep(pause).await;
                     backoff = (backoff * 2).min(BACKOFF_MAX);
                 }
             }
@@ -497,6 +544,18 @@ fn result_from_executor(
     }
 }
 
+/// Jitter moltiplicativo in [0.75, 1.25) (B.3). Niente crate rand: i
+/// nanosecondi del clock bastano come sorgente di rumore per de-fasare i
+/// retry — non serve qualita' crittografica.
+fn with_jitter(d: Duration) -> Duration {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|t| t.subsec_nanos())
+        .unwrap_or(0);
+    let factor = 0.75 + (nanos % 1000) as f64 / 2000.0;
+    d.mul_f64(factor)
+}
+
 /// Profilo carico per il placement L2 (§10). Solo interi (canonical JSON).
 fn collect_profile() -> Value {
     let ncpu = std::thread::available_parallelism().map(|n| n.get() as i64).unwrap_or(1);
@@ -507,6 +566,10 @@ fn collect_profile() -> Value {
         // Versione corrente del client: la UI la mostra per-device e permette
         // di vedere l'esito del self-update (ADR 0184) senza aprire il PC.
         "client_version": env!("CARGO_PKG_VERSION"),
+        // B.5 (fase 7): livello sandbox che run_sandboxed userebbe ORA su
+        // questo device -> devices.profile_json (telemetria per il gate
+        // min_sandbox, W4).
+        "sandbox_level": sandbox::sandbox_level(),
     })
 }
 
@@ -568,4 +631,44 @@ fn write_pending_result(paths: &Paths, invocation_id: &str, body: &[u8]) -> Resu
     std::fs::write(&tmp, body)?;
     std::fs::rename(&tmp, &final_path).context("rename result spool")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounded_set_evicts_oldest_fifo() {
+        let mut s = BoundedSet::new(3);
+        for id in ["a", "b", "c"] {
+            s.insert(id.to_string());
+        }
+        assert!(s.contains("a") && s.contains("b") && s.contains("c"));
+        s.insert("d".to_string()); // evince "a" (il piu' vecchio)
+        assert!(!s.contains("a"), "l'id piu' vecchio va sfrattato");
+        assert!(s.contains("b") && s.contains("c") && s.contains("d"));
+    }
+
+    #[test]
+    fn bounded_set_duplicate_insert_no_growth() {
+        // Un id gia' presente non fa crescere la coda ne' cambia l'ordine di
+        // eviction (dedup §6.4: ri-consegnare non e' ri-eseguire).
+        let mut s = BoundedSet::new(2);
+        s.insert("a".to_string());
+        s.insert("a".to_string());
+        s.insert("b".to_string());
+        s.insert("c".to_string()); // evince "a", NON "b"
+        assert!(!s.contains("a"));
+        assert!(s.contains("b") && s.contains("c"));
+    }
+
+    #[test]
+    fn with_jitter_stays_in_band() {
+        let base = Duration::from_secs(8);
+        for _ in 0..50 {
+            let j = with_jitter(base);
+            assert!(j >= base.mul_f64(0.75) && j < base.mul_f64(1.25),
+                    "jitter fuori banda [0.75,1.25): {j:?}");
+        }
+    }
 }
