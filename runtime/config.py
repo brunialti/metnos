@@ -71,7 +71,7 @@ PATH_ROOT          = _env_path(
 )
 PATH_RUNTIME       = PATH_ROOT / "runtime"
 PATH_EXECUTORS     = PATH_ROOT / "executors"
-PATH_WORKSPACE     = PATH_ROOT / "workspace"
+PATH_WORKSPACE     = _env_path("METNOS_WORKSPACE", PATH_ROOT / "workspace")
 PATH_DECISIONS     = PATH_ROOT / "decisions"
 PATH_DOCS          = PATH_ROOT / "docs"
 
