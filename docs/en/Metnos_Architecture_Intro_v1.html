@@ -1356,12 +1356,15 @@ the work already done.
 </p>
 
 <p>
-The current state is deliberately conservative: active remote executors are
-read-only and limited to cases where the data lives on the PC, such as reading
-files or computing statistics over a local folder. On Windows, the Job Object
-contains duration, memory and process trees; on Linux, the sandbox uses bwrap
-when present. Remote mutating executors still require stronger policy:
-idempotency, audit, reversibility and finer filesystem isolation.
+The remote client is contained by construction: on Windows the Job Object bounds
+duration, memory and process trees; on Linux the sandbox uses bwrap when present.
+On this foundation remote executors are no longer read-only: since C7
+(ADR&nbsp;0183) mutating ones &mdash; file write, move and delete &mdash; run on
+the device too, made safe by the policy they long required: idempotency, audit,
+and device-aware reversibility (deterministic reverse patterns and blob backups
+queued to the same device for undo; the known gap being that blob-restore is not
+remotable). Executors whose dependencies cannot be resolved on the device stay
+server-only.
 </p>
 
 <p>
