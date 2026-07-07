@@ -40,6 +40,9 @@ EXPECTED_PIPELINE = (
     ("decontaminate_reader_qualifier", True),
     ("ensure_extract_clause", True),
     ("conform_to_intent_order", True),
+    # scope_dirs DOPO conform (l'ordine appeso find_dirs→delete_dirs è finale) e
+    # PRIMA della gate-insertion (fuori pipeline): il gate rinumera la coda.
+    ("scope_dirs_clause_to_contents", True),
     ("fill_clause_args", True),
     ("resolve_store_field_refs", True),
     ("route_mail_delete_to_trash", False),

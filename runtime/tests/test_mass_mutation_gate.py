@@ -140,6 +140,48 @@ class InsertMassMutationGateTests(unittest.TestCase):
         self.assertEqual(_tools(out).count("get_approval"), 1)
         self.assertEqual(_tools(out)[1], "get_approval")
 
+    def test_tail_from_step_renumbered_after_glob_rewrite(self):
+        # BUG LATENTE (7/7): il glob-rewrite inserisce find_files+gate PRIMA
+        # della coda → un consumer a valle (from_step) deve slittare, o
+        # consumerebbe il gate (0 item). Caso reale: scope_dirs appende
+        # find_dirs→delete_dirs(from_step) dopo la prima delete.
+        fw = _fw(("delete_files", {"paths": ["/tmp/x/*"]}),
+                 ("find_dirs", {"base_path": "/tmp/x"}),
+                 ("delete_dirs", {"from_step": 2, "force": True}),
+                 ("final_answer", {}))
+        out = D._insert_mass_mutation_gate(fw, "q", {})
+        self.assertEqual(_tools(out),
+                         ["find_files", "get_approval", "delete_files",
+                          "find_dirs", "delete_dirs", "final_answer"])
+        # find_dirs è ora al posto 4 → delete_dirs.from_step 2 → 4 (+2)
+        self.assertEqual(out.steps[3].tool, "find_dirs")
+        self.assertEqual(out.steps[4].args["from_step"], 4)
+        self.assertIs(out.steps[4].args["force"], True)
+
+    def test_tail_from_step_renumbered_after_gate_only(self):
+        # Caso non-glob (gate solo, shift +1): consumer di massa già from_step,
+        # con una coda che referenzia la mutazione.
+        fw = _fw(("find_files", {"base_path": "/d"}),
+                 ("delete_files", {"from_step": 1}),
+                 ("find_dirs", {"base_path": "/d"}),
+                 ("delete_dirs", {"from_step": 3}))
+        out = D._insert_mass_mutation_gate(fw, "q", {})
+        # gate inserito a idx1 → find_dirs 3→4, delete_dirs.from_step 3→4
+        self.assertEqual(_tools(out),
+                         ["find_files", "get_approval", "delete_files",
+                          "find_dirs", "delete_dirs"])
+        self.assertEqual(out.steps[4].args["from_step"], 4)
+
+    def test_tail_ref_to_prefix_producer_unchanged(self):
+        # Un consumer in coda che punta a un produttore PRIMA della mutazione
+        # (<= idx) NON deve slittare: quelle posizioni non cambiano.
+        fw = _fw(("find_files", {"base_path": "/d"}),
+                 ("delete_files", {"paths": ["/d/*"]}),
+                 ("write_files", {"from_step": 1}))  # punta a find_files (#1)
+        out = D._insert_mass_mutation_gate(fw, "q", {})
+        wf = next(s for s in out.steps if s.tool == "write_files")
+        self.assertEqual(wf.args["from_step"], 1)  # find_files resta #1
+
 
 class GateResumeRawQueryTests(unittest.TestCase):
     """Il gate-resume salva la query RAW (con la destinazione «su pc-X»), non

@@ -602,6 +602,128 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         return framework
 
 
+def _fs_container_of(path: str) -> Optional[str]:
+    """Cartella-contenitore di un path glob/wildcard, OS-agnostica (posix e
+    Windows). «/tmp/x/*»→«/tmp/x»; «C:\\d\\Downloads\\*»→«C:\\d\\Downloads».
+    None se il path non è un glob di primo livello (niente wildcard nell'ultimo
+    segmento)."""
+    if not isinstance(path, str) or not path:
+        return None
+    import ntpath
+    import posixpath
+    mod = ntpath if ("\\" in path) else posixpath
+    parent, leaf = mod.split(path)
+    if any(w in leaf for w in ("*", "?", "[")):
+        return parent.rstrip("\\/") or parent
+    return None
+
+
+def _norm_dir(path: str) -> str:
+    """Normalizzazione leggera per confronto contenitore↔target: strip di
+    separatori/wildcard finali, OS-agnostica. Non risolve symlink (i path
+    remoti non sono stat-abili dal server)."""
+    if not isinstance(path, str):
+        return ""
+    return path.rstrip("*").rstrip("\\/") or path
+
+
+def _scope_dirs_clause_to_contents(framework: Framework, intent, query: str,
+                                   catalog: Optional[list]) -> Framework:
+    """§2.9 (decisione Roberto 7/7): «cancella i file E le directory NELLA
+    cartella X» scopa la clausola dirs ai CONTENUTI di X, non al contenitore.
+
+    Il proposer emette `delete_dirs(paths=[X], force=true)` dove X è la STESSA
+    cartella-contenitore della clausola file fratella (`delete_files(paths=[X/*])`
+    o un produttore `find_files(base_path=X)`) → rimuove X RICORSIVAMENTE:
+    sparisce anche X e i file annidati (over-deletion, turno reale e6259280).
+    Fix: inserisci `find_dirs(base_path=X)` e ripunta `delete_dirs` a
+    `from_step` → colpisce le SOTTODIRECTORY di X, non X. X sopravvive. `force`
+    preservato (l'utente vuole le directory rimosse, non svuotate).
+
+    DISCRIMINANTE (conservativo): scatta SOLO se `delete_dirs` bersaglia
+    ESATTAMENTE la cartella che una clausola FILE fratella tratta da contenitore.
+    «cancella la cartella X» (senza clausola file) → nessun contenitore-candidato
+    → NON si tocca: rimuovere X è ciò che l'utente chiede. v3-gated, best-effort."""
+    try:
+        from . import is_v3
+        if not is_v3():
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        names = catalog_names(catalog)
+        if "find_dirs" not in names or "delete_dirs" not in names:
+            return framework  # catalogo privo dei tool → non riscrivere
+
+        def _args(s):
+            return getattr(s, "args", None) or {}
+
+        # Contenitori-candidati: cartelle che una clausola FILE tratta da
+        # contenitore (find_files/delete_files base_path, o glob paths X/*).
+        containers = set()
+        for s in steps:
+            tool = getattr(s, "tool", "") or ""
+            a = _args(s)
+            if tool in ("find_files", "delete_files"):
+                bp = a.get("base_path")
+                if isinstance(bp, str) and bp:
+                    containers.add(_norm_dir(bp))
+                for p in (a.get("paths") or []):
+                    c = _fs_container_of(p)
+                    if c:
+                        containers.add(_norm_dir(c))
+        if not containers:
+            return framework
+
+        # delete_dirs che bersaglia ESATTAMENTE un contenitore (paths=[X], niente
+        # wildcard, niente from_step: target esplicito = la cartella-contenitore).
+        from .types import StepSpec
+        rewrote = False
+        for dd in list(steps):
+            if (getattr(dd, "tool", "") or "") != "delete_dirs":
+                continue
+            a = _args(dd)
+            if a.get("from_step") is not None:
+                continue  # già scopato a un produttore (non è il caso rotto)
+            paths = a.get("paths")
+            if not (isinstance(paths, list) and len(paths) == 1
+                    and isinstance(paths[0], str)):
+                continue
+            if any(w in paths[0] for w in ("*", "?", "[")):
+                continue  # glob esplicito = intento diverso, non toccare
+            target = _norm_dir(paths[0])
+            if target not in containers:
+                continue  # bersaglia una sottodir NOMINATA, non il contenitore
+            # Nessuno step consuma questo delete_dirs (è terminale): sicuro
+            # spostarlo in coda senza rinumerare i from_step esistenti.
+            my_idx = steps.index(dd) + 1  # 1-based
+            if any(isinstance(_args(s).get("from_step"), int)
+                   and _args(s)["from_step"] == my_idx for s in steps):
+                continue
+            force = a.get("force")
+            body = [s for s in steps if s is not dd
+                    and (getattr(s, "tool", "") or "") != "final_answer"]
+            finals = [s for s in steps if (getattr(s, "tool", "") or "")
+                      == "final_answer"]
+            body.append(StepSpec(tool="find_dirs", args={"base_path": target}))
+            fd_idx = len(body)  # 1-based posizione di find_dirs nel piano finale
+            nd_args: dict = {"from_step": fd_idx}
+            if force is not None:
+                nd_args["force"] = force
+            body.append(StepSpec(tool="delete_dirs", args=nd_args))
+            steps = body + finals
+            rewrote = True
+            log.info("[scope_dirs] delete_dirs(paths=[%s]) → find_dirs(base=%s)"
+                     "→delete_dirs(from_step=%d): scopato ai contenuti, X resta",
+                     target, target, fd_idx)
+        if rewrote:
+            framework.steps = steps
+        return framework
+    except Exception as ex:
+        log.warning("scope_dirs_clause noop (best-effort): %r", ex)
+        return framework
+
+
 # Fratelli-FILESYSTEM (§2.2): `files` e `dirs` sono facce dello stesso dominio
 # — «elenca i FILE della cartella X» si serve con list_dirs (container enum).
 # Un intent-object `files` NON delegittima uno step `dirs` (e viceversa):
@@ -2323,6 +2445,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"intent.actions"}),
           rationale="riordina gli step nell'ordine di intent.actions",
           adr="0177"),
+    Guard("scope_dirs_clause_to_contents",
+          lambda fw, i, q, c: _scope_dirs_clause_to_contents(fw, i, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"catalog"}),
+          rationale="§2.9: delete_dirs sul contenitore X (clausola file fratella) → find_dirs(base=X)→delete_dirs(from_step): scopa alle sottodir, X resta (no over-deletion). Dopo conform_to_intent_order: l'ordine appeso è finale",
+          adr="0177"),
     Guard("fill_clause_args",
           lambda fw, i, q, c: _fill_clause_args(fw, i, q, c),
           v3_only=True, scope="per-clause", writes=frozenset({"args.*"}),
@@ -2636,9 +2764,26 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
                 "channel": rc.get("channel") or "",
                 "actor": rc.get("actor") or "",
             })
-            framework.steps = prefix + [gate, mut_step] + list(steps[idx + 1:])
+            # RINUMERA i from_step degli step IN CODA (bug latente esposto 7/7
+            # dal guard scope_dirs, che appende find_dirs→delete_dirs(from_step)
+            # DOPO la prima delete): inserire il gate (e l'eventuale find_files
+            # precursore del glob) sposta le posizioni → un consumer a valle che
+            # puntava alla mutazione o a un altro step di coda deve slittare, o
+            # consumerebbe il gate (0 item → azione muta, over/under-deletion).
+            # Shift = passi inseriti prima della coda; i ref al PREFISSO
+            # immutato (<= idx, 1-based) restano. Stessa logica di
+            # _ensure_extract_clause.
+            shift = len(prefix) + 1 - idx  # glob: 2 (find_files+gate); altrimenti 1
+            tail = list(steps[idx + 1:])
+            if shift:
+                for _ts in tail:
+                    _fa = _ts.args if isinstance(_ts.args, dict) else None
+                    _q = _fa.get("from_step") if _fa else None
+                    if isinstance(_q, int) and _q >= idx + 1:
+                        _fa["from_step"] = _q + shift
+            framework.steps = prefix + [gate, mut_step] + tail
             log.info("[mass_mutation_gate] get_approval inserito prima di %s "
-                     "(soglia %d)", s.tool, thr)
+                     "(soglia %d, coda rinumerata +%d)", s.tool, thr, shift)
             return framework
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
