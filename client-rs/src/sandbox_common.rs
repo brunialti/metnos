@@ -124,6 +124,80 @@ pub fn hint_grants(caps: &[Capability]) -> (Vec<HintGrant>, bool) {
     (grants, want_net)
 }
 
+/// Accesso fs massimo richiesto dalle capability: `Some(true)` se l'executor
+/// dichiara una `fs:write`, `Some(false)` se ha solo `fs:*` in lettura, `None`
+/// se non tocca il filesystem. Serve a decidere la maschera dei grant DERIVATI
+/// dagli arg (sotto): un executor senza capability fs non ottiene ACL sui path
+/// che gli passiamo (non deve toccarli).
+pub fn caps_fs_access(caps: &[Capability]) -> Option<bool> {
+    let mut any_fs = false;
+    let mut any_write = false;
+    for cap in caps {
+        if cap_kind(&cap.name) == "fs" {
+            any_fs = true;
+            if cap.name.split(':').nth(1) == Some("write") {
+                any_write = true;
+            }
+        }
+    }
+    if any_fs { Some(any_write) } else { None }
+}
+
+/// True se `s` e' un path ANCORABILE (assoluto): POSIX `/…`, home `~/…`/`~\…`,
+/// drive Windows `C:\…`/`C:/…`, o UNC `\\server\…`. Un path relativo non e'
+/// ancorabile a una radice certa → escluso (niente grant su cwd arbitraria).
+fn is_abs_pathish(s: &str) -> bool {
+    let b = s.as_bytes();
+    s.starts_with('/')
+        || s.starts_with("~/")
+        || s.starts_with("~\\")
+        || s == "~"
+        || s.starts_with("\\\\")
+        || (b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && (b[2] == b'\\' || b[2] == b'/'))
+}
+
+/// Estrae i path-target CONCRETI dagli argomenti dell'invocazione (JSON): sono
+/// il vero bersaglio del comando (`path`, `files[].path`, `paths[]`, …), non
+/// gli hint illustrativi del manifest. Cosi' la sandbox forte concede al SID
+/// del container esattamente le directory che il comando tocca (Documents,
+/// Downloads, …), non solo gli scope-esempio.
+///
+/// Regola generale (§7.3, nessuna lista di chiavi hardcodata): si scandiscono
+/// TUTTI i valori-stringa del JSON e si tengono quelli ANCORABILI (`is_abs_pathish`).
+/// Un `path_template` (contiene `{campo}`) e' troncato al prefisso statico prima
+/// della prima graffa: la dir-antenata e' comune a tutte le entry.
+/// La risoluzione a directory-esistente e i grant li fa il chiamante Windows
+/// (tocca il filesystem); qui resta pura e testabile ovunque.
+pub fn extract_path_args(args_json: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let parsed: serde_json::Value = match serde_json::from_str(args_json) {
+        Ok(v) => v,
+        Err(_) => return out,
+    };
+    fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::String(s) => {
+                // Template con campi {…}: tieni solo il prefisso statico.
+                let candidate = match s.find('{') {
+                    Some(i) => &s[..i],
+                    None => s.as_str(),
+                };
+                if is_abs_pathish(candidate) && !out.iter().any(|e| e == candidate) {
+                    out.push(candidate.to_string());
+                }
+            }
+            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+            serde_json::Value::Object(m) => m.values().for_each(|x| walk(x, out)),
+            _ => {}
+        }
+    }
+    walk(&parsed, &mut out);
+    out
+}
+
 /// Quoting di un argomento per la command line Win32 (`CreateProcessW` riceve
 /// UNA stringa, non un argv). Algoritmo canonico Microsoft: raddoppia i
 /// backslash solo quando precedono una virgoletta (o la virgoletta di
@@ -336,6 +410,51 @@ mod tests {
     fn hint_grants_no_net_when_absent() {
         let (_g, want_net) = hint_grants(&[cap("fs:read", &["~/x/**"])]);
         assert!(!want_net);
+    }
+
+    #[test]
+    fn caps_fs_access_reports_max_mode() {
+        assert_eq!(caps_fs_access(&[cap("fs:read", &[])]), Some(false));
+        assert_eq!(
+            caps_fs_access(&[cap("fs:read", &[]), cap("fs:write", &[])]),
+            Some(true),
+            "una sola fs:write basta a promuovere a write"
+        );
+        assert_eq!(caps_fs_access(&[cap("network.read", &[])]), None,
+                   "nessuna capability fs → nessun grant da arg");
+        assert_eq!(caps_fs_access(&[]), None);
+    }
+
+    #[test]
+    fn extract_path_args_keeps_only_anchorable_targets() {
+        // Forma scalare + lista + valore non-path: solo i path ancorabili.
+        let j = r#"{"path":"C:\\Users\\rober\\Documents\\nota.txt",
+                    "content":"ciao non-path",
+                    "paths":["/tmp/a.txt","D:/dati/b.csv","relativo/c"],
+                    "count": 3}"#;
+        let got = extract_path_args(j);
+        assert!(got.contains(&r"C:\Users\rober\Documents\nota.txt".to_string()));
+        assert!(got.contains(&"/tmp/a.txt".to_string()));
+        assert!(got.contains(&"D:/dati/b.csv".to_string()));
+        assert!(!got.iter().any(|s| s.contains("ciao")), "il contenuto non e' un target");
+        assert!(!got.iter().any(|s| s == "relativo/c"), "relativo non ancorabile");
+    }
+
+    #[test]
+    fn extract_path_args_truncates_template_at_first_brace() {
+        let j = r#"{"path_template":"/opt/metnos/issues/issue_{number}.json",
+                   "home":"~/notes/scratch/x.txt"}"#;
+        let got = extract_path_args(j);
+        assert!(got.contains(&"/opt/metnos/issues/issue_".to_string()),
+                "prefisso statico prima della graffa");
+        assert!(got.contains(&"~/notes/scratch/x.txt".to_string()));
+    }
+
+    #[test]
+    fn extract_path_args_dedups_and_survives_bad_json() {
+        let j = r#"{"a":"/tmp/x","b":"/tmp/x"}"#;
+        assert_eq!(extract_path_args(j), vec!["/tmp/x".to_string()]);
+        assert_eq!(extract_path_args("non-json"), Vec::<String>::new());
     }
 
     #[test]

@@ -24,7 +24,7 @@
 
 use anyhow::{bail, Context, Result};
 use std::os::windows::io::RawHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
@@ -43,7 +43,8 @@ use windows_sys::Win32::System::Threading::{
 };
 
 use crate::appcontainer;
-use crate::executors::CachedExecutor;
+use crate::executors::{CachedExecutor, Capability};
+use crate::sandbox_common::HintGrant;
 // Tipi condivisi col modulo linux (§16.2: "minimo diff" = ri-esportati, non
 // duplicati). sandbox_linux.rs compila su entrambe le piattaforme.
 pub use crate::sandbox_linux::{Limits, SandboxOutput};
@@ -249,6 +250,54 @@ fn build_env(
     env
 }
 
+/// Directory ESISTENTE piu' profonda che copre `cand`: se `cand` e' una dir
+/// esistente la ritorna, se e' un file (o un target ancora da creare) risale
+/// ai genitori fino alla prima dir reale. `~` espanso alla home del device.
+/// `None` se nessun antenato esiste (radice irraggiungibile → grant inutile).
+fn deepest_existing_dir(cand: &str) -> Option<PathBuf> {
+    let expanded = if let Some(rest) =
+        cand.strip_prefix("~/").or_else(|| cand.strip_prefix("~\\"))
+    {
+        dirs::home_dir()?.join(rest)
+    } else if cand == "~" {
+        dirs::home_dir()?
+    } else {
+        PathBuf::from(cand)
+    };
+    let mut p: &Path = &expanded;
+    loop {
+        if p.is_dir() {
+            return Some(p.to_path_buf());
+        }
+        match p.parent() {
+            Some(par) if !par.as_os_str().is_empty() => p = par,
+            _ => return None,
+        }
+    }
+}
+
+/// Grant ACL derivati dai path-target CONCRETI dell'invocazione (§W4: la
+/// sandbox forte concede esattamente le directory che il comando tocca, non
+/// gli hint illustrativi del manifest). Accesso = write se l'executor dichiara
+/// `fs:write`, altrimenti read; un executor senza capability fs non riceve
+/// grant (`caps_fs_access` → None). Ogni target e' risolto alla sua dir
+/// esistente piu' profonda (creabile un file dentro, leggibile una dir).
+fn arg_target_grants(args_json: &str, caps: &[Capability]) -> Vec<HintGrant> {
+    let write = match crate::sandbox_common::caps_fs_access(caps) {
+        Some(w) => w,
+        None => return Vec::new(),
+    };
+    let mut out: Vec<HintGrant> = Vec::new();
+    for cand in crate::sandbox_common::extract_path_args(args_json) {
+        if let Some(root) = deepest_existing_dir(&cand) {
+            if !out.iter().any(|g| g.root == root) {
+                out.push(HintGrant { root, write });
+            }
+        }
+    }
+    out
+}
+
 pub async fn run_sandboxed(
     exec: &CachedExecutor,
     python: &Path,
@@ -274,7 +323,20 @@ pub async fn run_sandboxed(
     // METNOS_SANDBOX_APPCONTAINER=1 (default OFF): a gate spento questo blocco
     // e' saltato e il percorso job-object sotto resta byte-identico a W3.3.
     if !disabled && appcontainer::gate_on() {
-        let (grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
+        let (mut grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
+        // Grant sui path-target CONCRETI dell'invocazione (Documents, Downloads,
+        // …): senza, la sandbox forte concederebbe solo gli scope-esempio del
+        // manifest e un comando su una dir utente reale fallirebbe Access Denied.
+        grants.extend(arg_target_grants(args_json, &exec.capabilities));
+        // Dir dati dello shim (METNOS_USER_DATA, iniettata dal runner): config.py
+        // ci crea l'albero user a import + ci finiscono i blob undo. Isolata e
+        // client-owned → il container puo' scriverla senza aprire ~/.local/share.
+        if let Some((_, ud)) = env_pairs.iter().find(|(k, _)| k == "METNOS_USER_DATA") {
+            let root = PathBuf::from(ud);
+            if !grants.iter().any(|g| g.root == root) {
+                grants.push(HintGrant { root, write: true });
+            }
+        }
         let params = appcontainer::ContainerParams {
             python: python.to_path_buf(),
             entry: exec.entry.clone(),
