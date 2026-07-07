@@ -178,11 +178,9 @@ class InvocationQueueTests(unittest.TestCase):
                 self.device_id, "no_such_executor_xyz", {}, db_path=self.db)
 
 
-class PurgeInvocationsTests(unittest.TestCase):
-    """Rilievo #2 (2026-07-04): purge_invocations basata sul COMPLETAMENTO
-    (`completed_at`), non sulla consegna. Un terminale senza delivered_epoch
-    (es. result da spool su un 'queued') non deve restare orfano per sempre;
-    queued/delivered in volo non vanno mai toccati."""
+class _InvocationsFixture(unittest.TestCase):
+    """Fixture condivisa purge/expire: device appaiato su DB isolato
+    (§feedback: mai store reali nei test) + helper di manipolazione righe."""
 
     def setUp(self):
         import config as _C
@@ -230,6 +228,23 @@ class PurgeInvocationsTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _state_of(self, inv_id):
+        import sqlite3
+        conn = sqlite3.connect(str(self.db))
+        try:
+            return conn.execute(
+                "SELECT state, completed_at FROM invocations "
+                "WHERE invocation_id=?", (inv_id,)).fetchone()
+        finally:
+            conn.close()
+
+
+class PurgeInvocationsTests(_InvocationsFixture):
+    """Rilievo #2 (2026-07-04): purge_invocations basata sul COMPLETAMENTO
+    (`completed_at`), non sulla consegna. Un terminale senza delivered_epoch
+    (es. result da spool su un 'queued') non deve restare orfano per sempre;
+    queued/delivered in volo non vanno mai toccati."""
+
     def test_old_terminal_completed_is_purged(self):
         done = self._mk(); self._set(done, state="done", completed_at=self._iso_days_ago(40))
         failed = self._mk(); self._set(failed, state="failed", completed_at=self._iso_days_ago(31))
@@ -263,6 +278,131 @@ class PurgeInvocationsTests(unittest.TestCase):
         n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
         self.assertEqual(n, 1)
         self.assertNotIn(orphan, self._states())
+
+    def test_old_expired_is_purged(self):
+        # B.4: `expired` è terminale a pieno titolo → retention standard.
+        exp = self._mk()
+        self._set(exp, state="expired", completed_at=self._iso_days_ago(40))
+        n = invocations.purge_invocations(older_than_days=30, db_path=self.db)
+        self.assertEqual(n, 1)
+        self.assertNotIn(exp, self._states())
+
+
+class ExpireStaleInvocationsTests(_InvocationsFixture):
+    """B.4 (fase 7): il reaper chiude come `expired` le in-volo mai concluse
+    oltre TTL; niente più consegna; result reale tardivo accettato comunque;
+    notifica onesta per le abbandonate (A.0)."""
+
+    def test_old_queued_expires_fresh_kept(self):
+        old = self._mk(); self._set(old, created_at=self._iso_days_ago(2))
+        fresh = self._mk()
+        n = invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+        self.assertEqual(n, 1)
+        state, completed = self._state_of(old)
+        self.assertEqual(state, "expired")
+        self.assertTrue(completed, "expired senza completed_at: la retention "
+                                   "della purge non lo raccoglierebbe mai")
+        self.assertEqual(self._state_of(fresh)[0], "queued")
+
+    def test_delivered_stale_expires_inflight_kept(self):
+        # delivered STANTIA (ri-eleggibile alla redelivery) → expired;
+        # delivered RECENTE (device al lavoro ora) → intoccabile anche se
+        # creata prima del TTL.
+        import time as _t
+        stale = self._mk()
+        self._set(stale, state="delivered",
+                  created_at=self._iso_days_ago(2),
+                  delivered_epoch=self._epoch_days_ago(2))
+        inflight = self._mk()
+        self._set(inflight, state="delivered",
+                  created_at=self._iso_days_ago(2),
+                  delivered_epoch=_t.time())
+        n = invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+        self.assertEqual(n, 1)
+        self.assertEqual(self._state_of(stale)[0], "expired")
+        self.assertEqual(self._state_of(inflight)[0], "delivered")
+
+    def test_expired_never_redelivered(self):
+        old = self._mk(); self._set(old, created_at=self._iso_days_ago(2))
+        invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+        self.assertIsNone(
+            invocations.next_invocation(self.device_id, db_path=self.db))
+
+    def test_ttl_zero_disables(self):
+        old = self._mk(); self._set(old, created_at=self._iso_days_ago(30))
+        n = invocations.expire_stale_invocations(ttl_h=0, db_path=self.db)
+        self.assertEqual(n, 0)
+        self.assertEqual(self._state_of(old)[0], "queued")
+
+    def test_idempotent(self):
+        old = self._mk(); self._set(old, created_at=self._iso_days_ago(2))
+        self.assertEqual(
+            invocations.expire_stale_invocations(ttl_h=24, db_path=self.db), 1)
+        self.assertEqual(
+            invocations.expire_stale_invocations(ttl_h=24, db_path=self.db), 0)
+
+    def test_late_result_on_expired_accepted(self):
+        # Il device aveva ricevuto l'invocazione PRIMA della scadenza e il suo
+        # result arriva dopo: l'evento reale vince (§2.8) → done.
+        inv_id = self._mk()
+        wire = invocations.next_invocation(self.device_id, db_path=self.db)
+        self.assertEqual(wire["invocation_id"], inv_id)
+        self._set(inv_id, created_at=self._iso_days_ago(2),
+                  delivered_epoch=self._epoch_days_ago(2))
+        invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+        self.assertEqual(self._state_of(inv_id)[0], "expired")
+        result = {"invocation_id": inv_id, "device_id": self.device_id,
+                  "ok": True, "n_processed": 1,
+                  "payload": {"ok": True, "ok_count": 1}}
+        raw = json.dumps(result).encode("utf-8")
+        self.assertTrue(invocations.complete_invocation(
+            result, raw_body=raw, sig_b64=self.key.sign(raw),
+            db_path=self.db))
+        self.assertEqual(self._state_of(inv_id)[0], "done")
+
+    def test_abandoned_expiry_notifies_origin(self):
+        # A.0+B.4: il turno aveva risposto «esito incerto, ti avviso» → alla
+        # scadenza l'utente riceve la chiusura onesta (op MAI eseguita).
+        import tempfile as _tf
+        import user_notices as _un
+        orig_dir = _un.NOTICES_DIR
+        _un.NOTICES_DIR = Path(_tf.mkdtemp(prefix="metnos_b4_notices_"))
+        try:
+            inv_id = invocations.enqueue_invocation(
+                self.device_id, "delete_files", {"paths": ["/x"]},
+                turn_id="tB4", reversibility="revertible",
+                origin_actor="host", origin_channel="http", db_path=self.db)
+            invocations.mark_abandoned(inv_id, db_path=self.db)
+            self._set(inv_id, created_at=self._iso_days_ago(2))
+            n = invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+            self.assertEqual(n, 1)
+            out = _un.drain("http", "host")
+            self.assertEqual(len(out), 1)
+            self.assertIn("delete_files", out[0])
+        finally:
+            import shutil
+            shutil.rmtree(_un.NOTICES_DIR, ignore_errors=True)
+            _un.NOTICES_DIR = orig_dir
+
+    def test_non_abandoned_expiry_no_notice(self):
+        # Invocazione mai abbandonata (nessun turno in ascolto) → scade in
+        # silenzio: nessun destinatario aveva ricevuto «esito incerto».
+        import tempfile as _tf
+        import user_notices as _un
+        orig_dir = _un.NOTICES_DIR
+        _un.NOTICES_DIR = Path(_tf.mkdtemp(prefix="metnos_b4_nonotice_"))
+        try:
+            inv_id = invocations.enqueue_invocation(
+                self.device_id, "delete_files", {"paths": ["/x"]},
+                origin_actor="host", origin_channel="http", db_path=self.db)
+            self._set(inv_id, created_at=self._iso_days_ago(2))
+            n = invocations.expire_stale_invocations(ttl_h=24, db_path=self.db)
+            self.assertEqual(n, 1)
+            self.assertEqual(_un.drain("http", "host"), [])
+        finally:
+            import shutil
+            shutil.rmtree(_un.NOTICES_DIR, ignore_errors=True)
+            _un.NOTICES_DIR = orig_dir
 
 
 if __name__ == "__main__":

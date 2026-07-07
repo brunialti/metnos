@@ -11,10 +11,13 @@ Canonical JSON (contratto di firma, condiviso col client Rust):
 - NIENTE float nei payload firmati (solo int/str/bool/list/dict/null):
   la serializzazione dei float non e' riproducibile cross-linguaggio.
 
-Stati: queued -> delivered -> done|failed. Un `invocation_id` con result
-gia' ricevuto non viene MAI ri-messo in coda (§6.4). Un'invocazione
+Stati: queued -> delivered -> done|failed|expired. Un `invocation_id` con
+result gia' ricevuto non viene MAI ri-messo in coda (§6.4). Un'invocazione
 `delivered` senza result oltre la deadline viene ri-consegnata al poll
 successivo (il dedup client-side + il cursor la rendono innocua).
+`expired` (B.4 fase 7): il reaper chiude le in-volo mai concluse oltre TTL —
+non verranno piu' consegnate; un result REALE tardivo (device che aveva gia'
+ricevuto l'invocazione) la chiude comunque done/failed: l'evento vince (§2.8).
 """
 from __future__ import annotations
 
@@ -288,14 +291,15 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
 
 def purge_invocations(older_than_days: int = 30, *,
                       db_path: Path | None = None) -> int:
-    """Elimina le invocazioni TERMINALI (done/failed) COMPLETATE da più di
-    `older_than_days` giorni. F5 (review 2026-07-04) + rilievo #2: la retention
-    è sul COMPLETAMENTO (`completed_at`, sempre valorizzato sul terminale via
-    `_now_iso()`), NON sulla consegna — un terminale mai 'delivered' (es. result
-    da spool su un 'queued') non resta più orfano per sempre. Confronto ISO
-    lessicografico (formato unico UTC '...Z' → ordinamento corretto), con
-    fallback su `delivered_epoch` per l'edge terminale senza completed_at. NON
-    tocca queued/delivered (in volo). Ritorna le righe rimosse. Idempotente.
+    """Elimina le invocazioni TERMINALI (done/failed/expired) COMPLETATE da più
+    di `older_than_days` giorni. F5 (review 2026-07-04) + rilievo #2: la
+    retention è sul COMPLETAMENTO (`completed_at`, sempre valorizzato sul
+    terminale via `_now_iso()` — anche alla scadenza B.4), NON sulla consegna —
+    un terminale mai 'delivered' (es. result da spool su un 'queued') non resta
+    più orfano per sempre. Confronto ISO lessicografico (formato unico UTC
+    '...Z' → ordinamento corretto), con fallback su `delivered_epoch` per
+    l'edge terminale senza completed_at. NON tocca queued/delivered (in volo).
+    Ritorna le righe rimosse. Idempotente.
     Agganciato a `jobs/maintenance_tasks.task_state_reaper`."""
     import time as _t
     cutoff = _t.time() - int(older_than_days) * 86400
@@ -304,7 +308,7 @@ def purge_invocations(older_than_days: int = 30, *,
     try:
         cur = conn.execute(
             "DELETE FROM invocations "
-            "WHERE state IN ('done','failed') AND ("
+            "WHERE state IN ('done','failed','expired') AND ("
             "  (completed_at IS NOT NULL AND completed_at < ?) "
             "  OR (completed_at IS NULL AND delivered_epoch IS NOT NULL "
             "      AND delivered_epoch < ?))",
@@ -312,6 +316,95 @@ def purge_invocations(older_than_days: int = 30, *,
         return cur.rowcount
     finally:
         conn.close()
+
+
+def expire_stale_invocations(ttl_h: float | None = None, *,
+                             db_path: Path | None = None) -> int:
+    """B.4 (fase 7): formalizza lo stato `expired` come stato di coda.
+
+    Un'invocazione in volo oltre il TTL che nessun device sta lavorando —
+    `queued` mai presa in carico, oppure `delivered` stantia già ri-eleggibile
+    alla redelivery (client sparito) — non verrà più consegnata: diventa
+    `expired` con `completed_at` valorizzato (retention standard). Una
+    `delivered` RECENTE (device al lavoro proprio ora) non si tocca: se il
+    result arriva dopo la scadenza, `complete_invocation` lo accetta comunque
+    (l'evento reale vince, §2.8). Le invocazioni ABBANDONATE dal turno (A.0)
+    generano la notifica onesta di chiusura: l'op NON è stata eseguita.
+    TTL via `METNOS_INVOCATION_TTL_H` (default 24; `ttl_h` esplicito vince).
+    Ritorna il numero di invocazioni scadute. Idempotente; chiamata dal reaper
+    `jobs/maintenance_tasks.task_state_reaper`."""
+    import os
+    if ttl_h is None:
+        try:
+            ttl_h = float(os.environ.get("METNOS_INVOCATION_TTL_H", "24"))
+        except (TypeError, ValueError):
+            ttl_h = 24.0
+    if ttl_h <= 0:
+        return 0
+    now = time.time()
+    cutoff_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                               time.gmtime(now - ttl_h * 3600))
+    # Stesso predicato di ri-eleggibilità di next_invocation: una 'delivered'
+    # con delivered_epoch fresco è in esecuzione ADESSO → mai scaduta qui.
+    where = (
+        "created_at < ? AND (state = 'queued' OR (state = 'delivered' "
+        "AND ? - COALESCE(delivered_epoch, 0) > deadline_ms / 1000.0 + ?))"
+    )
+    params = (cutoff_iso, now, REDELIVERY_GRACE_S)
+    conn = _open_db(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        rows = conn.execute(
+            f"""SELECT invocation_id, device_id, payload_json,
+                       abandoned_by_turn, origin_actor, origin_channel
+                FROM invocations WHERE {where}""", params).fetchall()
+        if rows:
+            ids = [r["invocation_id"] for r in rows]
+            conn.execute(
+                "UPDATE invocations SET state = 'expired', completed_at = ? "
+                "WHERE invocation_id IN ({})".format(",".join("?" * len(ids))),
+                (_now_iso(), *ids))
+        conn.execute("COMMIT")
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception as _e:
+            log.warning("rollback failed in %s: %s", __name__, _e)
+        raise
+    finally:
+        conn.close()
+    for row in rows:
+        log.warning("invocation %s SCADUTA senza esecuzione (TTL %sh, "
+                    "device %s)", row["invocation_id"], ttl_h,
+                    row["device_id"][:12])
+        if row["abandoned_by_turn"]:
+            _notify_expired(row["payload_json"], row["device_id"],
+                            (row["origin_channel"], row["origin_actor"]),
+                            ttl_h)
+    return len(rows)
+
+
+def _notify_expired(payload_json, device_id: str, origin: tuple,
+                    ttl_h: float) -> None:
+    """B.4: chiusura onesta per il destinatario che aveva ricevuto «esito
+    incerto» (A.0) — l'operazione è scaduta senza MAI essere eseguita (§2.8).
+    Testo via i18n (MSG_LATE_RESULT_EXPIRED, chiave nel seed). Fail-open."""
+    try:
+        payload = json.loads(payload_json) if payload_json else {}
+        executor = payload.get("executor") or "?"
+        channel, actor = (origin or ("", ""))
+        from devices import get_device
+        dev = get_device(device_id or "")
+        dev_name = getattr(dev, "name", None) or "device"
+        from messages import get as _msg
+        text = _msg("MSG_LATE_RESULT_EXPIRED", tool=executor, device=dev_name,
+                    h=int(ttl_h))
+        import user_notices
+        user_notices.append(channel or "", actor or "host", text)
+        log.info("B.4 notice expired accodata per %s:%s (%s)",
+                 channel or "any", actor or "host", executor)
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("_notify_expired fallita (fail-open): %r", ex)
 
 
 def next_invocation(device_id: str, *, cursor: str | None = None,
@@ -427,7 +520,13 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
         if row["state"] in ("done", "failed"):
             conn.execute("COMMIT")
             return True  # idempotente: primo result vince
-        was_abandoned = bool(row["abandoned_by_turn"])
+        # B.4: un result su una `expired` si accetta — il device l'aveva
+        # ricevuta PRIMA della scadenza e l'ha eseguita davvero (es. result
+        # rimasto nello spool con server irraggiungibile): l'evento reale
+        # batte la nostra previsione di morte (§2.8). Trattata come tardiva
+        # (undo chiuso + utente avvisato), il turno d'origine è lontano.
+        was_abandoned = bool(row["abandoned_by_turn"]) or \
+            row["state"] == "expired"
         payload_json = row["payload_json"]
         origin = (row["origin_channel"] if "origin_channel" in row.keys()
                   else "", row["origin_actor"] if "origin_actor" in row.keys()
@@ -552,12 +651,22 @@ def wait_result(invocation_id: str, timeout_s: float, *,
 
     Il chiamante async usa `await loop.run_in_executor(None, ...)` o il
     gemello `await_result` in agent_server.
+
+    B.2 (fase 7): polling ADATTIVO — `poll_interval_s` per i primi 5s
+    (risposta pronta sui result rapidi), poi 1s: un'attesa lunga non merita
+    4 query/s. Ceiling noto e ACCETTATO: ogni wait_result occupa un thread
+    del pool per tutta l'attesa; il rimedio strutturale è il differito A.1
+    (spec fase 7), NON l'async nell'engine.
     """
-    deadline = time.monotonic() + timeout_s
+    start = time.monotonic()
+    deadline = start + timeout_s
     while True:
         info = get_invocation(invocation_id, db_path=db_path)
-        if info is not None and info["state"] in ("done", "failed"):
-            return info["result"]
-        if time.monotonic() >= deadline:
+        if info is not None and info["state"] in ("done", "failed", "expired"):
+            return info["result"]  # expired: result None = nessun esito (B.4)
+        now = time.monotonic()
+        if now >= deadline:
             return None
-        time.sleep(poll_interval_s)
+        step = poll_interval_s if (now - start) < 5.0 \
+            else max(poll_interval_s, 1.0)
+        time.sleep(min(step, deadline - now))

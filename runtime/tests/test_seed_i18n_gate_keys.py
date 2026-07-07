@@ -35,6 +35,11 @@ _REQUIRED_KEYS = (
     "MSG_DEFER_QUEUED",
     "MSG_DEFER_DONE",
     "MSG_DEFER_EXPIRED",
+    # Fase 7 A.0/A.2/B.4 risultato-tardivo delle invocazioni remote (7/7):
+    # DONE/FAILED erano nel seed ma non guardate; EXPIRED = scadenza B.4.
+    "MSG_LATE_RESULT_DONE",
+    "MSG_LATE_RESULT_FAILED",
+    "MSG_LATE_RESULT_EXPIRED",
 )
 
 # Chiavi user-facing del path upload-default faceless (1/7): la risposta parte

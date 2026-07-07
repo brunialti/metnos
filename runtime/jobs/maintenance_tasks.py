@@ -316,12 +316,15 @@ def task_state_reaper() -> dict:
 
     def _invocations():
         # F5 (review 2026-07-04): la tabella `invocations` (executor remoti) era
-        # append-only, a differenza di spool client / join session. Purga i
-        # terminali (done/failed) oltre retention; NON tocca gli in-volo.
+        # append-only, a differenza di spool client / join session. B.4 (fase 7):
+        # PRIMA le in-volo mai concluse oltre TTL diventano `expired` (+ notifica
+        # onesta per le abbandonate A.0) — una coda verso un device morto non
+        # resta «in volo» per sempre; POI purga i terminali oltre retention.
         import invocations
         days = int(os.environ.get("METNOS_INVOCATIONS_RETENTION_DAYS", "30"))
+        expired = invocations.expire_stale_invocations()
         return {"purged": invocations.purge_invocations(older_than_days=days),
-                "retention_days": days}
+                "expired": expired, "retention_days": days}
     _run("invocations", _invocations)
 
     log.info("state_reaper report: %s", report)
