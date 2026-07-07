@@ -387,6 +387,41 @@ class ChannelDaemon:
             message=OutboundMessage(text=text, reply_to=reply_to),
         )
 
+    def _push_pending_notices(self) -> int:
+        """A.2 push (fase 7): consegna SUBITO gli avvisi «prossima-visita» ai
+        destinatari di questo canale, senza aspettare che scrivano.
+
+        `user_notices` è la coda per (channel, actor) usata dal risultato
+        tardivo/differito (A.0/A.1/B.4). Su http resta prossima-visita
+        (TurnLog.write la antepone al final); su telegram il daemon polla ogni
+        ~25s → può PUSHARE. Itero i pairing del canale, risolvo l'actor
+        canonico (stesso nome usato in append) e dreno una sola volta per
+        actor (drain atomico: rimuove → nessuna doppia consegna col
+        prossimo turno). Best-effort: un errore non ferma il loop. Ritorna il
+        numero di avvisi inviati."""
+        sent = 0
+        try:
+            import pairing
+            import user_notices
+            from actor_resolver import resolve_actor
+            seen: set[str] = set()
+            for p in pairing.list_pairings():
+                if p.channel != self.channel.name or not p.sender_id:
+                    continue
+                actor = resolve_actor(p.channel, p.sender_id)
+                if actor in seen:
+                    continue
+                seen.add(actor)
+                for text in user_notices.drain(p.channel, actor):
+                    try:
+                        self._send_text(p.sender_id, text)
+                        sent += 1
+                    except Exception:
+                        log.exception("push notice ad %s fallito", p.sender_id)
+        except Exception:
+            log.exception("_push_pending_notices fallita (non blocca il loop)")
+        return sent
+
     def _consume_admin_approval(self, proposal: dict, *,
                                  actor: str = "host") -> str:
         """Esegui un admin pending dopo conferma utente (ADR 0088).
@@ -1815,6 +1850,18 @@ class ChannelDaemon:
                     self.handle_message(synthetic)
                 except Exception:
                     log.exception("media_group flush handle_message failed")
+            # A.2 push (fase 7): consegna immediata degli avvisi tardivi/
+            # differiti in coda per questo canale (risultato remoto completato
+            # DOPO il timeout del turno, o turno differito eseguito al ritorno
+            # del device). Ogni giro di poll (~25s) → latenza max ~25s invece
+            # della prossima-visita. Best-effort dentro il proprio try.
+            try:
+                pushed = self._push_pending_notices()
+                if pushed:
+                    log.info("A.2: %d avviso/i tardivo/i pushato/i su %s",
+                             pushed, self.channel.name)
+            except Exception:
+                log.debug("push notices skipped", exc_info=True)
             # Cleanup tmp uploads vecchi (TTL 1h) ogni N=15 iterazioni.
             if i % 15 == 0:
                 try:
