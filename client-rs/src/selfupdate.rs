@@ -1,29 +1,35 @@
-//! Self-update del client (W4, 5/7/2026 — «l'upgrade del client remoto deve
-//! essere automatico»).
+//! Self-update del client — ROBUSTO, "a prova di tutto" (8/7/2026).
 //!
 //! Flusso: il poll porta `server_client_version`; su mismatch il runner chiama
 //! `maybe_update`, che:
 //!   1. scarica il DESCRITTORE firmato da `/agent/client/update/{target}` e ne
-//!      verifica la firma con la pubkey server PINNATA (stessa ancora di
-//!      fiducia di shim e invocazioni — autenticità, non solo integrità);
+//!      verifica la firma con la pubkey server PINNATA (autenticità, non solo
+//!      integrità);
 //!   2. IDEMPOTENZA: se lo sha256 del PROPRIO eseguibile coincide con quello
-//!      del descrittore, il binario è già quello pubblicato → nessun loop
-//!      (il caso «stessa build, version string diversa» non ricicla);
-//!   3. scarica il binario nel percorso `<exe>.new`, verifica lo sha256;
-//!   4. swap atomico: `<exe>` → `<exe>.old`, `<exe>.new` → `<exe>` (su
-//!      Windows un eseguibile IN ESECUZIONE si può rinominare, non
-//!      sovrascrivere: è la tecnica standard);
-//!   5. ritorna `true`: il chiamante rilascia il lock, spawna il nuovo
-//!      binario con gli stessi argomenti e esce.
+//!      del descrittore, il binario è già quello pubblicato → nessun loop;
+//!   3. scarica il binario in `<exe>.new`, verifica lo sha256;
+//!   4. swap: `<exe>` → `<exe>.old`, `<exe>.new` → `<exe>` (su Windows un
+//!      eseguibile IN ESECUZIONE si può rinominare, non sovrascrivere);
+//!   5. scrive il marker `Probation` e ritorna `true`: il chiamante ESCE
+//!      (exit 0). NIENTE self-respawn (era BUG-A: spawn da processo morente →
+//!      handle invalidi post-FreeConsole). Rilancia il SUPERVISOR: systemd
+//!      `Restart=always` (Linux) / Scheduled Task watchdog (Windows).
 //!
-//! Rollback manuale: `<exe>.old` resta sul disco fino allo swap successivo.
+//! ROBUSTEZZA (macchina a stati in `update_state.rs`):
+//!   - PROBATION: il nuovo binario deve confermare (`confirm_running`, al primo
+//!     poll riuscito) → cancella `.old`. Se muore prima, il boot successivo
+//!     (`apply_startup_recovery`) fa ROLLBACK al `.old` known-good.
+//!   - Invariante: un update rotto NON lascia mai il device senza binario buono.
+//!   - Crash-safe: se l'exe manca a metà swap, il supervisor lo ripristina
+//!     (systemd `ExecStartPre` / recovery al boot).
 
 use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::identity;
+use crate::update_state::{decide_boot, BootAction, Phase, UpdateState};
 
 #[derive(Debug, Deserialize)]
 struct UpdateDescriptor {
@@ -52,10 +58,16 @@ fn sha256_file(p: &Path) -> Result<String> {
     Ok(hex_lower(&Sha256::digest(&bytes)))
 }
 
+/// Percorso del marker di stato del self-update, accanto ai dati del client.
+pub fn marker_path(data_dir: &Path) -> PathBuf {
+    data_dir.join("update_state.json")
+}
+
 /// Controlla il descrittore firmato e, se il binario pubblicato è diverso dal
-/// proprio, lo scarica e fa lo swap. Ritorna true se il chiamante deve
-/// respawnare (il file exe è GIÀ il nuovo binario).
-pub async fn maybe_update(server: &str, server_pubkey: &str) -> Result<bool> {
+/// proprio, lo scarica, fa lo swap e scrive il marker PROBATION. Ritorna true se
+/// il chiamante deve USCIRE (exit 0): il file exe è GIÀ il nuovo binario e il
+/// supervisor rilancerà. NIENTE respawn.
+pub async fn maybe_update(server: &str, server_pubkey: &str, marker: &Path) -> Result<bool> {
     let target = build_target();
     let url = format!("{}/agent/client/update/{}", server.trim_end_matches('/'), target);
     let client = reqwest::Client::builder()
@@ -110,7 +122,13 @@ pub async fn maybe_update(server: &str, server_pubkey: &str) -> Result<bool> {
     }
 
     swap_binary(&exe, &new_path)?;
-    tracing::info!(version = %desc.version, "self-update: swap completato, respawn");
+    // Marker PROBATION: il nuovo binario dovrà confermare al primo poll, o il
+    // boot successivo farà rollback al `.old`. Scritto DOPO lo swap riuscito.
+    UpdateState::enter_probation(&desc.version)
+        .save(marker)
+        .with_context(|| format!("scrittura marker {}", marker.display()))?;
+    tracing::info!(version = %desc.version,
+        "self-update: swap completato, marker probation scritto, esco (rilancia il supervisor)");
     Ok(true)
 }
 
@@ -129,41 +147,123 @@ fn swap_binary(exe: &Path, new_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Respawn: spawna lo STESSO percorso exe (ora il nuovo binario) con gli
-/// argomenti originali e esce. Il figlio ritenta il lock single-instance
-/// per qualche secondo (il padre lo rilascia uscendo).
-pub fn respawn_and_exit() -> ! {
-    let exe = std::env::current_exe().expect("current_exe");
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    // BUG 7/7/2026 (0.2.17→0.2.18): il daemon chiama FreeConsole (B6) → i suoi
-    // std-handle sono INVALIDI; senza redirezione `spawn()` li fa ereditare al
-    // figlio e CreateProcessW fallisce con «Handle non valido (os error 6)»,
-    // lasciando il client giù. Stdio::null() dà al figlio handle freschi sul
-    // device NUL: nessuna eredità di handle invalidi. Cross-platform (innocuo su
-    // Linux, dove non c'è FreeConsole). Il figlio è comunque un daemon (log su
-    // file/tracing), non serve stdout.
-    match std::process::Command::new(&exe)
-        .args(&args)
-        .env("METNOS_RESPAWNED", "1")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        Ok(_) => tracing::info!("self-update: nuovo processo avviato, esco"),
-        Err(e) => tracing::error!("self-update: spawn fallito: {} (la scheduled task/il supervisore rilancerà)", e),
-    }
+/// Uscita pulita dopo un self-update: il file exe è GIÀ il nuovo binario, il
+/// marker è `Probation`. NIENTE respawn (era BUG-A) — esce e basta; il
+/// supervisor (systemd `Restart=always` / Task watchdog) rilancia il nuovo
+/// binario in un processo FRESCO (nessun handle ereditato, nessuna race col
+/// lock: il vecchio processo è già morto).
+pub fn exit_for_update() -> ! {
+    tracing::info!("self-update: esco, il supervisor rilancia il nuovo binario");
     std::process::exit(0);
 }
 
-pub fn lock_retry_window() -> Option<std::time::Duration> {
-    // Dopo un respawn il padre potrebbe non aver ancora rilasciato il lock:
-    // il figlio ritenta per una finestra breve invece di morire subito.
-    if std::env::var("METNOS_RESPAWNED").ok().as_deref() == Some("1") {
-        Some(std::time::Duration::from_secs(20))
-    } else {
-        None
+/// Se l'exe manca ma `.old` esiste (crash a metà swap: rename via ma non ancora
+/// rimpiazzato), lo ripristina. Ritorna true se ha ripristinato. Idempotente.
+fn restore_exe_if_missing(exe: &Path) -> bool {
+    if exe.exists() {
+        return false;
     }
+    let old = exe.with_extension("old");
+    if !old.exists() {
+        return false;
+    }
+    match std::fs::rename(&old, exe) {
+        Ok(()) => {
+            tracing::warn!("recovery: exe assente, ripristinato da .old");
+            true
+        }
+        Err(e) => {
+            tracing::error!("recovery: ripristino .old fallito: {e}");
+            false
+        }
+    }
+}
+
+/// `<exe>` (nuovo, in prova) → `<exe>.failed`, `<exe>.old` (known-good) → `<exe>`.
+/// Ripristina il binario confermato quando la probation fallisce.
+fn rollback_binary(exe: &Path) -> Result<()> {
+    let old = exe.with_extension("old");
+    if !old.exists() {
+        bail!("rollback impossibile: {} assente (nessun binario known-good)", old.display());
+    }
+    let failed = exe.with_extension("failed");
+    let _ = std::fs::remove_file(&failed);
+    if exe.exists() {
+        std::fs::rename(exe, &failed)
+            .with_context(|| format!("rename {} -> {}", exe.display(), failed.display()))?;
+    }
+    std::fs::rename(&old, exe)
+        .with_context(|| format!("rename {} -> {}", old.display(), exe.display()))?;
+    Ok(())
+}
+
+/// Recovery + macchina a stati al BOOT, PRIMA del loop del runner.
+///
+/// 1. Crash-safe: se l'exe manca ma `.old` esiste (crash a metà swap), lo
+///    ripristina — nessun device senza binario. (Su Linux il supervisor ha
+///    anche `ExecStartPre`; questa è la rete lato-client.)
+/// 2. Probation: `decide_boot` incrementa e persiste `boots` PRIMA di agire; se
+///    la probation non è confermata dopo un boot → ROLLBACK al `.old` e USCITA
+///    (il supervisor rilancia il binario known-good). Altrimenti prosegue: il
+///    runner confermerà al primo poll (`confirm_running`).
+///
+/// `exe` = percorso dell'eseguibile corrente; `marker` = `marker_path`.
+pub fn apply_startup_recovery(exe: &Path, marker: &Path) {
+    // (1) Rete crash-safe: exe assente + .old presente → ripristina.
+    restore_exe_if_missing(exe);
+
+    // (2) Macchina a stati probation.
+    let st = UpdateState::load(marker);
+    if st.phase == Phase::None {
+        return; // stato stabile, niente da fare
+    }
+    let (next, action) = decide_boot(st);
+    // Persisti SUBITO il conteggio boot: un crash successivo non deve azzerarlo.
+    if let Err(e) = next.save(marker) {
+        tracing::error!("recovery: salvataggio marker fallito: {e}");
+    }
+    match action {
+        BootAction::Proceed => {
+            tracing::info!(
+                target = %next.target_version, boots = next.boots,
+                "self-update: nuovo binario in PROBATION, confermo al primo poll"
+            );
+        }
+        BootAction::Rollback => {
+            tracing::error!(
+                "self-update: binario in prova non ha confermato → ROLLBACK al known-good"
+            );
+            match rollback_binary(exe) {
+                Ok(()) => tracing::warn!("rollback eseguito, esco (rilancia il supervisor)"),
+                Err(e) => {
+                    // Nessun .old: resta sul binario in prova (best-effort),
+                    // ma azzera il marker per non ripetere il tentativo in loop.
+                    tracing::error!("rollback fallito: {e:#}; proseguo col binario corrente");
+                    let _ = UpdateState::default().save(marker);
+                    return;
+                }
+            }
+            std::process::exit(0);
+        }
+    }
+}
+
+/// Conferma il self-update: chiamato dal runner dopo il PRIMO poll riuscito.
+/// Se in probation, la promuove a stabile e cancella `.old`/`.failed` (lo spazio
+/// e il binario di rollback non servono più). No-op se non in probation.
+pub fn confirm_running(marker: &Path, exe: &Path) {
+    let st = UpdateState::load(marker);
+    if st.phase != Phase::Probation {
+        return;
+    }
+    if let Err(e) = UpdateState::default().save(marker) {
+        tracing::error!("conferma self-update: salvataggio marker fallito: {e}");
+        return;
+    }
+    let _ = std::fs::remove_file(exe.with_extension("old"));
+    let _ = std::fs::remove_file(exe.with_extension("failed"));
+    tracing::info!(target = %st.target_version,
+        "self-update CONFERMATO (primo poll riuscito): swap definitivo");
 }
 
 #[cfg(test)]
@@ -200,5 +300,61 @@ mod tests {
         let err = swap_binary(&exe, &missing);
         assert!(err.is_err());
         assert_eq!(std::fs::read(&exe).unwrap(), b"OLD");
+    }
+
+    #[test]
+    fn rollback_restores_old_and_parks_failed() {
+        let dir = tdir("rb");
+        let exe = dir.join("metnos-client");
+        std::fs::write(&exe, b"NEW-BAD").unwrap();
+        std::fs::write(exe.with_extension("old"), b"OLD-GOOD").unwrap();
+        rollback_binary(&exe).unwrap();
+        assert_eq!(std::fs::read(&exe).unwrap(), b"OLD-GOOD", "exe torna al known-good");
+        assert_eq!(std::fs::read(exe.with_extension("failed")).unwrap(), b"NEW-BAD",
+                   "il binario in prova finito da parte come .failed");
+        assert!(!exe.with_extension("old").exists(), ".old consumato");
+    }
+
+    #[test]
+    fn rollback_without_old_is_error() {
+        let dir = tdir("rb2");
+        let exe = dir.join("metnos-client");
+        std::fs::write(&exe, b"NEW").unwrap();
+        assert!(rollback_binary(&exe).is_err(), "senza .old non si può rollbackare");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"NEW", "exe intatto");
+    }
+
+    #[test]
+    fn restore_exe_if_missing_recovers_from_old() {
+        let dir = tdir("re");
+        let exe = dir.join("metnos-client");
+        // exe assente (crash a metà swap), .old presente.
+        std::fs::write(exe.with_extension("old"), b"GOOD").unwrap();
+        assert!(restore_exe_if_missing(&exe), "ripristina");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"GOOD");
+        // idempotente: exe presente → no-op.
+        assert!(!restore_exe_if_missing(&exe));
+    }
+
+    #[test]
+    fn confirm_running_clears_probation_and_deletes_old() {
+        let dir = tdir("cf");
+        let exe = dir.join("metnos-client");
+        let marker = dir.join("update_state.json");
+        std::fs::write(&exe, b"NEW").unwrap();
+        std::fs::write(exe.with_extension("old"), b"OLD").unwrap();
+        std::fs::write(exe.with_extension("failed"), b"OLDER").unwrap();
+        UpdateState::enter_probation("0.2.20").save(&marker).unwrap();
+
+        confirm_running(&marker, &exe);
+        assert_eq!(UpdateState::load(&marker).phase, Phase::None, "probation confermata");
+        assert!(!exe.with_extension("old").exists(), ".old cancellato");
+        assert!(!exe.with_extension("failed").exists(), ".failed cancellato");
+        assert_eq!(std::fs::read(&exe).unwrap(), b"NEW", "binario nuovo confermato");
+
+        // No-op se non in probation (idempotente).
+        std::fs::write(exe.with_extension("old"), b"X").unwrap();
+        confirm_running(&marker, &exe);
+        assert!(exe.with_extension("old").exists(), "fuori probation: non tocca .old");
     }
 }

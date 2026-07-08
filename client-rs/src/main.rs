@@ -15,6 +15,7 @@ mod runner;
 mod sandbox_common;
 mod sandbox_linux;
 mod selfupdate;
+mod update_state;
 #[cfg(windows)]
 mod sandbox_windows;
 mod state;
@@ -152,26 +153,18 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
                      resp.device_id, resp.name, &resp.fingerprint[..16], resp.owner_user_id);
         }
         Cmd::Run { server } => {
+            // Self-update ROBUSTO: recovery+macchina a stati PRIMA di tutto.
+            // Se una probation non confermata va in rollback, esce qui (il
+            // supervisor rilancerà il binario known-good) senza toccare il lock.
+            let exe = std::env::current_exe().context("current_exe")?;
+            selfupdate::apply_startup_recovery(&exe, &selfupdate::marker_path(&paths.data_dir));
+
             // Single-instance (§12): un secondo `run` con la stessa identita'
             // e' spreco di poll + race su spool/cache. Il lock vive fino
-            // all'uscita del processo.
-            // Post self-update: il padre uscente potrebbe non aver ancora
-            // rilasciato il lock — il figlio ritenta per una finestra breve.
-            let _lock = if let Some(win) = selfupdate::lock_retry_window() {
-                let deadline = std::time::Instant::now() + win;
-                loop {
-                    match proclock::acquire(&paths.data_dir) {
-                        Ok(l) => break l,
-                        Err(e) if std::time::Instant::now() < deadline => {
-                            tracing::info!("lock occupato dal padre uscente, ritento: {}", e);
-                            std::thread::sleep(std::time::Duration::from_millis(700));
-                        }
-                        Err(e) => return Err(e),
-                    }
-                }
-            } else {
-                proclock::acquire(&paths.data_dir)?
-            };
+            // all'uscita del processo. Niente respawn (BUG-A rimosso) → il
+            // vecchio processo è già morto quando il supervisor rilancia: nessuna
+            // race sul lock, acquisizione diretta.
+            let _lock = proclock::acquire(&paths.data_dir)?;
             // §B6: solo DOPO il lock (l'errore «gia' attivo» deve restare
             // visibile in console). Il daemon di background non deve tenere
             // una finestra aperta: il log su file (§2.8) resta la fonte di

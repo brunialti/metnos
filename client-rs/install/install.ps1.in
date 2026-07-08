@@ -108,13 +108,14 @@ $action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server
 # prima dal catch-and-continue, poi dalla pista della task legacy).
 # Col -User il trigger vale solo per l'account corrente: niente admin.
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
-# WATCHDOG (visto live 5/7): il client puo' uscire con exit-0 (self-update
-# respawn, o un'uscita pulita anomala) e -RestartInterval copre solo i
-# FALLIMENTI -> senza questo trigger il device resta muto fino al logon.
-# Ripetizione ogni 5' con -MultipleInstances IgnoreNew: se il client gira,
-# no-op (lock single-instance come seconda rete); se e' morto, riparte.
+# WATCHDOG (perno del self-update ROBUSTO 8/7): il client, dopo uno swap, ESCE
+# con exit-0 (niente self-respawn, era BUG-A) e il watchdog lo rilancia. La
+# -RestartInterval on-failure NON copre l'exit-0 pulito -> questo trigger e' la
+# rete che riavvia il nuovo binario. Ripetizione ogni 1' (era 5': downtime da
+# update ridotto a <=1min) con -MultipleInstances IgnoreNew: se il client gira,
+# no-op (lock single-instance come seconda rete); se e' morto/uscito, riparte.
 $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
-  -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
+  -RepetitionInterval (New-TimeSpan -Minutes 1)).Repetition
 # -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la
 # prima gira ancora (il client ha comunque il suo lock single-instance).
 # I default di Windows sono trappole per un poller sempre-attivo (scoperto

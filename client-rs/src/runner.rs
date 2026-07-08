@@ -161,6 +161,13 @@ impl Runner {
         let mut backoff = Duration::from_secs(1);
         let mut cursor: Option<String> = None;
 
+        // Self-update: conferma la probation al PRIMO poll riuscito (il binario
+        // in prova ha raggiunto il server → funziona). Prima di allora un
+        // crash/uscita farebbe rollback al known-good (apply_startup_recovery).
+        let upd_marker = crate::selfupdate::marker_path(&self.paths.data_dir);
+        let self_exe = std::env::current_exe().ok();
+        let mut update_confirmed = false;
+
         loop {
             // Ri-consegna i result rimasti nello spool (server tornato su).
             self.flush_pending().await;
@@ -168,6 +175,12 @@ impl Runner {
             match self.poll(cursor.as_deref()).await {
                 Ok(Some(inv)) => {
                     backoff = Duration::from_secs(1);
+                    if !update_confirmed {
+                        if let Some(e) = &self_exe {
+                            crate::selfupdate::confirm_running(&upd_marker, e);
+                        }
+                        update_confirmed = true;
+                    }
                     let inv_id = inv.invocation_id.clone();
                     cursor = Some(inv_id.clone());
                     if self.executed.contains(&inv_id) {
@@ -181,6 +194,12 @@ impl Runner {
                 }
                 Ok(None) => {
                     backoff = Duration::from_secs(1);
+                    if !update_confirmed {
+                        if let Some(e) = &self_exe {
+                            crate::selfupdate::confirm_running(&upd_marker, e);
+                        }
+                        update_confirmed = true;
+                    }
                 }
                 Err(e) => {
                     // B.3: jitter sul backoff — N client che perdono il server
@@ -230,14 +249,15 @@ impl Runner {
             bail!("poll HTTP {}", resp.status());
         }
         let parsed: PollResponse = resp.json().await.context("parse poll response")?;
-        // Self-update W4 (5/7/2026): su mismatch scarica il descrittore
-        // FIRMATO, verifica con la pubkey pinnata, swap atomico e respawn.
-        // Idempotente per sha: nessun loop se il binario e' gia' quello
-        // pubblicato (version string diversa a parita' di build).
+        // Self-update ROBUSTO: su mismatch scarica il descrittore FIRMATO,
+        // verifica con la pubkey pinnata, swap, scrive il marker probation e
+        // ESCE (exit_for_update). NIENTE respawn (BUG-A): rilancia il supervisor.
+        // Idempotente per sha: nessun loop se il binario e' gia' quello pubblicato.
         if let Some(v) = &parsed.server_client_version {
             if v.as_str() != env!("CARGO_PKG_VERSION") {
-                match crate::selfupdate::maybe_update(&self.server, &self.server_pubkey).await {
-                    Ok(true) => crate::selfupdate::respawn_and_exit(),
+                let marker = crate::selfupdate::marker_path(&self.paths.data_dir);
+                match crate::selfupdate::maybe_update(&self.server, &self.server_pubkey, &marker).await {
+                    Ok(true) => crate::selfupdate::exit_for_update(),
                     Ok(false) => {}
                     Err(e) => tracing::warn!("self-update fallito (riprovo al prossimo poll): {:#}", e),
                 }
