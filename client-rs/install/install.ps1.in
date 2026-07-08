@@ -100,8 +100,34 @@ if ($env:METNOS_PYTHON_RUNTIME_WIN) {
   Write-Host "==> runtime Python pinnato: $env:METNOS_PYTHON_RUNTIME_WIN (download robusto alla prima esecuzione)"
 }
 
-# Scheduled Task «At logon» (nessun privilegio admin, account utente corrente).
-$action = New-ScheduledTaskAction -Execute $dest -Argument "run --server $server"
+# LAUNCHER-LOOP (8/7): restart Windows AFFIDABILE = equivalente di systemd
+# Restart=always. La Task lancia un loop PowerShell STABILE che tiene vivo il
+# client e lo RILANCIA su ogni uscita in ~2s -- indipendente dai trigger/watchdog
+# di Task Scheduler, che NON rilanciano su un exit-0 pulito (visto live 8/7: il
+# self-update fa swap+exit -> il watchdog non ticchetta -> device muto). Chiude
+# anche la finestra swap-crash (ripristina .old se l'exe manca). Il launcher NON
+# si auto-aggiorna (e' solo il supervisore); il client resta $dest, aggiornato
+# dal self-update robusto (probation+rollback+no-downgrade, selfupdate.rs).
+$launcher = Join-Path $destDir 'launcher.ps1'
+$loop = @'
+$ErrorActionPreference = "Continue"
+$dest = Join-Path $env:LOCALAPPDATA "Metnos\metnos-client.exe"
+$server = "__SERVER__"
+while ($true) {
+  if (-not (Test-Path $dest) -and (Test-Path "$dest.old")) {
+    Move-Item "$dest.old" $dest -Force -ErrorAction SilentlyContinue
+  }
+  if (Test-Path $dest) { & $dest run --server $server }
+  Start-Sleep -Seconds 2
+}
+'@
+Set-Content -Path $launcher -Value ($loop.Replace('__SERVER__', $server)) -Encoding ASCII
+Write-Host "==> launcher-loop scritto: $launcher"
+$psExe = (Get-Command powershell.exe).Source
+# Scheduled Task «At logon»: avvia il LAUNCHER (non il client diretto). Nessun
+# privilegio admin, account utente corrente.
+$action = New-ScheduledTaskAction -Execute $psExe `
+  -Argument ("-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"" + $launcher + "`"")
 # -User OBBLIGATORIO: -AtLogOn da solo = trigger «al logon di QUALSIASI
 # utente», che richiede elevazione -> Register-ScheduledTask «Accesso
 # negato» per un utente normale (vero colpevole del 3/7, mascherato
