@@ -45,27 +45,27 @@ en = "Timeout in seconds. Default 10."
 
 [[capabilities]]
 name = "network:http"
-hint = ["httpbin.org", "*.httpbin.org", "127.0.0.1"]
+# Scope-seed di default: localhost. Lo scope effettivo in prod = questo hint ∪
+# workspace_policy dell'utente (metnos.com/github.com/...). Il comportamento di
+# RETE e' testato ermeticamente in runtime/tests/test_get_urls.py (mock server
+# 127.0.0.1), non da born-test verso un servizio esterno (§8: no dipendenze).
+hint = ["127.0.0.1"]
 
-[[tests]]
-name   = "get_pagina_pubblica"
-input  = { url = "https://httpbin.org/get" }
-# Schema entries[] post-refactor 18/5/2026 (turn 7 fix).
-# entries[0].status_code, entries[0].body_text contengono i campi.
-expect = { ok = true, entries_field_eq = { "0" = { status_code = 200 } } }
-
+# Born-test ERMETICI (§8: nessuna dipendenza da rete/servizi esterni): solo
+# validazione arg + scope pseudo-sandbox. Il comportamento di RETE (200/HEAD/
+# 404/multi-url) e' in runtime/tests/test_get_urls.py (mock server 127.0.0.1),
+# come per read_urls_html/read_urls_pdf/find_urls.
 [[tests]]
 name   = "fallisce_su_host_fuori_scope"
 input  = { url = "https://example.com/" }
 expect = { ok = false, error_contains = "outside allowed scope" }
 
 [[tests]]
-name   = "errore_su_404"
-input  = { url = "https://httpbin.org/status/404" }
-# Per failed entries, lo status finisce in failed[0].status_code.
-expect = { ok = false, error_contains = "404" }
+name   = "url_mancante"
+input  = {}
+expect = { ok = false, error_contains = "url" }
 
 [[tests]]
-name   = "head_request"
-input  = { url = "https://httpbin.org/get", method = "HEAD" }
-expect = { ok = true, entries_field_eq = { "0" = { status_code = 200, method = "HEAD" } } }
+name   = "metodo_non_supportato"
+input  = { method = "POST" }
+expect = { ok = false, error_contains = "POST" }
