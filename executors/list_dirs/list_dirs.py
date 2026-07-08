@@ -76,11 +76,18 @@ def invoke(args):
 
     # path_alias resolver: workspace-default + bilingue IT/EN + multi-root.
     base, alias_note = resolve_path_with_alias(path)
-    if not base.exists():
+    # Un accesso fs puo' ALZARE (permessi/IO): sotto AppContainer una dir NON
+    # granted da' PermissionError (WinError 5), non False. Trattala come
+    # non-accessibile → errore pulito (§2.8), mai crash (stdout vuoto).
+    try:
+        if not base.exists():
+            return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
+                    "error": _msg("ERR_PATH_NOT_FOUND", path=base)}
+        if not base.is_dir():
+            return {"ok": False, "error": _msg("ERR_PATH_WRONG_TYPE", expected="dir", actual="file", path=base)}
+    except OSError:
         return {"ok": False, "error_code": "ERR_PATH_NOT_FOUND",
                 "error": _msg("ERR_PATH_NOT_FOUND", path=base)}
-    if not base.is_dir():
-        return {"ok": False, "error": _msg("ERR_PATH_WRONG_TYPE", expected="dir", actual="file", path=base)}
 
     entries: list[dict] = []
     truncated = False

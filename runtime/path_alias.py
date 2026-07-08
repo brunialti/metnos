@@ -98,6 +98,25 @@ def workspace_default() -> Path:
     return _home() / ".local" / "share" / "metnos"
 
 
+def _safe_is_dir(p: Path) -> bool:
+    """`p.is_dir()` che non ALZA: un accesso fs puo' fallire per permessi/IO —
+    es. una root NON granted sotto AppContainer su Windows solleva
+    PermissionError (WinError 5). In quel caso la dir e' inutilizzabile → False,
+    mai crash (§2.8: errore onesto, non eccezione non gestita)."""
+    try:
+        return p.is_dir()
+    except OSError:
+        return False
+
+
+def _safe_exists(p: Path) -> bool:
+    """`p.exists()` che non ALZA (stessa ragione di `_safe_is_dir`)."""
+    try:
+        return p.exists()
+    except OSError:
+        return False
+
+
 def candidate_roots() -> list[Path]:
     """Root da cui cercare alias di user-dirs. Ordine = priorita':
     1. workspace Metnos (~/.local/share/metnos) — default utente 22/5/2026
@@ -113,7 +132,7 @@ def candidate_roots() -> list[Path]:
         Path("/mnt"),
         Path("/media"),
     ]
-    return [p for p in cands if p.is_dir()]
+    return [p for p in cands if _safe_is_dir(p)]
 
 
 def normalize_input_path(input_path: str) -> Path:
@@ -192,7 +211,7 @@ def resolve_path_with_alias(base_path: str) -> tuple[Path, Optional[str]]:
     Ritorna (resolved_path, alias_note | None).
     """
     expanded = normalize_input_path(base_path)
-    if expanded.exists():
+    if _safe_exists(expanded):
         return expanded, None
     name_key = expanded.name.lower()
     aliases = USER_DIR_ALIASES.get(name_key, [])
@@ -281,7 +300,7 @@ def check_mutating_path_ambiguity(
     """
     p = normalize_input_path(input_path)
     check_path = p if target_must_exist else p.parent
-    if check_path.exists():
+    if _safe_exists(check_path):
         return None
     candidates = list_alias_candidates(check_path.name)
     if not candidates:
@@ -303,8 +322,11 @@ def home_dir_suggestions(missing_name: str, limit: int = 6) -> list[str]:
     1. Cartelle XDG user-dirs esistenti.
     2. Altre cartelle non-hidden in home.
     """
-    home = Path.home()
-    if not home.is_dir():
+    try:
+        home = Path.home()
+    except (OSError, RuntimeError):
+        return []
+    if not _safe_is_dir(home):
         return []
     xdg_set = {"Pictures", "Documents", "Music", "Videos", "Downloads",
                "Desktop", "Templates", "Public",
