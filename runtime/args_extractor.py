@@ -370,6 +370,15 @@ def regex_extract(query: str, schema: dict | None) -> dict:
         # semantica (path/url/email/glob/date/time_window) che e' il
         # vocabolario chiuso §2.2 condiviso IT+EN.
         _spec = _arg_spec if isinstance(_arg_spec, dict) else {}
+        # Arg RUNTIME-ONLY (`runtime_resolved`): il RUNTIME lo possiede/risolve,
+        # NON si estrae dalla query (arg_provenance). Estrarlo = leak. Bug live
+        # 8/7: `copy` di move_files (runtime-only) veniva fabbricato a True dal
+        # match description~verbo ("spostare" nella desc ~ "sposta" nella query)
+        # → "sposta X in Y" diventava una COPIA (l'originale restava) e l'undo
+        # collideva ("dst already exists"). Skip: il flag booleano seguente non
+        # deve mai attivarsi su un runtime-only.
+        if _spec.get("runtime_resolved"):
+            continue
         _t = _spec.get("type")
         _is_plural = (_t == "array"
                        or (isinstance(_t, list) and "array" in _t))
