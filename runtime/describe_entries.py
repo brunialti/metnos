@@ -50,6 +50,10 @@ STYLES = ("by_importance", "by_relevance", "compact")
 # stanno nel budget prima di troncarne una — il describe deterministico regge
 # ~12-16K token, ben sotto il ctx 131072. Tunabile via env.
 _DESCRIBE_MAX_CHARS = int(os.environ.get("METNOS_DESCRIBE_MAX_CHARS", "48000"))
+# Band-aid (8/7, Roberto): budget di output scalato col numero di entry sulle
+# query-lista (vedi sotto). ~tok per riga + tetto anti-runaway.
+_DESCRIBE_TOKENS_PER_ENTRY = int(os.environ.get("METNOS_DESCRIBE_TOKENS_PER_ENTRY", "45"))
+_DESCRIBE_MAX_TOKENS_CAP = int(os.environ.get("METNOS_DESCRIBE_MAX_TOKENS_CAP", "4000"))
 _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 
 # Map-reduce OVER-BUDGET (22/6/2026, Roberto «robusto, universale, efficiente»):
@@ -644,7 +648,13 @@ def handle_describe_entries(args, *, verbose: bool = False,
         elif _n_ent <= 10:
             max_tokens = 300
         else:
-            max_tokens = 400
+            # Band-aid (8/7, Roberto): oltre 10 entries il budget fisso a 400 tok
+            # troncava l'elenco (~12 righe) sulle query-lista ("top 20 processi").
+            # Scala col numero di entry fino a un tetto anti-runaway, cosi' la
+            # quantita' richiesta entra. NB: TAMPONE — il fix pulito e' un
+            # terminale TABELLA deterministico (output_policy L-mode) per le liste.
+            max_tokens = min(_DESCRIBE_MAX_TOKENS_CAP,
+                             max(400, _n_ent * _DESCRIBE_TOKENS_PER_ENTRY))
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
     group_by = (args or {}).get("group_by") or h.get("group_by") or ""
     fmt = (args or {}).get("format") or h.get("format") or "markdown"
