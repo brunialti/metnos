@@ -319,10 +319,29 @@ pub async fn run_sandboxed(
     // fallisce la COSTRUZIONE (dopo lo spawn non si degrada piu').
     let mut downgrade: Option<String> = None;
 
+    // W4 fix (bug scoperto abilitando l'AppContainer in prod, 7/7/2026): un
+    // executor che spawna sottoprocessi DI SISTEMA (capability `code:exec` o le
+    // storiche `exec_*`: tasklist, ps, pip, tesseract, ...) NON e'
+    // AppContainer-izzabile — il token ristretto del container nega a quei tool
+    // l'accesso a WMI/RPC e falliscono (`get_processes` → `tasklist rc=1`).
+    // Regola capability-driven (§7.3, `needs_system_exec`), non lista di
+    // executor. Il Job Object sotto li contiene comunque (albero/memoria/conteggio).
+    let system_exec = crate::sandbox_common::needs_system_exec(&exec.capabilities);
+    let want_appcontainer = !disabled && appcontainer::gate_on();
+    if want_appcontainer && system_exec {
+        // Declassamento ONESTO (§2.8): il gate e' ON ma questo executor non e'
+        // containerizzabile → il result dira' sandbox="job-object" con il motivo.
+        downgrade = Some(
+            "executor con capability code:exec/exec_*: sottoprocessi di sistema \
+             non AppContainer-izzabili (declassato a job-object)"
+                .into(),
+        );
+    }
+
     // --- Percorso AppContainer (W4): isolamento fs/rete DENTRO il job. Gate
     // METNOS_SANDBOX_APPCONTAINER default ON su Windows (7/7/2026): opt-OUT con
     // =0 salta questo blocco e il percorso job-object sotto resta byte-identico a W3.3.
-    if !disabled && appcontainer::gate_on() {
+    if want_appcontainer && !system_exec {
         let (mut grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
         // Grant sui path-target CONCRETI dell'invocazione (Documents, Downloads,
         // …): senza, la sandbox forte concederebbe solo gli scope-esempio del

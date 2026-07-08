@@ -103,6 +103,21 @@ fn cap_is_network(name: &str) -> bool {
     matches!(cap_kind(name), "net" | "network")
 }
 
+/// True se la capability implica lo spawn di un SOTTOPROCESSO DI SISTEMA (tool
+/// nativi come `tasklist`/`ps`/`pip`/`tesseract`, query WMI/RPC). Gemello di
+/// `cap_is_network`: match sulle FAMIGLIE exec del vocabolario — `code:exec`
+/// (famiglia `code`) piu' le storiche `exec_subprocess`/`exec_net`. Regola
+/// capability-driven (§7.3), NON una lista di executor.
+///
+/// Motivo W4 (bug scoperto abilitando l'AppContainer in prod): il token
+/// ristretto del container nega a questi tool l'accesso ai servizi di sistema
+/// (get_processes → `tasklist rc=1: password non corretta`) → sotto AppContainer
+/// fallirebbero. Il chiamante Windows declassa ONESTAMENTE al Job Object (§2.8),
+/// che li contiene comunque (albero+memoria+conteggio processi).
+fn cap_is_system_exec(name: &str) -> bool {
+    matches!(cap_kind(name), "code" | "exec_subprocess" | "exec_net")
+}
+
 /// Traduce le capability del manifest in (concessioni fs, vuole-rete).
 /// SOLO la famiglia `fs` diventa ACL su disco; `metnos`/`index`/`mail`/`time`
 /// sono capability logiche mediate dal server, non toccano il filesystem del
@@ -146,6 +161,14 @@ pub fn caps_fs_access(caps: &[Capability]) -> Option<bool> {
         }
     }
     if any_fs { Some(any_write) } else { None }
+}
+
+/// True se UNA QUALUNQUE capability dell'executor implica lo spawn di un
+/// sottoprocesso di sistema (`cap_is_system_exec`): l'AppContainer va SALTATO e
+/// il contenimento declassato al Job Object (§2.8). Consumato da
+/// `sandbox_windows::run_sandboxed` prima di costruire il container (W4).
+pub fn needs_system_exec(caps: &[Capability]) -> bool {
+    caps.iter().any(|c| cap_is_system_exec(&c.name))
 }
 
 /// True se `s` e' un path ANCORABILE (assoluto): POSIX `/…`, home `~/…`/`~\…`,
@@ -391,6 +414,35 @@ mod tests {
         for n in ["fs:read", "fs:write", "exec_subprocess", "exec_net", "metnos:read"] {
             assert!(!cap_is_network(n), "{n} NON deve valere rete");
         }
+    }
+
+    #[test]
+    fn system_exec_detection_matches_real_vocab() {
+        // Le 3 famiglie exec del vocabolario reale (code:exec, exec_subprocess,
+        // exec_net): get_processes/find_packages/read_files_ocr e find/read_contacts.
+        for n in ["code:exec", "exec_subprocess", "exec_net"] {
+            assert!(cap_is_system_exec(n), "{n} deve valere system-exec");
+        }
+        // Tutte le altre famiglie: AppContainer-izzabili → NON system-exec.
+        for n in [
+            "fs:read", "fs:write", "net:read", "network.read", "network:http",
+            "metnos:read", "metnos:write", "index.read", "mail:send", "time:read",
+        ] {
+            assert!(!cap_is_system_exec(n), "{n} NON deve valere system-exec");
+        }
+    }
+
+    #[test]
+    fn needs_system_exec_any_cap_triggers() {
+        // get_processes reale: solo code:exec.
+        assert!(needs_system_exec(&[cap("code:exec", &["ps", "/proc"])]));
+        // find_contacts reale: exec_subprocess + exec_net.
+        assert!(needs_system_exec(&[cap("exec_subprocess", &[]), cap("exec_net", &[])]));
+        // Mista: basta UNA capability exec a saltare l'AppContainer.
+        assert!(needs_system_exec(&[cap("fs:write", &["~/x/**"]), cap("code:exec", &[])]));
+        // Solo fs/net → AppContainer-izzabile.
+        assert!(!needs_system_exec(&[cap("fs:read", &["~/x/**"]), cap("network.read", &[])]));
+        assert!(!needs_system_exec(&[]), "nessuna capability → non system-exec");
     }
 
     #[test]
