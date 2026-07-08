@@ -276,16 +276,32 @@ def normalize_terminal(framework, intent, query: str = ""):
                      if_prev_entries_nonempty=s.if_prev_entries_nonempty)
             for i, s in enumerate(steps) if i + 1 not in drop
         ]
-        # final_message deterministico: header gallery (count=@shown, gli
-        # elementi MOSTRATI) oppure totale scalare (@count, cascata
-        # available_total→ok_count→used→len). i18n DB (§11 messages).
+        # final_message deterministico. Gallery (G): header 1 riga con @shown
+        # (matrice §3: NIENTE descrizioni verbose) — SEMPRE riscritto. Scalar
+        # (S): il valore È il conteggio (matrice S = «numero + unità», es.
+        # «31445 foto»); se il messaggio base lo porta GIÀ (magic @count/@shown)
+        # e non referenzia step droppati, lo si PRESERVA (es. «Hai N foto di
+        # Roberto», più specifico del generico «Totale: N» — §2.8 non
+        # declassare) — altrimenti si impone il conteggio deterministico.
+        # i18n DB (§11 messages).
         from messages import get as _msg
         k = mapping[ppos]
         if mode == G:
             final = _msg("MSG_GALLERY_HEADER", count=f"${{step{k}.@shown}}")
-        else:
-            final = _msg("MSG_COUNT_TOTAL", count=f"${{step{k}.@count}}")
-        info["action"] = ("drop_describe+final" if drop else "final_only")
+            info["action"] = "drop_describe+final" if drop else "final_only"
+        else:  # S (scalar/count)
+            base_fm = framework.final_message or ""
+            if (("@count" in base_fm or "@shown" in base_fm)
+                    and not (_refs_in(base_fm) & drop)):
+                # Il messaggio base è già «solo il numero» (matrice S): preserva.
+                final = _remap_value(base_fm, mapping)
+                info["action"] = "drop_describe" if drop else "noop"
+            else:
+                final = _msg("MSG_COUNT_TOTAL", count=f"${{step{k}.@count}}")
+                info["action"] = "drop_describe+final" if drop else "final_only"
+        if info["action"] == "noop":
+            # Niente da droppare e conteggio già esposto: framework invariato.
+            return framework, info
         return (Framework(steps=new_steps, fillers=framework.fillers,
                           final_message=final), info)
 

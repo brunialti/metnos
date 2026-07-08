@@ -92,6 +92,50 @@ class TestNormalizeScalar(unittest.TestCase):
         # «Totale: N» non è count-only → niente auto-append entries list.
         self.assertNotEqual(out.final_message.strip(), "${step1.@count}")
 
+    def test_count_preserva_messaggio_specifico_con_conteggio(self):
+        # Piano GIÀ pulito (no describe) + messaggio LLM specifico che porta già
+        # il conteggio (@count su step superstite): NON declassare al generico
+        # «Totale: N» (matrice S = numero+unità; §2.8 non peggiorare l'output).
+        fw = _fw([("find_images_indices", {"query": "roberto"}),
+                  ("final_answer", {})],
+                 final="Hai ${step1.@count} foto di Roberto.")
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="images"), "quante foto di roberto")
+        self.assertEqual(info["mode"], S)
+        self.assertEqual(info["action"], "noop")
+        self.assertEqual(out.final_message, "Hai ${step1.@count} foto di Roberto.")
+        self.assertIs(out, fw)  # framework invariato
+
+    def test_count_preserva_e_droppa_describe_ricablando_ref(self):
+        # Messaggio specifico che referenzia il PRODUCER (@count su step1), con
+        # un describe in mezzo da droppare: si droppa e si preserva il messaggio
+        # remappando il ref (step2→step1 dopo il drop).
+        fw = _fw([("find_images_indices", {"query": "x"}),
+                  ("describe_entries", {"from_step": 1}),
+                  ("final_answer", {})],
+                 final="Trovate ${step1.@count} foto.")
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="images"), "quante foto di x")
+        self.assertEqual(info["mode"], S)
+        self.assertEqual(info["action"], "drop_describe")
+        self.assertNotIn("describe_entries", [s.tool for s in out.steps])
+        self.assertEqual(out.final_message, "Trovate ${step1.@count} foto.")
+
+    def test_count_sostituisce_se_messaggio_pesca_dal_describe(self):
+        # Il messaggio base pesca dal describe DROPPATO (${step2.summary}) →
+        # non preservabile (ref lossy) → conteggio deterministico «Totale: N».
+        fw = _fw([("find_images_indices", {"query": "x"}),
+                  ("describe_entries", {"from_step": 1}),
+                  ("final_answer", {})],
+                 final="${step2.summary}")
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="images"), "quante foto di x")
+        self.assertEqual(info["mode"], S)
+        self.assertEqual(info["action"], "drop_describe+final")
+        self.assertNotIn("describe_entries", [s.tool for s in out.steps])
+        self.assertIn("${step1.@count}", out.final_message)
+        self.assertIn("Totale", out.final_message)
+
 
 class TestNormalizeWebRead(unittest.TestCase):
     def test_read_urls_inserito_prima_di_describe(self):
