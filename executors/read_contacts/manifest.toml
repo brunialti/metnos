@@ -64,8 +64,22 @@ hint = ["Google People API HTTPS"]
 [reversible]
 value = false
 
-[tests]
-"per id"    = {args = {contact_id = "test-stub"}, expected = {ok = true}}
-"per email" = {args = {email = "stub@example.com"}, expected = {ok = true}}
-"per phone" = {args = {phone = "+390000000000"}, expected = {ok = true}}
-"nessun id" = {args = {}, expected = {ok = false}}
+[[tests]]
+name   = "per id"
+input  = { contact_id = "test-stub" }
+expect = { ok = true }
+
+[[tests]]
+name   = "per email"
+input  = { email = "stub@example.com" }
+expect = { ok = true }
+
+[[tests]]
+name   = "per phone"
+input  = { phone = "+390000000000" }
+expect = { ok = true }
+
+[[tests]]
+name   = "nessun id"
+input  = {}
+expect = { ok = false, error_contains = "Argomento non valido" }

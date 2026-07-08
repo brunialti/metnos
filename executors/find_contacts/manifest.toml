@@ -60,8 +60,22 @@ hint = ["Google People API HTTPS"]
 [reversible]
 value = false
 
-[tests]
-"caso felice" = {args = {query = ""}, expected = {ok = true}}
-"con query"   = {args = {query = "luca", max_results = 5}, expected = {ok = true}}
-"client invalido" = {args = {client = "invalid"}, expected = {ok = false}}
-"max_results piccolo" = {args = {max_results = 1}, expected = {ok = true}}
+[[tests]]
+name   = "caso felice"
+input  = { query = "" }
+expect = { ok = true }
+
+[[tests]]
+name   = "con query"
+input  = { query = "luca", max_results = 5 }
+expect = { ok = true }
+
+[[tests]]
+name   = "client invalido"
+input  = { client = "invalid" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
+
+[[tests]]
+name   = "max_results piccolo"
+input  = { max_results = 1 }
+expect = { ok = true }
