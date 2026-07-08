@@ -201,11 +201,139 @@ def _tasklist_snapshot() -> list[dict]:
             pass
         rows.append({
             "pid": pid, "ppid": 0, "user": "",
-            "cpu_pct": 0.0, "mem_pct": 0.0,
+            # tasklist NON fornisce CPU%/MEM% → None (NON misurato), mai 0.0
+            # fasullo (§2.8: un valore inventato inganna — sembrava "0% CPU
+            # ovunque"). La memoria ASSOLUTA (mem_kb) e' reale: usata per il
+            # ranking di fallback su Windows (vedi _rank_key).
+            "cpu_pct": None, "mem_pct": None,
             "mem_kb": mem_kb, "etime": "",
             "comm": rec[0], "args": rec[0],
         })
     return rows
+
+
+def _winapi_snapshot() -> list[dict]:
+    """Windows: CPU% + memoria + nome REALI via API native Win32 (ctypes, stdlib
+    — NIENTE subprocess/powershell, NIENTE psutil). Approccio nativo (Roberto,
+    8/7): EnumProcesses (PSAPI) → PID; per PID OpenProcess +
+    QueryFullProcessImageNameW (nome) + GetProcessMemoryInfo (WorkingSet) +
+    GetProcessTimes (kernel+user). CPU% = delta dei tempi CPU del processo su un
+    intervallo breve, rapportato al delta del tempo di sistema (GetSystemTimes,
+    che include l'idle → capacita' totale) → 0-100 system-wide (come Task
+    Manager). Fallback ONESTO a tasklist (cpu=None, mai 0.0 fasullo) su QUALSIASI
+    errore FFI. Gira a job-object (code:exec): le API di processo sono accessibili."""
+    import time as _time
+    try:
+        import ctypes as _ct
+        from ctypes import wintypes as _wt
+
+        k32 = _ct.WinDLL("kernel32", use_last_error=True)
+        psapi = _ct.WinDLL("psapi", use_last_error=True)
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+        class _PMC(_ct.Structure):
+            _fields_ = [
+                ("cb", _wt.DWORD), ("PageFaultCount", _wt.DWORD),
+                ("PeakWorkingSetSize", _ct.c_size_t), ("WorkingSetSize", _ct.c_size_t),
+                ("QuotaPeakPagedPoolUsage", _ct.c_size_t), ("QuotaPagedPoolUsage", _ct.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", _ct.c_size_t), ("QuotaNonPagedPoolUsage", _ct.c_size_t),
+                ("PagefileUsage", _ct.c_size_t), ("PeakPagefileUsage", _ct.c_size_t),
+            ]
+
+        # Signature CRITICHE: senza restype=HANDLE, un handle a 64-bit viene
+        # troncato a int32 (corruzione). argtypes espliciti per correttezza.
+        LPFT = _ct.POINTER(_wt.FILETIME)
+        k32.OpenProcess.restype = _wt.HANDLE
+        k32.OpenProcess.argtypes = [_wt.DWORD, _wt.BOOL, _wt.DWORD]
+        k32.CloseHandle.argtypes = [_wt.HANDLE]
+        k32.GetProcessTimes.argtypes = [_wt.HANDLE, LPFT, LPFT, LPFT, LPFT]
+        k32.GetSystemTimes.argtypes = [LPFT, LPFT, LPFT]
+        k32.QueryFullProcessImageNameW.argtypes = [
+            _wt.HANDLE, _wt.DWORD, _wt.LPWSTR, _ct.POINTER(_wt.DWORD)]
+        psapi.EnumProcesses.argtypes = [
+            _ct.POINTER(_wt.DWORD), _wt.DWORD, _ct.POINTER(_wt.DWORD)]
+        psapi.GetProcessMemoryInfo.argtypes = [_wt.HANDLE, _ct.POINTER(_PMC), _wt.DWORD]
+
+        def _ft(ft):
+            return (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+
+        def _sys_total():
+            idle, kern, user = _wt.FILETIME(), _wt.FILETIME(), _wt.FILETIME()
+            if not k32.GetSystemTimes(_ct.byref(idle), _ct.byref(kern), _ct.byref(user)):
+                return None
+            return _ft(kern) + _ft(user)  # kernel INCLUDE idle = capacita' totale
+
+        def _proc_cpu(h):
+            c, e, kt, ut = (_wt.FILETIME(), _wt.FILETIME(), _wt.FILETIME(), _wt.FILETIME())
+            if not k32.GetProcessTimes(h, _ct.byref(c), _ct.byref(e),
+                                       _ct.byref(kt), _ct.byref(ut)):
+                return None
+            return _ft(kt) + _ft(ut)
+
+        # 1. EnumProcesses → lista PID (array cresciuto se pieno).
+        cap = 4096
+        while True:
+            arr = (_wt.DWORD * cap)()
+            needed = _wt.DWORD()
+            if not psapi.EnumProcesses(arr, _ct.sizeof(arr), _ct.byref(needed)):
+                return _tasklist_snapshot()
+            if needed.value < _ct.sizeof(arr):
+                break
+            cap *= 2  # array pieno: potrebbe aver troncato, riprova piu' grande
+        pids = [arr[i] for i in range(needed.value // _ct.sizeof(_wt.DWORD)) if arr[i]]
+
+        # 2. apri handle + campione0 (cpu), nome, memoria.
+        handles: dict = {}
+        cpu0: dict = {}
+        name: dict = {}
+        mem_kb: dict = {}
+        for pid in pids:
+            h = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if not h:
+                continue  # processo protetto/sistema: OpenProcess negato, skip
+            t0 = _proc_cpu(h)
+            if t0 is None:
+                k32.CloseHandle(h)
+                continue
+            handles[pid] = h
+            cpu0[pid] = t0
+            buf = _ct.create_unicode_buffer(512)
+            sz = _wt.DWORD(512)
+            if k32.QueryFullProcessImageNameW(h, 0, buf, _ct.byref(sz)) and buf.value:
+                name[pid] = buf.value.rsplit("\\", 1)[-1]
+            else:
+                name[pid] = str(pid)
+            pmc = _PMC()
+            pmc.cb = _ct.sizeof(_PMC)
+            if psapi.GetProcessMemoryInfo(h, _ct.byref(pmc), _ct.sizeof(pmc)):
+                mem_kb[pid] = int(pmc.WorkingSetSize) // 1024
+            else:
+                mem_kb[pid] = 0
+
+        # 3. intervallo breve → campione1 + delta di sistema → CPU%.
+        sys0 = _sys_total()
+        _time.sleep(0.4)
+        sys1 = _sys_total()
+        sys_delta = (sys1 - sys0) if (sys0 and sys1) else 0
+
+        rows: list[dict] = []
+        for pid, h in handles.items():
+            t1 = _proc_cpu(h)
+            k32.CloseHandle(h)
+            if t1 is None or sys_delta <= 0:
+                cpu_pct = None
+            else:
+                cpu_pct = round(max(0.0, (t1 - cpu0[pid]) / sys_delta * 100.0), 1)
+            rows.append({
+                "pid": pid, "ppid": 0, "user": "",
+                "cpu_pct": cpu_pct, "mem_pct": None,
+                "mem_kb": mem_kb.get(pid, 0), "etime": "",
+                "comm": name.get(pid, str(pid)), "args": name.get(pid, str(pid)),
+            })
+        return rows or _tasklist_snapshot()
+    except Exception as ex:  # noqa: BLE001 — qualsiasi errore FFI → fallback onesto
+        _set_fail(f"winapi: {type(ex).__name__}: {ex}")
+        return _tasklist_snapshot()
 
 
 def _ps_snapshot() -> list[dict]:
@@ -219,7 +347,7 @@ def _ps_snapshot() -> list[dict]:
     Windows (C7): delega a `_tasklist_snapshot` (ps assente).
     """
     if os.name == "nt":
-        return _tasklist_snapshot()
+        return _winapi_snapshot()  # CPU%/mem/nome reali via API native; fallback tasklist
     cmd = [
         "ps", "-eo",
         "pid,ppid,user:32,pcpu,pmem,etime,comm,args",
@@ -688,6 +816,18 @@ def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
     }
 
 
+def _rank_key(e: dict):
+    """Chiave di ranking robusta a CPU non-misurata (§2.8). Se `cpu_pct` e'
+    noto (POSIX) ordina per CPU; se e' None (Windows/tasklist) ripiega sulla
+    MEMORIA reale (`mem_kb`) — mai crash confrontando None con float, mai un
+    ordinamento fasullo per un valore inventato. La tupla mette gli item con
+    CPU nota sopra quelli senza (a parita' di richiesta reverse=True)."""
+    cpu = e.get("cpu_pct")
+    if cpu is not None:
+        return (1, float(cpu))
+    return (0, float(e.get("mem_kb") or 0))
+
+
 def invoke(args: dict, ctx: dict | None = None) -> dict:
     filters_in = args.get("filters") or []
     # §2.4 robustezza NL→determinismo: l'LLM passa spesso `filters` come STRINGA
@@ -748,7 +888,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
             e for e in snapshot
             if all(_eval(e, a, o, v) for (a, o, v) in predicates)
         ]
-    snapshot.sort(key=lambda e: e["cpu_pct"], reverse=True)
+    snapshot.sort(key=_rank_key, reverse=True)
     truncated = False
     if top is not None and len(snapshot) > top:
         truncated = True
