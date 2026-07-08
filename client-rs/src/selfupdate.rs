@@ -40,6 +40,17 @@ struct UpdateDescriptor {
     sig: String,
 }
 
+/// `a` strettamente più recente di `b` (semver numerico a punti, es.
+/// "0.2.20" > "0.2.18"). Confronto lessicografico dei componenti numerici:
+/// per versioni a 3 parti coincide con l'ordinamento semver. Componenti non
+/// numerici → 0 (degradazione prudente).
+fn version_gt(a: &str, b: &str) -> bool {
+    let parse = |v: &str| -> Vec<u64> {
+        v.split('.').map(|s| s.trim().parse().unwrap_or(0)).collect()
+    };
+    parse(a) > parse(b)
+}
+
 fn build_target() -> &'static str {
     // Coerente coi target del mirror (build-client.sh).
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -88,6 +99,18 @@ pub async fn maybe_update(server: &str, server_pubkey: &str, marker: &Path) -> R
         .context("firma update descriptor non verificata")?;
     if desc.target != target {
         bail!("descrittore per target diverso: {}", desc.target);
+    }
+
+    // NO-DOWNGRADE (a prova di tutto): applica SOLO versioni strettamente più
+    // recenti. Senza, un `manifest.latest` più basso (rollback lato server,
+    // ordine di deploy, race) farebbe RETROCEDERE il client — potenzialmente a
+    // un binario col vecchio respawn rotto. La sola disuguaglianza di stringa
+    // non basta: serve l'ordinamento.
+    let current = env!("CARGO_PKG_VERSION");
+    if !version_gt(&desc.version, current) {
+        tracing::debug!(current, available = %desc.version,
+            "self-update no-op: versione pubblicata non più recente");
+        return Ok(false);
     }
 
     let exe = std::env::current_exe().context("current_exe")?;
@@ -334,6 +357,16 @@ mod tests {
         assert_eq!(std::fs::read(&exe).unwrap(), b"GOOD");
         // idempotente: exe presente → no-op.
         assert!(!restore_exe_if_missing(&exe));
+    }
+
+    #[test]
+    fn version_gt_orders_semver_and_blocks_downgrade() {
+        assert!(version_gt("0.2.20", "0.2.18"), "newer patch");
+        assert!(version_gt("0.3.0", "0.2.99"), "newer minor");
+        assert!(version_gt("1.0.0", "0.9.9"), "newer major");
+        assert!(!version_gt("0.2.18", "0.2.20"), "downgrade bloccato");
+        assert!(!version_gt("0.2.20", "0.2.20"), "stessa versione: non più recente");
+        assert!(version_gt("0.2.20", "0.2.9"), "20 > 9 numerico (non stringa!)");
     }
 
     #[test]
