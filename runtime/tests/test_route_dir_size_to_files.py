@@ -50,6 +50,17 @@ class RouteFolderSizeTests(unittest.TestCase):
         self.assertEqual(out[1], ("compute_entries",
                                   {"from_step": 1, "op": "sum", "key": "size"}))
 
+    def test_A_implicit_chaining_no_from_step(self):
+        # turn 5cdf80d0 (PC): il planner OMETTE from_step; l'engine concatena
+        # implicitamente → il produttore è lo step precedente.
+        out = self._run([
+            ("find_dirs", {"base_path": "C:\\Users\\r\\Downloads",
+                           "recursive": True}),
+            ("compute_entries", {"op": "sum", "key": "size"}),
+        ])
+        self.assertEqual(out[0][0], "find_files")
+        self.assertTrue(out[0][1]["recursive"])
+
     def test_A_total_bytes_key_normalized_to_size(self):
         out = self._run([
             ("find_dirs", {"base_path": "/data"}),
@@ -151,13 +162,17 @@ class RouteFolderSizeTests(unittest.TestCase):
             catalog=[_Cat("find_dirs"), _Cat("compute_entries")])
         self.assertEqual(out[0][0], "find_dirs")
 
-    def test_no_from_step_untouched_modeA(self):
+    def test_A_baked_stale_entries_repiped(self):
+        # cache L0: entries CONCRETE di find_dirs bake-ate in compute (bug PC
+        # 5cdf80d0). Il rewrite scarta le stantie e ripipa dal produttore.
         out = self._run([
             ("find_dirs", {"base_path": "/data"}),
             ("compute_entries", {"op": "sum", "key": "size",
-                                 "entries": [{"size": 1}]}),
+                                 "entries": [{"total_bytes": 1}]}),
         ])
-        self.assertEqual(out[0][0], "find_dirs")
+        self.assertEqual(out[0][0], "find_files")
+        self.assertNotIn("entries", out[1][1])          # bake-ate scartate
+        self.assertEqual(out[1][1]["from_step"], 1)      # re-pipe live
 
 
 if __name__ == "__main__":

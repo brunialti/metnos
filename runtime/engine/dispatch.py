@@ -2162,7 +2162,7 @@ def _route_folder_size(framework: Framework, query: str,
         changed = False
 
         # ── (A) strutturale: compute(sum,size) ← find_dirs ────────────────
-        for consumer in steps:
+        for ci, consumer in enumerate(steps):
             if (getattr(consumer, "tool", "") or "") != "compute_entries":
                 continue
             a = _args(consumer)
@@ -2170,10 +2170,17 @@ def _route_folder_size(framework: Framework, query: str,
             key = str(a.get("key") or "").strip().lower()
             if op not in ("sum", "avg", "mean") or key not in _SIZE_SUM_KEYS:
                 continue
+            # Produttore consumato: from_step esplicito OPPURE — quando assente —
+            # lo step IMMEDIATAMENTE precedente (l'engine concatena le entries
+            # implicitamente; il planner spesso omette from_step, turn 5cdf80d0).
             fs = a.get("from_step")
-            if not isinstance(fs, int) or not (1 <= fs <= len(steps)):
+            if isinstance(fs, int) and 1 <= fs <= len(steps):
+                prod_idx = fs
+            elif ci >= 1:
+                prod_idx = ci        # 1-based dello step precedente
+            else:
                 continue
-            prod = steps[fs - 1]
+            prod = steps[prod_idx - 1]
             if (getattr(prod, "tool", "") or "") != "find_dirs":
                 continue
             prod.tool = "find_files"
@@ -2182,6 +2189,13 @@ def _route_folder_size(framework: Framework, query: str,
             pa["recursive"] = True     # peso cartella = file RICORSIVI
             if key != "size":          # find_files espone `size`, non total_bytes
                 consumer.args["key"] = "size"
+            # Re-pipe LIVE dal produttore riscritto: una cache L0 può aver
+            # bake-ato le entries CONCRETE del vecchio find_dirs in compute.entries
+            # (30 sottodir senza `size`) → senza questo, compute somma le stantie e
+            # torna null (bug turn 5cdf80d0 sul PC). Scarta le entries bake-ate e
+            # rimetti il from_step al produttore.
+            consumer.args["from_step"] = prod_idx
+            consumer.args.pop("entries", None)
             changed = True
 
         # ── (B) intento: produttore-contenitore terminale senza compute ───
