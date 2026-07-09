@@ -1187,8 +1187,13 @@ def _process_resume_planner_with_dialog_values(
     return msg_out
 
 
-def _fmt_health_block(h: dict, host: str = "") -> str:
+def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> str:
     """Rende la sezione health in 4-6 righe leggibili.
+
+    `sections` (9/7, Roberto): focus per DOMANDA SPECIFICA («qual è l'ip», «che
+    gpu ha») — rende SOLO le sezioni richieste, in forma DETTAGLIATA (rete con
+    MAC, gpu con VRAM used/total, cpu con core+freq+uso, periferiche usb/block).
+    None = blocco-status completo (comportamento storico, riga Sistema sintetica).
 
     Stile per ADR 0095 (output deterministico): KV con label espliciti,
     no slash ambigui per gruppi correlati (load 1m/5m/15m), unita' inline.
@@ -1197,8 +1202,99 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
     """
     out = [_msg("MSG_HEALTH_TITLE_HOST", host=host) if host
            else _msg("MSG_HEALTH_TITLE")]
+    if sections:
+        # ── FOCUS: solo le sezioni richieste, dettagliate ─────────────────
+        if "system" in sections:
+            sd = h.get("system") or {}
+            bits = [str(sd[k]) for k in ("hostname", "distro", "os_release", "arch")
+                    if sd.get(k)]
+            if bits:
+                out.append(_msg("MSG_HEALTH_SYSTEM", body=" · ".join(bits)))
+        if "cpu" in sections:
+            cd = h.get("cpu") or {}
+            bits = []
+            if cd.get("model"):
+                bits.append(str(cd["model"]))
+            if cd.get("physical_cores") or cd.get("logical_cores"):
+                bits.append(f"{cd.get('physical_cores') or '?'}c/"
+                            f"{cd.get('logical_cores') or '?'}t")
+            if cd.get("freq_mhz"):
+                fm = f"{cd['freq_mhz']}MHz"
+                if cd.get("freq_max_mhz"):
+                    fm += f" (max {cd['freq_max_mhz']}MHz)"
+                bits.append(fm)
+            if cd.get("usage_pct") is not None:
+                bits.append(f"{cd['usage_pct']}% in uso")
+            if bits:
+                out.append(_msg("MSG_HEALTH_CPU", body=" · ".join(bits)))
+        if "gpu" in sections:
+            for g in (h.get("gpu") or []):
+                bits = [str(g.get("vendor") or g.get("device_id") or "?")]
+                if g.get("vram_total_mb"):
+                    used = g.get("vram_used_mb")
+                    bits.append(f"VRAM {used if used is not None else '?'}/"
+                                f"{g['vram_total_mb']} MB")
+                if g.get("busy_pct") is not None:
+                    bits.append(f"busy {g['busy_pct']}%")
+                out.append(_msg("MSG_HEALTH_GPU", body=" · ".join(bits)))
+        if "network" in sections:
+            bits = []
+            for n in (h.get("network") or []):
+                addrs = (n.get("ipv4") or []) + [a for a in (n.get("ipv6") or [])
+                                                  if not a.startswith("fe80")]
+                if not addrs:
+                    continue
+                s = f"{n.get('iface','?')}{'' if n.get('up') else ' ✗'} " \
+                    f"{', '.join(addrs)}"
+                if n.get("mac"):
+                    s += f" (MAC {n['mac']})"
+                bits.append(s)
+            if bits:
+                out.append(_msg("MSG_HEALTH_NETWORK", body=" · ".join(bits)))
+        if "peripherals" in sections:
+            per = h.get("peripherals") or {}
+            usb = [f"{u.get('manufacturer','')} {u.get('product','')}".strip()
+                   for u in per.get("usb", []) if u.get("product")]
+            blk = [f"{b['name']} {b.get('size_gb','?')}GB"
+                   + (f" ({b['model']})" if b.get("model") else "")
+                   for b in per.get("block", []) if b.get("name")]
+            if usb or blk:
+                out.append(_msg("MSG_HEALTH_PERIPHERALS",
+                                body=" · ".join(blk + usb)))
+        # sezioni dinamiche riusano il render standard sotto (load/memory/
+        # disk/thermal/power/services filtrate dal set).
+        _keep = sections
+    else:
+        _keep = None
+    # Riga descrittiva SISTEMA (9/7, Roberto): hostname · distro/os · CPU · GPU.
+    # Sintetica nel blocco-status; le sezioni COMPLETE (health.cpu/gpu/system/
+    # peripherals) restano nei dati per le domande specifiche (ramo focus sopra).
+    sysd = (h.get("system") or {}) if _keep is None else {}
+    cpud = (h.get("cpu") or {}) if _keep is None else {}
+    gpus = (h.get("gpu") or []) if _keep is None else []
+    sys_bits = []
+    if sysd.get("hostname"):
+        sys_bits.append(str(sysd["hostname"]))
+    if sysd.get("distro") or sysd.get("os"):
+        osname = sysd.get("distro") or sysd.get("os")
+        rel = sysd.get("os_release") or ""
+        sys_bits.append(f"{osname}" + (f" ({rel})" if rel and not sysd.get("distro") else ""))
+    if cpud.get("model"):
+        cores = cpud.get("physical_cores") or cpud.get("logical_cores")
+        sys_bits.append(str(cpud["model"])
+                        + (f" {cores}c" if cores else "")
+                        + (f" @{cpud['freq_mhz']}MHz" if cpud.get("freq_mhz") else ""))
+    for g in gpus[:2]:
+        gb = f"GPU {g.get('vendor') or g.get('device_id') or '?'}"
+        if g.get("vram_total_mb"):
+            gb += f" {g['vram_total_mb']//1024}GB VRAM"
+        if g.get("busy_pct") is not None:
+            gb += f" ({g['busy_pct']}%)"
+        sys_bits.append(gb)
+    if sys_bits:
+        out.append(_msg("MSG_HEALTH_SYSTEM", body=" · ".join(sys_bits)))
     load = h.get("load") or {}
-    if load.get("available"):
+    if (_keep is None or "load" in _keep) and load.get("available"):
         up_h = (load.get("uptime_s") or 0) // 3600
         out.append(_msg(
             "MSG_HEALTH_LOAD",
@@ -1206,7 +1302,7 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
             l15=load.get("15m", "?"), uph=up_h,
         ))
     mem = h.get("memory") or {}
-    if mem.get("available"):
+    if (_keep is None or "memory" in _keep) and mem.get("available"):
         used_gb = (mem.get("used_mb", 0)) // 1024
         tot_gb = (mem.get("total_mb", 0)) // 1024
         swap_pct = mem.get("swap_pct", 0) or 0
@@ -1218,7 +1314,7 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
             tot_gb=tot_gb, swap=swap_str,
         ))
     disks = h.get("disk") or []
-    if disks:
+    if (_keep is None or "disk" in _keep) and disks:
         disk_strs = []
         for d in disks[:5]:
             mount = d.get("mount", "?")
@@ -1230,7 +1326,7 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
                 disk_strs.append(f"{mount} {pct}%")
         out.append(_msg("MSG_HEALTH_DISKS", body=" · ".join(disk_strs)))
     thermal = h.get("thermal") or {}
-    if thermal.get("available"):
+    if (_keep is None or "thermal" in _keep) and thermal.get("available"):
         therm_strs = []
         for label_key, kind in (("cpu_c", "CPU"), ("gpu_c", "GPU"), ("nvme_c", "NVMe")):
             v = thermal.get(label_key)
@@ -1239,7 +1335,8 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
         if therm_strs:
             out.append(_msg("MSG_HEALTH_THERMAL", body=" · ".join(therm_strs)))
     power = h.get("power") or {}
-    if power.get("available_cpu") or power.get("available_gpu"):
+    if (_keep is None or "power" in _keep) and (
+            power.get("available_cpu") or power.get("available_gpu")):
         pwr_strs = []
         cw = power.get("cpu_watts")
         if cw is not None:
@@ -1252,7 +1349,7 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
         if pwr_strs:
             out.append(_msg("MSG_HEALTH_POWER", body=" · ".join(pwr_strs)))
     network = h.get("network") or []
-    if network:
+    if _keep is None and network:  # nel focus la riga rete (con MAC) è sopra
         net_strs = []
         for n in network:
             if not isinstance(n, dict):
@@ -1268,7 +1365,7 @@ def _fmt_health_block(h: dict, host: str = "") -> str:
         if net_strs:
             out.append(_msg("MSG_HEALTH_NETWORK", body=" · ".join(net_strs)))
     services = h.get("services") or []
-    if services:
+    if (_keep is None or "services" in _keep) and services:
         svc_strs = []
         for s in services:
             # Strip prefisso `metnos-` E suffisso `.timer` per leggibilita':

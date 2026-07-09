@@ -100,6 +100,10 @@ def _capability_mode(cap: dict | str) -> str:
 _SYSTEM_RO_PATHS = (
     "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32",
     "/etc", "/opt", "/var/lib/python3",
+    # /sys READ-ONLY (9/7): info descrittive hardware (GPU /sys/class/drm,
+    # USB /sys/bus/usb, block /sys/block) per get_processes health. Info-only:
+    # in RO non si scrive nulla; standard nelle sandbox info-gathering.
+    "/sys",
 )
 
 

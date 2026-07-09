@@ -166,6 +166,46 @@ def register_all() -> None:
           "how is the server", "how's the server", "describe the server",
           "machine status"])
 
+    # ── MACHINE REFERENCE (intent bypass hardware, con health.section_focus) ──
+    # «…del server / della macchina / questo pc»: la domanda riguarda LA
+    # macchina (server o device) → col focus-hardware instrada a get_processes.
+    R("machine.reference", "phrases", match_mode="substring",
+      it=["server", ".33", "questo pc", "mio pc", "macchina", "computer",
+          "sistema"],
+      en=["server", "this pc", "my pc", "machine", "computer", "system"])
+
+    # ── HEALTH SECTION FOCUS (agent_runtime._prepend_health_block_if_any) ──
+    # Domanda SPECIFICA su una sezione health («qual è l'ip», «che gpu ha») →
+    # il blocco-status mostra SOLO quella sezione, dettagliata. Chiavi = nomi
+    # tecnici delle sezioni health (stabili cross-lingua); forme NL per lingua.
+    R("health.section_focus", "mapping",
+      it={"network": ["ip", "indirizzo ip", "indirizzi ip", "mac",
+                      "indirizzo mac", "interfacce", "interfaccia di rete"],
+          "gpu": ["gpu", "scheda video", "scheda grafica", "vram"],
+          "cpu": ["cpu", "processore", "core", "frequenza"],
+          "system": ["sistema operativo", "hostname", "kernel", "distro",
+                     "che os", "quale os", "architettura"],
+          "memory": ["ram", "memoria"],
+          "disk": ["disco", "dischi", "spazio su disco", "filesystem"],
+          "thermal": ["temperatura", "temperature", "gradi"],
+          "power": ["consumo", "watt", "energia", "potenza"],
+          "peripherals": ["usb", "periferiche", "periferica", "nvme", "ssd"],
+          "services": ["servizi", "servizio", "systemd", "demoni"],
+          "load": ["carico", "load", "uptime"]},
+      en={"network": ["ip", "ip address", "ip addresses", "mac",
+                      "mac address", "interfaces", "network interface"],
+          "gpu": ["gpu", "video card", "graphics card", "vram"],
+          "cpu": ["cpu", "processor", "cores", "frequency"],
+          "system": ["operating system", "hostname", "kernel", "distro",
+                     "which os", "architecture"],
+          "memory": ["ram", "memory"],
+          "disk": ["disk", "disks", "disk space", "filesystem"],
+          "thermal": ["temperature", "temperatures", "degrees"],
+          "power": ["power draw", "watts", "power consumption"],
+          "peripherals": ["usb", "peripherals", "peripheral", "nvme", "ssd"],
+          "services": ["services", "service", "systemd", "daemons"],
+          "load": ["load", "uptime"]})
+
     # ── FILESYSTEM SIZE QUERY (dispatch._route_folder_size) ────────────
     # «quanto è grande la cartella X / how big is folder X» = intento
     # DIMENSIONE-cartella. Guarda: il peso di una cartella = somma dei file

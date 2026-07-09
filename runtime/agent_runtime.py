@@ -4447,11 +4447,25 @@ class TurnLog:
                 break
         if not health:
             return
+        # FOCUS per sezione (9/7, Roberto): domanda SPECIFICA («qual è l'ip»,
+        # «che gpu ha») → solo la sezione pertinente, dettagliata. Lessico
+        # `health.section_focus` (detection_lexicon, mapping IT+EN). Nessun
+        # match → blocco-status completo (comportamento storico).
+        _focus: set = set()
+        try:
+            _fmap = _detlex.mapping("health.section_focus") or {}
+            _ql = (self.user_query or "").lower()
+            for _sec, _forms in _fmap.items():
+                if _detlex.match_any(_forms, _ql):
+                    _focus.add(_sec)
+        except Exception:  # noqa: BLE001 — best-effort, fallback full block
+            _focus = set()
         try:
             # runtime/ già su sys.path (agent_runtime VIVE in runtime/).
             from orchestration import _fmt_health_block, _fmt_entries_block
-            block = _fmt_health_block(health, host=health_host)
-            if entries:
+            block = _fmt_health_block(health, host=health_host,
+                                      sections=_focus or None)
+            if entries and not _focus:
                 # Top 10 processi col detail cpu%/mem% (non solo nomi nudi).
                 # Cap 10 perche' health gia' occupa righe; per piu' c'e'
                 # cap-expand.

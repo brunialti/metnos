@@ -18,12 +18,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: ottiene snapshot processi e salute sistema. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={load,memory,thermal,disk,network,services,collected_at}."
-en = "SCOPO: gets processes snapshot and system health. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={load,memory,thermal,disk,network,services,collected_at}."
+it = "SCOPO: ottiene snapshot processi e salute sistema. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={system,cpu,gpu,load,memory,thermal,power,disk,network,peripherals,services,collected_at} (system=hostname/os/arch, cpu=model/cores/freq, gpu=vendor/vram, network=iface/ip/mac, peripherals=usb/block)."
+en = "SCOPO: gets processes snapshot and system health. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={system,cpu,gpu,load,memory,thermal,power,disk,network,peripherals,services,collected_at} (system=hostname/os/arch, cpu=model/cores/freq, gpu=vendor/vram, network=iface/ip/mac, peripherals=usb/block)."
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:bfec45b347cfa965477630e1099c5c633e87e3460ab8851ce634544d0e16b7ac"
+digest = "sha256:ce2830f8a6d796e8799f5c4d37c0404819eb8656fde4c9e824e51c6ee93e2d5c"
 
 [args]
 type     = "object"
@@ -101,6 +101,12 @@ schema_inline = """
 [[capabilities]]
 name = "code:exec"
 hint = ["ps", "/proc"]
+
+# network: SOLO lettura interfacce (health.network: iface/ip/mac, Roberto 9/7).
+# Senza, bwrap fa --unshare-net e le interfacce spariscono (network=[] muto).
+[[capabilities]]
+name = "network"
+hint = []
 
 [[tests]]
 name   = "no_filters_returns_all"

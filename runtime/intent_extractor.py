@@ -77,6 +77,25 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # (approval/numbers) → misroute a valle. Lessico i18n, zero LLM.
     if _dl.match("system.status_query", query):
         return {"verb": "get", "object": "processes", "confidence": 1.0}
+    # Bypass HARDWARE-descrittivo (9/7): domanda su una SEZIONE health (ip/gpu/
+    # cpu/usb/dischi/temperature…, lessico `health.section_focus`) riferita
+    # alla MACCHINA (`machine.reference`) e SENZA verbi d'azione → è sempre
+    # get_processes+health; il focus per-sezione fa la selezione in risposta.
+    # Con un verbo d'azione (send/move/…) NON bypassare: potrebbe essere un
+    # compound («manda l'ip del server a X») che l'LLM deve decomporre.
+    try:
+        if _dl.match("machine.reference", query):
+            _fmap = _dl.mapping("health.section_focus") or {}
+            _ql = query.lower()
+            if any(_dl.match_any(f, _ql) for f in _fmap.values()):
+                from vocab import DESTRUCTIVE_VERBS
+                from prefilter import tokenize, detect_canonical_verbs_all
+                _verbs = detect_canonical_verbs_all(tokenize(query)) or []
+                if not any(v in DESTRUCTIVE_VERBS for v in _verbs):
+                    return {"verb": "get", "object": "processes",
+                            "confidence": 1.0}
+    except Exception:  # noqa: BLE001 — best-effort, si prosegue con l'LLM
+        pass
     # v4 è il template UNICO del path mono (v3 ritirato 26/6, §7.1): i CONFINI-VERBO
     # arrivano verbatim dal SoT (vocab.render_boundaries) → coerenza def↔prompt per
     # costruzione, niente twin scritto a mano che driftava (v3 citava `fetch`, verbo

@@ -69,6 +69,16 @@ _HEALTH_FIELD_HINT = {
     "memory": "health.memory", "ram": "health.memory", "swap": "health.memory",
     "disk": "health.disk", "fs": "health.disk", "filesystem": "health.disk",
     "service": "health.services", "services": "health.services", "systemd": "health.services",
+    # Sezioni descrittive (9/7): cpu/gpu/sistema/periferiche.
+    "cpu": "health.cpu", "processor": "health.cpu", "core": "health.cpu",
+    "cores": "health.cpu", "freq": "health.cpu", "frequency": "health.cpu",
+    "gpu": "health.gpu", "vram": "health.gpu", "video": "health.gpu",
+    "hostname": "health.system", "os": "health.system", "kernel": "health.system",
+    "arch": "health.system", "distro": "health.system", "sistema": "health.system",
+    "usb": "health.peripherals", "peripheral": "health.peripherals",
+    "peripherals": "health.peripherals", "periferiche": "health.peripherals",
+    "block": "health.peripherals", "ssd": "health.peripherals",
+    "nvme": "health.peripherals",
 }
 
 
@@ -780,6 +790,12 @@ def _read_network() -> list[dict]:
         stats = psutil.net_if_stats()
     except Exception:
         return out
+    # MAC: AF_LINK (psutil) o AF_PACKET (Linux) — descrittivo (Roberto 9/7).
+    _link_fams = set()
+    for _fam_name in ("AF_LINK", "AF_PACKET"):
+        _f = getattr(psutil, _fam_name, None) or getattr(socket, _fam_name, None)
+        if _f is not None:
+            _link_fams.add(_f)
     for iface, addr_list in addrs.items():
         if iface == "lo":
             continue
@@ -790,27 +806,179 @@ def _read_network() -> list[dict]:
         if not ipv4 and not ipv6:
             continue
         up = bool(stats.get(iface) and stats[iface].isup)
+        mac = next((a.address for a in addr_list
+                    if a.family in _link_fams and a.address), None)
         out.append({
             "iface": iface,
             "ipv4": ipv4,
             "ipv6": ipv6,
+            "mac": mac,
             "up": up,
         })
     return out
 
 
+def _read_system() -> dict:
+    """Identità descrittiva della macchina: hostname, OS, kernel, arch.
+    Solo stdlib (gira anche sul device senza psutil). Best-effort."""
+    out: dict[str, Any] = {"available": False}
+    try:
+        import platform
+        out.update({
+            "available": True,
+            "hostname": platform.node(),
+            "os": platform.system(),
+            "os_release": platform.release(),
+            "arch": platform.machine(),
+        })
+        # Distro leggibile (Linux): PRETTY_NAME da os-release, senza comandi.
+        try:
+            with open("/etc/os-release") as f:
+                for line in f:
+                    if line.startswith("PRETTY_NAME="):
+                        out["distro"] = line.split("=", 1)[1].strip().strip('"')
+                        break
+        except OSError:
+            pass
+    except Exception:
+        pass
+    return out
+
+
+def _read_cpu() -> dict:
+    """CPU descrittiva: modello, core fisici/logici, freq, uso% complessivo.
+    stdlib + /proc/cpuinfo + psutil (opzionale). Best-effort cross-platform."""
+    out: dict[str, Any] = {"available": False}
+    try:
+        out["logical_cores"] = os.cpu_count()
+        out["available"] = True
+    except Exception:
+        pass
+    try:  # modello da /proc/cpuinfo (Linux); su Windows platform.processor()
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.lower().startswith("model name"):
+                    out["model"] = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        try:
+            import platform
+            out["model"] = platform.processor() or None
+        except Exception:
+            pass
+    try:
+        import psutil  # type: ignore
+        out["physical_cores"] = psutil.cpu_count(logical=False)
+        freq = psutil.cpu_freq()
+        if freq:
+            out["freq_mhz"] = int(freq.current)
+            if freq.max:
+                out["freq_max_mhz"] = int(freq.max)
+        # uso complessivo: finestra breve, costo ~0.1s una volta per health
+        out["usage_pct"] = psutil.cpu_percent(interval=0.1)
+    except Exception:
+        pass
+    return out
+
+
+def _read_gpu() -> list[dict]:
+    """GPU da /sys/class/drm (Linux, niente comandi esterni §7.9): vendor,
+    ids PCI; per amdgpu anche VRAM totale/usata e busy%. Lista (multi-GPU);
+    vuota dove /sys non c'è (device Windows/sandbox senza bind)."""
+    out: list[dict] = []
+    try:
+        import glob as _glob
+        _VENDORS = {"0x1002": "AMD", "0x10de": "NVIDIA", "0x8086": "Intel"}
+        for card in sorted(_glob.glob("/sys/class/drm/card[0-9]")):
+            dev = os.path.join(card, "device")
+            if not os.path.isdir(dev):
+                continue
+            g: dict[str, Any] = {"card": os.path.basename(card)}
+
+            def _r(name, base=dev):
+                try:
+                    with open(os.path.join(base, name)) as f:
+                        return f.read().strip()
+                except OSError:
+                    return None
+            vid = _r("vendor")
+            g["vendor"] = _VENDORS.get(vid or "", vid)
+            g["device_id"] = _r("device")
+            vram_t = _r("mem_info_vram_total")
+            vram_u = _r("mem_info_vram_used")
+            busy = _r("gpu_busy_percent")
+            if vram_t and vram_t.isdigit():
+                g["vram_total_mb"] = int(vram_t) // (1024 * 1024)
+            if vram_u and vram_u.isdigit():
+                g["vram_used_mb"] = int(vram_u) // (1024 * 1024)
+            if busy and busy.isdigit():
+                g["busy_pct"] = int(busy)
+            out.append(g)
+    except Exception:
+        pass
+    return out
+
+
+def _read_peripherals() -> dict:
+    """Periferiche descrittive: dispositivi USB (product/manufacturer da
+    /sys/bus/usb) e block device fisici (/sys/block, nome+size). Best-effort,
+    niente comandi esterni (§7.9); dict vuoto-onesto dove /sys manca."""
+    out: dict[str, Any] = {"usb": [], "block": []}
+    try:
+        import glob as _glob
+        for d in sorted(_glob.glob("/sys/bus/usb/devices/[0-9]*")):
+            try:
+                with open(os.path.join(d, "product")) as f:
+                    prod = f.read().strip()
+            except OSError:
+                continue  # hub/interfacce senza product: salta
+            entry = {"product": prod}
+            try:
+                with open(os.path.join(d, "manufacturer")) as f:
+                    entry["manufacturer"] = f.read().strip()
+            except OSError:
+                pass
+            out["usb"].append(entry)
+        for b in sorted(_glob.glob("/sys/block/*")):
+            name = os.path.basename(b)
+            if name.startswith(("loop", "ram", "zram")):
+                continue
+            entry = {"name": name}
+            try:
+                with open(os.path.join(b, "size")) as f:
+                    entry["size_gb"] = round(int(f.read().strip()) * 512 / 1e9, 1)
+            except (OSError, ValueError):
+                pass
+            try:
+                with open(os.path.join(b, "device", "model")) as f:
+                    entry["model"] = f.read().strip()
+            except OSError:
+                pass
+            out["block"].append(entry)
+    except Exception:
+        pass
+    return out
+
+
 def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
-    """Aggrega le 6 sezioni. Nessuna chiamata LLM (§7.9)."""
+    """Aggrega le sezioni descrittive+dinamiche. Nessuna chiamata LLM (§7.9).
+    Raccolta SEMPRE completa (Roberto 9/7): la risposta poi usa la parte
+    pertinente alla richiesta (blocco-status sintetico vs domande specifiche
+    su cpu/gpu/ip/periferiche che pescano dalle sezioni)."""
     units = _METNOS_SERVICES
     if services_extra:
         units = _METNOS_SERVICES + tuple(services_extra)
     return {
+        "system": _read_system(),
+        "cpu": _read_cpu(),
+        "gpu": _read_gpu(),
         "load": _read_load(),
         "memory": _read_memory(),
         "thermal": _read_thermal(),
         "power": _read_power(),
         "disk": _read_disk(),
         "network": _read_network(),
+        "peripherals": _read_peripherals(),
         "services": _read_services(units),
         "collected_at": int(time.time()),
     }
