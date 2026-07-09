@@ -114,10 +114,19 @@ $ErrorActionPreference = "Continue"
 $dest = Join-Path $env:LOCALAPPDATA "Metnos\metnos-client.exe"
 $server = "__SERVER__"
 while ($true) {
+  # crash-safe: exe mancante (swap interrotto) -> ripristina il known-good
   if (-not (Test-Path $dest) -and (Test-Path "$dest.old")) {
     Move-Item "$dest.old" $dest -Force -ErrorAction SilentlyContinue
   }
-  if (Test-Path $dest) { & $dest run --server $server }
+  # redondanza (9/7): se un client gira gia' (lock tenuto da un altro
+  # supervisore/finestra), QUESTO launcher e' di troppo -> esci, mai loop
+  # stretto di "gia' attivo". La Scheduled Task lo rilancia se serve.
+  if (Get-Process metnos-client -ErrorAction SilentlyContinue) { break }
+  $rc = 0
+  if (Test-Path $dest) { & $dest run --server $server; $rc = $LASTEXITCODE }
+  # exit 3 = lock gia' tenuto (client onesto, >=0.2.23): supervisore
+  # ridondante -> esci. (0.2.22 esce 1: la guardia Get-Process copre il caso.)
+  if ($rc -eq 3) { break }
   Start-Sleep -Seconds 2
 }
 '@

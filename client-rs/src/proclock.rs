@@ -14,14 +14,41 @@ use anyhow::{Context, Result};
 use fs2::FileExt;
 use std::fs::{File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct ProcLock {
     _file: File, // tenuto vivo: il lock cade col drop / morte del processo
 }
 
+/// Exit code quando il lock e' gia' tenuto da un'altra istanza viva: il
+/// supervisore (launcher.ps1 / systemd) lo tratta come "supervisore ridondante"
+/// e SMETTE di rilanciare, invece di respawnare in loop stretto (bug 9/7 sul PC:
+/// spam infinito di "gia' attivo"). Distinto dall'errore generico (1).
+pub const EXIT_ALREADY_RUNNING: i32 = 3;
+
+/// Lock gia' tenuto da un altro `metnos-client run`. Errore TIPIZZATO cosi' il
+/// chiamante lo distingue (→ exit 3) da un errore di I/O sul lock (→ exit 1).
+#[derive(Debug)]
+pub struct AlreadyRunning {
+    pub path: PathBuf,
+}
+
+impl std::fmt::Display for AlreadyRunning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "metnos-client run e' gia' attivo su questo dispositivo (lock {}). \
+             Ferma l'istanza esistente (systemd --user / Scheduled Task) prima \
+             di lanciarne un'altra.",
+            self.path.display()
+        )
+    }
+}
+
+impl std::error::Error for AlreadyRunning {}
+
 /// Acquisisce il lock esclusivo `<data_dir>/client.lock`. Se un altro
-/// `metnos-client run` lo tiene, errore ONESTO (niente attesa silenziosa).
+/// `metnos-client run` lo tiene, errore ONESTO tipizzato (`AlreadyRunning`).
 pub fn acquire(data_dir: &Path) -> Result<ProcLock> {
     std::fs::create_dir_all(data_dir)
         .with_context(|| format!("mkdir {}", data_dir.display()))?;
@@ -32,14 +59,8 @@ pub fn acquire(data_dir: &Path) -> Result<ProcLock> {
         .write(true)
         .open(&path)
         .with_context(|| format!("apertura lock {}", path.display()))?;
-    file.try_lock_exclusive().map_err(|_| {
-        anyhow::anyhow!(
-            "metnos-client run e' gia' attivo su questo dispositivo \
-             (lock {}). Ferma l'istanza esistente (systemd --user / \
-             Scheduled Task) prima di lanciarne un'altra.",
-            path.display()
-        )
-    })?;
+    file.try_lock_exclusive()
+        .map_err(|_| AlreadyRunning { path: path.clone() })?;
     // Solo diagnostica umana: la verita' e' il lock del kernel, non il pid.
     let _ = file.set_len(0);
     let _ = writeln!(file, "{}", std::process::id());

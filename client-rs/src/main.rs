@@ -164,7 +164,19 @@ async fn run_cmd(cli: Cli, paths: config::Paths) -> Result<()> {
             // all'uscita del processo. Niente respawn (BUG-A rimosso) → il
             // vecchio processo è già morto quando il supervisor rilancia: nessuna
             // race sul lock, acquisizione diretta.
-            let _lock = proclock::acquire(&paths.data_dir)?;
+            let _lock = match proclock::acquire(&paths.data_dir) {
+                Ok(l) => l,
+                Err(e) => {
+                    // Lock gia' tenuto = un altro supervisore ha il client vivo.
+                    // Esci con codice 3: il launcher NON deve respawnare in loop
+                    // (bug 9/7 sul PC). Errori di I/O sul lock restano exit 1.
+                    if e.downcast_ref::<proclock::AlreadyRunning>().is_some() {
+                        eprintln!("{e}");
+                        std::process::exit(proclock::EXIT_ALREADY_RUNNING);
+                    }
+                    return Err(e);
+                }
+            };
             // §B6: solo DOPO il lock (l'errore «gia' attivo» deve restare
             // visibile in console). Il daemon di background non deve tenere
             // una finestra aperta: il log su file (§2.8) resta la fonte di
