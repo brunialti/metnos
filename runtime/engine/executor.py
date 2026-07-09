@@ -1450,11 +1450,34 @@ def _deterministic_scalar_result(steps) -> str:
         if not isinstance(count, int):
             count = res.get("count_input") or 0
         if op == "sum" and key.lower() in _SIZE_KEYS_FMT:
+            # Contesto onesto (§2.8): «peso cartella» con molte sottocartelle
+            # (spesso vuote) sorprende se si mostra solo il conteggio file. Il
+            # produttore find_files espone `visited` = sottocartelle esplorate.
+            dirs = _folder_subdir_count(steps)
+            if dirs:
+                return _msg("MSG_COMPUTE_SIZE_TOTAL_DIRS",
+                            human=_human_bytes(val), bytes=int(val),
+                            count=count, dirs=dirs)
             return _msg("MSG_COMPUTE_SIZE_TOTAL", human=_human_bytes(val),
                         bytes=int(val), count=count)
         return _msg("MSG_COMPUTE_RESULT", op=op, field=key, value=val,
                     count=count)
     return ""
+
+
+def _folder_subdir_count(steps) -> int:
+    """Sottocartelle esplorate dal produttore find_files/find_dirs (metadata
+    `visited`), per il contesto della risposta-dimensione. 0 se non disponibile."""
+    for s in reversed(steps or []):
+        if (getattr(s, "tool", "") or "") in ("find_files", "find_dirs"):
+            res = getattr(s, "result", None)
+            if isinstance(res, dict):
+                md = res.get("metadata")
+                v = md.get("visited") if isinstance(md, dict) else None
+                if isinstance(v, int) and v > 0:
+                    return v
+            return 0
+    return 0
 
 
 def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
