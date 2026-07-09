@@ -130,6 +130,11 @@ if __name__ == "__main__":
 # regola di dominio (non un valore-utente). Ognuna con la sua ragione.
 _WRITES_SEMANTIC_ALLOWED = {
     ("route_mail_delete_to_trash", "dst_folder"),  # §5: delete_messages→Trash fisso
+    # §7.9 folder-size (turn 5cdf80d0): riscrivendo find_dirs→find_files, la key
+    # dell'LLM (es. total_bytes) e recursive vanno imposti al contratto di
+    # find_files (peso = file ricorsivi). Non un valore-utente: regola di dominio.
+    ("route_folder_size", "key"),
+    ("route_folder_size", "recursive"),
 }
 
 
