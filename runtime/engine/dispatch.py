@@ -2865,6 +2865,44 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     return framework
 
 
+def _finalize_framework_for_run(framework: Framework, intent, query: str,
+                                catalog: Optional[list],
+                                runtime_ctx) -> Framework:
+    """Preparazione UNIVERSALE di un piano PRIMA dell'esecuzione (10/7, turn
+    1f1eb714): guard deterministici (l'ULTIMA parola su OGNI piano fresco, ADR
+    0177 T3) → output_policy → clausola ordinamento → consent gate → mass gate.
+
+    UNICA fonte per L3 E recovery: il challenger della recovery era l'unico
+    path che eseguiva un piano SENZA la pipeline guard → un fallimento remoto
+    scivolava a `get_location` per una domanda sull'IP (mai riallineato
+    all'intent). Un path che esegue un piano senza passare da qui reintroduce
+    quella classe di regressione. I guard sono idempotenti (T4): la doppia
+    passata sul path normale è un no-op."""
+    framework = _apply_deterministic_structure_guards(
+        framework, intent, query, catalog)
+    # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
+    # il runtime — non il proposer — sceglie il TERMINALE di presentazione.
+    if is_output_policy_enabled():
+        try:
+            from output_policy import normalize_terminal
+            framework, _op_info = normalize_terminal(framework, intent, query)
+            if _op_info.get("action") not in ("", "noop"):
+                log.info("[output_policy] mode=%s action=%s producer-kind=%s",
+                         _op_info.get("mode"), _op_info.get("action"),
+                         _op_info.get("data_kind"))
+        except Exception as ex:
+            log.warning("output_policy normalize_terminal noop: %r", ex)
+    # Clausola «ordina/raggruppa per X» (§7.9): garantita a valle del
+    # proposer — l'LLM non è tenuto a tradurla, la traduzione è codice.
+    framework = _apply_ordering_clause(framework, query, catalog)
+    # consent-gate (20/6): turno schedulato + pipeline outbound (send_*) →
+    # get_approval prima del send. Dopo l'ordinamento, prima dell'esecuzione.
+    framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
+    # mass-mutation gate (6/7): delete/move di massa → conferma umana.
+    framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
+    return framework
+
+
 def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
     """§7.9 consent-gate (20/6/2026): in un turno SCHEDULATO una pipeline che
     comunica verso l'ESTERNO (`send_*`) NON parte senza consenso umano →
@@ -3468,8 +3506,16 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         framework_hash=run.framework_hash,
                         elapsed_ms=int((time.time() - t_start) * 1000),
                         run=run, framework=fp_hit.framework)
+                # Osservabilità (§2.8, 10/7 turn 1f1eb714): il TurnLog registra
+                # solo l'ULTIMO run — l'errore del run L0 era invisibile.
+                _last = (run.steps or [])[-1] if run.steps else None
+                _lerr = (getattr(_last, "result", None) or {}).get("error") \
+                    if _last and isinstance(getattr(_last, "result", None), dict) else None
                 log.info("[L0 fastpath] fp_id=%d esegue in ERRORE → morte + "
-                         "fall-through a L1/L3 (re-plan)", fp_hit.fp_id)
+                         "fall-through a L1/L3 (re-plan) — aborted=%s "
+                         "last_step=%s err=%.200s", fp_hit.fp_id,
+                         run.aborted_reason,
+                         getattr(_last, "tool", None), str(_lerr))
             else:
                 _inject_gate_resume_if_paused(run, query, runtime_ctx)
                 # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
@@ -3706,32 +3752,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 framework = _apply_deterministic_structure_guards(
                     framework2, intent, query, catalog)
 
-    # Output-policy deterministica (matrice intent×data_kind → modo, §7.9):
-    # il runtime — non il proposer — sceglie il TERMINALE di presentazione
-    # (gallery/scalar drop describe + final deterministico; web READ→T insert
-    # read_urls_html). Gated METNOS_OUTPUT_POLICY=1, default OFF. SoT:
-    # internal/reports/output_presentation_matrix_2026-05-31.md.
-    if is_output_policy_enabled():
-        try:
-            from output_policy import normalize_terminal
-            framework, _op_info = normalize_terminal(framework, intent, query)
-            if _op_info.get("action") not in ("", "noop"):
-                log.info("[output_policy] mode=%s action=%s producer-kind=%s",
-                         _op_info.get("mode"), _op_info.get("action"),
-                         _op_info.get("data_kind"))
-        except Exception as ex:
-            log.warning("output_policy normalize_terminal noop: %r", ex)
-
-    # Clausola «ordina/raggruppa per X» (§7.9): garantita a valle del
-    # proposer — l'LLM non è tenuto a tradurla, la traduzione è codice.
-    framework = _apply_ordering_clause(framework, query, catalog)
-    # consent-gate (20/6): turno schedulato + pipeline outbound (send_*) →
-    # inserisci get_approval prima del send (FIX 1 mette in pausa, on-approve
-    # riprende pulito). Dopo l'ordinamento, prima dell'esecuzione.
-    framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
-    # mass-mutation gate (6/7): delete/move di massa → conferma umana prima
-    # dell'azione. No-op sotto soglia / gate disattivato.
-    framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
+    # Preparazione UNIVERSALE pre-esecuzione (funzione condivisa, 10/7):
+    # guards (idempotenti — 2ª passata no-op sul path normale) → output_policy
+    # → ordering → consent gate → mass gate. UNICA fonte con la recovery.
+    framework = _finalize_framework_for_run(framework, intent, query,
+                                            catalog, runtime_ctx)
 
     # Execute
     run = executor.run(framework, query=query,
@@ -3805,13 +3830,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 pool=pool_names, proposer=proposer,
                 llm_call=llm_call_wise, lang=lang, catalog=catalog)
             if framework_alt is not None:
-                framework_alt = _apply_ordering_clause(
-                    framework_alt, query, catalog)
-                # mass-mutation gate ANCHE sul piano ricostruito dalla recovery
-                # (bug live 1ba8e2c4: la delete di massa NASCEVA proprio qui —
-                # find_files espande la dir → delete_files(from_step=1)).
-                framework_alt = _insert_mass_mutation_gate(
-                    framework_alt, query, runtime_ctx)
+                # Preparazione UNIVERSALE (10/7, turn 1f1eb714): il piano di
+                # recovery riceve la STESSA pipeline del path L3 — prima aveva
+                # solo ordering+mass-gate, SENZA i guard: il challenger poteva
+                # eseguire un tool semanticamente estraneo all'intent
+                # (get_location per «ip …» dopo 2 fallimenti remoti).
+                framework_alt = _finalize_framework_for_run(
+                    framework_alt, intent, query, catalog, runtime_ctx)
                 run2 = executor.run(framework_alt, query=query,
                                      runtime_ctx=runtime_ctx,
                                      remediate_args_cb=remediate_args_cb,
