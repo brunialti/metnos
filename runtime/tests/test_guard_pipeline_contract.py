@@ -43,6 +43,9 @@ EXPECTED_PIPELINE = (
     # scope_dirs DOPO conform (l'ordine appeso find_dirs→delete_dirs è finale) e
     # PRIMA della gate-insertion (fuori pipeline): il gate rinumera la coda.
     ("scope_dirs_clause_to_contents", True),
+    # move-enumeration: «sposta i file DA cartella X» → find_files→move. Prima
+    # di fill (opera su step in ordine-intent) — solo move, mai delete.
+    ("enrich_move_source_dir", True),
     ("fill_clause_args", True),
     ("resolve_store_field_refs", True),
     ("route_mail_delete_to_trash", False),

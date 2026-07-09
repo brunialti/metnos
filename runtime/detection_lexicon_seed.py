@@ -157,14 +157,29 @@ def register_all() -> None:
     # Il guard combina QUESTO match con un produttore-contenitore nel piano →
     # falsi positivi bassi (una query-foto «dimensione» produce get_files, non
     # find_dirs). Regex morfologica, split pulito it/en.
-    R("fs.size_query", "regex",
-      it=[r"\b(quanto\s+(?:è|e|e')\s+grand[ei]|quanto\s+(?:occupa|pesa|spazio)"
-          r"|quanti\s+byte|dimensione\s+(?:totale|complessiva|della|dello|di"
-          r"|del|in)|grandezza\s+(?:della|di)|peso\s+(?:della|di|dei|totale)"
-          r"|spazio\s+(?:occupato|su\s+disco))\b"],
-      en=[r"\b(how\s+(?:big|large)|how\s+much\s+(?:space|room)|folder\s+size"
-          r"|directory\s+size|disk\s+usage|size\s+of\s+(?:the\s+)?(?:folder|dir"
-          r"|directory)|space\s+used)\b"])
+    R("fs.size_query", "phrases", match_mode="substring",
+      it=["quanto è grande", "quanto e grande", "quanto occupa", "quanto pesa",
+          "quanto spazio", "dimensione della", "dimensione di", "dimensione del",
+          "dimensione totale", "dimensione complessiva", "dimensione in",
+          "quanti byte", "grandezza della", "grandezza di", "peso della",
+          "peso di", "peso dei", "peso totale", "spazio occupato",
+          "spazio su disco"],
+      en=["how big", "how large", "how much space", "how much room",
+          "folder size", "directory size", "disk usage", "size of the folder",
+          "size of folder", "size of the directory", "space used"])
+
+    # ── MOVE «i file DA/IN una cartella» (dispatch._enrich_move_source_dir) ──
+    # «sposta i file da X a Y»: X è un CONTENITORE, i file vanno enumerati
+    # (find_files→move), non passati come singola dir-entry (che il safety-net
+    # rifiuta). Il segnale è «i file + da/in/della cartella»; «sposta la cartella
+    # X» (senza «file») NON matcha → si sposta X stessa. Regex, split it/en.
+    R("fs.files_in_folder", "phrases", match_mode="substring",
+      it=["i file da", "i file in", "i file nella", "i file della",
+          "i file dalla", "i file dentro", "i file presenti in",
+          "i file contenuti in", "tutti i file da", "tutti i file in",
+          "gli allegati da", "i documenti da", "i documenti in"],
+      en=["the files in", "the files from", "the files inside", "files in the",
+          "files from the", "all files in", "all the files in"])
 
     # ── WEB SCRAPING ───────────────────────────────────────────────────
     # output_format._COOKIE_BANNER_MARKERS (substring)

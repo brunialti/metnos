@@ -724,6 +724,78 @@ def _scope_dirs_clause_to_contents(framework: Framework, intent, query: str,
         return framework
 
 
+def _enrich_move_source_dir(framework: Framework, query: str,
+                            catalog: Optional[list]) -> Framework:
+    """§7.9 (follow-up move-enumeration): «sposta i file DA una cartella X a Y».
+
+    Il proposer passa la CARTELLA X come singola dir-entry a move_files
+    (`entries=[{path:X}]`) → il safety-net la rifiuta (è una directory, serve
+    allow_dirs) e 0 file si spostano. Ma l'utente vuole i FILE DENTRO X: serve un
+    produttore. Fix: inserisci `find_files(base_path=X)` prima del move e ripunta
+    move a `from_step`.
+
+    DISCRIMINANTE (conservativo, solo move_files — mai delete): scatta SOLO se la
+    query matcha `fs.files_in_folder` («i file da/in <cartella>», lessico IT+EN) E
+    la sorgente del move è una SINGOLA path bare (no glob) senza from_step.
+    «sposta la cartella X» (senza «file») NON matcha → X si sposta com'è."""
+    try:
+        from . import is_v3
+        if not is_v3():
+            return framework
+        if not (query and _dl_match("fs.files_in_folder", query)):
+            return framework
+        names = catalog_names(catalog)
+        if "find_files" not in names:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        from .types import StepSpec
+        rewrote = False
+        for mv in list(steps):
+            if (getattr(mv, "tool", "") or "") != "move_files":
+                continue
+            a = getattr(mv, "args", None) or {}
+            if a.get("from_step") is not None:
+                continue  # già una catena produttore→move
+            src = None
+            ents = a.get("entries")
+            if (isinstance(ents, list) and len(ents) == 1
+                    and isinstance(ents[0], dict)):
+                src = ents[0].get("path")
+            if src is None:
+                ps = a.get("paths")
+                if isinstance(ps, list) and len(ps) == 1 and isinstance(ps[0], str):
+                    src = ps[0]
+            if not (isinstance(src, str) and src.strip()):
+                continue
+            if any(w in src for w in ("*", "?", "[")):
+                continue  # glob esplicito = intento diverso, non toccare
+            my_idx = steps.index(mv)              # 0-based
+            old_mv_1b = my_idx + 1                # 1-based del move PRIMA dell'insert
+            steps.insert(my_idx, StepSpec(tool="find_files",
+                                          args={"base_path": src}))
+            # renumber: ogni from_step >= old_mv_1b (che puntava a move o oltre)
+            # slitta di 1 per l'inserimento. Il move stesso lo settiamo dopo.
+            for s in steps:
+                if s is mv:
+                    continue
+                sfs = (getattr(s, "args", None) or {}).get("from_step")
+                if isinstance(sfs, int) and sfs >= old_mv_1b:
+                    s.args["from_step"] = sfs + 1
+            mv.args = {k: v for k, v in a.items()
+                       if k not in ("entries", "paths")}
+            mv.args["from_step"] = old_mv_1b      # = pos 1-based del find_files
+            rewrote = True
+            log.info("[move_enum §7.9] move_files(dir=%s) → find_files(base=%s)"
+                     "→move_files(from_step=%d): enumera i file", src, src,
+                     old_mv_1b)
+        if rewrote:
+            framework.steps = steps
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("enrich_move_source_dir noop (best-effort): %r", ex)
+        return framework
+
+
 # Fratelli-FILESYSTEM (§2.2): `files` e `dirs` sono facce dello stesso dominio
 # — «elenca i FILE della cartella X» si serve con list_dirs (container enum).
 # Un intent-object `files` NON delegittima uno step `dirs` (e viceversa):
@@ -2608,6 +2680,12 @@ GUARD_PIPELINE: tuple = (
           v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"catalog"}),
           rationale="§2.9: delete_dirs sul contenitore X (clausola file fratella) → find_dirs(base=X)→delete_dirs(from_step): scopa alle sottodir, X resta (no over-deletion). Dopo conform_to_intent_order: l'ordine appeso è finale",
+          adr="0177"),
+    Guard("enrich_move_source_dir",
+          lambda fw, i, q, c: _enrich_move_source_dir(fw, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="§7.9 move-enumeration: «sposta i file DA cartella X» (lessico fs.files_in_folder) con move_files(entries=[dir]) → find_files(base=X)→move(from_step). Solo move (mai delete); «sposta la cartella X» non matcha",
           adr="0177"),
     Guard("fill_clause_args",
           lambda fw, i, q, c: _fill_clause_args(fw, i, q, c),
