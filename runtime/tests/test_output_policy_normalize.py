@@ -255,13 +255,16 @@ class TestNormalizeListTable(unittest.TestCase):
         self.assertNotIn("describe_entries", [s.tool for s in out.steps])
         self.assertIn("${step1.@table}", out.final_message)
 
-    def test_processes_mode_L(self):
-        from output_policy import L
+    def test_processes_self_presenting_noop(self):
+        # get_processes ha presentazione bespoke (blocco health «📊 Stato»
+        # prepended da agent_runtime) → output_policy NON tocca il terminale
+        # (evita la tabella @table doppia, turn 557265c5).
         fw = _fw([("get_processes", {}), ("final_answer", {})])
         out, info = normalize_terminal(
             fw, Intent(verb="get", object="processes"), "elenca i processi")
-        self.assertEqual(info["mode"], L)
-        self.assertIn("@table", out.final_message)
+        self.assertEqual(info["action"], "noop")
+        self.assertIs(out, fw)
+        self.assertNotIn("@table", out.final_message or "")
 
     def test_purezza_input_non_mutato(self):
         fw = _fw([("find_files", {"base_path": "/x"}),
