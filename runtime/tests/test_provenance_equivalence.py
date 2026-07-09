@@ -135,6 +135,10 @@ _WRITES_SEMANTIC_ALLOWED = {
     # find_files (peso = file ricorsivi). Non un valore-utente: regola di dominio.
     ("route_folder_size", "key"),
     ("route_folder_size", "recursive"),
+    # §7.9 (turn b66ec6f3): query hardware/status → get_processes DEVE avere
+    # include_health (additivo, il proposer a volte lo omette). Regola di
+    # dominio, non un valore-utente.
+    ("ensure_health_arg", "include_health"),
 }
 
 

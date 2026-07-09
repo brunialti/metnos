@@ -4487,7 +4487,20 @@ class TurnLog:
         # Funziona indipendentemente da `is_multistep`/`chosen_mode`,
         # quindi copre anche i path single-step / fast-path / scratchpad.
         _q = (self.user_query or "").lower()
-        if not _detlex.match("health.imperative", _q):
+        # ECCEZIONE (10/7, Roberto «usare il più possibile le info disponibili»):
+        # se il final È il summary di un describe_entries ESEGUITO (sintesi LLM
+        # sui DATI, non un template allucinato — es. «descrivi i processi»),
+        # buttarlo perde il riassunto: conserva e prependi il blocco sopra.
+        _describe_sum = next(
+            (r.get("summary") for s in reversed(self.steps)
+             for r in [s.result if isinstance(s.result, dict) else {}]
+             if s.chosen_tool == "describe_entries"
+             and isinstance(r.get("summary"), str) and r["summary"].strip()),
+            None)
+        _final_is_describe = bool(
+            _describe_sum and _describe_sum.strip()[:80] in
+            (self.final_message or ""))
+        if not _detlex.match("health.imperative", _q) and not _final_is_describe:
             self.final_message = ""
         self.final_message = (block + "\n\n" + (self.final_message or "")).strip()
 

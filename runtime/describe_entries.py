@@ -184,6 +184,87 @@ def _map_one(entry, map_prompt: str) -> tuple[int, str]:
     return _parse_salience(text, entry)
 
 
+def _pre_aggregate(entries: list, cap: int):
+    """Compressione DETERMINISTICA per liste over-cap OMOGENEE (§7.9, 10/7
+    Roberto «deve estendere le entry da riassumere»): raggruppa per il campo
+    con miglior compressione (es. 516 processi → ~gruppi per nome), sommando i
+    campi numerici e contando le occorrenze. COPRE TUTTE le entries — nessuna
+    coda dimenticata — senza il costo del MAP per-elemento (1 call LLM/entry).
+
+    Ritorna (groups, group_field) o None se nessun campo comprime abbastanza
+    (entries eterogenee/uniche → fallback al cap col notice, com'era).
+    Group-key: campo string presente in ≥90% delle entries, con 2 ≤ n_unique ≤
+    min(cap, total/2) — il migliore = quello che comprime di più."""
+    total = len(entries)
+    dicts = [e for e in entries if isinstance(e, dict)]
+    if total < 2 or len(dicts) < int(total * 0.9):
+        return None
+    # candidati: chiavi string corte presenti in >=90% delle entries.
+    # Esclusi i valori NON-categorici (date/timestamp/numeri-stringa: raggruppare
+    # per started_at produce gruppi semanticamente vuoti — live 10/7).
+    import re as _re
+    from collections import Counter, defaultdict
+    _non_categorical = _re.compile(r"^[\d\s\-:./TZ+,]+$")
+    presence: Counter = Counter()
+    for e in dicts:
+        for k, v in e.items():
+            if (isinstance(v, str) and v and len(v) <= 120
+                    and not k.startswith("_")
+                    and not _non_categorical.match(v)):
+                presence[k] += 1
+    # Chiave = la più INFORMATIVA che comprima abbastanza (10/7, live: con il
+    # minimo si sceglieva `user`=2 gruppi — massima compressione, minima
+    # informazione). Range: almeno 2× di compressione (uniq ≤ total/2), tetto
+    # pratico max(cap, total/3) — se i gruppi sforano il budget, la describe
+    # ricorsiva li gestisce (sono già ordinati per count).
+    limit = min(max(cap, total // 3), max(2, total // 2))
+
+    # Normalizzazione GENERICA dei valori (10/7, live: 579 processi → name 488
+    # unici per i kworker/N:M — non comprime): tronca dal primo separatore
+    # numerico (cifre, /, :, #, @) → «kworker/1:2»→«kworker», «python3»→
+    # «python». Candidato DERIVATO quando il valore grezzo non comprime.
+    def _norm_val(v: str) -> str:
+        n = _re.sub(r"[\d/:#@].*$", "", v).strip("-_ .")
+        return n or v
+
+    best = None  # (n_unique, key, normalized) — vince il MASSIMO nel range
+    for k, n in presence.items():
+        if n < int(len(dicts) * 0.9):
+            continue
+        vals = [e.get(k) for e in dicts if isinstance(e.get(k), str)]
+        uniq = len(set(vals))
+        if 2 <= uniq <= limit:
+            if best is None or uniq > best[0]:
+                best = (uniq, k, False)
+        elif uniq > limit:
+            uniq_n = len({_norm_val(v) for v in vals})
+            if 2 <= uniq_n <= limit and (best is None or uniq_n > best[0]):
+                best = (uniq_n, k, True)
+    if not best:
+        return None
+    gkey, _normalized = best[1], best[2]
+    groups: dict = defaultdict(lambda: {"count": 0, "_nums": defaultdict(float)})
+    for e in dicts:
+        _gv = e.get(gkey)
+        if _normalized and isinstance(_gv, str):
+            _gv = _norm_val(_gv)
+        g = groups[str(_gv)]
+        g["count"] += 1
+        for k, v in e.items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool) \
+                    and not k.startswith("_") and k not in ("pid", "ppid"):
+                g["_nums"][k] += v
+    out = []
+    for val, g in groups.items():
+        row = {gkey: val, "count": g["count"]}
+        for k, s in g["_nums"].items():
+            row[f"{k}_sum"] = round(s, 1)
+        out.append(row)
+    # ordina per rilevanza deterministica: count, poi prima somma numerica
+    out.sort(key=lambda r: (-r["count"], str(r.get(gkey))))
+    return out, gkey
+
+
 def _describe_map_reduce(entries: list, *, style: str, context: str,
                          data_kind, fmt: str, group_by, max_tokens: int,
                          health_context, mr_depth: int) -> dict:
@@ -194,6 +275,39 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
     campi §2.7. NON byte-determ."""
     total = len(entries)
     capped = 0 < _MR_MAX_ENTRIES < total
+    if capped:
+        # Pre-aggregazione deterministica (10/7): se le entries sono OMOGENEE,
+        # il group-by copre TUTTE le righe (516 processi → gruppi per nome con
+        # count+somme) e il describe vede il quadro INTERO — niente coda
+        # dimenticata, niente MAP per-elemento. Fallback al cap se eterogenee.
+        agg = _pre_aggregate(entries, _MR_MAX_ENTRIES)
+        if agg:
+            groups, gkey = agg
+            res = handle_describe_entries({
+                "entries": groups, "style": style, "context": context,
+                "data_kind": data_kind, "format": fmt, "group_by": group_by,
+                "tier": "middle", "max_tokens": max_tokens,
+                "health_context": health_context,
+            }, _mr_depth=mr_depth + 1, _deterministic=False)
+            if isinstance(res, dict) and res.get("ok"):
+                res["item_count"] = total
+                res["aggregated_by"] = gkey
+                res["aggregated_groups"] = len(groups)
+                try:
+                    note = _msg("MSG_DESCRIBE_AGGREGATED", total=total,
+                                groups=len(groups), field=gkey)
+                except Exception:
+                    note = ""
+                s = res.get("summary")
+                if isinstance(s, str) and s.strip() and note:
+                    res["summary"] = s.rstrip() + "\n\n" + note
+                # copertura TOTALE: niente campi-troncamento
+                for k in ("truncated", "truncated_what", "used",
+                          "available_total", "cap_field", "cap_value"):
+                    res.pop(k, None)
+                res["map_reduce"] = True
+                res["deterministic"] = False
+                return res
     mapped_entries = entries[:_MR_MAX_ENTRIES] if capped else entries
     map_prompt = prompt_loader.get("describe_map_salience", DEFAULT_LANG,
                                    context=context or "")

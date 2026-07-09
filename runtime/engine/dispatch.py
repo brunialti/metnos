@@ -744,6 +744,48 @@ def _scope_dirs_clause_to_contents(framework: Framework, intent, query: str,
         return framework
 
 
+def _ensure_health_arg(framework: Framework, query: str,
+                       catalog: Optional[list]) -> Framework:
+    """§7.9 (turn b66ec6f3 «ip metos server»): query HARDWARE/STATUS (lessici
+    `system.status_query` o `health.section_focus`+`machine.reference`) con
+    step get_processes SENZA include_health → il proposer a volte lo omette e
+    la risposta esce senza rete/gpu/sistema («non contiene informazioni di
+    rete»). Forza include_health=true: additivo (aggiunge dati, non ne toglie),
+    il focus per-sezione seleziona poi la parte pertinente. Best-effort."""
+    try:
+        steps = getattr(framework, "steps", None) or []
+        if not any((getattr(s, "tool", "") or "") == "get_processes"
+                   for s in steps):
+            return framework
+        if not query:
+            return framework
+        hw = _dl_match("system.status_query", query)
+        if not hw and _dl_match("machine.reference", query):
+            try:
+                import detection_lexicon as _dl
+                fmap = _dl.mapping("health.section_focus") or {}
+                ql = query.lower()
+                hw = any(_dl.match_any(f, ql) for f in fmap.values())
+            except Exception:  # noqa: BLE001
+                hw = False
+        if not hw:
+            return framework
+        for s in steps:
+            if (getattr(s, "tool", "") or "") == "get_processes":
+                a = getattr(s, "args", None)
+                if not isinstance(a, dict):
+                    a = {}
+                    s.args = a
+                if not a.get("include_health"):
+                    a["include_health"] = True
+                    log.info("[health_arg §7.9] get_processes: include_health "
+                             "forzato (query hardware/status)")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("ensure_health_arg noop (best-effort): %r", ex)
+        return framework
+
+
 def _enrich_move_source_dir(framework: Framework, query: str,
                             catalog: Optional[list]) -> Framework:
     """§7.9 (follow-up move-enumeration): «sposta i file DA una cartella X a Y».
@@ -2753,6 +2795,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"clause", "query"}),
           rationale="imposta client esplicito sul sink clause-scoped (no bleed dalla query). NB (PROV.3): valore dal TESTO della clausola, non sussumibile da runtime-resolve",
           adr="0136"),
+    Guard("ensure_health_arg",
+          lambda fw, i, q, c: _ensure_health_arg(fw, q, c),
+          scope="per-clause", writes=frozenset({"args.include_health"}),
+          reads=frozenset({"query"}),
+          rationale="§7.9 (turn b66ec6f3): query hardware/status (lessici status/section_focus+machine) con get_processes senza include_health → forzato true. Additivo: aggiunge dati, il focus per-sezione seleziona",
+          adr="0177"),
     Guard("route_folder_size",
           lambda fw, i, q, c: _route_folder_size(fw, q, c),
           scope="routing", writes=frozenset({"step.tool", "step", "args.recursive", "args.key"}),

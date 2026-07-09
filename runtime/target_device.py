@@ -40,6 +40,12 @@ SERVER = "server"
 # Preposizioni locative che ANCORANO un nome-device (IT + EN). L'ancora è ciò che
 # distingue «sul portatile» (instrada) da «il portatile» (no).
 _PREP = r"(?:su|sul|sullo|sulla|sui|sugli|sulle|nel|su\s+questo|on|onto)"
+# Ancora NOMINALE (10/7, turn 143f7cff «che processore ha il pc-roberto»):
+# il device è l'OGGETTO della frase, non un complemento di luogo. Articoli/
+# preposizioni nominali; il match nominale NON strippa la query (come i
+# marcatori server nominali — strippare demolirebbe la semantica).
+_PREP_NOMINAL = (r"(?:il|lo|la|l'|del|dello|della|dell'|dei|degli|delle|di|"
+                 r"the|of|from)")
 
 # Marcatori «questo pc / locale» → device dell'utente (ancorati per frase).
 _LOCAL_MARKERS = (
@@ -104,7 +110,7 @@ def _find_named_device(qn: str, devices):
                                         (§5: unicità per owner o errore ambiguous);
       - `None`                          nessun match.
     """
-    matches = []  # (device, span, name)
+    matches = []  # (device, span, name, nominal)
     for d in devices:
         name = _norm(getattr(d, "name", "") or "")
         if len(name) < 3:
@@ -112,16 +118,32 @@ def _find_named_device(qn: str, devices):
         pat = r"(?<![a-z0-9])" + _PREP + r"\s+[\"']?" + re.escape(name) + r"(?![a-z0-9])"
         m = re.search(pat, qn)
         if m:
-            matches.append((d, m.group(0), name))
+            matches.append((d, m.group(0), name, False))
+            continue
+        # Ancora NOMINALE («il pc-roberto», «di pc-roberto»): routing sì,
+        # strip NO (il caller preserva la query). SOLO per nomi TECNICI
+        # (composti: trattino/underscore/cifra) — un device chiamato con una
+        # parola comune («casa») matcherebbe le locuzioni («le foto di casa»)
+        # e roulerebbe per errore (test bare_name). Strutturale, no liste.
+        if not re.search(r"[-_\d]", name):
+            continue
+        pat_n = (r"(?<![a-z0-9])" + _PREP_NOMINAL + r"\s+[\"']?"
+                 + re.escape(name) + r"(?![a-z0-9])")
+        m = re.search(pat_n, qn)
+        if m:
+            matches.append((d, m.group(0), name, True))
     if not matches:
         return None
-    maxlen = max(len(n) for _d, _s, n in matches)
-    best = [(d, s, n) for d, s, n in matches if len(n) == maxlen]
-    if len({d.id for d, _s, _n in best}) > 1:
+    maxlen = max(len(n) for _d, _s, n, _nom in matches)
+    best = [t for t in matches if len(t[2]) == maxlen]
+    # locativo (strip) preferito sul nominale a parità di device
+    best.sort(key=lambda t: t[3])
+    if len({d.id for d, _s, _n, _nom in best}) > 1:
         return (None, best[0][1],
-                [(d.id, getattr(d, "name", "")) for d, _s, _n in best])
-    d, s, _n = best[0]
-    return (d, s, None)
+                [(d.id, getattr(d, "name", "")) for d, _s, _n, _nom in best],
+                best[0][3])
+    d, s, _n, nom = best[0]
+    return (d, s, None, nom)
 
 
 _POSIX_SERVER_PATH_RE = re.compile(
@@ -179,12 +201,13 @@ def resolve_target(query: str,
         # niente strip: la query resta intera per intent/routing
         return res
 
-    # --- NOME device esplicito (ancorato) ---
+    # --- NOME device esplicito (ancorato: locativo → strip; nominale → no) ---
     named = _find_named_device(qn, devices)
     if named:
-        dev, span, dup = named
+        dev, span, dup, nominal = named
         res.explicit = True
-        res.cleaned_query = _strip_span(query, span)
+        if not nominal:
+            res.cleaned_query = _strip_span(query, span)
         if dup is not None:               # nomi duplicati → ambiguo (§5)
             res.status = "ambiguous"
             res.candidates = dup
