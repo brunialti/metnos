@@ -2098,6 +2098,150 @@ def _overwrite_phantom_install_args(framework: Framework,
         return framework
 
 
+def _dl_match(concept: str, text: str) -> bool:
+    """Wrapper best-effort su detection_lexicon.match (§7.3): NL→canonico dal
+    lessico seedato IT+EN, mai liste-sinonimi hardcoded. Import lazy (il modulo
+    apre il DB lessico); False su qualunque errore = fail-safe (nessun rewrite)."""
+    try:
+        import detection_lexicon as _dl
+        return bool(_dl.match(concept, text or ""))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# Campi-DIMENSIONE che un compute somma per pesare (find_files espone `size`;
+# `total_bytes` è il campo per-directory di find_dirs — il proposer lo cita a
+# volte anche sul ramo file). Chiuso: NON include `size_min/size_max/file_count`
+# (aggregati per-dir, non «peso della cartella»).
+_SIZE_SUM_KEYS = frozenset({"size", "total_bytes", "size_bytes", "bytes",
+                            "filesize", "file_size"})
+# Tool che enumerano un CONTENITORE-cartella (chiave del path per ciascuno).
+_FS_CONTAINER_PRODUCERS = {"find_dirs": "base_path", "find_files": "base_path",
+                           "list_dirs": "path"}
+
+
+def _route_folder_size(framework: Framework, query: str,
+                       catalog: Optional[list]) -> Framework:
+    """§7.9 (follow-up size-misroute, turn 5cdf80d0): «quanto è grande la
+    cartella X» = intento DIMENSIONE-cartella. Il peso di una cartella = somma
+    del PESO DEI FILE ricorsivi → il piano corretto è
+    `find_files(recursive)` → `compute_entries(op=sum, key=size)`. Il proposer
+    sbaglia in due modi, entrambi qui riparati:
+
+    (A) STRUTTURALE (turn 5cdf80d0, ramo PC): compone
+        `find_dirs(recursive)`→`compute_entries(op=sum,key=size)`. Ma find_dirs
+        enumera le SOTTOCARTELLE (entries senza campo `size`, total_bytes=0 sul
+        ramo remoto) → somma null/0, risposta vuota (errore ONESTO §2.8 ma
+        errore). Fix: find_dirs→find_files(recursive), key→`size`. Trigger PURO-
+        STRUTTURALE (nessuna parola-query): compute SOMMA/media di un campo-
+        dimensione che consuma (from_step) un find_dirs.
+
+    (B) INTENTO (ramo locale): compone `find_dirs(recursive)` DA SOLO e la
+        risposta conta le sottodir («…contengono 16 directory») — mai pesa i
+        file. Trigger: la query matcha il concept `fs.size_query`
+        (detection_lexicon, IT+EN, §7.3 no-hardcoding) E il piano ha UN
+        produttore-contenitore TERMINALE (nessuno step lo consuma) senza compute
+        a valle → riscrive quel produttore in
+        `find_files(base_path=X, recursive=true)` e inserisce
+        `compute_entries(from_step, op=sum, key=size)`.
+
+    Idempotente (find_files+compute non ri-scatta). No-op se il catalogo non ha
+    find_files/compute_entries. Best-effort."""
+    try:
+        steps = list(getattr(framework, "steps", None) or [])
+        if not steps:
+            return framework
+        names = catalog_names(catalog)
+        if "find_files" not in names:
+            return framework
+
+        def _args(s):
+            a = getattr(s, "args", None)
+            return a if isinstance(a, dict) else {}
+
+        changed = False
+
+        # ── (A) strutturale: compute(sum,size) ← find_dirs ────────────────
+        for consumer in steps:
+            if (getattr(consumer, "tool", "") or "") != "compute_entries":
+                continue
+            a = _args(consumer)
+            op = str(a.get("op") or "").strip().lower()
+            key = str(a.get("key") or "").strip().lower()
+            if op not in ("sum", "avg", "mean") or key not in _SIZE_SUM_KEYS:
+                continue
+            fs = a.get("from_step")
+            if not isinstance(fs, int) or not (1 <= fs <= len(steps)):
+                continue
+            prod = steps[fs - 1]
+            if (getattr(prod, "tool", "") or "") != "find_dirs":
+                continue
+            prod.tool = "find_files"
+            pa = _args(prod)
+            prod.args = pa
+            pa["recursive"] = True     # peso cartella = file RICORSIVI
+            if key != "size":          # find_files espone `size`, non total_bytes
+                consumer.args["key"] = "size"
+            changed = True
+
+        # ── (B) intento: produttore-contenitore terminale senza compute ───
+        if "compute_entries" in names and query \
+                and _dl_match("fs.size_query", query):
+            # Uno step è "consumato" se qualcuno lo referenzia via from_step.
+            consumed_idx = {_args(s).get("from_step") for s in steps
+                            if isinstance(_args(s).get("from_step"), int)}
+            has_size_compute = any(
+                (getattr(s, "tool", "") or "") == "compute_entries"
+                and str(_args(s).get("key") or "").lower() in _SIZE_SUM_KEYS
+                for s in steps)
+            if not has_size_compute:
+                for idx, prod in enumerate(steps, start=1):
+                    tool = getattr(prod, "tool", "") or ""
+                    pathkey = _FS_CONTAINER_PRODUCERS.get(tool)
+                    if not pathkey or idx in consumed_idx:
+                        continue
+                    a = _args(prod)
+                    base = a.get(pathkey) or a.get("base_path") or a.get("path")
+                    if not (isinstance(base, str) and base.strip()):
+                        continue
+                    # normalizza a find_files(base_path=X, recursive)
+                    prod.tool = "find_files"
+                    new_pa = {"base_path": base, "recursive": True}
+                    for k, v in a.items():         # preserva runtime/selettori
+                        if str(k).startswith("_") or k in (
+                                "client", "pattern", "patterns", "query",
+                                "name", "max_results"):
+                            new_pa[k] = v
+                    prod.args = new_pa
+                    # inserisce compute(sum,size) subito dopo il produttore
+                    from .types import StepSpec
+                    comp = StepSpec(tool="compute_entries",
+                                    args={"from_step": idx, "op": "sum",
+                                          "key": "size"})
+                    # renumber: ogni from_step >= idx+1 slitta di 1 (inseriamo
+                    # a posizione idx+1). L'unico consumer possibile è a valle.
+                    for s in steps:
+                        sfs = _args(s).get("from_step")
+                        if isinstance(sfs, int) and sfs >= idx + 1:
+                            s.args["from_step"] = sfs + 1
+                    steps.insert(idx, comp)
+                    framework.steps = steps
+                    changed = True
+                    break   # una cartella-target per turno (caso reale)
+
+        if changed:
+            # NB: il template final_message del proposer può essere STANTÌO
+            # rispetto al piano riscritto («…contengono N directory»), ma il
+            # finalizer presenta AUTORITATIVAMENTE la riduzione scalare
+            # (compute sum-size) prima del render — non serve toccarlo qui.
+            log.info("[folder_size §7.9] piano→find_files(recursive)+compute("
+                     "sum,size): peso cartella = file ricorsivi")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("route_folder_size noop (best-effort): %r", ex)
+        return framework
+
+
 def _degenerate_find_to_list(framework: Framework, intent,
                              catalog: Optional[list]) -> Framework:
     """§2.2 (turn 8b675402): con intento LIST, un `find_files(base_path=X)`
@@ -2487,6 +2631,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"clause", "query"}),
           rationale="imposta client esplicito sul sink clause-scoped (no bleed dalla query). NB (PROV.3): valore dal TESTO della clausola, non sussumibile da runtime-resolve",
           adr="0136"),
+    Guard("route_folder_size",
+          lambda fw, i, q, c: _route_folder_size(fw, q, c),
+          scope="routing", writes=frozenset({"step.tool", "step", "args.recursive", "args.key"}),
+          reads=frozenset({"query", "catalog"}),
+          rationale="§7.9 size-misroute (turn 5cdf80d0): «quanto è grande la cartella X» = peso dei file ricorsivi. (A) strutturale: compute(sum,size)←find_dirs → find_files(recursive)+key→size. (B) intento (concept fs.size_query, lessico IT+EN): find_dirs terminale da solo → find_files(recursive)+compute(sum,size). Peso cartella ≠ conteggio sottodir",
+          adr="0177"),
     Guard("degenerate_find_to_list",
           lambda fw, i, q, c: _degenerate_find_to_list(fw, i, c),
           scope="routing", writes=frozenset({"step.tool", "args.*"}),

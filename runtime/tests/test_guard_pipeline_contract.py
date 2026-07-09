@@ -49,6 +49,9 @@ EXPECTED_PIPELINE = (
     ("route_filename_pattern_to_find", False),
     ("align_provider_client", False),
     ("scope_sink_provider_to_clause", False),
+    # size-misroute (turn 5cdf80d0): «peso cartella» = file ricorsivi. PRIMA di
+    # degenerate (list-intent-only, nessun conflitto) — routing.
+    ("route_folder_size", False),
     ("degenerate_find_to_list", False),
 )
 

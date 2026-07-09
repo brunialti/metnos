@@ -145,6 +145,12 @@ def invoke(args):
         "key": key,
         "count_input": count_input,
         "ignored_non_numeric": ignored,
+        # `count_used`: elementi REALMENTE ridotti (con valore numerico) — il
+        # finalizer server-side lo usa per la presentazione i18n (§7.13). NON
+        # emettiamo qui `final_message_hint`: l'executor gira in sandbox bwrap
+        # SENZA il DB i18n montato → `<missing:*>`. La presentazione vive nel
+        # finalizer (processo server, i18n disponibile).
+        "count_used": len(values),
     }
     if return_entry and winner_entry is not None:
         out["entry"] = winner_entry

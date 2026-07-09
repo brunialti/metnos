@@ -150,6 +150,22 @@ def register_all() -> None:
       it=[r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda)\b"],
       en=[r"\b(show|show me|display|view|let me see)\b"])
 
+    # ── FILESYSTEM SIZE QUERY (dispatch._route_folder_size) ────────────
+    # «quanto è grande la cartella X / how big is folder X» = intento
+    # DIMENSIONE-cartella. Guarda: il peso di una cartella = somma dei file
+    # RICORSIVI (find_files+compute), NON il conteggio delle sottodir (find_dirs).
+    # Il guard combina QUESTO match con un produttore-contenitore nel piano →
+    # falsi positivi bassi (una query-foto «dimensione» produce get_files, non
+    # find_dirs). Regex morfologica, split pulito it/en.
+    R("fs.size_query", "regex",
+      it=[r"\b(quanto\s+(?:è|e|e')\s+grand[ei]|quanto\s+(?:occupa|pesa|spazio)"
+          r"|quanti\s+byte|dimensione\s+(?:totale|complessiva|della|dello|di"
+          r"|del|in)|grandezza\s+(?:della|di)|peso\s+(?:della|di|dei|totale)"
+          r"|spazio\s+(?:occupato|su\s+disco))\b"],
+      en=[r"\b(how\s+(?:big|large)|how\s+much\s+(?:space|room)|folder\s+size"
+          r"|directory\s+size|disk\s+usage|size\s+of\s+(?:the\s+)?(?:folder|dir"
+          r"|directory)|space\s+used)\b"])
+
     # ── WEB SCRAPING ───────────────────────────────────────────────────
     # output_format._COOKIE_BANNER_MARKERS (substring)
     R("web.cookie_banner", "phrases", match_mode="substring",

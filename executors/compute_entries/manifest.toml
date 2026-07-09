@@ -16,7 +16,7 @@ en = "SCOPO: compute an aggregated value (max/min/avg/sum/count) on entries. PAT
 
 [code]
 files  = ["compute_entries.py"]
-digest = "sha256:ea81c1c0e84503f505b25e9c03fc07464caeec970dde04ed621fc8b08c3a78da"
+digest = "sha256:3e26bce312e52fd972d9666f3cd8adda8d4189853996075938ccc1ef841597c0"
 
 [args]
 type     = "object"

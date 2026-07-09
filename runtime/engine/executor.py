@@ -1296,6 +1296,14 @@ def _finalize_answer_text(framework, steps: list, query: str,
     NB: `output_policy` (modo di presentazione) opera PRE-esecuzione sul
     framework (dispatch.normalize_terminal), non qui; `describe_entries` è
     uno STEP le cui observation alimentano il render — non fonti parallele."""
+    # 0. RIDUZIONE terminale (compute_entries → scalare): presentazione i18n
+    #    AUTORITATIVA server-side (§7.9/§7.13). Precede il render perché il
+    #    template del proposer sarebbe il valore NUDO («695132») o un framing
+    #    stantìo rispetto al piano riscritto («N directory», turn 5cdf80d0);
+    #    l'executor gira in sandbox senza i18n → la presentazione vive qui.
+    scalar = _deterministic_scalar_result(steps)
+    if scalar:
+        return scalar
     rendered = _render_final_message(framework.final_message, steps)
     # 2. count-only → bullets (universal §7.9)
     if steps:
@@ -1315,16 +1323,82 @@ def _finalize_answer_text(framework, steps: list, query: str,
                     more_key="MSG_RENDER_AND_MORE")
                 rendered = ((rendered.strip() + "\n\n")
                             if rendered.strip() else "") + bullets
-    # 3. vuoto/degenere → zero-result deterministico, poi synth LLM
+    # 3. vuoto/degenere → zero-result, self-presentazione, poi synth LLM.
+    #    (la riduzione scalare terminale è già gestita al passo 0.)
     if (not rendered.strip()
             or _render_is_degenerate(framework.final_message, rendered)):
         zero = _deterministic_zero_result(steps)
         if zero:
             return zero
+        hint = _last_self_presentation(steps)
+        if hint:
+            return hint
         synth = _synthesize_final_from_steps(query, steps, llm_fast)
         if synth:
             return synth
     return rendered
+
+
+def _last_self_presentation(steps: list) -> str:
+    """`final_message_hint` dell'ultimo step produttivo (non final_answer), se
+    presente e non-degenere. È la presentazione canonica che il produttore fa
+    del proprio output (§7.9 deterministico). "" se nessuno si auto-presenta."""
+    for s in reversed(steps or []):
+        if (getattr(s, "tool", "") or "") == "final_answer":
+            continue
+        res = getattr(s, "result", None)
+        hint = res.get("final_message_hint") if isinstance(res, dict) else None
+        if isinstance(hint, str) and hint.strip() \
+                and not hint.lstrip().startswith("<missing:"):
+            return hint.strip()
+        return ""
+    return ""
+
+
+# Chiavi il cui valore è un peso in BYTE → presentazione umana (KB/MB/…).
+_SIZE_KEYS_FMT = frozenset({"size", "total_bytes", "size_bytes", "bytes",
+                            "filesize", "file_size"})
+
+
+def _human_bytes(n) -> str:
+    """Formato umano deterministico (unità-simbolo, language-neutral)."""
+    try:
+        v = float(n)
+    except (TypeError, ValueError):
+        return str(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(v) < 1024.0 or unit == "TB":
+            return f"{int(v)} {unit}" if unit == "B" else f"{v:.1f} {unit}"
+        v /= 1024.0
+    return f"{v:.1f} TB"
+
+
+def _deterministic_scalar_result(steps) -> str:
+    """Presentazione i18n (§7.13, processo server) del risultato di una
+    RIDUZIONE terminale (compute_entries op numerico → scalare). Byte-aware
+    quando la key è una dimensione. "" se l'ultimo step produttivo non è una
+    riduzione scalare valida (lascia decidere ai fallback a valle)."""
+    for s in reversed(steps or []):
+        tool = getattr(s, "tool", "") or ""
+        if tool == "final_answer":
+            continue
+        res = getattr(s, "result", None)
+        if tool != "compute_entries" or not isinstance(res, dict):
+            return ""
+        op = str(res.get("op") or "").lower()
+        val = res.get("value")
+        if op not in ("sum", "avg", "min", "max") or val is None:
+            return ""
+        key = str(res.get("key") or "")
+        count = res.get("count_used")
+        if not isinstance(count, int):
+            count = res.get("count_input") or 0
+        if op == "sum" and key.lower() in _SIZE_KEYS_FMT:
+            return _msg("MSG_COMPUTE_SIZE_TOTAL", human=_human_bytes(val),
+                        bytes=int(val), count=count)
+        return _msg("MSG_COMPUTE_RESULT", op=op, field=key, value=val,
+                    count=count)
+    return ""
 
 
 def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
