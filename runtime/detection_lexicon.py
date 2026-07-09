@@ -95,13 +95,24 @@ def _open() -> sqlite3.Connection:
     if _conn is None:
         with _lock:
             if _conn is None:
-                DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-                c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-                c.execute("PRAGMA journal_mode=WAL")
-                c.execute("PRAGMA busy_timeout=5000")
-                c.executescript(_SCHEMA)
-                c.commit()
-                _conn = c
+                try:
+                    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+                    # WAL server-side; la sandbox bwrap (§7.13) lo monta READ-ONLY
+                    # e lo apre `immutable` (fallback sotto) → legge il MAIN, e le
+                    # scritture fanno checkpoint(TRUNCATE) per non lasciare frame
+                    # solo nel -wal.
+                    c.execute("PRAGMA journal_mode=WAL")
+                    c.execute("PRAGMA busy_timeout=5000")
+                    c.executescript(_SCHEMA)
+                    c.commit()
+                    _conn = c
+                except sqlite3.OperationalError:
+                    # DB read-only (sandbox): schema già creato dal server →
+                    # apri immutable read-only, lock-free.
+                    _conn = sqlite3.connect(
+                        f"file:{DB_PATH}?mode=ro&immutable=1",
+                        uri=True, check_same_thread=False)
     return _conn
 
 
@@ -198,6 +209,11 @@ def register(concept: str, kind: str, *, it, en,
         wrote = True
     if wrote:
         conn.commit()
+        # §7.13: flush WAL→main così l'immutable-reader in sandbox vede il seed.
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:  # noqa: BLE001
+            pass
         _invalidate(concept)
     return wrote
 

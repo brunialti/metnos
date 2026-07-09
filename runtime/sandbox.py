@@ -132,6 +132,19 @@ def _build_bwrap_args(
     code_dir = code_path.parent
     args += ["--ro-bind", str(code_dir), str(code_dir)]
 
+    # §7.13: i DB i18n + detection_lexicon read-only, così gli executor
+    # risolvono le stringhe user-facing (messages.get / lessici) invece di
+    # `<missing:KEY>` (l'executor gira SENZA questi DB nel filesystem privato
+    # bwrap). DELETE-mode (no -wal/-shm) → basta il single-file; l'executor li
+    # apre immutable read-only. No-op se assenti (fresh install pre-seed).
+    try:
+        from config import DB_I18N as _DBI, DB_DETECTION as _DBD
+        for _db in (_DBI, _DBD):
+            if Path(_db).exists():
+                args += ["--ro-bind", str(_db), str(_db)]
+    except Exception:  # noqa: BLE001 — best-effort, mai bloccare la sandbox
+        pass
+
     # Per ogni capability, deriva bind / network policy
     has_network = False
     for cap in capabilities or []:

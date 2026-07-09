@@ -73,12 +73,28 @@ def _open() -> sqlite3.Connection:
     migration idempotente per colonne aggiunte post-genesi."""
     global _conn
     if _conn is None:
+        try:
+            _conn = _open_rw()
+        except sqlite3.OperationalError:
+            # DB montato READ-ONLY (sandbox bwrap: §7.13 — l'executor legge i
+            # messaggi ma non può scrivere schema/migration, già fatti dal
+            # server). Apri immutable read-only: niente -wal/-shm, lock-free.
+            _conn = sqlite3.connect(
+                f"file:{DB_PATH}?mode=ro&immutable=1",
+                uri=True, check_same_thread=False)
+    return _conn
+
+
+def _open_rw() -> sqlite3.Connection:
+    """Apertura READ-WRITE con schema+migration (percorso server)."""
+    if True:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-        # Concorrenza-safe: WAL consente 1 writer + N reader senza lock; il
-        # busy_timeout assorbe la contesa fra turno utente e job notturno
-        # (i18n_translate_pending) anziche' fallire subito con "database is
-        # locked" (§2.8 no silent failure).
+        # WAL server-side (1 writer + N reader lock-free, condiviso col daemon
+        # telegram). La sandbox bwrap (§7.13) monta il DB READ-ONLY e lo apre
+        # `immutable` (fallback in _open): legge il MAIN file → `set()` fa un
+        # checkpoint(TRUNCATE) dopo ogni scrittura così le chiavi fresche sono
+        # subito nel main (no staleness per l'immutable-reader).
         c.execute("PRAGMA journal_mode=WAL")
         c.execute("PRAGMA busy_timeout=5000")
         c.executescript(_SCHEMA)
@@ -101,8 +117,7 @@ def _open() -> sqlite3.Connection:
                 (_sha256_full(row[2]), row[0], row[1]),
             )
         c.commit()
-        _conn = c
-    return _conn
+    return c
 
 
 def get(key: str, **kwargs) -> str:
@@ -258,6 +273,17 @@ def set(key: str, lang: str, text: str, *, source_lang: str | None = None) -> No
         (key, lang, new_version_hash),
     )
     conn.commit()
+    _checkpoint(conn)
+
+
+def _checkpoint(conn) -> None:
+    """Flush WAL→main (§7.13): l'immutable-reader in sandbox legge il MAIN file,
+    quindi le chiavi appena scritte devono esserci subito. Best-effort (no-op su
+    connessione read-only/immutable)."""
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def mark_for_translation(key: str, target_lang: str, source_lang: str) -> None:
