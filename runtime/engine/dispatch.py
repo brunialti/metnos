@@ -277,6 +277,26 @@ def _mutating_args_grounded(framework, query) -> bool:
     return True
 
 
+def _run_is_cacheworthy(run: RunResult) -> bool:
+    """No-cache-on-error (Roberto 9/7): un run va in cache (L0 record / L1
+    observation) SOLO se efficace — `final_kind=answer`, non abortito, e
+    nessun mutante eseguito a 0 effetto reale. Un turno in errore/degenere
+    cachato si auto-perpetua (ri-servito in millisecondi bypassando il
+    proposer) — è una delle 3 modalità di fallimento L0/L1 viste live 9/7.
+    Best-effort sul check mutazioni (fallisce → non blocca, come L0)."""
+    if run is None or run.final_kind != "answer" or run.aborted_reason:
+        return False
+    if any(not getattr(s, "ok", True) for s in (run.steps or [])):
+        return False  # step fallito nel mezzo (final honesto ma piano rotto)
+    try:
+        from pipeline_effects import ineffective_mutations
+        if ineffective_mutations(run.steps):
+            return False
+    except Exception as ex:  # noqa: BLE001 — best-effort ma non muto (§2.8)
+        log.warning("cacheworthy: efficacy-check fallito (permetto): %r", ex)
+    return True
+
+
 def _maybe_record_fastpath(query: str, intent: Intent,
                             framework: Framework, run: RunResult,
                             origin: str = "auto",
@@ -314,7 +334,7 @@ def _maybe_record_fastpath(query: str, intent: Intent,
     re-planning in più, mai un misroute perpetuato."""
     if not is_fastpath_enabled():
         return
-    if run is None or run.final_kind != "answer" or run.aborted_reason:
+    if not _run_is_cacheworthy(run):
         return
     # Cacheabilità L0 (Roberto 15/6): solo pipeline multi-step che NON bakeizzano
     # un valore numerico della query (vedi _should_cache_plan). Esclude il bug
@@ -829,6 +849,16 @@ def _align_framework_objects(framework: Framework, intent,
     try:
         actions = getattr(intent, "actions", None) or []
         steps = getattr(framework, "steps", None) or []
+        # MONO-intent (9/7, turn «stato del server»→get_proposals): l'extractor
+        # popola `actions` SOLO sui compound → il guard era NO-OP su tutti i
+        # turni mono, proprio dove il proposer locale sbaglia più spesso il
+        # fratello («come sta il server»→read_urls_html/wttr.in!). Sintetizza
+        # la singola action dal verb/object top-level: stesso contratto.
+        if not actions:
+            _v = (getattr(intent, "verb", "") or "").lower()
+            _o = (getattr(intent, "object", "") or "").lower()
+            if _v and _o:
+                actions = [{"verb": _v, "object": _o}]
         if not actions or not steps:
             return framework
         by_verb: dict = {}
@@ -3484,7 +3514,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # Record observation per future feedback hooks. Skip se il piano
                 # non è cacheabile (single-executor / valore numerico baked dalla
                 # query): L1 non deve avere valori baked (Roberto 15/6).
+                # + no-cache-on-error (9/7): solo run efficaci.
                 if (turn_id and intent.is_complete()
+                        and _run_is_cacheworthy(run)
                         and _should_cache_plan(ap_hit.framework, query)):
                     _ap.record_observation(
                         turn_id=turn_id, intent=intent,
@@ -3663,7 +3695,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Record observation (per future feedback). Skip se non cacheabile
     # (single-executor / valore numerico baked): L1 non deve avere valori baked.
     # Seed-state (ADR 0177 M1): non cachare i turni con allegati (vedi L0/L1).
+    # + no-cache-on-error (9/7): un run in errore/degenere NON diventa
+    # observation (prima entrava e contribuiva alle promozioni cluster —
+    # una delle 3 modalità di fallimento L0/L1, turn ad19e8b4).
     if (turn_id and intent.is_complete() and not seed_state
+            and _run_is_cacheworthy(run)
             and _should_cache_plan(framework, query)):
         try:
             _ap.record_observation(
@@ -3673,10 +3709,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             # → autopath SHADOW (senza aspettare il ✓ umano). Deterministico,
             # soglie METNOS_SEED_STEPS/METNOS_SEED_REPEAT; no-op se un
             # autopath active esiste già per l'intent.
-            if run.final_kind == "answer":
-                _ap.seed_from_run(
-                    intent=intent, framework=framework,
-                    n_steps=len(run.steps or []), catalog=catalog)
+            _ap.seed_from_run(
+                intent=intent, framework=framework,
+                n_steps=len(run.steps or []), catalog=catalog)
         except Exception as ex:
             # Feedback best-effort: il fallimento non blocca il turno ma NON è
             # silenzioso (§2.8) — traccia per diagnosticare regressioni di

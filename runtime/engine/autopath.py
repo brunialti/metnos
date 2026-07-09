@@ -56,7 +56,11 @@ TTL_ANTIAUTOPATH_REPEAT_SECS = int(
 # engine decide). Calibrato 14/6 su dati reali: within-cluster p05=0.870 (≈0
 # regressione), same-intent cross-cluster p50=0.795 (rigetta i misroute). FLOOR
 # < COSINE_HIGH (0.90, path 1) per costruzione.
-COSINE_FLOOR_INTENT = float(os.environ.get("METNOS_AUTOPATH_FLOOR", "0.82"))
+# ALZATO 0.82→0.87 (Roberto 9/7): 0.82 lasciava passare troppi cross-cluster
+# (over-matching L1: «come sta il server» ereditava un piano `read_urls_html`).
+# 0.87 = ~within-cluster p05 → i legittimi same-cluster passano ancora, i
+# misroute cross-cluster sotto 0.87 sono rigettati (full engine ripianifica).
+COSINE_FLOOR_INTENT = float(os.environ.get("METNOS_AUTOPATH_FLOOR", "0.87"))
 
 
 @dataclass

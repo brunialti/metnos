@@ -73,10 +73,25 @@ def _plan_tools(framework) -> list[str]:
     return out
 
 
+# ROUTING/PRESENTATION EPOCH (Roberto 9/7): la validità di un piano cachato
+# dipende anche dalla LOGICA di routing/presentazione con cui fu deciso, non solo
+# dal MONDO degli executor (tools_sig/pool_sig). Un fix a routing (target_device,
+# prefilter/object-hints, guard dispatch) o presentazione (output_policy) NON
+# cambia i digest degli executor → i piani stantìi sopravvivevano e servivano
+# esiti sbagliati (bug ricorrenti sessione 9/7: @table doppia, size-bake,
+# server-status misroute). Folded in `tools_sig`: BUMP di questa costante ⇒
+# tutti i piani L0/L1/alternative diventano MISS per costruzione.
+#
+# CONVENZIONE: incrementa a OGNI cambio di logica routing/presentazione che può
+# cambiare la scelta-tool o il terminale di un piano già-cachabile.
+ROUTING_EPOCH = "2026-07-09.2"
+
+
 def tools_sig(framework, catalog) -> str:
-    """Firma dei tool REFERENZIATI dal piano contro i digest correnti."""
+    """Firma dei tool REFERENZIATI dal piano contro i digest correnti + il
+    ROUTING_EPOCH (logica routing/presentazione)."""
     dm = digest_map(catalog)
-    parts = []
+    parts = [f"@epoch:{ROUTING_EPOCH}"]
     for t in sorted(set(_plan_tools(framework))):
         parts.append(f"{t}:{dm.get(t, '!missing')}")
     return _h(parts)[:16]

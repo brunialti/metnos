@@ -5473,6 +5473,12 @@ def _run_engine(
         lang=lang,
         actions=list(intent_raw.get("actions") or []),
     )
+    # Osservabilità (§2.8, 9/7): il TurnLog registra solo intent_verb — i
+    # misroute da OBJECT sbagliato (es. «stato del server»→object=approval)
+    # erano invisibili in prod. Una riga INFO per turno, costo zero.
+    log.info("[intent] verb=%s object=%s conf=%.2f actions=%s q=%r",
+             intent.verb or "-", intent.object or "-",
+             intent.confidence, intent.actions or "-", query[:60])
 
     # §2.11 — DISAMBIGUAZIONE ROUTING deterministica (no LLM). Su query AMBIGUA
     # sull'oggetto (≥2 oggetti-produttori in gara, intent ne ha scartato uno;

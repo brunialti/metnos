@@ -2,7 +2,7 @@
 
 Il fallback intent_hash (verb|object) coincide anche fra query con SLOT diversi
 («mail di X» vs «tutte le mailbox 24h»): serviva il champion altrui. Fix: floor
-`cosine(query, cluster-autopath) ≥ COSINE_FLOOR_INTENT` (0.82, calibrato su dati
+`cosine(query, cluster-autopath) ≥ COSINE_FLOOR_INTENT` (0.87 dal 9/7 — era 0.82; su dati
 reali: within-cluster p05=0.870 → 0 regressione; same-intent-cross-cluster
 p50=0.795 → rigetta i misroute). Sotto floor: astieniti (None → engine pieno).
 
@@ -28,7 +28,7 @@ def _pack(vec) -> bytes:
 
 # Vettori a cosine NOTO vs base [1,0]:
 _BASE = _pack([1.0, 0.0])           # cluster dell'autopath
-_NEAR_086 = _pack([0.86, 0.5104])   # cosine ≈ 0.86 (fra FLOOR 0.82 e HIGH 0.90)
+_NEAR_086 = _pack([0.88, 0.4750])   # cosine ≈ 0.88 (fra FLOOR 0.87 e HIGH 0.90)
 _NEAR_095 = _pack([0.95, 0.3122])   # cosine ≈ 0.95 (≥ HIGH → path 1)
 _FAR_075 = _pack([0.75, 0.6614])    # cosine ≈ 0.75 (< FLOOR → astieniti)
 
@@ -62,7 +62,7 @@ def _seed_autopath(tmp, monkeypatch):
 
 
 def test_path2_serve_above_floor_no_regression(tmp_path, monkeypatch):
-    # cosine 0.86: path1 fallisce (<0.90) MA floor 0.82 passa → SERVE (no-regressione)
+    # cosine 0.88: path1 fallisce (<0.90) MA floor 0.87 passa → SERVE (no-regressione)
     _seed_autopath(tmp_path, monkeypatch)
     with mock.patch("engine.cluster.embed", side_effect=_embed_map):
         hit = AP.lookup("near086", _INTENT)
