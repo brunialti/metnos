@@ -150,6 +150,22 @@ def register_all() -> None:
       it=[r"\b(mostra|mostrami|fammi vedere|vedi|visualizz\w*|guarda)\b"],
       en=[r"\b(show|show me|display|view|let me see)\b"])
 
+    # ── SYSTEM STATUS (intent_extractor bypass → get_processes+health) ──
+    # «stato del server / come sta il server / server status» = l'INSIEME dei
+    # dati di stato del sistema (Roberto 9/7) = get_processes(include_health).
+    # Query ellittiche al confine semantico: l'LLM fast in prod (call
+    # concorrenti) estraeva object instabile (approval/numbers, turn live 9/7)
+    # → bypass DETERMINISTICO (§7.9, come undo.intent_bypass). Phrases → il
+    # daemon i18n_translator le traduce per-lingua.
+    R("system.status_query", "phrases", match_mode="substring",
+      it=["stato del server", "stato server", "come sta il server",
+          "come va il server", "salute del server", "salute del sistema",
+          "stato del sistema", "stato della macchina", "come sta la macchina",
+          "descrivi metnos server", "descrivi il server"],
+      en=["server status", "system status", "server health", "system health",
+          "how is the server", "how's the server", "describe the server",
+          "machine status"])
+
     # ── FILESYSTEM SIZE QUERY (dispatch._route_folder_size) ────────────
     # «quanto è grande la cartella X / how big is folder X» = intento
     # DIMENSIONE-cartella. Guarda: il peso di una cartella = somma dei file

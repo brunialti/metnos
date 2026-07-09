@@ -70,6 +70,13 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         return None
     if _dl.match("undo.intent_bypass", query):
         return None  # signal "no canonical verb" → caller usa fallback
+    # Bypass deterministico SYSTEM STATUS (9/7, §7.9): «stato del server /
+    # come sta il server» = get_processes+health (Roberto: l'insieme dei dati
+    # di stato). Query ellittiche al confine semantico — l'LLM fast in prod
+    # (call concorrenti sul llama-server) estraeva object INSTABILE
+    # (approval/numbers) → misroute a valle. Lessico i18n, zero LLM.
+    if _dl.match("system.status_query", query):
+        return {"verb": "get", "object": "processes", "confidence": 1.0}
     # v4 è il template UNICO del path mono (v3 ritirato 26/6, §7.1): i CONFINI-VERBO
     # arrivano verbatim dal SoT (vocab.render_boundaries) → coerenza def↔prompt per
     # costruzione, niente twin scritto a mano che driftava (v3 citava `fetch`, verbo

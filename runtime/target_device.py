@@ -50,16 +50,25 @@ _LOCAL_MARKERS = (
     "on my pc", "on my computer", "on my laptop", "on my machine", "locally",
 )
 # Marcatori «server / .33» → riporta al server.
-_SERVER_MARKERS = (
+# AVVERBIALI (complemento di luogo, «dove eseguire»): il marcatore è un adjunct
+# rimovibile — la query resta sensata senza («elenca i file sul server» →
+# «elenca i file»). Routing + STRIP.
+_SERVER_MARKERS_ADJUNCT = (
     "sul server", "qui sul server", "sul .33", "sul metnos", "lato server",
-    "del server", "dello .33",   # forme nominali: «stato del server» (5/7)
-    # forme NOMINALI «server» = .33 (9/7, turn 557265c5: «descrivi metnos server»
-    # / «i processi di questo server» finivano sticky sul PC per assenza di
-    # marcatore). «server» in Metnos = .33; il PC è «pc/computer/laptop».
-    "questo server", "il server", "metnos server", "server metnos",
-    "questo metnos", "on the server", "server side", "of the server",
-    "this server", "the server",
+    "on the server", "server side",
 )
+# NOMINALI: «server» è l'OGGETTO della domanda («stato del server», «come sta
+# il server», «descrivi metnos server»). Routing sì, STRIP **NO** — strippare
+# demoliva la semantica (bug 9/7: «stato del server»→«stato»→intent object
+# instabile approval/numbers → misroute get_approval/wttr.in). «server» in
+# Metnos = .33; il PC è «pc/computer/laptop».
+_SERVER_MARKERS_NOMINAL = (
+    "del server", "dello .33", "questo server", "il server", "metnos server",
+    "server metnos", "questo metnos", "of the server", "this server",
+    "the server",
+)
+# Unione (compat per i call-site che testano solo la presenza).
+_SERVER_MARKERS = _SERVER_MARKERS_ADJUNCT + _SERVER_MARKERS_NOMINAL
 
 
 @dataclass
@@ -153,12 +162,21 @@ def resolve_target(query: str,
     res = TargetResolution(cleaned_query=query or "")
 
     # --- SERVER esplicito (vince, riporta al .33) ---
-    sm = _find_marker(qn, _SERVER_MARKERS)
+    # Adjunct («sul server») → strip; nominale («del server») → query INTATTA
+    # (il «server» è l'oggetto della domanda, non un complemento di luogo).
+    sm = _find_marker(qn, _SERVER_MARKERS_ADJUNCT)
     if sm:
         res.target = SERVER
         res.device_name = None
         res.explicit = True
         res.cleaned_query = _strip_span(query, sm)
+        return res
+    sm = _find_marker(qn, _SERVER_MARKERS_NOMINAL)
+    if sm:
+        res.target = SERVER
+        res.device_name = None
+        res.explicit = True
+        # niente strip: la query resta intera per intent/routing
         return res
 
     # --- NOME device esplicito (ancorato) ---
