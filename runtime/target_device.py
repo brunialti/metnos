@@ -53,7 +53,12 @@ _LOCAL_MARKERS = (
 _SERVER_MARKERS = (
     "sul server", "qui sul server", "sul .33", "sul metnos", "lato server",
     "del server", "dello .33",   # forme nominali: «stato del server» (5/7)
-    "on the server", "server side", "of the server",
+    # forme NOMINALI «server» = .33 (9/7, turn 557265c5: «descrivi metnos server»
+    # / «i processi di questo server» finivano sticky sul PC per assenza di
+    # marcatore). «server» in Metnos = .33; il PC è «pc/computer/laptop».
+    "questo server", "il server", "metnos server", "server metnos",
+    "questo metnos", "on the server", "server side", "of the server",
+    "this server", "the server",
 )
 
 
