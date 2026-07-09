@@ -107,3 +107,39 @@ def test_regex_extract_max_results_uses_count():
     assert out.get("max_results") == 100
     out2 = regex_extract("cerca le foto del 2020", schema)
     assert "max_results" not in out2
+
+
+# ── §2.9 safety-relax (9/7): vocab-OPERAZIONE non attiva i flag booleani ──────
+# `allow_dirs`/`allow_system` di move_files condividono «spostare»/«allows» nelle
+# loro description; senza esclusione, «sposta X in Y» li fabbricava =true erodendo
+# il safety-net dei move. Il fix esclude i prefissi-4 condivisi fra >=2 flag bool.
+import tomllib  # noqa: E402
+from args_extractor import _operation_prefixes  # noqa: E402
+
+
+def _move_schema():
+    with open(_RT.parent / "executors" / "move_files" / "manifest.toml", "rb") as f:
+        return tomllib.load(f)["args"]
+
+
+def test_operation_vocab_excludes_shared_move_verb():
+    props = _move_schema()["properties"]
+    ops = _operation_prefixes(props)
+    assert "spos" in ops   # «spostare» condiviso allow_dirs+allow_system
+    assert "cons" in ops   # «consente» condiviso
+
+
+def test_plain_move_does_not_fabricate_safety_flags():
+    sch = _move_schema()
+    for q in ("sposta i file da /a a /b", "muovi le foto in /dst",
+              "move the files to /dst"):
+        r = regex_extract(q, sch)
+        assert r.get("allow_dirs") is None, q
+        assert r.get("allow_system") is None, q
+        assert r.get("copy") is None, q   # runtime_resolved, mai estratto
+
+
+def test_distinctive_condition_still_activates_allow_system():
+    # «file di sistema» = condizione DISTINTIVA di allow_system → resta attivabile.
+    r = regex_extract("sposta anche i file di sistema in /b", _move_schema())
+    assert r.get("allow_system") is True

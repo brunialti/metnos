@@ -362,6 +362,12 @@ def regex_extract(query: str, schema: dict | None) -> dict:
     out: dict = {}
     if not isinstance(props, dict):
         return {}
+    # §2.9 (safety-relax, 9/7): vocabolario-OPERAZIONE = prefissi-4 condivisi fra
+    # >=2 flag booleani dello STESSO executor (es. «spostare» in allow_dirs +
+    # allow_system di move_files). Descrivono l'operazione comune, NON la
+    # condizione distintiva di un flag → NON devono attivare il trigger, altrimenti
+    # «sposta X in Y» fabbrica allow_dirs/allow_system=true erodendo il safety-net.
+    _op_prefixes = _operation_prefixes(props)
     for arg_name, _arg_spec in props.items():
         lname = arg_name.lower()
         # Pluralizzazione GUIDATA DALLO SCHEMA, non da suffissi lessicali
@@ -425,7 +431,7 @@ def regex_extract(query: str, schema: dict | None) -> dict:
             # la DESCRIZIONE stessa dell'arg definisce (data-driven, NO sinonimi
             # cablati). Universale + multilingue: la description e' una tabella
             # per-lingua (§2.5). Valore = NON il default (default false → true).
-            if _bool_flag_triggered(query, _spec):
+            if _bool_flag_triggered(query, _spec, _op_prefixes):
                 out[arg_name] = not bool(_spec.get("default", False))
     return out
 
@@ -446,16 +452,60 @@ _FLAG_DESC_NOISE = {
 }
 
 
-def _bool_flag_triggered(query: str, spec: dict) -> bool:
+def _flag_desc_prefixes(spec: dict) -> set:
+    """Prefissi-4 delle parole DISTINTIVE (rumore escluso) nella DESCRIPTION di
+    un arg booleano, su tutte le lingue, PRIMA del «default …»."""
+    import re as _re
+    desc = spec.get("description")
+    descs: list[str] = []
+    if isinstance(desc, str):
+        descs = [desc]
+    elif isinstance(desc, dict):
+        descs = [v for v in desc.values() if isinstance(v, str)]
+    prefixes: set = set()
+    for text in descs:
+        head = _re.split(r"\bdefault\b", text.lower())[0]
+        for w in _re.findall(r"[a-zàèéìòù]{4,}", head):
+            if w not in _FLAG_DESC_NOISE:
+                prefixes.add(w[:4])
+    return prefixes
+
+
+def _operation_prefixes(props: dict) -> set:
+    """§2.9: vocabolario-OPERAZIONE = prefissi-4 condivisi fra >=2 flag booleani
+    (non runtime_resolved) dello STESSO executor. Descrivono l'operazione comune
+    (es. «spostare» in allow_dirs+allow_system di move_files), non la condizione
+    distintiva di un flag → esclusi dal trigger. Deterministico §7.9, data-driven
+    (nessun verbo cablato)."""
+    from collections import Counter
+    seen: Counter = Counter()
+    for _name, spec in (props or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        _t = spec.get("type")
+        _is_bool = (_t == "boolean"
+                    or (isinstance(_t, list) and "boolean" in _t))
+        if not _is_bool or spec.get("runtime_resolved"):
+            continue
+        for p in _flag_desc_prefixes(spec):
+            seen[p] += 1
+    return {p for p, c in seen.items() if c >= 2}
+
+
+def _bool_flag_triggered(query: str, spec: dict,
+                         op_prefixes: set | None = None) -> bool:
     """True se la query nomina la condizione descritta dall'arg booleano.
 
     Deterministico §7.9, multilingue, ZERO sinonimi cablati: estrae le parole
     DISTINTIVE dalla DESCRIPTION dell'arg (tutte le lingue della tabella), tolto
-    il rumore generico, e verifica se una di esse condivide un PREFISSO >=4 char
-    con una parola della query (morfologia leggera lang-indipendente: «lette»
-    della description ~ «letta» della query). Se l'arg ha gia' un default True,
-    NON si attiva (il flag e' gia' il comportamento base)."""
+    il rumore generico E il vocabolario-OPERAZIONE (`op_prefixes`, §2.9: parole
+    condivise fra >=2 flag booleani dello stesso executor — «spostare» in
+    allow_dirs+allow_system NON deve attivare il flag su «sposta X in Y»), e
+    verifica se una di esse condivide un PREFISSO >=4 char con una parola della
+    query (morfologia leggera lang-indipendente: «lette» della description ~
+    «letta» della query). Se l'arg ha gia' un default True, NON si attiva."""
     import re as _re
+    op_prefixes = op_prefixes or frozenset()
     desc = spec.get("description")
     descs: list[str] = []
     if isinstance(desc, str):
@@ -472,7 +522,7 @@ def _bool_flag_triggered(query: str, spec: dict) -> bool:
         # il comportamento di default (evita falsi positivi su «default: tutte»).
         head = _re.split(r"\bdefault\b", text.lower())[0]
         dwords = [w for w in _re.findall(r"[a-zàèéìòù]{4,}", head)
-                  if w not in _FLAG_DESC_NOISE]
+                  if w not in _FLAG_DESC_NOISE and w[:4] not in op_prefixes]
         for dw in dwords:
             for qw in qwords:
                 if len(qw) >= 4 and dw[:4] == qw[:4]:
