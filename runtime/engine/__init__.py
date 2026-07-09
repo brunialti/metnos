@@ -63,9 +63,9 @@ def is_validator_enabled() -> bool:
 
 def is_output_policy_enabled() -> bool:
     # Output-policy deterministica (matrice intent×data_kind → modo,
-    # output_policy.normalize_terminal). Default OFF: si abilita con
-    # METNOS_OUTPUT_POLICY=1 dopo validazione live.
-    return os.environ.get("METNOS_OUTPUT_POLICY", "0") == "1"
+    # output_policy.normalize_terminal). Default ON dal 9/7/2026 (Roberto):
+    # S/G validati + mode L (tabella) implementato. Opt-OUT METNOS_OUTPUT_POLICY=0.
+    return os.environ.get("METNOS_OUTPUT_POLICY", "1") != "0"
 
 
 # Public API (caricata lazy per ogni layer)

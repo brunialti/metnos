@@ -252,7 +252,7 @@ def normalize_terminal(framework, intent, query: str = ""):
     from engine.types import StepSpec, Framework  # lazy: evita import circolari
 
     mode = r["mode"]
-    if mode in (G, S):
+    if mode in (G, S, L):
         # Drop describe_entries A VALLE del producer terminale.
         drop = {i + 1 for i, s in enumerate(steps)
                 if i + 1 > ppos and s.tool == "describe_entries"}
@@ -288,6 +288,11 @@ def normalize_terminal(framework, intent, query: str = ""):
         k = mapping[ppos]
         if mode == G:
             final = _msg("MSG_GALLERY_HEADER", count=f"${{step{k}.@shown}}")
+            info["action"] = "drop_describe+final" if drop else "final_only"
+        elif mode == L:
+            # Lista/tabella deterministica (matrice §3): la tabella dell'ultimo
+            # producer sostituisce la prosa LLM. @table = tutte le righe (§2.7).
+            final = f"${{step{k}.@table}}"
             info["action"] = "drop_describe+final" if drop else "final_only"
         else:  # S (scalar/count)
             base_fm = framework.final_message or ""

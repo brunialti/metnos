@@ -6,7 +6,7 @@ Il runtime — non il proposer — sceglie il TERMINALE di presentazione:
   - mode T su find_urls: insert read_urls_html prima della sintesi (§5.4);
   - altri modi: invariati.
 SoT matrice: internal/reports/output_presentation_matrix_2026-05-31.md.
-Gate: METNOS_OUTPUT_POLICY=1 (default OFF) — engine.is_output_policy_enabled.
+Gate: default ON dal 9/7/2026 (opt-out METNOS_OUTPUT_POLICY=0) — engine.is_output_policy_enabled.
 """
 from __future__ import annotations
 
@@ -174,14 +174,15 @@ class TestNormalizeWebRead(unittest.TestCase):
 
 
 class TestNormalizeNoop(unittest.TestCase):
-    def test_modi_lista_invariati(self):
+    def test_mode_L_ora_tabella(self):
+        # Ex «modi lista invariati»: dal 9/7 L è IMPLEMENTATO (tabella).
         fw = _fw([("find_files", {"base_path": "/tmp"}),
                   ("describe_entries", {"from_step": 1}),
                   ("final_answer", {})])
         out, info = normalize_terminal(
             fw, Intent(verb="find", object="files"), "elenca i file in /tmp")
-        self.assertEqual(info["action"], "noop")
-        self.assertIs(out, fw)
+        self.assertEqual(info["action"], "drop_describe+final")
+        self.assertIn("@table", out.final_message)
 
     def test_mutate_invariato(self):
         fw = _fw([("move_files", {"paths": ["/tmp/a"], "dst": "/tmp/b"}),
@@ -218,15 +219,16 @@ class TestShownMagic(unittest.TestCase):
 
 
 class TestFlagGate(unittest.TestCase):
-    def test_default_off(self):
+    def test_default_on_optout(self):
+        # Dal 9/7/2026: default ON, opt-OUT con METNOS_OUTPUT_POLICY=0.
         from engine import is_output_policy_enabled
         old = os.environ.pop("METNOS_OUTPUT_POLICY", None)
         try:
-            self.assertFalse(is_output_policy_enabled())
+            self.assertTrue(is_output_policy_enabled())      # default ON
             os.environ["METNOS_OUTPUT_POLICY"] = "1"
             self.assertTrue(is_output_policy_enabled())
             os.environ["METNOS_OUTPUT_POLICY"] = "0"
-            self.assertFalse(is_output_policy_enabled())
+            self.assertFalse(is_output_policy_enabled())     # opt-out
         finally:
             if old is None:
                 os.environ.pop("METNOS_OUTPUT_POLICY", None)
@@ -236,3 +238,57 @@ class TestFlagGate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNormalizeListTable(unittest.TestCase):
+    """mode L (list/table): drop describe + final = tabella deterministica."""
+
+    def test_find_files_drop_describe_e_tabella(self):
+        from output_policy import L
+        fw = _fw([("find_files", {"base_path": "/x"}),
+                  ("describe_entries", {"from_step": 1}),
+                  ("final_answer", {})], final="${step2.summary}")
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="files"), "elenca i file in /x")
+        self.assertEqual(info["mode"], L)
+        self.assertEqual(info["action"], "drop_describe+final")
+        self.assertNotIn("describe_entries", [s.tool for s in out.steps])
+        self.assertIn("${step1.@table}", out.final_message)
+
+    def test_processes_mode_L(self):
+        from output_policy import L
+        fw = _fw([("get_processes", {}), ("final_answer", {})])
+        out, info = normalize_terminal(
+            fw, Intent(verb="get", object="processes"), "elenca i processi")
+        self.assertEqual(info["mode"], L)
+        self.assertIn("@table", out.final_message)
+
+    def test_purezza_input_non_mutato(self):
+        fw = _fw([("find_files", {"base_path": "/x"}),
+                  ("describe_entries", {"from_step": 1}),
+                  ("final_answer", {})])
+        normalize_terminal(fw, Intent(verb="find", object="files"), "file")
+        self.assertEqual([s.tool for s in fw.steps],
+                         ["find_files", "describe_entries", "final_answer"])
+
+
+class TestTableRenderer(unittest.TestCase):
+    def test_tabella_markdown(self):
+        from engine.executor import _entries_table
+        t = _entries_table([{"name": "a", "size": 1}, {"name": "b", "size": 2}])
+        lines = t.splitlines()
+        self.assertTrue(lines[0].startswith("| name"))
+        self.assertEqual(lines[1], "| --- | --- |")
+        self.assertEqual(len(lines), 4)  # header+sep+2 righe
+
+    def test_pipe_escaped_e_troncamento_righe(self):
+        from engine.executor import _entries_table
+        t = _entries_table([{"name": "a|b"}], max_rows=1)
+        self.assertIn("a\\|b", t)
+
+    def test_more_rows_note(self):
+        from engine.executor import _entries_table
+        ents = [{"name": f"f{i}"} for i in range(5)]
+        t = _entries_table(ents, max_rows=2)
+        self.assertIn("f0", t); self.assertIn("f1", t)
+        self.assertNotIn("| f2 |", t)  # troncata, con nota §2.7

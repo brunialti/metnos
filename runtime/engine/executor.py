@@ -48,6 +48,56 @@ _BULLET_FIELDS_DATED = ("start", "summary", "subject", "title",
                         "name", "path", "url", "date")
 _BULLET_FIELDS = ("start", "summary", "subject", "title", "name", "path", "url")
 
+# ── L-mode: tabella deterministica (output_policy mode L, ADR matrice §3) ─────
+# Ordine-colonna preferito (le più identificanti prima); le altre in coda,
+# alfabetiche. Campi verbosi/binari esclusi (rovinano la tabella).
+_TABLE_COL_PREFERENCE = ("name", "title", "subject", "path", "size", "mtime",
+                         "date", "start", "type", "kind", "status", "pid",
+                         "cpu", "mem", "role", "email", "url", "count")
+_TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
+                             "thumbnail", "data", "raw", "html", "mime"})
+_TABLE_MAX_ROWS = 200
+_TABLE_MAX_COLS = 6
+
+
+def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
+                   max_cols: int = _TABLE_MAX_COLS) -> str:
+    """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
+    zero LLM). Colonne = campi preferiti presenti (cap `max_cols`), righe = tutte
+    le entries fino a `max_rows` (§2.7: nota i18n sul resto). Entries non-dict o
+    senza campi tabulabili → fallback bullet-list."""
+    rows = [e for e in entries if isinstance(e, dict)]
+    if not rows:
+        return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
+                                     more_key="MSG_RENDER_MORE_HIDDEN")
+    seen: list = []
+    for e in rows[:50]:
+        for k in e.keys():
+            ks = str(k)
+            if (k not in seen and ks not in _TABLE_COL_SKIP
+                    and not ks.startswith("_")):
+                seen.append(k)
+    def _rank(k):
+        return (_TABLE_COL_PREFERENCE.index(k)
+                if k in _TABLE_COL_PREFERENCE else 999, str(k))
+    cols = sorted(seen, key=_rank)[:max_cols]
+    if not cols:
+        return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
+                                     more_key="MSG_RENDER_MORE_HIDDEN")
+    def _cell(v):
+        if v is None:
+            return ""
+        return str(v).replace("|", "\\|").replace("\n", " ")[:40]
+    lines = ["| " + " | ".join(str(c) for c in cols) + " |",
+             "| " + " | ".join("---" for _ in cols) + " |"]
+    for e in rows[:max_rows]:
+        lines.append("| " + " | ".join(_cell(e.get(c)) for c in cols) + " |")
+    out = "\n".join(lines)
+    more = len(rows) - max_rows
+    if more > 0:
+        out += "\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)
+    return out
+
 
 def _entries_bullet_lines(entries: list, *, fields: tuple,
                           more_key: str, max_items: int = 20) -> str:
@@ -930,6 +980,12 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                 return str(v)
             lst = _find_list_of_dicts(result)
             return str(len(lst)) if lst else "0"
+        if path == "@table":
+            # L-mode (output_policy): entries → tabella markdown deterministica.
+            entries = result.get("entries")
+            if isinstance(entries, list) and entries:
+                return _entries_table(entries)
+            return _sub_one(result, "@count")   # 0 entries → conteggio onesto
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
         # Se path richiesto è "summary" e None, auto-render entries list (§7.9)
