@@ -141,6 +141,11 @@ def resolve(intent_verb: str, producer_name: str, query: str = "") -> dict:
 # G/W sono ricerche ranked: il top-K È la risposta, il totale è solo info.
 RANKED_MODES = frozenset({G, W, TG})
 
+# Producer con presentazione DEDICATA dal runtime (non toccare il terminale):
+# get_processes prepende il blocco health «📊 Stato» (agent_runtime) → @table
+# sarebbe un doppione. §7.9.
+_SELF_PRESENTING_PRODUCERS = frozenset({"get_processes"})
+
 
 # ── normalize_terminal: il runtime sceglie il TERMINALE, non il proposer ─────
 # Matrice §5.5: describe_entries/header sono dettagli implementativi del modo
@@ -243,6 +248,12 @@ def normalize_terminal(framework, intent, query: str = ""):
     if not ppos:
         return framework, info
     producer = steps[ppos - 1].tool
+    # Producer con presentazione BESPOKE: il runtime prepende già un blocco
+    # dedicato (get_processes → «📊 Stato» health-block, agent_runtime
+    # `_prepend_health_block_if_any`). La tabella @table di mode L sarebbe un
+    # DOPPIONE grezzo sotto quella curata (bug turn 557265c5). No-op.
+    if producer in _SELF_PRESENTING_PRODUCERS:
+        return framework, info
     verb = getattr(intent, "verb", None)
     if verb is None:
         verb = intent if isinstance(intent, str) else ""
