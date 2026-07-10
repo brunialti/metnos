@@ -58,9 +58,18 @@ def _derive_file_attachments(tool, res: dict) -> list:
     (image/* -> gallery, altro -> download chip/documento). §2.6/§7.3."""
     import mimetypes
     from pathlib import Path as _P
-    if not isinstance(tool, str) or not tool.startswith(_FILE_PRODUCER_PREFIXES):
+    # Segnale di CREAZIONE indipendente dal nome (10/7): un result con
+    # `_undo.reverse_pattern=delete_created_paths` dichiara «ho creato questi
+    # file» — vale anche per i tool fuori prefisso (get_images_google_photos
+    # SCARICA foto: il picker completava senza gallery né indicazione del dove).
+    _undo = res.get("_undo") if isinstance(res, dict) else None
+    created = []
+    if isinstance(_undo, dict) and _undo.get("reverse_pattern") == "delete_created_paths":
+        created = [p for p in (_undo.get("paths") or []) if isinstance(p, str)]
+    if not isinstance(tool, str) or (
+            not tool.startswith(_FILE_PRODUCER_PREFIXES) and not created):
         return []
-    paths = []
+    paths = list(created)
     for k in ("path", "output_path", "dst"):
         v = res.get(k)
         if isinstance(v, str):
@@ -70,8 +79,10 @@ def _derive_file_attachments(tool, res: dict) -> list:
         if isinstance(v, list):
             paths += [x for x in v if isinstance(x, str)]
     for r in (res.get("results") or []):
-        if isinstance(r, dict) and isinstance(r.get("path"), str):
-            paths.append(r["path"])
+        if isinstance(r, dict):
+            p = r.get("path") or r.get("local_path")
+            if isinstance(p, str):
+                paths.append(p)
     out, seen = [], set()
     for p in paths:
         if p in seen:

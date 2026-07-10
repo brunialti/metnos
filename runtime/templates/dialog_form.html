@@ -13,7 +13,7 @@
       {% set var_id = "f_" ~ step.var %}
       {% set kind = step.schema.kind %}
       <label for="{{ var_id }}" style="display:flex;flex-direction:column;gap:.2rem;">
-        <span><strong>{{ step.prompt|e }}</strong>
+        <span><strong>{{ step.prompt|linkify }}</strong>
           {% if step.optional %}<span class="muted">(opzionale)</span>{% endif %}
         </span>
 

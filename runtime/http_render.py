@@ -36,6 +36,29 @@ def _jinja_msg(key: str, **kwargs) -> str:
 _jinja_env.globals["msg"] = _jinja_msg
 
 
+def _jinja_linkify(text) -> "object":
+    """Filtro `linkify`: testo → HTML ESCAPED con gli URL http(s) resi
+    ancore cliccabili (target=_blank). Nato per i prompt dei dialog che
+    portano un link operativo (picker Google Photos, 10/7: l'utente doveva
+    copiare l'URL a mano). Escape PRIMA, ancore DOPO: mai HTML utente crudo."""
+    import re
+    from markupsafe import Markup, escape
+    s = str(text or "")
+    out: list[str] = []
+    pos = 0
+    for m in re.finditer(r"https?://[^\s<>\"']+", s):
+        out.append(str(escape(s[pos:m.start()])))
+        url = m.group(0)
+        eu = str(escape(url))
+        out.append(f'<a href="{eu}" target="_blank" rel="noopener">{eu}</a>')
+        pos = m.end()
+    out.append(str(escape(s[pos:])))
+    return Markup("".join(out))
+
+
+_jinja_env.filters["linkify"] = _jinja_linkify
+
+
 def render_template(name: str, **ctx) -> str:
     """Render del template Jinja `name` con il contesto `ctx`."""
     return _jinja_env.get_template(name).render(**ctx)
