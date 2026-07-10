@@ -88,7 +88,14 @@ def _plan_tools(framework) -> list[str]:
 # demotion meta-oggetto `entries` nell'intent — tutti cambiano la scelta-tool.
 # 2026-07-10.2: magic `@note` nei terminali G/S/L (presentazione: la voce
 # `message` dell'executor si appende al final deterministico).
-ROUTING_EPOCH = "2026-07-10.2"
+# 2026-07-10.3: carrier §2.2 in _fs_equivalent (files/dirs soddisfano
+# images/texts) + teste §2.5 find_images_indices/describe_images (boundary
+# find_files) — cambiano la scelta-tool dei piani cachati.
+# 2026-07-10.4: disambiguazione overlap marker provider (più-specifico-vince:
+# «google» dentro «google photos» non attiva gw) — cambia client/pool.
+# 2026-07-10.5: boundary write/send («carica/upload a servizio» = write, send =
+# destinatari/canali) + sinonimi carica/upload→write — cambia l'intent.
+ROUTING_EPOCH = "2026-07-10.5"
 
 
 def tools_sig(framework, catalog) -> str:

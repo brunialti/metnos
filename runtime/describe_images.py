@@ -30,13 +30,16 @@ DESCRIBE_IMAGES_TOOL = {
     "type": "function",
     "function": {
         "name": "describe_images",
+        # Testa (fino a OUT:) entro HEAD_MAX=240 (§2.5): a 306 il render del
+        # pool la TRONCAVA e il boundary verso describe_entries spariva
+        # (warning live [manifest] 10/7 → rischio misroute).
         "description": (
-            "SCOPO: descrive il CONTENUTO di una o piu' immagini col VLM "
-            "(soggetti, scena, oggetti, testo visibile, tipo). "
-            "PATTERN: describe_images(reference_images=[\"/a.jpg\"]) oppure "
-            "describe_images(from_step=1). NON: cerca foto simili "
-            "(-> find_images_indices); NON descrive una lista di record "
-            "(-> describe_entries). OUT: entries=[{path,description,keywords}] "
+            "SCOPO: descrive il contenuto di immagini col VLM "
+            "(soggetti, scena, testo). "
+            "PATTERN: describe_images(reference_images=[\"/a.jpg\"]) o "
+            "from_step=1. NON: cercare foto simili -> find_images_indices; "
+            "liste di record -> describe_entries. "
+            "OUT: entries=[{path,description,keywords}] "
             "+ query_text (descrizioni unite, usabile come ricerca contenuto)."
         ),
         "parameters": {

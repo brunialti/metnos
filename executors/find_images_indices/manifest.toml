@@ -18,8 +18,8 @@ affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
 timeout_s = 14400
 
 [description]
-it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="bob"; min_face_pixels=40000 (viso in primo piano). NON: EXIF di path noti (-> get_files). OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
-en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="bob"; min_face_pixels=40000 (face close-up). NON: EXIF of known paths (-> get_files). OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="bob"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="bob"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
 
 [code]
 files  = ["find_images_indices.py"]
