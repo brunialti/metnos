@@ -19,7 +19,9 @@
           "https://www.googleapis.com/auth/drive",
           "https://www.googleapis.com/auth/spreadsheets",
           "https://www.googleapis.com/auth/documents",
-          "https://www.googleapis.com/auth/contacts"
+          "https://www.googleapis.com/auth/contacts",
+          "https://www.googleapis.com/auth/photoslibrary.appendonly",
+          "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata"
         ]}
       ],
       "client_secret_install_path": "~/.local/share/metnos/skills/google-workspace/google_client_secret.json",

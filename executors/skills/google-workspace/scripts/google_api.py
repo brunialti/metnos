@@ -51,6 +51,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/contacts.readonly",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/photoslibrary.appendonly",
+    "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata",
 ]
 
 
@@ -1323,6 +1325,207 @@ def _docs_insert_text(doc_id: str, text: str, index: int) -> None:
 
 
 # =========================================================================
+# Photos  (Google Photos Library API — SOLO dati creati dall'app, post 31/3/2025)
+# =========================================================================
+# La Photos Library API NON e' nel discovery di googleapiclient e l'upload e' un
+# POST di bytes grezzi: usiamo AuthorizedSession (auth header + refresh auto)
+# sugli endpoint REST v1. Scope: photoslibrary.appendonly (upload) +
+# photoslibrary.readonly.appcreateddata (lettura del solo creato-da-Metnos).
+# Delete di mediaItems: IMPOSSIBILE via API (l'upload NON e' reversibile).
+
+_PHOTOS_API_BASE = "https://photoslibrary.googleapis.com/v1"
+
+
+def _photos_session():
+    from google.auth.transport.requests import AuthorizedSession
+    return AuthorizedSession(get_credentials())
+
+
+def _photos_fail(action: str, resp) -> None:
+    """Errore onesto su STDERR (lo classifica `_google_api_runner`): includo lo
+    status HTTP e il messaggio API, cosi' un 403 'insufficient scopes' →
+    auth_required → re-consent (§3.1), non un fallimento opaco."""
+    try:
+        detail = resp.json().get("error", {}).get("message", resp.text)
+    except Exception:
+        detail = resp.text
+    print(f"ERROR {action}: HTTP {resp.status_code} {detail}", file=sys.stderr)
+    sys.exit(1)
+
+
+def photos_upload(args):
+    """Upload di UN file locale: POST bytes → uploadToken → mediaItems:batchCreate.
+    Opzionale `--album-id` per aggiungere all'album. baseUrl mai persistito."""
+    import mimetypes
+    local_path = Path(args.path).expanduser()
+    if not local_path.exists():
+        print(f"ERROR: file not found: {local_path}", file=sys.stderr)
+        sys.exit(1)
+    mime = args.mime_type or mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    session = _photos_session()
+    with open(local_path, "rb") as fh:
+        raw = fh.read()
+    up = session.post(
+        f"{_PHOTOS_API_BASE}/uploads",
+        data=raw,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "X-Goog-Upload-Content-Type": mime,
+            "X-Goog-Upload-Protocol": "raw",
+        },
+    )
+    if up.status_code >= 400:
+        _photos_fail("upload-bytes", up)
+    upload_token = up.text.strip()
+    if not upload_token:
+        print("ERROR upload-bytes: empty upload token", file=sys.stderr)
+        sys.exit(1)
+    body = {"newMediaItems": [{
+        "simpleMediaItem": {"uploadToken": upload_token,
+                            "fileName": local_path.name},
+    }]}
+    if args.album_id:
+        body["albumId"] = args.album_id
+    bc = session.post(f"{_PHOTOS_API_BASE}/mediaItems:batchCreate", json=body)
+    if bc.status_code >= 400:
+        _photos_fail("batchCreate", bc)
+    results = bc.json().get("newMediaItemResults", [])
+    r0 = results[0] if results else {}
+    media_item = r0.get("mediaItem", {})
+    status_msg = (r0.get("status") or {}).get("message", "")
+    mid = media_item.get("id", "")
+    out = {
+        "status": "uploaded" if mid else "failed",
+        "media_item_id": mid,
+        "filename": media_item.get("filename", local_path.name),
+        "album_id": args.album_id or "",
+        "status_message": status_msg,
+    }
+    print(json.dumps(out, ensure_ascii=False))
+    if not mid:
+        # Fallimento per-item (batchCreate 200 ma senza mediaItem): §2.8 onesto.
+        print(f"ERROR batchCreate item: {status_msg or 'no mediaItem returned'}",
+              file=sys.stderr)
+        sys.exit(1)
+
+
+def photos_album_create(args):
+    """Crea un album app-created. POST /albums → {id, title, productUrl}."""
+    session = _photos_session()
+    resp = session.post(f"{_PHOTOS_API_BASE}/albums",
+                        json={"album": {"title": args.title}})
+    if resp.status_code >= 400:
+        _photos_fail("album-create", resp)
+    alb = resp.json()
+    print(json.dumps({
+        "id": alb.get("id", ""),
+        "title": alb.get("title", args.title),
+        "productUrl": alb.get("productUrl", ""),
+    }, ensure_ascii=False))
+
+
+def photos_album_list(args):
+    """Elenca gli album app-created (paginato). GET /albums?pageSize=50.
+    LIMITE API: solo album creati dall'app — NON la lista completa dell'utente
+    (post 31/3/2025). La lista integrale arriva da Takeout (spec §4.3-bis)."""
+    session = _photos_session()
+    albums = []
+    page_token = ""
+    while True:
+        params = {"pageSize": 50, "excludeNonAppCreatedData": True}
+        if page_token:
+            params["pageToken"] = page_token
+        resp = session.get(f"{_PHOTOS_API_BASE}/albums", params=params)
+        if resp.status_code >= 400:
+            _photos_fail("album-list", resp)
+        data = resp.json()
+        for a in data.get("albums", []):
+            albums.append({
+                "id": a.get("id", ""),
+                "title": a.get("title", ""),
+                "items_count": int(a.get("mediaItemsCount", 0) or 0),
+                "url": a.get("productUrl", ""),
+            })
+        page_token = data.get("nextPageToken", "")
+        if not page_token:
+            break
+    print(json.dumps(albums, ensure_ascii=False))
+
+
+def photos_search(args):
+    """Cerca fra i mediaItems app-created (UNA pagina per chiamata; il backend
+    itera con --page-token). `--album-id` e `--year` sono MUTUAMENTE ESCLUSIVI
+    per contratto API (albumId non ammette filters): l'album ha precedenza."""
+    session = _photos_session()
+    body = {"pageSize": int(args.max)}
+    if args.page_token:
+        body["pageToken"] = args.page_token
+    if args.album_id:
+        body["albumId"] = args.album_id
+    elif args.year:
+        y = int(args.year)
+        body["filters"] = {"dateFilter": {"ranges": [{
+            "startDate": {"year": y, "month": 1, "day": 1},
+            "endDate": {"year": y, "month": 12, "day": 31},
+        }]}}
+    resp = session.post(f"{_PHOTOS_API_BASE}/mediaItems:search", json=body)
+    if resp.status_code >= 400:
+        _photos_fail("search", resp)
+    data = resp.json()
+    items = []
+    for m in data.get("mediaItems", []):
+        meta = m.get("mediaMetadata", {})
+        items.append({
+            "id": m.get("id", ""),
+            "filename": m.get("filename", ""),
+            "mime": m.get("mimeType", ""),
+            "created_at": meta.get("creationTime", ""),
+            "width": int(meta.get("width", 0) or 0),
+            "height": int(meta.get("height", 0) or 0),
+        })
+    print(json.dumps({"items": items,
+                      "nextPageToken": data.get("nextPageToken", "")},
+                     ensure_ascii=False))
+
+
+def photos_download(args):
+    """Scarica l'ORIGINALE di un mediaItem: GET /mediaItems/{id} → baseUrl,
+    poi GET baseUrl+'=d'. baseUrl scade in 60 min → get+download nella stessa
+    call (mai persistito)."""
+    session = _photos_session()
+    meta_resp = session.get(f"{_PHOTOS_API_BASE}/mediaItems/{args.media_item_id}")
+    if meta_resp.status_code >= 400:
+        _photos_fail("download-meta", meta_resp)
+    meta = meta_resp.json()
+    base_url = meta.get("baseUrl", "")
+    if not base_url:
+        print("ERROR download: no baseUrl for media item", file=sys.stderr)
+        sys.exit(1)
+    filename = meta.get("filename", args.media_item_id)
+    # `--output` puo' essere un FILE (con estensione) o una DIRECTORY: il
+    # filename originale non e' noto prima del meta, quindi il backend passa una
+    # dir e qui componiamo <dir>/<filename>. Estensione presente + non-dir = file.
+    out_arg = Path(args.output).expanduser() if args.output else Path.cwd()
+    if out_arg.is_dir() or not out_arg.suffix:
+        out_path = out_arg / filename
+    else:
+        out_path = out_arg
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    dl = session.get(base_url + "=d")
+    if dl.status_code >= 400:
+        _photos_fail("download-bytes", dl)
+    out_path.write_bytes(dl.content)
+    print(json.dumps({
+        "status": "downloaded",
+        "id": args.media_item_id,
+        "filename": filename,
+        "path": str(out_path),
+        "bytes": len(dl.content),
+        "mimeType": meta.get("mimeType", ""),
+    }, ensure_ascii=False))
+
+
+# =========================================================================
 # CLI parser
 # =========================================================================
 
@@ -1542,6 +1745,35 @@ def main():
     p.add_argument("--max-results", type=int, default=20,
                     help="Cap web entities/pages returned (default 20)")
     p.set_defaults(func=vision_web_detect)
+
+    # --- Photos (Library API, app-created only) ---
+    ph = sub.add_parser("photos")
+    ph_sub = ph.add_subparsers(dest="action", required=True)
+
+    p = ph_sub.add_parser("upload")
+    p.add_argument("path", help="Local image/video file to upload")
+    p.add_argument("--album-id", default="", help="Album id to add the item to")
+    p.add_argument("--mime-type", default="", help="Override MIME (auto-detected if omitted)")
+    p.set_defaults(func=photos_upload)
+
+    p = ph_sub.add_parser("album-create")
+    p.add_argument("title", help="Album title")
+    p.set_defaults(func=photos_album_create)
+
+    p = ph_sub.add_parser("album-list")
+    p.set_defaults(func=photos_album_list)
+
+    p = ph_sub.add_parser("search")
+    p.add_argument("--album-id", default="", help="Restrict to an album (mutually exclusive with --year)")
+    p.add_argument("--year", default="", help="Filter by year YYYY (ignored if --album-id given)")
+    p.add_argument("--page-token", default="", help="Continuation token from a previous page")
+    p.add_argument("--max", type=int, default=100, help="Page size (max items per call)")
+    p.set_defaults(func=photos_search)
+
+    p = ph_sub.add_parser("download")
+    p.add_argument("media_item_id")
+    p.add_argument("--output", default="", help="Local output path (defaults to ./<filename>)")
+    p.set_defaults(func=photos_download)
 
     args = parser.parse_args()
     args.func(args)
