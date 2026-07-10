@@ -8,6 +8,7 @@ troncamento §2.7, propagazione needs_inputs.
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -31,7 +32,15 @@ def _install_runner(monkeypatch, handler):
     monkeypatch.setattr(gp, "run_with_retry", lambda argv, **kw: handler(argv))
 
 
-# ── upload: risoluzione album ────────────────────────────────────────────────
+# ── upload: due fasi (bytes → batchCreate a chunk di 50) ────────────────────
+
+def _ok_batch(argv):
+    """Risposta batch-create ok per TUTTI gli item passati in --items."""
+    items = json.loads(argv[argv.index("--items") + 1])
+    return ({"results": [{"ok": True, "media_item_id": f"M{i}",
+                          "filename": it["fileName"], "status_message": ""}
+                         for i, it in enumerate(items)]}, None)
+
 
 def test_upload_resolves_existing_album(monkeypatch):
     calls = []
@@ -40,15 +49,17 @@ def test_upload_resolves_existing_album(monkeypatch):
         calls.append(argv)
         if argv[:2] == ["photos", "album-list"]:
             return ([{"id": "ALB1", "title": "Vacanze", "items_count": 2, "url": ""}], None)
-        if argv[:2] == ["photos", "upload"]:
-            return ({"media_item_id": "M1", "filename": "a.jpg", "status": "uploaded"}, None)
+        if argv[:2] == ["photos", "upload-bytes"]:
+            return ({"uploadToken": "T1", "fileName": "a.jpg"}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            return _ok_batch(argv)
         raise AssertionError(f"argv inatteso: {argv}")
 
     _install_runner(monkeypatch, handler)
     out = gp.upload({"paths": ["/x/a.jpg"], "album": "Vacanze"})
     assert out["ok"] is True and out["ok_count"] == 1
-    up = [c for c in calls if c[:2] == ["photos", "upload"]][0]
-    assert "ALB1" in up                               # usa l'id risolto
+    bc = [c for c in calls if c[:2] == ["photos", "batch-create"]][0]
+    assert "ALB1" in bc                               # album-id risolto nel batch
     assert not any(c[:2] == ["photos", "album-create"] for c in calls)  # non ri-crea
     # nota IRREVERSIBILE appesa (§3.6)
     assert "annullabile" in out["message"] or "undoable" in out["message"]
@@ -60,9 +71,11 @@ def test_upload_creates_missing_album(monkeypatch):
             return ([], None)                          # nessun album
         if argv[:2] == ["photos", "album-create"]:
             return ({"id": "NEW", "title": argv[2]}, None)
-        if argv[:2] == ["photos", "upload"]:
-            assert "NEW" in argv                       # upload nell'album creato
-            return ({"media_item_id": "M", "filename": "a.jpg"}, None)
+        if argv[:2] == ["photos", "upload-bytes"]:
+            return ({"uploadToken": "T", "fileName": "a.jpg"}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            assert "NEW" in argv                       # batch nell'album creato
+            return _ok_batch(argv)
         raise AssertionError(argv)
 
     _install_runner(monkeypatch, handler)
@@ -70,27 +83,36 @@ def test_upload_creates_missing_album(monkeypatch):
     assert out["ok"] and out["results"][0]["album"] == "Nuovo"
 
 
-def test_upload_vectorial_per_file(monkeypatch):
-    n_upload = {"c": 0}
+def test_upload_chunks_batchcreate_at_50(monkeypatch):
+    """Spec §3.2/§3.3: N upload-bytes per file, batchCreate a chunk di 50."""
+    counts = {"bytes": 0, "batch_sizes": []}
 
     def handler(argv):
-        if argv[:2] == ["photos", "upload"]:
-            n_upload["c"] += 1
-            return ({"media_item_id": f"M{n_upload['c']}", "filename": "x"}, None)
+        if argv[:2] == ["photos", "upload-bytes"]:
+            counts["bytes"] += 1
+            return ({"uploadToken": f"T{counts['bytes']}",
+                     "fileName": f"f{counts['bytes']}.jpg"}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            items = json.loads(argv[argv.index("--items") + 1])
+            counts["batch_sizes"].append(len(items))
+            return _ok_batch(argv)
         raise AssertionError(argv)
 
     _install_runner(monkeypatch, handler)
-    out = gp.upload({"paths": ["/a.jpg", "/b.jpg", "/c.jpg"]})
-    assert out["ok_count"] == 3 and n_upload["c"] == 3
+    paths = [f"/x/f{i}.jpg" for i in range(120)]
+    out = gp.upload({"paths": paths, "max_total": 200})
+    assert out["ok"] and out["ok_count"] == 120
+    assert counts["bytes"] == 120
+    assert counts["batch_sizes"] == [50, 50, 20]       # chunking al contratto API
 
 
 # ── upload: onesta' §2.8 + troncamento §2.7 ──────────────────────────────────
 
 def test_upload_all_fail_honest_shape(monkeypatch):
     def handler(argv):
-        if argv[:2] == ["photos", "upload"]:
+        if argv[:2] == ["photos", "upload-bytes"]:
             return (None, {"ok": False, "error_class": "server_error", "error": "boom"})
-        raise AssertionError(argv)
+        raise AssertionError(argv)                     # nessun batch se 0 staged
 
     _install_runner(monkeypatch, handler)
     out = gp.upload({"paths": ["/x/a.jpg", "/x/b.jpg"]})
@@ -101,13 +123,17 @@ def test_upload_all_fail_honest_shape(monkeypatch):
     assert out["revertible"] is False
 
 
-def test_upload_partial_fail_ok_count_honest(monkeypatch):
-    seq = iter([({"media_item_id": "M1", "filename": "a"}, None),
+def test_upload_partial_bytes_fail_ok_count_honest(monkeypatch):
+    seq = iter([({"uploadToken": "T1", "fileName": "a"}, None),
                 (None, {"ok": False, "error_class": "server_error", "error": "x"})])
 
     def handler(argv):
-        if argv[:2] == ["photos", "upload"]:
+        if argv[:2] == ["photos", "upload-bytes"]:
             return next(seq)
+        if argv[:2] == ["photos", "batch-create"]:
+            items = json.loads(argv[argv.index("--items") + 1])
+            assert len(items) == 1                     # solo il file staged
+            return _ok_batch(argv)
         raise AssertionError(argv)
 
     _install_runner(monkeypatch, handler)
@@ -116,8 +142,36 @@ def test_upload_partial_fail_ok_count_honest(monkeypatch):
     assert out["ok"] is False                          # un fallimento → ok False
 
 
+def test_upload_batch_item_fail_honest(monkeypatch):
+    """batchCreate 200 ma un item senza mediaItem → quel file e' FALLITO (§2.8)."""
+    def handler(argv):
+        if argv[:2] == ["photos", "upload-bytes"]:
+            n = argv[2][-5]                            # /a.jpg → 'a'
+            return ({"uploadToken": f"T{n}", "fileName": f"{n}.jpg"}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            return ({"results": [
+                {"ok": True, "media_item_id": "M1", "filename": "a.jpg",
+                 "status_message": ""},
+                {"ok": False, "media_item_id": "", "filename": "b.jpg",
+                 "status_message": "quota exceeded"},
+            ]}, None)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/a.jpg", "/b.jpg"]})
+    assert out["ok_count"] == 1 and out["fail_count"] == 1
+    assert "quota exceeded" in (out["failed"][0].get("error") or "")
+
+
 def test_upload_truncation(monkeypatch):
-    _install_runner(monkeypatch, lambda argv: ({"media_item_id": "M", "filename": "x"}, None))
+    def handler(argv):
+        if argv[:2] == ["photos", "upload-bytes"]:
+            return ({"uploadToken": "T", "fileName": "x"}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            return _ok_batch(argv)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
     out = gp.upload({"paths": ["/a", "/b", "/c"], "max_total": 2})
     assert out["ok_count"] == 2
     assert out["truncated"] is True and out["available_total"] == 3

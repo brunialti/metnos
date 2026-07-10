@@ -16,6 +16,7 @@ niente `_undo`, `revertible=false` a livello executor. Il download SI'
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -178,12 +179,12 @@ def upload(args: dict) -> dict:
                 return err
             return {**err, "results": [], "used": 0, "ok_count": 0}
 
-    results, failed = [], []
+    # FASE 1 — bytes per file → uploadToken (fallimento per-file NON ferma gli
+    # altri §2.1; token da usare subito, il batchCreate segue nello stesso invoke).
+    staged, failed = [], []
     for p in selected:
-        argv = ["photos", "upload", str(p)]
-        if album_id:
-            argv.extend(["--album-id", album_id])
-        data, err = _run_photos(argv, executor="write_images_google_photos",
+        data, err = _run_photos(["photos", "upload-bytes", str(p)],
+                                executor="write_images_google_photos",
                                 args_base=dict(args), result_kind="results")
         if err is not None:
             if err.get("decision") == "needs_inputs":
@@ -191,10 +192,49 @@ def upload(args: dict) -> dict:
             failed.append({"path": p, "ok": False, **err})
             continue
         d = data or {}
-        results.append({"ok": True, "path": p,
-                        "media_item_id": d.get("media_item_id", ""),
-                        "filename": d.get("filename", ""),
-                        "album": album_name})
+        token = d.get("uploadToken", "")
+        if not token:
+            failed.append({"path": p, "ok": False, "error_class": "server_error",
+                           "error": _msg("ERR_GPHOTOS_UPLOAD", name=p,
+                                         reason="empty uploadToken")})
+            continue
+        staged.append({"path": p, "uploadToken": token,
+                       "fileName": d.get("fileName") or Path(p).name})
+
+    # FASE 2 — mediaItems:batchCreate a CHUNK di 50 (contratto API, spec
+    # §3.2/§3.3: chunking nel backend, non nel CLI). Esito per-item onesto.
+    results = []
+    for i in range(0, len(staged), 50):
+        chunk = staged[i:i + 50]
+        items = [{"uploadToken": s["uploadToken"], "fileName": s["fileName"]}
+                 for s in chunk]
+        argv = ["photos", "batch-create",
+                "--items", json.dumps(items, ensure_ascii=False)]
+        if album_id:
+            argv.extend(["--album-id", album_id])
+        data, err = _run_photos(argv, executor="write_images_google_photos",
+                                args_base=dict(args), result_kind="results")
+        if err is not None:
+            if err.get("decision") == "needs_inputs":
+                return err
+            failed.extend({"path": s["path"], "ok": False, **err}
+                          for s in chunk)
+            continue
+        rows = (data or {}).get("results") or []
+        for j, s in enumerate(chunk):
+            r = rows[j] if j < len(rows) else {}
+            if r.get("ok"):
+                results.append({"ok": True, "path": s["path"],
+                                "media_item_id": r.get("media_item_id", ""),
+                                "filename": r.get("filename", ""),
+                                "album": album_name})
+            else:
+                failed.append({"path": s["path"], "ok": False,
+                               "error_class": "server_error",
+                               "error": _msg("ERR_GPHOTOS_UPLOAD",
+                                             name=s["path"],
+                                             reason=r.get("status_message")
+                                             or "batchCreate item failed")})
 
     out = {
         "ok": len(failed) == 0 and len(results) > 0,
@@ -206,8 +246,10 @@ def upload(args: dict) -> dict:
         "revertible": False,
     }
     if results:
-        # Riepilogo + nota IRREVERSIBILE appesa UNA volta al primo upload del
-        # turno (spec §3.6): l'upload non e' annullabile da Metnos.
+        # Riepilogo + nota IRREVERSIBILE (spec §3.6): una volta PER STEP di
+        # upload, nel result `message` — mai ripetuta per-file. L'executor e'
+        # stateless (§ sandbox): lo stato-turno non esiste qui; un turno tipico
+        # ha UN solo step di upload, quindi per-step ≡ per-turno.
         out["message"] = (_msg("MSG_GPHOTOS_UPLOADED", n=len(results))
                           + " " + _msg("MSG_GPHOTOS_IRREVERSIBLE"))
     if failed:

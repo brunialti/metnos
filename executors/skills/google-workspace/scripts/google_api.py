@@ -1409,6 +1409,80 @@ def photos_upload(args):
         sys.exit(1)
 
 
+def photos_upload_bytes(args):
+    """SOLA fase bytes: POST /uploads → uploadToken. NON crea il mediaItem —
+    il batchCreate lo fa il BACKEND a chunk di 50 (spec §3.2/§3.3) via
+    `photos batch-create`. Il token scade in 24h: usarlo subito."""
+    import mimetypes
+    local_path = Path(args.path).expanduser()
+    if not local_path.exists():
+        print(f"ERROR: file not found: {local_path}", file=sys.stderr)
+        sys.exit(1)
+    mime = args.mime_type or mimetypes.guess_type(str(local_path))[0] or "application/octet-stream"
+    session = _photos_session()
+    with open(local_path, "rb") as fh:
+        raw = fh.read()
+    up = session.post(
+        f"{_PHOTOS_API_BASE}/uploads",
+        data=raw,
+        headers={
+            "Content-Type": "application/octet-stream",
+            "X-Goog-Upload-Content-Type": mime,
+            "X-Goog-Upload-Protocol": "raw",
+        },
+    )
+    if up.status_code >= 400:
+        _photos_fail("upload-bytes", up)
+    token = up.text.strip()
+    if not token:
+        print("ERROR upload-bytes: empty upload token", file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps({"uploadToken": token, "fileName": local_path.name},
+                     ensure_ascii=False))
+
+
+def photos_batch_create(args):
+    """mediaItems:batchCreate su una LISTA di uploadToken (max 50 = contratto
+    API). `--items` = JSON `[{uploadToken, fileName}, ...]`. Output: results
+    allineati per indice, ok per-item onesto (§2.8)."""
+    try:
+        items = json.loads(args.items)
+    except json.JSONDecodeError as ex:
+        print(f"ERROR batch-create: --items invalid JSON: {ex}", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(items, list) or not items:
+        print("ERROR batch-create: --items must be a non-empty JSON list",
+              file=sys.stderr)
+        sys.exit(1)
+    if len(items) > 50:
+        print("ERROR batch-create: max 50 items per call (API contract)",
+              file=sys.stderr)
+        sys.exit(1)
+    body = {"newMediaItems": [
+        {"simpleMediaItem": {"uploadToken": str(it.get("uploadToken", "")),
+                             "fileName": str(it.get("fileName", ""))}}
+        for it in items
+    ]}
+    if args.album_id:
+        body["albumId"] = args.album_id
+    session = _photos_session()
+    bc = session.post(f"{_PHOTOS_API_BASE}/mediaItems:batchCreate", json=body)
+    if bc.status_code >= 400:
+        _photos_fail("batchCreate", bc)
+    api_results = bc.json().get("newMediaItemResults", [])
+    out = []
+    for i, it in enumerate(items):
+        r = api_results[i] if i < len(api_results) else {}
+        media = r.get("mediaItem", {}) or {}
+        out.append({
+            "ok": bool(media.get("id")),
+            "media_item_id": media.get("id", ""),
+            "filename": media.get("filename") or str(it.get("fileName", "")),
+            "status_message": (r.get("status") or {}).get("message", ""),
+        })
+    print(json.dumps({"results": out}, ensure_ascii=False))
+
+
 def photos_album_create(args):
     """Crea un album app-created. POST /albums → {id, title, productUrl}."""
     session = _photos_session()
@@ -1432,7 +1506,9 @@ def photos_album_list(args):
     albums = []
     page_token = ""
     while True:
-        params = {"pageSize": 50, "excludeNonAppCreatedData": True}
+        # Bool proto3 in query string: "true" MINUSCOLO — requests serializza
+        # il bool Python come "True" e l'API risponde 400 INVALID_ARGUMENT.
+        params = {"pageSize": 50, "excludeNonAppCreatedData": "true"}
         if page_token:
             params["pageToken"] = page_token
         resp = session.get(f"{_PHOTOS_API_BASE}/albums", params=params)
@@ -1455,20 +1531,28 @@ def photos_album_list(args):
 def photos_search(args):
     """Cerca fra i mediaItems app-created (UNA pagina per chiamata; il backend
     itera con --page-token). `--album-id` e `--year` sono MUTUAMENTE ESCLUSIVI
-    per contratto API (albumId non ammette filters): l'album ha precedenza."""
+    per contratto API (albumId non ammette filters): l'album ha precedenza.
+    SENZA filtri usa `mediaItems.list` (GET): contratto esplicito «tutti gli
+    item app-created», niente dipendenza dal comportamento di search-vuota."""
     session = _photos_session()
-    body = {"pageSize": int(args.max)}
-    if args.page_token:
-        body["pageToken"] = args.page_token
-    if args.album_id:
-        body["albumId"] = args.album_id
-    elif args.year:
-        y = int(args.year)
-        body["filters"] = {"dateFilter": {"ranges": [{
-            "startDate": {"year": y, "month": 1, "day": 1},
-            "endDate": {"year": y, "month": 12, "day": 31},
-        }]}}
-    resp = session.post(f"{_PHOTOS_API_BASE}/mediaItems:search", json=body)
+    if args.album_id or args.year:
+        body = {"pageSize": int(args.max)}
+        if args.page_token:
+            body["pageToken"] = args.page_token
+        if args.album_id:
+            body["albumId"] = args.album_id
+        else:
+            y = int(args.year)
+            body["filters"] = {"dateFilter": {"ranges": [{
+                "startDate": {"year": y, "month": 1, "day": 1},
+                "endDate": {"year": y, "month": 12, "day": 31},
+            }]}}
+        resp = session.post(f"{_PHOTOS_API_BASE}/mediaItems:search", json=body)
+    else:
+        params = {"pageSize": int(args.max)}
+        if args.page_token:
+            params["pageToken"] = args.page_token
+        resp = session.get(f"{_PHOTOS_API_BASE}/mediaItems", params=params)
     if resp.status_code >= 400:
         _photos_fail("search", resp)
     data = resp.json()
@@ -1755,6 +1839,17 @@ def main():
     p.add_argument("--album-id", default="", help="Album id to add the item to")
     p.add_argument("--mime-type", default="", help="Override MIME (auto-detected if omitted)")
     p.set_defaults(func=photos_upload)
+
+    p = ph_sub.add_parser("upload-bytes")
+    p.add_argument("path", help="Local file: uploads bytes only, prints uploadToken")
+    p.add_argument("--mime-type", default="", help="Override MIME (auto-detected if omitted)")
+    p.set_defaults(func=photos_upload_bytes)
+
+    p = ph_sub.add_parser("batch-create")
+    p.add_argument("--items", required=True,
+                   help='JSON list [{"uploadToken": ..., "fileName": ...}] (max 50)')
+    p.add_argument("--album-id", default="", help="Album id to add the items to")
+    p.set_defaults(func=photos_batch_create)
 
     p = ph_sub.add_parser("album-create")
     p.add_argument("title", help="Album title")
