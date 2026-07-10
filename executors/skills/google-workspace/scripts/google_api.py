@@ -37,23 +37,11 @@ if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
 
 from _skill_home import get_skill_home
+from _scopes import SCOPES  # SoT unica (guard: test_google_scopes_sot)
 
 METNOS_SKILL_HOME = get_skill_home()
 TOKEN_PATH = METNOS_SKILL_HOME / "google_token.json"
 CLIENT_SECRET_PATH = METNOS_SKILL_HOME / "google_client_secret.json"
-
-SCOPES = [
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-    "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/contacts.readonly",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/documents",
-    "https://www.googleapis.com/auth/photoslibrary.appendonly",
-    "https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata",
-]
 
 
 def _normalize_authorized_user_payload(payload: dict) -> dict:
