@@ -266,6 +266,9 @@ QUALIFIERS = (
     # espliciti della famiglia provider (vedi PROVIDER_SUFFIXES sotto).
     "github",
     "google_workspace",
+    # `google_photos` (spec Google Photos): dominio `images` app-created
+    # (upload/album/find/download). Provider a se', NON un backend di `files`.
+    "google_photos",
 )
 
 # ── Famiglia PROVIDER (asse ortogonale §2.2) ─────────────────────────────
@@ -281,7 +284,7 @@ QUALIFIERS = (
 # di `provider.markers` e vi aggiunge solo i marker NL i18n (i valori). Zero
 # duplicazione: vocab è puro (0 import, radice); il seed importa vocab (direzione
 # sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
-PROVIDER_SUFFIXES = frozenset({"github", "google_workspace"})
+PROVIDER_SUFFIXES = frozenset({"github", "google_workspace", "google_photos"})
 
 # ── Qualifier → Object compatibility map (Naming Authority R4) ────────
 #
@@ -328,6 +331,9 @@ QUALIFIER_OBJECT_COMPAT = {
     # gemello di github. Object ammessi = i domini coperti dalla skill.
     "google_workspace": frozenset({"messages", "events", "calendars", "files",
                                    "contacts", "persons"}),
+    # Provider Google Photos (spec Google Photos): SOLO l'object `images`
+    # (upload/album/find/download del creato-da-app). Non tocca `files`.
+    "google_photos": frozenset({"images"}),
     # Granularita' testo
     "lines": frozenset({"texts", "messages"}),
     "paragraphs": frozenset({"texts", "messages"}),

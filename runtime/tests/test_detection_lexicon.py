@@ -125,7 +125,9 @@ _ORIGINAL_MAPPING_UNION = {
         "_google_workspace": {"google", "drive", "gmail", "gdrive",
                               "workspace", "calendar google", "g suite"},
         "_github": {"github", "pr", "issue", "issues", "repo", "repository",
-                    "commit", "branch", "workflow", "gist", "fork", "merge"}},
+                    "commit", "branch", "workflow", "gist", "fork", "merge"},
+        "_google_photos": {"google photos", "google foto", "google photo",
+                           "foto google", "gphotos"}},
 }
 
 

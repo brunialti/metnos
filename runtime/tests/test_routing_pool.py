@@ -160,10 +160,20 @@ def test_incomplete_intent_full_catalog(catalog):
     # inserito da dispatch + FIX 1 gate-resume), escluso dal pool del proposer
     # salvo richiesta ESPLICITA (intent con clausola (get, approval)) — vedi
     # _gate_approval_tool. Con intent vuoto resta filtrato, come _gate_store_skill.
+    # I tool provider-suffissati (ADR 0136: _github/_google_workspace/
+    # _google_photos) sono gateati fuori quando la query NON contiene il loro
+    # marker (`provider_gate_names`): "query senza intent" non ha marker → escono
+    # (context-binding, non scelta LLM). Come get_approval, restano fuori.
+    from vocab import PROVIDER_SUFFIXES
+
+    def _is_provider(n):
+        return any(n.endswith("_" + p) for p in PROVIDER_SUFFIXES)
+
     pool = _build("query senza intent", _intent(), catalog)
     assert pool == [getattr(e, "name", None) for e in catalog
                     if getattr(e, "name", None)
-                    and getattr(e, "name", None) != "get_approval"]
+                    and getattr(e, "name", None) != "get_approval"
+                    and not _is_provider(getattr(e, "name", None))]
 
 
 # ── Purezza: il catalog NON viene mutato ───────────────────────────────

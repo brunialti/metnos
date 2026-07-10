@@ -40,6 +40,10 @@ _PROVIDER_MARKERS_EN = {
                "commit", "branch", "workflow", "gist", "fork", "merge"],
     "google_workspace": ["google", "drive", "gmail", "gdrive", "workspace",
                          "calendar google", "g suite"],
+    # SOLO brand: MAI "photos"/"foto" nudo — parola comune che dirotterebbe le
+    # query foto LOCALI (§7.3). Ogni marker contiene "google" o "gphotos".
+    "google_photos": ["google photos", "google foto", "google photo",
+                      "foto google", "gphotos"],
 }
 
 
