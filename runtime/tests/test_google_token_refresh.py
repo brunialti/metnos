@@ -1,4 +1,5 @@
-"""Fallback di refresh OAuth google (`google_workspace._ensure_fresh_token`).
+"""Fallback di refresh OAuth google (`_google_auth_common.ensure_fresh_token`,
+esposto anche come `google_workspace._ensure_fresh_token`).
 
 Resilienza: l'access token google scade ~1h. Il fallback rinnova in automatico
 un token scaduto (refresh_token) e lo risalva; su fallimento (rete/revoca) torna
@@ -18,6 +19,7 @@ if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 
 from backends.files import google_workspace as gw
+from backends import _google_auth_common as gac
 
 
 class _FakeCreds:
@@ -44,7 +46,7 @@ class _FakeCreds:
 def tokdir(tmp_path, monkeypatch):
     d = tmp_path / "gw"
     d.mkdir()
-    monkeypatch.setattr(gw, "_skill_home", lambda name: d)
+    monkeypatch.setattr(gac, "_skill_home", lambda name: d)
     return d
 
 
