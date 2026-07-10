@@ -17,8 +17,8 @@ critical         = true
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: carica foto locali su Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: per Google Drive usa write_files_google_workspace; upload NON annullabile (l'API non cancella foto). OUT: results=[{path,media_item_id,album}]."
-en = "SCOPO: uploads local photos to Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: for Google Drive use write_files_google_workspace; upload NOT undoable (API cannot delete photos). OUT: results=[{path,media_item_id,album}]."
+it = "SCOPO: carica foto locali su Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: per Google Drive usa write_files; upload NON annullabile (l'API non cancella foto). OUT: results=[{path,media_item_id,album}]."
+en = "SCOPO: uploads local photos to Google Photos. PATTERN: write_images_google_photos(paths=['/a.jpg'], album='Vacanze'). NON: for Google Drive use write_files; upload NOT undoable (API cannot delete photos). OUT: results=[{path,media_item_id,album}]."
 
 [code]
 files  = ["write_images_google_photos.py"]

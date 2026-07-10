@@ -17,8 +17,8 @@ reverse_pattern  = "delete_created_paths"
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: scarica foto per id da Google Photos nel workspace foto. PATTERN: get_images_google_photos(ids=['AB...']); ids di norma via from_step da find_images_google_photos. NON: da Google Drive usa read_files_google_workspace. OUT: results=[{id,local_path,bytes}]."
-en = "SCOPO: downloads photos by id from Google Photos into the photo workspace. PATTERN: get_images_google_photos(ids=['AB...']); ids via from_step from find_images_google_photos. NON: for Google Drive use read_files_google_workspace. OUT: results=[{id,local_path,bytes}]."
+it = "SCOPO: scarica foto per id da Google Photos nel workspace foto. PATTERN: get_images_google_photos(ids=['AB...']); ids di norma via from_step da find_images_google_photos. NON: da Google Drive usa read_files. OUT: results=[{id,local_path,bytes}]."
+en = "SCOPO: downloads photos by id from Google Photos into the photo workspace. PATTERN: get_images_google_photos(ids=['AB...']); ids via from_step from find_images_google_photos. NON: for Google Drive use read_files. OUT: results=[{id,local_path,bytes}]."
 
 [code]
 files  = ["get_images_google_photos.py"]
