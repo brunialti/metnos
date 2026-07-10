@@ -86,7 +86,9 @@ def _plan_tools(framework) -> list[str]:
 # cambiare la scelta-tool o il terminale di un piano già-cachabile.
 # 2026-07-10.1: provider google_photos (marker+gate), pin-server skill-backed,
 # demotion meta-oggetto `entries` nell'intent — tutti cambiano la scelta-tool.
-ROUTING_EPOCH = "2026-07-10.1"
+# 2026-07-10.2: magic `@note` nei terminali G/S/L (presentazione: la voce
+# `message` dell'executor si appende al final deterministico).
+ROUTING_EPOCH = "2026-07-10.2"
 
 
 def tools_sig(framework, catalog) -> str:

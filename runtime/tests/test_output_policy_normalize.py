@@ -198,6 +198,65 @@ class TestNormalizeNoop(unittest.TestCase):
         self.assertEqual(info["action"], "noop")
 
 
+class TestTableAppendsExecutorMessage(unittest.TestCase):
+    """@table appende SEMPRE la voce onesta `message` dell'executor (§2.8).
+
+    Turn e2b0e529: «0 album» su Google Photos senza dichiarare che l'API vede
+    SOLO l'app-created (né album posseduti né condivisi) — il render L-mode
+    sostituisce la prosa LLM, quindi il perimetro deve viaggiare nel result."""
+
+    def test_table_with_entries_appends_message(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_images_google_photos", args={},
+                        result={"ok": True,
+                                "entries": [{"title": "T", "id": "A"}],
+                                "message": "Nota: solo app-created."},
+                        ok=True, latency_ms=1)]
+        out = _render_final_message("${step1.@table}", hist)
+        self.assertIn("title", out.split("Nota:")[0])        # tabella prima
+        self.assertTrue(out.rstrip().endswith("Nota: solo app-created."))
+
+    def test_table_zero_entries_appends_message(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_images_google_photos", args={},
+                        result={"ok": True, "entries": [], "used": 0,
+                                "message": "Nota: solo app-created."},
+                        ok=True, latency_ms=1)]
+        out = _render_final_message("${step1.@table}", hist)
+        self.assertTrue(out.startswith("0"))                 # conteggio onesto
+        self.assertIn("Nota: solo app-created.", out)
+
+    def test_table_without_message_unchanged(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_files", args={},
+                        result={"ok": True, "entries": [], "used": 0},
+                        ok=True, latency_ms=1)]
+        self.assertEqual(_render_final_message("${step1.@table}", hist), "0")
+
+    def test_note_magic_renders_message_or_empty(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_images_google_photos", args={},
+                        result={"ok": True, "entries": [],
+                                "message": "Nota perimetro."},
+                        ok=True, latency_ms=1)]
+        self.assertEqual(_render_final_message("H${step1.@note}", hist),
+                         "H\n\nNota perimetro.")
+        hist[0].result.pop("message")
+        self.assertEqual(_render_final_message("H${step1.@note}", hist), "H")
+
+    def test_gallery_header_carries_note_template(self):
+        # G-mode (il modo REALE del turn e2b0e529: header gallery, non @table):
+        # il final deve portare il template @note accanto a @shown.
+        fw = _fw([("find_images_google_photos", {"albums": True}),
+                  ("final_answer", {})], final="${step1.summary}")
+        out, info = normalize_terminal(
+            fw, Intent(verb="find", object="images"),
+            "quali sono gli album che ho su google foto")
+        if info["mode"] == G:                       # matrice: enumerate images
+            self.assertIn("@shown", out.final_message)
+            self.assertIn("@note", out.final_message)
+
+
 class TestShownMagic(unittest.TestCase):
     def test_shown_usa_used_non_available_total(self):
         from engine.executor import _render_final_message

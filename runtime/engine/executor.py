@@ -980,12 +980,24 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                 return str(v)
             lst = _find_list_of_dicts(result)
             return str(len(lst)) if lst else "0"
+        if path == "@note":
+            # Voce ONESTA dell'executor (`message`, i18n) come coda opzionale:
+            # i final deterministici (G header, L table, S count) sostituiscono
+            # la prosa LLM e senza questo canale una dichiarazione di perimetro/
+            # limite §2.8 non arrivava all'utente (turn e2b0e529: «0 album»
+            # senza dire che l'API Google vede SOLO l'app-created — Roberto:
+            # «vede quelli condivisi?»). Assente → stringa vuota, zero rumore.
+            v = result.get("message")
+            return ("\n\n" + v.strip()
+                    if isinstance(v, str) and v.strip() else "")
         if path == "@table":
-            # L-mode (output_policy): entries → tabella markdown deterministica.
+            # L-mode (output_policy): entries → tabella markdown deterministica
+            # + la nota @note in coda.
+            _note = _sub_one(result, "@note")
             entries = result.get("entries")
             if isinstance(entries, list) and entries:
-                return _entries_table(entries)
-            return _sub_one(result, "@count")   # 0 entries → conteggio onesto
+                return _entries_table(entries) + _note
+            return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
         # Se path richiesto è "summary" e None, auto-render entries list (§7.9)

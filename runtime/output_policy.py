@@ -298,7 +298,10 @@ def normalize_terminal(framework, intent, query: str = ""):
         from messages import get as _msg
         k = mapping[ppos]
         if mode == G:
-            final = _msg("MSG_GALLERY_HEADER", count=f"${{step{k}.@shown}}")
+            # `@note` = voce onesta dell'executor (perimetro/limite §2.8, es.
+            # Google Photos app-created-only): assente → vuoto, zero rumore.
+            final = (_msg("MSG_GALLERY_HEADER", count=f"${{step{k}.@shown}}")
+                     + f"${{step{k}.@note}}")
             info["action"] = "drop_describe+final" if drop else "final_only"
         elif mode == L:
             # Lista/tabella deterministica (matrice §3): la tabella dell'ultimo
@@ -313,7 +316,8 @@ def normalize_terminal(framework, intent, query: str = ""):
                 final = _remap_value(base_fm, mapping)
                 info["action"] = "drop_describe" if drop else "noop"
             else:
-                final = _msg("MSG_COUNT_TOTAL", count=f"${{step{k}.@count}}")
+                final = (_msg("MSG_COUNT_TOTAL", count=f"${{step{k}.@count}}")
+                         + f"${{step{k}.@note}}")
                 info["action"] = "drop_describe+final" if drop else "final_only"
         if info["action"] == "noop":
             # Niente da droppare e conteggio già esposto: framework invariato.
