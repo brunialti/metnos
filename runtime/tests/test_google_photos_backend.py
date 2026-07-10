@@ -1,0 +1,204 @@
+"""Unit del backend Google Photos (`backends/images/google_photos.py`).
+
+Deterministici, NIENTE rete: `run_with_retry` e `_ensure_fresh_token` mockati
+(spec Google Photos §3.7). Copre: risoluzione album per nome (+ create se
+manca), vettorialita' per-file, shape §2.8 su errore, nota IRREVERSIBILE nel
+message, find→entries, albums-flag, album inesistente onesto, download→_undo,
+troncamento §2.7, propagazione needs_inputs.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+_RUNTIME = str(Path(__file__).resolve().parent.parent)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
+
+from backends.images import google_photos as gp
+
+
+@pytest.fixture(autouse=True)
+def _token_ok(monkeypatch):
+    # Token sempre fresco: isola la logica dal refresh OAuth (rete).
+    monkeypatch.setattr(gp, "_ensure_fresh_token", lambda: True)
+
+
+def _install_runner(monkeypatch, handler):
+    """Sostituisce `run_with_retry` con `handler(argv) -> (data, err)`."""
+    monkeypatch.setattr(gp, "run_with_retry", lambda argv, **kw: handler(argv))
+
+
+# ── upload: risoluzione album ────────────────────────────────────────────────
+
+def test_upload_resolves_existing_album(monkeypatch):
+    calls = []
+
+    def handler(argv):
+        calls.append(argv)
+        if argv[:2] == ["photos", "album-list"]:
+            return ([{"id": "ALB1", "title": "Vacanze", "items_count": 2, "url": ""}], None)
+        if argv[:2] == ["photos", "upload"]:
+            return ({"media_item_id": "M1", "filename": "a.jpg", "status": "uploaded"}, None)
+        raise AssertionError(f"argv inatteso: {argv}")
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/x/a.jpg"], "album": "Vacanze"})
+    assert out["ok"] is True and out["ok_count"] == 1
+    up = [c for c in calls if c[:2] == ["photos", "upload"]][0]
+    assert "ALB1" in up                               # usa l'id risolto
+    assert not any(c[:2] == ["photos", "album-create"] for c in calls)  # non ri-crea
+    # nota IRREVERSIBILE appesa (§3.6)
+    assert "annullabile" in out["message"] or "undoable" in out["message"]
+
+
+def test_upload_creates_missing_album(monkeypatch):
+    def handler(argv):
+        if argv[:2] == ["photos", "album-list"]:
+            return ([], None)                          # nessun album
+        if argv[:2] == ["photos", "album-create"]:
+            return ({"id": "NEW", "title": argv[2]}, None)
+        if argv[:2] == ["photos", "upload"]:
+            assert "NEW" in argv                       # upload nell'album creato
+            return ({"media_item_id": "M", "filename": "a.jpg"}, None)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/x/a.jpg"], "album": "Nuovo"})
+    assert out["ok"] and out["results"][0]["album"] == "Nuovo"
+
+
+def test_upload_vectorial_per_file(monkeypatch):
+    n_upload = {"c": 0}
+
+    def handler(argv):
+        if argv[:2] == ["photos", "upload"]:
+            n_upload["c"] += 1
+            return ({"media_item_id": f"M{n_upload['c']}", "filename": "x"}, None)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/a.jpg", "/b.jpg", "/c.jpg"]})
+    assert out["ok_count"] == 3 and n_upload["c"] == 3
+
+
+# ── upload: onesta' §2.8 + troncamento §2.7 ──────────────────────────────────
+
+def test_upload_all_fail_honest_shape(monkeypatch):
+    def handler(argv):
+        if argv[:2] == ["photos", "upload"]:
+            return (None, {"ok": False, "error_class": "server_error", "error": "boom"})
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/x/a.jpg", "/x/b.jpg"]})
+    assert out["ok"] is False
+    assert out["ok_count"] == 0 and out["fail_count"] == 2
+    assert isinstance(out["results"], list)            # §2.6 sempre lista
+    assert out["error_class"] == "server_error" and out["error"]
+    assert out["revertible"] is False
+
+
+def test_upload_partial_fail_ok_count_honest(monkeypatch):
+    seq = iter([({"media_item_id": "M1", "filename": "a"}, None),
+                (None, {"ok": False, "error_class": "server_error", "error": "x"})])
+
+    def handler(argv):
+        if argv[:2] == ["photos", "upload"]:
+            return next(seq)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": ["/a.jpg", "/b.jpg"]})
+    assert out["ok_count"] == 1 and out["fail_count"] == 1
+    assert out["ok"] is False                          # un fallimento → ok False
+
+
+def test_upload_truncation(monkeypatch):
+    _install_runner(monkeypatch, lambda argv: ({"media_item_id": "M", "filename": "x"}, None))
+    out = gp.upload({"paths": ["/a", "/b", "/c"], "max_total": 2})
+    assert out["ok_count"] == 2
+    assert out["truncated"] is True and out["available_total"] == 3
+    assert out["cap_field"] == "max_total" and out["cap_value"] == 2
+
+
+# ── find ─────────────────────────────────────────────────────────────────────
+
+def test_find_maps_entries(monkeypatch):
+    def handler(argv):
+        assert argv[:2] == ["photos", "search"]
+        return ({"items": [{"id": "P1", "filename": "p.jpg", "mime": "image/jpeg",
+                            "created_at": "2026-01-01T00:00:00Z",
+                            "width": 10, "height": 20}],
+                 "nextPageToken": ""}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.find({"year": 2026})
+    assert out["ok"] and out["used"] == 1
+    assert out["entries"][0]["id"] == "P1"
+
+
+def test_find_albums_flag_lists_albums(monkeypatch):
+    def handler(argv):
+        assert argv[:2] == ["photos", "album-list"]
+        return ([{"id": "A", "title": "T", "items_count": 5, "url": "u"}], None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.find({"albums": True})
+    assert out["ok"] and out["entries"][0]["title"] == "T"
+    assert out.get("albums_app_created_only") is True
+
+
+def test_find_album_not_found_empty_honest(monkeypatch):
+    def handler(argv):
+        if argv[:2] == ["photos", "album-list"]:
+            return ([{"id": "A", "title": "Altro", "items_count": 1, "url": ""}], None)
+        raise AssertionError(argv)                     # niente search se album non risolve
+
+    _install_runner(monkeypatch, handler)
+    out = gp.find({"album": "Inesistente"})
+    assert out["ok"] is True and out["entries"] == [] and out["used"] == 0
+
+
+# ── download ─────────────────────────────────────────────────────────────────
+
+def test_download_maps_results_and_undo(monkeypatch, tmp_path):
+    def handler(argv):
+        assert argv[:2] == ["photos", "download"]
+        return ({"path": str(tmp_path / "a.jpg"), "filename": "a.jpg", "bytes": 100}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.download({"ids": ["M1"], "dst_dir": str(tmp_path)})
+    assert out["ok"] and out["ok_count"] == 1
+    assert out["results"][0]["local_path"].endswith("a.jpg")
+    assert out["_undo"]["reverse_pattern"] == "delete_created_paths"
+    assert out["_undo"]["paths"] == [str(tmp_path / "a.jpg")]
+
+
+def test_download_from_entries_piping(monkeypatch, tmp_path):
+    def handler(argv):
+        return ({"path": str(tmp_path / f"{argv[2]}.jpg"), "filename": "x", "bytes": 1}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.download({"entries": [{"id": "E1"}, {"id": "E2"}], "dst_dir": str(tmp_path)})
+    assert out["ok_count"] == 2
+
+
+# ── errori d'arg (senza rete) + needs_inputs ─────────────────────────────────
+
+def test_upload_missing_paths_invalid_args():
+    out = gp.upload({"album": "x"})
+    assert out["ok"] is False and out["error_class"] == "invalid_args"
+
+
+def test_download_missing_ids_invalid_args():
+    out = gp.download({})
+    assert out["ok"] is False and out["error_class"] == "invalid_args"
+
+
+def test_upload_needs_inputs_propagates(monkeypatch):
+    monkeypatch.setattr(gp, "_ensure_fresh_token", lambda: False)
+    out = gp.upload({"paths": ["/x/a.jpg"]})
+    assert out.get("decision") == "needs_inputs"
