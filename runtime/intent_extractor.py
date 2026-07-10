@@ -58,6 +58,36 @@ _INTENT_MAX_TOKENS = 320
 # `undo.intent_bypass`); vedi detection_lexicon_seed.
 
 
+# Verbi per cui `entries` è un intent-object LEGITTIMO: i soli transformer che
+# consumano l'output in-memory dello step precedente (esiste il tool universale
+# `<verb>_entries`). Derivato dalla SoT `tool_grammar._UNIVERSAL_HELPERS` —
+# niente lista a mano (§7.3). Per ogni ALTRO verbo (produttori/mutanti)
+# `entries` da una query utente è un leak del meta-vocabolario nel
+# classificatore: nulla esiste ancora in memoria da enumerare.
+def _entries_intent_verbs() -> frozenset:
+    try:
+        from tool_grammar import _UNIVERSAL_HELPERS
+        return frozenset(n.rsplit("_", 1)[0] for n in _UNIVERSAL_HELPERS
+                         if n.endswith("_entries"))
+    except Exception:  # noqa: BLE001 — fallback = la stessa famiglia, statica
+        return frozenset({"describe", "filter", "sort", "classify",
+                          "extract", "compute"})
+
+
+_ENTRIES_INTENT_VERBS = _entries_intent_verbs()
+
+
+def _demote_meta_object(verb, obj):
+    """`entries` come oggetto d'intent vale SOLO coi verbi-transformer
+    (`_ENTRIES_INTENT_VERBS`); altrimenti → None e il routing ranka da
+    keywords/affinity. Visto live 10/7 (turn 6eb54e06): «quali sono gli album
+    che ho su google foto» → object=entries conf=1.00 → `align_objects`
+    riscriveva il piano su `find_entries` AZZERANDO gli args → invalid_args."""
+    if obj == "entries" and verb not in _ENTRIES_INTENT_VERBS:
+        return None
+    return obj
+
+
 def extract_intent(query: str, llm_call) -> Optional[dict]:
     """Estrae verb+object dalla richiesta. Ritorna None se LLM o parsing fallisce.
 
@@ -194,6 +224,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
             v = None
         if o not in VOCAB_OBJECTS:
             o = None
+        o = _demote_meta_object(v, o)
         # Routability §7.9 (24/6): se `verb_obj` non ha executor reale, rimappa
         # l'object — carrier §2.2 (images/texts→files) o oggetto reale dal TESTO
         # del segmento (pdf→files, cartella→dirs). Verità = presenza on-disk, non
@@ -256,6 +287,7 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         verb = None
     if obj not in VOCAB_OBJECTS:
         obj = None
+    obj = _demote_meta_object(verb, obj)
     # Scaffold: l'intent PRIMARIO (verb/obj) viene dalla 1ª clausola riconciliata
     # (parsed potrebbe essere {clauses:...} senza verb/object top-level).
     if _scaffold and actions and not verb and not obj:

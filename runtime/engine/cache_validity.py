@@ -84,7 +84,9 @@ def _plan_tools(framework) -> list[str]:
 #
 # CONVENZIONE: incrementa a OGNI cambio di logica routing/presentazione che può
 # cambiare la scelta-tool o il terminale di un piano già-cachabile.
-ROUTING_EPOCH = "2026-07-09.2"
+# 2026-07-10.1: provider google_photos (marker+gate), pin-server skill-backed,
+# demotion meta-oggetto `entries` nell'intent — tutti cambiano la scelta-tool.
+ROUTING_EPOCH = "2026-07-10.1"
 
 
 def tools_sig(framework, catalog) -> str:
