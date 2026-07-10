@@ -502,6 +502,10 @@ def picker(args: dict) -> dict:
             out["error_class"] = failed[0]["error_class"]
             out["error"] = failed[0]["error"]
     if results:
+        # Il DOVE dichiarato all'utente (richiesta Roberto 10/7: «operazione
+        # completata» non diceva il path): conteggio + cartella completa.
+        out["message"] = _msg("MSG_GPHOTOS_DOWNLOADED", n=len(results),
+                              dir=str(Path(dst_dir).expanduser()))
         out["_undo"] = {
             "reverse_pattern": "delete_created_paths",
             "paths": [r["local_path"] for r in results if r.get("local_path")],
@@ -562,6 +566,9 @@ def download(args: dict) -> dict:
             out["error_class"] = failed[0].get("error_class") or "server_error"
             out["error"] = failed[0].get("error") or _msg("ERR_OP_FAILED", reason="download failed")
     if results:
+        # DOVE (§2.8/UX): conteggio + cartella completa nel result message.
+        out["message"] = _msg("MSG_GPHOTOS_DOWNLOADED", n=len(results),
+                              dir=str(Path(dst_dir).expanduser()))
         out["_undo"] = {
             "reverse_pattern": "delete_created_paths",
             "paths": [r["local_path"] for r in results if r.get("local_path")],
