@@ -1,6 +1,6 @@
 # SPEC — Integrazione Google Photos (upload, archivio, statistiche, UI)
 
-> **Stato**: PROPOSTA (10/7/2026) — attende ratifica D2/D8 da Roberto, il resto è implementabile as-is.
+> **Stato**: RATIFICATA (10/7/2026) — D2 ✓ (album come argomento), D8 ✓ (P3 Picker approvato, dopo P1). P2 RIMANDATO su decisione Roberto (resta l'unico canale per album-interi e statistiche di libreria).
 > **Autore**: agente (analisi richiesta da Roberto). **Implementatore previsto**: LLM (Opus) — le istruzioni sono prescrittive e non ambigue; dove serve una scelta, è una Decisione numerata già presa o marcata «RATIFICA».
 > **Obiettivi utente** (Roberto): (a) caricare foto/album su Google Photos; (b) scaricare foto; (c) numero foto e occupazione memoria; (d) ricerca per anno; (e) visualizzazione in UI.
 
@@ -20,13 +20,13 @@ Conseguenze non negoziabili:
 ## 1. Decisioni architetturali
 
 - **D1 — Tre fasi indipendenti**: P1 upload/album (Library API), P2 archivio completo (Takeout→Drive→indice locale), P3 prelievi puntuali (Picker API, opzionale). P1 e P2 non condividono codice oltre l'auth; ognuna è shippabile da sola.
-- **D2 — RATIFICA Roberto — niente oggetto `albums` nel vocab**: gli album si gestiscono come **argomento** (`album: str`) degli executor `*_images_google_photos`. Razionale: la governance §2.2 richiede escalation per nuovi token; l'alternativa (object `albums`) aggiunge un oggetto per un solo provider. Se Roberto preferisce `albums`, la spec cambia solo i nomi in §3.3.
+- **D2 — RATIFICATA ✓ — niente oggetto `albums` nel vocab**: gli album si gestiscono come **argomento** (`album: str`) degli executor `*_images_google_photos`. Razionale: la governance §2.2 richiede escalation per nuovi token; l'alternativa (object `albums`) aggiunge un oggetto per un solo provider. Se Roberto preferisce `albums`, la spec cambia solo i nomi in §3.3.
 - **D3 — Naming provider-suffisso** (pattern ADR 0141 `_github`, ADR 0136): executor `write_images_google_photos`, `find_images_google_photos`, `get_images_google_photos`. NON client-arg: Photos non è un backend alternativo di operazioni esistenti (regola client-arg vale per `files/events/contacts/dirs` multi-provider), è un dominio con semantica propria.
 - **D4 — Auth riusa la skill `google-workspace`**: stesso client secret, stesso token file, scope aggiunti alla lista esistente (re-consent una tantum). NIENTE skill nuova.
 - **D5 — L'archivio "verità" per statistiche/anno/UI è l'INDICE LOCALE** costruito sull'export Takeout (pipeline immagini esistente: `create_images_indices` → `find_images_indices`). `find_images_indices` espone GIÀ `metadata.total_count` e `metadata.total_size_gb` e `time_window="YYYY"` → gli obiettivi (c)(d)(e) sono soddisfatti dall'esistente una volta importato l'export.
 - **D6 — `extract_files` va creato** (oggi NON esiste, è solo referenziato dal vocab §2.2/§2.3): è il pezzo mancante generale (non Photos-specifico) e serve al ramo Takeout. Executor core handcrafted, simmetrico a `compress_files`.
 - **D7 — Quota account: DIFFERITA**. Il breakdown solo-Photos non è esposto dall'API; l'occupazione della libreria arriva ESATTA dall'export Takeout (D5). La quota totale account (`drive about` → `storageQuota`) si aggiunge eventualmente dopo, fuori da questa spec.
-- **D8 — RATIFICA Roberto — P3 (Picker) sì/no**: costo medio (sessioni+polling+dialog); valore = prelievi puntuali senza attendere il Takeout. Implementare solo dopo P1+P2 validate.
+- **D8 — RATIFICATA ✓ — P3 (Picker) SI**, subito dopo P1 (P2 rimandato). Razionale Roberto: nel Picker si può entrare in un album e selezionare in blocco → prelievo album quasi-1-click. NOTA onesta: l'unità di selezione API è la FOTO (mai l'album come entità); la selezione-in-blocco dipende dall'UI Google (multi-selezione presente; un eventuale «select all» non è garantito da contratto). Cancellazioni via API: IMPOSSIBILI sempre (solo rimozione di foto app-created da album app-created via batchRemoveMediaItems; la libreria non si tocca).
 
 ## 2. Prerequisiti manuali (Roberto, una tantum)
 
@@ -162,11 +162,11 @@ Design minimo (implementare solo su ratifica): scope `photospicker.mediaitems.re
 - **Non-goals**: sync bidirezionale; delete su Photos (API non lo consente); breakdown quota per-prodotto (API non lo espone); lettura full-library via Library API (policy).
 - **Rischi**: (1) baseUrl 60 min → mai persistere baseUrl, download immediato; (2) rate limit Library API (10k req/day default) → i cap `max_total/max_results` sono il freno; (3) Takeout `.tgz` multi-volume grandi → `extract_files` è vettoriale e il task è idempotente (re-run sicuro: l'indice `create_images_indices` senza `force` salta gli invariati); (4) upload non annullabile → nota utente obbligatoria (§3.6) + `critical=true`.
 
-## 7. Ordine di implementazione (per l'LLM implementatore)
+## 7. Ordine di implementazione (AGGIORNATO post-ratifiche 10/7)
 
-1. P2.§4.1 `extract_files` (autonomo, testabile subito, colma un buco del vocab).
-2. P1 §3.1→3.7 in sequenza (scope → CLI → backend → executor → routing → i18n → test).
-3. P2 §4.2 task + convergenza sul turno canonico.
-4. Validazione con Roberto (upload reale + primo Takeout) → poi decidere D8 (P3).
+1. **P1** §3.1→3.7 in sequenza (scope → CLI → backend → executor → routing → i18n → test).
+2. **P3 Picker** (D8 ✓): dettagliare §5 a valle di P1 e implementare.
+3. **P2** (rimandato, su richiesta Roberto): prima `extract_files` §4.1, poi task §4.2.
+4. Validazione con Roberto a ogni fase (upload reale; picker reale; Takeout).
 
 Ogni passo: suite (`METNOS_ENGINE=v3 pytest runtime/tests/ -q`) + ≥1 turno reale `/agent/turn` sul dominio toccato (§8.5) + re-sign degli executor toccati (§7.10) + restart servizio (§8.6: mai durante un turno attivo).
