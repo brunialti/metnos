@@ -37,7 +37,8 @@ from vocab import ACTIONS, DESTRUCTIVE_VERBS, ACTION_MAPPING  # noqa: E402
 def test_share_verb_in_actions():
     """ACTIONS ha share come 23° verbo (post-ADR 0128)."""
     assert "share" in ACTIONS
-    assert len(ACTIONS) == 23
+    # 23 → 26: +open/login/act (dominio sites, RATIFICATO D-A 10/7/2026).
+    assert len(ACTIONS) == 26
 
 
 def test_share_in_destructive_verbs():

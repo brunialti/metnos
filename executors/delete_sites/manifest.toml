@@ -1,0 +1,69 @@
+# Manifest executor `delete_sites` — dominio sites §9 (kill-switch / revoca).
+manifest_format = "1.0"
+
+name        = "delete_sites"
+version     = "0.1.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "chiudi la sessione", "revoca le sessioni web", "chiudi il sito",
+    "close session", "revoke my web sessions", "log out", "esci dal sito",
+    "termina la sessione", "chiudi tutte le sessioni",
+]
+
+[description]
+it = "SCOPO: chiude/revoca sessioni web aperte; kill-switch con all=true («revoca tutte le mie sessioni»). PATTERN: delete_sites(session_ids=[...]) oppure delete_sites(all=true). NON: delete_files (dati su disco); qui si distrugge solo la SESSIONE browser (non reversibile). OUT: results=[{session_id,closed}]."
+en = "SCOPO: closes/revokes open web sessions; kill-switch with all=true (\"revoke all my web sessions\"). PATTERN: delete_sites(session_ids=[...]) or delete_sites(all=true). NON: delete_files (on-disk data); here only the browser SESSION is destroyed (not reversible). OUT: results=[{session_id,closed}]."
+
+[code]
+files  = ["delete_sites.py"]
+digest = "sha256:433a774234a0a0ff5bd13184b9f5b6f934780500879904fa3278630769c7132d"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+
+[args.properties.session_ids.description]
+it = "Lista di session_id da chiudere (da from_step o esplicita). Dominio CHIUSO: match esatto."
+en = "List of session_ids to close (from from_step or explicit). CLOSED domain: exact match."
+
+[args.properties.all]
+type = "boolean"
+default = false
+
+[args.properties.all.description]
+it = "Se true, chiude TUTTE le sessioni web dell'utente (kill-switch/revoca). Ignora session_ids."
+en = "If true, closes ALL of the user's web sessions (kill-switch/revoke). Ignores session_ids."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  results: Array<{session_id: str, closed: bool}>,
+  metadata: {closed: int, total?: int, kill_switch?: bool},
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[tests]]
+name   = "manca_target"
+input  = {}
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name   = "all_true_ok_senza_sessioni"
+input  = { all = true }
+expect = { ok = true }
+
+[placement]
+scope     = "any"
+device_ok = false

@@ -53,7 +53,18 @@ log = logging.getLogger(__name__)
 # serve-time quando serve). Set CHIUSO (§2.2): estendere solo per la
 # stessa classe di motivi (semantica dipendente dal contesto del turno).
 NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs",
-                                 "get_approval"})
+                                 "get_approval",
+                                 # spec sites §4.5 FIX I / §7: il dominio `sites`
+                                 # è ESCLUSO dall'arg-caching L0/L1. Il session_id
+                                 # è per-turno e non riusabile (dangling + riuso
+                                 # cross-utente di sessione autenticata = bug di
+                                 # correttezza E sicurezza); il taint tainted-turn
+                                 # va ricostruito DETERMINISTICAMENTE a ogni
+                                 # esecuzione, mai dedotto dal cache-path. Lo
+                                 # scheletro L1 deve riaprire sessione fresca e
+                                 # ri-fare login.
+                                 "open_sites", "login_sites", "read_sites",
+                                 "delete_sites", "act_sites"})
 
 # Literal temporale ASSOLUTO negli args del piano (ISO date/datetime, es.
 # since_iso="2026-06-11", start="2026-06-15T10:00"): il replay in un giorno

@@ -204,6 +204,71 @@ async def handle_render(request: web.Request) -> web.Response:
                 logger.debug("context.close failed: %s", e)
 
 
+# ── Session-broker endpoints (spec sites §3.1) ─────────────────────────────
+# Thin HTTP wrapper attorno a `session_broker`. Tutta la logica di sicurezza
+# (registry, TTL, route-guard, iniezione credenziali, redazione) vive nel
+# broker; qui si fa solo parse-body → op → json_response.
+
+async def _broker_call(request, opname):
+    if _browser is None:
+        return web.json_response(
+            {"ok": False, "error": "browser not initialized",
+             "error_class": "unknown"}, status=503)
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as e:
+        return web.json_response(
+            {"ok": False, "error": f"invalid json body: {e}",
+             "error_class": "invalid_args"}, status=400)
+    try:
+        from playwright_sidecar import session_broker
+    except Exception as e:  # noqa: BLE001
+        return web.json_response(
+            {"ok": False, "error": f"session_broker unavailable: {e}",
+             "error_class": "unknown"}, status=503)
+    res = await opname(session_broker, body)
+    return web.json_response(res)
+
+
+async def handle_session_open(request):
+    async def _op(sb, b):
+        return await sb.op_open(
+            owner=b.get("owner", "host"), url=b.get("url", ""),
+            allowlist_arg=b.get("allowlist"), session_label=b.get("session_label", ""))
+    return await _broker_call(request, _op)
+
+
+async def handle_session_read(request):
+    async def _op(sb, b):
+        return await sb.op_read(
+            session_id=b.get("session_id", ""),
+            include_screenshot=bool(b.get("include_screenshot", True)),
+            include_forms=bool(b.get("include_forms", False)))
+    return await _broker_call(request, _op)
+
+
+async def handle_session_screenshot(request):
+    async def _op(sb, b):
+        return await sb.op_screenshot(session_id=b.get("session_id", ""))
+    return await _broker_call(request, _op)
+
+
+async def handle_session_login(request):
+    async def _op(sb, b):
+        return await sb.op_login(
+            session_id=b.get("session_id", ""), domain=b.get("domain"),
+            form_hint=b.get("form_hint"))
+    return await _broker_call(request, _op)
+
+
+async def handle_session_close(request):
+    async def _op(sb, b):
+        return await sb.op_close(
+            session_id=b.get("session_id"), owner=b.get("owner"),
+            close_all=bool(b.get("all", False)))
+    return await _broker_call(request, _op)
+
+
 async def _on_startup(app: web.Application) -> None:
     """Inizializza Playwright + Chromium browser."""
     global _browser, _playwright, _browser_version
@@ -223,9 +288,24 @@ async def _on_startup(app: web.Application) -> None:
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",  # systemd-user gia' contiene
                 "--disable-dev-shm-usage",
+                # spec sites §3.1 FIX D: WebRTC off a livello browser (difesa in
+                # profondità oltre all'init-script per-contesto). Il canale
+                # STUN/TURN esfiltra fuori banda scavalcando route().
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+                "--webrtc-ip-handling-policy=disable_non_proxied_udp",
             ],
         )
         _browser_version = _browser.version
+        # spec sites §3.1: registra il browser nel session-broker + avvia il
+        # reaper (TTL idle, salta gate_pending). Import lazy: il sidecar resta
+        # avviabile anche senza il modulo (degrade graceful del solo /render).
+        try:
+            from playwright_sidecar import session_broker
+            session_broker.configure(_browser)
+            session_broker.start_reaper()
+            logger.info("session_broker configured (sites domain ready)")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("session_broker not available: %s", e)
         logger.info("playwright chromium %s ready", _browser_version)
     except Exception as e:
         # Tipico: `playwright install chromium` non eseguito.
@@ -258,6 +338,12 @@ def make_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/health", handle_health)
     app.router.add_post("/render", handle_render)
+    # Session-broker (dominio sites §3.1)
+    app.router.add_post("/session/open", handle_session_open)
+    app.router.add_post("/session/read", handle_session_read)
+    app.router.add_post("/session/screenshot", handle_session_screenshot)
+    app.router.add_post("/session/login", handle_session_login)
+    app.router.add_post("/session/close", handle_session_close)
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)
     return app

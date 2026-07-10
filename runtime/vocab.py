@@ -67,6 +67,13 @@ ACTIONS = (
     # folder cifs/smb. Side-effect: ACL/permission grant remoto, reversibile via
     # `delete_<obj>_permissions_by_id` (5° reverse_pattern §2.3).
     "share",
+    # Dominio `sites` (spec sites F1/F2, RATIFICATO D-A 10/7/2026): interazione
+    # web SICURA con siti autenticati. `open`=apre una sessione browser
+    # persistente/autenticabile; `login`=login con credenziali cifrate (il broker
+    # inietta il segreto, l'agente non lo vede §3.2); `act`=azione su una sessione
+    # (F2, gate §4.2). `read` (gia' canonico) legge la sessione (read_sites).
+    # Mappatura forzata sui canonici RESPINTA (ambigua) -> token nuovi.
+    "open", "login", "act",
 )
 
 # Oggetti ammessi (plurale).
@@ -168,6 +175,13 @@ OBJECTS = (
     # turno corrente. Nessun executor `find_entries`/`read_entries`/
     # `get_entries` (non si scopre/legge cio' che esiste solo a runtime).
     "entries",
+    # Sites (spec sites F1, RATIFICATO D-A 10/7/2026): SESSIONE web con stato
+    # (cookie/credenziali), distinta da `urls` (pagina pubblica senza stato).
+    # Confine manifest: «pagina senza login = read_urls_html; sites = sessione
+    # con stato/credenziali». Ha executor open/login/read/close_sites (+act F2).
+    # Il `session_id` e' interno (§12-bis): l'utente dice «il sito X», il planner
+    # cabla il session_id via from_step. Gira SOLO server (§10.8).
+    "sites",
 )
 # NB §2.2 (26/5/2026, ADR 0163): `users` NON è OBJECT vocab. L'account
 # Metnos paired (host/guest, ADR 0083) è runtime-internal, esposto al
@@ -434,6 +448,7 @@ ACTION_CATEGORIES = {
     "change": "trasformazione",
     "order": "ordinamento-persistente",
     "share": "outbound-consent",
+    "open": "web-session", "login": "web-session", "act": "web-session",
 }
 
 # ── Classificazione operativa per il runtime ──────────────────────────
@@ -453,7 +468,10 @@ PRODUCER_VERBS = frozenset({"read", "find", "list", "get"})
 # final_answer o sono trasformatori, non azioni dovute. Multilingue: i verbi
 # sono CANONICI (detect_canonical_verbs_all normalizza già IT+EN).
 COVERAGE_REQUIRED_VERBS = PRODUCER_VERBS | frozenset({
-    "send", "create", "write", "move", "delete", "share"})
+    "send", "create", "write", "move", "delete", "share",
+    # sites F1: azioni web esplicite da portare a termine (open precursore di
+    # login; login autentica). `act` (F2) si aggiunge quando l'executor esiste.
+    "open", "login"})
 
 # Verbi PROCESSOR: trasformano una lista gia' presente nello scratchpad
 # (input via `from_step`), non producono dati nuovi. Conseguenze runtime:
@@ -509,6 +527,9 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "issues":     None,
     "pulls":      None,
     "calendars":  None,
+    # sites: una mention nuda («il sito X») NON implica un verbo mutante (open e
+    # login vanno chiesti esplicitamente) → None, niente orphan-injection.
+    "sites":      None,
 }
 
 
@@ -719,6 +740,30 @@ ACTION_MAPPING = {
                 "make-public", "make-accessible"],
         "boundary": "OUTBOUND CONSENT (ADR 0128): grant access a una risorsa senza spostarla o duplicarla. Crea un permission/ACL grant remoto sull'entita' identificata da `id`/`ids`. Distinto da `send` (outbound copy o notifica: il destinatario riceve un OGGETTO, es. una mail) e da `set` (upsert idempotente di valori/labels/metadata interni al record). Esempio: condividere un Drive file con un utente = share_files (l'entita' resta nel proprio drive, il destinatario riceve solo un permesso di lettura/scrittura). Reversibile via revoke (`delete_<obj>_permissions_by_id` 5° reverse_pattern §2.3).",
     },
+    "open": {
+        "it": ["apri-il-sito", "apri-la-sessione", "vai-sul-sito", "apri-il-portale"],
+        "en": ["open-site", "open-session", "go-to-site", "open-portal"],
+        "boundary": {
+            "it": "Apre una SESSIONE browser persistente e autenticabile su un sito (dominio `sites`, spec F1): un contesto con cookie/stato pronto per login e lettura. NON read (read_urls_html legge una pagina PUBBLICA senza stato) · NON get (get_urls = fetch HTTP singolo). Il session_id e' interno, cablato via from_step.",
+            "en": "Opens a persistent, authenticatable browser SESSION on a website (`sites` domain, F1): a stateful/cookie context ready for login and reading. NOT read (read_urls_html reads a PUBLIC stateless page) · NOT get (get_urls = single HTTP fetch). The session_id is internal, wired via from_step.",
+        },
+    },
+    "login": {
+        "it": ["accedi", "fai-il-login", "autenticati", "entra-nel-sito", "logga"],
+        "en": ["login", "log-in", "sign-in", "authenticate"],
+        "boundary": {
+            "it": "Autentica una SESSIONE `sites` con le credenziali cifrate GIA' salvate nel vault: il BROKER inietta il segreto (l'agente/planner non lo vede mai, §3.2). NON get_inputs (raccolta interattiva di valori dall'utente) · NON set_credentials (salvataggio metadata della credenziale). Usa credenziali gia' presenti; se assenti, fallisce onestamente.",
+            "en": "Authenticates a `sites` SESSION with the encrypted credentials ALREADY stored in the vault: the BROKER injects the secret (the agent/planner never sees it, §3.2). NOT get_inputs (interactive value collection from the user) · NOT set_credentials (storing credential metadata). Uses already-stored credentials; if absent, fails honestly.",
+        },
+    },
+    "act": {
+        "it": ["compi-azione", "agisci-sul-sito", "clicca", "compila-e-invia"],
+        "en": ["act", "do-action", "click", "fill-and-submit"],
+        "boundary": {
+            "it": "Compie un'AZIONE su una sessione `sites` autenticata (click/compila/invia — F2). Le azioni sensibili (submit/POST/navigazione) passano da un gate di approvazione umana BATCH (§4.2). NON change (trasforma la FORMA di un dato) · NON send (destinatari umani). Solo F2.",
+            "en": "Performs an ACTION on an authenticated `sites` session (click/fill/submit — F2). Sensitive actions (submit/POST/navigation) go through a BATCH human-approval gate (§4.2). NOT change (transforms a datum's FORM) · NOT send (human recipients). F2 only.",
+        },
+    },
 }
 
 # NB: `check`/`verifica` NON e' verbo canonico — sussunto da `find`. Una
@@ -784,6 +829,11 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "issues": (),                 # provider github, no sezione planner dedicata
     "pulls": (),                  # provider github, no sezione planner dedicata
     "calendars": (),              # provider google_workspace, core-only
+    # sites (F1): core-only per ora. Gli executor open/login/read/close_sites
+    # sono offerti via affinity nel prefilter; una sezione planner dedicata
+    # (.j2, dominio Fable) e' un follow-up di qualita' del routing, non un
+    # requisito di disponibilita' dei tool.
+    "sites": (),
 }
 
 

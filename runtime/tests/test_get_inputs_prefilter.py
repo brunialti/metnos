@@ -36,7 +36,10 @@ def test_vocab_includes_inputs_object():
     # `approval` aggiunto 17/6/2026 (executor get_approval, gate di consenso
     # umano cross-skill, commit 0d36ab0) → 23° oggetto canonico.
     assert "approval" in OBJECTS
-    assert len(OBJECTS) == 23
+    # `sites` aggiunto 10/7/2026 (dominio interazione web sicura, spec sites F1,
+    # RATIFICATO D-A) → 24° oggetto canonico.
+    assert "sites" in OBJECTS
+    assert len(OBJECTS) == 24
 
 
 def test_get_inputs_in_canonical_naming():
