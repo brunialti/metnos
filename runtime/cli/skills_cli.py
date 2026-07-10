@@ -330,7 +330,7 @@ def _add_smoke_cases_for(report, parsed) -> int:
       route_intent ADR 0129 → falsi negativi nella battery.
     - case con `expected_first_tool` provider-qualified (suffix
       `_google_workspace` etc.) ma `query` senza marker provider:
-      `tool_grammar._PROVIDER_SUFFIX_MARKERS` esclude correttamente il
+      `tool_grammar.provider_gate_names` esclude correttamente il
       tool dal pool grammar (ADR 0136), l'expected sarebbe irraggiungibile.
       Strip del suffix → expected = tool canonico equivalente.
 

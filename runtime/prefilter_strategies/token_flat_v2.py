@@ -3,7 +3,7 @@
 Migliorie rispetto a `token_flat` (legacy):
 1. **Provider penalty**: tool con suffix `_<provider>` (es. `_google_workspace`)
    ricevono penalty se la query NON contiene il marker del provider.
-   Allinea con ADR 0136 `_PROVIDER_SUFFIX_MARKERS` ma applicato come
+   Allinea con ADR 0136 (marker `detection_lexicon provider.markers`) ma applicato come
    penalty soft (non esclusione hard del grammar filter).
 2. **Name-exact boost**: se la query contiene esattamente il name di
    un tool (es. "send_messages" o "find_files"), boost top-rank.
@@ -20,7 +20,9 @@ import re
 from typing import Callable
 
 
-# Provider markers: aligned with ADR 0136 (`tool_grammar._PROVIDER_SUFFIX_MARKERS`).
+# Provider markers: aligned with ADR 0136 (SoT `vocab.PROVIDER_SUFFIXES` /
+# `detection_lexicon provider.markers`). NB: dict locale = duplicato dei marker
+# (§7.9 follow-up: consumare provider.markers invece di ridichiararli qui).
 _PROVIDER_MARKERS = {
     "_google_workspace": (
         "google", "drive", "gmail", "gdrive",

@@ -280,7 +280,7 @@ def register_all() -> None:
       en=[r"\b(and\s+then|and\s+also|and\s+after|moreover|then|afterwards|"
           r"additionally)\b"])
 
-    # ── PROVIDER (tool_grammar._PROVIDER_SUFFIX_MARKERS) ────────────────
+    # ── PROVIDER (provider.markers → tool_grammar.provider_gate_names) ──
     # Brand/nomi propri en-canonici; le altre lingue aggiungono nomi comuni
     # localizzati via daemon. mapping suffix -> markers (match word).
     # CHIAVI derivate da vocab.PROVIDER_SUFFIXES (SoT unica dell'identità

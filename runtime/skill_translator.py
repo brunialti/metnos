@@ -779,7 +779,7 @@ def translate_skill(parsed_skill, *,
     binding della skill come suffix (`_<binding>`). Es. tutti i tool
     della skill `google-workspace` finiscono in `_google_workspace`,
     a prescindere dalla collisione con builtin. Questo permette al
-    filtro grammar `_PROVIDER_SUFFIX_MARKERS` di escludere dal pool i
+    gate provider `tool_grammar.provider_gate_names` di escludere dal pool i
     tool che richiedono un provider esterno se la query utente non
     contiene marker (`google`, `gmail`, `drive`, ecc.). Self-hosted
     e' il default, provider esterno e' opt-in.
