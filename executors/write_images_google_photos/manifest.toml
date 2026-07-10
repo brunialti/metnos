@@ -85,6 +85,13 @@ schema_inline = """
 name = "metnos:write"
 hint = ["photos:remote"]
 
+# fs:read: l'upload LEGGE le foto locali da caricare — senza, la sandbox
+# (tmpfs /tmp, niente home) non vede i file (take-6 live: «nessun elemento
+# trovato» su una dir esistente). Stessa superficie di get_files.
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
 [[tests]]
 name   = "missing_paths_and_entries_fails"
 input  = {}

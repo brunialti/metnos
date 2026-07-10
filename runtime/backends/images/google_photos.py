@@ -30,6 +30,7 @@ from backends._google_auth_common import (  # noqa: E402
     ensure_fresh_token as _ensure_fresh_token,
     auth_needs_inputs as _auth_needs_inputs,
 )
+from executor_helpers import IMAGE_EXTS  # noqa: E402
 from messages import get as _msg  # noqa: E402
 
 # Workspace foto default (memoria feedback_default_photo_workspace).
@@ -169,6 +170,27 @@ def upload(args: dict) -> dict:
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "ok_count": 0}
 
+    # §2.4 (confine NL): «carica le foto della cartella X» arriva con la DIR
+    # in paths — espandi ai file immagine contenuti (non ricorsivo, ordinato).
+    # Dir senza immagini → fallimento onesto per-path, gli altri proseguono.
+    expanded: list[str] = []
+    dir_misses: list[dict] = []
+    for p in paths:
+        pp = Path(p).expanduser()
+        if pp.is_dir():
+            imgs = sorted(str(f) for f in pp.iterdir()
+                          if f.is_file() and f.suffix.lower() in IMAGE_EXTS)
+            if imgs:
+                expanded.extend(imgs)
+            else:
+                dir_misses.append({"path": p, "ok": False,
+                                   "error_class": "not_found",
+                                   "error_code": "ERR_PATH_NOT_FOUND",
+                                   "error": _msg("ERR_PATH_NOT_FOUND", path=p)})
+        else:
+            expanded.append(p)
+    paths = list(dict.fromkeys(expanded))
+
     max_total = int(args.get("max_total") or 200)
     selected = paths[:max_total] if max_total > 0 else paths
     truncated = len(paths) > len(selected)
@@ -182,9 +204,17 @@ def upload(args: dict) -> dict:
                 return err
             return {**err, "results": [], "used": 0, "ok_count": 0}
 
+    if not paths and dir_misses:
+        # SOLO cartelle vuote/senza immagini: esito onesto §2.8, niente upload.
+        return {"ok": False, "ok_count": 0, "fail_count": len(dir_misses),
+                "results": [], "failed": dir_misses, "used": 0,
+                "images_source": "google_photos", "revertible": False,
+                "error_class": "not_found",
+                "error": dir_misses[0]["error"]}
+
     # FASE 1 — bytes per file → uploadToken (fallimento per-file NON ferma gli
     # altri §2.1; token da usare subito, il batchCreate segue nello stesso invoke).
-    staged, failed = [], []
+    staged, failed = [], list(dir_misses)
     for p in selected:
         data, err = _run_photos(["photos", "upload-bytes", str(p)],
                                 executor="write_images_google_photos",
@@ -308,9 +338,11 @@ def find(args: dict) -> dict:
     entries: list[dict] = []
     page_token = ""
     more_available = False
-    while len(entries) < max_results:
-        want = min(100, max_results - len(entries))
-        argv = ["photos", "search", "--max", str(want)]
+    # pageSize COSTANTE su TUTTE le pagine: con un pageToken l'API esige gli
+    # stessi parametri della richiesta precedente (HTTP 400 «must use the same
+    # parameters», visto live 10/7). Cap applicato client-side a valle.
+    while True:
+        argv = ["photos", "search", "--max", "100"]
         if album_id:
             argv.extend(["--album-id", album_id])
         elif year:
@@ -335,11 +367,13 @@ def find(args: dict) -> dict:
                 "album": album_name,
             })
         page_token = d.get("nextPageToken", "")
+        if len(entries) >= max_results:
+            more_available = bool(page_token) or len(entries) > max_results
+            break
         if not page_token:
             break
-        if len(entries) >= max_results:
-            more_available = True
-            break
+    if len(entries) > max_results:
+        entries = entries[:max_results]
 
     out = {
         "ok": True,

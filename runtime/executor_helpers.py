@@ -189,3 +189,12 @@ def normalize_paths_urls(args: dict) -> dict:
     out["paths"] = keep_paths + moved_to_paths
     out["urls"] = keep_urls + moved_to_urls
     return out
+
+
+# ── Estensioni immagine (SoT condivisa, 10/7/2026) ─────────────────────────
+# Nata per l'espansione dir→immagini di write_images_google_photos (§2.4:
+# «carica le foto della cartella X» arriva con la DIR in paths). NB:
+# `create_images_indices._IMAGE_EXTS` ha ancora una copia propria (executor
+# non importabile da qui): unificare su QUESTA al prossimo tocco di quel file.
+IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".heic", ".webp",
+                        ".tiff", ".bmp"})

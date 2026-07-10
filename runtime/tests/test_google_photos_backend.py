@@ -219,6 +219,58 @@ def test_find_album_not_found_empty_honest(monkeypatch):
     assert out["ok"] is True and out["entries"] == [] and out["used"] == 0
 
 
+def test_upload_expands_directory_to_images(monkeypatch, tmp_path):
+    """§2.4: «carica le foto della cartella X» arriva con la DIR in paths —
+    l'executor la espande ai file immagine contenuti (visto live take-5)."""
+    (tmp_path / "a.jpg").write_bytes(b"x")
+    (tmp_path / "b.png").write_bytes(b"x")
+    (tmp_path / "note.txt").write_bytes(b"x")     # non-immagine: ignorato
+    uploaded = []
+
+    def handler(argv):
+        if argv[:2] == ["photos", "upload-bytes"]:
+            uploaded.append(argv[2])
+            return ({"uploadToken": f"T{len(uploaded)}",
+                     "fileName": Path(argv[2]).name}, None)
+        if argv[:2] == ["photos", "batch-create"]:
+            return _ok_batch(argv)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.upload({"paths": [str(tmp_path)], "album": ""})
+    assert out["ok"] and out["ok_count"] == 2
+    assert sorted(Path(p).name for p in uploaded) == ["a.jpg", "b.png"]
+
+
+def test_upload_empty_dir_honest_not_found(monkeypatch, tmp_path):
+    _install_runner(monkeypatch, lambda argv: (_ for _ in ()).throw(AssertionError(argv)))
+    out = gp.upload({"paths": [str(tmp_path)]})   # dir senza immagini
+    assert out["ok"] is False and out["error_class"] == "not_found"
+    assert out["fail_count"] == 1 and out["ok_count"] == 0
+
+
+def test_find_pagination_constant_page_size(monkeypatch):
+    """Col pageToken l'API esige GLI STESSI parametri (HTTP 400 visto live):
+    pageSize costante su ogni pagina, cap applicato client-side."""
+    sizes, tokens = [], []
+
+    def handler(argv):
+        assert argv[:2] == ["photos", "search"]
+        sizes.append(argv[argv.index("--max") + 1])
+        tok = argv[argv.index("--page-token") + 1] if "--page-token" in argv else ""
+        tokens.append(tok)
+        page = [{"id": f"P{len(tokens)}-{i}", "filename": "x.jpg"} for i in range(3)]
+        next_tok = "T2" if len(tokens) == 1 else ""
+        return ({"items": page, "nextPageToken": next_tok}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.find({"max_results": 5})
+    assert sizes == ["100", "100"]          # MAI cambiare pageSize fra pagine
+    assert tokens == ["", "T2"]
+    assert out["used"] == 5                 # cap client-side (6 raccolte → 5)
+    assert out["truncated"] is True
+
+
 # ── download ─────────────────────────────────────────────────────────────────
 
 def test_download_maps_results_and_undo(monkeypatch, tmp_path):

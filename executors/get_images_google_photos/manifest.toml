@@ -74,6 +74,13 @@ schema_inline = """
 name = "metnos:read"
 hint = ["photos:remote"]
 
+# fs:write: il download SCRIVE i file nel workspace foto (default
+# ~/.local/share/metnos/Immagini/google-photos) — senza, la sandbox non ha
+# superficie scrivibile per dst_dir.
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/Immagini/**", "/tmp/**"]
+
 [[tests]]
 name   = "missing_ids_and_entries_fails"
 input  = {}
