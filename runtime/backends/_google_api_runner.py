@@ -63,12 +63,13 @@ def _i18n_error_for_class(error_class: str, stderr: str, rc: int) -> tuple[str, 
     error_text: messaggio user-facing localizzato (DEFAULT_LANG).
     """
     code = _ERROR_CLASS_TO_I18N_KEY.get(error_class, "ERR_OP_FAILED")
-    # Le 8 ERR_* esistenti hanno template parametrizzati o auto-contenuti.
-    # ERR_OP_FAILED ha {reason}. ERR_PATH_NOT_FOUND ha {path}. Per template
-    # senza params i kwargs extra vengono ignorati da .format().
+    # Le ERR_* hanno template parametrizzati o auto-contenuti: ERR_OP_FAILED ha
+    # {reason}, ERR_PATH_NOT_FOUND ha {path}, ERR_INVALID_ARGS ha {detail}
+    # (mancava → placeholder CRUDO all'utente, §7.13; visto live 10/7 sul 400
+    # Photos). Per template senza params i kwargs extra sono ignorati.
     detail = (stderr or "").strip() or f"rc={rc}"
     try:
-        text = _msg(code, reason=detail, path=detail, arg=detail)
+        text = _msg(code, reason=detail, path=detail, arg=detail, detail=detail)
     except Exception:
         text = _msg(code)
     return code, text
