@@ -64,7 +64,7 @@ Dettagli obbligatori:
 - output SEMPRE JSON su stdout (pattern degli altri sub-comandi); errori → `{"error": ...}` con exit 1.
 
 ### 3.3 Backend runtime: `runtime/backends/images/google_photos.py`
-Nuovo package `runtime/backends/images/` (`__init__.py` vuoto). Modulo con le stesse convenzioni di `backends/files/google_workspace.py` (riusa `skill_wrapper._needs_inputs_oauth_setup`, `_google_api_runner.run_with_retry`, `SKILL_NAME = "google-workspace"`, `_has_creds`, `_ensure_fresh_token` — importali/replica il prologo di google_workspace.py, NON duplicare la logica di refresh: estrai le 3 funzioni comuni in `runtime/backends/_google_auth_common.py` e fai usare quello a ENTRAMBI i moduli).
+Package `runtime/backends/images/` GIÀ ESISTENTE (contiene `google_vision.py` — NON toccarlo, NON ricreare `__init__.py`): aggiungere SOLO il modulo `google_photos.py`, con le stesse convenzioni di `backends/files/google_workspace.py` (riusa `skill_wrapper._needs_inputs_oauth_setup`, `_google_api_runner.run_with_retry`, `SKILL_NAME = "google-workspace"`, `_has_creds`, `_ensure_fresh_token` — importali/replica il prologo di google_workspace.py, NON duplicare la logica di refresh: estrai le 3 funzioni comuni in `runtime/backends/_google_auth_common.py` e fai usare quello a ENTRAMBI i moduli).
 
 Funzioni (firme esatte):
 ```python
@@ -97,8 +97,8 @@ Convenzioni obbligatorie per TUTTI e tre: manifest §2.5 con `[description]` a c
 
 ### 3.5 Routing
 - `runtime/prefilter.py::_OBJECT_HINTS["images"]`: NON toccare (già copre foto/photo).
-- Lessico: nuovo concept `R("provider.google_photos", "phrases", substring, it=["google photos","google foto","su photos"], en=["google photos","to google photos"])` in `detection_lexicon_seed.py` — usato SOLO dall'affinity/manifest, NON serve bypass: il pool per (write|find|get, images) include i nuovi executor per nome/affinity; il marcatore provider nel testo li fa vincere sul fratello locale (affinity-match boost esistente).
-- `vocab.py`: NESSUNA modifica (D2). Verificare che `naming_grammar.validate_name` accetti `google_photos` come qualifier provider (stesso pattern di `_google_workspace`; se il validatore ha una lista chiusa di provider-suffix, aggiungere `google_photos` in `tool_grammar._PROVIDER_SUFFIX_MARKERS`).
+- Lessico: NIENTE concept phrases dedicato — i marker vivono in `detection_lexicon_seed.py::_PROVIDER_MARKERS_EN["google_photos"]` (punto sotto) e li consuma il gate `tool_grammar.provider_gate_names`. Effetto: marker ASSENTE nella query → i `*_google_photos` ESCONO dal pool (le query foto locali non li vedono mai); marker PRESENTE → restano nel pool e vincono sul fratello locale `find_images_indices` via affinity-match boost esistente (il gate esclude solo il canonico esatto, es. `find_images`, che qui non esiste). Marker SOLO brand: `["google photos", "google foto", "gphotos"]` — MAI la parola nuda «photos»/«foto» (parola comune: dirotterebbe le query foto locali, contaminazione §7.3).
+- Suffisso provider: la SoT dell'identità provider è `vocab.PROVIDER_SUFFIXES` (oggi `{"github","google_workspace"}`) — aggiungere `"google_photos"` lì. I marker NL derivano da `runtime/detection_lexicon_seed.py::_PROVIDER_MARKERS_EN`: aggiungere la voce `"google_photos": [...]` (es. «google photos», «google foto») — il mapping `provider.markers` e il gate `tool_grammar.provider_gate_names` la consumano automaticamente; il test `test_provider_markers_cover_suffixes` impone la copertura. `naming_grammar.validate_name` accetta i suffissi multi-token iterando `PROVIDER_SUFFIXES` (nessun altro tocco). NB: `tool_grammar._PROVIDER_SUFFIX_MARKERS` NON esiste più (riferimento storico ADR 0136).
 
 ### 3.6 Chiavi i18n nuove (live + `install/data/i18n_seed.sqlite` + `gen_i18n.py`)
 ```
@@ -111,7 +111,7 @@ MSG_GPHOTOS_IRREVERSIBLE it="Nota: l'API Google non permette di eliminare foto c
 ### 3.7 Test P1 (criteri di accettazione)
 - Unit (`runtime/tests/test_google_photos_backend.py`): chunking 50, risoluzione album per nome, error-shape §2.8; CLI mockato (monkeypatch `run_with_retry`).
 - Manifest-test `[[tests]]` nei manifest: lista vuota ok (§2.1), args invalidi.
-- E2E reale (gate umano, come `e2e_google_backend.py`): `e2e/e2e_google_photos.py` — carica 2 foto di test in album `metnos-e2e`, `find` le ritrova (year=anno corrente), `get` le riscarica, confronto sha256. ≥1 turno reale `/agent/turn`: «carica le foto di /tmp/x su google photos nell'album Test» (§8.5).
+- E2E reale (gate umano, come `runtime/tests/e2e_google_backend.py`): `runtime/tests/e2e_google_photos.py` — carica 2 foto di test in album `metnos-e2e`, `find` le ritrova (year=anno corrente), `get` le riscarica, confronto sha256. ≥1 turno reale `/agent/turn`: «carica le foto di /tmp/x su google photos nell'album Test» (§8.5).
 
 ## 4. FASE P2 — Archivio completo via Takeout (statistiche, anno, UI)
 
@@ -178,7 +178,7 @@ Riferimenti: `CLAUDE.md` (parte invariante, i § citati) — leggilo comunque pe
 1. **Re-sign obbligatorio** (§7.10): dopo OGNI edit di `<executor>.py` O del solo `manifest.toml` → `python3 runtime/sign.py sign executors/<name>` **da repo root** (`python -m runtime.sign` NON funziona) + restart servizio. Senza firma il loader scarta l'executor **in silenzio** (il sintomo è «tool sparito», non un errore). Committare manifest+`.sig` INSIEME.
 2. **E2E reale obbligatorio** (§8.5): ogni cambio a codice di prodotto richiede ≥1 turno reale `/agent/turn` sul dominio toccato, con query utente VERA. NON modificare la query per farla passare; error=0 significa «completa COME ATTESO» (no fallback/misroute contati come successo).
 3. **i18n completo** (§7.13): OGNI stringa user-facing via `messages.get`/chiave `MSG_*`/`ERR_*` — MAI hardcoded, inclusi gli errori di validazione-arg. Ogni chiave nuova va scritta in TRE posti: DB live (`i18n.set` it+en), seed bundled (`install/data/i18n_seed.sqlite`), e shim device (`python3 runtime/device_shim/gen_i18n.py` rigenerato e committato). ATTENZIONE: il placeholder `{key}` è VIETATO nei template (collide col parametro posizionale di `i18n.get` — usare `{field}` o simili).
-4. **Vocabolario chiuso** (§2.2): nessun verbo/oggetto/qualifier nuovo senza escalation a Roberto. Questa spec NON ne richiede (D2). Se il validatore naming rifiuta `google_photos` come provider-suffix, l'unica modifica ammessa è aggiungerlo a `tool_grammar._PROVIDER_SUFFIX_MARKERS` (pattern `_google_workspace` esistente).
+4. **Vocabolario chiuso** (§2.2): nessun verbo/oggetto/qualifier nuovo senza escalation a Roberto. Questa spec NON ne richiede (D2). Se il validatore naming rifiuta `google_photos` come provider-suffix, l'unica modifica ammessa è aggiungerlo a `vocab.PROVIDER_SUFFIXES` (+ marker in `detection_lexicon_seed._PROVIDER_MARKERS_EN`), pattern `_google_workspace` esistente — vedi §3.5.
 5. **Manifest = prompt del tool** (§2.5): `[description]` a capitoli `SCOPO/PATTERN/NON/OUT` IT+EN, frasi ≤25 parole, affinity 8-15 termini IT+EN. Modello canonico: `executors/write_files/manifest.toml`.
 6. **Onestà §2.8**: `ok_count` = elementi REALMENTE processati; niente falso successo; troncamenti con i campi §2.7 (`truncated/truncated_what/used/available_total`). L'upload Photos è IRREVERSIBILE: `revertible=false` + nota utente (§3.6) — dichiararlo, mai nasconderlo.
 7. **Vettoriale per costruzione** (§2.1): input lista (anche N=1), output lista, cap espliciti (`max_total/max_results`), MAI suffisso `_batch`.

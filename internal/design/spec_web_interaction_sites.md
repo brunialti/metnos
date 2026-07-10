@@ -1,6 +1,6 @@
 # SPEC — Interazione web sicura con siti (dominio `sites`)
 
-> **Stato**: BOZZA CONGELATA + INDURITA (10/7/2026). Decisioni di fase ratificate da Roberto. Documento vivo. La stesura iniziale è stata sottoposta a **red-team adversarial**: 20 problemi (3 CRITICI di sicurezza) → integrati come design corretto qui sotto e sintetizzati nella **Review Fable §12**.
+> **Stato**: CONGELATA + INDURITA (10/7/2026). Fasi F1/F2 E decisioni §11 D-A..D-E RATIFICATE da Roberto (10/7 sera, sessione Fable). Documento vivo. La stesura iniziale è stata sottoposta a **red-team adversarial**: 20 problemi (3 CRITICI di sicurezza) → integrati come design corretto qui sotto e sintetizzati nella **Review Fable §12**.
 > **Origine**: Roberto — «funzioni generali per interagire con siti: login con credenziali gestite in sicurezza, esplorare, compiere azioni; delicato, sicuro, facile da usare». Benchmark: Hercules, Browser-Use, Stagehand, Skyvern.
 > **Implementatore previsto**: LLM (Opus) da questo documento, sessione fresca. NIENTE implementazione senza ordine esplicito di Roberto.
 > **Verdetto Fable (§12)**: la Fase 1 (login+lettura) è realizzabile in sicurezza SE si adottano gli irrigidimenti §3-§4 qui integrati. La superficie di rischio REALE non è «il modello vede il segreto» ma **la destinazione della credenziale e la cattura del segreto negli screenshot** — riprogettati sotto.
@@ -26,10 +26,10 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 
 ## 2. Cosa Metnos ha GIÀ (riuso) — con path
 
-- **Vault cifrato** — `runtime/credentials.py`: Fernet per-dominio (`~/.config/metnos/credentials/<d>.json.age` 0600), chiave HKDF da `admin.key`; `store/load(domain)/list_domains/remove/fingerprint`. Regola `*_credentials` **metadata-only** + `assert_no_secrets_in_return` (SECRET_KEYS) + Vaglio. Mail/NAS leggono già i segreti via `credentials.load`. → Presidio #1 infrastrutturato.
+- **Vault cifrato** — `runtime/credentials.py`: Fernet per-dominio (`~/.config/metnos/credentials/<d>.json.age` 0600), chiave HKDF da `admin.key`; `store/load(domain)/list_domains/remove/fingerprint`. Regola `*_credentials` **metadata-only** + `assert_no_secrets_in_return` (`credentials.FORBIDDEN_KEYS`) + Vaglio. Mail/NAS leggono già i segreti via `credentials.load`. → Presidio #1 infrastrutturato.
 - **Motore** — `runtime/playwright_sidecar/server.py`: UN Chromium headless persistente (~200MB), oggi `POST /render {url}`→testo/html, contesti usa-e-getta. Client `client.py`. Install `install/sidecar.py`.
 - **Cookie-session** — `executors/login_session/`: jar Netscape in `~/.config/metnos/cookies/<d>.txt` (0600, ADR 0082), re-iniettato via `auth_cookies_file`.
-- **VLM** — `runtime/vlm_client.py::describe_image` con `qwen3vl-2b` locale (`vlm_tiers.toml`).
+- **VLM** — `runtime/vlm_client.py::describe_image` con `qwen3vl-2b` locale (config `~/.config/metnos/vlm_tiers.toml` via `virt.get_vlm()`).
 - **HITL** — `executors/get_approval/` (2 bottoni + `on_approve`), `orchestration._process_gate_dispatch`/`_process_resume_engine_gate`, `approval_registry.py` (sqlite).
 - **Sandbox** — `runtime/sandbox.py` bwrap: rete gated da capability. Stato fra invocazioni = file, executor stateless.
 - **Web READ** — `get_urls`, `read_urls_html`/`read_urls_pdf` (con `auth_cookies_file`, `js_render`), `find_urls`.
@@ -70,7 +70,7 @@ Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati perso
 
 ## 4. I 5 PRESIDI (adozione IMPOSTA da Roberto) — con gli irrigidimenti
 
-1. **L'LLM non vede il segreto** — §3.2 (iniezione broker + origine verificata + destinazione non-LLM) + §3.3 (no segreto negli shot, no frontier) + regola metadata-only + Vaglio. **Verifica automatica**: test che grep-a payload-executor, result, turn-record e prompt-planner per `SECRET_KEYS` → 0 hit; test che il VLM non riceve mai uno shot con campo credenziale non-redatto.
+1. **L'LLM non vede il segreto** — §3.2 (iniezione broker + origine verificata + destinazione non-LLM) + §3.3 (no segreto negli shot, no frontier) + regola metadata-only + Vaglio. **Verifica automatica**: test che grep-a payload-executor, result, turn-record e prompt-planner per le chiavi `credentials.FORBIDDEN_KEYS` e i valori del vault di test → 0 hit; test che il VLM non riceve mai uno shot con campo credenziale non-redatto.
 2. **HITL su azioni sensibili** — **[FIX H — classificazione sul TARGET, non sul testo]** `act_sites` classifica SENSIBILE sull'elemento RISOLTO (role/testo del bottone, `form.action`, metodo POST), deterministico sul DOM — NON sulla frase NL (aggirabile con «tocca in basso a destra»). Default-SENSIBILE ogni azione che innesca navigazione/submit/POST/download a prescindere dal fraseggio. Gate = `get_approval` con **screenshot redatto** + descrizione. **[FIX usabilità]** approvazione **BATCH** per un'azione multi-passo descritta («compila e invia il form» = UN gate con l'intento intero), non un gate per primitiva.
 3. **Allowlist domini** — doppio confine: `route()` (§3.1) + capability `network:sites` (hint=allowlist). **D-D: default = dominio ESATTO** (no sottodomini, riduce l'esposizione della credenziale). Estensione = solo `get_approval`. + no-WebRTC, no data:/blob: top-level (§3.1 FIX D).
 4. **Sessioni effimere, credenziali con scope** — TTL idle + cleanup; una credenziale è caricabile SOLO per l'origine esatta di login della sessione (§3.2); il broker rifiuta `credentials.load(d)` se `d` non è l'origine attesa.
@@ -78,7 +78,7 @@ Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati perso
 
 ## 5. Vocab (`sites` — RATIFICATO, escalation §2.2)
 - Nuovo oggetto `sites` in `vocab.py::OBJECTS`. Confine manifest: `NON: pagina senza login = read_urls_html; sites = sessione con stato/credenziali`.
-- **Verbi — DECISIONE D-A aperta**: aggiungere `login` al vocab chiuso (semantica netta; precedente: `login_session` è già builtin fuori-grammatica) + usare `open`/`read`/`act`. Serve ratifica dei token nuovi (o mappatura forzata sui canonici, sconsigliata: ambigua).
+- **Verbi — D-A RATIFICATA ✓ (10/7)**: token NUOVI in `vocab.py::ACTIONS` = `login`, `open`, `act` (`read` esiste già; precedente: `login_session` è già builtin fuori-grammatica). Mappatura forzata sui canonici RESPINTA (ambigua). Enforce in `naming_grammar` (legge §10.4).
 - Lessici (phrases, §7.13): `sites.reference` («sul sito/portale», «accedi a»), `sites.sensitive_action` (§4.2, ma la classificazione VERA è sul DOM §FIX-H, il lessico è solo un hint aggiuntivo).
 
 ## 6. UI
@@ -104,19 +104,19 @@ Un sito reale di Roberto, F1: `open_sites`→`login_sites(domain=…)`→`read_s
 1. Re-sign §7.10 dopo ogni edit executor/manifest (da root), commit manifest+sig insieme.
 2. E2E reale §8.5: ≥1 turno reale per dominio toccato; MAI adattare la query.
 3. i18n §7.13 in 3 posti; placeholder `{key}` VIETATO.
-4. Vocab chiuso §2.2: `sites`/`login` concordati con Roberto + enforce in `naming_grammar`.
+4. Vocab chiuso §2.2: oggetto `sites` + verbi `login`/`open`/`act` RATIFICATI (§11 D-A); enforce in `naming_grammar`; NESSUN altro token senza nuova escalation a Roberto.
 5. Onestà §2.8: nessun `logged_in:true` non verificato; nessun segreto nel result; screenshot reali e redatti.
 6. **Segreti**: MAI nel payload/result/turn-record/prompt/log/screenshot. Solo `credentials.load` DENTRO il broker, con origine verificata.
 7. Lessici solo phrases (traducibili), no regex, no sinonimi hardcoded nel routing.
 8. `sites` gira solo server (no `device_ok`); rete ristretta all'allowlist esatta.
 9. **Verifiche di sicurezza automatiche** obbligatorie nei test (§4.1 verifica + §8 criteri): sono parte del contratto, non opzionali.
 
-## 11. DECISIONI ancora a Roberto
-- **D-A** — verbi nuovi nel vocab (`login`/`open`/`act`) vs mappatura forzata. *Proposta Fable: aggiungere `login` (+ usare open/read/act come token verbo del dominio), è più onesto della mappatura ambigua.*
-- **D-B** — persistenza login oltre il TTL: ri-login ogni sessione (default sicuro) vs riuso cookie-jar (comodo, stato da proteggere). *Proposta: ri-login default; riuso cookie-jar opt-in per-dominio.*
-- **D-C** — VLM frontier: **VIETATO in contesto autenticato/credenziale** (già deciso in §3.2 per sicurezza); resta la scelta se ammetterlo su pagine PUBBLICHE pre-login per i siti difficili. *Proposta: locale-only in F1; frontier eventualmente in F2 solo su pagine non-autenticate.*
-- **D-D** — allowlist default = dominio ESATTO (già adottato §4.3). Conferma?
-- **D-E** — 2FA/TOTP: chiedere il codice all'utente via `needs_inputs` ogni volta (default sicuro) vs `totp_secret` nel vault (comodo, chiave 2FA a riposo). *Proposta: codice-utente default; `totp_secret` opt-in esplicito per-dominio, e se presente MAI screenshot del campo OTP.*
+## 11. DECISIONI — RATIFICATE ✓ (Roberto, 10/7/2026 — opzione = proposta Fable per tutte e 5)
+- **D-A ✓** — verbi NUOVI nel vocab chiuso: `login`, `open`, `act` (+ `read` esistente) e oggetto `sites` (§5). Mappatura forzata sui canonici RESPINTA (ambigua). L'escalation §2.2 è assolta da questa ratifica; NESSUN altro token senza nuova escalation.
+- **D-B ✓** — ri-login a ogni sessione = DEFAULT; riuso cookie-jar = opt-in esplicito per-dominio (jar 0600 ADR 0082; in F1 il default basta — vedi non-goals §9).
+- **D-C ✓** — VLM locale-only in F1 (frontier resta VIETATO in contesto autenticato/credenziale, §3.2); un eventuale frontier su pagine PUBBLICHE pre-login si rivaluta in F2, non prima.
+- **D-D ✓** — allowlist default = dominio ESATTO (come §4.3); estensione SOLO via `get_approval`.
+- **D-E ✓** — 2FA: codice chiesto all'utente via `needs_inputs` = DEFAULT; `totp_secret` nel vault = opt-in esplicito per-dominio, e se presente MAI screenshot del campo OTP.
 
 ## 12-bis. USABILITÀ — vincolo di pari rango (Roberto: «facile da usare»)
 
