@@ -170,3 +170,18 @@ Design minimo (implementare solo su ratifica): scope `photospicker.mediaitems.re
 4. Validazione con Roberto a ogni fase (upload reale; picker reale; Takeout).
 
 Ogni passo: suite (`METNOS_ENGINE=v3 pytest runtime/tests/ -q`) + ≥1 turno reale `/agent/turn` sul dominio toccato (§8.5) + re-sign degli executor toccati (§7.10) + restart servizio (§8.6: mai durante un turno attivo).
+
+## 8. LEGGI VINCOLANTI per l'implementatore (violarle = PR respinta)
+
+Riferimenti: `CLAUDE.md` (parte invariante, i § citati) — leggilo comunque per intero a inizio sessione.
+
+1. **Re-sign obbligatorio** (§7.10): dopo OGNI edit di `<executor>.py` O del solo `manifest.toml` → `python3 runtime/sign.py sign executors/<name>` **da repo root** (`python -m runtime.sign` NON funziona) + restart servizio. Senza firma il loader scarta l'executor **in silenzio** (il sintomo è «tool sparito», non un errore). Committare manifest+`.sig` INSIEME.
+2. **E2E reale obbligatorio** (§8.5): ogni cambio a codice di prodotto richiede ≥1 turno reale `/agent/turn` sul dominio toccato, con query utente VERA. NON modificare la query per farla passare; error=0 significa «completa COME ATTESO» (no fallback/misroute contati come successo).
+3. **i18n completo** (§7.13): OGNI stringa user-facing via `messages.get`/chiave `MSG_*`/`ERR_*` — MAI hardcoded, inclusi gli errori di validazione-arg. Ogni chiave nuova va scritta in TRE posti: DB live (`i18n.set` it+en), seed bundled (`install/data/i18n_seed.sqlite`), e shim device (`python3 runtime/device_shim/gen_i18n.py` rigenerato e committato). ATTENZIONE: il placeholder `{key}` è VIETATO nei template (collide col parametro posizionale di `i18n.get` — usare `{field}` o simili).
+4. **Vocabolario chiuso** (§2.2): nessun verbo/oggetto/qualifier nuovo senza escalation a Roberto. Questa spec NON ne richiede (D2). Se il validatore naming rifiuta `google_photos` come provider-suffix, l'unica modifica ammessa è aggiungerlo a `tool_grammar._PROVIDER_SUFFIX_MARKERS` (pattern `_google_workspace` esistente).
+5. **Manifest = prompt del tool** (§2.5): `[description]` a capitoli `SCOPO/PATTERN/NON/OUT` IT+EN, frasi ≤25 parole, affinity 8-15 termini IT+EN. Modello canonico: `executors/write_files/manifest.toml`.
+6. **Onestà §2.8**: `ok_count` = elementi REALMENTE processati; niente falso successo; troncamenti con i campi §2.7 (`truncated/truncated_what/used/available_total`). L'upload Photos è IRREVERSIBILE: `revertible=false` + nota utente (§3.6) — dichiararlo, mai nasconderlo.
+7. **Vettoriale per costruzione** (§2.1): input lista (anche N=1), output lista, cap espliciti (`max_total/max_results`), MAI suffisso `_batch`.
+8. **Niente stringhe/sinonimi hardcoded nel routing**: lessici NL→canonico SOLO via `detection_lexicon_seed.py` (phrases, MAI regex — le phrases sono traducibili dal daemon i18n). Vedi §3.5.
+9. **Restart mai durante un turno attivo** (§8.6). Test rotto → fix del CODICE, mai del test (§8.2), a meno che il test stesso codifichi il comportamento vecchio (documentarlo nel commit).
+10. **Commit locali in italiano, senza trailer Co-Authored-By**; nessun push al pubblico (lo fa Roberto/publish-public).
