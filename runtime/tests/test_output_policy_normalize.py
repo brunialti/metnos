@@ -246,7 +246,8 @@ class TestTableAppendsExecutorMessage(unittest.TestCase):
 
     def test_gallery_header_carries_note_template(self):
         # G-mode (il modo REALE del turn e2b0e529: header gallery, non @table):
-        # il final deve portare il template @note accanto a @shown.
+        # il final deve portare @gallery_fallback (entries remote senza path,
+        # turn 4fa8d6bd) e @note accanto a @shown.
         fw = _fw([("find_images_google_photos", {"albums": True}),
                   ("final_answer", {})], final="${step1.summary}")
         out, info = normalize_terminal(
@@ -254,7 +255,30 @@ class TestTableAppendsExecutorMessage(unittest.TestCase):
             "quali sono gli album che ho su google foto")
         if info["mode"] == G:                       # matrice: enumerate images
             self.assertIn("@shown", out.final_message)
+            self.assertIn("@gallery_fallback", out.final_message)
             self.assertIn("@note", out.final_message)
+
+    def test_gallery_fallback_bullets_for_remote_entries(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_images_google_photos", args={},
+                        result={"ok": True, "entries": [
+                            {"id": "A", "title": "Test", "items_count": 2,
+                             "url": "https://photos.google.com/x"},
+                            {"id": "B", "title": "metnos-e2e", "items_count": 2,
+                             "url": "https://photos.google.com/y"}]},
+                        ok=True, latency_ms=1)]
+        out = _render_final_message("H${step1.@gallery_fallback}", hist)
+        self.assertIn("- Test | 2", out)
+        self.assertIn("- metnos-e2e | 2", out)
+
+    def test_gallery_fallback_empty_for_local_entries(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="find_images_indices", args={},
+                        result={"ok": True, "entries": [
+                            {"path": "/x/a.jpg", "score": 0.9}]},
+                        ok=True, latency_ms=1)]
+        self.assertEqual(
+            _render_final_message("H${step1.@gallery_fallback}", hist), "H")
 
 
 class TestShownMagic(unittest.TestCase):

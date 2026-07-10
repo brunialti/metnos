@@ -95,7 +95,9 @@ def _plan_tools(framework) -> list[str]:
 # «google» dentro «google photos» non attiva gw) — cambia client/pool.
 # 2026-07-10.5: boundary write/send («carica/upload a servizio» = write, send =
 # destinatari/canali) + sinonimi carica/upload→write — cambia l'intent.
-ROUTING_EPOCH = "2026-07-10.5"
+# 2026-07-10.6: @gallery_fallback nel terminale G (presentazione: entries
+# remote senza path → bullet dei campi salienti).
+ROUTING_EPOCH = "2026-07-10.6"
 
 
 def tools_sig(framework, catalog) -> str:

@@ -47,6 +47,10 @@ _RUNTIME_RE = re.compile(r"\$\{RUNTIME:([a-zA-Z_][a-zA-Z0-9_]*)\}")
 _BULLET_FIELDS_DATED = ("start", "summary", "subject", "title",
                         "name", "path", "url", "date")
 _BULLET_FIELDS = ("start", "summary", "subject", "title", "name", "path", "url")
+# Fallback G-mode per entries REMOTE (senza path locale → niente gallery):
+# campi salienti di album/foto google_photos e simili (turn 4fa8d6bd).
+_BULLET_FIELDS_GALLERY_FALLBACK = ("title", "filename", "name", "items_count",
+                                   "created_at", "album", "url")
 
 # ── L-mode: tabella deterministica (output_policy mode L, ADR matrice §3) ─────
 # Ordine-colonna preferito (le più identificanti prima); le altre in coda,
@@ -980,6 +984,22 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
                 return str(v)
             lst = _find_list_of_dicts(result)
             return str(len(lst)) if lst else "0"
+        if path == "@gallery_fallback":
+            # G-mode presume foto LOCALI (gli attachments derivano dai path):
+            # entries REMOTE (album/foto google_photos, nessun path) non
+            # mostravano NULLA oltre al conteggio (turn 4fa8d6bd: «2» senza i
+            # titoli). Nessuna entry con path renderizzabile → bullet dei campi
+            # salienti; altrimenti "" (la gallery vera copre).
+            entries = result.get("entries")
+            if not (isinstance(entries, list) and entries):
+                return ""
+            if any(isinstance(e, dict)
+                   and (e.get("path") or e.get("local_path"))
+                   for e in entries):
+                return ""
+            return "\n\n" + _entries_bullet_lines(
+                entries, fields=_BULLET_FIELDS_GALLERY_FALLBACK,
+                more_key="MSG_RENDER_MORE_HIDDEN")
         if path == "@note":
             # Voce ONESTA dell'executor (`message`, i18n) come coda opzionale:
             # i final deterministici (G header, L table, S count) sostituiscono

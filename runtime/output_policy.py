@@ -298,9 +298,12 @@ def normalize_terminal(framework, intent, query: str = ""):
         from messages import get as _msg
         k = mapping[ppos]
         if mode == G:
-            # `@note` = voce onesta dell'executor (perimetro/limite §2.8, es.
-            # Google Photos app-created-only): assente → vuoto, zero rumore.
+            # `@gallery_fallback` = bullet dei campi salienti quando le entries
+            # sono REMOTE (niente path → niente gallery, turn 4fa8d6bd);
+            # `@note` = voce onesta dell'executor (perimetro/limite §2.8).
+            # Entrambi vuoti quando non pertinenti: zero rumore.
             final = (_msg("MSG_GALLERY_HEADER", count=f"${{step{k}.@shown}}")
+                     + f"${{step{k}.@gallery_fallback}}"
                      + f"${{step{k}.@note}}")
             info["action"] = "drop_describe+final" if drop else "final_only"
         elif mode == L:
