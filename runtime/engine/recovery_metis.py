@@ -90,6 +90,16 @@ class MetisRecovery:
                      "(glob_not_found)")
             return corrected_glob
 
+        # 1.quinquies Precursore open_sites mancante (spec sites F1): un consumer
+        # del dominio `sites` (login/read_sites) invocato SENZA sessione = il
+        # proposer è andato diretto al consumer saltando l'apertura. Ricostruisce
+        # la catena canonica F1 dall'URL nella query.
+        corrected_site = self._fix_needs_site_session(failed_run, query, intent,
+                                                      catalog)
+        if corrected_site is not None:
+            log.info("MetisRecovery: inserito open_sites (needs_site_session)")
+            return corrected_site
+
         # 2. Re-propose escludendo SOLO il framework fallito (NON il tool: a
         #    differenza di SimpleRecovery, che escludendo il tool dell'ultimo
         #    step peggiora i casi tipo needs_content_fetch). Il Proposer
@@ -196,6 +206,53 @@ class MetisRecovery:
             StepSpec(tool="find_files", args=ff_args),
             StepSpec(tool=last.tool, args={"from_step": 1}),
         ]
+        return Framework(steps=steps, final_message="")
+
+    def _fix_needs_site_session(self, failed_run: RunResult, query: str,
+                                intent: Intent,
+                                catalog: Optional[list]) -> Optional[Framework]:
+        """Un consumer del dominio `sites` (login_sites/read_sites) invocato
+        SENZA sessione (session_ids/from_step/entries) = manca il precursore
+        `open_sites` (il proposer è andato diretto al consumer; il PLANNER locale
+        Qwen non incatena i 3 step). Ricostruisce la catena canonica F1 a partire
+        dall'URL esplicito nella query: open_sites → [login_sites] → [read_sites].
+        Deterministico §7.9, gemello di `_fix_needs_file_discovery`.
+
+        `delete_sites` (kill-switch) è ESCLUSO: opera su ids espliciti o
+        all=true, non apre sessioni. Serve un URL http(s) nella query (senza,
+        no-fire → re-propose)."""
+        if not failed_run.steps:
+            return None
+        last = failed_run.steps[-1]
+        if last.tool not in ("login_sites", "read_sites") or last.ok:
+            return None
+        a = last.args if isinstance(last.args, dict) else {}
+        if any(a.get(k) for k in
+               ("session_ids", "session_id", "from_step", "entries")):
+            return None  # aveva una sessione → fallimento per altra causa
+        if catalog is not None and not any(
+                getattr(e, "name", None) == "open_sites" for e in catalog):
+            return None
+        import re as _re
+        m = _re.search(r"https?://[^\s'\"<>]+", query or "")
+        if not m:
+            return None
+        url = m.group(0).rstrip(".,;)")
+        acts = getattr(intent, "actions", None) or []
+        verbs = {(x.get("verb") or "").lower() for x in acts
+                 if isinstance(x, dict)}
+        want_login = "login" in verbs or last.tool == "login_sites"
+        want_read = ("read" in verbs or "describe" in verbs
+                     or last.tool == "read_sites")
+        steps = [StepSpec(tool="open_sites", args={"urls": [url]})]
+        if want_login:
+            steps.append(StepSpec(tool="login_sites",
+                                  args={"from_step": len(steps)}))
+        if want_read:
+            steps.append(StepSpec(tool="read_sites",
+                                  args={"from_step": len(steps)}))
+        if len(steps) == 1:
+            return None  # solo open non è un recovery utile del consumer
         return Framework(steps=steps, final_message="")
 
     def _fix_dir_passed_as_file(self, failed_run: RunResult, intent: Intent,

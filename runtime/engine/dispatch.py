@@ -2686,6 +2686,88 @@ def _coerce_args_to_schema(framework: Framework,
         return framework
 
 
+def _ensure_site_session_precursor(framework: Framework, intent, query: str,
+                                   catalog: Optional[list]) -> Framework:
+    """spec sites F1: un consumer del dominio `sites` (login_sites/read_sites)
+    ha bisogno di una SESSIONE, prodotta da `open_sites`. Il PLANNER locale
+    (Qwen) tende a emettere il solo consumer (login_sites) senza il precursore
+    e senza wiring — il consumer fallisce «session_ids mancante». Guard
+    DETERMINISTICO (§7.9): se il piano contiene login/read_sites SENZA sessione
+    e SENZA open_sites, ricostruisce la catena canonica F1 dall'URL nella query:
+    open_sites → [login_sites] → [read_sites]. Idempotente (T4): se open_sites
+    è già presente, no-op.
+
+    Sanitizza anche il `domain` URL-shaped che il planner mette per errore su
+    login_sites (il broker default = origine della sessione, verificata §3.2):
+    un domain=<url completo> romperebbe il match ESATTO host (CRITICO-1).
+    `delete_sites` (kill-switch, ids/all) è ESCLUSO."""
+    steps = list(getattr(framework, "steps", []) or [])
+    if not steps:
+        return framework
+    _site_consumers = {"login_sites", "read_sites"}
+    tools_present = {(getattr(s, "tool", "") or "") for s in steps}
+    consumers = [s for s in steps
+                 if (getattr(s, "tool", "") or "") in _site_consumers]
+    if not consumers:
+        return framework  # nessun consumer sites → non ci riguarda
+
+    # Deriva l'URL della sessione: da un open_sites già presente, poi dalla
+    # query (esplicito), infine da un arg URL-shaped di un consumer (il planner
+    # a volte mette l'URL in `domain`).
+    import re as _re
+    url = None
+    for s in steps:
+        if (getattr(s, "tool", "") or "") == "open_sites":
+            u = (getattr(s, "args", {}) or {}).get("urls")
+            if isinstance(u, list) and u and isinstance(u[0], str):
+                url = u[0]
+                break
+            if isinstance(u, str) and u:
+                url = u
+                break
+    if not url:
+        m = _re.search(r"https?://[^\s'\"<>]+", query or "")
+        if m:
+            url = m.group(0).rstrip(".,;)")
+    if not url:
+        for s in consumers:
+            for v in (getattr(s, "args", {}) or {}).values():
+                if isinstance(v, str) and v.startswith("http"):
+                    url = v.rstrip(".,;)")
+                    break
+            if url:
+                break
+    if not url:
+        return framework  # nessun URL derivabile → fallimento onesto a valle
+
+    acts = getattr(intent, "actions", None) or []
+    verbs = {(x.get("verb") or "").lower() for x in acts if isinstance(x, dict)}
+    want_login = "login" in verbs or "login_sites" in tools_present
+    want_read = ("read" in verbs or "describe" in verbs
+                 or "read_sites" in tools_present)
+    if not (want_login or want_read):
+        return framework
+
+    # Ricostruzione DETERMINISTICA della catena canonica F1: il planner locale
+    # emette gli step giusti ma spesso NON li ordina/incatena (login_sites
+    # prima di open_sites, senza from_step). Scartiamo il wiring rotto e
+    # riscriviamo open_sites → [login_sites] → [read_sites] → [final_answer].
+    # Idempotente (T4): un piano già canonico riproduce se stesso.
+    new_steps = [StepSpec(tool="open_sites", args={"urls": [url]})]
+    if want_login:
+        new_steps.append(StepSpec(tool="login_sites",
+                                  args={"from_step": len(new_steps)}))
+    if want_read:
+        new_steps.append(StepSpec(tool="read_sites",
+                                  args={"from_step": len(new_steps)}))
+    for s in steps:
+        if (getattr(s, "tool", "") or "") == "final_answer":
+            new_steps.append(s)
+            break
+    return Framework(steps=new_steps,
+                     final_message=getattr(framework, "final_message", ""))
+
+
 @dataclass(frozen=True)
 class Guard:
     """Un guard deterministico di struttura, con metadati DICHIARATI (PROV.1,
@@ -2735,6 +2817,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"intent.actions", "catalog"}),
           rationale="appende il produttore per un OGGETTO scoperto (drop per-object che il verb-level non vede)",
           adr="0177"),
+    Guard("ensure_site_session_precursor",
+          lambda fw, i, q, c: _ensure_site_session_precursor(fw, i, q, c),
+          scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "query", "step.tool"}),
+          rationale="spec sites F1: login/read_sites richiedono una sessione (open_sites). Il planner locale emette gli step sites senza ordine/wiring → RICOSTRUISCE la catena canonica open_sites→[login]→[read] dall'URL (della query o di un open_sites presente). Idempotente su un piano già canonico. Scrive solo `step` (nessun arg semantic)",
+          adr="sites-F1"),
     Guard("decontaminate_reader_qualifier",
           lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),
           v3_only=True, scope="cross-clause", writes=frozenset({"step.tool"}),

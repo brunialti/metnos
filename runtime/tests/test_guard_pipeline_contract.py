@@ -37,6 +37,10 @@ EXPECTED_PIPELINE = (
     ("align_framework_objects", False),
     ("enforce_missing_clauses", False),
     ("enforce_missing_objects", True),
+    # spec sites F1: precursore open_sites + ricostruzione catena canonica per i
+    # consumer sites (login/read_sites). Dopo enforce_missing_objects (che può
+    # appendere il consumer), prima delle riscritture di qualifier/ordine.
+    ("ensure_site_session_precursor", False),
     ("decontaminate_reader_qualifier", True),
     ("ensure_extract_clause", True),
     ("conform_to_intent_order", True),
