@@ -869,9 +869,15 @@ _FS_SIBLING_OBJECTS = frozenset({"files", "dirs"})
 
 def _fs_equivalent(step_obj: str, intent_objs) -> bool:
     """True se `step_obj` soddisfa uno degli `intent_objs` via l'equivalenza
-    filesystem files↔dirs."""
+    filesystem files↔dirs, o via il CARRIER §2.2: un producer files/dirs
+    soddisfa un intent images/texts — le ops generiche per path NON duplicano
+    `files` (turn a4f1f12c: «carica le foto di /tmp/dir» → il producer
+    legittimo è find_files sulla cartella; la guard non deve riscriverlo in
+    find_images_indices, che vuole un criterio semantico, non un path)."""
+    from vocab import FILE_CARRIER_OBJECTS
     return (step_obj in _FS_SIBLING_OBJECTS
-            and any(o in _FS_SIBLING_OBJECTS for o in (intent_objs or ())))
+            and any(o in _FS_SIBLING_OBJECTS or o in FILE_CARRIER_OBJECTS
+                    for o in (intent_objs or ())))
 
 
 def _align_framework_objects(framework: Framework, intent,

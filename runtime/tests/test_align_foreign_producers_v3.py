@@ -124,6 +124,30 @@ class TestAlignForeignProducersV3(unittest.TestCase):
         self.assertIn("read_files", tools)
         self.assertEqual(out.steps[2].args.get("from_step"), 2)
 
+    # --- carrier §2.2: files/dirs soddisfano images/texts (turn a4f1f12c) ----
+    def test_files_producer_legit_for_carrier_images(self):
+        """«carica le foto di /tmp/dir su google photos»: intent (find,images)+
+        (send,images) — il producer find_files(base_path) e' LEGITTIMO (le ops
+        generiche per path NON duplicano files): la guard NON deve riscriverlo
+        in find_images_indices (vuole un criterio semantico, non un path)."""
+        out = _align(
+            [{"verb": "find", "object": "images"},
+             {"verb": "send", "object": "images"}],
+            [_mk("find_files", base_path="/tmp/metnos-e2e-photos"),
+             _mk("final_answer")])
+        tools = [s.tool for s in out.steps]
+        self.assertIn("find_files", tools)
+        st = next(s for s in out.steps if s.tool == "find_files")
+        # args del producer legittimo INTATTI (niente wipe da realign)
+        self.assertEqual(st.args.get("base_path"), "/tmp/metnos-e2e-photos")
+
+    def test_fs_equivalent_carrier_matrix(self):
+        self.assertTrue(dispatch._fs_equivalent("files", {"images"}))
+        self.assertTrue(dispatch._fs_equivalent("dirs", {"texts"}))
+        self.assertTrue(dispatch._fs_equivalent("files", {"dirs"}))
+        self.assertFalse(dispatch._fs_equivalent("images", {"files"}))
+        self.assertFalse(dispatch._fs_equivalent("files", {"messages"}))
+
     # --- v2/metis: ramo NON attivo, comportamento storico (all_objs) ---------
     def test_v2_untouched_keeps_phantom(self):
         os.environ["METNOS_ENGINE"] = "metis"

@@ -980,11 +980,14 @@ def provider_gate_names(pool_names, user_query: str, *,
     names_in_pool = [n for n in (pool_names or []) if isinstance(n, str)]
     pool_set = set(names_in_pool)
     universe = set(all_names) if all_names else pool_set
-    query_markers = _strip_fs_paths((user_query or "").lower())
     hide_mode = bool(os.environ.get("METNOS_HIDE_EXECUTORS"))
     excluded: set[str] = set()
-    for suffix, markers in _dl.mapping("provider.markers").items():
-        if not _dl.match_any(markers, query_markers, "word"):
+    # Presenza-marker dalla SoT `active_provider_suffixes` (10/7): eredita la
+    # disambiguazione overlap («google» dentro «google photos» NON attiva gw)
+    # invece del match_any per-suffisso che la ignorava.
+    _active = set(active_provider_suffixes(user_query))
+    for suffix in _dl.mapping("provider.markers").keys():
+        if suffix not in _active:
             # Marker ASSENTE → la variante provider non deve comparire.
             for name in names_in_pool:
                 if not name.endswith(suffix):
@@ -1015,11 +1018,32 @@ def active_provider_suffixes(user_query: str) -> list[str]:
     `detection_lexicon provider.markers`): il provider-aware `derive_tool_name`
     lo usa per risolvere la variante `_<provider>` su clausole enforce/skeleton
     (GAP-B redesign: un compound github enforce-ato deve dare send_messages_github,
-    non il generico). Deterministico §7.9, no LLM/IO."""
+    non il generico). Deterministico §7.9, no LLM/IO.
+
+    DISAMBIGUAZIONE overlap (10/7, turn canonica-2): un provider e' attivo solo
+    se ha ALMENO uno span di match NON strettamente contenuto nello span di un
+    ALTRO provider — «google» (gw) dentro «google photos» NON attiva gw (il
+    guard [provider_client] forzava client=Drive su una clausola LOCALE);
+    «google drive» altrove nella stessa query lo attiva. Piu'-specifico-vince,
+    stesso principio dei nomi device (target_device: nome piu' lungo vince)."""
     query_markers = _strip_fs_paths((user_query or "").lower())
-    out: list[str] = []
+    spans: dict[str, list[tuple[int, int]]] = {}
     for suffix, markers in _dl.mapping("provider.markers").items():
-        if _dl.match_any(markers, query_markers, "word"):
+        for m in markers or []:
+            mm = str(m or "").lower().strip()
+            if not mm:
+                continue
+            for hit in re.finditer(r"\b" + re.escape(mm) + r"\b", query_markers):
+                spans.setdefault(suffix, []).append(hit.span())
+    out: list[str] = []
+    for suffix, own in spans.items():
+        foreign = [sp for s2, lst in spans.items() if s2 != suffix for sp in lst]
+
+        def _swallowed(a: int, b: int) -> bool:
+            return any(o0 <= a and b <= o1 and (o1 - o0) > (b - a)
+                       for o0, o1 in foreign)
+
+        if any(not _swallowed(a, b) for a, b in own):
             out.append(suffix)
     return out
 

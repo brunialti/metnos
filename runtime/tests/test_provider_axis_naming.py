@@ -47,6 +47,20 @@ def test_provider_skills_cover_suffixes():
     assert set(vocab.PROVIDER_SKILLS.keys()) == set(vocab.PROVIDER_SUFFIXES)
 
 
+def test_active_provider_suffixes_overlap_disambiguation():
+    """Marker sovrapposti fra provider: il match piu' SPECIFICO vince (10/7,
+    turn canonica-2): «google» (gw) dentro «google photos» NON attiva gw —
+    il guard [provider_client] forzava client=Drive su una clausola LOCALE.
+    Con entrambi i brand nominati, entrambi attivi."""
+    from tool_grammar import active_provider_suffixes as aps
+    assert aps("carica le foto su google photos nell'album X") == ["_google_photos"]
+    assert aps("cerca i file budget su google drive") == ["_google_workspace"]
+    assert sorted(aps("scarica da google photos e carica su google drive")) == \
+        ["_google_photos", "_google_workspace"]
+    assert aps("manda una mail via gmail") == ["_google_workspace"]
+    assert aps("trova le foto del 2019 nella cartella Immagini") == []
+
+
 def test_providers_are_qualifiers_and_compat():
     # ogni provider è un qualifier valido + ha una mappa object-compat.
     for p in vocab.PROVIDER_SUFFIXES:

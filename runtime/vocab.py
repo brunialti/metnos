@@ -286,6 +286,15 @@ QUALIFIERS = (
 # sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
 PROVIDER_SUFFIXES = frozenset({"github", "google_workspace", "google_photos"})
 
+# Oggetti CARRIER-di-files (§2.2, nota sopra OBJECTS): domini di contenuto
+# specializzato che per le OPS GENERICHE (enumerare/spostare per path) NON
+# duplicano `files` — «carica le foto di /tmp/dir» enumera FILE di una
+# cartella (find_files), non interroga l'indice semantico foto. Consumata da
+# `engine.dispatch._fs_equivalent` (un producer files/dirs soddisfa un intent
+# images/texts: la guard align non lo riscrive — turn a4f1f12c) e concettualmente
+# dal remap routability dell'intent_extractor (carrier images/texts→files).
+FILE_CARRIER_OBJECTS = frozenset({"images", "texts"})
+
 # Mappa provider → SKILL che ne custodisce credenziali/CLI (identità chiusa,
 # stessa natura di PROVIDER_SUFFIXES: dato, SoT unica — guard
 # `test_provider_skills_cover_suffixes`). `google_photos` usa la STESSA skill
@@ -548,9 +557,14 @@ ACTION_MAPPING = {
         },
     },
     "write": {
-        "it": ["scrivi", "salva", "sostituisci-il-contenuto", "sovrascrivi"],
-        "en": ["write", "save", "replace-contents", "overwrite", "persist"],
-        "boundary": "Crea o sostituisce contenuto di un file specifico.",
+        "it": ["scrivi", "salva", "sostituisci-il-contenuto", "sovrascrivi",
+                "carica", "caricare"],
+        "en": ["write", "save", "replace-contents", "overwrite", "persist",
+                "upload"],
+        "boundary": {
+            "it": "Crea o sostituisce contenuto di un file specifico; incluso l'UPLOAD di file/foto verso un servizio o provider («carica su drive/google photos»). NON send (send = destinatari o canali umani: mail, chat, notifiche).",
+            "en": "Creates or replaces the content of a specific file; including the UPLOAD of files/photos to a service or provider (\"upload to drive/google photos\"). NOT send (send = human recipients or channels: mail, chat, notifications).",
+        },
     },
     "create": {
         "it": ["crea-cartella", "crea-dir", "nuova-directory", "mkdir",
@@ -644,7 +658,10 @@ ACTION_MAPPING = {
                "notifica", "notificami", "avvisami", "scrivimi"],
         "en": ["send", "deliver", "forward", "publish",
                "email", "notify", "message", "post", "tell"],
-        "boundary": "Side-effect remoto (mail SMTP, push, webhook). Irreversibile.",
+        "boundary": {
+            "it": "Side-effect remoto verso DESTINATARI o canali (mail SMTP, push, webhook, messaggio). NON l'upload di file/foto a un servizio di storage («carica su drive/photos» → write). Irreversibile.",
+            "en": "Remote side-effect towards RECIPIENTS or channels (SMTP mail, push, webhook, message). NOT uploading files/photos to a storage service (\"upload to drive/photos\" → write). Irreversible.",
+        },
     },
     "describe": {
         "it": ["riassumi", "sintetizza", "descrivi", "punti-importanti", "panoramica"],
