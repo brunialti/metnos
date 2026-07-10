@@ -779,9 +779,46 @@ def _read_power() -> dict:
     return out
 
 
+def _network_fallback_stdlib() -> list[dict]:
+    """Rete SENZA psutil (device shim, 10/7 turn 6dce715f: health.network=[]
+    sul PC → «ip del pc-roberto» rispondeva vuoto): IP primario via UDP-connect
+    (nessun pacchetto inviato), hostname, MAC primario via uuid.getnode().
+    Meno ricco del ramo psutil (una sola «interfaccia» logica) ma ONESTO."""
+    import socket
+    import uuid as _uuid
+    entry: dict[str, Any] = {"iface": "primary", "ipv4": [], "ipv6": [],
+                             "mac": None, "up": True}
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("192.0.2.1", 80))   # TEST-NET-1: nessun traffico reale
+            entry["ipv4"] = [s.getsockname()[0]]
+        finally:
+            s.close()
+    except OSError:
+        pass
+    if not entry["ipv4"]:
+        try:
+            infos = socket.getaddrinfo(socket.gethostname(), None,
+                                       socket.AF_INET)
+            entry["ipv4"] = sorted({i[4][0] for i in infos
+                                    if not i[4][0].startswith("127.")})
+        except OSError:
+            pass
+    try:
+        node = _uuid.getnode()
+        if not (node >> 40) & 0x01:        # bit multicast = MAC fittizio
+            entry["mac"] = ":".join(f"{(node >> b) & 0xFF:02x}"
+                                    for b in range(40, -8, -8))
+    except Exception:
+        pass
+    return [entry] if (entry["ipv4"] or entry["mac"]) else []
+
+
 def _read_network() -> list[dict]:
     """Interfacce di rete con IP IPv4/IPv6 (esclude loopback).
-    Determinismo §7.9: psutil deterministico, niente comandi esterni."""
+    Determinismo §7.9: psutil deterministico, niente comandi esterni.
+    Senza psutil (device shim) → fallback stdlib (IP+MAC primari)."""
     out: list[dict] = []
     try:
         import socket
@@ -789,7 +826,7 @@ def _read_network() -> list[dict]:
         addrs = psutil.net_if_addrs()
         stats = psutil.net_if_stats()
     except Exception:
-        return out
+        return _network_fallback_stdlib()
     # MAC: AF_LINK (psutil) o AF_PACKET (Linux) — descrittivo (Roberto 9/7).
     _link_fams = set()
     for _fam_name in ("AF_LINK", "AF_PACKET"):

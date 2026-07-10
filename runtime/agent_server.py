@@ -230,11 +230,18 @@ def _run_deferred_for_device(device_id: str) -> None:
                 ok = bool(nl is not None
                           and getattr(nl, "final_kind", "") == "answer")
                 _dt.mark(rid, "done" if ok else "failed")
+                # turn:id NELLA notice (10/7, rilievo Roberto): il run
+                # differito gira fuori-sessione — senza l'id l'utente non
+                # può citarlo per segnalare un esito errato.
+                _tid = (getattr(nl, "turn_id", "") or "")[:8]
+                _outcome = (getattr(nl, "final_message", "") or "")[:200]
+                if _tid:
+                    _outcome = f"[turn:{_tid}] {_outcome}"
                 _un.append(
                     rec.get("channel") or "", rec.get("actor") or "host",
                     _m("MSG_DEFER_DONE",
                        device=rec.get("device_name") or "?",
-                       outcome=(getattr(nl, "final_message", "") or "")[:200]))
+                       outcome=_outcome))
             except Exception as ex:
                 _dt.mark(rid, "failed", note=repr(ex)[:200])
                 log.warning("A.1 deferred %s fallito: %r", rid, ex)
