@@ -10,7 +10,8 @@
 - **Manifest linter strutturale** (ADR 0169): `runtime/manifest_lint.py` deterministico (§7.9) — check FORMA scheda-tool (CAPITOLI, PATTERN-budget, PATTERN-args ⊆ schema, output-shape §2.6, affinity-overlap, NON→sibling). Wired synt stage 5.5. CLI `--all`.
 - **Constrained generation** (ADR 0133): `runtime/tool_grammar.py` GBNF per ogni step. Loop-detect `runtime/loop_detect.py`. Opt-in `METNOS_GRAMMAR=1`.
 - **Grammar pool extensions** (ADR 0135): `final_answer` synthetic from step≥2; `_parse_tool_call_tolerant` JSON recovery; `_FROM_STEP_HELPERS` esclusi al primo step.
-- **Skill dormancy + provider qualifier** (ADR 0136): `Executor.dormant` se skill senza credenziali (`runtime/skill_credentials.py`). `tool_grammar._PROVIDER_SUFFIX_MARKERS` filtra pool.
+- **Skill dormancy + provider qualifier** (ADR 0136): `Executor.dormant` se skill senza credenziali (`runtime/skill_credentials.py`). Gate pool provider: `tool_grammar.provider_gate_names` su `detection_lexicon provider.markers` (chiavi da `vocab.PROVIDER_SUFFIXES`).
+- **Invocazioni skill-backed: sandbox+placement** (10/7/2026): `sandbox.invocation_skills` (5 segnali, SoT `vocab.PROVIDER_SKILLS`, guard `test_provider_skills_cover_suffixes`) → bind RW skill home + rete in bwrap (`skill_extras`) e pin server in `invoke_executor` (mai device per backend provider). Test `runtime/tests/test_sandbox_skill_backed.py`. Senza: OAuth-in-loop (token invisibile alla sandbox, dal 9/7 = bubblewrap) e misroute su device.
 - **Vocab extension persons+tasks** (ADR 0137): OBJECTS 17→19. Synonyms IT+EN in `vocab.py`.
 - **filter_lists + tassonomia liste** (ADR 0138): `filter_lists` (set ops bi-list) vs `filter_entries` (1L predicati). Wire `_resolve_from_step` Layer 5.
 - **Builtin scheduler v2 canonical** (ADR 0133 ext): `create/list/delete/read/set_tasks` con fallback `id→name`.
