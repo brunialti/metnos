@@ -114,6 +114,7 @@ def _build_bwrap_args(
     autonomy: str = "supervised",
     extra_ro: list[Path] | None = None,
     extra_rw: list[Path] | None = None,
+    force_net: bool = False,
 ) -> list[str]:
     """Costruisce gli argomenti di bwrap a partire da un manifest.
 
@@ -150,7 +151,7 @@ def _build_bwrap_args(
         pass
 
     # Per ogni capability, deriva bind / network policy
-    has_network = False
+    has_network = force_net
     for cap in capabilities or []:
         kind = _capability_kind(cap)
         mode = _capability_mode(cap)
@@ -164,7 +165,19 @@ def _build_bwrap_args(
                     args += ["--ro-bind", str(p), str(p)]
                 else:  # write o altro
                     args += ["--bind", str(p), str(p)]
-        elif kind == "network":
+        elif kind in ("network", "net"):
+            # Entrambe le grafie esistono nei manifest (`network:http`,
+            # `net:read`): tolleranza al confine §2.4 — il kind `net` ignorato
+            # lasciava --unshare-net a executor che dichiaravano rete.
+            has_network = True
+        elif kind == "skill":
+            # Famiglia DICHIARATIVA `skill:<binding>` (10/7): l'executor dipende
+            # da una skill con credenziali → home skill RW (il refresh OAuth
+            # RISCRIVE il token) + rete. Stesso effetto di `skill_extras` ma
+            # dichiarato nel manifest.
+            home = _skill_home_path(mode)
+            if home is not None and home.exists():
+                args += ["--bind", str(home), str(home)]
             has_network = True
         elif kind == "code":
             # code:exec eredita /usr/bin per i tool consueti; nessun bind aggiuntivo
@@ -179,7 +192,7 @@ def _build_bwrap_args(
         if Path(p).exists():
             args += ["--bind", str(p), str(p)]
 
-    # Network: se nessuna capability lo richiede, isola
+    # Network: se nessuna capability (o extra del chiamante) lo richiede, isola
     if not has_network:
         args += ["--unshare-net"]
 
@@ -199,11 +212,13 @@ def wrap_command(
     autonomy: str = "supervised",
     extra_ro: list | None = None,
     extra_rw: list | None = None,
+    force_net: bool = False,
 ) -> list[str]:
     """Wrappa un comando in bubblewrap se disponibile e non disabilitato.
 
     `executor` deve avere `code_path` (Path) e `capabilities` (lista
-    di dict o str, formato manifest).
+    di dict o str, formato manifest). `force_net=True` NON isola la rete
+    anche senza capability network (usato con `skill_extras`).
 
     Ritorna la lista comando wrappata (es. ['bwrap', '--ro-bind', ..., '--',
     'python3', 'read_files.py']) oppure il comando invariato se bwrap manca o
@@ -220,8 +235,91 @@ def wrap_command(
         autonomy=autonomy,
         extra_ro=[Path(p) for p in (extra_ro or [])],
         extra_rw=[Path(p) for p in (extra_rw or [])],
+        force_net=force_net,
     )
     return ["bwrap", *bwrap_args, "--", *command]
+
+
+# --- skill-backed invocations (10/7/2026) -----------------------------------
+# Root cause del «OAuth in loop» post-9/7 (installazione bubblewrap): gli
+# executor che parlano con un provider via skill (google-workspace/github)
+# giravano in bwrap SENZA la skill home (token OAuth invisibile) e i
+# dispatcher `metnos:*` anche SENZA rete → ogni op chiedeva il setup da capo.
+# SoT dell'identità provider→skill: `vocab.PROVIDER_SKILLS`. Qui SOLO la
+# rilevazione deterministica (§7.9) e la traduzione in bind/rete.
+
+
+def _skill_home_path(binding: str):
+    """Home della skill via `skill_wrapper._skill_home` (SoT, rispetta
+    METNOS_SKILL_HOME). Lazy + fail-soft: None se non risolvibile."""
+    try:
+        from skill_wrapper import _skill_home
+        return _skill_home(binding)
+    except Exception:  # noqa: BLE001 — mai bloccare la sandbox per un helper
+        return None
+
+
+def invocation_skills(executor, args) -> list[str]:
+    """Skill (binding) di cui QUESTA invocazione ha bisogno. Deterministico §7.9.
+
+    Segnali, uniti (un executor è provider-backed se ALMENO uno vale):
+      1. `provenance.skill_id` — tool importati da skill (ADR 0123);
+      2. suffisso provider del nome (`vocab.PROVIDER_SUFFIXES`→`PROVIDER_SKILLS`,
+         es. `write_images_google_photos`);
+      3. `args.client` = provider non-locale (builtin client-arg, ADR 0165 —
+         es. `find_files(client='google_workspace')`);
+      4. `client` DICHIARATO single-provider nel manifest (dispatcher come
+         `read_files_doc`: enum=['google_workspace'] anche quando l'arg non
+         viaggia nel piano — il default lo applica l'executor);
+      5. capability famiglia `skill:<binding>` nel manifest.
+    Ritorna la lista dei binding skill (dedup, ordine stabile)."""
+    from vocab import PROVIDER_SKILLS, PROVIDER_SUFFIXES
+    skills: dict[str, None] = {}   # dict = set ordinato
+
+    prov = getattr(executor, "provenance", None) or {}
+    skill_id = prov.get("skill_id") if isinstance(prov, dict) else None
+    if isinstance(skill_id, str) and skill_id.strip():
+        skills[skill_id.strip()] = None
+
+    name = getattr(executor, "name", "") or ""
+    for suffix in PROVIDER_SUFFIXES:
+        if name.endswith("_" + suffix) and suffix in PROVIDER_SKILLS:
+            skills[PROVIDER_SKILLS[suffix]] = None
+
+    client = (args or {}).get("client") if isinstance(args, dict) else None
+    if isinstance(client, str) and client in PROVIDER_SKILLS:
+        skills[PROVIDER_SKILLS[client]] = None
+
+    schema = getattr(executor, "args_schema", None) or {}
+    client_prop = ((schema.get("properties") or {}).get("client") or {}
+                   if isinstance(schema, dict) else {})
+    enum = client_prop.get("enum") if isinstance(client_prop, dict) else None
+    if (isinstance(enum, list) and enum
+            and all(isinstance(e, str) and e in PROVIDER_SKILLS for e in enum)):
+        for e in enum:
+            skills[PROVIDER_SKILLS[e]] = None
+
+    for cap in getattr(executor, "capabilities", None) or []:
+        if _capability_kind(cap) == "skill":
+            binding = _capability_mode(cap)
+            if binding:
+                skills[binding] = None
+
+    return list(skills)
+
+
+def skill_extras(skills) -> tuple[list, bool]:
+    """(extra_rw, force_net) per `wrap_command` da una lista di skill binding.
+
+    Home skill in RW (il refresh OAuth RISCRIVE il token via os.replace) e
+    rete abilitata. Solo le home ESISTENTI (skill assente = niente bind: il
+    needs_inputs onesto arriva a valle)."""
+    paths = []
+    for s in skills or []:
+        home = _skill_home_path(s)
+        if home is not None and Path(home).exists():
+            paths.append(Path(home))
+    return paths, bool(skills)
 
 
 # --- introspection (per dashboard / debug) ---------------------------------

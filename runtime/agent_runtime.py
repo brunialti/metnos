@@ -3410,8 +3410,17 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # esistono sul device). Il marker e' rimosso qui, prima di raggiungere
     # l'executor. NON tocca scope="device" (device-only per costruzione).
     _colocate_server = bool(args.pop("_colocate_server", False))
+    # Pin-server provider-backed (10/7, bug B1): un'invocazione il cui backend
+    # è una skill provider (client=google_workspace, suffisso _google_photos,
+    # dispatcher gw...) gira SOLO sul server — le credenziali/CLI della skill
+    # vivono lì, sul device il modulo non esiste per costruzione (C7). Senza
+    # questo pin la destinazione APPICCICOSA mandava «cerca X su google drive»
+    # sul PC → ERR_NOT_APPLICABLE. Stessa semantica del precedente stabilito:
+    # target non impacchettabile → gira locale, non fallisce.
+    import sandbox as _sandbox  # lazy: evita import circolare a module-load
+    _skill_names = _sandbox.invocation_skills(executor, args)
     _device_ok = (bool(target_device) and bool(_plc.get("device_ok"))
-                  and not _colocate_server)
+                  and not _colocate_server and not _skill_names)
     if _plc_scope == "device" or _device_ok:
         import devices as _devices
         import placement as _placement
@@ -3461,10 +3470,15 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     if executor.name == "undo_last_turn" and "_actor" not in args:
         args = {**args, "_actor": actor or "host"}
 
-    import sandbox as _sandbox  # lazy: evita import circolare e overhead per moduli che non lo usano
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
-    cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy)
+    # Extras skill-backed (10/7, bug B2): senza, dal 9/7 (bubblewrap installato)
+    # il token OAuth era INVISIBILE alla sandbox e i dispatcher `metnos:*`
+    # senza rete → ogni op Google chiedeva il setup OAuth in loop. Bind della
+    # SOLA home skill (RW: il refresh riscrive il token) + rete.
+    _extra_rw, _force_net = _sandbox.skill_extras(_skill_names)
+    cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy,
+                                extra_rw=_extra_rw, force_net=_force_net)
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
     # moduli runtime (mail_client, messages, platform_policy, ...) per nome.
     # Senza questo, il subprocess vede solo stdlib e fallisce con

@@ -40,6 +40,13 @@ def test_provider_markers_cover_suffixes():
         f"(o viceversa). Aggiungi i marker in detection_lexicon_seed.")
 
 
+def test_provider_skills_cover_suffixes():
+    """`PROVIDER_SKILLS` (provider→skill, per sandbox/placement) copre
+    esattamente PROVIDER_SUFFIXES: un provider senza skill (o viceversa)
+    romperebbe invocation_skills in silenzio."""
+    assert set(vocab.PROVIDER_SKILLS.keys()) == set(vocab.PROVIDER_SUFFIXES)
+
+
 def test_providers_are_qualifiers_and_compat():
     # ogni provider è un qualifier valido + ha una mappa object-compat.
     for p in vocab.PROVIDER_SUFFIXES:

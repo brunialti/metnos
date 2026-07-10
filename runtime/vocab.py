@@ -286,6 +286,21 @@ QUALIFIERS = (
 # sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
 PROVIDER_SUFFIXES = frozenset({"github", "google_workspace", "google_photos"})
 
+# Mappa provider → SKILL che ne custodisce credenziali/CLI (identità chiusa,
+# stessa natura di PROVIDER_SUFFIXES: dato, SoT unica — guard
+# `test_provider_skills_cover_suffixes`). `google_photos` usa la STESSA skill
+# google-workspace (spec Photos D4: stesso client secret/token, scope aggiunti).
+# Consumata da `sandbox.invocation_skills`: un'invocazione provider-backed
+# (1) NON è device-eligible (le credenziali skill vivono sul server) e
+# (2) in bwrap riceve bind RW della skill home + rete (fix 10/7: da quando
+# bubblewrap esiste sul sistema, 9/7, senza questi bind ogni op Google
+# chiedeva l'OAuth in loop — token invisibile alla sandbox).
+PROVIDER_SKILLS = {
+    "github": "github",
+    "google_workspace": "google-workspace",
+    "google_photos": "google-workspace",
+}
+
 # ── Qualifier → Object compatibility map (Naming Authority R4) ────────
 #
 # Mappa quali OBJECTS ammettono ogni qualifier (vocab-validi ma
