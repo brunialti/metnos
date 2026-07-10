@@ -405,8 +405,22 @@ def _ps_snapshot() -> list[dict]:
 
 
 def _read_load() -> dict:
-    """1/5/15min load avg + uptime in secondi."""
+    """1/5/15min load avg + uptime in secondi. Su Windows il load avg non
+    esiste → uptime (GetTickCount64) + uso CPU complessivo (GetSystemTimes):
+    il formatter rende la variante MSG_HEALTH_LOAD_WIN."""
     out: dict[str, Any] = {"available": False}
+    if os.name == "nt":
+        try:
+            import ctypes
+            out["uptime_s"] = int(
+                ctypes.windll.kernel32.GetTickCount64() / 1000)
+            cp = _win_cpu_percent()
+            if cp is not None:
+                out["cpu_pct"] = cp
+            out["available"] = True
+        except Exception:  # noqa: BLE001 — best-effort
+            pass
+        return out
     try:
         l1, l5, l15 = os.getloadavg()
         out.update({"available": True, "1m": round(l1, 2),
@@ -422,9 +436,107 @@ def _read_load() -> dict:
     return out
 
 
+# ── Rami WINDOWS nativi (10/7, Roberto: «il PC dice meno del server») ────────
+# Solo stdlib ctypes/winreg — lo shim del device non ha psutil (§10.4). Stesso
+# pattern del CPU% nativo Win32 dei processi (b3336a0). Ogni helper è
+# best-effort: su errore la sezione resta onestamente vuota (§2.8).
+
+def _win_memory() -> dict:
+    """RAM+swap via GlobalMemoryStatusEx (shape identica al ramo /proc)."""
+    import ctypes
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+    st = MEMORYSTATUSEX(); st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+        return {"available": False, "reason": "GlobalMemoryStatusEx fallita"}
+    total_mb = st.ullTotalPhys // (1024 * 1024)
+    avail_mb = st.ullAvailPhys // (1024 * 1024)
+    used_mb = total_mb - avail_mb
+    # swap ≈ pagefile oltre la RAM fisica (approssimazione standard Win32)
+    swap_total_mb = max(0, (st.ullTotalPageFile - st.ullTotalPhys) // (1024 * 1024))
+    swap_free_mb = max(0, (st.ullAvailPageFile - st.ullAvailPhys) // (1024 * 1024))
+    swap_used_mb = max(0, swap_total_mb - swap_free_mb)
+    return {"available": True, "total_mb": total_mb, "used_mb": used_mb,
+            "free_mb": avail_mb,
+            "pct": round(100.0 * used_mb / total_mb, 1) if total_mb else 0.0,
+            "swap_total_mb": swap_total_mb, "swap_used_mb": swap_used_mb,
+            "swap_pct": (round(100.0 * swap_used_mb / swap_total_mb, 1)
+                         if swap_total_mb else 0.0)}
+
+
+def _win_disks() -> list[dict]:
+    """Drive FISSI via GetLogicalDriveStringsW + shutil.disk_usage (shape
+    identica al ramo /proc/mounts)."""
+    import ctypes
+    import shutil
+    out: list[dict] = []
+    buf = ctypes.create_unicode_buffer(256)
+    n = ctypes.windll.kernel32.GetLogicalDriveStringsW(255, buf)
+    drives = [d for d in buf[:n].split("\x00") if d]
+    for drive in drives:
+        if ctypes.windll.kernel32.GetDriveTypeW(drive) != 3:  # DRIVE_FIXED
+            continue
+        try:
+            u = shutil.disk_usage(drive)
+        except OSError:
+            continue
+        if not u.total:
+            continue
+        fsname = ctypes.create_unicode_buffer(64)
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            drive, None, 0, None, None, None, fsname, 64)
+        out.append({"mount": drive, "device": drive,
+                    "fstype": (fsname.value.lower() if ok else ""),
+                    "total_gb": round(u.total / (1024 ** 3), 1),
+                    "used_gb": round(u.used / (1024 ** 3), 1),
+                    "free_gb": round(u.free / (1024 ** 3), 1),
+                    "pct": round(100.0 * u.used / u.total, 1)})
+    return out
+
+
+def _win_cpu_percent(sample_s: float = 0.1) -> float | None:
+    """Uso CPU complessivo via GetSystemTimes (2 campioni). NB: su Win il
+    kernel-time INCLUDE l'idle → busy = (k+u−i)Δ / (k+u)Δ."""
+    import ctypes
+    k32 = ctypes.windll.kernel32
+
+    def _times():
+        idle = ctypes.c_ulonglong(); kern = ctypes.c_ulonglong()
+        user = ctypes.c_ulonglong()
+        if not k32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern),
+                                  ctypes.byref(user)):
+            return None
+        return idle.value, kern.value, user.value
+    a = _times()
+    if a is None:
+        return None
+    time.sleep(sample_s)
+    b = _times()
+    if b is None:
+        return None
+    di, dk, du = (b[0] - a[0]), (b[1] - a[1]), (b[2] - a[2])
+    tot = dk + du
+    if tot <= 0:
+        return None
+    return round(100.0 * (tot - di) / tot, 1)
+
+
 def _read_memory() -> dict:
-    """RAM + swap da /proc/meminfo (kB → MB)."""
+    """RAM + swap da /proc/meminfo (kB → MB); su Windows via Win32 nativo."""
     out: dict[str, Any] = {"available": False}
+    if os.name == "nt":
+        try:
+            return _win_memory()
+        except Exception:  # noqa: BLE001 — best-effort
+            return out
     try:
         with open("/proc/meminfo", "r") as f:
             data = f.read()
@@ -469,8 +581,14 @@ _DISK_SKIP_FSTYPES = {
 
 
 def _read_disk() -> list[dict]:
-    """Per ogni mount user-rilevante in /proc/mounts: total/used/free/pct."""
+    """Per ogni mount user-rilevante in /proc/mounts: total/used/free/pct.
+    Su Windows: drive fissi via Win32 nativo."""
     out: list[dict] = []
+    if os.name == "nt":
+        try:
+            return _win_disks()
+        except Exception:  # noqa: BLE001 — best-effort
+            return out
     try:
         with open("/proc/mounts", "r") as f:
             mounts = f.read().splitlines()
@@ -914,7 +1032,23 @@ def _read_cpu() -> dict:
         # uso complessivo: finestra breve, costo ~0.1s una volta per health
         out["usage_pct"] = psutil.cpu_percent(interval=0.1)
     except Exception:
-        pass
+        # Windows senza psutil (device shim): freq nominale dal registry,
+        # uso complessivo via GetSystemTimes (stdlib, zero dipendenze).
+        if os.name == "nt":
+            try:
+                import winreg
+                with winreg.OpenKey(
+                        winreg.HKEY_LOCAL_MACHINE,
+                        r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as k:
+                    out["freq_mhz"] = int(winreg.QueryValueEx(k, "~MHz")[0])
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                cp = _win_cpu_percent()
+                if cp is not None:
+                    out["usage_pct"] = cp
+            except Exception:  # noqa: BLE001
+                pass
     return out
 
 

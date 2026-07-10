@@ -1215,9 +1215,11 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
             bits = []
             if cd.get("model"):
                 bits.append(str(cd["model"]))
-            if cd.get("physical_cores") or cd.get("logical_cores"):
-                bits.append(f"{cd.get('physical_cores') or '?'}c/"
+            if cd.get("physical_cores"):
+                bits.append(f"{cd['physical_cores']}c/"
                             f"{cd.get('logical_cores') or '?'}t")
+            elif cd.get("logical_cores"):
+                bits.append(f"{cd['logical_cores']} thread")
             if cd.get("freq_mhz"):
                 fm = f"{cd['freq_mhz']}MHz"
                 if cd.get("freq_max_mhz"):
@@ -1304,11 +1306,17 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
     load = h.get("load") or {}
     if (_keep is None or "load" in _keep) and load.get("available"):
         up_h = (load.get("uptime_s") or 0) // 3600
-        out.append(_msg(
-            "MSG_HEALTH_LOAD",
-            l1=load.get("1m", "?"), l5=load.get("5m", "?"),
-            l15=load.get("15m", "?"), uph=up_h,
-        ))
+        if load.get("1m") is None:
+            # Windows: niente load avg → uptime + uso CPU (10/7).
+            _cpu = load.get("cpu_pct")
+            out.append(_msg("MSG_HEALTH_LOAD_WIN", uph=up_h,
+                            cpu_pct=(f"{_cpu}" if _cpu is not None else "?")))
+        else:
+            out.append(_msg(
+                "MSG_HEALTH_LOAD",
+                l1=load.get("1m", "?"), l5=load.get("5m", "?"),
+                l15=load.get("15m", "?"), uph=up_h,
+            ))
     mem = h.get("memory") or {}
     if (_keep is None or "memory" in _keep) and mem.get("available"):
         used_gb = (mem.get("used_mb", 0)) // 1024
