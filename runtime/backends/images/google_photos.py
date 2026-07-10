@@ -111,6 +111,9 @@ def list_albums(args: dict) -> dict:
         "available_total": len(albums),
         "images_source": "google_photos",
         "albums_app_created_only": True,
+        # Perimetro DICHIARATO all'utente (§2.8, turn e2b0e529): l'API vede
+        # SOLO l'app-created — né gli album posseduti né i condivisi.
+        "message": _msg("MSG_GPHOTOS_APP_CREATED_ONLY"),
     }
 
 
@@ -343,6 +346,8 @@ def find(args: dict) -> dict:
         "entries": entries,
         "used": len(entries),
         "images_source": "google_photos",
+        # Stesso perimetro degli album (§2.8): solo foto caricate da Metnos.
+        "message": _msg("MSG_GPHOTOS_APP_CREATED_ONLY"),
     }
     if more_available:
         out["truncated"] = True

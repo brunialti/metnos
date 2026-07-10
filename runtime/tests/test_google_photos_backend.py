@@ -203,6 +203,9 @@ def test_find_albums_flag_lists_albums(monkeypatch):
     out = gp.find({"albums": True})
     assert out["ok"] and out["entries"][0]["title"] == "T"
     assert out.get("albums_app_created_only") is True
+    # Perimetro DICHIARATO (§2.8, turn e2b0e529): la nota app-created-only
+    # viaggia nel result `message` e il render @table la appende sempre.
+    assert isinstance(out.get("message"), str) and out["message"].strip()
 
 
 def test_find_album_not_found_empty_honest(monkeypatch):
