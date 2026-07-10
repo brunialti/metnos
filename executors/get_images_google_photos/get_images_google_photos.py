@@ -32,6 +32,11 @@ def invoke(args):
         return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
                 "error_class": "invalid_args",
                 "results": [], "used": 0, "ok_count": 0}
+    # Picker (P3, D8): l'utente seleziona nella UI Google (anche dentro album
+    # NON creati da Metnos) e Metnos scarica i selezionati. Il resume del
+    # dialog arriva con `picker_session_id`.
+    if args.get("picker") or args.get("picker_session_id"):
+        return google_photos.picker(args)
     return google_photos.download(args)
 
 

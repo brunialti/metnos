@@ -10,26 +10,28 @@ author           = "Roberto Brunialti"
 affinity         = [
     "google photos", "google foto", "gphotos", "scarica foto",
     "download photos", "download foto", "recupera foto", "retrieve photos",
-    "salva in locale", "scarica album", "download album"
+    "salva in locale", "scarica album", "download album",
+    "seleziona foto", "pick photos"
 ]
 revertible       = true
 reverse_pattern  = "delete_created_paths"
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: scarica foto per id da Google Photos nel workspace foto. PATTERN: get_images_google_photos(ids=['AB...']); ids di norma via from_step da find_images_google_photos. NON: da Google Drive usa read_files. OUT: results=[{id,local_path,bytes}]."
-en = "SCOPO: downloads photos by id from Google Photos into the photo workspace. PATTERN: get_images_google_photos(ids=['AB...']); ids via from_step from find_images_google_photos. NON: for Google Drive use read_files. OUT: results=[{id,local_path,bytes}]."
+it = "SCOPO: scarica foto da Google Photos nel workspace. PATTERN: get_images_google_photos(picker=true) = scegli TU nella UI Google (link in chat, anche album interi); ids=['AB...'] via from_step. NON: da Google Drive usa read_files. OUT: results=[{id,local_path,bytes}]."
+en = "SCOPO: downloads photos from Google Photos into the workspace. PATTERN: get_images_google_photos(picker=true) = YOU pick in the Google UI (link in chat, whole albums too); ids=['AB...'] via from_step. NON: for Google Drive use read_files. OUT: results=[{id,local_path,bytes}]."
 
 [code]
 files  = ["get_images_google_photos.py"]
-digest = "sha256:7395517b5f3f5a723192441586f80a887347deabb2dcecdd52f1462bf8cb520b"
+digest = "sha256:d4a8896f971a179deaa448ea675671e8f6eea5f97937c0bbbba03c24d766f7bb"
 
 [args]
 type     = "object"
 required = []
-# Foto da scaricare: `ids` (media_item_id) OPPURE `entries` (from_step, es.
-# output di find_images_google_photos). Disgiunzione §7.3.
-requires_one_of = [["ids", "entries"]]
+# Foto da scaricare: `ids`/`entries` (app-created, via from_step) OPPURE
+# `picker=true` (l'utente seleziona nella UI Google — QUALSIASI foto/album,
+# anche non caricati da Metnos). `picker_session_id` = solo resume del dialog.
+requires_one_of = [["ids", "entries", "picker", "picker_session_id"]]
 
 [args.properties.ids]
 type    = "array"
@@ -44,6 +46,22 @@ type    = "array"
 [args.properties.entries.description]
 it = "Record con campo `id`, tipicamente via `from_step: N` (output di find_images_google_photos)."
 en = "Records with an `id` field, typically via `from_step: N` (find_images_google_photos output)."
+
+[args.properties.picker]
+type    = "boolean"
+default = false
+
+[args.properties.picker.description]
+it = "true = l'utente sceglie le foto nella UI Google via link (Picker): funziona su TUTTA la libreria, anche album non caricati da Metnos. Metnos scarica i selezionati alla conferma."
+en = "true = the user picks photos in the Google UI via link (Picker): works on the WHOLE library, including albums not uploaded by Metnos. Metnos downloads the selection on confirm."
+
+[args.properties.picker_session_id]
+type    = "string"
+default = ""
+
+[args.properties.picker_session_id.description]
+it = "USO INTERNO (resume del dialog picker): id della sessione di selezione. Non fornirlo a mano."
+en = "INTERNAL USE (picker dialog resume): selection session id. Do not set manually."
 
 [args.properties.dst_dir]
 type    = "string"

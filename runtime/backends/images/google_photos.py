@@ -392,6 +392,124 @@ def find(args: dict) -> dict:
 
 
 # --------------------------------------------------------------------------
+# PICKER (P3, D8) — l'utente seleziona nella UI Google, Metnos scarica
+# --------------------------------------------------------------------------
+# Riusa il meccanismo dialog/gate-resume (spec §5: NIENTE poller nuovo):
+# 1° invoke → sessions.create → needs_inputs col LINK pickerUri; l'utente
+# apre, seleziona (anche dentro un album, multi-selezione), conferma qui;
+# resume → sessions.get: non pronta → stesso dialog (onesto), pronta →
+# picker-download nel workspace → results (+ gallery via attachments).
+
+
+def _picker_dialog(args: dict, session_id: str, picker_uri: str,
+                   *, not_ready: bool = False) -> dict:
+    key = "MSG_GPHOTOS_PICKER_NOT_READY" if not_ready else "MSG_GPHOTOS_PICKER_OPEN"
+    prompt = _msg(key, url=picker_uri)
+    args_base = {k: v for k, v in dict(args).items()
+                 if k.startswith("_") or k in ("dst_dir", "max_total")}
+    args_base.update({"picker": True, "picker_session_id": session_id,
+                      "picker_uri": picker_uri})
+    return {
+        "ok": True,
+        "decision": "needs_inputs",
+        "needs_inputs": {
+            "title": _msg("MSG_GPHOTOS_PICKER_TITLE"),
+            "dialog": [{
+                "var": "picker_done",
+                "prompt": prompt,
+                "schema": {"kind": "choice",
+                           "choices": [_msg("MSG_GPHOTOS_PICKER_CONFIRM")]},
+            }],
+            "fmt": "auto",
+            "on_complete": {
+                "type": "resume_executor_with_values",
+                "executor": "get_images_google_photos",
+                "args_base": args_base,
+            },
+            "timeout_s": 3600,
+        },
+        "final_message_hint": prompt,
+        "results": [], "used": 0,
+    }
+
+
+def picker(args: dict) -> dict:
+    """Flusso Picker: senza `picker_session_id` crea la sessione e chiede
+    all'utente di selezionare (link); con session_id (resume) scarica i
+    selezionati. Il download locale e' reversibile (delete_created_paths)."""
+    if not isinstance(args, dict):
+        return {"ok": False, "error": _msg("ERR_ARGS_NOT_OBJECT"),
+                "error_class": "invalid_args",
+                "results": [], "used": 0, "ok_count": 0}
+    session_id = (args.get("picker_session_id") or "").strip()
+    if not session_id:
+        data, err = _run_photos(["photos", "picker-create"],
+                                executor="get_images_google_photos",
+                                args_base=dict(args), result_kind="results")
+        if err is not None:
+            return err
+        d = data or {}
+        sid, uri = d.get("session_id", ""), d.get("picker_uri", "")
+        if not sid or not uri:
+            return {"ok": False, "error_class": "server_error",
+                    "error": _msg("ERR_OP_FAILED", reason="picker session"),
+                    "results": [], "used": 0, "ok_count": 0}
+        return _picker_dialog(args, sid, uri)
+
+    # RESUME: la selezione e' completata?
+    data, err = _run_photos(["photos", "picker-get", session_id],
+                            executor="get_images_google_photos",
+                            args_base=dict(args), result_kind="results")
+    if err is not None:
+        return err
+    d = data or {}
+    if not d.get("media_items_set"):
+        uri = d.get("picker_uri") or args.get("picker_uri") or ""
+        return _picker_dialog(args, session_id, uri, not_ready=True)
+
+    dst_dir = str(args.get("dst_dir") or (_DEFAULT_DST_DIR / "picker"))
+    Path(dst_dir).expanduser().mkdir(parents=True, exist_ok=True)
+    argv = ["photos", "picker-download", session_id, "--output", dst_dir]
+    max_total = int(args.get("max_total") or 0)
+    if max_total:
+        argv.extend(["--max", str(max_total)])
+    data, err = _run_photos(argv, executor="get_images_google_photos",
+                            args_base=dict(args), result_kind="results")
+    if err is not None:
+        return err
+    rows = (data or {}).get("results") or []
+    results = [{"ok": True, "id": r.get("id", ""),
+                "local_path": r.get("path", ""),
+                "filename": r.get("filename", ""),
+                "bytes": int(r.get("bytes", 0) or 0)}
+               for r in rows if r.get("ok")]
+    failed = [{"ok": False, "id": r.get("id", ""),
+               "filename": r.get("filename", ""),
+               "error_class": "server_error",
+               "error": _msg("ERR_OP_FAILED", reason=r.get("error", "download"))}
+              for r in rows if not r.get("ok")]
+    out = {
+        "ok": len(failed) == 0 and len(results) > 0,
+        "ok_count": len(results),
+        "fail_count": len(failed),
+        "results": results,
+        "used": len(results),
+        "images_source": "google_photos",
+    }
+    if failed:
+        out["failed"] = failed
+        if not results:
+            out["error_class"] = failed[0]["error_class"]
+            out["error"] = failed[0]["error"]
+    if results:
+        out["_undo"] = {
+            "reverse_pattern": "delete_created_paths",
+            "paths": [r["local_path"] for r in results if r.get("local_path")],
+        }
+    return out
+
+
+# --------------------------------------------------------------------------
 # GET  (download by media_item_id)
 # --------------------------------------------------------------------------
 

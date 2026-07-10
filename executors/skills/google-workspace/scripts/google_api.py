@@ -1597,6 +1597,98 @@ def photos_download(args):
     }, ensure_ascii=False))
 
 
+# --- Picker API (P3): l'UTENTE seleziona nella UI Google, l'app scarica ----
+# Base separata dalla Library API. Scope photospicker.mediaitems.readonly.
+# Flusso: sessions.create → pickerUri (LINK per l'utente) → sessions.get
+# finche' mediaItemsSet → mediaItems?sessionId= (pageSize COSTANTE) →
+# download baseUrl+'=d' (autenticato) → sessions.delete (cleanup).
+
+_PICKER_API_BASE = "https://photospicker.googleapis.com/v1"
+
+
+def photos_picker_create(args):
+    session = _photos_session()
+    resp = session.post(f"{_PICKER_API_BASE}/sessions", json={})
+    if resp.status_code >= 400:
+        _photos_fail("picker-create", resp)
+    d = resp.json()
+    print(json.dumps({
+        "session_id": d.get("id", ""),
+        "picker_uri": d.get("pickerUri", ""),
+        "media_items_set": bool(d.get("mediaItemsSet")),
+    }, ensure_ascii=False))
+
+
+def photos_picker_get(args):
+    session = _photos_session()
+    resp = session.get(f"{_PICKER_API_BASE}/sessions/{args.session_id}")
+    if resp.status_code >= 400:
+        _photos_fail("picker-get", resp)
+    d = resp.json()
+    print(json.dumps({
+        "session_id": d.get("id", args.session_id),
+        "picker_uri": d.get("pickerUri", ""),
+        "media_items_set": bool(d.get("mediaItemsSet")),
+    }, ensure_ascii=False))
+
+
+def photos_picker_download(args):
+    """Scarica TUTTI gli item selezionati nella sessione picker in --output.
+    Paginazione a pageSize COSTANTE (contratto API). A fine download la
+    sessione viene chiusa (delete best-effort: gli item restano scaricati)."""
+    session = _photos_session()
+    out_dir = Path(args.output).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results = []
+    page_token = ""
+    max_total = int(args.max) if args.max else 0
+    while True:
+        params = {"sessionId": args.session_id, "pageSize": 100}
+        if page_token:
+            params["pageToken"] = page_token
+        resp = session.get(f"{_PICKER_API_BASE}/mediaItems", params=params)
+        if resp.status_code >= 400:
+            _photos_fail("picker-items", resp)
+        d = resp.json()
+        for it in d.get("mediaItems", []):
+            mf = it.get("mediaFile") or {}
+            base_url = mf.get("baseUrl", "")
+            filename = mf.get("filename") or f"{it.get('id','item')}.bin"
+            row = {"id": it.get("id", ""), "filename": filename,
+                   "mime": mf.get("mimeType", "")}
+            if not base_url:
+                row.update({"ok": False, "error": "no baseUrl"})
+                results.append(row)
+                continue
+            dl = session.get(base_url + "=d")
+            if dl.status_code >= 400:
+                row.update({"ok": False,
+                            "error": f"HTTP {dl.status_code}"})
+                results.append(row)
+                continue
+            out_path = out_dir / filename
+            n = 1
+            while out_path.exists():   # niente overwrite silenzioso
+                out_path = out_dir / f"{Path(filename).stem}-{n}{Path(filename).suffix}"
+                n += 1
+            out_path.write_bytes(dl.content)
+            row.update({"ok": True, "path": str(out_path),
+                        "bytes": len(dl.content)})
+            results.append(row)
+            if max_total and sum(1 for r in results if r.get("ok")) >= max_total:
+                page_token = ""
+                break
+        else:
+            page_token = d.get("nextPageToken", "")
+        if not page_token:
+            break
+    try:  # cleanup best-effort: la sessione non serve piu'
+        session.delete(f"{_PICKER_API_BASE}/sessions/{args.session_id}")
+    except Exception:
+        pass
+    print(json.dumps({"results": results}, ensure_ascii=False))
+
+
 # =========================================================================
 # CLI parser
 # =========================================================================
@@ -1857,6 +1949,19 @@ def main():
     p.add_argument("media_item_id")
     p.add_argument("--output", default="", help="Local output path (defaults to ./<filename>)")
     p.set_defaults(func=photos_download)
+
+    p = ph_sub.add_parser("picker-create")
+    p.set_defaults(func=photos_picker_create)
+
+    p = ph_sub.add_parser("picker-get")
+    p.add_argument("session_id")
+    p.set_defaults(func=photos_picker_get)
+
+    p = ph_sub.add_parser("picker-download")
+    p.add_argument("session_id")
+    p.add_argument("--output", required=True, help="Local destination directory")
+    p.add_argument("--max", default="", help="Cap on downloaded items (empty = all)")
+    p.set_defaults(func=photos_picker_download)
 
     args = parser.parse_args()
     args.func(args)

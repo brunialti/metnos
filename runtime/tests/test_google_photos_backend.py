@@ -295,6 +295,70 @@ def test_download_from_entries_piping(monkeypatch, tmp_path):
     assert out["ok_count"] == 2
 
 
+# ── picker (P3, D8): create→dialog, resume not-ready→dialog, ready→download ──
+
+def test_picker_create_returns_dialog_with_link(monkeypatch):
+    def handler(argv):
+        assert argv[:2] == ["photos", "picker-create"]
+        return ({"session_id": "S1", "picker_uri": "https://photos.google.com/pick/S1",
+                 "media_items_set": False}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.picker({"picker": True})
+    assert out["decision"] == "needs_inputs"
+    ni = out["needs_inputs"]
+    assert "https://photos.google.com/pick/S1" in ni["dialog"][0]["prompt"]
+    oc = ni["on_complete"]
+    assert oc["type"] == "resume_executor_with_values"
+    assert oc["executor"] == "get_images_google_photos"
+    assert oc["args_base"]["picker_session_id"] == "S1"
+    assert out.get("final_message_hint")          # il link arriva in chat
+
+
+def test_picker_resume_not_ready_reasks(monkeypatch):
+    def handler(argv):
+        assert argv[:2] == ["photos", "picker-get"]
+        return ({"session_id": "S1", "picker_uri": "https://p/S1",
+                 "media_items_set": False}, None)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.picker({"picker": True, "picker_session_id": "S1"})
+    assert out["decision"] == "needs_inputs"      # onesto: non ancora pronta
+    assert "https://p/S1" in out["needs_inputs"]["dialog"][0]["prompt"]
+
+
+def test_picker_resume_ready_downloads(monkeypatch, tmp_path):
+    calls = []
+
+    def handler(argv):
+        calls.append(argv[1])
+        if argv[:2] == ["photos", "picker-get"]:
+            return ({"session_id": "S1", "media_items_set": True}, None)
+        if argv[:2] == ["photos", "picker-download"]:
+            assert "S1" in argv
+            return ({"results": [
+                {"ok": True, "id": "I1", "filename": "a.jpg",
+                 "path": str(tmp_path / "a.jpg"), "bytes": 10},
+                {"ok": False, "id": "I2", "filename": "b.jpg",
+                 "error": "HTTP 500"},
+            ]}, None)
+        raise AssertionError(argv)
+
+    _install_runner(monkeypatch, handler)
+    out = gp.picker({"picker": True, "picker_session_id": "S1",
+                     "dst_dir": str(tmp_path)})
+    assert calls == ["picker-get", "picker-download"]
+    assert out["ok_count"] == 1 and out["fail_count"] == 1
+    assert out["ok"] is False                     # un fallito → onesto
+    assert out["_undo"]["reverse_pattern"] == "delete_created_paths"
+
+
+def test_picker_needs_inputs_oauth_propagates(monkeypatch):
+    monkeypatch.setattr(gp, "_ensure_fresh_token", lambda: False)
+    out = gp.picker({"picker": True})
+    assert out.get("decision") == "needs_inputs"  # setup OAuth, non picker
+
+
 # ── errori d'arg (senza rete) + needs_inputs ─────────────────────────────────
 
 def test_upload_missing_paths_invalid_args():
