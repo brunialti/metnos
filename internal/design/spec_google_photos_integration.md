@@ -86,8 +86,9 @@ Convenzioni obbligatorie per TUTTI e tre: manifest §2.5 con `[description]` a c
    - `critical = true` (outbound verso servizio esterno).
    - OUT: `results` (§2.6, trasformativo).
 2) **`find_images_google_photos`** — cerca fra le foto caricate da Metnos.
-   - args: `year: int` opz.; `album: str` opz.; `albums: bool` default false (true → elenca gli album, D2); `max_results: int` default 100.
-   - `NON:` nel manifest: «solo contenuti caricati da Metnos (limite API Google, non di Metnos); per l'intera libreria usare l'archivio Takeout (find_images_indices)».
+   - args: `year: int` opz.; `album: str` opz.; `albums: bool` default false (true → elenca gli album via `albums.list`, D2; OUT `entries=[{id,title,items_count,url}]`); `max_results: int` default 100.
+   - **Limite API dichiarato** (richiesta Roberto 10/7): `albums.list` restituisce SOLO gli album creati dall'app — la lista COMPLETA degli album dell'utente NON è esposta dall'API post-31/3/2025. La lista integrale si ottiene dall'export Takeout (§4.3-bis).
+   - `NON:` nel manifest: «solo contenuti/album caricati da Metnos (limite API Google, non di Metnos); per l'intera libreria e TUTTI gli album usare l'archivio Takeout (find_images_indices / list_dirs)».
    - OUT: `entries` (§2.6).
 3) **`get_images_google_photos`** — scarica per id.
    - args: `ids: array[str]` | `from_step`; `dst_dir: str` default workspace foto.
@@ -135,6 +136,11 @@ query: "trova su google drive i file il cui nome inizia con takeout- più recent
 Pipeline attesa dal planner: `find_files(client=google_workspace, query="takeout-", time_window=last-2d)` → `download` (gw `download()`, esistente) → `extract_files(from_step, dst_dir=…)` → `create_images_indices(base_path=…/foto, recursive=true)`.
 **Convergenza §8.5**: il turno canonico sopra va eseguito reale e iterato finché il piano combacia (0 errori). Se il compound a 4 step si rivela fragile, il fallback APPROVATO è spezzare in 2 task (`daily@06:30` scarica+estrae; `daily@06:50` indicizza) — NON scrivere un executor-orchestratore.
 Nota Takeout: gli archivi contengono `Takeout/Google Foto/<Album o Anno>/...` + sidecar `*.json` con `photoTakenTime`. L'indice legge EXIF (`taken_at_iso`) che nelle foto Google è presente; i sidecar si IGNORANO in P2 (l'EXIF basta per l'anno; i sidecar sono un'estensione futura per le foto senza EXIF).
+
+### 4.3-bis Lista COMPLETA degli album (richiesta Roberto 10/7)
+L'export Takeout materializza OGNI album come cartella `Takeout/Google Foto/<NomeAlbum>/` (gli scatti senza album stanno in cartelle `Photos from <YYYY>`). Dopo l'estrazione (§4.2):
+- «che album ho su google photos» → `list_dirs(path=…/google-photos-takeout/foto/Google Foto)` — executor ESISTENTE, zero codice; con output_policy L la risposta è già una tabella (nome, n. file).
+- Le cartelle `Photos from YYYY` NON sono album: la description/affinity non va toccata — è il describe/utente a leggerle per quel che sono; se in convergenza il rumore disturba, filtro NL («escludi le cartelle Photos from») — mai hardcoding.
 
 ### 4.3 Statistiche, anno, UI — TUTTO esistente, zero codice
 - «quante foto ho nell'archivio google photos» → `find_images_indices(base_path=…/foto)` → `metadata.total_count`, `total_size_gb` (già nel manifest OUT).
