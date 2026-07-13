@@ -219,7 +219,73 @@ def list_known_accounts() -> list[str]:
     return accounts
 
 
-def open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL:
+def exact_account_for_address(address: str) -> str | None:
+    """Return the unique mailbox whose configured login exactly matches.
+
+    Authentication factors must never be read from a mailbox selected by a
+    fuzzy alias.  This strict resolver is therefore the only one suitable for
+    automatic email-factor handling.
+    """
+    if not isinstance(address, str) or "@" not in address:
+        return None
+    needle = address.strip().casefold()
+    if not needle:
+        return None
+    candidates = []
+    for account in list_known_accounts():
+        try:
+            configured = _account_creds(account).get("user", "")
+        except Exception:
+            continue
+        if isinstance(configured, str) and "@" in configured:
+            candidates.append((account, configured.strip().casefold()))
+    exact = [account for account, configured in candidates
+             if configured == needle]
+    return exact[0] if len(exact) == 1 else None
+
+
+def account_for_address(address: str) -> str | None:
+    """Resolve a configured mailbox, preferring an exact identity.
+
+    The conservative alias fallback remains available to ordinary mail UX.
+    Security-sensitive factor retrieval uses :func:`exact_account_for_address`
+    instead.
+    """
+    exact = exact_account_for_address(address)
+    if exact:
+        return exact
+    if not isinstance(address, str) or "@" not in address:
+        return None
+    needle = address.strip().casefold()
+    if not needle:
+        return None
+    candidates = []
+    for account in list_known_accounts():
+        try:
+            configured = _account_creds(account).get("user", "")
+        except Exception:
+            continue
+        if isinstance(configured, str) and "@" in configured:
+            candidates.append((account, configured.strip().casefold()))
+    local, _, host = needle.partition("@")
+    same_host = [(account, configured.split("@", 1)[1])
+                 for account, configured in candidates
+                 if configured.rsplit("@", 1)[1] == host]
+    if len(same_host) == 1:
+        return same_host[0][0]
+    # Providers commonly rewrite dots/underscores/hyphens in display/login
+    # aliases.  Apply this only when it leaves one unambiguous mailbox.
+    norm_local = re.sub(r"[._-]", "", local)
+    normalized = [account for account, configured in candidates
+                  if configured.rsplit("@", 1)[1] == host
+                  and re.sub(r"[._-]", "", configured.split("@", 1)[0])
+                  == norm_local]
+    return normalized[0] if len(normalized) == 1 else None
+
+
+def open_imap(account: str = "metnos_system", *,
+              timeout_s: float | None = None,
+              attempts: int = 3) -> imaplib.IMAP4_SSL:
     c = _account_creds(account)
     if not c["user"] or not c["password"]:
         raise RuntimeError(f"missing user/password for account {account!r}")
@@ -232,17 +298,53 @@ def open_imap(account: str = "metnos_system") -> imaplib.IMAP4_SSL:
     # knowcastle/register.it). Connect+login idempotenti: ogni tentativo apre
     # una connessione FRESCA. §2.8: se tutti falliscono, l'ultima eccezione
     # propaga onestamente (il caller la mette in failed[]).
+    attempts = max(1, min(3, int(attempts)))
+    if timeout_s is not None:
+        timeout_s = max(0.5, min(60.0, float(timeout_s)))
     last = None
-    for attempt in range(3):
+    for attempt in range(attempts):
         try:
-            conn = imaplib.IMAP4_SSL(c["imap_host"], c["imap_port"], ssl_context=ctx)
+            kwargs = {"ssl_context": ctx}
+            if timeout_s is not None:
+                kwargs["timeout"] = timeout_s
+            conn = imaplib.IMAP4_SSL(
+                c["imap_host"], c["imap_port"], **kwargs)
             conn.login(c["user"], c["password"])
             return conn
         except (ssl.SSLError, OSError) as e:
             last = e
-            log.warning("open_imap %s transient handshake (try %d/3): %r",
-                        account, attempt + 1, e)
+            log.warning("open_imap %s transient handshake (try %d/%d): %r",
+                        account, attempt + 1, attempts, e)
     raise last
+
+
+def list_mail_folders(account: str) -> list[dict]:
+    """List configured IMAP folders and their server-advertised flags."""
+    conn = open_imap(account)
+    try:
+        status, data = conn.list()
+        if status != "OK" or not data:
+            return []
+        folders = []
+        pattern = re.compile(
+            r'\((?P<flags>[^)]*)\)\s+(?:"[^"]*"|\S+)\s+'
+            r'(?P<name>"[^"]+"|\S+)\s*$')
+        for raw in data:
+            line = (raw.decode("utf-8", "replace")
+                    if isinstance(raw, (bytes, bytearray)) else str(raw))
+            match = pattern.match(line)
+            if not match:
+                continue
+            folders.append({
+                "name": match.group("name").strip().strip('"'),
+                "flags": match.group("flags"),
+            })
+        return folders
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
 
 
 def open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL:

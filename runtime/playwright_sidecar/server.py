@@ -23,7 +23,7 @@ Avvio (NON enable di default — Roberto avvia manualmente):
     python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
 
 Requisiti runtime:
-    pip install playwright>=1.40 aiohttp
+    pip install -r runtime/playwright_sidecar/requirements.txt
     playwright install chromium     # ~300MB download
 
 Vincoli:
@@ -38,6 +38,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import signal
+import socket
 import sys
 import time
 
@@ -49,6 +52,10 @@ logger = logging.getLogger("playwright_sidecar")
 _browser = None
 _playwright = None
 _browser_version = ""
+_browser_ready_since = 0.0
+_browser_generation = 0
+_watchdog_task = None
+_stopping = False
 
 # Cap di sicurezza: timeout assoluto su una singola render. Sopra di questo,
 # preferiamo dichiarare timeout che restare appesi (ADR 0125 §G).
@@ -56,9 +63,99 @@ _RENDER_TIMEOUT_HARD_S = 30.0
 # Wait dopo `goto` per dare al JS il tempo di idratare la pagina.
 _DEFAULT_WAIT_MS = 2000
 _MAX_WAIT_MS = 15000
+_BROKER_REQUEST_TIMEOUT_S = 85.0
+_BROKER_LOGIN_TIMEOUT_S = 135.0
 
 # Viewport di default (desktop FullHD-ish).
 _DEFAULT_VIEWPORT = {"width": 1280, "height": 800}
+
+
+def _browser_connected() -> bool:
+    if _browser is None:
+        return False
+    try:
+        probe = getattr(_browser, "is_connected", None)
+        return bool(probe() if callable(probe)
+                    else probe if probe is not None else True)
+    except Exception:
+        return False
+
+
+def _broker_health_snapshot() -> dict:
+    try:
+        from playwright_sidecar import session_broker
+        snapshot = session_broker.health_snapshot()
+        return snapshot if isinstance(snapshot, dict) else {}
+    except Exception:
+        return {}
+
+
+def _sd_notify(message: str) -> bool:
+    """Send an sd_notify datagram without adding a systemd Python dependency."""
+    address = os.environ.get("NOTIFY_SOCKET", "")
+    if not address:
+        return False
+    if address.startswith("@"):
+        address = "\0" + address[1:]
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.connect(address)
+            sock.sendall(message.encode("utf-8"))
+        return True
+    except OSError as exc:
+        logger.warning("sd_notify failed: %s", exc)
+        return False
+
+
+def _watchdog_interval_s() -> float | None:
+    try:
+        usec = int(os.environ.get("WATCHDOG_USEC", "0"))
+    except ValueError:
+        return None
+    if usec <= 0:
+        return None
+    return max(1.0, min(20.0, usec / 2_000_000.0))
+
+
+async def _watchdog_loop() -> None:
+    interval = _watchdog_interval_s()
+    if interval is None:
+        return
+    while True:
+        await asyncio.sleep(interval)
+        if not _browser_connected():
+            _sd_notify("STATUS=Chromium disconnected; waiting for restart")
+            return
+        if not _broker_health_snapshot().get("reaper_running"):
+            logger.critical("session reaper stopped; waiting for watchdog restart")
+            _sd_notify("STATUS=Session reaper stopped; waiting for restart")
+            return
+        _sd_notify("WATCHDOG=1")
+
+
+async def _terminate_after_disconnect() -> None:
+    """Lose all invalid contexts cleanly, then let systemd restart us."""
+    global _browser
+    if _stopping:
+        return
+    logger.critical("chromium disconnected unexpectedly; restarting sidecar")
+    _browser = None
+    _sd_notify("STATUS=Chromium disconnected; restarting")
+    try:
+        from playwright_sidecar import session_broker
+        await session_broker.shutdown()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("broker cleanup after disconnect failed: %s", exc)
+    os.kill(os.getpid(), signal.SIGTERM)
+
+
+def _browser_disconnected() -> None:
+    if _stopping:
+        return
+    try:
+        asyncio.get_running_loop().create_task(_terminate_after_disconnect())
+    except RuntimeError:
+        logger.critical("chromium disconnected without a running event loop")
 
 
 def _classify_playwright_error(exc: BaseException) -> str:
@@ -86,22 +183,30 @@ def _classify_playwright_error(exc: BaseException) -> str:
 
 async def handle_health(request: web.Request) -> web.Response:
     """Probe per `client.is_up()`. Ritorna 200 se browser e' pronto."""
-    if _browser is None:
+    if not _browser_connected():
         return web.json_response(
-            {"ok": False, "error": "browser not initialized",
-             "error_class": "unknown"},
+            {"ok": False, "error": "browser not connected",
+             "error_class": "sidecar_down"},
             status=503,
         )
-    return web.json_response({
+    out = {
         "ok": True,
         "browser": "chromium",
         "version": _browser_version,
-    })
+        "generation": _browser_generation,
+        "uptime_s": max(0, int(time.monotonic() - _browser_ready_since)),
+    }
+    out["broker"] = _broker_health_snapshot()
+    if not out["broker"].get("reaper_running"):
+        out.update({"ok": False, "error": "session reaper not running",
+                    "error_class": "sidecar_degraded"})
+        return web.json_response(out, status=503)
+    return web.json_response(out)
 
 
 async def handle_render(request: web.Request) -> web.Response:
     """POST /render: renderizza JS su una pagina e ritorna HTML finale."""
-    if _browser is None:
+    if not _browser_connected():
         return web.json_response(
             {"ok": False, "error": "browser not initialized",
              "error_class": "unknown"},
@@ -209,8 +314,9 @@ async def handle_render(request: web.Request) -> web.Response:
 # (registry, TTL, route-guard, iniezione credenziali, redazione) vive nel
 # broker; qui si fa solo parse-body → op → json_response.
 
-async def _broker_call(request, opname):
-    if _browser is None:
+async def _broker_call(request, opname, *,
+                       timeout_s: float = _BROKER_REQUEST_TIMEOUT_S):
+    if not _browser_connected():
         return web.json_response(
             {"ok": False, "error": "browser not initialized",
              "error_class": "unknown"}, status=503)
@@ -226,15 +332,41 @@ async def _broker_call(request, opname):
         return web.json_response(
             {"ok": False, "error": f"session_broker unavailable: {e}",
              "error_class": "unknown"}, status=503)
-    res = await opname(session_broker, body)
+    try:
+        res = await asyncio.wait_for(
+            opname(session_broker, body), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        logger.error("broker operation timed out after %.0fs",
+                     timeout_s)
+        return web.json_response(
+            {"ok": False, "error": "broker operation timeout",
+             "error_class": "timeout"}, status=504)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001
+        # Do not expose exception text: a browser/DOM exception can contain a
+        # URL or page-provided text. The traceback remains in local journald.
+        logger.exception("unhandled session broker operation failure")
+        return web.json_response(
+            {"ok": False, "error": "session broker internal failure",
+             "error_class": "sidecar_internal"}, status=500)
+    if not isinstance(res, dict):
+        logger.error("session broker returned %s instead of dict",
+                     type(res).__name__)
+        return web.json_response(
+            {"ok": False, "error": "invalid broker response",
+             "error_class": "sidecar_internal"}, status=500)
     return web.json_response(res)
 
 
 async def handle_session_open(request):
     async def _op(sb, b):
         return await sb.op_open(
-            owner=b.get("owner", "host"), url=b.get("url", ""),
-            allowlist_arg=b.get("allowlist"), session_label=b.get("session_label", ""))
+            owner=b.get("owner"), url=b.get("url", ""),
+            allowlist_arg=b.get("allowlist"), session_label=b.get("session_label", ""),
+            approval_token=b.get("approval_token"),
+            task_name=b.get("task_name"),
+            credential_mode=b.get("credential_mode", "default"))
     return await _broker_call(request, _op)
 
 
@@ -242,6 +374,7 @@ async def handle_session_read(request):
     async def _op(sb, b):
         return await sb.op_read(
             session_id=b.get("session_id", ""),
+            owner=b.get("owner"),
             include_screenshot=bool(b.get("include_screenshot", True)),
             include_forms=bool(b.get("include_forms", False)))
     return await _broker_call(request, _op)
@@ -249,16 +382,22 @@ async def handle_session_read(request):
 
 async def handle_session_screenshot(request):
     async def _op(sb, b):
-        return await sb.op_screenshot(session_id=b.get("session_id", ""))
+        return await sb.op_screenshot(session_id=b.get("session_id", ""),
+                                      owner=b.get("owner"))
     return await _broker_call(request, _op)
 
 
 async def handle_session_login(request):
     async def _op(sb, b):
         return await sb.op_login(
-            session_id=b.get("session_id", ""), domain=b.get("domain"),
-            form_hint=b.get("form_hint"))
-    return await _broker_call(request, _op)
+            session_id=b.get("session_id", ""), owner=b.get("owner"),
+            domain=b.get("domain"),
+            form_hint=b.get("form_hint"),
+            approval_token=b.get("approval_token"),
+            one_time_code=b.get("one_time_code"),
+            credential_mode=b.get("credential_mode", "default"))
+    return await _broker_call(
+        request, _op, timeout_s=_BROKER_LOGIN_TIMEOUT_S)
 
 
 async def handle_session_close(request):
@@ -269,33 +408,85 @@ async def handle_session_close(request):
     return await _broker_call(request, _op)
 
 
+async def handle_session_act(request):
+    async def _op(sb, b):
+        return await sb.op_act(
+            session_id=b.get("session_id", ""), owner=b.get("owner"),
+            action=b.get("action", ""), value_ref=b.get("value_ref"),
+            approval_token=b.get("approval_token"))
+    return await _broker_call(request, _op)
+
+
+def _primitive_handler(opname, *, value_key=None):
+    async def _handler(request):
+        async def _op(sb, b):
+            kwargs = {
+                "session_id": b.get("session_id", ""),
+                "owner": b.get("owner"),
+                "value_ref": b.get("value_ref"),
+                "approval_token": b.get("approval_token"),
+            }
+            if value_key:
+                kwargs[value_key] = b.get(value_key)
+            return await getattr(sb, opname)(**kwargs)
+        return await _broker_call(request, _op)
+    return _handler
+
+
+handle_session_goto = _primitive_handler("op_goto", value_key="url")
+handle_session_click = _primitive_handler("op_click", value_key="target")
+handle_session_fill = _primitive_handler("op_fill", value_key="target")
+handle_session_submit = _primitive_handler("op_submit", value_key="target")
+handle_session_wait = _primitive_handler("op_wait", value_key="seconds")
+
+
 async def _on_startup(app: web.Application) -> None:
     """Inizializza Playwright + Chromium browser."""
-    global _browser, _playwright, _browser_version
+    global _browser, _playwright, _browser_version, _browser_ready_since
+    global _browser_generation, _watchdog_task, _stopping
+    _stopping = False
     try:
         from playwright.async_api import async_playwright
     except ImportError as e:
         # §2.8 fail-loud: niente fallback. Roberto sceglie quando installare.
-        logger.error("playwright import failed: %s — run `pip install "
-                     "playwright>=1.40 && playwright install chromium`", e)
+        logger.error("playwright import failed: %s — run "
+                     "`runtime/playwright_sidecar/install.sh`", e)
         raise SystemExit(1)
 
     _playwright = await async_playwright().start()
+    launch_args = [
+        "--disable-blink-features=AutomationControlled",
+        "--no-sandbox",  # systemd-user gia' contiene
+        "--disable-dev-shm-usage",
+        # spec sites §3.1 FIX D: WebRTC off a livello browser (difesa in
+        # profondita' oltre all'init-script per-contesto).
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+    ]
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            _browser = await _playwright.chromium.launch(
+                headless=True, args=launch_args)
+            break
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            logger.warning("chromium launch attempt %d/3 failed: %s",
+                           attempt, exc)
+            if attempt < 3:
+                await asyncio.sleep(0.5 * attempt)
+    if _browser is None:
+        logger.error("chromium launch failed after 3 attempts: %s", last_error)
+        await _playwright.stop()
+        _playwright = None
+        raise SystemExit(1)
+
     try:
-        _browser = await _playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",  # systemd-user gia' contiene
-                "--disable-dev-shm-usage",
-                # spec sites §3.1 FIX D: WebRTC off a livello browser (difesa in
-                # profondità oltre all'init-script per-contesto). Il canale
-                # STUN/TURN esfiltra fuori banda scavalcando route().
-                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-                "--webrtc-ip-handling-policy=disable_non_proxied_udp",
-            ],
-        )
         _browser_version = _browser.version
+        _browser_ready_since = time.monotonic()
+        _browser_generation += 1
+        if hasattr(_browser, "on"):
+            _browser.on("disconnected", _browser_disconnected)
         # spec sites §3.1: registra il browser nel session-broker + avvia il
         # reaper (TTL idle, salta gate_pending). Import lazy: il sidecar resta
         # avviabile anche senza il modulo (degrade graceful del solo /render).
@@ -305,7 +496,15 @@ async def _on_startup(app: web.Application) -> None:
             session_broker.start_reaper()
             logger.info("session_broker configured (sites domain ready)")
         except Exception as e:  # noqa: BLE001
-            logger.warning("session_broker not available: %s", e)
+            logger.error("session_broker not available: %s", e)
+            _stopping = True
+            await _browser.close()
+            _browser = None
+            await _playwright.stop()
+            _playwright = None
+            raise SystemExit(1)
+        _sd_notify("READY=1\nSTATUS=Chromium ready")
+        _watchdog_task = asyncio.create_task(_watchdog_loop())
         logger.info("playwright chromium %s ready", _browser_version)
     except Exception as e:
         # Tipico: `playwright install chromium` non eseguito.
@@ -317,7 +516,22 @@ async def _on_startup(app: web.Application) -> None:
 
 async def _on_shutdown(app: web.Application) -> None:
     """Chiusura pulita del browser."""
-    global _browser, _playwright
+    global _browser, _playwright, _watchdog_task, _stopping
+    _stopping = True
+    _sd_notify("STOPPING=1\nSTATUS=Stopping Playwright sidecar")
+    task = _watchdog_task
+    _watchdog_task = None
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+    try:
+        from playwright_sidecar import session_broker
+        await session_broker.shutdown()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("session broker shutdown failed: %s", exc)
     if _browser is not None:
         try:
             await _browser.close()
@@ -344,6 +558,12 @@ def make_app() -> web.Application:
     app.router.add_post("/session/screenshot", handle_session_screenshot)
     app.router.add_post("/session/login", handle_session_login)
     app.router.add_post("/session/close", handle_session_close)
+    app.router.add_post("/session/act", handle_session_act)
+    app.router.add_post("/session/goto", handle_session_goto)
+    app.router.add_post("/session/click", handle_session_click)
+    app.router.add_post("/session/fill", handle_session_fill)
+    app.router.add_post("/session/submit", handle_session_submit)
+    app.router.add_post("/session/wait", handle_session_wait)
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)
     return app

@@ -112,7 +112,7 @@ _FIELD_STOP = {"il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "dei",
 _FIELD_CUT_PREP = {"from", "in", "into", "da", "dal", "dalla", "dallo", "dai",
                    "dagli", "dalle", "nel", "nella", "nello", "nei", "negli",
                    "su", "sul", "sulla", "sui", "sulle", "about", "regarding",
-                   "per", "con", "tra", "fra", "presso"}
+                   "for", "per", "con", "tra", "fra", "presso"}
 
 
 def _clean_field_name(text: str) -> str:
@@ -162,6 +162,59 @@ def _fields_from_schema_marker(query: str) -> list[str]:
     return out
 
 
+def _fields_from_sink_assignment(query: str) -> list[str]:
+    """Campi da una frase naturale di popolamento del sink.
+
+    Copre forme come «crea uno spreadsheet e metti data e importo» / «create
+    a spreadsheet and put date and amount». Il verbo canonico `write` viene
+    dal vocabolario esistente; i chunk successivi senza verbo sono la
+    continuazione della lista. Richiediamo almeno due campi e un formato
+    tabellare esplicito, evitando di interpretare come schema un normale
+    «metti il file in /tmp».
+    """
+    q = query or ""
+    ql = q.lower()
+    tabular = any(
+        hint in ql and qualifier in {"spreadsheet", "xlsx", "csv"}
+        for hint, (_obj, qualifier) in _FORMAT_HINTS.items()
+    )
+    if not tabular:
+        return []
+    try:
+        from prefilter import (tokenize as _tok,
+                               detect_canonical_verbs_all as _verbs)
+    except Exception:
+        return []
+    chunks = split_query_chunks(q)
+    annotated = [(chunk, _verbs(_tok(chunk)) or []) for chunk in chunks]
+    fields: list[str] = []
+    for i, (chunk, verbs) in enumerate(annotated):
+        if "write" not in verbs:
+            continue
+        words = re.findall(r"[\w']+", chunk)
+        verb_idx = next((j for j, word in enumerate(words)
+                         if "write" in (_verbs(_tok(word)) or [])), None)
+        if verb_idx is None or verb_idx + 1 >= len(words):
+            continue
+        first = _clean_field_name(" ".join(words[verb_idx + 1:]))
+        if first:
+            fields.append(first)
+        j = i + 1
+        while j < len(annotated) and not annotated[j][1]:
+            field = _clean_field_name(annotated[j][0])
+            if field:
+                fields.append(field)
+            j += 1
+        break
+    out: list[str] = []
+    seen: set[str] = set()
+    for field in fields:
+        if field and field not in seen and len(field) <= 40:
+            seen.add(field)
+            out.append(field)
+    return out if len(out) >= 2 else []
+
+
 def derive_extract_fields(query: str) -> list[str]:
     """§7.9 deterministico: estrae i NOMI-CAMPO dalla clausola «estrai X, Y e Z»
     di una query compound — o, in assenza, dallo SCHEMA D'USCITA dichiarato nella
@@ -206,7 +259,8 @@ def derive_extract_fields(query: str) -> list[str]:
             seen.add(f)
             out.append(f)
     # Fallback: nessuna clausola «estrai» → schema d'uscita della clausola create.
-    return out or _fields_from_schema_marker(query)
+    return (out or _fields_from_schema_marker(query)
+            or _fields_from_sink_assignment(query))
 
 
 def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:
@@ -364,4 +418,3 @@ def _send_has_explicit_recipient(chunk: str) -> bool:
     if _re.search(r"\b(?:a|ad|to)\s+[A-ZÀ-Þ][\wÀ-ÿ'.\-]+", chunk):
         return True
     return False
-

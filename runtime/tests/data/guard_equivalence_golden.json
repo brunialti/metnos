@@ -102,9 +102,18 @@
             "importo"
           ],
           "from_step": 2,
+          "instruction": "cerca su google drive il file KAKEBO SPESE 2026 e crea uno spreadsheet con tutti i dati: data, descrizione, importo",
           "max_per_text": 500
         },
         "tool": "extract_entries"
+      },
+      {
+        "args": {
+          "from_step": 3,
+          "where_field": "data",
+          "where_regex": "^(?:2026)-"
+        },
+        "tool": "filter_entries"
       },
       {
         "args": {
@@ -114,7 +123,7 @@
             "descrizione",
             "importo"
           ],
-          "from_step": 3
+          "from_step": 4
         },
         "tool": "create_files_spreadsheet"
       },
@@ -151,9 +160,18 @@
             "importo"
           ],
           "from_step": 2,
+          "instruction": "cerca su google drive il file KAKEBO SPESE 2026 e crea uno spreadsheet con tutti i dati: data, descrizione, importo",
           "max_per_text": 500
         },
         "tool": "extract_entries"
+      },
+      {
+        "args": {
+          "from_step": 3,
+          "where_field": "data",
+          "where_regex": "^(?:2026)-"
+        },
+        "tool": "filter_entries"
       },
       {
         "args": {
@@ -163,7 +181,7 @@
             "descrizione",
             "importo"
           ],
-          "from_step": 3
+          "from_step": 4
         },
         "tool": "create_files_spreadsheet"
       },
@@ -242,6 +260,7 @@
             "data"
           ],
           "from_step": 1,
+          "instruction": "leggi le mail con le fatture, estrai importo e data, e mettile in un foglio",
           "max_per_text": 500
         },
         "tool": "extract_entries"

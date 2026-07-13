@@ -30,6 +30,28 @@ def _known_accounts(monkeypatch):
         lambda: ["metnos_system", "knowcastle", "mykleos"])
 
 
+def test_account_for_address_accepts_unique_provider_alias(monkeypatch):
+    import mail_client
+    creds = {
+        "metnos_system": {"user": "system@example.test"},
+        "knowcastle": {"user": "roberto.brunialti@knowcastle.com"},
+        "mykleos": {"user": "other@tiscali.test"},
+    }
+    monkeypatch.setattr(mail_client, "_account_creds",
+                        lambda account: creds[account])
+    assert mail_client.account_for_address(
+        "roberto_brunialti@knowcastle.com") == "knowcastle"
+
+
+def test_account_for_address_rejects_ambiguous_domain(monkeypatch):
+    import mail_client
+    monkeypatch.setattr(mail_client, "list_known_accounts",
+                        lambda: ["one", "two"])
+    monkeypatch.setattr(mail_client, "_account_creds", lambda account: {
+        "user": f"{account}@example.test"})
+    assert mail_client.account_for_address("third@example.test") is None
+
+
 # ── override: «tutta/all la posta» senza account nominato ─────────────────
 
 def test_tutta_la_mia_posta_it():

@@ -43,6 +43,7 @@ EXPECTED_PIPELINE = (
     ("ensure_site_session_precursor", False),
     ("decontaminate_reader_qualifier", True),
     ("ensure_extract_clause", True),
+    ("ensure_extracted_period_scope", True),
     ("conform_to_intent_order", True),
     # scope_dirs DOPO conform (l'ordine appeso find_dirs→delete_dirs è finale) e
     # PRIMA della gate-insertion (fuori pipeline): il gate rinumera la coda.

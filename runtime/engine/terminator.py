@@ -16,7 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol
 
-from .types import Intent, RunResult
+from .types import (Intent, RunResult, OPERATIONAL_ERROR_CLASSES,
+                    result_error_classes, result_error_detail)
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +126,7 @@ _CAUSE_KEYS = {
 }
 
 
-def _first_step_error(failed_run: Optional[RunResult]) -> str:
+def _first_step_failure(failed_run: Optional[RunResult]) -> tuple[str, str]:
     """Errore CONCRETO del primo step fallito (§2.8). Il template generico
     per `error_class` ("Pipeline malformata") MASCHERA l'errore reale e
     azionabile che l'executor sa dare (es. "Nessuna directory foto trovata.
@@ -134,15 +135,22 @@ def _first_step_error(failed_run: Optional[RunResult]) -> str:
     nessuno step ha un messaggio d'errore utile. Già localizzato dall'executor
     via i18n (§11) → nessuna stringa hardcoded qui."""
     if not failed_run or not getattr(failed_run, "steps", None):
-        return ""
+        return "", ""
     for s in failed_run.steps:
         r = getattr(s, "result", None)
         if not isinstance(r, dict) or r.get("ok") is not False:
             continue
-        err = r.get("error") or r.get("message")
-        if isinstance(err, str) and err.strip():
-            return err.strip()
-    return ""
+        classes = result_error_classes(r)
+        error_class = classes[0] if classes else ""
+        err = result_error_detail(r)
+        if err:
+            return err, error_class
+    return "", ""
+
+
+def _first_step_error(failed_run: Optional[RunResult]) -> str:
+    """Compatibilita' interna: solo il testo della prima failure concreta."""
+    return _first_step_failure(failed_run)[0]
 
 
 class SimpleTerminator:
@@ -157,10 +165,15 @@ class SimpleTerminator:
         action = _msg(ak)
         # §2.8: se uno step ha fallito con un errore concreto/azionabile, mostra
         # QUELLO come causa invece del generico per-classe (che lo mascherava).
-        step_err = _first_step_error(failed_run)
+        step_err, step_error_class = _first_step_failure(failed_run)
+        if step_error_class in OPERATIONAL_ERROR_CLASSES:
+            action = _msg("MSG_CHAT_FB_RETRY")
         cause = step_err if step_err else _msg(ck)
         text = _msg("MSG_TERM_WRAPPER", cause=cause, action=action)
-        lid = _record_lacuna(query, intent, error_class, cause, action)
+        # Registra la classe executor reale: ``network`` non deve diventare una
+        # falsa lacuna ``out_of_scope`` candidata alla sintesi di un tool.
+        recorded_class = step_error_class or error_class
+        lid = _record_lacuna(query, intent, recorded_class, cause, action)
         return TerminatorResponse(
             final_text=text, root_cause=cause,
             suggested_action=action, lacuna_id=lid,

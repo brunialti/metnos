@@ -43,6 +43,7 @@ def _collect_session_ids(args: dict) -> list[str]:
 
 
 def invoke(args: dict) -> dict:
+    owner = os.environ.get("METNOS_ACTOR") or "host"
     session_ids = _collect_session_ids(args)
     if not session_ids:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="session_ids"),
@@ -56,7 +57,7 @@ def invoke(args: dict) -> dict:
     any_sensitive = False
     for sid in session_ids:
         res = session_client.session_read(
-            session_id=sid, include_screenshot=include_screenshot,
+            session_id=sid, owner=owner, include_screenshot=include_screenshot,
             include_forms=include_forms)
         if not res.get("ok"):
             entries.append({"session_id": sid, "ok": False,
@@ -69,6 +70,8 @@ def invoke(args: dict) -> dict:
             "url": res.get("url"), "title": res.get("title", ""),
             "text": res.get("text", ""), "sensitive": sensitive,
         }
+        if include_forms:
+            entry["forms"] = res.get("forms") or []
         shot = res.get("screenshot_path")
         if shot:
             entry["screenshot_path"] = shot

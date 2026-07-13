@@ -158,3 +158,55 @@ ErrorClass = str  # alias: 'wrong_tool' | 'wrong_args' | 'missing_input' | 'out_
 
 ERROR_CLASSES = ("wrong_tool", "wrong_args", "missing_input", "out_of_scope")
 RECOVERABLE = frozenset({"wrong_tool", "wrong_args", "missing_input"})
+
+# Errori operativi dichiarati dagli executor: cambiare piano o strumento non
+# ripara rete/servizio. Restano fuori dalle quattro classi strutturali del
+# recovery, ma impediscono di degradare a ``wrong_args`` e false lacune synt.
+OPERATIONAL_ERROR_CLASSES = frozenset({
+    "network", "timeout", "server_error", "rate_limited", "sidecar_down",
+    "provider_unavailable", "service_unavailable", "exception",
+})
+
+
+def result_error_classes(result: dict | None) -> tuple[str, ...]:
+    """Classi strutturate top-level e per-item, deduplicate in ordine."""
+    if not isinstance(result, dict):
+        return ()
+    values = [result.get("error_class")]
+    failed = result.get("failed")
+    if isinstance(failed, list):
+        values.extend(item.get("error_class") for item in failed
+                      if isinstance(item, dict))
+    seen = set()
+    out = []
+    for value in values:
+        value = str(value or "").strip().lower()
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return tuple(out)
+
+
+def result_error_detail(result: dict | None, *, max_items: int = 3) -> str:
+    """Primo dettaglio top-level o errori per-item deduplicati e limitati."""
+    if not isinstance(result, dict):
+        return ""
+    direct = (result.get("final_message_hint") or result.get("error")
+              or result.get("message"))
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    failed = result.get("failed")
+    if not isinstance(failed, list):
+        return ""
+    parts = []
+    for item in failed:
+        if not isinstance(item, dict):
+            continue
+        detail = item.get("error") or item.get("message")
+        if isinstance(detail, str) and detail.strip():
+            clean = detail.strip()
+            if clean not in parts:
+                parts.append(clean)
+        if len(parts) >= max(1, max_items):
+            break
+    return "; ".join(parts)

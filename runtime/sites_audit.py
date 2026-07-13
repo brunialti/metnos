@@ -41,6 +41,14 @@ _FORBIDDEN_FIELDS = frozenset({
 })
 
 
+def _sanitize_value(value):
+    if isinstance(value, dict):
+        return _sanitize(value)
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_value(v) for v in value]
+    return value
+
+
 def _sanitize(payload: dict) -> dict:
     """Rimuove campi proibiti e scruba gli URL. Difesa in profondità: l'audit
     non è mai il punto in cui un segreto sfugge."""
@@ -49,10 +57,12 @@ def _sanitize(payload: dict) -> dict:
         kl = str(k).lower()
         if kl in _FORBIDDEN_FIELDS:
             continue  # drop silenzioso: mai loggare il segreto
-        if kl in ("url", "final_url", "login_url", "action_url") and isinstance(v, str):
+        if (isinstance(v, str) and (kl in (
+                "url", "final_url", "login_url", "action_url", "target")
+                or v.lower().startswith(("http://", "https://")))):
             out[k] = scrub_url(v)
         else:
-            out[k] = v
+            out[k] = _sanitize_value(v)
     return out
 
 

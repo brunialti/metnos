@@ -277,6 +277,138 @@ def register_all() -> None:
     # sono lingua-invarianti, restano nel builder del pattern di split).
     R("compound.connector_word", "phrases", match_mode="word",
       it=["e", "poi", "infine"], en=["and", "then", "after", "finally"])
+
+    # ── CREDENTIALS: etichette dei campi nella chat ───────────────────
+    # I valori vengono estratti PRIMA del planner; solo queste forme
+    # traducibili identificano i due campi, senza imporre un comando CLI.
+    R("credentials.field_label", "mapping", match_mode="word",
+      it={"username": ["utente", "nome utente", "user", "username", "usr",
+                       "email", "e-mail", "login"],
+          "password": ["password", "passwd", "passphrase", "pwd", "psw",
+                       "pass"]},
+      en={"username": ["user", "username", "user id", "userid", "usr",
+                       "email", "e-mail", "login"],
+          "password": ["password", "passwd", "passphrase", "pwd", "pass"]})
+    R("credentials.pair_connector", "phrases", match_mode="word",
+      it=["e", "con"], en=["and", "with"])
+
+    # ── SITES: azioni browser in linguaggio naturale ──────────────────
+    # Chiavi tecniche chiuse; le superfici sono traducibili e non vivono nel
+    # broker. "apri/open" e' click senza URL, navigazione con URL esplicito.
+    R("sites.action_verb", "mapping", match_mode="word",
+      it={"goto": ["vai", "naviga", "visita", "raggiungi"],
+          "click": ["clicca", "premi", "seleziona", "scegli", "tocca", "apri"],
+          "fill": ["compila", "scrivi", "inserisci", "digita"],
+          "submit": ["invia", "conferma", "salva", "pubblica"],
+          "wait": ["attendi", "aspetta", "pausa"]},
+      en={"goto": ["go", "navigate", "visit", "reach"],
+          "click": ["click", "press", "select", "choose", "tap", "open"],
+          "fill": ["fill", "write", "enter", "type"],
+          "submit": ["submit", "confirm", "save", "publish"],
+          "wait": ["wait", "pause"]})
+    # Target che porta dalla landing page al form di autenticazione. Serve al
+    # guard sites per distinguere un click PRE-login dalle azioni richieste
+    # dopo l'accesso, senza imporre una sintassi alla frase dell'utente.
+    R("sites.login_entry_target", "phrases", match_mode="word",
+      it=["accedi", "accesso", "entra", "login", "log in", "sign in",
+          "area riservata", "area clienti", "area personale", "account"],
+      en=["sign in", "log in", "login", "access", "enter", "account",
+          "customer area", "member area", "personal area"])
+    # Intento forte di autenticazione espresso sull'intero comando. E' distinto
+    # dal nome di un controllo: impedisce che un semplice testo "Accedi" nella
+    # pagina recluti login_sites, ma copre le formulazioni naturali con cui
+    # l'utente chiede di autenticarsi senza dover nominare l'executor.
+    R("sites.login_intent", "phrases", match_mode="word",
+      it=["accedi al sito", "accedi sul sito", "accedi a", "fai login",
+          "effettua il login", "effettua login", "effettua l'accesso",
+          "effettua accesso", "autenticati", "entra nel portale",
+          "entra nell'area riservata", "login sul sito"],
+      en=["sign in to", "log in to", "login to", "authenticate to",
+          "authenticate on", "enter the customer area",
+          "enter the member area"])
+    R("sites.no_credentials", "phrases", match_mode="word",
+      it=["senza credenziali", "senza usare le credenziali",
+          "non usare le credenziali", "senza login", "non fare login",
+          "non accedere", "solo pagina pubblica"],
+      en=["without credentials", "do not use credentials",
+          "don't use credentials", "without login", "do not log in",
+          "do not sign in", "public page only"])
+    # Procedure interne traducibili. Le chiavi canoniche restano nel codice;
+    # tutte le forme linguistiche con cui utente e pagina le esprimono vivono
+    # qui, cosi' l'interazione non diventa un mini-linguaggio della CLI.
+    R("sites.search_action_verb", "phrases", match_mode="word",
+      it=["cerca", "trova", "ricerca"],
+      en=["search", "find", "look for"])
+    R("sites.search_entry_target", "phrases", match_mode="word",
+      it=["cerca", "ricerca", "apri ricerca", "mostra ricerca"],
+      en=["search", "find", "open search", "show search"])
+    R("sites.personal_goal_marker", "phrases", match_mode="word",
+      it=["mio", "mia", "miei", "mie", "personale"],
+      en=["my", "mine", "personal"])
+    R("sites.account_reveal_control", "phrases", match_mode="word",
+      it=["account", "menu account", "profilo", "menu profilo"],
+      en=["account", "account menu", "profile", "profile menu"])
+    R("sites.goal_term_alias", "mapping", match_mode="word",
+      it={"booking": ["prenotazione", "prenotazioni", "viaggio", "viaggi",
+                       "booking", "bookings", "trip", "trips"]},
+      en={"booking": ["booking", "bookings", "trip", "trips",
+                       "prenotazione", "prenotazioni", "viaggio", "viaggi"]})
+    R("sites.continuation_target", "phrases", match_mode="word",
+      it=["mostra altro", "mostra altri", "mostra altre", "carica altro",
+          "carica altri", "carica altre", "vedi altro", "vedi altri",
+          "vedi altre", "altri risultati", "altre fatture",
+          "pagina successiva", "prossima pagina", "successivo", "avanti"],
+      en=["show more", "load more", "view more", "more results",
+          "more invoices", "next page", "next", "continue"])
+    R("sites.goal_noise", "phrases", match_mode="word",
+      it=["a", "al", "alla", "alle", "con", "da", "dal", "dalla", "de",
+          "dei", "del", "della", "di", "e", "gli", "i", "il", "in",
+          "la", "le", "lo", "mio", "mia", "miei", "mie", "nel", "nella",
+          "per", "su", "un", "una"],
+      en=["a", "an", "and", "at", "for", "from", "in", "of", "on",
+          "the", "to", "with", "my"])
+    R("sites.goal_scope_quantifier", "phrases", match_mode="word",
+      it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
+          "interi", "intere"],
+      en=["all", "every", "entire"])
+    R("sites.external_search_scope", "phrases", match_mode="word",
+      it=["sul web", "su internet", "nel web", "in internet"],
+      en=["on the web", "on internet", "web search", "internet search"])
+    R("sites.privacy_reject_target", "phrases", match_mode="word",
+      it=["rifiuta", "rifiuta tutti", "rifiuta tutto", "solo necessari",
+          "continua senza accettare"],
+      en=["reject", "reject all", "decline", "decline all",
+          "necessary only", "continue without accepting"])
+    R("sites.login_continue_target", "phrases", match_mode="word",
+      it=["continua", "avanti", "prosegui", "successivo"],
+      en=["continue", "next", "proceed"])
+    R("sites.overlay_dismiss_target", "phrases", match_mode="word",
+      it=["chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
+          "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
+          "capito", "va bene", "annulla"],
+      en=["close", "close dialog", "close modal", "dismiss",
+          "dismiss dialog", "not now", "maybe later", "later", "got it",
+          "understood", "okay", "cancel"])
+    R("sites.two_factor_push_marker", "phrases", match_mode="substring",
+      it=["approva la richiesta", "conferma sul dispositivo",
+          "notifica sul telefono", "controlla il telefono"],
+      en=["approve the request", "confirm on your device",
+          "notification on your phone", "check your phone"])
+    # Parole funzionali e nomi del tipo di controllo non fanno parte del nome
+    # accessibile cercato. Esempio naturale: "clicca sul pulsante Accedi" ->
+    # target "accedi". Lessico traducibile, non sintassi obbligatoria.
+    R("sites.action_target_noise", "phrases", match_mode="word",
+      it=["il", "lo", "la", "i", "gli", "le", "un", "uno", "una",
+          "sul", "sullo", "sulla", "sui", "sugli", "sulle",
+          "pulsante", "bottone", "link", "collegamento", "voce"],
+      en=["the", "a", "an", "on", "button", "link", "item", "control"])
+    # Accessible-name di controlli che espandono la navigazione. Si usa solo
+    # quando il target e' gia' presente nel testo pagina ma non interagibile;
+    # il broker richiede unicita' + gate e poi risolve di nuovo il target.
+    R("sites.reveal_control", "phrases", match_mode="word",
+      it=["apri menu", "apri il menu", "mostra menu", "menu di navigazione"],
+      en=["open menu", "show menu", "open navigation menu",
+          "show navigation menu"])
     # agent_runtime._MULTISTEP_CONJUNCTIONS_RE (regex)
     R("query.multistep", "regex",
       it=[r"\b(e\s+poi|e\s+dopo|e\s+inoltre|e\s+anche|inoltre|poi|"

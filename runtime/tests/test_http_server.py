@@ -11,6 +11,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 _RUNTIME = Path(__file__).resolve().parent.parent
@@ -91,6 +92,22 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("http", body["channels"])
         self.assertIn("agent.turn", body["capabilities"])
 
+    async def test_chat_navigation_and_copy_contract(self):
+        """Chat resta primaria; la copia include metadati e non espone clear."""
+        r = await self.client.get("/", headers=self.admin_hdr())
+        self.assertEqual(r.status, 200)
+        body = await r.text()
+        self.assertIn('href="/admin">Settings</a>', body)
+        self.assertIn("id=\"copyChatBtn\"", body)
+        self.assertNotIn("id=\"clearBtn\"", body)
+        self.assertNotIn("case 'clear':", body)
+        self.assertIn("lines.push('turn_id: ' + turnId)", body)
+        self.assertIn("lines.push('path: ' + path.map", body)
+        self.assertIn("const response = await fetch(formPath", body)
+        self.assertIn("ifr.srcdoc = formHtml", body)
+        self.assertIn("removeDialogHistory(dialogId)", body)
+        self.assertIn("if(inlineFormWrap) d.appendChild(inlineFormWrap)", body)
+
     async def test_admin_proposals_unauthorized(self):
         """GET /admin/proposals senza header -> 403 (anonymous su path admin).
 
@@ -136,12 +153,13 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("<table>", body)
 
     async def test_dashboard_root(self):
-        """GET /admin -> HTML della Panoramica (home console)."""
+        """GET /admin -> HTML di Settings (home console)."""
         r = await self.client.get("/admin", headers=self.admin_hdr())
         self.assertEqual(r.status, 200)
         body = await r.text()
-        # Nome canonico della home (nav + H1 + <title>): "Panoramica".
-        self.assertIn("Panoramica", body)
+        # Nome canonico della home (nav + H1 + <title>): "Settings".
+        self.assertIn("Settings", body)
+        self.assertIn('class="chat-link" href="/">Chat</a>', body)
         self.assertIn("Turni recenti", body)
 
     async def test_admin_proposal_action_404(self):
@@ -263,8 +281,9 @@ class HttpServerTests(AioHTTPTestCase):
             "fmt": "form",
             "values_collected": {},
             "step_index": 0,
-            "started_at": "2026-05-04T19:00:00+00:00",
+            "started_at": datetime.now(timezone.utc).isoformat(),
             "actor": "host", "channel": "http",
+            "origin_turn_id": "turn_dialog_001",
             "timeout_s": 3600,
             "completed": False, "cancelled": False,
         }
@@ -278,6 +297,49 @@ class HttpServerTests(AioHTTPTestCase):
         self.assertIn("Test form", body)
         self.assertIn("Nome:", body)
         self.assertIn("Ok?", body)
+        self.assertIn("turn_dialog_001", body)
+        self.assertIn("test_dialog_001", body)
+        self.assertEqual(r.headers.get("Cache-Control"), "no-store")
+
+        cancelled = await self.client.get(
+            "/agent/dialog/test_dialog_001/cancel",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(cancelled.status, 200)
+        self.assertEqual(
+            cancelled.headers.get("X-Metnos-Dialog-State"), "cancelled")
+        cancelled_form = await self.client.get(
+            "/agent/dialog/test_dialog_001/form",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(cancelled_form.status, 410)
+        self.assertEqual(
+            cancelled_form.headers.get("X-Metnos-Dialog-State"), "cancelled")
+
+        state["completed"] = True
+        _dp.save_pending("http:host", "test_dialog_001", state)
+        completed = await self.client.get(
+            "/agent/dialog/test_dialog_001/form",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(completed.status, 410)
+        self.assertEqual(
+            completed.headers.get("X-Metnos-Dialog-State"), "completed")
+
+        state["completed"] = False
+        state["started_at"] = "2020-01-01T00:00:00+00:00"
+        _dp.save_pending("http:host", "test_dialog_001", state)
+        expired = await self.client.get(
+            "/agent/dialog/test_dialog_001/form",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(expired.status, 410)
+        self.assertEqual(
+            expired.headers.get("X-Metnos-Dialog-State"), "expired")
+        expired_submit = await self.client.post(
+            "/agent/dialog/test_dialog_001/submit", data={"name": "A", "ok": "yes"})
+        self.assertEqual(expired_submit.status, 410)
+        self.assertEqual((await expired_submit.json())["state"], "expired")
 
     # ── /admin/praxis/fastpaths/{id}/delete (valvola L0) ───────────
 

@@ -25,7 +25,10 @@ _REDACT_JS = r"""
   // Pulisci overlay precedenti (idempotenza: la funzione può girare più volte).
   document.querySelectorAll('.' + MARK).forEach(e => e.remove());
   const targets = Array.from(document.querySelectorAll(
-    'input[type=password], [data-metnos-redact="1"]'));
+    'input[type=password], input[autocomplete="one-time-code" i], '
+    + 'input[name*="otp" i], input[id*="otp" i], '
+    + 'input[name*="verification" i], input[id*="verification" i], '
+    + '[data-metnos-redact="1"]'));
   let n = 0;
   for (const el of targets) {
     const r = el.getBoundingClientRect();

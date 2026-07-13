@@ -1010,11 +1010,35 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             v = result.get("message")
             return ("\n\n" + v.strip()
                     if isinstance(v, str) and v.strip() else "")
+        if path == "@links":
+            # Provenienza navigabile di un producer web/sites a monte. Solo
+            # URL http(s), deduplicati; il renderer HTML li apre in una nuova
+            # scheda. Nessun titolo fisso: evita una nuova stringa non-i18n.
+            entries = result.get("entries")
+            if not isinstance(entries, list):
+                return ""
+            links: list[str] = []
+            seen: set[str] = set()
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                url = entry.get("url")
+                if (not isinstance(url, str)
+                        or not re.match(r"^https?://", url)
+                        or url in seen):
+                    continue
+                seen.add(url)
+                title = str(entry.get("title") or url)
+                title = title.replace("[", "\\[").replace("]", "\\]")
+                links.append(f"- [{title}]({url})")
+            return "\n".join(links)
         if path == "@table":
             # L-mode (output_policy): entries → tabella markdown deterministica
             # + la nota @note in coda.
             _note = _sub_one(result, "@note")
             entries = result.get("entries")
+            if not (isinstance(entries, list) and entries):
+                entries = result.get("results")
             if isinstance(entries, list) and entries:
                 return _entries_table(entries) + _note
             return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
@@ -1915,7 +1939,9 @@ class Executor:
                 prev = result.steps[-1].result if isinstance(result.steps[-1].result, dict) else {}
                 skip_reason = ""
                 skip_result = {"ok": True}
-                if isinstance(prev.get("attachments"), list) and prev["attachments"]:
+                _explicit = bool(args.get("context")) or bool(args.get("group_by"))
+                if (isinstance(prev.get("attachments"), list)
+                        and prev["attachments"] and not _explicit):
                     skip_reason = "attachments_present"
                     log.info("Executor: skip describe_entries (prev step has %d attachments)",
                               len(prev["attachments"]))
@@ -1931,7 +1957,6 @@ class Executor:
                     # modo dipendente dal phrasing. Solo `context`/`group_by`
                     # (l'utente ha chiesto un focus o un raggruppamento) valgono.
                     # §7.9 deterministico, robusto al rumore-enum dell'LLM.
-                    _explicit = bool(args.get("context")) or bool(args.get("group_by"))
                     if isinstance(_hint, str) and _hint.strip() and not _explicit:
                         skip_reason = "final_message_hint_present"
                         skip_result["summary"] = _hint.strip()
@@ -2156,16 +2181,13 @@ class Executor:
                 result.final_text = ""
                 break
 
-            # §7.9 gate-resume (20/6/2026): get_approval (decision=input_required)
-            # mette in PAUSA la pipeline; gli step a valle (send/write) NON
-            # girano finche' l'utente non approva (senza la pausa il post
-            # partirebbe SENZA consenso). Il bridge persiste il contesto di
-            # ripresa nel dialog (on_complete resume_engine_gate); on-approve la
-            # pipeline si riesegue col gate auto-passato (pre-gate read-only per
-            # convenzione → re-query idempotente). Scope-limitato a get_approval
-            # (get_inputs usa lo stesso decision ma e' gestito a monte).
-            if (step.tool == "get_approval"
-                    and r.get("decision") == "input_required"):
+            # §7.9 gate-resume: qualunque executor puo' produrre un dialogo di
+            # approvazione (sites lo costruisce solo DOPO avere risolto il
+            # target DOM). La pipeline deve fermarsi sul contratto strutturato,
+            # non sul nome letterale `get_approval`; altrimenti gli step a valle
+            # girano prima del consenso. `needs_inputs` resta gestito sopra.
+            if (r.get("decision") == "input_required"
+                    and r.get("dialog_id")):
                 result.final_kind = "ask"
                 result.final_text = r.get("final_message_hint") or ""
                 result.gate_dialog_id = r.get("dialog_id") or ""

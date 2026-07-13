@@ -3,18 +3,33 @@ Description=Metnos Playwright sidecar (JS-rendering for SPA URLs, ADR 0125)
 Documentation=file:///opt/metnos/decisions/0125-playwright-sidecar.md
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
 WorkingDirectory=/opt/metnos/runtime
-ExecStart=/opt/suprastructure/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
+ExecStartPre=%h/.local/share/metnos/.venv/bin/python -c "import aiohttp, playwright"
+ExecStart=%h/.local/share/metnos/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
 Restart=always
-RestartSec=10s
-TimeoutStopSec=15s
+RestartSec=5s
+TimeoutStartSec=90s
+TimeoutStopSec=20s
+WatchdogSec=45s
+KillMode=mixed
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/metnos:/opt/metnos/runtime
+Environment=METNOS_INSTALL_ROOT=/opt/metnos
+Environment=METNOS_USER_DATA=%h/.local/share/metnos
+Environment=PLAYWRIGHT_BROWSERS_PATH=%h/.local/share/metnos/playwright-browsers
 
-# Risorse: chromium headless ~200MB RSS idle. Cap conservativo a 1GB per
-# evitare runaway in caso di pagine pesanti (SPA con frame multipli).
-MemoryMax=1G
+# Risorse: chromium headless ~200MB RSS idle; sessioni SPA multiple possono
+# crescere oltre 1GB, quindi applichiamo pressione prima del cap rigido.
+MemoryHigh=900M
+MemoryMax=1200M
+TasksMax=512
+LimitNOFILE=8192
 
 # Hardening (user unit, no root) — meno stringente del telegram-daemon
 # perche' chromium ha bisogno di scrivere cache/profile dirs.

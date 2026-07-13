@@ -49,22 +49,57 @@ except ImportError:  # standalone senza package context
 
 
 def _venv_python() -> str:
-    """Python che eseguira' il sidecar (lo stesso del service HTTP)."""
-    return os.environ.get("METNOS_VENV_PYTHON") or sys.executable
+    """Python owned by Metnos, never inherited from the caller's project."""
+    venv = Path(os.environ.get(
+        "METNOS_VENV",
+        str(Path(os.environ.get(
+            "METNOS_USER_DATA",
+            str(Path.home() / ".local" / "share" / "metnos"))) / ".venv"),
+    ))
+    return str(venv / "bin" / "python")
+
+
+def _ensure_venv() -> bool:
+    py = Path(_venv_python())
+    if py.is_file():
+        return True
+    ui.step(f"creazione venv Metnos: {py.parent.parent}")
+    py.parent.parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run(
+        [sys.executable, "-m", "venv", str(py.parent.parent)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0 or not py.is_file():
+        ui.warn(f"creazione venv fallita: {(result.stderr or '').strip()[-300:]}")
+        return False
+    ui.ok("venv Metnos creato")
+    return True
 
 
 # ─── pip ──────────────────────────────────────────────────────────
 
 def _pip_install(py: str) -> bool:
-    ui.step("pip install playwright>=1.40 + aiohttp>=3.9")
+    repo = Path(__file__).resolve().parent.parent
+    requirements = repo / "requirements.txt"
+    ui.step("pip install dipendenze core Metnos + Playwright 1.61.0")
+    if requirements.is_file():
+        core = subprocess.run(
+            [py, "-m", "pip", "install", "--upgrade-strategy",
+             "only-if-needed", "-r", str(requirements)],
+            capture_output=True, text=True,
+        )
+        if core.returncode != 0:
+            ui.warn(f"pip core fallito: {core.stderr.strip()[-300:]}")
+            return False
     r = subprocess.run(
-        [py, "-m", "pip", "install", "--upgrade", "playwright>=1.40", "aiohttp>=3.9"],
+        [py, "-m", "pip", "install", "--upgrade",
+         "playwright==1.61.0"],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        ui.warn(f"pip fallito: {r.stderr.strip()[-300:]}")
+        ui.warn(f"pip Playwright fallito: {r.stderr.strip()[-300:]}")
         return False
-    ui.ok("playwright + aiohttp installati")
+    ui.ok("Playwright installato nel venv Metnos")
     return True
 
 
@@ -77,9 +112,15 @@ _BROWSERS = ("chromium", "chromium-headless-shell")
 
 
 def _browsers_base() -> Path:
+    data = Path(os.environ.get(
+        "METNOS_USER_DATA",
+        str(Path.home() / ".local" / "share" / "metnos")))
     return Path(os.environ.get(
-        "PLAYWRIGHT_BROWSERS_PATH",
-        str(Path.home() / ".cache" / "ms-playwright")))
+        "PLAYWRIGHT_BROWSERS_PATH", str(data / "playwright-browsers")))
+
+
+def _playwright_env() -> dict[str, str]:
+    return dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(_browsers_base()))
 
 
 def _browser_plan(py: str, name: str) -> dict | None:
@@ -88,7 +129,7 @@ def _browser_plan(py: str, name: str) -> dict | None:
     calcola la dir di destinazione `<name>-<rev>` e il marker atteso.
     Ritorna {url, rev_dir, complete} o None.
     """
-    env = dict(os.environ, DEBUG="pw:install")
+    env = dict(_playwright_env(), DEBUG="pw:install")
     r = subprocess.run([py, "-m", "playwright", "install", name],
                        capture_output=True, text=True, env=env)
     out = (r.stdout or "") + (r.stderr or "")
@@ -241,11 +282,14 @@ def _install_unit() -> bool:
         ui.warn(f"template unit mancante: {tmpl}")
         return False
     venv = str(Path(_venv_python()).parent.parent)  # .../.venv
-    home = os.environ.get("METNOS_HOME_DIR") or str(Path.home())
+    data = Path(os.environ.get(
+        "METNOS_USER_DATA",
+        str(Path.home() / ".local" / "share" / "metnos")))
     body = (tmpl.read_text()
             .replace("@VENV@", venv)
             .replace("@REPO_DIR@", str(repo))
-            .replace("@HOME_DIR@", home))
+            .replace("@DATA_DIR@", str(data))
+            .replace("@BROWSERS_DIR@", str(_browsers_base())))
     dest_dir = Path.home() / ".config" / "systemd" / "user"
     dest_dir.mkdir(parents=True, exist_ok=True)
     (dest_dir / "metnos-playwright.service").write_text(body)
@@ -280,6 +324,8 @@ def _health_8771(timeout_s: int = 20) -> bool:
 
 def install(*, yes: bool = False) -> dict:
     """Installa il sidecar Playwright. Ritorna note per lo stato fase."""
+    if not _ensure_venv():
+        return {"playwright": "venv_failed"}
     py = _venv_python()
     if not _pip_install(py):
         return {"playwright": "pip_failed"}

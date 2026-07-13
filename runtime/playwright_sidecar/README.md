@@ -9,16 +9,22 @@ restano scheletri HTML vuoti per il crawler di Metnos.
 
 ```bash
 ./install.sh                       # ~300MB download (chromium)
-# oppure:
-/opt/suprastructure/.venv/bin/python -m pip install playwright>=1.40 aiohttp
-/opt/suprastructure/.venv/bin/python -m playwright install chromium
 ```
+
+Lo script crea o riusa il venv di Metnos in
+`$METNOS_USER_DATA/.venv` e installa Chromium in
+`$METNOS_USER_DATA/playwright-browsers`. Non usa ambienti Python o cache di
+altri progetti. Installa anche `requirements.txt`, perche' il broker Sites usa
+il credential store e gli altri moduli core di Metnos.
 
 ## Avvio
 
 Manuale (foreground):
 ```bash
-/opt/suprastructure/.venv/bin/python -m playwright_sidecar.server \
+METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
+PLAYWRIGHT_BROWSERS_PATH="$METNOS_USER_DATA/playwright-browsers" \
+PYTHONPATH=/opt/metnos/runtime \
+"$METNOS_USER_DATA/.venv/bin/python" -m playwright_sidecar.server \
     --host 127.0.0.1 --port 8771
 ```
 
@@ -54,7 +60,11 @@ ritorna `error_class="js_rendered"`, ri-invoca `read_urls_html` con
 
 `GET /health`
 ```json
-{"ok": true, "browser": "chromium", "version": "120.0.6099.71"}
+{"ok": true, "browser": "chromium", "version": "120.0.6099.71",
+ "generation": 1, "uptime_s": 42,
+ "broker": {"browser_connected": true, "reaper_running": true,
+             "active_sessions": 0, "approval_pending_sessions": 0,
+             "factor_pending_sessions": 0, "pending_opens": 0}}
 ```
 
 `POST /render`
@@ -79,7 +89,14 @@ Risposta failure (HTTP 200 con `ok=false`):
 - Chromium non trovato: `playwright install chromium` (richiede ~300MB).
 - Client `is_up()` False ma porta libera: verifica `curl -fsS http://127.0.0.1:8771/health`.
 - Pagina sempre timeout: aumenta `wait_ms` (max 15000) o il timeout client.
-- RAM crescita: il sidecar mantiene UN browser persistente; restart se >500MB.
+- Chromium disconnesso o event loop bloccato: il watchdog systemd riavvia il
+  sidecar; le sessioni browser del processo precedente risultano onestamente
+  `session_lost` e non vengono riutilizzate.
+- Login fermo su OTP email: il broker usa soltanto la mailbox con identita'
+  esatta, lo scope `sites.read` e messaggi con UID successivo al submit. Se il
+  resolver scade o il messaggio e' ambiguo, restituisce `two_factor_required`
+  e mantiene la sessione in `factor_pending`; non aumentare il timeout alla
+  cieca e non usare `read_messages` come sostituto.
 
 ## Vincoli (CLAUDE.md §7)
 

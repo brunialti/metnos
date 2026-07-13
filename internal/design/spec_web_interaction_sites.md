@@ -1,8 +1,8 @@
 # SPEC — Interazione web sicura con siti (dominio `sites`)
 
-> **Stato**: CONGELATA + INDURITA (10/7/2026). Fasi F1/F2 E decisioni §11 D-A..D-E RATIFICATE da Roberto (10/7 sera, sessione Fable). Documento vivo. La stesura iniziale è stata sottoposta a **red-team adversarial**: 20 problemi (3 CRITICI di sicurezza) → integrati come design corretto qui sotto e sintetizzati nella **Review Fable §12**.
+> **Stato**: IMPLEMENTATA E VALIDATA (11/7/2026, ADR 0188). Fasi F1/F2 e decisioni §11 D-A..D-E RATIFICATE da Roberto (10/7 sera, sessione Fable). Documento vivo. La stesura iniziale è stata sottoposta a **red-team adversarial**: 20 problemi (3 CRITICI di sicurezza) → integrati come design corretto qui sotto e sintetizzati nella **Review Fable §12**.
 > **Origine**: Roberto — «funzioni generali per interagire con siti: login con credenziali gestite in sicurezza, esplorare, compiere azioni; delicato, sicuro, facile da usare». Benchmark: Hercules, Browser-Use, Stagehand, Skyvern.
-> **Implementatore previsto**: LLM (Opus) da questo documento, sessione fresca. NIENTE implementazione senza ordine esplicito di Roberto.
+> **Implementazione**: completata su ordine esplicito di Roberto; broker, executor, i18n, test ed E2E sono riepilogati in ADR 0188.
 > **Verdetto Fable (§12)**: la Fase 1 (login+lettura) è realizzabile in sicurezza SE si adottano gli irrigidimenti §3-§4 qui integrati. La superficie di rischio REALE non è «il modello vede il segreto» ma **la destinazione della credenziale e la cattura del segreto negli screenshot** — riprogettati sotto.
 
 ---
@@ -37,20 +37,47 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 ## 3. Il DELTA (indurito post-review)
 
 ### 3.1 Session-broker (estensione del sidecar)
-- **Contesti nominati e persistenti**: `POST /session/open {session_id, allowlist:[domini]}` → `browser.new_context()` isolato, registry in-memory `{session_id: {context, allowlist, created, last_used, gate_pending: bool}}` con **TTL idle** (default 15 min) e cleanup.
+- **Contesti nominati e persistenti**: `POST /session/open {session_id, allowlist:[domini]}` → `browser.new_context()` isolato, registry in-memory `{session_id: {context, allowlist, created, last_used, gate_pending: bool, factor_pending: bool}}` con **TTL idle** (default 15 min) e cleanup.
   - **[FIX A — restart/crash]** `session_id` VALIDATO a ogni operazione; se assente/scaduto → risposta `{ok:false, error_class:"session_lost"}` esplicita (§2.8). L'engine può riaprire+ri-loggare. MAI proseguire su un context morto in silenzio.
-  - **[FIX B — TTL vs HITL]** il TTL si METTE IN PAUSA finché `gate_pending=true` su quella sessione (attesa OTP/approvazione può superare 15 min). Reap-safe attorno ai gate in volo.
+  - **[FIX B — TTL vs HITL]** il TTL si METTE IN PAUSA finché `gate_pending=true` oppure `factor_pending=true` su quella sessione (attesa OTP/approvazione può superare 15 min). I due stati non sono sovraccaricati: un codice OTP può riprendere `factor_pending` senza essere rifiutato come approvazione mancante. Reap-safe e limite assoluto di un'ora.
   - **[FIX C — concorrenza]** timeout per-operazione (default 20s), cap context concorrenti (default 4), quota per-utente (default 2), handling asincrono così un'operazione appesa NON stalla le altre; fairness in coda.
 - **Operazioni** (`{session_id,...}`→JSON): `goto`, `screenshot`, `read`, `click`, `fill`, `submit`, `wait`, `close`.
 - **Confine di rete PER-SESSIONE**: `context.route()` ABORTA fuori-allowlist. **[FIX D]** oltre a route(): disabilitare **WebRTC** (flag Chromium — canale STUN/TURN esfiltra fuori banda), BLOCCARE navigazione top-level `data:`/`blob:`, allowlist per hostname con nota che **DNS-rebinding e same-origin exfil restano possibili** → per questo il vero presidio sull'esfiltrazione è il gate tainted-turn su `submit` (§4.2/§4.5), non route().
 - **Risoluzione elemento**: (a) accessibilità (role+name/label) deterministica; (b) fallback VLM su screenshot — con i vincoli §3.3. Il DOM grezzo NON va al planner.
+- **Executor intelligente drop-in**: il planner continua a conoscere soltanto
+  input e output pubblici dell'executor. Quando una singola azione richiede
+  adattamento, l'executor puo' iterare internamente
+  `observe -> propose -> verify -> gate -> execute -> observe` entro un budget
+  chiuso. `login_sites`, senza aggiungere step al piano, attraversa landing,
+  consenso privacy opzionale, ingresso login anche fuori viewport, username
+  opzionale, continuazione, password, 2FA e verifica esito. Le SPA lente sono
+  riosservate deterministicamente prima dell'unico fallback a modello. Il prompt
+  contiene `goal`, `state`, `observed`, `history`, `constraints`; la primitiva
+  resta fissata dal codice e il modello ritorna soltanto un `candidate_id`
+  broker-owned. I valori in `observed` sono dati di pagina non fidati.
+- **UI custom e popup**: accessibilita' prima; poi geometria/topmost e nodi
+  foglia visibili `cursor:pointer`. Un reveal richiede nuova osservazione e
+  firma stabile. Popup multipli falliscono `popup_ambiguous`; un popup unico
+  fuori allowlist viene chiuso e il solo host document osservato passa dal gate.
+  Dopo replay il popup consentito diventa la pagina attiva.
 
 ### 3.2 Iniezione credenziali — RIPROGETTATA (i 3 CRITICI del red-team)
-- **[CRITICO-1 — anti-phishing]** il broker inietta una credenziale SOLO se: (1) l'origine dell'`action` del form di login **coincide ESATTAMENTE** con il dominio del vault; (2) il campo è nel **frame top-level** (MAI iframe); (3) l'origine è verificata PRIMA di digitare. Mismatch → RIFIUTO (`error_class:"origin_mismatch"`), niente digitazione. Deterministico, non affidato al VLM.
+- **[CRITICO-1 — anti-phishing]** il broker inietta una credenziale SOLO se: (1) l'origine dell'`action` del form di login coincide ESATTAMENTE con il dominio del vault oppure con una origine delegata approvata tramite token one-shot sulla coppia esatta; (2) il campo è nel **frame top-level** (MAI iframe); (3) origine e DOM sono verificati PRIMA di digitare. Mismatch → RIFIUTO (`error_class:"origin_mismatch"`), niente digitazione. Deterministico, non affidato al VLM.
 - **[CRITICO-2 — la destinazione non la sceglie l'LLM]** per i `value_ref` di tipo `cred:<domain>:<field>` il broker **IGNORA** ogni selettore proposto dall'LLM/planner e risolve AUTONOMAMENTE il campo credenziale legittimo dell'origine attesa. L'LLM non può mai dirigere dove va una credenziale. Un `value_ref:cred:` è ammesso SOLO sul campo che il broker stesso ha identificato come credenziale di quell'origine.
 - **[CRITICO-3 — niente segreto negli screenshot]**: (a) MAI `screenshot` fra un `fill` credenziale e il `submit`; (b) **redazione deterministica** dei campi input `type=password` E dei campi appena riempiti dal broker con credenziali/OTP, PRIMA di ogni capture (overlay nero via CSS injection pre-shot); (c) la risoluzione VLM avviene SOLO su screenshot **PRE-fill**; (d) **VLM FRONTIER (Opus) VIETATO** su qualsiasi pagina in contesto autenticato o di credenziale (solo VLM locale, che comunque non deve mai vedere un campo segreto in chiaro).
 - **URL-scrub [FIX E]**: da ogni `url`/`final_url` restituito/loggato/persistito, scrub deterministico dei parametri sensibili (`token,code,access_token,id_token,ticket,sig,saml,otp,session,auth`) in query E fragment. Un token nell'URL è un segreto.
-- **2FA/TOTP** — vedi decisione D-E (default: codice chiesto all'utente via `needs_inputs`, NON `totp_secret` a riposo).
+- **2FA a canali** — il broker classifica il canale dalla pagina e invoca un
+  resolver ristretto; input/output pubblici di `login_sites` non cambiano.
+  Primo canale: `email`. L'automazione e' consentita solo se il binding web ha
+  `sites.read` e l'identita' coincide esattamente con una singola mailbox.
+  Prima del submit viene catturato un cursore UID di Inbox e cartelle marcate
+  `\\Junk`; dopo il submit sono ammessi solo UID nuovi, pertinenti al dominio
+  emittente e con semantica di fattore non ambigua. Ogni operazione IMAP ha un
+  timeout socket, il polling ha deadline propria e il budget login e' assoluto.
+  Il generico `read_messages` non viene riusato. Fallimento, ambiguita' o scope
+  assente → `needs_inputs`, mai codice scelto per somiglianza. Il TOTP resta
+  opt-in con `totp_secret`; CAPTCHA e push restano handoff umani. Nessun valore
+  di fattore entra in planner, result, audit o screenshot.
 
 ### 3.3 Screenshot — ciclo di vita [FIX F]
 - Dir temp `~/.local/share/metnos/sites-shots/<owner>/` **0700**; file 0600; **cleanup a TTL** (default 30 min); ACL per-owner (un utente non vede gli shot di un altro — riuso del signed-URL per-owner di `photo_endpoint`).
@@ -61,9 +88,9 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 Tutti: manifest §2.5 IT+EN, i18n §7.13 (3 posti), firma §7.10, onestà §2.8. **[FIX G — vettorialità]** operano su `session_ids: array[str]` (o `from_step`), con fan-out: una entry per sessione. `open_sites` produce N sessioni → i successivi le consumano tutte (o l'utente ne cita una).
 
 - **`open_sites`** (F1): args `urls: array[str]`, `session_label` opz., `allowlist: array[str]` opz. (default = domini esatti degli urls — **D-D: esatto**). OUT `entries=[{session_id,url,title,ok}]`.
-- **`login_sites`** (F1): args `session_ids`|`from_step`; `domain` opz. (handle vault; default = origine login della pagina, verificata §3.2); `form_hint` opz. OUT `entries=[{session_id,logged_in:bool,reason_code?}]`. `critical=true`. **Zero segreti nel result** (`reason_code` = codice i18n, MAI username/password).
+- **`login_sites`** (F1, intelligente drop-in): args `session_ids`|`from_step`; `domain` opz. (handle vault; default = origine login della pagina, verificata §3.2); `form_hint` opz. Attraversa autonomamente consenso privacy, ingresso login, flussi username-first/continue, password e fattori entro un deadline condiviso. Ogni submit separa dispatch (`no_wait_after`) e osservazione; i checkpoint sono `discovering|username_submit|primary_submit|factor_pending|factor_resolving|factor_submit|complete|failed`. OTP email puo' essere risolto come sopra; gli altri OTP/CAPTCHA/push producono handoff redatto; TOTP e' opt-in nel vault. OUT `entries=[{session_id,logged_in:bool,reason_code?}]`, invariato. `critical=true`. **Zero segreti nel result** (`reason_code` = codice i18n, MAI username/password).
 - **`read_sites`** (F1): args `session_ids`|`from_step`; `include_screenshot` def true; `include_forms` def false. OUT `entries=[{session_id,url,title,text,screenshot_path,sensitive}]`.
-- **`act_sites`** (F2): args `session_ids`|`from_step`; `action: str` (NL); `value_ref` opz. Gate §4.2. OUT `results`. `critical=true`, `revertible=false`.
+- **`act_sites`** (F2): args `session_ids`|`from_step`; `action: str` (NL); `value_ref` opz. Oltre alle primitive singole, `search` mantiene un goal post-login, attraversa menu con riosservazione bounded e applica filtri finali. Dopo il goal puo' seguire controlli contestuali di continuazione/load-more/next fino a 6 volte, soltanto finche' il contenuto cambia; pagine distinte sono aggregate per la lettura finale. Un modello locale puo' scegliere soltanto un ID da nomi/ruoli broker-owned. Gate §4.2. OUT `results`. `critical=true`, `revertible=false`.
 
 ### 3.5 Contenuto autenticato — no-frontier [MEDIO red-team]
 Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati personali) NON passano mai al VLM/LLM frontier: describe/sintesi restano LOCALI. Taint `no_frontier` propagato dal `read_sites` autenticato al describe a valle.
@@ -73,7 +100,7 @@ Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati perso
 1. **L'LLM non vede il segreto** — §3.2 (iniezione broker + origine verificata + destinazione non-LLM) + §3.3 (no segreto negli shot, no frontier) + regola metadata-only + Vaglio. **Verifica automatica**: test che grep-a payload-executor, result, turn-record e prompt-planner per le chiavi `credentials.FORBIDDEN_KEYS` e i valori del vault di test → 0 hit; test che il VLM non riceve mai uno shot con campo credenziale non-redatto.
 2. **HITL su azioni sensibili** — **[FIX H — classificazione sul TARGET, non sul testo]** `act_sites` classifica SENSIBILE sull'elemento RISOLTO (role/testo del bottone, `form.action`, metodo POST), deterministico sul DOM — NON sulla frase NL (aggirabile con «tocca in basso a destra»). Default-SENSIBILE ogni azione che innesca navigazione/submit/POST/download a prescindere dal fraseggio. Gate = `get_approval` con **screenshot redatto** + descrizione. **[FIX usabilità]** approvazione **BATCH** per un'azione multi-passo descritta («compila e invia il form» = UN gate con l'intento intero), non un gate per primitiva.
 3. **Allowlist domini** — doppio confine: `route()` (§3.1) + capability `network:sites` (hint=allowlist). **D-D: default = dominio ESATTO** (no sottodomini, riduce l'esposizione della credenziale). Estensione = solo `get_approval`. + no-WebRTC, no data:/blob: top-level (§3.1 FIX D).
-4. **Sessioni effimere, credenziali con scope** — TTL idle + cleanup; una credenziale è caricabile SOLO per l'origine esatta di login della sessione (§3.2); il broker rifiuta `credentials.load(d)` se `d` non è l'origine attesa.
+4. **Sessioni effimere, credenziali con mandato** — TTL idle + cleanup; una credenziale è caricabile soltanto dal binding vault richiesto. La destinazione deve coincidere con quel dominio o con una origine delegata approvata e ricontrollata nella sessione (§3.2); nessun alias viene creato implicitamente. Per i binding web il form di inserimento sceglie `interactive` oppure `sites.read`; lo scope e' cifrato con i campi, vale come default per ogni query interattiva e puo' essere aggiornato senza reinserire il segreto. `sites.read` autorizza anche il solo recupero del fattore email strettamente necessario al login, ma esclusivamente dalla mailbox con identita' esatta; non concede ricerca o lettura mail generale. La query puo' restringerlo; un ampliamento richiede consenso one-shot e non persiste. Nei task vale inoltre l'intersezione con l'envelope ADR 0190 (actor, query hash, host esatti e operazioni): fuori scope il fire fallisce senza aprire dialoghi.
 5. **Tainted-turn** — flag `web_content_ingested` al primo `read/goto` di contenuto esterno; da lì OGNI `act_sites` exfil-capace richiede approvazione. **[FIX I — cache]** il taint DEVE essere ricostruito DETERMINISTICAMENTE a ogni esecuzione, MAI dedotto dal cache-path; `sites` **ESCLUSO** dall'L0 arg-caching; **`session_id` MAI cachato**; lo scheletro L1 riapre SEMPRE sessione fresca e ri-fa login (§7 cache).
 
 ## 5. Vocab (`sites` — RATIFICATO, escalation §2.2)
@@ -95,10 +122,12 @@ Un sito reale di Roberto, F1: `open_sites`→`login_sites(domain=…)`→`read_s
 ## 9. Lacune COLMATE (dal red-team) + non-goals
 - **Audit-log** [ALTO]: log append-only dedicato `sites` (`~/.local/state/metnos/sites_audit.jsonl` 0600): sessione aperta, dominio, tentativo login (esito, MAI credenziale), ogni `act`, ogni uso credenziale (fingerprint, non valore), ogni modifica allowlist. Per incident response — il turn-record non basta.
 - **Revoca / kill-switch** [ALTO]: `close_sites{all}` + comando «revoca tutte le mie sessioni web» + abort d'emergenza su sospetta injection (il gate rifiutato dall'utente → kill della sessione).
-- **Tassonomia fallimento** [MEDIO]: codici i18n (`password_errata|account_bloccato|2fa_richiesto|captcha|origine_non_verificata|selettore_assente|session_lost`) → messaggio utente chiaro, MAI eco di credenziali.
-- **CAPTCHA / 2FA-push** [MEDIO]: rilevati → messaggio onesto «serve il tuo intervento / conferma sul dispositivo» → cede il controllo o fallisce con chiarezza, MAI appeso.
+- **Tassonomia fallimento** [MEDIO]: codici canonici inglesi (`password_wrong|account_locked|two_factor_required|captcha_required|origin_unverified|selector_missing|session_lost`) → messaggio utente localizzato, MAI eco di credenziali.
+- **CAPTCHA / 2FA-push / fattore non risolto** [MEDIO]: rilevati → messaggio onesto «serve il tuo intervento / conferma sul dispositivo», screenshot redatto e sessione aperta → cede il controllo, MAI appeso. Un TOTP viene compilato solo se il dominio ha un `totp_secret` opt-in nel vault; email usa il resolver bounded §3.2; codice, campo e origine restano nel broker.
 - **Selector drift** [MEDIO→sicurezza]: catena accessibilità→VLM→fallimento onesto; su pagina sensibile MAI click a indovinare; bassa confidenza sull'elemento → gate, non azione.
-- **Non-goals F1**: azioni mutanti; download; multi-tab; CAPTCHA-solving automatico; sessioni oltre TTL (D-B).
+- **Non-goals F1**: azioni mutanti; download; CAPTCHA-solving automatico;
+  sessioni oltre TTL (D-B). Il popup singolo necessario alla navigazione F2 e'
+  gestito dal broker; non e' navigazione multi-tab libera.
 
 ## 10. LEGGI VINCOLANTI (violarle = PR respinta) — CLAUDE.md
 1. Re-sign §7.10 dopo ogni edit executor/manifest (da root), commit manifest+sig insieme.
@@ -116,7 +145,7 @@ Un sito reale di Roberto, F1: `open_sites`→`login_sites(domain=…)`→`read_s
 - **D-B ✓** — ri-login a ogni sessione = DEFAULT; riuso cookie-jar = opt-in esplicito per-dominio (jar 0600 ADR 0082; in F1 il default basta — vedi non-goals §9).
 - **D-C ✓** — VLM locale-only in F1 (frontier resta VIETATO in contesto autenticato/credenziale, §3.2); un eventuale frontier su pagine PUBBLICHE pre-login si rivaluta in F2, non prima.
 - **D-D ✓** — allowlist default = dominio ESATTO (come §4.3); estensione SOLO via `get_approval`.
-- **D-E ✓** — 2FA: codice chiesto all'utente via `needs_inputs` = DEFAULT; `totp_secret` nel vault = opt-in esplicito per-dominio, e se presente MAI screenshot del campo OTP.
+- **D-E ✓, estesa 13/7/2026** — 2FA: `needs_inputs` resta il fallback universale. `totp_secret` e' opt-in esplicito per-dominio. Il canale email puo' essere risolto automaticamente soltanto sotto `sites.read`, binding mailbox esatto, cursore UID pre-submit e correlazione issuer; ogni incertezza torna al fallback umano. MAI screenshot del campo OTP.
 
 ## 12-bis. USABILITÀ — vincolo di pari rango (Roberto: «facile da usare»)
 
@@ -128,7 +157,7 @@ La sicurezza NON deve trasformare ogni compito in una fila di conferme. La usabi
 - **Ri-login trasparente**: TTL scaduto a metà task → il broker ri-usa il cookie-jar (D-B opt-in) o ri-fa login SILENZIOSAMENTE con la credenziale del vault (nessun re-prompt), tranne se serve 2FA. L'utente non deve accorgersi della scadenza.
 - **Linguaggio naturale, non selettori**: l'utente dice «accedi a Spaggiari e leggi i voti», non parla di sessioni/id. Il `session_id` è interno; il planner lo cabla via `from_step`. «il sito X» → `sites.reference` risolve il dominio.
 - **Progresso visibile**: lo screenshot in chat (§6) è UX, non solo audit — l'utente vede cosa sta facendo l'agente, riduce l'ansia da «cosa sta combinando».
-- **Default comodi e sicuri**: credenziale salvata una volta (dominio → vault via `set_credentials`), poi «accedi a X» non richiede più nulla. Il 2FA-utente (D-E) è l'unico attrito ricorrente accettabile perché è una scelta di sicurezza esplicita.
+- **Default comodi e sicuri**: credenziale salvata una volta (dominio → vault via `set_credentials`), poi «accedi a X» non richiede più nulla. Il fattore email esatto puo' essere risolto internamente sotto mandato; 2FA non risolvibile, CAPTCHA e push restano l'attrito ricorrente esplicito.
 - **Fallimenti chiari, mai muti** (§9 tassonomia): «password errata su X» / «serve la conferma 2FA sul telefono» — l'utente sa sempre cosa fare, non riceve un errore criptico.
 
 **Anti-obiettivo dichiarato**: se in Fase 1 un login+lettura richiede più di zero conferme nel caso normale, il design ha SBAGLIATO il bilanciamento — la sicurezza della sola-lettura non giustifica attrito. Le conferme sono un budget scarso da spendere solo dove c'è effetto irreversibile/outbound reale (Fase 2).

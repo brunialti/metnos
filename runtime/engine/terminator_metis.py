@@ -63,14 +63,21 @@ class MetisTerminator:
     def _best_entries(failed_run: Optional[RunResult]) -> list:
         """Lista entries più a valle (più arricchita) con almeno un `url`.
         Lo step più avanti nella pipeline vince (es. read_urls_html con body
-        batte find_urls metadata)."""
+        batte find_urls metadata). Le entry esplicitamente fallite sono stati
+        diagnostici, non risultati parziali presentabili."""
         if not failed_run or not failed_run.steps:
             return []
         best: list = []
         for s in failed_run.steps:
             r = s.result if isinstance(s.result, dict) else {}
             ents = r.get("entries")
-            if (isinstance(ents, list) and ents
-                    and isinstance(ents[0], dict) and ents[0].get("url")):
-                best = ents
+            if not isinstance(ents, list):
+                continue
+            eligible = [
+                entry for entry in ents
+                if (isinstance(entry, dict) and entry.get("url")
+                    and entry.get("ok") is not False)
+            ]
+            if eligible:
+                best = eligible
         return best

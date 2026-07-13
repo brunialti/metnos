@@ -104,7 +104,7 @@ class DeferCompletionTests(unittest.TestCase):
                             {"label": "no", "value": "reject"}]}}],
             "fmt": "dialogue", "fmt_arg": "auto",
             "values_collected": {}, "step_index": 0,
-            "started_at": "2026-07-07T00:00:00Z",
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "actor": "host", "channel": "http", "timeout_s": 600,
             "completed": False, "cancelled": False, "on_complete": oc,
         })

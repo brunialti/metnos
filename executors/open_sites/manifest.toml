@@ -2,7 +2,7 @@
 manifest_format = "1.0"
 
 name        = "open_sites"
-version     = "0.1.0"
+version     = "0.2.0"
 # Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
 # tetto client è ampio per il fan-out su più url.
 timeout_s   = 120
@@ -15,12 +15,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: apre una sessione browser persistente su un sito web (una per url), pronta per login e lettura. PATTERN: open_sites(urls=[\"https://portale.esempio.it\"]). NON: read_urls_html (pagina pubblica senza stato); sites = sessione con cookie/credenziali. OUT: entries=[{session_id,url,title,ok}]."
-en = "SCOPO: opens a persistent browser session on a website (one per url), ready for login and reading. PATTERN: open_sites(urls=[\"https://portal.example.com\"]). NON: read_urls_html (public stateless page); sites = a session with cookies/credentials. OUT: entries=[{session_id,url,title,ok}]."
+it = "SCOPO: apre una sessione browser persistente, pronta per login e lettura. PATTERN: open_sites(urls=[\"https://portale.esempio.it\"]). NON: pagina pubblica senza stato -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
+en = "SCOPO: opens a persistent browser session ready for login and reading. PATTERN: open_sites(urls=[\"https://portal.example.com\"]). NON: public stateless page -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
 
 [code]
 files  = ["open_sites.py"]
-digest = "sha256:9538ae308666243331faca77b233525cf1442760b7d9472c14ec74c69444e8eb"
+digest = "sha256:1ef1fa6fb0bc2515b056bde3c69dac7bfe3742c175189af436b4674c3d2cb92a"
 
 [args]
 type     = "object"
@@ -57,6 +57,20 @@ default = 4
 it = "Tetto massimo di sessioni aperte in un turno. Default 4 (il broker applica anche una quota per-utente)."
 en = "Max sessions opened in one turn. Default 4 (the broker also enforces a per-user quota)."
 
+[args.properties._allowlist_tokens]
+type = "array"
+runtime_resolved = true
+[args.properties._allowlist_tokens.description]
+it = "Solo runtime: token opachi monouso emessi dal broker per l'estensione approvata."
+en = "Runtime only: opaque one-time tokens issued by the broker for the approved extension."
+
+[args.properties._open_approvals]
+type = "array"
+runtime_resolved = true
+[args.properties._open_approvals.description]
+it = "Solo runtime: aperture esatte legate ai token di redirect/allowlist approvati."
+en = "Runtime only: exact opens bound to approved redirect/allowlist tokens."
+
 [output]
 schema_inline = """
 {
@@ -71,6 +85,10 @@ schema_inline = """
 [[capabilities]]
 name = "network:sites"
 hint = ["*"]
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
 
 [[tests]]
 name   = "manca_urls"

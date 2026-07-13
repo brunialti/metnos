@@ -4,6 +4,7 @@ Il runtime — non il proposer — sceglie il TERMINALE di presentazione:
   - mode G/S: drop describe_entries post-producer + final_message
     deterministico (header @shown / Totale @count);
   - mode T su find_urls: insert read_urls_html prima della sintesi (§5.4);
+  - mode T su read_sites: insert describe_entries locale e mirato alla query;
   - altri modi: invariati.
 SoT matrice: internal/reports/output_presentation_matrix_2026-05-31.md.
 Gate: default ON dal 9/7/2026 (opt-out METNOS_OUTPUT_POLICY=0) — engine.is_output_policy_enabled.
@@ -173,6 +174,70 @@ class TestNormalizeWebRead(unittest.TestCase):
         self.assertIs(out, fw)
 
 
+class TestNormalizeSitesRead(unittest.TestCase):
+    def test_read_sites_inserisce_sintesi_mirata(self):
+        query = "accedi a example.com e trova tutte le fatture 2025"
+        fw = _fw([
+            ("open_sites", {"urls": ["https://example.com"]}),
+            ("login_sites", {"from_step": 1}),
+            ("act_sites", {"from_step": 2, "action": "trova fatture 2025"}),
+            ("read_sites", {"from_step": 3}),
+            ("final_answer", {}),
+        ])
+
+        out, info = normalize_terminal(
+            fw, Intent(verb="open", object="sites"), query)
+
+        self.assertEqual(info["mode"], T)
+        self.assertEqual(info["data_kind"], "sites")
+        self.assertEqual(info["action"], "insert_describe_entries")
+        self.assertEqual([step.tool for step in out.steps], [
+            "open_sites", "login_sites", "act_sites", "read_sites",
+            "describe_entries", "final_answer"])
+        self.assertEqual(out.steps[4].args, {
+            "from_step": 4, "style": "by_relevance",
+            "context": query, "data_kind": "sites",
+        })
+        self.assertEqual(out.final_message, "${step5.summary}")
+        self.assertEqual([step.tool for step in fw.steps], [
+            "open_sites", "login_sites", "act_sites", "read_sites",
+            "final_answer"])
+
+    def test_read_sites_riusa_describe_esistente(self):
+        fw = _fw([
+            ("read_sites", {"session_ids": ["sid"]}),
+            ("describe_entries", {"from_step": 1, "context": "fatture"}),
+            ("final_answer", {}),
+        ], final="risposta grezza")
+
+        out, info = normalize_terminal(
+            fw, Intent(verb="read", object="sites"), "leggi le fatture")
+
+        self.assertEqual(info["action"], "final_only")
+        self.assertEqual([step.tool for step in out.steps].count(
+            "describe_entries"), 1)
+        self.assertEqual(out.final_message, "${step2.summary}")
+
+    def test_spreadsheet_da_sites_conserva_link_sorgente(self):
+        fw = _fw([
+            ("read_sites", {"session_ids": ["sid"],
+                            "include_screenshot": False}),
+            ("extract_entries", {"from_step": 1,
+                                 "fields": ["data", "importo"]}),
+            ("create_files_spreadsheet", {"from_step": 2,
+                                           "columns": ["data", "importo"]}),
+            ("final_answer", {}),
+        ])
+
+        out, info = normalize_terminal(
+            fw, Intent(verb="open", object="sites"),
+            "crea uno spreadsheet con data e importo")
+
+        self.assertEqual(info["mode"], "list")
+        self.assertEqual(out.final_message,
+                         "${step3.@table}\n\n${step1.@links}")
+
+
 class TestNormalizeNoop(unittest.TestCase):
     def test_mode_L_ora_tabella(self):
         # Ex «modi lista invariati»: dal 9/7 L è IMPLEMENTATO (tabella).
@@ -232,6 +297,29 @@ class TestTableAppendsExecutorMessage(unittest.TestCase):
                         result={"ok": True, "entries": [], "used": 0},
                         ok=True, latency_ms=1)]
         self.assertEqual(_render_final_message("${step1.@table}", hist), "0")
+
+    def test_table_uses_transform_results_when_entries_are_absent(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="create_files_spreadsheet", args={},
+                        result={"ok": True, "results": [{
+                            "title": "fatture", "path": "/tmp/fatture.xlsx",
+                            "rows": 2, "kind": "spreadsheet"}]},
+                        ok=True, latency_ms=1)]
+        out = _render_final_message("${step1.@table}", hist)
+        self.assertIn("fatture.xlsx", out)
+        self.assertIn("rows", out)
+
+    def test_links_magic_renders_unique_http_sources(self):
+        from engine.executor import _render_final_message
+        hist = [StepRun(step_idx=1, tool="read_sites", args={},
+                        result={"ok": True, "entries": [
+                            {"title": "Fatture", "url": "https://example.com/invoices"},
+                            {"title": "Duplicato", "url": "https://example.com/invoices"},
+                            {"title": "Non sicuro", "url": "javascript:alert(1)"},
+                        ]}, ok=True, latency_ms=1)]
+        out = _render_final_message("${step1.@links}", hist)
+        self.assertEqual(out,
+                         "- [Fatture](https://example.com/invoices)")
 
     def test_note_magic_renders_message_or_empty(self):
         from engine.executor import _render_final_message

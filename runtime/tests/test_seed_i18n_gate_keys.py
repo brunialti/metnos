@@ -25,6 +25,7 @@ _REQUIRED_KEYS = (
     "MSG_DIALOG_COMPLETED",
     "MSG_DIALOG_STEP_ERROR",
     "MSG_DIALOG_STEP_REPROMPT",
+    "MSG_DIALOG_TEMPORARILY_UNAVAILABLE",
     "MSG_CONSENT_GATE_MASS_MUTATION",
     "MSG_ACTION_DELETE",
     "MSG_ACTION_MOVE",
@@ -48,6 +49,32 @@ _REQUIRED_UPLOAD_KEYS = (
     "MSG_UPLOAD_PHOTO_DESC",
     "MSG_UPLOAD_NO_SIMILAR",
     "MSG_UPLOAD_SIMILAR_COUNT",
+)
+
+# Dominio sites F1/F2: tassonomia login + gate azioni sensibili. Queste chiavi
+# devono esistere anche su fresh install, non soltanto nel DB di esercizio.
+_REQUIRED_SITES_KEYS = (
+    "MSG_SITES_ALLOWLIST_APPROVAL_TITLE",
+    "MSG_SITES_ALLOWLIST_APPROVAL_PROMPT",
+    "MSG_CREDENTIALS_STORED",
+    "MSG_SITES_APPROVAL_TITLE",
+    "MSG_SITES_APPROVAL_PROMPT",
+    "MSG_SITES_CREDENTIAL_ORIGIN_APPROVAL_TITLE",
+    "MSG_SITES_CREDENTIAL_ORIGIN_APPROVAL_PROMPT",
+    "MSG_SITES_ACTIONS_COMPLETED",
+    "MSG_SITES_RC_TWO_FACTOR_REQUIRED",
+    "MSG_SITES_RC_TWO_FACTOR_PUSH_REQUIRED",
+    "MSG_SITES_RC_ACCOUNT_LOCKED",
+    "MSG_SITES_RC_CAPTCHA_REQUIRED",
+    "MSG_SITES_RC_CREDENTIAL_USE_DISABLED",
+    "MSG_SITES_RC_CREDENTIALS_MISSING",
+    "MSG_SITES_RC_LOGIN_FAILED",
+    "MSG_SITES_RC_LOGIN_TIMEOUT",
+    "MSG_SITES_RC_ORIGIN_UNVERIFIED",
+    "MSG_SITES_RC_PASSWORD_WRONG",
+    "MSG_SITES_RC_SELECTOR_MISSING",
+    "MSG_SITES_RC_SESSION_LOST",
+    "MSG_SITES_RC_VAULT_ERROR",
 )
 
 # Chiavi user-facing del batch truncation §2.7/§2.11 (2/7): etichette
@@ -206,6 +233,22 @@ class TestSeedHasGateKeys(unittest.TestCase):
                         txt and "<missing" not in txt,
                         f"seed manca {key}[{lang}] (rigenera install/data/"
                         f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_sites_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(k, lang): text for k, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_SITES_KEYS))),
+                _REQUIRED_SITES_KEYS)}
+        finally:
+            conn.close()
+        for key in _REQUIRED_SITES_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    txt = rows.get((key, lang))
+                    self.assertTrue(txt and "<missing" not in txt,
+                                    f"seed manca {key}[{lang}]")
 
     def test_truncation_keys_present_it_en(self):
         conn = sqlite3.connect(str(_SEED_DB))

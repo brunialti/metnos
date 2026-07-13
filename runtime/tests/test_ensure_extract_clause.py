@@ -147,6 +147,85 @@ class TestDeriveExtractFields(unittest.TestCase):
     def test_empty_when_no_extract_clause(self):
         self.assertEqual(self._d("che ore sono?"), [])
 
+    def test_natural_spreadsheet_assignment_it(self):
+        self.assertEqual(
+            self._d("crea uno spreadsheet e metti data e importo per ogni fattura"),
+            ["data", "importo"])
+
+    def test_natural_spreadsheet_assignment_en(self):
+        self.assertEqual(
+            self._d("create a spreadsheet and put date and amount for each invoice"),
+            ["date", "amount"])
+
+    def test_plain_file_destination_is_not_a_field_schema(self):
+        self.assertEqual(self._d("crea un file e mettilo in /tmp"), [])
+
+
+class TestEnsureExtractFromSites(unittest.TestCase):
+    def test_site_text_to_spreadsheet_gets_extract_columns_and_scope(self):
+        query = ("accedi a example.com e cerca fatture 2026, crea uno "
+                 "spreadsheet e metti data e importo per ogni fattura")
+        fw = Framework(steps=[
+            StepSpec(tool="read_sites", args={"from_step": 1}),
+            StepSpec(tool="create_files_spreadsheet", args={"from_step": 1}),
+        ])
+        intent = Intent(verb="open", object="sites", actions=[
+            {"verb": "open", "object": "sites"},
+            {"verb": "create", "object": "files"},
+        ])
+
+        out = D._ensure_extract_clause(fw, intent, query, _CAT)
+
+        self.assertEqual([s.tool for s in out.steps], [
+            "read_sites", "extract_entries", "create_files_spreadsheet"])
+        self.assertEqual(out.steps[1].args["fields"], ["data", "importo"])
+        self.assertEqual(out.steps[1].args["instruction"], query)
+        self.assertEqual(out.steps[2].args["columns"], ["data", "importo"])
+        self.assertEqual(out.steps[2].args["from_step"], 2)
+
+
+class TestExtractedPeriodScope(unittest.TestCase):
+    def test_explicit_year_filters_date_records_before_sink(self):
+        query = "trova fatture 2026 e crea uno spreadsheet"
+        fw = Framework(steps=[
+            StepSpec(tool="read_sites", args={}),
+            StepSpec(tool="extract_entries", args={
+                "from_step": 1, "fields": ["data", "importo"]}),
+            StepSpec(tool="create_files_spreadsheet", args={"from_step": 2}),
+            StepSpec(tool="final_answer", args={}),
+        ], final_message="${step3.@table}")
+
+        out = D._ensure_extracted_period_scope(
+            fw, _intent([]), query, _CAT)
+
+        self.assertEqual([s.tool for s in out.steps], [
+            "read_sites", "extract_entries", "filter_entries",
+            "create_files_spreadsheet", "final_answer"])
+        self.assertEqual(out.steps[2].args, {
+            "from_step": 2, "where_field": "data",
+            "where_regex": "^(?:2026)-"})
+        self.assertEqual(out.steps[3].args["from_step"], 3)
+        self.assertEqual(out.final_message, "${step4.@table}")
+        self.assertEqual(
+            D._ensure_extracted_period_scope(out, _intent([]), query, _CAT),
+            out)
+
+    def test_multiple_years_filter_year_field(self):
+        fw = Framework(steps=[
+            StepSpec(tool="extract_entries", args={
+                "from_step": 1, "fields": ["anno", "totale"]}),
+        ])
+        out = D._ensure_extracted_period_scope(
+            fw, _intent([]), "fatture 2025 e 2024", _CAT)
+        self.assertEqual(out.steps[1].args["where_in"], ["2025", "2024"])
+
+    def test_no_date_or_year_field_is_noop(self):
+        fw = Framework(steps=[StepSpec(tool="extract_entries", args={
+            "from_step": 1, "fields": ["titolo", "importo"]})])
+        out = D._ensure_extracted_period_scope(
+            fw, _intent([]), "elementi 2026", _CAT)
+        self.assertIs(out, fw)
+
 
 if __name__ == "__main__":
     unittest.main()

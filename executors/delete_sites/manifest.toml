@@ -13,12 +13,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: chiude/revoca sessioni web aperte; kill-switch con all=true («revoca tutte le mie sessioni»). PATTERN: delete_sites(session_ids=[...]) oppure delete_sites(all=true). NON: delete_files (dati su disco); qui si distrugge solo la SESSIONE browser (non reversibile). OUT: results=[{session_id,closed}]."
-en = "SCOPO: closes/revokes open web sessions; kill-switch with all=true (\"revoke all my web sessions\"). PATTERN: delete_sites(session_ids=[...]) or delete_sites(all=true). NON: delete_files (on-disk data); here only the browser SESSION is destroyed (not reversible). OUT: results=[{session_id,closed}]."
+it = "SCOPO: chiude o revoca sessioni web; all=true le revoca tutte. PATTERN: delete_sites(session_ids=[...]) o delete_sites(all=true). NON: dati su disco -> delete_files; distrugge solo la sessione browser. OUT: results=[{session_id,closed}]."
+en = "SCOPO: closes or revokes web sessions; all=true revokes all. PATTERN: delete_sites(session_ids=[...]) or delete_sites(all=true). NON: on-disk data -> delete_files; destroys only the browser session. OUT: results=[{session_id,closed}]."
 
 [code]
 files  = ["delete_sites.py"]
-digest = "sha256:433a774234a0a0ff5bd13184b9f5b6f934780500879904fa3278630769c7132d"
+digest = "sha256:e97f40c0e1a3e4fe3b38231c6a90bfb33e3acce2969d56cc4af2ba90a815bffe"
 
 [args]
 type     = "object"
@@ -44,7 +44,7 @@ en = "If true, closes ALL of the user's web sessions (kill-switch/revoke). Ignor
 schema_inline = """
 {
   ok: bool,
-  results: Array<{session_id: str, closed: bool}>,
+  results: Array<{session_id: str, closed: bool, ok?: bool, reason_code?: str}>,
   metadata: {closed: int, total?: int, kill_switch?: bool},
   error?: str, error_class?: str
 }

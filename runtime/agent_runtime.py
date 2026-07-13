@@ -182,6 +182,11 @@ _CRED_RE = re.compile(
 _USER_RE = re.compile(
     r"(\bu(?:sername|ser|name|tente)\s*(?:[:=]\s*|\s+))(\S+)", re.IGNORECASE
 )
+_OTP_RE = re.compile(
+    r"(\b(?:otp|2fa|one[- ]time code|verification code|"
+    r"codice(?: otp| 2fa| di verifica)?)\s*(?:[:=]\s*|\s+))(\S+)",
+    re.IGNORECASE,
+)
 
 
 # --- Think budget modulation per planner step (19/5/2026) ------------------
@@ -302,6 +307,7 @@ def _scrub_credentials(text: str) -> tuple[str, int]:
         return m.group(1) + "<REDACTED:cred>"
     cleaned = _CRED_RE.sub(_r, text)
     cleaned = _USER_RE.sub(_r, cleaned)
+    cleaned = _OTP_RE.sub(_r, cleaned)
     return cleaned, n_matches
 
 
@@ -646,7 +652,8 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
         for k, v in node.items():
             # Anche scrubbing diretto dei value se la chiave dice "password"
             if isinstance(k, str) and k.lower() in (
-                "password", "pwd", "psw", "pass",
+                "password", "pwd", "psw", "pass", "otp", "one_time_code",
+                "verification_code", "value_ref",
             ) and isinstance(v, str) and v:
                 total[0] += 1
                 out[k] = "<REDACTED:cred>"
@@ -666,13 +673,12 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
 # derivato deterministicamente dal contesto della query (host CIFS, URL web,
 # host SSH) — codice deterministico > LLM (CLAUDE.md §7.9).
 #
-# Pattern coperti:
-#   "user X pwd Y", "utente X password Y", "user=X pass=Y",
-#   "username: X, password: Y", "nome utente X passw Y", "X / Y" come slot.
+# Pattern coperti: etichette traducibili da detection_lexicon, in qualunque
+# ordine, con punteggiatura/connettori liberi e valori anche fra virgolette.
 #
 # Riconoscimento del dominio:
 #   - share CIFS:  "//192.168.1.20/Public" / "\\\\nas.local\\share" → cifs_<host>
-#   - URL/host web: "https://webmail.example.com" → web_<host>
+#   - URL/host web: "https://webmail.example.com" → host esatto
 #   - ssh:          "ssh roberto@nas.local"        → ssh_<host>
 #   - hint testuale: "share|smb|cifs|nas" → cifs ; "login|portale|sito" → web ;
 #                    "ssh" → ssh.
@@ -682,27 +688,57 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
 # Usiamo finditer per ricavare gli offset esatti (per scrubbing offsets).
 # Le keyword sono ordinate per lunghezza (LONGEST FIRST) per evitare match
 # parziali tipo "user" che taglia "username" ⇒ value="name:carlo".
-_USER_KEYWORD = (
-    r"(?:\busername|\busernam|\butente|\buser|\bnome\s+utente|\blogin)"
-)
-_PWD_KEYWORD = (
-    r"(?:\bpassword|\bpasswd|\bpasw|\bpwd|\bpsw|\bpass)"
-)
-_VAL = r"[^\s,;]+"
-# user prima di pwd (caso piu' comune)
-_USER_THEN_PWD = re.compile(
-    rf"({_USER_KEYWORD})\s*[:=]?\s*({_VAL})"
-    rf"\s*[,;]?\s*"
-    rf"({_PWD_KEYWORD})\s*[:=]?\s*({_VAL})",
-    re.IGNORECASE,
-)
-# pwd prima di user (caso meno comune ma valido)
-_PWD_THEN_USER = re.compile(
-    rf"({_PWD_KEYWORD})\s*[:=]?\s*({_VAL})"
-    rf"\s*[,;]?\s*"
-    rf"({_USER_KEYWORD})\s*[:=]?\s*({_VAL})",
-    re.IGNORECASE,
-)
+_CREDENTIAL_LABEL_FALLBACK = {
+    "username": ["username", "user id", "userid", "utente", "nome utente",
+                 "user", "usr", "email", "e-mail", "login"],
+    "password": ["password", "passwd", "passphrase", "pwd", "psw", "pass"],
+}
+_CREDENTIAL_CONNECTOR_FALLBACK = ["e", "con", "and", "with"]
+_CREDENTIAL_VALUE = r'(?:"[^"\r\n]+"|\'[^\'\r\n]+\'|[^\s,;]+)'
+
+
+def _forms_pattern(forms: list[str]) -> str:
+    """Alternativa regex senza capture, longest-first e whitespace flessibile."""
+    escaped = []
+    for form in sorted(set(forms), key=len, reverse=True):
+        escaped.append(re.escape(form).replace(r"\ ", r"\s+"))
+    return r"(?<!\w)(?:" + "|".join(escaped) + r")(?!\w)"
+
+
+@functools.lru_cache(maxsize=8)
+def _credential_pair_patterns(lang: str) -> tuple[re.Pattern, re.Pattern]:
+    labels = _detlex.mapping("credentials.field_label")
+    users = labels.get("username") or _CREDENTIAL_LABEL_FALLBACK["username"]
+    passwords = labels.get("password") or _CREDENTIAL_LABEL_FALLBACK["password"]
+    connectors = (_detlex.forms("credentials.pair_connector")
+                  or _CREDENTIAL_CONNECTOR_FALLBACK)
+    user_pattern = _forms_pattern(users)
+    password_pattern = _forms_pattern(passwords)
+    connector_pattern = _forms_pattern(connectors)
+    separator = (
+        rf"(?:\s*[,;/|]\s*|\s+{connector_pattern}\s+|\s+)"
+    )
+    user_then_password = re.compile(
+        rf"({user_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})"
+        rf"(?:{separator})*"
+        rf"({password_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})",
+        re.IGNORECASE,
+    )
+    password_then_user = re.compile(
+        rf"({password_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})"
+        rf"(?:{separator})*"
+        rf"({user_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})",
+        re.IGNORECASE,
+    )
+    return user_then_password, password_then_user
+
+
+def _clean_credential_value(value: str) -> str:
+    value = value.strip()
+    if (len(value) >= 2 and value[0] == value[-1]
+            and value[0] in ("'", '"')):
+        return value[1:-1]
+    return value.rstrip(",;.")
 
 # Riconoscimento host CIFS: //host/share oppure \\host\share (Windows-style).
 # Tolleriamo doppia barra invertita escapata in stringa Telegram.
@@ -801,10 +837,24 @@ def extract_credentials(query: str) -> list[dict]:
     """
     if not isinstance(query, str) or not query.strip():
         return []
+    user_then_password, password_then_user = _credential_pair_patterns(
+        _detlex.current_lang())
+    user_matches = list(user_then_password.finditer(query))
+    password_matches = list(password_then_user.finditer(query))
+    if not user_matches and not password_matches:
+        return []
+
     binding = detect_binding(query)
     host, ctx = _detect_host(query, binding)
+    # Una coppia credenziale + FQDN senza indicatori CIFS/SSH e' un binding
+    # web naturale ("credenziali di telepass.com"), non ``host_*``.
+    if binding == "generic" and host:
+        binding = "web"
+        ctx["binding"] = binding
     domain_prefix = binding if binding != "generic" else "host"
-    if host:
+    if binding == "web" and host:
+        domain = host
+    elif host:
         domain = f"{domain_prefix}_{host}"
     else:
         domain = f"{domain_prefix}_unknown"
@@ -831,19 +881,17 @@ def extract_credentials(query: str) -> list[dict]:
             "scrub_spans": list(spans),
         })
 
-    for m in _USER_THEN_PWD.finditer(query):
+    for m in user_matches:
         # group 2 = user value, group 4 = pwd value
-        user_val = m.group(2).rstrip(",;.")
-        pwd_val = m.group(4).rstrip(",;.")
+        user_val = _clean_credential_value(m.group(2))
+        pwd_val = _clean_credential_value(m.group(4))
         # Scrub spans: solo i VALUE, non le keyword (per leggibilita').
-        spans = [(m.start(2), m.start(2) + len(user_val)),
-                 (m.start(4), m.start(4) + len(pwd_val))]
+        spans = [(m.start(2), m.end(2)), (m.start(4), m.end(4))]
         _add(user_val, pwd_val, spans)
-    for m in _PWD_THEN_USER.finditer(query):
-        pwd_val = m.group(2).rstrip(",;.")
-        user_val = m.group(4).rstrip(",;.")
-        spans = [(m.start(2), m.start(2) + len(pwd_val)),
-                 (m.start(4), m.start(4) + len(user_val))]
+    for m in password_matches:
+        pwd_val = _clean_credential_value(m.group(2))
+        user_val = _clean_credential_value(m.group(4))
+        spans = [(m.start(2), m.end(2)), (m.start(4), m.end(4))]
         _add(user_val, pwd_val, spans)
 
     return out
@@ -897,6 +945,9 @@ def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
                 {
                     "username": c["username"],
                     "password": c["password"],
+                    # Authority is selected in a secret-free form before the
+                    # binding can be used unattended.
+                    "scopes": [],
                     **{k: v for k, v in (c.get("context") or {}).items()
                        if k in ("binding", "host", "share", "workgroup", "port")},
                 },
@@ -908,6 +959,7 @@ def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
         safe_meta.append({
             "domain": c["domain"],
             "context": dict(c.get("context") or {}),
+            "mandate_pending": True,
         })
     if all_spans:
         # Per il redact uso il primo dominio come tag, ma ogni run cattura
@@ -915,6 +967,24 @@ def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
         primary_domain = creds[0]["domain"]
         redacted = _redact_spans(query, all_spans, primary_domain)
     return redacted, safe_meta
+
+
+def _is_credentials_store_only_intent(intent) -> bool:
+    """True solo per un intento semantico puro ``set credentials``.
+
+    La decisione usa l'intent canonico, non forme testuali: le frasi naturali
+    restano aperte e un compound ``salva e fai login`` continua nel motore.
+    """
+    actions = list(getattr(intent, "actions", None) or [])
+    if not actions:
+        actions = [{"verb": getattr(intent, "verb", ""),
+                    "object": getattr(intent, "object", "")}]
+    return bool(actions) and all(
+        isinstance(action, dict)
+        and (action.get("verb") or "").lower() == "set"
+        and (action.get("object") or "").lower() == "credentials"
+        for action in actions
+    )
 
 
 
@@ -3488,6 +3558,11 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # senza rete → ogni op Google chiedeva il setup OAuth in loop. Bind della
     # SOLA home skill (RW: il refresh riscrive il token) + rete.
     _extra_rw, _force_net = _sandbox.skill_extras(_skill_names)
+    # I gate costruiti dentro executor di dominio devono persistere oltre il
+    # /tmp privato di bwrap. Bind per-sender soltanto: mai l'intero archivio,
+    # che puo' contenere input sensibili altrui.
+    _extra_rw.extend(_sandbox.dialog_extras(
+        executor, actor=actor or "host", channel=channel or ""))
     cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy,
                                 extra_rw=_extra_rw, force_net=_force_net)
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
@@ -3515,6 +3590,16 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         env["METNOS_ACTOR"] = actor
     if channel:
         env["METNOS_CHANNEL"] = channel
+    # Unattended authority is task-scoped.  Propagate only the opaque task
+    # identity; each domain reloads and validates its own persisted envelope.
+    env.pop("METNOS_TASK_NAME", None)
+    try:
+        from treated_issues_guard import scheduled_task_name
+        _scheduled_task = scheduled_task_name()
+    except Exception:
+        _scheduled_task = ""
+    if _scheduled_task:
+        env["METNOS_TASK_NAME"] = _scheduled_task
     _t_start = time.perf_counter()
     result = subprocess.run(
         cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
@@ -3923,7 +4008,10 @@ class TurnLog:
                     lab = (f.get("account") or f.get("url") or f.get("path")
                            or f.get("message_id") or f.get("id") or f.get("uid")
                            or f.get("to") or f.get("index"))
-                    labels.append(str(lab)[:50] if lab is not None else "?")
+                    text = str(lab) if lab is not None else "?"
+                    if len(text) > 160:
+                        text = f"{text[:96]}…{text[-63:]}"
+                    labels.append(text)
             n = len(failed)
             key = (s.chosen_tool, n, tuple(labels))
             if key in seen:
@@ -4818,15 +4906,17 @@ class TurnLog:
                 self.false_success_detected = True
                 _ec = self.effect_counts or {}
                 # §2.8: un builtin che dichiara il SUO esito nel result
-                # (`message` i18n, es. undo_last_turn «Nessuna operazione
-                # reversibile da annullare») vince sui generici — bug live
+                # (`final_message_hint`/`message` i18n, es. undo_last_turn
+                # «Nessuna operazione reversibile da annullare») vince sui generici — bug live
                 # f9cb0033 6/7: l'undo onesto diventava «Nessun risultato
                 # trovato» (falso: non era una ricerca).
                 _exec_msg = ""
                 for _s in reversed(self.steps):
                     _r = _s.result if isinstance(_s.result, dict) else {}
-                    if isinstance(_r.get("message"), str) and _r["message"].strip():
-                        _exec_msg = _r["message"].strip()
+                    _declared = (_r.get("final_message_hint")
+                                 or _r.get("message"))
+                    if isinstance(_declared, str) and _declared.strip():
+                        _exec_msg = _declared.strip()
                         break
                 if _exec_msg:
                     self.final_message = _exec_msg
@@ -5436,6 +5526,7 @@ def _run_engine(
     resume_steps=None,
     placement_target: str | None = None,
     user_query_raw: str = "",
+    credential_meta=None,
 ) -> "dict | None":
     """Bridge agent_runtime → engine.dispatch.run_turn.
 
@@ -5532,6 +5623,79 @@ def _run_engine(
              intent.verb or "-", intent.object or "-",
              intent.confidence, intent.actions or "-", query[:60])
 
+    # L'estrazione pre-planner ha gia' scritto il vault senza autorita'
+    # unattended. Prima di qualunque uso, un form secret-free sceglie il
+    # mandato del binding. Per i compound il callback riprende la query gia'
+    # redatta; per il puro set_credentials termina dopo l'aggiornamento.
+    _credential_meta = [m for m in (credential_meta or [])
+                        if isinstance(m, dict) and m.get("domain")]
+    _web_credential_meta = [m for m in _credential_meta
+                            if (m.get("context") or {}).get("binding") == "web"]
+    if _web_credential_meta:
+        from credential_mandates import dialog_step
+        domains = [m["domain"] for m in _web_credential_meta]
+        pure_store = _is_credentials_store_only_intent(intent)
+        payload = {
+            "title": msg("MSG_CREDENTIAL_MANDATE_TITLE",
+                         binding=", ".join(domains)),
+            "dialog": [dialog_step()],
+            "fmt": "auto",
+            "on_complete": {
+                "type": "set_credential_mandates_and_resume",
+                "bindings": domains,
+                "resume_query": "" if pure_store else query,
+                "conversation_id": conversation_id or "",
+            },
+        }
+        result = {
+            "ok": True,
+            "decision": "needs_inputs", "needs_inputs": payload,
+            "results": [], "final_message_hint": payload["title"],
+        }
+        step = StepLog(step_num=1)
+        step.chosen_tool = "set_credentials"
+        step.raw_args = {"bindings": domains}
+        step.resolved_args = dict(step.raw_args)
+        step.result = result
+        return {
+            "steps": [step],
+            "final_text": payload["title"],
+            "final_kind": "ask",
+            "framework_hash": "",
+            "verb": intent.verb,
+            "object": intent.object,
+            "keywords": intent.keywords,
+            "match_source": "credential_extraction",
+            "elapsed_ms": 0,
+            "error_class": "",
+            "needs_inputs_obs": result,
+            "gate_obs": None,
+        }
+    if (_credential_meta and _is_credentials_store_only_intent(intent)):
+        domains = [m["domain"] for m in _credential_meta]
+        result = {
+            "ok": True,
+            "entries": [{"binding": domain, "status": "configured",
+                         "fields_present": ["username", "password"]}
+                        for domain in domains],
+            "metadata": {"stored": len(domains)},
+        }
+        step = StepLog(step_num=1)
+        step.chosen_tool = "set_credentials"
+        step.raw_args = {"bindings": domains}
+        step.resolved_args = dict(step.raw_args)
+        step.result = result
+        return {
+            "steps": [step],
+            "final_text": msg("MSG_CREDENTIALS_STORED",
+                              domain=", ".join(domains)),
+            "final_kind": "answer", "framework_hash": "",
+            "verb": intent.verb, "object": intent.object,
+            "keywords": intent.keywords,
+            "match_source": "credential_extraction", "elapsed_ms": 0,
+            "error_class": "", "needs_inputs_obs": None, "gate_obs": None,
+        }
+
     # §2.11 — DISAMBIGUAZIONE ROUTING deterministica (no LLM). Su query AMBIGUA
     # sull'oggetto (≥2 oggetti-produttori in gara, intent ne ha scartato uno;
     # NON un compound) chiedi con un form invece di indovinare. Sulla RIPRESA
@@ -5570,6 +5734,11 @@ def _run_engine(
     # server). La `query` in arrivo è già ripulita dell'adjunct di destinazione.
     # `_target_name` va a invoke_executor via _invoke; None → esecuzione locale.
     _target_name = placement_target
+    try:
+        import credential_mandates as _credential_mandates
+        _site_credential_mode = _credential_mandates.site_mode_for_query(query)
+    except Exception:
+        _site_credential_mode = "default"
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
@@ -5582,9 +5751,16 @@ def _run_engine(
         if exec_obj is None:
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
+        effective_args = args
+        if tool_name in {"open_sites", "login_sites"}:
+            # Internal, planner-invisible per-query restriction. The broker
+            # persists it on the session, so a later step cannot re-enable it.
+            effective_args = {
+                **args, "_credential_mode": _site_credential_mode,
+            }
         try:
             return invoke_executor(
-                exec_obj, args,
+                exec_obj, effective_args,
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name)
@@ -6538,6 +6714,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                     forced_object=forced_object,
                     placement_target=_placement_target,  # chat-driven placement (ADR 0034)
                     user_query_raw=user_query_for_run,
+                    credential_meta=extracted_meta,
                 )
             except Exception as _ex:
                 import logging as _logging

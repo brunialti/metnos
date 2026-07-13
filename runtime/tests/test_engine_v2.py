@@ -477,6 +477,19 @@ class TestClassifyError(unittest.TestCase):
         r = RunResult(steps=[s])
         self.assertEqual(classify_error(r), "wrong_tool")
 
+    def test_nested_network_failure_is_not_replanned_as_wrong_args(self):
+        s = StepRun(
+            step_idx=1, tool="read_urls_html", args={}, ok=False,
+            latency_ms=10,
+            result={"ok": False, "entries": [], "failed": [{
+                "url": "https://example.test/x",
+                "error": "temporary DNS failure",
+                "error_class": "network",
+            }]},
+        )
+        r = RunResult(steps=[s])
+        self.assertEqual(classify_error(r), "out_of_scope")
+        self.assertFalse(is_recoverable(classify_error(r)))
 
 class TestFastpathRoundTrip(unittest.TestCase):
     def setUp(self):
@@ -633,6 +646,24 @@ class TestTerminator(unittest.TestCase):
             error_class="missing_input")
         self.assertIn("Non posso risolvere", resp.final_text)
         self.assertTrue(resp.lacuna_id)
+
+    def test_surfaces_nested_operational_error(self):
+        s = StepRun(
+            step_idx=1, tool="read_urls_html", args={}, ok=False,
+            latency_ms=10,
+            result={"ok": False, "entries": [], "failed": [{
+                "url": "https://example.test/x",
+                "error": "temporary DNS failure",
+                "error_class": "network",
+            }]},
+        )
+        response = SimpleTerminator().explain(
+            query="leggi il sito", intent=Intent(
+                verb="read", object="urls", keywords=[]),
+            failed_run=RunResult(steps=[s]), error_class="out_of_scope")
+        self.assertIn("temporary DNS failure", response.final_text)
+        self.assertNotIn("Pipeline malformata", response.final_text)
+        self.assertNotIn("percorso, nome, periodo", response.final_text)
 
 
 class TestMutatingInputEmptyAutoSkip(unittest.TestCase):

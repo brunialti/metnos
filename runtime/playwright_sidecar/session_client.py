@@ -18,7 +18,8 @@ import urllib.request
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771
-DEFAULT_TIMEOUT_S = 90.0  # login può includere navigazioni lente
+DEFAULT_TIMEOUT_S = 90.0
+LOGIN_TIMEOUT_S = 150.0
 
 
 def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
@@ -59,30 +60,89 @@ def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
 
 
 def session_open(*, owner: str, url: str, allowlist=None,
-                 session_label: str = "", **kw) -> dict:
+                 session_label: str = "", approval_token: str | None = None,
+                 task_name: str | None = None,
+                 credential_mode: str = "default",
+                 **kw) -> dict:
     return _post("/session/open", {"owner": owner, "url": url,
                                    "allowlist": allowlist,
-                                   "session_label": session_label}, **kw)
+                                   "session_label": session_label,
+                                   "approval_token": approval_token,
+                                   "task_name": task_name,
+                                   "credential_mode": credential_mode}, **kw)
 
 
-def session_read(*, session_id: str, include_screenshot: bool = True,
+def session_read(*, session_id: str, owner: str | None = None,
+                 include_screenshot: bool = True,
                  include_forms: bool = False, **kw) -> dict:
-    return _post("/session/read", {"session_id": session_id,
+    return _post("/session/read", {"session_id": session_id, "owner": owner,
                                    "include_screenshot": include_screenshot,
                                    "include_forms": include_forms}, **kw)
 
 
-def session_login(*, session_id: str, domain: str | None = None,
-                  form_hint: str | None = None, **kw) -> dict:
-    return _post("/session/login", {"session_id": session_id, "domain": domain,
-                                    "form_hint": form_hint}, **kw)
+def session_login(*, session_id: str, owner: str | None = None,
+                  domain: str | None = None,
+                  form_hint: str | None = None,
+                  approval_token: str | None = None,
+                  one_time_code: str | None = None,
+                  credential_mode: str = "default", **kw) -> dict:
+    kw.setdefault("timeout_s", LOGIN_TIMEOUT_S)
+    return _post("/session/login", {"session_id": session_id, "owner": owner,
+                                    "domain": domain,
+                                    "form_hint": form_hint,
+                                    "approval_token": approval_token,
+                                    "one_time_code": one_time_code,
+                                    "credential_mode": credential_mode}, **kw)
 
 
-def session_screenshot(*, session_id: str, **kw) -> dict:
-    return _post("/session/screenshot", {"session_id": session_id}, **kw)
+def session_screenshot(*, session_id: str, owner: str | None = None, **kw) -> dict:
+    return _post("/session/screenshot", {"session_id": session_id,
+                                          "owner": owner}, **kw)
 
 
 def session_close(*, session_id: str | None = None, owner: str | None = None,
                   all: bool = False, **kw) -> dict:
     return _post("/session/close", {"session_id": session_id, "owner": owner,
                                     "all": all}, **kw)
+
+
+def session_act(*, session_id: str, owner: str, action: str,
+                value_ref: str | None = None,
+                approval_token: str | None = None, **kw) -> dict:
+    return _post("/session/act", {
+        "session_id": session_id, "owner": owner, "action": action,
+        "value_ref": value_ref, "approval_token": approval_token,
+    }, **kw)
+
+
+def _primitive(endpoint: str, *, session_id: str, owner: str,
+               approval_token: str | None = None, **payload) -> dict:
+    return _post(f"/session/{endpoint}", {
+        "session_id": session_id, "owner": owner,
+        "approval_token": approval_token, **payload,
+    })
+
+
+def session_goto(*, session_id: str, owner: str, url: str, **kw) -> dict:
+    return _primitive("goto", session_id=session_id, owner=owner, url=url, **kw)
+
+
+def session_click(*, session_id: str, owner: str, target: str, **kw) -> dict:
+    return _primitive("click", session_id=session_id, owner=owner,
+                      target=target, **kw)
+
+
+def session_fill(*, session_id: str, owner: str, target: str,
+                 value_ref: str | None = None, **kw) -> dict:
+    return _primitive("fill", session_id=session_id, owner=owner,
+                      target=target, value_ref=value_ref, **kw)
+
+
+def session_submit(*, session_id: str, owner: str, target: str, **kw) -> dict:
+    return _primitive("submit", session_id=session_id, owner=owner,
+                      target=target, **kw)
+
+
+def session_wait(*, session_id: str, owner: str, seconds: int = 2, **kw) -> dict:
+    return _primitive("wait", session_id=session_id, owner=owner,
+                      seconds=seconds, **kw)

@@ -23,7 +23,8 @@ from __future__ import annotations
 import logging
 from typing import Optional, Callable
 
-from .types import Intent, Framework, StepSpec, RunResult
+from .types import (Intent, Framework, StepSpec, RunResult,
+                    result_error_classes)
 from .recovery import classify_error, is_recoverable
 
 log = logging.getLogger(__name__)
@@ -100,6 +101,14 @@ class MetisRecovery:
             log.info("MetisRecovery: inserito open_sites (needs_site_session)")
             return corrected_site
 
+        # Gli executor del dominio sites implementano gia' retry bounded sul
+        # proprio stato. Riproporre l'intera pipeline con una sessione ancora
+        # valida duplicherebbe open/login e perderebbe il reason_code originale.
+        if self._has_live_site_session(failed_run):
+            log.info("MetisRecovery: sessione sites ancora valida; "
+                     "nessun re-propose stateful")
+            return None
+
         # 2. Re-propose escludendo SOLO il framework fallito (NON il tool: a
         #    differenza di SimpleRecovery, che escludendo il tool dell'ultimo
         #    step peggiora i casi tipo needs_content_fetch). Il Proposer
@@ -114,6 +123,29 @@ class MetisRecovery:
         except Exception as ex:
             log.warning("MetisRecovery re-propose failed: %r", ex)
             return None
+
+    @staticmethod
+    def _has_live_site_session(failed_run: RunResult) -> bool:
+        if not failed_run.steps:
+            return False
+        last = failed_run.steps[-1]
+        if not str(last.tool or "").endswith("_sites"):
+            return False
+        args = last.args if isinstance(last.args, dict) else {}
+        has_session = bool(args.get("session_id") or args.get("session_ids")
+                           or args.get("entries"))
+        if not has_session:
+            return False
+        result = last.result if isinstance(last.result, dict) else {}
+        classes = set(result_error_classes(result))
+        if classes & {"session_lost", "session_expired"}:
+            return False
+        items = result.get("entries") or result.get("results") or []
+        if isinstance(items, list) and any(
+                isinstance(item, dict) and item.get("session_closed") is True
+                for item in items):
+            return False
+        return True
 
     # ── correzione deterministica ─────────────────────────────────────────
     def _fix_needs_content_fetch(self, failed_run: RunResult,
@@ -224,7 +256,7 @@ class MetisRecovery:
         if not failed_run.steps:
             return None
         last = failed_run.steps[-1]
-        if last.tool not in ("login_sites", "read_sites") or last.ok:
+        if last.tool not in ("login_sites", "read_sites", "act_sites") or last.ok:
             return None
         a = last.args if isinstance(last.args, dict) else {}
         if any(a.get(k) for k in
@@ -235,22 +267,48 @@ class MetisRecovery:
             return None
         import re as _re
         m = _re.search(r"https?://[^\s'\"<>]+", query or "")
-        if not m:
-            return None
-        url = m.group(0).rstrip(".,;)")
+        if m:
+            url = m.group(0).rstrip(".,;)")
+        else:
+            m = _re.search(
+                r"(?<![@\w])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+                r"[a-z]{2,63})(?![\w])", query or "", _re.IGNORECASE)
+            if not m:
+                return None
+            url = "https://" + m.group(1).lower()
         acts = getattr(intent, "actions", None) or []
         verbs = {(x.get("verb") or "").lower() for x in acts
                  if isinstance(x, dict)}
         want_login = "login" in verbs or last.tool == "login_sites"
         want_read = ("read" in verbs or "describe" in verbs
                      or last.tool == "read_sites")
+        want_act = "act" in verbs or last.tool == "act_sites"
         steps = [StepSpec(tool="open_sites", args={"urls": [url]})]
         if want_login:
-            steps.append(StepSpec(tool="login_sites",
-                                  args={"from_step": len(steps)}))
+            login_args = ({k: v for k, v in a.items()
+                           if k in ("domain", "form_hint")}
+                          if last.tool == "login_sites" else {})
+            domain = login_args.get("domain")
+            if isinstance(domain, str) and domain.startswith(("http://", "https://")):
+                try:
+                    import urllib.parse as _urlparse
+                    login_args["domain"] = _urlparse.urlsplit(domain).hostname or ""
+                except ValueError:
+                    login_args.pop("domain", None)
+            login_args["from_step"] = len(steps)
+            steps.append(StepSpec(tool="login_sites", args=login_args))
         if want_read:
-            steps.append(StepSpec(tool="read_sites",
-                                  args={"from_step": len(steps)}))
+            read_args = ({k: v for k, v in a.items()
+                          if k in ("include_screenshot", "include_forms")}
+                         if last.tool == "read_sites" else {})
+            read_args["from_step"] = len(steps)
+            steps.append(StepSpec(tool="read_sites", args=read_args))
+        if want_act:
+            act_args = {"from_step": len(steps)}
+            for key in ("action", "value_ref"):
+                if a.get(key) is not None:
+                    act_args[key] = a[key]
+            steps.append(StepSpec(tool="act_sites", args=act_args))
         if len(steps) == 1:
             return None  # solo open non è un recovery utile del consumer
         return Framework(steps=steps, final_message="")

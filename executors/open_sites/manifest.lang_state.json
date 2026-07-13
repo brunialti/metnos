@@ -1,12 +1,12 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:708d13a3df92484204a4ae1045088f5779772966af9750777391e7cfdd748f95",
+      "version_hash": "sha256:ab8934fa10c799b952436546281c502f36efb3ed328d275e807bd76a7f613898",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:1f48048319d99b11c062c56d15a5df95ea6de10da8c9f99e8e475d7df5d8d32a",
+      "version_hash": "sha256:5ff740efe521015b7a09fcab4eea44d18963f9292960dc1c97fb38328b493fa6",
       "source_lang": null,
       "source_hash": null
     }
@@ -55,6 +55,30 @@
     },
     "en": {
       "version_hash": "sha256:65e5be9239a3829f9ec3451828296781a71a79e5e029713b1d625d04b39b6011",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args._allowlist_tokens.description": {
+    "it": {
+      "version_hash": "sha256:4706a2cff4ef9f75b189b4fcb9b86111e18da366b63067657cb2dd612202002d",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:71bce794d24236fa19de37ec9edd8ebed40e6e6abbb2efd7672be2679b1c7bad",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args._open_approvals.description": {
+    "it": {
+      "version_hash": "sha256:1a34bb86b19357b314acaa28c3341dd5bd6f2bb90866646b0fef32fa805eb36d",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:c39b796a62dcef32cc09efbc45f61a6f9fff0d24e0d358e40f45ca59ae32eacc",
       "source_lang": null,
       "source_hash": null
     }

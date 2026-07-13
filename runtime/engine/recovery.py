@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 from typing import Optional, Callable, Protocol
 
-from .types import Intent, Framework, RunResult, ERROR_CLASSES, RECOVERABLE
+from .types import (Intent, Framework, RunResult, ERROR_CLASSES, RECOVERABLE,
+                    OPERATIONAL_ERROR_CLASSES, result_error_classes)
 
 log = logging.getLogger(__name__)
 
@@ -45,9 +46,15 @@ def classify_error(failed_run: RunResult) -> str:
         return "out_of_scope"
     last = failed_run.steps[-1]
     r = last.result if isinstance(last.result, dict) else {}
-    ec = (r.get("error_class") or "").lower()
+    classes = result_error_classes(r)
+    ec = classes[0] if classes else ""
     if ec in ERROR_CLASSES:
         return ec
+    # Un errore operativo puo' essere annidato in ``failed[]`` nei producer
+    # vettoriali. Un piano alternativo non ripara DNS, timeout o sidecar:
+    # chiudi senza recovery invece di etichettarlo come argomenti errati.
+    if any(item in OPERATIONAL_ERROR_CLASSES for item in classes):
+        return "out_of_scope"
     # Out_of_scope: executor ha esplicito needs_user_action / capability_missing
     if ec in ("needs_user_action", "capability_missing"):
         return "out_of_scope"

@@ -5,20 +5,28 @@
 # lancia manualmente quando vuole abilitare il JS-rendering.
 #
 # Uso:
-#   ./install.sh                # default venv /opt/suprastructure/.venv
-#   PYTHON=python3 ./install.sh # override
+#   ./install.sh                # venv Metnos canonico
+#   METNOS_VENV=/path ./install.sh
 
 set -euo pipefail
 
-PYTHON="${PYTHON:-/opt/suprastructure/.venv/bin/python}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
+METNOS_VENV="${METNOS_VENV:-$METNOS_USER_DATA/.venv}"
+PYTHON="$METNOS_VENV/bin/python"
+export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$METNOS_USER_DATA/playwright-browsers}"
 
 if [ ! -x "$PYTHON" ]; then
-    echo "ERROR: python not found at $PYTHON — set PYTHON=..." >&2
-    exit 1
+    BASE_PYTHON="${BASE_PYTHON:-python3}"
+    echo "[0/2] creo il venv Metnos in $METNOS_VENV..."
+    mkdir -p "$(dirname "$METNOS_VENV")"
+    "$BASE_PYTHON" -m venv "$METNOS_VENV"
 fi
 
-echo "[1/2] pip install playwright + aiohttp..."
-"$PYTHON" -m pip install --upgrade "playwright>=1.40" "aiohttp>=3.9"
+echo "[1/2] pip install dipendenze Metnos + playwright..."
+"$PYTHON" -m pip install --upgrade-strategy only-if-needed \
+    -r "$ROOT/requirements.txt"
+"$PYTHON" -m pip install --upgrade "playwright==1.61.0"
 
 echo "[2/2] playwright install chromium (~300MB download)..."
 "$PYTHON" -m playwright install chromium

@@ -14,7 +14,7 @@ I 3 CRITICI del red-team (spec §3.2, §12) sono implementati DETERMINISTICAMENT
         dominio del vault (D-D: match esatto, niente sottodomini);
     (2) il campo password è nel FRAME TOP-LEVEL (mai iframe);
     (3) l'origine è verificata PRIMA di digitare.
-  Mismatch → RIFIUTO (`origine_non_verificata`), nessuna digitazione.
+  Mismatch → RIFIUTO (`origin_unverified`), nessuna digitazione.
 
   CRITICO-2 (destinazione non scelta dall'LLM): il broker risolve AUTONOMAMENTE
     i campi credenziale del form legittimo. L'executor/planner NON passano mai un
@@ -29,10 +29,53 @@ I 3 CRITICI del red-team (spec §3.2, §12) sono implementati DETERMINISTICAMENT
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import inspect
+import re
+import struct
+import time
 import urllib.parse
 
 import credentials  # runtime/credentials.py — vault cifrato (dentro il broker)
 import sites_audit
+from playwright_sidecar import factor_resolvers
+from sites_url_scrub import scrub_url
+
+try:
+    import detection_lexicon as _detlex
+except ImportError:  # pragma: no cover - sidecar install incompleto
+    _detlex = None
+
+
+_LOGIN_SURFACE_SETTLE_S = 5.0
+_EMAIL_FACTOR_WAIT_S = 22.0
+_FACTOR_SUBMIT_SETTLE_S = 15.0
+
+
+class _LoginBudget:
+    def __init__(self, total_s: float):
+        self.deadline = time.monotonic() + max(1.0, float(total_s))
+
+    @property
+    def expired(self) -> bool:
+        return time.monotonic() >= self.deadline
+
+    def remaining(self, cap_s: float, *, floor_s: float = 0.1) -> float:
+        return max(floor_s, min(float(cap_s), self.deadline - time.monotonic()))
+
+
+async def _checkpoint(callback, stage: str) -> None:
+    if callback is None:
+        return
+    try:
+        result = callback(stage)
+        if inspect.isawaitable(result):
+            await result
+    except Exception:
+        # Checkpoints are observability, never authority or success evidence.
+        pass
 
 
 # JS (main frame): individua il form di login, TAGGA i campi credenziale con
@@ -42,17 +85,26 @@ import sites_audit
 # (CRITICO-1 punto 2: mai iframe).
 _LOCATE_LOGIN_FORM_JS = r"""
 () => {
-  const forms = Array.from(document.forms);
-  let form = null, pw = null;
-  for (const f of forms) {
-    const p = f.querySelector('input[type=password]');
-    if (p) { form = f; pw = p; break; }
-  }
-  if (!pw) {
-    const p = document.querySelector('input[type=password]');
-    if (p) { pw = p; form = p.closest('form'); }
-  }
-  if (!pw) return {found: false};
+  document.querySelectorAll(
+    '[data-metnos-pw],[data-metnos-user],[data-metnos-submit]')
+    .forEach(el => {
+      el.removeAttribute('data-metnos-pw');
+      el.removeAttribute('data-metnos-user');
+      el.removeAttribute('data-metnos-submit');
+    });
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  };
+  const passwordFields = Array.from(
+    document.querySelectorAll('input[type=password]')).filter(visible);
+  if (passwordFields.length !== 1)
+    return {found: false, ambiguous: passwordFields.length > 1};
+  const pw = passwordFields[0];
+  const form = pw.closest('form');
   // Origine di submit: form.action riflette già l'URL ASSOLUTO risolto; se non
   // c'è form, l'origine è quella della pagina (submit-to-self).
   const actionResolved = (form && form.action) ? form.action : location.href;
@@ -62,7 +114,8 @@ _LOCATE_LOGIN_FORM_JS = r"""
   const RE = /user|email|login|userid|account|utente|matricola|nome/i;
   let userEl = null;
   const cand = Array.from(scope.querySelectorAll(
-    'input[type=text], input[type=email], input[type=tel], input:not([type])'));
+    'input[type=text], input[type=email], input[type=tel], input:not([type])'))
+    .filter(visible);
   for (const c of cand) {
     if (RE.test(c.name || '') || RE.test(c.id || '')) { userEl = c; break; }
   }
@@ -71,21 +124,26 @@ _LOCATE_LOGIN_FORM_JS = r"""
     const pwIdx = all.indexOf(pw);
     for (let i = pwIdx - 1; i >= 0; i--) {
       const t = (all[i].type || 'text').toLowerCase();
-      if (t === 'text' || t === 'email' || t === 'tel' || !all[i].type) {
+      if (visible(all[i]) && (t === 'text' || t === 'email' ||
+          t === 'tel' || !all[i].type)) {
         userEl = all[i]; break;
       }
     }
   }
   let submitEl = null;
   if (form) {
-    submitEl = form.querySelector(
-      'button[type=submit], input[type=submit], input[type=image], button:not([type])');
+    submitEl = Array.from(form.querySelectorAll(
+      'button[type=submit], input[type=submit], input[type=image], button:not([type])'))
+      .find(visible) || null;
   }
   // Tag deterministici broker-owned. Redaction del pw field SUBITO (prima di
   // qualunque digitazione o capture — CRITICO-3).
   pw.setAttribute('data-metnos-pw', '1');
   pw.setAttribute('data-metnos-redact', '1');
-  if (userEl) userEl.setAttribute('data-metnos-user', '1');
+  if (userEl) {
+    userEl.setAttribute('data-metnos-user', '1');
+    userEl.setAttribute('data-metnos-redact', '1');
+  }
   if (submitEl) submitEl.setAttribute('data-metnos-submit', '1');
   return {found: true, actionResolved, hasUser: !!userEl, hasSubmit: !!submitEl,
           inForm: !!form};
@@ -96,8 +154,16 @@ _LOCATE_LOGIN_FORM_JS = r"""
 _DETECT_OTP_JS = r"""
 () => {
   const RE = /otp|2fa|totp|one[-_ ]?time|verification|verify|codice|token|auth[-_ ]?code/i;
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  };
   const inputs = Array.from(document.querySelectorAll('input'));
   for (const el of inputs) {
+    if (!visible(el)) continue;
     if ((el.autocomplete || '') === 'one-time-code') return true;
     if (el.type === 'password') continue;  // la password è gestita a parte
     if (RE.test(el.name || '') || RE.test(el.id || '') ||
@@ -108,13 +174,84 @@ _DETECT_OTP_JS = r"""
 }
 """
 
+_LOCATE_OTP_FORM_JS = r"""
+() => {
+  document.querySelectorAll('[data-metnos-otp],[data-metnos-otp-submit]')
+    .forEach(el => {
+      el.removeAttribute('data-metnos-otp');
+      el.removeAttribute('data-metnos-otp-submit');
+    });
+  const RE = /otp|2fa|totp|one[-_ ]?time|verification|verify|codice|token|auth[-_ ]?code/i;
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  };
+  const candidates = Array.from(document.querySelectorAll('input')).filter(el => {
+    if (!visible(el) || el.type === 'password') return false;
+    const attrs = [el.name, el.id, el.getAttribute('aria-label'), el.placeholder]
+      .filter(Boolean).join(' ');
+    return (el.autocomplete || '') === 'one-time-code' || RE.test(attrs);
+  });
+  if (!candidates.length) return {found: false};
+  let segmented = false;
+  let fields = candidates;
+  if (candidates.length > 1) {
+    const form = candidates[0].closest('form');
+    const sameForm = candidates.every(el => el.closest('form') === form);
+    const oneChar = candidates.every(el =>
+      Number(el.maxLength || 0) === 1 ||
+      (el.inputMode || '').toLowerCase() === 'numeric');
+    const homogeneous = candidates.length <= 8 && candidates.every(el =>
+      ['text', 'tel', 'number'].includes((el.type || 'text').toLowerCase()));
+    if (!sameForm || (!oneChar && !homogeneous))
+      return {found: false, ambiguous: true};
+    segmented = true;
+  }
+  const otp = candidates[0];
+  const form = otp.closest('form');
+  const actionResolved = (form && form.action) ? form.action : location.href;
+  let submitEl = null;
+  if (form) submitEl = form.querySelector(
+    'button[type=submit],input[type=submit],input[type=image],button:not([type])');
+  fields.forEach(el => {
+    el.setAttribute('data-metnos-otp', '1');
+    el.setAttribute('data-metnos-redact', '1');
+  });
+  if (submitEl) submitEl.setAttribute('data-metnos-otp-submit', '1');
+  const singleMaxLength = !segmented && Number(otp.maxLength || 0) > 0 &&
+    Number(otp.maxLength) <= 12 ? Number(otp.maxLength) : 0;
+  const numericOnly = fields.every(el => {
+    const inputMode = (el.inputMode || '').toLowerCase();
+    const pattern = (el.getAttribute('pattern') || '').replace(/\s/g, '');
+    return (el.type || '').toLowerCase() === 'number' ||
+      inputMode === 'numeric' || inputMode === 'decimal' ||
+      pattern === '[0-9]*' || pattern === '\\d*';
+  });
+  return {found: true, actionResolved, hasSubmit: !!submitEl,
+          segmented, fieldCount: fields.length,
+          expectedLength: segmented ? fields.length : singleMaxLength,
+          numericOnly};
+}
+"""
+
 # JS: rileva un CAPTCHA (recaptcha/hcaptcha/turnstile) nel main frame.
 _DETECT_CAPTCHA_JS = r"""
 () => {
-  if (document.querySelector(
-      '.g-recaptcha, #g-recaptcha, .h-captcha, [data-sitekey], .cf-turnstile')) return true;
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05;
+  };
+  const markers = Array.from(document.querySelectorAll(
+    '.g-recaptcha, #g-recaptcha, .h-captcha, [data-sitekey], .cf-turnstile'));
+  if (markers.some(visible)) return true;
   const ifr = Array.from(document.querySelectorAll('iframe'));
   for (const f of ifr) {
+    if (!visible(f)) continue;
     const s = (f.src || '').toLowerCase();
     if (s.includes('recaptcha') || s.includes('hcaptcha') ||
         s.includes('turnstile')) return true;
@@ -123,8 +260,122 @@ _DETECT_CAPTCHA_JS = r"""
 }
 """
 
-# JS: la pagina ha ancora un campo password nel main frame? (verifica esito)
-_HAS_PASSWORD_JS = "() => !!document.querySelector('input[type=password]')"
+# JS: la pagina ha ancora un campo password interagibile nel main frame?
+# I portali SPA spesso mantengono form di login nascosti anche nella dashboard.
+_HAS_PASSWORD_JS = r"""
+() => Array.from(document.querySelectorAll('input[type=password]')).some(el => {
+  const r = el.getBoundingClientRect();
+  const st = getComputedStyle(el);
+  return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+    st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+    !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+})
+"""
+
+_PASSWORD_REJECTED_JS = r"""
+() => Array.from(document.querySelectorAll('input[type=password]')).some(el => {
+  const r = el.getBoundingClientRect();
+  const st = getComputedStyle(el);
+  const visible = r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+    st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+    !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  return visible && (el.getAttribute('aria-invalid') === 'true' ||
+    (Boolean(el.value) && !el.checkValidity()));
+})
+"""
+
+# Username-first (identity provider, SSO, portali a due schermate). La
+# selezione resta deterministica e top-level: autocomplete/attributi semantici
+# standard + contesto auth dell'action. Un normale campo newsletter `email`
+# su una landing page non supera il requisito.
+_LOCATE_USERNAME_STAGE_JS = r"""
+() => {
+  document.querySelectorAll('[data-metnos-user-step],[data-metnos-user-submit]')
+    .forEach(el => {
+      el.removeAttribute('data-metnos-user-step');
+      el.removeAttribute('data-metnos-user-submit');
+    });
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  };
+  const candidates = [];
+  for (const el of Array.from(document.querySelectorAll(
+      'input[type=text],input[type=email],input[type=tel],input:not([type])'))) {
+    if (!visible(el)) continue;
+    const form = el.closest('form');
+    const actionResolved = (form && form.action) ? form.action : location.href;
+    const attrs = [el.name, el.id, el.getAttribute('aria-label'),
+      el.getAttribute('placeholder')].filter(Boolean).join(' ').toLowerCase();
+    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+    const strong = autocomplete === 'username' ||
+      /(^|[^a-z])(user(name|id)?|login|account|identifier|utente|matricola)([^a-z]|$)/i
+        .test(attrs);
+    const emailish = autocomplete === 'email' || el.type === 'email' ||
+      /(^|[^a-z])(e-?mail)([^a-z]|$)/i.test(attrs);
+    let authAction = false;
+    try {
+      const u = new URL(actionResolved, location.href);
+      authAction = /(^|[^a-z])(auth|login|signin|sign-in|session|account|sso)([^a-z]|$)/i
+        .test(`${u.hostname} ${u.pathname}`);
+    } catch (_) {}
+    if (!strong && !(emailish && authAction)) continue;
+    const scope = form || document;
+    const textFields = Array.from(scope.querySelectorAll(
+      'input[type=text],input[type=email],input[type=tel],input:not([type])'))
+      .filter(visible);
+    let score = (strong ? 8 : 0) + (emailish ? 2 : 0) +
+      (authAction ? 3 : 0) + (textFields.length === 1 ? 1 : 0);
+    if (autocomplete === 'username') score += 4;
+    candidates.push({el, form, actionResolved, score});
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  if (!candidates.length) return {found: false};
+  if (candidates.length > 1 && candidates[0].score === candidates[1].score)
+    return {found: false, ambiguous: true};
+  const best = candidates[0];
+  let submitEl = null;
+  if (best.form) {
+    submitEl = best.form.querySelector(
+      'button[type=submit],input[type=submit],input[type=image],button:not([type])');
+  }
+  best.el.setAttribute('data-metnos-user-step', '1');
+  best.el.setAttribute('data-metnos-redact', '1');
+  if (submitEl) submitEl.setAttribute('data-metnos-user-submit', '1');
+  return {found: true, actionResolved: best.actionResolved,
+          hasSubmit: !!submitEl};
+}
+"""
+
+_CURRENT_FORM_ACTION_JS = r"""
+() => {
+  const pw = document.querySelector('[data-metnos-pw="1"]');
+  if (!pw) return '';
+  const form = pw.closest('form');
+  return (form && form.action) ? form.action : location.href;
+}
+"""
+
+_CURRENT_USERNAME_ACTION_JS = r"""
+() => {
+  const user = document.querySelector('[data-metnos-user-step="1"]');
+  if (!user) return '';
+  const form = user.closest('form');
+  return (form && form.action) ? form.action : location.href;
+}
+"""
+
+_CURRENT_OTP_ACTION_JS = r"""
+() => {
+  const otp = document.querySelector('[data-metnos-otp="1"]');
+  if (!otp) return '';
+  const form = otp.closest('form');
+  return (form && form.action) ? form.action : location.href;
+}
+"""
 
 
 def _host_of(url: str) -> str:
@@ -141,132 +392,1048 @@ async def _has_toplevel_password(page) -> bool:
         return False
 
 
+async def _wait_for_password_stage(page, op_timeout_s: float) -> bool:
+    """Riosserva per un intervallo breve senza usare il modello."""
+    attempts = max(1, min(25, int(op_timeout_s * 5)))
+    for _ in range(attempts):
+        if await _has_toplevel_password(page):
+            return True
+        try:
+            if hasattr(page, "wait_for_timeout"):
+                await page.wait_for_timeout(200)
+            else:
+                await asyncio.sleep(0.2)
+        except Exception:
+            await asyncio.sleep(0.2)
+    return False
+
+
+async def _wait_for_login_surface(page, op_timeout_s: float) -> str:
+    """Attende una superficie login deterministica dopo una transizione UI.
+
+    Ritorna ``password`` o ``username``; stringa vuota su timeout. Uno stato
+    ambiguo non viene mai scelto e viene soltanto riosservato.
+    """
+    attempts = max(1, min(25, int(op_timeout_s * 5)))
+    for _ in range(attempts):
+        if await _has_toplevel_password(page):
+            return "password"
+        try:
+            info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
+        except Exception:
+            info = None
+        if info and info.get("found") and not info.get("ambiguous"):
+            return "username"
+        try:
+            if hasattr(page, "wait_for_timeout"):
+                await page.wait_for_timeout(200)
+            else:
+                await asyncio.sleep(0.2)
+        except Exception:
+            await asyncio.sleep(0.2)
+    return ""
+
+
+async def _page_matches_concept(page, concept: str) -> bool:
+    if _detlex is None:
+        return False
+    try:
+        body = await page.locator("body").inner_text(timeout=1500)
+        return bool(_detlex.match(concept, body[:200_000]))
+    except Exception:
+        return False
+
+
+async def classify_login_surface(page) -> str | None:
+    """Return the most specific stable authentication blocker on the page."""
+    try:
+        if bool(await page.evaluate(_DETECT_CAPTCHA_JS)):
+            return "captcha_required"
+        if bool(await page.evaluate(_DETECT_OTP_JS)):
+            return "two_factor_required"
+    except Exception:
+        pass
+    if await _page_matches_concept(page, "sites.two_factor_push_marker"):
+        return "two_factor_push_required"
+    return None
+
+
+def _email_factor_allowed(payload: dict) -> bool:
+    scopes = payload.get("scopes") if isinstance(payload, dict) else None
+    return (isinstance(scopes, list)
+            and factor_resolvers.EMAIL_FACTOR_SCOPE in {
+                str(scope) for scope in scopes if isinstance(scope, str)})
+
+
+async def _arm_email_factor(*, username: str, payload: dict,
+                            factor_state: dict, budget: _LoginBudget,
+                            checkpoint=None, force: bool = False) -> None:
+    """Snapshot the exact mailbox immediately before an auth submit."""
+    if (not _email_factor_allowed(payload)
+            or not isinstance(username, str) or "@" not in username):
+        return
+    if factor_state.get("email_cursor") and not force:
+        return
+    await _checkpoint(checkpoint, "factor_prepare")
+    try:
+        cursor = await asyncio.wait_for(
+            factor_resolvers.prepare_email_factor(
+                username, allowed=True),
+            timeout=budget.remaining(10.0))
+    except Exception:
+        cursor = None
+    if cursor:
+        factor_state["email_cursor"] = cursor
+    # This timestamp precedes the click that can issue the factor.  It is only
+    # a skew-tolerant fallback when a server did not provide a UID cursor.
+    factor_state["requested_at"] = time.time()
+    factor_state.pop("auto_attempted", None)
+
+
+async def _resolve_email_factor_code(*, page, username: str, domain: str,
+                                     payload: dict, factor_state: dict,
+                                     budget: _LoginBudget, owner: str,
+                                     session_id: str, checkpoint=None
+                                     ) -> tuple[str | None, str]:
+    if factor_state.get("auto_attempted"):
+        return None, "already_attempted"
+    try:
+        page_text = await page.evaluate(
+            "() => (document.body && document.body.innerText || '')")
+    except Exception:
+        return None, "page_unavailable"
+    if not factor_resolvers.is_email_factor_page(str(page_text or "")):
+        return None, "channel_unavailable"
+    try:
+        otp_info = await page.evaluate(_LOCATE_OTP_FORM_JS)
+    except Exception:
+        otp_info = None
+    expected_length = 0
+    numeric_only = False
+    if isinstance(otp_info, dict) and otp_info.get("found"):
+        try:
+            expected_length = int(otp_info.get("expectedLength") or 0)
+        except (TypeError, ValueError):
+            expected_length = 0
+        if not 4 <= expected_length <= 12:
+            expected_length = 0
+        numeric_only = bool(otp_info.get("numericOnly"))
+    factor_state["auto_attempted"] = True
+    factor_state["channel"] = "email"
+    await _checkpoint(checkpoint, "factor_resolving")
+    resolution = await factor_resolvers.resolve_email_factor(
+        page_text=str(page_text or ""), address=username,
+        issuer_domain=domain,
+        requested_at=float(factor_state.get("requested_at") or time.time()),
+        cursor=(factor_state.get("email_cursor")
+                if isinstance(factor_state.get("email_cursor"), dict)
+                else None),
+        allowed=_email_factor_allowed(payload),
+        wait_s=budget.remaining(_EMAIL_FACTOR_WAIT_S),
+        expected_length=expected_length or None,
+        numeric_only=numeric_only)
+    diagnostics = resolution.diagnostics or {}
+    sites_audit.record(
+        "factor_resolution", owner=owner, session_id=session_id,
+        domain=domain, channel="email", status=resolution.status,
+        relevant_messages=int(diagnostics.get("relevant_messages") or 0),
+        candidate_messages=int(diagnostics.get("candidate_messages") or 0),
+        candidate_count=int(diagnostics.get("candidate_count") or 0),
+        expected_length=int(diagnostics.get("expected_length") or 0),
+        numeric_only=bool(diagnostics.get("numeric_only")),
+        top_tie_count=int(diagnostics.get("top_tie_count") or 0))
+    return resolution.code, resolution.status
+
+
+def _changed_cookies(cookies: list[dict], before: dict) -> list[dict]:
+    return [c for c in cookies if c.get("value") and before.get(
+        (c.get("name"), c.get("domain"), c.get("path"))) != c.get("value")]
+
+
+async def _observe_post_submit(*, page, context, cookies_before: dict,
+                               url_before: str,
+                               op_timeout_s: float,
+                               await_challenge_clear: bool = False) -> dict:
+    """Osserva una transizione di autenticazione SPA senza inferenze premature."""
+    attempts = max(1, min(25, int(op_timeout_s * 5)))
+    state = {
+        "cookies": [], "changed": [], "still_pw": False,
+        "otp": False, "captcha": False, "push": False,
+        "password_rejected": False, "navigation_confirmed": False,
+    }
+    for attempt in range(attempts):
+        try:
+            cookies = await context.cookies()
+        except Exception:
+            cookies = []
+        still_pw = await _has_toplevel_password(page)
+        otp = captcha = password_rejected = False
+        try:
+            otp = bool(await page.evaluate(_DETECT_OTP_JS))
+            captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
+            password_rejected = bool(
+                await page.evaluate(_PASSWORD_REJECTED_JS))
+        except Exception:
+            pass
+        push = await _page_matches_concept(
+            page, "sites.two_factor_push_marker")
+        changed = _changed_cookies(cookies, cookies_before)
+        try:
+            navigation_confirmed = (
+                scrub_url(page.url) != scrub_url(url_before))
+        except Exception:
+            navigation_confirmed = False
+        state = {
+            "cookies": cookies, "changed": changed, "still_pw": still_pw,
+            "otp": otp, "captcha": captcha, "push": push,
+            "password_rejected": password_rejected,
+            "navigation_confirmed": navigation_confirmed,
+        }
+        # Challenge e rifiuti espliciti sono terminali. Per il successo serve
+        # invece che il form sparisca insieme a un segnale di sessione o rotta.
+        if (await_challenge_clear and (otp or push)):
+            pass
+        elif (otp or captcha or push or password_rejected
+                or ((changed or navigation_confirmed) and not still_pw)):
+            break
+        if attempt + 1 >= attempts:
+            break
+        try:
+            if hasattr(page, "wait_for_timeout"):
+                await page.wait_for_timeout(200)
+            else:
+                await asyncio.sleep(0.2)
+        except Exception:
+            await asyncio.sleep(0.2)
+    return state
+
+
+def _post_submit_authenticated(observed: dict,
+                               session_cookie_names: list[str]) -> bool:
+    """Valuta gli stessi segnali positivi per password, TOTP e OTP esterno."""
+    if (observed.get("still_pw") or observed.get("otp")
+            or observed.get("captcha") or observed.get("push")):
+        return False
+    changed = list(observed.get("changed") or ())
+    if session_cookie_names:
+        return any(c.get("name") in session_cookie_names for c in changed)
+    auth_cookie = any(
+        re.search(r"(^|_)(sess(?:ion)?|auth|login|sid|jwt)($|_)",
+                  str(c.get("name") or ""), re.IGNORECASE)
+        and not re.search(r"csrf|xsrf", str(c.get("name") or ""),
+                          re.IGNORECASE)
+        for c in changed
+    )
+    return bool(auth_cookie or (
+        changed and observed.get("navigation_confirmed")))
+
+
+def _totp_code(secret: str, *, now: float | None = None,
+               digits: int = 6, period: int = 30,
+               algorithm: str = "sha1") -> str:
+    """RFC 6238 puro, usato solo per il totp_secret opt-in nel vault."""
+    raw = str(secret or "").strip()
+    if raw.lower().startswith("otpauth://"):
+        try:
+            raw = urllib.parse.parse_qs(
+                urllib.parse.urlsplit(raw).query).get("secret", [""])[0]
+        except ValueError:
+            raw = ""
+    raw = re.sub(r"[\s-]+", "", raw).upper()
+    if not raw or digits not in (6, 7, 8) or not 15 <= int(period) <= 120:
+        raise ValueError("invalid TOTP configuration")
+    digest = {"sha1": hashlib.sha1, "sha256": hashlib.sha256,
+              "sha512": hashlib.sha512}.get(str(algorithm).lower())
+    if digest is None:
+        raise ValueError("invalid TOTP algorithm")
+    padding = "=" * ((8 - len(raw) % 8) % 8)
+    try:
+        key = base64.b32decode(raw + padding, casefold=True)
+    except Exception as exc:
+        raise ValueError("invalid TOTP secret") from exc
+    counter = int((time.time() if now is None else now) // int(period))
+    mac = hmac.new(key, struct.pack(">Q", counter), digest).digest()
+    offset = mac[-1] & 0x0F
+    value = struct.unpack(">I", mac[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value % (10 ** digits)).zfill(digits)
+
+
+async def _submit_otp_stage(*, page, vault_domain: str,
+                            expected_origin: str, code: str,
+                            storage_domain: str, owner: str,
+                            session_id: str, op_timeout_s: float,
+                            audit_field: str,
+                            failure_class: str) -> dict:
+    try:
+        info = await page.evaluate(_LOCATE_OTP_FORM_JS)
+    except Exception:
+        info = None
+    if not info or not info.get("found"):
+        return {"ok": False, "error_class": (
+            "selector_ambiguous" if info and info.get("ambiguous")
+            else "selector_missing")}
+    if _host_of(info.get("actionResolved") or page.url) != expected_origin:
+        return {"ok": False, "error_class": "origin_mismatch"}
+    code = str(code or "").strip()
+    if (not 3 <= len(code) <= 32
+            or any(ord(char) < 32 for char in code)):
+        return {"ok": False, "error_class": failure_class}
+    try:
+        current_host = _host_of(await page.evaluate(_CURRENT_OTP_ACTION_JS))
+        if current_host != expected_origin:
+            return {"ok": False, "error_class": "origin_mismatch"}
+        if info.get("segmented"):
+            count = int(info.get("fieldCount") or 0)
+            if count <= 0 or len(code) != count:
+                return {"ok": False, "error_class": failure_class}
+            fields = page.locator('[data-metnos-otp="1"]')
+            for index, char in enumerate(code):
+                await fields.nth(index).fill(
+                    char, timeout=int(op_timeout_s * 1000))
+        else:
+            await page.fill('[data-metnos-otp="1"]', code,
+                            timeout=int(op_timeout_s * 1000))
+        try:
+            fp = credentials.fingerprint(storage_domain)
+        except Exception:
+            fp = None
+        # The factor has already touched the page at this point.  Record use
+        # before submit so a navigation timeout cannot erase the audit fact.
+        sites_audit.record(
+            "credential_use", owner=owner, session_id=session_id,
+            domain=vault_domain, fingerprint=fp, field=audit_field)
+        current_host = _host_of(await page.evaluate(_CURRENT_OTP_ACTION_JS))
+        if current_host != expected_origin:
+            return {"ok": False, "error_class": "origin_mismatch"}
+        if info.get("hasSubmit"):
+            await page.click('[data-metnos-otp-submit="1"]',
+                             timeout=int(op_timeout_s * 1000),
+                             no_wait_after=True)
+        else:
+            await page.press('[data-metnos-otp="1"]', "Enter",
+                             timeout=int(op_timeout_s * 1000),
+                             no_wait_after=True)
+    except Exception:
+        return {"ok": False, "error_class": failure_class}
+    try:
+        await page.wait_for_load_state(
+            "load", timeout=int(min(op_timeout_s, _FACTOR_SUBMIT_SETTLE_S) * 1000))
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+async def _advance_totp_stage(*, page, vault_domain: str,
+                              expected_origin: str, totp_secret: str,
+                              storage_domain: str, owner: str,
+                              session_id: str, op_timeout_s: float,
+                              digits: int = 6, period: int = 30,
+                              algorithm: str = "sha1") -> dict:
+    try:
+        code = _totp_code(totp_secret, digits=int(digits), period=int(period),
+                          algorithm=str(algorithm))
+    except Exception:
+        return {"ok": False, "error_class": "totp_failed"}
+    return await _submit_otp_stage(
+        page=page, vault_domain=vault_domain,
+        expected_origin=expected_origin, code=code,
+        storage_domain=storage_domain, owner=owner,
+        session_id=session_id, op_timeout_s=op_timeout_s,
+        audit_field="totp", failure_class="totp_failed")
+
+
+async def _complete_one_time_code_stage(*, page, context,
+                                        vault_domain: str,
+                                        expected_origin: str,
+                                        one_time_code: str,
+                                        storage_domain: str,
+                                        session_cookie_names: list[str],
+                                        owner: str, session_id: str,
+                                        op_timeout_s: float) -> dict:
+    try:
+        cookies_before = {
+            (c.get("name"), c.get("domain"), c.get("path")): c.get("value")
+            for c in await context.cookies()
+        }
+    except Exception:
+        cookies_before = {}
+    url_before = page.url
+    advanced = await _submit_otp_stage(
+        page=page, vault_domain=vault_domain,
+        expected_origin=expected_origin, code=one_time_code,
+        storage_domain=storage_domain, owner=owner,
+        session_id=session_id, op_timeout_s=op_timeout_s,
+        audit_field="one_time_code", failure_class="otp_failed")
+    if not advanced.get("ok"):
+        error_class = str(advanced.get("error_class") or "otp_failed")
+        reason = ("origin_unverified" if error_class == "origin_mismatch"
+                  else "two_factor_required")
+        return {"ok": True, "logged_in": False,
+                "reason_code": reason, "error_class": error_class}
+    observed = await _observe_post_submit(
+        page=page, context=context, cookies_before=cookies_before,
+        url_before=url_before,
+        op_timeout_s=min(op_timeout_s, _FACTOR_SUBMIT_SETTLE_S),
+        await_challenge_clear=True)
+    logged_in = _post_submit_authenticated(
+        observed, session_cookie_names)
+    reason = None
+    if not logged_in:
+        if observed.get("captcha"):
+            reason = "captcha_required"
+        elif observed.get("otp"):
+            reason = "two_factor_required"
+        elif observed.get("push"):
+            reason = "two_factor_push_required"
+        else:
+            reason = "login_failed"
+    sites_audit.record("login_attempt", owner=owner, session_id=session_id,
+                       domain=vault_domain, outcome=logged_in, reason=reason)
+    return {"ok": True, "logged_in": logged_in, "reason_code": reason}
+
+
+async def _advance_username_stage(*, page, vault_domain: str,
+                                  expected_origin: str, username: str,
+                                  storage_domain: str, owner: str,
+                                  session_id: str,
+                                  op_timeout_s: float,
+                                  before_submit=None) -> dict:
+    """Compila l'identita' e avanza UNA volta verso la password."""
+    try:
+        info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
+    except Exception:
+        info = None
+    if not info or not info.get("found"):
+        return {"ok": False, "error_class": (
+            "selector_ambiguous" if info and info.get("ambiguous")
+            else "selector_missing")}
+    form_host = _host_of(info.get("actionResolved") or page.url)
+    if form_host != expected_origin.lower():
+        sites_audit.record("origin_mismatch", owner=owner,
+                           session_id=session_id, domain=vault_domain,
+                           form_host=form_host, phase="username_stage")
+        return {"ok": False, "error_class": "origin_mismatch"}
+    try:
+        current_host = _host_of(await page.evaluate(
+            _CURRENT_USERNAME_ACTION_JS))
+        if current_host != expected_origin.lower():
+            sites_audit.record("origin_mismatch", owner=owner,
+                               session_id=session_id, domain=vault_domain,
+                               form_host=current_host,
+                               phase="username_pre_fill")
+            return {"ok": False, "error_class": "origin_mismatch"}
+        await page.fill('[data-metnos-user-step="1"]', username,
+                        timeout=int(op_timeout_s * 1000))
+        try:
+            fp = credentials.fingerprint(storage_domain)
+        except Exception:
+            fp = None
+        sites_audit.record(
+            "credential_use", owner=owner, session_id=session_id,
+            domain=vault_domain, fingerprint=fp, field="username")
+        current_host = _host_of(await page.evaluate(
+            _CURRENT_USERNAME_ACTION_JS))
+        if current_host != expected_origin.lower():
+            sites_audit.record("origin_mismatch", owner=owner,
+                               session_id=session_id, domain=vault_domain,
+                               form_host=current_host,
+                               phase="username_pre_submit")
+            return {"ok": False, "error_class": "origin_mismatch"}
+        if before_submit is not None:
+            prepared = before_submit()
+            if inspect.isawaitable(prepared):
+                await prepared
+        if info.get("hasSubmit"):
+            await page.click('[data-metnos-user-submit="1"]',
+                             timeout=int(op_timeout_s * 1000),
+                             no_wait_after=True)
+        else:
+            await page.press('[data-metnos-user-step="1"]', "Enter",
+                             timeout=int(op_timeout_s * 1000),
+                             no_wait_after=True)
+    except Exception:
+        return {"ok": False, "error_class": "fill_failed"}
+    try:
+        await page.wait_for_load_state(
+            "load", timeout=int(min(op_timeout_s, 5) * 1000))
+    except Exception:
+        pass
+    return {"ok": True,
+            "password_visible": await _wait_for_password_stage(
+                page, min(op_timeout_s, 4))}
+
+
+def _load_site_credentials(domain: str) -> tuple[dict | None, str]:
+    """Carica il binding esatto, legacy o il solo alias canonico ``www``.
+
+    Il fallback ``www.host -> host`` riguarda esclusivamente il nome del record
+    nel vault. L'origine del form continua a essere confrontata esattamente con
+    ``domain`` prima di ogni fill, quindi non autorizza sottodomini arbitrari.
+    """
+    domain = str(domain or "").strip().rstrip(".").lower()
+    candidates = [domain, f"web_{domain}"]
+    if domain.startswith("www.") and domain[4:].count(".") >= 1:
+        root = domain[4:]
+        candidates.extend((root, f"web_{root}"))
+    for binding in candidates:
+        payload = credentials.load(binding)
+        if payload:
+            return payload, binding
+    return None, domain
+
+
+def _credential_form_data(payload: dict) -> dict:
+    """Normalizza lo schema ADR 0082 e quello piatto di ``metnos-cli``."""
+    form_data = dict(payload.get("form_data") or {})
+    for key in ("username", "user", "email", "password", "passwd"):
+        if not form_data.get(key) and payload.get(key):
+            form_data[key] = payload[key]
+    return form_data
+
+
+async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
+                              owner: str, session_id: str,
+                              op_timeout_s: float) -> dict:
+    """Risolve e riempie ``cred:<domain>:<field>`` senza esporre il valore.
+
+    Il campo e' scelto esclusivamente dai tag broker-owned prodotti da
+    ``_LOCATE_LOGIN_FORM_JS``. Nessun selettore o valore torna al chiamante.
+    """
+    parts = (value_ref or "").split(":", 2)
+    if len(parts) != 3 or parts[0] != "cred":
+        return {"ok": False, "error_class": "invalid_value_ref"}
+    domain, field = parts[1].lower(), parts[2].lower()
+    if domain != (expected_domain or "").lower():
+        return {"ok": False, "error_class": "origin_mismatch"}
+    if field not in ("username", "user", "email", "password", "passwd"):
+        return {"ok": False, "error_class": "invalid_value_ref"}
+    try:
+        payload, storage_domain = _load_site_credentials(domain)
+        payload = payload or {}
+    except Exception:
+        return {"ok": False, "error_class": "vault_error"}
+    form_data = _credential_form_data(payload)
+    aliases = (("username", "user", "email") if field in
+               ("username", "user", "email") else ("password", "passwd"))
+    value = next((form_data.get(k) for k in aliases if form_data.get(k)), None)
+    if not value:
+        return {"ok": False, "error_class": "no_credentials"}
+    info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
+    if not info or not info.get("found"):
+        return {"ok": False, "error_class": "selector_missing"}
+    current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
+    if current_host != domain:
+        sites_audit.record("origin_mismatch", owner=owner,
+                           session_id=session_id, domain=domain,
+                           form_host=current_host, phase="action_fill")
+        return {"ok": False, "error_class": "origin_mismatch"}
+    selector = ('[data-metnos-user="1"]' if field in
+                ("username", "user", "email") else '[data-metnos-pw="1"]')
+    if field in ("username", "user", "email") and not info.get("hasUser"):
+        return {"ok": False, "error_class": "selector_missing"}
+    try:
+        await page.fill(selector, value, timeout=int(op_timeout_s * 1000))
+    except Exception:
+        return {"ok": False, "error_class": "fill_failed"}
+    try:
+        fp = credentials.fingerprint(storage_domain)
+    except Exception:
+        fp = None
+    sites_audit.record("credential_use", owner=owner, session_id=session_id,
+                       domain=domain, fingerprint=fp, field=field)
+    return {"ok": True, "filled": True}
+
+
 async def perform_login(*, page, context, domain: str, form_hint: str | None,
-                        owner: str, session_id: str, op_timeout_s: float) -> dict:
+                        owner: str, session_id: str, op_timeout_s: float,
+                        one_time_code: str | None = None,
+                        reach_login=None, authorize_origin=None,
+                        approved_origin: str | None = None,
+                        max_entry_steps: int = 3,
+                        settle_initial: bool = False,
+                        page_provider=None, factor_state: dict | None = None,
+                        checkpoint=None,
+                        total_timeout_s: float | None = None) -> dict:
     """Esegue il login nel session-context. Ritorna
     `{ok, logged_in: bool, reason_code: str|None, error_class?: str}`.
     ZERO segreti nel return (reason_code = slug i18n, mai username/password).
     """
     # 1. Carica la credenziale DENTRO il broker. Mai fuori da qui.
     try:
-        payload = credentials.load(domain)
+        payload, storage_domain = _load_site_credentials(domain)
     except Exception as e:  # decrypt/malformed → onesto, nessun leak
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                            domain=domain, outcome=False, reason="vault_error")
-        return {"ok": True, "logged_in": False, "reason_code": "vault_errore",
+        return {"ok": True, "logged_in": False, "reason_code": "vault_error",
                 "error_class": "vault_error", "_detail": type(e).__name__}
     if not payload:
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
-                           domain=domain, outcome=False, reason="credenziali_assenti")
+                           domain=domain, outcome=False, reason="credentials_missing")
         return {"ok": True, "logged_in": False,
-                "reason_code": "credenziali_assenti", "error_class": "no_credentials"}
+                "reason_code": "credentials_missing", "error_class": "no_credentials"}
 
     login_url = payload.get("login_url")
-    form_data = dict(payload.get("form_data") or {})
+    form_data = _credential_form_data(payload)
     username = (form_data.get("username") or form_data.get("user")
                 or form_data.get("email") or "")
     password = (form_data.get("password") or form_data.get("passwd") or "")
+    totp_secret = (form_data.get("totp_secret")
+                   or payload.get("totp_secret") or "")
+    totp_digits = form_data.get("totp_digits") or payload.get("totp_digits") or 6
+    totp_period = form_data.get("totp_period") or payload.get("totp_period") or 30
+    totp_algorithm = (form_data.get("totp_algorithm")
+                      or payload.get("totp_algorithm") or "sha1")
     session_cookie_names = list(payload.get("session_cookie_names") or [])
+    expected_origin = (approved_origin or domain).lower()
+    budget = _LoginBudget(
+        total_timeout_s if total_timeout_s is not None
+        else max(op_timeout_s * 5, 60.0))
+    factor_state = factor_state if isinstance(factor_state, dict) else {}
+    if not username and not password:
+        sites_audit.record("login_attempt", owner=owner, session_id=session_id,
+                           domain=domain, outcome=False,
+                           reason="credentials_missing")
+        return {"ok": True, "logged_in": False,
+                "reason_code": "credentials_missing",
+                "error_class": "no_credentials"}
 
-    # 2. Portati su un form di login. Se la pagina corrente non mostra un campo
-    #    password top-level, naviga a login_url (dentro allowlist: il route-guard
-    #    aborta fuori allowlist → goto fallisce onestamente).
-    if not await _has_toplevel_password(page) and login_url:
+    def current_page(previous):
+        """Follow only pages already adopted by the broker's guarded context."""
+        if page_provider is None:
+            return previous
         try:
-            await asyncio.wait_for(
-                page.goto(login_url, wait_until="load", timeout=int(op_timeout_s * 1000)),
-                timeout=op_timeout_s)
+            candidate = page_provider()
         except Exception:
-            pass  # onesto sotto: se ancora niente form → selettore_assente
-    if not await _has_toplevel_password(page):
-        return {"ok": True, "logged_in": False, "reason_code": "selettore_assente",
+            return previous
+        return candidate if candidate is not None else previous
+
+    page = current_page(page)
+    if one_time_code is not None:
+        await _checkpoint(checkpoint, "factor_submit")
+        completed = await _complete_one_time_code_stage(
+            page=page, context=context, vault_domain=domain,
+            expected_origin=expected_origin,
+            one_time_code=one_time_code,
+            storage_domain=storage_domain,
+            session_cookie_names=session_cookie_names,
+            owner=owner, session_id=session_id,
+            op_timeout_s=budget.remaining(op_timeout_s))
+        await _checkpoint(
+            checkpoint,
+            "complete" if completed.get("logged_in") else "factor_pending")
+        return completed
+
+    async def _handle_email_factor() -> dict:
+        await _checkpoint(checkpoint, "factor_pending")
+        email_code, _status = await _resolve_email_factor_code(
+            page=page, username=username, domain=domain, payload=payload,
+            factor_state=factor_state, budget=budget, owner=owner,
+            session_id=session_id, checkpoint=checkpoint)
+        if email_code:
+            await _checkpoint(checkpoint, "factor_submit")
+            completed = await _complete_one_time_code_stage(
+                page=page, context=context, vault_domain=domain,
+                expected_origin=expected_origin,
+                one_time_code=email_code,
+                storage_domain=storage_domain,
+                session_cookie_names=session_cookie_names,
+                owner=owner, session_id=session_id,
+                op_timeout_s=budget.remaining(op_timeout_s))
+            if completed.get("logged_in"):
+                await _checkpoint(checkpoint, "complete")
+                return completed
+            # _complete_one_time_code_stage records the rejected attempt.
+            await _checkpoint(checkpoint, "factor_pending")
+            return completed
+        sites_audit.record(
+            "login_attempt", owner=owner, session_id=session_id,
+            domain=domain, outcome=False, reason="two_factor_required")
+        await _checkpoint(checkpoint, "factor_pending")
+        return {"ok": True, "logged_in": False,
+                "reason_code": "two_factor_required"}
+
+    # A resumed executor can already be on the factor page.  Recognize that
+    # checkpoint before attempting to rediscover or click the login entry.
+    initial_blocker = await classify_login_surface(page)
+    if initial_blocker == "two_factor_required" and not totp_secret:
+        return await _handle_email_factor()
+    if initial_blocker:
+        await _checkpoint(checkpoint, "factor_pending")
+        return {"ok": True, "logged_in": False,
+                "reason_code": initial_blocker}
+
+    # 2. Macchina a stati bounded, invisibile al planner:
+    #    landing -> ingresso login -> [username ->] password. Il modello puo'
+    #    essere usato soltanto dentro `reach_login`, prima di qualunque fill;
+    #    campi e origine restano risolti deterministicamente qui.
+    login_url_attempted = False
+    username_advanced = False
+    privacy_attempted = False
+    continue_attempted = False
+    entry_steps = 0
+    await _checkpoint(checkpoint, "discovering")
+    if settle_initial:
+        await _wait_for_login_surface(
+            page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+    password_visible = await _has_toplevel_password(page)
+    for _ in range(max(1, int(max_entry_steps)) + 3):
+        if budget.expired:
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "login_timeout",
+                    "error_class": "timeout"}
+        page = current_page(page)
+        if password_visible:
+            break
+        if login_url and not login_url_attempted:
+            login_url_attempted = True
+            try:
+                goto_timeout = budget.remaining(op_timeout_s)
+                await asyncio.wait_for(
+                    page.goto(login_url, wait_until="load",
+                              timeout=int(goto_timeout * 1000)),
+                    timeout=goto_timeout)
+            except Exception:
+                pass
+            password_visible = await _has_toplevel_password(page)
+            if password_visible:
+                break
+
+        username_info = None
+        if username and not username_advanced:
+            try:
+                username_info = await page.evaluate(
+                    _LOCATE_USERNAME_STAGE_JS)
+            except Exception:
+                username_info = None
+        if username_info and username_info.get("ambiguous"):
+            # Dopo una navigazione SPA il form puo' attraversare un DOM
+            # transitorio con piu' candidati prima di rendere visibile il
+            # campo password definitivo. Non scegliere fra candidati: attendi
+            # bounded un segnale non ambiguo e deterministico.
+            password_visible = await _wait_for_password_stage(
+                page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+            if password_visible:
+                break
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "selector_missing",
+                    "error_class": "selector_ambiguous"}
+        if username_info and username_info.get("found"):
+            privacy_attempted = True
+            username_origin = _host_of(
+                username_info.get("actionResolved") or page.url)
+            if username_origin != expected_origin:
+                if authorize_origin is not None and not username_advanced:
+                    decision = await authorize_origin(
+                        username_origin, "username")
+                    if decision.get("approval_required"):
+                        out = dict(decision)
+                        out.update({"ok": True, "logged_in": False})
+                        return out
+                    if decision.get("approved"):
+                        expected_origin = username_origin
+                if username_origin != expected_origin:
+                    sites_audit.record(
+                        "origin_mismatch", owner=owner,
+                        session_id=session_id, domain=domain,
+                        form_host=username_origin,
+                        phase="username_authorization")
+                    return {"ok": True, "logged_in": False,
+                            "reason_code": "origin_unverified",
+                            "error_class": "origin_mismatch"}
+            async def _before_username_submit():
+                await _checkpoint(checkpoint, "username_submit")
+                await _arm_email_factor(
+                    username=username, payload=payload,
+                    factor_state=factor_state, budget=budget,
+                    checkpoint=checkpoint, force=True)
+
+            advanced = await _advance_username_stage(
+                page=page, vault_domain=domain,
+                expected_origin=expected_origin, username=username,
+                storage_domain=storage_domain, owner=owner,
+                session_id=session_id,
+                op_timeout_s=budget.remaining(op_timeout_s),
+                before_submit=_before_username_submit)
+            if not advanced.get("ok"):
+                error_class = advanced.get("error_class")
+                mismatch = error_class == "origin_mismatch"
+                return {"ok": True, "logged_in": False,
+                        "reason_code": (
+                            "origin_unverified" if mismatch else
+                            "mandate_scope_exceeded"
+                            if error_class == "mandate_scope_exceeded" else
+                            "selector_missing"),
+                        "error_class": error_class}
+            username_advanced = True
+            password_visible = bool(advanced.get("password_visible"))
+            if password_visible:
+                break
+            # Dopo aver esposto l'identita' non si invoca piu' alcun modello e
+            # non si tenta un click fuzzy: fail-closed sul nuovo stato.
+            try:
+                if await page.evaluate(_DETECT_CAPTCHA_JS):
+                    await _checkpoint(checkpoint, "factor_pending")
+                    return {"ok": True, "logged_in": False,
+                            "reason_code": "captcha_required"}
+                if await page.evaluate(_DETECT_OTP_JS):
+                    if not totp_secret:
+                        return await _handle_email_factor()
+                    await _checkpoint(checkpoint, "factor_pending")
+                    return {"ok": True, "logged_in": False,
+                            "reason_code": "two_factor_required"}
+            except Exception:
+                pass
+            if reach_login is not None and not continue_attempted:
+                continue_attempted = True
+                continued = await reach_login("continue")
+                if continued.get("approval_required"):
+                    out = dict(continued)
+                    out.update({"ok": True, "logged_in": False})
+                    return out
+                if continued.get("error_class") == "mandate_scope_exceeded":
+                    return {"ok": True, "logged_in": False,
+                            "reason_code": "mandate_scope_exceeded",
+                            "error_class": "mandate_scope_exceeded"}
+                if continued.get("ok") and continued.get("executed"):
+                    entry_steps += 1
+                    page = current_page(page)
+                    password_visible = await _wait_for_password_stage(
+                        page, budget.remaining(4))
+                    if password_visible:
+                        break
+            if await _page_matches_concept(
+                    page, "sites.two_factor_push_marker"):
+                await _checkpoint(checkpoint, "factor_pending")
+                return {"ok": True, "logged_in": False,
+                        "reason_code": "two_factor_push_required"}
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "selector_missing",
+                    "error_class": "no_password_stage"}
+
+        if reach_login is None or entry_steps >= max(1, int(max_entry_steps)):
+            break
+        if not privacy_attempted:
+            privacy_attempted = True
+            dismissed = await reach_login("privacy_reject")
+            if dismissed.get("approval_required"):
+                out = dict(dismissed)
+                out.update({"ok": True, "logged_in": False})
+                return out
+            if dismissed.get("error_class") == "mandate_scope_exceeded":
+                return {"ok": True, "logged_in": False,
+                        "reason_code": "mandate_scope_exceeded",
+                        "error_class": "mandate_scope_exceeded"}
+            if dismissed.get("ok") and dismissed.get("executed"):
+                entry_steps += 1
+                page = current_page(page)
+                password_visible = await _has_toplevel_password(page)
+                continue
+        reached = await reach_login("login")
+        entry_steps += 1
+        if reached.get("approval_required"):
+            out = dict(reached)
+            out.update({"ok": True, "logged_in": False})
+            return out
+        if not reached.get("ok") or not reached.get("executed"):
+            error_class = reached.get("error_class") or "no_login_form"
+            return {"ok": True, "logged_in": False,
+                    "reason_code": (
+                        "mandate_scope_exceeded"
+                        if error_class == "mandate_scope_exceeded"
+                        else "selector_missing"),
+                    "error_class": error_class}
+        page = current_page(page)
+        await _wait_for_login_surface(
+            page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+        password_visible = await _has_toplevel_password(page)
+
+    if not password_visible:
+        return {"ok": True, "logged_in": False,
+                "reason_code": "selector_missing",
                 "error_class": "no_login_form"}
+    if not password:
+        sites_audit.record("login_attempt", owner=owner,
+                           session_id=session_id, domain=domain,
+                           outcome=False, reason="credentials_missing")
+        return {"ok": True, "logged_in": False,
+                "reason_code": "credentials_missing",
+                "error_class": "no_credentials"}
 
     # 3. CRITICO-1 — verifica ORIGINE prima di digitare. Il JS tagga anche i
     #    campi (CRITICO-2: risoluzione autonoma del broker, mai selettori LLM).
     info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
     if not info or not info.get("found"):
-        return {"ok": True, "logged_in": False, "reason_code": "selettore_assente",
+        return {"ok": True, "logged_in": False, "reason_code": "selector_missing",
                 "error_class": "no_login_form"}
     form_host = _host_of(info.get("actionResolved") or page.url)
     # D-D: match ESATTO col dominio del vault. Niente sottodomini, niente iframe
     # (il JS cerca solo nel main frame).
-    if form_host != domain.lower():
-        sites_audit.record("origin_mismatch", owner=owner, session_id=session_id,
-                           domain=domain, form_host=form_host)
-        return {"ok": True, "logged_in": False,
-                "reason_code": "origine_non_verificata",
-                "error_class": "origin_mismatch"}
+    if form_host != expected_origin:
+        if authorize_origin is not None:
+            decision = await authorize_origin(form_host, "password")
+            if decision.get("approval_required"):
+                out = dict(decision)
+                out.update({"ok": True, "logged_in": False})
+                return out
+            if decision.get("approved"):
+                expected_origin = form_host
+        if form_host != expected_origin:
+            sites_audit.record("origin_mismatch", owner=owner,
+                               session_id=session_id, domain=domain,
+                               form_host=form_host)
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "origin_unverified",
+                    "error_class": "origin_mismatch"}
+
+    # Snapshot pre-login: senza un segnale positivo di sessione non dichiariamo
+    # mai il successo solo perche' il form password e' sparito (§2.8).
+    try:
+        cookies_before = {
+            (c.get("name"), c.get("domain"), c.get("path")): c.get("value")
+            for c in await context.cookies()
+        }
+    except Exception:
+        cookies_before = {}
+    url_before = page.url
 
     # 4. CRITICO-2/3 — digita nei SOLI campi risolti dal broker. Il pw field è
     #    già marcato `data-metnos-redact`. Nessuno screenshot fra fill e submit.
     try:
+        action_timeout = budget.remaining(op_timeout_s)
+        # TOCTOU: una pagina puo' cambiare form.action dopo il primo controllo.
+        # Riverifica immediatamente prima di esporre qualunque credenziale.
+        current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
+        if current_host != expected_origin:
+            sites_audit.record("origin_mismatch", owner=owner,
+                               session_id=session_id, domain=domain,
+                               form_host=current_host, phase="pre_fill")
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "origin_unverified",
+                    "error_class": "origin_mismatch"}
         if username and info.get("hasUser"):
-            await page.fill('[data-metnos-user="1"]', username, timeout=int(op_timeout_s * 1000))
-        await page.fill('[data-metnos-pw="1"]', password, timeout=int(op_timeout_s * 1000))
+            await page.fill('[data-metnos-user="1"]', username,
+                            timeout=int(action_timeout * 1000))
+        await page.fill('[data-metnos-pw="1"]', password,
+                        timeout=int(action_timeout * 1000))
+        try:
+            fp = credentials.fingerprint(storage_domain)
+        except Exception:
+            fp = None
+        if username and info.get("hasUser"):
+            sites_audit.record(
+                "credential_use", owner=owner, session_id=session_id,
+                domain=domain, fingerprint=fp, field="username")
+        sites_audit.record(
+            "credential_use", owner=owner, session_id=session_id,
+            domain=domain, fingerprint=fp, field="password")
     except Exception:
-        return {"ok": True, "logged_in": False, "reason_code": "selettore_assente",
+        return {"ok": True, "logged_in": False, "reason_code": "selector_missing",
                 "error_class": "fill_failed"}
 
     # 5-6. Submit deterministico + attesa navigazione/idle (bounded).
     try:
+        await _checkpoint(checkpoint, "primary_submit")
+        current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
+        if current_host != expected_origin:
+            sites_audit.record("origin_mismatch", owner=owner,
+                               session_id=session_id, domain=domain,
+                               form_host=current_host, phase="pre_submit")
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "origin_unverified",
+                    "error_class": "origin_mismatch"}
+        await _arm_email_factor(
+            username=username, payload=payload, factor_state=factor_state,
+            budget=budget, checkpoint=checkpoint, force=True)
+        action_timeout = budget.remaining(op_timeout_s)
         if info.get("hasSubmit"):
-            await page.click('[data-metnos-submit="1"]', timeout=int(op_timeout_s * 1000))
+            await page.click('[data-metnos-submit="1"]',
+                             timeout=int(action_timeout * 1000),
+                             no_wait_after=True)
         else:
-            await page.press('[data-metnos-pw="1"]', "Enter", timeout=int(op_timeout_s * 1000))
+            await page.press('[data-metnos-pw="1"]', "Enter",
+                             timeout=int(action_timeout * 1000),
+                             no_wait_after=True)
     except Exception:
         pass  # il submit può innescare navigazione che chiude il contesto DOM
     try:
+        load_timeout = budget.remaining(op_timeout_s)
         await asyncio.wait_for(
-            page.wait_for_load_state("load", timeout=int(op_timeout_s * 1000)),
-            timeout=op_timeout_s)
+            page.wait_for_load_state(
+                "load", timeout=int(load_timeout * 1000)),
+            timeout=load_timeout)
     except Exception:
         pass
 
-    # 7. Rilevazioni oneste (D-E: F1 NON auto-risolve 2FA/CAPTCHA, cede all'utente).
-    otp = False
-    captcha = False
-    try:
-        otp = bool(await page.evaluate(_DETECT_OTP_JS))
-        captcha = bool(await page.evaluate(_DETECT_CAPTCHA_JS))
-    except Exception:
-        pass
+    # 7. Rilevazioni oneste. Il click di una SPA puo' completare molto dopo il
+    # ritorno di `wait_for_load_state`; si osservano solo segnali deterministici
+    # per un intervallo bounded prima di classificare l'esito.
+    observed = await _observe_post_submit(
+        page=page, context=context, cookies_before=cookies_before,
+        url_before=url_before,
+        op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+    otp = bool(observed["otp"])
+    captcha = bool(observed["captcha"])
+    push = bool(observed["push"])
+    forced_reason = None
+    if otp and totp_secret and not captcha:
+        await _checkpoint(checkpoint, "factor_submit")
+        advanced = await _advance_totp_stage(
+            page=page, vault_domain=domain,
+            expected_origin=expected_origin, totp_secret=str(totp_secret),
+            storage_domain=storage_domain, owner=owner,
+            session_id=session_id,
+            op_timeout_s=budget.remaining(op_timeout_s),
+            digits=totp_digits, period=totp_period,
+            algorithm=str(totp_algorithm))
+        if advanced.get("ok"):
+            observed = await _observe_post_submit(
+                page=page, context=context, cookies_before=cookies_before,
+                url_before=url_before,
+                op_timeout_s=budget.remaining(_LOGIN_SURFACE_SETTLE_S))
+            otp = bool(observed["otp"])
+            captcha = bool(observed["captcha"])
+            push = bool(observed["push"])
+        elif advanced.get("error_class") == "origin_mismatch":
+            forced_reason = "origin_unverified"
+
+    # Email is the first channel resolved automatically.  It is attempted
+    # only when the page explicitly identifies email as the factor channel and
+    # the login identity is an email address; otherwise the manual OTP dialog
+    # remains the deterministic fallback.
+    if otp and not captcha and not totp_secret:
+        return await _handle_email_factor()
 
     # 8. Verifica ESITO onesta (§2.8): cookie di sessione dichiarati presenti,
     #    OPPURE il campo password è sparito (e non c'è OTP/errore residuo).
-    logged_in = False
-    try:
-        cookies = await context.cookies()
-    except Exception:
-        cookies = []
-    if session_cookie_names:
-        have = {c.get("name") for c in cookies if c.get("value")}
-        logged_in = any(n in have for n in session_cookie_names)
-    still_pw = await _has_toplevel_password(page)
-    if not logged_in and not session_cookie_names:
-        # Senza nomi-cookie dichiarati: euristica onesta = niente più password
-        # form, niente OTP pendente.
-        logged_in = (not still_pw) and (not otp)
+    password_rejected = bool(observed["password_rejected"])
+    # Un cookie gia' presente sulla pagina di login non prova
+    # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
+    logged_in = _post_submit_authenticated(observed, session_cookie_names)
 
     reason = None
     if not logged_in:
-        if captcha:
-            reason = "captcha"
+        if forced_reason:
+            reason = forced_reason
+        elif captcha:
+            reason = "captcha_required"
         elif otp:
-            reason = "2fa_richiesto"
-        elif still_pw:
-            reason = "password_errata"
+            reason = "two_factor_required"
+        elif push:
+            reason = "two_factor_push_required"
+        elif password_rejected:
+            reason = "password_wrong"
         else:
-            reason = "login_fallito"
+            reason = "login_failed"
 
-    # 9. Audit: esito + uso credenziale (FINGERPRINT, mai il valore).
-    try:
-        fp = credentials.fingerprint(domain)
-    except Exception:
-        fp = None
+    # 9. Audit dell'esito; ogni campo usato e' gia' registrato subito dopo il
+    # fill, prima che una navigazione possa interrompere il controllo.
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                        domain=domain, outcome=logged_in, reason=reason)
-    sites_audit.record("credential_use", owner=owner, session_id=session_id,
-                       domain=domain, fingerprint=fp)
+    await _checkpoint(
+        checkpoint,
+        "complete" if logged_in else
+        "factor_pending" if reason in {
+            "two_factor_required", "two_factor_push_required",
+            "captcha_required"} else "failed")
 
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}

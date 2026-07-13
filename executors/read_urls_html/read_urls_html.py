@@ -668,6 +668,23 @@ def _fetch_one(url: str, opener, timeout_s: float, max_bytes: int,
     return entry, None
 
 
+def _fetch_one_with_retry(url: str, opener, timeout_s: float, max_bytes: int,
+                          throttle: "HostThrottle | None" = None,
+                          cache: "HttpCache | None" = None):
+    """Retry only transient transport failures, with a small bounded delay."""
+    last = (None, {"error": "unknown", "error_class": "unknown"})
+    for attempt in range(3):
+        last = _fetch_one(url, opener, timeout_s, max_bytes, throttle, cache)
+        entry, error = last
+        if entry is not None or not isinstance(error, dict):
+            return last
+        if error.get("error_class") not in {"network", "timeout"}:
+            return last
+        if attempt < 2:
+            time.sleep(0.25 * (attempt + 1))
+    return last
+
+
 def _invoke_default(args: dict) -> dict:
     """Implementazione default httpx (urllib). Mantenuta nel modulo
     executor per permettere ai test di patchare `_playwright_client`,
@@ -737,7 +754,8 @@ def _invoke_default(args: dict) -> dict:
     entries_indexed: list[tuple[int, dict]] = []
     if len(valid_jobs) == 1:
         i, url = valid_jobs[0]
-        ent, err = _fetch_one(url, opener, timeout_s, max_bytes, None, cache)
+        ent, err = _fetch_one_with_retry(
+            url, opener, timeout_s, max_bytes, None, cache)
         if ent is None:
             failed.append(_failed_entry(url, err, i))
         else:
@@ -746,7 +764,8 @@ def _invoke_default(args: dict) -> dict:
         throttle = HostThrottle(per_host_limit=_PER_HOST_MAX)
         workers = min(_GLOBAL_MAX, len(valid_jobs))
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(_fetch_one, url, opener, timeout_s, max_bytes,
+            futs = {ex.submit(_fetch_one_with_retry, url, opener,
+                              timeout_s, max_bytes,
                               throttle, cache): (i, url)
                     for i, url in valid_jobs}
             for fut in as_completed(futs):

@@ -115,6 +115,8 @@ PRESENT: dict[str, dict[str, str]] = {
     "proposals":  {COUNT: S, READ: T, ENUMERATE: L, MUTATE: R, "_": L},
     "tasks":      {COUNT: S, READ: T, ENUMERATE: L, MUTATE: R, "_": L},
     "credentials":{COUNT: S, READ: L, ENUMERATE: L, MUTATE: R, "_": L},
+    "sites":      {COUNT: S, VISUALIZE: T, READ: T, ENUMERATE: T,
+                    TRANSFORM: T, MUTATE: R, "_": T},
     "time":       {"_": S},
 }
 
@@ -310,6 +312,14 @@ def normalize_terminal(framework, intent, query: str = ""):
             # Lista/tabella deterministica (matrice §3): la tabella dell'ultimo
             # producer sostituisce la prosa LLM. @table = tutte le righe (§2.7).
             final = f"${{step{k}.@table}}"
+            # Se il terminale materializza un file da una sessione web, conserva
+            # anche il link alla sorgente autenticata. Il file e il link hanno
+            # funzioni diverse; lo screenshot ridondante resta disattivato.
+            if r["data_kind"] == "files":
+                source_pos = next((i + 1 for i in range(ppos - 1, -1, -1)
+                                   if steps[i].tool == "read_sites"), 0)
+                if source_pos and source_pos in mapping:
+                    final += f"\n\n${{step{mapping[source_pos]}.@links}}"
             info["action"] = "drop_describe+final" if drop else "final_only"
         else:  # S (scalar/count)
             base_fm = framework.final_message or ""
@@ -327,6 +337,39 @@ def normalize_terminal(framework, intent, query: str = ""):
             return framework, info
         return (Framework(steps=new_steps, fillers=framework.fillers,
                           final_message=final), info)
+
+    if mode == T and producer == "read_sites":
+        describe_pos = next((i + 1 for i, step in enumerate(steps)
+                             if i + 1 > ppos
+                             and step.tool == "describe_entries"), 0)
+        if describe_pos:
+            final = f"${{step{describe_pos}.summary}}"
+            if framework.final_message == final:
+                return framework, info
+            info["action"] = "final_only"
+            return (Framework(steps=[
+                        StepSpec(tool=step.tool, args=dict(step.args or {}),
+                                 if_prev_entries_nonempty=
+                                 step.if_prev_entries_nonempty)
+                        for step in steps],
+                    fillers=framework.fillers, final_message=final), info)
+
+        mapping = {i: (i if i <= ppos else i + 1)
+                   for i in range(1, len(steps) + 1)}
+        new_steps = [
+            StepSpec(tool=step.tool,
+                     args=_remap_value(dict(step.args or {}), mapping),
+                     if_prev_entries_nonempty=step.if_prev_entries_nonempty)
+            for step in steps
+        ]
+        describe_pos = ppos + 1
+        new_steps.insert(ppos, StepSpec(tool="describe_entries", args={
+            "from_step": ppos, "style": "by_relevance",
+            "context": query, "data_kind": "sites",
+        }))
+        info["action"] = "insert_describe_entries"
+        return (Framework(steps=new_steps, fillers=framework.fillers,
+                          final_message=f"${{step{describe_pos}.summary}}"), info)
 
     if mode == T and producer == "find_urls":
         # Già presente un reader di contenuto a valle? Allora niente insert.

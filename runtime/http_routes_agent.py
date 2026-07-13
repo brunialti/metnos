@@ -1066,6 +1066,49 @@ def _resolve_dialog_state(request: web.Request, dialog_id: str) -> dict | None:
     return None
 
 
+def _dialog_lifecycle(state: dict | None) -> str:
+    """Stato canonico condiviso dalle route HTTP del dialogo."""
+    if state is None:
+        return "missing"
+    if state.get("cancelled"):
+        return "cancelled"
+    if state.get("completed"):
+        return "completed"
+    import dialog_pending
+    if dialog_pending.is_expired(state):
+        return "expired"
+    return "active"
+
+
+def _dialog_terminal_response(dialog_id: str, state: str) -> web.Response:
+    """Risposta HTML leggibile e strutturata per uno stato non azionabile."""
+    if state == "cancelled":
+        message = _msg("MSG_DIALOG_CANCELLED")
+    elif state == "completed":
+        message = _msg("MSG_ORCH_DIALOG_DONE")
+    else:
+        message = _msg("MSG_DIALOG_EXPIRED")
+    import html as _html
+    terminal_event = json.dumps({
+        "type": "metnos.dialog.terminal",
+        "state": state,
+        "dialog_id": dialog_id,
+    }, ensure_ascii=False)
+    body = (
+        "<!doctype html><meta charset=utf-8>"
+        f"<div data-dialog-state=\"{state}\">"
+        f"<p>{_html.escape(message)}</p>"
+        f"<p><code>dialog_id: {_html.escape(dialog_id)}</code></p>"
+        "</div>"
+        f"<script>parent.postMessage({terminal_event},'*');</script>"
+    )
+    return web.Response(
+        text=body, status=410, content_type="text/html",
+        headers={"Cache-Control": "no-store",
+                 "X-Metnos-Dialog-State": state},
+    )
+
+
 def _resolve_i18n_str(s):
     """Risolve un codice MSG_* tramite messages.get; passthrough se non e' una key.
     Inserito perche' `_needs_inputs_oauth_setup` e altri builder lasciano
@@ -1106,39 +1149,24 @@ async def dialog_form(request: web.Request) -> web.Response:
     if state is None:
         return _error(404, "dialog_not_found",
                       f"dialogo {dialog_id} non trovato")
-    if state.get("cancelled"):
-        return web.Response(
-            text=(
-                "<!doctype html><meta charset=utf-8>"
-                "<script>parent.postMessage("
-                "{type:'metnos.dialog.cancelled'},'*');</script>"
-                "<p style='font:14px sans-serif;color:#a00'>"
-                "✗ Dialogo annullato.</p>"
-            ),
-            status=200, content_type="text/html",
-        )
-    if state.get("completed"):
-        return web.Response(
-            text=(
-                "<!doctype html><meta charset=utf-8>"
-                "<script>parent.postMessage("
-                "{type:'metnos.dialog.done',completion_text:''},'*');"
-                "</script>"
-                "<p style='font:14px sans-serif;color:#0a7'>"
-                "✓ Dialogo completato.</p>"
-            ),
-            status=200, content_type="text/html",
-        )
+    lifecycle = _dialog_lifecycle(state)
+    if lifecycle != "active":
+        return _dialog_terminal_response(dialog_id, lifecycle)
     dialog_steps = [_resolve_i18n_step(s) for s in (state.get("dialog") or [])]
     html = render_template(
         "dialog_form.html",
         dialog_id=dialog_id,
+        origin_turn_id=state.get("origin_turn_id") or "",
         title=_resolve_i18n_str(state.get("title") or "Dialogo"),
         description=_resolve_i18n_str(state.get("description") or ""),
+        expired_message=_resolve_i18n_str("MSG_DIALOG_EXPIRED"),
         dialog=dialog_steps,
         role=request.get("role", "user"),
     )
-    return web.Response(text=html, content_type="text/html")
+    return web.Response(
+        text=html, content_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def dialog_submit(request: web.Request) -> web.Response:
@@ -1153,9 +1181,16 @@ async def dialog_submit(request: web.Request) -> web.Response:
     if state is None:
         return _error(404, "dialog_not_found",
                       f"dialogo {dialog_id} non trovato")
-    if state.get("cancelled") or state.get("completed"):
-        return web.Response(text="Dialogo non piu' attivo.", status=410,
-                            content_type="text/plain")
+    lifecycle = _dialog_lifecycle(state)
+    if lifecycle != "active":
+        return web.json_response(
+            {"ok": False, "error": "dialog_not_active",
+             "message": _msg("MSG_DIALOG_EXPIRED"),
+             "dialog_id": dialog_id, "state": lifecycle},
+            status=410,
+            headers={"Cache-Control": "no-store",
+                     "X-Metnos-Dialog-State": lifecycle},
+        )
     try:
         form = await request.post()
     except Exception:
@@ -1210,13 +1245,21 @@ async def dialog_submit(request: web.Request) -> web.Response:
     for step in dialog:
         var = step.get("var")
         if var in values and values[var] is not None:
-            dialog_pending.consume_pending_step(
+            consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, values[var],
             )
         else:
             # Optional skipped: avanza con None per coerenza idx.
-            dialog_pending.consume_pending_step(
+            consumed = dialog_pending.consume_pending_step(
                 sender_id, dialog_id, var, None,
+            )
+        if not consumed.get("ok"):
+            return web.json_response(
+                {"ok": False, "error": consumed.get("error") or "dialog_conflict",
+                 "dialog_id": dialog_id, "state": "conflict"},
+                status=409,
+                headers={"Cache-Control": "no-store",
+                         "X-Metnos-Dialog-State": "conflict"},
             )
 
     # ADR 0091: dopo aver consumato tutti gli step, processa il callback
@@ -1469,12 +1512,17 @@ async def dialog_cancel(request: web.Request) -> web.Response:
     if state is None:
         return _error(404, "dialog_not_found",
                       f"dialogo {dialog_id} non trovato")
+    lifecycle = _dialog_lifecycle(state)
+    if lifecycle != "active":
+        return _dialog_terminal_response(dialog_id, lifecycle)
     sender_id = state.get("__sender_id") or "host"
     import dialog_pending
     dialog_pending.cancel_pending(sender_id, dialog_id)
     return web.Response(
         text="<h2>Dialogo annullato</h2><p><a href=\"/\">Torna a Metnos</a></p>",
         content_type="text/html",
+        headers={"Cache-Control": "no-store",
+                 "X-Metnos-Dialog-State": "cancelled"},
     )
 
 
@@ -2275,6 +2323,13 @@ async def turns_recent(request: web.Request) -> web.Response:
                     ts_end = float(t.get("ts_end") or 0)
                     in_flight = ts_end == 0 or not t.get("final_kind")
                     final_msg = t.get("final_message") or ""
+                    steps_summary = [
+                        {"step": s.get("step_num"),
+                         "tool": s.get("chosen_tool"),
+                         "ok": bool((s.get("result") or {}).get("ok", True))
+                         if isinstance(s.get("result"), dict) else None}
+                        for s in (t.get("steps") or [])
+                    ]
                     out.append({
                         "turn_id": t.get("turn_id", ""),
                         "query": t.get("user_query", ""),
@@ -2285,6 +2340,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                         "ts_end": ts_end if ts_end else None,
                         "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
                         "in_flight": in_flight,
+                        "steps_summary": steps_summary,
                         "expandable_caps": t.get("expandable_caps") or [],
                         "attachments": t.get("attachments") or [],
                     })
@@ -2318,6 +2374,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                 "ts_end": None,
                 "total_ms": None,
                 "in_flight": True,
+                "steps_summary": [],
                 "expandable_caps": [],
                 "attachments": [],
             })

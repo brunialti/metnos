@@ -7,6 +7,7 @@ from __future__ import annotations
 import sys
 import threading
 import unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -333,6 +334,24 @@ class TestReadUrlsHtml(unittest.TestCase):
         # Puo' essere network o timeout (DNS lento), accetta entrambi i casi
         # rete-failure (NON forbidden/not_found).
         self.assertIn(out["failed"][0]["error_class"], ("network", "timeout"))
+
+    def test_transient_network_failure_is_retried(self):
+        import read_urls_html
+        calls = []
+
+        def fetch(*_args, **_kwargs):
+            calls.append(1)
+            if len(calls) < 3:
+                return None, {"error": "temporary dns", "error_class": "network"}
+            return {"url": "https://example.test", "body_text": "ok"}, None
+
+        with mock.patch.object(read_urls_html, "_fetch_one", side_effect=fetch), \
+                mock.patch.object(read_urls_html.time, "sleep"):
+            entry, error = read_urls_html._fetch_one_with_retry(
+                "https://example.test", object(), 1.0, 1024)
+        self.assertIsNone(error)
+        self.assertEqual(entry["body_text"], "ok")
+        self.assertEqual(len(calls), 3)
 
     def test_partial_success_keeps_entries_and_failed(self):
         """1 url ok + 1 url forbidden → entries=[1] + failed=[1] con classe."""

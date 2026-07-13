@@ -1,6 +1,10 @@
-# Handoff — dominio `sites` (web interaction): stato F1 e lavoro F2 (per Codex)
+# Handoff storico — dominio `sites` (web interaction)
 
-> Brief di ripresa a freddo. Branch `session/detection-lexicon-i18n` (NON pushato).
+> **CHIUSO 11/7/2026.** F1 e F2 sono implementate e validate; la decisione
+> canonica e' ADR 0188. Il contenuto seguente resta come fotografia del punto
+> di passaggio precedente, non come lista di lavoro aperta.
+>
+> Brief originario di ripresa a freddo. Branch `session/detection-lexicon-i18n` (NON pushato).
 > Prima di toccare codice: leggi `CLAUDE.md` + `CLAUDE.mutabile.md` (regole invarianti)
 > e la spec **`internal/design/spec_web_interaction_sites.md`** (F1/F2 §7, presidi §4,
 > iniezione credenziali §3.2, screenshot §3.3, decisioni ratificate §11 D-A..D-E,

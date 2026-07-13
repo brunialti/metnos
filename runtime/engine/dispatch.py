@@ -532,7 +532,22 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # (righe, FIX-4 passthrough). Richiede fields derivabili (schema-marker).
         _CONTENT_READERS = {"read_files", "read_files_doc", "read_files_pdf",
                             "read_files_html", "read_messages", "read_urls",
-                            "read_urls_html", "get_urls"}
+                            "read_urls_html", "get_urls", "read_sites"}
+        _derived_fields = derive_extract_fields(query)
+        _spreadsheet_sinks = [
+            s for s in steps
+            if _verb(s) in ("create", "write")
+            and (getattr(s, "tool", "") or "").endswith("_spreadsheet")
+        ]
+        # Uno spreadsheet dichiara il proprio schema attraverso `columns`.
+        # Se il planner ha preservato la richiesta naturale ma non l'argomento,
+        # usa gli stessi campi che guideranno l'extract intermedio.
+        if _derived_fields:
+            for _sink in _spreadsheet_sinks:
+                _sa = dict(getattr(_sink, "args", None) or {})
+                if not _sa.get("columns"):
+                    _sa["columns"] = list(_derived_fields)
+                    _sink.args = _sa
         _need_by_structure = False
         if not _has_intent_extract:
             _has_reader = any((s.tool or "") in _CONTENT_READERS for s in steps)
@@ -540,7 +555,7 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                 _verb(s) in ("create", "write")
                 and (getattr(s, "args", None) or {}).get("columns")
                 for s in steps)
-            if _has_reader and _has_col_sink and derive_extract_fields(query):
+            if _has_reader and _has_col_sink and _derived_fields:
                 _need_by_structure = True
                 log.info("[ensure_extract] trigger STRUTTURALE (content-reader → "
                          "columns-sink, intent senza extract)")
@@ -563,11 +578,13 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         if existing is not None:
             ea = getattr(existing, "args", None) or {}
             if not ea.get("fields"):
-                _ef = derive_extract_fields(query)
+                _ef = _derived_fields
                 if _ef:
                     ea["fields"] = _ef
                     log.info("[ensure_extract] fields riempiti su extract_entries "
                              "esistente: %s", _ef)
+            if not ea.get("instruction") and query:
+                ea["instruction"] = query
             if _bulk_sink and not ea.get("max_per_text"):
                 ea["max_per_text"] = _BULK_EXTRACT_CAP
                 log.info("[ensure_extract] max_per_text=%d (sink bulk) su extract "
@@ -607,9 +624,11 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # «missing 'fields'»). Se la query non espone i campi → niente fields:
         # l'executor dara' l'errore-guida onesto, ma il caso comune e' coperto.
         ins_args = {"from_step": prod_1b}
-        _fields = derive_extract_fields(query)
+        _fields = _derived_fields
         if _fields:
             ins_args["fields"] = _fields
+        if query:
+            ins_args["instruction"] = query
         if _bulk_sink:
             ins_args["max_per_text"] = _BULK_EXTRACT_CAP
         steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
@@ -619,6 +638,89 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         return framework
     except Exception as ex:
         log.warning("ensure_extract_clause noop (best-effort): %r", ex)
+        return framework
+
+
+def _ensure_extracted_period_scope(framework: Framework, intent, query: str,
+                                   catalog: Optional[list]) -> Framework:
+    """Filtra deterministicamente i record estratti sugli anni espliciti.
+
+    L'extract LLM struttura il testo, ma non gli affidiamo il rispetto di un
+    vincolo esatto come «2026». Se il risultato dichiara un campo data/anno e
+    la query contiene uno o piu' anni, inserisce `filter_entries` subito dopo
+    `extract_entries` e ricabla i consumer. Idempotente e domain-agnostic.
+    """
+    try:
+        years = list(dict.fromkeys(re.findall(
+            r"(?<!\d)((?:19|20)\d{2})(?!\d)", query or "")))
+        if not years:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        ex_idx = next((i for i, step in enumerate(steps)
+                       if (getattr(step, "tool", "") or "") ==
+                       "extract_entries"), -1)
+        if ex_idx < 0:
+            return framework
+        fields = (getattr(steps[ex_idx], "args", None) or {}).get("fields")
+        if not isinstance(fields, list):
+            return framework
+        year_field = next((field for field in fields
+                           if isinstance(field, str) and re.search(
+                               r"(^|[_\s])(year|anno)([_\s]|$)",
+                               field, re.IGNORECASE)), None)
+        date_field = next((field for field in fields
+                           if isinstance(field, str) and re.search(
+                               r"(^|[_\s])(date|data|scadenza|due|deadline|"
+                               r"emiss(?:ione)?|issue)([_\s]|$)",
+                               field, re.IGNORECASE)), None)
+        scope_field = year_field or date_field
+        if not scope_field:
+            return framework
+        extract_pos = ex_idx + 1
+        filter_args = ({"from_step": extract_pos,
+                        "where_field": scope_field,
+                        "where_in": years}
+                       if year_field else
+                       {"from_step": extract_pos,
+                        "where_field": scope_field,
+                        "where_regex": "^(?:" + "|".join(years) + ")-"})
+        if any((getattr(step, "tool", "") or "") == "filter_entries"
+               and (getattr(step, "args", None) or {}).get("from_step") ==
+               extract_pos
+               and (getattr(step, "args", None) or {}).get("where_field") ==
+               scope_field
+               and ((getattr(step, "args", None) or {}).get("where_in") == years
+                    or (getattr(step, "args", None) or {}).get("where_regex") ==
+                    filter_args.get("where_regex"))
+               for step in steps):
+            return framework
+
+        filter_pos = extract_pos + 1
+        idx_map = {i: (i if i < extract_pos else
+                       filter_pos if i == extract_pos else i + 1)
+                   for i in range(1, len(steps) + 1)}
+        new_steps = [StepSpec(
+            tool=step.tool,
+            args=_remap_step_refs(dict(getattr(step, "args", {}) or {}),
+                                  idx_map),
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ) for step in steps]
+        # L'extract resta nella sua posizione: il suo input punta al producer,
+        # non al filtro appena inserito. Solo i riferimenti a valle devono
+        # consumare il sottoinsieme filtrato.
+        new_steps[ex_idx].args = dict(getattr(steps[ex_idx], "args", {}) or {})
+        new_steps.insert(ex_idx + 1, StepSpec(
+            tool="filter_entries", args=filter_args))
+        log.info("[period_scope] filter_entries inserito dopo extract: %s=%s",
+                 scope_field, years)
+        return Framework(
+            steps=new_steps,
+            fillers=getattr(framework, "fillers", {}) or {},
+            final_message=_remap_step_refs(
+                getattr(framework, "final_message", ""), idx_map),
+        )
+    except Exception as ex:
+        log.warning("ensure_extracted_period_scope noop (best-effort): %r", ex)
         return framework
 
 
@@ -2688,7 +2790,7 @@ def _coerce_args_to_schema(framework: Framework,
 
 def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                                    catalog: Optional[list]) -> Framework:
-    """spec sites F1: un consumer del dominio `sites` (login_sites/read_sites)
+    """Spec sites F1/F2: un consumer (login/read/act_sites)
     ha bisogno di una SESSIONE, prodotta da `open_sites`. Il PLANNER locale
     (Qwen) tende a emettere il solo consumer (login_sites) senza il precursore
     e senza wiring — il consumer fallisce «session_ids mancante». Guard
@@ -2704,11 +2806,21 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     steps = list(getattr(framework, "steps", []) or [])
     if not steps:
         return framework
-    _site_consumers = {"login_sites", "read_sites"}
+    _site_consumers = {"login_sites", "read_sites", "act_sites"}
     tools_present = {(getattr(s, "tool", "") or "") for s in steps}
     consumers = [s for s in steps
                  if (getattr(s, "tool", "") or "") in _site_consumers]
-    if not consumers:
+    acts = getattr(intent, "actions", None) or []
+    action_objects = {
+        (x.get("object") or "").lower()
+        for x in acts if isinstance(x, dict)
+    }
+    root_object = str(getattr(intent, "object", "") or "").lower()
+    strong_login_intent = _dl_match("sites.login_intent", query)
+    has_site_context = ("open_sites" in tools_present
+                        or root_object == "sites"
+                        or "sites" in action_objects)
+    if not consumers and not (strong_login_intent and has_site_context):
         return framework  # nessun consumer sites → non ci riguarda
 
     # Deriva l'URL della sessione: da un open_sites già presente, poi dalla
@@ -2716,8 +2828,10 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # a volte mette l'URL in `domain`).
     import re as _re
     url = None
+    original_open = None
     for s in steps:
         if (getattr(s, "tool", "") or "") == "open_sites":
+            original_open = s
             u = (getattr(s, "args", {}) or {}).get("urls")
             if isinstance(u, list) and u and isinstance(u[0], str):
                 url = u[0]
@@ -2730,42 +2844,210 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         if m:
             url = m.group(0).rstrip(".,;)")
     if not url:
+        # UX sites: l'utente nomina normalmente un dominio, non un URL.
+        # Derivazione stretta e deterministica; niente correzione ortografica
+        # silenziosa (cloudfare.com resta cloudfare.com).
+        m = _re.search(
+            r"(?<![@\w])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+            r"[a-z]{2,63})(?![\w])", query or "", _re.IGNORECASE)
+        if m:
+            url = "https://" + m.group(1).lower()
+    if not url:
         for s in consumers:
             for v in (getattr(s, "args", {}) or {}).values():
                 if isinstance(v, str) and v.startswith("http"):
                     url = v.rstrip(".,;)")
+                    break
+                if isinstance(v, str) and _re.fullmatch(
+                        r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+                        r"[a-z]{2,63}", v, _re.IGNORECASE):
+                    url = "https://" + v.lower()
                     break
             if url:
                 break
     if not url:
         return framework  # nessun URL derivabile → fallimento onesto a valle
 
-    acts = getattr(intent, "actions", None) or []
     verbs = {(x.get("verb") or "").lower() for x in acts if isinstance(x, dict)}
-    want_login = "login" in verbs or "login_sites" in tools_present
-    want_read = ("read" in verbs or "describe" in verbs
+    root_verb = str(getattr(intent, "verb", "") or "").lower()
+    want_login = (strong_login_intent or root_verb == "login"
+                  or "login" in verbs or "login_sites" in tools_present)
+    want_read = (root_verb in ("read", "describe")
+                 or "read" in verbs or "describe" in verbs
                  or "read_sites" in tools_present)
-    if not (want_login or want_read):
+    want_act = (root_verb == "act" or "act" in verbs
+                or "act_sites" in tools_present)
+    if not (want_login or want_read or want_act):
         return framework
 
-    # Ricostruzione DETERMINISTICA della catena canonica F1: il planner locale
-    # emette gli step giusti ma spesso NON li ordina/incatena (login_sites
-    # prima di open_sites, senza from_step). Scartiamo il wiring rotto e
-    # riscriviamo open_sites → [login_sites] → [read_sites] → [final_answer].
-    # Idempotente (T4): un piano già canonico riproduce se stesso.
-    new_steps = [StepSpec(tool="open_sites", args={"urls": [url]})]
+    # Ricostruzione DETERMINISTICA della catena canonica F1/F2: il planner
+    # locale emette spesso gli step giusti ma non li ordina/incatena. Le azioni
+    # che chiedono soltanto di raggiungere il form sono assorbite da
+    # login_sites: ripeterle come act_sites creerebbe un secondo consenso e
+    # scavalcherebbe la sua procedura intelligente. Tutte le azioni successive
+    # restano nel piano. Idempotente (T4).
+    open_args = {k: v for k, v in
+                 dict(getattr(original_open, "args", {}) or {}).items()
+                 if k in ("urls", "allowlist", "session_label", "max_total")}
+    existing_urls = open_args.get("urls")
+    if not (isinstance(existing_urls, list) and existing_urls):
+        open_args["urls"] = [url]
+    new_steps = [StepSpec(tool="open_sites", args=open_args)]
+
+    original_acts = [s for s in steps
+                     if (getattr(s, "tool", "") or "") == "act_sites"]
+
+    def _is_login_entry_action(step) -> bool:
+        action = str((getattr(step, "args", {}) or {}).get("action") or "")
+        if not action or not _dl_match("sites.login_entry_target", action):
+            return False
+        try:
+            from playwright_sidecar.action_resolver import parse_action
+            parsed = parse_action(action)
+            return bool(parsed.get("ok")
+                        and parsed.get("primitive") in ("click", "goto"))
+        except Exception:  # noqa: BLE001 -- nessun rewrite se il resolver manca
+            return False
+
+    login_entry_acts = ([s for s in original_acts if _is_login_entry_action(s)]
+                        if want_login else [])
+    post_login_acts = ([s for s in original_acts if s not in login_entry_acts]
+                       if want_login else original_acts)
+
+    # Una ricerca nominata DOPO l'accesso appartiene alla sessione autenticata,
+    # non al crawler pubblico find_urls. Conserva la frase naturale come fine di
+    # act_sites; l'executor la scompone internamente in navigazioni bounded.
+    search_chunks: list[str] = []
+    absorbed_site_search = False
+    if want_login and not _dl_match("sites.external_search_scope", query):
+        try:
+            from compound_decomposer import split_query_chunks
+            search_chunks = [
+                chunk.strip(" ,.;") for chunk in split_query_chunks(query or "")
+                if _dl_match("sites.search_action_verb", chunk)
+            ]
+        except Exception:  # noqa: BLE001 -- nessuna inferenza se split fallisce
+            search_chunks = []
+        existing_actions = {
+            str((getattr(step, "args", {}) or {}).get("action") or "").strip().lower()
+            for step in post_login_acts
+        }
+        has_search_action = any(
+            _dl_match("sites.search_action_verb", action)
+            for action in existing_actions)
+        try:
+            import urllib.parse as _urlparse
+            session_host = (_urlparse.urlsplit(url).hostname or "").lower()
+        except ValueError:
+            session_host = ""
+        for chunk in search_chunks:
+            domains = _re.findall(
+                r"(?<![@\w])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+                r"[a-z]{2,63})(?![\w])", chunk, _re.IGNORECASE)
+            if any(domain.lower() != session_host for domain in domains):
+                continue
+            if has_search_action or chunk.lower() in existing_actions:
+                continue
+            post_login_acts.append(StepSpec(
+                tool="act_sites", args={"action": chunk}))
+            existing_actions.add(chunk.lower())
+            has_search_action = True
+        if search_chunks:
+            want_read = True
+            absorbed_site_search = True
+
+    def _append_acts(source_steps) -> None:
+        for original_act in source_steps:
+            original_args = dict(getattr(original_act, "args", {}) or {})
+            act_args = {"from_step": len(new_steps)}
+            for key in ("action", "value_ref"):
+                if original_args.get(key) is not None:
+                    act_args[key] = original_args[key]
+            new_steps.append(StepSpec(tool="act_sites", args=act_args))
+
     if want_login:
-        new_steps.append(StepSpec(tool="login_sites",
-                                  args={"from_step": len(new_steps)}))
+        original_login = next((s for s in steps
+                               if (getattr(s, "tool", "") or "") ==
+                               "login_sites"), None)
+        login_args = {k: v for k, v in
+                      dict(getattr(original_login, "args", {}) or {}).items()
+                      if k in ("domain", "form_hint")}
+        domain = login_args.get("domain")
+        if isinstance(domain, str) and domain.startswith(("http://", "https://")):
+            try:
+                import urllib.parse as _urlparse
+                login_args["domain"] = _urlparse.urlsplit(domain).hostname or ""
+            except ValueError:
+                login_args.pop("domain", None)
+        login_args["from_step"] = len(new_steps)
+        new_steps.append(StepSpec(tool="login_sites", args=login_args))
+
+    # Dopo il login esegui le azioni richieste (ricerca, navigazione, ecc.) e
+    # leggi infine lo stato risultante. Senza login preserviamo il contratto
+    # precedente read→act, usato per i turni pubblici open/read/act.
+    if want_login:
+        _append_acts(post_login_acts)
     if want_read:
-        new_steps.append(StepSpec(tool="read_sites",
-                                  args={"from_step": len(new_steps)}))
-    for s in steps:
-        if (getattr(s, "tool", "") or "") == "final_answer":
-            new_steps.append(s)
-            break
-    return Framework(steps=new_steps,
-                     final_message=getattr(framework, "final_message", ""))
+        original_read = next((s for s in steps
+                              if (getattr(s, "tool", "") or "") ==
+                              "read_sites"), None)
+        read_args = {k: v for k, v in
+                     dict(getattr(original_read, "args", {}) or {}).items()
+                     if k in ("include_screenshot", "include_forms")}
+        # Il testo + URL sono il risultato predefinito. Lo screenshot resta
+        # opt-in: oltre a essere ridondante con un link navigabile, un allegato
+        # immagine a monte non deve oscurare un file prodotto a valle.
+        read_args.setdefault("include_screenshot", False)
+        read_args["from_step"] = len(new_steps)
+        new_steps.append(StepSpec(tool="read_sites", args=read_args))
+    if not want_login:
+        _append_acts(post_login_acts)
+
+    # La catena Sites e' un PRODUTTORE, non un terminale obbligatorio. Conserva
+    # trasformazioni e sink successivi (extract, spreadsheet, send, ...),
+    # rimappandoli sul `read_sites` canonico. Prima questa ricostruzione li
+    # scartava tutti: una richiesta «leggi dal sito e crea un foglio» terminava
+    # quindi con la sola sintesi della pagina.
+    canonical_pos = len(new_steps)
+    site_tools = {"open_sites", "login_sites", "act_sites", "read_sites"}
+    absorbed_web_tools = ({"find_urls", "read_urls_html", "read_urls_pdf",
+                           "get_urls"} if absorbed_site_search else set())
+    preserved: list[tuple[int, object]] = []
+    finals: list[tuple[int, object]] = []
+    idx_map: dict[int, int] = {}
+    for old_pos, step in enumerate(steps, start=1):
+        tool = (getattr(step, "tool", "") or "")
+        if tool == "final_answer":
+            finals.append((old_pos, step))
+        elif tool in site_tools or tool in absorbed_web_tools:
+            idx_map[old_pos] = canonical_pos
+        else:
+            preserved.append((old_pos, step))
+    for offset, (old_pos, _step) in enumerate(preserved, start=1):
+        idx_map[old_pos] = canonical_pos + offset
+    final_pos = canonical_pos + len(preserved) + 1
+    for old_pos, _step in finals:
+        idx_map[old_pos] = final_pos
+
+    for _old_pos, step in preserved:
+        new_steps.append(StepSpec(
+            tool=step.tool,
+            args=_remap_step_refs(dict(getattr(step, "args", {}) or {}), idx_map),
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ))
+    if finals:
+        step = finals[0][1]
+        new_steps.append(StepSpec(
+            tool=step.tool,
+            args=_remap_step_refs(dict(getattr(step, "args", {}) or {}), idx_map),
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ))
+    return Framework(
+        steps=new_steps,
+        fillers=getattr(framework, "fillers", {}) or {},
+        final_message=_remap_step_refs(
+            getattr(framework, "final_message", ""), idx_map),
+    )
 
 
 @dataclass(frozen=True)
@@ -2821,8 +3103,8 @@ GUARD_PIPELINE: tuple = (
           lambda fw, i, q, c: _ensure_site_session_precursor(fw, i, q, c),
           scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "step.tool"}),
-          rationale="spec sites F1: login/read_sites richiedono una sessione (open_sites). Il planner locale emette gli step sites senza ordine/wiring → RICOSTRUISCE la catena canonica open_sites→[login]→[read] dall'URL (della query o di un open_sites presente). Idempotente su un piano già canonico. Scrive solo `step` (nessun arg semantic)",
-          adr="sites-F1"),
+          rationale="spec sites F1/F2: login/read/act_sites richiedono open_sites; ricostruisce open→[login]→[read]→[act] preservando action/value_ref",
+          adr="sites-F2"),
     Guard("decontaminate_reader_qualifier",
           lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),
           v3_only=True, scope="cross-clause", writes=frozenset({"step.tool"}),
@@ -2834,6 +3116,12 @@ GUARD_PIPELINE: tuple = (
           v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query"}),
           rationale="inserisce lo step extract mancante fra read e create (compound)",
+          adr="0174"),
+    Guard("ensure_extracted_period_scope",
+          lambda fw, i, q, c: _ensure_extracted_period_scope(fw, i, q, c),
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"query", "step"}),
+          rationale="dopo extract applica deterministicamente gli anni espliciti della query su un campo data/anno, ricablando i consumer",
           adr="0174"),
     Guard("conform_to_intent_order",
           lambda fw, i, q, c: _conform_to_intent_order(fw, i, q, c),
@@ -3243,13 +3531,61 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
         return framework
 
 
-def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
+def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
+                                  framework: Framework | None = None) -> None:
     """gate-resume (20/6/2026): se un gate get_approval ha messo in PAUSA la
     pipeline (run.gate_dialog_id), sovrascrive l'on_complete del dialog
     (gate_dispatch → resume_engine_gate) col contesto di ripresa. On-approve il
     callback riesegue il turno con `pre_approved_gate` → il gate auto-passa e
     gli step a valle (send/write) girano. §7.9 deterministico. No-op se nessun
     gate in pausa. Universale: vale per ogni compound con un gate di consenso."""
+    # Anche un input raccolto dentro un executor puo' sospendere una pipeline
+    # stateful (per esempio un codice monouso nel browser). Se il callback
+    # rilancia lo stesso executor, conserva la coda sul result osservato invece
+    # di rieseguire l'intera query e perdere sessione/cursor/handle.
+    if run and framework is not None:
+        paused_input = next((
+            step for step in reversed(getattr(run, "steps", []) or [])
+            if isinstance(getattr(step, "result", None), dict)
+            and step.result.get("decision") == "needs_inputs"
+        ), None)
+        if paused_input is not None:
+            payload = paused_input.result.get("needs_inputs") or {}
+            callback = payload.get("on_complete") or {}
+            paused_tool = str(getattr(paused_input, "tool", "") or "")
+            if (isinstance(callback, dict)
+                    and callback.get("type") == "resume_executor_with_values"
+                    and callback.get("executor") == paused_tool):
+                paused_idx = int(getattr(paused_input, "step_idx", 0) or 0)
+                history_pos = next(
+                    (pos for pos, item in enumerate(run.steps, start=1)
+                     if item is paused_input), paused_idx)
+                max_history_pos = (
+                    history_pos + len(framework.steps) - paused_idx)
+                idx_map = {old: old - history_pos + 1
+                           for old in range(history_pos,
+                                            max_history_pos + 1)}
+                tail_steps = [{
+                    "tool": step.tool,
+                    "args": _remap_step_refs(step.args or {}, idx_map),
+                    **({"if_prev_entries_nonempty": True}
+                       if step.if_prev_entries_nonempty else {}),
+                } for step in framework.steps[paused_idx:]]
+                if tail_steps:
+                    callback.update({
+                        "type": "resume_executor_values_tail",
+                        "tail_steps": tail_steps,
+                        "tail_final_message": _remap_step_refs(
+                            framework.final_message or "", idx_map),
+                        "original_query": (
+                            (runtime_ctx or {}).get("user_query_raw") or query),
+                        "conversation_id": (
+                            (runtime_ctx or {}).get("conversation_id") or ""),
+                    })
+                    payload["on_complete"] = callback
+                    log.info("[input_resume] coda preservata per %s (%d step)",
+                             paused_tool, len(tail_steps))
+
     did = getattr(run, "gate_dialog_id", "") if run else ""
     if not did:
         return
@@ -3263,6 +3599,58 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx) -> None:
         if not st:
             return
         oc = st.get("on_complete") or {}
+        paused = next((s for s in reversed(getattr(run, "steps", []) or [])
+                       if getattr(s, "tool", "") and
+                       getattr(s, "step_idx", 0)), None)
+        paused_tool = getattr(paused, "tool", "") if paused else ""
+
+        # Un executor auto-riprendibile mette nel branch approvato se stesso
+        # con lo stato opaco necessario (token broker, cursor, handle, ecc.).
+        # Riconoscilo dal contratto, non dal nome: rilanciare l'intera query
+        # perderebbe lo stato osservato e potrebbe ricreare lo stesso gate.
+        approve_branch = oc.get("on_approve") or {}
+        approve_tool = (
+            (approve_branch.get("tool") or approve_branch.get("executor"))
+            if isinstance(approve_branch, dict) else ""
+        )
+        if (paused_tool and approve_tool == paused_tool
+                and oc.get("type") == "gate_dispatch" and framework is not None):
+            paused_idx = int(getattr(paused, "step_idx", 0) or 0)
+            # `paused_idx` e' relativo al framework corrente, mentre i suoi
+            # from_step/${stepN} puntano alla history completa, che nelle
+            # continuazioni contiene gia' il result approvato come seed. Usa la
+            # posizione reale nella history: dopo il nuovo consenso quel result
+            # diventera' il seed 1 e tutta la coda traslera' di conseguenza.
+            history_pos = next(
+                (pos for pos, item in enumerate(run.steps, start=1)
+                 if item is paused), paused_idx)
+            max_history_pos = history_pos + len(framework.steps) - paused_idx
+            idx_map = {old: old - history_pos + 1
+                       for old in range(history_pos, max_history_pos + 1)}
+            tail_steps = []
+            for step in framework.steps[paused_idx:]:
+                tail_steps.append({
+                    "tool": step.tool,
+                    "args": _remap_step_refs(step.args or {}, idx_map),
+                    **({"if_prev_entries_nonempty": True}
+                       if step.if_prev_entries_nonempty else {}),
+                })
+            st["on_complete"] = {
+                "type": "resume_executor_gate_tail",
+                "gate_approve_value": oc.get("approve_value", "approve"),
+                "gate_on_approve": oc.get("on_approve"),
+                "gate_on_reject": oc.get("on_reject"),
+                "tail_steps": tail_steps,
+                "tail_final_message": _remap_step_refs(
+                    framework.final_message or "", idx_map),
+                "original_query": rc.get("user_query_raw") or query,
+                "conversation_id": rc.get("conversation_id") or "",
+            }
+            _dp.save_pending(sender, did, st)
+            log.info("[gate_resume] dialog %s → executor-tail (%s, %d step)",
+                     did, paused_tool, len(tail_steps))
+            return
+
         st["on_complete"] = {
             "type": "resume_engine_gate",
             # Query RAW dell'utente (CON la destinazione «su pc-X»): la query
@@ -3611,7 +3999,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                          run.aborted_reason,
                          getattr(_last, "tool", None), str(_lerr))
             else:
-                _inject_gate_resume_if_paused(run, query, runtime_ctx)
+                _inject_gate_resume_if_paused(
+                    run, query, runtime_ctx, framework=fp_hit.framework)
                 # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
                 # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
                 # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
@@ -3698,7 +4087,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 log.info("[L1 autopath] champion %s esegue in ERRORE → "
                          "fall-through a L3 (re-plan)", ap_hit.autopath_id)
             else:
-                _inject_gate_resume_if_paused(run, query, runtime_ctx)
+                _inject_gate_resume_if_paused(
+                    run, query, runtime_ctx, framework=ap_hit.framework)
                 # Record observation per future feedback hooks. Skip se il piano
                 # non è cacheabile (single-executor / valore numerico baked dalla
                 # query): L1 non deve avere valori baked (Roberto 15/6).
@@ -3857,7 +4247,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                         runtime_ctx=runtime_ctx,
                         remediate_args_cb=remediate_args_cb,
                         progress=progress)
-    _inject_gate_resume_if_paused(run, query, runtime_ctx)
+    _inject_gate_resume_if_paused(run, query, runtime_ctx, framework=framework)
 
     # Record observation (per future feedback). Skip se non cacheabile
     # (single-executor / valore numerico baked): L1 non deve avere valori baked.
@@ -3939,7 +4329,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # attende il consenso umano → cabla il resume e ritorna la
                 # richiesta d'input, NON un errore. §2.11.
                 if getattr(run2, "gate_dialog_id", ""):
-                    _inject_gate_resume_if_paused(run2, query, runtime_ctx)
+                    _inject_gate_resume_if_paused(
+                        run2, query, runtime_ctx, framework=framework_alt)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind=run2.final_kind,
                         match_source="recovery",

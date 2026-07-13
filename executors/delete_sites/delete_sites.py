@@ -48,6 +48,10 @@ def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
     if args.get("all"):
         res = session_client.session_close(owner=owner, all=True)
+        if not res.get("ok"):
+            return {"ok": False, "results": [],
+                    "error": _msg("ERR_OP_FAILED", reason="delete_sites"),
+                    "error_class": res.get("error_class") or "close_failed"}
         closed = res.get("closed") or []
         return {"ok": True,
                 "results": [{"session_id": s, "closed": True} for s in closed],
@@ -62,10 +66,20 @@ def invoke(args: dict) -> dict:
     for sid in session_ids:
         res = session_client.session_close(session_id=sid, owner=owner)
         results.append({"session_id": sid,
-                        "closed": bool(res.get("count", 0) > 0)})
-    return {"ok": True, "results": results,
-            "metadata": {"closed": sum(1 for r in results if r["closed"]),
-                         "total": len(results)}}
+                        "closed": bool(res.get("count", 0) > 0),
+                        "ok": bool(res.get("ok")),
+                        **({"reason_code": res.get("error_class")}
+                           if not res.get("ok") else {})})
+    ok = all(r["ok"] for r in results)
+    out = {"ok": ok, "results": results,
+           "metadata": {"closed": sum(1 for r in results if r["closed"]),
+                        "total": len(results)}}
+    if not ok:
+        out["error"] = _msg("ERR_OP_FAILED", reason="delete_sites")
+        out["error_class"] = next(
+            (r.get("reason_code") for r in results if not r["ok"]),
+            "close_failed")
+    return out
 
 
 def main():

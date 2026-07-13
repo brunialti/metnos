@@ -14,12 +14,12 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: fa il login su una sessione aperta usando le credenziali cifrate del vault (il broker inietta il segreto: l'agente non lo vede). PATTERN: open_sites → login_sites(from_step=1). NON: get_inputs (raccolta valori); login_sites usa credenziali GIÀ salvate. OUT: entries=[{session_id,logged_in,reason_code?}] senza segreti."
-en = "SCOPO: logs into an open session using the vault's encrypted credentials (the broker injects the secret: the agent never sees it). PATTERN: open_sites → login_sites(from_step=1). NON: get_inputs (value collection); login_sites uses ALREADY-stored credentials. OUT: entries=[{session_id,logged_in,reason_code?}] with no secrets."
+it = "SCOPO: raggiunge autonomamente l'area di accesso e usa credenziali cifrate, mai esposte all'agente. PATTERN: open_sites -> login_sites(from_step=1). NON: raccolta valori -> get_inputs; usa credenziali gia' salvate e non accetta selettori. OUT: entries=[{session_id,logged_in,reason_code?}]."
+en = "SCOPO: autonomously reaches the sign-in area and uses encrypted credentials never exposed to the agent. PATTERN: open_sites -> login_sites(from_step=1). NON: value collection -> get_inputs; uses stored credentials and accepts no selectors. OUT: entries=[{session_id,logged_in,reason_code?}]."
 
 [code]
 files  = ["login_sites.py"]
-digest = "sha256:c1658844226b7bd98b8f4d54cb630cdbe30024e46eaba329c64b49ab28d36802"
+digest = "sha256:4f213073d9ba3010e00a1e0c0d7ec3ccaf53ae1bcff8f6cd226be9c9ed779e64"
 
 [args]
 type     = "object"
@@ -47,12 +47,21 @@ type = "string"
 it = "Opzionale. Suggerimento sul form di login (testo/etichetta). È solo un hint: il broker risolve comunque i campi in autonomia (§3.2 CRITICO-2), l'hint non può dirigere dove va la credenziale."
 en = "Optional. Hint about the login form (text/label). Only a hint: the broker still resolves the fields autonomously (§3.2 CRITICO-2); the hint cannot direct where the credential goes."
 
+[args.properties._approval_tokens]
+type = "object"
+runtime_resolved = true
+
+[args.properties._approval_tokens.description]
+it = "Solo runtime: token opachi emessi dal broker durante una transizione interna e ripresentati dopo approvazione."
+en = "Runtime only: opaque tokens issued by the broker during an internal transition and replayed after approval."
+
 [output]
 schema_inline = """
 {
   ok: bool,
-  entries: Array<{session_id: str, logged_in: bool, reason_code?: str, message?: str}>,
+  entries: Array<{session_id: str, logged_in: bool, reason_code?: str, message?: str, session_closed?: bool}>,
   metadata: {logged_in: int, total: int},
+  attachments?: Array<{kind: str, path: str, basename: str, mime: str, sensitive: bool}>,
   error?: str, error_class?: str
 }
 """
@@ -63,6 +72,10 @@ hint = ["*"]
 
 [[capabilities]]
 name = "auth.password_storage"
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
 
 [[tests]]
 name   = "manca_session_ids"

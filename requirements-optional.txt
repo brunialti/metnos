@@ -13,4 +13,4 @@ torch
 sentence-transformers
 
 # --- sidecar automazione web (playwright) ---
-playwright
+playwright==1.61.0
