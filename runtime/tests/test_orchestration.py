@@ -158,6 +158,58 @@ def test_resume_executor_gate_replays_branch_then_only_tail(monkeypatch):
     assert calls[1][1]["entries"][0]["session_id"] == "sid-1"
 
 
+def test_resume_executor_gate_tail_invokes_universal_builtin(monkeypatch):
+    """Regressione turn:520a574f — «Executor describe_entries non in catalog».
+    Una coda post-gate che contiene un helper universale builtin
+    (`describe_entries`) NON deve fallire con `tool_unknown`: il resume usa lo
+    stesso dispatch del loop principale (builtin-first via registro), non solo
+    il catalog degli executor firmati."""
+    from types import SimpleNamespace
+    import agent_runtime
+    import loader
+    from orchestration import (CompletionResult,
+                               _process_resume_executor_gate_tail)
+
+    # Catalog dei soli executor firmati: describe_entries NON c'e' (e' builtin).
+    executors = {
+        name: SimpleNamespace(name=name, timeout_s=30, args_schema={})
+        for name in ("read_sites", "login_sites")
+    }
+    monkeypatch.setattr(loader, "load_catalog", lambda **_kw: SimpleNamespace(
+        executors=executors))
+
+    # Il branch NON si auto-presenta (nessun final_message_hint): cosi' l'engine
+    # esegue davvero lo step describe_entries della coda invece di saltarlo.
+    def invoke(executor, args, **_kw):
+        return {"ok": True, "entries": [{"device": "phone", "active": True}]}
+    monkeypatch.setattr(agent_runtime, "invoke_executor", invoke)
+
+    builtin_calls = []
+    def fake_builtin(tool_name, args, **_kw):
+        builtin_calls.append(tool_name)
+        return {"ok": True, "entries": args.get("entries") or [],
+                "final_message_hint": "1 dispositivo attivo."}
+    monkeypatch.setattr(agent_runtime, "_invoke_builtin_handler", fake_builtin)
+
+    callback = {
+        "gate_approve_value": "approve",
+        "gate_on_approve": {"tool": "read_sites", "args": {
+            "session_ids": ["sid-1"], "approval_tokens": {"sid-1": "opaque"}}},
+        "tail_steps": [
+            {"tool": "describe_entries", "args": {"from_step": 1}},
+            {"tool": "final_answer", "args": {}},
+        ],
+        "original_query": "login a 192.168.1.10 e dimmi i device attivi",
+    }
+    out = _process_resume_executor_gate_tail(
+        callback, {"decision": "approve"}, actor="host", channel="http")
+
+    assert isinstance(out, CompletionResult)
+    # describe_entries e' stato invocato via handler builtin, non rifiutato.
+    assert "describe_entries" in builtin_calls
+    assert "non in catalog" not in (out.text or "")
+
+
 def test_resume_executor_secret_values_replays_branch_then_tail(monkeypatch):
     from types import SimpleNamespace
     import agent_runtime

@@ -5394,6 +5394,31 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
                 "tool": tool_name}
 
 
+def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
+                        actor: str | None = None,
+                        channel: str | None = None) -> dict:
+    """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
+    dai percorsi di ripresa (post-gate/post-input, orchestration).
+
+    Builtin in-process (registro `_BUILTIN_TOOL_HANDLERS`, unica fonte di
+    verita') PRIMA, poi executor firmato del catalog. Cosi' un helper
+    universale (`describe_entries`, `classify_entries`, ...) non e' mai un
+    falso `tool_unknown` quando una pipeline riprende dopo un gate (§7.3: una
+    riga nel registro basta, nessun elenco cablato per-tool).
+    """
+    if tool_name in _BUILTIN_TOOL_HANDLERS:
+        return _invoke_builtin_handler(
+            tool_name, args, actor=actor, channel=channel)
+    exec_obj = next((e for e in (catalog or [])
+                     if getattr(e, "name", None) == tool_name), None)
+    if exec_obj is None:
+        return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
+                "error_class": "tool_unknown"}
+    return invoke_executor(
+        exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
+        actor=actor, channel=channel)
+
+
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
 
 def _maybe_remediate_obs(

@@ -971,8 +971,14 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
         from engine.executor import Executor
         from engine.types import Framework, StepRun, StepSpec
         from loader import load_catalog
+        import agent_runtime
         cat = load_catalog(verify=True, include_synth=True)
-        catalog = list(cat.executors.values())
+        # Il catalog della coda deve conoscere anche i builtin in-process
+        # (describe_entries/classify_entries/...): un tail post-gate li usa come
+        # nel loop principale. Riuso l'augmenter universale, cosi' il Validator
+        # dell'engine non li scarta come `tool_unknown`.
+        catalog = agent_runtime._engine_v2_catalog_with_builtins(
+            list(cat.executors.values()))
         steps = [StepSpec(
             tool=str(item.get("tool") or ""),
             args=dict(item.get("args") or {}),
@@ -985,15 +991,11 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             final_message=str(on_complete.get("tail_final_message") or ""))
 
         def _invoke(tool_name: str, args: dict) -> dict:
-            ex = cat.executors.get(tool_name)
-            if ex is None:
-                return {"ok": False, "error": _msg(
-                    "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=tool_name),
-                    "error_class": "tool_unknown"}
-            import agent_runtime
-            return agent_runtime.invoke_executor(
-                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
-                actor=actor, channel=channel)
+            # Dispatch canonico: builtin-first, poi executor firmato. Stesso
+            # percorso del loop principale, cosi' un helper universale nella
+            # coda non e' mai un falso `tool_unknown` (§7.3).
+            return agent_runtime.invoke_tool_by_name(
+                tool_name, args, catalog=catalog, actor=actor, channel=channel)
 
         seed = StepRun(
             step_idx=1, tool="@approved_executor_gate", args={},
