@@ -32,9 +32,10 @@ from backends._google_auth_common import (  # noqa: E402
 )
 from executor_helpers import IMAGE_EXTS  # noqa: E402
 from messages import get as _msg  # noqa: E402
+import config as C  # noqa: E402
 
 # Workspace foto default (memoria feedback_default_photo_workspace).
-_DEFAULT_DST_DIR = Path.home() / ".local/share/metnos/Immagini/google-photos"
+_DEFAULT_DST_DIR = C.PATH_USER_DATA / "Immagini" / "google-photos"
 
 
 def _run_photos(argv: list[str], *, executor: str, args_base: dict,

@@ -26,6 +26,7 @@ sys.path.insert(0, str(_ROOT / "runtime"))
 sys.path.insert(0, str(_ROOT / "executors" / "create_images_indices"))
 
 import create_images_indices as C  # noqa: E402
+import config as MC  # noqa: E402
 from virt import get_embedder  # noqa: E402
 
 _BATCH = 256
@@ -34,9 +35,7 @@ _BATCH = 256
 def _find_default_unified() -> Path | None:
     base = os.environ.get("METNOS_INDEX_ROOT")
     root = Path(base) / "image" if base else (
-        Path(os.environ.get("METNOS_USER_DATA",
-                            str(Path.home() / ".local/share/metnos")))
-        / "index" / "image")
+        MC.PATH_USER_DATA / "index" / "image")
     if not root.exists():
         return None
     cands = sorted(root.glob("*/unified"))

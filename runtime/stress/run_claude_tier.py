@@ -7,7 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-CRED = Path.home() / ".config/metnos/credentials.env"
+_RUNTIME = Path(__file__).resolve().parents[1]
+if str(_RUNTIME) not in sys.path:
+    sys.path.insert(0, str(_RUNTIME))
+import config as C  # noqa: E402
+
+CRED = C.PATH_USER_CONFIG / "credentials.env"
 
 
 def load_env():
