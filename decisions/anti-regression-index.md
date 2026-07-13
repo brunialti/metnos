@@ -88,6 +88,8 @@
 - **Install-on-demand** (ADR 0143 TODO): `runtime/system_binaries.py` whitelist. Error `binary_missing` → auto-inject admin step. Sudoers NOPASSWD `apt-get install -y *`. Whitelist guard in `runtime/system/admin.py`.
 - **Credenziali UX 3 strati** (ADR 0089+0091): `extract_credentials` regex + dialog `needs_inputs` (`orchestrate_needs_inputs`) + CLI `metnos-cli credentials`. Binding `_BINDING_STRONG/_WEAK`.
 - **Credenziali single store** (ADR 0131): `runtime/credentials.py` Fernet+HKDF, domain `smtp_<account>`. CLI `python3 -m credentials_migrate`.
+- **Sites intelligenti drop-in** (ADR 0188): `session_broker.op_login` + `credential_injection.perform_login` implementano consenso/scroll/landing/ingresso/username/continue/password/2FA con budget; `act_sites(search)` mantiene un goal post-login e riosserva menu bounded sotto un gate batch. Modello solo su ID enumerati e mai dopo fill; origine delegata via token one-shot ricontrollato; guard in `runtime/tests/test_sites_security.py`.
+- **Executor intelligenti a mandato ristretto** (ADR 0189): stesso contratto I/O e stessa autorita' di un executor normale; ciclo interno bounded, deterministic-first, postcondizione obbligatoria e handoff esplicito. Il catalogo per dominio e' generato da `scripts/generate_executor_catalog.py`; guard in `runtime/tests/test_executor_catalog_docs.py`.
 
 **UI / output / i18n**
 - **Engine UI dichiarativo** (ADR 0090): `get_inputs(title, dialog=[...], fmt=...)`. Storage `runtime/dialog_pending.py` (path da `_C.PATH_USER_DATA`). Adapters Telegram + HTTP.
@@ -215,6 +217,12 @@
 - **Lacuna→proposta senza resurrezione**: `learning_loop.propose_from_lacuna` nel choke-point `_record_lacuna` — dedup fingerprint + stato REJECTED preservato dall'upsert (testato); classi d'uso (wrong_args) MAI proposte.
 - **get_processes onesto §2.8**: snapshot grezzo vuoto = ERR_EXT_TOOL_FAILED con ragione (mai «ok 0») — è ciò che ha scovato SystemRoot mancante sul device.
 - **Manutenzione=comandi NL (ADR 0186)**: domini esterni via `run_user_query` schedulato (mai job bespoke — github_watcher ritirato, riga scheduler morta rimossa); organi interni=builtin in `NIGHTLY_SEQUENCE`; aging esente alla fonte (executor_aging PROTECTED_NAMES+handcrafted).
+**Mandati credenziale ADR 0190 (12/7/2026)**
+- **Default in ogni modalita'**: scope cifrato `sites.read` sul binding applicato alle query interattive e schedulate; la query puo' restringere, l'ampliamento interattivo resta one-shot, revoca immediata.
+- **Autorita' task per intersezione**: il task aggiunge un envelope subordinato con actor/query-hash/host esatti; nessun token browser persistito e nessuna autorita' creata dal task.
+- **Task mai sospeso su dialogo sites**: host o azione fuori envelope -> `mandate_scope_exceeded`, fail-closed; configurazione soltanto in un run interattivo.
+- **Topologia verificata**: il mandato usa solo `session_open`, `approved_*` e `credential_origin_approval` dell'audit; host meramente osservati esclusi.
+- **Continuazione risultati bounded**: load-more/next contestuale, max 6, stop su contenuto invariato/ripetuto, aggregazione pagine senza duplicati.
 **Provenienza args — marcatura config + clamp backend (6/7/2026)**
 - **Politica marcatura `runtime_resolved`**: 20 config-args marcati / 10 esenti intent-bearing; tabella fonte-unica `runtime/tests/test_config_args_marking_policy.py` (6 test: nuovi config-args fuori tabella FALLISCONO; multi-provider files mai marcato; marcato mai required; `n_unmarked_config==0`), regole in `arg_provenance.is_intent_bearing_config`.
 - **Clamp enum-aware `resolve_backend_arg`**: il DEFAULT per-object non scavalca l'enum del TOOL (share_files gw-only rompeva su ogni share senza marker drive); l'ESPLICITO non è clampato (errore onesto «client non applicabile» §2.8). Callsite unico engine/executor.py con `args_schema`; `test_backend_resolver_enum_clamp.py`.

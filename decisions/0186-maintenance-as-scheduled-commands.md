@@ -24,4 +24,9 @@ Regola pratica: se tocca **dati/servizi dell'utente** → comando NL; se tocca *
 ## Meccanismi verificati (item 2 mandato)
 - **Aging-inattività**: esenzioni NEL CODICE (`executor_aging`: handcrafted verb-unique mai; `PROTECTED_NAMES` seed core mai; invecchiano solo i `synth:*`) — la trappola `reference_aging_inactivity_trap` è chiusa alla fonte.
 - **Scheduler v2**: 15 entry attive post-bonifica; run in `runs` table; `/admin/timers` con enable/disable/fire.
+- **Esito semantico** (11/7): i callback possono restituire `CallbackOutcome`
+  (`success|partial|error`). `run_user_query` deriva lo stato dai fallimenti e
+  dagli effetti reali del turno; una consegna Telegram riuscita non converte
+  una pipeline fallita in `success`. Errori per-elemento in `failed[]` restano
+  causa strutturata e alimentano correttamente il circuit-breaker.
 - **Notturni**: sequenza unica dichiarata (`NIGHTLY_SEQUENCE`), error-isolation per task.

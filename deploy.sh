@@ -38,6 +38,7 @@ set +a
 : "${CLOUDFLARE_ACCOUNT_ID:?manca CLOUDFLARE_ACCOUNT_ID in $ENV_FILE}"
 
 cd "$REPO"
+python3 scripts/generate_executor_catalog.py
 exec node_modules/.bin/wrangler pages deploy docs \
     --project-name=mykleos \
     --commit-dirty=true \

@@ -197,6 +197,40 @@
   </url>
 
   <url>
+    <loc>https://metnos.com/en/architecture/intelligent_executors</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/intelligent_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/intelligent_executors"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/intelligent_executors</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/intelligent_executors"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/intelligent_executors"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/executor_catalog</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_catalog"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_catalog"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/executor_catalog</loc>
+    <lastmod>2026-07-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.65</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor_catalog"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor_catalog"/>
+  </url>
+
+  <url>
     <loc>https://metnos.com/en/architecture/mnest</loc>
     <lastmod>2026-05-01</lastmod>
     <changefreq>monthly</changefreq>

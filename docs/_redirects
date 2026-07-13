@@ -65,6 +65,12 @@
 # Legacy architecture folder (era senza /it/)
 /architecture/* /it/architecture/:splat 301
 
+# 11/7/2026: il documento pubblico descrive l'astrazione generale, non un dominio.
+/it/architecture/sites       /it/architecture/intelligent_executors.html 301
+/it/architecture/sites.html  /it/architecture/intelligent_executors.html 301
+/en/architecture/sites       /en/architecture/intelligent_executors.html 301
+/en/architecture/sites.html  /en/architecture/intelligent_executors.html 301
+
 # ===========================================================================
 # 26/4/2026: doc microdesign v1.0 cancellati (palesemente inutili dopo POC)
 # Redirect 301 verso il canonico v1.1 piu' affine.

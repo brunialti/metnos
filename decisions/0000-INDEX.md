@@ -80,5 +80,7 @@ for format and discipline; see `_template.md` for the template.
 > registry is the `decisions/` directory itself (one file per ADR), per
 > `CLAUDE.md` §1 — not this list. Latest at time of writing: `0169`
 > (taglio di rilevanza adattivo + spreadsheet locale default + guard
-> refusal-in-args, sessione 2/6). The next ADR number is `0170`. ADRs
+> refusal-in-args, sessione 2/6). Latest: `0190` (the encrypted credential
+> mandate is the default for interactive and scheduled queries; tasks add a
+> subordinate exact envelope). ADRs
 > `0115`, `0116`, `0121` are also skipped.

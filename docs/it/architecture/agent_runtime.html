@@ -148,6 +148,33 @@ La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, n
 </p>
 </div>
 
+<div class="callout note">
+<strong><a href="intelligent_executors.html">Executor intelligenti drop-in</a>.</strong> Il contratto pubblico non cambia:
+il pianificatore passa gli stessi argomenti e riceve lo stesso risultato. Un
+executor specializzato pu&ograve; per&ograve; risolvere internamente stati intermedi entro
+un budget chiuso. Per esempio <code>login_sites</code> osserva la pagina,
+gestisce consenso privacy, target fuori viewport, modulo completo e passaggio
+username-prima/continua/password-dopo, quindi verifica l'esito. Dopo il login,
+<code>act_sites</code> puo' mantenere un goal e attraversare menu con
+riosservazione bounded. Il modello pu&ograve; scegliere solo
+fra elementi enumerati dal broker; origine e campi credenziale restano
+deterministici e non sono visibili al pianificatore.
+</div>
+
+<div class="callout tip">
+<strong>Mandati persistenti delle credenziali.</strong> Le nuove
+credenziali web presentano un form privo di segreti: <code>interactive</code>
+oppure <code>sites.read</code>. Il secondo scope permette login e lettura
+automatizzata, ma non modifiche, invii, pagamenti, download o POST applicativi.
+Questo mandato si applica come default a tutte le query interattive; una query
+puo' restringerlo, mentre un'azione piu' ampia richiede il normale consenso
+one-shot e non modifica il mandato. Un task temporizzato aggiunge inoltre un
+envelope legato ad actor, hash della query, host esatti gia' verificati e
+operazioni ammesse. Un nuovo host o un effetto fuori dall'intersezione fa
+fallire il task con <code>mandate_scope_exceeded</code>, senza lasciarlo sospeso
+su un dialogo.
+</div>
+
 <div class="callout tip">
 <strong>Spesso il pianificatore non viene nemmeno scomodato.</strong>
 Prima di chiamare il modello, il runtime consulta i suoi
@@ -907,6 +934,15 @@ La risoluzione del callback &egrave; per <em>chiave string</em>:
 il task persiste il nome simbolico del callback, il dispatcher lo risolve a
 runtime contro un registro centralizzato. Niente serializzazione di
 <code>callable</code>, niente stale references al riavvio del daemon.
+</p>
+
+<p>
+Il ritorno del callback puo' essere un <code>CallbackOutcome</code> strutturato:
+<code>success</code>, <code>partial</code> o <code>error</code>, con output ed
+errore separati. Per <code>run_user_query</code> lo stato deriva dagli effetti
+e dai fallimenti reali della pipeline. La consegna del messaggio al canale non
+trasforma quindi un turno fallito in successo; gli errori annidati in
+<code>failed[]</code> alimentano <code>last_error</code> e il circuit-breaker.
 </p>
 
 <p>

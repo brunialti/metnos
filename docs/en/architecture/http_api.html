@@ -219,7 +219,7 @@ Each path requires at least the role indicated (see ch.&nbsp;3).
 <table>
 <thead><tr><th style="width:8%">Method</th><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
 <tbody>
-<tr><td>GET</td><td><code>/admin</code></td><td>Dashboard home.</td></tr>
+<tr><td>GET</td><td><code>/admin</code></td><td>Settings home.</td></tr>
 <tr><td>GET/POST</td><td><code>/admin/login</code> &middot; POST <code>/admin/logout</code></td><td>Admin access.</td></tr>
 <tr><td>GET</td><td><code>/admin/changes</code> + POST <code>/{id}/{accept|reject|stage|rollback|retry}</code></td><td>Unified change lifecycle (<code>change_intent</code>). Single view: introspective proposals, telos and promotions are now <em>family</em> facets of this registry.</td></tr>
 <tr><td>GET/POST</td><td><code>/admin/synth-proposals/{id}/evaluate</code></td><td>Evaluate a single synthesis proposal.</td></tr>
@@ -333,7 +333,7 @@ become filled badges in the breadcrumb) and, at the end, in the
 time without a dedicated event.
 </div>
 
-<h1 id="cap6">6. The <code>/admin</code> dashboard (htmx + uPlot)</h1>
+<h1 id="cap6">6. <code>/admin</code> Settings (htmx + uPlot)</h1>
 
 <p>
 A deliberately minimal frontend stack: <strong>htmx</strong> +

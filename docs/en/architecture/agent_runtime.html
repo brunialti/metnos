@@ -153,6 +153,32 @@ The key point: <em>useful behaviour emerges from composition</em>, not from hard
 </p>
 </div>
 
+<div class="callout note">
+<strong><a href="intelligent_executors.html">Drop-in intelligent executors</a>.</strong> The public contract does not
+change: the planner sends the same arguments and receives the same result. A
+specialised executor may resolve intermediate states internally under a fixed
+budget. For example, <code>login_sites</code> observes the page, reaches the
+sign-in area, handles privacy prompts, off-screen targets, complete forms, and
+username-first/continue/password-next flows, then verifies the outcome. After
+login, <code>act_sites</code> can keep a goal and traverse menus under a bounded
+re-observation loop. The model may only choose among elements
+enumerated by the broker; credential fields and origins remain deterministic
+and invisible to the planner.
+</div>
+
+<div class="callout tip">
+<strong>Persistent credential mandates.</strong> New web
+credentials display a secret-free form: <code>interactive</code> or
+<code>sites.read</code>. The latter permits automated login and reading, but
+not changes, sending, payments, downloads, or application POSTs. This mandate
+is the default for every interactive query; a query may narrow it, while a
+wider action requires ordinary one-shot consent and does not change it. A
+scheduled task also carries a subordinate envelope bound to its actor, query
+hash, previously verified exact hosts, and allowed operations. A new host or
+out-of-scope effect fails with <code>mandate_scope_exceeded</code> instead of
+suspending the task on a dialog.
+</div>
+
 <div class="callout tip">
 <strong>Often the planner is not even bothered.</strong> Before
 calling the model, the runtime consults its
@@ -910,6 +936,15 @@ Callback resolution is <em>by string key</em>: the task persists
 the symbolic callback name; the dispatcher resolves it at runtime against
 a centralized registry. No serialization of <code>callable</code>, no stale
 references on daemon restart.
+</p>
+
+<p>
+A callback may return a structured <code>CallbackOutcome</code>:
+<code>success</code>, <code>partial</code>, or <code>error</code>, with output
+and error kept separate. For <code>run_user_query</code>, status comes from
+the pipeline's actual effects and failures. Delivering a channel message no
+longer turns a failed turn into success; errors nested in <code>failed[]</code>
+feed <code>last_error</code> and the circuit breaker.
 </p>
 
 <p>

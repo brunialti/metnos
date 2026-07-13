@@ -352,10 +352,10 @@ hand? If your answers are <em>channel, agent runtime, agent runtime,
 vaglio, mnestome</em>, the map is yours.
 </div>
 
-<h2 id="canonical">5. The twenty-four canonical documents</h2>
+<h2 id="canonical">5. The twenty-five canonical documents</h2>
 
 <p>
-Below, the twenty-four documents grouped by role. All have an Italian
+Below, the twenty-five documents grouped by role. All have an Italian
 counterpart at
 <a href="../../it/architecture/"><code>/it/architecture/</code></a>.
 </p>
@@ -401,11 +401,19 @@ counterpart at
 <tbody>
 <tr>
  <td><a href="executor.html"><code>executor</code></a></td>
- <td>Anatomy of an executor: TOML manifest, Ed25519 signature, sandbox profile, lifecycle, vector contract (list-in, list-out). Current pool: 75 hand-crafted executors, including the multi-tier crawler (find_urls, read_urls_html, read_urls_pdf, login_session, group_entries) and handcrafted ones such as <code>compute_files_loc</code>.</td>
+ <td>Anatomy of an executor: TOML manifest, Ed25519 signature, sandbox profile, lifecycle, and vector contract (list-in, list-out). The current count lives in the generated catalog rather than this prose.</td>
+</tr>
+<tr>
+ <td><a href="executor_catalog.html"><code>executor catalog</code></a></td>
+ <td>Inventory generated from signed manifests: every first-party executor grouped by canonical domain, with purpose, criticality, platforms, and source location.</td>
 </tr>
 <tr>
  <td><a href="remote_executors.html"><code>remote_executors</code></a></td>
  <td>How a controlled part of the executor catalog can run on registered devices: <code>metnos-client</code>, device pairing, manifest placement, per-OS sandboxing, UI installation and explicit Windows/Linux limits.</td>
+</tr>
+<tr>
+ <td><a href="intelligent_executors.html"><code>intelligent executors</code></a></td>
+ <td>Narrow-mandate agents behind a regular executor contract: bounded adaptive loops, deterministic resolvers before models, unchanged authority, and verifiable postconditions. <code>login_sites</code> is the first example.</td>
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>
