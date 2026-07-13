@@ -612,7 +612,8 @@ def _post_submit_authenticated(observed: dict,
                                session_cookie_names: list[str]) -> bool:
     """Valuta gli stessi segnali positivi per password, TOTP e OTP esterno."""
     if (observed.get("still_pw") or observed.get("otp")
-            or observed.get("captcha") or observed.get("push")):
+            or observed.get("captcha") or observed.get("push")
+            or observed.get("password_rejected")):
         return False
     changed = list(observed.get("changed") or ())
     if session_cookie_names:
@@ -624,8 +625,14 @@ def _post_submit_authenticated(observed: dict,
                           re.IGNORECASE)
         for c in changed
     )
-    return bool(auth_cookie or (
-        changed and observed.get("navigation_confirmed")))
+    # Una navigazione di rotta confermata verso una superficie non-login (form
+    # password sparito, nessun rifiuto/sfida — gia' esclusi sopra) e' di per se'
+    # un segnale di sessione positivo (§2.8): distingue il successo dal solo
+    # "campo password scomparso". I pannelli LAN/self-hosted cookieless (router,
+    # NAS) tracciano la sessione lato server e riusano il cookie pre-login, quindi
+    # NON producono un cookie cambiato; senza questo ramo un login riuscito su
+    # SPA hash-route (`#/login` -> `#/home`) verrebbe dichiarato fallito.
+    return bool(auth_cookie or observed.get("navigation_confirmed"))
 
 
 def _totp_code(secret: str, *, now: float | None = None,
@@ -950,7 +957,6 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         reach_login=None, authorize_origin=None,
                         approved_origin: str | None = None,
                         max_entry_steps: int = 3,
-                        settle_initial: bool = False,
                         page_provider=None, factor_state: dict | None = None,
                         checkpoint=None,
                         total_timeout_s: float | None = None) -> dict:
@@ -1072,10 +1078,17 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     continue_attempted = False
     entry_steps = 0
     await _checkpoint(checkpoint, "discovering")
-    if settle_initial:
+    password_visible = await _has_toplevel_password(page)
+    # Un SPA hash-route puo' completare il `load` su `/` e instradare a
+    # `#/login` rendendo il form solo dopo. Se la superficie di login non e'
+    # ancora presente, attendila bounded prima di dichiararla assente: il
+    # gate ritorna appena trova password/username e non aggiunge latenza a un
+    # form gia' pronto. Copre sia il landing iniziale sia una transizione UI
+    # esplicita gia' avvenuta.
+    if not password_visible:
         await _wait_for_login_surface(
             page, budget.remaining(_LOGIN_SURFACE_SETTLE_S))
-    password_visible = await _has_toplevel_password(page)
+        password_visible = await _has_toplevel_password(page)
     for _ in range(max(1, int(max_entry_steps)) + 3):
         if budget.expired:
             return {"ok": True, "logged_in": False,

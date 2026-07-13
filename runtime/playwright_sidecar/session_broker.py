@@ -1206,7 +1206,6 @@ async def op_login(*, session_id: str, owner: str | None = None,
             }
             entry["login_flow"] = flow
             entry["factor_pending"] = False
-        settle_login_surface = False
 
         # Un token emesso durante la ricerca dell'area di login viene eseguito
         # nello stesso lock e poi la macchina riosserva la pagina. Il planner
@@ -1258,8 +1257,6 @@ async def op_login(*, session_id: str, owner: str | None = None,
                         "session_id": session_id}
             if executed.get("credential_origin"):
                 flow["approved_origin"] = executed["credential_origin"]
-            settle_login_surface = bool(
-                plan.get("login_flow") and executed.get("executed"))
 
         async def _reach_login_area(purpose: str = "login") -> dict:
             if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
@@ -1352,7 +1349,6 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     authorize_origin=_authorize_login_origin,
                     approved_origin=flow.get("approved_origin"),
                     max_entry_steps=_MAX_LOGIN_ENTRY_STEPS,
-                    settle_initial=settle_login_surface,
                     page_provider=lambda: entry.get("page"),
                     factor_state=flow.setdefault("factor_state", {}),
                     checkpoint=_login_checkpoint,

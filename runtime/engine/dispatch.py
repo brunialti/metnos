@@ -2788,6 +2788,30 @@ def _coerce_args_to_schema(framework: Framework,
         return framework
 
 
+_IPV4_RE = re.compile(
+    r"(?<![\w.])((?:25[0-5]|2[0-4]\d|1?\d?\d)"
+    r"(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?::(\d{1,5}))?(?![\w.])")
+
+
+def _site_url_from_host_token(text: str) -> Optional[str]:
+    """Deriva un URL sito da un IPv4 nudo (con porta opzionale) in `text`.
+
+    I pannelli LAN/self-hosted (router, NAS) vengono nominati come IP senza
+    schema; un IPv4 non ha TLD e sfugge alla regex dominio. Schema http://:
+    è la norma degli admin panel locali e coincide col piano che l'utente ha
+    già visto aprirsi. Ritorna None se non c'è un IPv4 valido."""
+    if not text:
+        return None
+    m = _IPV4_RE.search(text)
+    if not m:
+        return None
+    host = m.group(1)
+    port = m.group(2)
+    if port is not None and not (0 < int(port) <= 65535):
+        return None
+    return f"http://{host}:{port}" if port else f"http://{host}"
+
+
 def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                                    catalog: Optional[list]) -> Framework:
     """Spec sites F1/F2: un consumer (login/read/act_sites)
@@ -2853,15 +2877,34 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         if m:
             url = "https://" + m.group(1).lower()
     if not url:
+        # Pannelli LAN/self-hosted: l'utente nomina un IP nudo (router, NAS).
+        # Un IPv4 non ha TLD, quindi la regex dominio non lo prende; qui lo
+        # deriva su http:// (schema tipico degli admin panel locali, coerente
+        # col piano che l'utente ha già visto funzionare).
+        url = _site_url_from_host_token(query or "")
+    if not url:
         for s in consumers:
             for v in (getattr(s, "args", {}) or {}).values():
-                if isinstance(v, str) and v.startswith("http"):
-                    url = v.rstrip(".,;)")
-                    break
-                if isinstance(v, str) and _re.fullmatch(
-                        r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
-                        r"[a-z]{2,63}", v, _re.IGNORECASE):
-                    url = "https://" + v.lower()
+                # Il planner può mettere l'host in un arg scalare O come unico
+                # elemento di `session_ids` (scambiato per un session_id): in
+                # entrambi i casi ne deriviamo l'URL della sessione mancante.
+                for token in ((v,) if isinstance(v, str)
+                              else tuple(v) if isinstance(v, (list, tuple))
+                              else ()):
+                    if not isinstance(token, str):
+                        continue
+                    if token.startswith("http"):
+                        url = token.rstrip(".,;)")
+                        break
+                    derived = _site_url_from_host_token(token)
+                    if not derived and _re.fullmatch(
+                            r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+                            r"[a-z]{2,63}", token, _re.IGNORECASE):
+                        derived = "https://" + token.lower()
+                    if derived:
+                        url = derived
+                        break
+                if url:
                     break
             if url:
                 break

@@ -559,7 +559,7 @@ def test_login_waits_for_stable_password_after_transient_ambiguity(monkeypatch):
     out = asyncio.run(ci.perform_login(
         page=page, context=context, domain="login.example.test",
         form_hint=None, owner="alice", session_id="sid-transient",
-        op_timeout_s=5, settle_initial=True))
+        op_timeout_s=5))
 
     assert out == {"ok": True, "logged_in": True, "reason_code": None}
     assert page.polls == 21
@@ -630,6 +630,117 @@ def test_login_waits_for_delayed_spa_submit_outcome(monkeypatch):
 
     assert out == {"ok": True, "logged_in": True, "reason_code": None}
     assert page.polls == 3
+
+
+def test_post_submit_auth_accepts_cookieless_route_navigation():
+    """Turno reale 133ae123 (router FASTGate): login riuscito, ma il pannello
+    LAN riusa il cookie pre-login (nessun cookie cambiato) e conferma solo con
+    la navigazione hash-route `#/login` -> `#/home`. Una navigazione confermata
+    verso una superficie non-login e' un segnale di sessione positivo (§2.8)."""
+    from playwright_sidecar import credential_injection as ci
+    observed = {
+        "changed": [], "still_pw": False, "otp": False, "captcha": False,
+        "push": False, "password_rejected": False,
+        "navigation_confirmed": True,
+    }
+    assert ci._post_submit_authenticated(observed, []) is True
+
+
+def test_post_submit_auth_rejects_when_password_form_persists():
+    from playwright_sidecar import credential_injection as ci
+    observed = {
+        "changed": [], "still_pw": True, "otp": False, "captcha": False,
+        "push": False, "password_rejected": False,
+        "navigation_confirmed": True,
+    }
+    assert ci._post_submit_authenticated(observed, []) is False
+
+
+def test_post_submit_auth_rejects_explicit_password_rejection():
+    """Un rifiuto password esplicito e' terminale anche se la pagina ha
+    navigato (es. verso `/login?error=1`): mai dichiarare successo (§2.8)."""
+    from playwright_sidecar import credential_injection as ci
+    observed = {
+        "changed": [], "still_pw": False, "otp": False, "captcha": False,
+        "push": False, "password_rejected": True,
+        "navigation_confirmed": True,
+    }
+    assert ci._post_submit_authenticated(observed, []) is False
+
+
+def test_post_submit_auth_requires_named_cookie_when_configured():
+    """Se il vault dichiara `session_cookie_names`, la navigazione da sola non
+    basta: resta il contratto stretto sul cookie di sessione atteso."""
+    from playwright_sidecar import credential_injection as ci
+    observed = {
+        "changed": [], "still_pw": False, "otp": False, "captcha": False,
+        "push": False, "password_rejected": False,
+        "navigation_confirmed": True,
+    }
+    assert ci._post_submit_authenticated(observed, ["SESSION_ID"]) is False
+
+
+def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
+    """Turno reale 133ae123 (router FASTGate): l'open atterra su `/`, poi la
+    SPA hash-route instrada a `#/login` e rende il form solo dopo il `load`.
+    Il login deve attendere bounded la superficie di login sul landing iniziale
+    invece di dichiararla subito assente (`selector_missing`)."""
+    import asyncio
+    from playwright_sidecar import credential_injection as ci
+
+    monkeypatch.setattr(ci.credentials, "load", lambda domain: {
+        "username": "admin", "password": "secret",
+    } if domain == "router.test" else None)
+    monkeypatch.setattr(ci.credentials, "fingerprint", lambda _domain: "fp")
+    monkeypatch.setattr(ci.sites_audit, "record", lambda *_a, **_kw: None)
+    async def no_push(_page, _concept):
+        return False
+    monkeypatch.setattr(ci, "_page_matches_concept", no_push)
+
+    class Context:
+        async def cookies(self):
+            return []
+
+    class Page:
+        def __init__(self):
+            self.polls = 0
+            # Landing su `/`: nessun form finche' la SPA non instrada.
+            self.url = "http://router.test/"
+        async def evaluate(self, script):
+            form_ready = self.polls >= 3 and "#/home" not in self.url
+            if script == ci._HAS_PASSWORD_JS:
+                return form_ready
+            if script == ci._LOCATE_USERNAME_STAGE_JS:
+                return {"found": False}
+            if script == ci._LOCATE_LOGIN_FORM_JS:
+                return {"found": form_ready,
+                        "actionResolved": "http://router.test/",
+                        "hasUser": True, "hasSubmit": True}
+            if script == ci._CURRENT_FORM_ACTION_JS:
+                return "http://router.test/"
+            if script in (ci._DETECT_OTP_JS, ci._DETECT_CAPTCHA_JS,
+                          ci._PASSWORD_REJECTED_JS):
+                return False
+            return None
+        async def wait_for_timeout(self, _ms):
+            self.polls += 1
+        async def fill(self, *_a, **_kw):
+            return None
+        async def click(self, selector, **_kw):
+            assert selector == '[data-metnos-submit="1"]'
+            # Login riuscito: rotta hash `#/login` -> `#/home`, form sparito.
+            self.url = "http://router.test/#/home"
+        async def wait_for_load_state(self, *_a, **_kw):
+            return None
+
+    page = Page()
+    out = asyncio.run(ci.perform_login(
+        page=page, context=Context(), domain="router.test",
+        form_hint=None, owner="admin", session_id="sid-router",
+        op_timeout_s=5))
+
+    # Cookieless + navigazione hash confermata => login riuscito.
+    assert out == {"ok": True, "logged_in": True, "reason_code": None}
 
 
 def test_otp_detector_requires_visible_enabled_input():
@@ -1824,7 +1935,6 @@ def test_login_sites_intelligence_is_drop_in_and_resumes_gate(monkeypatch):
     observed_steps = []
 
     async def fake_login(**kwargs):
-        settle_flags.append(bool(kwargs.get("settle_initial")))
         if kwargs["page"].login_form:
             observed_steps.append(entry["login_flow"]["steps"])
             return {"ok": True, "logged_in": True, "reason_code": None}
@@ -1845,7 +1955,6 @@ def test_login_sites_intelligence_is_drop_in_and_resumes_gate(monkeypatch):
         "secret_pending": False, "reveal_attempts": set(),
         "action_replans": {}, "lock": asyncio.Lock(),
     }
-    settle_flags = []
     monkeypatch.setitem(sb._sessions, "sid-login-agent", entry)
 
     first = asyncio.run(sb.op_login(
@@ -1862,7 +1971,6 @@ def test_login_sites_intelligence_is_drop_in_and_resumes_gate(monkeypatch):
         approval_token=first["approval_token"]))
     assert second["ok"] and second["logged_in"]
     assert observed_steps == [1]
-    assert settle_flags == [False, True]
     assert entry["authenticated"] and not entry["gate_pending"]
     assert "auth.x.test" in entry["allowlist"]
     assert "login_flow" not in entry
@@ -3022,6 +3130,34 @@ def test_sites_guard_derives_https_from_bare_domain_for_login():
     assert [s.tool for s in out.steps] == ["open_sites", "login_sites"]
     assert out.steps[0].args == {"urls": ["https://example.com"]}
     assert out.steps[1].args == {"domain": "example.com", "from_step": 1}
+
+
+def test_sites_guard_derives_http_from_bare_ip_for_login():
+    """Turno reale e8d23c80: «login a 192.168.1.10 e dimmi i device attivi».
+    Il planner emette solo login_sites con l'IP scambiato per session_id e
+    nessun open_sites. Un IPv4 non ha TLD, quindi la regex dominio non lo
+    prende: il guard deve derivare http://<ip> (pannelli LAN) e ricostruire
+    la catena open->login."""
+    from engine.dispatch import _ensure_site_session_precursor
+    from engine.types import Framework, Intent, StepSpec
+    fw = Framework(steps=[StepSpec(
+        tool="login_sites", args={"session_ids": ["192.168.1.10"]})])
+    intent = Intent(verb="login", object="sites")
+    out = _ensure_site_session_precursor(
+        fw, intent, "login a 192.168.1.10 e dimmi i device attivi", None)
+    assert [s.tool for s in out.steps] == ["open_sites", "login_sites"]
+    assert out.steps[0].args == {"urls": ["http://192.168.1.10"]}
+    assert out.steps[1].args == {"from_step": 1}
+
+
+def test_sites_guard_derives_bare_ip_with_port_from_query():
+    from engine.dispatch import _ensure_site_session_precursor
+    from engine.types import Framework, Intent, StepSpec
+    fw = Framework(steps=[StepSpec(tool="login_sites", args={})])
+    intent = Intent(verb="login", object="sites")
+    out = _ensure_site_session_precursor(
+        fw, intent, "accedi a 192.168.1.10:8080", None)
+    assert out.steps[0].args == {"urls": ["http://192.168.1.10:8080"]}
 
 
 def test_sites_guard_recruits_login_from_natural_intent():
