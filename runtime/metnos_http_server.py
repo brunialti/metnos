@@ -124,6 +124,10 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
         # gia' in v2, skip. Best-effort: errori warning, non bloccano boot.
         try:
             import config as _C  # ADR 0148 rename-resilient
+            import recurring_tasks as _recurring_tasks
+            # The v1 registry remains the authority source for task mandates.
+            # Upgrade it before scheduler_v2 reads or executes existing rows.
+            _recurring_tasks.init_db()
             recurring_db = _C.DB_RECURRING_TASKS
             state_db = _C.DB_SCHEDULER
             summary = _mig.migrate(

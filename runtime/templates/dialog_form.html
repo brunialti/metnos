@@ -6,8 +6,13 @@
   {% if description %}
   <p class="muted">{{ description|e }}</p>
   {% endif %}
+  <p class="muted" style="font-size:.78rem;overflow-wrap:anywhere;">
+    {% if origin_turn_id %}turn_id: <code>{{ origin_turn_id|e }}</code> · {% endif %}
+    dialog_id: <code>{{ dialog_id|e }}</code>
+  </p>
 
   <form method="post" action="/agent/dialog/{{ dialog_id }}/submit"
+        data-dialog-id="{{ dialog_id|e }}" data-turn-id="{{ origin_turn_id|e }}"
         autocomplete="off" style="display:flex;flex-direction:column;gap:.8rem;">
     {% for step in dialog %}
       {% set var_id = "f_" ~ step.var %}
@@ -224,6 +229,15 @@
             {type:'metnos.dialog.done', redirect_url, completion_text, turn_id,
              attachments, turn_meta}, '*');
         } else {
+          if(r.status === 404 || r.status === 410){
+            const state = r.headers.get('X-Metnos-Dialog-State')
+                          || (r.status === 404 ? 'missing' : 'expired');
+            window.parent.postMessage(
+              {type:'metnos.dialog.terminal', state,
+               turn_id:form.dataset.turnId || '',
+               dialog_id:form.dataset.dialogId || ''}, '*');
+            return;
+          }
           _reenable();
           const t = await r.text();
           // Mostra errore inline nel form
@@ -236,7 +250,15 @@
                               + 'background:var(--err-soft);border-radius:6px;margin-top:.5rem;';
             form.parentNode.insertBefore(err, form.nextSibling);
           }
-          err.textContent = '⚠ Errore submit: ' + (t.substring(0, 200) || r.status);
+          let detail = t.substring(0, 200) || String(r.status);
+          if(r.status === 404 || r.status === 410){
+            detail = {{ expired_message|tojson }};
+          }
+          const refs = [
+            form.dataset.turnId ? 'turn_id: ' + form.dataset.turnId : '',
+            'dialog_id: ' + (form.dataset.dialogId || '?'),
+          ].filter(Boolean).join(' · ');
+          err.textContent = '⚠ Errore submit: ' + detail + '\n' + refs;
         }
       } catch(ex) {
         _reenable();
@@ -250,9 +272,26 @@
       e.preventDefault();
       if(!confirm('Annullare il dialogo?')) return;
       try {
-        await fetch(cancelLink.href);
-      } catch(_){}
-      window.parent.postMessage({type:'metnos.dialog.cancelled'}, '*');
+        const r = await fetch(cancelLink.href, {cache:'no-store'});
+        if(r.ok){
+          window.parent.postMessage(
+            {type:'metnos.dialog.cancelled',
+             turn_id:form ? (form.dataset.turnId || '') : '',
+             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+          return;
+        }
+        if(r.status === 404 || r.status === 410){
+          window.parent.postMessage(
+            {type:'metnos.dialog.terminal',
+             state:r.headers.get('X-Metnos-Dialog-State') || 'missing',
+             turn_id:form ? (form.dataset.turnId || '') : '',
+             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+          return;
+        }
+        alert('Errore HTTP ' + r.status);
+      } catch(ex){
+        alert('Errore di rete: ' + ex);
+      }
     });
   }
 })();

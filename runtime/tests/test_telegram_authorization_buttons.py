@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -205,7 +206,7 @@ def test_keyboard_for_proposal_dialog_state_actor_keyed(isolated_dialog_dir):
         "dialog_id": "dlg11", "title": "Autorizzazione",
         "dialog": [_choice_step(3)],
         "fmt": "telegram_inline", "values_collected": {}, "step_index": 0,
-        "started_at": "2026-06-10T00:00:00+00:00",
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "actor": "host", "channel": "telegram",
         "completed": False, "cancelled": False,
     }
@@ -353,7 +354,7 @@ def test_dialog_callback_resolves_actor_keyed_state(
             ]},
         }],
         "fmt": "telegram_inline", "values_collected": {}, "step_index": 0,
-        "started_at": "2026-06-10T00:00:00+00:00",
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "actor": "host", "channel": "telegram",
         "sender_id": "telegram:host",
         "completed": False, "cancelled": False,
@@ -381,7 +382,7 @@ def test_typed_reply_resolves_actor_keyed_state(
         "dialog": [{"var": "confirm", "prompt": "Procedo?",
                      "schema": {"kind": "yes_no"}}],
         "fmt": "telegram_inline", "values_collected": {}, "step_index": 0,
-        "started_at": "2026-06-10T00:00:00+00:00",
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "actor": "host", "channel": "telegram",
         "sender_id": "telegram:host",
         "completed": False, "cancelled": False,
@@ -467,7 +468,7 @@ def test_scheduled_push_attaches_keyboard_and_saves_cap_pending(
                         "choices": ["approva", "edita", "rifiuta"]},
         }],
         "fmt": "telegram_inline", "values_collected": {}, "step_index": 0,
-        "started_at": "2026-06-10T00:00:00+00:00",
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "actor": "host", "channel": "telegram",
         "sender_id": "telegram:host",
         "completed": False, "cancelled": False,

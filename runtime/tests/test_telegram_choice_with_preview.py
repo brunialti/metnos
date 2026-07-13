@@ -12,6 +12,7 @@ Mock del TelegramChannel: niente HTTP, niente API. Verifichiamo:
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -158,7 +159,7 @@ def test_telegram_callback_decode_choice_with_preview(safe_image, monkeypatch):
         "fmt": "telegram_inline",
         "values_collected": {},
         "step_index": 0,
-        "started_at": "2026-05-08T00:00:00Z",
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "actor": "host",
         "channel": "telegram",
         "completed": False, "cancelled": False,

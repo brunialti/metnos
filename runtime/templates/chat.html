@@ -52,7 +52,7 @@ header form button:hover{color:var(--accent)}
    (.msg max-width sotto), non su un cassetto stretto. */
 #log{flex:1;padding:1.1rem 1rem 1.4rem;display:flex;flex-direction:column;
      gap:.7rem;width:100%}
-/* Stato vuoto (prima query / dopo "pulisci"): invito discreto.
+/* Stato vuoto (prima query): invito discreto.
    Sparisce appena compare il primo messaggio (#log:empty). */
 #log:empty::before{content:"";display:block;width:12px;height:12px;
      border-radius:4px;background:var(--accent);margin:16vh auto .95rem;
@@ -228,6 +228,21 @@ button:disabled{opacity:.5;cursor:not-allowed}
                   transition:opacity var(--t-1) var(--ease)}
 .gallery-grid img:hover{outline:2px solid var(--accent);outline-offset:-2px;
                   opacity:.92}
+.dialog-context-preview{display:grid;
+                  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+                  gap:4px;max-height:170px;overflow:auto;margin-top:.55rem;
+                  padding:4px;border:1px solid var(--border);
+                  border-radius:var(--r-1);background:var(--surface-2)}
+.dialog-context-preview button{border:0;padding:0;background:transparent;
+                  min-width:0;cursor:zoom-in}
+.dialog-context-preview img{display:block;width:100%;height:145px;
+                  object-fit:contain;border-radius:3px;background:#fff}
+.dialog-context-preview img:hover{outline:2px solid var(--accent);
+                  outline-offset:-2px}
+.dialog-stale{padding:.65rem .75rem;color:var(--muted);
+                  background:var(--surface-2);font-size:var(--fs-1)}
+.dialog-stale code{display:block;margin-top:.35rem;color:var(--navy);
+                  overflow-wrap:anywhere}
 .gallery-link{display:inline-block;margin:.45rem .2rem .15rem;
               font-size:var(--fs-1);font-weight:600;
               color:var(--accent);text-decoration:none;
@@ -336,14 +351,13 @@ body.readonly #q{cursor:not-allowed}
   <span class="role">{{ role }}</span>
   <span class="grow"></span>
   <a href="#" id="copyChatBtn" title="copia l'intera conversazione negli appunti">copia chat</a>
-  <a href="#" id="clearBtn" title="pulisci chat locale">pulisci</a>
   {% if role == "admin" %}
-  <a href="/admin">panoramica</a>
+  <a href="/admin">Settings</a>
   <form method="post" action="/admin/logout">
     <button type="submit">logout</button>
   </form>
   {% else %}
-  <a href="/admin/login">admin</a>
+  <a href="/admin/login">Settings</a>
   {% endif %}
 </header>
 
@@ -443,6 +457,22 @@ function pushHistory(rec){
   items.push(rec);
   saveHistory(items);
 }
+function removeDialogHistory(dialogId){
+  if(!dialogId) return;
+  const marker = '/agent/dialog/' + dialogId + '/form';
+  saveHistory(loadHistory().filter((rec) =>
+    !String((rec && rec.text) || '').includes(marker)));
+}
+function hasSettledTurnHistory(turnId, dialogId){
+  if(!turnId) return false;
+  const marker = '/agent/dialog/' + (dialogId || '') + '/form';
+  return loadHistory().some((rec) => {
+    if(String((rec && rec.text) || '').includes(marker)) return false;
+    const recMeta = rec && rec.meta;
+    return !!(recMeta && typeof recMeta === 'object'
+              && recMeta.turn_id === turnId);
+  });
+}
 function clearHistory(){
   try { localStorage.removeItem(HISTORY_KEY); } catch(_){}
   log.innerHTML = '';
@@ -452,7 +482,19 @@ function clearHistory(){
 function loadCmdBuf(){
   try {
     const raw = localStorage.getItem(CMDBUF_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if(raw) return JSON.parse(raw);
+    // Migrazione lazy dalle versioni che salvavano solo la chat completa.
+    // Conserva esclusivamente testo digitato dall'utente, dedup consecutivo.
+    const migrated = [];
+    for(const rec of loadHistory()){
+      if(!rec || rec.cls !== 'me' || typeof rec.text !== 'string') continue;
+      const text = rec.text.trim();
+      if(!text || (migrated.length && migrated[migrated.length - 1] === text)) continue;
+      migrated.push(text);
+    }
+    const trimmed = migrated.slice(-CMDBUF_MAX);
+    localStorage.setItem(CMDBUF_KEY, JSON.stringify(trimmed));
+    return trimmed;
   } catch(_){ return []; }
 }
 function pushCmdBuf(text){
@@ -610,7 +652,21 @@ function buildChatTranscript(){
     if(d.classList.contains('me')) role = 'Tu';
     else if(d.classList.contains('err')) role = 'Errore';
     else if(d.classList.contains('tool') || d.classList.contains('tool-info')) role = 'Tool';
-    parts.push(role + ': ' + t);
+    const lines = [role + ': ' + t];
+    const turnId = (d.dataset.turnId || '').trim();
+    if(turnId) lines.push('turn_id: ' + turnId);
+    if(d.dataset.path){
+      try {
+        const path = JSON.parse(d.dataset.path);
+        if(Array.isArray(path) && path.length){
+          lines.push('path: ' + path.map((step) => {
+            const tool = (step && step.tool) ? String(step.tool) : '?';
+            return tool + (step && step.ok === false ? ' [errore]' : '');
+          }).join(' -> '));
+        }
+      } catch(_) {}
+    }
+    parts.push(lines.join('\n'));
   });
   return parts.join('\n\n');
 }
@@ -629,10 +685,44 @@ function buildChatTranscript(){
   });
 })();
 
+function mergeDialogCompletionMeta(originMeta, eventTurnId, turnMeta){
+  const origin = (originMeta && typeof originMeta === 'object')
+    ? originMeta : {};
+  const resumed = (turnMeta && typeof turnMeta === 'object') ? turnMeta : {};
+  const turnId = resumed.turn_id || eventTurnId || origin.turn_id || '';
+  const resumedPath = Array.isArray(resumed.path) ? resumed.path : [];
+  const originPath = Array.isArray(origin.path) ? origin.path : [];
+  const hasResumeMeta = !!(resumed.turn_id || resumed.total_ms || resumedPath.length);
+  if(!hasResumeMeta){
+    return {
+      ...origin,
+      turn_id: turnId,
+      path: originPath,
+      left: origin.left || (turnId
+        ? {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + turnId.slice(0,8) : ''),
+    };
+  }
+  return {
+    turn_id: turnId,
+    path: resumedPath.length ? resumedPath : originPath,
+    where: resumed.target_device || origin.where
+           || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }},
+    whereRemote: !!resumed.target_device,
+    left: (turnId
+      ? {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + turnId.slice(0,8) : '')
+      + (resumed.total_ms
+        ? ' · ' + (resumed.total_ms/1000).toFixed(1) + 's' : ''),
+    right: origin.right || '',
+  };
+}
+
 function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   const stick = (cls === 'me') || nearBottom();
   const d = document.createElement('div');
   d.className = 'msg ' + cls;
+  let inlineFormOwnsImages = false;
+  let inlineFormContext = null;
+  let inlineFormWrap = null;
   // ADR 0109: htmlMode=true significa che `text` e' gia' HTML safe
   // prodotto server-side da to_safe_html (escape iniziale + whitelist
   // b/i/code/pre/a). Solo i bot final_message vanno in htmlMode; user
@@ -675,6 +765,8 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
     const mF = txt.match(rxForm);
     if(mF){
       const formPath = mF[1];
+      const dialogIdMatch = formPath.match(/\/agent\/dialog\/([^/]+)\/form/);
+      const dialogId = dialogIdMatch ? dialogIdMatch[1] : '';
       // Rimuovi il marker dal display sia da innerHTML che da textContent.
       const rxRemove = /\s*INLINE_FORM:\/agent\/dialog\/[A-Za-z0-9._-]+\/form\s*/g;
       if(htmlMode === true){
@@ -682,15 +774,61 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
       } else {
         d.textContent = d.textContent.replace(rxRemove, '');
       }
+      // Una cattura allegata a un consenso e' contesto, non il risultato del
+      // turno. La mostriamo compatta DENTRO la stessa bolla, prima del modulo:
+      // la galleria separata finiva dopo l'iframe e l'autoscroll nascondeva la
+      // domanda di consenso (turn live c76ae0c1).
+      const contextImages = Array.isArray(attachments)
+        ? attachments.filter(a => a && a.thumb_url) : [];
+      if(contextImages.length){
+        inlineFormOwnsImages = true;
+        const preview = document.createElement('div');
+        preview.className = 'dialog-context-preview';
+        const items = contextImages.map(a => ({
+          full: a.full_url || a.thumb_url,
+          cap: a.caption || a.basename || '',
+        }));
+        contextImages.forEach((a, idx) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          const img = document.createElement('img');
+          img.src = a.thumb_url;
+          img.alt = a.caption || a.basename || '';
+          img.loading = 'lazy';
+          btn.appendChild(img);
+          btn.addEventListener('click', () => openLightbox(items, idx));
+          preview.appendChild(btn);
+        });
+        inlineFormContext = preview;
+      }
       const wrap = document.createElement('div');
       wrap.style.cssText = 'margin-top:.6rem;border:1px solid var(--border);'
                         + 'border-radius:.4rem;overflow:hidden;background:#fff;';
       const ifr = document.createElement('iframe');
-      ifr.src = formPath;
       ifr.style.cssText = 'width:100%;min-height:520px;border:0;display:block;';
       ifr.title = 'Modulo dialog';
-      wrap.appendChild(ifr);
-      d.appendChild(wrap);
+      const loading = document.createElement('div');
+      loading.className = 'dialog-stale';
+      loading.textContent = {{ msg("MSG_PHASE_PLANNING")|tojson }};
+      wrap.appendChild(loading);
+      inlineFormWrap = wrap;
+      const dialogMessage = (state) => {
+        if(state === 'completed') return {{ msg("MSG_ORCH_DIALOG_DONE")|tojson }};
+        if(state === 'cancelled') return {{ msg("MSG_DIALOG_CANCELLED")|tojson }};
+        return {{ msg("MSG_DIALOG_EXPIRED")|tojson }};
+      };
+      const settleDialog = (state) => {
+        const originTurnId = (meta && typeof meta === 'object')
+          ? (meta.turn_id || '') : '';
+        const alreadySettled = hasSettledTurnHistory(originTurnId, dialogId);
+        removeDialogHistory(dialogId);
+        window.removeEventListener('message', onMsg);
+        if(d.isConnected) d.remove();
+        if(!alreadySettled){
+          add('bot', dialogMessage(state),
+              mergeDialogCompletionMeta(meta, '', null), true);
+        }
+      };
       // Auto-resize iframe quando il contenuto cambia (mando un messaggio
       // dall'iframe via postMessage; vedi dialog_form.html).
       // Sostituisco l'INTERO bubble bot (non solo wrap) cosi' il form
@@ -705,6 +843,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           const rurl = ev.data.redirect_url || '';
           const ctxt = ev.data.completion_text || '';
           if(rurl){
+            removeDialogHistory(dialogId);
             d.innerHTML = '<div style="padding:.4rem;color:var(--navy);font-size:.9em;">'
                         + '→ Apertura pagina di autorizzazione&hellip;'
                         + '</div>';
@@ -718,45 +857,78 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
             // stessa forma dei turni normali (dove · turn:id · tempo).
             // (b) 6/7: RIMUOVI il contenitore .msg del form (svuotarlo
             // lasciava una bolla vuota col suo padding prima della risposta).
-            d.remove();
             const tid = ev.data.turn_id || '';
             const tm = ev.data.turn_meta || null;
-            let meta = tid ? {turn_id: tid, left: '', right: ''} : '';
-            if(tm && (tm.turn_id || tm.total_ms)){
-              // Stessa forma dei turni normali: breadcrumb executor (path) +
-              // where (accento se remoto) + «turn:id · tempo» in left.
-              meta = {turn_id: tm.turn_id || tid,
-                      path: Array.isArray(tm.path) ? tm.path : undefined,
-                      where: tm.target_device ? tm.target_device : 'server Metnos',
-                      whereRemote: !!tm.target_device,
-                      left: (tm.turn_id ? 'turn:' + tm.turn_id.slice(0,8) : '')
-                            + (tm.total_ms ? ' · ' + (tm.total_ms/1000).toFixed(1) + 's' : ''),
-                      right: ''};
-            }
+            const completionMeta = mergeDialogCompletionMeta(meta, tid, tm);
             const atts = Array.isArray(ev.data.attachments) ? ev.data.attachments : null;
             const gInfo = (tm && tm.gallery_url && tm.n_total_matches)
               ? { gallery_url: tm.gallery_url, n_total_matches: tm.n_total_matches }
               : null;
-            add('bot', ctxt, meta, true, atts, gInfo);
+            removeDialogHistory(dialogId);
+            d.remove();
+            add('bot', ctxt, completionMeta, true, atts, gInfo);
           } else {
-            d.innerHTML = '<div style="padding:.4rem;color:var(--sage);font-size:.9em;">'
-                        + '✓ Risposta dialog inviata.'
-                        + '</div>';
+            settleDialog('completed');
           }
           window.removeEventListener('message', onMsg);
         }
         if(ev.data && ev.data.type === 'metnos.dialog.cancelled'){
-          d.innerHTML = '<div style="padding:.4rem;color:var(--err-red);font-size:.9em;">'
-                      + '✗ Dialog annullato.</div>';
-          window.removeEventListener('message', onMsg);
+          settleDialog('cancelled');
+        }
+        if(ev.data && ev.data.type === 'metnos.dialog.terminal'){
+          settleDialog(ev.data.state || 'expired');
         }
       };
       window.addEventListener('message', onMsg);
+      // Il GET del form e' anche la verifica autoritativa dello stato: una sola
+      // richiesta, nessuna finestra fra probe e caricamento dell'iframe.
+      const loadDialogForm = async () => {
+        try {
+          const response = await fetch(formPath, {
+            method: 'GET', cache: 'no-store',
+            headers: {'Accept': 'text/html'},
+          });
+          if(response.status === 404 || response.status === 410){
+            const state = response.headers.get('X-Metnos-Dialog-State')
+                          || (response.status === 404 ? 'missing' : 'expired');
+            settleDialog(state);
+            return;
+          }
+          if(!response.ok) throw new Error('HTTP ' + response.status);
+          const formHtml = await response.text();
+          wrap.replaceChildren(ifr);
+          ifr.srcdoc = formHtml;
+        } catch(ex){
+          const unavailable = document.createElement('div');
+          unavailable.className = 'dialog-stale';
+          unavailable.textContent = {{ msg("MSG_DIALOG_TEMPORARILY_UNAVAILABLE")|tojson }};
+          const ref = document.createElement('code');
+          ref.textContent = 'dialog_id: ' + (dialogId || '?');
+          unavailable.appendChild(ref);
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'btn';
+          retry.textContent = {{ msg("UI_CHANGE_BTN_RETRY")|tojson }};
+          retry.addEventListener('click', loadDialogForm, {once:true});
+          unavailable.appendChild(retry);
+          wrap.replaceChildren(unavailable);
+        }
+      };
+      loadDialogForm();
     }
   }
   // Snapshot del testo PULITO (prima di meta/azioni/feedback) per la
   // copia-chat globale dell'header. htmlMode bot → textContent = plain text.
   d.dataset.copytext = (d.textContent || '').trim();
+  if(meta && typeof meta === 'object'){
+    if(meta.turn_id) d.dataset.turnId = String(meta.turn_id);
+    if(Array.isArray(meta.path)){
+      d.dataset.path = JSON.stringify(meta.path.map((step) => ({
+        tool: step && step.tool ? String(step.tool) : '?',
+        ok: !(step && step.ok === false),
+      })));
+    }
+  }
   // meta puo' essere:
   //  - stringa: una riga sola
   //  - oggetto {path: [{tool, ok}], text: "turn xxx · NNs"}: prima riga
@@ -829,6 +1001,10 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
       }
     }
   }
+  // Il contesto e il form vengono aggiunti soltanto DOPO path e metadati:
+  // turn_id/executor restano visibili senza dover scorrere sotto l'iframe.
+  if(inlineFormContext) d.appendChild(inlineFormContext);
+  if(inlineFormWrap) d.appendChild(inlineFormWrap);
   // Copia testo (bolle utente): la query originale e' `text` letterale
   // (le 'me' non vanno mai in htmlMode). Riga azioni in coda alla bolla,
   // dopo meta — nessuna interferenza con feedback/lightbox/autoscroll.
@@ -841,8 +1017,8 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   log.appendChild(d);
   if(attachments && attachments.length){
     const imgs = attachments.filter(a => a && a.thumb_url);
-    const files = attachments.filter(a => a && a.download_url);
-    if(imgs.length) addGallery(imgs, galleryInfo);
+    const files = attachments.filter(a => a && a.download_url && !a.thumb_url);
+    if(imgs.length && !inlineFormOwnsImages) addGallery(imgs, galleryInfo);
     if(files.length) addFileChips(files);
   }
   if(stick) scrollToEnd();
@@ -1160,16 +1336,6 @@ document.addEventListener('visibilitychange', () => {
 
 // Boot di session + history viene fatto in fondo allo script,
 // dopo che tutte le const/let sono fuori dal TDZ (deviceToken, sessionBanner).
-
-document.getElementById('clearBtn').addEventListener('click', (e) => {
-  e.preventDefault();
-  if(confirm('cancellare la chat locale (messaggi e buffer comandi)?')){
-    clearHistory();
-    clearCmdBuf();
-    cmdIdx = -1;
-    cmdDraft = '';
-  }
-});
 
 // Composer textarea auto-grow: 1 riga di base, cresce col contenuto fino al
 // cap relativo al viewport (45vh, si adatta a rotazione/resize; poi scrolla).
@@ -1554,16 +1720,6 @@ async function handleSlashCommand(text){
   const [cmd, ...rest] = text.slice(1).trim().split(/\s+/);
   const arg = rest.join(' ');
   switch(cmd.toLowerCase()){
-    case 'clear':
-    case 'cls':
-      clearHistory();
-      add('tool-info', '✓ chat pulita (buffer comandi conservato — usa /clearbuf per cancellarlo)', null, false);
-      return true;
-    case 'clearbuf':
-      clearCmdBuf();
-      cmdIdx = -1; cmdDraft = '';
-      add('tool-info', '✓ buffer comandi cancellato', null, false);
-      return true;
     case 'reload':
       location.reload();
       return true;

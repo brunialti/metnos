@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -184,3 +185,30 @@ def test_consume_idempotency_after_completion(dp):
     res = dp.consume_pending_step("host", "d5", "a", "z")
     assert res["ok"] is False
     assert res["error"] == "dialog_already_completed"
+
+
+def test_consume_rejects_expired_state(dp):
+    old = (datetime.now(tz=timezone.utc) - timedelta(hours=2)).isoformat()
+    state = _make_state(dialog_id="expired", started_iso=old)
+    state["timeout_s"] = 60
+    dp.save_pending("host", "expired", state)
+    res = dp.consume_pending_step("host", "expired", "a", "x")
+    assert res == {"ok": False, "error": "dialog_expired",
+                   "dialog_id": "expired"}
+
+
+def test_concurrent_consume_has_single_winner(dp):
+    state = _make_state(dialog_id="race")
+    state["dialog"] = state["dialog"][:1]
+    dp.save_pending("host", "race", state)
+
+    def consume(value):
+        return dp.consume_pending_step("host", "race", "a", value)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(consume, range(8)))
+
+    assert sum(bool(r.get("ok")) for r in results) == 1
+    final = dp.load_pending("host", "race")
+    assert final["completed"] is True
+    assert final["values_collected"]["a"] in range(8)

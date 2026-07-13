@@ -64,6 +64,24 @@ class TestToSafeHtmlFullTable(unittest.TestCase):
         # Nessuno style left explicit
         self.assertNotIn('text-align:left', html)
 
+    def test_link_after_table_remains_a_clickable_separate_block(self):
+        md = (
+            "| file | rows |\n"
+            "| --- | --- |\n"
+            "| report.xlsx | 3 |\n\n"
+            "- [Sorgente](https://example.com/source)"
+        )
+
+        html = to_safe_html_full(md)
+
+        self.assertIn("</table>\n<ul>", html)
+        self.assertIn(
+            '<a href="https://example.com/source" target="_blank" '
+            'rel="noopener noreferrer">Sorgente</a>',
+            html,
+        )
+        self.assertNotIn("[Sorgente]", html)
+
 
 class TestToSafeHtmlFullHeadings(unittest.TestCase):
 
@@ -182,7 +200,9 @@ class TestToSafeHtmlFullInline(unittest.TestCase):
 
     def test_link(self):
         html = to_safe_html_full("[click](https://example.com)")
-        self.assertIn('<a href="https://example.com">click</a>', html)
+        self.assertIn(
+            '<a href="https://example.com" target="_blank" '
+            'rel="noopener noreferrer">click</a>', html)
 
     def test_italic_underscore(self):
         html = to_safe_html_full("questo e' _enfatico_ qui")

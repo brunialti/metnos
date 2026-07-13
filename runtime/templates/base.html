@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}Console Metnos{% endblock %}</title>
+<title>{% block title %}Settings · Metnos{% endblock %}</title>
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 {% block head %}{% endblock %}
 {% include "_design_system.html" %}
@@ -29,6 +29,9 @@ main{flex:1;min-width:0;padding:var(--sp-5) var(--sp-6) var(--sp-7)}
 .brand-tag{font-family:var(--font-mono);font-size:var(--fs-0);color:var(--muted);
   border:1px solid var(--border);border-radius:var(--r-pill);
   padding:0 .5em;line-height:1.7}
+.chat-link{margin-left:auto;font-size:var(--fs-1);font-weight:600;
+  color:var(--accent);text-decoration:none}
+.chat-link:hover{text-decoration:underline}
 
 .nav{flex:1;padding:0 var(--sp-2) var(--sp-3)}
 .nav-h{font-size:var(--fs-0);font-weight:600;letter-spacing:.08em;
@@ -64,6 +67,7 @@ main{flex:1;min-width:0;padding:var(--sp-5) var(--sp-6) var(--sp-7)}
   background:var(--surface);border-bottom:1px solid var(--border)}
 .mobilebar .brand-mark{width:9px;height:9px}
 .mobilebar .brand{font-weight:650;color:var(--ink)}
+.mobilebar .chat-link{margin-left:auto}
 #navToggle{display:inline-flex;flex-direction:column;justify-content:center;gap:4px;
   width:40px;height:36px;padding:0 9px;background:transparent;
   border:1px solid var(--border-strong);border-radius:var(--r-1);cursor:pointer}
@@ -95,6 +99,7 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
   </button>
   <span class="brand-mark" aria-hidden="true"></span>
   <span class="brand">Metnos</span>
+  <a class="chat-link" href="/">Chat</a>
 </header>
 
 <div class="shell">
@@ -103,9 +108,10 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
       <span class="brand-mark" aria-hidden="true"></span>
       <a class="brand" href="/admin">Metnos</a>
       <span class="brand-tag">console</span>
+      <a class="chat-link" href="/">Chat</a>
     </div>
     <nav class="nav" aria-label="Navigazione console">
-      <a href="/admin">Panoramica</a>
+      <a href="/admin">Settings</a>
 
       <div class="nav-h" id="nav-h-att">Attività</div>
       <a href="/admin/turns">Turni</a>
@@ -127,7 +133,6 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
       <a href="/admin/devices">Dispositivi</a>
     </nav>
     <div class="sidebar-foot">
-      <a href="/" title="torna alla chat">← Chat</a>
       <span class="grow"></span>
       <form method="post" action="/admin/logout">
         <button type="submit">Esci</button>

@@ -62,3 +62,27 @@ def test_no_entries_falls_back_without_crash():
     resp = MetisTerminator().explain(
         query="x", intent=_intent(), failed_run=run)
     assert isinstance(resp.final_text, str) and resp.final_text
+
+
+def test_failed_site_entry_is_not_presented_as_partial_search_result():
+    run = RunResult(steps=[_Step({
+        "ok": False, "error_class": "quota_exceeded", "entries": [{
+            "url": "https://telepass.com", "ok": False,
+            "session_id": None, "reason_code": "quota_exceeded",
+        }],
+    })])
+    assert MetisTerminator._best_entries(run) == []
+    resp = MetisTerminator().explain(
+        query="accedi al sito", intent=_intent(), failed_run=run,
+        error_class="quota_exceeded")
+    assert resp.root_cause != "partial_results"
+    assert "risultati pertinenti" not in resp.final_text.lower()
+
+
+def test_mixed_partial_entries_keep_only_successful_items():
+    run = RunResult(steps=[_Step({"ok": False, "entries": [
+        {"url": "https://failed.test", "ok": False},
+        {"url": "https://useful.test", "ok": True, "title": "Useful"},
+    ]})])
+    assert MetisTerminator._best_entries(run) == [{
+        "url": "https://useful.test", "ok": True, "title": "Useful"}]

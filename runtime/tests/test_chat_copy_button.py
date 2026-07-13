@@ -50,6 +50,27 @@ def test_comportamenti_esistenti_non_regrediti():
         assert marker in src, f"marker mancante: {marker}"
 
 
+def test_consenso_annidato_tiene_la_cattura_dentro_il_modulo():
+    src = _TEMPLATE.read_text()
+    assert ".dialog-context-preview" in src
+    assert "inlineFormOwnsImages = true" in src
+    assert "imgs.length && !inlineFormOwnsImages" in src
+    assert "a && a.download_url && !a.thumb_url" in src
+    # Metadata prima; poi anteprima e iframe, in quest'ordine.
+    assert src.index("if(inlineFormContext) d.appendChild(inlineFormContext)") < src.index(
+        "if(inlineFormWrap) d.appendChild(inlineFormWrap)")
+
+
+def test_dialog_lifecycle_e_metadata_non_regrediti():
+    src = _TEMPLATE.read_text()
+    assert "function removeDialogHistory" in src
+    assert "function mergeDialogCompletionMeta" in src
+    assert "const response = await fetch(formPath" in src
+    assert "ifr.srcdoc = formHtml" in src
+    assert "metnos.dialog.terminal" in src
+    assert "resumedPath.length ? resumedPath : originPath" in src
+
+
 def test_seed_i18n_ha_le_chiavi_copia():
     assert _SEED_DB.is_file()
     conn = sqlite3.connect(str(_SEED_DB))

@@ -62,7 +62,11 @@ class TestSafeFinalHtml(unittest.TestCase):
 
     def test_link_renders_as_anchor(self):
         html = _safe_final_html("[ciao](https://example.com)")
-        self.assertIn('<a href="https://example.com">ciao</a>', html)
+        self.assertIn(
+            '<a href="https://example.com" target="_blank" '
+            'rel="noopener noreferrer">ciao</a>',
+            html,
+        )
 
     def test_code_block_renders_as_pre_code(self):
         md = "```\nx = 1\nprint(x)\n```"

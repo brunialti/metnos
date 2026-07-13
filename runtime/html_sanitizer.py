@@ -165,7 +165,10 @@ def _md_tables_to_pre(s: str) -> str:
                      align[i] if i < len(align) else "left")
                 for i in range(n)
             ))
-        return "<pre>" + "\n".join(lines) + "</pre>"
+        rendered = "<pre>" + "\n".join(lines) + "</pre>"
+        # Il matcher della tabella include il newline finale. Ripristinarne
+        # uno mantiene separato il blocco Markdown successivo.
+        return rendered + ("\n" if re.search(r"\n\s*\Z", block) else "")
     return _MD_TABLE_BLOCK_RE.sub(_repl, s)
 
 
@@ -299,7 +302,10 @@ def _md_tables_to_html(s: str) -> str:
             out.append("</tr>")
         out.append("</tbody>")
         out.append("</table>")
-        return "".join(out)
+        rendered = "".join(out)
+        # Senza questo newline un elenco/link subito dopo la tabella viene
+        # saldato al placeholder HTML e non attraversa il parser Markdown.
+        return rendered + ("\n" if re.search(r"\n\s*\Z", block) else "")
     return _MD_TABLE_FULL_RE.sub(_repl, s)
 
 
@@ -540,6 +546,15 @@ def to_safe_html_full(md: str) -> str:
             return placeholders[idx]
         return m.group(0)
     result = re.sub(r"\x00(CODEBLOCK|TABLE)(\d+)\x00", _restore, result)
+
+    # I link della chat aprono una pagina esterna senza sostituire la chat
+    # corrente. Oltre alla continuita' UX, evita che il ritorno col tasto Back
+    # debba ricostruire stream SSE e storico della conversazione.
+    result = re.sub(
+        r'<a href="([^"]+)">',
+        r'<a href="\1" target="_blank" rel="noopener noreferrer">',
+        result,
+    )
 
     return result
 

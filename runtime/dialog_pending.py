@@ -53,6 +53,7 @@ import json
 import os
 import re
 import time
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -97,6 +98,28 @@ def _sender_dir(sender_id: str) -> Path:
 
 def _dialog_path(sender_id: str, dialog_id: str) -> Path:
     return _sender_dir(sender_id) / f"{dialog_id}.json"
+
+
+@contextmanager
+def _dialog_lock(sender_id: str, dialog_id: str):
+    """Serializza consume/cancel anche fra HTTP server e channel daemon."""
+    import fcntl
+    sd = _sender_dir(sender_id)
+    sd.mkdir(parents=True, exist_ok=True)
+    # Un solo lock stabile per sender: evita file-lock orfani per ogni dialogo
+    # e serializza le risposte che, semanticamente, appartengono allo stesso
+    # flusso conversazionale.
+    lock_path = sd / ".dialog.lock"
+    with lock_path.open("a+") as lock_file:
+        try:
+            os.chmod(lock_path, 0o600)
+        except OSError:
+            pass
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 from timefmt import now_iso_offset as _utc_now_iso
@@ -286,6 +309,13 @@ def _resolve_choice_reply(value, step):
 
 def consume_pending_step(sender_id: str, dialog_id: str, var: str,
                           value) -> dict:
+    """Avanza atomicamente un dialogo; un solo consumer può vincere."""
+    with _dialog_lock(sender_id, dialog_id):
+        return _consume_pending_step_unlocked(sender_id, dialog_id, var, value)
+
+
+def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
+                                    value) -> dict:
     """Avanza il dialogo registrando il valore raccolto per la variabile `var`.
 
     Comportamento:
@@ -308,6 +338,9 @@ def consume_pending_step(sender_id: str, dialog_id: str, var: str,
                 "dialog_id": dialog_id, "values": state.get("values_collected", {})}
     if state.get("cancelled"):
         return {"ok": False, "error": "dialog_cancelled",
+                "dialog_id": dialog_id}
+    if is_expired(state):
+        return {"ok": False, "error": "dialog_expired",
                 "dialog_id": dialog_id}
     dialog = state.get("dialog") or []
     idx = int(state.get("step_index") or 0)
@@ -356,6 +389,11 @@ def consume_pending_step(sender_id: str, dialog_id: str, var: str,
 
 def cancel_pending(sender_id: str, dialog_id: str) -> bool:
     """Marca il dialogo come cancellato. Idempotente: True se esisteva."""
+    with _dialog_lock(sender_id, dialog_id):
+        return _cancel_pending_unlocked(sender_id, dialog_id)
+
+
+def _cancel_pending_unlocked(sender_id: str, dialog_id: str) -> bool:
     state = load_pending(sender_id, dialog_id)
     if state is None:
         return False
