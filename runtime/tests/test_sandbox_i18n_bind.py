@@ -53,3 +53,60 @@ def test_i18n_open_fallback_readonly_immutable(tmp_path, monkeypatch):
     finally:
         db.chmod(0o644)
         i18n._conn = None
+
+
+def test_credential_capability_binds_canonical_vault_and_key(
+        tmp_path, monkeypatch):
+    import credentials
+    import sandbox
+
+    vault = tmp_path / "custom-config" / "credentials"
+    vault.mkdir(parents=True)
+    key = tmp_path / "custom-config" / "admin.key"
+    key.write_text("test-key")
+    monkeypatch.setattr(credentials, "CRED_DIR", vault)
+    monkeypatch.setattr(credentials, "ADMIN_KEY_PATH", key)
+
+    read_caps = [
+        {"name": "metnos:credentials_metadata_only", "hint": []},
+        {"name": "metnos:read", "hint": []},
+    ]
+    read_args = sandbox._build_bwrap_args(
+        _RT / "dummy.py", capabilities=read_caps)
+    vault_index = read_args.index(str(vault))
+    key_index = read_args.index(str(key))
+    assert read_args[vault_index - 1] == "--ro-bind"
+    assert read_args[key_index - 1] == "--ro-bind"
+
+    write_caps = [
+        {"name": "metnos:credentials_metadata_only", "hint": []},
+        {"name": "metnos:write", "hint": []},
+    ]
+    write_args = sandbox._build_bwrap_args(
+        _RT / "dummy.py", capabilities=write_caps)
+    vault_index = write_args.index(str(vault))
+    key_index = write_args.index(str(key))
+    assert write_args[vault_index - 1] == "--bind"
+    assert write_args[key_index - 1] == "--ro-bind"
+
+
+def test_managed_spreadsheet_resource_is_bound_by_semantic_capability(
+        tmp_path, monkeypatch):
+    import config
+    import sandbox
+
+    user_data = tmp_path / "metnos-data"
+    monkeypatch.setattr(config, "PATH_USER_DATA", user_data)
+    create_args = sandbox._build_bwrap_args(
+        _RT / "dummy.py", capabilities=[{
+            "name": "metnos:create", "hint": ["spreadsheet:local"]}])
+    storage = user_data / "spreadsheets"
+    assert storage.is_dir()
+    i = create_args.index(str(storage))
+    assert create_args[i - 1] == "--bind"
+
+    read_args = sandbox._build_bwrap_args(
+        _RT / "dummy.py", capabilities=[{
+            "name": "metnos:read", "hint": ["spreadsheet:local"]}])
+    i = read_args.index(str(storage))
+    assert read_args[i - 1] == "--ro-bind"

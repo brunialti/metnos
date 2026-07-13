@@ -93,6 +93,37 @@ def _capability_mode(cap: dict | str) -> str:
     return name.split(":", 1)[1] if ":" in name else ""
 
 
+def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[Path]:
+    """Risolve hint semantici `<resource>:local` in storage canonico.
+
+    Le capability `metnos:read/write/create` non sono path filesystem grezzi:
+    dichiarano una risorsa amministrata da Metnos. Il resolver centralizza la
+    traduzione, così gli executor non devono conoscere i bind bubblewrap.
+    """
+    try:
+        import config as _C
+        resources = {
+            "spreadsheet": _C.PATH_USER_DATA / "spreadsheets",
+        }
+    except Exception:
+        return []
+    out: list[Path] = []
+    for hint in hints or []:
+        if not isinstance(hint, str) or not hint.endswith(":local"):
+            continue
+        path = resources.get(hint.split(":", 1)[0])
+        if path is None:
+            continue
+        if writable:
+            try:
+                path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            except OSError:
+                continue
+        if path.exists() and path not in out:
+            out.append(path)
+    return out
+
+
 # --- core ------------------------------------------------------------------
 
 # Path system minimi montati read-only in ogni sandbox.
@@ -152,6 +183,29 @@ def _build_bwrap_args(
 
     # Per ogni capability, deriva bind / network policy
     has_network = force_net
+    capability_names = {
+        (cap.get("name", "") if isinstance(cap, dict) else str(cap or ""))
+        for cap in (capabilities or [])
+    }
+    if "metnos:credentials_metadata_only" in capability_names:
+        # Semantic capability: bind the canonical vault paths from config,
+        # never a manifest's home-specific hint. Writers may bootstrap the
+        # empty vault directory; all consumers need the master key read-only.
+        try:
+            import credentials as _credentials
+            writable = "metnos:write" in capability_names
+            vault_dir = Path(_credentials.CRED_DIR)
+            if writable and not vault_dir.exists():
+                vault_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if vault_dir.exists():
+                args += ["--bind" if writable else "--ro-bind",
+                         str(vault_dir), str(vault_dir)]
+            admin_key = Path(_credentials.ADMIN_KEY_PATH)
+            if admin_key.exists():
+                args += ["--ro-bind", str(admin_key), str(admin_key)]
+        except (ImportError, OSError):
+            # The executor reports the missing vault/key honestly downstream.
+            pass
     for cap in capabilities or []:
         kind = _capability_kind(cap)
         mode = _capability_mode(cap)
@@ -165,6 +219,11 @@ def _build_bwrap_args(
                     args += ["--ro-bind", str(p), str(p)]
                 else:  # write o altro
                     args += ["--bind", str(p), str(p)]
+        elif kind == "metnos" and mode in {"read", "write", "create"}:
+            writable = mode in {"write", "create"}
+            for p in _managed_local_resource_paths(hints, writable=writable):
+                args += ["--bind" if writable else "--ro-bind",
+                         str(p), str(p)]
         elif kind in ("network", "net"):
             # Entrambe le grafie esistono nei manifest (`network:http`,
             # `net:read`): tolleranza al confine §2.4 — il kind `net` ignorato
@@ -320,6 +379,31 @@ def skill_extras(skills) -> tuple[list, bool]:
         if home is not None and Path(home).exists():
             paths.append(Path(home))
     return paths, bool(skills)
+
+
+def dialog_extras(executor, *, actor: str | None,
+                  channel: str | None) -> list[Path]:
+    """Bind RW minimo per executor con ``dialog.user_input``.
+
+    Non montiamo l'intero archivio: ogni invocazione vede solo la directory
+    del proprio sender, che puo' contenere input sensibili ancora parziali.
+    """
+    capabilities = getattr(executor, "capabilities", None) or []
+    names = {
+        (cap.get("name", "") if isinstance(cap, dict) else str(cap or ""))
+        for cap in capabilities
+    }
+    if "dialog.user_input" not in names:
+        return []
+    try:
+        import dialog_pending as _dp
+        sender = f"{channel}:{actor}" if channel else (actor or "host")
+        path = _dp.DIALOG_DIR / _dp._safe_sender(sender)
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.chmod(0o700)
+        return [path]
+    except (OSError, ImportError):
+        return []
 
 
 # --- introspection (per dashboard / debug) ---------------------------------
