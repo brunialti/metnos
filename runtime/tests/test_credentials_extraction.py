@@ -42,8 +42,60 @@ class TestExtractCredentials(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["username"], "alice")
         self.assertEqual(out[0]["password"], "segreta123")
-        self.assertEqual(out[0]["domain"], "web_webmail.example.com")
+        self.assertEqual(out[0]["domain"], "webmail.example.com")
         self.assertEqual(out[0]["context"]["binding"], "web")
+
+    def test_natural_site_credentials_without_scheme(self):
+        from agent_runtime import extract_credentials
+        out = extract_credentials(
+            "credenziali di telepass.com, utente xxxxx, password yyy")
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["domain"], "telepass.com")
+        self.assertEqual(out[0]["username"], "xxxxx")
+        self.assertEqual(out[0]["password"], "yyy")
+        self.assertEqual(out[0]["context"]["binding"], "web")
+
+    def test_natural_site_credentials_usr_pwd(self):
+        from agent_runtime import extract_credentials
+        out = extract_credentials(
+            "ricorda credenziali telepass.com usr:xxxxx , pwd:yyyyy")
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["domain"], "telepass.com")
+        self.assertEqual(out[0]["username"], "xxxxx")
+        self.assertEqual(out[0]["password"], "yyyyy")
+
+    def test_natural_credentials_allow_connectors_and_quoted_values(self):
+        from agent_runtime import extract_credentials
+        out = extract_credentials(
+            'telepass.com email "nome@example.com" con password "a,b c"')
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["username"], "nome@example.com")
+        self.assertEqual(out[0]["password"], "a,b c")
+
+    def test_store_only_intent_is_semantic_and_compound_continues(self):
+        from agent_runtime import _is_credentials_store_only_intent
+        from engine.types import Intent
+        assert _is_credentials_store_only_intent(
+            Intent(verb="set", object="credentials"))
+        assert not _is_credentials_store_only_intent(Intent(
+            verb="set", object="credentials",
+            actions=[{"verb": "set", "object": "credentials"},
+                     {"verb": "login", "object": "sites"}]))
+
+    def test_engine_confirms_credentials_already_stored_before_planner(self):
+        import agent_runtime
+        import intent_extractor
+        from unittest import mock
+        with mock.patch.object(intent_extractor, "extract_intent", return_value={
+                "verb": "set", "object": "credentials", "keywords": []}):
+            out = agent_runtime._run_engine(
+                "ricorda credenziali telepass.com usr:<REDACTED:cred> ", [],
+                turn_id="test-credentials", actor="host", channel="http",
+                credential_meta=[{"domain": "telepass.com",
+                                  "context": {"binding": "web"}}])
+        self.assertEqual(out["match_source"], "credential_extraction")
+        self.assertEqual(out["steps"][0].chosen_tool, "set_credentials")
+        self.assertNotIn("password", out["final_text"].lower())
 
     def test_equal_sign_syntax(self):
         from agent_runtime import extract_credentials
@@ -147,6 +199,19 @@ class TestApplyCredentialsExtraction(unittest.TestCase):
         redacted, meta = apply_credentials_extraction(q)
         self.assertEqual(redacted, q)
         self.assertEqual(meta, [])
+
+    def test_apply_natural_web_credentials_stores_exact_host_and_redacts(self):
+        from agent_runtime import apply_credentials_extraction
+        import credentials
+        q = ("ricorda credenziali telepass.com usr:alice "
+             "e password:secret123")
+        redacted, meta = apply_credentials_extraction(q)
+        self.assertNotIn("alice", redacted)
+        self.assertNotIn("secret123", redacted)
+        self.assertEqual(meta[0]["domain"], "telepass.com")
+        payload = credentials.load("telepass.com")
+        self.assertEqual(payload["username"], "alice")
+        self.assertEqual(payload["password"], "secret123")
 
 
 if __name__ == "__main__":

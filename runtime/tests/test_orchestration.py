@@ -114,6 +114,182 @@ def test_invoke_get_inputs_internal_voice_degrades_to_dialogue(isolated_dirs):
     assert res["fmt"] == "dialogue"
 
 
+def test_resume_executor_gate_replays_branch_then_only_tail(monkeypatch):
+    from types import SimpleNamespace
+    import agent_runtime
+    import loader
+    from orchestration import (CompletionResult,
+                               _process_resume_executor_gate_tail)
+
+    executors = {
+        name: SimpleNamespace(name=name, timeout_s=30, args_schema={})
+        for name in ("act_sites", "login_sites")
+    }
+    catalog = SimpleNamespace(executors=executors)
+    monkeypatch.setattr(loader, "load_catalog", lambda **_kw: catalog)
+    calls = []
+
+    def invoke(executor, args, **_kw):
+        calls.append((executor.name, dict(args)))
+        if executor.name == "act_sites":
+            return {"ok": True, "results": [{
+                "session_id": "sid-1", "ok": True, "executed": True}]}
+        return {"ok": True, "entries": [{
+            "session_id": "sid-1", "logged_in": True}],
+            "final_message_hint": "Accesso completato."}
+
+    monkeypatch.setattr(agent_runtime, "invoke_executor", invoke)
+    callback = {
+        "gate_approve_value": "approve",
+        "gate_on_approve": {"tool": "act_sites", "args": {
+            "session_ids": ["sid-1"],
+            "approval_tokens": {"sid-1": "opaque"}}},
+        "tail_steps": [
+            {"tool": "login_sites", "args": {"from_step": 1}},
+            {"tool": "final_answer", "args": {}},
+        ],
+        "original_query": "accedi a x.test",
+    }
+    out = _process_resume_executor_gate_tail(
+        callback, {"decision": "approve"}, actor="alice", channel="http")
+    assert isinstance(out, CompletionResult)
+    assert out.text == "Accesso completato."
+    assert [name for name, _args in calls] == ["act_sites", "login_sites"]
+    assert calls[1][1]["entries"][0]["session_id"] == "sid-1"
+
+
+def test_resume_executor_secret_values_replays_branch_then_tail(monkeypatch):
+    from types import SimpleNamespace
+    import agent_runtime
+    import loader
+    from orchestration import (CompletionResult,
+                               _process_resume_executor_values_tail)
+
+    executors = {
+        name: SimpleNamespace(name=name, timeout_s=30, args_schema={})
+        for name in ("login_sites", "act_sites")
+    }
+    monkeypatch.setattr(loader, "load_catalog", lambda **_kw: SimpleNamespace(
+        executors=executors))
+    calls = []
+
+    def invoke(executor, args, **_kw):
+        calls.append((executor.name, dict(args)))
+        if executor.name == "login_sites":
+            return {"ok": True, "entries": [{
+                "session_id": "sid-otp", "logged_in": True}]}
+        return {"ok": True, "results": [{
+            "session_id": "sid-otp", "executed": True}],
+            "final_message_hint": "Prenotazione trovata."}
+
+    monkeypatch.setattr(agent_runtime, "invoke_executor", invoke)
+    callback = {
+        "executor": "login_sites",
+        "args_base": {
+            "session_ids": ["sid-otp"],
+            "_otp_session_vars": {"one_time_code": "sid-otp"},
+        },
+        "tail_steps": [
+            {"tool": "act_sites", "args": {
+                "from_step": 1, "action": "cerca prenotazioni"}},
+            {"tool": "final_answer", "args": {}},
+        ],
+        "original_query": "accedi e cerca prenotazioni",
+    }
+
+    out = _process_resume_executor_values_tail(
+        callback, {"one_time_code": "123456"},
+        actor="alice", channel="http")
+
+    assert isinstance(out, CompletionResult)
+    assert out.text == "Prenotazione trovata."
+    assert [name for name, _args in calls] == ["login_sites", "act_sites"]
+    assert calls[0][1]["one_time_code"] == "123456"
+    assert calls[1][1]["entries"] == [{
+        "session_id": "sid-otp", "logged_in": True}]
+
+
+def test_resume_executor_gate_carries_tail_across_repeated_gates(
+        monkeypatch, isolated_dirs):
+    from types import SimpleNamespace
+    import agent_runtime
+    import dialog_pending
+    import loader
+    from orchestration import (CompletionResult,
+                               _process_resume_executor_gate_tail)
+
+    executors = {
+        name: SimpleNamespace(name=name, timeout_s=30, args_schema={})
+        for name in ("login_sites", "act_sites")
+    }
+    monkeypatch.setattr(loader, "load_catalog", lambda **_kw: SimpleNamespace(
+        executors=executors))
+    calls = []
+    login_results = [
+        {"ok": True, "decision": "input_required", "dialog_id": "nested-2",
+         "final_message_hint": "Approva ancora\n\n"
+                               "INLINE_FORM:/agent/dialog/nested-2/form"},
+        {"ok": True, "entries": [{
+            "session_id": "sid-1", "logged_in": True}]},
+    ]
+
+    def invoke(executor, args, **_kw):
+        calls.append((executor.name, dict(args)))
+        if executor.name == "login_sites":
+            return login_results.pop(0)
+        return {"ok": True, "results": [{
+            "session_id": "sid-1", "executed": True}],
+            "final_message_hint": "Ricerca completata."}
+
+    monkeypatch.setattr(agent_runtime, "invoke_executor", invoke)
+    dialog_pending.save_pending("http:alice", "nested-2", {
+        "dialog_id": "nested-2", "completed": False,
+        "on_complete": {
+            "type": "gate_dispatch", "approve_value": "approve",
+            "on_approve": {"tool": "login_sites", "args": {
+                "session_ids": ["sid-1"],
+                "_approval_tokens": {"sid-1": "opaque-2"}}},
+        },
+    })
+    first_callback = {
+        "gate_approve_value": "approve",
+        "gate_on_approve": {"tool": "login_sites", "args": {
+            "session_ids": ["sid-1"],
+            "_approval_tokens": {"sid-1": "opaque-1"}}},
+        "tail_steps": [
+            {"tool": "act_sites", "args": {
+                "from_step": 1, "action": "cerca fatture"}},
+            {"tool": "final_answer", "args": {}},
+        ],
+        "tail_final_message": "${step2.@table}",
+        "original_query": "accedi e cerca fatture",
+        "conversation_id": "conv-1",
+    }
+
+    first = _process_resume_executor_gate_tail(
+        first_callback, {"decision": "approve"},
+        actor="alice", channel="http")
+    assert isinstance(first, CompletionResult)
+    assert "INLINE_FORM:/agent/dialog/nested-2/form" in first.text
+    assert [name for name, _args in calls] == ["login_sites"]
+
+    nested_state = dialog_pending.load_pending("http:alice", "nested-2")
+    nested_callback = nested_state["on_complete"]
+    assert nested_callback["type"] == "resume_executor_gate_tail"
+    assert nested_callback["tail_steps"] == first_callback["tail_steps"]
+    assert nested_callback["conversation_id"] == "conv-1"
+
+    second = _process_resume_executor_gate_tail(
+        nested_callback, {"decision": "approve"},
+        actor="alice", channel="http")
+    assert isinstance(second, CompletionResult)
+    assert second.text == "Ricerca completata."
+    assert [name for name, _args in calls] == [
+        "login_sites", "login_sites", "act_sites"]
+    assert calls[-1][1]["entries"] == [{
+        "session_id": "sid-1", "logged_in": True}]
+
+
 def test_invoke_get_inputs_internal_rejects_empty_dialog(isolated_dirs):
     from orchestration import invoke_get_inputs_internal
     res = invoke_get_inputs_internal(

@@ -18,11 +18,13 @@ Schema sqlite (`~/.local/state/metnos/recurring_tasks.db`):
   channel TEXT,             -- 'telegram' | ...
   chat_id TEXT,             -- destinazione push (per telegram)
   label TEXT,               -- descrizione utente-leggibile
+  mandates TEXT,            -- inviluppi di autorita' per dominio, senza segreti
   created_at TEXT,
   enabled INTEGER DEFAULT 1
 """
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 import sys
@@ -55,6 +57,8 @@ CREATE TABLE IF NOT EXISTS recurring_tasks (
                                                 -- NULL = recover illimitato.
                                                 -- Es. 240 = recover entro 4h
                                                 -- dal target_time, oltre skip.
+    mandates      TEXT NOT NULL DEFAULT '{}', -- authority envelope per task;
+                                                -- mai token o credenziali.
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     enabled       INTEGER NOT NULL DEFAULT 1
 );
@@ -115,8 +119,31 @@ def _open() -> sqlite3.Connection:
         c.execute("ALTER TABLE recurring_tasks ADD COLUMN fired_count INTEGER NOT NULL DEFAULT 0")
     if "grace_window_minutes" not in cols:
         c.execute("ALTER TABLE recurring_tasks ADD COLUMN grace_window_minutes INTEGER")
+    mandates_added = "mandates" not in cols
+    if mandates_added:
+        c.execute("ALTER TABLE recurring_tasks ADD COLUMN mandates TEXT NOT NULL DEFAULT '{}'")
+    try:
+        import task_mandates
+        for row in c.execute(
+                "SELECT name, query, actor, mandates FROM recurring_tasks").fetchall():
+            if (mandates_added or task_mandates.needs_version_upgrade(
+                    row["query"], row["mandates"])):
+                envelope = task_mandates.build_for_task(
+                    row["query"], row["actor"])
+                c.execute(
+                    "UPDATE recurring_tasks SET mandates=? WHERE name=?",
+                    (json.dumps(envelope, ensure_ascii=True, sort_keys=True,
+                                separators=(",", ":")), row["name"]))
+    except Exception as exc:
+        log.warning("task mandate migration failed closed: %s", exc)
     c.commit()
     return c
+
+
+def init_db() -> None:
+    """Create or migrate the task registry without retaining a connection."""
+    with _open():
+        pass
 
 
 def _slugify(label: str, max_len: int = 40) -> str:
@@ -287,12 +314,23 @@ def register_user_task(
     chat_id: str | None = None,
     times: int | None = None,
     grace_window_minutes: int | None = None,
+    mandates: dict | None = None,
 ) -> dict:
     """Registra un task ricorrente user-defined. Restituisce il record.
     Idempotente: se name esiste gia', UPDATE.
     """
     schedule = _parse_when(when)
     name = _slugify(label or query)
+    if mandates is None:
+        try:
+            import task_mandates
+            mandates = task_mandates.build_for_task(query, actor)
+        except Exception as exc:
+            log.warning("task mandate build failed closed: %s", exc)
+            mandates = {}
+    mandates_json = json.dumps(
+        mandates if isinstance(mandates, dict) else {},
+        ensure_ascii=True, sort_keys=True, separators=(",", ":"))
     conn = _open()
     try:
         # Quota check (anti-runaway).
@@ -313,10 +351,10 @@ def register_user_task(
         conn.execute(
             "INSERT OR REPLACE INTO recurring_tasks "
             "(name, schedule, query, actor, channel, chat_id, label, "
-            " times, fired_count, grace_window_minutes, enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1)",
+            " times, fired_count, grace_window_minutes, mandates, enabled) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1)",
             (name, schedule, query, actor, channel, chat_id, label,
-              times_val, gw),
+              times_val, gw, mandates_json),
         )
         conn.commit()
         return dict(conn.execute(
@@ -420,7 +458,38 @@ def _scheduled_push_is_noop(log) -> bool:
     return counts_indicate_noop(getattr(log, "effect_counts", None))
 
 
-def _run_user_query_callback(record: dict) -> str:
+def _scheduled_turn_outcome(log):
+    """Esito semantico del turno: success, partial o error.
+
+    La consegna al canale e' un effetto successivo e non puo' cambiare questa
+    classificazione. I conteggi sono quelli autoritativi di TurnLog.write.
+    """
+    from scheduler_v2.models import CallbackOutcome
+    final_kind = getattr(log, "final_kind", "")
+    counts = getattr(log, "effect_counts", None) or {}
+    failures = int(counts.get("failures") or 0)
+    produced = int(counts.get("items") or 0)
+    mutations = int(counts.get("mutations") or 0)
+    if final_kind not in ("error", "loop_break") and failures <= 0:
+        return None
+    detail = ""
+    try:
+        from engine.types import result_error_detail
+        for step in reversed(getattr(log, "steps", None) or []):
+            result = step.result if isinstance(step.result, dict) else None
+            if isinstance(result, dict) and result.get("ok") is False:
+                detail = result_error_detail(result)
+                if detail:
+                    break
+    except Exception:
+        detail = ""
+    status = "partial" if produced > 0 or mutations > 0 else "error"
+    if not detail:
+        detail = f"turn kind={final_kind or '?'} failures={failures}"
+    return CallbackOutcome(status=status, error=detail)
+
+
+def _run_user_query_callback(record: dict):
     """Callback canonica `run_user_query`: rilancia run_turn + pusha canale.
 
     Registrata in `_CALLBACKS` come 'run_user_query' al boot. Refactor
@@ -433,6 +502,8 @@ def _run_user_query_callback(record: dict) -> str:
     - Run a vuoto (0 effetti reali) → NESSUN push, solo log (§2.8:
       niente notifiche di falso successo; vedi _scheduled_push_is_noop).
     """
+    from scheduler_v2.models import CallbackOutcome
+
     log_msg = []
     try:
         from agent_runtime import run_turn
@@ -442,7 +513,7 @@ def _run_user_query_callback(record: dict) -> str:
         # describe/extract → frontier). Solo run ricorrenti: i turni
         # interattivi restano intoccati. Reset garantito dal context manager.
         from treated_issues_guard import scheduled_turn_scope
-        with scheduled_turn_scope():
+        with scheduled_turn_scope(task_name=record.get("name") or ""):
             log = run_turn(
                 record["query"],
                 actor=record["actor"],
@@ -450,10 +521,29 @@ def _run_user_query_callback(record: dict) -> str:
             )
         msg = (log.final_message or "").strip()
         if not msg:
-            return f"[{record['name']}] run_turn ok ma empty final_message (kind={getattr(log,'final_kind',None)})"
+            return CallbackOutcome(
+                status="error",
+                error="run_turn returned an empty final_message",
+                output=(f"[{record['name']}] run_turn empty final_message "
+                        f"(kind={getattr(log,'final_kind',None)})"),
+            )
         log_msg.append(f"[{record['name']}] run_turn ok kind={getattr(log,'final_kind',None)} steps={len(log.steps or [])}")
     except Exception as e:
-        return f"[{record['name']}] run_turn crashed: {type(e).__name__}: {e}"
+        detail = f"run_turn crashed: {type(e).__name__}: {e}"
+        return CallbackOutcome(
+            status="error", error=detail,
+            output=f"[{record['name']}] {detail}")
+    turn_outcome = _scheduled_turn_outcome(log)
+
+    def _finish(output: str, *, delivery_error: str = ""):
+        if delivery_error:
+            return CallbackOutcome(status="error", output=output,
+                                   error=delivery_error)
+        if turn_outcome is not None:
+            return CallbackOutcome(
+                status=turn_outcome.status, output=output,
+                error=turn_outcome.error)
+        return output
     # §2.8 notifica onesta (12/6/2026): run schedulato a vuoto → niente push.
     # Diagnostica in runs.output (consultabile da /admin/runs), zero rumore
     # verso l'utente. Idempotente col loop dello scheduler: N run a vuoto =
@@ -463,7 +553,7 @@ def _run_user_query_callback(record: dict) -> str:
         log_msg.append(
             f"empty run (items={_c.get('items', 0)} "
             f"mutations={_c.get('mutations', 0)}) → push suppressed (§2.8)")
-        return " | ".join(log_msg)
+        return _finish(" | ".join(log_msg))
     if record["channel"] == "telegram" and record.get("chat_id"):
         prefix = (
             f"[task: {record['label'] or record['name']}]\n"
@@ -517,14 +607,16 @@ def _run_user_query_callback(record: dict) -> str:
                 if isinstance(resp, dict) and not resp.get("ok", True):
                     raise RuntimeError(resp.get("error") or "send returned ok:false")
                 log_msg.append(f"pushed telegram chat={record['chat_id']} attempt={attempt}")
-                return " | ".join(log_msg)
+                return _finish(" | ".join(log_msg))
             except Exception as e:
                 log_msg.append(f"push attempt {attempt} failed: {type(e).__name__}: {e}")
                 if attempt == 2:
-                    return " | ".join(log_msg)
+                    detail = f"channel push failed: {type(e).__name__}: {e}"
+                    return _finish(" | ".join(log_msg),
+                                   delivery_error=detail)
                 time.sleep(2)
     out = " | ".join(log_msg) + f" | no push channel: msg[:80]={msg[:80]}"
-    return out
+    return _finish(out)
 
 
 def _notify_circuit_break(entry, error) -> None:
@@ -584,8 +676,17 @@ def _wrap_with_times_tracking(fn):
                 sched_client.cancel_job(f"user_{record['name']}")
             except Exception as _e:  # silent swallow (auto-fixed)
                 log.warning("silent exception in %s: %s", __name__, _e)
-            return f"{out} | times reached ({fc}/{record.get('times')}) → auto-cancelled"
-        return f"{out} | fired_count={fc}"
+            suffix = (f"times reached ({fc}/{record.get('times')}) "
+                      "→ auto-cancelled")
+        else:
+            suffix = f"fired_count={fc}"
+        try:
+            from scheduler_v2.models import CallbackOutcome
+            if isinstance(out, CallbackOutcome):
+                return out.append_output(suffix)
+        except Exception:
+            pass
+        return f"{out} | {suffix}"
     return _wrapped
 
 

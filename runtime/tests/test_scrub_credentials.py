@@ -62,6 +62,15 @@ class TestScrubCredentials(unittest.TestCase):
         self.assertEqual(out["password"], "<REDACTED:cred>")
         self.assertGreaterEqual(total[0], 1)
 
+    def test_scrub_otp_and_site_value_ref(self):
+        from agent_runtime import _scrub_args_recursive, _scrub_credentials
+        cleaned, n = _scrub_credentials("codice di verifica: 123456")
+        self.assertGreaterEqual(n, 1)
+        self.assertNotIn("123456", cleaned)
+        total = [0]
+        out = _scrub_args_recursive({"value_ref": "123456"}, total)
+        self.assertEqual(out["value_ref"], "<REDACTED:cred>")
+
     def test_turn_log_scrubs_query_in_jsonl(self):
         """Integration: TurnLog.write() produce jsonl con query pulita."""
         from agent_runtime import TurnLog, StepLog

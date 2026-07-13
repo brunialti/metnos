@@ -176,7 +176,10 @@ The same shape applies to every binding the chain can encounter:
 | Binding | Domain key            | Placeholder            | Helper           |
 |---------|-----------------------|------------------------|------------------|
 | CIFS    | `cifs_<host>`         | `${METNOS_CIFS_CREDS}` | `cifs_helper.py` |
-| Web     | `web_<host>`          | (login_session args)   | `login_session`  |
+| Web     | `web_<host>` (storico) | (login_session args)  | `login_session`  |
+
+Per il dominio `sites`, ADR 0188 usa invece l'host esatto come binding
+canonico; il broker mantiene lettura compatibile dei record `web_<host>`.
 | SSH     | `ssh_<host>`          | `${METNOS_SSH_CREDS}`  | (future)         |
 | API     | `api_<service>`       | `${METNOS_API_TOKEN}`  | (future)         |
 

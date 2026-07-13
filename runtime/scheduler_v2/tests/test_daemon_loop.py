@@ -105,6 +105,52 @@ def test_unknown_callback_marks_error(db_path):
     assert err and "ghost" in err
 
 
+def test_structured_callback_outcome_marks_semantic_error(db_path):
+    async def run():
+        from scheduler_v2.models import CallbackOutcome, ScheduleEntry
+        d = SchedulerDaemon(db_path)
+        d.callbacks.register(
+            "semantic_fail",
+            lambda _payload: CallbackOutcome(
+                status="error", output="notification delivered",
+                error="upstream network failure"),
+        )
+        d.storage.upsert(ScheduleEntry(
+            name="semantic", trigger="every_60s",
+            next_fire_at=time.time() - 1, recurring=False,
+            callback_key="semantic_fail"))
+        await d.start()
+        await asyncio.sleep(1.0)
+        await d.stop()
+        entry = d.storage.get_by_name("semantic")
+        return entry.last_status, entry.last_error
+
+    status, err = asyncio.run(run())
+    assert status == "error"
+    assert err == "upstream network failure"
+
+
+def test_structured_callback_outcome_rejects_unknown_status(db_path):
+    async def run():
+        from scheduler_v2.models import CallbackOutcome, ScheduleEntry
+        d = SchedulerDaemon(db_path)
+        d.callbacks.register(
+            "bad_status", lambda _payload: CallbackOutcome(status="maybe"))
+        d.storage.upsert(ScheduleEntry(
+            name="bad-status", trigger="every_60s",
+            next_fire_at=time.time() - 1, recurring=False,
+            callback_key="bad_status"))
+        await d.start()
+        await asyncio.sleep(1.0)
+        await d.stop()
+        entry = d.storage.get_by_name("bad-status")
+        return entry.last_status, entry.last_error
+
+    status, err = asyncio.run(run())
+    assert status == "error"
+    assert err == "invalid callback status: 'maybe'"
+
+
 def test_timeout_marks_timeout_status(db_path):
     async def run():
         d = SchedulerDaemon(db_path)

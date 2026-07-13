@@ -62,11 +62,11 @@ schema_inline = """
 
 [[capabilities]]
 name = "metnos:credentials_metadata_only"
-hint = ["~/.local/share/metnos/credentials/"]
+hint = []
 
 [[capabilities]]
 name = "metnos:write"
-hint = ["~/.local/share/metnos/credentials/"]
+hint = []
 
 # Reverse pattern §2.3: delete e' terminale (modello delete_persons ADR 0086 PR2).
 # Il catalogo deterministico non copre delete_credentials. Per ripristinare,

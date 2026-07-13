@@ -44,6 +44,8 @@ log = get_logger(__name__)
 # thread → la ContextVar è visibile in tutti i call-site del guard.
 _SCHEDULED_TURN: ContextVar[bool] = ContextVar(
     "metnos_scheduled_turn", default=False)
+_SCHEDULED_TASK_NAME: ContextVar[str] = ContextVar(
+    "metnos_scheduled_task_name", default="")
 
 # Builtin in-process LLM-augmented: gli step "costosi" da proteggere.
 LLM_COSTLY_BUILTINS = frozenset(
@@ -57,18 +59,25 @@ _ISSUE_URL_RE = re.compile(r"github\.com/([^/\s]+/[^/\s]+)/issues/(\d+)")
 
 
 @contextmanager
-def scheduled_turn_scope():
+def scheduled_turn_scope(*, task_name: str = ""):
     """Marca il blocco corrente come turno schedulato (con reset garantito:
     i worker thread sono riusati, niente flag residua sui turni interattivi)."""
     token = _SCHEDULED_TURN.set(True)
+    task_token = _SCHEDULED_TASK_NAME.set(str(task_name or ""))
     try:
         yield
     finally:
+        _SCHEDULED_TASK_NAME.reset(task_token)
         _SCHEDULED_TURN.reset(token)
 
 
 def is_scheduled_turn() -> bool:
     return bool(_SCHEDULED_TURN.get())
+
+
+def scheduled_task_name() -> str:
+    """Stable task identity propagated to executor subprocesses."""
+    return str(_SCHEDULED_TASK_NAME.get() or "")
 
 
 # Prefissi dei tool di NOTIFICA/INVIO outbound verso l'utente. Una notifica

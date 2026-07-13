@@ -38,6 +38,7 @@ from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 
 import credentials as _cred  # noqa: E402
+import credential_mandates as _mandates  # noqa: E402
 
 
 # Invariante credentials_metadata_only centralizzata in runtime/credentials.py
@@ -50,12 +51,6 @@ from credentials import (  # noqa: E402
 # Pending file TTL: dopo questa finestra il file viene considerato stale e
 # rifiutato (forza un nuovo dialog). Conserva sicurezza in caso di crash.
 _PENDING_TTL_S = 600
-
-
-def _override_cred_dir() -> None:
-    v = os.environ.get("METNOS_USER_DATA")
-    if v:
-        _cred.CRED_DIR = Path(v) / "credentials"
 
 
 def _pending_dir() -> Path:
@@ -117,6 +112,19 @@ def _validate_fields(fields):
     return None
 
 
+def _is_site_payload(binding: str, payload: dict | None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    fields = payload.get("form_data")
+    fields = fields if isinstance(fields, dict) else payload
+    has_user = any(fields.get(key) for key in ("username", "user"))
+    has_password = any(fields.get(key) for key in (
+        "password", "pwd", "passwd"))
+    context = payload.get("context") or {}
+    return bool(has_user and has_password and (
+        context.get("binding") == "web" or "." in binding))
+
+
 def _build_overwrite_dialog(binding: str, field_names: list, pending_id: str) -> dict:
     """Costruisce il payload `needs_inputs` per la conferma sovrascrittura.
     NESSUN valore di `fields` nel dialog: solo nomi (metadata) + pending_id
@@ -148,6 +156,43 @@ def _build_overwrite_dialog(binding: str, field_names: list, pending_id: str) ->
     }
 
 
+def _build_save_policy_dialog(binding: str, field_names: list,
+                              pending_id: str, *, overwrite: bool) -> dict:
+    dialog = []
+    if overwrite:
+        dialog.append({
+            "var": "overwrite_confirmed",
+            "prompt": _msg("MSG_CREDENTIAL_OVERWRITE_PROMPT",
+                           binding=binding, fields=", ".join(field_names)),
+            "schema": {"kind": "yes_no"},
+        })
+    dialog.append(_mandates.dialog_step())
+    return {
+        "title": _msg("MSG_CREDENTIAL_MANDATE_TITLE", binding=binding),
+        "dialog": dialog, "fmt": "auto",
+        "on_complete": {
+            "type": "resume_executor_with_values",
+            "executor": "set_credentials",
+            "args_base": {
+                "binding": binding, "pending_id": pending_id,
+                "replace": False, "_mandate_form": True,
+            },
+        },
+    }
+
+
+def _build_policy_update_dialog(binding: str) -> dict:
+    return {
+        "title": _msg("MSG_CREDENTIAL_MANDATE_TITLE", binding=binding),
+        "dialog": [_mandates.dialog_step()], "fmt": "auto",
+        "on_complete": {
+            "type": "resume_executor_with_values",
+            "executor": "set_credentials",
+            "args_base": {"binding": binding, "_mandate_form": True},
+        },
+    }
+
+
 def _resolve_confirmed_flag(raw):
     if raw is None:
         return None
@@ -159,15 +204,15 @@ def _resolve_confirmed_flag(raw):
 
 
 def invoke(args):
-    _override_cred_dir()
-
     binding = args.get("binding")
     fields = args.get("fields")
     scopes = args.get("scopes")
+    credential_mandate = args.get("credential_mandate")
     expires_at = args.get("expires_at")
     replace = bool(args.get("replace", False))
     overwrite_confirmed = _resolve_confirmed_flag(args.get("overwrite_confirmed"))
     pending_id = args.get("pending_id")
+    mandate_form = args.get("_mandate_form") is True
 
     if not isinstance(binding, str) or not binding.strip():
         return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="binding")}
@@ -191,16 +236,114 @@ def invoke(args):
         if expires_at is None:
             expires_at = stashed.get("expires_at")
 
+    exists = _cred._file_for(binding).exists()
+    existing_payload = None
+    if exists:
+        try:
+            existing_payload = _cred.load(binding)
+        except (OSError, ValueError) as e:
+            return {"ok": False, "error": f"store failed: {e}"}
+    # The planner can request a policy change, but only the form may select
+    # the persisted profile. The marker is internal and absent from manifest.
+    if credential_mandate is not None and not mandate_form:
+        credential_mandate = None
+    if (fields is None and credential_mandate is None
+            and _is_site_payload(binding, existing_payload)):
+        payload = _build_policy_update_dialog(binding)
+        result = {
+            "ok": True, "decision": "needs_inputs",
+            "needs_inputs": payload, "results": [],
+            "final_message_hint": payload["title"],
+        }
+        _assert_no_secrets_in_return(result)
+        return result
+    if credential_mandate is not None:
+        try:
+            current_scopes = scopes
+            if current_scopes is None and exists:
+                current_scopes = (existing_payload or {}).get("scopes")
+            scopes = _mandates.apply_profile(
+                current_scopes, str(credential_mandate))
+        except (OSError, ValueError) as e:
+            return {"ok": False, "error": _msg(
+                "ERR_ARG_INVALID", arg="credential_mandate", reason=str(e))}
+    if scopes is not None:
+        try:
+            scopes = _mandates.validate_scopes(scopes)
+        except ValueError as e:
+            return {"ok": False, "error": _msg(
+                "ERR_ARG_INVALID", arg="scopes", reason=str(e))}
+    if expires_at is not None and not isinstance(expires_at, str):
+        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="expires_at", reason="ISO 8601")}
+
+    # Metadata-only update: preserves every secret field and changes only the
+    # encrypted usage policy. This is the natural "allow these credentials to
+    # read" operation and does not require re-entering the password.
+    if fields is None:
+        if exists and scopes is None:
+            payload = _build_policy_update_dialog(binding)
+            result = {
+                "ok": True, "decision": "needs_inputs",
+                "needs_inputs": payload, "results": [],
+                "final_message_hint": payload["title"],
+            }
+            _assert_no_secrets_in_return(result)
+            return result
+        if not exists or scopes is None:
+            return {"ok": False, "error": _msg(
+                "ERR_ARG_MISSING", arg="fields or scopes")}
+        try:
+            payload_to_store = existing_payload
+            if not isinstance(payload_to_store, dict):
+                raise ValueError("credential not found")
+            payload_to_store["scopes"] = list(scopes)
+            if expires_at is not None:
+                payload_to_store["expires_at"] = str(expires_at)
+            _cred.store(binding, payload_to_store)
+        except (OSError, FileNotFoundError, ValueError) as e:
+            return {"ok": False, "error": f"store failed: {e}"}
+        fields_count = len([k for k in payload_to_store
+                            if k not in ("scopes", "expires_at")])
+        result = {
+            "ok": True, "results": [{
+                "binding": binding,
+                "fingerprint": _fingerprint_payload(payload_to_store),
+                "fields_count": fields_count, "scopes": list(scopes),
+                "replaced": True,
+            }],
+            "final_message_hint": _msg(
+                "MSG_CREDENTIAL_MANDATE_SAVED", binding=binding),
+        }
+        _assert_no_secrets_in_return(result)
+        return result
+
     err = _validate_fields(fields)
     if err is not None:
         return {"ok": False, "error": err}
 
-    if scopes is not None and not isinstance(scopes, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="scopes", of="strings")}
-    if expires_at is not None and not isinstance(expires_at, str):
-        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="expires_at", reason="ISO 8601")}
+    is_site_binding = (
+        isinstance(fields, dict)
+        and any(key in fields for key in ("username", "user"))
+        and any(key in fields for key in ("password", "pwd", "passwd"))
+        and (fields.get("binding") == "web" or "." in binding))
+    if is_site_binding and pending_id is None:
+        pid = _stash_pending({
+            "fields": fields, "scopes": scopes, "expires_at": expires_at,
+        })
+        payload = _build_save_policy_dialog(
+            binding, sorted(str(k) for k in fields), pid,
+            overwrite=exists)
+        result = {
+            "ok": True, "decision": "needs_inputs",
+            "needs_inputs": payload, "results": [],
+            "final_message_hint": payload["title"],
+        }
+        _assert_no_secrets_in_return(result)
+        return result
 
-    exists = _cred._file_for(binding).exists()
+    if overwrite_confirmed is False:
+        return {"ok": False, "error_class": "cancelled",
+                "error": _msg("MSG_ORCH_STOPPING"), "results": []}
     confirmed = replace or (overwrite_confirmed is True)
 
     if exists and not confirmed:

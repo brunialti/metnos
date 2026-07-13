@@ -341,6 +341,27 @@ def _run_scheduled(monkeypatch, steps, final_message):
 
 
 class TestEndToEndSimulated:
+    def test_failed_read_is_pushed_but_callback_status_is_error(
+            self, monkeypatch):
+        """Consegna Telegram riuscita != scopo del task riuscito."""
+        from scheduler_v2.models import CallbackOutcome
+        steps = [_step("read_urls_html", {
+            "ok": False, "entries": [], "ok_count": 0, "fail_count": 1,
+            "failed": [{
+                "url": "https://example.test/versions.html",
+                "error": "temporary DNS failure",
+                "error_class": "network",
+            }],
+        })]
+        out, n_push = _run_scheduled(
+            monkeypatch, steps,
+            "Non posso leggere la pagina: temporary DNS failure.")
+        assert n_push == 1
+        assert isinstance(out, CallbackOutcome)
+        assert out.status == "error"
+        assert out.error == "temporary DNS failure"
+        assert "pushed telegram" in out.output
+
     def test_phase1_zero_open_issues_zero_push_zero_rows(
             self, tmp_store, fake_embedder, monkeypatch):
         """Run a vuoto: 0 issue aperte → write_entries su 0 record → 0

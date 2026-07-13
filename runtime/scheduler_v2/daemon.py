@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .callbacks import CallbackRegistry
-from .models import ScheduleEntry
+from .models import CallbackOutcome, ScheduleEntry
 from .schedule_parser import next_fire_at as compute_next_fire
 from .storage import SchedulerStorage
 
@@ -256,7 +256,14 @@ class SchedulerDaemon:
                     result = await asyncio.wait_for(coro, timeout=entry.timeout_s)
                 else:
                     result = await coro
-                if result is not None:
+                if isinstance(result, CallbackOutcome):
+                    allowed = {"success", "partial", "error", "timeout"}
+                    status = result.status if result.status in allowed else "error"
+                    output = str(result.output or "")[:4096]
+                    error = str(result.error or "")[:1000] or None
+                    if result.status not in allowed:
+                        error = f"invalid callback status: {result.status!r}"
+                elif result is not None:
                     output = str(result)[:4096]
         except asyncio.TimeoutError:
             status = "timeout"

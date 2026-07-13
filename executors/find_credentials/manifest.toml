@@ -56,11 +56,11 @@ schema_inline = """
 
 [[capabilities]]
 name = "metnos:credentials_metadata_only"
-hint = ["~/.local/share/metnos/credentials/"]
+hint = []
 
 [[capabilities]]
 name = "metnos:read"
-hint = ["~/.local/share/metnos/credentials/"]
+hint = []
 
 reversible = true
 

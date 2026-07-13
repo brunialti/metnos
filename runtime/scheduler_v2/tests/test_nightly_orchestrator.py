@@ -30,9 +30,9 @@ def test_consolidation_invariant():
     assert "nightly_maintenance" in names
     # elenco+ordine = single source nella sequenza.
     assert frozenset(NIGHTLY_SEQUENCE) == _NIGHTLY_CONSOLIDATED
-    # Pin del conteggio contro edit accidentali (13 dal ritiro di
-    # multi_tool_maintenance, 11/6/2026 — ADR 0150).
-    assert len(NIGHTLY_SEQUENCE) == 13
+    # Pin del conteggio contro edit accidentali (14 dopo l'aggiunta di
+    # learning_loop_review, ADR 0185; SoT anche nell'indice anti-regressione).
+    assert len(NIGHTLY_SEQUENCE) == 14
 
 
 def test_run_nightly_order_and_isolation():

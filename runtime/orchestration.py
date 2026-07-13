@@ -465,6 +465,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
             on_complete, values, actor=actor,
         )
 
+    if callback_type == "set_credential_mandates_and_resume":
+        return _process_set_credential_mandates_and_resume(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
     if callback_type == "expand_cap_and_resume":
         return _process_expand_cap_and_resume(
             on_complete, values, actor=actor, channel=channel,
@@ -472,6 +477,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     if callback_type == "resume_executor_with_values":
         return _process_resume_executor_with_values(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
+    if callback_type == "resume_executor_values_tail":
+        return _process_resume_executor_values_tail(
             on_complete, values, actor=actor, channel=channel,
         )
 
@@ -507,6 +517,11 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     if callback_type == "resume_engine_gate":
         return _process_resume_engine_gate(
+            on_complete, values, actor=actor, channel=channel,
+        )
+
+    if callback_type == "resume_executor_gate_tail":
+        return _process_resume_executor_gate_tail(
             on_complete, values, actor=actor, channel=channel,
         )
 
@@ -598,6 +613,54 @@ def _process_save_credentials_and_resume(on_complete: dict, values: dict,
         return _msg("MSG_ORCH_CREDS_SAVED_RESUME_FAILED", resume_call=resume_call, detail=f"{type(ex).__name__}: {ex}")
 
     return _shape_result_for_chat(res)
+
+
+def _process_set_credential_mandates_and_resume(
+        on_complete: dict, values: dict, *, actor: str = "host",
+        channel: str | None = None):
+    """Apply a secret-free credential policy, then optionally resume a turn."""
+    bindings = [str(item) for item in (on_complete.get("bindings") or [])
+                if isinstance(item, str) and item]
+    profile = str(values.get("credential_mandate") or "")
+    if not bindings or not profile:
+        return _msg("MSG_ORCH_DIALOG_INCOMPLETE")
+    try:
+        import credential_mandates
+        import credentials
+        for binding in bindings:
+            payload = credentials.load(binding)
+            if not isinstance(payload, dict):
+                return _msg("MSG_ORCH_CREDS_MISSING_DOMAIN")
+            payload["scopes"] = credential_mandates.apply_profile(
+                payload.get("scopes"), profile)
+            credentials.store(binding, payload)
+    except (OSError, RuntimeError, TypeError, ValueError) as ex:
+        log.exception("orchestration: credential mandate update failed")
+        return _msg("MSG_ORCH_CREDS_SAVE_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+
+    resume_query = str(on_complete.get("resume_query") or "").strip()
+    if not resume_query:
+        return _msg("MSG_CREDENTIAL_MANDATE_SAVED",
+                    binding=", ".join(bindings))
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            resume_query, actor=actor or "host", channel=channel or "",
+            conversation_id=str(on_complete.get("conversation_id") or ""),
+            allow_disambig_synth=False,
+        )
+    except (ImportError, RuntimeError, TypeError) as ex:
+        log.exception("orchestration: credential mandate resume failed")
+        return _msg("MSG_ORCH_RELAUNCH_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+    if new_log is None:
+        return _msg("MSG_ORCH_CONTINUATION_EMPTY")
+    out = _completion_from_turnlog(new_log)
+    if not out.text:
+        out.text = _msg("MSG_CREDENTIAL_MANDATE_SAVED",
+                        binding=", ".join(bindings))
+    return out
 
 
 def _process_expand_cap_and_resume(on_complete: dict, values: dict,
@@ -748,6 +811,239 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
     return str(res)
 
 
+def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
+                               channel: str | None):
+    """Esegue un branch dichiarativo e conserva il result strutturato."""
+    if not isinstance(branch, dict):
+        return {"ok": False, "error": _msg("MSG_GATE_NO_ACTION")}
+    executor = branch.get("tool") or branch.get("executor") or ""
+    args_base = dict(branch.get("args") or {})
+    if not executor:
+        return {"ok": False, "error": _msg("MSG_ORCH_RESUME_EXEC_MISSING")}
+    try:
+        from loader import load_catalog
+        cat = load_catalog(verify=True, include_synth=True)
+        ex = cat.executors.get(executor)
+        if ex is None:
+            return {"ok": False, "error": _msg(
+                "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=executor)}
+        import agent_runtime
+        return agent_runtime.invoke_executor(
+            ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
+            actor=actor, channel=channel)
+    except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
+        log.exception("orchestration: executor gate branch fallito")
+        return {"ok": False, "error": _msg(
+            "MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")}
+
+
+def _carry_executor_tail_to_nested_gate(
+        branch_result: dict, parent_callback: dict, *,
+        actor: str, channel: str | None) -> bool:
+    """Trasferisce una coda residua a un gate emesso dal branch approvato.
+
+    Un executor auto-riprendibile puo' incontrare piu' transizioni protette in
+    sequenza. Ogni branch va quindi completato prima di usare il suo risultato
+    come seed: se ritorna ancora ``input_required``, il nuovo dialogo eredita la
+    stessa coda e il runtime si ferma nuovamente. Il criterio e' interamente
+    strutturale (gate_dispatch + dialog_id), senza nomi di dominio/executor.
+    """
+    dialog_id = branch_result.get("dialog_id")
+    if (branch_result.get("decision") != "input_required"
+            or not isinstance(dialog_id, str) or not dialog_id):
+        return False
+    raw_tail = parent_callback.get("tail_steps")
+    if not isinstance(raw_tail, list) or not raw_tail:
+        return False
+    sender = f"{channel}:{actor}" if channel else actor
+    state = dialog_pending.load_pending(sender, dialog_id)
+    if not isinstance(state, dict):
+        return False
+    nested = state.get("on_complete") or {}
+    if not isinstance(nested, dict) or nested.get("type") != "gate_dispatch":
+        return False
+    approve_branch = nested.get("on_approve")
+    if not isinstance(approve_branch, dict):
+        return False
+    approve_tool = approve_branch.get("tool") or approve_branch.get("executor")
+    if not isinstance(approve_tool, str) or not approve_tool:
+        return False
+
+    state["on_complete"] = {
+        "type": "resume_executor_gate_tail",
+        "gate_approve_value": nested.get("approve_value", "approve"),
+        "gate_on_approve": approve_branch,
+        "gate_on_reject": nested.get("on_reject"),
+        "tail_steps": raw_tail,
+        "tail_final_message": parent_callback.get("tail_final_message") or "",
+        "original_query": parent_callback.get("original_query") or "",
+        "conversation_id": parent_callback.get("conversation_id") or "",
+    }
+    dialog_pending.save_pending(sender, dialog_id, state)
+    log.info("orchestration: coda executor trasferita al gate annidato %s "
+             "(%s, %d step)", dialog_id, approve_tool, len(raw_tail))
+    return True
+
+
+def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
+                                       actor: str = "host",
+                                       channel: str | None = None):
+    """Riprende una pipeline dopo un gate creato dentro un executor.
+
+    Prima ripresenta al broker il token opaco del branch approvato, poi esegue
+    soltanto gli step residui usando quel result come seed. In questo modo la
+    risorsa osservata resta quella mostrata all'utente e nessuna azione
+    pre-gate viene ripetuta. Se il branch incontra un altro gate, trasferisce la
+    coda a quel dialogo e si sospende ancora, per un numero arbitrario di gate.
+    """
+    approve = on_complete.get("gate_approve_value", "approve")
+    decision = next(iter((values or {}).values()), None) if values else None
+    if decision != approve:
+        rejected = _invoke_gate_branch_result(
+            on_complete.get("gate_on_reject"), actor=actor, channel=channel)
+        return _shape_result_for_chat(rejected)
+
+    branch_result = _invoke_gate_branch_result(
+        on_complete.get("gate_on_approve"), actor=actor, channel=channel)
+    if not isinstance(branch_result, dict) or not branch_result.get("ok"):
+        return _shape_result_for_chat(branch_result)
+
+    raw_tail = on_complete.get("tail_steps") or []
+    if branch_result.get("decision") == "needs_inputs":
+        payload = branch_result.get("needs_inputs") or {}
+        nested_callback = payload.get("on_complete") or {}
+        if (raw_tail and isinstance(nested_callback, dict)
+                and nested_callback.get("type") ==
+                    "resume_executor_with_values"):
+            nested_callback.update({
+                "type": "resume_executor_values_tail",
+                "tail_steps": raw_tail,
+                "tail_final_message": (
+                    on_complete.get("tail_final_message") or ""),
+                "original_query": on_complete.get("original_query") or "",
+                "conversation_id": on_complete.get("conversation_id") or "",
+            })
+            payload["on_complete"] = nested_callback
+        conversation_id = str(on_complete.get("conversation_id") or "")
+        sender = f"{channel or 'http'}:{actor or 'host'}"
+        if conversation_id:
+            sender = f"{sender}:{conversation_id}"
+        dialog = orchestrate_needs_inputs(
+            branch_result, sender_id=sender,
+            actor=actor or "host", channel=channel or "http")
+        if not isinstance(dialog, dict) or not dialog.get("ok"):
+            return _shape_result_for_chat(dialog)
+        return CompletionResult(
+            text=(dialog.get("final_message_hint")
+                  or branch_result.get("final_message_hint")
+                  or _msg("MSG_ORCH_DIALOG_DONE")),
+            attachments=list(branch_result.get("attachments") or ()),
+            n_total_matches=len(branch_result.get("attachments") or ()),
+            path=[{"tool": str((on_complete.get("gate_on_approve") or {}).get(
+                "tool") or ""), "ok": True}],
+        )
+    if (branch_result.get("decision") == "input_required"
+            and branch_result.get("dialog_id")):
+        if not raw_tail:
+            return _shape_result_for_chat(branch_result)
+        if not _carry_executor_tail_to_nested_gate(
+                branch_result, on_complete, actor=actor, channel=channel):
+            return _msg(
+                "MSG_ORCH_CONTINUATION_FAILED",
+                detail="nested approval gate could not inherit executor tail",
+            )
+        attachments = list(branch_result.get("attachments") or [])
+        branch = on_complete.get("gate_on_approve") or {}
+        branch_tool = (
+            (branch.get("tool") or branch.get("executor") or "")
+            if isinstance(branch, dict) else ""
+        )
+        return CompletionResult(
+            text=_shape_result_for_chat(branch_result),
+            attachments=attachments,
+            n_total_matches=len(attachments),
+            path=([{"tool": branch_tool, "ok": True}]
+                  if branch_tool else []),
+        )
+    if not isinstance(raw_tail, list) or not raw_tail:
+        return _shape_result_for_chat(branch_result)
+    try:
+        from engine.executor import Executor
+        from engine.types import Framework, StepRun, StepSpec
+        from loader import load_catalog
+        cat = load_catalog(verify=True, include_synth=True)
+        catalog = list(cat.executors.values())
+        steps = [StepSpec(
+            tool=str(item.get("tool") or ""),
+            args=dict(item.get("args") or {}),
+            if_prev_entries_nonempty=bool(item.get("if_prev_entries_nonempty")),
+        ) for item in raw_tail if isinstance(item, dict) and item.get("tool")]
+        if not steps:
+            return _shape_result_for_chat(branch_result)
+        framework = Framework(
+            steps=steps,
+            final_message=str(on_complete.get("tail_final_message") or ""))
+
+        def _invoke(tool_name: str, args: dict) -> dict:
+            ex = cat.executors.get(tool_name)
+            if ex is None:
+                return {"ok": False, "error": _msg(
+                    "MSG_ORCH_EXECUTOR_NOT_IN_CATALOG", executor=tool_name),
+                    "error_class": "tool_unknown"}
+            import agent_runtime
+            return agent_runtime.invoke_executor(
+                ex, args, timeout_s=getattr(ex, "timeout_s", 30),
+                actor=actor, channel=channel)
+
+        seed = StepRun(
+            step_idx=1, tool="@approved_executor_gate", args={},
+            result=branch_result, ok=True, latency_ms=0, kind="input")
+        run = Executor(
+            invoke_executor=_invoke, seed_steps=[seed], catalog=catalog).run(
+                framework, query=on_complete.get("original_query") or "",
+                runtime_ctx={
+                    "actor": actor or "host", "channel": channel or "",
+                    "user_query_raw": on_complete.get("original_query") or "",
+                    "conversation_id": on_complete.get("conversation_id") or "",
+                })
+        if getattr(run, "gate_dialog_id", ""):
+            from engine.dispatch import _inject_gate_resume_if_paused
+            _inject_gate_resume_if_paused(
+                run, on_complete.get("original_query") or "",
+                {"actor": actor or "host", "channel": channel or "",
+                 "user_query_raw": on_complete.get("original_query") or "",
+                 "conversation_id": on_complete.get("conversation_id") or ""},
+                framework=framework)
+
+        attachments = []
+        path = []
+        for step in run.steps:
+            if step.tool == "@approved_executor_gate":
+                continue
+            result = step.result if isinstance(step.result, dict) else {}
+            path.append({"tool": step.tool, "ok": bool(result.get("ok"))})
+            if isinstance(result.get("attachments"), list):
+                attachments.extend(result["attachments"])
+        text = run.final_text
+        last_result = (run.steps[-1].result
+                       if run.steps and isinstance(run.steps[-1].result, dict)
+                       else {})
+        # La presentazione dichiarata dall'executor e' piu' informativa del
+        # bullet generico di una entry tecnica sites (solo session_id/stato).
+        if last_result.get("final_message_hint"):
+            text = last_result["final_message_hint"]
+        elif not text and run.steps:
+            text = _shape_result_for_chat(last_result)
+        return CompletionResult(
+            text=text or _msg("MSG_ORCH_CONTINUATION_DONE"),
+            attachments=attachments,
+            n_total_matches=len(attachments), path=path)
+    except (ImportError, KeyError, RuntimeError, TypeError, ValueError) as ex:
+        log.exception("orchestration: resume executor gate tail fallito")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+
+
 def _process_resume_engine_gate(on_complete: dict, values: dict, *,
                                 actor: str = "host",
                                 channel: str | None = None) -> str:
@@ -856,6 +1152,40 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
             pass
 
     return _shape_result_for_chat(res)
+
+
+def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
+                                         actor: str = "host",
+                                         channel: str | None = None):
+    """Rilancia un executor con input raccolti e continua la coda stateful.
+
+    Riusa lo stesso motore delle approvazioni executor: cambia soltanto il modo
+    in cui viene costruito il branch iniziale (merge dei valori del dialogo).
+    I valori restano in memoria e non entrano nella query del planner.
+    """
+    executor = str(on_complete.get("executor") or "")
+    if not executor:
+        return _msg("MSG_ORCH_RESUME_EXEC_MISSING")
+    args = dict(on_complete.get("args_base") or {})
+    merge_into = on_complete.get("merge_into")
+    if merge_into:
+        nested = dict(args.get(merge_into) or {})
+        nested.update(values or {})
+        args[merge_into] = nested
+    else:
+        args.update(values or {})
+    callback = {
+        "gate_approve_value": "approve",
+        "gate_on_approve": {"tool": executor, "args": args},
+        "gate_on_reject": None,
+        "tail_steps": list(on_complete.get("tail_steps") or ()),
+        "tail_final_message": on_complete.get("tail_final_message") or "",
+        "original_query": on_complete.get("original_query") or "",
+        "conversation_id": on_complete.get("conversation_id") or "",
+    }
+    return _process_resume_executor_gate_tail(
+        callback, {"decision": "approve"},
+        actor=actor, channel=channel)
 
 
 def _process_strato3_choice_dispatch(

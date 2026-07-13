@@ -11,6 +11,19 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
+@dataclass(frozen=True)
+class CallbackOutcome:
+    """Esito semantico di un callback, distinto dal mero ritorno Python."""
+    status: str
+    output: str = ""
+    error: str | None = None
+
+    def append_output(self, suffix: str) -> "CallbackOutcome":
+        text = " | ".join(part for part in (self.output, suffix) if part)
+        return CallbackOutcome(status=self.status, output=text,
+                               error=self.error)
+
+
 @dataclass
 class ScheduleEntry:
     name: str
@@ -118,5 +131,3 @@ class Run:
             duration_ms=d.get("duration_ms"),
             output=d.get("output") or "",
         )
-
-
