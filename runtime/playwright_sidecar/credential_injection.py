@@ -775,45 +775,44 @@ def _post_submit_authenticated(observed: dict,
     return post_submit_outcome(observed, session_cookie_names) == "login_verified"
 
 
-def _cooldown_fp(storage_domain: str) -> str:
-    """Fingerprint irreversibile per la chiave cooldown. Sentinella stabile
-    `passwordless` se il record non ha pwd (la chiave contiene gia' owner+binding)."""
-    try:
-        return credentials.fingerprint(storage_domain) or "passwordless"
-    except Exception:
-        return "passwordless"
+def _fingerprint_payload(payload: dict | None) -> str | None:
+    """Fingerprint (sha256[:16] della pwd) dal payload GIA' caricato — stessa
+    algoritmica di `credentials.fingerprint` ma SENZA ri-caricare il vault.
+
+    Fix regressione F#4: `credentials.fingerprint(storage_domain)` ri-carica il
+    record e poteva DIVERGERE dal payload in mano (storage_domain mockato/
+    risolto diversamente) → falso `credential_identity_unavailable`. Derivando
+    dal payload, con una password presente il fp e' SEMPRE calcolabile."""
+    if not isinstance(payload, dict):
+        return None
+    pwd = payload.get("password") or payload.get("pwd") or payload.get("passwd")
+    if not pwd:
+        form = payload.get("form_data") or {}
+        pwd = form.get("password") or form.get("pwd") or form.get("passwd")
+    if not pwd:
+        return None
+    return hashlib.sha256(str(pwd).encode("utf-8")).hexdigest()[:16]
 
 
 def cooldown_block(owner: str, storage_domain: str,
-                   *, password_present: bool) -> dict | None:
-    """Choke-point del cooldown (fix adversarial #1/#4). Ritorna un result
-    FAIL-CLOSED se il fill NON deve procedere, altrimenti None.
+                   *, payload: dict | None) -> dict | None:
+    """Choke-point del cooldown (fix adversarial #1/#4). Result FAIL-CLOSED se il
+    fill NON deve procedere, altrimenti None. La chiave usa il fp DERIVATO DAL
+    PAYLOAD (nessun re-load, nessuna divergenza).
 
     - cooldown attivo → blocco con `sites_cooldown_active` + `retry_after_s`;
-    - se ESISTE una password ma l'identita' irreversibile (fp) non e' derivabile
-      → `credential_identity_unavailable` (§7): mai esporre credenziali senza la
-      chiave anti-lockout;
-    - se ESISTE una password ma lo store non e' interrogabile → fail-closed
-      (transiente: l'utente ritenta). Passwordless → best-effort (nessun blocco).
+    - password presente + store non interrogabile → fail-closed transiente;
+    - passwordless → best-effort (nessun blocco).
     """
     if not owner or not storage_domain:
         return None
-    fp = None
-    fp_error = False
-    try:
-        fp = credentials.fingerprint(storage_domain)
-    except Exception:
-        fp_error = True
-    if password_present and (fp_error or not fp):
-        return {"ok": True, "logged_in": False,
-                "reason_code": "credential_identity_unavailable",
-                "error_class": "credential_identity_unavailable"}
-    fp = fp or "passwordless"
+    fp = _fingerprint_payload(payload)  # None se passwordless
     try:
         import sites_cooldown
-        wait = sites_cooldown.retry_after_s(owner, storage_domain, fp)
+        wait = sites_cooldown.retry_after_s(
+            owner, storage_domain, fp or "passwordless")
     except Exception:
-        if password_present:
+        if fp:  # esiste una password: fail-closed transiente (§7)
             return {"ok": True, "logged_in": False,
                     "reason_code": "sites_cooldown_active",
                     "error_class": "cooldown_active", "retry_after_s": 0}
@@ -825,15 +824,15 @@ def cooldown_block(owner: str, storage_domain: str,
     return None
 
 
-def _apply_cooldown_outcome(owner: str, storage_domain: str,
-                            outcome: str) -> None:
+def _apply_cooldown_outcome(owner: str, storage_domain: str, outcome: str,
+                            *, payload: dict | None) -> None:
     """Login verificato → reset; `credentials_rejected`/`rate_limited` → incrementa
-    (§7). Gli altri esiti NON toccano il cooldown. Best-effort."""
+    (§7). fp derivato dal payload (coerente con `cooldown_block`). Best-effort."""
     if not owner or not storage_domain:
         return
     try:
         import sites_cooldown
-        fp = _cooldown_fp(storage_domain)
+        fp = _fingerprint_payload(payload) or "passwordless"
         if outcome == "login_verified":
             sites_cooldown.reset(owner, storage_domain, fp)
         elif outcome in sites_cooldown._COOLDOWN_REASONS:
@@ -963,7 +962,8 @@ async def _complete_one_time_code_stage(*, page, context,
                                         storage_domain: str,
                                         session_cookie_names: list[str],
                                         owner: str, session_id: str,
-                                        op_timeout_s: float) -> dict:
+                                        op_timeout_s: float,
+                                        payload: dict | None = None) -> dict:
     try:
         cookies_before = {
             (c.get("name"), c.get("domain"), c.get("path")): c.get("value")
@@ -1003,7 +1003,7 @@ async def _complete_one_time_code_stage(*, page, context,
             reason = "login_failed"
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                        domain=vault_domain, outcome=logged_in, reason=reason)
-    _apply_cooldown_outcome(owner, storage_domain, outcome)
+    _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
 
@@ -1156,8 +1156,7 @@ async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
     # Fix adversarial #1: il cooldown vive al choke-point di OGNI esposizione
     # credenziale, non solo in login_sites. `act_sites`/`fill_credential_ref` NON
     # deve poter riesporre la credenziale durante un cooldown attivo (fail-closed).
-    _blk = cooldown_block(owner, storage_domain,
-                          password_present=(field in ("password", "passwd")))
+    _blk = cooldown_block(owner, storage_domain, payload=payload)
     if _blk is not None:
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                            domain=domain, outcome=False,
@@ -1266,7 +1265,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # ADR 0191 P6 + fix #1/#4: choke-point anti-lockout fail-closed. Se in
     # cooldown, o identita'/store non disponibili con password esistente, NON
     # esporre la credenziale.
-    _blk = cooldown_block(owner, storage_domain, password_present=bool(password))
+    _blk = cooldown_block(owner, storage_domain, payload=payload)
     if _blk is not None:
         sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                            domain=domain, outcome=False,
@@ -1293,7 +1292,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             storage_domain=storage_domain,
             session_cookie_names=session_cookie_names,
             owner=owner, session_id=session_id,
-            op_timeout_s=budget.remaining(op_timeout_s))
+            op_timeout_s=budget.remaining(op_timeout_s), payload=payload)
         await _checkpoint(
             checkpoint,
             "complete" if completed.get("logged_in") else "factor_pending")
@@ -1314,7 +1313,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 storage_domain=storage_domain,
                 session_cookie_names=session_cookie_names,
                 owner=owner, session_id=session_id,
-                op_timeout_s=budget.remaining(op_timeout_s))
+                op_timeout_s=budget.remaining(op_timeout_s), payload=payload)
             if completed.get("logged_in"):
                 await _checkpoint(checkpoint, "complete")
                 return completed
@@ -1730,5 +1729,5 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             "two_factor_required", "two_factor_push_required",
             "captcha_required"} else "failed")
 
-    _apply_cooldown_outcome(owner, storage_domain, outcome)
+    _apply_cooldown_outcome(owner, storage_domain, outcome, payload=payload)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}

@@ -30,15 +30,19 @@ _RUNTIME = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_RUNTIME))
 
 
+# ADR 0191 §8.A / v4 §10: overlay privacy NON-navigante — la dismissione sicura
+# lo rimuove via JS (button[type=button]), senza submit/navigazione. Un consenso
+# NAVIGANTE (input[type=submit]/form POST) passerebbe invece dal gate (P5/#11),
+# testato separatamente.
 _COOKIE_OVERLAY = """
 <div id="sp-cc" style="position:fixed;left:0;right:0;bottom:0;background:#fff;
      border-top:1px solid #ccc;padding:20px;z-index:9999">
   <h2>Cookie e scelte pubblicitarie</h2>
   <p>Con il tuo consenso, possiamo utilizzare i cookie...</p>
-  <form action="/cookie" method="POST" style="display:inline">
-    <input type="submit" name="accept" value="Accetta">
-    <input type="submit" name="reject" value="Rifiuta">
-  </form>
+  <button type="button" id="cc-accept"
+          onclick="document.getElementById('sp-cc').remove()">Accetta</button>
+  <button type="button" id="cc-reject"
+          onclick="document.getElementById('sp-cc').remove()">Rifiuta</button>
 </div>
 """
 
@@ -150,8 +154,15 @@ async def _drive(url: str, *, full_chain: bool = False):
     from playwright_sidecar import credential_injection as ci
     import sites_audit
 
+    # ADR 0191 P2: il fill e' autorizzato a MATCH ESATTO (scheme,host,port). Il
+    # server sim gira su una porta random → registra l'origine ESATTA come farebbe
+    # una credenziale reale di un device LAN (senza, la migrazione deriva :80 e
+    # l'enforcement apre un gate credential_origin).
+    import sites_origin as _so
+    _sim_origin = _so.origin_of_url(url)
     ci._load_site_credentials = lambda domain: (
-        {"username": "test@example.it", "password": "sim-pw"}, "127.0.0.1")
+        {"username": "test@example.it", "password": "sim-pw",
+         "credential_origins": [_sim_origin]}, "127.0.0.1")
     events = []
     sites_audit.record = lambda event, **f: events.append((event, f))
 
