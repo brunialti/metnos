@@ -33,6 +33,7 @@ import base64
 import hashlib
 import hmac
 import inspect
+import os
 import re
 import struct
 import time
@@ -40,6 +41,7 @@ import urllib.parse
 
 import credentials  # runtime/credentials.py — vault cifrato (dentro il broker)
 import sites_audit
+import sites_origin  # ADR 0191 P2 — origine credenziale (scheme,host,port)
 from playwright_sidecar import factor_resolvers
 from sites_url_scrub import scrub_url
 
@@ -52,6 +54,7 @@ except ImportError:  # pragma: no cover - sidecar install incompleto
 _LOGIN_SURFACE_SETTLE_S = 5.0
 _EMAIL_FACTOR_WAIT_S = 22.0
 _FACTOR_SUBMIT_SETTLE_S = 15.0
+_AUTH_SUCCESS_STABLE_POLLS = 6
 
 
 class _LoginBudget:
@@ -272,6 +275,46 @@ _HAS_PASSWORD_JS = r"""
 })
 """
 
+# Post-submit: una pagina puo' cambiare URL prima che il framework client
+# rimonti il form di accesso. Il successo cookieless richiede quindi che una
+# superficie autenticativa resti assente per piu' osservazioni consecutive.
+# Oltre alla password copre gli stadi username-first tramite attributi web
+# standard e struttura del form; non contiene sinonimi o parole di una lingua.
+_HAS_LOGIN_SURFACE_JS = r"""
+() => {
+  const visible = el => {
+    const r = el.getBoundingClientRect();
+    const st = getComputedStyle(el);
+    return r.width >= 2 && r.height >= 2 && st.display !== 'none' &&
+      st.visibility !== 'hidden' && Number.parseFloat(st.opacity || '1') >= 0.05 &&
+      !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+  };
+  if (Array.from(document.querySelectorAll('input[type=password]')).some(visible))
+    return true;
+  const fields = Array.from(document.querySelectorAll(
+    'input[autocomplete=username i],input[type=email],'
+    + 'input[autocomplete=email i],[data-metnos-user-step],'
+    + '[data-metnos-user]'));
+  return fields.some(el => {
+    if (!visible(el)) return false;
+    const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
+    const form = el.closest('form');
+    if (el.hasAttribute('data-metnos-user-step') ||
+        el.hasAttribute('data-metnos-user') || autocomplete === 'username')
+      return true;
+    if (!form || !(autocomplete === 'email' || el.type === 'email'))
+      return false;
+    const identityFields = Array.from(form.querySelectorAll(
+      'input[autocomplete=username i],input[type=email],'
+      + 'input[autocomplete=email i]')).filter(visible);
+    const submit = Array.from(form.querySelectorAll(
+      'button[type=submit],input[type=submit],input[type=image],button:not([type])'))
+      .some(visible);
+    return identityFields.length === 1 && submit;
+  });
+}
+"""
+
 _PASSWORD_REJECTED_JS = r"""
 () => Array.from(document.querySelectorAll('input[type=password]')).some(el => {
   const r = el.getBoundingClientRect();
@@ -385,11 +428,53 @@ def _host_of(url: str) -> str:
         return ""
 
 
+def _human_delay_ms() -> int:
+    try:
+        value = int(os.getenv("METNOS_SITES_HUMAN_DELAY_MS", "400"))
+    except (TypeError, ValueError):
+        value = 400
+    return max(0, min(value, 3000))
+
+
+async def _human_pause(page, *, stealth: bool = False) -> None:
+    """Pausa breve 'umana' attorno a fill e click credenziale.
+
+    Presidio ANTI-RILEVAMENTO (ritmo non-uniforme), NON stabilizzazione UI:
+    SOLO in modalita' stealth PER-SESSIONE (ADR 0191 P1, layer BEHAVIOR del
+    registro stealth — non piu' env globale). Default off = nessuna pausa; la
+    stabilita' pagina si ottiene con attese su postcondizioni. Bounded via
+    `METNOS_SITES_HUMAN_DELAY_MS`.
+    """
+    if not stealth:
+        return
+    from playwright_sidecar import stealth as _st
+    if not _st.technique_enabled("human_delays", stealth=True):
+        return
+    ms = _human_delay_ms()
+    if ms <= 0:
+        return
+    try:
+        if hasattr(page, "wait_for_timeout"):
+            await page.wait_for_timeout(ms)
+        else:
+            await asyncio.sleep(ms / 1000)
+    except Exception:
+        pass
+
+
 async def _has_toplevel_password(page) -> bool:
     try:
         return bool(await page.evaluate(_HAS_PASSWORD_JS))
     except Exception:
         return False
+
+
+async def _login_surface_state(page) -> bool | None:
+    """Ritorna True/False soltanto se il DOM e' stato osservato con successo."""
+    try:
+        return bool(await page.evaluate(_HAS_LOGIN_SURFACE_JS))
+    except Exception:
+        return None
 
 
 async def _wait_for_password_stage(page, op_timeout_s: float) -> bool:
@@ -560,13 +645,21 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         "cookies": [], "changed": [], "still_pw": False,
         "otp": False, "captcha": False, "push": False,
         "password_rejected": False, "navigation_confirmed": False,
+        "login_surface": False, "surface_checked": False,
+        "stable_positive": False,
     }
+    positive_streak = 0
+    required_stable_polls = min(
+        _AUTH_SUCCESS_STABLE_POLLS, max(2, attempts - 1))
     for attempt in range(attempts):
         try:
             cookies = await context.cookies()
         except Exception:
             cookies = []
-        still_pw = await _has_toplevel_password(page)
+        surface_state = await _login_surface_state(page)
+        login_surface = surface_state is True
+        surface_checked = surface_state is not None
+        still_pw = login_surface
         otp = captcha = password_rejected = False
         try:
             otp = bool(await page.evaluate(_DETECT_OTP_JS))
@@ -588,13 +681,24 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             "otp": otp, "captcha": captcha, "push": push,
             "password_rejected": password_rejected,
             "navigation_confirmed": navigation_confirmed,
+            "login_surface": login_surface,
+            "surface_checked": surface_checked,
+            "stable_positive": False,
         }
-        # Challenge e rifiuti espliciti sono terminali. Per il successo serve
-        # invece che il form sparisca insieme a un segnale di sessione o rotta.
+        positive = bool(
+            surface_checked and not login_surface
+            and (changed or navigation_confirmed))
+        positive_streak = positive_streak + 1 if positive else 0
+        state["stable_positive"] = (
+            positive_streak >= required_stable_polls)
+        # Challenge e rifiuti sono terminali. La superficie login puo' essere
+        # ancora visibile nel primo frame dopo il click: azzera la sequenza ma
+        # deve essere riosservata fino al budget. Se persiste o ricompare, lo
+        # stato finale resta negativo; un frame vuoto non prova il login.
         if (await_challenge_clear and (otp or push)):
             pass
         elif (otp or captcha or push or password_rejected
-                or ((changed or navigation_confirmed) and not still_pw)):
+                or state["stable_positive"]):
             break
         if attempt + 1 >= attempts:
             break
@@ -608,10 +712,14 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
     return state
 
 
-def _post_submit_authenticated(observed: dict,
-                               session_cookie_names: list[str]) -> bool:
-    """Valuta gli stessi segnali positivi per password, TOTP e OTP esterno."""
-    if (observed.get("still_pw") or observed.get("otp")
+def _authed_success(observed: dict,
+                    session_cookie_names: list[str]) -> bool:
+    """Segnale POSITIVO di sessione (password, TOTP e OTP esterno). True solo se
+    stabile-positivo e SENZA rifiuto/sfida."""
+    if (observed.get("still_pw") or observed.get("login_surface")
+            or not observed.get("surface_checked")
+            or not observed.get("stable_positive")
+            or observed.get("otp")
             or observed.get("captcha") or observed.get("push")
             or observed.get("password_rejected")):
         return False
@@ -633,6 +741,105 @@ def _post_submit_authenticated(observed: dict,
     # NON producono un cookie cambiato; senza questo ramo un login riuscito su
     # SPA hash-route (`#/login` -> `#/home`) verrebbe dichiarato fallito.
     return bool(auth_cookie or observed.get("navigation_confirmed"))
+
+
+# Esiti post-submit (ADR 0191 §6.2). Solo `credentials_rejected` e `rate_limited`
+# alimentano il cooldown (§7). `challenge_observed` (2FA/CAPTCHA corretta) e
+# `login_inconclusive` (remount/timeout) lo lasciano INVARIATO.
+POST_SUBMIT_OUTCOMES = frozenset({
+    "login_verified", "credentials_rejected", "rate_limited",
+    "challenge_observed", "login_inconclusive",
+})
+COOLDOWN_OUTCOMES = frozenset({"credentials_rejected", "rate_limited"})
+
+
+def post_submit_outcome(observed: dict,
+                        session_cookie_names: list[str]) -> str:
+    """Classifica l'esito post-submit in uno dei 5 stati disgiunti (§6.2), da
+    segnali GIA' calcolati da `_observe_post_submit` (nessun detector parallelo).
+    Precedenza: successo verificato > rate-limit (429) > sfida > rifiuto > neutro."""
+    if _authed_success(observed, session_cookie_names):
+        return "login_verified"
+    if observed.get("http_status") == 429 or observed.get("rate_limited"):
+        return "rate_limited"
+    if observed.get("otp") or observed.get("captcha") or observed.get("push"):
+        return "challenge_observed"
+    if observed.get("password_rejected"):
+        return "credentials_rejected"
+    return "login_inconclusive"
+
+
+def _post_submit_authenticated(observed: dict,
+                               session_cookie_names: list[str]) -> bool:
+    """Compat bool: True sse l'esito e' `login_verified`."""
+    return post_submit_outcome(observed, session_cookie_names) == "login_verified"
+
+
+def _cooldown_fp(storage_domain: str) -> str:
+    """Fingerprint irreversibile per la chiave cooldown. Sentinella stabile
+    `passwordless` se il record non ha pwd (la chiave contiene gia' owner+binding)."""
+    try:
+        return credentials.fingerprint(storage_domain) or "passwordless"
+    except Exception:
+        return "passwordless"
+
+
+def cooldown_block(owner: str, storage_domain: str,
+                   *, password_present: bool) -> dict | None:
+    """Choke-point del cooldown (fix adversarial #1/#4). Ritorna un result
+    FAIL-CLOSED se il fill NON deve procedere, altrimenti None.
+
+    - cooldown attivo → blocco con `sites_cooldown_active` + `retry_after_s`;
+    - se ESISTE una password ma l'identita' irreversibile (fp) non e' derivabile
+      → `credential_identity_unavailable` (§7): mai esporre credenziali senza la
+      chiave anti-lockout;
+    - se ESISTE una password ma lo store non e' interrogabile → fail-closed
+      (transiente: l'utente ritenta). Passwordless → best-effort (nessun blocco).
+    """
+    if not owner or not storage_domain:
+        return None
+    fp = None
+    fp_error = False
+    try:
+        fp = credentials.fingerprint(storage_domain)
+    except Exception:
+        fp_error = True
+    if password_present and (fp_error or not fp):
+        return {"ok": True, "logged_in": False,
+                "reason_code": "credential_identity_unavailable",
+                "error_class": "credential_identity_unavailable"}
+    fp = fp or "passwordless"
+    try:
+        import sites_cooldown
+        wait = sites_cooldown.retry_after_s(owner, storage_domain, fp)
+    except Exception:
+        if password_present:
+            return {"ok": True, "logged_in": False,
+                    "reason_code": "sites_cooldown_active",
+                    "error_class": "cooldown_active", "retry_after_s": 0}
+        return None
+    if wait > 0:
+        return {"ok": True, "logged_in": False,
+                "reason_code": "sites_cooldown_active",
+                "error_class": "cooldown_active", "retry_after_s": wait}
+    return None
+
+
+def _apply_cooldown_outcome(owner: str, storage_domain: str,
+                            outcome: str) -> None:
+    """Login verificato → reset; `credentials_rejected`/`rate_limited` → incrementa
+    (§7). Gli altri esiti NON toccano il cooldown. Best-effort."""
+    if not owner or not storage_domain:
+        return
+    try:
+        import sites_cooldown
+        fp = _cooldown_fp(storage_domain)
+        if outcome == "login_verified":
+            sites_cooldown.reset(owner, storage_domain, fp)
+        elif outcome in sites_cooldown._COOLDOWN_REASONS:
+            sites_cooldown.record_failure(owner, storage_domain, fp, outcome)
+    except Exception:
+        pass
 
 
 def _totp_code(secret: str, *, now: float | None = None,
@@ -666,7 +873,7 @@ def _totp_code(secret: str, *, now: float | None = None,
 
 
 async def _submit_otp_stage(*, page, vault_domain: str,
-                            expected_origin: str, code: str,
+                            origin_ok, code: str,
                             storage_domain: str, owner: str,
                             session_id: str, op_timeout_s: float,
                             audit_field: str,
@@ -679,15 +886,15 @@ async def _submit_otp_stage(*, page, vault_domain: str,
         return {"ok": False, "error_class": (
             "selector_ambiguous" if info and info.get("ambiguous")
             else "selector_missing")}
-    if _host_of(info.get("actionResolved") or page.url) != expected_origin:
+    if not origin_ok(info.get("actionResolved") or page.url):
         return {"ok": False, "error_class": "origin_mismatch"}
     code = str(code or "").strip()
     if (not 3 <= len(code) <= 32
             or any(ord(char) < 32 for char in code)):
         return {"ok": False, "error_class": failure_class}
     try:
-        current_host = _host_of(await page.evaluate(_CURRENT_OTP_ACTION_JS))
-        if current_host != expected_origin:
+        current_action = await page.evaluate(_CURRENT_OTP_ACTION_JS)
+        if not origin_ok(current_action):
             return {"ok": False, "error_class": "origin_mismatch"}
         if info.get("segmented"):
             count = int(info.get("fieldCount") or 0)
@@ -709,8 +916,8 @@ async def _submit_otp_stage(*, page, vault_domain: str,
         sites_audit.record(
             "credential_use", owner=owner, session_id=session_id,
             domain=vault_domain, fingerprint=fp, field=audit_field)
-        current_host = _host_of(await page.evaluate(_CURRENT_OTP_ACTION_JS))
-        if current_host != expected_origin:
+        current_action = await page.evaluate(_CURRENT_OTP_ACTION_JS)
+        if not origin_ok(current_action):
             return {"ok": False, "error_class": "origin_mismatch"}
         if info.get("hasSubmit"):
             await page.click('[data-metnos-otp-submit="1"]',
@@ -731,7 +938,7 @@ async def _submit_otp_stage(*, page, vault_domain: str,
 
 
 async def _advance_totp_stage(*, page, vault_domain: str,
-                              expected_origin: str, totp_secret: str,
+                              origin_ok, totp_secret: str,
                               storage_domain: str, owner: str,
                               session_id: str, op_timeout_s: float,
                               digits: int = 6, period: int = 30,
@@ -743,7 +950,7 @@ async def _advance_totp_stage(*, page, vault_domain: str,
         return {"ok": False, "error_class": "totp_failed"}
     return await _submit_otp_stage(
         page=page, vault_domain=vault_domain,
-        expected_origin=expected_origin, code=code,
+        origin_ok=origin_ok, code=code,
         storage_domain=storage_domain, owner=owner,
         session_id=session_id, op_timeout_s=op_timeout_s,
         audit_field="totp", failure_class="totp_failed")
@@ -751,7 +958,7 @@ async def _advance_totp_stage(*, page, vault_domain: str,
 
 async def _complete_one_time_code_stage(*, page, context,
                                         vault_domain: str,
-                                        expected_origin: str,
+                                        origin_ok,
                                         one_time_code: str,
                                         storage_domain: str,
                                         session_cookie_names: list[str],
@@ -767,7 +974,7 @@ async def _complete_one_time_code_stage(*, page, context,
     url_before = page.url
     advanced = await _submit_otp_stage(
         page=page, vault_domain=vault_domain,
-        expected_origin=expected_origin, code=one_time_code,
+        origin_ok=origin_ok, code=one_time_code,
         storage_domain=storage_domain, owner=owner,
         session_id=session_id, op_timeout_s=op_timeout_s,
         audit_field="one_time_code", failure_class="otp_failed")
@@ -782,8 +989,8 @@ async def _complete_one_time_code_stage(*, page, context,
         url_before=url_before,
         op_timeout_s=min(op_timeout_s, _FACTOR_SUBMIT_SETTLE_S),
         await_challenge_clear=True)
-    logged_in = _post_submit_authenticated(
-        observed, session_cookie_names)
+    outcome = post_submit_outcome(observed, session_cookie_names)
+    logged_in = (outcome == "login_verified")
     reason = None
     if not logged_in:
         if observed.get("captcha"):
@@ -796,15 +1003,17 @@ async def _complete_one_time_code_stage(*, page, context,
             reason = "login_failed"
     sites_audit.record("login_attempt", owner=owner, session_id=session_id,
                        domain=vault_domain, outcome=logged_in, reason=reason)
+    _apply_cooldown_outcome(owner, storage_domain, outcome)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}
 
 
 async def _advance_username_stage(*, page, vault_domain: str,
-                                  expected_origin: str, username: str,
+                                  origin_ok, username: str,
                                   storage_domain: str, owner: str,
                                   session_id: str,
                                   op_timeout_s: float,
-                                  before_submit=None) -> dict:
+                                  before_submit=None,
+                                  stealth: bool = False) -> dict:
     """Compila l'identita' e avanza UNA volta verso la password."""
     try:
         info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
@@ -814,23 +1023,25 @@ async def _advance_username_stage(*, page, vault_domain: str,
         return {"ok": False, "error_class": (
             "selector_ambiguous" if info and info.get("ambiguous")
             else "selector_missing")}
-    form_host = _host_of(info.get("actionResolved") or page.url)
-    if form_host != expected_origin.lower():
+    action_url = info.get("actionResolved") or page.url
+    if not origin_ok(action_url):
         sites_audit.record("origin_mismatch", owner=owner,
                            session_id=session_id, domain=vault_domain,
-                           form_host=form_host, phase="username_stage")
+                           form_host=_host_of(action_url),
+                           phase="username_stage")
         return {"ok": False, "error_class": "origin_mismatch"}
     try:
-        current_host = _host_of(await page.evaluate(
-            _CURRENT_USERNAME_ACTION_JS))
-        if current_host != expected_origin.lower():
+        current_action = await page.evaluate(_CURRENT_USERNAME_ACTION_JS)
+        if not origin_ok(current_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=vault_domain,
-                               form_host=current_host,
+                               form_host=_host_of(current_action),
                                phase="username_pre_fill")
             return {"ok": False, "error_class": "origin_mismatch"}
+        await _human_pause(page, stealth=stealth)
         await page.fill('[data-metnos-user-step="1"]', username,
                         timeout=int(op_timeout_s * 1000))
+        await _human_pause(page, stealth=stealth)
         try:
             fp = credentials.fingerprint(storage_domain)
         except Exception:
@@ -838,12 +1049,11 @@ async def _advance_username_stage(*, page, vault_domain: str,
         sites_audit.record(
             "credential_use", owner=owner, session_id=session_id,
             domain=vault_domain, fingerprint=fp, field="username")
-        current_host = _host_of(await page.evaluate(
-            _CURRENT_USERNAME_ACTION_JS))
-        if current_host != expected_origin.lower():
+        current_action = await page.evaluate(_CURRENT_USERNAME_ACTION_JS)
+        if not origin_ok(current_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=vault_domain,
-                               form_host=current_host,
+                               form_host=_host_of(current_action),
                                phase="username_pre_submit")
             return {"ok": False, "error_class": "origin_mismatch"}
         if before_submit is not None:
@@ -871,22 +1081,40 @@ async def _advance_username_stage(*, page, vault_domain: str,
 
 
 def _load_site_credentials(domain: str) -> tuple[dict | None, str]:
-    """Carica il binding esatto, legacy o il solo alias canonico ``www``.
+    """Carica il record esatto o il prefisso legacy ``web_<domain>``.
 
-    Il fallback ``www.host -> host`` riguarda esclusivamente il nome del record
-    nel vault. L'origine del form continua a essere confrontata esattamente con
-    ``domain`` prima di ogni fill, quindi non autorizza sottodomini arbitrari.
+    ADR 0191 P2: NESSUN fold ``www.host -> host`` qui. La risoluzione del
+    candidate legacy (``www.D -> D``) avviene a monte in ``op_open`` via
+    ``legacy_storage_candidate``; l'autorizzazione al fill resta vincolata a
+    ``credential_origins``, mai a un'equivalenza calcolata al load.
     """
     domain = str(domain or "").strip().rstrip(".").lower()
-    candidates = [domain, f"web_{domain}"]
-    if domain.startswith("www.") and domain[4:].count(".") >= 1:
-        root = domain[4:]
-        candidates.extend((root, f"web_{root}"))
-    for binding in candidates:
+    for binding in (domain, f"web_{domain}"):
         payload = credentials.load(binding)
         if payload:
             return payload, binding
     return None, domain
+
+
+def legacy_storage_candidate(host: str) -> str:
+    """Candidate discovery per ``op_open`` (ADR 0191 P2): se non esiste un record
+    sotto ``host`` ma esiste sotto la radice (``host == www.<root>``), ritorna la
+    radice. SOLO per TROVARE il record legacy; NON autorizza il fill (vincolato a
+    ``credential_origins``)."""
+    h = str(host or "").strip().rstrip(".").lower()
+    if not h:
+        return h
+    try:
+        known = set(credentials.list_domains())
+    except Exception:
+        return h
+    if h in known or f"web_{h}" in known:
+        return h
+    if h.startswith("www.") and h[4:].count(".") >= 1:
+        root = h[4:]
+        if root in known or f"web_{root}" in known:
+            return root
+    return h
 
 
 def _credential_form_data(payload: dict) -> dict:
@@ -925,14 +1153,28 @@ async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
     value = next((form_data.get(k) for k in aliases if form_data.get(k)), None)
     if not value:
         return {"ok": False, "error_class": "no_credentials"}
+    # Fix adversarial #1: il cooldown vive al choke-point di OGNI esposizione
+    # credenziale, non solo in login_sites. `act_sites`/`fill_credential_ref` NON
+    # deve poter riesporre la credenziale durante un cooldown attivo (fail-closed).
+    _blk = cooldown_block(owner, storage_domain,
+                          password_present=(field in ("password", "passwd")))
+    if _blk is not None:
+        sites_audit.record("login_attempt", owner=owner, session_id=session_id,
+                           domain=domain, outcome=False,
+                           reason=_blk.get("reason_code"))
+        return {"ok": False, "error_class": _blk["error_class"],
+                "reason_code": _blk["reason_code"],
+                **({"retry_after_s": _blk["retry_after_s"]}
+                   if "retry_after_s" in _blk else {})}
     info = await page.evaluate(_LOCATE_LOGIN_FORM_JS)
     if not info or not info.get("found"):
         return {"ok": False, "error_class": "selector_missing"}
-    current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
-    if current_host != domain:
+    current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
+    allowed = sites_origin.authorized_origins(payload, storage_domain)
+    if not sites_origin.authorize(current_action, allowed):
         sites_audit.record("origin_mismatch", owner=owner,
                            session_id=session_id, domain=domain,
-                           form_host=current_host, phase="action_fill")
+                           form_host=_host_of(current_action), phase="action_fill")
         return {"ok": False, "error_class": "origin_mismatch"}
     selector = ('[data-metnos-user="1"]' if field in
                 ("username", "user", "email") else '[data-metnos-pw="1"]')
@@ -959,7 +1201,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         max_entry_steps: int = 3,
                         page_provider=None, factor_state: dict | None = None,
                         checkpoint=None,
-                        total_timeout_s: float | None = None) -> dict:
+                        total_timeout_s: float | None = None,
+                        stealth: bool = False) -> dict:
     """Esegue il login nel session-context. Ritorna
     `{ok, logged_in: bool, reason_code: str|None, error_class?: str}`.
     ZERO segreti nel return (reason_code = slug i18n, mai username/password).
@@ -990,7 +1233,24 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     totp_algorithm = (form_data.get("totp_algorithm")
                       or payload.get("totp_algorithm") or "sha1")
     session_cookie_names = list(payload.get("session_cookie_names") or [])
-    expected_origin = (approved_origin or domain).lower()
+    # ADR 0191 P2: autorizzazione del fill a MATCH ESATTO della tupla
+    # (scheme,host,port) contro `credential_origins` (o migrazione), NON hostname
+    # con fold `www`. `approved_hosts` = origini one-shot approvate dall'utente per
+    # QUESTO login (ADR 0188), host-granulari, mai persistite.
+    allowed_origins = set(sites_origin.authorized_origins(payload, storage_domain))
+    # Fix adversarial #2: one-shot IdP a MATCH ESATTO (scheme,host,port), non
+    # host-granulare (approvare https://idp:443 NON autorizza altre porte/http).
+    approved_origins = set()
+    if approved_origin:
+        _ao = sites_origin.normalize_entry(str(approved_origin))
+        if _ao:
+            approved_origins.add(_ao)
+
+    def _origin_ok(action_url) -> bool:
+        origin = sites_origin.origin_of_url(action_url)
+        return bool(origin and (origin in allowed_origins
+                                or origin in approved_origins))
+
     budget = _LoginBudget(
         total_timeout_s if total_timeout_s is not None
         else max(op_timeout_s * 5, 60.0))
@@ -1002,6 +1262,16 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         return {"ok": True, "logged_in": False,
                 "reason_code": "credentials_missing",
                 "error_class": "no_credentials"}
+
+    # ADR 0191 P6 + fix #1/#4: choke-point anti-lockout fail-closed. Se in
+    # cooldown, o identita'/store non disponibili con password esistente, NON
+    # esporre la credenziale.
+    _blk = cooldown_block(owner, storage_domain, password_present=bool(password))
+    if _blk is not None:
+        sites_audit.record("login_attempt", owner=owner, session_id=session_id,
+                           domain=domain, outcome=False,
+                           reason=_blk.get("reason_code"))
+        return _blk
 
     def current_page(previous):
         """Follow only pages already adopted by the broker's guarded context."""
@@ -1018,7 +1288,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         await _checkpoint(checkpoint, "factor_submit")
         completed = await _complete_one_time_code_stage(
             page=page, context=context, vault_domain=domain,
-            expected_origin=expected_origin,
+            origin_ok=_origin_ok,
             one_time_code=one_time_code,
             storage_domain=storage_domain,
             session_cookie_names=session_cookie_names,
@@ -1039,7 +1309,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             await _checkpoint(checkpoint, "factor_submit")
             completed = await _complete_one_time_code_stage(
                 page=page, context=context, vault_domain=domain,
-                expected_origin=expected_origin,
+                origin_ok=_origin_ok,
                 one_time_code=email_code,
                 storage_domain=storage_domain,
                 session_cookie_names=session_cookie_names,
@@ -1132,19 +1402,21 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     "error_class": "selector_ambiguous"}
         if username_info and username_info.get("found"):
             privacy_attempted = True
-            username_origin = _host_of(
+            username_action = (
                 username_info.get("actionResolved") or page.url)
-            if username_origin != expected_origin:
+            username_origin = _host_of(username_action)
+            _uao = sites_origin.origin_of_url(username_action)
+            if not _origin_ok(username_action):
                 if authorize_origin is not None and not username_advanced:
                     decision = await authorize_origin(
-                        username_origin, "username")
+                        _uao or username_origin, "username")
                     if decision.get("approval_required"):
                         out = dict(decision)
                         out.update({"ok": True, "logged_in": False})
                         return out
-                    if decision.get("approved"):
-                        expected_origin = username_origin
-                if username_origin != expected_origin:
+                    if decision.get("approved") and _uao:
+                        approved_origins.add(_uao)
+                if not _origin_ok(username_action):
                     sites_audit.record(
                         "origin_mismatch", owner=owner,
                         session_id=session_id, domain=domain,
@@ -1162,11 +1434,11 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
 
             advanced = await _advance_username_stage(
                 page=page, vault_domain=domain,
-                expected_origin=expected_origin, username=username,
+                origin_ok=_origin_ok, username=username,
                 storage_domain=storage_domain, owner=owner,
                 session_id=session_id,
                 op_timeout_s=budget.remaining(op_timeout_s),
-                before_submit=_before_username_submit)
+                before_submit=_before_username_submit, stealth=stealth)
             if not advanced.get("ok"):
                 error_class = advanced.get("error_class")
                 mismatch = error_class == "origin_mismatch"
@@ -1278,19 +1550,23 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     if not info or not info.get("found"):
         return {"ok": True, "logged_in": False, "reason_code": "selector_missing",
                 "error_class": "no_login_form"}
-    form_host = _host_of(info.get("actionResolved") or page.url)
-    # D-D: match ESATTO col dominio del vault. Niente sottodomini, niente iframe
-    # (il JS cerca solo nel main frame).
-    if form_host != expected_origin:
+    form_action = info.get("actionResolved") or page.url
+    form_host = _host_of(form_action)
+    _fao = sites_origin.origin_of_url(form_action)
+    # ADR 0191 P2: match ESATTO (scheme,host,port) contro credential_origins;
+    # nessun fold `www` implicito (www autorizzato solo se entry esplicita o
+    # migrazione). Il consenso one-shot (ADR 0188) approva l'ORIGINE ESATTA per
+    # QUESTO login, mai persistita. Nessun iframe (JS solo main frame).
+    if not _origin_ok(form_action):
         if authorize_origin is not None:
-            decision = await authorize_origin(form_host, "password")
+            decision = await authorize_origin(_fao or form_host, "password")
             if decision.get("approval_required"):
                 out = dict(decision)
                 out.update({"ok": True, "logged_in": False})
                 return out
-            if decision.get("approved"):
-                expected_origin = form_host
-        if form_host != expected_origin:
+            if decision.get("approved") and _fao:
+                approved_origins.add(_fao)
+        if not _origin_ok(form_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=domain,
                                form_host=form_host)
@@ -1315,19 +1591,22 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         action_timeout = budget.remaining(op_timeout_s)
         # TOCTOU: una pagina puo' cambiare form.action dopo il primo controllo.
         # Riverifica immediatamente prima di esporre qualunque credenziale.
-        current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
-        if current_host != expected_origin:
+        current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
+        if not _origin_ok(current_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=domain,
-                               form_host=current_host, phase="pre_fill")
+                               form_host=_host_of(current_action), phase="pre_fill")
             return {"ok": True, "logged_in": False,
                     "reason_code": "origin_unverified",
                     "error_class": "origin_mismatch"}
         if username and info.get("hasUser"):
+            await _human_pause(page, stealth=stealth)
             await page.fill('[data-metnos-user="1"]', username,
                             timeout=int(action_timeout * 1000))
+        await _human_pause(page, stealth=stealth)
         await page.fill('[data-metnos-pw="1"]', password,
                         timeout=int(action_timeout * 1000))
+        await _human_pause(page, stealth=stealth)
         try:
             fp = credentials.fingerprint(storage_domain)
         except Exception:
@@ -1346,11 +1625,11 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     # 5-6. Submit deterministico + attesa navigazione/idle (bounded).
     try:
         await _checkpoint(checkpoint, "primary_submit")
-        current_host = _host_of(await page.evaluate(_CURRENT_FORM_ACTION_JS))
-        if current_host != expected_origin:
+        current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
+        if not _origin_ok(current_action):
             sites_audit.record("origin_mismatch", owner=owner,
                                session_id=session_id, domain=domain,
-                               form_host=current_host, phase="pre_submit")
+                               form_host=_host_of(current_action), phase="pre_submit")
             return {"ok": True, "logged_in": False,
                     "reason_code": "origin_unverified",
                     "error_class": "origin_mismatch"}
@@ -1358,6 +1637,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             username=username, payload=payload, factor_state=factor_state,
             budget=budget, checkpoint=checkpoint, force=True)
         action_timeout = budget.remaining(op_timeout_s)
+        await _human_pause(page, stealth=stealth)
         if info.get("hasSubmit"):
             await page.click('[data-metnos-submit="1"]',
                              timeout=int(action_timeout * 1000),
@@ -1392,7 +1672,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         await _checkpoint(checkpoint, "factor_submit")
         advanced = await _advance_totp_stage(
             page=page, vault_domain=domain,
-            expected_origin=expected_origin, totp_secret=str(totp_secret),
+            origin_ok=_origin_ok, totp_secret=str(totp_secret),
             storage_domain=storage_domain, owner=owner,
             session_id=session_id,
             op_timeout_s=budget.remaining(op_timeout_s),
@@ -1421,7 +1701,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     password_rejected = bool(observed["password_rejected"])
     # Un cookie gia' presente sulla pagina di login non prova
     # l'autenticazione: il segnale deve essere nuovo o ruotato dal submit.
-    logged_in = _post_submit_authenticated(observed, session_cookie_names)
+    outcome = post_submit_outcome(observed, session_cookie_names)
+    logged_in = (outcome == "login_verified")
 
     reason = None
     if not logged_in:
@@ -1449,4 +1730,5 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             "two_factor_required", "two_factor_push_required",
             "captcha_required"} else "failed")
 
+    _apply_cooldown_outcome(owner, storage_domain, outcome)
     return {"ok": True, "logged_in": logged_in, "reason_code": reason}

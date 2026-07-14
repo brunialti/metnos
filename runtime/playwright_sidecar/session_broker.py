@@ -38,7 +38,9 @@ from pathlib import Path
 from playwright_sidecar import credential_injection
 from playwright_sidecar import redaction
 from playwright_sidecar import action_resolver
+from playwright_sidecar import browser_surface
 import sites_audit
+import sites_observed  # ADR 0191 P4 — codici osservativi navigazione
 import task_mandates
 import credential_mandates
 from sites_url_scrub import scrub_url
@@ -75,6 +77,103 @@ def _enabled_env(name: str, default: bool = True) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+# Profilo browser dei context sites. L'anti-automazione dei portali (Amazon in
+# primis) penalizza gli UA palesi ("...playwright") e le incoerenze
+# UA/viewport/JS. Default = Chrome desktop reale COERENTE col SO host (Linux),
+# viewport desktop: massima coerenza e nessun cambio di layout rispetto ai
+# flussi validati. L'emulazione mobile/Android (UA + viewport + touch, coerente)
+# e' disponibile via env `METNOS_SITES_MOBILE=1` ma altera geometria/overlay dei
+# portali (regressione overlay osservata nel simulatore): opt-in.
+_DEFAULT_SITES_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+_DEFAULT_MOBILE_UA = (
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
+)
+
+
+_LOCALE_BY_LANG = {"it": "it-IT", "en": "en-US"}
+
+
+def _locale_for(lang: str | None) -> str | None:
+    """Locale di rendering derivato dalla lingua (ADR 0191 H1: niente costante
+    it-IT). Override esplicito `METNOS_SITES_LOCALE`; poi `lang`/`METNOS_LANG`;
+    altrimenti None → nessun override (Chromium nativo)."""
+    override = os.getenv("METNOS_SITES_LOCALE")
+    if override:
+        return override
+    code = (lang or os.getenv("METNOS_LANG") or "").strip().lower()[:2]
+    return _LOCALE_BY_LANG.get(code)
+
+
+def _system_timezone_id() -> str | None:
+    """Timezone IANA di sistema (ADR 0191 H1: niente costante Europe/Rome).
+    Override `METNOS_SITES_TIMEZONE`/`TZ`; poi `/etc/timezone` o il symlink
+    `/etc/localtime`; altrimenti None → nessun override."""
+    for env_key in ("METNOS_SITES_TIMEZONE", "TZ"):
+        v = os.getenv(env_key)
+        if v and "/" in v:
+            return v
+    try:
+        with open("/etc/timezone", encoding="utf-8") as fh:
+            v = fh.read().strip()
+        if v and "/" in v:
+            return v
+    except Exception:
+        pass
+    try:
+        link = os.readlink("/etc/localtime")
+        marker = "zoneinfo/"
+        idx = link.find(marker)
+        if idx >= 0:
+            cand = link[idx + len(marker):]
+            if "/" in cand:
+                return cand
+    except Exception:
+        pass
+    return None
+
+
+def _stealth_allowed() -> bool:
+    """Ceiling di deployment (ADR 0191 P1): kill-switch admin. Default ON.
+    `METNOS_SITES_STEALTH_ALLOWED=0` disabilita lo stealth deployment-wide."""
+    return _enabled_env("METNOS_SITES_STEALTH_ALLOWED", default=True)
+
+
+def _context_kwargs(*, stealth: bool = False, lang: str | None = None) -> dict:
+    # DEFAULT (stealth off): UA NATIVO del Chromium — nessun override (forzare
+    # una UA e' spoofing, non igiene). Localizzazione benigna derivata dalla
+    # lingua dell'istanza + timezone di sistema (H1), viewport, WebRTC off.
+    kw = {
+        "service_workers": "block",
+        "viewport": {"width": 1280, "height": 800},
+    }
+    locale = _locale_for(lang)
+    if locale:
+        kw["locale"] = locale
+    tz = _system_timezone_id()
+    if tz:
+        kw["timezone_id"] = tz
+    if not stealth:
+        return kw
+    # ── Layer CONTEXT stealth (opt-in, registro stealth.py) ────────────────
+    from playwright_sidecar import stealth as _st
+    if _st.technique_enabled("ua_override", stealth=True):
+        mobile = _st.technique_enabled("mobile_emulation", stealth=True)
+        kw["user_agent"] = (os.getenv("METNOS_SITES_USER_AGENT")
+                            or (_DEFAULT_MOBILE_UA if mobile else _DEFAULT_SITES_UA))
+        if mobile:
+            kw.update({
+                "viewport": {"width": 412, "height": 915},
+                "device_scale_factor": 2.625,
+                "is_mobile": True,
+                "has_touch": True,
+            })
+    return kw
+
+
 # Host cap remains finite and fail-closed; deployments can tune it for sites
 # with larger dependency graphs without changing the executor contract.
 _MAX_ALLOWLIST_HOSTS = _bounded_int_env(
@@ -97,6 +196,8 @@ _REVEAL_SETTLE_MS = 2000      # attesa bounded target dopo controllo reveal
 _REVEAL_POLL_MS = 100
 _MAX_ACTION_REPLANS = 2
 _MAX_LOGIN_ENTRY_STEPS = 4
+_MAX_PRIVACY_DISMISSALS = 2   # budget PROPRIO (non login-step): un overlay che
+                             # riappare non deve affamare la navigazione login
 _MAX_GOAL_STEPS = 4
 _MAX_GOAL_CONTINUATIONS = 6
 _APPROVAL_RESULT_TTL_S = 120.0
@@ -105,7 +206,7 @@ _DISCOVERABLE_RESOURCE_TYPES = frozenset({
 })
 
 # ── Stato globale del broker ───────────────────────────────────────────────
-_browser = None                       # impostato da configure()
+_browser_provider = None              # BrowserProvider, impostato da configure() (B1)
 _sessions: dict[str, dict] = {}       # session_id -> entry
 _pending_opens: dict[str, dict] = {}  # token opaco -> piano allowlist
 _reaper_task = None
@@ -121,6 +222,41 @@ _WEBRTC_OFF_JS = r"""
 }
 """
 
+# Occultamento dell'automazione — OPT-IN, DEFAULT OFF (ADR 0191, post-review #1).
+# Di default Metnos NON nasconde di essere un'automazione: il default e' onesto
+# e non contraddice lo scope «no bypass fingerprint»; la classe di siti che
+# blocca via fingerprint headless resta NON SUPPORTATA. Chi opera sul PROPRIO
+# account puo' abilitarlo esplicitamente (env `METNOS_SITES_STEALTH=1`) sotto la
+# propria responsabilita'. Estendibile in futuro con altre tecniche, ma MAI di
+# default.
+# ONESTA' TECNICA: questo init-script normalizza SOLO tell secondari
+# (window.chrome, permissions, languages). NON nasconde `navigator.webdriver`
+# (il segnale #1): in Chromium richiede un LAUNCH ARG
+# (`--disable-blink-features=AutomationControlled`) al lancio del browser, non un
+# init-script — verificato inefficace. L'occultamento effettivo (launch args) e'
+# lavoro FUTURO, sempre opt-in. NB: non falsificare GPU/CPU/plugin in modo
+# incongruo con l'UA (l'incoerenza e' essa stessa un segnale).
+_STEALTH_JS = r"""
+() => {
+  // NB: `navigator.webdriver` NON si nasconde qui (init-JS inefficace in
+  // Chromium, verificato): lo copre il launch-arg del browser stealth (LAUNCH
+  // layer, stealth.py). Qui solo tell secondari (window.chrome/permissions/
+  // languages).
+  try { if (!window.chrome) window.chrome = {runtime: {}}; } catch(e){}
+  try {
+    const orig = navigator.permissions && navigator.permissions.query;
+    if (orig) navigator.permissions.query = (p) =>
+      (p && p.name === 'notifications')
+        ? Promise.resolve({state: Notification.permission})
+        : orig.call(navigator.permissions, p);
+  } catch(e){}
+  try { if (!navigator.languages || !navigator.languages.length)
+        Object.defineProperty(navigator, 'languages',
+          {get: () => ['it-IT','it','en-US','en'], configurable: true}); }
+  catch(e){}
+}
+"""
+
 _ENUMERATE_ACTION_TARGETS_JS = r"""
 () => {
   document.querySelectorAll('[data-metnos-action-id]').forEach(
@@ -131,22 +267,34 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
     + '[contenteditable=true],summary,'
     + '[tabindex]:not([tabindex="-1"]),[onclick]'));
   // React e altri framework possono rendere cliccabile un div senza ruolo o
-  // onclick DOM. Accetta solo nodi foglia VISIBILI con cursor:pointer e testo
-  // breve: restano poi soggetti a topmost, firma e gate come ogni candidato.
-  const pointer = Array.from(document.querySelectorAll('body *')).filter(el => {
+  // onclick DOM. Accetta solo un insieme bounded di nodi VISIBILI con
+  // cursor:pointer e testo breve: restano poi soggetti a topmost, firma e gate
+  // come ogni candidato.
+  // Il vecchio `filter(...).slice(0, 200)` visitava TUTTO il DOM e, per ogni
+  // nodo pointer, scandiva di nuovo tutti i discendenti. Su pagine grandi era
+  // quadratico: il timeout scartava anche i controlli HTML gia' enumerati.
+  // Questo fallback resta bounded e lineare; i controlli semantici standard
+  // hanno comunque precedenza nel resolver.
+  const pointer = [];
+  const standardSet = new Set(standard);
+  const POINTER_SCAN_LIMIT = 4000;
+  const walker = document.createTreeWalker(
+    document.body, NodeFilter.SHOW_ELEMENT);
+  let inspected = 0;
+  for (let el = walker.nextNode(); el && inspected < POINTER_SCAN_LIMIT;
+       el = walker.nextNode()) {
+    inspected += 1;
+    if (pointer.length >= 200) break;
+    if (standardSet.has(el)) continue;
     const st = getComputedStyle(el);
     const r = el.getBoundingClientRect();
-    const text = (el.innerText || '').trim();
-    if (st.cursor !== 'pointer' || !text || text.length > 160 ||
-        r.width < 2 || r.height < 2 || st.display === 'none' ||
-        st.visibility === 'hidden' || Number.parseFloat(st.opacity || '1') < 0.05)
-      return false;
-    const normalized = text.replace(/\s+/g, ' ');
-    return !Array.from(el.querySelectorAll('*')).some(child => {
-      const childText = (child.innerText || '').trim().replace(/\s+/g, ' ');
-      return childText === normalized && getComputedStyle(child).cursor === 'pointer';
-    });
-  }).slice(0, 200);
+    if (st.cursor !== 'pointer' || r.width < 2 || r.height < 2 ||
+        st.display === 'none' || st.visibility === 'hidden' ||
+        Number.parseFloat(st.opacity || '1') < 0.05) continue;
+    const text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (!text || text.length > 160) continue;
+    pointer.push(el);
+  }
   const els = Array.from(new Set([...standard, ...pointer]));
   const out = [];
   let n = 0;
@@ -241,14 +389,17 @@ _ENUMERATE_ACTION_TARGETS_JS = r"""
 """
 
 _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
-(forms) => {
+(config) => {
   document.querySelectorAll('[data-metnos-overlay-dismiss]').forEach(
     el => el.removeAttribute('data-metnos-overlay-dismiss'));
   const normalize = value => (value || '').normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
-  const allowed = new Set((Array.isArray(forms) ? forms : [])
+  const allowed = new Set((Array.isArray(config && config.forms)
+    ? config.forms : [])
     .map(normalize).filter(Boolean));
+  const markers = (Array.isArray(config && config.markers)
+    ? config.markers : []).map(normalize).filter(Boolean);
   const visible = el => {
     const r = el.getBoundingClientRect();
     const st = getComputedStyle(el);
@@ -292,11 +443,35 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     }
     return false;
   };
+  // ADR 0191 P5 (#9): la dismissione NON deve mai attivare un submitter di form
+  // ne' una navigazione. Un controllo navigante passa dal piano firmato + gate,
+  // non da qui.
+  const isFormSubmitter = el => {
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') || '').toLowerCase();
+    if (tag === 'input' && (type === 'submit' || type === 'image')) return true;
+    if (tag === 'button') {
+      if (type === 'submit') return true;
+      // button SENZA `type` dentro un <form> = submit implicito (HTML default).
+      if (!type && el.closest('form')) return true;
+    }
+    return false;
+  };
+  const isNavigatingLink = el => {
+    if (el.tagName.toLowerCase() !== 'a') return false;
+    const href = el.getAttribute('href') || '';
+    // Fragment same-page (`#`, `#sez`) = non navigante, ammesso. Tutto il resto
+    // (http(s), relativo, `javascript:`) = navigante/attivo, vietato.
+    if (!href || href === '#' || href.startsWith('#')) return false;
+    return true;
+  };
   const controls = Array.from(document.querySelectorAll(
-    'button,[role=button],input[type=button],input[type=submit],a'));
+    'button,[role=button],input[type=button],a'));
   const ranked = [];
   for (const el of controls) {
     if (!visible(el)) continue;
+    if (isFormSubmitter(el)) continue;   // mai un submitter
+    if (isNavigatingLink(el)) continue;  // mai un link navigante/javascript:
     const root = modalRoot(el);
     if (!root) continue;
     const rawName = nameOf(el).trim();
@@ -304,10 +479,9 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     const exactExit = allowed.has(name);
     const icon = iconExit(el, root, rawName);
     if (!exactExit && !icon) continue;
-    if (el.tagName.toLowerCase() === 'a') {
-      const href = el.getAttribute('href') || '';
-      if (href && href !== '#' && !href.startsWith('javascript:')) continue;
-    }
+    const rootText = ` ${normalize(root.innerText || root.textContent || '')} `;
+    if (markers.length && !markers.some(marker =>
+        rootText.includes(` ${marker} `))) continue;
     const rootSemantic = root.tagName.toLowerCase() === 'dialog' ||
       root.getAttribute('role') === 'dialog' ||
       root.getAttribute('role') === 'alertdialog' ||
@@ -455,25 +629,24 @@ _ENUMERATE_FORMS_JS = r"""
 """
 
 
-def configure(browser) -> None:
-    """Chiamato da server._on_startup dopo il launch del Chromium."""
-    global _browser
-    _browser = browser
+def configure(browser_provider) -> None:
+    """Chiamato da server._on_startup. Riceve un BrowserProvider (B1): il broker
+    NON possiede/lancia browser; chiede `await browser_provider(stealth)` a
+    ogni `op_open`. Owner esclusivo di Playwright = server.py."""
+    global _browser_provider
+    _browser_provider = browser_provider
 
 
 def health_snapshot() -> dict:
     """Bounded, non-sensitive broker state for the sidecar health endpoint."""
     task = _reaper_task
-    connected = False
-    if _browser is not None:
-        try:
-            probe = getattr(_browser, "is_connected", None)
-            connected = bool(probe() if callable(probe)
-                             else probe if probe is not None else True)
-        except Exception:
-            connected = False
+    # Il broker non possiede piu' i browser (B1): la connessione e' esposta da
+    # server.py (`browser_honest_connected`/`browser_stealth_state`). Qui si
+    # riporta solo se il provider e' configurato.
+    provider_ready = _browser_provider is not None
     return {
-        "browser_connected": connected,
+        "browser_connected": provider_ready,
+        "provider_configured": provider_ready,
         "reaper_running": bool(task is not None and not task.done()),
         "active_sessions": len(_sessions),
         "approval_pending_sessions": sum(
@@ -691,6 +864,7 @@ def _default_allowlist(url: str, allowlist_arg) -> set[str]:
 def _new_open_approval(*, owner: str, url: str, allowlist: set[str],
                        session_label: str, extra_hosts: set[str],
                        error: str, credential_mode: str = "default",
+                       stealth: bool = False,
                        redirect_url: str = "",
                        blocked_requests: dict[str, dict] | None = None) -> dict:
     """Crea un token one-shot legato all'espansione esatta osservata."""
@@ -699,6 +873,9 @@ def _new_open_approval(*, owner: str, url: str, allowlist: set[str],
         "allowlist": tuple(sorted(allowlist)),
         "session_label": session_label or "",
         "credential_mode": credential_mode,
+        # Fix adversarial #8: la modalita' stealth e' parte del binding del token
+        # → un token non puo' essere ripresentato con una modalita' diversa.
+        "stealth": bool(stealth),
     }
     token = secrets.token_urlsafe(24)
     _pending_opens[token] = {**expected, "created": time.time()}
@@ -805,8 +982,11 @@ def start_reaper() -> None:
 
 
 async def shutdown() -> None:
-    """Close every browser context and reset process-local broker state."""
-    global _browser, _reaper_task
+    """Close every browser context and reset process-local broker state.
+
+    I browser sono chiusi da server._on_shutdown (owner, B1); qui si chiudono
+    solo i context di sessione e si azzera il provider."""
+    global _browser_provider, _reaper_task
     task = _reaper_task
     _reaper_task = None
     if task is not None and not task.done():
@@ -819,7 +999,7 @@ async def shutdown() -> None:
         await _close_entry(entry)
     _sessions.clear()
     _pending_opens.clear()
-    _browser = None
+    _browser_provider = None
 
 
 # ── Operazioni ─────────────────────────────────────────────────────────────
@@ -828,12 +1008,18 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                   session_label: str = "",
                   approval_token: str | None = None,
                   task_name: str | None = None,
-                  credential_mode: str = "default") -> dict:
-    """Apre UNA sessione su `url` (§3.4 open_sites fa fan-out su N url)."""
+                  credential_mode: str = "default",
+                  stealth: bool = False,
+                  lang: str | None = None) -> dict:
+    """Apre UNA sessione su `url` (§3.4 open_sites fa fan-out su N url).
+
+    `stealth` = richiesta per-turno (pref `sites_stealth`, ADR 0191 P1). Effettiva
+    solo se il ceiling di deployment la consente (§ceiling). `lang` = lingua del
+    turno per locale/timezone (fix #9)."""
     if not isinstance(owner, str) or not owner:
         return {"ok": False, "error": "owner required",
                 "error_class": "forbidden"}
-    if _browser is None:
+    if _browser_provider is None:
         return {"ok": False, "error": "browser not ready", "error_class": "unknown"}
     if not isinstance(url, str) or not url:
         return {"ok": False, "error": "url required", "error_class": "invalid_args"}
@@ -913,26 +1099,42 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             "owner": owner, "url": url, "allowlist": tuple(sorted(allowlist)),
             "session_label": session_label or "",
             "credential_mode": credential_mode,
+            "stealth": bool(stealth),  # fix #8: binding modalita'
         }
         if not approval_token:
             return _new_open_approval(
                 owner=owner, url=url, allowlist=allowlist,
                 session_label=session_label, extra_hosts=set(extras),
                 error="allowlist extension requires approval",
-                credential_mode=credential_mode)
+                credential_mode=credential_mode, stealth=bool(stealth))
         pending = _pending_opens.pop(str(approval_token), None)
         if not pending or any(pending.get(k) != v for k, v in expected.items()):
             return {"ok": False, "error": "invalid allowlist approval",
                     "error_class": "approval_invalid"}
     blocked_requests: dict[str, dict] = {}
-    context = await _browser.new_context(
-        user_agent="metnos-sites/1.0 (+metnos@metnos.com) playwright",
-        viewport={"width": 1280, "height": 800},
-        service_workers="block",
-    )
+    # ADR 0191 P1: stealth effettiva = richiesta AND ceiling di deployment.
+    # Ceiling `0` → honest onesto + audit `stealth_denied_by_ceiling` (NON errore).
+    effective_stealth = bool(stealth) and _stealth_allowed()
+    if stealth and not effective_stealth:
+        try:
+            sites_audit.record("stealth_denied_by_ceiling", owner=owner)
+        except Exception:
+            pass
+    try:
+        browser = await _browser_provider(effective_stealth)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"browser unavailable: {exc}",
+                "error_class": "browser_unavailable"}
+    context = await browser.new_context(
+        **_context_kwargs(stealth=effective_stealth, lang=lang))
     # FIX D: WebRTC off + route-guard per-sessione.
     try:
         await context.add_init_script(_WEBRTC_OFF_JS)
+        # Occultamento OPT-IN, default OFF (ADR 0191): il default non nasconde
+        # l'automazione. Il layer CONTEXT stealth (init-JS) e' applicato solo su
+        # richiesta effettiva; il webdriver-hiding vive nel LAUNCH (browser stealth).
+        if effective_stealth:
+            await context.add_init_script(_STEALTH_JS)
         await context.route(
             "**/*", _make_route_guard(allowlist, blocked_requests))
         if hasattr(context, "route_web_socket"):
@@ -948,8 +1150,9 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
 
     page = await context.new_page()
     navigation_error = None
+    nav_response = None
     try:
-        await asyncio.wait_for(
+        nav_response = await asyncio.wait_for(
             page.goto(url, wait_until="load", timeout=int(_OP_TIMEOUT_S * 1000)),
             timeout=_OP_TIMEOUT_S)
     except asyncio.TimeoutError:
@@ -960,6 +1163,12 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             "ok": False, "error": f"navigation failed: {e}",
             "error_class": "network"}
 
+    # ADR 0191 P4: codice osservativo dallo status HTTP della navigazione
+    # (429/403/5xx). Slug STABILE, mai `automation_blocked` dedotto.
+    _sig = sites_observed.response_signals(nav_response)
+    observed_reason = sites_observed.observational_reason(
+        status=_sig["status"], retry_after=_sig["retry_after"])
+
     if navigation_error is None and hasattr(page, "wait_for_timeout"):
         # Non aspetta network-idle, che siti con polling possono non
         # raggiungere mai.
@@ -969,14 +1178,16 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
     # parziale: il context viene chiuso e l'insieme esatto osservato passa da un
     # gate. Un replay puo' scoprire un ulteriore livello, sempre con nuovo gate.
     final_host = _host_of_url(page.url)
-    # Prima ammetti soltanto origini di DOCUMENTO (redirect, iframe). Script e
-    # API cross-origin possono essere widget/telemetria opzionali: restano
-    # osservati nella sessione e vengono proposti solo se un target richiesto
-    # non e' risolvibile nel DOM accessibile.
+    # Prima ammetti soltanto origini di navigazioni DOCUMENTO top-level. Un
+    # document di subframe terzo (adv/telemetria) resta abortito e osservato,
+    # ma non puo' promuoversi da solo a gate. Script/API/subframe vengono
+    # valutati solo piu' tardi con evidenza causale del target richiesto.
     discovered = {
         host for host, observation in blocked_requests.items()
         if host not in allowlist
         and "document" in (observation.get("types") or ())
+        and bool(observation.get("navigation"))
+        and bool(observation.get("main_frame"))
     }
     if final_host and final_host not in allowlist:
         discovered.add(final_host)
@@ -1000,7 +1211,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             owner=owner, url=url, allowlist=expanded,
             session_label=session_label, extra_hosts=discovered,
             error="observed hosts require allowlist approval",
-            credential_mode=credential_mode,
+            credential_mode=credential_mode, stealth=bool(stealth),
             redirect_url=redirect_url, blocked_requests=blocked_requests)
 
     if navigation_error is not None:
@@ -1013,10 +1224,24 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
     # dell'audit, evitando di frammentare credenziali e topologia per alias.
     binding_root = _canonical_host(str(
         (authority_binding or {}).get("root_host") or ""))
-    domain = binding_root or _host_of_url(url)
+    # ADR 0191 P2: candidate discovery del record vault. Con un mandato, il
+    # root_host e' l'handle canonico. Senza mandato, `legacy_storage_candidate`
+    # ripiega SOLO `www.D->D` per TROVARE il record legacy (il fold non vive piu'
+    # in `_load_site_credentials`); l'autorizzazione al fill resta a
+    # `credential_origins`. Nota: candidate discovery, NON autorizzazione.
+    domain = binding_root or credential_injection.legacy_storage_candidate(
+        _host_of_url(url))
     _sessions[session_id] = {
         "context": context, "page": page, "allowlist": allowlist,
+        # ADR 0191 P1: surface owner-bound (handle) + stealth FISSATO all'open per
+        # l'intera vita della sessione (replay gate riusa questo, non ricalcola).
+        "surface": browser_surface.PlaywrightSurface(
+            context, page, stealth=effective_stealth),
+        "stealth": effective_stealth,
         "owner": owner, "domain": domain, "label": session_label or "",
+        # Internal-only recovery anchor. It may contain a query string and
+        # therefore never leaves broker memory or enters audit un-scrubbed.
+        "entry_url": page.url,
         "created": time.time(), "last_used": time.time(),
         "gate_pending": False, "factor_pending": False,
         "authenticated": False,
@@ -1030,6 +1255,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         "task_mandate": task_binding,
         "credential_mandate": credential_binding,
         "credential_mode": credential_mode,
+        "observed_reason": observed_reason,  # ADR 0191 P4 (slug o None)
         "lock": asyncio.Lock(),
     }
     try:
@@ -1037,9 +1263,11 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
     except Exception:
         title = ""
     sites_audit.record("session_open", owner=owner, session_id=session_id,
-                       domain=domain, url=page.url, allowlist=sorted(allowlist))
+                       domain=domain, url=page.url, allowlist=sorted(allowlist),
+                       **({"reason": observed_reason} if observed_reason else {}))
     return {"ok": True, "session_id": session_id, "url": scrub_url(page.url),
-            "title": title}
+            "title": title,
+            **({"reason_code": observed_reason} if observed_reason else {})}
 
 
 async def _capture_screenshot(entry: dict) -> str | None:
@@ -1063,7 +1291,10 @@ async def _capture_screenshot(entry: dict) -> str | None:
         # Le coordinate degli overlay di redazione sono viewport-relative.
         # full_page=True disallineerebbe gli overlay: deve restare False.
         mask = [page.locator(
-            'input[type=password], input[autocomplete="one-time-code" i], '
+            'input[type=password], input[type=email], '
+            'input[autocomplete="username" i], '
+            'input[autocomplete="email" i], '
+            'input[autocomplete="one-time-code" i], '
             'input[name*="otp" i], input[id*="otp" i], '
             'input[name*="verification" i], input[id*="verification" i], '
             '[data-metnos-redact="1"]')]
@@ -1261,6 +1492,31 @@ async def op_login(*, session_id: str, owner: str | None = None,
         async def _reach_login_area(purpose: str = "login") -> dict:
             if int(flow.get("steps", 0)) >= _MAX_LOGIN_ENTRY_STEPS:
                 return {"ok": False, "error_class": "login_step_limit"}
+
+            async def _reject_privacy_overlay(*, settle: bool) -> bool:
+                # Rimuovere un overlay privacy e' una PRECONDIZIONE per
+                # raggiungere l'ingresso login, non un passo di navigazione
+                # login. Usa un budget PROPRIO e piccolo: un overlay che
+                # riappare (reject navigante -> reload) non deve esaurire il
+                # budget d'ingresso e far scattare login_step_limit PRIMA ancora
+                # di cliccare "accedi" (bug turn e69dca8e; simulatore). Bounded
+                # §7.4.
+                if int(flow.get("privacy_dismissals", 0)) >= _MAX_PRIVACY_DISMISSALS:
+                    return False
+                rejected = await _dismiss_obstructing_overlay(
+                    entry, settle=settle,
+                    forms=action_resolver.privacy_reject_forms(),
+                    markers=action_resolver.privacy_overlay_marker_forms(),
+                    procedure="privacy_reject")
+                if rejected:
+                    flow["privacy_dismissals"] = int(
+                        flow.get("privacy_dismissals", 0)) + 1
+                return rejected
+
+            if purpose == "privacy_reject":
+                if await _reject_privacy_overlay(settle=True):
+                    return {"ok": True, "executed": True,
+                            "primitive": "click"}
             action = {
                 "login": "click login",
                 "privacy_reject": "click privacy reject",
@@ -1275,6 +1531,15 @@ async def op_login(*, session_id: str, owner: str | None = None,
                         if purpose == "login" else 1)
             prepared = {"ok": False, "error_class": "selector_missing"}
             for attempt in range(attempts):
+                # Il banner puo' apparire dopo il primo probe privacy. Prima di
+                # ogni riosservazione login rimuovilo solo se struttura, marker
+                # e target esatto continuano a provarne la natura. Il ciclo e'
+                # gia' bounded da `attempts` e dal limite globale dei passi.
+                if purpose == "login":
+                    # L'overlay puo' apparire dopo il primo probe: tentane la
+                    # rimozione (budget proprio, sopra) prima di ogni
+                    # riosservazione, senza consumare il budget d'ingresso.
+                    await _reject_privacy_overlay(settle=False)
                 prepared = await _prepare_action(
                     entry, session_id, action, None, allow_model=False)
                 if (prepared.get("ok") or prepared.get("error_class")
@@ -1302,13 +1567,17 @@ async def op_login(*, session_id: str, owner: str | None = None,
 
         async def _authorize_login_origin(origin: str,
                                           form_stage: str) -> dict:
-            origin = _canonical_host(origin)
+            # Fix adversarial #2: `origin` = tupla ESATTA (scheme://host:port) da
+            # perform_login. Il gate/allowlist ragiona per HOST (autorizzazione di
+            # rete); l'autorita' del FILL resta l'ORIGINE ESATTA, memorizzata in
+            # `credential_origin`→`flow["approved_origin"]`.
+            host = _canonical_host(_host_of_url(origin) or origin)
             if flow.get("approved_origin") == origin:
                 return {"ok": True, "approved": True}
             prepared = _prepare_credential_origin(
-                entry, session_id, dom, origin, form_stage)
+                entry, session_id, dom, host, form_stage)
             handled = await _handle_prepared_action(
-                entry, session_id, origin, prepared)
+                entry, session_id, host, prepared)
             if handled.get("approval_required"):
                 handled.update({
                     "approval_kind": "credential_origin",
@@ -1352,7 +1621,8 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     page_provider=lambda: entry.get("page"),
                     factor_state=flow.setdefault("factor_state", {}),
                     checkpoint=_login_checkpoint,
-                    total_timeout_s=_LOGIN_TIMEOUT_S),
+                    total_timeout_s=_LOGIN_TIMEOUT_S,
+                    stealth=bool(entry.get("stealth", False))),
                 timeout=_LOGIN_TIMEOUT_S)
         except asyncio.TimeoutError:
             blocker = await credential_injection.classify_login_surface(
@@ -1381,10 +1651,10 @@ async def op_login(*, session_id: str, owner: str | None = None,
         elif not res.get("approval_required"):
             entry["factor_pending"] = False
             entry.pop("factor_started", None)
-        if (res.get("reason_code") in {
-                "two_factor_required", "two_factor_push_required",
-                "captcha_required", "login_timeout", "selector_missing"}
-                and not res.get("approval_required")):
+        # Ogni login non completato deve lasciare evidenza diagnostica
+        # redatta. La tassonomia puo' crescere senza creare buchi di
+        # osservabilita'; approval resta esclusa perche' ha il proprio gate.
+        if (not res.get("logged_in") and not res.get("approval_required")):
             shot = await _capture_screenshot(entry)
             if shot:
                 res["screenshot_path"] = shot
@@ -1644,6 +1914,68 @@ async def _continuation_snapshot(entry: dict) -> dict:
             "text": str(text or "")[:100000]}
 
 
+def _parse_reduced_site_goal(raw: str, query: str) -> str:
+    """Valida il fine locale come frase estrattiva, mai come nuova autorita'."""
+    text = str(raw or "").strip()
+    if text.startswith("```"):
+        text = "\n".join(text.splitlines()[1:-1]).strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start, end = text.find("{"), text.rfind("}")
+        if start < 0 or end <= start:
+            return ""
+        try:
+            payload = json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            return ""
+    goal = str(payload.get("goal") or "").strip() \
+        if isinstance(payload, dict) else ""
+    normalized_goal = action_resolver.normalize(goal)
+    goal_tokens = normalized_goal.split()
+    query_tokens = set(action_resolver.normalize(query).split())
+    if (not goal_tokens or len(goal_tokens) > 6 or len(goal) > 120
+            or any(char in goal for char in ("/", "#", "[", "]", "=", ">"))
+            or any(token not in query_tokens for token in goal_tokens)):
+        return ""
+    return goal
+
+
+async def _reduce_site_goal(query: str) -> str:
+    """Riduce la richiesta al contenitore da raggiungere con un solo LLM locale."""
+    if not _MODEL_FALLBACKS_ENABLED:
+        return ""
+    bounded_query = str(query or "").strip()[:2000]
+    if not bounded_query:
+        return ""
+
+    def _call_local() -> str:
+        try:
+            import i18n
+            import prompt_loader
+            from llm_router import LLMRouter
+
+            provider = LLMRouter().provider("fast")
+            if getattr(provider, "mode", "") != "local":
+                return ""
+            prompt = prompt_loader.get(
+                "sites_goal_reducer", i18n.current_lang(),
+                query_json=json.dumps(bounded_query, ensure_ascii=False))
+            result = provider.chat(
+                prompt, "", max_tokens=64, temperature=0, think=False)
+            return str(getattr(result, "text", "") or "")
+        except Exception:
+            return ""
+
+    try:
+        raw = await asyncio.wait_for(
+            asyncio.to_thread(_call_local),
+            timeout=_LOCAL_RESOLVER_TIMEOUT_MS / 1000.0)
+    except asyncio.TimeoutError:
+        return ""
+    return _parse_reduced_site_goal(raw, bounded_query)
+
+
 async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                                            candidates: list[dict],
                                            history: list[str],
@@ -1694,7 +2026,7 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
                 'OK: {"description":"m1","keywords":[]}.\n'
                 'ERRORE: se nessun controllo e pertinente, usa '
                 '{"description":"NONE","keywords":[]}.',
-                prompt, max_tokens=64, temperature=0)
+                prompt, max_tokens=64, temperature=0, think=False)
             return str(getattr(result, "text", "") or "")
         except Exception:
             return ""
@@ -1851,7 +2183,10 @@ def _prepare_credential_origin(entry: dict, session_id: str,
 
 
 async def _dismiss_obstructing_overlay(entry: dict, *,
-                                       settle: bool = False) -> bool:
+                                       settle: bool = False,
+                                       forms: tuple[str, ...] | None = None,
+                                       markers: tuple[str, ...] = (),
+                                       procedure: str = "safe_exit") -> bool:
     """Dismiss a transient overlay through a safe, non-navigating exit.
 
     Detection combines ARIA dialog semantics with fixed-layer geometry.  The
@@ -1863,11 +2198,15 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
     if page is None:
         return False
     attempts = 4 if settle else 1
+    allowed_forms = tuple(forms if forms is not None
+                          else action_resolver.overlay_dismiss_forms())
+    if not allowed_forms:
+        return False
     for attempt in range(attempts):
         try:
             info = await page.evaluate(
                 _LOCATE_SAFE_OVERLAY_DISMISS_JS,
-                list(action_resolver.overlay_dismiss_forms()))
+                {"forms": list(allowed_forms), "markers": list(markers)})
             if isinstance(info, dict) and info.get("found"):
                 control = page.locator(
                     '[data-metnos-overlay-dismiss="1"]').first
@@ -1878,6 +2217,7 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
                     "overlay_dismiss", owner=entry.get("owner", ""),
                     session_id=entry.get("_sid", ""),
                     domain=entry.get("domain", ""),
+                    procedure=procedure,
                     method=str(info.get("kind") or "safe_exit"),
                     outcome=True)
                 return True
@@ -1943,8 +2283,11 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 chosen = action_resolver.choose_goal_candidate(
                     parsed.get("target", ""), candidates,
                     excluded=excluded)
-        goal_satisfied = (flow_steps > 0 and await _page_satisfies_goal(
-            entry, parsed.get("target", ""), candidates))
+        # Il contenitore puo' essere gia' la pagina corrente (URL diretto o
+        # landing utile): verificare prima evita click artificiali. La prova
+        # esclude i soli label interattivi, quindi un menu omonimo non basta.
+        goal_satisfied = await _page_satisfies_goal(
+            entry, parsed.get("target", ""), candidates)
         continuation = {"ok": False, "error_class": "selector_missing"}
         if goal_satisfied:
             continuation_excluded = set(
@@ -2126,6 +2469,8 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                      "reveal_key": reveal_key})
     if goal_flow_key:
         plan["goal_flow_key"] = goal_flow_key
+    if primitive_override == "search" and target_override:
+        plan["goal_target"] = target_override
     if plan_kind == "goal_continuation":
         plan["content_sig_before"] = await _goal_content_signature(entry)
     if candidate:
@@ -2360,7 +2705,8 @@ def _implicitly_relevant_host(entry: dict, host: str) -> bool:
 
 def _prepare_resource_expansion(entry: dict, session_id: str, action: str,
                                 value_ref: str | None,
-                                required_hosts: set[str] | None = None
+                                required_hosts: set[str] | None = None,
+                                goal_target: str | None = None,
                                 ) -> dict | None:
     """Prepara un reload con gli host osservati, senza concederli.
 
@@ -2399,12 +2745,15 @@ def _prepare_resource_expansion(entry: dict, session_id: str, action: str,
         "confidence": 1.0, "created": time.time(),
     }
     parsed = action_resolver.parse_action(action)
-    if parsed.get("ok") and parsed.get("primitive") == "search":
+    if goal_target or (
+            parsed.get("ok") and parsed.get("primitive") == "search"):
         goal_flow_key = hashlib.sha256(
             action_resolver.normalize(action).encode("utf-8")).hexdigest()
         flow = (entry.get("goal_flows") or {}).get(goal_flow_key)
         if isinstance(flow, dict):
             plan["goal_flow_key"] = goal_flow_key
+        if goal_target:
+            plan["goal_target"] = goal_target
     plan["fingerprint"] = action_resolver.fingerprint_plan(plan)
     token = secrets.token_urlsafe(24)
     entry["pending_actions"][token] = plan
@@ -2412,11 +2761,81 @@ def _prepare_resource_expansion(entry: dict, session_id: str, action: str,
     return {"ok": True, "token": token, "plan": plan}
 
 
+async def _recover_authenticated_landing(
+        entry: dict, action: str, goal_target: str | None) -> bool:
+    """Reset one sterile post-login landing to the session entry point.
+
+    This is not a generic retry: it is available once, before any goal step,
+    only under an existing mandate that authorizes the exact same-host
+    navigation. No page text, vendor label, or guessed URL participates.
+    """
+    if not entry.get("authenticated") or entry.get("secret_pending"):
+        return False
+    entry_url = str(entry.get("entry_url") or "")
+    entry_host = _host_of_url(entry_url)
+    if (not entry_url or not entry_host
+            or entry_host not in set(entry.get("allowlist") or ())):
+        return False
+    flow_key = hashlib.sha256(
+        action_resolver.normalize(action).encode("utf-8")).hexdigest()
+    flow = (entry.get("goal_flows") or {}).get(flow_key)
+    if (not isinstance(flow, dict) or int(flow.get("steps", 0)) != 0
+            or flow.get("landing_recovery_attempted")):
+        return False
+    mandate_probe = {
+        "kind": "goal_navigation", "primitive": "click",
+        "target": goal_target or action, "original_action": action,
+        "destination_host": entry_host,
+        "candidate": {"form_method": "", "download": False,
+                      "secret_input": False},
+        "sensitivity_reasons": ["navigation", "tainted_turn"],
+    }
+    if not _mandate_allows_plan(entry, mandate_probe):
+        return False
+
+    # Set before I/O so timeout/failure cannot create a retry loop.
+    flow["landing_recovery_attempted"] = True
+    blocked = entry.get("blocked_requests")
+    if isinstance(blocked, dict):
+        blocked.clear()
+    try:
+        _resp = await asyncio.wait_for(
+            entry["page"].goto(
+                entry_url, wait_until="load",
+                timeout=int(_OP_TIMEOUT_S * 1000)),
+            timeout=_OP_TIMEOUT_S)
+        # ADR 0191 P4: codice osservativo dell'atterraggio goal (side-channel).
+        _sig = sites_observed.response_signals(_resp)
+        entry["observed_reason"] = sites_observed.observational_reason(
+            status=_sig["status"], retry_after=_sig["retry_after"])
+        await _settle_resource_discovery(entry["page"])
+    except Exception as exc:
+        sites_audit.record(
+            "landing_recovery", owner=entry.get("owner", ""),
+            session_id=entry.get("_sid", ""),
+            domain=entry.get("domain", ""), outcome=False,
+            detail=type(exc).__name__)
+        return False
+    entry["web_content_ingested"] = True
+    entry.setdefault("reveal_attempts", set()).clear()
+    entry.setdefault("action_replans", {}).clear()
+    flow.setdefault("visited", set()).clear()
+    flow.setdefault("continuation_exhausted", set()).clear()
+    await _touch(entry)
+    sites_audit.record(
+        "landing_recovery", owner=entry.get("owner", ""),
+        session_id=entry.get("_sid", ""), domain=entry.get("domain", ""),
+        outcome=True, url=scrub_url(entry_url))
+    return True
+
+
 async def _prepare_action_with_resource_fallback(
         entry: dict, session_id: str, action: str,
         value_ref: str | None, *, allow_model: bool = True,
-        settle_goal: bool = True) -> dict:
-    parsed = action_resolver.parse_action(action)
+        settle_goal: bool = True,
+        goal_target: str | None = None) -> dict:
+    parsed = ({"ok": True, "primitive": "search", "target": goal_target}
+              if goal_target else action_resolver.parse_action(action))
     is_goal = parsed.get("ok") and parsed.get("primitive") == "search"
     fallback_errors = {"selector_missing", "selector_ambiguous"}
 
@@ -2434,16 +2853,18 @@ async def _prepare_action_with_resource_fallback(
                 return None
             return _prepare_resource_expansion(
                 entry, session_id, action, value_ref,
-                required_hosts=stylesheet_hosts)
+                required_hosts=stylesheet_hosts, goal_target=goal_target)
         return _prepare_resource_expansion(
-            entry, session_id, action, value_ref)
+            entry, session_id, action, value_ref, goal_target=goal_target)
 
     if is_goal and settle_goal:
         attempts = max(1, _REVEAL_SETTLE_MS // _REVEAL_POLL_MS)
         prepared = {"ok": False, "error_class": "selector_missing"}
         for attempt in range(attempts):
             prepared = await _prepare_action(
-                entry, session_id, action, value_ref, allow_model=False)
+                entry, session_id, action, value_ref,
+                primitive_override=("search" if goal_target else None),
+                target_override=goal_target, allow_model=False)
             if (prepared.get("ok") or prepared.get("error_class")
                     not in fallback_errors | {"target_changed"}):
                 break
@@ -2454,15 +2875,27 @@ async def _prepare_action_with_resource_fallback(
                     await asyncio.sleep(_REVEAL_POLL_MS / 1000)
         if not prepared.get("ok") and prepared.get(
                 "error_class") in fallback_errors:
+            if (prepared.get("error_class") == "selector_missing"
+                    and not prepared.get("observed_candidates")
+                    and await _recover_authenticated_landing(
+                        entry, action, goal_target)):
+                return await _prepare_action_with_resource_fallback(
+                    entry, session_id, action, value_ref,
+                    allow_model=allow_model, settle_goal=True,
+                    goal_target=goal_target)
             expansion = _resolution_expansion(prepared)
             if expansion is not None:
                 return expansion
             if allow_model:
                 prepared = await _prepare_action(
-                    entry, session_id, action, value_ref, allow_model=True)
+                    entry, session_id, action, value_ref,
+                    primitive_override=("search" if goal_target else None),
+                    target_override=goal_target, allow_model=True)
     else:
         prepared = await _prepare_action(
-            entry, session_id, action, value_ref, allow_model=False)
+            entry, session_id, action, value_ref,
+            primitive_override=("search" if goal_target else None),
+            target_override=goal_target, allow_model=False)
         if not prepared.get("ok") and prepared.get(
                 "error_class") in fallback_errors:
             expansion = _resolution_expansion(prepared)
@@ -2470,7 +2903,9 @@ async def _prepare_action_with_resource_fallback(
                 return expansion
             if allow_model:
                 prepared = await _prepare_action(
-                    entry, session_id, action, value_ref, allow_model=True)
+                    entry, session_id, action, value_ref,
+                    primitive_override=("search" if goal_target else None),
+                    target_override=goal_target, allow_model=True)
     if (not prepared.get("ok")
             and prepared.get("error_class") in fallback_errors):
         expansion = _resolution_expansion(prepared)
@@ -2516,13 +2951,16 @@ async def _prepare_after_reveal(entry: dict, session_id: str, action: str,
 
 async def _prepare_after_goal_navigation(entry: dict, session_id: str,
                                          action: str,
-                                         value_ref: str | None) -> dict:
+                                         value_ref: str | None,
+                                         goal_target: str | None = None) -> dict:
     """Riosserva una transizione SPA prima del fallback intelligente."""
     attempts = max(1, _REVEAL_SETTLE_MS // _REVEAL_POLL_MS)
     last = {"ok": False, "error_class": "selector_missing"}
     for attempt in range(attempts):
         last = await _prepare_action(
-            entry, session_id, action, value_ref, allow_model=False)
+            entry, session_id, action, value_ref,
+            primitive_override=("search" if goal_target else None),
+            target_override=goal_target, allow_model=False)
         if last.get("ok"):
             return last
         if last.get("error_class") not in {
@@ -2534,9 +2972,11 @@ async def _prepare_after_goal_navigation(entry: dict, session_id: str,
                 await entry["page"].wait_for_timeout(_REVEAL_POLL_MS)
             else:
                 await asyncio.sleep(_REVEAL_POLL_MS / 1000)
+    kwargs = {"allow_model": True, "settle_goal": False}
+    if goal_target:
+        kwargs["goal_target"] = goal_target
     return await _prepare_action_with_resource_fallback(
-        entry, session_id, action, value_ref, allow_model=True,
-        settle_goal=False)
+        entry, session_id, action, value_ref, **kwargs)
 
 
 def _inherit_login_plan_context(parent: dict, prepared: dict) -> None:
@@ -2609,9 +3049,12 @@ async def _execute_resource_expansion(entry: dict, token: str,
         if not goal_flow.get("approved"):
             goal_flow["approval_source"] = "resource_reload"
         goal_flow["approved"] = True
+    prepare_kwargs = {}
+    if plan.get("goal_target"):
+        prepare_kwargs["goal_target"] = plan["goal_target"]
     prepared = await _prepare_action_with_resource_fallback(
         entry, entry.get("_sid", ""), plan.get("original_action") or "",
-        plan.get("value_ref"))
+        plan.get("value_ref"), **prepare_kwargs)
     # Il reload autorizzativo non e' un passo della procedura. Il nuovo piano
     # DOM verra' contato solo quando l'azione effettiva sara' eseguita.
     _inherit_login_plan_context(plan, prepared)
@@ -2730,8 +3173,12 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             target_url = plan.get("target") or ""
             if not re.match(r"^https?://", target_url):
                 return {"ok": False, "error_class": "invalid_url"}
-            await page.goto(target_url, wait_until="load",
-                            timeout=int(_OP_TIMEOUT_S * 1000))
+            _resp = await page.goto(target_url, wait_until="load",
+                                    timeout=int(_OP_TIMEOUT_S * 1000))
+            # ADR 0191 P4: codice osservativo (side-channel su entry).
+            _sig = sites_observed.response_signals(_resp)
+            entry["observed_reason"] = sites_observed.observational_reason(
+                status=_sig["status"], retry_after=_sig["retry_after"])
             entry["web_content_ingested"] = True
         elif primitive == "fill":
             if (value_ref or "").startswith("cred:"):
@@ -2969,7 +3416,8 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
     if plan.get("kind") in {"goal_navigation", "goal_continuation"}:
         prepared = await _prepare_after_goal_navigation(
             entry, entry.get("_sid", ""),
-            plan.get("original_action") or "", plan.get("value_ref"))
+            plan.get("original_action") or "", plan.get("value_ref"),
+            goal_target=plan.get("goal_target"))
         return await _handle_prepared_action_with_replans(
             entry, entry.get("_sid", ""),
             plan.get("original_action") or "", plan.get("value_ref"),
@@ -3091,8 +3539,11 @@ async def _handle_prepared_action_with_replans(
             await page.wait_for_timeout(_REVEAL_POLL_MS)
         else:
             await asyncio.sleep(_REVEAL_POLL_MS / 1000)
+        prepare_kwargs = {}
+        if plan.get("goal_target"):
+            prepare_kwargs["goal_target"] = plan["goal_target"]
         prepared = await _prepare_action_with_resource_fallback(
-            entry, session_id, action, value_ref)
+            entry, session_id, action, value_ref, **prepare_kwargs)
 
 
 async def _with_action_failure_evidence(entry: dict, result: dict) -> dict:
@@ -3111,7 +3562,8 @@ async def _with_action_failure_evidence(entry: dict, result: dict) -> dict:
 
 async def op_act(*, session_id: str, owner: str | None, action: str,
                  value_ref: str | None = None,
-                 approval_token: str | None = None) -> dict:
+                 approval_token: str | None = None,
+                 goal_query: str | None = None) -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error_class": validation_error}
@@ -3146,8 +3598,12 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                     "ts": time.time(), "result": result}
                 return await _with_action_failure_evidence(entry, result)
             original_action = str(plan.get("original_action") or action)
+            prepare_kwargs = {}
+            if plan.get("goal_target"):
+                prepare_kwargs["goal_target"] = plan["goal_target"]
             prepared = await _prepare_action_with_resource_fallback(
-                entry, session_id, original_action, plan.get("value_ref"))
+                entry, session_id, original_action, plan.get("value_ref"),
+                **prepare_kwargs)
             result = await _handle_prepared_action_with_replans(
                 entry, session_id, original_action, plan.get("value_ref"),
                 prepared)
@@ -3157,8 +3613,16 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
             return result
         if entry.get("gate_pending"):
             return {"ok": False, "error_class": "approval_pending"}
+        goal_target = ""
+        if isinstance(goal_query, str) and goal_query.strip():
+            goal_target = await _reduce_site_goal(goal_query)
+            if not goal_target:
+                return await _with_action_failure_evidence(
+                    entry, {"ok": False, "error_class": "goal_unresolved"})
+        prepare_kwargs = ({"goal_target": goal_target}
+                          if goal_target else {})
         prepared = await _prepare_action_with_resource_fallback(
-            entry, session_id, action, value_ref)
+            entry, session_id, action, value_ref, **prepare_kwargs)
         result = await _handle_prepared_action_with_replans(
             entry, session_id, action, value_ref, prepared)
         return await _with_action_failure_evidence(entry, result)

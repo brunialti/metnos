@@ -63,13 +63,17 @@ def session_open(*, owner: str, url: str, allowlist=None,
                  session_label: str = "", approval_token: str | None = None,
                  task_name: str | None = None,
                  credential_mode: str = "default",
+                 stealth: bool = False,
+                 lang: str | None = None,
                  **kw) -> dict:
     return _post("/session/open", {"owner": owner, "url": url,
                                    "allowlist": allowlist,
                                    "session_label": session_label,
                                    "approval_token": approval_token,
                                    "task_name": task_name,
-                                   "credential_mode": credential_mode}, **kw)
+                                   "credential_mode": credential_mode,
+                                   "stealth": bool(stealth),
+                                   "lang": lang}, **kw)
 
 
 def session_read(*, session_id: str, owner: str | None = None,
@@ -108,10 +112,12 @@ def session_close(*, session_id: str | None = None, owner: str | None = None,
 
 def session_act(*, session_id: str, owner: str, action: str,
                 value_ref: str | None = None,
-                approval_token: str | None = None, **kw) -> dict:
+                approval_token: str | None = None,
+                goal_query: str | None = None, **kw) -> dict:
     return _post("/session/act", {
         "session_id": session_id, "owner": owner, "action": action,
         "value_ref": value_ref, "approval_token": approval_token,
+        "goal_query": goal_query,
     }, **kw)
 
 

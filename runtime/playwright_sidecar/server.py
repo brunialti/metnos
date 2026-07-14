@@ -48,14 +48,30 @@ from aiohttp import web
 
 logger = logging.getLogger("playwright_sidecar")
 
-# Stato globale: un solo browser Chromium per processo (ADR 0125 §F).
+# Stato globale browser. HONEST = `_browser` (default onesto, sempre pronto).
+# STEALTH = `_browser_stealth` (ADR 0191 P1): secondo browser, lanciato lazy solo
+# alla prima sessione stealth. Owner ESCLUSIVO di Playwright/browser = questo
+# modulo (B1): il broker riceve un provider (`_get_browser`) e non lancia mai.
 _browser = None
+_browser_stealth = None
+_stealth_launch_lock = None   # asyncio.Lock(), creato in _on_startup
 _playwright = None
 _browser_version = ""
 _browser_ready_since = 0.0
 _browser_generation = 0
 _watchdog_task = None
 _stopping = False
+
+# Argomenti di lancio del browser HONEST: nessun flag anti-rilevamento. Il
+# browser stealth (lazy) parte da questi + le tecniche LAUNCH di `stealth.py`.
+_HONEST_LAUNCH_ARGS = [
+    "--no-sandbox",  # systemd-user gia' contiene
+    "--disable-dev-shm-usage",
+    # spec sites §3.1 FIX D: WebRTC off a livello browser (difesa in profondita'
+    # oltre all'init-script per-contesto).
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+    "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+]
 
 # Cap di sicurezza: timeout assoluto su una singola render. Sopra di questo,
 # preferiamo dichiarare timeout che restare appesi (ADR 0125 §G).
@@ -70,15 +86,54 @@ _BROKER_LOGIN_TIMEOUT_S = 135.0
 _DEFAULT_VIEWPORT = {"width": 1280, "height": 800}
 
 
-def _browser_connected() -> bool:
-    if _browser is None:
+def _is_connected(browser) -> bool:
+    if browser is None:
         return False
     try:
-        probe = getattr(_browser, "is_connected", None)
+        probe = getattr(browser, "is_connected", None)
         return bool(probe() if callable(probe)
                     else probe if probe is not None else True)
     except Exception:
         return False
+
+
+def _browser_connected() -> bool:
+    # Honest browser: sempre atteso pronto.
+    return _is_connected(_browser)
+
+
+async def _get_browser(stealth: bool):
+    """BrowserProvider (ADR 0191 B1): honest sempre pronto; stealth lazy sotto
+    lock con doppio controllo `is_connected`. Owner esclusivo di Playwright.
+    Se lo stealth e' richiesto e il lancio fallisce -> `browser_unavailable`,
+    MAI fallback silenzioso sul browser honest."""
+    global _browser_stealth
+    if not stealth:
+        if not _browser_connected():
+            raise RuntimeError("browser_unavailable")
+        return _browser
+    if _is_connected(_browser_stealth):
+        return _browser_stealth
+    lock = _stealth_launch_lock
+    if lock is None or _playwright is None:
+        raise RuntimeError("browser_unavailable")
+    async with lock:
+        if _is_connected(_browser_stealth):
+            return _browser_stealth
+        from playwright_sidecar import stealth as _stealth_mod
+        args = list(_HONEST_LAUNCH_ARGS)
+        _stealth_mod.apply_launch_args(args, stealth=True)
+        try:
+            browser = await _playwright.chromium.launch(
+                headless=True, args=args)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("stealth chromium launch failed: %s", exc)
+            raise RuntimeError("browser_unavailable") from exc
+        if hasattr(browser, "on"):
+            browser.on("disconnected", _browser_disconnected)
+        _browser_stealth = browser
+        logger.info("stealth chromium launched (lazy)")
+        return _browser_stealth
 
 
 def _broker_health_snapshot() -> dict:
@@ -195,6 +250,12 @@ async def handle_health(request: web.Request) -> web.Response:
         "version": _browser_version,
         "generation": _browser_generation,
         "uptime_s": max(0, int(time.monotonic() - _browser_ready_since)),
+        # ADR 0191 P1: stato separato dei due browser.
+        "browser_honest_connected": _browser_connected(),
+        "browser_stealth_state": (
+            "not_started" if _browser_stealth is None
+            else "connected" if _is_connected(_browser_stealth)
+            else "disconnected"),
     }
     out["broker"] = _broker_health_snapshot()
     if not out["broker"].get("reaper_running"):
@@ -366,7 +427,11 @@ async def handle_session_open(request):
             allowlist_arg=b.get("allowlist"), session_label=b.get("session_label", ""),
             approval_token=b.get("approval_token"),
             task_name=b.get("task_name"),
-            credential_mode=b.get("credential_mode", "default"))
+            credential_mode=b.get("credential_mode", "default"),
+            # Fix adversarial #8: solo bool VERO attiva lo stealth (bool("false")
+            # sarebbe True). Un JSON malformato/ambiguo → honest.
+            stealth=(b.get("stealth") is True),
+            lang=b.get("lang"))
     return await _broker_call(request, _op)
 
 
@@ -413,7 +478,8 @@ async def handle_session_act(request):
         return await sb.op_act(
             session_id=b.get("session_id", ""), owner=b.get("owner"),
             action=b.get("action", ""), value_ref=b.get("value_ref"),
-            approval_token=b.get("approval_token"))
+            approval_token=b.get("approval_token"),
+            goal_query=b.get("goal_query"))
     return await _broker_call(request, _op)
 
 
@@ -443,7 +509,7 @@ handle_session_wait = _primitive_handler("op_wait", value_key="seconds")
 async def _on_startup(app: web.Application) -> None:
     """Inizializza Playwright + Chromium browser."""
     global _browser, _playwright, _browser_version, _browser_ready_since
-    global _browser_generation, _watchdog_task, _stopping
+    global _browser_generation, _watchdog_task, _stopping, _stealth_launch_lock
     _stopping = False
     try:
         from playwright.async_api import async_playwright
@@ -454,15 +520,13 @@ async def _on_startup(app: web.Application) -> None:
         raise SystemExit(1)
 
     _playwright = await async_playwright().start()
-    launch_args = [
-        "--disable-blink-features=AutomationControlled",
-        "--no-sandbox",  # systemd-user gia' contiene
-        "--disable-dev-shm-usage",
-        # spec sites §3.1 FIX D: WebRTC off a livello browser (difesa in
-        # profondita' oltre all'init-script per-contesto).
-        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
-        "--webrtc-ip-handling-policy=disable_non_proxied_udp",
-    ]
+    _stealth_launch_lock = asyncio.Lock()
+    # Browser HONEST (default onesto, ADR 0191): nessun flag anti-rilevamento.
+    # `navigator.webdriver` resta nativo. Lo stealth e' un SECONDO browser,
+    # lanciato lazy da `_get_browser(stealth=True)` con le tecniche LAUNCH di
+    # `stealth.py`, solo alla prima sessione stealth — attivabile per-turno da
+    # UI (pref `sites_stealth`) senza restart.
+    launch_args = list(_HONEST_LAUNCH_ARGS)
     last_error = None
     for attempt in range(1, 4):
         try:
@@ -492,7 +556,8 @@ async def _on_startup(app: web.Application) -> None:
         # avviabile anche senza il modulo (degrade graceful del solo /render).
         try:
             from playwright_sidecar import session_broker
-            session_broker.configure(_browser)
+            # B1: il broker riceve un PROVIDER, non un browser. Non lancia mai.
+            session_broker.configure(_get_browser)
             session_broker.start_reaper()
             logger.info("session_broker configured (sites domain ready)")
         except Exception as e:  # noqa: BLE001
@@ -515,8 +580,8 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_shutdown(app: web.Application) -> None:
-    """Chiusura pulita del browser."""
-    global _browser, _playwright, _watchdog_task, _stopping
+    """Chiusura pulita di entrambi i browser."""
+    global _browser, _browser_stealth, _playwright, _watchdog_task, _stopping
     _stopping = True
     _sd_notify("STOPPING=1\nSTATUS=Stopping Playwright sidecar")
     task = _watchdog_task
@@ -538,6 +603,12 @@ async def _on_shutdown(app: web.Application) -> None:
         except Exception:
             pass
         _browser = None
+    if _browser_stealth is not None:
+        try:
+            await _browser_stealth.close()
+        except Exception:
+            pass
+        _browser_stealth = None
     if _playwright is not None:
         try:
             await _playwright.stop()

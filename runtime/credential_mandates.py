@@ -180,25 +180,94 @@ def has_scope(binding: str, scope: str) -> bool:
         str(item) for item in scopes if isinstance(item, str)}
 
 
+def _www_binding_aliases(host: str) -> tuple[str, ...]:
+    """Return the only vault-name alias accepted by credential injection."""
+    canonical = canonical_site_host(host)
+    if not canonical:
+        return ()
+    aliases = [canonical]
+    if canonical.startswith("www.") and canonical[4:].count(".") >= 1:
+        aliases.append(canonical[4:])
+    return tuple(aliases)
+
+
+def resolve_verified_site_profile(
+        profiles: dict, host: str, *, require_scope: bool = False,
+        scope: str = SITES_READ_SCOPE) -> tuple[str, dict] | None:
+    """Resolve an audited profile and its stable credential binding.
+
+    Audit sessions created before a mandate was attached can be rooted at the
+    conventional ``www`` entry host while the vault record uses the base host.
+    This mirrors credential injection's exact ``www.host -> host`` fallback;
+    it never grants authority to an arbitrary sibling or child hostname.
+    """
+    canonical = canonical_site_host(host)
+    if not canonical or not isinstance(profiles, dict):
+        return None
+    candidates = []
+    for profile_root, profile in profiles.items():
+        root = canonical_site_host(str(profile_root))
+        if not root or not isinstance(profile, dict):
+            continue
+        hosts = {
+            candidate for raw in (profile.get("hosts") or ())
+            if (candidate := canonical_site_host(str(raw)))
+        }
+        aliases = _www_binding_aliases(root)
+        relation = (0 if canonical == root else
+                    1 if canonical in hosts else
+                    2 if (canonical in aliases
+                          or root in _www_binding_aliases(canonical)) else 3)
+        if relation == 3:
+            continue
+        scoped_root = next((alias for alias in aliases
+                            if has_scope(alias, scope)), "")
+        if require_scope and not scoped_root:
+            continue
+        # Prefer a profile whose own root owns the scope. A www-only audit may
+        # fall back to the base binding, but must not shadow a richer exact
+        # profile that is already rooted at that binding.
+        authority_rank = (0 if scoped_root == root else
+                          1 if scoped_root else 2)
+        candidates.append((authority_rank, relation, len(root), root,
+                           scoped_root or root, profile))
+    if not candidates:
+        return None
+    *_, authority_root, profile = min(candidates, key=lambda row: row[:4])
+    return authority_root, profile
+
+
 def resolve_sites_binding(owner: str, host: str, *,
-                          audit_path: Path | None = None) -> dict | None:
+                           audit_path: Path | None = None) -> dict | None:
     """Resolve the credential's persistent default for interactive use."""
     canonical = canonical_site_host(host)
     profiles = verified_site_topology(owner, audit_path=audit_path)
-    candidates = [
-        (root, profile) for root, profile in profiles.items()
-        if ((canonical == root or canonical in profile["hosts"])
-            and has_scope(root, SITES_READ_SCOPE))
-    ]
-    if not candidates:
+    resolved = resolve_verified_site_profile(
+        profiles, canonical, require_scope=True)
+    if resolved is None:
         return None
-    root, profile = min(candidates, key=lambda item: (
-        item[0] != canonical, len(item[0]), item[0]))
+    root, profile = resolved
+    # Fix adversarial #6: la SoT delle origini di FILL e' il VAULT (tuple esatte
+    # scheme+host+porta), NON gli eventi audit hostname-only di `profile["origins"]`.
+    # Leggi credential_origins dal record risolto; vuoto se assente (l'enforcement
+    # deriva comunque la migrazione dal payload).
+    vault_origins: list[str] = []
+    try:
+        import credentials as _cred
+        for _cand in (root, f"web_{root}"):
+            _payload = _cred.load(_cand)
+            if isinstance(_payload, dict):
+                _co = _payload.get("credential_origins")
+                if isinstance(_co, (list, tuple)):
+                    vault_origins = sorted(str(o) for o in _co)
+                break
+    except Exception:
+        vault_origins = []
     return {
         "root_host": root,
         "entry_hosts": sorted({canonical, root}),
         "allowed_hosts": sorted(profile["hosts"] | {canonical, root}),
-        "credential_origins": sorted(profile["origins"]),
+        "credential_origins": vault_origins,
         "operations": ["login", "navigate", "open", "read"],
         "credential_default": True,
         "query": "",
