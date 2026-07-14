@@ -709,12 +709,21 @@ def page_satisfies_goal(target: str, body_text: str | list[str], *,
     wanted = set(goal_tokens(target))
     if not wanted:
         return False
-    if _is_personal_goal(target) and len(wanted) == 1:
+    if len(wanted) == 1:
         try:
-            path = urllib.parse.urlsplit(scope_text).path.lower()
+            split = urllib.parse.urlsplit(scope_text)
+            path = split.path.lower()
+            host_tokens = set(goal_tokens(split.hostname or ""))
         except ValueError:
-            path = ""
-        if _is_home_path(path):
+            path, host_tokens = "", set()
+        # La HOME non "soddisfa" un goal a token singolo quando il goal e'
+        # personale (le mie X) OPPURE quando il token E' il brand del sito
+        # (es. «prenotazioni»→«booking» su booking.com, onnipresente ovunque):
+        # la sezione dedicata va aperta. Il riduttore goal LLM puo' spogliare il
+        # marker «mie», quindi il guard NON puo' dipenderne (bug reale Booking:
+        # target ridotto a «prenotazioni» → matchava il brand sulla home).
+        if _is_home_path(path) and (_is_personal_goal(target)
+                                    or wanted <= host_tokens):
             return False
     if isinstance(body_text, list):
         blocks = [normalize(str(block)) for block in body_text[:400]]

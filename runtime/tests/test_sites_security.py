@@ -1547,6 +1547,13 @@ def test_personal_goal_on_localized_home_is_not_satisfied():
         assert not ar.page_satisfies_goal(
             "mie prenotazioni", home_body,
             scope_text="https://www.booking.com" + path), path
+    # Il riduttore goal LLM spoglia il marker «mie» → target «prenotazioni»
+    # (NON personale) che si riduce al brand «booking»: la home NON deve
+    # soddisfare comunque (guard brand-token, non solo personale).
+    assert not ar._is_personal_goal("prenotazioni")
+    assert not ar.page_satisfies_goal(
+        "prenotazioni", home_body,
+        scope_text="https://www.booking.com/index.it.html")
     # la pagina viaggi REALE resta soddisfatta (IT ed EN: token cross-lingua)
     assert ar.page_satisfies_goal(
         "mie prenotazioni", ["le mie prenotazioni", "hotel roma 12 marzo"],
