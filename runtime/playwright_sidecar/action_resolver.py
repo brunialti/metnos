@@ -81,6 +81,16 @@ def overlay_dismiss_forms() -> tuple[str, ...]:
     return forms or _OVERLAY_DISMISS_FALLBACK
 
 
+def privacy_reject_forms() -> tuple[str, ...]:
+    """Translated controls that decline optional privacy processing."""
+    return _concept_forms("sites.privacy_reject_target")
+
+
+def privacy_overlay_marker_forms() -> tuple[str, ...]:
+    """Translated evidence that a fixed panel is a privacy overlay."""
+    return _concept_forms("sites.privacy_overlay_marker")
+
+
 def normalize_target(text: str) -> str:
     target = normalize(text)
     for phrase in sorted(_target_noise(), key=len, reverse=True):
@@ -268,6 +278,12 @@ def _is_login_target(target: str) -> bool:
     return bool(target_n and (target_n == "login" or target_n in forms))
 
 
+def _candidate_matches_concept(candidate: dict, concept: str) -> bool:
+    text = _candidate_text(candidate)
+    return bool(text and any(
+        _contains_phrase(text, form) for form in _concept_forms(concept)))
+
+
 def _safe_navigation_identity(candidate: dict) -> tuple[str, str, str] | None:
     href = str(candidate.get("href") or "")
     try:
@@ -312,6 +328,17 @@ def choose_candidate(target: str, candidates: list[dict], primitive: str) -> dic
         return {"ok": False, "error_class": "selector_missing",
                 "ranked": model_ranked[:24]}
     if primitive == "click" and _is_login_target(target):
+        # Un controllo diretto di autenticazione (es. "Accedi"/"Sign in")
+        # e' semanticamente piu' specifico di un reveal generico come
+        # "Account". Le forme arrivano dal detection_lexicon: nessun label o
+        # sito e' codificato nel resolver. Se non esiste un diretto, conserva
+        # integralmente il fallback precedente sui reveal.
+        direct = [
+            (score, candidate) for score, candidate in ranked
+            if _candidate_matches_concept(
+                candidate, "sites.login_direct_target")]
+        if direct and direct[0][0] >= 0.55:
+            ranked = direct
         # Un href HTTP(S) e' verificabile dal broker prima del click; un
         # controllo JavaScript opaco no. Se esistono link login validi, limita
         # l'ambiguita' a questi senza inventare destinazioni o selettori.
@@ -662,6 +689,21 @@ def choose_search_scroll_field(candidates: list[dict]) -> dict:
     return chosen
 
 
+# Home/landing di un sito: root, `/index[.htm[l]]` e le varianti LOCALIZZATE
+# `/index.<lang>[-<region>].htm[l]` (es. `/index.it.html`, `/index.en-gb.html`).
+# Booking redirige la home su `/index.it.html`: senza le localizzate il guard
+# home di page_satisfies_goal falliva a scattare e un goal personale a token
+# singolo (es. «prenotazioni»→«booking», onnipresente sul sito) risultava
+# "gia' raggiunto" sulla home → observe invece di aprire la sezione dedicata.
+_LOCALIZED_INDEX_RE = re.compile(r"/index\.[a-z]{2,3}(-[a-z]{2,4})?\.html?")
+
+
+def _is_home_path(path: str) -> bool:
+    if path in ("", "/", "/index", "/index.htm", "/index.html"):
+        return True
+    return bool(_LOCALIZED_INDEX_RE.fullmatch(path or ""))
+
+
 def page_satisfies_goal(target: str, body_text: str | list[str], *,
                         scope_text: str = "") -> bool:
     wanted = set(goal_tokens(target))
@@ -672,7 +714,7 @@ def page_satisfies_goal(target: str, body_text: str | list[str], *,
             path = urllib.parse.urlsplit(scope_text).path.lower()
         except ValueError:
             path = ""
-        if path in ("", "/", "/index", "/index.htm", "/index.html"):
+        if _is_home_path(path):
             return False
     if isinstance(body_text, list):
         blocks = [normalize(str(block)) for block in body_text[:400]]

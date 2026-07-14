@@ -1534,6 +1534,31 @@ def test_goal_completion_requires_local_coherent_evidence():
         scope_text="https://x.test/account/dashboard")
 
 
+def test_personal_goal_on_localized_home_is_not_satisfied():
+    # Regressione Booking 15/7: la home LOCALIZZATA `/index.it.html` deve
+    # comportarsi come `/` — un goal personale a token singolo (prenotazioni →
+    # «booking», onnipresente sul sito) NON e' "raggiunto" sulla home: la
+    # sezione dedicata va aperta. Prima il guard riconosceva solo `/index.html`,
+    # quindi su `/index.it.html` concludeva a torto → observe invece di navigare.
+    from playwright_sidecar import action_resolver as ar
+    home_body = ["le mie prenotazioni", "offerte", "hotel consigliati"]
+    for path in ("/", "/index.html", "/index.it.html", "/index.en-gb.html",
+                 "/index.fr.htm"):
+        assert not ar.page_satisfies_goal(
+            "mie prenotazioni", home_body,
+            scope_text="https://www.booking.com" + path), path
+    # la pagina viaggi REALE resta soddisfatta (IT ed EN: token cross-lingua)
+    assert ar.page_satisfies_goal(
+        "mie prenotazioni", ["le mie prenotazioni", "hotel roma 12 marzo"],
+        scope_text="https://secure.booking.com/mytrips.html")
+    assert ar.page_satisfies_goal(
+        "mie prenotazioni", ["my trips", "no upcoming trips"],
+        scope_text="https://secure.booking.com/mytrips.html")
+    # un path di CONTENUTO con segmento lungo NON e' home (no over-match)
+    assert not ar._is_home_path("/index.hotels.html")
+    assert not ar._is_home_path("/searchresults.it.html")
+
+
 def test_broker_goal_evidence_excludes_control_labels_but_uses_page_scope():
     import asyncio
     from playwright_sidecar import session_broker as sb
