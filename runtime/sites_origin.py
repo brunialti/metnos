@@ -1,9 +1,14 @@
 """Origine credenziale canonica `(scheme, host, port)` — ADR 0191 P2 / §4.
 
 Autorita' di DESTINAZIONE delle credenziali (distinta da `allowed_hosts`, che e'
-autorizzazione di RETE). Il fill e' consentito SOLO se l'origine corrente
-appartiene, per MATCH ESATTO della tupla normalizzata, a `credential_origins`.
-Nessun fold `www` implicito: `www.<root>` e' autorizzato solo come entry esplicita.
+autorizzazione di RETE). Due regimi (`origin_authorized`):
+- `credential_origins` PRESENTE nel vault = autorita' ESPLICITA: match ESATTO
+  della tupla normalizzata, nessun fold; lista vuota = deny-all fail-closed.
+- chiave ASSENTE = contratto default STESSO SITO del domain handle: host uguale
+  o sottodominio first-party (dot-anchored: `account.booking.com` per
+  `booking.com`), `https` obbligatorio (`http` solo host locali). E' il
+  contratto storico dei binding creati per nome-sito; il consenso one-shot
+  resta per le origini DELEGATE (altro sito registrabile), a match esatto.
 
 Regole di normalizzazione (deterministiche):
 - host IDNA/punycode -> ASCII lowercase; trailing-dot rimosso; IPv6 tra `[...]`.
@@ -129,64 +134,55 @@ def normalize_entry(entry: str | None) -> str | None:
     return origin_of_url(entry)
 
 
-def derive_default_origins(domain: str | None) -> list[str]:
-    """Migrazione legacy (ADR 0191 §4): origini di default per un record senza
-    `credential_origins`. Host pubblico DNS -> ``https://D:443`` + controparte
-    stretta ``www`` (una sola label, ≥2 label DNS, mai IP/localhost/.local). Host
-    locale/privato -> ``http://host:80`` (pannelli LAN tipo FASTGate)."""
-    h = _norm_host(domain)
-    if h is None:
-        return []
-    if is_local(h):
-        o = normalize_origin("http", h, 80)
-        return [o] if o else []
-    out: list[str] = []
-    base = normalize_origin("https", h, 443)
-    if base:
-        out.append(base)
-    if not is_ip(h):
-        labels = h.split(".")
-        if len(labels) >= 2:
-            counterpart = None
-            if h.startswith("www.") and len(h[4:].split(".")) >= 2:
-                counterpart = normalize_origin("https", h[4:], 443)
-            elif not h.startswith("www."):
-                counterpart = normalize_origin("https", "www." + h, 443)
-            if counterpart and counterpart not in out:
-                out.append(counterpart)
-    return out
+def explicit_origins(payload: dict | None) -> list[str] | None:
+    """Le origini ESPLICITE del payload, normalizzate — o None se la chiave
+    `credential_origins` e' ASSENTE (regime stesso-sito). Chiave presente ma
+    vuota/invalida -> `[]` = deny-all fail-closed (fix adversarial #3), MAI
+    l'allargamento al default."""
+    if not (isinstance(payload, dict) and "credential_origins" in payload):
+        return None
+    stored = payload.get("credential_origins")
+    norm: set[str] = set()
+    if isinstance(stored, (list, tuple)):
+        for entry in stored:
+            origin = normalize_entry(str(entry))
+            if origin:
+                norm.add(origin)
+    return sorted(norm)
 
 
-def authorized_origins(payload: dict | None, storage_domain: str) -> list[str]:
-    """Origini autorizzate per il fill.
-
-    ADR 0191 §4 (fix adversarial #3): se la chiave `credential_origins` e'
-    PRESENTE nel payload, e' un'autorita' ESPLICITA e vincola il fill — anche se
-    vuota o tutta invalida, il risultato e' `[]` = **deny-all fail-closed**, MAI
-    l'allargamento alla migrazione. La derivazione di migrazione (apex+www)
-    scatta SOLO per i record legacy dove la chiave e' ASSENTE.
-    """
-    if isinstance(payload, dict) and "credential_origins" in payload:
-        stored = payload.get("credential_origins")
-        norm: set[str] = set()
-        if isinstance(stored, (list, tuple)):
-            for entry in stored:
-                origin = normalize_entry(str(entry))
-                if origin:
-                    norm.add(origin)
-        return sorted(norm)  # puo' essere [] = nessuna origine (fail-closed)
-    return sorted(set(derive_default_origins(storage_domain)))
-
-
-def authorize(url: str | None, origins, *, extra: str | None = None) -> bool:
-    """True se l'origine di `url` e' in `origins` (match esatto). `extra` = origine
-    one-shot approvata (IdP delegato, ADR 0188), non persistita."""
-    cur = origin_of_url(url)
-    if not cur:
+def same_site_origin(origin: str | None, domain: str | None) -> bool:
+    """True se `origin` (canonica) appartiene allo STESSO SITO del domain
+    handle: host uguale o sottodominio first-party dot-anchored, scheme lecito
+    per l'host (`https`; `http` solo locali). Handle `www.<root>` ancora al
+    root (contratto storico). IP/locali/label-singola = host esatto."""
+    if not origin or not domain:
         return False
-    allowed = set(origins or ())
-    if extra:
-        e = normalize_entry(extra)
-        if e:
-            allowed.add(e)
-    return cur in allowed
+    try:
+        sp = urllib.parse.urlsplit(origin)
+    except ValueError:
+        return False
+    host = _norm_host(sp.hostname)
+    d = _norm_host(domain)
+    if not host or not d or not scheme_ok_for(sp.scheme, host):
+        return False
+    if d.startswith("www.") and len(d[4:].split(".")) >= 2:
+        d = d[4:]
+    if is_ip(d) or is_local(d) or is_ip(host) or "." not in d:
+        return host == d
+    return host == d or host.endswith("." + d)
+
+
+def origin_authorized(origin: str | None, payload: dict | None,
+                      storage_domain: str, *, extra: str | None = None) -> bool:
+    """Autorita' del fill per una origine canonica (vedi docstring modulo).
+    `extra` = origine one-shot approvata dall'utente (delega IdP, ADR 0188):
+    match esatto, mai persistita."""
+    if not origin:
+        return False
+    if extra and normalize_entry(extra) == origin:
+        return True
+    explicit = explicit_origins(payload)
+    if explicit is not None:
+        return origin in explicit
+    return same_site_origin(origin, storage_domain)

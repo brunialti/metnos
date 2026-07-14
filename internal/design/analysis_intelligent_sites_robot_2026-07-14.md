@@ -156,21 +156,27 @@ credenziali reali, trasmette i dati **tranne privacy**.
   link-local (`10/8`,`172.16/12`,`192.168/16`,`169.254/16`,`.local`). Estende la
   richiesta #6 «solo loopback» per il caso reale FASTGate (router LAN http); il
   reviewer puo' restringere in un giro futuro, ma il doc **commit a un solo path**.
-- **Migrazione / campo assente**: su `load(domain)` se `origins` manca → **derive-on-
-  read** default `["https://<domain>"]` (HTTPS-only, sicuro), come l'attuale
-  `_login_origin`. NESSUN fail-closed su campo assente (romperebbe ogni credenziale
-  esistente); NESSUNA riscrittura forzata (il campo si persiste al prossimo
-  `set_credentials`).
-- **Form creazione/modifica**: `set_credentials` guadagna un arg opzionale `origins`
-  (lista di stringhe); se omesso → default `https://<domain>`; ogni voce validata
-  contro normalizzazione+scheme. Label i18n. `www.<root>` ammesso SOLO come voce
-  esplicita (mai auto-fold).
+- **Campo assente = default STESSO SITO (rev. 14/7, regressione turn 025c53fa)**:
+  se `credential_origins` manca, l'autorita' del fill e' il predicato
+  `sites_origin.origin_authorized`: host uguale o sottodominio first-party
+  dot-anchored del domain handle (`account.booking.com` per `booking.com`),
+  `https` obbligatorio (`http` solo locali), handle `www.<root>` ancorato al
+  root; IP/locali/label-singola = host esatto. La prima stesura (derive-on-read
+  apex[+www]) era PIU' stretta del contratto storico → gate di consenso sui
+  login first-party e loop di ri-approvazione. NESSUN fail-closed su campo
+  assente; NESSUNA persistenza derivata.
+- **Form creazione/modifica**: `set_credentials` guadagna un arg opzionale
+  `credential_origins` (lista di stringhe); se omesso la chiave resta ASSENTE
+  (regime stesso-sito); ogni voce fornita validata contro normalizzazione+scheme
+  (lista vuota rifiutata). Label i18n.
 - **IdP delegato**: usa il meccanismo one-shot F1 (ADR 0188) — l'origine IdP delegata
-  e' login-origin ammessa **solo per quel flusso** (token one-shot), NON persistita in
-  `origins`.
-- **Matching**: fill consentito SSE l'origine corrente ∈ `origins` (match esatto);
-  altrimenti **rifiuto fail-closed** (`reason_code=origin_unverified`), mai fill.
-  Sostituisce `_login_origin` (`credential_injection.py:465`, fold www hostname-only).
+  e' login-origin ammessa **solo per quel flusso** (token one-shot, tupla esatta
+  `scheme://host:port` propagata al resume), NON persistita in `origins`.
+- **Matching**: fill consentito SSE `origin_authorized(origine corrente)`
+  (esplicite = match esatto fail-closed, anche vuote = deny-all; assente =
+  stesso-sito); altrimenti **rifiuto fail-closed**
+  (`reason_code=origin_unverified`), mai fill. Sostituisce `_login_origin`
+  (`credential_injection.py:465`, fold www hostname-only).
 
 ## 5. Goal tipizzato — un DTO, una regola (chiude #6)
 
@@ -348,7 +354,9 @@ Il runtime la trasforma in un passo di **piano firmato** via il gate F2
    incremento coerente (`BEGIN IMMEDIATE`).
 7. Catena completa con `goal_query` che **ATTESTA** la pagina-obiettivo.
 8. Sicurezza: origine schema/porta (`http://h`≠`https://h`, porte≠, IDNA/dot/IPv6);
-   `http` pubblico negato, privato/loopback ammesso; alias `www` senza voce negato;
+   `http` pubblico negato, privato/loopback ammesso; con origini ESPLICITE ogni
+   alias fuori lista negato (match esatto); con chiave assente stesso-sito
+   first-party ammesso, altro sito registrabile negato;
    locator: submitter impliciti + js-link **rifiutati**; stealth su browser
    **riavviato** (routing due-browser, non env); cooldown persistente dopo restart.
 9. Igiene: ripristinare le global monkeypatchate a fine test.

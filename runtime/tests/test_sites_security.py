@@ -949,6 +949,9 @@ def test_username_first_can_use_deterministic_continue_procedure(monkeypatch):
 
 
 def test_delegated_login_origin_requires_gate_before_any_fill(monkeypatch):
+    # Delegata = ALTRO sito registrabile (IdP federato). Un sottodominio
+    # first-party (auth.example.test) NON e' delegato: regime stesso-sito,
+    # nessun gate (regressione turn 025c53fa, rev. 14/7).
     import asyncio
     from playwright_sidecar import credential_injection as ci
 
@@ -961,13 +964,13 @@ def test_delegated_login_origin_requires_gate_before_any_fill(monkeypatch):
             return []
 
     class Page:
-        url = "https://auth.example.test/login"
+        url = "https://idp.federated.example/login"
         async def evaluate(self, script):
             if script == ci._HAS_PASSWORD_JS:
                 return True
             if script == ci._LOCATE_LOGIN_FORM_JS:
                 return {"found": True,
-                        "actionResolved": "https://auth.example.test/session",
+                        "actionResolved": "https://idp.federated.example/session",
                         "hasUser": True, "hasSubmit": True}
             raise AssertionError("origin gate must run before further DOM access")
         async def fill(self, *_a, **_kw):
@@ -986,7 +989,7 @@ def test_delegated_login_origin_requires_gate_before_any_fill(monkeypatch):
     assert out["approval_required"] and not out["logged_in"]
     # fix adversarial #2: il gate riceve l'ORIGINE ESATTA (scheme+host+porta),
     # non il solo host.
-    assert observed == [("https://auth.example.test:443", "password")]
+    assert observed == [("https://idp.federated.example:443", "password")]
     assert "never-filled" not in repr(out)
 
 

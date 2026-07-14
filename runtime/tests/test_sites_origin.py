@@ -1,5 +1,6 @@
 """P2 origine credenziale (ADR 0191 §4) — normalizzazione, regola http-privato,
-derivazione di migrazione, autorizzazione a match esatto della tupla."""
+autorita' del fill: esplicita (match esatto fail-closed) vs default stesso-sito
+(sottodomini first-party, contratto storico dei binding per nome-sito)."""
 from __future__ import annotations
 
 import sys
@@ -67,55 +68,73 @@ def test_origin_of_bad_url():
     assert so.origin_of_url("") is None
 
 
-# ── Derivazione di migrazione (apex ↔ www) ──────────────────────────────────
+# ── Default stesso-sito (chiave ASSENTE = contratto storico) ────────────────
 
-def test_migration_public_adds_www_counterpart():
-    out = so.derive_default_origins("amazon.it")
-    assert set(out) == {"https://amazon.it:443", "https://www.amazon.it:443"}
-    # da www.D deriva anche l'apex
-    out = so.derive_default_origins("www.amazon.it")
-    assert set(out) == {"https://www.amazon.it:443", "https://amazon.it:443"}
+def _auth(url: str, payload, domain: str, *, extra=None) -> bool:
+    return so.origin_authorized(so.origin_of_url(url), payload, domain,
+                                extra=extra)
 
 
-def test_migration_no_www_for_ip_or_single_label():
-    assert so.derive_default_origins("192.168.1.10") == ["http://192.168.1.10:80"]
-    # single label (no dot) -> nessuna controparte www
-    assert so.derive_default_origins("intranet") == ["https://intranet:443"]
+def test_same_site_first_party_subdomain_no_gate():
+    # Regressione turn 025c53fa: il login first-party (account.booking.com per
+    # booking.com) NON deve chiedere consenso.
+    assert _auth("https://account.booking.com/sign-in", None, "booking.com")
+    assert _auth("https://www.amazon.it/ap/signin", {}, "amazon.it")
+    assert _auth("https://amazon.it/login", {"other": 1}, "amazon.it")
+    assert _auth("https://secure.pieces.account.booking.com/x", None,
+                 "booking.com")
 
 
-def test_migration_local_is_http():
-    assert so.derive_default_origins("127.0.0.1") == ["http://127.0.0.1:80"]
-    assert so.derive_default_origins("router.local") == ["http://router.local:80"]
+def test_same_site_anchors_www_handle_to_root():
+    # handle `www.<root>` = contratto storico sul root
+    assert _auth("https://account.booking.com/x", None, "www.booking.com")
+    assert _auth("https://booking.com/x", None, "www.booking.com")
 
 
-# ── authorized_origins: payload vs migrazione ───────────────────────────────
+def test_same_site_rejects_other_registrable_site():
+    assert not _auth("https://evil-booking.com/login", None, "booking.com")
+    assert not _auth("https://booking.com.evil.com/login", None, "booking.com")
+    assert not _auth("https://bookingcom.it/login", None, "booking.com")
+    assert not _auth("http://booking.com/login", None, "booking.com")  # http pubblico
 
-def test_authorized_prefers_payload():
+
+def test_same_site_local_and_ip_are_exact_host():
+    assert _auth("http://192.168.1.10/admin", None, "192.168.1.10")
+    assert _auth("http://192.168.1.10:8080/admin", None, "192.168.1.10")
+    assert not _auth("http://192.168.1.11/admin", None, "192.168.1.10")
+    assert _auth("http://router.local/login", None, "router.local")
+    # label singola non-sito (handle tipo `github`): mai fill implicito su web
+    assert not _auth("https://github.com/login", None, "github")
+
+
+# ── Autorita' ESPLICITA (chiave presente = match esatto fail-closed) ─────────
+
+def test_explicit_origins_exact_match_only():
     payload = {"credential_origins": ["https://accounts.example.com:443"]}
-    assert so.authorized_origins(payload, "example.com") == [
-        "https://accounts.example.com:443"]
+    assert so.explicit_origins(payload) == ["https://accounts.example.com:443"]
+    assert _auth("https://accounts.example.com/login", payload, "example.com")
+    # esplicita = NIENTE stesso-sito implicito ne' alias
+    assert not _auth("https://example.com/login", payload, "example.com")
+    assert not _auth("https://www.accounts.example.com/x", payload, "example.com")
+    assert not _auth("https://accounts.example.com:8443/x", payload, "example.com")
 
 
-def test_authorized_falls_back_to_migration():
-    # chiave ASSENTE (record legacy) → migrazione apex+www
-    assert so.authorized_origins({}, "amazon.it") == [
-        "https://amazon.it:443", "https://www.amazon.it:443"]
-    assert so.authorized_origins(None, "amazon.it") == [
-        "https://amazon.it:443", "https://www.amazon.it:443"]
-    assert so.authorized_origins({"other": 1}, "amazon.it") == [
-        "https://amazon.it:443", "https://www.amazon.it:443"]
-
-
-def test_explicit_empty_or_invalid_is_deny_all_not_migration():
-    # fix adversarial #3: chiave PRESENTE ma vuota/invalida = deny-all fail-closed,
-    # MAI allargamento alla migrazione.
-    assert so.authorized_origins({"credential_origins": []}, "amazon.it") == []
-    assert so.authorized_origins(
-        {"credential_origins": ["http://amazon.it"]}, "amazon.it") == []
+def test_explicit_empty_or_invalid_is_deny_all_not_default():
+    # fix adversarial #3: chiave PRESENTE ma vuota/invalida = deny-all
+    # fail-closed, MAI allargamento al default stesso-sito.
+    assert so.explicit_origins({"credential_origins": []}) == []
+    assert not _auth("https://amazon.it/login",
+                     {"credential_origins": []}, "amazon.it")
+    assert not _auth("https://amazon.it/login",
+                     {"credential_origins": ["http://amazon.it"]}, "amazon.it")
     # una valida + una invalida: resta solo la valida (l'invalida non allarga)
-    assert so.authorized_origins(
-        {"credential_origins": ["https://accounts.amazon.it", "http://amazon.it"]},
-        "amazon.it") == ["https://accounts.amazon.it:443"]
+    payload = {"credential_origins": ["https://accounts.amazon.it",
+                                      "http://amazon.it"]}
+    assert _auth("https://accounts.amazon.it/x", payload, "amazon.it")
+    assert not _auth("https://amazon.it/x", payload, "amazon.it")
+    # chiave ASSENTE = regime stesso-sito (non deny-all)
+    assert so.explicit_origins({"other": 1}) is None
+    assert so.explicit_origins(None) is None
 
 
 def test_set_credentials_rejects_empty_origins_list():
@@ -126,33 +145,21 @@ def test_set_credentials_rejects_empty_origins_list():
     assert err  # all-invalid → errore (non lista vuota silenziosa)
 
 
-# ── authorize: match esatto, email-first su www, alias non registrato ───────
+# ── One-shot delegato (extra): match esatto, mai persistito ──────────────────
 
-def test_authorize_exact_match_and_www_email_first():
-    origins = so.derive_default_origins("amazon.it")   # apex + www
-    # email-first servito su www: autorizzato (www e' nella migrazione)
-    assert so.authorize("https://www.amazon.it/ap/signin", origins) is True
-    assert so.authorize("https://amazon.it/login", origins) is True
-
-
-def test_authorize_rejects_unregistered_alias_and_scheme():
-    origins = ["https://amazon.it:443"]     # SENZA www esplicito
-    assert so.authorize("https://www.amazon.it/x", origins) is False   # alias non registrato
-    assert so.authorize("http://amazon.it/x", origins) is False        # http (public) rifiutato
-    assert so.authorize("https://amazon.it:8443/x", origins) is False  # porta diversa
-    assert so.authorize("https://evil.amazon.it/x", origins) is False  # sottodominio
+def test_oneshot_extra_exact_match():
+    # senza extra: l'IdP delegato (altro sito) non e' autorizzato
+    assert not _auth("https://idp.federated.example/auth", None, "shop.example")
+    # con extra one-shot: autorizzato solo per quel flusso, tupla esatta
+    assert _auth("https://idp.federated.example/auth", None, "shop.example",
+                 extra="https://idp.federated.example")
+    assert not _auth("https://idp.federated.example:8443/auth", None,
+                     "shop.example", extra="https://idp.federated.example")
+    assert not _auth("http://idp.federated.example/auth", None,
+                     "shop.example", extra="https://idp.federated.example")
 
 
-def test_authorize_oneshot_extra_not_persisted():
-    origins = ["https://shop.example:443"]
-    # senza extra: l'IdP delegato non e' autorizzato
-    assert so.authorize("https://idp.federated.example/auth", origins) is False
-    # con extra one-shot: autorizzato solo per quel flusso
-    assert so.authorize("https://idp.federated.example/auth", origins,
-                        extra="https://idp.federated.example") is True
-
-
-# ── set_credentials: validazione + default di migrazione (write side) ───────
+# ── set_credentials: validazione origini (write side) ───────────────────────
 
 def test_set_credentials_normalize_origins_helper():
     module = _load_set_credentials()
@@ -163,7 +170,7 @@ def test_set_credentials_normalize_origins_helper():
     # http su host pubblico = rifiutato
     bad, err = module._normalize_origins(["http://example.com"])
     assert bad is None and err
-    # non fornito = None (userera' la migrazione)
+    # non fornito = None (chiave assente → regime stesso-sito a runtime)
     assert module._normalize_origins(None) == (None, None)
 
 

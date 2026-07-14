@@ -17,8 +17,9 @@
 > astratta della v4 collide con un fatto verificato del codice, i contratti esatti
 > di questo handoff governano il COME. In particolare: launch solo in `server.py`,
 > mapping dei segnali post-submit esistenti (nessun detector parallelo),
-> `credentials.fingerprint(storage_domain)` e migrazione `www` simmetrica con
-> origini persistite. Non riaprire questi quattro punti durante l'implementazione.
+> fingerprint derivata dal payload gia' caricato (F#4) e default stesso-sito
+> senza persistenza derivata (rev. 14/7, §4). Non riaprire questi quattro punti
+> durante l'implementazione.
 
 ---
 
@@ -188,11 +189,17 @@ a runtime.
   (`credential_injection.py:465-475`) sia il fallback `www.host→host` di
   `_load_site_credentials` (`:996-1005`). L'autorizzazione `www` esiste solo come
   entry persistita in `credential_origins`, mai come equivalenza calcolata al fill.
-- **Migrazione legacy deterministica**: se il payload non contiene
-  `credential_origins`, derivare in memoria e validare due entry HTTPS esplicite:
-  `https://<D>:443` e la controparte stretta `www` (`D↔www.D`, una sola label,
-  solo hostname DNS con almeno due label; mai IP/localhost/`.local`). Persistere le
-  entry al successivo `set_credentials`, senza riscrittura durante `load`.
+- **Default stesso-sito (REV. 14/7, regressione turn 025c53fa)**: se il payload
+  non contiene `credential_origins`, l'autorita' del fill e' il predicato STESSO
+  SITO del domain handle (`sites_origin.origin_authorized`): host uguale o
+  sottodominio first-party dot-anchored (`account.booking.com` per
+  `booking.com`), `https` obbligatorio (`http` solo host locali), handle
+  `www.<root>` ancorato al root; IP/locali/label-singola = host esatto. La prima
+  stesura derivava apex+www SOLO e persisteva le entry al `set_credentials`
+  successivo: piu' stretta del contratto storico → gate di consenso sui login
+  first-party (regressione) e, peggio, loop di ri-approvazione. NON persistere
+  alcuna derivazione: chiave assente = regime stesso-sito, chiave presente =
+  autorita' esplicita esatta fail-closed (#3 invariato).
 - **Risoluzione legacy iniziale**: `op_open` usa il `root_host` del
   `credential_mandate` gia' risolto come `storage_domain_candidate`; questo consente alla
   prima sessione su `www.D` di caricare il record legacy `D` senza reintrodurre il
@@ -200,10 +207,12 @@ a runtime.
   stretto SOLO per trovare il candidate legacy; non autorizza il fill, che resta
   vincolato alle entry migrate. Se manca un binding → fail-closed
   `credentials_missing`, non scansione indiscriminata del vault.
-- **Form**: `set_credentials` guadagna `credential_origins` opzionale; il default
-  usa le stesse due entry della migrazione, mostrate e modificabili nel form. Ogni
-  voce viene normalizzata/validata prima del salvataggio. IdP delegato resta il
-  one-shot F1 di ADR 0188 e non viene persistito automaticamente.
+- **Form**: `set_credentials` guadagna `credential_origins` opzionale; se
+  l'utente non fornisce origini la chiave resta ASSENTE (regime stesso-sito a
+  runtime, nessun default persistito). Ogni voce fornita viene
+  normalizzata/validata prima del salvataggio (lista vuota = rifiutata). IdP
+  delegato resta il one-shot F1 di ADR 0188 e non viene persistito
+  automaticamente.
 - **SoT mandato**: `credential_mandates.resolve_sites_binding` legge
   `credential_origins` dal payload del record risolto e lo espone al broker; non
   ricostruisce questa autorita' da `allowed_hosts` ne' da soli eventi audit

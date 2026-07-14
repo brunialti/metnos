@@ -410,12 +410,11 @@ def invoke(args):
         payload_to_store["scopes"] = list(scopes)
     if expires_at is not None:
         payload_to_store["expires_at"] = str(expires_at)
-    # ADR 0191 P2: origini autorizzate al fill. Per un site binding, default =
-    # migrazione (apex+www / http-LAN) se non fornite esplicitamente.
-    if is_site_binding:
-        payload_to_store["credential_origins"] = (
-            origins_norm if origins_norm is not None
-            else _sorigin.derive_default_origins(binding))
+    # ADR 0191 P2 (rev. 14/7): origini esplicite = autorita' ESATTA fail-closed.
+    # Senza origini la chiave resta ASSENTE: autorita' = STESSO SITO del binding
+    # (sottodomini first-party inclusi), risolta a runtime da `origin_authorized`.
+    if is_site_binding and origins_norm is not None:
+        payload_to_store["credential_origins"] = origins_norm
 
     replaced = bool(exists)
     if replaced:

@@ -1202,8 +1202,8 @@ async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
     if not info or not info.get("found"):
         return {"ok": False, "error_class": "selector_missing"}
     current_action = await page.evaluate(_CURRENT_FORM_ACTION_JS)
-    allowed = sites_origin.authorized_origins(payload, storage_domain)
-    if not sites_origin.authorize(current_action, allowed):
+    if not sites_origin.origin_authorized(
+            sites_origin.origin_of_url(current_action), payload, storage_domain):
         sites_audit.record("origin_mismatch", owner=owner,
                            session_id=session_id, domain=domain,
                            form_host=_host_of(current_action), phase="action_fill")
@@ -1265,13 +1265,12 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
     totp_algorithm = (form_data.get("totp_algorithm")
                       or payload.get("totp_algorithm") or "sha1")
     session_cookie_names = list(payload.get("session_cookie_names") or [])
-    # ADR 0191 P2: autorizzazione del fill a MATCH ESATTO della tupla
-    # (scheme,host,port) contro `credential_origins` (o migrazione), NON hostname
-    # con fold `www`. `approved_hosts` = origini one-shot approvate dall'utente per
-    # QUESTO login (ADR 0188), host-granulari, mai persistite.
-    allowed_origins = set(sites_origin.authorized_origins(payload, storage_domain))
-    # Fix adversarial #2: one-shot IdP a MATCH ESATTO (scheme,host,port), non
-    # host-granulare (approvare https://idp:443 NON autorizza altre porte/http).
+    # ADR 0191 P2 (rev. 14/7): autorita' del fill = `sites_origin.origin_authorized`.
+    # `credential_origins` esplicite = match esatto fail-closed (#3); chiave
+    # assente = STESSO SITO del domain handle (sottodomini first-party inclusi:
+    # il login `account.booking.com` per `booking.com` NON chiede consenso —
+    # contratto storico, turn 025c53fa). One-shot IdP (#2) a MATCH ESATTO
+    # (scheme,host,port), mai persistito.
     approved_origins = set()
     if approved_origin:
         _ao = sites_origin.normalize_entry(str(approved_origin))
@@ -1280,8 +1279,9 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
 
     def _origin_ok(action_url) -> bool:
         origin = sites_origin.origin_of_url(action_url)
-        return bool(origin and (origin in allowed_origins
-                                or origin in approved_origins))
+        return bool(origin and (origin in approved_origins
+                                or sites_origin.origin_authorized(
+                                    origin, payload, storage_domain)))
 
     budget = _LoginBudget(
         total_timeout_s if total_timeout_s is not None

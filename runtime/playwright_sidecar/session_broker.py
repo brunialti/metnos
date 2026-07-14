@@ -1545,7 +1545,7 @@ async def op_login(*, session_id: str, owner: str | None = None,
             if flow.get("approved_origin") == origin:
                 return {"ok": True, "approved": True}
             prepared = _prepare_credential_origin(
-                entry, session_id, dom, host, form_stage)
+                entry, session_id, dom, origin, form_stage)
             handled = await _handle_prepared_action(
                 entry, session_id, host, prepared)
             if handled.get("approval_required"):
@@ -2119,30 +2119,39 @@ async def _textual_reveal_candidate(entry: dict, target: str,
 def _prepare_credential_origin(entry: dict, session_id: str,
                                vault_domain: str, origin: str,
                                form_stage: str) -> dict:
-    """Prepara un consenso one-shot per una origine login delegata."""
-    origin = _canonical_host(origin)
-    if not origin or form_stage not in {"username", "password"}:
+    """Prepara un consenso one-shot per una origine login delegata.
+
+    Fix bug re-gate: `origin` = tupla ESATTA (scheme://host:port) ed e'
+    l'AUTORITA' del fill (§3.2 #2), conservata in `exact_origin`. L'allowlist di
+    rete ragiona per HOST. Restituire l'host come origine approvata rompeva il
+    match esatto a valle (`normalize_entry(<host nudo>)` == None → approved set
+    vuoto → gate infinito). L'origine approvata DEVE tornare esatta.
+    """
+    exact_origin = str(origin or "")
+    host = _canonical_host(_host_of_url(exact_origin) or exact_origin)
+    if not host or not exact_origin or form_stage not in {"username", "password"}:
         return {"ok": False, "error_class": "origin_mismatch"}
     allowlist = set(entry.get("allowlist") or ())
-    if origin not in allowlist and len(allowlist | {origin}) > _MAX_ALLOWLIST_HOSTS:
+    if host not in allowlist and len(allowlist | {host}) > _MAX_ALLOWLIST_HOSTS:
         return {"ok": False, "error_class": "allowlist_limit",
                 "max_hosts": _MAX_ALLOWLIST_HOSTS}
     reasons = ["credential_origin"]
-    if origin not in allowlist:
+    if host not in allowlist:
         reasons.append("allowlist_extension")
     plan = {
         "kind": "credential_origin", "primitive": "authorize",
-        "target": origin, "original_action": origin,
+        "target": host, "original_action": host,
+        "exact_origin": exact_origin,
         "vault_domain": vault_domain, "form_stage": form_stage,
         "candidate": None, "candidate_sig": "",
         "page_url": scrub_url(entry["page"].url),
         "page_sig": _page_signature(entry["page"].url),
         "value_ref": None, "destination_url": "",
-        "destination_host": origin, "sensitive": True,
+        "destination_host": host, "sensitive": True,
         "sensitivity_reasons": reasons,
         "confidence": 1.0, "created": time.time(),
         "replan_key": hashlib.sha256(
-            f"{_page_signature(entry['page'].url)}\0{origin}\0{form_stage}"
+            f"{_page_signature(entry['page'].url)}\0{host}\0{form_stage}"
             .encode("utf-8")).hexdigest(),
     }
     plan["fingerprint"] = action_resolver.fingerprint_plan(plan)
@@ -2598,8 +2607,14 @@ def _mandate_allows_plan(entry: dict, plan: dict) -> bool:
         return False
 
     if kind == "credential_origin":
-        origins = {_canonical_host(str(host)) for host in (
-            binding.get("credential_origins") or ())}
+        # Entry del binding = origini piene (`https://host:443`) o host nudi
+        # (tolleranza §2.4): il confronto di mandato ragiona per HOST
+        # (l'esattezza della tupla resta al fill). Fail-closed: senza origini
+        # esplicite un task schedulato non approva mai una delega.
+        origins = {_host_of_url(str(entry_origin))
+                   or _canonical_host(str(entry_origin))
+                   for entry_origin in (binding.get("credential_origins") or ())}
+        origins.discard("")
         return ("login" in operations and credential_authorized
                 and _canonical_host(str(plan.get("target") or "")) in origins)
 
@@ -2678,8 +2693,10 @@ def _implicitly_relevant_host(entry: dict, host: str) -> bool:
         return True
     binding = entry.get("credential_mandate")
     if isinstance(binding, dict):
-        origins = {_canonical_host(str(origin)) for origin in
-                   (binding.get("credential_origins") or ())}
+        # Entry = origini piene o host nudi (§2.4): rilevanza di rete per host.
+        origins = {_host_of_url(str(origin)) or _canonical_host(str(origin))
+                   for origin in (binding.get("credential_origins") or ())}
+        origins.discard("")
         if host in origins:
             return True
     return False
@@ -3117,7 +3134,7 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             outcome=True)
         return {"ok": True, "executed": True, "approved": True,
                 "primitive": "authorize",
-                "credential_origin": observed,
+                "credential_origin": plan.get("exact_origin") or observed,
                 "url": scrub_url(entry["page"].url)}
     locator = None
     if candidate:
