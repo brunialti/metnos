@@ -136,6 +136,53 @@ def test_unscoped_exact_topology_does_not_shadow_scoped_binding(
     assert binding["credential_default"] is True
 
 
+def test_www_only_topology_uses_scoped_base_binding(tmp_path, monkeypatch):
+    import credential_mandates
+    import task_mandates
+
+    credentials = _isolated_credentials(tmp_path, monkeypatch)
+    credentials.store("x.test", {
+        "username": "u", "password": "p", "scopes": ["sites.read"],
+    })
+    audit = tmp_path / "sites.jsonl"
+    audit.write_text(json.dumps({
+        "event": "session_open", "owner": "host", "session_id": "www",
+        "domain": "www.x.test", "allowlist": ["www.x.test"],
+    }) + "\n")
+
+    for requested in ("x.test", "www.x.test"):
+        binding = credential_mandates.resolve_sites_binding(
+            "host", requested, audit_path=audit)
+        assert binding is not None
+        assert binding["root_host"] == "x.test"
+        assert binding["allowed_hosts"] == ["www.x.test", "x.test"]
+
+    mandate = task_mandates.build_for_task(
+        "accedi a x.test e leggi i documenti", "host", audit_path=audit)
+    task_binding = mandate["capabilities"]["sites"]["bindings"][0]
+    assert task_binding["root_host"] == "x.test"
+    assert task_binding["allowed_hosts"] == ["www.x.test", "x.test"]
+    assert "login" in task_binding["operations"]
+
+
+def test_www_alias_does_not_authorize_arbitrary_subdomain(
+        tmp_path, monkeypatch):
+    import credential_mandates
+
+    credentials = _isolated_credentials(tmp_path, monkeypatch)
+    credentials.store("x.test", {
+        "username": "u", "password": "p", "scopes": ["sites.read"],
+    })
+    audit = tmp_path / "sites.jsonl"
+    audit.write_text(json.dumps({
+        "event": "session_open", "owner": "host", "session_id": "shop",
+        "domain": "shop.x.test", "allowlist": ["shop.x.test"],
+    }) + "\n")
+
+    assert credential_mandates.resolve_sites_binding(
+        "host", "shop.x.test", audit_path=audit) is None
+
+
 def test_query_can_narrow_credential_mandate_without_a_command_grammar():
     import credential_mandates
 
@@ -282,6 +329,13 @@ def test_recurring_task_init_migrates_and_backfills_legacy_db(tmp_path,
         "root_host"] == "example.com"
 
 
+def _provider_of(browser):
+    # ADR 0191 B1: il broker riceve un BrowserProvider async, non un browser.
+    async def _p(_stealth=False):
+        return browser
+    return _p
+
+
 def test_scheduled_redirect_uses_task_hosts_without_dialog(monkeypatch):
     from playwright_sidecar import session_broker as sb
 
@@ -316,7 +370,7 @@ def test_scheduled_redirect_uses_task_hosts_without_dialog(monkeypatch):
         "operations": ["open", "navigate", "read"],
         "query": "leggi x.test",
     }
-    monkeypatch.setattr(sb, "_browser", Browser())
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(Browser()))
     monkeypatch.setattr(
         sb.task_mandates, "sites_binding",
         lambda task, owner, host: binding
@@ -365,7 +419,7 @@ def test_interactive_query_restriction_is_sticky_on_browser_session(
         "operations": ["login", "navigate", "open", "read"],
         "credential_default": True,
     }
-    monkeypatch.setattr(sb, "_browser", Browser())
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(Browser()))
     monkeypatch.setattr(
         sb.credential_mandates, "resolve_sites_binding",
         lambda owner, host: binding)

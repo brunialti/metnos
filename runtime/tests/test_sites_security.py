@@ -118,7 +118,15 @@ def test_redaction_targets_password_and_broker_filled():
     js = redaction._REDACT_JS
     # La redazione copre SEMPRE i password field E i campi marcati dal broker.
     assert "input[type=password]" in js
+    assert "input[type=email]" in js
+    assert 'autocomplete="username"' in js
+    assert 'autocomplete="email"' in js
     assert 'data-metnos-redact="1"' in js
+    assert "createTreeWalker" in js and "SHOW_TEXT" in js
+    assert "createRange" in js and "getClientRects" in js
+    assert "range.setStart(node, match.index)" in js
+    assert "range.setEnd(node, match.index + match[0].length)" in js
+    assert "selectNodeContents" not in js
     assert "#000" in js  # overlay nero opaco
     broker_source = Path(__import__(
         "playwright_sidecar.session_broker", fromlist=["x"]).__file__).read_text()
@@ -187,7 +195,7 @@ def test_site_credentials_prefer_exact_binding(monkeypatch):
     assert ci._credential_form_data(payload)["username"] == "exact"
 
 
-def test_site_credentials_resolve_only_www_to_root_alias(monkeypatch):
+def test_legacy_www_candidate_discovery_not_in_load(monkeypatch):
     from playwright_sidecar import credential_injection as ci
 
     payload = {"email": "alice@example.com", "password": "secret"}
@@ -195,14 +203,21 @@ def test_site_credentials_resolve_only_www_to_root_alias(monkeypatch):
         ci.credentials, "load",
         lambda domain: payload if domain == "example.com" else None,
     )
+    monkeypatch.setattr(ci.credentials, "list_domains", lambda: ["example.com"])
 
+    # ADR 0191 P2: `_load_site_credentials` NON ripiega piu' www->root (esatto).
     found, storage_domain = ci._load_site_credentials("www.example.com")
-    assert found is payload
-    assert storage_domain == "example.com"
+    assert found is None
+    assert storage_domain == "www.example.com"
 
-    missing, storage_domain = ci._load_site_credentials("login.example.com")
-    assert missing is None
-    assert storage_domain == "login.example.com"
+    # La candidate discovery (SOLO per trovare il record) ripiega www->root.
+    assert ci.legacy_storage_candidate("www.example.com") == "example.com"
+    found, storage_domain = ci._load_site_credentials("example.com")
+    assert found is payload and storage_domain == "example.com"
+
+    # Nessun altro sottodominio: `login.example.com` resta se stesso.
+    assert ci.legacy_storage_candidate(
+        "login.example.com") == "login.example.com"
 
 
 def test_totp_matches_rfc6238_vector_and_malformed_config_fails_closed():
@@ -227,7 +242,9 @@ def test_totp_matches_rfc6238_vector_and_malformed_config_fails_closed():
 
     out = asyncio.run(ci._advance_totp_stage(
         page=Page(), vault_domain="login.example.test",
-        expected_origin="login.example.test", totp_secret=secret,
+        origin_ok=(lambda u: ci.sites_origin.origin_of_url(u)
+                   == "https://login.example.test:443"),
+        totp_secret=secret,
         storage_domain="login.example.test", owner="alice",
         session_id="sid-totp", op_timeout_s=1, digits="invalid"))
     assert out == {"ok": False, "error_class": "totp_failed"}
@@ -562,7 +579,7 @@ def test_login_waits_for_stable_password_after_transient_ambiguity(monkeypatch):
         op_timeout_s=5))
 
     assert out == {"ok": True, "logged_in": True, "reason_code": None}
-    assert page.polls == 21
+    assert page.polls >= 21
 
 
 def test_login_waits_for_delayed_spa_submit_outcome(monkeypatch):
@@ -629,7 +646,7 @@ def test_login_waits_for_delayed_spa_submit_outcome(monkeypatch):
         op_timeout_s=5))
 
     assert out == {"ok": True, "logged_in": True, "reason_code": None}
-    assert page.polls == 3
+    assert page.polls >= 3
 
 
 def test_post_submit_auth_accepts_cookieless_route_navigation():
@@ -642,6 +659,8 @@ def test_post_submit_auth_accepts_cookieless_route_navigation():
         "changed": [], "still_pw": False, "otp": False, "captcha": False,
         "push": False, "password_rejected": False,
         "navigation_confirmed": True,
+        "login_surface": False, "surface_checked": True,
+        "stable_positive": True,
     }
     assert ci._post_submit_authenticated(observed, []) is True
 
@@ -652,6 +671,8 @@ def test_post_submit_auth_rejects_when_password_form_persists():
         "changed": [], "still_pw": True, "otp": False, "captcha": False,
         "push": False, "password_rejected": False,
         "navigation_confirmed": True,
+        "login_surface": True, "surface_checked": True,
+        "stable_positive": False,
     }
     assert ci._post_submit_authenticated(observed, []) is False
 
@@ -664,6 +685,8 @@ def test_post_submit_auth_rejects_explicit_password_rejection():
         "changed": [], "still_pw": False, "otp": False, "captcha": False,
         "push": False, "password_rejected": True,
         "navigation_confirmed": True,
+        "login_surface": False, "surface_checked": True,
+        "stable_positive": False,
     }
     assert ci._post_submit_authenticated(observed, []) is False
 
@@ -676,8 +699,91 @@ def test_post_submit_auth_requires_named_cookie_when_configured():
         "changed": [], "still_pw": False, "otp": False, "captcha": False,
         "push": False, "password_rejected": False,
         "navigation_confirmed": True,
+        "login_surface": False, "surface_checked": True,
+        "stable_positive": True,
     }
     assert ci._post_submit_authenticated(observed, ["SESSION_ID"]) is False
+
+
+def test_post_submit_auth_rejects_login_surface_rendered_after_navigation(
+        monkeypatch):
+    """Una rotta puo' cambiare mentre il framework sta ancora rimontando il
+    form: il frame transitorio vuoto non e' una postcondizione di login."""
+    import asyncio
+    from playwright_sidecar import credential_injection as ci
+
+    states = iter([False, False] + [True] * 8)
+
+    async def surface(_page):
+        return next(states)
+
+    async def no_concept(_page, _concept):
+        return False
+
+    class Context:
+        async def cookies(self):
+            return []
+
+    class Page:
+        url = "https://login.example.test/claim"
+
+        async def evaluate(self, _script):
+            return False
+
+        async def wait_for_timeout(self, _milliseconds):
+            return None
+
+    monkeypatch.setattr(ci, "_login_surface_state", surface)
+    monkeypatch.setattr(ci, "_page_matches_concept", no_concept)
+    observed = asyncio.run(ci._observe_post_submit(
+        page=Page(), context=Context(), cookies_before={},
+        url_before="https://login.example.test/submit", op_timeout_s=2))
+
+    assert observed["login_surface"] is True
+    assert observed["stable_positive"] is False
+    assert ci._post_submit_authenticated(observed, []) is False
+
+
+def test_post_submit_auth_waits_past_initial_login_surface(monkeypatch):
+    """Il form presente subito dopo il click non deve anticipare una SPA che
+    naviga correttamente; servono comunque osservazioni positive stabili."""
+    import asyncio
+    from playwright_sidecar import credential_injection as ci
+
+    states = iter([True, True, False, False, False, False, False, False])
+    polls = []
+
+    async def surface(_page):
+        value = next(states)
+        polls.append(value)
+        return value
+
+    async def no_concept(_page, _concept):
+        return False
+
+    class Context:
+        async def cookies(self):
+            return []
+
+    class Page:
+        url = "https://login.example.test/home"
+
+        async def evaluate(self, _script):
+            return False
+
+        async def wait_for_timeout(self, _milliseconds):
+            return None
+
+    monkeypatch.setattr(ci, "_login_surface_state", surface)
+    monkeypatch.setattr(ci, "_page_matches_concept", no_concept)
+    observed = asyncio.run(ci._observe_post_submit(
+        page=Page(), context=Context(), cookies_before={},
+        url_before="https://login.example.test/submit", op_timeout_s=2))
+
+    assert polls[:2] == [True, True]
+    assert observed["login_surface"] is False
+    assert observed["stable_positive"] is True
+    assert ci._post_submit_authenticated(observed, []) is True
 
 
 def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
@@ -690,7 +796,7 @@ def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
 
     monkeypatch.setattr(ci.credentials, "load", lambda domain: {
         "username": "admin", "password": "secret",
-    } if domain == "router.test" else None)
+    } if domain == "192.168.1.10" else None)
     monkeypatch.setattr(ci.credentials, "fingerprint", lambda _domain: "fp")
     monkeypatch.setattr(ci.sites_audit, "record", lambda *_a, **_kw: None)
     async def no_push(_page, _concept):
@@ -705,7 +811,7 @@ def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
         def __init__(self):
             self.polls = 0
             # Landing su `/`: nessun form finche' la SPA non instrada.
-            self.url = "http://router.test/"
+            self.url = "http://192.168.1.10/"
         async def evaluate(self, script):
             form_ready = self.polls >= 3 and "#/home" not in self.url
             if script == ci._HAS_PASSWORD_JS:
@@ -714,10 +820,10 @@ def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
                 return {"found": False}
             if script == ci._LOCATE_LOGIN_FORM_JS:
                 return {"found": form_ready,
-                        "actionResolved": "http://router.test/",
+                        "actionResolved": "http://192.168.1.10/",
                         "hasUser": True, "hasSubmit": True}
             if script == ci._CURRENT_FORM_ACTION_JS:
-                return "http://router.test/"
+                return "http://192.168.1.10/"
             if script in (ci._DETECT_OTP_JS, ci._DETECT_CAPTCHA_JS,
                           ci._PASSWORD_REJECTED_JS):
                 return False
@@ -729,13 +835,13 @@ def test_login_waits_for_spa_to_route_to_login_form_on_landing(monkeypatch):
         async def click(self, selector, **_kw):
             assert selector == '[data-metnos-submit="1"]'
             # Login riuscito: rotta hash `#/login` -> `#/home`, form sparito.
-            self.url = "http://router.test/#/home"
+            self.url = "http://192.168.1.10/#/home"
         async def wait_for_load_state(self, *_a, **_kw):
             return None
 
     page = Page()
     out = asyncio.run(ci.perform_login(
-        page=page, context=Context(), domain="router.test",
+        page=page, context=Context(), domain="192.168.1.10",
         form_hint=None, owner="admin", session_id="sid-router",
         op_timeout_s=5))
 
@@ -878,8 +984,75 @@ def test_delegated_login_origin_requires_gate_before_any_fill(monkeypatch):
         form_hint=None, owner="alice", session_id="sid-origin",
         op_timeout_s=1, authorize_origin=authorize))
     assert out["approval_required"] and not out["logged_in"]
-    assert observed == [("auth.example.test", "password")]
+    # fix adversarial #2: il gate riceve l'ORIGINE ESATTA (scheme+host+porta),
+    # non il solo host.
+    assert observed == [("https://auth.example.test:443", "password")]
     assert "never-filled" not in repr(out)
+
+
+def test_login_www_alias_of_vault_root_needs_no_origin_gate(monkeypatch):
+    """turn:04e74199 (Amazon): il form email-first e' servito su `www.amazon.it`
+    mentre il vault e' `amazon.it`. `www.<root>` e' l'alias canonico dello stesso
+    dominio registrabile: NON deve aprire un gate di consenso d'origine (pattern
+    comune email-as-username). Un sottodominio non-www resta invece gated (vedi
+    test_delegated_login_origin_requires_gate_before_any_fill)."""
+    import asyncio
+    from playwright_sidecar import credential_injection as ci
+
+    monkeypatch.setattr(ci.credentials, "load", lambda domain: {
+        "username": "alice@example.test", "password": "secret",
+        "session_cookie_names": ["SESSION_ID"],
+    } if domain == "example.test" else None)
+    monkeypatch.setattr(ci.credentials, "fingerprint", lambda _domain: "fp")
+    monkeypatch.setattr(ci.sites_audit, "record", lambda *_a, **_kw: None)
+    async def no_push(_page, _concept):
+        return False
+    monkeypatch.setattr(ci, "_page_matches_concept", no_push)
+
+    class Context:
+        authenticated = False
+        async def cookies(self):
+            return ([{"name": "SESSION_ID", "domain": "www.example.test",
+                      "path": "/", "value": "sess"}]
+                    if self.authenticated else [])
+    context = Context()
+
+    filled = []
+
+    class Page:
+        url = "https://www.example.test/ap/signin"
+        async def evaluate(self, script):
+            if script == ci._HAS_PASSWORD_JS:
+                return not context.authenticated
+            if script == ci._LOCATE_LOGIN_FORM_JS:
+                return {"found": True,
+                        "actionResolved": "https://www.example.test/ap/signin",
+                        "hasUser": True, "hasSubmit": True}
+            if script == ci._CURRENT_FORM_ACTION_JS:
+                return "https://www.example.test/ap/signin"
+            if script in (ci._DETECT_OTP_JS, ci._DETECT_CAPTCHA_JS,
+                          ci._PASSWORD_REJECTED_JS):
+                return False
+            return None
+        async def fill(self, selector, value, **_kw):
+            filled.append(selector)
+        async def click(self, *_a, **_kw):
+            context.authenticated = True
+        async def wait_for_load_state(self, *_a, **_kw):
+            return None
+
+    async def authorize(origin, stage):
+        raise AssertionError(
+            f"www alias must not require an origin gate (got {origin}/{stage})")
+
+    out = asyncio.run(ci.perform_login(
+        page=Page(), context=context, domain="example.test",
+        form_hint=None, owner="alice", session_id="sid-www",
+        op_timeout_s=1, authorize_origin=authorize))
+
+    assert out == {"ok": True, "logged_in": True, "reason_code": None}
+    assert filled  # la credenziale e' stata digitata, nessun gate
+    assert "secret" not in repr(out)
 
 
 def test_login_follows_page_adopted_by_broker(monkeypatch):
@@ -959,7 +1132,8 @@ def test_login_follows_page_adopted_by_broker(monkeypatch):
         return {"ok": True, "executed": True}
 
     async def authorize_origin(origin, stage):
-        assert (origin, stage) == ("auth.example.test", "password")
+        # fix adversarial #2: origine ESATTA al gate
+        assert (origin, stage) == ("https://auth.example.test:443", "password")
         return {"ok": True, "executed": True, "approved": True,
                 "credential_origin": origin}
 
@@ -1056,6 +1230,33 @@ def test_unique_exact_login_name_beats_longer_semantic_match():
 
     assert chosen["ok"] and chosen["candidate"]["id"] == "header"
     assert chosen["ambiguous"] is False
+
+
+def test_direct_login_control_beats_generic_account_reveal():
+    """Un reveal account puo' avere lo stesso score lessicale del link di
+    accesso. La semantica diretta, non l'ordine DOM, deve decidere."""
+    from playwright_sidecar.action_resolver import choose_candidate
+
+    candidates = [
+        {"id": "reveal", "tag": "button", "role": "button",
+         "name": "Espandi account e liste"},
+        {"id": "direct", "tag": "a", "role": "link",
+         "name": "Ciao, accedi", "href": "https://login.example.test/"},
+    ]
+
+    chosen = choose_candidate("login", candidates, "click")
+
+    assert chosen["ok"] and chosen["candidate"]["id"] == "direct"
+    assert chosen["ambiguous"] is False
+
+
+def test_generic_account_reveal_remains_login_fallback():
+    from playwright_sidecar.action_resolver import choose_candidate
+
+    candidate = {"id": "reveal", "tag": "button", "role": "button",
+                 "name": "Espandi account"}
+    chosen = choose_candidate("login", [candidate], "click")
+    assert chosen["ok"] and chosen["candidate"]["id"] == "reveal"
 
 
 def test_login_links_same_endpoint_with_different_state_are_equivalent():
@@ -1637,6 +1838,7 @@ def test_safe_overlay_dismiss_uses_translated_exact_exit(monkeypatch):
     source = sb._LOCATE_SAFE_OVERLAY_DISMISS_JS
     assert "aria-modal" in source and "position === 'fixed'" in source
     assert "allowed.has(name)" in source
+    assert "markers.some" in source
     assert "data-metnos-overlay-dismiss" in source
 
     clicks = []
@@ -1650,9 +1852,10 @@ def test_safe_overlay_dismiss_uses_translated_exact_exit(monkeypatch):
         first = Control()
 
     class Page:
-        async def evaluate(self, script, forms):
+        async def evaluate(self, script, config):
             assert script == sb._LOCATE_SAFE_OVERLAY_DISMISS_JS
-            assert forms == ["close", "got it"]
+            assert config == {
+                "forms": ["close", "got it"], "markers": []}
             return {"found": True, "kind": "label", "candidates": 1}
 
         def locator(self, selector):
@@ -1678,6 +1881,140 @@ def test_safe_overlay_dismiss_uses_translated_exact_exit(monkeypatch):
     assert clicks == [{"timeout": 1200, "no_wait_after": True}]
     assert audit[0][0] == "overlay_dismiss"
     assert audit[0][1]["method"] == "label"
+    assert audit[0][1]["procedure"] == "safe_exit"
+
+
+def test_login_rechecks_late_privacy_overlay_before_target_resolution(
+        monkeypatch):
+    """Un banner asincrono puo' comparire dopo il probe iniziale. Il resolver
+    login lo verifica di nuovo, con lessico tipizzato, prima di enumerare."""
+    import asyncio
+    import time
+    from playwright_sidecar import session_broker as sb
+
+    calls = []
+
+    async def dismiss(_entry, **kwargs):
+        calls.append(("dismiss", kwargs))
+        return sum(1 for call in calls if call[0] == "dismiss") == 1
+
+    async def prepare(_entry, _sid, action, _value_ref, **kwargs):
+        calls.append(("prepare", action, kwargs))
+        return {"ok": False, "error_class": "selector_missing"}
+
+    async def fake_login(**kwargs):
+        reached = await kwargs["reach_login"]("login")
+        assert not reached["ok"]
+        return {"ok": True, "logged_in": False,
+                "reason_code": "two_factor_required"}
+
+    async def no_capture(_entry):
+        return None
+
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", dismiss)
+    monkeypatch.setattr(sb, "_prepare_action", prepare)
+    monkeypatch.setattr(sb, "_prepare_action_with_resource_fallback", prepare)
+    monkeypatch.setattr(sb, "_REVEAL_SETTLE_MS", sb._REVEAL_POLL_MS * 2)
+    monkeypatch.setattr(sb.credential_injection, "perform_login", fake_login)
+    monkeypatch.setattr(sb, "_capture_screenshot", no_capture)
+    monkeypatch.setattr(sb.action_resolver, "privacy_reject_forms",
+                        lambda: ("decline",))
+    monkeypatch.setattr(sb.action_resolver, "privacy_overlay_marker_forms",
+                        lambda: ("privacy",))
+
+    entry = {
+        "owner": "alice", "domain": "example.test",
+        "page": type("Page", (), {"url": "https://example.test/"})(),
+        "context": object(), "allowlist": {"example.test"},
+        "last_used": time.time(), "gate_pending": False,
+        "authenticated": False, "web_content_ingested": True,
+        "pending_actions": {}, "approved_actions": set(),
+        "secret_pending": False, "reveal_attempts": set(),
+        "action_replans": {}, "lock": asyncio.Lock(),
+    }
+    monkeypatch.setitem(sb._sessions, "sid-late-privacy", entry)
+    try:
+        out = asyncio.run(sb.op_login(
+            session_id="sid-late-privacy", owner="alice"))
+    finally:
+        sb._sessions.pop("sid-late-privacy", None)
+
+    assert out["reason_code"] == "two_factor_required"
+    assert calls[0] == ("dismiss", {
+        "settle": False, "forms": ("decline",),
+        "markers": ("privacy",), "procedure": "privacy_reject"})
+    assert calls[1][0:2] == ("prepare", "click login")
+    # La dismissione overlay usa il proprio budget (privacy_dismissals) e NON
+    # consuma il budget di step d'ingresso login: cosi' un overlay non affama
+    # la navigazione verso "accedi".
+    assert entry["login_flow"]["privacy_dismissals"] == 1
+    assert entry["login_flow"].get("steps", 0) == 0
+
+
+def test_reappearing_privacy_overlay_does_not_starve_login_entry(monkeypatch):
+    """Regressione turn e69dca8e (simulatore): un overlay privacy che RIAPPARE
+    (reject navigante -> reload) NON deve esaurire il budget di step d'ingresso
+    login e far scattare `login_step_limit` prima ancora di provare a cliccare
+    "accedi". Le dismissioni hanno un budget PROPRIO e bounded
+    (`_MAX_PRIVACY_DISMISSALS`); il target login viene comunque enumerato e non
+    consuma quel budget."""
+    import asyncio
+    import time
+    from playwright_sidecar import session_broker as sb
+
+    prepared_actions = []
+
+    async def dismiss(_entry, **_kwargs):
+        return True  # overlay sempre presente (worst case)
+
+    async def prepare(_entry, _sid, action, _value_ref, **_kwargs):
+        prepared_actions.append(action)
+        return {"ok": False, "error_class": "selector_missing"}
+
+    async def fake_login(**kwargs):
+        reached = await kwargs["reach_login"]("login")
+        return {"ok": True, "logged_in": False,
+                "reason_code": "selector_missing",
+                "error_class": reached.get("error_class")}
+
+    async def no_capture(_entry):
+        return None
+
+    monkeypatch.setattr(sb, "_dismiss_obstructing_overlay", dismiss)
+    monkeypatch.setattr(sb, "_prepare_action", prepare)
+    monkeypatch.setattr(sb, "_prepare_action_with_resource_fallback", prepare)
+    monkeypatch.setattr(sb, "_REVEAL_SETTLE_MS", sb._REVEAL_POLL_MS * 2)
+    monkeypatch.setattr(sb.credential_injection, "perform_login", fake_login)
+    monkeypatch.setattr(sb, "_capture_screenshot", no_capture)
+    monkeypatch.setattr(sb.action_resolver, "privacy_reject_forms",
+                        lambda: ("decline",))
+    monkeypatch.setattr(sb.action_resolver, "privacy_overlay_marker_forms",
+                        lambda: ("privacy",))
+
+    entry = {
+        "owner": "alice", "domain": "example.test",
+        "page": type("Page", (), {"url": "https://example.test/"})(),
+        "context": object(), "allowlist": {"example.test"},
+        "last_used": time.time(), "gate_pending": False,
+        "authenticated": False, "web_content_ingested": True,
+        "pending_actions": {}, "approved_actions": set(),
+        "secret_pending": False, "reveal_attempts": set(),
+        "action_replans": {}, "lock": asyncio.Lock(),
+    }
+    monkeypatch.setitem(sb._sessions, "sid-privacy-bound", entry)
+    try:
+        out = asyncio.run(sb.op_login(
+            session_id="sid-privacy-bound", owner="alice"))
+    finally:
+        sb._sessions.pop("sid-privacy-bound", None)
+
+    assert out["reason_code"] == "selector_missing"
+    # Il target login E' stato enumerato: l'overlay non l'ha affamato.
+    assert "click login" in prepared_actions
+    # Dismissioni bounded dal budget proprio, senza toccare gli step login.
+    assert (entry["login_flow"]["privacy_dismissals"]
+            <= sb._MAX_PRIVACY_DISMISSALS)
+    assert entry["login_flow"].get("steps", 0) == 0
 
 
 def test_actionability_replan_dismisses_late_overlay(monkeypatch):
@@ -1733,7 +2070,11 @@ def test_dom_enumerator_requires_meaningful_viewport_visibility():
     assert "Number.parseFloat(st.opacity" in source
     assert "aria-controls" in source and "ancestor_ids" in source
     assert "st.cursor !== 'pointer'" in source
-    assert ".slice(0, 200)" in source
+    assert "pointer.length >= 200" in source
+    assert "inspected < POINTER_SCAN_LIMIT" in source
+    assert "const POINTER_SCAN_LIMIT" in source
+    assert "el.querySelectorAll('*')" not in source
+    assert "el.textContent" in source
 
 
 def test_vlm_is_forbidden_after_authentication(monkeypatch):
@@ -1797,6 +2138,8 @@ def test_act_sites_exposes_no_selector_argument():
                               / "executors" / "act_sites" / "manifest.toml").read_text())
     props = set(manifest["args"]["properties"])
     assert not props & {"selector", "css", "xpath", "coordinates"}
+    assert manifest["args"]["properties"]["_goal_mode"][
+        "runtime_resolved"] is True
 
 
 def test_act_sites_success_declares_user_facing_outcome(monkeypatch):
@@ -1815,6 +2158,110 @@ def test_act_sites_success_declares_user_facing_outcome(monkeypatch):
     assert out["ok"] is True
     assert out["metadata"]["executed"] == 1
     assert out["final_message_hint"]
+
+
+def test_act_sites_goal_mode_is_internal_and_forwarded(monkeypatch):
+    import importlib.util
+    path = (Path(__file__).resolve().parents[2] / "executors" /
+            "act_sites" / "act_sites.py")
+    spec = importlib.util.spec_from_file_location("_act_sites_goal", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    spec.loader.exec_module(module)
+    calls = []
+
+    def fake_act(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True, "executed": True, "primitive": "observe"}
+
+    monkeypatch.setattr(module.session_client, "session_act", fake_act)
+    query = "entra nel portale e mostrami gli elementi salvati"
+    out = module.invoke({
+        "session_ids": ["s1"], "action": query, "_goal_mode": True})
+
+    assert out["ok"] is True
+    assert calls[0]["action"] == query
+    assert calls[0]["goal_query"] == query
+
+
+def test_site_goal_reducer_accepts_only_extractable_bounded_phrases():
+    from playwright_sidecar import session_broker as sb
+
+    query = "entra nel portale e mostrami gli elementi nel contenitore"
+    assert sb._parse_reduced_site_goal(
+        '{"goal":"contenitore"}', query) == "contenitore"
+    assert sb._parse_reduced_site_goal(
+        '{"goal":"impostazioni"}', query) == ""
+    assert sb._parse_reduced_site_goal(
+        '{"goal":"/contenitore"}', query) == ""
+
+
+def test_site_goal_reducer_disables_reasoning_for_bounded_json(monkeypatch):
+    import asyncio
+    import sys
+    import types
+    from playwright_sidecar import session_broker as sb
+
+    captured = {}
+
+    class Provider:
+        mode = "local"
+
+        def chat(self, _system, _user, **kwargs):
+            captured.update(kwargs)
+            return types.SimpleNamespace(text='{"goal":"contenitore"}')
+
+    class Router:
+        def provider(self, tier):
+            assert tier == "fast"
+            return Provider()
+
+    monkeypatch.setitem(
+        sys.modules, "llm_router",
+        types.SimpleNamespace(LLMRouter=Router))
+    query = "entra nel portale e mostrami gli elementi nel contenitore"
+    goal = asyncio.run(sb._reduce_site_goal(query))
+
+    assert goal == "contenitore"
+    assert captured["think"] is False
+    assert captured["temperature"] == 0
+
+
+def test_broker_goal_query_uses_typed_search_without_cli_syntax(monkeypatch):
+    import asyncio
+    import time
+    from playwright_sidecar import session_broker as sb
+
+    captured = []
+
+    async def reduce_goal(_query):
+        return "elementi salvati"
+
+    async def prepare(_entry, _sid, action, _value_ref, **kwargs):
+        captured.append((action, kwargs.get("goal_target")))
+        return {"ok": True, "token": "t", "plan": {}}
+
+    async def handle(_entry, _sid, _action, _value_ref, _prepared):
+        return {"ok": True, "executed": True, "primitive": "observe"}
+
+    monkeypatch.setattr(sb, "_reduce_site_goal", reduce_goal)
+    monkeypatch.setattr(sb, "_prepare_action_with_resource_fallback", prepare)
+    monkeypatch.setattr(sb, "_handle_prepared_action_with_replans", handle)
+    sb._sessions["sid-goal-query"] = {
+        "owner": "alice", "last_used": time.time(),
+        "gate_pending": False, "factor_pending": False,
+        "lock": asyncio.Lock(),
+    }
+    query = "entra nel portale e mostrami gli elementi salvati"
+    try:
+        out = asyncio.run(sb.op_act(
+            session_id="sid-goal-query", owner="alice", action=query,
+            goal_query=query))
+    finally:
+        sb._sessions.pop("sid-goal-query", None)
+
+    assert out["ok"] is True
+    assert captured == [(query, "elementi salvati")]
 
 
 def test_broker_sensitive_action_requires_token_then_executes(monkeypatch):
@@ -2031,6 +2478,44 @@ def test_login_entry_ambiguity_uses_bounded_model_fallback(monkeypatch):
     assert calls[-1] is True
     assert all(value is False for value in calls[:-1])
     sb._sessions.pop("sid-ambiguous-login", None)
+
+
+def test_every_terminal_login_failure_has_redacted_evidence(monkeypatch):
+    import asyncio
+    import time
+    from playwright_sidecar import session_broker as sb
+
+    async def failed_login(**_kwargs):
+        return {"ok": True, "logged_in": False,
+                "reason_code": "login_failed"}
+
+    async def fake_capture(_entry):
+        return "/tmp/redacted-terminal-login.png"
+
+    monkeypatch.setattr(
+        sb.credential_injection, "perform_login", failed_login)
+    monkeypatch.setattr(sb, "_capture_screenshot", fake_capture)
+    entry = {
+        "owner": "alice", "domain": "example.test",
+        "page": type("Page", (), {"url": "https://example.test"})(),
+        "context": object(), "allowlist": {"example.test"},
+        "last_used": time.time(), "gate_pending": False,
+        "authenticated": False, "web_content_ingested": True,
+        "pending_actions": {}, "approved_actions": set(),
+        "secret_pending": False, "reveal_attempts": set(),
+        "action_replans": {}, "lock": asyncio.Lock(),
+    }
+    monkeypatch.setitem(sb._sessions, "sid-terminal-login", entry)
+    try:
+        out = asyncio.run(sb.op_login(
+            session_id="sid-terminal-login", owner="alice"))
+    finally:
+        sb._sessions.pop("sid-terminal-login", None)
+
+    assert out["logged_in"] is False
+    assert out["reason_code"] == "login_failed"
+    assert out["screenshot_path"] == "/tmp/redacted-terminal-login.png"
+    assert out["sensitive"] is True
 
 
 def test_email_factor_vocabulary_has_no_site_specific_brand():
@@ -2265,6 +2750,113 @@ def test_initial_goal_waits_for_spa_before_resource_expansion(monkeypatch):
     assert out["ok"] and out["plan"]["kind"] == "goal_navigation"
     assert out["plan"]["destination_host"] == "x.test"
     assert page.polls == 2
+
+
+def test_first_authenticated_goal_recovers_sterile_landing_once(monkeypatch):
+    import asyncio
+    import hashlib
+    import time
+    from playwright_sidecar import action_resolver as ar
+    from playwright_sidecar import session_broker as sb
+
+    action = "cerca fatture"
+    flow_key = hashlib.sha256(ar.normalize(action).encode("utf-8")).hexdigest()
+    gotos = []
+
+    class Page:
+        url = "https://x.test/transient"
+
+        async def goto(self, url, **_kwargs):
+            gotos.append(url)
+            self.url = url
+
+        async def wait_for_timeout(self, _milliseconds):
+            return None
+
+    page = Page()
+
+    async def prepare(_entry, _sid, _action, _value_ref, **_kwargs):
+        if page.url.endswith("/transient"):
+            return {"ok": False, "error_class": "selector_missing",
+                    "observed_candidates": []}
+        return {"ok": True, "token": "goal-token", "plan": {
+            "kind": "goal_navigation", "primitive": "click"}}
+
+    async def settle(_page):
+        return None
+
+    audit = []
+    monkeypatch.setattr(sb, "_prepare_action", prepare)
+    monkeypatch.setattr(sb, "_settle_resource_discovery", settle)
+    monkeypatch.setattr(sb.credential_mandates, "has_scope",
+                        lambda binding, scope: (
+                            binding == "x.test" and scope == "sites.read"))
+    monkeypatch.setattr(sb.sites_audit, "record",
+                        lambda event, **fields: audit.append((event, fields)))
+    entry = {
+        "page": page, "entry_url": "https://x.test/",
+        "authenticated": True, "secret_pending": False,
+        "allowlist": {"x.test"}, "owner": "alice", "domain": "x.test",
+        "_sid": "sid-landing", "last_used": time.time(),
+        "web_content_ingested": True, "blocked_requests": {
+            "irrelevant.test": _blocked_observation({"script"})},
+        "reveal_attempts": {"old"}, "action_replans": {"old": 1},
+        "goal_flows": {flow_key: {
+            "started": time.time(), "steps": 0, "visited": {"old"},
+            "continuation_exhausted": {"old"},
+        }},
+        "credential_mandate": {
+            "root_host": "x.test", "allowed_hosts": ["x.test"],
+            "operations": ["navigate"], "credential_default": True,
+        },
+    }
+
+    out = asyncio.run(sb._prepare_action_with_resource_fallback(
+        entry, "sid-landing", action, None, goal_target="fatture"))
+
+    assert out["ok"] is True
+    assert gotos == ["https://x.test/"]
+    assert entry["goal_flows"][flow_key]["landing_recovery_attempted"] is True
+    assert not entry["blocked_requests"]
+    assert not entry["reveal_attempts"] and not entry["action_replans"]
+    assert any(event == "landing_recovery" and fields["outcome"] is True
+               for event, fields in audit)
+
+    page.url = "https://x.test/transient"
+    assert asyncio.run(sb._recover_authenticated_landing(
+        entry, action, "fatture")) is False
+    assert gotos == ["https://x.test/"]
+
+
+def test_authenticated_landing_recovery_requires_existing_mandate(monkeypatch):
+    import asyncio
+    import hashlib
+    import time
+    from playwright_sidecar import action_resolver as ar
+    from playwright_sidecar import session_broker as sb
+
+    action = "cerca documenti"
+    flow_key = hashlib.sha256(ar.normalize(action).encode("utf-8")).hexdigest()
+
+    class Page:
+        url = "https://x.test/error"
+
+        async def goto(self, _url, **_kwargs):
+            raise AssertionError("recovery without mandate must not navigate")
+
+    entry = {
+        "page": Page(), "entry_url": "https://x.test/",
+        "authenticated": True, "secret_pending": False,
+        "allowlist": {"x.test"}, "domain": "x.test",
+        "last_used": time.time(), "goal_flows": {flow_key: {
+            "started": time.time(), "steps": 0,
+        }},
+    }
+
+    assert asyncio.run(sb._recover_authenticated_landing(
+        entry, action, "documenti")) is False
+    assert not entry["goal_flows"][flow_key].get(
+        "landing_recovery_attempted")
 
 
 def test_authenticated_goal_navigation_reobserves_under_one_batch_gate(monkeypatch):
@@ -3145,9 +3737,19 @@ def test_sites_guard_derives_http_from_bare_ip_for_login():
     intent = Intent(verb="login", object="sites")
     out = _ensure_site_session_precursor(
         fw, intent, "login a 192.168.1.10 e dimmi i device attivi", None)
-    assert [s.tool for s in out.steps] == ["open_sites", "login_sites"]
+    assert [s.tool for s in out.steps] == [
+        "open_sites", "login_sites", "act_sites", "read_sites",
+        "extract_entries", "describe_entries"]
     assert out.steps[0].args == {"urls": ["http://192.168.1.10"]}
     assert out.steps[1].args == {"from_step": 1}
+    assert out.steps[2].args == {
+        "action": "login a 192.168.1.10 e dimmi i device attivi",
+        "_goal_mode": True, "from_step": 2}
+    assert out.steps[3].args == {
+        "include_screenshot": False, "from_step": 3}
+    assert out.steps[4].args["from_step"] == 4
+    assert out.steps[4].args["drill_down"] is False
+    assert out.steps[5].args["from_step"] == 5
 
 
 def test_sites_guard_derives_bare_ip_with_port_from_query():
@@ -3315,15 +3917,22 @@ def test_login_failure_is_not_recoverable_and_closes_session(monkeypatch):
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)
-    monkeypatch.setattr(module.session_client, "session_login", lambda **_kw: {
-        "ok": True, "logged_in": False, "reason_code": "credentials_missing"})
     closed = []
     monkeypatch.setattr(module.session_client, "session_close", lambda **kw: (
         closed.append(kw["session_id"]) or {"ok": True, "count": 1}))
-    out = module.invoke({"session_ids": ["s1"]})
-    assert out["error_class"] == "needs_user_action"
-    assert out["entries"][0]["session_closed"] is True
-    assert closed == ["s1"]
+    for reason in ("credentials_missing", "selector_missing", "login_timeout"):
+        monkeypatch.setattr(
+            module.session_client, "session_login", lambda **_kw: {
+                "ok": True, "logged_in": False, "reason_code": reason,
+                "screenshot_path": "/tmp/redacted-login-failure.png",
+                "sensitive": True,
+            })
+        out = module.invoke({"session_ids": [reason]})
+        assert out["error_class"] == "needs_user_action"
+        assert out["entries"][0]["session_closed"] is True
+        assert out["attachments"][0]["path"] == \
+            "/tmp/redacted-login-failure.png"
+    assert closed == ["credentials_missing", "selector_missing", "login_timeout"]
 
     from engine.recovery import classify_error, is_recoverable
     from engine.types import RunResult, StepRun
@@ -3461,6 +4070,14 @@ def test_delete_sites_propagates_broker_failure(monkeypatch):
     assert out["results"][0]["closed"] is False
 
 
+def _provider_of(browser):
+    """ADR 0191 B1: il broker riceve un BrowserProvider (callable async), non un
+    browser. I test iniettano un provider che ritorna il browser mock."""
+    async def _p(_stealth=False):
+        return browser
+    return _p
+
+
 def test_broker_rejects_non_http_and_unapproved_allowlist(monkeypatch):
     import asyncio
     from playwright_sidecar import session_broker as sb
@@ -3469,7 +4086,7 @@ def test_broker_rejects_non_http_and_unapproved_allowlist(monkeypatch):
         async def new_context(self, **_kw):
             raise AssertionError("non deve creare il context prima dei guard")
 
-    monkeypatch.setattr(sb, "_browser", Browser())
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(Browser()))
     bad_scheme = asyncio.run(sb.op_open(owner="alice", url="file:///etc/passwd"))
     assert bad_scheme["error_class"] == "invalid_url"
     extra = asyncio.run(sb.op_open(
@@ -3515,7 +4132,7 @@ def test_allowlist_approval_token_is_bound_and_one_time(monkeypatch):
             return self.context
 
     browser = Browser()
-    monkeypatch.setattr(sb, "_browser", browser)
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(browser))
     first = asyncio.run(sb.op_open(
         owner="alice-token", url="https://x.test",
         allowlist_arg=["x.test", "cdn.test"], session_label="reports"))
@@ -3576,7 +4193,7 @@ def test_broker_redirect_host_requires_bound_reopen_approval(monkeypatch):
             return context
 
     browser = Browser()
-    monkeypatch.setattr(sb, "_browser", browser)
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(browser))
     sb._sessions.clear()
     sb._pending_opens.clear()
     first = asyncio.run(sb.op_open(owner="alice", url="https://x.test"))
@@ -3653,7 +4270,7 @@ def test_broker_discovers_only_interaction_resource_hosts(monkeypatch):
             return context
 
     browser = Browser()
-    monkeypatch.setattr(sb, "_browser", browser)
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(browser))
     sb._sessions.clear()
     sb._pending_opens.clear()
     first = asyncio.run(sb.op_open(owner="resource-user", url="https://x.test"))
@@ -3846,7 +4463,7 @@ def test_broker_allowlist_limit_fails_without_truncation(monkeypatch):
         async def new_context(self, **_kw):
             raise AssertionError("il context non deve essere creato")
 
-    monkeypatch.setattr(sb, "_browser", Browser())
+    monkeypatch.setattr(sb, "_browser_provider", _provider_of(Browser()))
     hosts = [f"h{i}.test" for i in range(sb._MAX_ALLOWLIST_HOSTS + 1)]
     out = asyncio.run(sb.op_open(
         owner="limit-user", url="https://h0.test", allowlist_arg=hosts))

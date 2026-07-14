@@ -98,6 +98,17 @@ def _isolate_turnlog_dir(request, tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolate_sites_cooldown_db(tmp_path, monkeypatch):
+    """ADR 0191 P6: il cooldown sites NON deve scrivere nello state dir reale
+    durante i test (`config.PATH_USER_STATE` e' risolto a import-time, quindi la
+    fixture HOME non lo copre). Isola il DB per-test → nessuna pollution ne'
+    interferenza cross-test."""
+    monkeypatch.setenv("METNOS_SITES_COOLDOWN_DB",
+                       str(tmp_path / "sites_cooldown.sqlite"))
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _isolate_home_for_legacy_image_tests(request, tmp_path, monkeypatch):
     """AUTOUSE GLOBALE (8/5/2026 notte): ogni test in runtime/tests/ vede
     HOME=tmp_path/home. Default-deny per costruzione: impossibile per un
