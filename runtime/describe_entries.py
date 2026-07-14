@@ -834,7 +834,13 @@ def handle_describe_entries(args, *, verbose: bool = False,
     _has_textual_content = any(
         _has_content(e) for e in entries if isinstance(e, dict)
     )
-    if _mr_depth == 0 and not _has_textual_content:
+    # Dominio `sites` (regressione turn 4769cf88): le entries vengono da una
+    # sessione autenticata (read_sites), il loro `url` punta a pagine dietro
+    # login. `read_urls_html` (GET SENZA cookie) leggerebbe la pagina pubblica/
+    # login e ri-triggererebbe un open_sites ridondante (quota). Nessun content
+    # fetch: descrivi l'esito reale (record o vuoto/challenge onesto).
+    _fetchable = data_kind != "sites"
+    if _mr_depth == 0 and not _has_textual_content and _fetchable:
         _urls_for_fetch = [
             e["url"] for e in entries
             if isinstance(e, dict)

@@ -40,6 +40,15 @@ _CONTENT_CONSUMERS = (
 _FILE_READERS = (
     "read_files", "read_files_pdf", "read_files_html", "read_files_ocr",
 )
+# Dominio `sites`: sessione autenticata + path di lettura PROPRIO (`read_sites`).
+# `read_urls_html` fa un GET HTTP SENZA cookie di sessione: iniettarlo su un turno
+# sites e' scorretto (leggerebbe la pagina pubblica/login) E ri-triggera un
+# `open_sites` ridondante → `quota_exceeded` (turn 4769cf88). Il content-fetch
+# recovery NON si applica ai turni sites: fail-honest, il consumer riporta il
+# vuoto reale.
+_SITES_PRODUCERS = frozenset({
+    "open_sites", "login_sites", "read_sites", "act_sites", "delete_sites",
+})
 
 
 class MetisRecovery:
@@ -168,6 +177,11 @@ class MetisRecovery:
         signals = (r.get("needs_urls_html")
                    or r.get("error_class") == "needs_content_fetch")
         if not signals or last.tool not in _CONTENT_CONSUMERS:
+            return None
+        # Guard dominio sites: un turno con sessione autenticata ha gia' il suo
+        # path di contenuto; read_urls_html (GET senza cookie) non e' applicabile
+        # e forzerebbe un open_sites ridondante (quota). Fail-honest.
+        if any((s.tool or "") in _SITES_PRODUCERS for s in failed_run.steps):
             return None
         # Trova lo step (1-based) che ha prodotto entries con `url` ma SENZA
         # `body_text` (cioè un produttore di URL, non un read già fatto).
