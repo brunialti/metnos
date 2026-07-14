@@ -80,7 +80,10 @@ for format and discipline; see `_template.md` for the template.
 > registry is the `decisions/` directory itself (one file per ADR), per
 > `CLAUDE.md` §1 — not this list. Latest at time of writing: `0169`
 > (taglio di rilevanza adattivo + spreadsheet locale default + guard
-> refusal-in-args, sessione 2/6). Latest: `0190` (the encrypted credential
-> mandate is the default for interactive and scheduled queries; tasks add a
-> subordinate exact envelope). ADRs
+> refusal-in-args, sessione 2/6). Latest: `0191` (intelligent mandate-driven
+> `sites` server robot: single general headless channel, one uniform obstruction
+> handler, adaptive persistence within the owner's mandate, vocab-sourced
+> goal-verb recognition; honest failure only on a real fingerprint wall or to
+> protect the account). Prev `0190` (the encrypted credential mandate is the
+> default for interactive and scheduled queries). ADRs
 > `0115`, `0116`, `0121` are also skipped.
