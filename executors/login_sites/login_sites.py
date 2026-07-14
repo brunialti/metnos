@@ -49,7 +49,17 @@ def _reason_message(reason_code: str | None) -> str | None:
     Nessun eco di credenziali. Fallback onesto se lo slug non ha una chiave."""
     if not reason_code:
         return None
-    msg = _msg(f"MSG_SITES_RC_{reason_code.upper()}")
+    # Fix adversarial #12: chiave CANONICA da `sites_observed.REASON_MSG` (evita
+    # `MSG_SITES_RC_HTTP_FORBIDDEN` vs `MSG_SITES_RC_FORBIDDEN`); il cooldown usa
+    # la sua chiave dedicata, non il prefisso RC.
+    _special = {"sites_cooldown_active": "MSG_SITES_COOLDOWN_ACTIVE"}
+    try:
+        from sites_observed import REASON_MSG
+    except Exception:
+        REASON_MSG = {}
+    key = (_special.get(reason_code) or REASON_MSG.get(reason_code)
+           or f"MSG_SITES_RC_{reason_code.upper()}")
+    msg = _msg(key)
     if msg.startswith("<missing:"):
         return None  # slug senza messaggio dedicato: nessun eco, solo il code
     return msg
@@ -129,11 +139,7 @@ def invoke(args: dict) -> dict:
             # aperti per la continuazione assistita dall'utente.
             if reason not in ("two_factor_required",
                                "two_factor_push_required",
-                               "captcha_required", "approval_pending",
-                               # The page may be a transient challenge or a
-                               # late-rendered login surface; keep it open so
-                               # the redacted screenshot can be inspected.
-                               "selector_missing", "login_timeout"):
+                               "captcha_required", "approval_pending"):
                 closed = session_client.session_close(
                     session_id=sid, owner=owner)
                 entry["session_closed"] = bool(closed.get("count", 0))

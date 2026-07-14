@@ -616,12 +616,15 @@ __all__ = [
 
 # --- User prefs (W2 v1, ADR 0187) -------------------------------------------
 
-PREF_KEYS = ("lang", "tone", "reply_length", "units")
+PREF_KEYS = ("lang", "tone", "reply_length", "units", "sites_stealth")
 PREF_ALLOWED = {
     "lang": ("it", "en"),
     "tone": ("neutro", "informale", "formale"),
     "reply_length": ("breve", "normale", "dettagliata"),
     "units": ("metric", "imperial"),
+    # ADR 0191 P1: stealth per-turno del dominio `sites` (opt-in, default off).
+    # Vocabolario CHIUSO on|off; letta da `dispatch` e iniettata come `_stealth`.
+    "sites_stealth": ("on", "off"),
 }
 
 _PREFS_SCHEMA = """

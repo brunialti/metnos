@@ -5764,6 +5764,20 @@ def _run_engine(
         _site_credential_mode = _credential_mandates.site_mode_for_query(query)
     except Exception:
         _site_credential_mode = "default"
+    # ADR 0191 P1: stealth per-turno del dominio `sites`, risolto dalla pref
+    # `sites_stealth` dell'attore ("on"/"off", default off). Iniettato come
+    # `_stealth` all'apertura sessione; il broker applica il ceiling di deployment.
+    try:
+        import users as _users
+        import devices as _devices
+        # Fix adversarial #9: la pref e' per-UTENTE, non per-actor grezzo.
+        _site_owner = _devices.owner_id_for_actor(actor) or actor
+        _site_stealth_pref = _users.get_pref(
+            _site_owner, "sites_stealth", "off") or "off"
+        _site_lang = _users.get_pref(_site_owner, "lang", None) or ""
+    except Exception:
+        _site_stealth_pref = "off"
+        _site_lang = ""
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
@@ -5783,6 +5797,12 @@ def _run_engine(
             effective_args = {
                 **args, "_credential_mode": _site_credential_mode,
             }
+        if tool_name == "open_sites":
+            # ADR 0191 P1: stealth fissato all'apertura sessione (planner-invisible).
+            # Fix #9: `_lang` per locale/timezone del contesto browser.
+            effective_args = {**effective_args,
+                              "_stealth": _site_stealth_pref,
+                              "_lang": _site_lang}
         try:
             return invoke_executor(
                 exec_obj, effective_args,

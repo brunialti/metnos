@@ -50,6 +50,17 @@ def invoke(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="_credential_mode",
                               reason="default|none"),
                 "error_class": "invalid_args", "entries": []}
+    # ADR 0191 P1: stealth per-turno, runtime-resolved dalla pref `sites_stealth`
+    # ("on"/"off"). Convertito qui in bool per il broker; conservato nei replay.
+    stealth_pref = str(args.get("_stealth") or "off").strip().lower()
+    if stealth_pref not in {"on", "off"}:
+        return {"ok": False,
+                "error": _msg("ERR_ARG_INVALID", arg="_stealth",
+                              reason="on|off"),
+                "error_class": "invalid_args", "entries": []}
+    stealth = (stealth_pref == "on")
+    # ADR 0191 fix #9: lingua del turno (runtime-resolved) per locale/timezone.
+    lang = str(args.get("_lang") or "").strip() or None
     max_total = int(args.get("max_total") or 4)
     approval_tokens = args.get("_allowlist_tokens") or []
     if approval_tokens and (not isinstance(approval_tokens, list)
@@ -85,7 +96,7 @@ def invoke(args: dict) -> dict:
             prepared = session_client.session_open(
                 owner=owner, url=url, allowlist=allowlist,
                 session_label=label, task_name=task_name,
-                credential_mode=credential_mode)
+                credential_mode=credential_mode, stealth=stealth, lang=lang)
             token = prepared.get("approval_token")
             if prepared.get("error_class") != "approval_required" or not token:
                 return {"ok": False,
@@ -109,6 +120,7 @@ def invoke(args: dict) -> dict:
                     "urls": urls, "allowlist": allowlist,
                     "session_label": label, "max_total": max_total,
                     "_credential_mode": credential_mode,
+                    "_stealth": stealth_pref, "_lang": lang or "",
                     "_allowlist_tokens": pending_tokens,
                 }},
             })
@@ -130,7 +142,8 @@ def invoke(args: dict) -> dict:
         res = session_client.session_open(
             owner=owner, url=url, allowlist=attempt_allowlist,
             session_label=label, approval_token=attempt_token,
-            task_name=task_name, credential_mode=credential_mode)
+            task_name=task_name, credential_mode=credential_mode,
+            stealth=stealth, lang=lang)
         next_allowlist = (res.get("approved_allowlist")
                           if res.get("error_class") == "approval_required"
                           else attempt_allowlist)
@@ -150,6 +163,10 @@ def invoke(args: dict) -> dict:
                 "session_id": res.get("session_id"),
                 "url": res.get("url"), "title": res.get("title", ""),
                 "ok": True,
+                # Fix adversarial #10: superficie osservata (403/429/5xx/vuota)
+                # su un'apertura RIUSCITA va esposta, non scartata.
+                **({"reason_code": res["reason_code"]}
+                   if res.get("reason_code") else {}),
             })
         else:
             entries.append({
@@ -179,6 +196,7 @@ def invoke(args: dict) -> dict:
                 "urls": urls, "session_label": label,
                 "max_total": max_total,
                 "_credential_mode": credential_mode,
+                "_stealth": stealth_pref, "_lang": lang or "",
                 "_open_approvals": attempted_specs,
             }},
         })

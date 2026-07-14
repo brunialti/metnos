@@ -19,7 +19,7 @@ en = "SCOPO: autonomously reaches the sign-in area and uses encrypted credential
 
 [code]
 files  = ["login_sites.py"]
-digest = "sha256:4f213073d9ba3010e00a1e0c0d7ec3ccaf53ae1bcff8f6cd226be9c9ed779e64"
+digest = "sha256:bded860704def8df8e9796e49abd19616ccf6dca7fa0a8a620b783cebbd55e1f"
 
 [args]
 type     = "object"

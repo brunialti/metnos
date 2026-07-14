@@ -20,7 +20,7 @@ en = "SCOPO: opens a persistent browser session ready for login and reading. PAT
 
 [code]
 files  = ["open_sites.py"]
-digest = "sha256:1ef1fa6fb0bc2515b056bde3c69dac7bfe3742c175189af436b4674c3d2cb92a"
+digest = "sha256:2e27022bebc67144cc544553b479e7e30933ddea072dbacb719901941db55c28"
 
 [args]
 type     = "object"
@@ -70,6 +70,20 @@ runtime_resolved = true
 [args.properties._open_approvals.description]
 it = "Solo runtime: aperture esatte legate ai token di redirect/allowlist approvati."
 en = "Runtime only: exact opens bound to approved redirect/allowlist tokens."
+
+[args.properties._stealth]
+type = "string"
+runtime_resolved = true
+[args.properties._stealth.description]
+it = "Solo runtime: modalita' stealth per-turno (on|off) dalla pref sites_stealth."
+en = "Runtime only: per-turn stealth mode (on|off) from the sites_stealth pref."
+
+[args.properties._lang]
+type = "string"
+runtime_resolved = true
+[args.properties._lang.description]
+it = "Solo runtime: lingua del turno per locale/timezone del contesto browser."
+en = "Runtime only: turn language for the browser context locale/timezone."
 
 [output]
 schema_inline = """

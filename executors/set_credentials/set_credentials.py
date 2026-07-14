@@ -39,6 +39,7 @@ from executor_helpers import run_stdio  # noqa: E402
 
 import credentials as _cred  # noqa: E402
 import credential_mandates as _mandates  # noqa: E402
+import sites_origin as _sorigin  # noqa: E402  — ADR 0191 P2
 
 
 # Invariante credentials_metadata_only centralizzata in runtime/credentials.py
@@ -96,6 +97,29 @@ def _consume_pending(pid: str):
 def _fingerprint_payload(payload: dict) -> str:
     canon = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(canon).hexdigest()[:16]
+
+
+def _normalize_origins(raw):
+    """Normalizza/valida `credential_origins` (ADR 0191 P2). Ritorna
+    (list|None, error): list None = non fornito; ogni voce canonicalizzata a
+    `scheme://host:port` (https, o http solo su host LAN/loopback)."""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, (list, tuple)):
+        return None, "credential_origins must be a list of origins"
+    out = []
+    for entry in raw:
+        origin = _sorigin.normalize_entry(str(entry))
+        if not origin:
+            return None, (f"invalid credential origin: {entry!r} "
+                          "(https, or http only on LAN/loopback host)")
+        if origin not in out:
+            out.append(origin)
+    # Fix adversarial #3: una lista fornita ma vuota diventerebbe deny-all
+    # silenzioso; se l'intento e' il default, ometti l'arg. Fail-closed esplicito.
+    if not out:
+        return None, "credential_origins must contain at least one valid origin"
+    return out, None
 
 
 def _validate_fields(fields):
@@ -212,6 +236,7 @@ def invoke(args):
     replace = bool(args.get("replace", False))
     overwrite_confirmed = _resolve_confirmed_flag(args.get("overwrite_confirmed"))
     pending_id = args.get("pending_id")
+    credential_origins = args.get("credential_origins")  # ADR 0191 P2
     mandate_form = args.get("_mandate_form") is True
 
     if not isinstance(binding, str) or not binding.strip():
@@ -235,6 +260,13 @@ def invoke(args):
             scopes = stashed.get("scopes")
         if expires_at is None:
             expires_at = stashed.get("expires_at")
+        if credential_origins is None:
+            credential_origins = stashed.get("credential_origins")
+
+    # ADR 0191 P2: valida subito le origini fornite (anche da resume).
+    origins_norm, origins_err = _normalize_origins(credential_origins)
+    if origins_err is not None:
+        return {"ok": False, "error": origins_err, "error_class": "invalid_args"}
 
     exists = _cred._file_for(binding).exists()
     existing_payload = None
@@ -321,14 +353,19 @@ def invoke(args):
     if err is not None:
         return {"ok": False, "error": err}
 
+    # Fix adversarial #7: un record e' un SITO se e' marcato `web` o ha una
+    # chiave a dominio (con almeno un campo credenziale), indipendentemente dal
+    # fatto che usi `username` o `email`, o sia passwordless — cosi' anche questi
+    # ottengono `credential_origins`.
+    _cred_fields = ("username", "user", "email", "password", "pwd", "passwd")
     is_site_binding = (
         isinstance(fields, dict)
-        and any(key in fields for key in ("username", "user"))
-        and any(key in fields for key in ("password", "pwd", "passwd"))
+        and any(key in fields for key in _cred_fields)
         and (fields.get("binding") == "web" or "." in binding))
     if is_site_binding and pending_id is None:
         pid = _stash_pending({
             "fields": fields, "scopes": scopes, "expires_at": expires_at,
+            "credential_origins": credential_origins,
         })
         payload = _build_save_policy_dialog(
             binding, sorted(str(k) for k in fields), pid,
@@ -352,6 +389,7 @@ def invoke(args):
             "fields": fields,
             "scopes": scopes,
             "expires_at": expires_at,
+            "credential_origins": credential_origins,
         })
         field_names = sorted(str(k) for k in fields.keys())
         payload = _build_overwrite_dialog(binding, field_names, pid)
@@ -372,6 +410,12 @@ def invoke(args):
         payload_to_store["scopes"] = list(scopes)
     if expires_at is not None:
         payload_to_store["expires_at"] = str(expires_at)
+    # ADR 0191 P2: origini autorizzate al fill. Per un site binding, default =
+    # migrazione (apex+www / http-LAN) se non fornite esplicitamente.
+    if is_site_binding:
+        payload_to_store["credential_origins"] = (
+            origins_norm if origins_norm is not None
+            else _sorigin.derive_default_origins(binding))
 
     replaced = bool(exists)
     if replaced:
@@ -387,7 +431,8 @@ def invoke(args):
 
     fp = _fingerprint_payload(payload_to_store)
     fields_count = len([k for k in payload_to_store.keys()
-                        if k not in ("scopes", "expires_at")])
+                        if k not in ("scopes", "expires_at",
+                                     "credential_origins")])
     out_scopes = list(scopes) if scopes is not None else []
     result = {
         "ok": True,

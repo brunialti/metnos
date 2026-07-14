@@ -19,7 +19,7 @@ en = "SCOPO: encrypts credentials and asks for the site mandate. PATTERN: set_cr
 
 [code]
 files  = ["set_credentials.py"]
-digest = "sha256:3c7ddc4ad7ee26c53e01111ce6cb240f3ce9d9fecb764dd6ef3e8196245c3ad4"
+digest = "sha256:f121df7a52aa400f24ae74eff085e5a9d90b1fb41c42787112ae98a85db28902"
 
 [args]
 type     = "object"
