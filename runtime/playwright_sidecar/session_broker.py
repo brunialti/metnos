@@ -84,14 +84,7 @@ def _enabled_env(name: str, default: bool = True) -> bool:
 # flussi validati. L'emulazione mobile/Android (UA + viewport + touch, coerente)
 # e' disponibile via env `METNOS_SITES_MOBILE=1` ma altera geometria/overlay dei
 # portali (regressione overlay osservata nel simulatore): opt-in.
-_DEFAULT_SITES_UA = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-)
-_DEFAULT_MOBILE_UA = (
-    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36"
-)
+# UA stealth spostati in `stealth.py` (registro drop-in, fix #13).
 
 
 _LOCALE_BY_LANG = {"it": "it-IT", "en": "en-US"}
@@ -158,19 +151,9 @@ def _context_kwargs(*, stealth: bool = False, lang: str | None = None) -> dict:
         kw["timezone_id"] = tz
     if not stealth:
         return kw
-    # ── Layer CONTEXT stealth (opt-in, registro stealth.py) ────────────────
+    # ── Layer CONTEXT stealth (registro DROP-IN stealth.py, fix #13) ───────
     from playwright_sidecar import stealth as _st
-    if _st.technique_enabled("ua_override", stealth=True):
-        mobile = _st.technique_enabled("mobile_emulation", stealth=True)
-        kw["user_agent"] = (os.getenv("METNOS_SITES_USER_AGENT")
-                            or (_DEFAULT_MOBILE_UA if mobile else _DEFAULT_SITES_UA))
-        if mobile:
-            kw.update({
-                "viewport": {"width": 412, "height": 915},
-                "device_scale_factor": 2.625,
-                "is_mobile": True,
-                "has_touch": True,
-            })
+    kw.update(_st.context_kwargs(stealth=True))
     return kw
 
 
@@ -222,40 +205,9 @@ _WEBRTC_OFF_JS = r"""
 }
 """
 
-# Occultamento dell'automazione — OPT-IN, DEFAULT OFF (ADR 0191, post-review #1).
-# Di default Metnos NON nasconde di essere un'automazione: il default e' onesto
-# e non contraddice lo scope «no bypass fingerprint»; la classe di siti che
-# blocca via fingerprint headless resta NON SUPPORTATA. Chi opera sul PROPRIO
-# account puo' abilitarlo esplicitamente (env `METNOS_SITES_STEALTH=1`) sotto la
-# propria responsabilita'. Estendibile in futuro con altre tecniche, ma MAI di
-# default.
-# ONESTA' TECNICA: questo init-script normalizza SOLO tell secondari
-# (window.chrome, permissions, languages). NON nasconde `navigator.webdriver`
-# (il segnale #1): in Chromium richiede un LAUNCH ARG
-# (`--disable-blink-features=AutomationControlled`) al lancio del browser, non un
-# init-script — verificato inefficace. L'occultamento effettivo (launch args) e'
-# lavoro FUTURO, sempre opt-in. NB: non falsificare GPU/CPU/plugin in modo
-# incongruo con l'UA (l'incoerenza e' essa stessa un segnale).
-_STEALTH_JS = r"""
-() => {
-  // NB: `navigator.webdriver` NON si nasconde qui (init-JS inefficace in
-  // Chromium, verificato): lo copre il launch-arg del browser stealth (LAUNCH
-  // layer, stealth.py). Qui solo tell secondari (window.chrome/permissions/
-  // languages).
-  try { if (!window.chrome) window.chrome = {runtime: {}}; } catch(e){}
-  try {
-    const orig = navigator.permissions && navigator.permissions.query;
-    if (orig) navigator.permissions.query = (p) =>
-      (p && p.name === 'notifications')
-        ? Promise.resolve({state: Notification.permission})
-        : orig.call(navigator.permissions, p);
-  } catch(e){}
-  try { if (!navigator.languages || !navigator.languages.length)
-        Object.defineProperty(navigator, 'languages',
-          {get: () => ['it-IT','it','en-US','en'], configurable: true}); }
-  catch(e){}
-}
-"""
+# Init-script CONTEXT stealth spostato in `stealth.py::_CONTEXT_JS` (registro
+# drop-in, fix #13). Il default resta onesto; il webdriver-hiding vive nel
+# LAUNCH-arg del browser stealth, non qui.
 
 _ENUMERATE_ACTION_TARGETS_JS = r"""
 () => {
@@ -465,13 +417,15 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     if (!href || href === '#' || href.startsWith('#')) return false;
     return true;
   };
+  // Include ANCHE i submitter, per RICONOSCERLI come controlli di chiusura
+  // naviganti (fix #11): non li clicchiamo (P5), ma li segnaliamo per il gate.
   const controls = Array.from(document.querySelectorAll(
-    'button,[role=button],input[type=button],a'));
+    'button,[role=button],input[type=button],input[type=submit],'
+    + 'input[type=image],a'));
   const ranked = [];
+  const navigating = [];
   for (const el of controls) {
     if (!visible(el)) continue;
-    if (isFormSubmitter(el)) continue;   // mai un submitter
-    if (isNavigatingLink(el)) continue;  // mai un link navigante/javascript:
     const root = modalRoot(el);
     if (!root) continue;
     const rawName = nameOf(el).trim();
@@ -482,6 +436,15 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
     const rootText = ` ${normalize(root.innerText || root.textContent || '')} `;
     if (markers.length && !markers.some(marker =>
         rootText.includes(` ${marker} `))) continue;
+    // Fix adversarial #11: e' un controllo di CHIUSURA. Se navigante/submitter,
+    // NON lo dismettiamo silenziosamente (P5) — lo segnaliamo per il piano
+    // firmato (gate), evitando lo STALLO su overlay che richiedono navigazione.
+    if (isFormSubmitter(el) || isNavigatingLink(el)) {
+      navigating.push({
+        name: rawName,
+        action: (el.form && el.form.action) || el.getAttribute('href') || ''});
+      continue;
+    }
     const rootSemantic = root.tagName.toLowerCase() === 'dialog' ||
       root.getAttribute('role') === 'dialog' ||
       root.getAttribute('role') === 'alertdialog' ||
@@ -490,9 +453,14 @@ _LOCATE_SAFE_OVERLAY_DISMISS_JS = r"""
                  kind: exactExit ? 'label' : 'icon'});
   }
   ranked.sort((a, b) => b.score - a.score);
-  if (!ranked.length) return {found: false};
-  ranked[0].el.setAttribute('data-metnos-overlay-dismiss', '1');
-  return {found: true, kind: ranked[0].kind, candidates: ranked.length};
+  if (ranked.length) {
+    ranked[0].el.setAttribute('data-metnos-overlay-dismiss', '1');
+    return {found: true, kind: ranked[0].kind, candidates: ranked.length};
+  }
+  if (navigating.length) {
+    return {found: false, navigating_only: true, control: navigating[0]};
+  }
+  return {found: false};
 }
 """
 
@@ -1134,7 +1102,9 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         # l'automazione. Il layer CONTEXT stealth (init-JS) e' applicato solo su
         # richiesta effettiva; il webdriver-hiding vive nel LAUNCH (browser stealth).
         if effective_stealth:
-            await context.add_init_script(_STEALTH_JS)
+            from playwright_sidecar import stealth as _st
+            for _js in _st.context_init_scripts(stealth=True):
+                await context.add_init_script(_js)
         await context.route(
             "**/*", _make_route_guard(allowlist, blocked_requests))
         if hasattr(context, "route_web_socket"):
@@ -2221,6 +2191,18 @@ async def _dismiss_obstructing_overlay(entry: dict, *,
                     method=str(info.get("kind") or "safe_exit"),
                     outcome=True)
                 return True
+            if isinstance(info, dict) and info.get("navigating_only"):
+                # Fix adversarial #11: esiste un controllo di chiusura ma e'
+                # NAVIGANTE/submitter → non lo clicchiamo (P5). Lo SEGNALIAMO su
+                # entry (osservabile, non stallo silenzioso): un passo navigante
+                # passa dal piano firmato + gate F2, mai dalla dismissione sicura.
+                entry["navigating_obstruction"] = info.get("control") or {}
+                sites_audit.record(
+                    "overlay_navigating_control", owner=entry.get("owner", ""),
+                    session_id=entry.get("_sid", ""),
+                    domain=entry.get("domain", ""), procedure=procedure,
+                    outcome=False)
+                return False
         except Exception:
             pass
         if settle and attempt + 1 < attempts:

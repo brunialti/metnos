@@ -93,6 +93,11 @@ def test_post_submit_outcome_five_way_mapping():
          "navigation_confirmed": True}, []) == "login_verified"
     # rate_limited: 429 osservato
     assert ci.post_submit_outcome({"http_status": 429}, []) == "rate_limited"
+    # #5: il 429 (status) BATTE un falso stable_positive (contenuto): la
+    # navigazione verso la pagina d'errore 429 non deve sembrare login riuscito.
+    assert ci.post_submit_outcome(
+        {"http_status": 429, "surface_checked": True, "stable_positive": True,
+         "navigation_confirmed": True}, []) == "rate_limited"
     # challenge_observed: otp / captcha / push
     for marker in ("otp", "captcha", "push"):
         assert ci.post_submit_outcome({marker: True}, []) == "challenge_observed"

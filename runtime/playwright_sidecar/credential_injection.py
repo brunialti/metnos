@@ -635,6 +635,30 @@ def _changed_cookies(cookies: list[dict], before: dict) -> list[dict]:
         (c.get("name"), c.get("domain"), c.get("path"))) != c.get("value")]
 
 
+def _install_nav_status_listener(page) -> None:
+    """Registra UNA volta un listener che memorizza sullo `page` lo status HTTP
+    dell'ultima response DOCUMENTO del main-frame (fix adversarial #5). submit e
+    `goto` non restituivano la Response; questo la cattura in modo bounded, letto
+    da `_observe_post_submit` per alimentare `rate_limited`. Solo status osservato,
+    mai inferenza dal testo."""
+    if page is None or getattr(page, "_metnos_nav_listener", False):
+        return
+
+    def _on_response(resp):
+        try:
+            if (getattr(resp.request, "resource_type", "") == "document"
+                    and resp.frame == page.main_frame):
+                page._metnos_nav_status = int(resp.status)
+        except Exception:
+            pass
+
+    try:
+        page.on("response", _on_response)
+        page._metnos_nav_listener = True
+    except Exception:
+        pass
+
+
 async def _observe_post_submit(*, page, context, cookies_before: dict,
                                url_before: str,
                                op_timeout_s: float,
@@ -684,6 +708,10 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             "login_surface": login_surface,
             "surface_checked": surface_checked,
             "stable_positive": False,
+            # Fix adversarial #5: status HTTP top-level catturato dal listener di
+            # navigazione (perform_login), riletto FRESCO a ogni poll (la Response
+            # puo' arrivare durante l'osservazione). Alimenta `rate_limited`.
+            "http_status": getattr(page, "_metnos_nav_status", None),
         }
         positive = bool(
             surface_checked and not login_surface
@@ -757,11 +785,16 @@ def post_submit_outcome(observed: dict,
                         session_cookie_names: list[str]) -> str:
     """Classifica l'esito post-submit in uno dei 5 stati disgiunti (§6.2), da
     segnali GIA' calcolati da `_observe_post_submit` (nessun detector parallelo).
-    Precedenza: successo verificato > rate-limit (429) > sfida > rifiuto > neutro."""
-    if _authed_success(observed, session_cookie_names):
-        return "login_verified"
+
+    Precedenza (§6.1: STATUS server-autoritativo PRIMA del contenuto): rate-limit
+    (429) > successo verificato > sfida > rifiuto > neutro. Il 429 batte il
+    successo perche' una navigazione verso la pagina d'errore 429 sembrerebbe
+    `stable_positive` (fix adversarial #5: senza questo, un 429 reale veniva
+    mascherato da un falso `login_verified`)."""
     if observed.get("http_status") == 429 or observed.get("rate_limited"):
         return "rate_limited"
+    if _authed_success(observed, session_cookie_names):
+        return "login_verified"
     if observed.get("otp") or observed.get("captcha") or observed.get("push"):
         return "challenge_observed"
     if observed.get("password_rejected"):
@@ -1283,6 +1316,10 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
         return candidate if candidate is not None else previous
 
     page = current_page(page)
+    # Fix adversarial #5: cattura lo status HTTP del documento top-level (submit
+    # e goto NON restituivano la Response). Listener bounded: aggiorna un attributo
+    # sulla pagina, riletto da `_observe_post_submit` → alimenta `rate_limited`.
+    _install_nav_status_listener(page)
     if one_time_code is not None:
         await _checkpoint(checkpoint, "factor_submit")
         completed = await _complete_one_time_code_stage(

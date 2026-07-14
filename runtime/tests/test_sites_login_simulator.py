@@ -99,7 +99,7 @@ _CART = """<!doctype html><html lang="it"><head><meta charset="utf-8">
 </body></html>"""
 
 
-def _make_handler(overlay: bool, filler: int):
+def _make_handler(overlay: bool, filler: int, rate_limit: bool = False):
     class H(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_a):
             pass
@@ -134,7 +134,13 @@ def _make_handler(overlay: bool, filler: int):
             elif path == "/signin-user":
                 self._send(_PASSWORD)
             elif path == "/signin-pass":
-                self._send(_DONE, headers={"Set-Cookie": "session-id=abc; Path=/"})
+                if rate_limit:
+                    # Fix #5: submit che risponde 429 REALE (+ Retry-After).
+                    self._send("<html><body>Too Many Requests</body></html>",
+                               status=429, headers={"Retry-After": "60"})
+                else:
+                    self._send(
+                        _DONE, headers={"Set-Cookie": "session-id=abc; Path=/"})
             else:
                 self._send("<html><body>ok</body></html>")
     return H
@@ -263,6 +269,39 @@ class TestSitesLoginSimulator(unittest.TestCase):
         names = " ".join(str(i.get("articolo", "")) for i in items)
         self.assertIn("Echo Dot", names)
         self.assertNotIn("Sponsorizzato", names)
+
+    def test_real_429_on_submit_feeds_rate_limited_cooldown(self):
+        """Fix adversarial #5: un 429 REALE sul submit (catturato dal listener di
+        navigazione, non costruito a mano) → esito rate_limited → cooldown."""
+        import tempfile
+        import sites_cooldown
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["METNOS_SITES_COOLDOWN_DB"] = os.path.join(td, "cd.sqlite")
+            sites_cooldown._initialized.clear()
+            port = _free_port()
+            httpd = http.server.HTTPServer(
+                ("127.0.0.1", port),
+                _make_handler(overlay=False, filler=50, rate_limit=True))
+            t = threading.Thread(target=httpd.serve_forever, daemon=True)
+            t.start()
+            try:
+                out, _ev = asyncio.run(_drive(f"http://127.0.0.1:{port}/"))
+            finally:
+                httpd.shutdown()
+            login = out.get("login") or {}
+            self.assertFalse(login.get("logged_in"),
+                             f"il 429 non doveva autenticare: {login}")
+            conn = sites_cooldown._connect()
+            try:
+                row = conn.execute(
+                    "SELECT last_reason, fail_count FROM sites_cooldown"
+                ).fetchone()
+            finally:
+                conn.close()
+            os.environ.pop("METNOS_SITES_COOLDOWN_DB", None)
+            self.assertIsNotNone(
+                row, "il 429 reale non ha alimentato il cooldown (listener?)")
+            self.assertEqual(row[0], "rate_limited")
 
 
 if __name__ == "__main__":
