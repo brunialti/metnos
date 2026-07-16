@@ -361,6 +361,11 @@ footer a { color: var(--bronze); }
   border-radius: 3px; box-shadow: none !important; font-weight: 600;
 }
 
+/* diagrammi SVG -> line-art sobria da manuale: desaturati, niente patchwork di
+   colori. `saturate` preserva la LUMINOSITA', quindi il testo bianco sui box
+   scuri resta leggibile e la struttura non cambia. In stampa: monocromo. */
+svg { filter: saturate(0.28) contrast(1.02); }
+
 /* ==========================================================================
    RESPONSIVE
    ========================================================================== */
