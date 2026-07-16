@@ -135,14 +135,14 @@ table {
   font-size: 10pt; line-height: 1.5;
 }
 th {
-  background: var(--table-header); color: #fff;
-  padding: 8px 11px; text-align: left; font-weight: 600;
+  background: none; color: var(--ink);
+  padding: 6px 12px 5px; text-align: left; font-weight: 700;
   font-family: var(--font-sans); font-size: 9.5pt;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.2px; border-bottom: 2px solid var(--navy);
 }
-td { padding: 7px 11px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-table code { background: var(--surface); }
+td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: 1.5px solid var(--ink-dim); }
+table code { background: var(--code-bg); }
 
 /* — codice — */
 pre {
@@ -161,15 +161,16 @@ pre code { background: none; padding: 0; border: none; font-size: inherit; }
 
 /* — callout (note/tip/warning/danger) — */
 .callout {
-  border-left: 4px solid; padding: 11px 16px; margin: 16px 0;
-  border-radius: 0 5px 5px 0; font-size: 10pt; line-height: 1.55;
+  background: none; border-left: 2px solid var(--border-strong);
+  padding: 2px 0 2px 18px; margin: 16px 0;
+  border-radius: 0; font-size: 10.5pt; line-height: 1.6;
 }
 .callout > :first-child { margin-top: 0; }
 .callout > :last-child  { margin-bottom: 0; }
-.callout.note    { background: var(--note-bg);   border-color: var(--note-border); }
-.callout.tip     { background: var(--tip-bg);    border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg);   border-color: var(--warn-border); }
-.callout.danger  { background: var(--danger-bg); border-color: var(--danger-border); }
+.callout.note    { border-left-color: var(--navy); }
+.callout.tip     { border-left-color: var(--sage); }
+.callout.warning { border-left-color: #B8860B; }
+.callout.danger  { border-left-color: #9A2A2A; }
 
 /* — lead / example / status — */
 .lead {
@@ -177,27 +178,28 @@ pre code { background: none; padding: 0; border: none; font-size: inherit; }
   border-left: 4px solid var(--sage); padding-left: 15px; margin: 20px 0;
 }
 .example {
-  background: var(--surface); border: 1px solid var(--border);
-  border-left: 4px solid var(--bronze); border-radius: 0 5px 5px 0;
-  padding: 12px 16px; margin: 16px 0; font-size: 10.5pt;
+  background: none; border: none;
+  border-left: 2px solid var(--bronze); border-radius: 0;
+  padding: 2px 0 2px 18px; margin: 16px 0; font-size: 10.5pt;
 }
 .example .ex-label {
   font-weight: 700; color: var(--bronze); font-size: 9pt;
   letter-spacing: 1px; text-transform: uppercase;
 }
 .status-banner {
-  margin: 20px 0; border-left: 5px solid var(--tip-border);
-  background: var(--tip-bg); color: #14532d;
-  padding: 14px 20px; border-radius: 0 8px 8px 0;
+  margin: 20px 0; border-left: 3px solid var(--sage);
+  background: none; color: var(--ink);
+  padding: 4px 0 4px 18px; border-radius: 0;
   font-size: 10.5pt; line-height: 1.55;
 }
-.status-banner strong, .status-banner a { color: #14532d; }
+.status-banner strong, .status-banner a { color: var(--ink); }
 .status-banner .status-chip {
-  display: inline-block; background: #14532d; color: #fff;
-  padding: 2px 10px; border-radius: 12px; font-size: 9pt;
+  display: inline-block; background: none; color: var(--sage);
+  border: 1px solid var(--sage);
+  padding: 1px 9px; border-radius: 3px; font-size: 9pt;
   letter-spacing: 1px; font-weight: 700; margin-right: 6px;
 }
-.status-banner .seq { font-size: 9pt; color: #2d4a32; margin-top: 8px; }
+.status-banner .seq { font-size: 9pt; color: var(--muted); margin-top: 8px; }
 
 /* — pagina-titolo e sottotitoli editoriali — */
 .title-page { text-align: center; padding: 52px 0 26px; }
@@ -244,8 +246,9 @@ section > h2::before { content: "§ "; color: var(--bronze); font-style: normal;
 
 /* — invito (call-to-action editoriale) — */
 .invitation {
-  background: var(--paper-warm); border: 1px solid var(--border);
-  border-radius: 5px; padding: 34px 40px; margin: 56px 0 40px; text-align: center;
+  background: none; border: none;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  border-radius: 0; padding: 30px 20px; margin: 52px 0 40px; text-align: center;
 }
 .invitation .ornament { color: var(--bronze); font-size: 18pt; letter-spacing: 8px; margin-bottom: 8px; }
 .invitation .intro {
@@ -310,6 +313,53 @@ footer a { color: var(--bronze); }
 }
 
 ::selection { background: rgba(26,71,122,0.16); }
+
+/* ==========================================================================
+   RESTRAINT — tono da manuale: niente riquadri/gradienti colorati.
+   Neutralizza i "frame" decorativi delle pagine bespoke (fondi pieni,
+   gradienti, ombre) lasciando struttura tipografica e, al piu', un filetto
+   hairline. Non tocca le classi 1-lettera dei diagrammi SVG.
+   ========================================================================== */
+.agent-difference, .approval-card, .ascii, .authority-flow, .axis-strip, .callout,
+.can-cant, .card, .checkpoint, .concept-card, .concept-flow, .contact-card,
+.decision, .entry, .formula, .hero, .hero-card, .hero-stat, .hero-stats,
+.in-progress, .invitation, .italian-notice, .journey, .lang, .learning-path,
+.learning-step, .masthead, .note, .p-agentic, .p-ai, .p-psych, .p-ui,
+.part-banner, .persp, .pipe, .preface, .principle, .qt-rx-bar, .qt-rx-bubble,
+.qt-rx-chip, .qt-rx-dest, .qt-rx-destnow, .qt-rx-route, .qt-rx-thread, .qt-rx-user,
+.reply, .rx-bar, .rx-bubble, .rx-chip, .rx-mono, .rx-safe, .rx-thread,
+.sev-hi, .sev-lo, .sev-md, .status, .status-banner, .title-page, .toc,
+.toc-item, .triangle, .truth, .v-allow, .v-approve, .v-defer, .v-deny,
+.v-must, .v-reinf, .v-reject, .v-tension {
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+/* i frame-contenitore tengono al piu' un filetto neutro (nessun fondo) */
+.card, .concept-card, .approval-card, .cap-card, .decision, .preface,
+.glossary-card, .contact-card, .qt-rx-bubble, .rx-bubble, .instance,
+.learning-step, .hero-stat, .component-group, .entry {
+  border: 1px solid var(--border); border-radius: 3px;
+}
+/* le "PARTI" del manuale: titolo tipografico con filetti, mai un gradiente */
+.part-banner {
+  border: none; border-top: 2px solid var(--navy);
+  border-bottom: 1px solid var(--border); border-radius: 0;
+  padding: 14px 0 12px; margin: 50px 0 10px; color: var(--ink);
+}
+.part-banner :is(h1, h2, h3) { color: var(--navy) !important; border: none; margin: 2px 0 6px; }
+.part-banner p { color: var(--ink-dim) !important; }
+.part-banner .part-kicker { color: var(--bronze) !important; opacity: 1; }
+
+/* etichette/tag: outline neutro, niente pillole colorate.
+   Selettori multi-carattere: NON tocca .b/.t/.s/.h/.a degli SVG. */
+.tag, .gtag, .lbl, .group-title, .sev-hi, .sev-md, .sev-lo,
+.v-must, .v-reinf, .v-defer, .v-tension, .v-reject,
+.p-agentic, .p-psych, .p-ui, .p-ai, .t-utile, .t-intell, .t-auto {
+  background: none !important; background-image: none !important;
+  color: var(--ink-dim) !important; border: 1px solid var(--border-strong);
+  border-radius: 3px; box-shadow: none !important; font-weight: 600;
+}
 
 /* ==========================================================================
    RESPONSIVE
