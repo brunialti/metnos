@@ -91,10 +91,10 @@
 <tr><td><code>create_images_indices</code></td><td>indicizza foto in `base_path` (incrementale o rebuild).</td><td>standard; any; -</td><td><code>executors/create_images_indices/</code></td></tr>
 <tr><td><code>delete_images_indices</code></td><td>cancella l&#x27;indice persistente delle immagini.</td><td>standard; any; -</td><td><code>executors/delete_images_indices/</code></td></tr>
 <tr><td><code>find_images_google_photos</code></td><td>cerca foto/album su Google Photos, SOLO i caricati da Metnos.</td><td>standard; any; -</td><td><code>executors/find_images_google_photos/</code></td></tr>
-<tr><td><code>find_images_indices</code></td><td>cerca foto indicizzate per contenuto, persona o volto.</td><td>standard; any; -</td><td><code>executors/find_images_indices/</code></td></tr>
+<tr><td><code>find_images_indices</code></td><td>cerca foto indicizzate per contenuto, persona o volto.</td><td>standard; server; linux</td><td><code>executors/find_images_indices/</code></td></tr>
 <tr><td><code>find_images_web</code></td><td>cerca immagini sul web da testo o immagine. Usa segnali deterministici; il ranking semantico locale interviene solo senza segnali lessicali.</td><td>standard; any; -</td><td><code>executors/find_images_web/</code></td></tr>
 <tr><td><code>get_images_google_photos</code></td><td>scarica foto da Google Photos nel workspace.</td><td>standard; any; -</td><td><code>executors/get_images_google_photos/</code></td></tr>
-<tr><td><code>get_images_indices</code></td><td>ottiene lo stato degli indici immagini per `base_path`.</td><td>standard; any; -</td><td><code>executors/get_images_indices/</code></td></tr>
+<tr><td><code>get_images_indices</code></td><td>ottiene lo stato dell&#x27;indice immagini unificato per un corpus o per tutti.</td><td>standard; server; linux</td><td><code>executors/get_images_indices/</code></td></tr>
 <tr><td><code>write_images_google_photos</code></td><td>carica foto locali su Google Photos.</td><td>critico; any; -</td><td><code>executors/write_images_google_photos/</code></td></tr>
 </tbody></table>
 <h2 id="domain-signatures">Dominio: <code>signatures</code> (3)</h2>
@@ -114,9 +114,9 @@
 <h2 id="domain-persons">Dominio: <code>persons</code> (5)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprieta'</th><th>Posizione</th></tr></thead><tbody>
 <tr><td><code>delete_persons</code></td><td>cancella persone/enrollment dal registro biometrico (purge o per nome/slug).</td><td>standard; any; -</td><td><code>executors/delete_persons/</code></td></tr>
-<tr><td><code>find_persons_indices</code></td><td>cerca foto di persona registrata.</td><td>standard; any; -</td><td><code>executors/find_persons_indices/</code></td></tr>
-<tr><td><code>get_persons</code></td><td>ottiene dati dal registro persone (chi è enrollato, elenco enrollment).</td><td>standard; any; -</td><td><code>executors/get_persons/</code></td></tr>
-<tr><td><code>read_persons</code></td><td>profilo identitario completo.</td><td>standard; any; -</td><td><code>executors/read_persons/</code></td></tr>
+<tr><td><code>find_persons_indices</code></td><td>cerca foto di persona registrata.</td><td>standard; server; linux</td><td><code>executors/find_persons_indices/</code></td></tr>
+<tr><td><code>get_persons</code></td><td>ottiene dati dal registro persone (chi è enrollato, elenco enrollment).</td><td>standard; server; linux</td><td><code>executors/get_persons/</code></td></tr>
+<tr><td><code>read_persons</code></td><td>legge il profilo identitario locale associato a Metnos, unendo registro persone, ruolo, autonomia, preferenze e canali verificati.</td><td>standard; server; linux</td><td><code>executors/read_persons/</code></td></tr>
 <tr><td><code>set_persons</code></td><td>registra persona nel registro nominale.</td><td>standard; any; -</td><td><code>executors/set_persons/</code></td></tr>
 </tbody></table>
 <h2 id="domain-inputs">Dominio: <code>inputs</code> (1)</h2>

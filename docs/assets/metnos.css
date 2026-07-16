@@ -386,6 +386,9 @@ footer a { color: var(--bronze); }
 /* un frontespizio non ha un cruscotto di statistiche */
 .hero-stats, .hero-stat { display: none !important; }
 .title-page .promise { color: var(--ink-dim); }
+/* aperture bespoke (intelligent_executors, remote_executors, skill_importer):
+   header MAI dentro una cornice */
+.hero { border: none !important; border-radius: 0 !important; padding-left: 0; padding-right: 0; }
 
 /* apertura CAPITOLO (deep-dive: title-page SENZA occhiello): il titolo e' il
    COMPONENTE, non il brand. "Metnos" scende a riga di serie; il sottotitolo

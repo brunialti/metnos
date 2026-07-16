@@ -66,11 +66,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>&#10003; The constitutional evaluator in two phases.</strong>
-The <em>vaglio</em> filters every proposed <code>tool_call</code> before it becomes action: a binary guard on the non-negotiable core (forbidden paths, irrecoverable shell commands) followed by a graded judge on alignment with the user's telos. Deterministic hooks include <code>check_cross_user_send</code> for cross-user sends (host gatekeeper, self-send allowed, guest&rarr;other requires vaglio), plus a short-circuit that approves read-only verbs without invoking the judge.
-Implementation reference: <code>runtime/vaglio.py</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/vaglio.html" hreflang="it" lang="it">IT</a>
@@ -94,6 +89,11 @@ Implementation reference: <code>runtime/vaglio.py</code>.
  <br>
  Reading time: 12 minutes.
  </div>
+</div>
+<div class="status-banner">
+<strong>&#10003; The constitutional evaluator in two phases.</strong>
+The <em>vaglio</em> filters every proposed <code>tool_call</code> before it becomes action: a binary guard on the non-negotiable core (forbidden paths, irrecoverable shell commands) followed by a graded judge on alignment with the user's telos. Deterministic hooks include <code>check_cross_user_send</code> for cross-user sends (host gatekeeper, self-send allowed, guest&rarr;other requires vaglio), plus a short-circuit that approves read-only verbs without invoking the judge.
+Implementation reference: <code>runtime/vaglio.py</code>.
 </div>
 
 <div class="toc">

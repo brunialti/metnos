@@ -67,13 +67,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Cluster <code>scratchpad</code> 34/34 green, integrated into <code>agent_runtime</code>. The turn log includes credential-scrub fields (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): clear values of pwd/user are replaced with <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> and <code>step.resolved_args</code> before JSONL serialisation. Fine-grained StepLog telemetry: five optional fields (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) in the step record.
-Implementation reference: <code>/opt/metnos/runtime/scratchpad.py</code>.
-<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/scratchpad.html" hreflang="it" lang="it">IT</a>
@@ -97,6 +90,13 @@ Implementation reference: <code>/opt/metnos/runtime/scratchpad.py</code>.
  <br>
  Reading time: 12 minutes.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+Cluster <code>scratchpad</code> 34/34 green, integrated into <code>agent_runtime</code>. The turn log includes credential-scrub fields (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): clear values of pwd/user are replaced with <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> and <code>step.resolved_args</code> before JSONL serialisation. Fine-grained StepLog telemetry: five optional fields (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) in the step record.
+Implementation reference: <code>/opt/metnos/runtime/scratchpad.py</code>.
+<div class="seq">Status in the microdesign sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <div class="toc">

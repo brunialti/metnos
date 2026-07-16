@@ -48,16 +48,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>The second way to talk to Metnos: HTTP, browser, curl.</strong>
-An aiohttp server on port 8770 that exposes the agent (web chat + JSON/SSE API)
-and the admin dashboard. Implementation:
-<code>runtime/metnos_http_server.py</code> + <code>http_auth.py</code> +
-<code>http_render.py</code> + <code>http_routes_agent.py</code> +
-<code>http_routes_admin.py</code> + the Jinja2 templates.
-<div class="seq">It sits alongside, it does not replace, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram stays a primary channel for dialogue). See also <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-user).</div>
-<div class="seq">For the device console and remote-client installation: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/http_api.html" hreflang="it" lang="it">IT</a>
@@ -81,6 +71,16 @@ and the admin dashboard. Implementation:
  <br>
  Reading time: 12 minutes.
  </div>
+</div>
+<div class="status-banner">
+<strong>The second way to talk to Metnos: HTTP, browser, curl.</strong>
+An aiohttp server on port 8770 that exposes the agent (web chat + JSON/SSE API)
+and the admin dashboard. Implementation:
+<code>runtime/metnos_http_server.py</code> + <code>http_auth.py</code> +
+<code>http_render.py</code> + <code>http_routes_agent.py</code> +
+<code>http_routes_admin.py</code> + the Jinja2 templates.
+<div class="seq">It sits alongside, it does not replace, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram stays a primary channel for dialogue). See also <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-user).</div>
+<div class="seq">For the device console and remote-client installation: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
 </div>
 
 <div class="toc">

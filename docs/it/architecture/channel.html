@@ -63,13 +63,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e ripiego multi-utente sul pairing senza riga in <code>pairings.db</code>.
-Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per cruscotto host, automazioni curl/script e client Rust remoto.
-Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/channel.html" class="active" hreflang="it" lang="it">IT</a>
@@ -90,9 +83,14 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
  <div class="meta">
  Microprogettazione<br>
  Pubblico: chi vuole capire come si aggiunge un'interfaccia conversazionale.<br>
- <br>
- Lettura: 10 minuti.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e ripiego multi-utente sul pairing senza riga in <code>pairings.db</code>.
+Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per cruscotto host, automazioni curl/script e client Rust remoto.
+Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
 </div>
 
 <div class="toc">

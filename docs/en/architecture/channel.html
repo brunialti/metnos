@@ -66,13 +66,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-The <code>channels</code> component is implemented and tested at module level. Supports multi-user: <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
-Read alongside <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram remains the primary dialogue channel</strong>; HTTP (port 8770) is the alternative channel for the host dashboard, curl/script automations and the remote Rust client.
-Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/channel.html" hreflang="it" lang="it">IT</a>
@@ -96,6 +89,13 @@ Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
  <br>
  Reading time: 10 minutes.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
+The <code>channels</code> component is implemented and tested at module level. Supports multi-user: <code>/start &lt;token&gt;</code> guest pairing command, <code>send_to(chat_id, OutboundMessage)</code> and multi-user fallback for pairings missing in <code>pairings.db</code>.
+Read alongside <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram remains the primary dialogue channel</strong>; HTTP (port 8770) is the alternative channel for the host dashboard, curl/script automations and the remote Rust client.
+Implementation reference: <code>/opt/metnos/runtime/channels/</code>.
 </div>
 
 <div class="toc">

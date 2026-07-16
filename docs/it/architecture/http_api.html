@@ -48,16 +48,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>Il secondo modo di parlare a Metnos: HTTP, browser, curl.</strong>
-Un server aiohttp sulla porta 8770 che espone l'agente (chat web + API JSON/SSE)
-e il cruscotto di amministrazione. Implementazione:
-<code>runtime/metnos_http_server.py</code> + <code>http_auth.py</code> +
-<code>http_render.py</code> + <code>http_routes_agent.py</code> +
-<code>http_routes_admin.py</code> + i template Jinja2.
-<div class="seq">Affianca, non sostituisce, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram resta un canale primario per il dialogo). Vedi anche <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-utente).</div>
-<div class="seq">Per console dispositivi e installazione del client remoto: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
-</div>
 
 <nav aria-label="Lingua" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
 <a href="/it/architecture/http_api.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
@@ -78,9 +68,17 @@ e il cruscotto di amministrazione. Implementazione:
  <div class="meta">
  Microprogettazione &mdash; la HTTP API sulla porta 8770.<br>
  Pubblico: chi vuole capire come si parla a Metnos via HTTP/browser/curl.<br>
- <br>
- Lettura: 12 minuti.
  </div>
+</div>
+<div class="status-banner">
+<strong>Il secondo modo di parlare a Metnos: HTTP, browser, curl.</strong>
+Un server aiohttp sulla porta 8770 che espone l'agente (chat web + API JSON/SSE)
+e il cruscotto di amministrazione. Implementazione:
+<code>runtime/metnos_http_server.py</code> + <code>http_auth.py</code> +
+<code>http_render.py</code> + <code>http_routes_agent.py</code> +
+<code>http_routes_admin.py</code> + i template Jinja2.
+<div class="seq">Affianca, non sostituisce, <a href="channel.html" style="color:#14532d;text-decoration:underline;"><code>channel</code></a> (Telegram resta un canale primario per il dialogo). Vedi anche <a href="pairing.html" style="color:#14532d;text-decoration:underline;"><code>pairing</code></a> (multi-utente).</div>
+<div class="seq">Per console dispositivi e installazione del client remoto: <a href="remote_executors.html" style="color:#14532d;text-decoration:underline;"><code>remote_executors</code></a>.</div>
 </div>
 
 <div class="toc">

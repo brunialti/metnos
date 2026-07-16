@@ -67,15 +67,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>How Metnos receives a request, decides what to do, executes and answers.</strong>
-The agent runtime is the heart that orchestrates every turn: it extracts the
-intent, routes the request to the cognitive engine, executes the steps and
-composes the answer, with fine-grained telemetry for each sub-phase
-(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
-<code>exec_ms</code>, <code>rerank_ms</code>). Implementation reference:
-<code>runtime/agent_runtime.py</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it">IT</a>
@@ -100,6 +91,15 @@ composes the answer, with fine-grained telemetry for each sub-phase
  <br>
  Reading time: 18 minutes.
  </div>
+</div>
+<div class="status-banner">
+<strong>How Metnos receives a request, decides what to do, executes and answers.</strong>
+The agent runtime is the heart that orchestrates every turn: it extracts the
+intent, routes the request to the cognitive engine, executes the steps and
+composes the answer, with fine-grained telemetry for each sub-phase
+(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
+<code>exec_ms</code>, <code>rerank_ms</code>). Implementation reference:
+<code>runtime/agent_runtime.py</code>.
 </div>
 
 

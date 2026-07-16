@@ -63,15 +63,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>Come Metnos riceve una richiesta, decide cosa fare, esegue e risponde.</strong>
-Il runtime dell'agente &egrave; il cuore che orchestra ogni turno: estrae
-l'intento, instrada la richiesta al motore cognitivo, esegue gli step e
-compone la risposta, con telemetria fine per ogni sotto-fase
-(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
-<code>exec_ms</code>, <code>rerank_ms</code>). Riferimento di implementazione:
-<code>runtime/agent_runtime.py</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/agent_runtime.html" class="active" hreflang="it" lang="it">IT</a>
@@ -93,9 +84,16 @@ compone la risposta, con telemetria fine per ogni sotto-fase
  Microprogettazione &mdash; il runtime dell'agente.<br>
  Pubblico: chi legge per capire come funziona Metnos dentro;<br>
  chi implementa o estende un componente del runtime.<br>
- <br>
- Lettura: 18 minuti.
  </div>
+</div>
+<div class="status-banner">
+<strong>Come Metnos riceve una richiesta, decide cosa fare, esegue e risponde.</strong>
+Il runtime dell'agente &egrave; il cuore che orchestra ogni turno: estrae
+l'intento, instrada la richiesta al motore cognitivo, esegue gli step e
+compone la risposta, con telemetria fine per ogni sotto-fase
+(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
+<code>exec_ms</code>, <code>rerank_ms</code>). Riferimento di implementazione:
+<code>runtime/agent_runtime.py</code>.
 </div>
 
 

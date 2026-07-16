@@ -63,16 +63,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-<strong>Come Metnos decide se un'azione proposta dal modello puo' diventare effetto sul mondo.</strong>
-Il <em>vaglio</em> e' il valutatore costituzionale: gira fra la proposta di un
-<code>tool_call</code> e la sua esecuzione, in due fasi distinte &mdash; una
-guardia binaria deterministica e un giudice graduato allineato ai telos.
-Include controlli dedicati come <code>check_cross_user_send</code> (il padrone
-di casa fa da guardiano: l'invio a se' stessi e' permesso, da ospite verso
-altri richiede vaglio) e la scorciatoia sui verbi di sola lettura. Riferimento
-di implementazione: <code>runtime/vaglio.py</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/vaglio.html" class="active" hreflang="it" lang="it">IT</a>
@@ -93,9 +83,17 @@ di implementazione: <code>runtime/vaglio.py</code>.
  <div class="meta">
  Microprogettazione &mdash; il valutatore costituzionale in due fasi.<br>
  Pubblico: chi vuole capire come Metnos decide se un'azione proposta dal LLM puo' diventare effetto sul mondo.<br>
- <br>
- Lettura: 12 minuti.
  </div>
+</div>
+<div class="status-banner">
+<strong>Come Metnos decide se un'azione proposta dal modello puo' diventare effetto sul mondo.</strong>
+Il <em>vaglio</em> e' il valutatore costituzionale: gira fra la proposta di un
+<code>tool_call</code> e la sua esecuzione, in due fasi distinte &mdash; una
+guardia binaria deterministica e un giudice graduato allineato ai telos.
+Include controlli dedicati come <code>check_cross_user_send</code> (il padrone
+di casa fa da guardiano: l'invio a se' stessi e' permesso, da ospite verso
+altri richiede vaglio) e la scorciatoia sui verbi di sola lettura. Riferimento
+di implementazione: <code>runtime/vaglio.py</code>.
 </div>
 
 <div class="toc">

@@ -63,13 +63,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nel cruscotto <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/changes</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
-Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/observability.html" class="active" hreflang="it" lang="it">IT</a>
@@ -90,9 +83,14 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code
  <div class="meta">
  Microprogettazione<br>
  Pubblico: chi vuole capire cosa Metnos sta facendo senza aprire un terminale.<br>
- <br>
- Lettura: 9 minuti.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nel cruscotto <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/changes</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
+Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
+<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
 </div>
 
 <div class="toc">

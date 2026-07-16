@@ -66,12 +66,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-<code>pairing</code> testato + flusso daemon, con supporto multi-user: registro <code>users.db</code> in <code>~/.local/share/metnos/</code>, pairing guest via <code>/start &lt;token&gt;</code> a vita breve emesso dal pannello <code>/admin/users</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>, accesso admin web via <code>POST /admin/login</code> con cookie 7&nbsp;giorni.
-Riferimento di implementazione: <code>/opt/metnos/runtime/pairing.py</code>, <code>/opt/metnos/runtime/users.py</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/pairing.html" class="active" hreflang="it" lang="it">IT</a>
@@ -92,9 +86,13 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/pairing.py</code>, <co
  <div class="meta">
  Microprogettazione<br>
  Pubblico: chi vuole capire come Metnos riconosce chi gli scrive da fuori e con quale autorit&agrave;.<br>
- <br>
- Lettura: 10 minuti.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+<code>pairing</code> testato + flusso daemon, con supporto multi-user: registro <code>users.db</code> in <code>~/.local/share/metnos/</code>, pairing guest via <code>/start &lt;token&gt;</code> a vita breve emesso dal pannello <code>/admin/users</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>, accesso admin web via <code>POST /admin/login</code> con cookie 7&nbsp;giorni.
+Riferimento di implementazione: <code>/opt/metnos/runtime/pairing.py</code>, <code>/opt/metnos/runtime/users.py</code>.
 </div>
 
 <div class="toc">

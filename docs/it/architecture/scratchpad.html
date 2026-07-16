@@ -63,13 +63,6 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 </head>
 <body>
 
-<div class="status-banner">
-
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-Cluster <code>scratchpad</code> 34/34 verde, integrato in <code>agent_runtime</code>. Il turn log include campi di scrub credenziali (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): i valori in chiaro di pwd/user sono sostituiti da <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> e <code>step.resolved_args</code> prima della serializzazione JSONL. Telemetria fine StepLog: cinque campi opzionali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) nel record di passo.
-Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/scratchpad.html" class="active" hreflang="it" lang="it">IT</a>
@@ -90,9 +83,14 @@ Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
  <div class="meta">
  Microprogettazione<br>
  Pubblico: chi capisce come Metnos gestisce dati grandi senza saturare il contesto LLM.<br>
- <br>
- Lettura: 12 minuti.
  </div>
+</div>
+<div class="status-banner">
+
+<strong>Microprogettazione &mdash; allineata al codice.</strong>
+Cluster <code>scratchpad</code> 34/34 verde, integrato in <code>agent_runtime</code>. Il turn log include campi di scrub credenziali (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): i valori in chiaro di pwd/user sono sostituiti da <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> e <code>step.resolved_args</code> prima della serializzazione JSONL. Telemetria fine StepLog: cinque campi opzionali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) nel record di passo.
+Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
+<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
 <div class="toc">
