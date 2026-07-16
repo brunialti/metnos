@@ -361,6 +361,55 @@ footer a { color: var(--bronze); }
   border-radius: 3px; box-shadow: none !important; font-weight: 600;
 }
 
+/* ==========================================================================
+   APERTURA DA MANUALE — frontespizio e intestazioni PURAMENTE tipografiche.
+   Nessun header dentro frame; nessuna barra web; niente cruscotti.
+   ========================================================================== */
+/* frontespizio / apertura: come la versione stampa, niente cornice/gradiente */
+.title-page {
+  background: none !important; border: none !important;
+  border-radius: 0 !important; box-shadow: none !important;
+  text-align: center; padding: 44px 0 34px; margin: 0; overflow: visible !important;
+}
+/* frame decorativo interno (pseudo-elemento) — via */
+.title-page::before, .title-page::after,
+.part-banner::before, .part-banner::after {
+  content: none !important; display: none !important; border: none !important;
+}
+/* la pill "MANUALE DI…" diventa un maiuscoletto sobrio (occhiello) */
+.title-page .eyebrow, .eyebrow {
+  background: none !important; border: none !important; border-radius: 0 !important;
+  display: block; padding: 0; margin: 0 0 6px;
+  font-size: 9pt; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+/* un frontespizio non ha un cruscotto di statistiche */
+.hero-stats, .hero-stat { display: none !important; }
+.title-page .promise { color: var(--ink-dim); }
+
+/* apertura CAPITOLO (deep-dive: title-page SENZA occhiello): il titolo e' il
+   COMPONENTE, non il brand. "Metnos" scende a riga di serie; il sottotitolo
+   (es. «agent_runtime — …») sale a titolo di capitolo. L'hub (con .eyebrow)
+   resta il frontespizio col brand grande. */
+.title-page:not(:has(.eyebrow)) h1 {
+  font-family: var(--font-sans); font-size: 10.5pt; font-weight: 600;
+  color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.title-page:not(:has(.eyebrow)) .subtitle {
+  font-family: var(--font-serif); font-size: 22pt; font-style: normal;
+  color: var(--navy); margin: 2px 0 18px; line-height: 1.2;
+}
+
+/* breadcrumb: da barra sticky web-app a riga sobria, allineata al testo */
+[style*="position:sticky"] {
+  position: static !important; background: none !important;
+  border: none !important; box-shadow: none !important; top: auto !important;
+  padding: 2px 0 0 !important; margin: 0 0 4px !important;
+  font-size: 9.5pt !important; z-index: auto !important;
+}
+[style*="position:sticky"] > div { max-width: none !important; padding: 0 !important; }
+
 /* diagrammi SVG -> line-art sobria da manuale: desaturati, niente patchwork di
    colori. `saturate` preserva la LUMINOSITA', quindi il testo bianco sui box
    scuri resta leggibile e la struttura non cambia. In stampa: monocromo. */
@@ -397,7 +446,9 @@ svg { filter: saturate(0.28) contrast(1.02); }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
   /* nasconde il chrome interattivo non utile su carta */
-  .lang-switch, nav.back, .back, nav[aria-label="Language"] { display: none !important; }
+  .lang-switch, nav.back, .back, nav[aria-label="Language"],
+  [style*="position:sticky"] { display: none !important; }
+  .title-page { break-after: page; page-break-after: always; }
 
   /* i capitoli (h1) iniziano su pagina nuova; il primo no */
   h1 { break-before: page; }
