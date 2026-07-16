@@ -63,6 +63,7 @@ p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -73,10 +74,10 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 Implementation reference: <code>/opt/metnos/runtime/pairing.py</code>, <code>/opt/metnos/runtime/users.py</code>.
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/pairing.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/pairing.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/pairing.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/pairing.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -651,7 +652,7 @@ reachable.
 </p>
 
 <div class="callout note">
-<strong>A heartbeat that does not block (client 0.2.7).</strong> The heartbeat
+<strong>A heartbeat that does not block.</strong> The heartbeat
 runs on a separate task. That way it keeps signalling &laquo;I am here&raquo;
 even while the program, on first install, is still downloading its own runtime.
 </div>
@@ -669,10 +670,9 @@ error, and the program stops by itself.
 </p>
 
 <p>
-This is not theory: tested live on 2026-07-03, the heartbeat froze instantly
-after the revoke. The operation is also <em>idempotent</em> (repeating it does
-not change the result): a second revoke simply replies &laquo;already
-revoked&raquo;.
+Revocation stops the heartbeat and the operation is <em>idempotent</em>:
+repeating it does not change the result, and a second request simply replies
+&laquo;already revoked&raquo;.
 </p>
 
 <h2>Why it is safe</h2>
@@ -690,7 +690,7 @@ directions; the third keeps the channel off the public Internet.
 </table>
 
 <div class="callout tip">
-<strong>Status.</strong> Phase W3.3 validated on a real Windows PC on 2026-07-03, with the client at version 0.2.7.
+<strong>Status.</strong> Pairing, heartbeat, and revocation are covered by client and server tests; the distributed version is declared by the client package.
 </div>
 
 </body>

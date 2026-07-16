@@ -69,13 +69,14 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.layer-card { display: grid; grid-template-columns: 200px 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; overflow: hidden; page-break-inside: avoid; }.layer-card.side { color: white; padding: 18px 16px; text-align: center; }.layer-card.side h3 { color: white; margin: 0 0 4px 0; font-size: 15pt; }.layer-card.side.lnum { font-size: 22pt; font-weight: 700; opacity: 0.9; }.layer-card.side.label { font-size: 9.5pt; opacity: 0.9; margin-top: 6px; font-style: italic; }.layer-card.body { padding: 14px 18px; font-size: 10.5pt; line-height: 1.6; }.layer-card.body p { margin: 6px 0; }.layer-card.l0.side { background: var(--l0); }.layer-card.l1.side { background: var(--l1); }.layer-card.l2.side { background: var(--l2); }.layer-card.l3.side { background: var(--l3); }.ascii { font-family: Consolas, 'Courier New', monospace; font-size: 9.5pt; background: #fdfdfd; border: 1px solid var(--border); border-radius: 6px; padding: 18px 22px; white-space: pre; overflow-x: auto; line-height: 1.45; color: #1a1a1a; }.benchtable th,.benchtable td { text-align: center; }.benchtable td:first-child,.benchtable th:first-child { text-align: left; }.bench-win { color: var(--sage); font-weight: 700; }.bench-loss { color: #a0522d; }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.layer-card { grid-template-columns: 160px 1fr; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/praxis_engine.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/praxis_engine.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/praxis_engine.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/praxis_engine.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">

@@ -48,12 +48,13 @@ li { margin-bottom:4px; }
 .toc li { margin:3px 0; }
 footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
 </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="nav">
@@ -74,7 +75,7 @@ scrive l'audit.
 </p>
 
 <div class="status">
-Stato attuale: il client <code>0.2.7</code> supporta l'adesione dalla UI,
+Stato attuale: il client supporta l'adesione dalla UI,
 l'esecuzione su Windows con Job Object, lo spegnimento dell'albero dei processi
 al timeout, il blocco dell'istanza doppia e la revoca dal server. Il dettaglio
 implementativo resta nel documento interno
@@ -149,6 +150,14 @@ onesto.
 </tbody>
 </table>
 
+<p>
+Un backend provider selezionato &egrave; sempre fissato al server: rete, home delle
+credenziali e collocazione derivano dalla stessa capability effettiva
+<code>provider:access</code>. Un backend locale dello stesso executor non eredita quel
+vincolo e resta eleggibile al dispositivo quando <code>placement.device_ok</code> lo
+consente.
+</p>
+
 <h3 id="placement-chat">3.1 Collocazione guidata dalla chat: server o un tuo PC</h3>
 
 <p>
@@ -156,7 +165,7 @@ La tabella qui sopra dice <em>se</em> un executor puo' uscire dal server. Resta 
 domanda pratica: <em>su quale macchina</em> finisce, allora, un comando che scrivi
 in chat? Metnos risponde senza pannelli e senza scelte manuali: lo capisce dalla
 frase. Chiamiamo <b>destinazione</b> la macchina dove verra' eseguito il prossimo
-comando &mdash; il server (la macchina <code>.33</code> dove vive Metnos) oppure uno
+comando &mdash; il server su cui vive Metnos oppure uno
 dei PC che hai <b>appaiato</b>, cioe' registrato una volta con la procedura di
 pairing. Ogni PC appaiato ha un <b>nome</b> scelto da te (per esempio
 <code>PORTATILE-UFFICIO</code>) e appartiene a un utente: il server sa quali
@@ -242,8 +251,8 @@ garanzie e uno schema del bivio server / PC.
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Quante righe di codice ci sono nel progetto?</div></div>
     <div class="rx-turn rx-bot">
-     <span class="rx-chip rx-server">&#128421; server (.33)</span>
-     <div class="rx-bubble">Il progetto ha <b>48.213</b> righe in 612 file.
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">Il conteggio e' stato eseguito sul server.
       <div class="rx-mono">primo turno, nessun PC nominato &rarr; destinazione iniziale = server</div>
      </div>
     </div>
@@ -279,12 +288,12 @@ bilancio.xlsx   88 KB</div>
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Quanti processi girano, <b>qui sul server</b>?</div></div>
-    <div class="rx-route">&#128256; destinazione riportata a <b>server (.33)</b></div>
+    <div class="rx-route">&#128256; destinazione riportata al <b>server</b></div>
     <div class="rx-turn rx-bot">
-     <span class="rx-chip rx-server">&#128421; server (.33)</span>
-     <div class="rx-bubble">Sul server girano <b>147</b> processi.</div>
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">Il conteggio dei processi e' stato eseguito sul server.</div>
     </div>
-    <div class="rx-destnow">&#128205; destinazione ora: server (.33)</div>
+    <div class="rx-destnow">&#128205; destinazione ora: server</div>
 
    </div>
   </section>
@@ -316,7 +325,7 @@ bilancio.xlsx   88 KB</div>
      <text x="171" y="97" text-anchor="middle" fill="#1A477A" font-weight="600">Metnos</text>
      <text x="171" y="112" text-anchor="middle" fill="#5b6675">nome? o ultima?</text>
      <rect x="246" y="18" width="86" height="42" rx="9" fill="#eef0f3" stroke="#cfd6df"/>
-     <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server .33</text>
+     <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server</text>
      <text x="289" y="50" text-anchor="middle" fill="#5b6675">(iniziale)</text>
      <rect x="246" y="146" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
      <text x="289" y="164" text-anchor="middle" fill="#1A477A" font-weight="600">&#128187; tuo PC</text>

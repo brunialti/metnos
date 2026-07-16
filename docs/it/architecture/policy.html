@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/policy">
  <meta property="og:title" content="Metnos &mdash; policy (tested)">
- <meta property="og:description" content="La policy di Metnos: 13 capability canoniche, tabella 3x13 per livello di autonomia, grants persistenti per_target, garanzia che un grant non possa mai elevare un denied.">
+ <meta property="og:description" content="La policy di Metnos: 18 capability canoniche, tabella 3x18 per livello di autonomia, grants persistenti per_target, garanzia che un grant non possa mai elevare un denied.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
@@ -65,20 +65,21 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 table.policy-table td { text-align: center; }
 table.policy-table td:first-child { text-align: left; font-weight: 600; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
 <div class="status-banner">
 
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-Cluster <code>policy</code> 10/10 verde. Il registro espone <strong>13 capability canoniche</strong> (da <code>fs:read</code> a <code>calendar:read</code>); la tabella autonomia &times; capability (ReadOnly / Supervised / Full) e i grant <em>per_target</em> persistenti sono allineati al codice. Riferimento: <code>runtime/policy.py</code>.
+Il registro espone <strong>18 capability canoniche</strong>; la tabella autonomia &times; capability (ReadOnly / Supervised / Full), i grant <em>per_target</em> persistenti e l'ammissione degli executor conformi sono allineati al codice. Riferimento: <code>runtime/policy.py</code>.
 <div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/policy.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/policy.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/policy.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/policy.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -117,7 +118,7 @@ Cluster <code>policy</code> 10/10 verde. Il registro espone <strong>13 capabilit
 <h1 id="cap1">1. Cos'&egrave; policy</h1>
 
 <p class="lead">
-La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'architettura (cap. 6 dell'<a href="../Metnos_Architettura_Intro_v1.html#cap6">Architettura</a>). Per ogni combinazione di livello di autonomia, capability e bersaglio decide un esito fra <em>permesso</em>, <em>negato</em>, <em>approvazione richiesta</em>. &Egrave; il modulo che incarna le regole condivise fra Roberto e l'agente: cosa si pu&ograve; fare senza chiedere, cosa serve chiedere, cosa non si fa mai.
+La policy &egrave; il filtro di legalit&agrave; di Metnos: lo strato 2 dell'architettura (cap. 6 dell'<a href="index.html#cap6">Architettura</a>). Per ogni combinazione di livello di autonomia, capability e bersaglio decide un esito fra <em>permesso</em>, <em>negato</em>, <em>approvazione richiesta</em>. &Egrave; il modulo che incarna le regole condivise fra Roberto e l'agente: cosa si pu&ograve; fare senza chiedere, cosa serve chiedere, cosa non si fa mai.
 </p>
 
  <figure>
@@ -165,7 +166,7 @@ I tre filtri sono in serie: la policy gira per prima (&egrave; quella pi&ugrave;
 <h1 id="cap2">2. Registro delle capability</h1>
 
 <p>
-Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tredici voci canoniche, definite in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Ogni voce &egrave; un <code>CapabilitySpec</code> con quattro attributi:
+Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Le voci canoniche sono definite in <code>runtime/policy.py:CAPABILITY_REGISTRY</code>. Ogni voce &egrave; un <code>CapabilitySpec</code> con quattro attributi:
 </p>
 
 <ul>
@@ -177,6 +178,7 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 
 <table>
 <tr><th>name</th><th>critical</th><th>default_approval</th><th>target_kind</th><th>descrizione</th></tr>
+<tr><td><code>compute:pure</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>calcolo deterministico in memoria senza I/O esterno</td></tr>
 <tr><td><code>fs:read</code></td><td>no</td><td><code>per_target</code></td><td><code>path_glob</code></td><td>lettura file dal filesystem locale entro path_glob dichiarati</td></tr>
 <tr><td><code>fs:write</code></td><td><strong>s&iacute;</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>scrittura/modifica file entro path_glob (critica)</td></tr>
 <tr><td><code>code:exec</code></td><td><strong>s&iacute;</strong></td><td><code>always</code></td><td><code>exact</code></td><td>esecuzione di un comando shell di una lista bianca (es. gestore di pacchetti)</td></tr>
@@ -190,10 +192,21 @@ Il registro &egrave; il dizionario chiuso delle azioni che Metnos riconosce. Tre
 <tr><td><code>time:read</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>lettura ora corrente e fusi orari</td></tr>
 <tr><td><code>parse:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>parsing locale di formati noti (PDF, HTML, JSON, CSV)</td></tr>
 <tr><td><code>calendar:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura eventi da un calendario autorizzato</td></tr>
+<tr><td><code>index:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura di un indice locale amministrato da Metnos</td></tr>
+<tr><td><code>metnos:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura di una risorsa locale amministrata da Metnos</td></tr>
+<tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura diagnostica di sistema su host o dispositivo autorizzato</td></tr>
+<tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>accesso a rete e credenziali di un provider autorizzato</td></tr>
 </table>
 
 <p>
 Il registro &egrave; chiuso: <code>record_grant</code> rifiuta una capability che non vi appartiene (<code>runtime/policy.py:243-244</code>). Aggiungere una capability significa modificare il registro nel codice e far girare i test &mdash; non c'&egrave; iscrizione a runtime. &Egrave; una scelta deliberata: il vocabolario delle azioni &egrave; una risorsa di sicurezza, non una superficie di estensione liberamente aperta.
+</p>
+
+<p>
+<code>provider:access</code> usa come bersaglio esatto il binding della skill. Una
+clausola <code>when</code> nel manifest pu&ograve; restringerla a un backend della singola
+invocazione; la policy non ricava mai questo permesso dal nome dell'executor o da
+un valore libero del piano.
 </p>
 
 <h2>2.1 Lettura del registro</h2>
@@ -203,17 +216,18 @@ Tre famiglie sono <strong>critical</strong>: <code>fs:write</code>, <code>code:e
 </p>
 
 <p>
-Quattro capability hanno <code>default_approval = none</code>: <code>llm:local</code>, <code>channel:in</code>, <code>time:read</code>, <code>parse:local</code>. Sono azioni a costo zero, reversibili, senza effetti laterali sul mondo esterno (ascoltare un canale, leggere un'ora, fare il parse di un PDF dentro la sandbox). Restano fuori dal flusso di approvazione anche al livello pi&ugrave; conservativo.
+Cinque capability hanno <code>default_approval = none</code>: <code>compute:pure</code>, <code>llm:local</code>, <code>channel:in</code>, <code>time:read</code>, <code>parse:local</code>. Sono azioni locali senza effetti laterali sul mondo esterno. Restano fuori dal flusso di approvazione anche al livello pi&ugrave; conservativo.
 </p>
 
 <h1 id="cap3">3. Tabella autonomia &times; capability</h1>
 
 <p>
-La tabella &egrave; il prodotto cartesiano dei tre livelli di autonomia (ReadOnly, Supervised, Full) per le 13 capability. Per ogni cella un esito: <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, <span class="v-deny">denied</span>. Generata in <code>runtime/policy.py:_TABLE</code> e <code>_init_table</code> (<code>runtime/policy.py:140-171</code>) secondo regole canoniche, non scritte a mano.
+La tabella &egrave; il prodotto cartesiano dei tre livelli di autonomia (ReadOnly, Supervised, Full) per le capability registrate. Per ogni cella un esito: <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, <span class="v-deny">denied</span>. &Egrave; generata da <code>runtime/policy.py:_TABLE</code> e <code>_init_table</code> secondo regole canoniche, non scritte a mano.
 </p>
 
 <table class="policy-table">
 <tr><th style="text-align:left;">capability</th><th>ReadOnly</th><th>Supervised</th><th>Full</th></tr>
+<tr><td><code>compute:pure</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>fs:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>fs:write</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>code:exec</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td></tr>
@@ -227,6 +241,10 @@ La tabella &egrave; il prodotto cartesiano dei tre livelli di autonomia (ReadOnl
 <tr><td><code>time:read</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>parse:local</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>calendar:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>index:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>metnos:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 </table>
 
 <h2>3.1 Le tre regole che generano la tabella</h2>
@@ -236,7 +254,7 @@ La tabella non &egrave; arbitraria: nasce da tre regole, una per livello, che <c
 </p>
 
 <p>
-<strong>ReadOnly.</strong> Solo capability di sola lettura, senza effetti laterali visibili al mondo esterno. Mai write, mai send, mai exec, mai LLM online (che ha un costo monetario uscente). Le capability di lettura con <code>default_approval = per_target</code> (<code>fs:read</code>, <code>mail:read</code>, <code>calendar:read</code>) restano <code>approval_required</code>: il livello pi&ugrave; conservativo non rinuncia a esse, ma chiede conferma per ogni nuovo bersaglio. Le critical e le altre con default <code>per_target</code> o <code>always</code> diventano <code>denied</code>.
+<strong>ReadOnly.</strong> Solo capability di sola lettura, senza effetti laterali visibili al mondo esterno. Mai write, mai send, mai exec, mai LLM online (che ha un costo monetario uscente). Le capability di lettura o accesso con <code>default_approval = per_target</code> (<code>fs:read</code>, <code>mail:read</code>, <code>calendar:read</code>, <code>index:read</code>, <code>metnos:read</code>, <code>system:read</code>, <code>provider:access</code>) restano <code>approval_required</code>: il livello pi&ugrave; conservativo non rinuncia a esse, ma chiede conferma per ogni nuovo bersaglio. Le critical e le altre con default <code>per_target</code> o <code>always</code> diventano <code>denied</code>.
 </p>
 
 <p>
@@ -434,8 +452,8 @@ Il modulo &egrave; eseguibile come script (<code>runtime/policy.py:360-423</code
 
 <table>
 <tr><th>comando</th><th>cosa fa</th></tr>
-<tr><td><code>python3 -m policy registry</code></td><td>stampa una riga JSON per ognuna delle 13 capability con tutti i suoi attributi.</td></tr>
-<tr><td><code>python3 -m policy table</code></td><td>stampa tre righe JSON, una per livello (ReadOnly/Supervised/Full), con l'esito per ognuna delle 13 capability.</td></tr>
+<tr><td><code>python3 -m policy registry</code></td><td>stampa una riga JSON per ogni capability con tutti i suoi attributi.</td></tr>
+<tr><td><code>python3 -m policy table</code></td><td>stampa tre righe JSON, una per livello (ReadOnly/Supervised/Full), con l'esito per ogni capability.</td></tr>
 <tr><td><code>python3 -m policy check &lt;level&gt; &lt;capability&gt; [--channel C --sender S --target T]</code></td><td>stampa l'esito di <code>effective_outcome</code>. Senza <code>--channel/--sender/--target</code> ritorna l'esito da sola tabella.</td></tr>
 <tr><td><code>python3 -m policy grants [--channel C] [--sender S] [--all]</code></td><td>lista grants, attivi di default, tutti con <code>--all</code>.</td></tr>
 <tr><td><code>python3 -m policy revoke &lt;grant_id&gt;</code></td><td>revoca un grant per id; stampa <code>revoked</code> o <code>no-op</code>.</td></tr>
@@ -453,7 +471,7 @@ Cluster <code>policy</code> nel framework di test del runtime: 10/10 verde alla 
 
 <table>
 <tr><th>#</th><th>caso</th><th>cosa verifica</th></tr>
-<tr><td>1</td><td><code>registry_contiene_13_capability_canoniche</code></td><td><code>CAPABILITY_REGISTRY</code> espone esattamente le 13 voci attese, ognuna con i quattro attributi obbligatori.</td></tr>
+<tr><td>1</td><td><code>registry_contiene_capability_canoniche</code></td><td><code>CAPABILITY_REGISTRY</code> espone le voci attese, ognuna con i quattro attributi obbligatori.</td></tr>
 <tr><td>2</td><td><code>is_allowed_readonly_blocca_write_e_exec</code> <span style="color:#7F1D1D;font-size:9pt;font-weight:700;">[security]</span></td><td>al livello ReadOnly: <code>fs:write</code>, <code>code:exec</code>, <code>mail:send</code> sono <code>denied</code>.</td></tr>
 <tr><td>3</td><td><code>is_allowed_supervised_richiede_approval_per_critical</code></td><td>al livello Supervised: <code>fs:write</code> &egrave; <code>approval_required</code>; <code>llm:local</code> &egrave; <code>allowed</code>; <code>mail:send</code> e <code>code:exec</code> sono <code>approval_required</code>.</td></tr>
 <tr><td>4</td><td><code>is_allowed_full_mantiene_always_per_critical_irreversibili</code> <span style="color:#7F1D1D;font-size:9pt;font-weight:700;">[security]</span></td><td>al livello Full: <code>mail:send</code> e <code>code:exec</code> restano <code>approval_required</code>; <code>fs:write</code> diventa <code>allowed</code>.</td></tr>
@@ -494,7 +512,7 @@ I tre casi marcati [security] sono gli invarianti che vincolano l'evoluzione fut
 <h2>Note finali</h2>
 
 <p>
-La policy &egrave; un modulo piccolo per scelta: tutta la complessit&agrave; del filtro di legalit&agrave; vive in due strutture leggibili al colpo d'occhio (un dizionario di 13 voci, una tabella 3&times;13) pi&ugrave; una lettura/scrittura SQLite per i grants. Niente DSL, niente regole espresse in linguaggio naturale, niente configurazione a runtime che si pu&ograve; rompere caricando un file mal formato.
+La policy &egrave; un modulo piccolo per scelta: tutta la complessit&agrave; del filtro di legalit&agrave; vive in due strutture leggibili al colpo d'occhio (un dizionario chiuso e una tabella generata) pi&ugrave; una lettura/scrittura SQLite per i grants. Niente DSL, niente regole espresse in linguaggio naturale, niente configurazione a runtime che si pu&ograve; rompere caricando un file mal formato.
 </p>
 
 <p>

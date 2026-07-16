@@ -48,12 +48,13 @@ li { margin-bottom:4px; }
 .toc li { margin:3px 0; }
 footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
 </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="nav">
@@ -74,7 +75,7 @@ audit trail.
 </p>
 
 <div class="status">
-Current status: client <code>0.2.7</code> supports UI join, Windows execution
+Current status: the client supports UI join, Windows execution
 through Job Object, process-tree kill on timeout, single-instance locking and
 server-side revocation. Implementation detail remains in the internal document
 <code>internal/design/remote-executors.html</code>.
@@ -145,6 +146,14 @@ Otherwise the executor stays local or is refused with an honest error.
 </tbody>
 </table>
 
+<p>
+A selected provider backend is always pinned to the server: network access,
+credential home, and placement derive from the same effective
+<code>provider:access</code> capability. A local backend of the same executor does not
+inherit that restriction and remains device-eligible when
+<code>placement.device_ok</code> allows it.
+</p>
+
 <h3 id="placement-chat">3.1 Chat-driven placement: the server or one of your PCs</h3>
 
 <p>
@@ -152,7 +161,7 @@ The table above tells you <em>whether</em> an executor may leave the server. The
 practical question remains: <em>on which machine</em> does a command you type in chat
 actually run? Metnos answers with no panels and no manual toggles &mdash; it works it
 out from the sentence itself. We call <b>destination</b> the machine where the next
-command will run: either the server (the <code>.33</code> machine where Metnos lives)
+command will run: either the server where Metnos lives
 or one of the PCs you have <b>paired</b>, that is, registered once through the pairing
 flow. Each paired PC has a <b>name</b> you chose (for example <code>OFFICE-LAPTOP</code>)
 and belongs to a user: the server knows which devices are yours.
@@ -237,8 +246,8 @@ guarantees, and a diagram of the server / PC fork.
 
     <div class="rx-turn rx-user"><div class="rx-bubble">How many lines of code are in the project?</div></div>
     <div class="rx-turn rx-bot">
-     <span class="rx-chip rx-server">&#128421; server (.33)</span>
-     <div class="rx-bubble">The project has <b>48,213</b> lines across 612 files.
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">The count was run on the server.
       <div class="rx-mono">first turn, no PC named &rarr; initial destination = server</div>
      </div>
     </div>
@@ -274,12 +283,12 @@ budget.xlsx     88 KB</div>
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">How many processes are running, <b>here on the server</b>?</div></div>
-    <div class="rx-route">&#128256; destination reset to <b>server (.33)</b></div>
+    <div class="rx-route">&#128256; destination reset to the <b>server</b></div>
     <div class="rx-turn rx-bot">
-     <span class="rx-chip rx-server">&#128421; server (.33)</span>
-     <div class="rx-bubble">The server is running <b>147</b> processes.</div>
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">The process count was run on the server.</div>
     </div>
-    <div class="rx-destnow">&#128205; destination now: server (.33)</div>
+    <div class="rx-destnow">&#128205; destination now: server</div>
 
    </div>
   </section>
@@ -311,7 +320,7 @@ budget.xlsx     88 KB</div>
      <text x="171" y="97" text-anchor="middle" fill="#1A477A" font-weight="600">Metnos</text>
      <text x="171" y="112" text-anchor="middle" fill="#5b6675">name? or last?</text>
      <rect x="246" y="18" width="86" height="42" rx="9" fill="#eef0f3" stroke="#cfd6df"/>
-     <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server .33</text>
+     <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server</text>
      <text x="289" y="50" text-anchor="middle" fill="#5b6675">(initial)</text>
      <rect x="246" y="146" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
      <text x="289" y="164" text-anchor="middle" fill="#1A477A" font-weight="600">&#128187; your PC</text>

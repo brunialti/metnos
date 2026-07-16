@@ -59,6 +59,7 @@ p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -69,9 +70,10 @@ Cluster <code>sandbox</code> 9/9 verde. Riferimento: <code>runtime/sandbox.py</c
 <div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/sandbox.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<a href="/en/architecture/sandbox.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/sandbox.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/sandbox.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -111,7 +113,7 @@ Cluster <code>sandbox</code> 9/9 verde. Riferimento: <code>runtime/sandbox.py</c
 <h1 id="cap1">1. Cos'&egrave; la sandbox</h1>
 
 <p class="lead">
-La sandbox &egrave; lo strato 3 dell'architettura di Metnos (cap. 6 dell'<a href="../Metnos_Architecture_Intro_v1.html#cap6">Architettura</a>): avvolge l'esecuzione di un executor in <code>bubblewrap</code> per isolarla dal resto del sistema. Il modulo &egrave; piccolo (~180 righe) perch&eacute; tutto quel che serve sta nel mappare il manifest dell'executor sui flag di <code>bwrap</code>; non c'&egrave; un demone n&eacute; uno stato persistente.
+La sandbox &egrave; lo strato 3 dell'architettura di Metnos (cap. 6 dell'<a href="index.html#cap6">Architettura</a>): avvolge l'esecuzione di un executor in <code>bubblewrap</code> per isolarla dal resto del sistema. Il modulo &egrave; piccolo (~180 righe) perch&eacute; tutto quel che serve sta nel mappare il manifest dell'executor sui flag di <code>bwrap</code>; non c'&egrave; un demone n&eacute; uno stato persistente.
 </p>
 
  <figure>
@@ -276,6 +278,25 @@ Risultato: bwrap monta l'intera radice, non i singoli file corrispondenti. La gr
 Se nessuna capability ha famiglia <code>network</code>, viene aggiunto <code>--unshare-net</code>: l'executor parte in un namespace di rete vuoto, nessuna interfaccia oltre il <code>lo</code> down. Se almeno una capability &egrave; <code>network:*</code>, il flag non viene aggiunto e l'executor eredita la rete dell'host (<code>runtime/sandbox.py:166-167</code>).
 </p>
 
+<h2>3.6.1 Autorit&agrave; dei provider per invocazione</h2>
+
+<p>
+<code>runtime/capabilities.py</code> calcola prima le capability effettive usando
+il valore finale degli argomenti e, se assente, il default dello schema. La forma
+ammessa di <code>when</code> &egrave; chiusa: <code>{arg, values}</code>, con argomento
+dichiarato e valori stringa compatibili con l'eventuale enum. Una clausola
+malformata o non corrispondente &egrave; inattiva.
+</p>
+
+<p>
+Per un executor conforme <code>sandbox.invocation_skills</code> estrae binding solo
+da <code>provider:access</code> e li accetta soltanto se appartengono a
+<code>vocab.PROVIDER_SKILLS</code>. Quel singolo risultato apre la rete, monta in
+lettura-scrittura la sola home della skill (necessaria al refresh OAuth) e impedisce
+il trasferimento dell'invocazione a un dispositivo. Gli executor legacy conservano
+temporaneamente i cinque segnali storici come ripiego esplicito.
+</p>
+
 <h2>3.7 Isolamenti sempre attivi</h2>
 
 <p>
@@ -373,7 +394,7 @@ La chiamata dal ciclo ReAct &egrave; in <code>runtime/agent_runtime.py:540</code
 <h1 id="cap6">6. Profili e livelli di autonomia</h1>
 
 <p>
-L'<a href="../Metnos_Architecture_Intro_v1.html#cap12">Architettura cap. 12</a> definisce tre livelli di autonomia &mdash; <em>ReadOnly</em>, <em>Supervised</em>, <em>Full</em> &mdash; con politiche diverse di accesso al sistema. La sandbox espone il parametro <code>autonomy</code> ma <em>non</em> applica profili separati: oggi tutti i wrap derivano lo stesso schema dal manifest, indipendentemente dal livello.
+L'<a href="index.html#cap12">Architettura cap. 12</a> definisce tre livelli di autonomia &mdash; <em>ReadOnly</em>, <em>Supervised</em>, <em>Full</em> &mdash; con politiche diverse di accesso al sistema. La sandbox espone il parametro <code>autonomy</code> ma <em>non</em> applica profili separati: oggi tutti i wrap derivano lo stesso schema dal manifest, indipendentemente dal livello.
 </p>
 
 <p>
@@ -481,7 +502,7 @@ Il ripiego controllato, in particolare, riflette una scelta etica oltre che prag
 <h1 id="cap10">10. Sandbox remota per-OS (executor su dispositivo)</h1>
 
 <p class="lead">
-Tutti i capitoli precedenti parlano di un solo luogo: il server <code>.33</code>, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal client scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il client stesso, e cambia a seconda del sistema operativo del dispositivo.
+Tutti i capitoli precedenti parlano di un solo luogo: il server Metnos, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal client scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il client stesso, e cambia a seconda del sistema operativo del dispositivo.
 </p>
 
 <p>
@@ -505,7 +526,7 @@ Ogni sistema operativo offre strumenti di isolamento diversi. Il client usa il p
 <tr>
  <td><strong>Linux</strong></td>
  <td><code>bubblewrap</code> + <code>landlock</code> + <code>seccomp</code> + spazio-dei-nomi di montaggio</td>
- <td>forte (pari al <code>.33</code>)</td>
+ <td>forte (pari al server Metnos)</td>
  <td>&mdash; (nessuna compensazione necessaria)</td>
 </tr>
 <tr>

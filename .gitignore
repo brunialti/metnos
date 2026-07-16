@@ -92,6 +92,14 @@ docs/it/architecture/*
 docs/en/architecture/*
 !docs/it/architecture/remote_executors.html
 !docs/en/architecture/remote_executors.html
+!docs/it/architecture/intelligent_executors.html
+!docs/en/architecture/intelligent_executors.html
+!docs/it/architecture/executor_catalog.html
+!docs/en/architecture/executor_catalog.html
+!docs/assets/
+docs/assets/*
+!docs/assets/architecture-flow.png
+!docs/assets/metnos.css
 
 # --- Doc agente / harness Claude (internal) ------------------------------
 AGENTS.md
@@ -154,6 +162,7 @@ USER.md
 *~
 .~lock.*
 UTENZE E SPESE/
+/ANALISI MEDICHE E CERTIFICATI/
 
 # --- Artefatto export pubblico (rigenerabile) ---------------------------
 dist/

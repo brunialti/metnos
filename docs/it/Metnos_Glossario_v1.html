@@ -5,6 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Metnos — Glossario v1</title>
 <meta name="description" content="Glossario ragionato dei termini e dei concetti del progetto Metnos: interfaccia LLM, telos, vaglio, le 4 Leggi, sibling agents, e così via.">
+<link rel="canonical" href="https://metnos.com/it/Metnos_Glossario_v1">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Glossario_v1">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Glossary_v1">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://metnos.com/it/Metnos_Glossario_v1">
+<meta property="og:title" content="Glossario — Metnos">
+<meta property="og:description" content="Glossario ragionato dell'architettura Metnos: executor, telos, vaglio, mnest e termini agentici.">
+<meta property="og:locale" content="it_IT">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:site_name" content="Metnos">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Glossario — Metnos">
+<meta name="twitter:description" content="I termini dell'architettura Metnos, spiegati nel loro contesto.">
 
 <style>
 :root {
@@ -111,13 +124,14 @@ footer {
   .entry { break-inside: avoid; }
 }
 </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 <!-- lang-switch -->
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> · </span>
-<a href="/en/" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/" hreflang="en" lang="en">EN</a>
 </nav>
 
 
@@ -222,7 +236,7 @@ perdite di robustezza non lo sono affatto. La <a href="#reflection">reversibilit
 sposta l'equilibrio rendendo annullabile ci&ograve; che altrimenti non
 lo sarebbe. Da non confondere con il paternalismo, che spinge la
 robustezza al di l&agrave; di questa soglia.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap5">Architettura, cap. 5</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#cap5">Architettura, cap. 5</a></p>
 </div>
 
 <div class="entry" id="assistente-domotico">
@@ -238,7 +252,7 @@ calendari, voce e domotica; Metnos ha ricerca documentale e memoria
 strutturata. Nei nostri doc trattiamo il pattern in astratto; nell'ambiente
 dell'autore esiste un progetto concreto che ricopre questo ruolo, parallelo
 a myclaw.</p>
-<p class="xref"><strong>Presentazione canonica:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap5">Architettura Intro §5</a></p>
+<p class="xref"><strong>Presentazione canonica:</strong> <a href="architecture/index.html#cap5">Architettura Intro §5</a></p>
 </div>
 
 <div class="entry" id="audit-log">
@@ -258,7 +272,7 @@ sopravvive a reboot, crash, aggiornamenti.</p>
 <strong>full</strong> (agisce e riferisce, chiede conferma solo per cose
 irreversibili o costose). Default: supervised. Il livello si cambia
 esplicitamente.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap6">Architettura Intro §6</a> &middot; <a href="architecture/policy.html#cap2">policy §2</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#cap6">Architettura Intro §6</a> &middot; <a href="architecture/policy.html#cap2">policy §2</a></p>
 </div>
 
 <div class="entry" id="autopath">
@@ -271,7 +285,7 @@ riusa per tutta una famiglia di richieste affini. Nasce da successi ripetuti su
 quel tipo di domanda; è dato leggibile e reversibile, non un modello addestrato.
 Da non confondere con la <a href="#skill">skill</a>, che è un insieme di
 strumenti, non un piano.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
 </div>
 
 <!-- ======================== B ======================== -->
@@ -368,7 +382,7 @@ neuroni). Un executor &egrave; codice Python firmato, con manifest, profilo
 di sandbox, contratto di errore. Pu&ograve; essere parte del seed
 iniziale o nato per <em>sintesi</em> dal <em>synt</em> con approvazione
 umana.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="architecture/executor.html">architecture/executor.html</a> <em>(microprogettazione v1.1, approvato 24/4/2026)</em> &middot; <a href="Metnos_Architettura_Intro_v1.html#cap9">Architettura, cap. 9</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/executor.html">architecture/executor.html</a> <em>(microprogettazione v1.1, approvato 24/4/2026)</em> &middot; <a href="architecture/index.html#cap9">Architettura, cap. 9</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
 </div>
 
 <div class="entry" id="executor-remoto">
@@ -405,7 +419,7 @@ slancio, senza interpellare il modello &mdash; stesso esito, latenza e costo
 ridotti al minimo. Conserva i dettagli concreti della richiesta. Il livello
 superiore è l'<a href="#autopath">autopath</a> (L1), che generalizza il piano a
 un'intera famiglia di richieste.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#s9">Architettura Intro §9 &mdash; La memoria che accelera</a></p>
 </div>
 
 <!-- ======================== G ======================== -->
@@ -525,7 +539,7 @@ fornisce l'interfaccia e i backend già pronti. In un ambiente diverso,
 l'interfaccia potrebbe essere realizzata da qualunque altro adapter o
 framework (LangChain, LiteLLM, un modulo custom): il contratto resta.
 Metnos dipende dall'<em>interfaccia</em>, non dall'implementazione.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap5">Architettura Intro §5</a> &middot; <a href="architecture/agent_runtime.html#cap6">agent_runtime §6</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#cap5">Architettura Intro §5</a> &middot; <a href="architecture/agent_runtime.html#cap6">agent_runtime §6</a></p>
 </div>
 
 <!-- ======================== M ======================== -->
@@ -555,7 +569,7 @@ approvati dall'utente. "Il cane si chiama Fido."</li>
 con l'uso, decade col disuso. Termine introdotto dal
 <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor e la
 memoria distribuita</a> in sostituzione del precedente <a href="#sinapsi">sinapsi</a>.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnest.html">architecture/mnest.html</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="Metnos_Architettura_Intro_v1.html#cap9">Architettura, cap. 9</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnest.html">architecture/mnest.html</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap9">Architettura, cap. 9</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
 </div>
 
 <div class="entry" id="mnestoma">
@@ -567,7 +581,7 @@ relazionale di Metnos, distinta dalla memoria contestuale dell'LLM e
 dalla memoria episodica delle conversazioni. La forma inglese &egrave;
 <em>mnestome</em> (suffisso biologico -ome, come in <em>microbiome</em>);
 la forma italiana mantiene il suffisso latino -ma.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnestoma.html">architecture/mnestoma.html</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="Metnos_Architettura_Intro_v1.html#cap9">Architettura, cap. 9</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnestoma.html">architecture/mnestoma.html</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap9">Architettura, cap. 9</a></p>
 </div>
 
 <div class="entry" id="metnos">
@@ -590,7 +604,7 @@ preesistente. <strong>Storico.</strong> Fino al 24 aprile 2026 il progetto
 si chiamava &laquo;Mykleos&raquo;, da <a href="#kleos">kleos</a>; il
 nome &egrave; stato cambiato perch&eacute; era marchio gi&agrave;
 registrato altrove.</p>
-<p class="xref"><strong>Ingresso:</strong> <a href="Metnos_QuickTour_v1.html">Quick tour</a> &middot; <a href="Metnos_Architettura_Intro_v1.html">Architettura &mdash; Introduzione</a></p>
+<p class="xref"><strong>Ingresso:</strong> <a href="Metnos_QuickTour_v1.html">Quick tour</a> &middot; <a href="architecture/index.html">Architettura &mdash; Introduzione</a></p>
 </div>
 
 <!-- ======================== N ======================== -->
@@ -623,7 +637,7 @@ ne è un clone: riusa alcune idee in un linguaggio (Python) coerente col
 resto dello stack di casa (<a href="#suprastructure">suprastructure</a> come
 implementazione dell'<a href="#llm-abstraction">interfaccia LLM</a>,
 <a href="#sibling-agents">sibling agents</a> preesistenti).</p>
-<p class="xref"><strong>Confronto dettagliato:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap2">Architettura Intro §2</a></p>
+<p class="xref"><strong>Confronto dettagliato:</strong> <a href="architecture/index.html#cap2">Architettura Intro §2</a></p>
 </div>
 
 <!-- ======================== P ======================== -->
@@ -680,7 +694,7 @@ in cui Metnos avrebbe voluto passare l'output di un
 <a href="#mnestoma">mnestoma</a> e che, se si ripete, diventa il segnale
 da cui il <em>synt</em> propone all'utente la sintesi di un nuovo
 executor.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnest.html#cap8">architecture/mnest.html, cap. 8</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="Metnos_Architettura_Intro_v1.html#cap10">Architettura, cap. 10</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/mnest.html#cap8">architecture/mnest.html, cap. 8</a> <em>(microprogettazione v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap10">Architettura, cap. 10</a> &middot; <a href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor</a></p>
 </div>
 
 <!-- ======================== R ======================== -->
@@ -762,7 +776,7 @@ skill decide <em>se</em> una capacità è attiva, il backend decide <em>come</em
 raggiunge un fornitore concreto, scelto sempre dalla configurazione e mai dal
 modello. Da non confondere con l'<a href="#autopath">autopath</a>: quello è un
 piano appreso, questa è una dotazione di strumenti.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#s3">Architettura Intro §3 &mdash; skill &harr; backend</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#s3">Architettura Intro §3 &mdash; skill &harr; backend</a></p>
 </div>
 
 <div class="entry" id="synt">
@@ -788,7 +802,7 @@ l'<a href="#llm-abstraction">interfaccia</a>, non questa implementazione
 particolare. Metnos è stato disegnato in modo che i suoi documenti e il suo
 codice non dipendano da suprastructure ma dal pattern che suprastructure
 incarna.</p>
-<p class="xref"><strong>Canonico:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap5">Architettura Intro §5</a></p>
+<p class="xref"><strong>Canonico:</strong> <a href="architecture/index.html#cap5">Architettura Intro §5</a></p>
 </div>
 
 <div class="entry" id="synthesizer">
@@ -891,7 +905,7 @@ Ispirazione di Metnos per i <a href="#autonomy">livelli di autonomia</a>,
 la sandbox a strati, il pattern trait-based. Scartato come base direttamente
 riusabile perché riscrive da zero il layer LLM/STT/TTS che in casa è già
 fornito da <a href="#suprastructure">suprastructure</a>.</p>
-<p class="xref"><strong>Confronto dettagliato:</strong> <a href="Metnos_Architettura_Intro_v1.html#cap2">Architettura Intro §2</a></p>
+<p class="xref"><strong>Confronto dettagliato:</strong> <a href="architecture/index.html#cap2">Architettura Intro §2</a></p>
 </div>
 
 <footer>

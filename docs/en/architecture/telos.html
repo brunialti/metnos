@@ -68,17 +68,18 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.formula { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-family: 'Cambria Math', Cambria, 'Times New Roman', serif; font-size: 12pt; text-align: center; page-break-inside: avoid; }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="../Metnos_Architecture_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation.
+Canonical doc tested after implementation: <code>TELOS.md</code> populated in <code>workspace/</code> with the seven canonical teloi, the non-renouncement telos integrated into the <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> cascade (compose+generate+on-the-fly), aligned with <a href="index.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the triad <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>+<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>+<a href="mnestome.html" style="color: #14532d; text-decoration: underline;">mnestome</a>. Normative reference for implementation.
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/telos.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/telos.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/telos.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/telos.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -743,7 +744,7 @@ as that of the Laws.
 <tr>
  <td><strong>Non-retreat telos as Law 4 of the Constitution</strong></td>
  <td>discarded</td>
- <td>Breaks the grammar of Laws (negative prohibitions). The telos is a positive push, it belongs here. See <a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture ch. 11</a>.</td>
+ <td>Breaks the grammar of Laws (negative prohibitions). The telos is a positive push, it belongs here. See <a href="index.html#cap11">Architecture ch. 11</a>.</td>
 </tr>
 <tr>
  <td><strong>Reward function learned from a dataset</strong></td>
@@ -861,8 +862,8 @@ generation time.</p>
 
 <h3>Internal references</h3>
 <ul>
- <li><a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture, ch. 11</a> &mdash; the big-picture view of telos+vaglio.</li>
- <li><a href="../Metnos_Architecture_Intro_v1.html#cap7">Architecture, ch. 7</a> &mdash; the proactive variant and the canonical example &laquo;monitoring a mailbox&raquo; (a chain invoked by the scheduler builtin).</li>
+ <li><a href="index.html#cap11">Architecture, ch. 11</a> &mdash; the big-picture view of telos+vaglio.</li>
+ <li><a href="index.html#cap7">Architecture, ch. 7</a> &mdash; the proactive variant and the canonical example &laquo;monitoring a mailbox&raquo; (a chain invoked by the scheduler builtin).</li>
  <li><a href="synt.html">synt.html </a> &mdash; the cascade the non-retreat telos honours; R score distinct from expected_alignment.</li>
  <li><a href="executor.html">executor.html </a> &mdash; the artefacts synt produces and that telos evaluate at delivery time.</li>
  <li><a href="mnest.html">mnest.html </a> &mdash; the proto-mnests that trigger the non-retreat telos.</li>
@@ -893,7 +894,7 @@ generation time.</p>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The artefacts synt produces and that telos evaluate at the moment of publication.</div>
  </a>
- <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio in the big-picture view.</div>

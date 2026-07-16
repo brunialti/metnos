@@ -49,13 +49,14 @@ em.author { color: var(--plum); font-style: italic; }
 footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 10.5pt; color: var(--muted); text-align: center; }
 footer a { color: inherit; text-decoration: none; }
     </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-<nav class="lang">
-  <a href="/it/code.html" class="active" hreflang="it" lang="it">IT</a>
-  <span style="color:#d0d7de;"> &middot; </span>
-  <a href="/en/code.html" hreflang="en" lang="en">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/code.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/code.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="back">
@@ -82,7 +83,7 @@ Se sei arrivato fin qui, sei interessato al codice. Anche io avrei fatto cos&igr
 
 <p>Domanda giusta, dopo tutta questa filosofia. Il codice viene <em>dopo</em> i documenti, ed &egrave; per scelta. Ogni documento di questo sito sta <em>a monte</em> del codice: la regola interna &egrave; che un componente non si implementa prima che il suo HTML esista e sia approvato. Quando la definizione &egrave; abbastanza matura da rendere la costruzione un esercizio di fedelt&agrave; pi&ugrave; che di traduzione, il codice segue &mdash; e somiglia ai documenti, non viceversa.</p>
 
-<p>C'&egrave; anche un motivo pi&ugrave; forte per fermarsi qui. Le pagine di <a href="architecture/">microprogettazione</a> e l'<a href="Metnos_Architettura_Intro_v1.html">architettura</a> codificano decisioni; i <a href="Metnos_Dialogo_v1.html">dialoghi</a> mostrano come quelle decisioni sono state guadagnate. Se leggi prima il design, ricevi le conclusioni senza le obiezioni, i componenti senza le alternative scartate, i nomi senza la fatica di trovarli. Se leggi prima un dialogo, arrivi alle stesse decisioni con i dubbi ancora attaccati &mdash; che &egrave; quello che, pi&ugrave; avanti, ti permetter&agrave; di distinguere se una sorpresa del sistema &egrave; un bug o una conseguenza da accettare.</p>
+<p>C'&egrave; anche un motivo pi&ugrave; forte per fermarsi qui. Il <a href="architecture/">manuale di architettura</a> collega la visione del sistema ai contratti esatti dei componenti; i <a href="Metnos_Dialogo_v1.html">dialoghi</a> mostrano come quelle decisioni sono state guadagnate. Se leggi prima il manuale, ricevi le conclusioni senza le obiezioni, i componenti senza le alternative scartate, i nomi senza la fatica di trovarli. Se leggi prima un dialogo, arrivi alle stesse decisioni con i dubbi ancora attaccati &mdash; che &egrave; quello che, pi&ugrave; avanti, ti permetter&agrave; di distinguere se una sorpresa del sistema &egrave; un bug o una conseguenza da accettare.</p>
 
 <p>Se stai per tuffarti nell'architettura o nella microprogettazione, leggi prima almeno un dialogo. Il resto della documentazione ti parler&agrave; una lingua pi&ugrave; ricca.</p>
 

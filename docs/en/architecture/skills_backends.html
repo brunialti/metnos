@@ -80,12 +80,14 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }
 .lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/skills_backends.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<a href="/en/architecture/skills_backends.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/skills_backends.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/skills_backends.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -114,7 +116,7 @@ li { margin-bottom: 4px; }
  <li><a href="#cap3">From one provider to many</a></li>
  <li><a href="#cap4">On/off lives on the backend</a></li>
  <li><a href="#cap5">Promotion: the mechanism</a></li>
- <li><a href="#cap6">How the others do it (Hermes, MCP)</a></li>
+ <li><a href="#cap6">Why MCP stays at the boundary</a></li>
  <li><a href="#cap7">Going deeper</a></li>
  <li><a href="#cap8">What this means for you, in practice</a></li>
 </ol>
@@ -276,6 +278,14 @@ breaks routing.
 taken.
 </div>
 
+<div class="callout note">
+<strong>A backend does not grant itself authority.</strong> The
+<code>provider:access</code> capability declares the skill binding and may be narrowed
+with <code>when</code> to the final <code>client</code> selector value. Only the effective
+binding governs network access, credentials, and the server pin together; neither the
+executor name nor the argument value is a source of permission.
+</div>
+
 <div class="callout tip">
 <strong>An example already in the house: the <code>sqldatabase</code> skill.</strong>
 The abstract shape is not a promise for the future: the <code>sqldatabase</code>
@@ -413,31 +423,44 @@ the frontier escalation; (3) the per-backend gating of &sect;4 &mdash; which
 is needed anyway and is the one to build first.
 </div>
 
-<h1 id="cap6">6. How the others do it (Hermes, MCP)</h1>
+<h1 id="cap6">6. Why MCP stays at the boundary</h1>
 
 <p>
-To see <em>why</em> Metnos separates skills and backends while the others fuse
-them, look at who sits at the center choosing the provider.
+MCP and the executor contract solve different problems. MCP lets a client
+discover and invoke tools exposed by a server while negotiating protocol
+versions and capabilities. Metnos must instead decide what a capability means
+to the planner, what authority it has, and how its outcome is verified.
+</p>
+
+<p>
+The contract referenced here is not an implicit convention: it is the
+versioned <a href="https://github.com/brunialti/metnos/blob/main/EXECUTOR_STANDARD.md">Metnos Executor Standard</a>.
+An MCP backend must satisfy it just like a local or remote backend.
 </p>
 
 <table>
-<tr><th>&nbsp;</th><th>Hermes / drop-in skills</th><th>Claude-Code + MCP family</th><th>Metnos</th></tr>
-<tr><td><strong>who picks the provider</strong></td><td>frontier (reads SKILL.md, disambiguates)</td><td>frontier (reads tool descriptions)</td><td>local model, middle tier: has a <strong>bias</strong> on the provider</td></tr>
-<tr><td><strong>skill vs backend</strong></td><td><strong>fused</strong> (skill = folder of scripts = provider)</td><td><strong>fused</strong> (tool / MCP server = provider)</td><td><strong>separate</strong> (backend = execution, skill = activation)</td></tr>
-<tr><td><strong>multi-provider</strong></td><td>parallel skills per provider, the agent chooses</td><td>parallel tools / servers, the model chooses</td><td><strong>one canonical executor + one backend per provider</strong> (resolver)</td></tr>
-<tr><td><strong>credential / dormancy</strong></td><td><code>required_credential_files</code> + setup</td><td>implicit (server connected or not)</td><td><strong>formalized dormancy</strong></td></tr>
-<tr><td><strong>trust</strong></td><td>runs the skill's code with its own privileges</td><td>runs tools / servers</td><td><strong>closed vocabulary + 7-layer sandbox</strong></td></tr>
+<tr><th>Concern</th><th>MCP provides</th><th>Metnos must preserve</th></tr>
+<tr><td><strong>identity</strong></td><td>a tool name within one server</td><td>a provider-independent canonical <code>verb_object</code> name</td></tr>
+<tr><td><strong>contract</strong></td><td>a JSON argument schema; an optional result schema</td><td>vector shape, error semantics, and an observable postcondition</td></tr>
+<tr><td><strong>authority</strong></td><td>connection and authorization to the server</td><td>capabilities, sandbox, credential mandate, and consent for the action</td></tr>
+<tr><td><strong>lifecycle</strong></td><td>negotiation, calls, cancellation, and shutdown</td><td>limits, audit, idempotency, reverse operation, and recovery</td></tr>
+<tr><td><strong>catalog</strong></td><td>notifications when tools are added or changed</td><td>explicit admission and suspension when a schema changes</td></tr>
 </table>
 
 <div class="callout note">
-<strong>A forced consequence, not a lag.</strong> Hermes and the MCP clones put
-a <strong>frontier at the center</strong>: they can afford parallel skills or
-tools per provider (option (a)), because the model disambiguates from prose.
-Metnos runs on a <strong>local model</strong>, where (a) produces provider bias
-&rarr; it <strong>must</strong> abstract (option (b)). The skill&harr;backend
-separation is not an architectural lag: it is the inevitable consequence of the
-local planner and the security-by-construction model.
+<strong>Proposed integration constraint, not an available feature.</strong> An
+internal MCP broker may become a transport behind the resolver. The planner
+will see only a canonical executor, or it will not see the capability at all.
+A generic <code>mcp_executor(server, tool, args)</code> would introduce a second
+command language and bypass per-action controls, so it does not belong in the
+public contract.
 </div>
+
+<p>
+An external tool may become the backend of an existing executor, a narrow proxy
+executor, or remain quarantined. Turning it into a native executor would be a
+verified, reviewed promotion rather than an automatic rewrite of remote code.
+</p>
 
 <h1 id="cap7">7. Going deeper</h1>
 

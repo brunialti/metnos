@@ -69,14 +69,18 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 @media (max-width: 720px) {.three-cols,.four-cols { grid-template-columns: 1fr; } }
 @media (max-width: 1024px) and (min-width: 721px) {.four-cols { grid-template-columns: 1fr 1fr; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Allineata al codice.</strong>
-Il pool di base conta <strong>75 executor</strong> scritti a mano in
-<code>/opt/metnos/executors/</code>, affiancati da quelli generati al volo dal Synt in
-<code>~/.local/share/metnos/executors/</code> (separati per costruzione).
+Gli executor distribuiti con Metnos vivono nel catalogo di base; quelli generati
+dal Synt e quelli importati restano separati per origine e provenienza. Il
+<a href="executor_catalog.html" style="color: #14532d; text-decoration: underline;">catalogo generato</a>
+&egrave; la fonte unica per conteggi, domini e stato corrente.
 Manifesto firmato Ed25519, recinto di esecuzione costruito sul manifesto stesso, ciclo di vita gestito dal loader.
+La definizione normativa per nuovi executor e refactor incrementali &egrave; il
+<a href="https://github.com/brunialti/metnos/blob/main/EXECUTOR_STANDARD.md" style="color: #14532d; text-decoration: underline;">Metnos Executor Standard</a>.
 Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
 (ciclo pianificatore), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
 (recinto), <a href="remote_executors.html" style="color: #14532d; text-decoration: underline;">remote_executors</a>
@@ -84,10 +88,10 @@ Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: 
 (generazione automatica).
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/executor.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/executor.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/executor.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/executor.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -349,6 +353,18 @@ successivo) e a chi genera codice in automatico.
 cosa l'executor pu&ograve; fare. Il manifesto <em>dichiara</em> di cosa avrebbe bisogno per
 funzionare; poi il sistema decide se concedere quei permessi e con che vincoli.
 Vedi <a href="sandbox.html">sandbox</a>.
+</p>
+
+<pre>[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }</pre>
+
+<p>
+Per un backend remoto la clausola <code>when</code> restringe la dichiarazione alla
+singola invocazione. Solo quando il valore finale di <code>client</code> corrisponde,
+lo stesso binding abilita rete, home delle credenziali in lettura-scrittura e
+collocazione sul server. Un valore arbitrario in <code>client</code> non concede nulla.
 </p>
 
 <div class="callout note">

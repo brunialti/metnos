@@ -59,23 +59,6 @@
   </url>
 
   <url>
-    <loc>https://metnos.com/en/Metnos_Architecture_Intro_v1</loc>
-    <lastmod>2026-06-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Architecture_Intro_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Architettura_Intro_v1"/>
-  </url>
-  <url>
-    <loc>https://metnos.com/it/Metnos_Architettura_Intro_v1</loc>
-    <lastmod>2026-06-09</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.9</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Architecture_Intro_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Architettura_Intro_v1"/>
-  </url>
-
-  <url>
     <loc>https://metnos.com/en/Metnos_QuickTour_v1</loc>
     <lastmod>2026-06-09</lastmod>
     <changefreq>monthly</changefreq>
@@ -143,21 +126,21 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1"/>
   </url>
 
-  <!-- Architettura: indici e triade (executor, mnest, mnestoma/mnestome, synt, telos) -->
+  <!-- Manuale di architettura e contratti dei componenti -->
 
   <url>
     <loc>https://metnos.com/en/architecture/</loc>
-    <lastmod>2026-05-25</lastmod>
+    <lastmod>2026-07-16</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/"/>
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/</loc>
-    <lastmod>2026-05-25</lastmod>
+    <lastmod>2026-07-16</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/"/>
   </url>
@@ -351,7 +334,7 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
   </url>
 
-  <!-- Microdesign: agent_runtime, scratchpad, grammar -->
+  <!-- Contratti dei componenti: agent_runtime, scratchpad, grammar -->
   <url>
     <loc>https://metnos.com/en/architecture/agent_runtime</loc>
     <lastmod>2026-06-09</lastmod>
@@ -618,21 +601,21 @@
   <!-- Praxis Engine (pentade Mētis/Noûs/Praxis/Pronoia/Aporia) -->
 
   <url>
-    <loc>https://metnos.com/en/architecture/praxis_engine.html</loc>
+    <loc>https://metnos.com/en/architecture/praxis_engine</loc>
     <lastmod>2026-05-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine.html"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine"/>
   </url>
 
   <url>
-    <loc>https://metnos.com/it/architecture/praxis_engine.html</loc>
+    <loc>https://metnos.com/it/architecture/praxis_engine</loc>
     <lastmod>2026-05-25</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine.html"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine"/>
   </url>
 
   <!-- Service -->

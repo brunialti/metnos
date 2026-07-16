@@ -67,12 +67,13 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/synt.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/synt.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/synt.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/synt.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -352,7 +353,7 @@ graph. Three criteria order the candidates:
 <ul>
 <li><strong>Length</strong>: shorter chains are preferred.</li>
 <li><strong>Average mnest weight</strong>: chains made of already-verified handoffs weigh more than speculative chains.</li>
-<li><strong>Sandbox-profile coherence</strong>: a chain that touches different traces of the workspace is suspicious and must be motivated; one that stays inside a single trace (see <a href="../Metnos_Architecture_Intro_v1.html#cap10">Architecture ch. 10</a>) is more reliable.</li>
+<li><strong>Sandbox-profile coherence</strong>: a chain that touches different traces of the workspace is suspicious and must be motivated; one that stays inside a single trace (see <a href="index.html#cap10">Architecture ch. 10</a>) is more reliable.</li>
 </ul>
 
 <h3>What a successful composition leaves behind</h3>
@@ -502,7 +503,7 @@ ONLY the slice it needs &mdash; no cumulative blob.
 <table>
 <thead><tr><th style="width:18%">Stage</th><th style="width:14%">Type</th><th style="width:18%">LLM Tier</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary (23 actions, 23 objects) + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedural</td><td>middle (think=true)</td><td>name <code>{action}_{object}[_qualifier]</code> from the closed vocabulary in <code>runtime/vocab.py</code> + revertible/critical/target_kind. If no combination fits: explicit rejection with reason.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedural</td><td>middle</td><td>args_schema (JSON Schema), capabilities (closed set), reverse_pattern from the deterministic catalogue (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedural</td><td>middle</td><td>4-6 tests in fixed format (setup/input/expect/teardown), at minimum: happy path, empty list, invalid args, domain edge.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creative</td><td>middle</td><td>LLM-readable description structured in four chapters (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). The proposer shows the planner only the head (up to <code>OUT:</code>, excluded). + 6-10 affinity keywords for the composer.</td></tr>
@@ -547,7 +548,7 @@ wise when local can deliver.
 Introspective strategies do not answer a one-off request: they answer the
 structural need to keep the pool small, coherent and reusable. They run at
 night as part of the ager's <em>homeostasis</em>
-(see <a href="../Metnos_Architecture_Intro_v1.html#cap10">Architecture ch. 10</a>),
+(see <a href="index.html#cap10">Architecture ch. 10</a>),
 with low CPU and calls to the <em>fast</em> tier (the most economical one).
 </p>
 
@@ -665,7 +666,7 @@ bonus.
 <p class="lead">
 The cascade is not just cost discipline: it is the mechanism that honours the
 &laquo;cultivate the tools&raquo; telos
-(<a href="../Metnos_Architecture_Intro_v1.html#cap11">Architecture ch. 11</a>):
+(<a href="index.html#cap11">Architecture ch. 11</a>):
 as long as a user request is within the constitution and within the budget,
 synt exhausts the available strategies before answering &laquo;I cannot&raquo;.
 </p>
@@ -901,12 +902,12 @@ Three invariants of the synt audit, guaranteed by loader and runtime:
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The trace of co-activation that synt reads to decide. Proto-mnest at ch. 8.</div>
  </a>
- <a href="../Metnos_Architecture_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The cascade in the big-picture view.</div>
  </a>
- <a href="../Metnos_Architecture_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 11</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos and Vaglio: the non-retreat telos.</div>

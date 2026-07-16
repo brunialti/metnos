@@ -41,17 +41,6 @@
 }
 </script>
 
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://metnos.com/">
-<meta property="og:title" content="Metnos — appunti sul progetto di un assistente">
-<meta property="og:description" content="Metnos è un progetto: definire, prima del codice, come dovrebbe essere fatto un assistente che valga la pena avere. I documenti contano più del codice: architettura, decisioni, un dialogo in quattro giornate sui fini e sui limiti.">
-<meta property="og:locale" content="it_IT">
-<meta property="og:site_name" content="Metnos">
-
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Metnos — appunti sul progetto di un assistente">
-<meta name="twitter:description" content="Prima del codice, la definizione. Un progetto di assistente, documentato come un libro. Entra dal dialogo sui fini e i limiti.">
-
 <style>
 :root {
   --paper: #FCFAF6;
@@ -353,25 +342,26 @@ footer {
   .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
 }
 </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Language">
-  <a href="/it/" class="active" hreflang="it" lang="it">IT</a>
-  <span class="sep">·</span>
-  <a href="/en/" hreflang="en" lang="en">EN</a>
+<a href="/it/" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="hero">
   <div class="eyebrow">un progetto</div>
   <h1>Metnos</h1>
   <div class="byline" style="font-family:'Georgia','Cambria',serif; font-style:italic; font-size:13pt; color:var(--muted); margin:4px 0 18px; letter-spacing:0.2px;">by Roberto Brunialti</div>
-  <div class="subtitle">Un assistente. E i tentativi di dargli dei limiti.</div>
+  <div class="subtitle">Un'architettura per agenti. E il tentativo di renderne governabile il potere.</div>
   <div class="kleos">μῆτις + νοῦς &mdash; <em>m&ecirc;tis</em> (saggezza che si adatta) + <em>no&ucirc;s</em> (intelletto che ragiona): le due forme greche della mente, riunite in un nome. <span style="color:var(--muted); font-size:10.5pt;">&middot; nome tecnico del progetto: <code style="background:transparent; font-family:Consolas,monospace;">metnos</code></span></div>
 </div>
 
 <p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin:30px 0 10px;">
-Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La nota sul codice (<a href="code.html">Code</a>) risponde alla domanda <em>where is the beef?</em>
+Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota sul codice (<a href="code.html">Code</a>) risponde alla domanda <em>where is the beef?</em>
 </p>
 
 <div class="secondary" style="margin:12px 0 46px;">
@@ -379,13 +369,9 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La not
     <span class="label">Quick tour &amp; Survival kit</span>
     <span class="time">20 min</span>
   </a>
-  <a href="Metnos_Architettura_Intro_v1.html">
-    <span class="label">Architettura</span>
-    <span class="time">20 min</span>
-  </a>
   <a href="architecture/">
-    <span class="label">Microprogettazione</span>
-    <span class="time">componenti</span>
+    <span class="label">Manuale di architettura</span>
+    <span class="time">tutorial visuale</span>
   </a>
   <a href="code.html">
     <span class="label">Code</span>
@@ -394,7 +380,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La not
 </div>
 
 <section>
-  <p class="opening">Metnos è il progetto di un assistente: non un chatbot e nemmeno un "agente autonomo" nel senso in cui la parola si è ormai svuotata, ma un sistema pensato per fare al posto dell'utente &mdash; e insieme, con la stessa cura, per <em>sapere quando fermarsi</em>. La parte interessante, di quel sistema, non è il codice: è la definizione. Scrivere <em>prima</em> come dovrebbe essere fatto, quali limiti onora, con quale vocabolario si rivolge all'umano che lo usa. Questa è la parte che il codice, da solo, non potrebbe mai produrre.</p>
+  <p class="opening">Metnos è il progetto di un'architettura self-hosted per agenti governati. L'installazione di riferimento può funzionare come assistente personale o domestico, ma quello è un set di executor, non la definizione del sistema: un altro catalogo ammesso può servire manutenzione software, ricerca, sistemi remoti o un diverso dominio operativo circoscritto. Il core pianifica, giudica, ricorda e registra; gli executor definiscono ciò che si può fare davvero. La parte interessante non è quindi soltanto il codice, ma la definizione che lo precede: quali poteri esistono, quali limiti rispettano e con quale vocabolario il sistema si rivolge all'umano che lo governa.</p>
 </section>
 
 <section>
@@ -409,7 +395,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La not
 
 <section>
   <h2>L'autore e la macchina</h2>
-  <p>Questo progetto è stato scritto con l'aiuto costante di un sistema di intelligenza artificiale. Gran parte delle frasi che stai leggendo, delle figure SVG dei documenti, delle tabelle, delle pagine di microprogettazione sono nate da un dialogo con una macchina che ha saputo tenermi la penna quando la mia si stancava. Non è solo una confessione: è il <em>senso</em> stesso del progetto. Metnos immagina un assistente che <em>dia le ali</em> a chi lo usa, permettendogli di concentrarsi sull'analisi e non sulla realizzazione. Costruirne la definizione con un assistente è già, in piccolo, una prova di concetto. Un esperimento ricorsivo.</p>
+  <p>Questo progetto è stato scritto con l'aiuto costante di un sistema di intelligenza artificiale. Gran parte delle frasi che stai leggendo, delle figure SVG, delle tabelle e dei contratti dei componenti sono nate da un dialogo con una macchina che ha saputo tenermi la penna quando la mia si stancava. Non è solo una confessione: è parte del <em>senso</em> stesso del progetto. Metnos esplora un'architettura che <em>dia le ali</em> alle persone che la governano, permettendo loro di concentrarsi sull'analisi e non sulla realizzazione. Costruirne la definizione con un agente è già, in piccolo, una prova di concetto. Un esperimento ricorsivo.</p>
 </section>
 
 <section>
@@ -451,8 +437,8 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La not
   <div class="group-title">Fondamenti</div>
   <div class="toc-item">
     <div>
-      <a class="t" href="Metnos_Architettura_Intro_v1.html">Architettura &mdash; Introduzione</a>
-      <span class="d">Cos'è Metnos, come è fatto, i quattro strati, i tre livelli di autonomia. Diagrammi SVG, stampabile in PDF.</span>
+      <a class="t" href="architecture/">Manuale di architettura</a>
+      <span class="d">Un tutorial visuale dallo scopo del sistema e dal flusso delle richieste fino all'autorit&agrave; degli executor e ai contratti esatti di ogni componente. Diagrammi SVG, stampabile in PDF.</span>
     </div>
     <span class="time">20 min</span>
   </div>
@@ -506,8 +492,8 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, quattro porte. La not
 </div>
 
 <div class="group">
-  <div class="group-title">Microprogettazione &mdash; <a href="architecture/" style="font-family:inherit; font-size:inherit; border:none; color:var(--muted); text-transform:none; letter-spacing:0;">tutti i componenti</a></div>
-  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">Un documento HTML per ogni componente dell'architettura. Regola: un componente non viene implementato prima che il suo HTML esista e sia approvato. Oggi sono <strong>quattordici canonici v1.1</strong>, allineati al codice al 1&deg; maggio 2026 e tutti bilingui IT+EN.</p>
+  <div class="group-title">Contratti dei componenti</div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">Il manuale contiene l'atlante completo dei componenti. Da l&igrave; ogni nome apre il contratto implementativo canonico: schemi, chiamate, autorit&agrave;, condizioni di errore e verifiche di conformit&agrave;.</p>
 </div>
 </div>
 

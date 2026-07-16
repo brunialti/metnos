@@ -68,6 +68,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 @media (max-width: 720px) {.five-cols { grid-template-columns: 1fr; } }
 @media (max-width: 1024px) and (min-width: 721px) {.five-cols { grid-template-columns: 1fr 1fr; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -184,9 +185,8 @@ output.
 </p>
 
 <div class="callout note">
-<strong>The closed vocabulary, a compass.</strong> Metnos accepts 23
-actions (read, find, set, send, delete, share, &hellip;) and 23 objects
-(files, messages, events, persons, tasks, &hellip;). A skill that speaks of
+<strong>The closed vocabulary, a compass.</strong> Metnos accepts only the
+actions and objects defined in <code>runtime/vocab.py</code>. A skill that speaks of
 <em>append rows to spreadsheet</em> does not produce
 <code>append_rows</code>: it becomes <code>change_files_xlsx</code>.
 One that speaks of <em>label messages</em> does not produce

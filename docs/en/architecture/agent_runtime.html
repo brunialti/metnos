@@ -63,6 +63,7 @@ p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner a { color: #14532d; text-decoration: underline; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -76,10 +77,10 @@ composes the answer, with fine-grained telemetry for each sub-phase
 <code>runtime/agent_runtime.py</code>.
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/agent_runtime.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/agent_runtime.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/agent_runtime.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -385,7 +386,9 @@ The engine's proposer uses <em>wise</em>. The intent extractor and the vaglio us
 </figure>
 
 <div class="callout tip">
-<strong>Specialisation with a single model.</strong> By design the three local tiers point to the same local model. What changes are the <em>per-call parameters</em>: <em>fast</em> asks for direct action with no reasoning, <em>middle</em> an intermediate reasoning, <em>wise</em> activates <code>think=true</code> with a high token budget. Same model, different roles, different outputs. The user obtains several points of view from a single brain.
+<strong>Specialisation by role.</strong> Local tiers may share an endpoint or use
+different backends. Model, reasoning and token budget are role configuration;
+the caller does not depend on those choices.
 </div>
 
 <p>
@@ -393,25 +396,28 @@ Minimal config schema:
 </p>
 <pre>[runtime.llm.fast]
 provider = "llamacpp"
-model = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+model = "&lt;fast-model-id&gt;"
 think = false
 
 [runtime.llm.middle]
 provider = "llamacpp"
-model = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+model = "&lt;middle-model-id&gt;"
 
 [runtime.llm.wise]
 provider = "llamacpp"
-model = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+model = "&lt;wise-model-id&gt;"
 think = true
 
 [runtime.llm.frontier]
-provider = "anthropic"
-model = "claude-opus-4-7"
+provider = "&lt;frontier-provider&gt;"
+model = "&lt;frontier-model-id&gt;"
 </pre>
 
 <p>
-By design the three local tiers share the same model and the same backend: the differentiation is in the per-call parameters (reasoning, token budget) and in the role-specific <em>system prompt</em>. The <em>frontier</em> tier is the only one that leaves the machine, and only if explicitly invoked.
+Tiers declare roles, not a topology: they may share the same model or not.
+Differentiation includes endpoints, per-call parameters and the role-specific
+<em>system prompt</em>. The <em>frontier</em> tier is opt-in and may leave the
+machine only when explicitly invoked.
 </p>
 
 <h1 id="cap4bis">4-bis. Pipeline shape: <code>E+ (F | A)?</code> invariant</h1>
@@ -912,7 +918,7 @@ is caught, marked in <code>last_status='error'</code> with traceback in
 
 <p>
 The scheduler design as builtin is consistent with the decision in the
-<a href="../Metnos_Architecture_Intro_v1.html">Dialogue on executors</a>:
+<a href="index.html">Dialogue on executors</a>:
 system maintenance (decay, nightly synthesis) is part of the runtime,
 not an executor that the system "decides to call". See also the memory
 <em>builtin executors proposals</em> for the future builtin triad
@@ -1103,7 +1109,7 @@ This document describes what the planner does <em>today</em>, validated by tests
   <text x="115" y="84" text-anchor="middle" fill="#475569" font-size="10.5">hash + cosine</text>
   <rect x="40" y="115" width="150" height="48" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
   <text x="115" y="138" text-anchor="middle" fill="#14532d" font-weight="600">L1 autopath</text>
-  <text x="115" y="154" text-anchor="middle" fill="#475569" font-size="10.5">BGE-M3 cluster</text>
+  <text x="115" y="154" text-anchor="middle" fill="#475569" font-size="10.5">semantic cluster</text>
   <rect x="40" y="185" width="150" height="48" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
   <text x="115" y="208" text-anchor="middle" fill="#713f12" font-weight="600">L2 validator</text>
   <text x="115" y="224" text-anchor="middle" fill="#475569" font-size="10.5">re-propose 1&times;</text>
@@ -1140,8 +1146,8 @@ decide on the current turn):
 </p>
 
 <ol>
-<li><strong>L0 &mdash; fast-path</strong>: exact hash match (&lt; 5 ms) plus a BGE-M3 cosine search. Approved from the chat with the &laquo;approve fast-path&raquo; button; wins over autopath.</li>
-<li><strong>L1 &mdash; autopath</strong>: semantic cluster match (BGE-M3) indexed on the intent hash, with champion/challenger scoring and a 30-day TTL on anti-autopaths (plans that have failed, remembered so they are not proposed again).</li>
+<li><strong>L0 &mdash; fast-path</strong>: exact hash match plus cosine search through the configured embedder. Approved from the chat with the &laquo;approve fast-path&raquo; button; wins over autopath.</li>
+<li><strong>L1 &mdash; autopath</strong>: semantic cluster match through the configured embedder, indexed on the intent hash, with champion/challenger scoring and a TTL on anti-autopaths.</li>
 <li><strong>L2 &mdash; validator</strong>: a guard that can re-propose once before the engine runs (on by default).</li>
 <li><strong>L3 &mdash; engine</strong>: the full ReAct loop &mdash; proposer, executor, recovery, terminator. The <code>METNOS_ENGINE</code> selector picks <code>simple|metis|frontier</code>.</li>
 </ol>

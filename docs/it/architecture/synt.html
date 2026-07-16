@@ -65,12 +65,13 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/synt.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/synt.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/synt.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/synt.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -356,7 +357,7 @@ grafo. Tre criteri ordinano le candidate:
 <ul>
 <li><strong>Lunghezza</strong>: catene pi&ugrave; corte sono preferite.</li>
 <li><strong>Peso medio dei mnest</strong>: catene di passaggi gi&agrave; verificati pesano pi&ugrave; di catene speculative.</li>
-<li><strong>Coerenza dei profili di sandbox</strong>: una catena che tocca tracce diverse del workspace &egrave; sospetta e va spiegata; una che resta dentro una traccia (vedi <a href="../Metnos_Architettura_Intro_v1.html#cap10">Architettura cap. 10</a>) &egrave; pi&ugrave; affidabile.</li>
+<li><strong>Coerenza dei profili di sandbox</strong>: una catena che tocca tracce diverse del workspace &egrave; sospetta e va spiegata; una che resta dentro una traccia (vedi <a href="index.html#cap10">Architettura cap. 10</a>) &egrave; pi&ugrave; affidabile.</li>
 </ul>
 
 <h3>Cosa lascia una composizione riuscita</h3>
@@ -509,7 +510,7 @@ indistinto.
 <table>
 <thead><tr><th style="width:18%">Stadio</th><th style="width:14%">Tipo</th><th style="width:18%">Tier LLM</th><th>Output</th></tr></thead>
 <tbody>
-<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso (23 azioni, 23 oggetti) + revertible/critical/target_kind. Se nessuna combinazione calza: rifiuto esplicito, con motivo.</td></tr>
+<tr><td><strong>1. Naming + classification</strong></td><td>procedurale</td><td>middle (think=true)</td><td>nome <code>{azione}_{oggetto}[_qualifier]</code> dal vocabolario chiuso in <code>runtime/vocab.py</code> + revertible/critical/target_kind. Se nessuna combinazione calza: rifiuto esplicito, con motivo.</td></tr>
 <tr><td><strong>2. Signature</strong></td><td>procedurale</td><td>middle</td><td>args_schema (JSON Schema), capabilities (set chiuso), reverse_pattern dal catalogo deterministico (<code>runtime/reverse_patterns.py</code>).</td></tr>
 <tr><td><strong>3. Birth tests</strong></td><td>procedurale</td><td>middle</td><td>4-6 test in formato fisso (setup/input/expect/teardown), almeno: caso felice, lista vuota, args invalidi, edge dominio.</td></tr>
 <tr><td><strong>4. Description + affinity</strong></td><td>creativo</td><td>middle</td><td>description LLM-readable strutturata in quattro capitoli (<code>SCOPO: / PATTERN: / NON: / OUT:</code>). Il proposer mostra al planner solo la testa (fino a <code>OUT:</code> escluso). + 6-10 keyword di affinity per il composer.</td></tr>
@@ -553,7 +554,7 @@ da non valicare: mai ricorrere al tier di frontiera quando il locale ce la fa.
 <p class="lead">
 Le strategie introvertive non rispondono a una richiesta puntuale: rispondono al
 bisogno strutturale di tenere piccolo, coerente e riusabile il pool. Girano
-nottetempo come parte dell'<em>omeostasi</em> dell'ager (vedi <a href="../Metnos_Architettura_Intro_v1.html#cap10">Architettura cap. 10</a>),
+nottetempo come parte dell'<em>omeostasi</em> dell'ager (vedi <a href="index.html#cap10">Architettura cap. 10</a>),
 con basso uso di CPU e chiamate al tier <em>fast</em> (il pi&ugrave; economico).
 </p>
 
@@ -670,7 +671,7 @@ generazione corretta solo per il bonus). Se questo accade, abbassare il bonus.
 <p class="lead">
 La cascata non &egrave; solo disciplina di costo: &egrave; il meccanismo che
 onora il telos &laquo;coltivare gli strumenti&raquo;
-(<a href="../Metnos_Architettura_Intro_v1.html#cap11">Architettura cap. 11</a>):
+(<a href="index.html#cap11">Architettura cap. 11</a>):
 finch&eacute; una richiesta utente &egrave; dentro la costituzione e dentro il
 budget, synt esaurisce le strategie disponibili prima di rispondere
 &laquo;non posso&raquo;.
@@ -908,12 +909,12 @@ Tre invarianti dell'audit di synt, che il loader e il runtime garantiscono:
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">La traccia di co-attivazione che synt legge per decidere. Proto-mnest al cap. 8.</div>
  </a>
- <a href="../Metnos_Architettura_Intro_v1.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 9</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">La cascata nel quadro d'insieme.</div>
  </a>
- <a href="../Metnos_Architettura_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 11</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos e Vaglio: il telos di non-rinuncia.</div>

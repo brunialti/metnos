@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/policy">
  <meta property="og:title" content="Metnos &mdash; policy (tested)">
- <meta property="og:description" content="The Metnos policy: 13 canonical capabilities, 3x13 table per autonomy level, persistent per_target grants, guarantee that a grant can never elevate a denied.">
+ <meta property="og:description" content="The Metnos policy: 18 canonical capabilities, 3x18 table per autonomy level, persistent per_target grants, guarantee that a grant can never elevate a denied.">
  <meta property="og:locale" content="en_US">
  <meta property="og:locale:alternate" content="it_IT">
  <meta property="og:site_name" content="Metnos">
@@ -65,20 +65,21 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 table.policy-table td { text-align: center; }
 table.policy-table td:first-child { text-align: left; font-weight: 600; }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
 <div class="status-banner">
 
 <strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Cluster <code>policy</code> 10/10 green. The registry exposes <strong>13 canonical capabilities</strong> (from <code>fs:read</code> to <code>calendar:read</code>); the autonomy &times; capability table (ReadOnly / Supervised / Full) and the persistent <em>per_target</em> grants are aligned with the code. Reference: <code>runtime/policy.py</code>.
+The registry exposes <strong>18 canonical capabilities</strong>; the autonomy &times; capability table (ReadOnly / Supervised / Full), persistent <em>per_target</em> grants, and conforming-executor admission are aligned with the code. Reference: <code>runtime/policy.py</code>.
 <div class="seq">Status sequence: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/policy.html" hreflang="it" lang="it" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/policy.html" class="active" hreflang="en" lang="en" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/policy.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/policy.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -117,7 +118,7 @@ Cluster <code>policy</code> 10/10 green. The registry exposes <strong>13 canonic
 <h1 id="cap1">1. What policy is</h1>
 
 <p class="lead">
-Policy is the legality filter of Metnos: layer 2 of the architecture (ch. 6 of the <a href="../Metnos_Architecture_Intro_v1.html#cap6">Architecture</a>). For every combination of autonomy level, capability and target it decides one outcome among <em>allowed</em>, <em>denied</em>, <em>approval_required</em>. It is the module that embodies the rules shared between Roberto and the agent: what may be done without asking, what must be asked, what is never done.
+Policy is the legality filter of Metnos: layer 2 of the architecture (ch. 6 of the <a href="index.html#cap6">Architecture</a>). For every combination of autonomy level, capability and target it decides one outcome among <em>allowed</em>, <em>denied</em>, <em>approval_required</em>. It is the module that embodies the rules shared between Roberto and the agent: what may be done without asking, what must be asked, what is never done.
 </p>
 
  <figure>
@@ -165,7 +166,7 @@ The three filters are in series: policy runs first (it is the cheapest, a table 
 <h1 id="cap2">2. Capability Registry</h1>
 
 <p>
-The registry is the closed dictionary of actions Metnos recognises. Thirteen canonical entries, defined in <code>runtime/policy.py:CAPABILITY_REGISTRY</code> (<code>runtime/policy.py:46-121</code>). Each entry is a <code>CapabilitySpec</code> with four attributes:
+The registry is the closed dictionary of actions Metnos recognises. Canonical entries are defined in <code>runtime/policy.py:CAPABILITY_REGISTRY</code>. Each entry is a <code>CapabilitySpec</code> with four attributes:
 </p>
 
 <ul>
@@ -177,6 +178,7 @@ The registry is the closed dictionary of actions Metnos recognises. Thirteen can
 
 <table>
 <tr><th>name</th><th>critical</th><th>default_approval</th><th>target_kind</th><th>description</th></tr>
+<tr><td><code>compute:pure</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>deterministic in-memory computation without external I/O</td></tr>
 <tr><td><code>fs:read</code></td><td>no</td><td><code>per_target</code></td><td><code>path_glob</code></td><td>read files from the local filesystem within declared path_globs</td></tr>
 <tr><td><code>fs:write</code></td><td><strong>yes</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>write/modify files within path_globs (critical)</td></tr>
 <tr><td><code>code:exec</code></td><td><strong>yes</strong></td><td><code>always</code></td><td><code>exact</code></td><td>execute a shell command from a whitelist (e.g. package manager)</td></tr>
@@ -190,10 +192,20 @@ The registry is the closed dictionary of actions Metnos recognises. Thirteen can
 <tr><td><code>time:read</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>read current time and timezones</td></tr>
 <tr><td><code>parse:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>local parsing of known formats (PDF, HTML, JSON, CSV)</td></tr>
 <tr><td><code>calendar:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read events from an authorised calendar</td></tr>
+<tr><td><code>index:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local index managed by Metnos</td></tr>
+<tr><td><code>metnos:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local resource managed by Metnos</td></tr>
+<tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read system diagnostics on an authorised host or device</td></tr>
+<tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>access the network and credentials of an authorised provider</td></tr>
 </table>
 
 <p>
 The registry is closed: <code>record_grant</code> rejects a capability that is not in it (<code>runtime/policy.py:243-244</code>). Adding a capability means modifying the registry in code and running the tests &mdash; no runtime registration. This is a deliberate choice: the action vocabulary is a security asset, not an extension surface freely open.
+</p>
+
+<p>
+<code>provider:access</code> uses the skill binding as its exact target. A manifest
+<code>when</code> clause may narrow it to one backend of one invocation; policy never
+derives this permission from the executor name or a free plan value.
 </p>
 
 <h2>2.1 Reading the registry</h2>
@@ -203,17 +215,18 @@ Three families are <strong>critical</strong>: <code>fs:write</code>, <code>code:
 </p>
 
 <p>
-Four capabilities have <code>default_approval = none</code>: <code>llm:local</code>, <code>channel:in</code>, <code>time:read</code>, <code>parse:local</code>. These are zero-cost, reversible actions, with no side effects on the outside world (listening to a channel, reading a clock, parsing a PDF inside the sandbox). They stay outside the approval flow even at the most conservative level.
+Five capabilities have <code>default_approval = none</code>: <code>compute:pure</code>, <code>llm:local</code>, <code>channel:in</code>, <code>time:read</code>, <code>parse:local</code>. These are local actions with no side effects on the outside world. They stay outside the approval flow even at the most conservative level.
 </p>
 
 <h1 id="cap3">3. Autonomy &times; capability table</h1>
 
 <p>
-The table is the cartesian product of the three autonomy levels (ReadOnly, Supervised, Full) by the 13 capabilities. For each cell an outcome: <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, <span class="v-deny">denied</span>. Generated in <code>runtime/policy.py:_TABLE</code> and <code>_init_table</code> (<code>runtime/policy.py:140-171</code>) according to canonical rules, not hand-written.
+The table is the cartesian product of the three autonomy levels (ReadOnly, Supervised, Full) by the registered capabilities. For each cell an outcome: <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, <span class="v-deny">denied</span>. It is generated by <code>runtime/policy.py:_TABLE</code> and <code>_init_table</code> according to canonical rules, not hand-written.
 </p>
 
 <table class="policy-table">
 <tr><th style="text-align:left;">capability</th><th>ReadOnly</th><th>Supervised</th><th>Full</th></tr>
+<tr><td><code>compute:pure</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>fs:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>fs:write</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>code:exec</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td></tr>
@@ -227,6 +240,10 @@ The table is the cartesian product of the three autonomy levels (ReadOnly, Super
 <tr><td><code>time:read</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>parse:local</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>calendar:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>index:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>metnos:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 </table>
 
 <h2>3.1 The three rules that generate the table</h2>
@@ -236,7 +253,7 @@ The table is not arbitrary: it derives from three rules, one per level, that <co
 </p>
 
 <p>
-<strong>ReadOnly.</strong> Read-only capabilities only, no side effects visible to the outside world. Never write, never send, never exec, never online LLM (which carries an outgoing monetary cost). Read capabilities with <code>default_approval = per_target</code> (<code>fs:read</code>, <code>mail:read</code>, <code>calendar:read</code>) stay <code>approval_required</code>: the most conservative level does not give them up but asks confirmation for each new target. Critical ones and others with default <code>per_target</code> or <code>always</code> become <code>denied</code>.
+<strong>ReadOnly.</strong> Read-only or access capabilities only, no side effects visible to the outside world. Never write, never send, never exec, never online LLM (which carries an outgoing monetary cost). Capabilities with <code>default_approval = per_target</code> (<code>fs:read</code>, <code>mail:read</code>, <code>calendar:read</code>, <code>index:read</code>, <code>metnos:read</code>, <code>system:read</code>, <code>provider:access</code>) stay <code>approval_required</code>: the most conservative level does not give them up but asks confirmation for each new target. Critical ones and others with default <code>per_target</code> or <code>always</code> become <code>denied</code>.
 </p>
 
 <p>
@@ -418,7 +435,7 @@ Three references to existing modules:
 
 <ul>
 <li><code>approval_registry.create_pending</code> queues the request and returns an id;</li>
-<li><code>channels.approval.render_approval_card</code> composes the three-line card and sends it on the originating channel (see <a href="../it/architecture/approval_ux.html">approval_ux</a>);</li>
+<li><code>channels.approval.render_approval_card</code> composes the three-line card and sends it on the originating channel (see <a href="approval_ux.html">approval_ux</a>);</li>
 <li><code>invoke_executor</code> is the same point at which the <a href="sandbox.html">sandbox</a> wraps the command; the <code>autonomy</code> parameter is already pass-through (ch. 6 of <code>sandbox.html</code>).</li>
 </ul>
 
@@ -434,8 +451,8 @@ The module is runnable as a script (<code>runtime/policy.py:360-423</code>): use
 
 <table>
 <tr><th>command</th><th>what it does</th></tr>
-<tr><td><code>python3 -m policy registry</code></td><td>prints one JSON line per each of the 13 capabilities with all attributes.</td></tr>
-<tr><td><code>python3 -m policy table</code></td><td>prints three JSON lines, one per level (ReadOnly/Supervised/Full), with the outcome for each of the 13 capabilities.</td></tr>
+<tr><td><code>python3 -m policy registry</code></td><td>prints one JSON line per capability with all attributes.</td></tr>
+<tr><td><code>python3 -m policy table</code></td><td>prints three JSON lines, one per level (ReadOnly/Supervised/Full), with the outcome for every capability.</td></tr>
 <tr><td><code>python3 -m policy check &lt;level&gt; &lt;capability&gt; [--channel C --sender S --target T]</code></td><td>prints the <code>effective_outcome</code> result. Without <code>--channel/--sender/--target</code> it returns the table-only outcome.</td></tr>
 <tr><td><code>python3 -m policy grants [--channel C] [--sender S] [--all]</code></td><td>lists grants, active by default, all with <code>--all</code>.</td></tr>
 <tr><td><code>python3 -m policy revoke &lt;grant_id&gt;</code></td><td>revokes a grant by id; prints <code>revoked</code> or <code>no-op</code>.</td></tr>
@@ -453,7 +470,7 @@ Cluster <code>policy</code> in the runtime test framework: 10/10 green. Cases co
 
 <table>
 <tr><th>#</th><th>case</th><th>what it verifies</th></tr>
-<tr><td>1</td><td><code>registry_contiene_13_capability_canoniche</code></td><td><code>CAPABILITY_REGISTRY</code> exposes exactly the 13 expected entries, each with the four mandatory attributes.</td></tr>
+<tr><td>1</td><td><code>registry_contains_canonical_capabilities</code></td><td><code>CAPABILITY_REGISTRY</code> exposes the expected entries, each with the four mandatory attributes.</td></tr>
 <tr><td>2</td><td><code>is_allowed_readonly_blocca_write_e_exec</code> <span style="color:#7F1D1D;font-size:9pt;font-weight:700;">[security]</span></td><td>at ReadOnly level: <code>fs:write</code>, <code>code:exec</code>, <code>mail:send</code> are <code>denied</code>.</td></tr>
 <tr><td>3</td><td><code>is_allowed_supervised_richiede_approval_per_critical</code></td><td>at Supervised: <code>fs:write</code> is <code>approval_required</code>; <code>llm:local</code> is <code>allowed</code>; <code>mail:send</code> and <code>code:exec</code> are <code>approval_required</code>.</td></tr>
 <tr><td>4</td><td><code>is_allowed_full_mantiene_always_per_critical_irreversibili</code> <span style="color:#7F1D1D;font-size:9pt;font-weight:700;">[security]</span></td><td>at Full level: <code>mail:send</code> and <code>code:exec</code> stay <code>approval_required</code>; <code>fs:write</code> becomes <code>allowed</code>.</td></tr>
@@ -494,7 +511,7 @@ The three [security]-marked cases are the invariants that bind future evolution 
 <h2>Final notes</h2>
 
 <p>
-Policy is a small module by design: all the complexity of the legality filter lives in two structures readable at a glance (a 13-entry dictionary, a 3&times;13 table) plus a SQLite round-trip for grants. No DSL, no rules expressed in natural language, no runtime configuration that can break by loading a malformed file.
+Policy is a small module by design: all the complexity of the legality filter lives in two structures readable at a glance (a closed dictionary and a generated table) plus a SQLite round-trip for grants. No DSL, no rules expressed in natural language, no runtime configuration that can break by loading a malformed file.
 </p>
 
 <p>

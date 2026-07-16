@@ -68,6 +68,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 @media (max-width: 720px) {.five-cols { grid-template-columns: 1fr; } }
 @media (max-width: 1024px) and (min-width: 721px) {.five-cols { grid-template-columns: 1fr 1fr; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -187,9 +188,8 @@ deterministico: stesso ingresso, stessa uscita.
 </p>
 
 <div class="callout note">
-<strong>Il vocabolario chiuso, una bussola.</strong> Metnos accetta 23
-azioni (read, find, set, send, delete, share, &hellip;) e 23 oggetti
-(files, messages, events, persons, tasks, &hellip;). Una skill che
+<strong>Il vocabolario chiuso, una bussola.</strong> Metnos accetta soltanto le
+azioni e gli oggetti definiti in <code>runtime/vocab.py</code>. Una skill che
 parla di <em>append rows to spreadsheet</em> non genera <code>append_rows</code>: diventa
 <code>change_files_xlsx</code>. Una che parla di <em>label messages</em>
 non genera <code>label_messages</code>: viene rifiutata se non c'&egrave;

@@ -66,17 +66,18 @@ ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.formula { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px 18px; margin: 16px 0; font-family: 'Cambria Math', Cambria, 'Times New Roman', serif; font-size: 12pt; text-align: center; page-break-inside: avoid; }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
  </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 <div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
 <strong>Microprogettazione &mdash; allineata al codice.</strong>
-Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &egrave; popolato in <code>workspace/</code> con i telos canonici; la clausola di non-rinuncia &egrave; integrata nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (comporre, generare, sintetizzare al volo); il tutto &egrave; allineato con l'<a href="../Metnos_Architettura_Intro_v1.html" style="color: #14532d; text-decoration: underline;">Architettura</a> e con la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>&nbsp;+&nbsp;<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>&nbsp;+&nbsp;<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. &Egrave; il riferimento normativo per l'implementazione.
+Documento canonico, verificato dopo l'implementazione: <code>TELOS.md</code> &egrave; popolato in <code>workspace/</code> con i telos canonici; la clausola di non-rinuncia &egrave; integrata nella cascata di <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a> (comporre, generare, sintetizzare al volo); il tutto &egrave; allineato con l'<a href="index.html" style="color: #14532d; text-decoration: underline;">Architettura</a> e con la triade <a href="executor.html" style="color: #14532d; text-decoration: underline;">executor</a>&nbsp;+&nbsp;<a href="mnest.html" style="color: #14532d; text-decoration: underline;">mnest</a>&nbsp;+&nbsp;<a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma</a>. &Egrave; il riferimento normativo per l'implementazione.
 </div>
 
-<nav aria-label="Language" style="position:fixed;top:16px;right:20px;z-index:9999;font-family:'Segoe UI',Calibri,sans-serif;font-size:10pt;letter-spacing:2px;background:#FAFBFC;border:1px solid #d0d7de;border-radius:14px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-<a href="/it/architecture/telos.html" class="active" hreflang="it" lang="it" style="color:#1a1a1a;text-decoration:none;font-weight:700;padding:0 4px;border:none;">IT</a>
-<span style="color:#d0d7de;"> &middot; </span>
-<a href="/en/architecture/telos.html" hreflang="en" lang="en" style="color:#64748B;text-decoration:none;padding:0 4px;border:none;">EN</a>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/telos.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/telos.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
@@ -760,7 +761,7 @@ Leggi.
 <tr>
  <td><strong>Telos di non-rinuncia come Legge 4 della Costituzione</strong></td>
  <td>scartata</td>
- <td>Rompe la grammatica delle Leggi (divieti negativi). Il telos &egrave; una spinta positiva, vive qui. Vedi <a href="../Metnos_Architettura_Intro_v1.html#cap11">Architettura cap. 11</a>.</td>
+ <td>Rompe la grammatica delle Leggi (divieti negativi). Il telos &egrave; una spinta positiva, vive qui. Vedi <a href="index.html#cap11">Architettura cap. 11</a>.</td>
 </tr>
 <tr>
  <td><strong>Reward function appresa da dataset</strong></td>
@@ -887,8 +888,8 @@ nuovi nomi 2-4 livelli (R0..R4).</p>
 
 <h3>Riferimenti interni</h3>
 <ul>
- <li><a href="../Metnos_Architettura_Intro_v1.html#cap11">Architettura, cap. 11</a> &mdash; il quadro d'insieme di telos+vaglio.</li>
- <li><a href="../Metnos_Architettura_Intro_v1.html#cap7">Architettura, cap. 7</a> &mdash; la variante proattiva e l'esempio canonico &laquo;presidiare una casella di posta&raquo; (catena invocata dallo scheduler builtin).</li>
+ <li><a href="index.html#cap11">Architettura, cap. 11</a> &mdash; il quadro d'insieme di telos+vaglio.</li>
+ <li><a href="index.html#cap7">Architettura, cap. 7</a> &mdash; la variante proattiva e l'esempio canonico &laquo;presidiare una casella di posta&raquo; (catena invocata dallo scheduler builtin).</li>
  <li><a href="synt.html">synt.html </a> &mdash; la cascata che il telos di non-rinuncia onora; punteggio R distinto da expected_alignment.</li>
  <li><a href="executor.html">executor.html </a> &mdash; gli artefatti che synt produce e che i telos valutano nel canale di pubblicazione.</li>
  <li><a href="mnest.html">mnest.html </a> &mdash; i proto-mnest che innescano il telos di non-rinuncia.</li>
@@ -919,7 +920,7 @@ nuovi nomi 2-4 livelli (R0..R4).</p>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Gli artefatti che synt produce e che i telos valutano nel momento della pubblicazione.</div>
  </a>
- <a href="../Metnos_Architettura_Intro_v1.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+ <a href="index.html#cap11" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
  <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
  <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 11</div>
  <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Telos e Vaglio nel quadro d'insieme.</div>

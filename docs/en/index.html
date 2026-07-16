@@ -354,25 +354,26 @@ footer {
   .lang-switch { display: none; }
 }
 </style>
+<link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
 <nav class="lang-switch" aria-label="Language">
-  <a href="/it/" hreflang="it" lang="it">IT</a>
-  <span class="sep">·</span>
-  <a href="/en/" class="active" hreflang="en" lang="en">EN</a>
+<a href="/it/" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="hero">
   <div class="eyebrow">a project</div>
   <h1>Metnos</h1>
   <div class="byline" style="font-family:'Georgia','Cambria',serif; font-style:italic; font-size:13pt; color:var(--muted); margin:4px 0 18px; letter-spacing:0.2px;">by Roberto Brunialti</div>
-  <div class="subtitle">An assistant. And the attempts to give it limits.</div>
+  <div class="subtitle">An architecture for agents. And the attempt to make their power governable.</div>
   <div class="kleos">μῆτις + νοῦς &mdash; <em>m&ecirc;tis</em> (the mind that adapts) + <em>no&ucirc;s</em> (the mind that reasons): the two Greek words for mind, joined into one name. <span style="color:var(--muted); font-size:10.5pt;">&middot; technical project name: <code style="background:transparent; font-family:Consolas,monospace;">metnos</code></span></div>
 </div>
 
 <p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin:30px 0 10px;">
-If you would like the <em>how</em> after the <em>why</em>, four doors. The note on the code (<a href="code.html">Code</a>) answers <em>where is the beef?</em>
+If you would like the <em>how</em> after the <em>why</em>, three doors. The note on the code (<a href="code.html">Code</a>) answers <em>where is the beef?</em>
 </p>
 
 <div class="secondary" style="margin:12px 0 46px;">
@@ -380,13 +381,9 @@ If you would like the <em>how</em> after the <em>why</em>, four doors. The note 
     <span class="label">Quick tour &amp; Survival kit</span>
     <span class="time">20 min</span>
   </a>
-  <a href="Metnos_Architecture_Intro_v1.html">
-    <span class="label">Architecture</span>
-    <span class="time">20 min</span>
-  </a>
   <a href="architecture/">
-    <span class="label">Microdesign</span>
-    <span class="time">components</span>
+    <span class="label">Architecture handbook</span>
+    <span class="time">visual tutorial</span>
   </a>
   <a href="code.html">
     <span class="label">Code</span>
@@ -395,7 +392,7 @@ If you would like the <em>how</em> after the <em>why</em>, four doors. The note 
 </div>
 
 <section>
-  <p class="opening">Metnos is the project of an assistant: not a chatbot, and not an "autonomous agent" in the sense in which that expression has by now been drained of meaning — but a system designed to act on the user's behalf, and, with the same care, to <em>know when to stop</em>. The interesting part of such a system is not the code: it is the definition. To write, <em>before</em> writing the code, how it ought to be made, which limits it honours, and in what vocabulary it addresses the human who uses it. That is the part which code, on its own, could never produce.</p>
+  <p class="opening">Metnos is the project of a self-hosted architecture for governed agents. Its reference installation can act as a personal or household assistant, but that is one executor set, not the definition of the system: another admitted catalog can serve software maintenance, research, remote systems or another bounded operational domain. The core plans, judges, remembers and audits; executors define what can actually be done. The interesting part is therefore not only the code but the prior definition: which powers exist, which limits they honour, and in what vocabulary the system addresses the human who governs it.</p>
 </section>
 
 <section>
@@ -410,7 +407,7 @@ If you would like the <em>how</em> after the <em>why</em>, four doors. The note 
 
 <section>
   <h2>The author and the machine</h2>
-  <p>This project has been written with the constant help of an artificial intelligence system. Much of what you are reading, the SVG figures of the documents, the tables, the microdesign pages, were born from a dialogue with a machine that held the pen when mine grew tired. It is not merely a confession: it is the <em>point</em> of the project itself. Metnos imagines an assistant that <em>gives wings</em> to the one who uses it, so that they can focus on analysis rather than on execution. Building its definition with an assistant is already, in miniature, a proof of concept. A recursive experiment.</p>
+  <p>This project has been written with the constant help of an artificial intelligence system. Much of what you are reading, the SVG figures, the tables and the component contracts, were born from a dialogue with a machine that held the pen when mine grew tired. It is not merely a confession: it is part of the <em>point</em> of the project itself. Metnos explores an architecture that <em>gives wings</em> to the people who govern it, so that they can focus on analysis rather than execution. Building its definition with an agent is already, in miniature, a proof of concept. A recursive experiment.</p>
 </section>
 
 <section>
@@ -452,8 +449,8 @@ If you would like the <em>how</em> after the <em>why</em>, four doors. The note 
   <div class="group-title">Foundations</div>
   <div class="toc-item">
     <div>
-      <a class="t" href="Metnos_Architecture_Intro_v1.html">Architecture &mdash; Introduction</a>
-      <span class="d">What Metnos is, how it is built, the four layers, the three levels of autonomy. SVG diagrams, printable as PDF.</span>
+      <a class="t" href="architecture/">Architecture handbook</a>
+      <span class="d">One visual tutorial from the system's purpose and request flow to executor authority and the exact contracts of every component. Inline SVG diagrams, printable as PDF.</span>
     </div>
     <span class="time">20 min</span>
   </div>
@@ -507,8 +504,8 @@ If you would like the <em>how</em> after the <em>why</em>, four doors. The note 
 </div>
 
 <div class="group">
-  <div class="group-title">Microdesign &mdash; <a href="architecture/" style="font-family:inherit; font-size:inherit; border:none; color:var(--muted); text-transform:none; letter-spacing:0;">all components</a></div>
-  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">One HTML document per component of the architecture. Rule: a component is not implemented before its HTML exists and has been approved. Today there are <strong>fourteen canonical v1.1 documents</strong>, aligned with the code as of 1 May 2026 and all bilingual IT+EN.</p>
+  <div class="group-title">Component contracts</div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">The handbook includes the complete component atlas. From there, each component name opens its canonical implementation contract: schemas, calls, authority, failure conditions and conformance checks.</p>
 </div>
 </div>
 
