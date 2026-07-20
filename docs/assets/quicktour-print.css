@@ -773,6 +773,18 @@ dl.gloss dd {
   font-size: 7.3pt !important;
 }
 
+/* Rimandi ad altri documenti del sito: su carta il link non si clicca,
+   quindi l'URL dichiarato in data-url viene composto sotto il titolo. */
+a[data-url]::after {
+  content: attr(data-url);
+  display: block;
+  margin-top: 0.7mm;
+  color: #877d70;
+  font: 400 6.8pt/1.3 "Nimbus Mono PS", "DejaVu Sans Mono", monospace;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
 footer {
   break-before: auto;
   break-inside: avoid;
@@ -786,6 +798,7 @@ footer {
   color: #5f5852 !important;
   font: 400 9pt/1.55 "Metnos Sans", sans-serif !important;
   text-align: center;
+  hyphens: none;
 }
 
 /* Prevent lonely headings and accidental blank trailing fragments. */
