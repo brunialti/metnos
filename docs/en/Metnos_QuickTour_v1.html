@@ -876,8 +876,9 @@ undoable is undoable by construction (a closed catalog of reverse patterns).</li
 <h2>2 · Why it's different</h2>
 
 <p class="lead">
-Self-hosted agents already exist — the terminal kind (OpenClaw and friends) and the
-ecosystem of importable “skills”. Metnos makes different choices across several axes, and
+Agents already exist, in whole families — frameworks you assemble, terminal
+companions, chat-borne butlers (OpenClaw and friends) and the ecosystem of importable
+“skills”. Metnos makes different choices across several axes, and
 for a precise reason: <strong>a local planner is not a frontier model</strong>, and it
 must be put in a position where it cannot go wrong.
 </p>
@@ -910,6 +911,82 @@ must be put in a position where it cannot go wrong.
 <tr><td><strong>Security</strong></td>
 <td>Trust the package author.</td>
 <td>Do <em>not</em> trust the package: the package has to pass the checks.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The map, mid-2026</h3>
+<p class="meta">A snapshot taken in July 2026: names move fast, the families barely at all.</p>
+
+<p><strong>1 · Orchestration frameworks</strong> — LangChain/LangGraph, LlamaIndex,
+CrewAI, AutoGen (now folded into the Microsoft Agent Framework), smolagents. Open
+libraries a developer <em>assembles</em> an agent from. Over the last two years they
+have all settled into the same shape: a graph or an event flow provides
+<em>structural</em> determinism — fixed routing, checkpoints, resume — but inside every
+node the model decides afresh on every run. Tools are free-named functions written by
+whoever assembles the system, and safety is that person's job, not a property of the
+frame. A note apart for smolagents: it has the model write executable Python directly —
+maximum flexibility, and all the trust moves onto the sandbox that contains it.</p>
+
+<p><strong>2 · Model-vendor stacks</strong> — OpenAI (Responses API and Agents SDK),
+Anthropic (Claude Code and the Agent SDK). Polished harnesses around proprietary cloud
+models. Claude Code's permission system — allow, ask, deny, with hooks that block
+outside the model's loop — is the closest mainstream relative of Metnos's approval
+card; but it governs free-form tool names around a remote model, where Metnos governs a
+closed vocabulary around a model that lives at home. On reproducibility the distance is
+sharp: OpenAI calls its own seed “best effort”, and Anthropic's API has no seed at
+all.</p>
+
+<p><strong>3 · Autonomous engineering agents</strong> — Devin, OpenAI Codex, Google
+Jules; on the open side, OpenHands. Maximum autonomy inside an isolated virtual
+machine; the brake sits downstream, in the human review of the pull request. Nearly all
+cloud and metered. OpenHands is the self-hosted exception capable of local models — but
+it remains a programmer executing contained arbitrary code, not an assistant with
+enumerated capabilities.</p>
+
+<p><strong>4 · Self-hosted personal assistants</strong> — Metnos's own family, and this
+is where the comparison bites. The 2026 story is OpenClaw: the same intent — a butler
+in your house, reached over chat, local models welcome — and the opposite governance:
+free-form markdown skills plus MCP servers, permissive by default, human confirmation
+concentrated on payment steps. ZeroClaw, a minimal Rust rewrite, is its wary cousin:
+pairing, isolated workspaces, allowlists. Alongside them: Goose (Block), Letta for
+persistent memory, Khoj for a private index of your documents, and Home Assistant's
+voice assistant — which rediscovered the fastpath principle on its own: deterministic
+intent matching first, the model only as a reserve.</p>
+
+<p><strong>The standard that connects everyone but Metnos</strong> — The Model Context
+Protocol (MCP), born at Anthropic in late 2024 and passed to the Linux Foundation in
+late 2025, has become the universal tool socket: OpenAI, Google and Microsoft adopted
+it, and thousands of servers expose ready-made connectors. Metnos is a deliberate
+abstention. An MCP server declares free-named tools described in prose the model reads
+and trusts: exactly the vector of the <em>tool poisoning</em> the security literature
+documents. The closed, signed vocabulary gives up that ecosystem to guarantee that
+nothing enters the system without an admitted name and a signature; what is needed gets
+translated (below), never grafted raw.</p>
+
+<p><strong>Where the mainstream wins</strong> — Honesty is owed here too. Whoever
+adopts MCP inherits thousands of connectors in an afternoon that Metnos must synthesize
+or hand-write inside its own vocabulary. A frontier model re-invoked on every turn
+handles novel, messy requests better than a local planner on repeatable routes. And the
+managed platforms offer observability, evaluation and scale that a self-hosted project
+does not match. Metnos does not compete on those axes: it competes on provenance,
+reproducibility and boundary — signed tools, a repeatable plan, judgement against your
+telos, data that never leaves your machine.</p>
+
+<h3>Nine systems, one table</h3>
+<div class="table-scroll" role="region" aria-label="Synoptic table of agent systems, 2026" tabindex="0">
+<table>
+<thead><tr><th style="width:15%">System</th><th style="width:28%">Tools</th><th style="width:27%">Planning</th><th>Brake · where it runs</th></tr></thead>
+<tbody>
+<tr><td><strong>LangGraph</strong></td><td>Free-named functions + MCP</td><td>Fixed graph; decisions redone every run</td><td>Human pause in the graph · OSS, optional cloud</td></tr>
+<tr><td><strong>smolagents</strong></td><td>The model writes Python code</td><td>Free ReAct</td><td>External sandbox · OSS, local too</td></tr>
+<tr><td><strong>OpenAI Agents SDK</strong></td><td>Functions + hosted tools + MCP</td><td>Fresh; seed only “best effort”</td><td>Programmed guardrails · cloud-only models</td></tr>
+<tr><td><strong>Claude Code</strong></td><td>Harness tools + MCP</td><td>Fresh; no seed</td><td>Allow·ask·deny permissions + hooks · cloud-only models</td></tr>
+<tr><td><strong>Devin</strong></td><td>Isolated VM with shell and browser</td><td>Frontier, fresh every run</td><td>PR review · metered SaaS</td></tr>
+<tr><td><strong>OpenHands</strong></td><td>Arbitrary code in containers</td><td>Frontier or local model</td><td>Sandbox + review · self-hosting possible</td></tr>
+<tr><td><strong>OpenClaw</strong></td><td>Markdown skills + MCP</td><td>Fresh every run</td><td>Permissive by default · self-hosted, local</td></tr>
+<tr><td><strong>ZeroClaw</strong></td><td>Allowlisted tools</td><td>Fresh every run</td><td>Pairing, isolated workspaces · self-hosted, local</td></tr>
+<tr><td><strong>Metnos</strong></td><td><strong>Closed, signed, synthesized vocabulary</strong></td><td><strong>Deterministic: pinned seed + fastpath</strong></td><td><strong>Telos-scored vaglio + approval card · self-hosted, local</strong></td></tr>
 </tbody>
 </table>
 </div>
@@ -977,7 +1054,8 @@ which combinations it supports.
 
 <h3>Why Metnos did not adopt the standard “skill” format</h3>
 <p>
-The popular skill formats are convenient and dangerous in equal measure: you import a
+The popular skill formats — markdown skills, MCP servers — are convenient and
+dangerous in equal measure: you import a
 package and the assistant <em>executes its code with its own privileges</em>. For an
 assistant that touches your files, mail and shell, that is remote code execution by
 design: one malicious or sloppy package is enough. Metnos chooses <strong>security by
