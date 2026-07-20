@@ -876,8 +876,8 @@ annullabile lo è per costruzione (catalogo chiuso di pattern di reverse).</li>
 <h2>2 · Perché è diverso</h2>
 
 <p class="lead">
-Di agenti ce ne sono già, a famiglie intere — i framework da assemblare, i compagni
-da terminale, i maggiordomi via chat (OpenClaw e simili) e l'ecosistema delle «skill»
+Di agenti ce ne sono già, a famiglie intere — i framework da assemblare, gli agenti
+da terminale, i maggiordomi in chat (OpenClaw e simili) e l'ecosistema delle «skill»
 importabili. Metnos fa scelte diverse su più assi,
 e le fa per una ragione precisa: <strong>un pianificatore locale non è un modello di
 frontiera</strong>, e va messo nelle condizioni di non sbagliare.
@@ -920,76 +920,78 @@ frontiera</strong>, e va messo nelle condizioni di non sbagliare.
 
 <p><strong>1 · Framework di orchestrazione</strong> — LangChain/LangGraph, LlamaIndex,
 CrewAI, AutoGen (oggi confluito nel Microsoft Agent Framework), smolagents. Librerie
-aperte con cui uno sviluppatore <em>assembla</em> il proprio agente. Negli ultimi due
-anni hanno preso tutte la stessa forma: un grafo o un flusso di eventi dà determinismo
-<em>strutturale</em> — instradamento fisso, punti di ripristino, ripresa — ma dentro
-ogni nodo il modello decide da capo a ogni esecuzione. Gli strumenti sono funzioni dal
-nome libero scritte da chi assembla, e la sicurezza è un suo compito, non una proprietà
-del telaio. Nota a parte per smolagents: fa scrivere al modello direttamente codice
-Python da eseguire — massima flessibilità, e tutta la fiducia si sposta sulla sandbox
-che lo contiene.</p>
+aperte con cui uno sviluppatore si costruisce il proprio agente. Negli ultimi due anni
+hanno preso tutte la stessa forma: un grafo o un flusso di eventi garantisce il
+determinismo <em>della struttura</em> — instradamento fisso, punti di salvataggio,
+ripresa dopo un'interruzione — ma dentro ogni nodo il modello decide da capo a ogni
+esecuzione. Gli strumenti sono funzioni dai nomi liberi, scritte dallo sviluppatore; la
+sicurezza è affar suo, non una proprietà del telaio. Caso a sé smolagents, che fa
+scrivere al modello direttamente il codice Python da eseguire: flessibilità massima, e
+tutta la fiducia si sposta sulla sandbox che lo contiene.</p>
 
 <p><strong>2 · Stack dei fornitori di modelli</strong> — OpenAI (Responses API e Agents
-SDK), Anthropic (Claude Code e Agent SDK). Harness rifiniti attorno a modelli
-proprietari in cloud. Il sistema di permessi di Claude Code — allow, ask, deny, con
-hook che bloccano fuori dal ciclo del modello — è il parente mainstream più prossimo
-alla carta di conferma di Metnos; ma governa nomi di strumenti liberi attorno a un
-modello remoto, dove Metnos governa un vocabolario chiuso attorno a un modello di casa.
-Sulla riproducibilità la distanza è netta: OpenAI dichiara il proprio seme «best
-effort», l'API di Anthropic un seme non ce l'ha proprio.</p>
+SDK), Anthropic (Claude Code e Agent SDK): prodotti curatissimi, costruiti attorno a
+modelli proprietari che vivono nel cloud. Il sistema di permessi di Claude Code —
+allow, ask, deny, più hook che bloccano fuori dal ciclo del modello — è il parente più
+prossimo della carta di conferma di Metnos; ma governa strumenti dai nomi liberi
+attorno a un modello remoto, mentre Metnos governa un vocabolario chiuso attorno a un
+modello che abita in casa. Sulla riproducibilità la distanza è netta: OpenAI dichiara
+il suo seme «best effort»; l'API di Anthropic, un seme, non ce l'ha proprio.</p>
 
 <p><strong>3 · Agenti autonomi di ingegneria</strong> — Devin, OpenAI Codex, Google
 Jules; sul versante aperto, OpenHands. Massima autonomia dentro una macchina virtuale
-isolata; il freno sta a valle, nella revisione umana della pull request. Quasi tutti
-cloud e a consumo. OpenHands è l'eccezione self-hosted capace di modelli locali — ma
-resta un programmatore che esegue codice arbitrario contenuto, non un assistente a
-capacità enumerate.</p>
+isolata; il freno sta a valle, nella revisione umana della pull request. Quasi tutti in
+cloud e a consumo. OpenHands è l'eccezione — self-hosted, gira anche su modelli locali
+— ma resta un programmatore che esegue codice arbitrario dentro un contenitore, non un
+assistente dalle capacità enumerate.</p>
 
 <p><strong>4 · Assistenti personali self-hosted</strong> — la famiglia di Metnos, ed è
-qui che il confronto morde. Il caso del 2026 è OpenClaw: stessa intenzione — un
-maggiordomo in casa vostra, raggiunto via chat, con modello anche locale — e governo
-opposto: skill libere in markdown più server MCP, permissivo per impostazione, conferma
-umana concentrata sui passi di pagamento. ZeroClaw, riscrittura minimale in Rust, ne è
-il cugino guardingo: pairing, spazi di lavoro isolati, liste di ammissione. Accanto:
-Goose (Block), Letta per la memoria persistente, Khoj per l'indice privato dei propri
-documenti, e l'assistente vocale di Home Assistant — che ha riscoperto per conto suo il
-principio del fastpath: prima il riconoscimento deterministico dell'intento, il modello
-solo come riserva.</p>
+qui che il confronto morde. Il fenomeno del 2026 è OpenClaw: stessa intenzione — un
+maggiordomo in casa vostra, che risponde in chat, anche con modelli locali — e governo
+opposto: skill libere in markdown più server MCP, permissivo in partenza, conferma
+umana riservata ai pagamenti. ZeroClaw, riscrittura minimale in Rust, ne è il cugino
+guardingo: pairing, spazi di lavoro isolati, liste di ammissione. Accanto a loro Goose
+(Block), Letta per la memoria persistente, Khoj per l'indice privato dei propri
+documenti, e l'assistente vocale di Home Assistant — che ha riscoperto per conto
+proprio il principio del fastpath: prima il riconoscimento deterministico dell'intento,
+il modello solo come riserva.</p>
 
-<p><strong>Lo standard che collega tutti, tranne Metnos</strong> — Il Model Context
+<p><strong>La presa universale, dietro il cancello</strong> — Il Model Context
 Protocol (MCP), nato in Anthropic a fine 2024 e passato a fine 2025 alla Linux
 Foundation, è diventato la presa universale degli strumenti: OpenAI, Google e Microsoft
-l'hanno adottato, migliaia di server espongono connettori pronti. Metnos è
-un'astensione deliberata. Un server MCP dichiara strumenti dal nome libero, descritti
-in prosa che il modello legge e di cui si fida: è esattamente il vettore
-dell'<em>avvelenamento da strumento</em> che la letteratura di sicurezza documenta.
-Il vocabolario chiuso e firmato rinuncia a quell'ecosistema per garantire che nulla
-entri nel sistema senza nome ammesso e senza firma; quel che serve si traduce (più
-sotto), non si innesta crudo.</p>
+l'hanno adottato, migliaia di server espongono connettori pronti. Un client MCP tipico,
+però, legge le descrizioni in prosa che i server dichiarano e se ne fida: è il vettore
+dell'<em>avvelenamento degli strumenti</em> ben documentato dalla letteratura di
+sicurezza. Metnos non ignora quell'ecosistema e non lo innesta crudo: la via dichiarata
+è un executor dedicato che parla MCP — nome ammesso dal vocabolario, firma, sandbox e
+carta di conferma come per ogni altro strumento; il server esterno resta un ospite
+mediato, mai un'autorità. Migliaia di connettori diventano raggiungibili, ma nessuno
+entra senza passare dal cancello.</p>
 
-<p><strong>Dove il mainstream vince</strong> — Onestà dovuta anche qui. Chi adotta MCP
-eredita in un pomeriggio migliaia di connettori che Metnos deve sintetizzare o scrivere
-dentro il proprio vocabolario. Un modello di frontiera rilanciato a ogni turno affronta
-richieste inedite e disordinate meglio di un pianificatore locale su rotte ripetibili.
-E le piattaforme gestite offrono osservabilità, valutazione e scala che un progetto
+<p><strong>Dove il mainstream vince</strong> — Onestà dovuta anche qui. Chi innesta
+MCP senza mediazione eredita in un pomeriggio migliaia di connettori; il cancello di
+Metnos quell'ecosistema lo raggiunge, ma non alla stessa velocità. Un modello di
+frontiera interpellato a ogni turno affronta le richieste inedite e disordinate meglio
+di un pianificatore locale ancorato a rotte ripetibili. E le piattaforme gestite
+offrono osservabilità, strumenti di valutazione e una scalabilità che un progetto
 self-hosted non pareggia. Metnos non gareggia su questi assi: gareggia su provenienza,
 riproducibilità e confine — strumenti firmati, piano ripetibile, giudizio sui vostri
-telos, dati che non lasciano la vostra macchina.</p>
+telos, dati che non lasciano mai la vostra macchina.</p>
 
 <h3>Nove sistemi, una tavola</h3>
 <div class="table-scroll" role="region" aria-label="Tavola sinottica dei sistemi agentici, 2026" tabindex="0">
 <table>
 <thead><tr><th style="width:15%">Sistema</th><th style="width:28%">Strumenti</th><th style="width:27%">Pianificazione</th><th>Freno · dove gira</th></tr></thead>
 <tbody>
-<tr><td><strong>LangGraph</strong></td><td>Funzioni dal nome libero + MCP</td><td>Grafo fisso; decisioni rifatte a ogni esecuzione</td><td>Pausa umana nel grafo · OSS, cloud opzionale</td></tr>
+<tr><td><strong>LangGraph</strong></td><td>Funzioni dai nomi liberi + MCP</td><td>Grafo fisso; decisioni rifatte a ogni esecuzione</td><td>Pausa umana nel grafo · OSS, cloud opzionale</td></tr>
 <tr><td><strong>smolagents</strong></td><td>Il modello scrive codice Python</td><td>ReAct libero</td><td>Sandbox esterna · OSS, anche locale</td></tr>
-<tr><td><strong>OpenAI Agents SDK</strong></td><td>Funzioni + strumenti ospitati + MCP</td><td>Fresca; seme solo «best effort»</td><td>Guardrail programmati · modelli solo cloud</td></tr>
-<tr><td><strong>Claude Code</strong></td><td>Strumenti del harness + MCP</td><td>Fresca; nessun seme</td><td>Permessi allow·ask·deny + hook · modelli solo cloud</td></tr>
-<tr><td><strong>Devin</strong></td><td>VM isolata con shell e browser</td><td>Frontiera, fresca a ogni esecuzione</td><td>Revisione della PR · SaaS a consumo</td></tr>
-<tr><td><strong>OpenHands</strong></td><td>Codice arbitrario in container</td><td>Frontiera o modello locale</td><td>Sandbox + revisione · self-hosted possibile</td></tr>
-<tr><td><strong>OpenClaw</strong></td><td>Skill in markdown + MCP</td><td>Fresca a ogni esecuzione</td><td>Permissivo di default · self-hosted, locale</td></tr>
-<tr><td><strong>ZeroClaw</strong></td><td>Strumenti con liste di ammissione</td><td>Fresca a ogni esecuzione</td><td>Pairing, spazi isolati · self-hosted, locale</td></tr>
-<tr><td><strong>Metnos</strong></td><td><strong>Vocabolario chiuso, firmato, sintetizzato</strong></td><td><strong>Deterministica: seme fisso + fastpath</strong></td><td><strong>Vaglio sui telos + carta di conferma · self-hosted, locale</strong></td></tr>
+<tr><td><strong>OpenAI Agents SDK</strong></td><td>Funzioni + strumenti ospitati + MCP</td><td>Nuova a ogni turno; seme «best effort»</td><td>Guardrail nel codice · modelli solo cloud</td></tr>
+<tr><td><strong>Claude Code</strong></td><td>Strumenti di serie + MCP</td><td>Nuova a ogni turno; nessun seme</td><td>Permessi allow·ask·deny + hook · modelli solo cloud</td></tr>
+<tr><td><strong>Devin</strong></td><td>VM isolata, con shell e browser</td><td>Frontiera, nuova a ogni esecuzione</td><td>Revisione della PR · SaaS a consumo</td></tr>
+<tr><td><strong>OpenHands</strong></td><td>Codice arbitrario in container</td><td>Frontiera o modello locale</td><td>Sandbox + revisione · anche self-hosted</td></tr>
+<tr><td><strong>OpenClaw</strong></td><td>Skill in markdown + MCP</td><td>Nuova a ogni esecuzione</td><td>Permissivo in partenza · self-hosted, locale</td></tr>
+<tr><td><strong>ZeroClaw</strong></td><td>Strumenti con liste di ammissione</td><td>Nuova a ogni esecuzione</td><td>Pairing, spazi isolati · self-hosted, locale</td></tr>
+<tr><td><strong>Metnos</strong></td><td><strong>Vocabolario chiuso, firmato, sintetizzato; MCP mediato</strong></td><td><strong>Deterministica: seme fisso + fastpath</strong></td><td><strong>Vaglio sui telos + carta di conferma · self-hosted, locale</strong></td></tr>
 </tbody>
 </table>
 </div>

@@ -954,19 +954,21 @@ persistent memory, Khoj for a private index of your documents, and Home Assistan
 voice assistant — which rediscovered the fastpath principle on its own: deterministic
 intent matching first, the model only as a reserve.</p>
 
-<p><strong>The standard that connects everyone but Metnos</strong> — The Model Context
-Protocol (MCP), born at Anthropic in late 2024 and passed to the Linux Foundation in
-late 2025, has become the universal tool socket: OpenAI, Google and Microsoft adopted
-it, and thousands of servers expose ready-made connectors. Metnos is a deliberate
-abstention. An MCP server declares free-named tools described in prose the model reads
-and trusts: exactly the vector of the <em>tool poisoning</em> the security literature
-documents. The closed, signed vocabulary gives up that ecosystem to guarantee that
-nothing enters the system without an admitted name and a signature; what is needed gets
-translated (below), never grafted raw.</p>
+<p><strong>The universal socket, behind the gate</strong> — The Model Context Protocol
+(MCP), born at Anthropic in late 2024 and passed to the Linux Foundation in late 2025,
+has become the universal tool socket: OpenAI, Google and Microsoft adopted it, and
+thousands of servers expose ready-made connectors. A typical MCP client, though, reads
+the prose descriptions servers declare and trusts them: that is the vector of the
+<em>tool poisoning</em> the security literature documents at length. Metnos neither
+ignores that ecosystem nor grafts it in raw: the declared route is a dedicated executor
+that speaks MCP — a vocabulary-admitted name, a signature, a sandbox and an approval
+card like any other tool; the external server remains a mediated guest, never an
+authority. Thousands of connectors come within reach, but none enters without passing
+the gate.</p>
 
 <p><strong>Where the mainstream wins</strong> — Honesty is owed here too. Whoever
-adopts MCP inherits thousands of connectors in an afternoon that Metnos must synthesize
-or hand-write inside its own vocabulary. A frontier model re-invoked on every turn
+grafts MCP in raw inherits thousands of connectors in an afternoon; Metnos's gate
+reaches that ecosystem too, just not at the same speed. A frontier model re-invoked on every turn
 handles novel, messy requests better than a local planner on repeatable routes. And the
 managed platforms offer observability, evaluation and scale that a self-hosted project
 does not match. Metnos does not compete on those axes: it competes on provenance,
@@ -986,7 +988,7 @@ telos, data that never leaves your machine.</p>
 <tr><td><strong>OpenHands</strong></td><td>Arbitrary code in containers</td><td>Frontier or local model</td><td>Sandbox + review · self-hosting possible</td></tr>
 <tr><td><strong>OpenClaw</strong></td><td>Markdown skills + MCP</td><td>Fresh every run</td><td>Permissive by default · self-hosted, local</td></tr>
 <tr><td><strong>ZeroClaw</strong></td><td>Allowlisted tools</td><td>Fresh every run</td><td>Pairing, isolated workspaces · self-hosted, local</td></tr>
-<tr><td><strong>Metnos</strong></td><td><strong>Closed, signed, synthesized vocabulary</strong></td><td><strong>Deterministic: pinned seed + fastpath</strong></td><td><strong>Telos-scored vaglio + approval card · self-hosted, local</strong></td></tr>
+<tr><td><strong>Metnos</strong></td><td><strong>Closed, signed, synthesized vocabulary; MCP mediated</strong></td><td><strong>Deterministic: pinned seed + fastpath</strong></td><td><strong>Telos-scored vaglio + approval card · self-hosted, local</strong></td></tr>
 </tbody>
 </table>
 </div>
