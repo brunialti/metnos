@@ -624,6 +624,7 @@ footer {
 }
 footer a { color: inherit; border: none; }
 footer em { color: inherit; }
+.print-cover { display: none; }
 
 /* Responsive */
 @media (max-width: 620px) {
@@ -654,6 +655,7 @@ footer em { color: inherit; }
 }
 </style>
 <link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="../assets/quicktour-print.css" media="print">
 </head>
 <body>
 
@@ -664,6 +666,16 @@ footer em { color: inherit; }
 </nav>
 
 <nav class="back"><a href="index.html">&larr; Indice documentazione</a></nav>
+
+<div class="print-cover" aria-hidden="true">
+  <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="">
+  <div class="print-cover__title">
+    <div class="print-cover__eyebrow">Quick tour · Survival kit</div>
+    <h1>Metnos</h1>
+    <p class="print-cover__deck">Un&rsquo;architettura per agenti governati, estensibili e verificabili.</p>
+  </div>
+  <div class="print-cover__credit">Booklet introduttivo · Roberto Brunialti · 2026</div>
+</div>
 
 <!-- ================= COPERTINA ================= -->
 <div class="hero">
@@ -730,7 +742,7 @@ dati e controllo restano all'operatore.
 <p>Quello che succede a ogni richiesta, in un disegno:</p>
 
 <figure>
-<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fastpath, autopath, proposta tipizzata, vaglio, executor diretto o intelligente, sintetizzatore">
+<svg class="flow" viewBox="0 0 760 576" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Il giro di un turno: intent, fastpath, autopath, proposta tipizzata, vaglio, executor diretto o intelligente, sintetizzatore">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
@@ -826,7 +838,7 @@ dati e controllo restano all'operatore.
   <text x="344" y="519" class="m">conteggi reali, troncamenti dichiarati, undo disponibile dove promesso</text>
   <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
 
-  <text x="40" y="520" class="m">le catene riuscite alimentano il fastpath: la prossima volta, stessa richiesta = replay diretto</text>
+  <text x="40" y="562" class="m">le catene riuscite alimentano il fastpath: la prossima volta, stessa richiesta = replay diretto</text>
 </svg>
 <figcaption><b>Fig. 1</b> — Il giro di un turno. L0 e L1 riusano piani validati; negli altri casi il proposer lavora su un pool ristretto. L'intelligenza interna di un executor non cambia il contratto visto dal planner.</figcaption>
 </figure>
@@ -1151,35 +1163,40 @@ pausa e l'host riceve un avviso — non un silenzio, non un report inventato.
 
 <!-- SCENA 5 -->
 <div class="scene">
-<div class="group-title">Scena 5 · cinque frasi, tre provider</div>
-<h3>Un budget mensile che si aggiorna da solo</h3>
-<p>Domenica mattina, cinque frasi in fila — foglio su Drive, bollette dalle mail,
-riepilogo in un Doc, condivisione, ricorrenza:</p>
-<p class="q">Crea uno spreadsheet «Budget mensile» su Drive con colonne Data,
-Categoria, Importo, Note, Pagato. — Popolalo con le mail degli ultimi 30 giorni che
-contengono «fattura». — Fammi un riassunto per categoria in un Google Doc. —
-Condividi tutto con il familiare. — Aggiornami ogni mattina alle 8.</p>
+<div class="group-title">Scena 5 · documenti multidominio, prova reale</div>
+<h3>Da una cartella eterogenea a un dossier verificabile</h3>
+<p>Una sola richiesta attraversa PDF, Word, Excel e CSV sul PC associato; unisce
+ricerca temporale, deduplicazione, estrazione, controllo incrociato e tre output:</p>
+<p class="q">Nella cartella Documenti/Progetto Atlas, trova PDF, documenti e fogli
+di calcolo modificati negli ultimi 60 giorni. Elimina logicamente i duplicati
+confrontando firme e contenuto, estrai scadenze, importi, persone e decisioni,
+quindi crea un riepilogo ordinato per scadenza e un foglio con origine, data,
+responsabile, importo e livello di confidenza. Segnala dati contraddittori e file
+illeggibili. Salva i risultati in una nuova sottocartella, genera anche un archivio
+compresso, ma non sovrascrivere né cancellare nulla senza approvazione.</p>
 <div class="pipe">
-  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> read_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(solo per le scansioni)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(con carta)</span> <span class="a">→</span> create_tasks(daily@08:00)
+  find_files <span class="a">→</span> filter_entries <span class="note">(60 giorni)</span> <span class="a">→</span> read_files <span class="note">(auto + firme)</span> <span class="a">→</span> extract_entries <span class="a">→</span> sort_entries <span class="a">→</span> describe_entries <span class="a">→</span> create_dirs + write_files <span class="a">→</span> create_files_spreadsheet <span class="a">→</span> find_files <span class="a">→</span> compress_files
 </div>
 <div class="reply">
-3 bollette estratte: energia €213,47 · rifiuti €281,67 · telefono €165,25 —
-totale €660,39. Foglio e Doc creati; condivisi in sola lettura. Domani alle 8:00
-ricostruisco il foglio con le mail nuove.
+6 file candidati · 1 duplicato eliminato logicamente · 5 sorgenti uniche · 7 righe
+estratte. Contraddizione segnalata: budget approvato €120.000 con scadenza 30/09,
+revisione €135.000 con scadenza 15/09. Un PDF è illeggibile. Creati in una nuova
+sottocartella: <code>riepilogo.md</code>, <code>dati_estratti.xlsx</code> e
+<code>risultati.zip</code>.
 </div>
 <div class="meta">
-  <b>provider</b> Google Workspace (OAuth vostro) + IMAP cifrato + scheduler locale ·
-  <b>privacy</b> il pianificatore gira in casa; in rete escono solo le chiamate API ai VOSTRI documenti ·
-  <b>conferme</b> solo la condivisione (capability in uscita) ·
-  <b>tempo totale</b> 2–3 minuti di conversazione
+  <b>formati</b> PDF + DOCX + XLSX + CSV, letti in un unico flusso ·
+  <b>controlli</b> hash binario + firma + hash del contenuto, anomalie deterministiche ·
+  <b>sicurezza</b> output create-only; nessuna sovrascrittura o cancellazione ·
+  <b>collocazione</b> i file restano sul PC Windows associato
 </div>
 <div class="truth">
-Dal test E2E con bollette vere: una scansione senza strato testo è passata da OCR
-(Tesseract, ~30 s/pagina) con estrazione corretta dell'importo; sull'altra bolletta
-l'estrazione LLM ha preso fornitore e importo ma ha <em>perso la data di scadenza</em>
-(il prefiltro aveva tagliato la sezione giusta). L'estrazione da documenti resta
-probabilistica: i numeri scritti nel foglio sono quelli letti, non inventati — ma
-un campo può mancare, e va detto.
+Prova E2E sul PC Windows reale: 11 passaggi su 11 riusciti in 74,9 s; foglio con
+intestazione più 7 righe, ZIP con i due risultati richiesti e hash degli 8 input
+invariati. Il livello di confidenza non trasforma una stima in certezza: per questo
+file illeggibili, duplicati e valori in conflitto restano visibili nel riepilogo.
+La ricevuta finale elenca cartella e tre artefatti; non espone la tabella tecnica
+dell'archiviatore.
 </div>
 </div>
 
@@ -1718,21 +1735,15 @@ la ricorrenza; può concedere territori revocabili.</dd>
 <p style="margin: 28px 0 6px;"><a class="enter" href="Metnos_Glossario_v1.html">Il Glossario completo</a></p>
 <p class="meta">Voci alfabetiche con rimandi alle fonti canoniche.</p>
 
+<div class="further-reading">
 <h3>Continua a leggere</h3>
 <div class="toc">
   <div class="toc-item">
     <div>
-      <a class="t" href="architecture/index.html">Architettura — Introduzione</a>
-      <span class="d">Il sistema d'insieme: topologia, strati, il flusso di una richiesta, i principi.</span>
+      <a class="t" href="architecture/index.html">Manuale di architettura</a>
+      <span class="d">La visione d'insieme e l'atlante completo dei componenti: topologia, flusso, autorità e contratti.</span>
     </div>
-    <span class="time">Fondamenti · 20 min</span>
-  </div>
-  <div class="toc-item">
-    <div>
-      <a class="t" href="architecture/">Indice della microprogettazione</a>
-      <span class="d">Una pagina per sottosistema, IT+EN, ricche di diagrammi: pianificatore, synt, vaglio, sandbox, skill, fast path, e il resto.</span>
-    </div>
-    <span class="time">Indice completo</span>
+    <span class="time">Manuale completo · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
@@ -1748,6 +1759,7 @@ la ricorrenza; può concedere territori revocabili.</dd>
     </div>
     <span class="time">Nota · 5 min</span>
   </div>
+</div>
 </div>
 </section>
 

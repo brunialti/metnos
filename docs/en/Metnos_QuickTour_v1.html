@@ -624,6 +624,7 @@ footer {
 }
 footer a { color: inherit; border: none; }
 footer em { color: inherit; }
+.print-cover { display: none; }
 
 /* Responsive */
 @media (max-width: 620px) {
@@ -654,6 +655,7 @@ footer em { color: inherit; }
 }
 </style>
 <link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="../assets/quicktour-print.css" media="print">
 </head>
 <body>
 
@@ -664,6 +666,16 @@ footer em { color: inherit; }
 </nav>
 
 <nav class="back"><a href="index.html">&larr; Documentation index</a></nav>
+
+<div class="print-cover" aria-hidden="true">
+  <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="">
+  <div class="print-cover__title">
+    <div class="print-cover__eyebrow">Quick tour · Survival kit</div>
+    <h1>Metnos</h1>
+    <p class="print-cover__deck">An architecture for governed, extensible and verifiable agents.</p>
+  </div>
+  <div class="print-cover__credit">Introductory booklet · Roberto Brunialti · 2026</div>
+</div>
 
 <!-- ================= COVER ================= -->
 <div class="hero">
@@ -730,7 +742,7 @@ the operator.
 <p>What happens on every request, in one drawing:</p>
 
 <figure>
-<svg class="flow" viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One turn end to end: intent, fastpath, autopath, typed proposal, vaglio, direct or intelligent executor, synthesizer">
+<svg class="flow" viewBox="0 0 760 576" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One turn end to end: intent, fastpath, autopath, typed proposal, vaglio, direct or intelligent executor, synthesizer">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
       <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
@@ -826,7 +838,7 @@ the operator.
   <text x="344" y="519" class="m">real counts, declared truncations, undo available where promised</text>
   <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
 
-  <text x="40" y="520" class="m">successful chains feed the fastpath: next time, the same request = direct replay</text>
+  <text x="40" y="562" class="m">successful chains feed the fastpath: next time, the same request = direct replay</text>
 </svg>
 <figcaption><b>Fig. 1</b> — One turn end to end. L0 and L1 reuse validated plans; otherwise the proposer sees a narrow routing pool. Intelligence inside an executor does not change the contract visible to the planner.</figcaption>
 </figure>
@@ -1148,35 +1160,40 @@ host gets a notice — not silence, not an invented report.
 
 <!-- SCENE 5 -->
 <div class="scene">
-<div class="group-title">Scene 5 · five sentences, three providers</div>
-<h3>A monthly budget that updates itself</h3>
-<p>Sunday morning, five sentences in a row — a sheet on Drive, bills from the mail,
-a recap in a Doc, sharing, recurrence:</p>
-<p class="q">Create a spreadsheet “Monthly budget” on Drive with columns Date,
-Category, Amount, Notes, Paid. — Fill it from the last 30 days of mail containing
-“invoice”. — Make me a per-category recap in a Google Doc. — Share everything with
-my family member. — Update me every morning at 8.</p>
+<div class="group-title">Scene 5 · cross-domain documents, tested live</div>
+<h3>From a mixed folder to a verifiable dossier</h3>
+<p>One request crosses PDF, Word, Excel and CSV files on the paired PC, combining
+time filtering, deduplication, extraction, cross-checking and three outputs:</p>
+<p class="q">In the Documents/Project Atlas folder, find PDFs, documents and
+spreadsheets modified in the last 60 days. Logically remove duplicates by comparing
+signatures and content; extract deadlines, amounts, people and decisions; then
+create a deadline-ordered summary and a sheet with source, date, owner, amount and
+confidence level. Flag conflicting data and unreadable files. Save the results in a
+new subfolder and also create a compressed archive, but do not overwrite or delete
+anything without approval.</p>
 <div class="pipe">
-  create_files_spreadsheet <span class="a">→</span> write_files_spreadsheet <span class="a">→</span> read_messages <span class="a">→</span> classify_entries <span class="a">→</span> read_files_ocr <span class="note">(scans only)</span> <span class="a">→</span> compute_entries <span class="a">→</span> create_files_doc + write_files_doc <span class="a">→</span> find_contacts <span class="a">→</span> share_files <span class="note">(with card)</span> <span class="a">→</span> create_tasks(daily@08:00)
+  find_files <span class="a">→</span> filter_entries <span class="note">(60 days)</span> <span class="a">→</span> read_files <span class="note">(auto + signatures)</span> <span class="a">→</span> extract_entries <span class="a">→</span> sort_entries <span class="a">→</span> describe_entries <span class="a">→</span> create_dirs + write_files <span class="a">→</span> create_files_spreadsheet <span class="a">→</span> find_files <span class="a">→</span> compress_files
 </div>
 <div class="reply">
-3 bills extracted: energy €213.47 · waste €281.67 · telecom €165.25 —
-total €660.39. Sheet and Doc created; shared read-only. Tomorrow at 8:00 I'll
-rebuild the sheet with the new mail.
+6 candidate files · 1 duplicate removed logically · 5 unique sources · 7 extracted
+rows. Conflict flagged: approved budget €120,000 due 09/30, revision €135,000 due
+09/15. One PDF is unreadable. Created in a new subfolder:
+<code>riepilogo.md</code>, <code>dati_estratti.xlsx</code> and
+<code>risultati.zip</code>.
 </div>
 <div class="meta">
-  <b>providers</b> Google Workspace (your OAuth) + encrypted IMAP + local scheduler ·
-  <b>privacy</b> the planner runs at home; the only network traffic is API calls to YOUR documents ·
-  <b>consent</b> only the share (an outbound capability) ·
-  <b>total time</b> 2–3 minutes of conversation
+  <b>formats</b> PDF + DOCX + XLSX + CSV, read in one flow ·
+  <b>checks</b> binary hash + signature + content hash, deterministic anomalies ·
+  <b>safety</b> create-only outputs; no overwriting or deletion ·
+  <b>placement</b> files stay on the paired Windows PC
 </div>
 <div class="truth">
-From the E2E test with real bills: a scan with no text layer fell back to OCR
-(Tesseract, ~30 s/page) and the amount came out right; on the other bill the LLM
-extraction got vendor and amount but <em>missed the due date</em> (the prefilter had
-cut the right section). Document extraction stays probabilistic: the numbers written
-to the sheet are the ones read, never invented — but a field can be missed, and that
-deserves saying.
+Live E2E on the actual Windows PC: 11 of 11 steps succeeded in 74.9 seconds; the
+sheet contains one header plus 7 data rows, the ZIP contains the two requested
+results, and all 8 input hashes stayed unchanged. A confidence level does not turn
+an estimate into certainty, so unreadable files, duplicates and conflicting values
+remain visible in the summary. The final receipt lists the folder and all three
+artifacts instead of exposing the archiver's technical table.
 </div>
 </div>
 
@@ -1710,21 +1727,15 @@ recurrence; it can grant revocable territories.</dd>
 <p style="margin: 28px 0 6px;"><a class="enter" href="Metnos_Glossary_v1.html">The full Glossary</a></p>
 <p class="meta">Alphabetical entries with links to canonical sources.</p>
 
+<div class="further-reading">
 <h3>Keep reading</h3>
 <div class="toc">
   <div class="toc-item">
     <div>
-      <a class="t" href="architecture/index.html">Architecture — Introduction</a>
-      <span class="d">The system at a glance: topology, layers, the flow of a request, the principles.</span>
+      <a class="t" href="architecture/index.html">Architecture handbook</a>
+      <span class="d">The system view and complete component atlas: topology, request flow, authority, and contracts.</span>
     </div>
-    <span class="time">Foundations · 20 min</span>
-  </div>
-  <div class="toc-item">
-    <div>
-      <a class="t" href="architecture/">Micro-design index</a>
-      <span class="d">One page per subsystem, IT+EN, diagram-rich: planner, synt, vaglio, sandbox, skills, fast path, and the rest.</span>
-    </div>
-    <span class="time">Full index</span>
+    <span class="time">Complete handbook · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
@@ -1740,6 +1751,7 @@ recurrence; it can grant revocable territories.</dd>
     </div>
     <span class="time">Note · 5 min</span>
   </div>
+</div>
 </div>
 </section>
 

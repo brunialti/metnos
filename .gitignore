@@ -100,6 +100,7 @@ docs/en/architecture/*
 docs/assets/*
 !docs/assets/architecture-flow.png
 !docs/assets/metnos.css
+!docs/assets/quicktour-print.css
 
 # --- Doc agente / harness Claude (internal) ------------------------------
 AGENTS.md
