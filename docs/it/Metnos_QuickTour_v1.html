@@ -864,7 +864,7 @@ Il dispositivo esegue, non diventa un secondo agente.
 <a href="architecture/remote_executors.html">Executor remoti</a>.</li>
 <li><strong>È riproducibile come il software, non come un prompt.</strong> Il pianificatore
 locale è vincolato a un vocabolario chiuso, il seme di generazione è fisso, i pareggi
-fra strumenti simili si rompono con affinità curate — non a moneta. Si può testare,
+fra strumenti simili si rompono con affinità curate — non a testa o croce. Si può testare,
 verificare le regressioni, fidarsi.</li>
 <li><strong>Non mente sull'esito.</strong> I conteggi riflettono ciò che è stato
 <em>davvero</em> fatto; i troncamenti vengono dichiarati; ogni azione che si dichiara
@@ -1348,7 +1348,7 @@ che il pianificatore trasforma nelle solite catene di executor.</p>
 db locale, cerca per ciascuna le issue simili già risolte, classificala e analizzala
 col tier frontier, salva la bozza di risposta con stato «prepared», e avvisami.</p>
 <p class="q">Dopo la mia approvazione: leggi dal db le issue «approved» non ancora
-pubblicate, pubblica la risposta come commento su GitHub, segnale «posted».</p>
+pubblicate, pubblica la risposta come commento su GitHub, segnala «posted».</p>
 <div class="pipe">
   find_issues_github <span class="a">→</span> find_issues <span class="note">(dedup nel db locale)</span> <span class="a">→</span> classify_entries + consult_frontier <span class="a">→</span> write_issues("prepared") <span class="a">→</span> <span class="note">approvazione umana</span> <span class="a">→</span> send_messages_github <span class="a">→</span> write_issues("posted")
 </div>
@@ -1358,7 +1358,7 @@ pubblicate, pubblica la risposta come commento su GitHub, segnale «posted».</p
   <b>scheduling</b> una frase: «crea un task ricorrente ogni 30 minuti: …»
 </div>
 <div class="truth">
-È un esperimento dichiarato di dogfooding: un'istanza di Metnos che aiuta a mantenere
+È un esperimento dichiarato: un'istanza di Metnos che aiuta a mantenere
 Metnos. Se il tier frontier è giù o fuori budget, l'issue resta «new» e viene marcata
 per trattamento manuale — mai una risposta inventata, mai uno skip silenzioso.
 </div>
@@ -1472,7 +1472,7 @@ scegliere — accenderlo, ripetere altrove, o restare sul server.
 Metnos gira su una macchina Linux vostra. <strong>I livelli LLM sono ruoli
 astratti</strong>, non modelli fissati: un endpoint su CPU, un modello locale o
 remoto che già servite e un eventuale ripiego di frontiera sono percorsi di prima
-classe. Telefoni e laptop sono <em>clienti</em>:
+classe. Telefoni e laptop sono <em>client</em>:
 la mente, la memoria e l'audit vivono su una macchina sola.
 </p>
 
@@ -1757,7 +1757,7 @@ rotta. Nessuna GPU è richiesta per principio.</p>
 <span class="p">$</span> bash install/bootstrap.sh --check   <span class="c"># solo verifica: non scrive nulla</span>
 <span class="p">$</span> bash install/bootstrap.sh           <span class="c"># interattivo, sei fasi, idempotente</span></pre>
 
-<p>E il supporto è parte dell'esperimento: le issue del repo vengono triagiate da
+<p>E il supporto è parte dell'esperimento: le issue del repo vengono istruite da
 un'istanza di Metnos (scena 8) — bozze preparate dal sistema, pubblicate solo dopo
 approvazione umana. Se l'assistente non sa aiutarvi a far girare l'assistente, quello
 è un bug che vogliamo vedere.</p>
