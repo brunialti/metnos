@@ -773,6 +773,11 @@ dl.gloss dd {
   font-size: 7.3pt !important;
 }
 
+/* Il rimando alla versione PDF non ha senso dentro il PDF stesso. */
+.pdf-dl {
+  display: none !important;
+}
+
 /* Rimandi ad altri documenti del sito: su carta il link non si clicca,
    quindi l'URL dichiarato in data-url viene composto sotto il titolo. */
 a[data-url]::after {
