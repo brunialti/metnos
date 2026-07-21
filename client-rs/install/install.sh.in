@@ -1,0 +1,103 @@
+#!/bin/sh
+# metnos-client — installer Linux (§5.3 executor remoti).
+# Servito da agent_mirror; la UI /admin/devices lo rende con METNOS_SERVER e
+# METNOS_TOKEN gia' in ambiente. Zero prerequisiti esotici (static-link musl):
+# servono solo curl e openssl (verifica firma).
+#
+# Trust anchor: la pubkey del server e' PINNATA qui sotto (unico segreto che
+# lo script porta). Il binario e' verificato Ed25519 contro di essa; una
+# corruzione in transito (ISP/proxy) fa fallire la firma -> riscarico.
+set -eu
+
+SERVER_PUBKEY_DER_B64='@@SERVER_PUBKEY_DER_B64@@'
+
+: "${METNOS_SERVER:?METNOS_SERVER non impostato (atteso dalla UI)}"
+: "${METNOS_TOKEN:?METNOS_TOKEN non impostato (atteso dalla UI)}"
+
+log() { printf '==> %s\n' "$*" >&2; }
+die() { printf 'ERRORE: %s\n' "$*" >&2; exit 1; }
+
+command -v curl >/dev/null 2>&1 || die "curl richiesto"
+command -v openssl >/dev/null 2>&1 || die "openssl richiesto (verifica firma Ed25519)"
+
+arch=$(uname -m)
+case "$arch" in
+  x86_64|amd64)   target="x86_64-unknown-linux-musl" ;;
+  aarch64|arm64)  target="aarch64-unknown-linux-musl" ;;
+  *) die "architettura non supportata: $arch" ;;
+esac
+
+version=$(curl -fsSL "$METNOS_SERVER/agent/client/manifest.json" \
+  | sed -n 's/.*"latest"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+[ -n "$version" ] || die "impossibile leggere la versione dal manifest"
+log "metnos-client v$version ($target)"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+printf '%s' "$SERVER_PUBKEY_DER_B64" | openssl base64 -d -A > "$tmp/pub.der" 2>/dev/null \
+  || die "pubkey pinnata non valida"
+
+base="$METNOS_SERVER/agent/client/$version/$target"
+bin="$tmp/metnos-client"
+
+ok=0
+i=1
+while [ "$i" -le 3 ]; do
+  if curl -fsSL "$base/metnos-client" -o "$bin" \
+     && curl -fsSL "$base/metnos-client.sig" -o "$bin.sig" \
+     && openssl pkeyutl -verify -pubin -inkey "$tmp/pub.der" -keyform DER \
+          -rawin -in "$bin" -sigfile "$bin.sig" >/dev/null 2>&1; then
+    ok=1; break
+  fi
+  log "firma non verificata o download fallito (tentativo $i/3), riscarico"
+  i=$((i + 1))
+done
+[ "$ok" -eq 1 ] || die "firma del binario non verificata dopo 3 tentativi"
+log "firma Ed25519 verificata"
+
+dest="$HOME/.local/bin/metnos-client"
+mkdir -p "$HOME/.local/bin"
+install -m 0755 "$bin" "$dest"
+log "installato in $dest"
+
+"$dest" register --server "$METNOS_SERVER" --token "$METNOS_TOKEN" \
+  || die "register fallito (token scaduto o gia' usato?)"
+
+if command -v systemctl >/dev/null 2>&1; then
+  unit_dir="$HOME/.config/systemd/user"
+  mkdir -p "$unit_dir"
+  cat > "$unit_dir/metnos-client.service" <<EOF
+[Unit]
+Description=Metnos remote executor client
+After=network-online.target
+# Self-update robusto: mai arrendersi a rilanciare (il probation/rollback lato
+# client previene i loop di crash da update; qui garantiamo che il poller torni
+# sempre su).
+StartLimitIntervalSec=0
+
+[Service]
+# Crash-safe: se l'exe manca (crash a meta' swap: rinominato in .old ma non
+# ancora rimpiazzato) ripristina il known-good PRIMA di avviare. Il '-' ignora
+# l'esito (no-op quando l'exe c'e'). Rete lato-supervisor gemella di
+# restore_exe_if_missing lato-client (che non puo' girare se l'exe manca).
+ExecStartPre=-/bin/sh -c '[ -x "$dest" ] || { [ -f "$dest.old" ] && mv -f "$dest.old" "$dest"; }'
+ExecStart=$dest run --server $METNOS_SERVER
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+  systemctl --user daemon-reload 2>/dev/null || true
+  if systemctl --user enable --now metnos-client.service 2>/dev/null; then
+    command -v loginctl >/dev/null 2>&1 && loginctl enable-linger "$(id -un)" 2>/dev/null || true
+    log "servizio metnos-client attivo (systemd --user, linger ON)"
+  else
+    log "user bus assente: avvia manualmente '$dest run --server $METNOS_SERVER'"
+  fi
+else
+  log "systemctl assente: avvia manualmente '$dest run --server $METNOS_SERVER'"
+fi
+
+log "fatto."

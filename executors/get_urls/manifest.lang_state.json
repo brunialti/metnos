@@ -1,0 +1,62 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:8e4395df417ca301a73a5e9fa07e244e8a6d5d1afc448ee009e083ea5af316af",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:33272a7fc26acc56472dbbfd0a74a23859d735f594f034fd11537858dacf251e",
+      "source_lang": "it",
+      "source_hash": "sha256:8e4395df417ca301a73a5e9fa07e244e8a6d5d1afc448ee009e083ea5af316af"
+    }
+  },
+  "args.timeout_s.description": {
+    "it": {
+      "version_hash": "sha256:9d0a16bcf208c9f24f0d755f99e016c28879b565ff85b09381df5248a810f2d3",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:9d0a16bcf208c9f24f0d755f99e016c28879b565ff85b09381df5248a810f2d3",
+      "version_hash": "sha256:8f7091f7ad0343f09a6bb7efdeee87ff17d5cce722353228b0d1909ecb4c56e9"
+    }
+  },
+  "args.url.description": {
+    "it": {
+      "version_hash": "sha256:c8a07e751761e0a9b89eba4f1eec6c9fc65705b4c08863a2226f197d1dcf46a3",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:c8a07e751761e0a9b89eba4f1eec6c9fc65705b4c08863a2226f197d1dcf46a3",
+      "version_hash": "sha256:2ab3654e32879763661253396ecea507d9012b9cbb0b74b9690a314f0427fa97"
+    }
+  },
+  "args.urls.description": {
+    "it": {
+      "version_hash": "sha256:4f92b5c38d93d6e737098adfc082ad7cab0111bfe0453a0738a0ca6474f83efe",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:4b12486e5d45a950a058b4d3ae53b6e93c030f8b3425ce31c17ae1e4ddbfda71",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.method.description": {
+    "it": {
+      "version_hash": "sha256:25e1abd5bcccd635df2929ea160ef34f9b90e725243eee361745e8e69b5693aa",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:4724deadf04e1d0ed19b1c749aa3fc6e796b99c305f2b6975a775ed9517785b9",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

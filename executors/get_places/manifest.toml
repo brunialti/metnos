@@ -1,0 +1,125 @@
+# Manifest dell'executor `get_places` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale. Vettoriale per costruzione.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "get_places"
+version     = "0.4.0"
+author      = "Roberto Brunialti"
+affinity    = ["get", "place", "luogo", "reverse", "geocode", "coordinate", "indirizzo", "city", "GPS"]
+revertible  = false
+lifecycle   = "active"
+platforms   = ["linux"]
+
+[description]
+it = "SCOPO: ottiene il nome del luogo da coordinate GPS. PATTERN: get_places(coords=[{lat,lon}]) o from_step=N. NON: cerca per testo (-> find_places). OUT: entries=[{place}]."
+en = "SCOPO: gets place name from GPS coordinates. PATTERN: get_places(coords=[{lat,lon}]) or from_step=N. NON: text search (-> find_places). OUT: entries=[{place}]."
+
+[code]
+files  = ["get_places.py"]
+digest = "sha256:52ba886cccc18350e9a12b9be860759de9d468e1c723f77cf946e74039170a26"
+
+[args]
+type     = "object"
+required = []
+requires_one_of = [["coords", "entries", "from_step"]]
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Intero >=1 dello step precedente; il runtime lo risolve in `entries` con campo `gps`; alternativo a `coords`, es. `from_step=1`."
+en = "Integer >=1 for the previous step; the runtime resolves it to `entries` with a `gps` field; alternative to `coords`, e.g. `from_step=1`."
+
+[args.properties.coords]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.coords.description]
+it = "Lista di coordinate {lat, lon} costruite ad hoc. Mutuamente esclusiva con `from_step`. Output: lista {lat, lon, place}."
+en = "List of ad hoc constructed coordinates {lat, lon}. Mutually exclusive with `from_step`. Output: list {lat, lon, place}."
+
+[args.properties.entries]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.entries.description]
+it = "Lista già risolta dal runtime, con coordinate in `gps.lat` e `gps.lon`; ogni elemento risolto viene restituito con il campo `place`."
+en = "List already resolved by the runtime, with coordinates in `gps.lat` and `gps.lon`; each resolved item is returned with the `place` field."
+
+[placement]
+scope = "server"
+device_ok = false
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  entries: Array<{
+    lat?: number,
+    lon?: number,
+    gps?: {lat?: number, lon?: number},
+    place: str
+  }>,
+  failed: Array<{
+    index: int,
+    lat?: number,
+    lon?: number,
+    error_class: str,
+    error_code: str,
+    error: str
+  }>,
+  places_resolved: int,
+  places_unknown: int,
+  places_failed: int,
+  place_warning?: str,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "network:http"
+hint = ["maps.googleapis.com", "127.0.0.1", "localhost"]
+
+[[tests]]
+name   = "args_invalidi_nessuno_dei_due"
+input  = { }
+expect = { ok = false, error_contains = "Manca un argomento obbligatorio", field_eq = { error_code = "coordinates_missing" } }
+
+[[tests]]
+name   = "args_invalidi_entrambi"
+input  = { coords = [], entries = [] }
+expect = { ok = false, error_contains = "Argomenti non validi", field_eq = { error_code = "coordinates_conflict" } }
+
+[[tests]]
+name   = "lista_coords_vuota_ok"
+input  = { coords = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "lista_entries_vuota_ok"
+input  = { entries = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "entries_senza_gps_diventa_unknown"
+input  = { entries = [{path = "/tmp/foo.jpg"}, {path = "/tmp/bar.jpg", gps = {}}] }
+expect = { ok = true, ok_count_eq = 2 }
+
+[[tests]]
+name   = "args_non_oggetto"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }
+
+[[tests]]
+name   = "provider_indisponibile_fallisce_onestamente"
+env    = { METNOS_GEO_PROVIDERS = "" }
+input  = { coords = [{lat = 45.0703, lon = 7.6869}] }
+expect = { ok = false, fail_count_eq = 1, field_eq = { error_code = "ERR_EXT_SVC_UNAVAILABLE" } }

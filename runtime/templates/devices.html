@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Dispositivi · Console Metnos{% endblock %}
+{% block body %}
+<h1>Dispositivi remoti ({{ rows|length }})</h1>
+<p class="page-sub">Device appaiati che eseguono executor via
+<code>metnos-client</code> — identità Ed25519, heartbeat, revoca.
+Il client non ha mai iniziativa: esegue, traccia, risponde.</p>
+
+<section class="panel" id="join-panel">
+  <h2>Installa client su un PC (consigliato)</h2>
+  <p class="muted">Dai un nome al device e premi: si apre la pagina di
+  installazione, che scarica l'installer giusto per l'OS e segue
+  l'avanzamento fino a «client attivo». Un click sul file scaricato
+  completa tutto.</p>
+  <div id="join-server-note" style="display:none">
+    <p class="muted">Questa UI è aperta <strong>sul server Metnos</strong>: non
+    c'è nessun client da installare qui.</p>
+    <button type="button" class="btn" id="join-other-btn">Devo installare su un
+    ALTRO PC — genera il link</button>
+  </div>
+  <form id="join-form">
+    <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
+      <input type="text" name="name" id="join-name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
+    </label>
+    <label>Utente proprietario (il device comparirà nel suo profilo)
+      <select name="owner_user_id" id="join-owner">
+        {% for u in users %}
+        <option value="{{ u.id }}"{% if u.role == "host" %} selected{% endif %}>{{ u.display_name or u.name }}{% if u.role == "host" %} (host){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn" id="join-btn">Installa su questo PC</button>
+  </form>
+  <div id="join-box" style="display:none">
+    <p>Apri questo link <strong>dal PC da installare</strong> (scade in 30 minuti):</p>
+    <pre><code id="join-url"></code></pre>
+    <p>
+      <button type="button" class="btn" id="join-copy">Copia link</button>
+      <a id="join-open" class="btn" target="_blank" rel="noopener">Apri qui</a>
+      <span id="join-copied" style="display:none;color:#2e7d32;font-weight:600">
+        copiato ✓</span>
+    </p>
+    <ol id="join-steps" style="list-style:none;padding-left:0">
+      <li data-s="created">○ link generato</li>
+      <li data-s="opened">○ pagina aperta sul PC target</li>
+      <li data-s="downloaded">○ installer scaricato</li>
+      <li data-s="registered">○ device registrato</li>
+      <li data-s="heartbeat">○ client attivo — completato</li>
+    </ol>
+  </div>
+  <script>
+  (function () {
+    var forOtherPc = false;
+    fetch("/admin/devices/current-client").then(function(r){return r.json();})
+      .then(function (c) {
+        if (c.is_server_client) {
+          // §5.2: il form «installa su questo PC» sparisce; resta il gesto
+          // ESPLICITO «per un altro PC», che riabilita il form.
+          document.getElementById("join-form").style.display = "none";
+          document.getElementById("join-server-note").style.display = "block";
+          document.getElementById("join-other-btn")
+            .addEventListener("click", function () {
+              forOtherPc = true;
+              document.getElementById("join-form").style.display = "";
+              document.getElementById("join-btn").textContent =
+                "Genera link per l'altro PC";
+              this.disabled = true;
+            });
+        }
+      }).catch(function(){});
+    var ORDER = ["created","opened","downloaded","registered","heartbeat"];
+    var timer = null;
+    function copyText(t) {
+      // navigator.clipboard esiste solo in secure context (HTTPS o
+      // localhost): la console gira su http://IP-LAN, serve il fallback.
+      if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(t);
+      }
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); }
+      finally { document.body.removeChild(ta); }
+      return Promise.resolve();
+    }
+    function render(state) {
+      document.querySelectorAll("#join-steps li").forEach(function (li) {
+        var i = ORDER.indexOf(li.getAttribute("data-s"));
+        var cur = ORDER.indexOf(state);
+        li.textContent = (i <= cur ? "● " : "○ ") + li.textContent.slice(2);
+        li.style.color = i <= cur ? "inherit" : "#888";
+        li.style.fontWeight = i === cur ? "600" : "400";
+      });
+      if (state === "expired") {
+        document.getElementById("join-url").textContent = "SCADUTO — rigenera il link";
+        return true;
+      }
+      return state === "heartbeat";
+    }
+    document.getElementById("join-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = document.getElementById("join-name").value.trim();
+      if (!name) return;
+      var owner = document.getElementById("join-owner").value;
+      fetch("/admin/devices/join", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name: name, platform: "auto",
+                              owner_user_id: owner,
+                              for_other_pc: forOtherPc}),
+      }).then(function(r){return r.json();}).then(function (s) {
+        if (!s.join_id) { alert(s.message || "errore"); return; }
+        // Browser = PC da installare (flusso normale): vai DIRETTO alla
+        // pagina di installazione, zero copia-incolla. Il link resta
+        // recuperabile ri-generando. Col gesto «per un altro PC» invece
+        // il link va portato lì: mostra box + copia.
+        if (!forOtherPc) { location.href = s.join_url; return; }
+        document.getElementById("join-box").style.display = "block";
+        document.getElementById("join-url").textContent = s.join_url;
+        document.getElementById("join-open").href = s.join_url;
+        document.getElementById("join-copy").onclick = function () {
+          copyText(s.join_url).then(function () {
+            var ok = document.getElementById("join-copied");
+            ok.style.display = "inline";
+            setTimeout(function(){ ok.style.display = "none"; }, 2500);
+          });
+        };
+        render(s.state);
+        if (timer) clearInterval(timer);
+        timer = setInterval(function () {
+          fetch("/admin/devices/join/" + s.join_id + "/status")
+            .then(function(r){return r.json();})
+            .then(function (st) {
+              if (render(st.state)) {
+                clearInterval(timer);
+                if (st.state === "heartbeat") location.reload();
+              }
+            }).catch(function(){});
+        }, 2000);
+      }).catch(function(){});
+    });
+  })();
+  </script>
+</section>
+
+<section class="panel">
+  <details>
+    <summary style="cursor:pointer"><strong>Alternativa per esperti:</strong>
+    aggiunta manuale via terminale (one-liner)</summary>
+    <p class="muted" style="margin-top:10px">Da usare solo quando
+    l'installazione automatica qui sopra non è possibile: PC target senza
+    browser, server headless, ambienti dove il download non è consentito.
+    Richiede di incollare un comando in un terminale del PC target.</p>
+    <form hx-post="/admin/devices/token" hx-target="#token-box" hx-swap="innerHTML">
+      <label>Nome device (lettere, cifre, <code>. _ -</code>; es. <code>laptop-windows</code>)
+        <input type="text" name="name" required pattern="[A-Za-z0-9._-]{1,40}" maxlength="40">
+      </label>
+      <label>Utente proprietario
+        <select name="owner_user_id">
+          {% for u in users %}
+          <option value="{{ u.id }}"{% if u.role == "host" %} selected{% endif %}>{{ u.display_name or u.name }}{% if u.role == "host" %} (host){% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn">Genera token (10 min)</button>
+    </form>
+    <div id="token-box"></div>
+  </details>
+</section>
+
+<div class="table-wrap" id="devices-table"
+     hx-get="/admin/devices" hx-select="#devices-table" hx-swap="outerHTML"
+     hx-trigger="every 10s" hx-headers='{"Accept":"text/html"}'>
+<table>
+  <thead>
+    <tr><th>nome</th><th>id</th><th>owner</th><th>OS</th><th>client</th>
+        <th>fingerprint</th><th>heartbeat</th><th>stato</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.name }}</code></td>
+      <td class="muted">{{ r.id[:12] }}</td>
+      <td title="{{ r.owner_user_id }}">{{ r.owner_name }}</td>
+      <td>{{ r.os_family or "?" }}/{{ r.os_arch or "?" }}</td>
+      <td>{% if r.client_version %}<code>{{ r.client_version }}</code>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="muted"><code>{{ r.fingerprint[:16] }}</code></td>
+      <td class="muted">{{ r.last_heartbeat or "mai" }}</td>
+      <td>
+        {% if r.available %}<span class="chip ok">raggiungibile</span>
+        {% else %}<span class="chip warn">offline</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" action="/admin/devices/{{ r.id }}/revoke"
+              onsubmit="return confirm('Revocare {{ r.name }}? I token futuri saranno rifiutati.')">
+          <button type="submit" class="btn danger">Revoca</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="muted">Nessun device appaiato.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

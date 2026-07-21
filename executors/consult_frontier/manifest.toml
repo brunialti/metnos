@@ -1,0 +1,196 @@
+# Manifest dell'executor `consult_frontier` — Metnos v1.1
+# Builtin Metnos: primitiva per delegare task complessi a frontier LLM
+# esterni (Opus / Sonnet / Haiku / GPT-5).
+#
+# Verbo `consult` = system verb riservato (vocab.SYSTEM_VERBS), fuori
+# dai 22 verbi canonici §2.2. Vedi `runtime/vocab.py::SYSTEM_VERBS`
+# (admin / undo / synthesize / consult).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "consult_frontier"
+version     = "0.2.0"
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "consulta", "consult", "chiedi", "ask", "frontier", "oracolo",
+    "esperto", "review", "analisi-profonda", "deep-analysis",
+    "opinione-esperta", "expert-opinion",
+]
+
+revertible        = false
+lifecycle         = "active"
+critical          = false
+
+[[capabilities]]
+name = "llm:local"
+hint = []
+
+[[capabilities]]
+name = "llm:online"
+hint = []
+
+[[capabilities]]
+name = "fs:read"
+hint = ["$METNOS_INSTALL_ROOT/**", "$HOME/**", "/tmp/**"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["$XDG_CACHE_HOME/metnos/consult_frontier/**"]
+
+[[capabilities]]
+name = "network:http"
+hint = ["api.github.com"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["github"]
+
+[placement]
+scope = "server"
+device_ok = false
+
+[description]
+it = "SCOPO: consulta un oracolo esperto per analisi profonda. PATTERN: consult_frontier(role=\"esperto\", output_spec={...}). NON: riassunti locali (-> describe_entries). OUT: {response_text, response_structured, tokens_in, tokens_out, cost_usd, tier_used, cached, iters_done, remote_bytes_read}."
+en = "SCOPO: consult an expert oracle for deep analysis. PATTERN: consult_frontier(role=\"expert\", output_spec={...}). NON: local summaries (-> describe_entries). OUT: {response_text, response_structured, tokens_in, tokens_out, cost_usd, tier_used, cached, iters_done, remote_bytes_read}."
+
+[code]
+files  = ["consult_frontier.py"]
+digest = "sha256:656790202008cd3ff5f54c1d32c44a18da50740f5f1eec13feace6f9eacfd71a"
+
+[args]
+type     = "object"
+required = ["role", "output_spec"]
+
+[args.properties.role]
+type        = "string"
+
+[args.properties.role.description]
+it = "Ruolo che il frontier interpreta. Stringa libera ma precisa: il role determina tono e focus della risposta. Esempio: 'esperto reviewer github issue Python self-hosted'. NON usare ruoli generici come 'assistente' o 'aiutami': non c'e' guadagno vs un tier locale."
+en = "Role the frontier interprets. Free string but precise: role drives tone and focus. Example: 'expert github issue reviewer for Python self-hosted project'. Do NOT use generic roles like 'assistant' or 'help me': no gain vs a local tier."
+
+[args.properties.output_spec]
+type        = "object"
+
+[args.properties.output_spec.description]
+it = "Specifica formato output: {format: 'markdown'|'json'|'code', sections?: [str], schema?: {...}, max_words?: int, style?: str}. Dichiarativo, parsato dal frontier nel system prompt. Se format='json' e schema presente, il runtime valida l'output e fa 1 retry con correction message se non parsa."
+en = "Output format spec: {format: 'markdown'|'json'|'code', sections?: [str], schema?: {...}, max_words?: int, style?: str}. Declarative, parsed by the frontier in the system prompt. If format='json' and schema is present, the runtime validates the output and does 1 retry with correction message if it does not parse."
+
+[args.properties.local_context]
+type        = "object"
+
+[args.properties.local_context.description]
+it = "Context locale (DNA Metnos): {files: [path], entries: [dict], inline: {key:value}}. Caricato come testo nel prompt PRIMA di chiamare il frontier. files: path leggibili sotto /opt/metnos o /home/user, troncati per max_bytes. entries: serializzate JSON. inline: dict free-form. Tutto il context locale e' visibile al frontier nel modo A (single-call) e nel modo B (prima del tool loop)."
+en = "Local context (Metnos DNA): {files: [path], entries: [dict], inline: {key:value}}. Loaded as text in the prompt BEFORE calling the frontier. files: paths readable under /opt/metnos or /home/user, truncated by max_bytes. entries: JSON-serialized. inline: free-form dict. All local context is visible to the frontier in mode A (single-call) and mode B (before the tool loop)."
+
+[args.properties.remote_context]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.remote_context.description]
+it = "Lista di entry remote che il frontier ESPLORA via tool calls (modo B). Es: [{kind:'github_repo', repo:'a/b'}, {kind:'github_issue', repo:'a/b', number:42}, {kind:'url', url:'...'}]. Se vuoto/null -> modo A single-call (niente tool loop). Kinds supportati oggi: github_repo, github_issue, url. I tool sono SEMPRE read-only."
+en = "List of remote entries the frontier EXPLORES via tool calls (mode B). E.g.: [{kind:'github_repo', repo:'a/b'}, {kind:'github_issue', repo:'a/b', number:42}, {kind:'url', url:'...'}]. Empty/null -> mode A single-call (no tool loop). Kinds supported today: github_repo, github_issue, url. Tools are ALWAYS read-only."
+
+[args.properties.tools_allowed]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.tools_allowed.description]
+it = "Whitelist nomi tool che il frontier puo' chiamare. Default: derivato da remote_context kinds (github_issue -> github_read_issue, github_repo -> github_read_file+github_list_dir+github_search_code). Tool sono SEMPRE read-only (constraint duro: zero write/merge/delete esposto al frontier)."
+en = "Whitelist of tool names the frontier can call. Default: derived from remote_context kinds (github_issue -> github_read_issue, github_repo -> github_read_file+github_list_dir+github_search_code). Tools are ALWAYS read-only (hard constraint: zero write/merge/delete exposed to the frontier)."
+
+[args.properties.tier]
+type        = "string"
+enum        = ["fast", "middle", "wise", "frontier"]
+default     = "wise"
+
+[args.properties.tier.description]
+it = "Tier LLM: wise (Opus 4.7) | middle (Sonnet 4.6) | fast (Haiku 4.5) | frontier (Opus 4.7 con fallback OpenAI/GPT-5). Auto-bump a middle se remote_context presente e tier='fast' (Haiku gestisce male tool loop)."
+en = "LLM tier: wise (Opus 4.7) | middle (Sonnet 4.6) | fast (Haiku 4.5) | frontier (Opus 4.7 with OpenAI/GPT-5 fallback). Auto-bumped to middle if remote_context present and tier='fast' (Haiku handles tool loops poorly)."
+
+[args.properties.max_tool_iters]
+type        = "integer"
+minimum     = 1
+default     = 30
+
+[args.properties.max_tool_iters.description]
+it = "Cap iterazioni del tool loop (modo B). Default 30. Quando raggiunto, il loop termina e l'output contiene response_text parziale + iters_done=30."
+en = "Cap on tool loop iterations (mode B). Default 30. When reached, the loop terminates and the output contains partial response_text + iters_done=30."
+
+[args.properties.max_remote_bytes]
+type        = "integer"
+minimum     = 1
+default     = 500000
+
+[args.properties.max_remote_bytes.description]
+it = "Cap totale bytes letti via tool (modo B). Default 500000 (500KB). Tool che farebbero superare il cap ritornano error_class='budget_exceeded'."
+en = "Cap on total bytes read via tools (mode B). Default 500000 (500KB). Tools that would exceed the cap return error_class='budget_exceeded'."
+
+[args.properties.cache_ttl_s]
+type        = "integer"
+minimum     = 0
+default     = 0
+
+[args.properties.cache_ttl_s.description]
+it = "Se > 0, cache risposta su disco con TTL secondi (chiave: sha256 degli args). Storage: ~/.cache/metnos/consult_frontier/<sha256>.json. Hit cache -> cached=true, zero token consumati."
+en = "If > 0, cache response on disk with TTL seconds (key: sha256 of args). Storage: ~/.cache/metnos/consult_frontier/<sha256>.json. Cache hit -> cached=true, zero tokens consumed."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  response_text: str,
+  response_structured: dict | null,
+  tokens_in: int,
+  tokens_out: int,
+  cost_usd: float,
+  tier_used: str,
+  provider_used: str,
+  model_used: str,
+  cached: bool,
+  iters_done: int,
+  remote_bytes_read: int,
+  files_read: Array<str>,
+  mode: "A" | "B",
+  fallback_used: bool,
+  error?: str,
+  error_class?: str
+}
+"""
+
+# ── Tests ─────────────────────────────────────────────────────────────
+# Test 1: missing required arg (role) -> ok:false
+[[tests]]
+name   = "missing_role_fails"
+input  = { output_spec = { format = "markdown" } }
+expect = { ok = false, error_contains = "role" }
+
+# Test 2: missing required arg (output_spec) -> ok:false
+[[tests]]
+name   = "missing_output_spec_fails"
+input  = { role = "esperto" }
+expect = { ok = false, error_contains = "output_spec" }
+
+# Test 3: invalid output_spec format -> ok:false
+[[tests]]
+name   = "invalid_format_fails"
+input  = { role = "esperto", output_spec = { format = "invalid_xyz" } }
+expect = { ok = false, error_contains = "format" }
+
+# Test 4: missing API key -> ok:false con error_class chiaro
+# (esecuzione reale richiede ANTHROPIC_API_KEY in env o credentials store)
+[[tests]]
+name = "no_api_key_fails_clean"
+setup = "true"
+input = { role = "test", output_spec = { format = "markdown" }, tier = "fast" }
+# Quando la key e' presente questo passa con ok=true. Senza key: ok=false +
+# error_class=missing_credentials. Il test e' annotato come tollerante:
+# accetta ok=true (env produzione) OR ok=false+error_class missing_credentials.
+expect = { ok_or_err_class = "missing_credentials" }
+
+# Test 5: invalid remote_context kind -> ok:false
+[[tests]]
+name   = "invalid_remote_kind_fails"
+input  = { role = "esperto", output_spec = { format = "markdown" }, remote_context = [ { kind = "unknown_kind_xyz" } ] }
+expect = { ok = false, error_contains = "remote_context" }

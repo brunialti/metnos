@@ -1,0 +1,172 @@
+# Manifest dell'executor `find_dirs` — Metnos v1.1
+# Walk ricorsivo dell'albero di directory con metadati aggregati per dir.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_dirs"
+version     = "0.1.0"
+platforms   = ["linux", "windows"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "find", "trova", "cerca", "list", "elenca", "search", "directory", "dirs", "cartelle",
+                "folder", "subdir", "sottocartella", "sottocartelle", "tree", "albero",
+                "walk", "stats", "statistiche", "popolose", "popolate", "size", "dimensione",
+                "metadata", "metadati"
+            ]
+revertible      = false
+lifecycle       = "active"
+
+[description]
+it = "SCOPO: trova directory con metadati aggregati. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: elencare file (-> find_files); contenuti dir (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
+en = "SCOPO: find directories with aggregated metadata. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: list files (-> find_files); dir contents (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
+
+[code]
+files  = ["find_dirs.py"]
+digest = "sha256:dd55909ae296e3cebbe98520ed5254acf0300ee0747fd35eda6e24b4074ec4b8"
+
+[args]
+type     = "object"
+required = ["base_path"]
+
+[args.properties.base_path]
+type        = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice del walk. Path assoluto o ~ espandibile (es. '~', '/opt/metnos'). Deve essere dentro lo scope di lettura concesso."
+en = "Walk root directory. Absolute path or expandable ~ (e.g., '~', '/opt/metnos'). MUST be within the granted read scope."
+
+[args.properties.recursive]
+type        = "boolean"
+default     = true
+
+[args.properties.recursive.description]
+it = "Se true (default), attraversa tutto l'albero discendente. Se false, ritorna solo la base_path con i suoi metadati immediati."
+en = "If true (default), traverse the entire descendant tree. If false, return only the base_path with its immediate metadata."
+
+[args.properties.max_depth]
+type        = "integer"
+minimum     = 0
+default     = 10
+
+[args.properties.max_depth.description]
+it = "Profondita' massima della ricorsione (livelli di sottocartelle). 0 = solo base_path. Default 10."
+en = "Maximum recursion depth (subfolder levels). 0 = only base_path. Default 10."
+
+[args.properties.max_results]
+type        = "integer"
+minimum     = 1
+default     = 1000
+
+[args.properties.max_results.description]
+it = "Tetto massimo di directory restituite. Default 1000. Quando raggiunto, l'output ha truncated=true e il runtime aggiunge un avviso al messaggio finale."
+en = "Maximum number of directories returned. Default 1000. When reached, the output has truncated=true and the runtime adds a warning to the final message."
+
+[args.properties.include_hidden]
+type        = "boolean"
+default     = false
+
+[args.properties.include_hidden.description]
+it = "Se true, include directory che iniziano con '.' (es. .git, .cache). Default false."
+en = "If true, include directories that start with '.' (e.g., .git, .cache). Default false."
+
+[args.properties.client]
+type        = "string"
+# dirs mono→multi (7/7/2026): l'executor ha il lazy-gw da C7 Area-2 CP4,
+# l'owner runtime è backend_resolver.OBJECT_BACKENDS["dirs"] (default local
+# §10.3, gw solo se nominato). Multi-provider = clause-derived, NON
+# runtime_resolved (politica test_config_args_marking_policy).
+enum        = ["local", "google_workspace"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca CARTELLE su Drive per nome, richiede pairing Google."
+en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: searches FOLDERS on Drive by name, requires Google pairing."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries?: Array<{
+    path?: str,
+    name?: str,
+    id?: str,
+    mimeType?: str,
+    file_count?: int,
+    total_bytes?: int,
+    size_min?: int,
+    size_max?: int,
+    mtime?: number
+  }>,
+  matches?: Array<str>,
+  metadata?: {
+    base_path: str,
+    recursive: bool,
+    include_hidden: bool,
+    count: int,
+    count_dirs: int,
+    file_count_total: int,
+    visited_dirs: int,
+    truncated: bool,
+    alias_resolved?: str
+  },
+  used?: int,
+  available_total?: int,
+  files_source?: 'google_workspace',
+  truncated?: bool,
+  truncated_what?: str,
+  cap_field?: str,
+  cap_value?: int,
+  error_code?: str,
+  error_class?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/opt/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name     = "walk_semplice"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a/aa /tmp/metnos_test_finddirs/b && echo 1 > /tmp/metnos_test_finddirs/a/x.txt && echo 2 > /tmp/metnos_test_finddirs/a/aa/y.txt && echo 3 > /tmp/metnos_test_finddirs/b/z.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs" }
+expect   = { ok = true, metadata_field_eq = { count = 3 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "non_ricorsivo"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a && echo 1 > /tmp/metnos_test_finddirs/a/x.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs", recursive = false }
+expect   = { ok = true, metadata_field_eq = { count = 1 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "max_results_tronca"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/a /tmp/metnos_test_finddirs/b /tmp/metnos_test_finddirs/c"
+input    = { base_path = "/tmp/metnos_test_finddirs", max_results = 2 }
+expect   = { ok = true, metadata_field_eq = { count = 2, truncated = true } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name     = "exclude_hidden_default"
+setup    = "mkdir -p /tmp/metnos_test_finddirs/visible /tmp/metnos_test_finddirs/.hidden && echo 1 > /tmp/metnos_test_finddirs/visible/x.txt"
+input    = { base_path = "/tmp/metnos_test_finddirs" }
+expect   = { ok = true, metadata_field_eq = { count = 1 } }
+teardown = "rm -rf /tmp/metnos_test_finddirs"
+
+[[tests]]
+name   = "fallisce_su_base_path_inesistente"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz" }
+expect = { ok = false, error_contains = "Percorso non trovato" }
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+scope    = "any"
+device_ok = true

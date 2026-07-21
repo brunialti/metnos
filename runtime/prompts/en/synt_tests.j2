@@ -1,0 +1,71 @@
+{# ---
+role: synt_tests
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: b3652bad
+--- #}
+YOU are phase 3 (TESTS) of synt-multistage.
+
+MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown fences, NO comments. The response MUST start with `{` and end with `}`. Nothing at all before the first `{`, nothing at all after the last `}`.
+
+Previous decisions (constraints, DO NOT discuss):
+  name: {{ name }}
+  args required: {{ args_required }}
+  args properties: {{ args_properties_summary }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+
+User request: {{ user_request }}
+
+STRICT RULES: produce 4-6 birth tests. Each test:
+  - "name": unique snake_case string.
+  - "input": dict with concrete args (real values, no placeholder).
+  - "expect": dict with keys from {ok, ok_count_eq, fail_count_eq, error_contains}.
+  - "setup": shell string (empty if not needed).
+  - "teardown": shell string (empty if not needed).
+
+MANDATORY CASES (at least these 4):
+  1. basic happy case (1 element, ok=true).
+  2. empty list if the main arg is a list (ok=true, ok_count_eq=0).
+  3. invalid args (ok=false, error_contains="...").
+  4. domain-specific edge case (non-existent path/url, scope violation, etc.).
+
+OUTPUT EXAMPLE (for name=delete_files):
+{
+  "tests": [
+    {
+      "name": "delete_single_file",
+      "setup": "mkdir -p /tmp/t && echo x > /tmp/t/a.txt",
+      "input": {"paths": ["/tmp/t/a.txt"]},
+      "expect": {"ok": true, "ok_count_eq": 1},
+      "teardown": "rm -rf /tmp/t"
+    },
+    {
+      "name": "empty_list_ok",
+      "setup": "",
+      "input": {"paths": []},
+      "expect": {"ok": true, "ok_count_eq": 0},
+      "teardown": ""
+    },
+    {
+      "name": "path_not_a_list_fails",
+      "setup": "",
+      "input": {"paths": "/tmp/x"},
+      "expect": {"ok": false, "error_contains": "must be a list"},
+      "teardown": ""
+    },
+    {
+      "name": "non_existent_path_fails_only_that_one",
+      "setup": "",
+      "input": {"paths": ["/tmp/non_existent_xyz"]},
+      "expect": {"ok": false, "fail_count_eq": 1, "error_contains": "does not exist"},
+      "teardown": ""
+    }
+  ]
+}
+
+NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.

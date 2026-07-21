@@ -1,0 +1,8 @@
+[Unit]
+Description=Stop a Metnos user stack that failed composite readiness
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/systemctl --user stop metnos-http.service metnos-playwright.service metnos-side-display.service metnos-telegram-daemon.service metnos-llm.service metnos-searxng.service metnos-photon.service cloudflared-metnos-chat.service metnos-issues-sidecar.service metnos-i18n-translator.service metnos-i18n-translator.timer
+TimeoutStartSec=30
+SyslogIdentifier=metnos-stack-quarantine

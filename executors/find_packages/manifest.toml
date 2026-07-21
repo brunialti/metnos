@@ -1,0 +1,72 @@
+# Manifest synthesized — Metnos synt multistage 2026-04-30
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_packages"
+version     = "0.2.0"
+platforms   = ["linux", "windows"]
+author      = "synt-multistage <synt@metnos.com>"
+affinity    = ["find", "cerca", "package", "pacchetto", "comando", "command", "installato", "installed", "percorso", "path"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: cerca un comando eseguibile nel PATH del sistema. PATTERN: find_packages(package_name='ffmpeg'). NON: interrogare il database del package manager; leggere file (-> read_files). OUT: entries=[{package_name,path}], lista vuota se non trovato."
+en = "SCOPO: finds an executable command in the system PATH. PATTERN: find_packages(package_name='ffmpeg'). NON: querying a package-manager database; reading files (-> read_files). OUT: entries=[{package_name,path}], empty if not found."
+
+[code]
+files  = ["find_packages.py"]
+digest = "sha256:e23a9b7f65f640d7f8145c579c2b656c467c3b0896684477a37f634ffa75f31c"
+
+[args]
+type     = "object"
+required = ["package_name"]
+
+[args.properties.package_name]
+type = "string"
+maxLength = 128
+
+[args.properties.package_name.description]
+it = "Nome semplice del comando da cercare nel PATH (es. 'ffmpeg', 'git'); non un percorso."
+en = "Simple command name to search for in PATH (e.g., 'ffmpeg', 'git'); not a path."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  found?: bool,
+  entries: Array<{package_name: str, path: str}>,
+  failed: Array<{package_name?: str, error: str, error_class: str, error_code: str}>,
+  ok_count: int,
+  fail_count: int,
+  error?: str,
+  error_class?: str,
+  error_code?: str
+}
+"""
+
+[[capabilities]]
+name = "system:read"
+hint = ["executables"]
+
+[placement]
+# C7 Area-2 estensione (5/7 sera): read-only fs-puro, chiusura già nello shim.
+# scope="any" = server di default; device SOLO se la chat lo nomina.
+scope    = "any"
+device_ok = true
+
+[[tests]]
+name   = "trova_python3_nel_path"
+input  = { package_name = "python3" }
+expect = { ok = true, metadata_field_eq = { found = true, ok_count = 1 } }
+
+[[tests]]
+name   = "comando_assente_e_risultato_vuoto"
+input  = { package_name = "metnos-command-that-does-not-exist-7f09" }
+expect = { ok = true, metadata_field_eq = { found = false, ok_count = 0, fail_count = 0 } }
+
+[[tests]]
+name   = "rifiuta_percorso_al_posto_del_nome"
+input  = { package_name = "/usr/bin/python3" }
+expect = { ok = false, error_contains = "package_name" }

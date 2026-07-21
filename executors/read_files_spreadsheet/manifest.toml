@@ -1,0 +1,124 @@
+# Manifest dell'executor `read_files_spreadsheet` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical spreadsheet read: default LOCALE, Google opt-in.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "read_files_spreadsheet"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx",
+    "leggi celle", "read sheet", "celle", "cells", "range", "tabella",
+    "sheet", "foglio", "workbook"
+]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: legge le righe di un foglio (.xlsx/.csv locale o Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"titolo\", client=\"google_workspace\"). NON: id inventato; testo -> read_files. OUT: entries=list[list] righe x celle + values."
+en = "SCOPO: reads a spreadsheet rows (local .xlsx/.csv or Google Sheet). PATTERN: read_files_spreadsheet(spreadsheet_id=\"/path/f.xlsx\") | (name=\"title\", client=\"google_workspace\"). NON: invented id; text -> read_files. OUT: entries=list[list] rows x cells + values."
+
+[code]
+files  = ["read_files_spreadsheet.py"]
+digest = "sha256:2f148665a64581c8f2fb966b6596d1a0000633c1a282c4da4db4fcaadddae5eb"
+
+[args]
+type     = "object"
+required = []
+# LOCAL: `spreadsheet_id` = PATH del file. google_workspace: l'utente referenzia
+# il foglio per NOME -> `name` (il backend risolve name->id via ricerca Drive,
+# solo Sheet, nome esatto). Disgiunzione §7.3: spreadsheet_id OR name OR entries.
+requires_one_of = [["spreadsheet_id", "name", "entries"]]
+
+[args.properties.spreadsheet_id]
+type    = "string"
+
+[args.properties.spreadsheet_id.description]
+it = "LOCAL: PATH del file .xlsx/.csv (es. '/home/.../foglio.xlsx'). google_workspace: ID Drive OPACO (es. '1abc...XYZ', raro; di norma usa `name`). MATCH ESATTO: wildcard NON supportati."
+en = "LOCAL: PATH of the .xlsx/.csv file (e.g. '/home/.../sheet.xlsx'). google_workspace: OPAQUE Drive ID (e.g. '1abc...XYZ', rare; normally use `name`). EXACT MATCH: wildcards NOT supported."
+
+[args.properties.name]
+type    = "string"
+
+[args.properties.name.description]
+it = "google_workspace: titolo/nome del foglio Google (es. 'Budget 2026'); il backend lo risolve all'id via ricerca. USA QUESTO quando non hai l'id opaco. LOCAL: ignorato (usa `spreadsheet_id`=path)."
+en = "google_workspace: Google Sheet title/name (e.g. 'Budget 2026'); the backend resolves it to the id via search. USE THIS when you don't have the opaque id. LOCAL: ignored (use `spreadsheet_id`=path)."
+
+[args.properties.sheet_name]
+type    = "string"
+default = ""
+
+[args.properties.sheet_name.description]
+it = "LOCAL: nome del foglio da leggere (default: primo foglio). google_workspace: usa invece `range`."
+en = "LOCAL: name of the sheet to read (default: first sheet). google_workspace: use `range` instead."
+
+[args.properties.range]
+type    = "string"
+default = ""
+
+[args.properties.range.description]
+it = "Solo google_workspace: range A1 (es. 'Sheet1!A1:C10'). Default '' = intero primo foglio. Ignorato dal backend locale."
+en = "google_workspace only: A1 range (e.g. 'Sheet1!A1:C10'). Default '' = entire first tab. Ignored by the local backend."
+
+[args.properties.client]
+type    = "string"
+enum    = ["local", "google_workspace"]
+default = "local"
+
+[args.properties.client.description]
+it = "Backend: 'local' (default, file .xlsx/.csv) o 'google_workspace' (Google Sheets online, richiede OAuth)."
+en = "Backend: 'local' (default, .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth)."
+
+[args.properties.entries]
+type    = "array"
+
+[args.properties.entries.description]
+it = "Record con `id`/`spreadsheet_id`, tipicamente via `from_step: N` (es. output di find_files su Drive)."
+en = "Records with `id`/`spreadsheet_id`, typically via `from_step: N` (e.g. find_files output on Drive)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  values: Array<Array<str|num>>,
+  spreadsheet_id: str,
+  entries: Array<Array<str|num>>,
+  used: int,
+  available_total?: int,
+  files_source: 'local' | 'google_workspace',
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["spreadsheet:local"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name   = "missing_spreadsheet_id_fails"
+input  = {}
+expect = { ok = false, error_contains = "spreadsheet_id" }
+
+[[tests]]
+name   = "args_invalid_type_fails"
+input  = { spreadsheet_id = 123 }
+expect = { ok = false }
+
+[[tests]]
+name   = "nonexistent_local_file_fails"
+input  = { spreadsheet_id = "/tmp/metnos_does_not_exist_9999.xlsx" }
+expect = { ok = false, error_contains = "trovato" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { spreadsheet_id = "1abc", client = "dropbox" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }

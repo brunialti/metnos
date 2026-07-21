@@ -1,0 +1,98 @@
+# Manifest dell'executor `find_images_web` — Metnos (24/5/2026).
+# Ricerca testuale via SearXNG Images e inversa via Google Vision.
+# Distinto da `find_images` (filesystem locale) e `find_images_indices`
+# (indice CLIP locale): origine = web pubblico.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_images_web"
+version     = "0.3.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "image-search", "cerca-immagini-web", "web-images", "images-online",
+    "reverse-image-search", "ricerca-inversa", "trova-fonte",
+    "find-source", "where-from", "da-dove-viene",
+    "immagine-simile-web", "similar-on-web",
+    "google-vision", "web-detection",
+    "immagine", "image", "foto", "photo",
+]
+timeout_s = 60
+
+[description]
+it = "SCOPO: cerca immagini sul web da testo o immagine. Usa segnali deterministici; il ranking semantico locale interviene solo senza segnali lessicali. PATTERN: queries=[\"soggetto\"] oppure paths=[\"/img.jpg\"]. NON: usare indici locali. OUT: entries + attachments."
+en = "SCOPO: finds web images from text or an image. Uses deterministic signals; local semantic ranking runs only without lexical signals. PATTERN: queries=[\"subject\"] or paths=[\"/img.jpg\"]. NON: use local indexes. OUT: entries + attachments."
+
+[code]
+files  = ["find_images_web.py"]
+digest = "sha256:a92b65df9a7a7104dbafd3216cde53a641d59eddbaf6c0c9204eae4a252973d1"
+
+[args]
+type = "object"
+required = []
+# Vincolo disgiuntivo §7.3: almeno uno fra paths, urls, from_step deve
+# essere fornito non-vuoto. Validato dal runtime (validate_args), niente
+# teaching ad-hoc nella description. Universale: ogni executor con
+# pattern producer→consumer puo' dichiararlo cosi'.
+requires_one_of = [["queries", "paths", "urls", "from_step"]]
+
+[args.properties.queries]
+type = "array"
+items = {type = "string"}
+default = []
+[args.properties.queries.description]
+it = "MODO TESTO: query descrittive per SearXNG Images. Usare direttamente per richieste come cercare sul web immagini di un soggetto; non richiede un'immagine locale. Mutuamente esclusivo con paths/urls."
+en = "TEXT MODE: descriptive queries for SearXNG Images. Use directly for requests to find web images of a subject; no local image is required. Mutually exclusive with paths/urls."
+
+[args.properties.paths]
+type = "array"
+items = {type = "string"}
+default = []
+[args.properties.paths.description]
+it = "Lista di path locali a file immagine (jpg/png/gif/bmp/webp). Es: [\"/home/user/foto/x.jpg\"]."
+en = "List of local paths to image files (jpg/png/gif/bmp/webp). E.g.: [\"/home/user/photos/x.jpg\"]."
+
+[args.properties.urls]
+type = "array"
+items = {type = "string"}
+default = []
+[args.properties.urls.description]
+it = "Lista di URL pubblici di immagini. Vision fa fetch diretto. Es: [\"https://example.com/img.jpg\"]."
+en = "List of public image URLs. Vision direct-fetches. E.g.: [\"https://example.com/img.jpg\"]."
+
+[args.properties.face_boxes]
+type = "array"
+items = {type = "array", items = {type = "integer"}}
+default = []
+[args.properties.face_boxes.description]
+it = "Lista di bbox `[x,y,w,h]` PARALLELA a `paths` (stesso ordine). Se presente, ogni foto viene ritagliata sull'area facciale prima dell'invio a Vision (face similarity vs scene). Pattern: `face_boxes=${step1.entries.*.bbox}`."
+en = "List of `[x,y,w,h]` bboxes PARALLEL to `paths` (same order). If present, each photo is cropped to face area before sending to Vision (face similarity vs scene). Pattern: `face_boxes=${step1.entries.*.bbox}`."
+
+[args.properties.max_results]
+type = "integer"
+default = 10
+minimum = 1
+maximum = 50
+[args.properties.max_results.description]
+it = "Massimo risultati per query testuale o per ciascun blocco della ricerca inversa. Default 10."
+en = "Maximum results per text query or per reverse-search result block. Default 10."
+
+[output]
+schema_inline = "{ ok: bool, entries: array, attachments?: array, error?: string, error_class?: string }"
+
+[[capabilities]]
+name = "network:http"
+hint = ["127.0.0.1", "vision.googleapis.com", "oauth2.googleapis.com"]
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+
+[[tests]]
+name = "missing_sources_fails"
+input = {}
+expect = { ok = false }

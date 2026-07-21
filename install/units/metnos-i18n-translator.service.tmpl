@@ -1,0 +1,16 @@
+[Unit]
+Description=Metnos i18n translator (lazy fill of the i18n DB)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=@VENV@/bin/python -m admin.i18n_cli translate-pending
+WorkingDirectory=@REPO_DIR@/runtime
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
+Environment=METNOS_USER_STATE=@STATE_DIR@
+Environment=METNOS_LANG=@LANG@
+SyslogIdentifier=metnos-i18n-translator

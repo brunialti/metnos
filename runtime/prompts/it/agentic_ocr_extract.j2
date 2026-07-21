@@ -1,0 +1,14 @@
+{# ---
+role: agentic_ocr_extract
+tier: fast
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-15
+sha_prev: 00000000
+--- #}
+DEVI: trascrivere alla lettera ogni carattere leggibile, conservare l'ordine delle righe e restituire soltanto JSON valido `{"description":"testo visibile trascritto alla lettera","keywords":[]}`.
+NON DEVI: descrivere l'immagine, ricostruire parole mancanti, tradurre o aggiungere commenti.
+OK: restituire `description` vuota quando non è leggibile alcun testo.
+ERRORE: testo ricostruito, tradotto, riassunto o esplicativo.

@@ -1,0 +1,206 @@
+# metnos-client — installer Windows (§5.4/§5.7 executor remoti).
+# Due modi d'uso:
+#  - scaricato dal flusso join (§5.5): la testa del file ha gia' baked
+#    METNOS_SERVER, METNOS_TOKEN e il PIN version+sha256 del binario;
+#  - one-liner manuale: METNOS_SERVER/METNOS_TOKEN in ambiente, versione e
+#    sha256 letti dal manifest del mirror.
+#
+# THREAT MODEL (onesto, MVP): PowerShell 5.1 non ha Ed25519 (ne' CNG ne'
+# .NET Framework), quindi qui NON c'e' la verifica di firma che fa install.sh.
+# Col PIN baked, lo sha256 NON dipende dal manifest scaricato: un MITM deve
+# manomettere QUESTO file — stesso livello di fiducia del pin-pubkey Linux.
+# SENZA pin (one-liner manuale), sha256 dal manifest = solo INTEGRITA':
+# l'autenticita' viene dal trasporto (LAN/overlay fidato). Firma forte
+# (Ed25519 a parita' con Linux, o Authenticode) = W6 del design doc.
+$ErrorActionPreference = 'Stop'
+
+if (-not $env:METNOS_SERVER) { throw 'METNOS_SERVER non impostato (atteso dalla UI)' }
+if (-not $env:METNOS_TOKEN)  { throw 'METNOS_TOKEN non impostato (atteso dalla UI)' }
+$server = $env:METNOS_SERVER.TrimEnd('/')
+
+$target = 'x86_64-pc-windows-gnu'
+Write-Host "==> metnos-client ($target)"
+
+if ($env:METNOS_CLIENT_VERSION -and $env:METNOS_CLIENT_SHA256) {
+  # PIN baked dal server nel flusso join: manifest NON consultato.
+  $version = $env:METNOS_CLIENT_VERSION
+  $expectedSha = $env:METNOS_CLIENT_SHA256
+  Write-Host "==> versione $version (pin baked, manifest non consultato)"
+} else {
+  $manifest = Invoke-RestMethod -UseBasicParsing "$server/agent/client/manifest.json"
+  $version = $manifest.latest
+  if (-not $version) { throw 'impossibile leggere la versione dal manifest' }
+  $entry = $manifest.versions.$version.$target
+  if (-not $entry) { throw "nessun binario per $target nella versione $version" }
+  $expectedSha = $entry.sha256
+  Write-Host "==> versione $version (sha256 dal manifest: integrita', non autenticita')"
+}
+
+$tmp = Join-Path $env:TEMP ("metnos-client-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tmp | Out-Null
+$exe = Join-Path $tmp 'metnos-client.exe'
+
+$ok = $false
+for ($i = 1; $i -le 3; $i++) {
+  try {
+    Invoke-WebRequest -UseBasicParsing "$server/agent/client/$version/$target/metnos-client.exe" -OutFile $exe
+    $sha = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLower()
+    if ($sha -eq $expectedSha.ToLower()) { $ok = $true; break }
+    Write-Host "==> sha256 non combacia (tentativo $i/3), riscarico"
+  } catch {
+    Write-Host "==> download fallito (tentativo $i/3): $_"
+  }
+}
+if (-not $ok) { throw 'integrita del binario non verificata dopo 3 tentativi' }
+Write-Host '==> sha256 verificato'
+
+$destDir = Join-Path $env:LOCALAPPDATA 'Metnos'
+New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+$dest = Join-Path $destDir 'metnos-client.exe'
+
+# Reinstall/update: un metnos-client.exe IN ESECUZIONE tiene il file bloccato
+# (Windows locka l'immagine dell'eseguibile) E il lock single-instance, quindi
+# la task nuova morirebbe sul lock. Ferma la Scheduled Task E ogni processo
+# client residuo — inclusa un'istanza lanciata A MANO in primo piano (trappola
+# vista live 3/7: la finestra manuale teneva il lock, la task appena
+# registrata usciva subito e il device restava muto).
+$taskName = 'MetnosClient'
+if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
+  Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+}
+$running = Get-Process -Name 'metnos-client' -ErrorAction SilentlyContinue
+if ($running) {
+  Write-Host "==> fermo $($running.Count) processo/i metnos-client in esecuzione (task o finestra manuale)"
+  $running | Stop-Process -Force -ErrorAction SilentlyContinue
+  Start-Sleep -Milliseconds 1200
+}
+try {
+  Copy-Item -Force $exe $dest
+} catch {
+  throw "impossibile scrivere $dest (un metnos-client e' ancora in esecuzione? " +
+        "chiudilo e riprova): $_"
+}
+Write-Host "==> installato in $dest"
+
+& $dest register --server $server --token $env:METNOS_TOKEN
+if ($LASTEXITCODE -ne 0) { throw 'register fallito (token scaduto o gia usato?)' }
+
+# Pin del runtime Python per gli executor (baked dal server se il mirror
+# lo ospita): persistito nell'ambiente UTENTE cosi' il processo della task
+# lo eredita — il client lo scarica lazy da /agent/runtime/ alla prima
+# invocazione. Senza pin gli executor falliscono onesti («nessun
+# interprete Python», visto live 3/7).
+if ($env:METNOS_PYTHON_RUNTIME_WIN) {
+  [Environment]::SetEnvironmentVariable(
+    'METNOS_PYTHON_RUNTIME_WIN', $env:METNOS_PYTHON_RUNTIME_WIN, 'User')
+  if ($env:METNOS_PYTHON_RUNTIME_WIN_SHA256) {
+    [Environment]::SetEnvironmentVariable(
+      'METNOS_PYTHON_RUNTIME_WIN_SHA256', $env:METNOS_PYTHON_RUNTIME_WIN_SHA256, 'User')
+  }
+  Write-Host "==> runtime Python pinnato: $env:METNOS_PYTHON_RUNTIME_WIN (download robusto alla prima esecuzione)"
+}
+
+# LAUNCHER-LOOP (8/7): restart Windows AFFIDABILE = equivalente di systemd
+# Restart=always. La Task lancia un loop PowerShell STABILE che tiene vivo il
+# client e lo RILANCIA su ogni uscita in ~2s -- indipendente dai trigger/watchdog
+# di Task Scheduler, che NON rilanciano su un exit-0 pulito (visto live 8/7: il
+# self-update fa swap+exit -> il watchdog non ticchetta -> device muto). Chiude
+# anche la finestra swap-crash (ripristina .old se l'exe manca). Il launcher NON
+# si auto-aggiorna (e' solo il supervisore); il client resta $dest, aggiornato
+# dal self-update robusto (probation+rollback+no-downgrade, selfupdate.rs).
+$launcher = Join-Path $destDir 'launcher.ps1'
+$loop = @'
+$ErrorActionPreference = "Continue"
+$dest = Join-Path $env:LOCALAPPDATA "Metnos\metnos-client.exe"
+$server = "__SERVER__"
+$firstPass = $true
+while ($true) {
+  # crash-safe: exe mancante (swap interrotto) -> ripristina il known-good
+  if (-not (Test-Path $dest) -and (Test-Path "$dest.old")) {
+    Move-Item "$dest.old" $dest -Force -ErrorAction SilentlyContinue
+  }
+  # redondanza (9/7): se un client gira gia' (lock tenuto da un altro
+  # supervisore/finestra), QUESTO launcher e' di troppo -> esci, mai loop
+  # stretto di "gia' attivo". La Scheduled Task lo rilancia se serve.
+  # La guardia anti-supervisore duplicato vale SOLO prima di avere avviato il
+  # nostro figlio. Dopo un self-update `& $dest run` ritorna quando il vecchio
+  # exe e' appena uscito: Get-Process puo' ancora vederlo per pochi ms e il
+  # launcher storico terminava invece di avviare la nuova versione.
+  if ($firstPass -and (Get-Process metnos-client -ErrorAction SilentlyContinue)) { break }
+  $firstPass = $false
+  $rc = 0
+  if (Test-Path $dest) { & $dest run --server $server; $rc = $LASTEXITCODE }
+  # exit 3 = lock gia' tenuto (client onesto, >=0.2.23): supervisore
+  # ridondante -> esci. (0.2.22 esce 1: la guardia Get-Process copre il caso.)
+  if ($rc -eq 3) { break }
+  Start-Sleep -Seconds 2
+}
+'@
+Set-Content -Path $launcher -Value ($loop.Replace('__SERVER__', $server)) -Encoding ASCII
+Write-Host "==> launcher-loop scritto: $launcher"
+$psExe = (Get-Command powershell.exe).Source
+# Scheduled Task «At logon»: avvia il LAUNCHER (non il client diretto). Nessun
+# privilegio admin, account utente corrente.
+$action = New-ScheduledTaskAction -Execute $psExe `
+  -Argument ("-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"" + $launcher + "`"")
+# -User OBBLIGATORIO: -AtLogOn da solo = trigger «al logon di QUALSIASI
+# utente», che richiede elevazione -> Register-ScheduledTask «Accesso
+# negato» per un utente normale (vero colpevole del 3/7, mascherato
+# prima dal catch-and-continue, poi dalla pista della task legacy).
+# Col -User il trigger vale solo per l'account corrente: niente admin.
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+# WATCHDOG (perno del self-update ROBUSTO 8/7): il client, dopo uno swap, ESCE
+# con exit-0 (niente self-respawn, era BUG-A) e il watchdog lo rilancia. La
+# -RestartInterval on-failure NON copre l'exit-0 pulito -> questo trigger e' la
+# rete che riavvia il nuovo binario. Ripetizione ogni 1' (era 5': downtime da
+# update ridotto a <=1min) con -MultipleInstances IgnoreNew: se il client gira,
+# no-op (lock single-instance come seconda rete); se e' morto/uscito, riparte.
+$trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes 1)).Repetition
+# -MultipleInstances IgnoreNew: la task non lancia una seconda istanza se la
+# prima gira ancora (il client ha comunque il suo lock single-instance).
+# I default di Windows sono trappole per un poller sempre-attivo (scoperto
+# live 3/7, portatile: task registrata ma MAI partita):
+# -AllowStartIfOnBatteries: il default BLOCCA l'avvio a batteria (anche
+#   quello manuale di Start-ScheduledTask);
+# -DontStopIfGoingOnBatteries: il default UCCIDE la task quando si stacca
+#   la spina;
+# -ExecutionTimeLimit 0 (= nessun limite): il default ferma la task dopo
+#   72 ore, un poller morirebbe in silenzio ogni 3 giorni.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartInterval (New-TimeSpan -Minutes 1) -RestartCount 3 -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+try {
+  try {
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  } catch {
+    # -Force NON basta se la task esistente fu creata da un contesto
+    # ELEVATO (installer storico eseguito come admin): «Accesso negato».
+    # Rimuovi e ricrea nel contesto corrente (non elevato).
+    Write-Host "==> task esistente non sovrascrivibile ($_); rimuovo e ricreo"
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Stop
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  }
+  Start-ScheduledTask -TaskName $taskName
+  # §2.8: mai un [OK] se il client non sta girando davvero — verifica lo
+  # stato reale invece di fidarsi dell'assenza di eccezioni.
+  Start-Sleep -Seconds 2
+  $st = (Get-ScheduledTask -TaskName $taskName).State
+  if ($st -eq 'Running') {
+    Write-Host "==> task MetnosClient avviato (At logon; stato: $st)"
+  } else {
+    Write-Host "==> ATTENZIONE: task registrata ma stato '$st' (non Running)."
+    Write-Host "==> avvia manualmente: `"$dest`" run --server $server"
+    throw "task MetnosClient non in esecuzione (stato: $st)"
+  }
+} catch {
+  Write-Host "==> task non avviata: $_"
+  Write-Host "==> Se l'errore e' 'Accesso negato': una task MetnosClient creata"
+  Write-Host "    in passato da un PowerShell AMMINISTRATORE blocca quella nuova."
+  Write-Host "    Apri PowerShell come amministratore ed esegui UNA volta:"
+  Write-Host "      Unregister-ScheduledTask -TaskName MetnosClient -Confirm:`$false"
+  Write-Host "    poi riapri questo installer (il file .cmd scaricato), NON elevato."
+  Write-Host "==> avvio manuale alternativo: `"$dest`" run --server $server"
+  throw 'installazione incompleta: il client non sta girando'
+}
+
+Write-Host '==> fatto.'
+Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

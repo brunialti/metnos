@@ -1,0 +1,127 @@
+# Manifest dell'executor `get_urls` — Metnos v1.1
+# Recupera contenuto via HTTP/HTTPS GET o HEAD.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "get_urls"
+version     = "0.3.0"
+timeout_s   = 300
+author      = "Roberto Brunialti"
+revertible  = false
+platforms   = ["linux"]
+affinity    = ["web", "http", "url", "scarica", "leggi", "pagina", "api", "rest", "download"]
+
+[description]
+it = "SCOPO: ottiene dati da URL HTTP/HTTPS. PATTERN: get_urls(url=\"http://...\"). NON: cercare URL (-> find_urls); leggere HTML (-> read_urls_html). OUT: entries=[...]."
+en = "SCOPO: gets data from HTTP/HTTPS URLs. PATTERN: get_urls(url=\"http://...\"). NON: find URLs (-> find_urls); read HTML (-> read_urls_html). OUT: entries=[...]."
+
+[code]
+files  = ["get_urls.py"]
+digest = "sha256:ab46474627aa59f5bce1fb6f3ed18745fe8268d48275bfa24ed83607188cb0a5"
+
+[args]
+type     = "object"
+required = []
+requires_one_of = [["url", "urls"]]
+
+[args.properties.url]
+type        = "string"
+
+[args.properties.url.description]
+it = "URL HTTP o HTTPS da chiamare."
+en = "HTTP or HTTPS URL to call."
+
+[args.properties.urls]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.urls.description]
+it = "Forma vettoriale: lista di URL HTTP/HTTPS. È alternativa a `url`; le due forme non possono essere combinate."
+en = "Vector form: list of HTTP/HTTPS URLs. It is an alternative to `url`; the two forms cannot be combined."
+
+[args.properties.method]
+type        = "string"
+enum        = ["GET", "HEAD"]
+default     = "GET"
+
+[args.properties.method.description]
+it = "Metodo HTTP in sola lettura: GET legge il corpo, HEAD legge soltanto gli header."
+en = "Read-only HTTP method: GET reads the body, while HEAD reads headers only."
+
+[args.properties.timeout_s]
+type        = "integer"
+default     = 10
+minimum     = 1
+maximum     = 60
+
+[args.properties.timeout_s.description]
+it = "Timeout in secondi. Default 10."
+en = "Timeout in seconds. Default 10."
+
+[placement]
+scope = "server"
+device_ok = false
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{
+    url: str,
+    method: 'GET' | 'HEAD',
+    status_code: int,
+    host: str,
+    body_text: str,
+    bytes: int,
+    content_type: str,
+    binary: bool
+  }>,
+  ok_count: int,
+  fail_count: int,
+  failed: Array<{
+    url: str,
+    error: str,
+    error_class?: str,
+    error_code?: str,
+    status_code?: int
+  }>,
+  partial?: bool,
+  summary: str,
+  error?: str,
+  error_class?: str,
+  error_code?: str
+}
+"""
+
+[[capabilities]]
+name = "network:http"
+# Scope-seed di default: localhost. Lo scope effettivo in prod = questo hint ∪
+# workspace_policy dell'utente (metnos.com/github.com/...). Il comportamento di
+# RETE e' testato ermeticamente in runtime/tests/test_get_urls.py (mock server
+# 127.0.0.1), non da born-test verso un servizio esterno (§8: no dipendenze).
+hint = ["127.0.0.1"]
+
+# Born-test ERMETICI (§8: nessuna dipendenza da rete/servizi esterni): solo
+# validazione arg + scope pseudo-sandbox. Il comportamento di RETE (200/HEAD/
+# 404/multi-url) e' in runtime/tests/test_get_urls.py (mock server 127.0.0.1),
+# come per read_urls_html/read_urls_pdf/find_urls.
+[[tests]]
+name   = "fallisce_su_host_fuori_scope"
+input  = { url = "https://example.com/" }
+expect = { ok = false, error_contains = "outside allowed scope" }
+
+[[tests]]
+name   = "url_mancante"
+input  = {}
+expect = { ok = false, field_eq = { error_code = "url_missing" } }
+
+[[tests]]
+name   = "metodo_non_supportato"
+input  = { method = "POST" }
+expect = { ok = false, error_contains = "POST", field_eq = { error_code = "method_unsupported" } }
+
+[[tests]]
+name   = "args_non_oggetto"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }

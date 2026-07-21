@@ -1,0 +1,44 @@
+{# ---
+role: synt_code_addendum_filter
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 414a55ad
+--- #}
+REGOLE VERBO `filter` (oltre al generic):
+
+DEFINIZIONE: `filter` = applica un predicato alle entries e ritorna il
+sottoinsieme che lo soddisfa. Pure transformation. Output `entries`.
+Read-only (nessuna mutazione delle entries originali).
+
+PSEUDOCODICE UNIVERSALE:
+
+  def invoke(args):
+      entries_in = args.get("entries", [])
+      criterion = args.get("criterion", {})
+      combine = args.get("combine", "and")          # "and" | "or"
+      case_sensitive = args.get("case_sensitive", False)
+      out = []
+      for e in entries_in:
+          if eval_criterion(e, criterion, combine, case_sensitive):
+              out.append(e)                          # entry inalterata
+      filtered_out = len(entries_in) - len(out)
+
+INVARIANTI:
+DEVI: criterion supporta i seguenti tipi via dispatch:
+  - substring: `{"field": F, "contains": S}` (case-insensitive default)
+  - regex:     `{"field": F, "regex": R}`
+  - numeric:   `{"field": F, "op": "<"|"<="|"=="|"!="|">="|">", "value": V}`
+  - date:      `{"field": F, "from": EPOCH, "to": EPOCH}` (epoch o ISO)
+  - enum:      `{"field": F, "in": [...]}` o `not_in`
+DEVI: combinare piu' criteri (lista) con `combine` in `{"and","or"}`.
+DEVI: case-insensitive default su string match; override esplicito.
+DEVI: include `filtered_out_count` nell'output (UX: utente sa quanti scartati).
+DEVI: pure transform — NESSUN unlink/network/IO esterno.
+DEVI: output `entries` (non `results`).
+NON DEVI: arricchire o rimuovere campi delle entries. Se servono campi non
+  presenti, il pianificatore deve chiamare `get_*` prima di `filter`.
+NON DEVI: scrivere `def reverse(...)` (manifest revertible=False).

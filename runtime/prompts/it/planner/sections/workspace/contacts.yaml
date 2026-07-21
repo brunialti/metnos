@@ -1,0 +1,24 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_contacts
+  header: "GOOGLE WORKSPACE / CONTACTS (rubrica)"
+  preamble: |
+    CONTATTI/RUBRICA/GOOGLE-CONTACTS
+    -> read_contacts.
+
+rules:
+  - name: contacts_routing
+    when: "la query menziona contatti/rubrica/Google-Contacts («chi e' Mario nei contatti», «trova il numero di telefono di X», «leggi la rubrica»)"
+    must: "usare read_contacts per qualunque lettura/lookup nella rubrica Google"
+    must_not: "usare find_files o read_files_text per cercare contatti: la rubrica e' un endpoint Google API, NON un file locale. NON DEVI usare find_persons_indices: quel registro e' per le FOTO (face recognition), non per i contatti"
+    ok: "«trova il numero di telefono di Mario» -> read_contacts(query=\"Mario\") -> final_answer"
+    error: "«trova il numero di telefono di Mario» -> find_files(pattern=\"*Mario*\") (E' UN ERRORE: rubrica non e' filesystem). OPPURE -> find_persons_indices(name=\"mario\") (E' UN ERRORE: persons_indices e' face recognition foto, non rubrica)"

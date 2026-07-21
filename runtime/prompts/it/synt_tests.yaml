@@ -1,0 +1,97 @@
+role: synt_tests
+tier: middle
+lang: it
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_tests
+  header: "Stage 3 TESTS di synt-multistage"
+  preamble: |
+    OUTPUT OBBLIGATORIO: un solo oggetto JSON. NIENTE prosa, NIENTE markdown
+    fences, NIENTE commenti. La risposta DEVE iniziare con `{` e finire con
+    `}`. Niente nulla prima del primo `{`, niente nulla dopo l'ultimo `}`.
+
+context:
+  decisions_locked:
+    name: "{{ name }}"
+    args_required: "{{ args_required }}"
+    args_properties_summary: "{{ args_properties_summary }}"
+    capabilities: "{{ capabilities }}"
+    revertible: "{{ revertible }}"
+    reverse_pattern: "{{ reverse_pattern }}"
+  user_request: "{{ user_request }}"
+
+rules:
+  - name: test_count
+    body: "produci 4-6 birth test."
+  - name: test_fields
+    body: |
+      Ogni test:
+        - "name": stringa snake_case unica.
+        - "input": dict con args concreti (valori reali, no placeholder).
+        - "expect": dict con keys da {ok, ok_count_eq, fail_count_eq, error_contains}.
+        - "setup": stringa shell (vuota se non serve).
+        - "teardown": stringa shell (vuota se non serve).
+  - name: mandatory_cases
+    body: |
+      CASI OBBLIGATORI (almeno questi 4):
+        1. caso felice base (1 elemento, ok=true).
+        2. lista vuota se l'arg principale e' lista (ok=true, ok_count_eq=0).
+        3. args invalidi (ok=false, error_contains="...").
+        4. edge dominio-specifico (path/url inesistente, scope violation, ecc.).
+
+output_schema:
+  type: object
+  required: [tests]
+  properties:
+    tests:
+      type: array
+      minItems: 4
+      maxItems: 6
+      items:
+        type: object
+        required: [name, input, expect]
+        properties:
+          name: {type: string}
+          setup: {type: string}
+          input: {type: object}
+          expect:
+            type: object
+            properties:
+              ok: {type: boolean}
+              ok_count_eq: {type: integer}
+              fail_count_eq: {type: integer}
+              error_contains: {type: string}
+          teardown: {type: string}
+
+examples:
+  - name_for: delete_files
+    output:
+      tests:
+        - name: cancella_file_singolo
+          setup: "mkdir -p /tmp/t && echo x > /tmp/t/a.txt"
+          input: {paths: ["/tmp/t/a.txt"]}
+          expect: {ok: true, ok_count_eq: 1}
+          teardown: "rm -rf /tmp/t"
+        - name: lista_vuota_ok
+          setup: ""
+          input: {paths: []}
+          expect: {ok: true, ok_count_eq: 0}
+          teardown: ""
+        - name: path_non_lista_fallisce
+          setup: ""
+          input: {paths: "/tmp/x"}
+          expect: {ok: false, error_contains: "must be a list"}
+          teardown: ""
+        - name: path_inesistente_fallisce_solo_quello
+          setup: ""
+          input: {paths: ["/tmp/non_existent_xyz"]}
+          expect: {ok: false, fail_count_eq: 1, error_contains: "does not exist"}
+          teardown: ""
+
+footer:
+  instruction: "ORA produci il JSON per `{{ name }}`. SOLO JSON, niente altro."

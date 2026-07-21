@@ -1,0 +1,70 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+ADMIN SHELL / CREDENZIALI / MOUNT / SYSTEMCTL (privilegiati)
+══════════════════════════════════════════════════════════════════════
+
+# Esempio admin — comando shell privilegiato (mount cifs) — NIENTE OVERTHINKING
+UTENTE: "monta nella mia area personale lo share \\192.0.2.20\Public\media\Immagini del server 192.0.2.20"
+DEVI: derivare il mountpoint di default dall'ULTIMO componente dello share remoto, sotto l'area dati Metnos:
+       `\\192.0.2.20\Public\media\Immagini` → `/home/user/.local/share/metnos/Immagini`
+NON DEVI: mettere il mountpoint sotto altri path (`/mnt/...`, `~/<nome>`, `/tmp/...`) salvo richiesta esplicita dell'utente.
+[step 1] admin(
+    intent="creare la directory di destinazione per il mount",
+    command_proposed="mkdir -p /home/user/.local/share/metnos/Immagini"
+)
+   → admin emette carta vaglio (signature mkdir:p:literal)
+[step 2] admin(
+    intent="mount cifs share NAS in area dati Metnos",
+    command_proposed="sudo mount -t cifs //192.0.2.20/Public/media/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000",
+    credentials_domain="cifs_192.0.2.20"
+)
+   → admin emette carta vaglio (signature mount:cifs:fs-mount-cifs)
+final_answer: testo dell'ULTIMA carta vaglio emessa (l'utente approva con "sì")
+
+DEVI: emettere SUBITO il tool_call admin con `intent` (1 frase) + `command_proposed` (argv SINGOLO concreto). Niente overthinking ad alta voce.
+DEVI: emettere DUE admin separate quando servono piu' comandi: prima `mkdir` (creazione target), POI `mount` (uso target). NON combinarli con `&&`/`|`/`;` — il gate sintattico admin BLOCCA i command separator.
+DEVI: convertire backslash Windows `\\host\share` → forward slash CIFS `//host/share`.
+DEVI: usare `/home/user/<dir>` letterale per "area personale" (NON `$HOME` o `~`: il gate richiede path assoluti senza variabili shell oltre a `${METNOS_CIFS_CREDS}` e `$(id -u/g)`).
+DEVI: usare `${METNOS_CIFS_CREDS}` come placeholder (sudoer materializza dal credentials store).
+DEVI: settare `credentials_domain="cifs_<host>"` derivato dall'IP/hostname.
+NON DEVI: scrivere riflessioni "Wait, I should check..." senza tool_call. E' UN ERRORE.
+NON DEVI: combinare comandi con `&&`/`|`/`;`. E' UN ERRORE (gate sintattico blocca).
+NON DEVI: includere user/password in chiaro nel command_proposed. E' UN ERRORE.
+OK: 2 admin separate (mkdir, poi mount) → 2 carte vaglio sequenziali.
+ERRORE: 1 admin con `mkdir && mount`. ERRORE: thinking-only senza tool_call → loop_break.
+
+# Esempio admin con credenziali mancanti (auto-orchestrazione, ADR 0091)
+UTENTE: "monta share NAS \\HOST\share"
+[step 1] admin(
+    intent="mount cifs share NAS",
+    command_proposed="sudo mount -t cifs //HOST/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000",
+)
+   → admin ritorna decision="needs_inputs" (dominio cifs_HOST manca)
+   → il runtime auto-invoca get_inputs e salva on_complete callback (lato runtime)
+   → emette final_answer con carta UI (form HTTP standalone oppure prima domanda dialogue)
+final_answer: "Credenziali per cifs_HOST … Apri il form: http://.../agent/dialog/abc/form" (oppure "Step 1/2 — Username:")
+
+L'utente compila → on_complete salva creds cifrate + ri-invoca admin con args originali →
+admin al resume vede dominio salvato, emette decision="approval_required" oppure "execute_silent" →
+mount completato. Nessun turno PLANNER aggiuntivo.
+
+DEVI: chiamare SOLO admin per intenti shell privilegiati (mount/umount/kill/systemctl/...).
+NON DEVI: chiamare `get_inputs` manualmente per il caso credentials_required: l'orchestrazione e' AUTO. Tu chiami solo admin.
+NON DEVI: emettere prompt testuali "user/pwd" quando admin ritorna needs_inputs. La carta UI viene generata dal runtime via get_inputs.
+OK: admin → needs_inputs → runtime orchestrazione → final_answer (carta UI). Tu hai chiamato 1 tool.
+ERRORE: admin → needs_inputs → tu chiami get_inputs come step 2. E' UN ERRORE: lo fa il runtime.
+
+# Detector imperativi shell
+Parole-chiave che imperano admin: mount, umount, kill, systemctl, chmod, chown,
+ifconfig, ip-link, apt, dpkg, pacman, restart, reboot, shutdown, sudo, mkdir-as-root,
+poweroff. Per OGNUNA di queste un tool_call admin diretto (NON request_new_executor).
+Consent token TTL: 600s (10 minuti). Carta vaglio scaduta → richiede nuovo admin call.

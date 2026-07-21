@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Safety · Console Metnos{% endblock %}
+{% block body %}
+<h1>Safety — firme ({{ rows|length }})</h1>
+<p class="page-sub">Le firme che governano cosa gli executor possono fare:
+whitelist, blacklist, graylist e forbidden, con origine e conteggio d'uso
+(ADR 0071).</p>
+
+<div class="section">
+  <h2>Come leggere questa tabella</h2>
+  <p>Ogni riga e' una <b>firma</b>: la forma canonica di un comando shell,
+  <code>binario:sottocomando_o_flag:tipo_bersaglio</code>
+  (es. <code>systemctl:restart:*</code>; <code>*</code> = qualsiasi).
+  Prima di eseguire un comando privilegiato, il runtime lo canonicalizza e lo
+  confronta con queste firme, in quest'ordine: forbidden &rarr; blacklist
+  &rarr; whitelist. Il confronto e' deterministico: niente LLM, una firma in
+  lista e' in lista.</p>
+  <table class="compact">
+    <tbody>
+      <tr>
+        <td><span class="chip ok">whitelist</span></td>
+        <td>comando approvato: esegue <b>senza chiedere conferma</b>
+            (es. <code>ls:*:fs:user</code>, <code>systemctl:status:*</code>).</td>
+      </tr>
+      <tr>
+        <td><span class="chip">graylist</span></td>
+        <td>comando che <b>chiede conferma</b> prima di eseguire (sudo
+            reversibili, operazioni irreversibili su file utente). Con usi
+            ripetuti diventa candidata alla promozione a whitelist.</td>
+      </tr>
+      <tr>
+        <td><span class="chip warn">blacklist</span></td>
+        <td>comando <b>bloccato</b>: l'esecuzione viene fermata. Derogabile
+            solo rimuovendo la firma a mano (curation utente).</td>
+      </tr>
+      <tr>
+        <td><span class="chip bad">forbidden</span></td>
+        <td><b>Legge 1</b>: blocco non negoziabile e immutabile fra release
+            (es. <code>rm:rf:/</code>, <code>dd</code> su block device).
+            Nessuno strato — nemmeno l'LLM di sanity check — puo' toglierlo:
+            l'LLM puo' solo aggiungere blocchi, mai levarne.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="muted"><b>Severita'</b> classifica la conseguenza dell'esecuzione
+  (forbidden &gt; irreversible &gt; dangerous &gt; reversible) e distingue le
+  blacklist derogabili da quelle Legge 1.
+  <b>Origine</b>: <code>seed</code> = in dotazione col rilascio (il bootstrap
+  non sovrascrive mai le tue voci), <code>user</code> = curata da te,
+  <code>auto-promoted</code> = promossa dall'uso (graylist sopra soglia).
+  <b>Usi</b>: quante volte la firma ha fatto match; alimenta la promozione
+  graylist &rarr; whitelist.</p>
+</div>
+
+<p>
+  Filtra per tipo:
+  <a class="chip{% if not kind %} ok{% endif %}" href="/admin/safety">tutte</a>
+  <a class="chip{% if kind == 'whitelist' %} ok{% endif %}" href="?kind=whitelist">whitelist</a>
+  <a class="chip{% if kind == 'graylist' %} ok{% endif %}" href="?kind=graylist">graylist</a>
+  <a class="chip{% if kind == 'blacklist' %} ok{% endif %}" href="?kind=blacklist">blacklist</a>
+  <a class="chip{% if kind == 'forbidden' %} ok{% endif %}" href="?kind=forbidden">forbidden</a>
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th title="forma canonica binario:sottocomando_o_flag:tipo_bersaglio; * = qualsiasi">firma</th>
+        <th title="whitelist = esegue senza conferma · graylist = chiede conferma · blacklist = bloccata (derogabile) · forbidden = Legge 1, mai aggirabile">tipo</th>
+        <th title="conseguenza dell'esecuzione: forbidden / irreversible / dangerous / reversible">severità</th>
+        <th title="seed = in dotazione col rilascio · user = curata da te · auto-promoted = promossa dall'uso">origine</th>
+        <th title="quante volte la firma ha fatto match; alimenta la promozione graylist → whitelist">usi</th>
+        <th title="quando la firma e' stata inserita">creata</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><code>{{ r.signature }}</code></td>
+      <td>
+        {% if r.kind == "whitelist" %}<span class="chip ok">{{ r.kind }}</span>
+        {% elif r.kind == "blacklist" %}<span class="chip warn">{{ r.kind }}</span>
+        {% elif r.kind == "forbidden" %}<span class="chip bad">{{ r.kind }}</span>
+        {% else %}<span class="chip">{{ r.kind }}</span>{% endif %}
+      </td>
+      <td>{{ r.severity or "-" }}</td>
+      <td><span class="chip">{{ r.source }}</span></td>
+      <td>{{ r.uses }}</td>
+      <td class="muted">{{ r.created_at }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">nessuna signature</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

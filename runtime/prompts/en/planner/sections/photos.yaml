@@ -1,0 +1,86 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: photos
+  header: "PHOTOS / IMAGES / EXIF / GPS / FACES (unified indices, ADR 0117)"
+  preamble: |
+    PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
+    -> get_files (to extract `dates.semantic`/`place` from JPEG/HEIC).
+    -> find_images_indices (unified executor: identity + content + composition + EXIF/GPS in ONE pass, ADR 0117).
+
+rules:
+  - name: images_unified_index
+    when: "ANY photo query (identity, content, composition, EXIF/GPS, temporal, similarity)"
+    must: |
+      use `find_images_indices` as the unified executor. Pass ONLY the args relevant to the query (combining args = combining filters):
+      - `name="bob"` -> identity (person registered via set_persons)
+      - `query_text="sea"` -> content (the VLM described what is seen)
+      - `min_face_pixels=40000` -> close-up (~200x200 px)
+      - `min_face_count=2` -> group portraits. `max_face_count=1` -> singles
+      - `reference_images=[paths]` -> ArcFace similarity to attached photos
+      - `near_lat`/`near_lon`/`radius_km` -> geographic EXIF proximity
+      - `time_window="last-3y"` -> time filter
+      After the first ok, EMIT `final_answer` directly: the executor returns `entries[]` + `summary` already usable for the final message, no describe_entries needed.
+    must_not: "pass `idx=` (deprecated post-ADR0117). MUST NOT: pass `paths_filter` as a bridge between two calls (one executor only; args combine). MUST NOT call describe_entries after find_images_indices: entries already have readable paths"
+    ok: "«Bob at the sea» -> find_images_indices(name=\"bob\", query_text=\"sea\") -> final_answer. OR «Carol close-up» -> find_images_indices(name=\"carol\", min_face_pixels=40000) -> final_answer"
+    error: "«Bob at the sea» -> find_persons_indices(name=\"bob\") -> find_images_indices(idx=\"scene\", query_text=\"sea\", paths_filter=from_step:1) (THIS IS AN ERROR: 2-step pattern superseded by ADR 0117). OR find_images_indices -> describe_entries -> ... (THIS IS AN ERROR: describe is useless, entries already user-friendly)"
+
+  - name: persons_thin_alias
+    when: "photo query based on identity ALONE (proper name): «Alice's photos», «Bob's photos»"
+    must: "`find_persons_indices(name=...)` remains accepted as alias of `find_images_indices(name=...)`. Same engine, same result. After the first ok, EMIT `final_answer` with a short message (\"N photos of X found\"): the observation already has `summary`/`entries` with file names, no describe_entries needed"
+    must_not: "use both find_persons_indices AND find_images_indices in the same turn: duplicate. MUST NOT call describe_entries after find_persons_indices: the unified executor already returns a nominal list of files useful for the final"
+    ok: "«Alice's photos» -> find_persons_indices(name=\"alice\") -> final_answer (\"Found N photos of Alice\")"
+    error: "find_persons_indices -> describe_entries -> find_persons_indices (THIS IS AN ERROR: useless describe + duplicate find). OR find_persons_indices -> find_images_indices (THIS IS AN ERROR: duplicate; one step suffices)"
+
+  - name: aggregate_count_or_size
+    when: "AGGREGATE query on the corpus: «how many photos of X», «how many sea photos», «how many GB of photos», «how heavy are Y's photos». User wants a numeric TOTAL, NOT the photo list"
+    must: |
+      ONE step: `find_images_indices(...)` with filter args (name/names/query_text/time_window/...). DO NOT pass `top_k`. The observation returns `metadata.total_count` (total matched count) and `metadata.total_size_bytes` (byte sum). Read these two values and EMIT `final_answer` with the total, converting bytes into a readable unit (MB/GB). Example format: «You have 936 photos of Carol for a total of 2.38 GB».
+    must_not: |
+      call `compute_entries(op=count|sum)` on returned entries: entries are truncated to `top_k` (default 100), the count/sum would be partial. The correct answer is already in `metadata.total_*` computed on the FULL matched corpus. DO NOT call describe_entries or filter_entries: the question asks for a NUMBER, not a list
+    ok: "«How many Carol photos and what is the total size?» -> find_images_indices(names=[\"carol\"]) -> final_answer (\"You have 936 photos of Carol, 2.38 GB total\"). Read from metadata.total_count + metadata.total_size_bytes"
+    error: "«How many Carol photos?» -> find_images_indices(names=[\"carol\"]) -> compute_entries(op=\"count\") (THIS IS AN ERROR: count would be 100 not 936, entries are truncated). OR find_images_indices -> compute_entries(op=\"sum\", key=\"size_bytes\") (THIS IS AN ERROR: partial sum)"
+
+  - name: persons_and_multi
+    when: "photo query with TWO OR MORE proper names joined by 'and' / 'with' / 'together with': «photos with Alice AND Carol», «group photos with Roberto and Bob», «photos including Alice, Carol and Roberto»"
+    must: "pass `names` as ARRAY of enrolled slugs, NOT `name` with comma or `query_text` with concatenated names. E.g. names=[\"alice\",\"carol\"] → AND face match: photo must contain BOTH faces. Combinable with time_window, min_face_count, content query_text."
+    must_not: "passing `name=\"Alice, Carol\"` as single string (NOT a valid id, auto-promotion exists but is fallback). DO NOT use `query_text=\"Alice Carol\"`: this searches names as WORDS in text, not AND face. Result degenerates to OR (photos with ONE name pass if name appears in filename/keyword)."
+    ok: "«group photos with Alice AND Carol from 2024» -> find_images_indices(names=[\"alice\",\"carol\"], time_window=\"2024\") -> final_answer"
+    error: "«photos with Alice and Carol» -> find_images_indices(name=\"Alice, Carol\") (invalid id) OR -> find_images_indices(query_text=\"Alice Carol\") (BM25 OR, not AND face)"
+
+  - name: find_similar
+    when: "query «find/show photos similar to/like this/like that/same subject», OR the user has just uploaded (Telegram caption + photo, HTTP drag&drop) one or more photos as reference AND asks for related search"
+    must: |
+      You MUST use `find_images_indices(reference_images=[paths_from_uploaded])` for ArcFace face-similarity. Uploaded photos live in the scratchpad as virtual step `@uploaded` with `entries=[{path}]`. Pass those paths to the `reference_images` arg. Combinable with other filters (time_window, min_face_pixels, query_text content).
+      If no photo is uploaded and the query says «similar to Carol» without a photo, use `name="carol"` (face match via registry, not reference_images).
+    must_not: "ignore the uploaded photos by passing only `query_text` textual (textual match is weak; reference_images = ArcFace cosine, orders of magnitude more accurate). You MUST NOT pass `query_text=\"similar\"`: «similar» is an instruction, not a corpus term."
+    ok: "[upload photo.jpg] «find similar photos» -> find_images_indices(reference_images=[\"/path/to/photo.jpg\"]) -> final_answer. OR «show me photos like this from 2024» (with uploaded photo) -> find_images_indices(reference_images=[paths], time_window=\"2024\")"
+    error: "[upload photo] «similar» -> find_images_indices(query_text=\"similar\") (instruction word, not term). OR «similar to this» (with uploaded photo) -> find_images_indices() without reference_images (loses visual signal)"
+
+  - name: persons_registry_management
+    when: "persons.sqlite registry management: deletion, enumeration, registration of enrolled persons"
+    must: |
+      map the user verb to the canonical tool in ONE step:
+      - «delete/forget/remove <First Last>» (capitalized proper name, no extension, no path slash) -> `delete_persons(name="<First Last>")`
+      - «delete all enrolled persons / empty the registry» -> `delete_persons(all=true)`
+      - «delete Carol, Anna and Luca» (explicit list) -> `delete_persons(names=["Carol","Anna","Luca"])`
+      - «show enrolled persons / who they are» -> `get_persons()` no arg
+      `from_step` on `delete_persons` is used ONLY after `get_persons` (entries from the registry), NEVER after `find_files`
+    must_not: "invoke find_files before delete_persons: the persons registry is NOT on the filesystem but in ~/.local/share/metnos/persons.sqlite. MUST NOT pass from_step to delete_persons if the user already gave an explicit name"
+    ok: "«delete the owner» -> delete_persons(name=\"the owner\"). OR «delete all» (post get_persons) -> get_persons -> delete_persons(from_step=1)"
+    error: "«delete the owner» -> find_files(pattern=\"*Roberto*\") -> delete_persons(from_step=1, name=...) (THIS IS AN ERROR: no find_files, the name is in the persons.sqlite registry)"
+
+  - name: exif_metadata_extraction
+    when: "query on EXIF/capture/GPS/place-of-capture/camera (IMAGE data, not corpus index): «when was this photo taken», «with what camera», «where was it taken»"
+    must: "DEVI use get_files(paths=[...], fields=[...]) to read EXIF from JPEG/HEIC on disk. fields=['dates.semantic'] for capture date; fields=['place'] (or 'gps') for location; fields=['device'] for camera. Works on specific files (paths), NOT on the indexed corpus"
+    must_not: "NON DEVI use find_files (reads only the filesystem, not EXIF), find_images_indices (searches the corpus, does not read EXIF of ONE photo), get_images_indices or get_places to extract EXIF of a specific photo. The only EXIF tool is get_files"
+    ok: "«when was /path/photo.jpg taken?» -> get_files(paths=[\"/path/photo.jpg\"], fields=[\"dates.semantic\"]) -> final_answer. OR «where was it taken?» -> get_files(paths=[\"/path/photo.jpg\"], fields=[\"place\"]) -> final_answer"
+    error: "«when was it taken?» (path known) -> find_files(...) OR find_images_indices(query_text=\"date\") (THIS IS AN ERROR: neither reads EXIF; use get_files with fields)"

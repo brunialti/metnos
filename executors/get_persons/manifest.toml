@@ -1,0 +1,68 @@
+# Manifest dell'executor `get_persons` — Metnos v1.1
+# Naming compositivo: azione_oggetto. PR2 persons registry.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "get_persons"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["chi", "elenca persone", "lista persone", "registro persone",
+                "persone enrollate", "chi è enrollato", "enrolled",
+                "quante foto", "list persons", "who is registered",
+                "registered persons", "person info", "registry"]
+revertible  = false
+platforms   = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
+
+[description]
+it = "SCOPO: ottiene dati dal registro persone (chi è enrollato, elenco enrollment). PATTERN: get_persons(name=\"Carol\"); senza arg elenca tutte. NON: cercare foto (-> find_persons_indices); enrollare (-> set_persons). OUT: {ok, entries:[{slug, name, n_examples, created_at, updated_at, examples?}], n_entries, ambiguous?, status?, final_message_hint?}."
+en = "SCOPO: gets data from the persons registry (who is enrolled, enrollment list). PATTERN: get_persons(name=\"Carol\"); without args lists all. NON: search photos (-> find_persons_indices); enroll (-> set_persons). OUT: {ok, entries:[{slug, name, n_examples, created_at, updated_at, examples?}], n_entries, ambiguous?, status?, final_message_hint?}."
+
+[code]
+files  = ["get_persons.py"]
+digest = "sha256:666681bdf203900da64a12b87e85b7829f89813f672f4afd9d313be5e9e119f4"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.name]
+type        = "string"
+
+[args.properties.name.description]
+it = "Nome della persona da cercare (opzionale). Se omesso o null, ritorna l'elenco completo. Se passato e introvabile, ritorna lista vuota + status='unknown_name'."
+en = "Name of the person to look up (optional). If omitted or null, returns the full list. If passed and not found, returns empty list + status='unknown_name'."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{slug, name, n_examples, created_at, updated_at, examples?}>,
+  n_entries?: int,
+  ambiguous?: bool,
+  status?: 'unknown_name',
+  final_message_hint?: str,
+  error?: str,
+  error_class?: 'invalid_input' | 'resource_unavailable',
+  error_code?: str,
+  detail?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["persons_registry:local"]
+
+[[tests]]
+name   = "rejects_non_string_name"
+input  = { name = 42 }
+expect = { ok = false, field_eq = { error_code = "name_not_string" } }
+
+[[tests]]
+name   = "rejects_non_object_args"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }

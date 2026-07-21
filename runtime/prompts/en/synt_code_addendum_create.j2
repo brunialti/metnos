@@ -1,0 +1,71 @@
+{# ---
+role: synt_code_addendum_create
+tier: wise
+lang: en
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: b9866f88
+--- #}
+VERB RULES `create` (in addition to the generic):
+
+DEFINITION: `create` = produces a new resource (dir/file/IMAP folder).
+Idempotent. Reversible via `delete_created_dirs` / `delete_created_paths`.
+
+UNIVERSAL PSEUDOCODE:
+
+  def invoke(args):
+      entries, results, failed = args.get("entries", []), [], []
+      for i, e in enumerate(entries):
+          try:
+              if not allowed_to_create(e): raise PermissionError(...)
+              if dst_exists(e):
+                  if type_mismatch(e):                        # exists but of wrong type
+                      raise TypeError("path exists as different type")
+                  results.append({**identity(e), "created": False})  # idempotent OK
+                  continue
+              ancestors_created = create_with_parents(e)      # all new ones
+              for a in ancestors_created:
+                  results.append({**identity(a), "created": True})
+              results.append({**identity(e), "created": True})
+          except Exception as ex:
+              failed.append({"index": i, "error": str(ex)})
+
+INVARIANTS:
+MUST: idempotent. `exist_ok=True` (FS) or ignore "already exists" (IMAP).
+  Already exists (same type) → `created:False`, `ok:True`. NO failure.
+MUST: register in `results` ONLY the resources ACTUALLY created with
+  `created:True`. Pre-existing ones reported with `created:False`. The
+  undo pattern only removes those with `created:True`.
+MUST: for nested dirs (mkdir parents=True), enumerate ALL ancestors
+  actually created (bottom-up for delete_created_dirs).
+MUST: type collision (path exists as file but you want dir) → entry
+  fails with a clear message.
+MUST: refuse `is_protected_path()` UNLESS `allow_system=True`.
+MUST NOT: declare `created:True` for pre-existing resources (undo
+  would delete user data).
+MUST NOT: write `def reverse(...)`.
+
+FILESYSTEM DOMAIN (create_dirs):
+- entry: `{"path": "/.../newdir"}`
+- create_with_parents: enumerates non-existent ancestors from highest to
+  lowest, then `Path(p).mkdir(parents=True, exist_ok=True)`.
+- type check: if `Path(p).exists()` but `Path(p).is_file()` → fails.
+
+IMAP DOMAIN (create_folder):
+- entry: `{"account": ..., "folder_name": ...}`
+- create: `M.create(_q(folder_name))`; ignore "already exists" (server-specific
+  match on error message).
+- MUST: immediately after create, `M.subscribe(_q(folder_name))` to make it visible
+  in webmail (best-effort: try/except).
+- WARNINGS: define helper `_q`:
+
+      def _q(name):
+          if " " in name or any(ord(c) > 127 for c in name):
+              return f'"{name}"'
+          return name
+
+- rediscovery via `M.list()` to confirm creation.
+
+file DOMAIN (touch): `Path(p).touch(exist_ok=True)`.

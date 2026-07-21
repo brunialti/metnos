@@ -1,0 +1,299 @@
+{% extends "base_bare.html" %}
+{% block title %}{{ title|e }} — Metnos dialog{% endblock %}
+{% block body %}
+<div class="section">
+  <h2>{{ title|e }}</h2>
+  {% if description %}
+  <p class="muted">{{ description|e }}</p>
+  {% endif %}
+  <p class="muted" style="font-size:.78rem;overflow-wrap:anywhere;">
+    {% if origin_turn_id %}turn_id: <code>{{ origin_turn_id|e }}</code> · {% endif %}
+    dialog_id: <code>{{ dialog_id|e }}</code>
+  </p>
+
+  <form method="post" action="/agent/dialog/{{ dialog_id }}/submit"
+        data-dialog-id="{{ dialog_id|e }}" data-turn-id="{{ origin_turn_id|e }}"
+        autocomplete="off" style="display:flex;flex-direction:column;gap:.8rem;">
+    {% for step in dialog %}
+      {% set var_id = "f_" ~ step.var %}
+      {% set kind = step.schema.kind %}
+      <label for="{{ var_id }}" style="display:flex;flex-direction:column;gap:.2rem;">
+        <span><strong>{{ step.prompt|linkify }}</strong>
+          {% if step.optional %}<span class="muted">(opzionale)</span>{% endif %}
+        </span>
+
+        {% if kind == "text" or kind == "file_path" %}
+          <input id="{{ var_id }}" name="{{ step.var }}" type="text"
+                 {% if not step.optional %}required{% endif %}
+                 {% if step.schema.placeholder %}placeholder="{{ step.schema.placeholder|e }}"{% endif %}
+                 {% if step.default %}value="{{ step.default|e }}"{% endif %}
+                 {% if step.schema.validate %}pattern="{{ step.schema.validate|e }}"{% endif %}>
+
+        {% elif kind == "credentials" %}
+          <input id="{{ var_id }}" name="{{ step.var }}" type="password"
+                 {% if not step.optional %}required{% endif %}
+                 autocomplete="new-password">
+
+        {% elif kind == "yes_no" %}
+          <span>
+            <label><input type="radio" name="{{ step.var }}" value="yes"
+                          {% if step.default in (true, "yes", "si", "sì") %}checked{% endif %}> Sì</label>
+            <label style="margin-left:1rem;"><input type="radio" name="{{ step.var }}" value="no"
+                          {% if step.default in (false, "no") %}checked{% endif %}> No</label>
+          </span>
+
+        {% elif kind == "choice" %}
+          {# Choices: stringhe esplicite O dict {value,label} (ADR 0127, es.
+             scelta file Drive). Il VALUE postato è sempre il `value` — il
+             repr del dict non validerebbe (parse_step_value). ≤6 → radio
+             (un click), oltre → select. #}
+          {% if step.schema.choices|length <= 6 %}
+            <span style="display:flex;flex-direction:column;gap:.35rem;">
+              {% for c in step.schema.choices %}
+                {% set cval = c.value if c is mapping else c %}
+                {% set clab = (c.label or c.value) if c is mapping else c %}
+                <label style="display:flex;align-items:center;gap:.5rem;
+                              padding:.35rem .5rem;border:1px solid var(--border);
+                              border-radius:4px;cursor:pointer;">
+                  <input type="radio" name="{{ step.var }}" value="{{ cval|e }}"
+                         {% if not step.optional %}required{% endif %}
+                         {% if step.default == cval %}checked{% endif %}>
+                  <span>{{ clab|e }}</span>
+                </label>
+              {% endfor %}
+            </span>
+          {% else %}
+            <select id="{{ var_id }}" name="{{ step.var }}"
+                    {% if not step.optional %}required{% endif %}>
+              {% if step.optional %}<option value="">— scegli —</option>{% endif %}
+              {% for c in step.schema.choices %}
+                {% set cval = c.value if c is mapping else c %}
+                {% set clab = (c.label or c.value) if c is mapping else c %}
+                <option value="{{ cval|e }}"
+                        {% if step.default == cval %}selected{% endif %}>{{ clab|e }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+
+        {% elif kind == "choice_with_preview" %}
+          {% if step.schema.context_image_path %}
+            <span style="display:block;margin:0 0 .6rem 0;">
+              <img src="/agent/dialog/{{ dialog_id }}/context/{{ loop.index0 }}"
+                   alt="foto"
+                   style="max-height:240px;max-width:100%;object-fit:contain;
+                          border:1px solid var(--border);border-radius:4px;
+                          background:#222;display:block;"
+                   loading="lazy">
+            </span>
+          {% endif %}
+          <span class="preview-options"
+                style="display:flex;flex-direction:column;gap:.4rem;">
+            {% set step_idx = loop.index0 %}
+            {% for opt in step.schema.options %}
+              <label class="preview-option"
+                     style="display:flex;align-items:center;gap:.6rem;
+                            padding:.4rem;border:1px solid var(--border);
+                            border-radius:4px;cursor:pointer;">
+                <input type="radio" name="{{ step.var }}"
+                       value="{{ opt.value|e }}"
+                       {% if not step.optional %}required{% endif %}
+                       {% if step.default == opt.value %}checked{% endif %}>
+                <img src="/agent/dialog/{{ dialog_id }}/preview/{{ step_idx }}/{{ loop.index0 }}"
+                     alt="{{ opt.label|e }}"
+                     style="max-height:120px;max-width:120px;object-fit:cover;
+                            border-radius:3px;background:#222;"
+                     loading="lazy">
+                <span>{{ opt.label|e }}</span>
+              </label>
+            {% endfor %}
+          </span>
+
+        {% elif kind == "multi_choice" %}
+          <span style="display:flex;flex-direction:column;gap:.1rem;">
+            {% for c in step.schema.choices %}
+              {% set cval = c.value if c is mapping else c %}
+              {% set clab = (c.label or c.value) if c is mapping else c %}
+              <label><input type="checkbox" name="{{ step.var }}" value="{{ cval|e }}"> {{ clab|e }}</label>
+            {% endfor %}
+          </span>
+
+        {% elif kind == "number" %}
+          <input id="{{ var_id }}" name="{{ step.var }}" type="number" step="any"
+                 {% if not step.optional %}required{% endif %}
+                 {% if step.schema.min is not none %}min="{{ step.schema.min }}"{% endif %}
+                 {% if step.schema.max is not none %}max="{{ step.schema.max }}"{% endif %}
+                 {% if step.default is not none %}value="{{ step.default }}"{% endif %}>
+
+        {% elif kind == "date" %}
+          <input id="{{ var_id }}" name="{{ step.var }}" type="date"
+                 {% if not step.optional %}required{% endif %}
+                 {% if step.default %}value="{{ step.default|e }}"{% endif %}>
+
+        {% elif kind == "location" %}
+          <span style="display:flex;gap:.5rem;">
+            <input name="{{ step.var }}__lat" type="number" step="any"
+                   placeholder="latitudine" {% if not step.optional %}required{% endif %}>
+            <input name="{{ step.var }}__lon" type="number" step="any"
+                   placeholder="longitudine" {% if not step.optional %}required{% endif %}>
+          </span>
+
+        {% else %}
+          <input id="{{ var_id }}" name="{{ step.var }}" type="text"
+                 {% if not step.optional %}required{% endif %}>
+        {% endif %}
+      </label>
+    {% endfor %}
+
+    <div style="display:flex;gap:.5rem;margin-top:.5rem;">
+      <button type="submit" class="btn primary">Invia</button>
+      <a class="btn" href="/agent/dialog/{{ dialog_id }}/cancel"
+         onclick="return confirm('Annullare il dialogo?');">Annulla</a>
+    </div>
+  </form>
+</div>
+<script>
+// Iframe-aware submit (chat.html INLINE_FORM): se siamo dentro un iframe,
+// intercetta submit/cancel, fa fetch e notifica il parent via postMessage.
+// Standalone (no iframe) il form fa il submit nativo.
+(function(){
+  const inIframe = (window.parent !== window);
+  if(!inIframe) return;
+  // Notifica altezza al parent (cosi' il bubble cresce/decresce con il
+  // contenuto). Re-emit su resize/mutation.
+  function postHeight(){
+    const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    window.parent.postMessage({type:'metnos.dialog.height', height: h}, '*');
+  }
+  window.addEventListener('load', postHeight);
+  new ResizeObserver(postHeight).observe(document.body);
+  const form = document.querySelector('form');
+  if(form){
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      // UX (Roberto 5/7): il resume può richiedere secondi (ri-esegue un
+      // turno intero) — senza feedback l'utente ri-clicca o crede sia rotto.
+      // Disabilita TUTTO + progress; riabilita solo su errore (il successo
+      // sostituisce l'iframe con la bolla risultato).
+      const _controls = form.querySelectorAll('input, select, textarea, button');
+      _controls.forEach(el => { el.disabled = true; });
+      form.style.opacity = '0.6';
+      let _prog = document.getElementById('_metnos_progress');
+      if(!_prog){
+        _prog = document.createElement('div');
+        _prog.id = '_metnos_progress';
+        _prog.style.cssText = 'margin:.6rem 0;padding:.45rem .6rem;'
+          + 'border-radius:6px;background:rgba(120,120,120,.12);'
+          + 'font-size:.92em;display:flex;align-items:center;gap:.5rem;';
+        _prog.innerHTML = '<span style="display:inline-block;width:1em;height:1em;'
+          + 'border:2px solid currentColor;border-top-color:transparent;'
+          + 'border-radius:50%;animation:mspin .8s linear infinite;"></span>'
+          + '<span>Elaboro la risposta&hellip;</span>'
+          + '<style>@keyframes mspin{to{transform:rotate(360deg)}}</style>';
+        form.parentNode.insertBefore(_prog, form.nextSibling);
+        postHeight();
+      }
+      const _reenable = () => {
+        _controls.forEach(el => { el.disabled = false; });
+        form.style.opacity = '';
+        if(_prog && _prog.parentNode){ _prog.parentNode.removeChild(_prog); }
+        postHeight();
+      };
+      try {
+        const r = await fetch(form.action, {method:'POST', body: fd});
+        if(r.ok){
+          // Estrai data-redirect-url se presente: il callback (es. OAuth)
+          // chiede una navigation diretta. Altrimenti data-completion-text:
+          // messaggio testuale (anche errori) da mostrare in chat come bolla
+          // regolare. Propaga al parent (chat.html).
+          const txt = await r.text();
+          const unescape = s => s
+            .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+            .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+          let redirect_url = '';
+          let completion_text = '';
+          const mU = txt.match(/data-redirect-url="([^"]+)"/);
+          if(mU){ redirect_url = unescape(mU[1]); }
+          const mT = txt.match(/data-completion-text="([^"]*)"/);
+          if(mT){ completion_text = unescape(mT[1]); }
+          let turn_id = '';
+          const mI = txt.match(/data-turn-id="([^"]*)"/);
+          if(mI){ turn_id = unescape(mI[1]); }
+          // Bug zip-line (5/7): il resume full-turn porta gallery + meta.
+          let attachments = null, turn_meta = null;
+          const mA = txt.match(/data-attachments-b64="([^"]*)"/);
+          if(mA && mA[1]){ try{ attachments = JSON.parse(atob(mA[1])); }catch(e){} }
+          const mM = txt.match(/data-turn-meta-b64="([^"]*)"/);
+          if(mM && mM[1]){ try{ turn_meta = JSON.parse(atob(mM[1])); }catch(e){} }
+          window.parent.postMessage(
+            {type:'metnos.dialog.done', redirect_url, completion_text, turn_id,
+             attachments, turn_meta}, '*');
+        } else {
+          if(r.status === 404 || r.status === 410){
+            const state = r.headers.get('X-Metnos-Dialog-State')
+                          || (r.status === 404 ? 'missing' : 'expired');
+            window.parent.postMessage(
+              {type:'metnos.dialog.terminal', state,
+               turn_id:form.dataset.turnId || '',
+               dialog_id:form.dataset.dialogId || ''}, '*');
+            return;
+          }
+          _reenable();
+          const t = await r.text();
+          // Mostra errore inline nel form
+          let err = document.getElementById('_metnos_err');
+          if(!err){
+            err = document.createElement('div');
+            err.id = '_metnos_err';
+            err.style.cssText = 'color:var(--err-fg);padding:.4rem;'
+                              + 'border:1px solid var(--err-line);'
+                              + 'background:var(--err-soft);border-radius:6px;margin-top:.5rem;';
+            form.parentNode.insertBefore(err, form.nextSibling);
+          }
+          let detail = t.substring(0, 200) || String(r.status);
+          if(r.status === 404 || r.status === 410){
+            detail = {{ expired_message|tojson }};
+          }
+          const refs = [
+            form.dataset.turnId ? 'turn_id: ' + form.dataset.turnId : '',
+            'dialog_id: ' + (form.dataset.dialogId || '?'),
+          ].filter(Boolean).join(' · ');
+          err.textContent = '⚠ Errore submit: ' + detail + '\n' + refs;
+        }
+      } catch(ex) {
+        _reenable();
+        alert('Errore di rete: ' + ex);
+      }
+    });
+  }
+  const cancelLink = document.querySelector('a[href*="/cancel"]');
+  if(cancelLink){
+    cancelLink.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if(!confirm('Annullare il dialogo?')) return;
+      try {
+        const r = await fetch(cancelLink.href, {cache:'no-store'});
+        if(r.ok){
+          window.parent.postMessage(
+            {type:'metnos.dialog.cancelled',
+             turn_id:form ? (form.dataset.turnId || '') : '',
+             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+          return;
+        }
+        if(r.status === 404 || r.status === 410){
+          window.parent.postMessage(
+            {type:'metnos.dialog.terminal',
+             state:r.headers.get('X-Metnos-Dialog-State') || 'missing',
+             turn_id:form ? (form.dataset.turnId || '') : '',
+             dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
+          return;
+        }
+        alert('Errore HTTP ' + r.status);
+      } catch(ex){
+        alert('Errore di rete: ' + ex);
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

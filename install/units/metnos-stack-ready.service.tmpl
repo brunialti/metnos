@@ -1,0 +1,26 @@
+[Unit]
+Description=Metnos composite readiness gate
+Requires=metnos-http.service
+After=network-online.target metnos-http.service
+After=metnos-side-display.service metnos-playwright.service
+After=metnos-telegram-daemon.service
+After=metnos-llm.service metnos-searxng.service metnos-photon.service
+After=cloudflared-metnos-chat.service metnos-issues-sidecar.service
+After=metnos-i18n-translator.timer
+Before=metnos.target
+PartOf=metnos.target
+OnFailure=metnos-stack-quarantine.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO_DIR@/runtime
+ExecStart=@VENV@/bin/python -m stack_reconcile wait-ready --require-sidecar auto --timeout 120
+RemainAfterExit=yes
+TimeoutStartSec=150
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
+Environment=METNOS_USER_STATE=@STATE_DIR@
+SyslogIdentifier=metnos-stack-ready

@@ -1,0 +1,68 @@
+# Frontmatter equivalent to `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-05-15
+sha_prev: ""
+
+section:
+  name: scheduled_tasks
+  header: "RECURRING TASKS / TIMERS / REMINDERS in Metnos (NOT calendar events, NOT OS processes)"
+  preamble: |
+    RECURRING TASKS / TIMERS / REMINDERS / SCHEDULING (object §2.2: `tasks`)
+    -> list_tasks (list), delete_tasks (cancel), read_tasks (detail),
+       create_tasks (create), set_tasks (enable/disable or fire now),
+       read_tasks_history (execution history).
+    These are Metnos automatic tasks: cron-like (daily@HH:MM, every_Ns/m/h), persisted in scheduler_v2.sqlite.
+    Distinct from: calendar events (read_events), system processes (get_processes), undo (undo_last_turn).
+
+rules:
+  - name: list_tasks
+    when: "requests to see recurring tasks / timers / reminders ('what tasks do I have scheduled', 'list timers', 'which recurring tasks', 'show me reminders', 'list scheduled tasks', 'what does Metnos do automatically')"
+    must: "use list_tasks. Returns `tasks: [{id, name, schedule_human, last_fire_human, ...}]` + a user-facing `summary` with explicit IDs for later cancellation"
+    must_not: "call get_processes (current OS processes, NOT Metnos tasks) NOR read_events (calendar events, NOT recurring tasks)"
+    ok: "'list recurring tasks' -> list_tasks() -> final_answer with the observation's `summary`"
+    error: "'list recurring tasks' -> get_processes() (THIS IS AN ERROR: get_processes shows OS PID/CPU, nothing to do with Metnos recurring tasks)"
+
+  - name: cancel_task
+    when: "requests to cancel / stop / remove a recurring task / timer / reminder ('cancel timer ping', 'stop task X', 'remove the mail reminder', 'stop the recurring task', 'cancel task riassunto_mail')"
+    must: "use delete_tasks(id=<number>) if the user cites an ID, or delete_tasks(name=<slug>) if they cite the name. If the user is vague ('cancel the mail task'), call list_tasks first to show IDs and ask for clarification"
+    must_not: "call delete_events (cancels CALENDAR EVENTS, not recurring tasks) NOR kill (OS processes)"
+    ok: "'cancel timer 17' -> delete_tasks(id=17) -> final_answer. OR 'cancel task riassunto_mail' -> delete_tasks(name=\"riassunto_mail\") -> final_answer"
+    error: "'cancel recurring task riassunto_mail' -> delete_events(...) (THIS IS AN ERROR: delete_events cancels calendar events, not Metnos recurring tasks. The name is not an event_id)"
+
+  - name: show_task_detail
+    when: "requests to see detail of ONE recurring task ('show detail of task X', 'info about task Y', 'when does task X run')"
+    must: "use read_tasks(name=<slug>). Returns schedule, last execution, status, user record."
+    must_not: "confuse with read_tasks_history (execution history)"
+    ok: "'show detail of task ping' -> read_tasks(name=\"ping\") -> final_answer"
+
+  - name: show_task_history
+    when: "requests to see history/log/last executions of a recurring task ('history of task X', 'log fire of timer', 'history last N days')"
+    must: "use read_tasks_history(name=<slug>?, time_window=<canonical>?, limit=<N>?) DIRECTLY in ONE step. When user mentions a temporal window ('last 7 days', 'today', 'yesterday', 'since January'), MUST pass canonical `time_window` (e.g. 'last-7d', 'today', 'yesterday', '2024-01-01/2024-12-31', '2024'). After first ok EMIT final_answer with summary: NO second call with different limit/time_window (observation already has filtered history)"
+    must_not: "call list_tasks BEFORE read_tasks_history (read_tasks_history without name already enumerates all). NO repeated read_tasks_history calls to expand limit (first call returns up to 200 fires). NO get_processes/read_events"
+    ok: "'history last 7 days' -> read_tasks_history(time_window=\"last-7d\") -> final_answer. OR 'history of task ping' -> read_tasks_history(name=\"ping\") -> final_answer"
+    error: "'history last 7 days' -> read_tasks_history(limit=100) -> read_tasks_history(limit=1000) (THIS IS AN ERROR: two calls expanding limit — PLANNER must use declarative time_window, not retry with larger limit). OR -> list_tasks() first (redundant). OR -> get_processes() (wrong domain)"
+
+  - name: schedule_task
+    when: "requests to SCHEDULE / CREATE a recurring task / reminder / timer ('every day at 9 X', 'every N minutes Y', 'remind me to X', 'schedule Y', 'plan X every day')"
+    must: "use create_tasks(label=<description>, when=<daily@HH:MM|every_Nm>, query=<natural user phrase>, times=<N>?). Scheduler v2 will invoke a new turn with `query` at each fire"
+    must_not: "create a calendar event with create_events (it's a RECURRING task, not a single event)"
+    ok: "'every day at 9 read mail' -> create_tasks(label=\"check mail morning\", when=\"daily@09:00\", query=\"read latest mail\") -> final_answer"
+    error: "'every day at 9 X' -> create_events (THIS IS AN ERROR: create_events makes ONE event, not a repeating task)"
+
+  - name: toggle_task
+    when: "requests to pause / suspend / re-enable a task without canceling it ('pause task X', 'suspend temporarily', 'reactivate recurring task')"
+    must: "use set_tasks(name=<slug>, enabled=<true|false>). Disabled = doesn't fire but remains in DB; re-enableable."
+    must_not: "cancel the task with delete_tasks (irreversible, only for permanent removal)"
+    ok: "'pause task ping' -> set_tasks(name=\"ping\", enabled=false) -> final_answer"
+    error: "'temporarily suspend the task' -> delete_tasks (THIS IS AN ERROR: cancellation is permanent, suspension is temporary)"
+
+  - name: fire_task_now
+    when: "requests to force immediate execution of a task outside its schedule ('run task X now', 'force fire ping', 'try task Y now')"
+    must: "use set_tasks(name=<slug>, fire_now=true). Mutex with enabled. HOST only."
+    must_not: "specify both enabled and fire_now in the same call"
+    ok: "'run task ping now' -> set_tasks(name=\"ping\", fire_now=true) -> final_answer"

@@ -1,0 +1,240 @@
+# Manifest dell'executor `move_files` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale. Vettoriale per costruzione.
+# Sostituisce `move_file` (single-item) il 27 aprile 2026.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "move_files"
+version     = "0.10.0"
+# C7 CP4: backend local pathlib/os puro → gira anche su Windows
+# (mutanti validati e2e device 5/7). Senza dichiarazione, placement
+# rifiuterebbe un device Windows (F1).
+platforms   = ["linux", "windows"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "move", "sposta", "rinomina", "rename", "mv", "spostare", "rinominare", "ordina",
+                "organizza", "riorganizza", "file", "files", "documenti",
+                "relocate", "archive", "cartella", "batch"
+            ]
+revertible      = true
+reverse_pattern = ["swap_src_dst", "delete_created_dirs"]
+
+[description]
+it = "SCOPO: sposta o rinomina file in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convertire formati (-> change_files_format); comprimere (-> compress_files). OUT: results=[{path, dirs_created}], best-effort."
+en = "SCOPO: move or rename files in batch. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: convert formats (-> change_files_format); compress (-> compress_files). OUT: results=[{path, dirs_created}], best-effort."
+
+[code]
+files  = ["move_files.py"]
+digest = "sha256:096b005baf7ed46318480e0fe3a3e68e2819f8d8a5c002ead8031b3d8c08f3e6"
+
+[args]
+type     = "object"
+required = ["dst_template"]
+requires_one_of = [["from_step", "entries"]]
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Intero >=1 dello step precedente; il runtime lo risolve nella lista di file `entries`, es. `from_step=2`."
+en = "Integer >=1 for the previous step; the runtime resolves it to the `entries` file list, e.g. `from_step=2`."
+
+[args.properties.entries]
+type        = "array"
+items       = { type = "object" }
+
+[args.properties.entries.description]
+it = "Lista risolta dal runtime di file da spostare; ogni elemento deve contenere `path` oppure `src` e può fornire metadati usati da `dst_template`."
+en = "Runtime-resolved list of files to move; each item must contain `path` or `src` and may provide metadata used by `dst_template`."
+
+[args.properties.dst_template]
+type        = "string"
+
+[args.properties.dst_template.description]
+it = "Template stringa del path di destinazione con campi nome e data, es. `/tmp/{date_year}/{name}`; ogni risultato deve rientrare nello scope `fs:write`."
+en = "Destination path string template with name and date fields, e.g. `/tmp/{date_year}/{name}`; every result must remain within the `fs:write` scope."
+
+[args.properties.overwrite]
+type        = "boolean"
+default     = false
+
+[args.properties.overwrite.description]
+it = "Se true, rimpiazza dst se esiste (rimuove prima). Default false: la singola entry fallisce e le altre proseguono."
+en = "If true, replace dst if it exists (removes it first). Default false: the single entry fails and the others proceed."
+
+[args.properties.copy]
+type        = "boolean"
+default     = false
+runtime_resolved = true
+
+[args.properties.copy.description]
+it = "Runtime-only. Se true COPIA invece di spostare (src resta). Usato dal reverse remoto restore_blob_backup: un blob deduplicato serve piu' path."
+en = "Runtime-only. If true COPY instead of move (src remains). Used by the remote restore_blob_backup reverse: a deduplicated blob serves multiple paths."
+
+[args.properties.parents]
+type        = "boolean"
+default     = true
+
+[args.properties.parents.description]
+it = "Se true (default), crea la dir parent di dst se manca."
+en = "If true (default), create the parent dir of dst if it is missing."
+
+[args.properties.allow_dirs]
+type        = "boolean"
+default     = false
+
+[args.properties.allow_dirs.description]
+it = "Se true, consente di spostare directory; default false, abilitarlo solo quando l'utente richiede esplicitamente cartelle."
+en = "When true, allows moving directories; default false, enable it only when the user explicitly requests folders."
+
+[args.properties.allow_system]
+type        = "boolean"
+default     = false
+
+[args.properties.allow_system.description]
+it = "Se true, consente di spostare file di sistema come `Thumbs.db`; default false, abilitarlo solo su richiesta esplicita."
+en = "When true, allows moving system files such as `Thumbs.db`; default false, enable it only on the user's explicit request."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local"]
+default     = "local"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
+en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  results: Array<{src: str, dst: str}>,
+  dirs_created: Array<str>,
+  failed: Array<{
+    index: int,
+    src?: str,
+    dst?: str,
+    error_code: str,
+    error: str
+  }>,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/notes/**", "/tmp/**"]
+
+[[tests]]
+name     = "rinomina_lista_di_uno"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.txt"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.txt"}], dst_template = "/tmp/metnos_test_move_files/b.txt" }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { entries = [], dst_template = "/tmp/foo/{name}" }
+expect = { ok = true, ok_count_eq = 0, fail_count_eq = 0 }
+
+[[tests]]
+name     = "ordina_per_anno_template_fallback_mtime"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.JPG && touch -d '2024-06-15 12:00:00' /tmp/metnos_test_move_files/a.JPG && echo y > /tmp/metnos_test_move_files/b.JPG && touch -d '2025-03-10 09:00:00' /tmp/metnos_test_move_files/b.JPG"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.JPG"}, {path = "/tmp/metnos_test_move_files/b.JPG"}], dst_template = "/tmp/metnos_test_move_files/{date_year}/{date_yymmdd}_{name}" }
+expect   = { ok = true, ok_count_eq = 2 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name     = "ordina_per_data_semantica_via_date_epoch"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.JPG && touch -d '2026-04-27 12:00:00' /tmp/metnos_test_move_files/a.JPG"
+# date_epoch = 2024-06-15 12:00:00 UTC = 1718452800; il file ha mtime 2026-04-27
+# il dst deve usare date_epoch (2024) e non mtime (2026)
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.JPG", date_epoch = 1718452800}], dst_template = "/tmp/metnos_test_move_files/{date_year}/{name}" }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name     = "best_effort_alcuni_falliscono"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.txt && echo y > /tmp/metnos_test_move_files/b.txt && echo z > /tmp/metnos_test_move_files/dst_a.txt"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.txt"}, {path = "/tmp/metnos_test_move_files/b.txt"}], dst_template = "/tmp/metnos_test_move_files/dst_{name}" }
+expect   = { ok = false, ok_count_eq = 1, fail_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name     = "overwrite_true_rimpiazza"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.txt && echo y > /tmp/metnos_test_move_files/b.txt"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.txt"}], dst_template = "/tmp/metnos_test_move_files/b.txt", overwrite = true }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name   = "src_inesistente_fallisce_solo_quella"
+input  = { entries = [{path = "/tmp/metnos_does_not_exist_xyz/foo"}], dst_template = "/tmp/foo/{name}" }
+expect = { ok = false, ok_count_eq = 0, fail_count_eq = 1 }
+
+[[tests]]
+name     = "blocca_dst_fuori_scope"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/a.txt"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/a.txt"}], dst_template = "/etc/{name}" }
+expect   = { ok = false, error_contains = "outside allowed scope" }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name   = "args_invalidi_entries_non_lista"
+input  = { entries = "/tmp/foo", dst_template = "/tmp/bar/{name}" }
+expect = { ok = false, error_contains = "must be a list" }
+
+[[tests]]
+name   = "args_invalidi_dst_template_mancante"
+input  = { entries = [{path = "/tmp/foo"}] }
+expect = { ok = false, error_contains = "dst_template" }
+
+[[tests]]
+name     = "rifiuta_directory_di_default"
+setup    = "mkdir -p /tmp/metnos_test_move_files/sub"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/sub", kind = "dir"}], dst_template = "/tmp/metnos_test_move_files/dst_{name}" }
+expect   = { ok = false, fail_count_eq = 1, error_contains = "passa allow_dirs=true o filtra prima con filter_entries" }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name     = "allow_dirs_true_consente"
+setup    = "mkdir -p /tmp/metnos_test_move_files/sub"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/sub"}], dst_template = "/tmp/metnos_test_move_files/dst_sub", allow_dirs = true }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name     = "rifiuta_system_file_di_default"
+setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_move_files/Thumbs.db"
+input    = { entries = [{path = "/tmp/metnos_test_move_files/Thumbs.db"}], dst_template = "/tmp/metnos_test_move_files/dst/{name}" }
+expect   = { ok = false, fail_count_eq = 1, error_contains = "system file" }
+teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name   = "args_non_oggetto"
+input  = []
+expect = { ok = false, field_eq = { error_code = "ERR_ARG_INVALID" } }
+
+[[tests]]
+name   = "client_ignoto_fallisce_tipizzato"
+input  = { entries = [], dst_template = "/tmp/metnos_test_move_files/{name}", client = "unknown" }
+expect = { ok = false, field_eq = { error_code = "ERR_NOT_APPLICABLE" } }
+
+[placement]
+# C7 Area-2 CP4 (5/7): mutante device-abile — scope="any" = server di
+# default; device SOLO se la chat lo nomina. UNDO round-trip: il reverse
+# (pure-path: swap_src_dst / delete_created_*) viene ACCODATO ALLO STESSO
+# device da undo_last_turn (§2.9 mai ribaltare sul server). delete_files
+# resta server-only (restore_blob_backup non remotabile: blob sul device).
+scope    = "any"
+device_ok = true

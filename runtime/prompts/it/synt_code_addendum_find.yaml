@@ -1,0 +1,60 @@
+role: synt_code_addendum_find
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `find` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_find
+  header: "Stage 5 addendum verbo `find`"
+
+body: |
+  REGOLE VERBO `find` (oltre al generic):
+  
+  DEFINIZIONE: `find` = cerca risorse per criterio (pattern/predicate). Read-only.
+  Output `entries: list[dict]` con schema standard cross-executor.
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        base = args.get("base_path") or args.get("query")
+        patterns = args.get("patterns", [...])    # SEMPRE lista
+        recursive = args.get("recursive", True)
+        max_entries = args.get("max_entries", 1000)
+        out = []
+        for candidate in iter_candidates(base, patterns, recursive):
+            if not allowed(candidate): continue           # protected skip silente
+            if len(out) >= max_entries: break
+            out.append(to_entry(candidate))
+        truncated = (len(out) >= max_entries)
+  
+  INVARIANTI:
+  DEVI: schema `entries` con campi standard:
+    - FS: `{path, name, kind, mime, size, mtime_epoch, type:"file"|"dir"}`
+    - geo: `{place, lat, lon, country, city, type:"place"}`
+  DEVI: cap `max_entries` (default 1000) con `truncated:True` + `truncated_what`
+    + `used` + `available_total` (vedi feedback_truncation_visibility).
+  DEVI: SKIP SILENTE (NO failure, NO entry) per `is_protected_path()` /
+    `is_system_file()` UNLESS `allow_system=True`.
+  DEVI: `patterns` SEMPRE lista (anche con un solo pattern). Se utente passa
+    string, accetta ma normalizza a `[str]`.
+  DEVI: case-insensitive default su path/name; `case_sensitive=True` esplicito.
+  DEVI: output `entries` (non `results`).
+  NON DEVI: scrivere `def reverse(...)`.
+  
+  DOMINIO FS (find_files):
+  - iter_candidates: per ogni pattern, `pathlib.Path(base).rglob(pattern)` se
+    recursive, altrimenti `Path(base).glob(pattern)`.
+  - to_entry: `Path.stat()` per size/mtime; `mimetypes.guess_type()` per mime;
+    `kind` derivato (image/video/audio/document/text/archive/binary).
+  
+  DOMINIO geo (find_places):
+  - iter_candidates: `nominatim_client.search(query, limit=max_entries)`
+  - to_entry: campi place/lat/lon/country/city dal response Nominatim.

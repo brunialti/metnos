@@ -1,0 +1,99 @@
+# Manifest dell'executor `change_files_format` — Metnos v1.1
+# Naming: verbo_oggetto_qualificatore. `change` = forma/parametri (§2.2);
+# `_format` = qualifier modalita' (famiglia operazione, §2.2).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "change_files_format"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["converti", "convert", "cambia-formato", "change-format",
+                 "transcode", "encode", "ricodifica", "format-conversion",
+                 "jpg-to-png", "png-to-jpg", "to-webp", "to-gif",
+                 "mp4-to-webm", "video-to-mp3", "extract-audio",
+                 "audio-extract", "ridimensiona-formato",
+                 "trasforma-immagine"]
+revertible        = true
+reverse_pattern   = "delete_created_paths"
+lifecycle         = "active"
+critical          = false
+
+[[capabilities]]
+name = "metnos:read"
+
+[[capabilities]]
+name = "metnos:write"
+
+[output]
+schema_inline = "{ ok: bool, results: array, ok_count: integer, fail_count: integer, error?: string }"
+
+[[tests]]
+name = "missing_source_fails"
+input = {}
+expect = { ok = false }
+
+[description]
+it = "SCOPO: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: estrarre testo (-> read_files); decomprimere archivi (-> compress_files). OUT: results=[...]."
+en = "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: extract text (-> read_files); decompress archives (-> compress_files). OUT: results=[...]."
+
+[code]
+files  = ["change_files_format.py"]
+digest = "sha256:f907be8c8db3bb45df6120da3680843fd53d22d7404ec52e03cb02f62f6019f1"
+
+[args]
+type     = "object"
+required = ["paths", "to_format"]
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Lista di path ai file sorgente. Anche un solo elemento. MATCH ESATTO, wildcard NON supportati: per pattern usa `find_files` prima e passa entries via from_step."
+en = "List of source file paths. Even a single element. EXACT MATCH, wildcards NOT supported: for patterns use `find_files` first and pass entries via from_step."
+
+[args.properties.to_format]
+type        = "string"
+
+[args.properties.to_format.description]
+it = "Estensione target lowercase senza punto. Esempi: 'jpg'/'png'/'webp'/'gif' (immagini), 'mp3'/'wav'/'flac' (audio), 'mp4'/'webm' (video). MATCH ESATTO contro la tabella interna; pair non supportata -> error_class='unsupported_pair'."
+en = "Lowercase target extension without dot. Examples: 'jpg'/'png'/'webp'/'gif' (images), 'mp3'/'wav'/'flac' (audio), 'mp4'/'webm' (video). EXACT MATCH against internal table; unsupported pair -> error_class='unsupported_pair'."
+
+[args.properties.dst_dir]
+type        = "string"
+
+[args.properties.dst_dir.description]
+it = "Cartella destinazione. Se omesso, stessa cartella del sorgente. Creata se non esiste."
+en = "Destination folder. If omitted, same folder as source. Created if missing."
+
+[args.properties.dst_suffix]
+type        = "string"
+default     = ""
+
+[args.properties.dst_suffix.description]
+it = "Suffisso da appendere al basename prima dell'estensione. Es. dst_suffix='_converted' produce 'foto_converted.jpg' da 'foto.png'."
+en = "Suffix appended to the basename before the extension. E.g. dst_suffix='_converted' produces 'photo_converted.jpg' from 'photo.png'."
+
+[args.properties.overwrite]
+type        = "boolean"
+default     = false
+
+[args.properties.overwrite.description]
+it = "Se true, sovrascrive la destinazione esistente. Se false (default), salta con error_class='dst_exists'."
+en = "If true, overwrites existing destination. If false (default), skips with error_class='dst_exists'."
+
+[args.properties.quality]
+type        = "integer"
+
+[args.properties.quality.description]
+it = "Parametro di qualita' context-aware. Immagini: 1-31 (qscale ffmpeg, default 2 = alta). Audio: 32-512 (bitrate kbps, default 192). Ignorato per video."
+en = "Context-aware quality parameter. Images: 1-31 (ffmpeg qscale, default 2 = high). Audio: 32-512 (bitrate kbps, default 192). Ignored for video."
+
+[args.properties.max_files]
+type        = "integer"
+default     = 50
+
+[args.properties.max_files.description]
+it = "Cap upper sul numero di file convertiti per call (§2.1). Default 50. Se superato, results contiene i primi N e truncated:true/cap_field='max_files'/available_total."
+en = "Upper cap on number of files converted per call (§2.1). Default 50. If exceeded, results contains the first N and truncated:true/cap_field='max_files'/available_total."

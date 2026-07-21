@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}{{ msg('UI_CHANGE_TITLE') }}{% endblock %}
+{% block body %}
+<h1>{{ msg('UI_CHANGE_TITLE') }}</h1>
+<p class="page-sub">{{ msg('UI_CHANGE_SUBTITLE') }}</p>
+
+<details class="muted" style="margin:.4rem 0 .8rem">
+  <summary>{{ msg('UI_CHANGE_LEGEND') }}</summary>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_FAMILIES') }}</div>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KINDS') }}</div>
+  <div style="margin-top:.3rem">{{ msg('UI_CHANGE_LEGEND_KIND_VS_MODULE') }}</div>
+</details>
+
+<nav class="tp-tiers">
+  {% for st in tabs %}
+    <a class="tp-tier{% if state == st.key %} current{% endif %}"
+       href="?state={{ st.key }}{{ qs_extra }}">
+      {{ msg('UI_CHANGE_TAB_' ~ st.key|upper) }}
+      <span class="badge">{{ counts.get(st.key, 0) }}</span>
+    </a>
+  {% endfor %}
+</nav>
+
+<form method="get" class="row tp-filters">
+  <input type="hidden" name="state" value="{{ state }}">
+
+  <label>{{ msg('UI_CHANGE_FILTER_FAMILY') }}:
+    <select name="family" onchange="this.form.submit()">
+      <option value=""{% if not family %} selected{% endif %}>{{ msg('UI_CHANGE_FILTER_ALL') }}</option>
+      {% for f, n in family_counts.items() %}
+        <option value="{{ f }}"{% if family == f %} selected{% endif %}>{{ f }} ({{ n }})</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>{{ msg('UI_CHANGE_FILTER_KIND') }}:
+    <select name="kind" onchange="this.form.submit()">
+      <option value=""{% if not kind %} selected{% endif %}>{{ msg('UI_CHANGE_FILTER_ALL') }}</option>
+      {% for k, n in kind_counts.items() %}
+        <option value="{{ k }}"{% if kind == k %} selected{% endif %}>{{ msg('UI_CHANGE_KIND_' ~ k|upper) }} ({{ n }})</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <label>{{ msg('UI_CHANGE_FILTER_MIN_SCORE') }}:
+    <select name="min_score" onchange="this.form.submit()">
+      <option value="0"{% if min_score == 0 %} selected{% endif %}>0</option>
+      <option value="0.3"{% if min_score == 0.3 %} selected{% endif %}>0.30</option>
+      <option value="0.5"{% if min_score == 0.5 %} selected{% endif %}>0.50</option>
+      <option value="0.7"{% if min_score == 0.7 %} selected{% endif %}>0.70</option>
+    </select>
+  </label>
+
+  <label>{{ msg('UI_CHANGE_FILTER_LIMIT') }}:
+    <select name="limit" onchange="this.form.submit()">
+      <option value="30"{% if limit == 30 %} selected{% endif %}>30</option>
+      <option value="100"{% if limit == 100 %} selected{% endif %}>100</option>
+      <option value="500"{% if limit == 500 %} selected{% endif %}>500</option>
+    </select>
+  </label>
+
+  <span class="muted">
+    {{ rows|length }} {{ msg('UI_CHANGE_SHOWN') }} ·
+    {{ counts.get(state, 0) }} {{ msg('UI_CHANGE_TOTAL_TAB') }}
+  </span>
+</form>
+
+<div class="table-wrap">
+<table class="tp">
+  <thead>
+    <tr>
+      <th>{{ msg('UI_CHANGE_COL_SCORE') }}</th>
+      <th>{{ msg('UI_CHANGE_COL_KIND') }}</th>
+      <th>{{ msg('UI_CHANGE_COL_TARGET') }}</th>
+      <th>{{ msg('UI_CHANGE_COL_ORIGIN') }}</th>
+      <th>{{ msg('UI_CHANGE_COL_SUMMARY') }}</th>
+      <th>{{ msg('UI_CHANGE_COL_ACTIONS') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr id="ci-{{ r.id }}">
+      <td class="tp-ea">
+        <strong>{{ "%.2f"|format(r.score) }}</strong>
+        {% if r.convergence > 1 %}
+          <div><span class="chip ok" title="{{ msg('UI_CHANGE_CONVERGENCE_TIP') }}">×{{ r.convergence }}</span></div>
+        {% endif %}
+      </td>
+      <td>
+        <span class="chip">{{ msg('UI_CHANGE_KIND_' ~ r.intent_kind|upper) }}</span>
+      </td>
+      <td>
+        <code>{{ r.intent_target }}</code>
+        <div class="muted" title="{{ r.id }}"><code>{{ r.id[:8] }}</code></div>
+      </td>
+      <td>
+        <div><span class="chip">{{ r.origin_family }}</span></div>
+        <div class="muted">{{ r.origin_module }}</div>
+      </td>
+      <td>
+        <div>{{ r.intent_summary }}</div>
+        {% if r.intent_rationale or r.intent_body %}
+          <details style="margin-top:.3rem">
+            <summary class="muted">{{ msg('UI_CHANGE_DETAILS') }}</summary>
+            {% if r.intent_rationale %}
+              <div style="margin-top:.3rem">{{ r.intent_rationale }}</div>
+            {% endif %}
+            <table class="tp-fits" style="margin-top:.3rem">
+              <tbody>
+                {% for k, v in r.intent_body.items() %}
+                  <tr><td class="muted">{{ k }}</td><td><code>{{ v }}</code></td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="muted" style="margin-top:.3rem">
+              {{ msg('UI_CHANGE_DISCOVERED') }}: {{ r.discovered_at }}
+              · id: <code>{{ r.id }}</code>
+              · fp: <code>{{ r.fingerprint[:8] }}</code>
+            </div>
+            {% if r.applied_effect %}
+              <div style="margin-top:.3rem"><strong>{{ msg('UI_CHANGE_EFFECT') }}:</strong>
+                <pre style="font-size:.85em">{{ r.applied_effect|tojson(indent=2) }}</pre>
+              </div>
+            {% endif %}
+            {% if r.observed_metrics %}
+              <div><strong>{{ msg('UI_CHANGE_METRICS') }}:</strong>
+                <pre style="font-size:.85em">{{ r.observed_metrics|tojson(indent=2) }}</pre>
+              </div>
+            {% endif %}
+            {% if r.rolled_back_reason %}
+              <div class="muted">{{ msg('UI_CHANGE_ROLLBACK_REASON') }}: {{ r.rolled_back_reason }}</div>
+            {% endif %}
+            {% if r.failed_reason %}
+              <div class="muted">{{ msg('UI_CHANGE_FAILED_REASON') }}: {{ r.failed_reason }}</div>
+            {% endif %}
+          </details>
+        {% endif %}
+      </td>
+      <td class="tp-actions">
+        {% if r.state in ['proposed', 'staged'] %}
+          <button class="btn ok"
+                  hx-post="/admin/changes/{{ r.id }}/accept"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_ACCEPT') }}
+          </button>
+          <button class="btn bad"
+                  hx-post="/admin/changes/{{ r.id }}/reject"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_REJECT') }}
+          </button>
+          {% if r.state == 'proposed' %}
+            <button class="btn"
+                    hx-post="/admin/changes/{{ r.id }}/stage"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              {{ msg('UI_CHANGE_BTN_STAGE') }}
+            </button>
+          {% endif %}
+        {% elif r.state == 'accepted' %}
+          <span class="chip ok">{{ msg('UI_CHANGE_BADGE_ACCEPTED') }}</span>
+          <div class="muted">{{ msg('UI_CHANGE_AWAITING_APPLY') }}</div>
+        {% elif r.state == 'applied' %}
+          <span class="chip ok">{{ msg('UI_CHANGE_BADGE_APPLIED') }}</span>
+          <button class="btn bad"
+                  hx-post="/admin/changes/{{ r.id }}/rollback"
+                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_ROLLBACK') }}
+          </button>
+        {% elif r.state == 'observed' %}
+          <span class="chip ok">{{ msg('UI_CHANGE_BADGE_OBSERVED') }}</span>
+          <button class="btn bad"
+                  hx-post="/admin/changes/{{ r.id }}/rollback"
+                  hx-confirm="{{ msg('UI_CHANGE_CONFIRM_ROLLBACK') }}"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_ROLLBACK') }}
+          </button>
+        {% elif r.state == 'finalized' %}
+          <span class="chip ok">{{ msg('UI_CHANGE_BADGE_FINALIZED') }}</span>
+          {% if r.finalized_at %}
+            <div class="muted">{{ r.finalized_at }}</div>
+          {% endif %}
+        {% elif r.state == 'rejected' %}
+          <span class="chip bad">{{ msg('UI_CHANGE_BADGE_REJECTED') }}</span>
+          {% if r.decision_reason %}
+            <div class="muted">{{ r.decision_reason }}</div>
+          {% endif %}
+        {% elif r.state == 'rolled_back' %}
+          <span class="chip bad">{{ msg('UI_CHANGE_BADGE_ROLLED_BACK') }}</span>
+        {% elif r.state == 'failed' %}
+          <span class="chip bad">{{ msg('UI_CHANGE_BADGE_FAILED') }}</span>
+          <button class="btn"
+                  hx-post="/admin/changes/{{ r.id }}/retry"
+                  hx-target="closest tr" hx-swap="outerHTML">
+            {{ msg('UI_CHANGE_BTN_RETRY') }}
+          </button>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if rows|length == 0 %}
+  <div class="empty">{{ msg('UI_CHANGE_EMPTY') }}</div>
+{% endif %}
+
+<style>
+  /* Specifiche di colonna; componenti condivisi nel design system. */
+  table.tp td{vertical-align:top;font-size:.92em}
+  table.tp td.tp-ea{white-space:nowrap;width:6em}
+  table.tp td.tp-actions{width:9em}
+  table.tp .tp-fits{margin-top:.4rem;font-size:.85em}
+</style>
+{% endblock %}

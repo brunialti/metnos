@@ -1,0 +1,11 @@
+# Metnos — dipendenze OPZIONALI. Si installano SOLO se attivi la skill relativa
+# (vedi tassonomia skill: dormant finché non configurata).
+#
+#   pip install -r requirements.txt -r requirements-optional.txt
+
+# --- intent-classifier, path ML (altrimenti fallback bag-of-words) ---
+torch
+sentence-transformers
+
+# --- sidecar automazione web (playwright) ---
+playwright==1.61.0

@@ -1,0 +1,97 @@
+# Manifest dell'executor `find_images_google_photos` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_provider (suffisso multi-token).
+# Dispatcher canonical Google Photos search (spec Google Photos P1).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name             = "find_images_google_photos"
+version          = "0.1.0"
+author           = "Roberto Brunialti"
+affinity         = [
+    "google photos", "google foto", "gphotos", "cerca foto",
+    "search photos", "trova foto", "find photos", "album",
+    "elenca album", "list albums", "quante foto", "how many photos"
+]
+revertible       = false
+lifecycle        = "active"
+
+[description]
+it = "SCOPO: cerca foto/album su Google Photos, SOLO i caricati da Metnos. PATTERN: find_images_google_photos(year=2026, album='Vacanze'); albums=true elenca gli album. NON: foto LOCALI -> find_images_indices; libreria INTERA -> Takeout. OUT: entries=[{id,filename,created_at,album}]."
+en = "SCOPO: finds photos/albums on Google Photos, ONLY those uploaded by Metnos. PATTERN: find_images_google_photos(year=2026, album='Vacanze'); albums=true lists albums. NON: LOCAL photos -> find_images_indices; FULL library -> Takeout. OUT: entries=[{id,filename,created_at,album}]."
+
+[code]
+files  = ["find_images_google_photos.py"]
+digest = "sha256:3a5aef1e7e371eb2373644dcc70c393bd9c8d33333de877c83882794a971c5bc"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.year]
+type    = "integer"
+
+[args.properties.year.description]
+it = "Anno di scatto/creazione per filtrare le foto (es. 2026). Ignorato se e' indicato un album (l'album ha precedenza)."
+en = "Capture/creation year to filter photos (e.g. 2026). Ignored if an album is given (the album takes precedence)."
+
+[args.properties.album]
+type    = "string"
+default = ""
+
+[args.properties.album.description]
+it = "Nome dell'album app-created di cui elencare le foto (es. 'Vacanze 2026'). Se l'album non esiste il risultato e' vuoto (onesto)."
+en = "Name of the app-created album whose photos to list (e.g. 'Holidays 2026'). If the album does not exist the result is empty (honest)."
+
+[args.properties.albums]
+type    = "boolean"
+default = false
+
+[args.properties.albums.description]
+it = "true = elenca gli ALBUM app-created (id, titolo, numero foto) invece delle singole foto. Solo album creati da Metnos (limite API)."
+en = "true = list the app-created ALBUMS (id, title, item count) instead of individual photos. Only albums created by Metnos (API limit)."
+
+[args.properties.max_results]
+type    = "integer"
+default = 100
+
+[args.properties.max_results.description]
+it = "Cap sul numero di foto restituite (default 100). Oltre il cap il risultato segnala il troncamento (§2.7)."
+en = "Cap on how many photos are returned (default 100). Beyond the cap the result flags truncation (§2.7)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{id, filename, mime, created_at, width, height, album}>,
+  used: int,
+  available_total?: int,
+  images_source: 'google_photos',
+  albums_app_created_only?: bool,
+  truncated?: bool,
+  truncated_what?: str,
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["photos:remote"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+
+[[tests]]
+name   = "happy_path_oauth_missing_returns_needs_inputs"
+input  = { year = 2026 }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
+expect = { ok = true }
+
+[[tests]]
+name   = "albums_flag_oauth_missing_returns_needs_inputs"
+input  = { albums = true }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
+expect = { ok = true }

@@ -1,0 +1,81 @@
+# Manifest executor `read_sites` — dominio sites F1 (spec §3.4).
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "read_sites"
+version     = "0.2.0"
+timeout_s   = 120
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "leggi il sito", "leggi la pagina", "dimmi cosa c'è", "screenshot del sito",
+    "read the site", "read the page", "what's on the site", "site content",
+    "mostra il portale", "leggi dal portale",
+]
+
+[description]
+it = "SCOPO: legge testo + screenshot REDATTO di una sessione web aperta (post-login se autenticata). PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (pagina pubblica senza sessione); sites = sessione con stato. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+en = "SCOPO: reads text + REDACTED screenshot of an open web session (post-login if authenticated). PATTERN: login_sites → read_sites(from_step=2). NON: read_urls_html (public sessionless page); sites = a stateful session. OUT: entries=[{session_id,url,title,text,screenshot_path,sensitive}] + gallery."
+
+[code]
+files  = ["read_sites.py"]
+digest = "sha256:2d4b8ce6fe6a2dadabd4810357663c407cd92c25ea749eddb27ef903e032b387"
+
+[args]
+type     = "object"
+required = ["session_ids"]
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+
+[args.properties.session_ids.description]
+it = "Lista di session_id (da open_sites/login_sites, tipicamente via from_step). Dominio CHIUSO: match esatto."
+en = "List of session_ids (from open_sites/login_sites, typically via from_step). CLOSED domain: exact match."
+
+[args.properties.include_screenshot]
+type = "boolean"
+default = true
+
+[args.properties.include_screenshot.description]
+it = "Se true (default), cattura uno screenshot REDATTO (campi segreti oscurati dal broker) e lo mostra in chat."
+en = "If true (default), captures a REDACTED screenshot (secret fields blacked out by the broker) and shows it in chat."
+
+[args.properties.include_forms]
+type = "boolean"
+default = false
+
+[args.properties.include_forms.description]
+it = "Se true, include un riassunto dei form presenti nella pagina. Default false."
+en = "If true, includes a summary of the forms on the page. Default false."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{session_id: str, ok: bool, url?: str, title?: str, text?: str,
+                  forms?: Array, screenshot_path?: str, sensitive?: bool,
+                  reason_code?: str}>,
+  attachments?: Array<{kind: str, path: str, basename: str, mime: str, sensitive: bool}>,
+  no_frontier?: bool,
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[tests]]
+name   = "manca_session_ids"
+input  = {}
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name   = "session_ids_vuota"
+input  = { session_ids = [] }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[placement]
+scope     = "server"
+device_ok = false

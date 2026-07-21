@@ -1,0 +1,70 @@
+# Manifest executor `delete_sites` — dominio sites §9 (kill-switch / revoca).
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_sites"
+version     = "0.2.0"
+timeout_s   = 60
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "chiudi la sessione", "revoca le sessioni web", "chiudi il sito",
+    "close session", "revoke my web sessions", "log out", "esci dal sito",
+    "termina la sessione", "chiudi tutte le sessioni",
+]
+
+[description]
+it = "SCOPO: chiude o revoca sessioni web; all=true le revoca tutte. PATTERN: delete_sites(session_ids=[...]) o delete_sites(all=true). NON: dati su disco -> delete_files; distrugge solo la sessione browser. OUT: results=[{session_id,closed}]."
+en = "SCOPO: closes or revokes web sessions; all=true revokes all. PATTERN: delete_sites(session_ids=[...]) or delete_sites(all=true). NON: on-disk data -> delete_files; destroys only the browser session. OUT: results=[{session_id,closed}]."
+
+[code]
+files  = ["delete_sites.py"]
+digest = "sha256:e97f40c0e1a3e4fe3b38231c6a90bfb33e3acce2969d56cc4af2ba90a815bffe"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+
+[args.properties.session_ids.description]
+it = "Lista di session_id da chiudere (da from_step o esplicita). Dominio CHIUSO: match esatto."
+en = "List of session_ids to close (from from_step or explicit). CLOSED domain: exact match."
+
+[args.properties.all]
+type = "boolean"
+default = false
+
+[args.properties.all.description]
+it = "Se true, chiude TUTTE le sessioni web dell'utente (kill-switch/revoca). Ignora session_ids."
+en = "If true, closes ALL of the user's web sessions (kill-switch/revoke). Ignores session_ids."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  results: Array<{session_id: str, closed: bool, ok?: bool, reason_code?: str}>,
+  metadata: {closed: int, total?: int, kill_switch?: bool},
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[tests]]
+name   = "manca_target"
+input  = {}
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name   = "all_true_ok_senza_sessioni"
+input  = { all = true }
+expect = { ok = true }
+
+[placement]
+scope     = "server"
+device_ok = false

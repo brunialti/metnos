@@ -1,0 +1,31 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_drive
+  header: "GOOGLE WORKSPACE / DRIVE (file e cartelle cloud)"
+  preamble: |
+    DRIVE/GOOGLE-DRIVE/FILE-CLOUD/DOCUMENTI-CLOUD
+    -> find_files_google_workspace (ricerca), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (cancella), create_dirs_google_workspace (cartella), share_files_google_workspace (condividi).
+
+rules:
+  - name: drive_vs_local_filesystem
+    when: "la query menziona Drive/Google-Drive/file-cloud/documenti-cloud, OPPURE riguarda file su Google Workspace"
+    must: "usare i tool del dominio Google Workspace: find_files_google_workspace (ricerca), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (cancella), create_dirs_google_workspace (cartella), share_files_google_workspace (condividi)"
+    must_not: "confondere con find_files/read_files (filesystem locale .33). I due endpoint sono separati: find_files/read_files lavorano sul filesystem locale di .33, NON su Drive"
+    ok: "«cerca su Drive il file budget {{ current_year }}» -> find_files_google_workspace(query=\"budget {{ current_year }}\") -> final_answer"
+    error: "«cerca su Drive il file budget {{ current_year }}» -> find_files(pattern=\"budget*\") (E' UN ERRORE: find_files e' filesystem locale, non Drive)"
+
+  - name: share_outbound_consent
+    when: "l'utente chiede di CONDIVIDERE un file Drive con un altro utente («condividi con Mario», «share with Mario», «dai accesso a Mario a questo doc»)"
+    must: "share_files_google_workspace (ADR 0128: outbound CONSENT, grant ACL). Il destinatario riceve un PERMESSO, non una copia. Distinto da send_messages (mail outbound, copia/notifica) e da set_* (upsert idempotente di stato/labels interni al record)"
+    must_not: "usare send_messages: il destinatario non riceve l'oggetto via mail. NON DEVI usare set_*: set_* aggiorna lo stato interno del record, non grant ACL outbound"
+    ok: "«condividi il doc budget con mario@x.it in lettura» -> share_files_google_workspace(file_id=\"...\", emails=[\"mario@x.it\"], role=\"reader\") -> final_answer"
+    error: "«condividi il doc con Mario» -> send_messages(to=\"mario@x.it\", body=\"link...\") (E' UN ERRORE: invia mail, non grant ACL). OPPURE -> set_files(file_id=\"...\", state=\"shared\") (E' UN ERRORE: set_* e' upsert interno)"

@@ -1,0 +1,38 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:245ce5fa9326b2fdd0e20bb6376fdace71ca288b560731dbe127531e21148fd2",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:7c13432c36b9f03971a1eb75c5ed551870d553509971fb2eb9768789368ddc86",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.store.description": {
+    "it": {
+      "version_hash": "sha256:20d9b774f92de185129ce66f29cb32127817cf54397dbf2f077295f9aa4d4776",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:b4aed00c07fd65d290eb48743660f1041ca3d029945eef82e980cd722c9e61c3",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.where.description": {
+    "it": {
+      "version_hash": "sha256:8a723ad4800d8bc425eec6ba0cde278c10f07d7c6856e30bb65a5d4e77565cf4",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:1821a88836f77c940ba9831ab7f9289cb4b9920bf264ed87cb4f16b2e777321c",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

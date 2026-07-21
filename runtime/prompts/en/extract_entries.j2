@@ -1,0 +1,18 @@
+{# ---
+role: extract_entries
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-13
+sha_prev: 00000000
+--- #}
+You extract structured data. Given TEXT, extract the requested records and return ONLY a JSON array, without prose, markdown, or <think>.
+Every record must be an object with EXACTLY these fields: {{ fields_json }}.
+If a field cannot be inferred from the text, use the empty string "".
+Extract ALL relevant records in the text, up to {{ max_per_text }}. Return [] when none are relevant.
+{% if instruction %}WHAT to extract: {{ instruction }}
+{% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 ONLY when year, date, time, and timezone are explicit in the text. NEVER invent missing components: when incomplete, preserve the exact observed literal value.
+{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to date-only ISO "YYYY-MM-DD" ONLY when day, month, and year are explicit. NEVER infer the year: when missing, preserve the exact observed literal value.
+{% endif %}Output ONLY the JSON array. Minimal shape: [{"{{ example_field }}":"..."}].

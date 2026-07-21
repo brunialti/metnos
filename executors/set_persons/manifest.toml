@@ -1,0 +1,96 @@
+# Manifest dell'executor `set_persons` — Metnos v1.1
+# Naming compositivo: azione_oggetto. PR2 persons registry.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "set_persons"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["enrolla", "registra", "memorizza", "ricorda persona", "questa è",
+                "questo è", "enroll", "register", "save name", "remember person",
+                "this is", "person", "volto", "viso", "face"]
+
+[description]
+it = "SCOPO: registra persona nel registro nominale. PATTERN: set_persons(name='Carol', paths=['~/foto.jpg']). NON: cercare foto (-> find_persons_indices); identificare automaticamente (-> get_persons). OUT: {ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}."
+en = "SCOPO: enroll person into named registry. PATTERN: set_persons(name='Carol', paths=['~/photo.jpg']). NON: search photos (-> find_persons_indices); auto-identify (-> get_persons). OUT: {ok, results:[{path, slug, name, face_box, added}], errors:[{path, error}], n_examples_after, warn?, final_message_hint?}."
+
+[code]
+files  = ["set_persons.py"]
+digest = "sha256:91462d17b86ccf30e58b9310ee7e49d37816a43b6785ab8aae27d7c3d84e0f4f"
+
+[args]
+type     = "object"
+required = ["name", "paths"]
+
+[args.properties.name]
+type        = "string"
+
+[args.properties.name.description]
+it = "Nome visualizzato della persona (es. 'Carol', 'Bob Buffa'). Lo slug interno e' derivato (lowercase, ASCII, separatori normalizzati). Il display name e' preservato dal primo enroll."
+en = "Display name of the person (e.g. 'Carol', 'Bob Buffa'). The internal slug is derived (lowercase, ASCII, normalized separators). The display name is preserved from the first enroll."
+
+[args.properties.paths]
+type        = "array"
+
+[args.properties.paths.description]
+it = "Lista di path a foto di riferimento (anche N=1). Path assoluti o ~ espandibili. Ogni foto deve contenere almeno un volto rilevabile da ArcFace; se ne contiene piu' di 1, l'executor chiede di scegliere via `get_inputs`."
+en = "List of paths to reference photos (also N=1). Absolute paths or expandable ~. Each photo must contain at least one face detectable by ArcFace; if it contains more than 1, the executor asks to choose via `get_inputs`."
+
+[args.properties.mode]
+type        = "string"
+enum        = ["add", "replace"]
+default     = "add"
+
+[args.properties.mode.description]
+it = "`add` (default) aggiunge esempi a quelli esistenti; `replace` cancella tutti gli esempi precedenti per quella persona prima di aggiungere i nuovi."
+en = "`add` (default) appends examples to existing ones; `replace` deletes all previous examples for that person before adding the new ones."
+
+[args.properties.face_choices]
+type        = "object"
+
+[args.properties.face_choices.description]
+it = "Dict {path_or_var: face_idx} popolato dal callback di `get_inputs` quando l'utente sceglie un viso fra multipli. Il caller normale non lo passa direttamente."
+en = "Dict {path_or_var: face_idx} populated by the `get_inputs` callback when the user picks a face among multiples. The normal caller does not pass it directly."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: 'needs_inputs',
+  needs_inputs?: {title, dialog, fmt, on_complete},
+  results?: Array<{path, slug, name, face_box, added}>,
+  errors?: Array<{path, error, message?}>,
+  n_examples_after?: int,
+  warn?: 'examples_>=50',
+  final_message_hint?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/persons.sqlite"]
+
+# Reverse pattern: enroll e' loggabile (ADR 0079) ma non auto-undoable in PR2.
+# Il blob backup di sha256 sarebbe l'embedding stesso, gia' persistito; per
+# undo l'utente puo' usare delete_persons + re-enroll.
+
+[[tests]]
+name   = "validates_empty_name"
+input  = { name = "", paths = ["/tmp/x.jpg"] }
+expect = { ok = false, error_contains = "non vuota" }
+
+[[tests]]
+name   = "validates_empty_paths"
+input  = { name = "Carol", paths = [] }
+expect = { ok = false, error_contains = "deve essere una lista" }
+
+[[tests]]
+name   = "validates_bad_mode"
+input  = { name = "Carol", paths = ["/tmp/x.jpg"], mode = "wipe" }
+expect = { ok = false, error_contains = "mode" }

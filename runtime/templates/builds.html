@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Build indici · Console Metnos{% endblock %}
+{% block body %}
+<h1>Build indici ({{ rows|length }})</h1>
+<p class="page-sub">Build asincrone degli indici immagine via
+<code>systemd-run --user</code> (ADR 0093). Ogni riga è una coppia
+(directory, indice) tracciata con progresso ed ETA.</p>
+<p class="muted">Stati: <code>running</code> = unit attivo con progress
+recente · <code>done</code> = rename atomico finale completato ·
+<code>aborted</code> = stale detection o unit morto ·
+<code>interrupted</code> = SIGTERM gestito (riprende al prossimo start).</p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>digest</th><th>directory</th><th>indice</th><th>stato</th>
+      <th>progresso</th><th>eta</th><th>aggiornato</th>
+      <th>unit attivo</th><th>errori</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted"><code>{{ r.digest }}</code></td>
+      <td class="muted">{{ r.base_path }}</td>
+      <td><code>{{ r.idx }}</code></td>
+      <td>
+        {% if r.state == "done" %}<span class="chip ok">{{ r.state }}</span>
+        {% elif r.state in ("error", "aborted") %}<span class="chip bad">{{ r.state }}</span>
+        {% elif r.state == "running" %}<span class="chip warn">{{ r.state }}</span>
+        {% else %}<span class="chip">{{ r.state }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.n_total %}
+          <div class="prog" aria-hidden="true"><div style="width:{{ r.pct }}%"></div></div>
+          {{ r.n_done }}/{{ r.n_total }} ({{ r.pct }}%)
+        {% else %}-{% endif %}
+      </td>
+      <td class="muted">
+        {% if r.eta_s and r.state == "running" %}{{ (r.eta_s|int // 60) }}m{% else %}-{% endif %}
+      </td>
+      <td class="muted">
+        {% if r.last_update_age_s is not none %}{{ r.last_update_age_s|int }}s fa
+        {% else %}-{% endif %}
+      </td>
+      <td>
+        {% if r.unit_active %}<span class="chip ok">sì</span>
+        {% else %}<span class="chip">no</span>{% endif %}
+      </td>
+      <td>{{ r.errors }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">nessuna build registrata</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<style>
+  .prog{width:120px;height:6px;border-radius:3px;background:var(--surface-3);
+        overflow:hidden;margin:.25rem 0 .2rem}
+  .prog div{height:100%;background:var(--accent);border-radius:3px;
+        transition:width var(--t-2) var(--ease)}
+</style>
+{% endblock %}

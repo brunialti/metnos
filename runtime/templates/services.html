@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Servizi · Metnos{% endblock %}
+{% block head %}
+<style>
+.service-hero{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--r-2);padding:1.15rem 1.25rem;margin:1rem 0 1.5rem;background:radial-gradient(circle at 92% 15%,rgba(24,118,94,.16),transparent 34%),linear-gradient(135deg,var(--surface),var(--surface-2))}
+.service-hero p{max-width:64rem;margin:.35rem 0 0}.service-summary{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1rem}.service-summary span{display:inline-flex;align-items:center;gap:.35rem;padding:.28rem .55rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:.78rem}
+.service-group{margin:1.5rem 0 2rem}.service-group>h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin:0 0 .65rem}
+.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:1rem}
+.service-card{position:relative;border:1px solid var(--border);border-radius:var(--r-2);padding:1rem;background:linear-gradient(145deg,var(--surface),var(--surface-2));box-shadow:var(--shadow-1);transition:transform .16s ease,border-color .16s ease}.service-card:hover{transform:translateY(-2px);border-color:var(--border-strong)}
+.service-head{display:flex;align-items:center;gap:.65rem}.service-head h3{font-size:1rem;margin:0;flex:1}.scope{font-size:.7rem;padding:.14rem .4rem;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
+.dot{width:11px;height:11px;border-radius:50%;background:#9ca3af;flex:0 0 auto}.dot.running{background:#16a34a;box-shadow:0 0 0 4px #dcfce7}.dot.failed{background:#dc2626;box-shadow:0 0 0 4px #fee2e2}.dot.degraded,.dot.transitioning{background:#d97706;box-shadow:0 0 0 4px #fef3c7}
+.service-desc{margin:.3rem 0 0;color:var(--muted);font-size:.82rem}.service-meta{color:var(--muted);font-size:.8rem;line-height:1.6;margin:.8rem 0}.service-state{color:var(--text);text-transform:capitalize}
+.service-actions{display:flex;gap:.45rem;flex-wrap:wrap}.service-actions button{border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r-1);padding:.38rem .68rem;cursor:pointer}.service-actions button:hover{background:var(--surface-2)}.service-actions button:disabled{opacity:.35;cursor:not-allowed}
+.health{font-weight:600}.health.ok{color:#15803d}.health.bad{color:#b91c1c}.service-notice{padding:.7rem .85rem;border-radius:var(--r-1);margin:.8rem 0}.service-notice.ok{background:#dcfce7;color:#166534}.service-notice.bad{background:#fee2e2;color:#991b1b}
+@media(max-width:640px){.service-grid{grid-template-columns:1fr}.service-hero{padding:1rem}.service-card:hover{transform:none}}
+</style>
+{% endblock %}
+{% block body %}
+<p class="eyebrow">Sistema</p>
+<h1>Servizi Metnos</h1>
+{% if notice == 'accepted' %}<div class="service-notice ok">Comando accettato. Lo stato viene aggiornato automaticamente.</div>{% elif notice == 'failed' %}<div class="service-notice bad">Comando non eseguito. Controlla stato e log del servizio.</div>{% endif %}
+{% set running = services|selectattr('status', 'equalto', 'running')|list|length %}
+{% set degraded = services|selectattr('status', 'equalto', 'degraded')|list|length %}
+{% set installed = services|selectattr('installed')|list|length %}
+<section class="service-hero">
+  <strong>Controllo centralizzato</strong>
+  <p class="muted">Stato systemd e salute applicativa provengono dal registro del core. L’interfaccia non contiene porte o nomi di unità propri.</p>
+  <div class="service-summary"><span><b>{{ running }}</b> attivi</span><span><b>{{ installed }}</b> installati</span>{% if degraded %}<span><b>{{ degraded }}</b> degradati</span>{% endif %}<span>Aggiornamento 15 s</span></div>
+</section>
+{% for group in services|groupby('group') %}
+<section class="service-group"><h2>{{ group.grouper }}</h2><div class="service-grid">
+{% for s in group.list %}
+  <article class="service-card">
+    <div class="service-head"><span class="dot {{ s.status }}" aria-label="{{ s.status }}"></span><h3>{{ s.label }}</h3><span class="scope">{{ s.scope }}</span></div>
+    <p class="service-desc">{{ s.description }}</p>
+    <div class="service-meta">
+      <div class="service-state"><strong>{{ s.status }}</strong> · {{ s.sub_state|default('—') }}</div>
+      {% if s.healthy is not none %}<div class="health {{ 'ok' if s.healthy else 'bad' }}">health {{ 'OK' if s.healthy else 'DOWN' }}{% if s.health_detail %} · {{ s.health_detail }}{% endif %}</div>{% endif %}
+      {% if s.installed %}<div>{{ s.unit }} · PID {{ s.main_pid|default('—') }}</div>{% else %}<div>Non installato</div>{% endif %}
+      {% if s.managed_by %}<div>Lifecycle: {{ s.managed_by }}</div>{% endif %}
+      {% if s.active_since %}<div>{{ s.active_since }}</div>{% endif %}
+    </div>
+    {% if s.actionable %}<div class="service-actions">
+      <form method="post" action="/admin/services/{{ s.key }}/start"><button type="submit"{% if s.active_state == 'active' %} disabled{% endif %}>Avvia</button></form>
+      <form method="post" action="/admin/services/{{ s.key }}/stop"><button type="submit"{% if s.active_state != 'active' %} disabled{% endif %}>Arresta</button></form>
+      <form method="post" action="/admin/services/{{ s.key }}/restart"><button type="submit">Riavvia</button></form>
+    </div>{% endif %}
+  </article>
+{% endfor %}
+</div></section>
+{% endfor %}
+<script>setTimeout(() => { if (!document.hidden) location.reload(); }, 15000);</script>
+{% endblock %}

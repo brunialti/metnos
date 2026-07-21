@@ -1,0 +1,137 @@
+# Manifest executor `open_sites` — dominio sites F1 (spec §3.4).
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "open_sites"
+version     = "0.3.0"
+# Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
+# tetto client è ampio per il fan-out su più url.
+timeout_s   = 120
+# §10.8: sites gira SOLO server (il broker/credenziali vivono lì). No windows.
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "sito", "siti", "portale", "apri il sito", "accedi al sito", "vai sul sito",
+    "website", "open site", "web portal", "log in to", "sign in", "area riservata",
+]
+
+[description]
+it = "SCOPO: apre una sessione browser persistente, pronta per login e lettura. PATTERN: open_sites(urls=[\"https://portale.esempio.it\"]). NON: pagina pubblica senza stato -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
+en = "SCOPO: opens a persistent browser session ready for login and reading. PATTERN: open_sites(urls=[\"https://portal.example.com\"]). NON: public stateless page -> read_urls_html. OUT: entries=[{session_id,url,title,ok}]."
+
+[code]
+files  = ["open_sites.py"]
+digest = "sha256:a7c5a3874411564016851ebaab1b6f45fd8dedaa75c40e37f9a96bd1103aeed6"
+
+[args]
+type     = "object"
+required = ["urls"]
+
+[args.properties.urls]
+type = "array"
+
+[args.properties.urls.description]
+it = "Lista di URL http(s) dei siti da aprire (uno per sessione). Es. [\"https://web.esempio.it/login\"]. Dominio aperto: valori con testo libero, match esatto dell'host per l'allowlist."
+en = "List of http(s) URLs of the sites to open (one per session). E.g. [\"https://web.example.com/login\"]. Open domain: free-text values, exact host match for the allowlist."
+
+[args.properties.allowlist]
+type = "array"
+
+[args.properties.allowlist.description]
+it = "Opzionale. Host aggiuntivi ammessi per la rete della sessione (match ESATTO, no sottodomini — §4.3 D-D). Default = host esatto degli urls. L'estensione è una scelta di sicurezza esplicita."
+en = "Optional. Extra hosts allowed for the session network (EXACT match, no subdomains — §4.3 D-D). Default = the urls' exact host. Extension is an explicit security choice."
+
+[args.properties.session_label]
+type = "string"
+default = ""
+
+[args.properties.session_label.description]
+it = "Etichetta opzionale per la sessione (diagnostica). Non influisce sulla sicurezza."
+en = "Optional session label (diagnostics). No security effect."
+
+[args.properties.max_total]
+type = "integer"
+minimum = 1
+default = 4
+
+[args.properties.max_total.description]
+it = "Tetto massimo di sessioni aperte in un turno. Default 4 (il broker applica anche una quota per-utente)."
+en = "Max sessions opened in one turn. Default 4 (the broker also enforces a per-user quota)."
+
+[args.properties._allowlist_tokens]
+type = "array"
+runtime_resolved = true
+[args.properties._allowlist_tokens.description]
+it = "Solo runtime: token opachi monouso emessi dal broker per l'estensione approvata."
+en = "Runtime only: opaque one-time tokens issued by the broker for the approved extension."
+
+[args.properties._open_approvals]
+type = "array"
+runtime_resolved = true
+[args.properties._open_approvals.description]
+it = "Solo runtime: aperture esatte legate ai token di redirect/allowlist approvati."
+en = "Runtime only: exact opens bound to approved redirect/allowlist tokens."
+
+[args.properties._stealth]
+type = "string"
+runtime_resolved = true
+[args.properties._stealth.description]
+it = "Solo runtime: interruttore principale stealth per-turno (on|off) dalla preferenza utente."
+en = "Runtime only: per-turn stealth master switch (on|off) from the user preference."
+
+[args.properties._stealth_techniques]
+type = "array"
+items = { type = "string", enum = ["webdriver_launch_arg", "ua_override", "mobile_emulation", "chrome_permissions_js", "human_delays"] }
+runtime_resolved = true
+[args.properties._stealth_techniques.description]
+it = "Solo runtime: tecniche stealth selezionate singolarmente nelle preferenze utente."
+en = "Runtime only: stealth techniques selected individually in user preferences."
+
+[args.properties._browser_mode]
+type = "string"
+enum = ["headless", "side"]
+runtime_resolved = true
+[args.properties._browser_mode.description]
+it = "Solo runtime: superficie browser scelta nelle preferenze Website browsing (headless|side)."
+en = "Runtime only: browser surface selected in Website browsing preferences (headless|side)."
+
+[args.properties._lang]
+type = "string"
+runtime_resolved = true
+[args.properties._lang.description]
+it = "Solo runtime: lingua del turno per locale/timezone del contesto browser."
+en = "Runtime only: turn language for the browser context locale/timezone."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{session_id: str|null, url: str, title: str, ok: bool, reason_code?: str}>,
+  metadata: {requested: int, opened: int},
+  truncated?: bool, truncated_what?: str, used?: int, available_total?: int,
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name   = "manca_urls"
+input  = {}
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name   = "urls_vuota"
+input  = { urls = [] }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[placement]
+# §10.8: server-only. Il broker e le credenziali vivono sul server.
+scope     = "server"
+device_ok = false

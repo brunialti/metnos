@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "lang": "en",
+  "generated_at": "2026-05-19T12:10:00",
+  "metnos_commit": "PLACEHOLDER",
+  "model": "gemma-4-26B-A4B-it-UD-Q4_K_M.gguf",
+  "corpus_size": 0,
+  "corpus_hash": "",
+  "threshold_default": 0.75,
+  "threshold_by_verb": {
+    "delete": 0.85,
+    "send": 0.85,
+    "move": 0.85,
+    "share": 0.85,
+    "write": 0.80,
+    "set": 0.80,
+    "create": 0.75,
+    "change": 0.75,
+    "extract": 0.75,
+    "compress": 0.75,
+    "render": 0.75,
+    "order": 0.75
+  },
+  "rank_distance_min": 0.15,
+  "notes": "Placeholder pre-bake (19/5/2026 v3, ADR 0151). EN soglie 5pt più basse di IT: bias linguistico Gemma 4 26B (logprob assoluto più alto in EN che IT). Vedi project_planner_split_calibration_design memoria. Real calibration pending #H0c.2 + helper _compute_calibration."
+}

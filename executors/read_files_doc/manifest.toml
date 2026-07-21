@@ -1,0 +1,113 @@
+# Manifest dell'executor `read_files_doc` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto_qualifier.
+# Dispatcher canonical Google Docs read (24/5/2026).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "read_files_doc"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "doc", "documento", "google doc", "google docs", "docs",
+    "leggi documento", "read doc", "testo documento", "document",
+    "body doc"
+]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: legge testo da Google Doc. PATTERN: read_files_doc(name='titolo del documento'). NON: inventare document_id; confondere con read_files (locale) o write_files_doc (crea). OUT: entries=[{document_id,title,body_text,content_length}]."
+en = "SCOPO: reads text from Google Doc. PATTERN: read_files_doc(name='document title'). NON: invent document_id; confuse with read_files (local) or write_files_doc (creates). OUT: entries=[{document_id,title,body_text,content_length}]."
+
+[code]
+files  = ["read_files_doc.py"]
+digest = "sha256:f39981c5c1e367b187c26771cb72822c11c878cc53c6c15e7d5c2b077b8ceb9b"
+
+[args]
+type     = "object"
+required = []
+# Google e' id-addressable ma l'utente referenzia il Doc per NOME. Disgiunzione
+# §7.3: `name` (titolo, il backend risolve name->id via ricerca Drive) OR
+# `document_id` (id opaco, raro) OR `entries` (from_step su output find_files).
+requires_one_of = [["name", "document_id", "entries"]]
+
+[args.properties.name]
+type    = "string"
+
+[args.properties.name.description]
+it = "Titolo/nome del documento (es. 'Relazione Q1'). Il backend lo risolve all'id Drive via ricerca (solo Doc, preferenza nome esatto). USA QUESTO: di norma non conosci l'id opaco."
+en = "Document title/name (e.g. 'Q1 Report'). The backend resolves it to the Drive id via search (Docs only, exact-name preferred). USE THIS: you normally don't know the opaque id."
+
+[args.properties.document_id]
+type    = "string"
+
+[args.properties.document_id.description]
+it = "ID OPACO del Google Doc (es. '1abc...XYZ', dall'URL). MATCH ESATTO. Raro: di norma NON lo conosci → usa `name`. Da uno step precedente arriva via from_step (entries)."
+en = "OPAQUE Google Doc ID (e.g. '1abc...XYZ', from the URL). EXACT MATCH. Rare: normally unknown → use `name`. From a prior step it arrives via from_step (entries)."
+
+[args.properties.entries]
+type    = "array"
+
+[args.properties.entries.description]
+it = "Record con `id`/`document_id`, tipicamente via `from_step: N` (es. output di find_files su Drive)."
+en = "Records with `id`/`document_id`, typically via `from_step: N` (e.g. find_files output on Drive)."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Backend (oggi solo 'google_workspace'). Plugin esterni futuri potranno aggiungerne altri."
+en = "Backend (today only 'google_workspace'). Future external plugins may add others."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  body_text: str,
+  title: str,
+  document_id: str,
+  entries: Array<{document_id, id, title, body_text, content_length, kind: 'doc'}>,
+  used: int,
+  available_total?: int,
+  files_source: 'google_workspace',
+  error?: str,
+  error_class?: str,
+  decision?: 'needs_inputs'
+}
+"""
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["doc:remote"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name   = "missing_document_id_fails"
+input  = {}
+expect = { ok = false, error_contains = "document_id" }
+
+[[tests]]
+name   = "empty_document_id_fails"
+input  = { document_id = "   " }
+expect = { ok = false, error_contains = "document_id" }
+
+[[tests]]
+name   = "unsupported_client_fails"
+input  = { document_id = "1abc", client = "dropbox" }
+expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
+
+[[tests]]
+name   = "happy_path_oauth_missing_returns_needs_inputs"
+input  = { document_id = "1abc" }
+env    = { METNOS_SKILL_HOME = "{RUNTIME}/tests/data/skill_home_no_creds" }
+expect = { ok = true }

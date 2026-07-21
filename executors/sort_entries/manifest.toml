@@ -1,0 +1,119 @@
+# Manifest dell'executor `sort_entries` — Metnos v1.1
+# Pure compute: ordina una lista di entries per un campo, opzionale top-K.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "sort_entries"
+version     = "0.1.0"
+author      = "Roberto Brunialti"
+affinity        = ["sort", "ordina", "ordinare", "sort_by", "rank", "classifica", "top", "primi", "first", "ultimi", "last", "biggest", "piu", "grandi", "popolose", "recenti", "vecchi"]
+revertible      = false
+lifecycle       = "active"
+
+[description]
+it = "SCOPO: ordina entries per chiave (vettoriale). PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: calcolare aggregati (-> compute_entries); filtrare (-> filter_entries). OUT: entries=[...], count, total_input, sorted_by, desc, truncated, cap_field."
+en = "SCOPO: sort entries by key (vectorial). PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: compute aggregates (-> compute_entries); filter (-> filter_entries). OUT: entries=[...], count, total_input, sorted_by, desc, truncated, cap_field."
+
+[code]
+files  = ["sort_entries.py"]
+digest = "sha256:480cb7b095cf79ba28e288d561f258f12c6b1f108723001729a9e7101e163c58"
+
+[args]
+type     = "object"
+required = ["entries", "by"]
+
+[args.properties.entries]
+type        = "array"
+
+[args.properties.entries.description]
+it = "Lista di dict omogenei da ordinare. Tipicamente passata via from_step=N (il runtime espande dallo scratchpad)."
+en = "List of homogeneous dicts to sort. Typically passed via from_step=N (the runtime expands from the scratchpad)."
+
+[args.properties.by]
+type        = "string"
+
+[args.properties.by.description]
+it = "Campo su cui ordinare (es. size, mtime, account). Un termine naturale viene associato dal resolver condiviso al campo reale quando univoco."
+en = "Field to sort by (e.g. size, mtime, account). A natural term is mapped by the shared resolver to the real field when unambiguous."
+
+[args.properties.desc]
+type        = "boolean"
+default     = false
+
+[args.properties.desc.description]
+it = "Se true, ordine discendente (piu' grande/recente prima). Default false (ascendente)."
+en = "If true, descending order (larger/more recent first). Default false (ascending)."
+
+[args.properties.top]
+type        = "integer"
+minimum     = 1
+
+[args.properties.top.description]
+it = "Se settato, ritorna solo i primi N elementi dopo il sort. Es. top=3 + desc=true = top-3 piu' grandi. Default null = nessun cap."
+en = "If set, returns only the first N elements after the sort. E.g. top=3 + desc=true = top-3 largest. Default null = no cap."
+
+[args.properties.value_type]
+type        = "string"
+enum        = ["auto", "date"]
+default     = "auto"
+
+[args.properties.value_type.description]
+it = "Semantica del valore: auto mantiene il confronto storico; date ordina prima le date ISO valide, poi i valori testuali non interpretabili e infine i mancanti."
+en = "Value semantics: auto preserves historical comparison; date orders valid ISO dates first, then unparsed text and finally missing values."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries?: Array<object>,
+  count?: int,
+  total_input?: int,
+  sorted_by?: str,
+  requested_by?: str,
+  value_type?: str,
+  unparsed_count?: int,
+  desc?: bool,
+  truncated?: bool,
+  truncated_what?: str,
+  truncated_intentional?: bool,
+  used?: int,
+  available_total?: int,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "compute:pure"
+
+[[tests]]
+name   = "ordina_per_size_desc"
+input  = { entries = [{name = "a", size = 10}, {name = "b", size = 30}, {name = "c", size = 20}], by = "size", desc = true }
+expect = { ok = true, entries_field_eq = { 0 = { name = "b" } } }
+
+[[tests]]
+name   = "top_3_di_5"
+input  = { entries = [{x = 5}, {x = 1}, {x = 4}, {x = 2}, {x = 3}], by = "x", desc = true, top = 3 }
+expect = { ok = true, metadata_field_eq = { count = 3, truncated = true } }
+
+[[tests]]
+name   = "campo_mancante_in_coda"
+input  = { entries = [{a = 1}, {b = 2}, {a = 3}], by = "a", desc = true }
+expect = { ok = true }
+
+[[tests]]
+name   = "missing_by"
+input  = { entries = [{x = 1}] }
+expect = { ok = false, error_contains = "by" }
+
+[[tests]]
+name   = "empty_entries_is_valid"
+input  = { entries = [], by = "size" }
+expect = { ok = true, metadata_field_eq = { count = 0 } }
+
+[[tests]]
+name   = "invalid_entries_is_classified"
+input  = { entries = "not-a-list", by = "size" }
+expect = { ok = false, field_eq = { error_class = "invalid_input", error_code = "entries_not_list" } }

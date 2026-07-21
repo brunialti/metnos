@@ -1,0 +1,83 @@
+# Manifest dell'executor `time_read` — Metnos v1.1
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "get_now"
+version     = "0.2.0"
+platforms   = ["linux", "windows", "macos"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "time", "ora", "ore", "data", "orario", "orari", "fuso", "calendario", "now", "adesso",
+                "current", "che ora", "what time", "today", "oggi", "epoch", "timestamp"
+            ]
+
+[description]
+it = "SCOPO: ottiene data e ora correnti nel fuso configurato o in un fuso IANA esplicito. PATTERN: get_now() oppure get_now(timezone=\"Europe/Rome\"). NON: leggere eventi calendario o stimare un fuso da un luogo. OUT: {content,now,time,date,metadata} con errore tipizzato sui fusi invalidi."
+en = "SCOPO: gets the current date and time in the configured timezone or an explicit IANA zone. PATTERN: get_now() or get_now(timezone=\"Europe/Rome\"). NON: read calendar events or infer a timezone from a place. OUT: {content,now,time,date,metadata} with typed failure for invalid zones."
+
+[code]
+files  = ["get_now.py"]
+digest = "sha256:8e00a2b6b627ffa3d03a85f3df147d5ec800951fa933e9f7a894fc3d35b8cad9"
+
+[args]
+type = "object"
+
+[args.properties.timezone]
+type        = "string"
+default     = "Europe/Rome"
+
+[args.properties.timezone.description]
+it = "Fuso orario IANA (es. 'Europe/Rome'). Default: fuso configurato, Europe/Rome nell'installazione standard."
+en = "IANA timezone (e.g. 'Europe/Rome'). Default: configured timezone, Europe/Rome in the standard installation."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  content: str,
+  now?: str, time?: str, date?: str,
+  metadata?: { timezone: str, iso8601: str, epoch: float, time: str, date: str },
+  error?: str, error_class?: str, error_code?: str
+}
+"""
+
+[[capabilities]]
+name = "time:read"
+hint = []  # capability atomica, target_kind='none'
+
+[placement]
+scope = "server"
+device_ok = false
+
+[[tests]]
+name   = "ora_configured_default"
+input  = {}
+expect = { ok = true, metadata_field_eq = { timezone = "Europe/Rome" } }
+
+[[tests]]
+name   = "ora_in_europe_rome"
+input  = { timezone = "Europe/Rome" }
+expect = { ok = true, metadata_field_eq = { timezone = "Europe/Rome" } }
+
+[[tests]]
+name   = "fallisce_su_timezone_invalido"
+input  = { timezone = "Mars/Olympus" }
+expect = { ok = false, error_contains = "non valido" }
+
+# Sample concreto di output (one-shot per synt + fast-path generator).
+[[tests]]
+name        = "happy_path_sample"
+input       = { timezone = "Europe/Rome" }
+expect      = { ok = true, metadata_field_eq = { timezone = "Europe/Rome" } }
+expect_full = """
+{
+  "ok": true,
+  "content": "2026-05-06T16:45:23.123456+02:00",
+  "metadata": {
+    "timezone": "Europe/Rome",
+    "iso8601": "2026-05-06T16:45:23.123456+02:00",
+    "epoch": 1778078723.123456
+  }
+}
+"""

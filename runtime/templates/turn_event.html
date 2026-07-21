@@ -1,0 +1,5 @@
+<div class="evt evt-{{ kind }}" data-step="{{ step or '' }}">
+  <strong>{{ kind }}</strong>
+  {% if tool %}<span class="chip">{{ tool }}</span>{% endif %}
+  {% if message %}<span>{{ message }}</span>{% endif %}
+</div>

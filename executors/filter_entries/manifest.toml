@@ -1,0 +1,267 @@
+# Manifest dell'executor `filter_entries` — Metnos v1.1
+# Executor PURO: nessuna I/O, nessuna capability speciale.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "filter_entries"
+version     = "0.4.0"
+author      = "Roberto Brunialti"
+affinity    = ["filter", "filtra", "select", "where", "criterio", "subset", "match", "partiziona", "scarta", "tieni", "solo"]
+
+[description]
+it = "SCOPO: filtra entries per criteri. PATTERN: filter_entries(from_step=1, kind='image'). NON: cercare su disco (-> find); enumerare (-> list). OUT: entries=[...]."
+en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, kind='image'). NON: search disk (-> find); enumerate (-> list). OUT: entries=[...]."
+
+[code]
+files  = ["filter_entries.py"]
+digest = "sha256:beb891ab539cb3d418d6c99a35c65c59d637368e34c30274d63fde7a5a034dce"
+
+[args]
+type     = "object"
+required = []
+requires_one_of = [["from_step", "entries"]]
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Step precedente che ha prodotto la lista. Il runtime recupera automaticamente le entries; in alternativa passa entries direttamente."
+en = "Prior step that produced the list. The runtime retrieves its entries automatically; alternatively pass entries directly."
+
+[args.properties.kind]
+type        = "string"
+
+[args.properties.kind.description]
+it = "Categoria semantica entry.kind (es. image, text, document, dir). Accetta una categoria, valori separati da virgola o un array."
+en = "Semantic entry.kind category (e.g. image, text, document, dir). Accepts one category, comma-separated values, or an array."
+
+[args.properties.type]
+type        = "string"
+
+[args.properties.type.description]
+it = "Filtra per tipo filesystem (campo entry.type): 'file', 'dir', 'symlink'."
+en = "Filter by filesystem type (field entry.type): 'file', 'dir', 'symlink'."
+
+[args.properties.mime_prefix]
+type        = "string"
+
+[args.properties.mime_prefix.description]
+it = "Filtra per prefisso del mime type. Es. 'image/' (qualunque immagine), 'application/pdf'."
+en = "Filter by mime type prefix. E.g. 'image/' (any image), 'application/pdf'."
+
+[args.properties.name_glob]
+type        = "string"
+
+[args.properties.name_glob.description]
+it = "Pattern glob applicato al nome (case-insensitive). Es. '*.jpg', 'IMG_*'. Per piu' pattern usa virgole/pipe ('*.jpg,*.png')."
+en = "Glob pattern applied to the name (case-insensitive). E.g. '*.jpg', 'IMG_*'. For multiple patterns use commas/pipe ('*.jpg,*.png')."
+
+[args.properties.name_regex]
+type        = "string"
+
+[args.properties.name_regex.description]
+it = "Espressione regolare (Python) applicata al nome (case-insensitive). Es. '^IMG_\\d{4}\\.JPG$'."
+en = "Regular expression (Python) applied to the name (case-insensitive). E.g. '^IMG_\\d{4}\\.JPG$'."
+
+[args.properties.size_min]
+type        = "integer"
+
+[args.properties.size_min.description]
+it = "Dimensione minima in byte (incluso). Esclude entries piu' piccole."
+en = "Minimum size in bytes (inclusive). Excludes smaller entries."
+
+[args.properties.size_max]
+type        = "integer"
+
+[args.properties.size_max.description]
+it = "Dimensione massima in byte (incluso). Esclude entries piu' grandi."
+en = "Maximum size in bytes (inclusive). Excludes larger entries."
+
+[args.properties.mtime_after]
+type        = "string"
+
+[args.properties.mtime_after.description]
+it = "Data minima di modifica (ISO 8601, es. '2024-01-01' o '2024-01-01T10:00:00'). Esclude entries piu' vecchie."
+en = "Minimum modification date (ISO 8601, e.g., '2024-01-01' or '2024-01-01T10:00:00'). Exclude older entries."
+
+[args.properties.mtime_before]
+type        = "string"
+
+[args.properties.mtime_before.description]
+it = "Data massima di modifica (ISO 8601). Esclude entries piu' recenti."
+en = "Maximum modification date (ISO 8601). Excludes more recent entries."
+
+[args.properties.where_field]
+type        = "string"
+
+[args.properties.where_field.description]
+it = "Campo su cui applicare il filtro generico (es. relevance, category, priority). Usalo con where_in, where_not_in o where_value."
+en = "Field for the generic filter (e.g. relevance, category, priority). Use it with where_in, where_not_in, or where_value."
+
+[args.properties.where_in]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.where_in.description]
+it = "Valori ammessi per where_field. Esempio: relevance con ['high','medium']. Richiede where_field."
+en = "Allowed values for where_field. Example: relevance with ['high','medium']. Requires where_field."
+
+[args.properties.where_not_in]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.where_not_in.description]
+it = "Valori esclusi per where_field. Esempio: relevance con ['junk']. Richiede where_field; combinabile in AND con where_in."
+en = "Excluded values for where_field. Example: relevance with ['junk']. Requires where_field; combines with where_in using AND."
+
+[args.properties.where_value]
+type        = "string"
+
+# Executor puro: la capability compute:pure non concede I/O esterno.
+
+[args.properties.where_value.description]
+it = "Shortcut per where_in=['x']. Es. where_field='relevance', where_value='high'. Richiede where_field. Se passi sia where_value che where_in vince where_in."
+en = "Shortcut for where_in=['x']. E.g. where_field='relevance', where_value='high'. Requires where_field. If you pass both where_value and where_in, where_in wins."
+
+[args.properties.where_starts_with]
+type        = "string"
+
+[args.properties.where_starts_with.description]
+it = "Prefisso case-insensitive su where_field. Esempio: summary inizia con 'HLT'. Richiede where_field e si combina in AND."
+en = "Case-insensitive prefix on where_field. Example: summary starts with 'HLT'. Requires where_field and combines using AND."
+
+[args.properties.where_contains]
+type        = "string"
+
+[args.properties.where_contains.description]
+it = "Sottostringa case-insensitive in where_field. Esempio: summary contiene 'dentista'. Richiede where_field."
+en = "Case-insensitive substring in where_field. Example: summary contains 'dentist'. Requires where_field."
+
+[args.properties.where_glob]
+type        = "string"
+
+[args.properties.where_glob.description]
+it = "Glob case-insensitive su where_field. Supporta *, ? e [abc]; esempio summary='HLT*'. Richiede where_field."
+en = "Case-insensitive glob on where_field. Supports *, ?, and [abc]; example summary='HLT*'. Requires where_field."
+
+[args.properties.where_regex]
+type        = "string"
+
+[args.properties.where_regex.description]
+it = "Regex Python case-insensitive su where_field; esempio summary='^HLT[\\s-]+'. Richiede where_field."
+en = "Case-insensitive Python regex on where_field; example summary='^HLT[\\s-]+'. Requires where_field."
+
+[args.properties.overlap_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.overlap_step.description]
+it = "Secondo step per intersezione temporale. Rileva i campi temporali standard e conserva le entries sovrapposte, annotando _overlap_with."
+en = "Second step for temporal intersection. Detects standard time fields and keeps overlapping entries, annotating _overlap_with."
+
+[args.properties.overlap_field_start]
+type        = "string"
+
+[args.properties.overlap_field_start.description]
+it = "Override del field-name 'start' per il calcolo overlap (default autodetect: start/started_at/taken_at_iso/mtime_iso)."
+en = "Override of 'start' field-name for overlap calc (default autodetect: start/started_at/taken_at_iso/mtime_iso)."
+
+[args.properties.overlap_field_end]
+type        = "string"
+
+[args.properties.overlap_field_end.description]
+it = "Override del field-name 'end' per overlap (default autodetect: end/finished_at; fallback start se assente — entry istante)."
+en = "Override of 'end' field-name for overlap (default autodetect: end/finished_at; fallback start if missing — instantaneous entry)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries?: Array<object>,
+  metadata?: {
+    count_in: int,
+    count_out: int,
+    dropped: int,
+    criteria: object
+  },
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
+
+[[tests]]
+name   = "filtra_kind_image"
+input  = { entries = [{name="a.jpg", kind="image", mime="image/jpeg", size=1000, type="file"}, {name="b.txt", kind="text", mime="text/plain", size=10, type="file"}], kind = "image" }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }
+
+[[tests]]
+name   = "filtra_size_min"
+input  = { entries = [{name="a", size=100, type="file"}, {name="b", size=1000, type="file"}], size_min = 500 }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }
+
+[[tests]]
+name   = "filtra_mtime_da_find_files"
+input  = { entries = [{name="recent.pdf", mtime=1784535003.0}, {name="old.pdf", mtime=1700000000.0}], mtime_after = "2026-05-21T00:00:00+00:00", mtime_before = "2026-07-21T00:00:00+00:00" }
+expect = { ok = true, metadata_field_eq = { count_out = 1, dropped = 1 } }
+
+[[tests]]
+name   = "filtra_mtime_epoch_da_list_dirs"
+input  = { entries = [{name="recent", mtime_epoch=1784535003.0}], mtime_after = "2026-05-21T00:00:00+00:00" }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }
+
+[[tests]]
+name   = "name_regex_case_insensitive"
+input  = { entries = [{name="IMG_001.JPG", type="file"}, {name="other.txt", type="file"}], name_regex = "^img_.*\\.jpg$" }
+expect = { ok = true, metadata_field_eq = { count_out = 1 } }
+
+[[tests]]
+name   = "compound_glob"
+input  = { entries = [{name="a.jpg", type="file"}, {name="b.png", type="file"}, {name="c.txt", type="file"}], name_glob = "*.jpg,*.png" }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "no_criteri_passa_tutto"
+input  = { entries = [{name="a", type="file"}, {name="b", type="dir"}] }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "entries_invalid_fallisce"
+input  = { entries = "non una lista" }
+expect = { ok = false, error_contains = "deve essere una lista" }
+
+[[tests]]
+name   = "where_in_relevance"
+input  = { entries = [{name="m1", relevance="high"}, {name="m2", relevance="junk"}, {name="m3", relevance="medium"}, {name="m4", relevance="low"}], where_field = "relevance", where_in = ["high","medium"] }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "where_not_in_scarta_junk"
+input  = { entries = [{relevance="high"}, {relevance="junk"}, {relevance="low"}], where_field = "relevance", where_not_in = ["junk"] }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "where_value_shortcut"
+input  = { entries = [{cat="a"}, {cat="b"}, {cat="a"}], where_field = "cat", where_value = "a" }
+expect = { ok = true, metadata_field_eq = { count_out = 2 } }
+
+[[tests]]
+name   = "where_senza_field_fallisce"
+input  = { entries = [{x=1}], where_in = ["a"] }
+expect = { ok = false, error_contains = "richiedono where_field" }
+
+[[tests]]
+name   = "empty_entries_is_valid"
+input  = { entries = [] }
+expect = { ok = true, metadata_field_eq = { count_in = 0, count_out = 0 } }
+
+[[tests]]
+name   = "invalid_entries_is_classified"
+input  = { entries = "not-a-list" }
+expect = { ok = false, field_eq = { error_class = "invalid_input", error_code = "entries_not_list" } }

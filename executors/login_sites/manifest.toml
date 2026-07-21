@@ -1,0 +1,94 @@
+# Manifest executor `login_sites` — dominio sites F1 (spec §3.4). critical.
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "login_sites"
+version     = "0.2.0"
+timeout_s   = 180
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+# critical: il login usa una credenziale reale (§3.2). revertible via close_sites.
+critical    = true
+affinity    = [
+    "accedi", "login", "entra nel sito", "autenticati", "fai il login",
+    "log in", "sign in", "authenticate", "credenziali", "accedi al portale",
+]
+
+[description]
+it = "SCOPO: raggiunge autonomamente l'area di accesso e usa credenziali cifrate, mai esposte all'agente. PATTERN: open_sites -> login_sites(from_step=1). NON: raccolta valori -> get_inputs; usa credenziali gia' salvate e non accetta selettori. OUT: entries=[{session_id,logged_in,reason_code?}]."
+en = "SCOPO: autonomously reaches the sign-in area and uses encrypted credentials never exposed to the agent. PATTERN: open_sites -> login_sites(from_step=1). NON: value collection -> get_inputs; uses stored credentials and accepts no selectors. OUT: entries=[{session_id,logged_in,reason_code?}]."
+
+[code]
+files  = ["login_sites.py"]
+digest = "sha256:bded860704def8df8e9796e49abd19616ccf6dca7fa0a8a620b783cebbd55e1f"
+
+[args]
+type     = "object"
+required = ["session_ids"]
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+
+[args.properties.session_ids.description]
+it = "Lista di session_id (da open_sites, tipicamente via from_step). Dominio CHIUSO: match esatto degli id, mai wildcard."
+en = "List of session_ids (from open_sites, typically via from_step). CLOSED domain: exact id match, never wildcard."
+
+[args.properties.domain]
+type = "string"
+
+[args.properties.domain.description]
+it = "Opzionale. Handle del vault (dominio, es. 'web.esempio.it') di cui usare le credenziali. Default = origine di login della pagina, verificata dal broker (§3.2). Deve coincidere ESATTAMENTE con l'origine del form."
+en = "Optional. Vault handle (domain, e.g. 'web.example.com') whose credentials to use. Default = the page's login origin, verified by the broker (§3.2). Must EXACTLY match the form origin."
+
+[args.properties.form_hint]
+type = "string"
+
+[args.properties.form_hint.description]
+it = "Opzionale. Suggerimento sul form di login (testo/etichetta). È solo un hint: il broker risolve comunque i campi in autonomia (§3.2 CRITICO-2), l'hint non può dirigere dove va la credenziale."
+en = "Optional. Hint about the login form (text/label). Only a hint: the broker still resolves the fields autonomously (§3.2 CRITICO-2); the hint cannot direct where the credential goes."
+
+[args.properties._approval_tokens]
+type = "object"
+runtime_resolved = true
+
+[args.properties._approval_tokens.description]
+it = "Solo runtime: token opachi emessi dal broker durante una transizione interna e ripresentati dopo approvazione."
+en = "Runtime only: opaque tokens issued by the broker during an internal transition and replayed after approval."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{session_id: str, logged_in: bool, reason_code?: str, message?: str, session_closed?: bool}>,
+  metadata: {logged_in: int, total: int},
+  attachments?: Array<{kind: str, path: str, basename: str, mime: str, sensitive: bool}>,
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[capabilities]]
+name = "auth.password_storage"
+hint = ["sites.read"]
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name   = "manca_session_ids"
+input  = {}
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name   = "session_ids_vuota"
+input  = { session_ids = [] }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[placement]
+scope     = "server"
+device_ok = false

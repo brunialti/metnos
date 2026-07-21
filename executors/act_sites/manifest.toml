@@ -1,0 +1,88 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "act_sites"
+version     = "0.2.0"
+timeout_s   = 180
+platforms   = ["linux"]
+author      = "Roberto Brunialti"
+critical    = true
+revertible  = false
+affinity    = [
+    "clicca sul sito", "compila il modulo", "invia il form", "premi il bottone",
+    "cerca nel sito", "trova nella dashboard", "naviga nel portale",
+    "click on website", "fill the form", "submit form", "press the button",
+    "search the site", "find in dashboard", "navigate the portal",
+]
+
+[description]
+it = "SCOPO: agisce o naviga verso un fine in una sessione web, con conferma se sensibile. PATTERN: login_sites -> act_sites(from_step=2, action=\"cerca fatture 2026\"). NON: pagina senza stato -> read_urls_html; CSS/XPath vietati. OUT: results=[{session_id,ok,executed,primitive,url?}]."
+en = "SCOPO: acts or navigates toward a goal in a web session, with confirmation when sensitive. PATTERN: login_sites -> act_sites(from_step=2, action=\"find invoices 2026\"). NON: stateless page -> read_urls_html; CSS/XPath forbidden. OUT: results=[{session_id,ok,executed,primitive,url?}]."
+
+[code]
+files = ["act_sites.py"]
+digest = "sha256:0dc7f25f661f7f1e3f939e5e82036f55687b8bbacb8c78ea9437111c135eba19"
+
+[args]
+type = "object"
+required = ["session_ids", "action"]
+
+[args.properties.session_ids]
+type = "array"
+from_entries_key = "session_id"
+[args.properties.session_ids.description]
+it = "Sessioni prodotte da open_sites, normalmente via from_step. ID esatti, mai wildcard."
+en = "Sessions produced by open_sites, normally via from_step. Exact IDs, never wildcards."
+
+[args.properties.action]
+type = "string"
+[args.properties.action.description]
+it = "Azione o fine in linguaggio naturale, senza selettori. Esempio: 'trova le fatture 2026' oppure 'compila e invia il modulo'."
+en = "Natural-language action or goal without selectors. Example: 'find the 2026 invoices' or 'fill and submit the form'."
+
+[args.properties.value_ref]
+type = "string"
+[args.properties.value_ref.description]
+it = "Opzionale. Valore da inserire; per credenziali usare cred:<dominio>:<campo>. Il broker sceglie autonomamente il campo."
+en = "Optional. Value to enter; for credentials use cred:<domain>:<field>. The broker selects the field itself."
+
+[args.properties.approval_tokens]
+type = "object"
+runtime_resolved = true
+[args.properties.approval_tokens.description]
+it = "Solo runtime: token opachi emessi dal broker e ripresentati dopo approvazione."
+en = "Runtime only: opaque tokens issued by the broker and replayed after approval."
+
+[args.properties._goal_mode]
+type = "boolean"
+runtime_resolved = true
+[args.properties._goal_mode.description]
+it = "Solo runtime: interpreta action come fine semantico da raggiungere prima della lettura."
+en = "Runtime only: treat action as the semantic goal to reach before reading."
+
+[output]
+schema_inline = """
+{ok: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, reason_code?: str}>}
+"""
+
+[[capabilities]]
+name = "network:sites"
+hint = ["*"]
+
+[[capabilities]]
+name = "dialog.user_input"
+hint = []
+
+[[tests]]
+name = "manca_session_ids"
+input = { action = "clicca Accedi" }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[[tests]]
+name = "manca_action"
+input = { session_ids = ["abc"] }
+expect = { ok = false, field_eq = { error_class = "invalid_args" } }
+
+[placement]
+scope = "server"
+device_ok = false

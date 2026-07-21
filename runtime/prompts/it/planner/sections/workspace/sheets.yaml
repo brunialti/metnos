@@ -1,0 +1,24 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_sheets
+  header: "GOOGLE WORKSPACE / SHEETS (fogli di calcolo cloud)"
+  preamble: |
+    FOGLI-DI-CALCOLO/SHEETS/GOOGLE-SHEETS
+    -> read_files_xlsx_google_workspace (lettura), create_files_xlsx (crea nuovo), set_files_xlsx (update celle: state upsert idempotente).
+
+rules:
+  - name: sheets_vs_local_xlsx
+    when: "la query menziona fogli-di-calcolo/sheets/Google-Sheets, OPPURE riguarda spreadsheet su Google Workspace"
+    must: "usare i tool del dominio Google Workspace Sheets: read_files_xlsx_google_workspace (lettura), create_files_xlsx (crea nuovo), set_files_xlsx (update celle: state upsert idempotente)"
+    must_not: "confondere con read_files_xlsx (handcrafted, file xlsx locali). I due endpoint sono separati: read_files_xlsx legge solo file xlsx locali su disco, NON Google Sheets"
+    ok: "«leggi il foglio budget su Google Sheets» -> read_files_xlsx_google_workspace(file_id=\"...\") -> final_answer"
+    error: "«leggi il foglio budget su Google Sheets» -> read_files_xlsx(path=\"...\") (E' UN ERRORE: read_files_xlsx e' filesystem locale, non Sheets)"

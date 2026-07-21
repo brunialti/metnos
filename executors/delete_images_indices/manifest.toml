@@ -1,0 +1,65 @@
+# Manifest dell'executor `delete_images_indices` — Metnos v1.1
+# Naming compositivo: azione_oggetto[_modalita'] (verb=delete, obj=images,
+# modalita'=indices). ADR 0086 (rinominato 5/5/2026).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_images_indices"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = ["cancella", "delete", "rimuovi", "remove", "indice", "index", "rebuild", "free-storage", "foto", "image"]
+revertible  = false
+
+[output]
+schema_inline = "{ ok: bool, deleted?: array, freed_bytes?: integer, error?: string }"
+
+[description]
+it = "SCOPO: cancella l'indice persistente delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+en = "SCOPO: delete the persistent image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+
+[code]
+files  = ["delete_images_indices.py"]
+digest = "sha256:ed4f8fc37e4a50d92784bcacc8a6d1a2f05b3476892975495e4b3302a48e9a85"
+
+[args]
+type     = "object"
+required = ["base_path"]
+
+[args.properties.base_path]
+type        = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice della collezione (la stessa usata in create_images_indices). Path assoluto o ~ espandibile."
+en = "Root directory of the collection (the same one used in create_images_indices). Absolute path or expandable ~."
+
+[args.properties.idx]
+type        = "string"
+enum        = ["scene", "persons", "gps", "all"]
+default     = "all"
+
+[args.properties.idx.description]
+it = "Quale indice cancellare. 'all' (default) = tutti i tipi (scene+persons+gps); altrimenti uno solo."
+en = "Which index to delete. 'all' (default) = all types (scene+persons+gps); otherwise only one."
+
+[args.properties.dry_run]
+type        = "boolean"
+default     = false
+
+[args.properties.dry_run.description]
+it = "Se true, non cancella, solo elenca cosa cancellerebbe."
+en = "If true, it does not delete, it only lists what it would delete."
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/index/image/**"]
+
+[[tests]]
+name   = "base_path_inesistente_ok_nothing_to_delete"
+input  = { base_path = "/tmp/metnos_does_not_exist_xyz_del_idx", idx = "all" }
+expect = { ok = true }
+
+[[tests]]
+name   = "idx_invalido_fallisce"
+input  = { base_path = "/tmp/metnos_test_idx_del", idx = "pippo" }
+expect = { ok = false, error_contains = "idx" }

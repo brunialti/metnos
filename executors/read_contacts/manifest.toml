@@ -1,0 +1,91 @@
+# Manifest dell'executor `read_contacts` — Metnos v1.1 (24/5/2026)
+# Naming compositivo §2.2: read_contacts. Lettura puntuale per id/alias.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "read_contacts"
+version     = "0.2.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "read", "leggi", "get", "ottieni",
+    "contatto", "contatti", "contact", "contacts",
+    "rubrica", "address book",
+    "dettaglio contatto", "info contatto", "scheda contatto"
+]
+
+[description]
+it = "SCOPO: legge un contatto dalla rubrica esterna. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confondere con read_persons (utenti sistema). OUT: entries=[{name,emails,phones}]."
+en = "SCOPO: read one contact from external address book. PATTERN: read_contacts(contact_id=\"luca-bianchi\"). NON: confuse with read_persons (system users). OUT: entries=[{name,emails,phones}]."
+
+[code]
+files  = ["read_contacts.py"]
+digest = "sha256:d7e42bbaa0837e809b64b3dd9aee559b0f3c92abf83a8ab61c2b2fce32e41e6b"
+
+[args]
+type     = "object"
+
+[args.properties.contact_id]
+type    = "string"
+[args.properties.contact_id.description]
+it = "Slug del name (es. 'luca-bianchi'). MATCH ESATTO sullo slug deterministico."
+en = "Slug of name (e.g. 'luca-bianchi'). EXACT MATCH on deterministic slug."
+
+[args.properties.email]
+type    = "string"
+[args.properties.email.description]
+it = "Email esatta. MATCH ESATTO (case-insensitive) su un elemento di emails[]."
+en = "Exact email. EXACT MATCH (case-insensitive) on one element of emails[]."
+
+[args.properties.phone]
+type    = "string"
+[args.properties.phone.description]
+it = "Numero telefono esatto. MATCH ESATTO su un elemento di phones[]."
+en = "Exact phone number. EXACT MATCH on one element of phones[]."
+
+[args.properties.client]
+type    = "string"
+enum    = ["google_workspace"]
+default = "google_workspace"
+# config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
+# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+runtime_resolved = true
+[args.properties.client.description]
+it = "Backend rubrica. Default 'google_workspace'."
+en = "Address book backend. Default 'google_workspace'."
+
+[[capabilities]]
+name = "code:exec"
+hint = ["subprocess Python google_api.py contacts list"]
+
+[[capabilities]]
+name = "network:http"
+hint = ["Google People API HTTPS"]
+
+[output]
+schema_inline = "{ ok: bool, entries: array, error?: string }"
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name   = "per id"
+input  = { contact_id = "test-stub" }
+expect = { ok = true }
+
+[[tests]]
+name   = "per email"
+input  = { email = "stub@example.com" }
+expect = { ok = true }
+
+[[tests]]
+name   = "per phone"
+input  = { phone = "+390000000000" }
+expect = { ok = true }
+
+[[tests]]
+name   = "nessun id"
+input  = {}
+expect = { ok = false, error_contains = "Argomento non valido" }

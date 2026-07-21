@@ -1,0 +1,70 @@
+# Manifest dell'executor `find_credentials` — Metnos v1.1
+# Naming compositivo: azione_oggetto. 16 OBJECT credentials (10/5/2026).
+# Invariante di sicurezza: metadata-only (capability metnos:credentials_metadata_only).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_credentials"
+version     = "0.2.0"
+revertible  = false
+author      = "Roberto Brunialti"
+affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
+                "quali account", "elenca credenziali", "registro credenziali",
+                "credentials", "secrets", "stored keys", "list credentials",
+                "configured services", "api keys", "logins"]
+
+[description]
+it = "SCOPO: elenca account e servizi configurati (mail, api, cloud): credenziali metadata-only. PATTERN: find_credentials(query=\"google\", top_k=10). NON: leggere le mail (-> read_messages); valori segreti (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+en = "SCOPO: lists configured accounts and services (mail, api, cloud): metadata-only credentials. PATTERN: find_credentials(query=\"google\", top_k=10). NON: reading account mail (-> read_messages); secret values (-> set_credentials). OUT: {ok, entries:[{binding, fingerprint, scopes, age_days, status, fields_present}], n_entries, truncated, available_total}."
+
+[code]
+files  = ["find_credentials.py"]
+digest = "sha256:504d11f8e9746df1a4994b0e7d07e3aff946c5f731e6667c5c406576e30706f1"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.query]
+type        = "string"
+
+[args.properties.query.description]
+it = "Substring case-insensitive di filtro su binding e scopes (opzionale). Se omesso ritorna tutte le entry. Stringa esplicitamente vuota e' rifiutata."
+en = "Case-insensitive substring filter on binding and scopes (optional). If omitted returns all entries. Explicitly empty string is rejected."
+
+[args.properties.top_k]
+type        = "integer"
+
+[args.properties.top_k.description]
+it = "Cap esplicito al numero di entry restituite (opzionale, default = nessun cap). Se raggiunto, `truncated=true` + `available_total` per consentire riformulazione."
+en = "Explicit cap on returned entries count (optional, default = no cap). If reached, `truncated=true` + `available_total` to allow follow-up."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{binding, fingerprint, scopes, age_days, status, fields_present}>,
+  n_entries: int,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:credentials_metadata_only"
+hint = []
+
+[[capabilities]]
+name = "metnos:read"
+hint = []
+
+[[tests]]
+name   = "rejects_explicit_empty_query"
+input  = { query = "" }
+expect = { ok = false, error_contains = "query" }

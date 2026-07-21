@@ -1,0 +1,137 @@
+# Manifest dell'executor `delete_events` — Metnos v1.1
+# Naming compositivo §2.2: azione_oggetto[_qualifier].
+# Dispatcher canonical (sequel di create_events, 13/5/2026).
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_events"
+version     = "0.6.0"
+author      = "Roberto Brunialti"
+affinity    = [
+    "cancella", "elimina", "delete", "remove", "rimuovi", "appuntamento", "agenda", "evento",
+                "calendario", "calendar", "riunione", "incontro", "meeting"
+            ]
+# §2.3 reversibile via module.reverse(): LOCAL ICS cattura il blocco VEVENT
+# prima di rimuoverlo e l'undo lo re-inserisce identico; GOOGLE non e'
+# ricreabile dal solo payload del delete (undo onesto: non-ribaltabile §2.8).
+revertible  = true
+reverse_pattern = "restore_event"
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: cancella eventi dal calendario, per id o finestra temporale. PATTERN: delete_events(event_ids=[\"ev1\"]) o delete_events(time_window=\"yesterday\") in UN passo. NON: read_events prima quando basta time_window; creare -> create_events. OUT: results=[{id, ...}], n_deleted."
+en = "SCOPO: delete calendar events, by ids or time window. PATTERN: delete_events(event_ids=[\"ev1\"]) or delete_events(time_window=\"yesterday\") in ONE step. NON: read_events first when time_window is enough; create -> create_events. OUT: results=[{id, ...}], n_deleted."
+
+[code]
+files  = ["delete_events.py"]
+digest = "sha256:677563afea16f8b5a2ee117e72d81f21ea7548b633be91f408fba8060eb0cd12"
+
+[args]
+type     = "object"
+required = []
+
+[args.properties.event_id]
+type    = "string"
+
+[args.properties.event_id.description]
+it = "Identificatore singolo (forma scalare). Normalizzato internamente a list len-1."
+en = "Single identifier (scalar form). Internally normalized to list len-1."
+
+[args.properties.event_ids]
+type    = "array"
+items   = { type = "string" }
+
+[args.properties.event_ids.description]
+it = "Lista di identificatori (vettoriale §2.1: il backend itera la cancellazione)."
+en = "List of identifiers (vectorial §2.1: the backend iterates the deletion)."
+
+[args.properties.entries]
+type    = "array"
+items   = { type = "object" }
+
+[args.properties.entries.description]
+it = "Lista di entries da from_step di un produttore (es. read_events): il campo `id` di ognuno alimenta event_ids. Pipeline read -> delete tipica."
+en = "List of entries from from_step of a producer (e.g. read_events): the `id` field of each feeds event_ids. Typical read -> delete pipeline."
+
+[args.properties.time_window]
+type    = "string"
+
+[args.properties.time_window.description]
+it = "Finestra temporale: risolve internamente gli eventi nella finestra e li cancella in un passo. Esempi: time_window=\"yesterday\", time_window=\"last-7d\", time_window=\"2026-06-01\". MUTUAMENTE ESCLUSIVO con event_ids/event_id/entries."
+en = "Time window: internally resolves the events in the window and deletes them in one step. Examples: time_window=\"yesterday\", time_window=\"last-7d\", time_window=\"2026-06-01\". MUTUALLY EXCLUSIVE with event_ids/event_id/entries."
+
+[args.properties.max_total]
+type    = "integer"
+default = 0
+
+[args.properties.max_total.description]
+it = "Cap superiore esplicito sugli eventi cancellati via time_window. Default 0 = nessun limite."
+en = "Explicit upper cap on events deleted via time_window. Default 0 = no limit."
+
+[args.properties.calendar_id]
+type    = "string"
+default = "primary"
+
+[args.properties.calendar_id.description]
+it = "Identificatore del calendario. Default 'primary'."
+en = "Calendar identifier. Default 'primary'."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local", "google_workspace"]
+# backend = configurazione, NON intento → risolto dal runtime, NON esposto
+# all'LLM (lessons A3/B1: l'enum induce bias). L'utente non lo sceglie via LLM.
+runtime_resolved = true
+
+[args.properties.client.description]
+it = "Backend calendario. DEVI OMETTERLO: il runtime auto-rileva (google_workspace se OAuth, altrimenti local ICS). NON DEVI passare 'client' a meno che l'utente non lo chieda. Coerenza: create e delete devono usare lo STESSO backend → ometti in entrambi (altrimenti cancelli su un calendario diverso da dove hai creato)."
+en = "Calendar backend. YOU MUST OMIT IT: the runtime auto-detects (google_workspace if OAuth, else local ICS). YOU MUST NOT pass 'client' unless the user asks. Consistency: create and delete must use the SAME backend → omit in both (else you delete on a different calendar than where you created)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  results: Array<dict>,        # ogni record: {ok, id, uid, ...} per undo §2.3
+  n_deleted: int,
+  used: int,
+  n_matched?: int,             # eventi trovati nella time_window (se usata)
+  time_window?: str,           # echo della finestra usata
+  not_found?: Array<str>,
+  partial?: bool,
+  failures?: Array<{id, error, error_class}>,
+  truncated?: bool,            # §2.7 con truncated_what/available_total/
+                               # cap_field="max_total"/cap_value
+  error?: str,
+  error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/share/metnos/calendar.ics"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name   = "delete_missing_idempotent"
+input  = { event_id = "test-id-1", client = "local" }
+expect = { ok = true }
+
+[[tests]]
+name   = "invalid_client_rejected"
+input  = { event_id = "x", client = "gdrive" }
+expect = { ok = false, error_contains = "gdrive" }
+
+[[tests]]
+name   = "window_and_ids_mutually_exclusive"
+input  = { event_id = "x", time_window = "yesterday", client = "local" }
+expect = { ok = false, error_contains = "time_window" }
+
+[[tests]]
+name   = "invalid_time_window_rejected"
+input  = { time_window = "not-a-window", client = "local" }
+expect = { ok = false, error_contains = "not-a-window" }

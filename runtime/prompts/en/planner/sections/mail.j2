@@ -1,0 +1,79 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+EMAIL / MAIL / IMAP
+══════════════════════════════════════════════════════════════════════
+
+# Mail example — email pipeline: move to IMAP folder
+
+CASE 1: move_messages IS in your toolset (check the exposed list!).
+USER: "Move today's advertising emails to spam"
+[step 1] read_messages(account="all", time_window="today")
+[step 2] classify_entries(from_step=1, dimension="relevance")
+[step 3] filter_entries(from_step=2, where_field="relevance", where_in=["junk","low"])
+[step 4] move_messages(from_step=3, dst_folder="Junk")
+final_answer: "Moved N emails to Junk."
+
+PATTERN SPAM / JUNK / COMMERCIAL / PROMO / ADVERTISING / NEWSLETTER:
+MUST: use `classify_entries(dimension="relevance")` + `filter_entries(where_field="relevance", where_in=["junk","low"])`. The `junk` class of relevance covers semantics: newsletter, promo, advertising, spam, commercial.
+MUST NOT: use `body_contains="spam"` or `subject_contains="commercial"` as surrogate (searches literal text, not semantics).
+OK: "move commercial emails to spam" → read_messages → classify → filter(junk) → move_messages.
+ERROR: "move to spam" → read_messages(body_contains="spam commercial") → 0 entries.
+
+VALID time_window PRESETS: "today", "yesterday", "last-Nd" (e.g. "last-7d"), "last-Nh" (e.g. "last-24h"). Do NOT exist "all"/"always". If the user does not specify time, OMIT `time_window` or use "last-7d" as reasonable default.
+ERROR: read_messages(time_window="all") → invalid_args.
+
+CASE 2: move_messages IS NOT in your toolset.
+USER: "Move today's advertising emails to spam"
+[step 1] request_new_executor(expected_name="move_messages", intent="Move a list of IMAP messages from a source folder (e.g., INBOX) to a destination folder (e.g., INBOX.Spam on Cyrus, Junk on Migadu). Pre-flight check that dst exists. COPY+check status, then STORE \Deleted+EXPUNGE only if COPY is ok. Save message_id in results for swap_src_dst undo.")
+   → in the next step the observation will say "synthesized" or "rejected/abandoned".
+[step 2] read_messages(account="all", time_window="today")
+[step 3] classify_entries(from_step=2, dimension="relevance")
+[step 4] filter_entries(from_step=3, where_field="relevance", where_in=["junk","low"])
+[step 5] move_messages(from_step=4, dst_folder="Junk")     ← now available
+final_answer: "Moved N emails to Junk."
+
+GOLDEN RULE WHEN A SPECIFIC TOOL IS MISSING:
+MUST: invoke request_new_executor with the canonical name of the missing tool when the user request requires an action not covered by your set.
+MUST NOT: replace the requested action with a read/summary action (read_messages, describe_entries, find_files) as a surrogate.
+MUST NOT: use a tool from another domain as a surrogate (e.g., move_files to move emails; move_files works on FS paths, not on IMAP folders).
+OK: user "move X to Y" → request_new_executor(expected_name="move_<object>") → in the next step you call the new tool.
+ERROR: user "move emails to spam" → read+classify+describe without executing move. You have REPLACED the requested action with a summary. THIS IS AN ERROR.
+ERROR: user "move emails" → move_files with dst_template="Junk". move_files is filesystem, emails live in IMAP. THIS IS AN ERROR.
+
+RECIPIENT = YOURSELF ("to me", "send me", "show me", "to my mail", "myself", "my address"):
+MUST: ALWAYS pass to_user="${RUNTIME:actor}", WHATEVER the channel. via_channel follows the requested channel: "telegram"→via_channel="telegram"; "mail/email"→via_channel="email"; unstated→omit (auto). The runtime resolves the actor to their registered address.
+MUST NOT: omit to_user when the channel is telegram; nor extract a recipient from sentence fragments (e.g. "the 3 best"→"the3") nor invent a username.
+OK: "send me the top 3 results on telegram" → send_messages(to_user="${RUNTIME:actor}", via_channel="telegram", messages=[...]).
+OK: "mail me the 3 deals" → send_messages(to_user="${RUNTIME:actor}", via_channel="email", messages=[...]).
+ERROR: "send me X on telegram" → send_messages(via_channel="telegram", messages=[...]) without to_user. THIS IS AN ERROR (missing self recipient).
+ERROR: "send to my mail" → send_messages(to_user="the3"). THIS IS AN ERROR (recipient invented from a fragment).
+
+EMAIL/MAIL/POST/MESSAGES/IMAP/SENDER/SUBJECT
+  → read_messages (read+search, combines time_window+text criteria in ONE call) or send_messages (sending).
+  → move_messages to archive/move to IMAP folders. If missing from catalog, request_new_executor.
+  → list_folders_messages ONLY if the user explicitly asks to list
+    folders. For standard move, it is NOT necessary: move_messages already has
+    an internal folder resolver (matches the LAST segment of the IMAP name).
+  FORBIDDEN: move_files, get_files, find_files, list_dirs, read_files*, get_location. Emails live in IMAP, not on the filesystem; move_files is ONLY for filesystem files.
+  DESTINATION for spam/trash/archive:
+  MUST: pass the folder name (e.g., "Junk", "Spam", "Archive") DIRECTLY as `dst_folder`/`dst_template` of move_messages.
+    The executor automatically resolves the real server name (e.g.,
+    "Junk" → "INBOX.Junk" or "[Gmail]/Junk", "Spam" → "INBOX.Spam"). DO NOT
+    call list_folders_messages before the move: it is a redundant
+    step that triggers unnecessary synthesis.
+  MUST NOT: hardcode a folder name ("Junk", "INBOX.Spam") without first verifying its existence for the specific account.
+  OK: list_folders_messages → search for folder with \Junk → use that name in move_messages(dst_folder=...).
+  ERROR: move_messages(dst_folder="Junk") without pre-check → ERR_DST_FOLDER_NOT_FOUND on servers other than Migadu.
+
+GMAIL/GOOGLE-MAIL/GOOGLE-WORKSPACE-MAIL
+  → find_messages_google_workspace (search), read_messages_google_workspace (read), send_messages_google_workspace (send), set_messages (labels/state update — gmail.modify).
+  MUST NOT: confuse with read_messages (local IMAP: metnos@metnos.com via Migadu).
