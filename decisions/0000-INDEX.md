@@ -86,4 +86,20 @@ for format and discipline; see `_template.md` for the template.
 > goal-verb recognition; honest failure only on a real fingerprint wall or to
 > protect the account). Prev `0190` (the encrypted credential mandate is the
 > default for interactive and scheduled queries). ADRs
-> `0115`, `0116`, `0121` are also skipped.
+> `0115`, `0116`, `0121` are also skipped. Latest: `0193` establishes
+> `EXECUTOR_STANDARD.md` as the versioned normative contract for every new or
+> refactored executor; legacy executors migrate incrementally. Latest: `0194`
+> clarifies that natural language precedes the typed executor schema and
+> requires paraphrase coverage without constraining an intelligent executor to
+> one path. Latest: `0195` separates product membership, origin, and transport;
+> the 16 GitHub executors are builtin, handcrafted, and not imported. Latest:
+> `0196` introduces one central, fail-closed executor execution policy: serial
+> by default, hardware-bounded concurrency only by explicit class and
+> equivalence evidence, with one binding contract shared by all generator paths.
+> Latest: `0197` replaces Tutor phrase routing with a signed local BGE-M3
+> index and uses the local LLM only to compose from audience-filtered retrieved
+> context; administrative and safety procedures remain deterministic. Latest:
+> `0198` replaces the card-bounded Tutor with one signed dynamic knowledge
+> compiler over admitted manifests, allowlisted public documentation and
+> curated procedures; language fallback is per concept, and F1 cards become a
+> removable compatibility layer after equivalence certification.

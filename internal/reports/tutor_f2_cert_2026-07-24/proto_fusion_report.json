@@ -1,0 +1,852 @@
+[
+ {
+  "name": "overview-it",
+  "query": "Cosa sai fare?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 4,
+  "cur_delta": 0.0122,
+  "cur_in_band": true,
+  "new_rank": 10,
+  "new_delta": 0.0375,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-telos-cdd50ada7223-it-0002",
+    0.791
+   ],
+   [
+    "doc-public-executor-653fe35db16a-it-0004",
+    0.77
+   ],
+   [
+    "doc-public-agent-runtime-4f4229176a39-it-0001",
+    0.7628
+   ],
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0043",
+    0.7595
+   ],
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0041",
+    0.7595
+   ]
+  ]
+ },
+ {
+  "name": "overview-it",
+  "query": "Mi fai una panoramica completa delle tue capacità?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 15,
+  "cur_delta": 0.0171,
+  "cur_in_band": true,
+  "new_rank": 2,
+  "new_delta": 0.0038,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0058",
+    0.7934
+   ],
+   [
+    "runtime-capabilities-overview-it-03",
+    0.7896
+   ],
+   [
+    "runtime-capabilities-overview-it-04",
+    0.7896
+   ],
+   [
+    "runtime-capabilities-overview-it-05",
+    0.7896
+   ],
+   [
+    "doc-public-index-42cffbc24a34-it-0044",
+    0.7895
+   ]
+  ]
+ },
+ {
+  "name": "overview-it",
+  "query": "Quali tipi di operazioni supporta questa installazione di Metnos?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 41,
+  "cur_delta": 0.0537,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "runtime-capabilities-overview-it-05",
+    0.8966
+   ],
+   [
+    "runtime-capabilities-overview-it-01",
+    0.8923
+   ],
+   [
+    "runtime-capabilities-overview-it-02",
+    0.8923
+   ],
+   [
+    "runtime-capabilities-overview-it-03",
+    0.8923
+   ],
+   [
+    "runtime-capabilities-overview-it-04",
+    0.8923
+   ]
+  ]
+ },
+ {
+  "name": "overview-en",
+  "query": "What can you do in practice?",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 470,
+  "cur_delta": 0.151,
+  "cur_in_band": false,
+  "new_rank": 60,
+  "new_delta": 0.1689,
+  "new_in_band": false,
+  "new_top5": [
+   [
+    "doc-public-virtualization-ed809897b7d3-en-0011",
+    0.9054
+   ],
+   [
+    "doc-public-skills-backends-4fe760d21bb0-en-0014",
+    0.9054
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0028",
+    0.8316
+   ],
+   [
+    "doc-public-domains-e3925f7197b4-en-0001",
+    0.8282
+   ],
+   [
+    "doc-public-approval-ux-5a0cdb06009c-en-0025",
+    0.8252
+   ]
+  ]
+ },
+ {
+  "name": "overview-en",
+  "query": "Give me a complete overview of your capabilities.",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 15,
+  "cur_delta": 0.0305,
+  "cur_in_band": true,
+  "new_rank": 26,
+  "new_delta": 0.0418,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-code-2a05adfaedb6-en-0005",
+    0.8157
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0022",
+    0.8124
+   ],
+   [
+    "doc-public-index-6bc2f9b2d9e7-en-0044",
+    0.8101
+   ],
+   [
+    "doc-public-tutor-632531c9015c-en-0003",
+    0.8087
+   ],
+   [
+    "doc-public-domains-e3925f7197b4-en-0008",
+    0.7981
+   ]
+  ]
+ },
+ {
+  "name": "overview-en",
+  "query": "Which kinds of operations does this Metnos installation support?",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 36,
+  "cur_delta": 0.0542,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "runtime-capabilities-overview-en-05",
+    0.8757
+   ],
+   [
+    "runtime-capabilities-overview-en-01",
+    0.8717
+   ],
+   [
+    "runtime-capabilities-overview-en-02",
+    0.8717
+   ],
+   [
+    "runtime-capabilities-overview-en-03",
+    0.8717
+   ],
+   [
+    "runtime-capabilities-overview-en-04",
+    0.8717
+   ]
+  ]
+ },
+ {
+  "name": "overview-it-pratica",
+  "query": "Cosa sai fare in pratica?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 331,
+  "cur_delta": 0.1092,
+  "cur_in_band": false,
+  "new_rank": 58,
+  "new_delta": 0.0826,
+  "new_in_band": false,
+  "new_top5": [
+   [
+    "doc-public-skills-backends-04742f8dae1e-it-0014",
+    0.8047
+   ],
+   [
+    "doc-public-virtualization-fc825359b051-it-0012",
+    0.8047
+   ],
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0032",
+    0.7932
+   ],
+   [
+    "doc-public-executor-653fe35db16a-it-0009",
+    0.781
+   ],
+   [
+    "doc-public-index-42cffbc24a34-it-0001",
+    0.7751
+   ]
+  ]
+ },
+ {
+  "name": "overview-en-practice",
+  "query": "What can you do in practice?",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 470,
+  "cur_delta": 0.151,
+  "cur_in_band": false,
+  "new_rank": 60,
+  "new_delta": 0.1689,
+  "new_in_band": false,
+  "new_top5": [
+   [
+    "doc-public-virtualization-ed809897b7d3-en-0011",
+    0.9054
+   ],
+   [
+    "doc-public-skills-backends-4fe760d21bb0-en-0014",
+    0.9054
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0028",
+    0.8316
+   ],
+   [
+    "doc-public-domains-e3925f7197b4-en-0001",
+    0.8282
+   ],
+   [
+    "doc-public-approval-ux-5a0cdb06009c-en-0025",
+    0.8252
+   ]
+  ]
+ },
+ {
+  "name": "undo-it",
+  "query": "Annulla le operazioni reversibili del mio ultimo turno.",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 3,
+  "cur_delta": 0.0612,
+  "cur_in_band": false,
+  "new_rank": 3,
+  "new_delta": 0.0471,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "executor-undo_last_turn-it",
+    0.8771
+   ],
+   [
+    "executor-undo_last_turn-arg-47b5a5a18f23-it-01",
+    0.8331
+   ],
+   [
+    "doc-public-domains-a05187101c19-it-0035",
+    0.83
+   ],
+   [
+    "doc-public-policy-0c08ffc3f654-it-0012",
+    0.8046
+   ],
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0025",
+    0.7985
+   ]
+  ]
+ },
+ {
+  "name": "undo-en",
+  "query": "Undo the reversible operations from my last turn.",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 4,
+  "cur_delta": 0.06,
+  "cur_in_band": false,
+  "new_rank": 7,
+  "new_delta": 0.0996,
+  "new_in_band": false,
+  "new_top5": [
+   [
+    "executor-undo_last_turn-en",
+    0.9501
+   ],
+   [
+    "doc-public-policy-718329460b08-en-0011",
+    0.9014
+   ],
+   [
+    "executor-undo_last_turn-arg-47b5a5a18f23-en-01",
+    0.8997
+   ],
+   [
+    "doc-public-policy-718329460b08-en-0012",
+    0.8872
+   ],
+   [
+    "doc-public-policy-718329460b08-en-0013",
+    0.8802
+   ]
+  ]
+ },
+ {
+  "name": "creds-it",
+  "query": "Come si inseriscono le credenziali di una mailbox?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 2,
+  "cur_delta": 0.0306,
+  "cur_in_band": true,
+  "new_rank": 2,
+  "new_delta": 0.0146,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0033",
+    0.8346
+   ],
+   [
+    "executor-set_credentials-arg-80f70afeef3c-it-01",
+    0.82
+   ],
+   [
+    "executor-set_credentials-arg-bfe5d697162d-it-01",
+    0.8174
+   ],
+   [
+    "executor-read_messages-arg-9af211329b2f-it-01",
+    0.8141
+   ],
+   [
+    "doc-public-mail-accounts-766a246aa389-it-0006",
+    0.8135
+   ]
+  ]
+ },
+ {
+  "name": "creds-it-typo",
+  "query": "Come si 8nseriscono le credenziali di una mailbox?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 2,
+  "cur_delta": 0.0386,
+  "cur_in_band": true,
+  "new_rank": 2,
+  "new_delta": 0.0227,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0033",
+    0.8396
+   ],
+   [
+    "executor-set_credentials-arg-80f70afeef3c-it-01",
+    0.8169
+   ],
+   [
+    "executor-set_credentials-arg-bfe5d697162d-it-01",
+    0.8134
+   ],
+   [
+    "executor-set_credentials-arg-56b3669c3a19-it-01",
+    0.8078
+   ],
+   [
+    "doc-public-mail-accounts-766a246aa389-it-0006",
+    0.8071
+   ]
+  ]
+ },
+ {
+  "name": "creds-en",
+  "query": "How do I add the credentials of another mailbox?",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "executor-set_credentials-arg-80f70afeef3c-en-01",
+    0.8423
+   ],
+   [
+    "executor-set_credentials-arg-bfe5d697162d-en-01",
+    0.8343
+   ],
+   [
+    "doc-public-domains-e3925f7197b4-en-0033",
+    0.8209
+   ],
+   [
+    "executor-admin-arg-31b9bca2f25c-en-01",
+    0.811
+   ],
+   [
+    "doc-public-mail-accounts-6210f434ec8c-en-0001",
+    0.8037
+   ]
+  ]
+ },
+ {
+  "name": "devices-it",
+  "query": "Come aggiungo un PC Windows alla mia utenza Metnos?",
+  "lang": "it",
+  "control": false,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 3,
+  "new_delta": 0.0101,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-remote-executors-622c07c45ad1-it-0008",
+    0.8485
+   ],
+   [
+    "doc-public-pairing-b021bca3f8db-it-0035",
+    0.8393
+   ],
+   [
+    "runtime-ui-devices-it",
+    0.8384
+   ],
+   [
+    "doc-public-remote-executors-622c07c45ad1-it-0009",
+    0.8227
+   ],
+   [
+    "doc-public-metnos-quicktour-db8f74de6037-it-0037",
+    0.8127
+   ]
+  ]
+ },
+ {
+  "name": "devices-en",
+  "query": "How do I add a Windows PC to my Metnos account?",
+  "lang": "en",
+  "control": false,
+  "cur_rank": 2,
+  "cur_delta": 0.0059,
+  "cur_in_band": true,
+  "new_rank": 3,
+  "new_delta": 0.0046,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-remote-executors-98316b7be1bd-en-0008",
+    0.8321
+   ],
+   [
+    "doc-public-pairing-bce4a79c2938-en-0034",
+    0.8284
+   ],
+   [
+    "runtime-ui-devices-en",
+    0.8275
+   ],
+   [
+    "executor-send_messages-arg-9af211329b2f-en-01",
+    0.8183
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0037",
+    0.8181
+   ]
+  ]
+ },
+ {
+  "name": "control-en-2-en-0052",
+  "query": "deferred to",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 5,
+  "cur_delta": 0.0563,
+  "cur_in_band": true,
+  "new_rank": 6,
+  "new_delta": 0.1468,
+  "new_in_band": false,
+  "new_top5": [
+   [
+    "doc-public-sandbox-f90a0d00e421-en-0023",
+    0.8682
+   ],
+   [
+    "doc-public-sandbox-f90a0d00e421-en-0024",
+    0.8682
+   ],
+   [
+    "doc-public-metnos-glossary-v1-7516642a2b5c-en-0010",
+    0.7318
+   ],
+   [
+    "doc-public-metnos-perspectives-judgement-v1-732fbb36d804-en-0010",
+    0.7271
+   ],
+   [
+    "doc-public-telos-3fd736ca685a-en-0038",
+    0.7254
+   ]
+  ]
+ },
+ {
+  "name": "control-en-4-en-0007",
+  "query": "Read the document and show only the paragraphs containing a date.",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-e3925f7197b4-en-0007",
+    0.8325
+   ],
+   [
+    "executor-read_files_doc-arg-2a8e6593957e-en-01",
+    0.826
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0028",
+    0.8089
+   ],
+   [
+    "executor-read_files_doc-arg-82a3537ff0db-en-01",
+    0.805
+   ],
+   [
+    "executor-read_urls_pdf-arg-f29bd0862e74-en-01",
+    0.8029
+   ]
+  ]
+ },
+ {
+  "name": "control-en-4-en-0014",
+  "query": "Show the phone number for the Acme Support contact.",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-e3925f7197b4-en-0014",
+    0.8451
+   ],
+   [
+    "executor-read_contacts-arg-45569da57f4b-en-01",
+    0.8083
+   ],
+   [
+    "executor-find_contacts-arg-a8b771920b83-en-01",
+    0.7657
+   ],
+   [
+    "doc-public-domains-e3925f7197b4-en-0025",
+    0.7528
+   ],
+   [
+    "executor-find_contacts-en",
+    0.7516
+   ]
+  ]
+ },
+ {
+  "name": "control-en-4-en-0020",
+  "query": "Search the web for a reusable aerial photograph of Milan Cathedral.",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-e3925f7197b4-en-0020",
+    0.858
+   ],
+   [
+    "executor-find_images_web-arg-2c195230dee8-en-01",
+    0.7653
+   ],
+   [
+    "executor-find_images_web-arg-07193df400d4-en-01",
+    0.7636
+   ],
+   [
+    "executor-find_images_web-en",
+    0.7613
+   ],
+   [
+    "doc-public-metnos-quicktour-7ca703adf3e8-en-0029",
+    0.7586
+   ]
+  ]
+ },
+ {
+  "name": "control-en-4-en-0026",
+  "query": "Enable the already installed GitHub skill and show which capabilities it adds.",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-e3925f7197b4-en-0026",
+    0.9385
+   ],
+   [
+    "runtime-capabilities-provider-github-en-01",
+    0.906
+   ],
+   [
+    "executor-read_pulls_github-arg-f318df83aa48-en-01",
+    0.864
+   ],
+   [
+    "executor-change_pulls_github-arg-a08adba8dbca-en-01",
+    0.8634
+   ],
+   [
+    "executor-read_tasks_github-arg-073c1634c496-en-01",
+    0.8634
+   ]
+  ]
+ },
+ {
+  "name": "control-en-4-en-0033",
+  "query": "Configure a second IMAP mailbox named personal and ask me for credentials securely.",
+  "lang": "en",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-e3925f7197b4-en-0033",
+    0.8877
+   ],
+   [
+    "doc-public-mail-accounts-6210f434ec8c-en-0001",
+    0.8547
+   ],
+   [
+    "executor-set_credentials-arg-bfe5d697162d-en-01",
+    0.848
+   ],
+   [
+    "executor-set_credentials-arg-80f70afeef3c-en-01",
+    0.8392
+   ],
+   [
+    "doc-public-mail-accounts-6210f434ec8c-en-0003",
+    0.824
+   ]
+  ]
+ },
+ {
+  "name": "control-it-9-it-0006",
+  "query": "Trova le fatture del mese e dimmi la spesa media.",
+  "lang": "it",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0006",
+    0.8471
+   ],
+   [
+    "doc-public-domains-a05187101c19-it-0009",
+    0.7817
+   ],
+   [
+    "executor-describe_numbers-arg-bfe5d697162d-it-01",
+    0.7677
+   ],
+   [
+    "executor-create_images_indices-arg-08d41f0253bb-it-01",
+    0.7634
+   ],
+   [
+    "executor-find_entries-arg-824d80d71985-it-01",
+    0.7611
+   ]
+  ]
+ },
+ {
+  "name": "control-it-9-it-0013",
+  "query": "Crea una riunione di 45 minuti venerdì alle 10 con Luca.",
+  "lang": "it",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0013",
+    0.8029
+   ],
+   [
+    "doc-public-metnos-prospettive-giudizio-v1-df7df1bcd453-it-0018",
+    0.7423
+   ],
+   [
+    "doc-public-telos-cdd50ada7223-it-0007",
+    0.7358
+   ],
+   [
+    "executor-read_contacts-it",
+    0.7342
+   ],
+   [
+    "executor-create_tasks-arg-15eaa75240ae-it-01",
+    0.7335
+   ]
+  ]
+ },
+ {
+  "name": "control-it-9-it-0019",
+  "query": "Leggi questo PDF online e riassumi requisiti, scadenze e destinatari.",
+  "lang": "it",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0019",
+    0.8668
+   ],
+   [
+    "executor-read_urls_pdf-arg-8da2330c9821-it-01",
+    0.8245
+   ],
+   [
+    "executor-read_urls_pdf-it",
+    0.8166
+   ],
+   [
+    "executor-read_urls_pdf-arg-f29bd0862e74-it-01",
+    0.8158
+   ],
+   [
+    "doc-public-index-42cffbc24a34-it-0015",
+    0.8135
+   ]
+  ]
+ },
+ {
+  "name": "control-it-9-it-0025",
+  "query": "Leggi il diff della PR 42, riassumi i rischi e fermati prima del merge.",
+  "lang": "it",
+  "control": true,
+  "cur_rank": 1,
+  "cur_delta": 0.0,
+  "cur_in_band": true,
+  "new_rank": 1,
+  "new_delta": 0.0,
+  "new_in_band": true,
+  "new_top5": [
+   [
+    "doc-public-domains-a05187101c19-it-0025",
+    0.8484
+   ],
+   [
+    "doc-public-sandbox-0757e6560430-it-0019",
+    0.767
+   ],
+   [
+    "doc-public-domains-a05187101c19-it-0022",
+    0.76
+   ],
+   [
+    "doc-public-metnos-glossario-v1-5a5705674e57-it-0056",
+    0.7506
+   ],
+   [
+    "doc-public-telos-cdd50ada7223-it-0036",
+    0.7491
+   ]
+  ]
+ }
+]
