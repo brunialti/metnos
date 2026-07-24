@@ -314,6 +314,12 @@ def register_all() -> None:
           "area riservata", "area clienti", "area personale", "account"],
       en=["sign in", "log in", "login", "access", "enter", "account",
           "customer area", "member area", "personal area"])
+    # Sottoinsieme che identifica un controllo di autenticazione DIRETTO. I
+    # reveal generici (account/area personale) restano nel concetto precedente
+    # come fallback, ma non devono vincere su un vero link di accesso.
+    R("sites.login_direct_target", "phrases", match_mode="word",
+      it=["accedi", "accesso", "entra", "login", "log in", "sign in"],
+      en=["sign in", "log in", "log on", "login", "access", "enter"])
     # Intento forte di autenticazione espresso sull'intero comando. E' distinto
     # dal nome di un controllo: impedisce che un semplice testo "Accedi" nella
     # pagina recluti login_sites, ma copre le formulazioni naturali con cui
@@ -326,6 +332,11 @@ def register_all() -> None:
       en=["sign in to", "log in to", "login to", "authenticate to",
           "authenticate on", "enter the customer area",
           "enter the member area"])
+    # Forma naturale di ingresso al sito usata come mandato di sessione. E' un
+    # concetto distinto perche' il seed preserva i payload gia' tradotti delle
+    # chiavi esistenti: una nuova chiave si propaga senza sovrascriverli.
+    R("sites.session_entry_intent", "phrases", match_mode="word",
+      it=["entra nel sito"], en=["enter the site"])
     R("sites.no_credentials", "phrases", match_mode="word",
       it=["senza credenziali", "senza usare le credenziali",
           "non usare le credenziali", "senza login", "non fare login",
@@ -339,6 +350,22 @@ def register_all() -> None:
     R("sites.search_action_verb", "phrases", match_mode="word",
       it=["cerca", "trova", "ricerca"],
       en=["search", "find", "look for"])
+    # Richiesta di un insieme di record dalla pagina, distinta da una lettura
+    # scalare o da una semplice navigazione. Il guard sites usa solo questo
+    # concetto semantico; le forme linguistiche restano qui, traducibili.
+    R("sites.structured_record_request", "phrases", match_mode="word",
+      it=["dimmi quali", "quali sono", "dimmi i", "dimmi gli", "dimmi le",
+          "elenca", "fammi l'elenco", "dammi l'elenco", "dammi la lista",
+          "mostrami i", "mostrami gli", "mostrami le", "estrai i",
+          "estrai gli", "estrai le"],
+      en=["tell me which", "which are", "what are", "list", "give me a list",
+          "show me all", "extract the"])
+    # Ricerca espressa con articolo plurale: e' una collezione anche senza un
+    # quantificatore esplicito ("trova le mie ..."). Regex linguistiche nel DB,
+    # non nel router; il contesto sites resta una precondizione in dispatch.
+    R("sites.collection_search_request", "regex",
+      it=[r"\b(?:cerca|trova|ricerca)\s+(?:(?:tutt[ei]|tutti)\s+)?(?:i|gli|le)\b"],
+      en=[r"\b(?:find|search(?:\s+for)?|list)\s+(?:all\s+)?(?:my\s+|the\s+)?(?:[\w'-]+\s+){0,3}[\w'-]+s\b"])
     R("sites.search_entry_target", "phrases", match_mode="word",
       it=["cerca", "ricerca", "apri ricerca", "mostra ricerca"],
       en=["search", "find", "open search", "show search"])
@@ -353,6 +380,29 @@ def register_all() -> None:
                        "booking", "bookings", "trip", "trips"]},
       en={"booking": ["booking", "bookings", "trip", "trips",
                        "prenotazione", "prenotazioni", "viaggio", "viaggi"]})
+    # Stati/facet trasversali alle UI. Il canonicale inglese rende confrontabili
+    # query e controlli anche quando genere, numero o lingua differiscono
+    # (es. «prenotazioni passate» -> tab «Passati»). Concetto nuovo per
+    # propagarsi anche nei DB persistenti senza sovrascrivere goal_term_alias.
+    R("sites.goal_state_alias", "mapping", match_mode="word",
+      it={
+          "past": ["passato", "passata", "passati", "passate",
+                   "precedente", "precedenti"],
+          "future": ["futuro", "futura", "futuri", "future",
+                     "prossimo", "prossima", "prossimi", "prossime",
+                     "in programma"],
+          "cancelled": ["cancellato", "cancellata", "cancellati",
+                        "cancellate", "annullato", "annullata", "annullati",
+                        "annullate"],
+          "archived": ["archiviato", "archiviata", "archiviati",
+                       "archiviate"],
+      },
+      en={
+          "past": ["past", "previous", "prior"],
+          "future": ["future", "upcoming", "scheduled"],
+          "cancelled": ["cancelled", "canceled"],
+          "archived": ["archived"],
+      })
     R("sites.continuation_target", "phrases", match_mode="word",
       it=["mostra altro", "mostra altri", "mostra altre", "carica altro",
           "carica altri", "carica altre", "vedi altro", "vedi altri",
@@ -360,6 +410,12 @@ def register_all() -> None:
           "pagina successiva", "prossima pagina", "successivo", "avanti"],
       en=["show more", "load more", "view more", "more results",
           "more invoices", "next page", "next", "continue"])
+    # Stato transitorio della superficie, usato soltanto insieme a segnali DOM
+    # di caricamento o come testo breve visibile. Non prova mai da solo che il
+    # goal sia stato raggiunto e non contiene label specifiche di un sito.
+    R("sites.loading_marker", "phrases", match_mode="substring",
+      it=["caricamento", "sto caricando", "attendi"],
+      en=["loading", "please wait", "fetching"])
     R("sites.goal_noise", "phrases", match_mode="word",
       it=["a", "al", "alla", "alle", "con", "da", "dal", "dalla", "de",
           "dei", "del", "della", "di", "e", "gli", "i", "il", "in",
@@ -367,6 +423,16 @@ def register_all() -> None:
           "per", "su", "un", "una"],
       en=["a", "an", "and", "at", "for", "from", "in", "of", "on",
           "the", "to", "with", "my"])
+    # Concetto additivo per installazioni che hanno gia' il payload immutabile
+    # di goal_noise. Completa le preposizioni articolate italiane: sono
+    # grammatica della richiesta, mai termini di contenuto da cercare nel DOM.
+    R("sites.goal_noise_articulated_preposition", "phrases", match_mode="word",
+      it=["al", "allo", "alla", "ai", "agli", "alle",
+          "dal", "dallo", "dalla", "dai", "dagli", "dalle",
+          "del", "dello", "della", "dei", "degli", "delle",
+          "nel", "nello", "nella", "nei", "negli", "nelle",
+          "sul", "sullo", "sulla", "sui", "sugli", "sulle"],
+      en=[])
     R("sites.goal_scope_quantifier", "phrases", match_mode="word",
       it=["tutto", "tutta", "tutti", "tutte", "ogni", "intero", "intera",
           "interi", "intere"],
@@ -374,11 +440,39 @@ def register_all() -> None:
     R("sites.external_search_scope", "phrases", match_mode="word",
       it=["sul web", "su internet", "nel web", "in internet"],
       en=["on the web", "on internet", "web search", "internet search"])
+    # Modalita' dell'executor immagini web. Il router combina questi segnali
+    # linguistici con object=images: il lessico non decide mai da solo il tool.
+    R("images.web_search_scope", "phrases", match_mode="word",
+      it=["sul web", "su internet", "nel web", "in internet", "online"],
+      en=["on the web", "on internet", "web search", "internet search",
+          "online"])
+    R("images.reverse_search_intent", "phrases", match_mode="word",
+      it=["ricerca inversa", "immagini simili", "immagine simile",
+          "foto simili", "foto simile", "origine dell'immagine",
+          "origine della foto", "da dove viene questa immagine",
+          "da dove viene questa foto", "questa immagine", "questa foto",
+          "immagine allegata", "foto allegata"],
+      en=["reverse image search", "reverse search", "similar images",
+          "similar image", "similar photos", "similar photo",
+          "image origin", "photo origin", "where this image comes from",
+          "where this photo comes from", "this image", "this photo",
+          "attached image", "attached photo"])
     R("sites.privacy_reject_target", "phrases", match_mode="word",
       it=["rifiuta", "rifiuta tutti", "rifiuta tutto", "solo necessari",
           "continua senza accettare"],
       en=["reject", "reject all", "decline", "decline all",
           "necessary only", "continue without accepting"])
+    # Concetto additivo: `register` non sovrascrive payload seed gia' installati.
+    # La forma nominale e' comune nelle UI italiane e resta consumata soltanto
+    # dal locator privacy strutturale, mai come click testuale libero.
+    R("sites.privacy_reject_noun_target", "phrases", match_mode="word",
+      it=["rifiuto"], en=[])
+    # Marker del CONTENITORE, distinti dalle azioni. Il broker li combina con
+    # struttura modale/fixed e un target di rifiuto esatto: una parola isolata
+    # nel corpo pagina non e' mai sufficiente per produrre un click.
+    R("sites.privacy_overlay_marker", "phrases", match_mode="substring",
+      it=["cookie", "scelte pubblicitarie", "consenso", "privacy"],
+      en=["cookie", "advertising choices", "consent", "privacy"])
     R("sites.login_continue_target", "phrases", match_mode="word",
       it=["continua", "avanti", "prosegui", "successivo"],
       en=["continue", "next", "proceed"])
@@ -389,6 +483,11 @@ def register_all() -> None:
       en=["close", "close dialog", "close modal", "dismiss",
           "dismiss dialog", "not now", "maybe later", "later", "got it",
           "understood", "okay", "cancel"])
+    # `OK` e' un riconoscimento internazionale, non un'etichetta di sito. Un
+    # concept nuovo propaga anche sui DB persistenti dove il seed precedente e'
+    # intenzionalmente immutabile.
+    R("sites.overlay_acknowledge_target", "phrases", match_mode="word",
+      it=["ok"], en=["ok"])
     R("sites.two_factor_push_marker", "phrases", match_mode="substring",
       it=["approva la richiesta", "conferma sul dispositivo",
           "notifica sul telefono", "controlla il telefono"],
@@ -486,3 +585,31 @@ def register_all() -> None:
           "and create", "and book", "and schedule", "and move",
           "and delete", "and send", "and notify",
           "then create", "then book", "then schedule", "then send"])
+
+    # ── TUTOR: gate di certificazione a radice flessiva ────────────────
+    # Consumati da scripts/certify_tutor_f2.py: una voce "lex:tutor_gate.<x>"
+    # nelle alternative di `must_cover` delega il gate a `match(concept,
+    # text)`, che unisce le forme it∪en → un solo gate copre risposte in
+    # entrambe le lingue e le flessioni (crearlo, directories, posizioni,
+    # amministrative). SOLO i concetti falliti per flessione: i gate literal
+    # («Fermati se»/“Stop if”) restano nel corpus di proposito, fedeli
+    # all'intestazione. Le lingue future le sintetizza il daemon.
+    R("tutor_gate.create", "regex",
+      it=[r"\bcrea\w*|\bcreazion\w*"], en=[r"\bcreat\w*"])
+    R("tutor_gate.directory", "regex",
+      it=[r"\bcartell\w*|\bdirector\w*"], en=[r"\bfolder\w*|\bdirector\w*"])
+    R("tutor_gate.one_off", "regex",
+      it=[r"\buna sola\b|\bsingola esecuzion\w*|\buna volta\b"],
+      en=[r"\bone[- ]off\b|\bsingle run\b|\bone[- ]time\b"])
+    R("tutor_gate.hash", "regex",
+      it=[r"\bhash\b|\bimpront\w*"], en=[r"\bhash\w*|\bfingerprint\w*"])
+    R("tutor_gate.location", "regex",
+      it=[r"\bposizion\w*|\bgeolocal\w*"], en=[r"\blocation\b|\bgeolocat\w*"])
+    R("tutor_gate.admin_role", "regex",
+      it=[r"\bamministrat\w*|\badmin\b"], en=[r"\badmin\w*"])
+    R("tutor_gate.retry", "regex",
+      it=[r"\briprov\w*"], en=[r"\bretry\b"])
+    # Termine tecnico invariante fra le lingue: pattern verbatim it+en, come
+    # i regex intrecciati in testa al file (il merge deduplica).
+    R("tutor_gate.pull_request", "regex",
+      it=[r"\bpull request\w*"], en=[r"\bpull request\w*"])

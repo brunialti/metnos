@@ -1,0 +1,2674 @@
+{
+ "schema_version": 1,
+ "description": "Corpus umano e avversariale per la certificazione del Tutor F2. Le richieste operative sono valutate al confine Tutor e non vengono eseguite.",
+ "answer_cases": [
+  {
+   "id": "admin-settings-overview",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Che cosa trovo nella pagina principale di Settings?",
+   "expected": "answer",
+   "route": "/admin",
+   "must_cover": [
+    [
+     "versione"
+    ],
+    [
+     "turni"
+    ],
+    [
+     "proposte"
+    ],
+    [
+     "executor"
+    ],
+    [
+     "scheduler"
+    ],
+    [
+     "Safety",
+     "firme"
+    ],
+    [
+     "utenti"
+    ]
+   ]
+  },
+  {
+   "id": "admin-settings-errors",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove vedo al volo se Metnos ha avuto errori e quanto è stato rapido oggi?",
+   "expected": "answer",
+   "route": "/admin",
+   "must_cover": [
+    [
+     "ultime 24 ore",
+     "24h"
+    ],
+    [
+     "errori"
+    ],
+    [
+     "latenza mediana",
+     "mediana"
+    ]
+   ]
+  },
+  {
+   "id": "admin-turns-fields",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove controllo le richieste già eseguite e quali informazioni vedo?",
+   "expected": "answer",
+   "route": "/admin/turns",
+   "must_cover": [
+    [
+     "Settings > Attività > Turni"
+    ],
+    [
+     "turno",
+     "identificativo"
+    ],
+    [
+     "inizio"
+    ],
+    [
+     "canale"
+    ],
+    [
+     "attore"
+    ],
+    [
+     "passi"
+    ],
+    [
+     "esito"
+    ],
+    [
+     "durata"
+    ],
+    [
+     "query",
+     "richiesta"
+    ]
+   ]
+  },
+  {
+   "id": "admin-turns-channel",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "telegram",
+   "query": "Da qui dove posso vedere lo storico dei turni?",
+   "expected": "answer",
+   "route": "/admin/turns",
+   "must_cover": [
+    [
+     "chat web"
+    ],
+    [
+     "Telegram"
+    ],
+    [
+     "Settings > Attività > Turni"
+    ],
+    [
+     "durata"
+    ],
+    [
+     "richiesta",
+     "query"
+    ]
+   ]
+  },
+  {
+   "id": "admin-runs-history",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove vedo se i task pianificati sono riusciti e quanto sono durati?",
+   "expected": "answer",
+   "route": "/admin/runs",
+   "must_cover": [
+    [
+     "Settings > Attività > Scheduler"
+    ],
+    [
+     "task"
+    ],
+    [
+     "inizio"
+    ],
+    [
+     "fine"
+    ],
+    [
+     "esito"
+    ],
+    [
+     "durata"
+    ]
+   ]
+  },
+  {
+   "id": "admin-runs-config-location",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Nello storico dello scheduler posso anche modificare la pianificazione?",
+   "expected": "answer",
+   "route": "/admin/runs",
+   "must_cover": [
+    [
+     "Timer"
+    ],
+    [
+     "configur",
+     "pianific"
+    ]
+   ]
+  },
+  {
+   "id": "admin-timers-fields",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Cosa mostra la pagina Timer per ogni attività programmata?",
+   "expected": "answer",
+   "route": "/admin/timers",
+   "must_cover": [
+    [
+     "task utente"
+    ],
+    [
+     "timer di sistema"
+    ],
+    [
+     "trigger",
+     "regola temporale",
+     "pianificazione"
+    ],
+    [
+     "stato"
+    ],
+    [
+     "prossima"
+    ],
+    [
+     "ultima"
+    ],
+    [
+     "esito"
+    ],
+    [
+     "run",
+     "esecuzioni"
+    ],
+    [
+     "fallimenti"
+    ]
+   ]
+  },
+  {
+   "id": "admin-timers-controls",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dalla pagina dei timer quali operazioni posso fare su un task?",
+   "expected": "answer",
+   "route": "/admin/timers",
+   "must_cover": [
+    [
+     "abilita"
+    ],
+    [
+     "disabilita"
+    ],
+    [
+     "esegui ora"
+    ]
+   ]
+  },
+  {
+   "id": "admin-builds-fields",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove seguo la costruzione di un indice e che dettagli trovo?",
+   "expected": "answer",
+   "route": "/admin/builds",
+   "must_cover": [
+    [
+     "Settings > Attività > Build indici"
+    ],
+    [
+     "directory"
+    ],
+    [
+     "indice"
+    ],
+    [
+     "stato"
+    ],
+    [
+     "progresso"
+    ],
+    [
+     "ETA"
+    ],
+    [
+     "aggiorna"
+    ],
+    [
+     "errori"
+    ]
+   ]
+  },
+  {
+   "id": "admin-builds-eta",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "La schermata delle build mi dice anche quanto manca e quale unità sta lavorando?",
+   "expected": "answer",
+   "route": "/admin/builds",
+   "must_cover": [
+    [
+     "ETA"
+    ],
+    [
+     "unità attiva",
+     "unit attivo"
+    ]
+   ]
+  },
+  {
+   "id": "admin-changes-content",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove esamino le proposte di modifica e quali dati mi aiuteranno a valutarle?",
+   "expected": "answer",
+   "route": "/admin/changes",
+   "must_cover": [
+    [
+     "Settings > Ciclo di vita > Modifiche"
+    ],
+    [
+     "punteggio"
+    ],
+    [
+     "tipo"
+    ],
+    [
+     "bersaglio"
+    ],
+    [
+     "origine"
+    ],
+    [
+     "riepilogo"
+    ],
+    [
+     "dettagli"
+    ],
+    [
+     "effetti"
+    ],
+    [
+     "metriche"
+    ]
+   ]
+  },
+  {
+   "id": "admin-changes-filters",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Posso filtrare le modifiche proposte senza scorrere tutto l'elenco?",
+   "expected": "answer",
+   "route": "/admin/changes",
+   "must_cover": [
+    [
+     "stato"
+    ],
+    [
+     "famiglia"
+    ],
+    [
+     "tipo",
+     "kind"
+    ],
+    [
+     "punteggio"
+    ],
+    [
+     "limite"
+    ]
+   ]
+  },
+  {
+   "id": "admin-changes-actions",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Quali decisioni posso prendere dalla console sulle proposte?",
+   "expected": "answer",
+   "route": "/admin/changes",
+   "must_cover": [
+    [
+     "accetta"
+    ],
+    [
+     "rifiuta"
+    ],
+    [
+     "prepara",
+     "stage"
+    ],
+    [
+     "ripristina",
+     "rollback"
+    ],
+    [
+     "lex:tutor_gate.retry"
+    ]
+   ]
+  },
+  {
+   "id": "admin-executors-catalog",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Che informazioni dà il catalogo degli executor installati?",
+   "expected": "answer",
+   "route": "/admin/executors",
+   "must_cover": [
+    [
+     "nome"
+    ],
+    [
+     "versione"
+    ],
+    [
+     "ciclo di vita"
+    ],
+    [
+     "appartenenza"
+    ],
+    [
+     "origine"
+    ],
+    [
+     "trasporto"
+    ],
+    [
+     "standard"
+    ],
+    [
+     "capability"
+    ],
+    [
+     "reversib"
+    ]
+   ]
+  },
+  {
+   "id": "admin-executors-rejected",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove posso vedere quali executor sono stati rifiutati al caricamento e perché?",
+   "expected": "answer",
+   "route": "/admin/executors",
+   "must_cover": [
+    [
+     "rifiutati"
+    ],
+    [
+     "percorso"
+    ],
+    [
+     "motivo"
+    ]
+   ]
+  },
+  {
+   "id": "admin-executor-stats",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove trovo le statistiche degli executor e che grafici o dati offre?",
+   "expected": "answer",
+   "route": "/admin/executors/stats",
+   "must_cover": [
+    [
+     "origine"
+    ],
+    [
+     "ciclo di vita"
+    ],
+    [
+     "attivi"
+    ],
+    [
+     "deprecati"
+    ],
+    [
+     "archiviati"
+    ],
+    [
+     "30 giorni"
+    ],
+    [
+     "JSON"
+    ]
+   ]
+  },
+  {
+   "id": "admin-praxis-state",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Cosa posso controllare nella pagina Praxis?",
+   "expected": "answer",
+   "route": "/admin/praxis",
+   "must_cover": [
+    [
+     "L0"
+    ],
+    [
+     "L1"
+    ],
+    [
+     "autopath"
+    ],
+    [
+     "osservazioni"
+    ],
+    [
+     "anti-autopath"
+    ],
+    [
+     "Pronoia"
+    ]
+   ]
+  },
+  {
+   "id": "admin-praxis-controls",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dalla schermata Praxis posso ripulire le cache o cambiare il livello di recupero?",
+   "expected": "answer",
+   "route": "/admin/praxis",
+   "must_cover": [
+    [
+     "svuota",
+     "ripulire"
+    ],
+    [
+     "L0"
+    ],
+    [
+     "L1"
+    ],
+    [
+     "Pronoia"
+    ],
+    [
+     "locale"
+    ],
+    [
+     "cloud"
+    ]
+   ]
+  },
+  {
+   "id": "admin-services-content",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Mostrami cosa contiene la pagina dei servizi di sistema.",
+   "expected": "answer",
+   "route": "/admin/services",
+   "must_cover": [
+    [
+     "Settings > Sistema > Servizi"
+    ],
+    [
+     "stato"
+    ],
+    [
+     "salute"
+    ],
+    [
+     "installazione"
+    ],
+    [
+     "PID"
+    ],
+    [
+     "Avvia",
+     "avvia"
+    ],
+    [
+     "Arresta",
+     "arresta"
+    ],
+    [
+     "Riavvia",
+     "riavvia"
+    ],
+    [
+     "15 secondi"
+    ]
+   ],
+   "registry_inventory": "services"
+  },
+  {
+   "id": "admin-services-telegram",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "telegram",
+   "query": "Dove controllo se i componenti Metnos sono attivi?",
+   "expected": "answer",
+   "route": "/admin/services",
+   "must_cover": [
+    [
+     "chat web"
+    ],
+    [
+     "Telegram"
+    ],
+    [
+     "Settings > Sistema > Servizi"
+    ],
+    [
+     "stato"
+    ],
+    [
+     "salute"
+    ]
+   ]
+  },
+  {
+   "id": "admin-safety-meaning",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Come si legge la tabella Safety e cosa significa ogni colonna?",
+   "expected": "answer",
+   "route": "/admin/safety",
+   "must_cover": [
+    [
+     "firma"
+    ],
+    [
+     "tipo"
+    ],
+    [
+     "severità"
+    ],
+    [
+     "origine"
+    ],
+    [
+     "usi"
+    ],
+    [
+     "creata",
+     "data"
+    ]
+   ]
+  },
+  {
+   "id": "admin-safety-filters",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Posso vedere separatamente i comandi consentiti, quelli da confermare e quelli bloccati?",
+   "expected": "answer",
+   "route": "/admin/safety",
+   "must_cover": [
+    [
+     "whitelist"
+    ],
+    [
+     "graylist"
+    ],
+    [
+     "blacklist"
+    ],
+    [
+     "forbidden"
+    ]
+   ]
+  },
+  {
+   "id": "admin-users-list-create",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove gestisco le persone che possono usare Metnos e cosa posso fare da lì?",
+   "expected": "answer",
+   "route": "/admin/users",
+   "must_cover": [
+    [
+     "nome"
+    ],
+    [
+     "email"
+    ],
+    [
+     "ruolo"
+    ],
+    [
+     "autonomia"
+    ],
+    [
+     "canali"
+    ],
+    [
+     "crea",
+     "guest"
+    ],
+    [
+     "dettaglio"
+    ]
+   ]
+  },
+  {
+   "id": "admin-user-detail",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Nel dettaglio di un utente quali dati e associazioni posso modificare?",
+   "expected": "answer",
+   "route": "/admin/users",
+   "must_cover": [
+    [
+     "nome visualizzato"
+    ],
+    [
+     "email"
+    ],
+    [
+     "autonomia"
+    ],
+    [
+     "note"
+    ],
+    [
+     "canali"
+    ],
+    [
+     "token"
+    ],
+    [
+     "scollega"
+    ],
+    [
+     "dispositivi"
+    ]
+   ]
+  },
+  {
+   "id": "admin-user-preferences",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove imposto lingua, stile di risposta e comportamento del browser per un singolo utente?",
+   "expected": "answer",
+   "route": "/admin/users",
+   "must_cover": [
+    [
+     "dettaglio"
+    ],
+    [
+     "preferenze"
+    ],
+    [
+     "lingua"
+    ],
+    [
+     "stile"
+    ],
+    [
+     "navigazione web",
+     "browser"
+    ],
+    [
+     "salva"
+    ]
+   ]
+  },
+  {
+   "id": "admin-devices-list",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Quali dati vedo sui computer collegati a Metnos?",
+   "expected": "answer",
+   "route": "/admin/devices",
+   "must_cover": [
+    [
+     "nome"
+    ],
+    [
+     "id",
+     "identificativo"
+    ],
+    [
+     "proprietario"
+    ],
+    [
+     "sistema operativo",
+     "OS"
+    ],
+    [
+     "client"
+    ],
+    [
+     "impronta",
+     "fingerprint"
+    ],
+    [
+     "heartbeat"
+    ],
+    [
+     "stato"
+    ]
+   ]
+  },
+  {
+   "id": "admin-devices-pairing",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Come aggiungo un altro PC e quanto resta valido il token?",
+   "expected": "answer",
+   "route": "/admin/devices",
+   "must_cover": [
+    [
+     "questo PC"
+    ],
+    [
+     "altro PC"
+    ],
+    [
+     "link"
+    ],
+    [
+     "token"
+    ],
+    [
+     "10 min"
+    ]
+   ]
+  },
+  {
+   "id": "admin-restricted-user",
+   "group": "admin_ui",
+   "audience": "user",
+   "channel": "http",
+   "query": "Dove vedo il catalogo degli executor rifiutati?",
+   "expected": "answer",
+   "must_cover": [
+    [
+     "executor"
+    ],
+    [
+     "lex:tutor_gate.admin_role"
+    ]
+   ]
+  },
+  {
+   "id": "ops-capabilities-overview",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "In pratica, che cosa posso chiedere a Metnos? Fammi una panoramica completa.",
+   "expected": "answer",
+   "must_cover": [
+    [
+     "file"
+    ],
+    [
+     "web",
+     "URL"
+    ],
+    [
+     "messaggi",
+     "email"
+    ],
+    [
+     "calendari",
+     "eventi"
+    ],
+    [
+     "contatti",
+     "persone"
+    ],
+    [
+     "foto",
+     "immagini"
+    ],
+    [
+     "luoghi",
+     "posizione"
+    ],
+    [
+     "GitHub"
+    ],
+    [
+     "credenziali"
+    ],
+    [
+     "processi"
+    ],
+    [
+     "Google Workspace"
+    ],
+    [
+     "Google Photos"
+    ]
+   ],
+   "must_not": [
+    "object=",
+    "actions="
+   ]
+  },
+  {
+   "id": "ops-files-find",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso cercare sul mio computer tutti i PDF che parlano di una fattura?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "file"
+    ],
+    [
+     "PDF"
+    ],
+    [
+     "pattern",
+     "contenuto",
+     "testo"
+    ]
+   ]
+  },
+  {
+   "id": "ops-files-hash",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Posso chiedere a Metnos di calcolare l'hash di alcuni file per confrontarli?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "hash"
+    ],
+    [
+     "SHA-256"
+    ]
+   ]
+  },
+  {
+   "id": "ops-files-loc",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come faccio a contare le righe di codice in una cartella di progetto?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "righe"
+    ],
+    [
+     "codice"
+    ],
+    [
+     "cartella",
+     "directory"
+    ]
+   ]
+  },
+  {
+   "id": "ops-files-archive",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso raccogliere più documenti in un archivio ZIP?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "ZIP"
+    ],
+    [
+     "file",
+     "documenti"
+    ]
+   ]
+  },
+  {
+   "id": "ops-files-docs",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Metnos sa leggere e scrivere documenti e fogli di calcolo locali?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "document"
+    ],
+    [
+     "fogli",
+     "spreadsheet"
+    ],
+    [
+     "leggere"
+    ],
+    [
+     "scrivere",
+     "creare"
+    ]
+   ]
+  },
+  {
+   "id": "ops-files-ocr",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come estraggo il testo da una scansione o da una fotografia di un documento?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "OCR"
+    ],
+    [
+     "testo"
+    ],
+    [
+     "immagine",
+     "scansione",
+     "fotografia"
+    ]
+   ]
+  },
+  {
+   "id": "ops-web-search",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come chiedo a Metnos di cercare informazioni aggiornate sul web?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "web"
+    ],
+    [
+     "cerc"
+    ]
+   ]
+  },
+  {
+   "id": "ops-web-read",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Se gli passo una pagina o un PDF online, può leggerne il contenuto?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "URL",
+     "pagina"
+    ],
+    [
+     "PDF"
+    ],
+    [
+     "leggere",
+     "contenuto"
+    ]
+   ]
+  },
+  {
+   "id": "ops-sites-login",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso far accedere Metnos a un sito senza scrivere la password nella chat?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "credenzial"
+    ],
+    [
+     "sito"
+    ],
+    [
+     "password"
+    ],
+    [
+     "chat"
+    ]
+   ],
+   "must_not": [
+    "password='",
+    "password=\""
+   ]
+  },
+  {
+   "id": "ops-sites-action",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Dopo l'accesso, quali operazioni può svolgere Metnos dentro un sito?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "navig"
+    ],
+    [
+     "sito"
+    ],
+    [
+     "azione",
+     "operazioni",
+     "obiettivo"
+    ]
+   ]
+  },
+  {
+   "id": "ops-location-current",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso chiedere qual è la posizione attuale del mio dispositivo?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "posizione"
+    ],
+    [
+     "dispositivo"
+    ]
+   ]
+  },
+  {
+   "id": "ops-places-nearby",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come trovo una farmacia vicino a una certa posizione?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "farmacia"
+    ],
+    [
+     "luogo",
+     "posti"
+    ],
+    [
+     "posizione",
+     "coordinate",
+     "vicino"
+    ]
+   ]
+  },
+  {
+   "id": "ops-photos-local",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come cerco tra le mie foto locali quelle scattate al mare l'estate scorsa?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "foto",
+     "immagini"
+    ],
+    [
+     "indice"
+    ],
+    [
+     "data",
+     "estate",
+     "tempo"
+    ]
+   ]
+  },
+  {
+   "id": "ops-photos-google",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Posso cercare anche nelle mie immagini di Google Photos?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "Google Photos"
+    ],
+    [
+     "cerc"
+    ]
+   ]
+  },
+  {
+   "id": "ops-photos-gps",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Metnos può leggere data, GPS e altri metadati dalle fotografie?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "GPS"
+    ],
+    [
+     "data"
+    ],
+    [
+     "metadati",
+     "EXIF"
+    ]
+   ]
+  },
+  {
+   "id": "ops-mail-read",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come leggo le email non lette ricevute oggi?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "email",
+     "messaggi"
+    ],
+    [
+     "non lett"
+    ],
+    [
+     "oggi"
+    ]
+   ]
+  },
+  {
+   "id": "ops-mail-other-account",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Posso usare una mailbox diversa da quella configurata inizialmente?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "mailbox",
+     "account"
+    ],
+    [
+     "credenzial"
+    ]
+   ]
+  },
+  {
+   "id": "ops-mail-credentials-typo",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come si 8nseriscono le credenziali di una mailbox?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "credenzial"
+    ],
+    [
+     "~/.config/metnos/mail",
+     "file"
+    ],
+    [
+     "HOST_IMAP",
+     "IMAP"
+    ]
+   ]
+  },
+  {
+   "id": "ops-mail-organize",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso archiviare o spostare i messaggi che corrispondono a una ricerca?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "messaggi",
+     "email"
+    ],
+    [
+     "spost"
+    ],
+    [
+     "cartella",
+     "archivio"
+    ]
+   ]
+  },
+  {
+   "id": "ops-mail-send",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come si chiede a Metnos di inviare o rispondere a un messaggio?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "invia"
+    ],
+    [
+     "rispond"
+    ],
+    [
+     "messaggio",
+     "email"
+    ]
+   ]
+  },
+  {
+   "id": "ops-calendar-events",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come controllo gli appuntamenti di domani e ne creo uno nuovo?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "eventi",
+     "appuntamenti"
+    ],
+    [
+     "domani"
+    ],
+    [
+     "crea"
+    ]
+   ]
+  },
+  {
+   "id": "ops-google-workspace",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Quali cose posso fare con Google Workspace tramite Metnos?",
+   "expected": "answer",
+   "must_cover": [
+    [
+     "Google Workspace"
+    ],
+    [
+     "messaggi",
+     "email"
+    ],
+    [
+     "calendari",
+     "eventi"
+    ],
+    [
+     "contatti"
+    ],
+    [
+     "file",
+     "Drive"
+    ],
+    [
+     "task",
+     "attività"
+    ]
+   ]
+  },
+  {
+   "id": "ops-contacts",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come cerco un contatto e ne aggiorno i dati?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "contatt"
+    ],
+    [
+     "cerc"
+    ],
+    [
+     "aggiorn",
+     "modific"
+    ]
+   ]
+  },
+  {
+   "id": "ops-github-overview",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Con GitHub che cosa sa fare Metnos, in termini pratici?",
+   "expected": "answer",
+   "must_cover": [
+    [
+     "repository"
+    ],
+    [
+     "file"
+    ],
+    [
+     "issue"
+    ],
+    [
+     "pull request"
+    ],
+    [
+     "task"
+    ],
+    [
+     "messaggi"
+    ]
+   ]
+  },
+  {
+   "id": "ops-github-issues",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come cerco le issue aperte di un repository e ne aggiorno una?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "issue"
+    ],
+    [
+     "repository"
+    ],
+    [
+     "cerc"
+    ],
+    [
+     "aggiorn",
+     "modific"
+    ]
+   ]
+  },
+  {
+   "id": "ops-spreadsheets",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come posso leggere un CSV o XLSX e poi ordinare o filtrare le righe?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "CSV"
+    ],
+    [
+     "XLSX"
+    ],
+    [
+     "ordin"
+    ],
+    [
+     "filtr"
+    ]
+   ]
+  },
+  {
+   "id": "ops-credentials",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come si aggiungono e si revocano credenziali senza metterle nella richiesta?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "credenzial"
+    ],
+    [
+     "aggiung",
+     "salva",
+     "impost"
+    ],
+    [
+     "revoc",
+     "elimin"
+    ],
+    [
+     "richiesta",
+     "chat"
+    ]
+   ]
+  },
+  {
+   "id": "ops-remote-device",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Posso chiedere un'operazione sui file che si trovano su un mio PC collegato?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "PC",
+     "dispositivo"
+    ],
+    [
+     "file"
+    ],
+    [
+     "colleg",
+     "remoto"
+    ]
+   ]
+  },
+  {
+   "id": "ops-processes-packages",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Metnos può cercare programmi installati e mostrarmi i processi in esecuzione?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "programmi",
+     "pacchetti"
+    ],
+    [
+     "processi"
+    ],
+    [
+     "esecuzione"
+    ]
+   ]
+  },
+  {
+   "id": "ops-schedule-natural",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come faccio a chiedere che una ricerca venga ripetuta ogni lunedì mattina?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "attività programmata",
+     "task"
+    ],
+    [
+     "ogni lunedì"
+    ],
+    [
+     "ricerca"
+    ]
+   ]
+  },
+  {
+   "id": "ops-undo",
+   "group": "typical_operations",
+   "audience": "user",
+   "channel": "http",
+   "query": "Se Metnos modifica dei file, come posso annullare l'ultima operazione?",
+   "expected": "answer",
+   "natural_example": true,
+   "must_cover": [
+    [
+     "annulla"
+    ],
+    [
+     "ultima"
+    ],
+    [
+     "operazione"
+    ]
+   ]
+  },
+  {
+   "id": "boundary-action-file-search",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Cerca tutti i PDF nella cartella Documenti",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-mail",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Leggi le email non lette di oggi",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-web",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Trova sul web il comunicato più recente di Example",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-location",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Dimmi dove mi trovo adesso",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-hash",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Calcola lo SHA-256 dei file in /tmp/esempio",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-schedule",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Ogni lunedì alle 9 controlla le email urgenti",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-site",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Accedi al portale e scarica l'ultima fattura",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-github",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Apri una issue nel repository demo con titolo errore login",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-conversational",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Puoi recuperarmi gli appuntamenti di domani?",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-mixed-files",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Spiegami come funziona la ricerca dei file e poi cercami i PDF di luglio",
+   "expected": "clarification"
+  },
+  {
+   "id": "boundary-mixed-services",
+   "group": "boundary",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dimmi cosa mostra la pagina Servizi e riavvia il componente web",
+   "expected": "clarification"
+  },
+  {
+   "id": "boundary-mixed-mail",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Come si archiviano le email? Archivia anche quelle di ieri",
+   "expected": "clarification"
+  }
+ ],
+ "f1_equivalence_sets": [
+  {
+   "id": "f1-overview",
+   "audience": "user",
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Cosa sai fare?"
+    },
+    {
+     "lang": "it",
+     "query": "Mi fai una panoramica completa delle tue capacità?"
+    },
+    {
+     "lang": "it",
+     "query": "Quali tipi di operazioni supporta questa installazione di Metnos?"
+    },
+    {
+     "lang": "en",
+     "query": "What can you do in practice?",
+     "known_equal_fail": true
+    },
+    {
+     "lang": "en",
+     "query": "Give me a complete overview of your capabilities."
+    },
+    {
+     "lang": "en",
+     "query": "Which kinds of operations does this Metnos installation support?"
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "file"
+     ],
+     [
+      "web",
+      "URL"
+     ],
+     [
+      "luoghi",
+      "places"
+     ],
+     [
+      "lex:tutor_gate.location"
+     ],
+     [
+      "Google Workspace"
+     ],
+     [
+      "Google Photos"
+     ],
+     [
+      "GitHub"
+     ],
+     [
+      "lex:tutor_gate.hash"
+     ],
+     [
+      "processi"
+     ],
+     [
+      "righe",
+      "codice"
+     ]
+    ],
+    "en": [
+     [
+      "files"
+     ],
+     [
+      "web",
+      "URLs"
+     ],
+     [
+      "places"
+     ],
+     [
+      "location",
+      "geolocation"
+     ],
+     [
+      "Google Workspace"
+     ],
+     [
+      "Google Photos"
+     ],
+     [
+      "GitHub"
+     ],
+     [
+      "hash",
+      "fingerprint"
+     ],
+     [
+      "processes"
+     ],
+     [
+      "lines",
+      "code"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-github",
+   "audience": "user",
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Quali operazioni GitHub sono disponibili?"
+    },
+    {
+     "lang": "it",
+     "query": "Che cosa posso gestire nei repository GitHub tramite Metnos?"
+    },
+    {
+     "lang": "it",
+     "query": "Spiegami la copertura GitHub installata, compresi i prerequisiti."
+    },
+    {
+     "lang": "en",
+     "query": "Which GitHub operations are available?"
+    },
+    {
+     "lang": "en",
+     "query": "What can I manage in GitHub repositories through Metnos?"
+    },
+    {
+     "lang": "en",
+     "query": "Explain the installed GitHub coverage, including prerequisites."
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "issue"
+     ],
+     [
+      "pull request"
+     ],
+     [
+      "file"
+     ],
+     [
+      "cartelle",
+      "directory"
+     ],
+     [
+      "task"
+     ],
+     [
+      "messaggi",
+      "notifiche"
+     ],
+     [
+      "credenzial"
+     ],
+     [
+      "vagli",
+      "controlli"
+     ]
+    ],
+    "en": [
+     [
+      "issues"
+     ],
+     [
+      "lex:tutor_gate.pull_request"
+     ],
+     [
+      "files"
+     ],
+     [
+      "lex:tutor_gate.directory"
+     ],
+     [
+      "tasks"
+     ],
+     [
+      "messages",
+      "notifications"
+     ],
+     [
+      "credential"
+     ],
+     [
+      "gates",
+      "checks"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-photos",
+   "audience": "user",
+   "natural_example": true,
+   "curated_card": true,
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Come cerco immagini nel mio archivio fotografico locale?"
+    },
+    {
+     "lang": "it",
+     "query": "Come posso trovare una persona o una scena nelle foto di casa?"
+    },
+    {
+     "lang": "it",
+     "query": "Mi spieghi come usare gli indici delle fotografie senza confonderli con web e Google Photos?"
+    },
+    {
+     "lang": "en",
+     "query": "How do I search images in my local photo archive?"
+    },
+    {
+     "lang": "en",
+     "query": "How can I find a person or a scene in my home photos?"
+    },
+    {
+     "lang": "en",
+     "query": "Explain how to use photo indexes without confusing them with web search and Google Photos."
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "archivio",
+      "cartella"
+     ],
+     [
+      "indice"
+     ],
+     [
+      "lex:tutor_gate.create"
+     ],
+     [
+      "persona",
+      "contenuto",
+      "scena"
+     ],
+     [
+      "web"
+     ],
+     [
+      "Google Photos"
+     ],
+     [
+      "vagli",
+      "controlli"
+     ]
+    ],
+    "en": [
+     [
+      "archive",
+      "folder"
+     ],
+     [
+      "index"
+     ],
+     [
+      "lex:tutor_gate.create"
+     ],
+     [
+      "person",
+      "content",
+      "scene"
+     ],
+     [
+      "web"
+     ],
+     [
+      "Google Photos"
+     ],
+     [
+      "gates",
+      "checks"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-scheduled",
+   "audience": "user",
+   "natural_example": true,
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Come creo un task ricorrente che ogni mattina legga le mie email?"
+    },
+    {
+     "lang": "it",
+     "query": "Mi insegni a programmare un promemoria o un'attività periodica?"
+    },
+    {
+     "lang": "it",
+     "query": "Come chiedo a Metnos di fare qualcosa a un orario stabilito e inviarmi il risultato altrove?"
+    },
+    {
+     "lang": "en",
+     "query": "How do I create a recurring task that reads my email every morning?"
+    },
+    {
+     "lang": "en",
+     "query": "Teach me how to schedule a reminder or a periodic activity."
+    },
+    {
+     "lang": "en",
+     "query": "How do I ask Metnos to do something at a set time and deliver the result elsewhere?"
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "linguaggio naturale"
+     ],
+     [
+      "cosa",
+      "che cosa"
+     ],
+     [
+      "quando",
+      "orario"
+     ],
+     [
+      "ricorrenza",
+      "ricorrente"
+     ],
+     [
+      "canale"
+     ],
+     [
+      "lex:tutor_gate.one_off"
+     ],
+     [
+      "vagli",
+      "controlli"
+     ]
+    ],
+    "en": [
+     [
+      "natural language"
+     ],
+     [
+      "what"
+     ],
+     [
+      "when",
+      "time"
+     ],
+     [
+      "recurrence",
+      "recurring"
+     ],
+     [
+      "channel"
+     ],
+     [
+      "lex:tutor_gate.one_off"
+     ],
+     [
+      "gates",
+      "checks"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-devices",
+   "audience": "user",
+   "route": "/admin/devices",
+   "natural_example": true,
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Come aggiungo un PC Windows alla mia utenza Metnos?"
+    },
+    {
+     "lang": "it",
+     "query": "Mi guidi nell'installazione del client su un altro computer?"
+    },
+    {
+     "lang": "it",
+     "query": "Come collego un portatile e verifico che sia davvero attivo?"
+    },
+    {
+     "lang": "en",
+     "query": "How do I add a Windows PC to my Metnos account?"
+    },
+    {
+     "lang": "en",
+     "query": "Guide me through installing the client on another computer."
+    },
+    {
+     "lang": "en",
+     "query": "How do I connect a laptop and verify that it is actually active?"
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "Settings > Sistema > Dispositivi"
+     ],
+     [
+      "utente",
+      "proprietario"
+     ],
+     [
+      "nome"
+     ],
+     [
+      "link",
+      "collegamento"
+     ],
+     [
+      "client"
+     ],
+     [
+      "accoppi",
+      "pairing"
+     ],
+     [
+      "attivo"
+     ],
+     [
+      "temporaneo"
+     ],
+     [
+      "un solo",
+      "una volta"
+     ]
+    ],
+    "en": [
+     [
+      "Settings > Sistema > Dispositivi"
+     ],
+     [
+      "user",
+      "owner"
+     ],
+     [
+      "name"
+     ],
+     [
+      "link"
+     ],
+     [
+      "client"
+     ],
+     [
+      "pair"
+     ],
+     [
+      "active"
+     ],
+     [
+      "temporary"
+     ],
+     [
+      "one pairing",
+      "one-time"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-changes",
+   "audience": "instance_admin",
+   "route": "/admin/changes",
+   "natural_example": true,
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Come approvo in sicurezza una proposta di modifica?"
+    },
+    {
+     "lang": "it",
+     "query": "Guidami nei controlli da fare prima di accettare un cambiamento."
+    },
+    {
+     "lang": "it",
+     "query": "Che procedura seguo per accettare, differire o rifiutare una proposta?"
+    },
+    {
+     "lang": "en",
+     "query": "How do I safely approve a change proposal?"
+    },
+    {
+     "lang": "en",
+     "query": "Guide me through the checks before accepting a change."
+    },
+    {
+     "lang": "en",
+     "query": "Which procedure should I follow to accept, stage, or reject a proposal?"
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "bersaglio"
+     ],
+     [
+      "origine"
+     ],
+     [
+      "riepilogo"
+     ],
+     [
+      "corpo"
+     ],
+     [
+      "ID"
+     ],
+     [
+      "impronta"
+     ],
+     [
+      "non la applica immediatamente",
+      "in coda"
+     ],
+     [
+      "rifiuta"
+     ],
+     [
+      "prepara",
+      "differ"
+     ],
+     [
+      "Fermati se"
+     ]
+    ],
+    "en": [
+     [
+      "target"
+     ],
+     [
+      "origin"
+     ],
+     [
+      "summary"
+     ],
+     [
+      "body"
+     ],
+     [
+      "ID"
+     ],
+     [
+      "fingerprint"
+     ],
+     [
+      "does not apply it immediately",
+      "queued"
+     ],
+     [
+      "reject"
+     ],
+     [
+      "stage",
+      "defer"
+     ],
+     [
+      "Stop if"
+     ]
+    ]
+   }
+  },
+  {
+   "id": "f1-changes-restricted",
+   "audience": "user",
+   "expected": "answer",
+   "queries": [
+    {
+     "lang": "it",
+     "query": "Come approvo una proposta di modifica dell'istanza?"
+    },
+    {
+     "lang": "en",
+     "query": "How do I approve an instance change proposal?"
+    }
+   ],
+   "must_cover_by_lang": {
+    "it": [
+     [
+      "propost"
+     ],
+     [
+      "lex:tutor_gate.admin_role"
+     ]
+    ],
+    "en": [
+     [
+      "proposal"
+     ],
+     [
+      "admin"
+     ]
+    ]
+   }
+  }
+ ],
+ "conversation_flows": [
+  {
+   "id": "conversation-runs-to-timers",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove vedo le esecuzioni dei task pianificati?",
+     "expected": "answer",
+     "route": "/admin/runs",
+     "must_cover": [
+      [
+       "esito"
+      ],
+      [
+       "durata"
+      ]
+     ]
+    },
+    {
+     "query": "E dove li configuro?",
+     "expected": "answer",
+     "route": "/admin/timers",
+     "must_cover": [
+      [
+       "Timer"
+      ],
+      [
+       "abilita"
+      ],
+      [
+       "disabilita"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-services-controls",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove controllo lo stato dei servizi Metnos?",
+     "expected": "answer",
+     "route": "/admin/services",
+     "must_cover": [
+      [
+       "stato"
+      ],
+      [
+       "salute"
+      ]
+     ]
+    },
+    {
+     "query": "E da lì posso riavviarli?",
+     "expected": "answer",
+     "route": "/admin/services",
+     "must_cover": [
+      [
+       "Riavvia",
+       "riavvia"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-rejected-reason",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove vedo gli executor non caricati?",
+     "expected": "answer",
+     "route": "/admin/executors",
+     "must_cover": [
+      [
+       "rifiutati"
+      ]
+     ]
+    },
+    {
+     "query": "Che spiegazione trovo per ciascuno?",
+     "expected": "answer",
+     "route": "/admin/executors",
+     "must_cover": [
+      [
+       "percorso"
+      ],
+      [
+       "motivo"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-mailbox-credentials",
+   "group": "conversation",
+   "audience": "user",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Posso usare con Metnos anche un'altra mailbox?",
+     "expected": "answer",
+     "must_cover": [
+      [
+       "mailbox",
+       "account"
+      ],
+      [
+       "credenzial"
+      ]
+     ]
+    },
+    {
+     "query": "Che cosa devo fornire per collegarla?",
+     "expected": "answer",
+     "natural_example": true,
+     "must_cover": [
+      [
+       "credenzial"
+      ],
+      [
+       "account",
+       "mailbox"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-device-token",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Come collego un secondo computer?",
+     "expected": "answer",
+     "route": "/admin/devices",
+     "must_cover": [
+      [
+       "altro PC"
+      ],
+      [
+       "link"
+      ]
+     ]
+    },
+    {
+     "query": "Quanto dura il token?",
+     "expected": "answer",
+     "route": "/admin/devices",
+     "must_cover": [
+      [
+       "10 min"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-capabilities-local",
+   "group": "conversation",
+   "audience": "user",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Che cosa sa fare Metnos?",
+     "expected": "answer",
+     "must_cover": [
+      [
+       "file"
+      ],
+      [
+       "web"
+      ],
+      [
+       "Google Workspace"
+      ]
+     ]
+    },
+    {
+     "query": "E sui file del computer, per esempio?",
+     "expected": "answer",
+     "must_cover": [
+      [
+       "cerc"
+      ],
+      [
+       "leggere"
+      ],
+      [
+       "hash"
+      ],
+      [
+       "righe",
+       "codice"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-google-followup",
+   "group": "conversation",
+   "audience": "user",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Posso gestire posta e appuntamenti?",
+     "expected": "answer",
+     "must_cover": [
+      [
+       "messaggi",
+       "email"
+      ],
+      [
+       "eventi",
+       "calendario"
+      ]
+     ]
+    },
+    {
+     "query": "E con Google?",
+     "expected": "answer",
+     "must_cover": [
+      [
+       "Google Workspace"
+      ],
+      [
+       "messaggi",
+       "email"
+      ],
+      [
+       "eventi",
+       "calendari"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-changes-actions",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove trovo le proposte di modifica?",
+     "expected": "answer",
+     "route": "/admin/changes",
+     "must_cover": [
+      [
+       "punteggio"
+      ],
+      [
+       "riepilogo"
+      ]
+     ]
+    },
+    {
+     "query": "Posso approvarle direttamente da quella pagina?",
+     "expected": "answer",
+     "route": "/admin/changes",
+     "must_cover": [
+      [
+       "accetta"
+      ],
+      [
+       "rifiuta"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-safety-classes",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove capisco quali comandi chiedono conferma?",
+     "expected": "answer",
+     "route": "/admin/safety",
+     "must_cover": [
+      [
+       "graylist"
+      ]
+     ]
+    },
+    {
+     "query": "E quelli che non possono mai essere eseguiti?",
+     "expected": "answer",
+     "route": "/admin/safety",
+     "must_cover": [
+      [
+       "forbidden"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-telegram-ui-location",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "telegram",
+   "turns": [
+    {
+     "query": "Dove vedo i servizi?",
+     "expected": "answer",
+     "route": "/admin/services",
+     "must_cover": [
+      [
+       "chat web"
+      ],
+      [
+       "Telegram"
+      ]
+     ]
+    },
+    {
+     "query": "Quindi quel percorso è qui dentro?",
+     "expected": "answer",
+     "route": "/admin/services",
+     "must_cover": [
+      [
+       "chat web"
+      ],
+      [
+       "non",
+       "Telegram"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-build-details",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove controllo una build di indice in corso?",
+     "expected": "answer",
+     "route": "/admin/builds",
+     "must_cover": [
+      [
+       "progresso"
+      ],
+      [
+       "ETA"
+      ]
+     ]
+    },
+    {
+     "query": "E se qualcosa va storto cosa vedo?",
+     "expected": "answer",
+     "route": "/admin/builds",
+     "must_cover": [
+      [
+       "stato"
+      ],
+      [
+       "errori"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "conversation-pronoun-independence",
+   "group": "conversation",
+   "audience": "instance_admin",
+   "channel": "http",
+   "turns": [
+    {
+     "query": "Dove vedo le statistiche degli executor?",
+     "expected": "answer",
+     "route": "/admin/executors/stats",
+     "must_cover": [
+      [
+       "30 giorni"
+      ]
+     ]
+    },
+    {
+     "query": "A parte questo, come collego un nuovo PC?",
+     "expected": "answer",
+     "route": "/admin/devices",
+     "must_cover": [
+      [
+       "altro PC"
+      ],
+      [
+       "token",
+       "link"
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

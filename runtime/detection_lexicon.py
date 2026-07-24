@@ -37,7 +37,6 @@ API principale:
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import re
@@ -531,7 +530,11 @@ def enqueue_language(lang: str) -> int:
     for c in registered_concepts():
         if has_native(c, lang):
             continue
-        src = "en" if has_native(c, "en") else "it"
+        native_en = _native(c, "en")
+        # Una riga en con payload vuoto non e' una sorgente traducibile.
+        # Alcuni concetti additivi sono intenzionalmente solo italiani: in
+        # quel caso il fallback documentato deve scegliere davvero ``it``.
+        src = "en" if native_en and native_en[2] else "it"
         mark_for_translation(c, lang, source_lang=src)
         n += 1
     return n
