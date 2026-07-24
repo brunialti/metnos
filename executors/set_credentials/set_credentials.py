@@ -217,6 +217,81 @@ def _build_policy_update_dialog(binding: str) -> dict:
     }
 
 
+def _carryover_args(binding: str, scopes, expires_at) -> dict:
+    base = {"binding": binding}
+    if scopes is not None:
+        base["scopes"] = list(scopes)
+    if expires_at is not None:
+        base["expires_at"] = str(expires_at)
+    return base
+
+
+def _build_kind_dialog(declared: dict, binding: str, scopes,
+                       expires_at) -> dict:
+    """Nuovo binding senza `fields` e tipo non determinabile dal prefisso:
+    chiedi il TIPO di credenziale e il nome account. Il round successivo
+    costruisce il form dei campi dallo schema dichiarativo."""
+    choices = [
+        {"value": kind, "label": _msg(str(spec["label_key"]))}
+        for kind, spec in sorted(declared.items())
+    ]
+    return {
+        "title": _msg("MSG_CREDENTIAL_KIND_TITLE", binding=binding),
+        "dialog": [
+            {
+                "var": "credential_kind",
+                "prompt": _msg("MSG_CREDENTIAL_KIND_PROMPT", binding=binding),
+                "schema": {"kind": "choice", "choices": choices},
+            },
+            {
+                "var": "account_name",
+                "prompt": _msg("MSG_CREDENTIAL_ACCOUNT_NAME_PROMPT"),
+                "schema": {"kind": "text"},
+                "default": binding,
+            },
+        ],
+        "fmt": "auto",
+        "on_complete": {
+            "type": "resume_executor_with_values",
+            "executor": "set_credentials",
+            "args_base": _carryover_args(binding, scopes, expires_at),
+        },
+    }
+
+
+def _build_fields_dialog(declared: dict, kind: str, binding: str, scopes,
+                         expires_at) -> dict:
+    """Form dei campi dallo schema dichiarativo del dominio (ADR 0199).
+    I valori tornano annidati in `fields` (merge_into) direttamente
+    all'executor: nessun segreto transita dal planner."""
+    steps = []
+    for field in declared[kind]["fields"]:
+        step = {
+            "var": str(field["name"]),
+            "prompt": _msg(str(field["prompt_key"])),
+            "schema": {"kind": str(field["input"])},
+        }
+        if not field.get("required"):
+            step["optional"] = True
+        if field.get("default"):
+            step["default"] = str(field["default"])
+        steps.append(step)
+    args_base = _carryover_args(binding, scopes, expires_at)
+    args_base["credential_kind"] = kind
+    args_base["_fields_form"] = True
+    return {
+        "title": _msg("MSG_CREDENTIAL_FIELDS_TITLE", binding=binding),
+        "dialog": steps,
+        "fmt": "auto",
+        "on_complete": {
+            "type": "resume_executor_with_values",
+            "executor": "set_credentials",
+            "args_base": args_base,
+            "merge_into": "fields",
+        },
+    }
+
+
 def _resolve_confirmed_flag(raw):
     if raw is None:
         return None
@@ -321,7 +396,47 @@ def invoke(args):
             }
             _assert_no_secrets_in_return(result)
             return result
-        if not exists or scopes is None:
+        if not exists:
+            # Binding nuovo senza `fields`: form guidato invece dell'errore.
+            # Round 1 (solo se il prefisso non determina il tipo): scelta
+            # tipo + nome account. Round 2: campi dallo schema dichiarativo.
+            kind = args.get("credential_kind")
+            # Rev. 24/7 sera: la mappa dei form arriva INIETTATA dal runtime
+            # (arg runtime-owned `credential_forms`, sorgente = catalogo
+            # verificato nel processo server). In sandbox l'executor non può
+            # collezionarla da sé: niente chiavi trusted, niente skill.
+            declared = args.get("credential_forms")
+            if not isinstance(declared, dict) or not declared:
+                return {"ok": False, "error": _msg(
+                    "ERR_ARG_MISSING", arg="credential_forms")}
+            if kind is not None and kind not in declared:
+                return {"ok": False, "error": _msg(
+                    "ERR_ARG_INVALID", arg="credential_kind",
+                    reason=", ".join(sorted(declared)))}
+            if kind is None:
+                kind = _cred.kind_for_binding(binding, declared)
+            if kind is None:
+                payload = _build_kind_dialog(
+                    declared, binding, scopes, expires_at)
+            else:
+                account = args.get("account_name") or binding
+                target = _cred.canonical_binding(kind, account, declared)
+                try:
+                    _cred._validate_domain(target)
+                except ValueError as e:
+                    return {"ok": False, "error": _msg(
+                        "ERR_ARG_INVALID", arg="account_name",
+                        reason=str(e))}
+                payload = _build_fields_dialog(
+                    declared, kind, target, scopes, expires_at)
+            result = {
+                "ok": True, "decision": "needs_inputs",
+                "needs_inputs": payload, "results": [],
+                "final_message_hint": payload["title"],
+            }
+            _assert_no_secrets_in_return(result)
+            return result
+        if scopes is None:
             return {"ok": False, "error": _msg(
                 "ERR_ARG_MISSING", arg="fields or scopes")}
         try:
@@ -348,6 +463,11 @@ def invoke(args):
         }
         _assert_no_secrets_in_return(result)
         return result
+
+    # Step opzionali del form lasciati vuoti: non sono campi da cifrare.
+    if args.get("_fields_form") is True and isinstance(fields, dict):
+        fields = {k: v for k, v in fields.items()
+                  if not _is_empty_value(v)}
 
     err = _validate_fields(fields)
     if err is not None:

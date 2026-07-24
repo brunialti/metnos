@@ -145,14 +145,14 @@
   },
   "args.account.description": {
     "it": {
-      "version_hash": "sha256:462c4cc7f13da0f3188030795dc3ef32c527de13a396f4d1dc4ea741d84571f4",
+      "version_hash": "sha256:91ed6c71c42c54856e28324cf5b891bc28920ce144096a419868b5cf9c937851",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
-      "source_hash": "sha256:427ed2b2878b03965c6116d9cf4007ec037a1e239f8e6ba9038e080d27e642ed",
-      "version_hash": "sha256:a4e5c1b60bf396a47281b76093cf7f39db144eaa47cb8645f85c9f2ab6e92803"
+      "source_hash": "sha256:91ed6c71c42c54856e28324cf5b891bc28920ce144096a419868b5cf9c937851",
+      "version_hash": "sha256:773dc7d8f2586ec2ca6f91c7b6e467fe97cf9b4fe098c3b60c04968eba910162"
     }
   },
   "args.via_channel.description": {

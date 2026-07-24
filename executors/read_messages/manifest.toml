@@ -1,6 +1,7 @@
 # Manifest dell'executor `read_messages` — Metnos v1.1
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_messages"
 version     = "0.4.0"
@@ -12,23 +13,32 @@ lifecycle   = "active"
 # troppo basso. 120s > deadline interno 90s del backend (auto-parziale §2.7).
 timeout_s   = 120
 
+[execution]
+effect           = "read_only"
+parallelism_class = 2
+resource_class   = "network_io"
+concurrency_key  = "none"
+equivalence_gate = "verified"
+
 [description]
 it = "SCOPO: legge messaggi IMAP combinando filtri temporali e testuali. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: inviare (-> send_messages) o spostare messaggi (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
 en = "SCOPO: reads IMAP messages combining time and text filters. PATTERN: read_messages(account=\"metnos_system\", folder=\"INBOX\", max_results=500). NON: sending (-> send_messages) or moving messages (-> move_messages). OUT: entries=[{from,subject,date,message_id,size,body_preview,has_attachment,category_hints}]"
 
 [code]
 files  = ["read_messages.py"]
-digest = "sha256:2cae0144c86469701a1c74c7838858a56b91412c02bb6890a82b32fa940f00df"
+digest = "sha256:235314dd67ce1838c6384c3290eebca25f24a2e467ea4f120e805193e3c87512"
 
 [args]
 type     = "object"
 
 [args.properties.account]
+type        = ["string", "array"]
+items       = { type = "string" }
 default     = "metnos_system"
 
 [args.properties.account.description]
-it = "Account IMAP da leggere. PUO' ESSERE: (1) una stringa col nome dell'account (es. 'work'); (2) la stringa speciale 'all' per leggere TUTTI gli account configurati e aggregare in una lista unica (loop interno, niente piu' chiamate separate); (3) una lista di nomi (es. ['work','personal']). Per 'tutte le mie mail' usa 'all'. Predefinito: 'metnos_system' (default); gli altri sono gli account configurati dall'utente. Account aggiuntivi: file ~/.config/metnos/mail/<nome>.env con HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — il nome del file e' il valore di account."
-en = "IMAP Account to read. IT CAN BE: (1) a string with the account name (e.g., 'work'); (2) the special string 'all' to read ALL configured accounts and aggregate them into a single list (internal loop, no more separate calls); (3) a list of names (e.g., ['work','personal']). For 'all my emails' use 'all'. Default: 'metnos_system'; the others are the accounts the user configured. Additional accounts: file ~/.config/metnos/mail/<name>.env with HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — the filename is the account value."
+it = "È possibile usare altre mailbox se si inseriscono le relative credenziali. Account IMAP da leggere. PUO' ESSERE: (1) una stringa col nome dell'account (es. 'work'); (2) la stringa speciale 'all' per leggere TUTTI gli account configurati e aggregare in una lista unica (loop interno, niente piu' chiamate separate); (3) una lista di nomi (es. ['work','personal']). Per 'tutte le mie mail' usa 'all'. Predefinito: 'metnos_system' (default); gli altri sono gli account configurati dall'utente. Account aggiuntivi: file ~/.config/metnos/mail/<nome>.env con HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — il nome del file e' il valore di account."
+en = "Other mailboxes can be used after providing their credentials. IMAP Account to read. IT CAN BE: (1) a string with the account name (e.g., 'work'); (2) the special string 'all' to read ALL configured accounts and aggregate them into a single list (internal loop, no more separate calls); (3) a list of names (e.g., ['work','personal']). For 'all my emails' use 'all'. Default: 'metnos_system'; the others are the accounts the user configured. Additional accounts: file ~/.config/metnos/mail/<name>.env with HOST_IMAP/PORT_IMAP/USER/PASS/VERIFY_TLS — the filename is the account value."
 
 [args.properties.folder]
 type        = "string"
@@ -123,8 +133,9 @@ en = "Channel to read. Default 'email' (IMAP). 'mail' = alias of 'email' (back-c
 
 [args.properties.client]
 type        = "string"
+enum        = ["metnos", "google_workspace"]
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -137,6 +148,7 @@ schema_inline = """
   ok: bool,
   ok_count: int,
   fail_count: int,
+  partial?: bool,
   entries: Array<{
     uid: str,
     account: str,
@@ -165,58 +177,41 @@ name = "mail:read"
 hint = ["imap.example.com"]
 
 [[capabilities]]
-name = "fs:read"
-hint = ["~/.config/metnos/mail.env", "~/.config/metnos/mail/<account>.env"]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
-name   = "account_invalido"
+name   = "rifiuta_lista_account_vuota"
+input  = { account = [] }
+expect = { ok = false, field_eq = { error_code = "ERR_ACCOUNT" } }
+env    = { HOME = "/tmp/metnos_birth_read_messages_home", METNOS_USER_CONFIG = "/tmp/metnos_birth_read_messages_config" }
+equivalence_runs = 2
+
+[[tests]]
+name   = "account_sconosciuto_fail_closed"
 input  = { account = "ghost" }
-expect = { ok = false, error_contains = "metnos_system" }
+expect = { ok = false, field_eq = { error_code = "ERR_ACCOUNT" } }
+env    = { HOME = "/tmp/metnos_birth_read_messages_home", METNOS_USER_CONFIG = "/tmp/metnos_birth_read_messages_config" }
 
 [[tests]]
-name   = "max_results_zero_nessun_limite"
-input  = { account = "metnos_system", max_results = 0 }
-expect = { ok = true }
+name   = "telegram_non_supportato_onestamente"
+input  = { via_channel = "telegram" }
+expect = { ok = false, field_eq = { error_code = "ERR_NOT_IMPLEMENTED" } }
+env    = { HOME = "/tmp/metnos_birth_read_messages_home", METNOS_USER_CONFIG = "/tmp/metnos_birth_read_messages_config" }
 
-# Sample concreto di output (one-shot per synt + fast-path generator).
-# Dummy account/uid: NON rappresenta una mail reale.
-[[tests]]
-name        = "happy_path_sample"
-input       = { account = "metnos_system", time_window = "today" }
-expect      = { ok = true, has_field = "entries" }
-expect_full = """
-{
-  "ok": true,
-  "ok_count": 2,
-  "fail_count": 0,
-  "entries": [
-    {
-      "uid": "12345",
-      "account": "metnos_system",
-      "from": "Servizio Spedizioni <noreply@example.com>",
-      "subject": "Conferma spedizione ordine #ABC123",
-      "date": "Tue, 06 May 2026 09:14:23 +0200",
-      "message_id": "<abc-123@example.com>",
-      "has_attachment": false,
-      "body_preview": "Il tuo ordine è in viaggio. Tracking number...",
-      "category_hints": ["esp", "noreply"],
-      "size": 8421
-    },
-    {
-      "uid": "12346",
-      "account": "metnos_system",
-      "from": "Mario Rossi <mario@example.com>",
-      "subject": "Riunione di domani",
-      "date": "Tue, 06 May 2026 14:32:08 +0200",
-      "message_id": "<def-456@example.com>",
-      "has_attachment": true,
-      "body_preview": "Ciao, ti allego il documento per la riunione...",
-      "category_hints": [],
-      "size": 1245678
-    }
-  ],
-  "failed": [],
-  "accounts": ["metnos_system"],
-  "window": "today"
-}
-"""
+# Il dominio mail conosce la propria semantica: questo form alimenta il
+# dialogo guidato di set_credentials per un nuovo account di posta.
+[credential_form]
+kind = "mail"
+label_key = "MSG_CREDENTIAL_KIND_OPTION_MAIL"
+binding_prefix = "smtp_"
+detect_prefixes = ["smtp_", "imap_"]
+fields = [
+  { name = "user",      required = true,  secret = false, input = "text",        prompt_key = "MSG_CREDENTIAL_FIELD_USER" },
+  { name = "password",  required = true,  secret = true,  input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_PASSWORD" },
+  { name = "imap_host", required = true,  secret = false, input = "text",        prompt_key = "MSG_CREDENTIAL_FIELD_IMAP_HOST" },
+  { name = "imap_port", required = false, secret = false, input = "number",      prompt_key = "MSG_CREDENTIAL_FIELD_IMAP_PORT", default = "993" },
+  { name = "smtp_host", required = false, secret = false, input = "text",        prompt_key = "MSG_CREDENTIAL_FIELD_SMTP_HOST" },
+  { name = "smtp_port", required = false, secret = false, input = "number",      prompt_key = "MSG_CREDENTIAL_FIELD_SMTP_PORT", default = "465" },
+]

@@ -30,6 +30,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -100,7 +101,7 @@ def store(domain: str, payload: dict) -> Path:
     """Scrive payload cifrato in <CRED_DIR>/<domain>.json.age. Mode 0600.
 
     payload: dict con chiavi tipiche login_url, method, form_data, session_cookie_names.
-    Lo schema non e' validato qui: il chiamante (`login_session`) sa cosa serve.
+    Lo schema non e' validato qui: il chiamante (`login_urls`) sa cosa serve.
     """
     if not isinstance(payload, dict):
         raise TypeError("payload must be a dict")
@@ -185,6 +186,113 @@ def fingerprint(domain: str) -> str | None:
     return hashlib.sha256(pwd.encode("utf-8")).hexdigest()[:16]
 
 
+# ── Form per TIPO di credenziale: INIETTATI DAL DOMINIO consumatore ─────────
+# Ogni dominio conosce la propria semantica: il form dei suoi campi è
+# dichiarato nella sezione `[credential_form]` del manifest FIRMATO di un suo
+# executor (mail -> read_messages, sites -> login_sites, provider nella sua
+# skill; il tipo generico `api` appartiene al dominio credenziali stesso, cioè
+# a set_credentials). `set_credentials` resta universale: colleziona i form
+# dal catalogo ammesso, quindi un dominio assente sparisce dal form da solo e
+# uno nuovo lo porta con sé. Dialogo ADR 0090: i segreti usano il kind
+# `credentials` (input password) e tornano all'executor via resume diretto,
+# MAI dal contesto del planner.
+_ALLOWED_INPUT_KINDS = frozenset({"text", "credentials", "number"})
+_KIND_SLUG = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
+
+def _validate_form_spec(owner: str, spec: dict) -> str:
+    slug = str(spec.get("kind") or "")
+    if not _KIND_SLUG.match(slug):
+        raise ValueError(
+            f"credential_form di {owner!r}: kind invalido {slug!r}")
+    if not str(spec.get("label_key") or ""):
+        raise ValueError(
+            f"credential_form di {owner!r}: label_key mancante")
+    fields = spec.get("fields")
+    if not isinstance(fields, list) or not fields:
+        raise ValueError(f"credential_form di {owner!r}: fields mancanti")
+    seen: set[str] = set()
+    for field in fields:
+        name = str(field.get("name") or "")
+        if not name or name in seen:
+            raise ValueError(f"credential_form di {owner!r}: campo "
+                             f"invalido o duplicato ({name!r})")
+        seen.add(name)
+        if field.get("input") not in _ALLOWED_INPUT_KINDS:
+            raise ValueError(
+                f"credential_form di {owner!r}: input "
+                f"{field.get('input')!r} non supportato ({slug}.{name})")
+        if not str(field.get("prompt_key") or ""):
+            raise ValueError(f"credential_form di {owner!r}: prompt_key "
+                             f"mancante ({slug}.{name})")
+    return slug
+
+
+def credential_form_kinds() -> dict[str, dict]:
+    """Colleziona i form dichiarati dai domini nel catalogo ammesso.
+
+    Gira NEL PROCESSO SERVER (rev. 24/7 sera): la sandbox degli executor non
+    monta le chiavi trusted né i manifest delle skill, quindi il runtime
+    colleziona qui e INIETTA il risultato nell'arg runtime-owned
+    `credential_forms` di `set_credentials` al choke-point di invocazione.
+    Niente cache: la chiamata avviene solo quando si invoca il consumatore e
+    il catalogo può cambiare a runtime (skill installate).
+
+    Fail-loud: spec invalida o stesso kind dichiarato da due executor =
+    errore che nomina i responsabili. Include i domini dormienti: è proprio
+    per attivarli che servono le credenziali.
+    """
+
+    import tomllib
+    from loader import load_catalog
+
+    kinds: dict[str, dict] = {}
+    owner: dict[str, str] = {}
+    for executor in sorted(load_catalog(), key=lambda item: item.name):
+        path = getattr(executor, "manifest_path", None)
+        if not path:
+            continue
+        spec = (tomllib.loads(
+            Path(path).read_text(encoding="utf-8"))).get("credential_form")
+        if not isinstance(spec, dict):
+            continue
+        slug = _validate_form_spec(executor.name, spec)
+        if slug in kinds:
+            raise ValueError(
+                f"credential_form {slug!r} dichiarato sia da "
+                f"{owner[slug]!r} sia da {executor.name!r}")
+        kinds[slug] = spec
+        owner[slug] = executor.name
+    if not kinds:
+        raise ValueError(
+            "nessun [credential_form] dichiarato nel catalogo ammesso")
+    return kinds
+
+
+def kind_for_binding(binding: str, kinds: dict | None = None) -> str | None:
+    """`kinds` = mappa già collezionata (executor in sandbox: arg iniettato);
+    None = collezione diretta (chiamanti nel processo server)."""
+    low = str(binding or "").casefold()
+    if kinds is None:
+        kinds = credential_form_kinds()
+    for slug, spec in sorted(kinds.items()):
+        for prefix in (spec.get("detect_prefixes") or ()):
+            if low.startswith(str(prefix).casefold()):
+                return slug
+    return None
+
+
+def canonical_binding(kind: str, name: str, kinds: dict | None = None) -> str:
+    if kinds is None:
+        kinds = credential_form_kinds()
+    spec = kinds.get(kind) or {}
+    prefix = str(spec.get("binding_prefix") or "")
+    clean = str(name or "").strip()
+    if prefix and not clean.casefold().startswith(prefix.casefold()):
+        return prefix + clean
+    return clean
+
+
 # Invariante `metnos:credentials_metadata_only` (ADR 0123 §2.2): i 3 executor
 # find/set/delete_credentials non devono mai ritornare cleartext al PLANNER.
 # Centralizzato qui (regola del 3 §7.2): prima duplicato in 3 file.
@@ -207,10 +315,20 @@ def assert_no_secrets_in_return(obj, _path: str = "$") -> None:
     """Valida ricorsivamente che nessun campo proibito porti valore non vuoto.
     Solleva ValueError se trova violazione (fail-loud §2.8). Match
     case-insensitive su nome di chiave EXACT (no substring) per evitare falsi
-    positivi su `fingerprint`/`fields_present`."""
+    positivi su `fingerprint`/`fields_present`.
+
+    Unica esenzione STRUTTURALE: un elemento di `schema.choices` con sole
+    chiavi {value, label} è un'opzione UI dei dialoghi (forma ADR 0127); il
+    suo `value` è un identificatore di scelta, non un segreto."""
     if isinstance(obj, dict):
+        option_dict = (
+            ".schema.choices[" in _path and _path.endswith("]")
+            and set(obj) <= {"value", "label"}
+        )
         for k, v in obj.items():
-            if str(k).lower() in FORBIDDEN_KEYS and not _is_empty_value(v):
+            if (not option_dict
+                    and str(k).lower() in FORBIDDEN_KEYS
+                    and not _is_empty_value(v)):
                 raise ValueError(
                     f"credentials_metadata_only violated at {_path}.{k}: "
                     f"forbidden key {k!r} carries non-empty value"

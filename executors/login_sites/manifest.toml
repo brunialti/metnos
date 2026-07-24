@@ -1,8 +1,9 @@
 # Manifest executor `login_sites` — dominio sites F1 (spec §3.4). critical.
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "login_sites"
-version     = "0.1.0"
+version     = "0.2.0"
 timeout_s   = 180
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -55,6 +56,23 @@ runtime_resolved = true
 it = "Solo runtime: token opachi emessi dal broker durante una transizione interna e ripresentati dopo approvazione."
 en = "Runtime only: opaque tokens issued by the broker during an internal transition and replayed after approval."
 
+[args.properties._credential_mode]
+type = "string"
+enum = ["default", "none"]
+runtime_resolved = true
+
+[args.properties._credential_mode.description]
+it = "Solo runtime: politica credenziali derivata dal mandato autenticato del turno."
+en = "Runtime only: credential policy derived from the authenticated turn mandate."
+
+[args.properties._otp_session_vars]
+type = "object"
+runtime_resolved = true
+
+[args.properties._otp_session_vars.description]
+it = "Solo runtime: riferimenti opachi alle variabili monouso raccolte dal dialogo OTP."
+en = "Runtime only: opaque references to one-time variables collected by the OTP dialog."
+
 [output]
 schema_inline = """
 {
@@ -72,6 +90,7 @@ hint = ["*"]
 
 [[capabilities]]
 name = "auth.password_storage"
+hint = ["sites.read"]
 
 [[capabilities]]
 name = "dialog.user_input"
@@ -88,5 +107,16 @@ input  = { session_ids = [] }
 expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 
 [placement]
-scope     = "any"
+scope     = "server"
 device_ok = false
+
+# Il dominio sites conosce la propria semantica: campi credenziale
+# deterministici (ADR 0188) per il form guidato di set_credentials.
+[credential_form]
+kind = "site"
+label_key = "MSG_CREDENTIAL_KIND_OPTION_SITE"
+fields = [
+  { name = "username",    required = true,  secret = false, input = "text",        prompt_key = "MSG_CREDENTIAL_FIELD_USERNAME" },
+  { name = "password",    required = true,  secret = true,  input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_PASSWORD" },
+  { name = "totp_secret", required = false, secret = true,  input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_TOTP_SECRET" },
+]

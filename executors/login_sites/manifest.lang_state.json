@@ -58,5 +58,29 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args._credential_mode.description": {
+    "it": {
+      "version_hash": "sha256:1040f36a8ef19b8b0bc3b6d807cd668a6259d52e88166459a33967d9bd824247",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:8f51eb910274a9bb7fde32bd651532a33c9a59e5eb2e2bf93e373df1247c1f9e",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args._otp_session_vars.description": {
+    "it": {
+      "version_hash": "sha256:6412736b86f6f7ea6df8117d9d4f7942fb8e455ff06bb490a02158afb5117d1f",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:3617b6b8cf9226921d12e2a05f439151e8c611275d0d64d37b365c5a31ec9975",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }
