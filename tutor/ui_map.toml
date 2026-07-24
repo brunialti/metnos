@@ -1,0 +1,28 @@
+version = 1
+
+[[controls]]
+id = "changes.row.summary"
+page = "changes.html"
+route = "/admin/changes"
+selector = "[data-tutor-id='changes-row-summary']"
+i18n_key = "UI_CHANGE_COL_SUMMARY"
+audience = "instance_admin"
+action = "inspect"
+
+[[controls]]
+id = "changes.row.details"
+page = "changes.html"
+route = "/admin/changes"
+selector = "[data-tutor-id='changes-row-details']"
+i18n_key = "UI_CHANGE_DETAILS"
+audience = "instance_admin"
+action = "inspect"
+
+[[controls]]
+id = "changes.row.accept"
+page = "changes.html"
+route = "/admin/changes"
+selector = "[data-tutor-id='changes-row-accept']"
+i18n_key = "UI_CHANGE_BTN_ACCEPT"
+audience = "instance_admin"
+action = "accept_change"

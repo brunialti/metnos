@@ -1,0 +1,11 @@
+id = "console-proposte"
+audience_minima = "instance_admin"
+priorita = 100
+
+[semantic]
+it = "Procedura amministrativa per esaminare, verificare, accettare, differire o rifiutare una proposta di modifica nella console Metnos."
+en = "Administrative procedure to inspect, verify, accept, defer, or reject a change proposal in the Metnos console."
+
+[title]
+it = "Approvare una proposta di modifica"
+en = "Approve a change proposal"

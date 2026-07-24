@@ -1,0 +1,20 @@
+version = 2
+
+# Every indexable HTML document published from docs/ to metnos.com is already
+# a Tutor source.  The deploy preflight and the Tutor compiler use the same
+# validated inventory; public documents must not be repeated here.
+#
+# This registry is only for reviewed supplemental sources outside the public
+# manual (for example a generated runtime reference).  A supplemental source
+# must declare its audience and languages explicitly:
+#
+# [[source]]
+# id = "example-supplement"
+# kind = "operational"
+# audience = "instance_admin"
+# priority = 80
+# languages = ["it", "en"]
+# path = "path/outside/docs/{lang}/example.html"
+#
+# Internal ADRs, reports, logs, user files and arbitrary filesystem content
+# remain outside the corpus unless deliberately admitted here.

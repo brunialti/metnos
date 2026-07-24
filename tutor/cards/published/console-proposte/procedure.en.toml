@@ -1,0 +1,30 @@
+goal = "Accept a proposal; acceptance does not apply it immediately."
+prerequisites = "You must be an instance administrator. Open /admin/changes (System changes) and remain on the Proposed tab."
+expected_after = "The row shows Accepted and queued for application (nightly daemon)."
+stop_conditions = ["The labels or state do not match this guide.", "The target, body or fingerprint does not match what you intend to authorize."]
+
+[labels]
+goal = "Goal"
+prerequisites = "Prerequisites"
+verify_before = "Check first"
+safe_alternative = "Safe alternative"
+expected_after = "Expected result"
+stop_conditions = "Stop if"
+
+[[steps]]
+text = "In the relevant row, compare Target, Origin and Summary."
+ui_anchor = "changes.row.summary"
+verify_before = "Score helps sorting, but it is not a security guarantee."
+safe_alternative = "Leave the page if this is not the expected proposal."
+
+[[steps]]
+text = "Open Details and verify the rationale, full body, ID and fingerprint."
+ui_anchor = "changes.row.details"
+verify_before = "The content and target must match what you intend to authorize."
+safe_alternative = "Choose Stage or take no action."
+
+[[steps]]
+text = "Press Accept. Use Reject to decline the proposal."
+ui_anchor = "changes.row.accept"
+verify_before = "Accept queues the proposal; it does not apply it immediately."
+safe_alternative = "Use Stage or Reject."

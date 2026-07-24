@@ -1,0 +1,11 @@
+id = "dispositivi-accoppiamento"
+audience_minima = "user"
+priorita = 90
+
+[semantic]
+it = "Guida per installare il client, aggiungere, collegare o accoppiare un computer Windows o un altro dispositivo all’utenza Metnos."
+en = "Guide to installing the client and adding, connecting, or pairing a Windows computer or another device with a Metnos account."
+
+[title]
+it = "Aggiungere un PC Windows"
+en = "Add a Windows PC"

@@ -1,0 +1,30 @@
+goal = "Accettare una proposta; l’accettazione non la applica immediatamente."
+prerequisites = "Devi essere amministratore dell’istanza. Apri /admin/changes (Cambiamenti al sistema) e resta nella scheda Proposte."
+expected_after = "La riga mostra Accettata e In coda per l’applicazione (daemon notturno)."
+stop_conditions = ["Le etichette o lo stato non coincidono con questa guida.", "Il bersaglio, il corpo o l’impronta non corrispondono a ciò che intendi autorizzare."]
+
+[labels]
+goal = "Obiettivo"
+prerequisites = "Prerequisiti"
+verify_before = "Controlla prima"
+safe_alternative = "Alternativa sicura"
+expected_after = "Esito atteso"
+stop_conditions = "Fermati se"
+
+[[steps]]
+text = "Nella riga interessata confronta Bersaglio, Origine e Riassunto."
+ui_anchor = "changes.row.summary"
+verify_before = "Lo Score aiuta l’ordinamento, ma non è una garanzia di sicurezza."
+safe_alternative = "Esci dalla pagina se la proposta non è quella attesa."
+
+[[steps]]
+text = "Apri Dettagli e verifica razionale, corpo completo, ID e impronta."
+ui_anchor = "changes.row.details"
+verify_before = "Contenuto e bersaglio devono coincidere con ciò che intendi autorizzare."
+safe_alternative = "Scegli Differisci oppure non intervenire."
+
+[[steps]]
+text = "Premi Accetta. Per respingere la proposta usa Rifiuta."
+ui_anchor = "changes.row.accept"
+verify_before = "Ricorda che Accetta mette la proposta in coda: non la applica subito."
+safe_alternative = "Usa Differisci o Rifiuta."
