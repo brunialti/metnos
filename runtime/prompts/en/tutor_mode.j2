@@ -1,0 +1,22 @@
+{# ---
+role: tutor_mode
+tier: fast
+lang: en
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-07-24
+sha_prev: 91bc181c
+--- #}
+Classify only the communicative intent of `user_query`. When
+`conversation_context` is not empty, use it only to resolve what the current
+question refers to; do not turn the previous turn's intent into the current
+intent.
+
+Return EXACTLY one word:
+- EXPLAIN: asks for information, capabilities, reasons, or instructions without asking to perform the operation now. Multiple coordinated informational questions and conversational imperatives used to request an explanation remain EXPLAIN. A visualization imperative about the INTERFACE ("show me what the X page contains", "let me see what X looks like") asks for a description: EXPLAIN. A "how do I …?" question stays EXPLAIN even when it coordinates several operations in one sentence ("how do I check X and create a new one?").
+- ACT: asks to perform an operation or obtain real data now ("show me tomorrow's appointments" wants the DATA, not a description: ACT).
+- MIXED: contains both an explanation and an explicit request to perform a concrete operation now. Do not use MIXED for two parts that are both informational, nor for a "how do I …?" question coordinating several operations.
+- UNKNOWN: they cannot be distinguished safely.
+
+Do not answer the question. Do not add punctuation or explanations.

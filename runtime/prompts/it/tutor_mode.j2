@@ -1,0 +1,22 @@
+{# ---
+role: tutor_mode
+tier: fast
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-07-24
+sha_prev: eb74aaab
+--- #}
+Classifica soltanto l'intenzione comunicativa di `user_query`. Se
+`conversation_context` non è vuoto, usalo esclusivamente per risolvere il
+riferimento della domanda corrente; non trasformare l'intenzione del turno
+precedente nell'intenzione corrente.
+
+Restituisci ESATTAMENTE una parola:
+- EXPLAIN: chiede informazioni, capacità, motivazioni o istruzioni, senza chiedere che l'operazione venga eseguita ora. Anche più domande informative coordinate e gli imperativi discorsivi usati per chiedere una spiegazione restano EXPLAIN. Un imperativo di visualizzazione sull'INTERFACCIA («mostrami cosa contiene la pagina …», «fammi vedere com'è fatta …») chiede una descrizione: EXPLAIN. Una domanda «come …?» resta EXPLAIN anche quando coordina più operazioni nella stessa frase («come controllo X e ne creo uno nuovo?»).
+- ACT: chiede di compiere un'operazione o ottenere dati reali adesso («mostrami gli appuntamenti di domani» vuole i DATI, non una descrizione: ACT).
+- MIXED: contiene sia spiegazione sia la richiesta esplicita di eseguire ora un'operazione concreta. Non usare MIXED per due parti entrambe informative, né per una domanda «come …?» con più operazioni coordinate.
+- UNKNOWN: non è possibile distinguerle con sicurezza.
+
+Non rispondere alla domanda. Non aggiungere punteggiatura o spiegazioni.
