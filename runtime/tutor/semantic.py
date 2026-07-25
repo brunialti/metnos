@@ -55,7 +55,10 @@ def _query_vector(text: str, dimension: int, embedder=None) -> np.ndarray:
     if embedder is None:
         from virt import get_local_embedder
         embedder = get_local_embedder("text")
-    query_vector = np.asarray(embedder.embed_texts([text]), dtype=np.float32)
+    # Lato QUERY dell'embedder: per i modelli simmetrici (BGE) coincide con
+    # embed_texts, per quelli instruction-aware (Qwen) applica il prefisso
+    # di istruzione. I documenti restano codificati nudi alla compilazione.
+    query_vector = np.asarray([embedder.embed_query(text)], dtype=np.float32)
     if query_vector.shape != (1, dimension):
         raise ValueError("invalid Tutor query embedding shape")
     if not np.isfinite(query_vector).all():
@@ -445,7 +448,7 @@ def retrieve(
     if embedder is None:
         from virt import get_local_embedder
         embedder = get_local_embedder("text")
-    query_vector = np.asarray(embedder.embed_texts([text]), dtype=np.float32)
+    query_vector = np.asarray([embedder.embed_query(text)], dtype=np.float32)
     if query_vector.shape != (1, vector_index.dimension):
         raise ValueError("invalid Tutor query embedding shape")
     if not np.isfinite(query_vector).all():

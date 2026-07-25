@@ -19,7 +19,7 @@ from .interfaces import (  # noqa: F401
 )
 
 __all__ = [
-    "get_embedder", "get_llm", "get_vlm", "ensure_vlm_up",
+    "get_embedder", "get_local_embedder", "get_llm", "get_vlm", "ensure_vlm_up",
     "EmbeddingProvider", "LLMProvider",
     "EmbeddingUnavailableError", "VLMUnavailableError", "VirtError",
 ]
@@ -51,6 +51,10 @@ def get_embedder(role: str = "text"):
     if prov == "bge":
         from bge_embedding import BGEEmbeddingService
         obj = BGEEmbeddingService(s.get("model_dir"))
+    elif prov == "qwen":
+        from qwen_embedding import QwenEmbeddingService
+        obj = QwenEmbeddingService(
+            s.get("model_dir"), query_instruction=s.get("query_instruction"))
     elif prov == "siglip":
         from clip_embedding import get_clip_engine
         obj = get_clip_engine(s.get("model_dir"))
@@ -62,6 +66,40 @@ def get_embedder(role: str = "text"):
         obj = HttpEmbedder(ep, s.get("model", "local"), int(s.get("timeout_s", 30)))
     else:
         raise EmbeddingUnavailableError(f"provider embedding sconosciuto: {prov!r}")
+    _cache[ck] = obj
+    return obj
+
+
+def get_local_embedder(role: str = "text"):
+    """Return an in-process embedder, never an HTTP-configured backend.
+
+    Read-only executors use this boundary when their signed contract declares
+    local computation only.  Model-path options from a local ``bge`` or
+    ``siglip`` tier are preserved; a remote tier is deliberately ignored
+    instead of silently enlarging network authority.
+    """
+    ck = ("emb-local", role)
+    if ck in _cache:
+        return _cache[ck]
+    spec = tiers.spec("embedding", role, DEFAULT_EMBEDDERS)
+    if role == "text" and spec.get("provider") == "qwen":
+        from qwen_embedding import QwenEmbeddingService
+        obj = QwenEmbeddingService(
+            spec.get("model_dir"),
+            query_instruction=spec.get("query_instruction"),
+        )
+    elif role == "text":
+        from bge_embedding import BGEEmbeddingService
+        obj = BGEEmbeddingService(
+            spec.get("model_dir") if spec.get("provider") == "bge" else None,
+        )
+    elif role == "image":
+        from clip_embedding import get_clip_engine
+        obj = get_clip_engine(
+            spec.get("model_dir") if spec.get("provider") == "siglip" else None,
+        )
+    else:
+        raise EmbeddingUnavailableError(f"local embedding role sconosciuto: {role!r}")
     _cache[ck] = obj
     return obj
 
