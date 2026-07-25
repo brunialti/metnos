@@ -33,7 +33,6 @@ from .sources import (
     executor_catalog_stamp,
     snapshot_hash as knowledge_snapshot_hash,
 )
-from .ui_map import UI_MAP, validate_ui_map
 
 log = get_logger(__name__)
 
@@ -130,12 +129,20 @@ class VectorIndex:
 
 
 def _embedding_model_files() -> tuple[Path, ...]:
-    """Resolve only the in-process text model used by ``get_local_embedder``."""
+    """Resolve only the in-process text model used by ``get_local_embedder``.
+
+    Provider-aware: the fingerprint must change when the ACTIVE model
+    changes, or stored vectors would be reused across incompatible spaces.
+    """
 
     from virt import tiers
     from virt import DEFAULT_EMBEDDERS
 
     spec = tiers.spec("embedding", "text", DEFAULT_EMBEDDERS)
+    if spec.get("provider") == "qwen":
+        from qwen_embedding import resolved_model_files
+
+        return resolved_model_files(spec.get("model_dir"))
     configured = spec.get("model_dir") if spec.get("provider") == "bge" else None
     model_dir = Path(configured) if configured else (
         config.PATH_ROOT / "models" / "embedding-bge")
@@ -170,7 +177,7 @@ def embedding_fingerprint() -> str:
 
 def _source_files() -> tuple[Path, ...]:
     files = [path for path in PUBLISHED_CARDS.rglob("*") if path.is_file()]
-    files.extend((UI_MAP, SOURCES_CONFIG))
+    files.append(SOURCES_CONFIG)
     files.extend(declared_source_files())
     return tuple(sorted(set(files), key=lambda path: str(path)))
 
@@ -447,14 +454,14 @@ def _embed_knowledge(units: tuple[KnowledgeUnit, ...]) -> tuple[
 def _build_candidate(path: Path, current_source_hash: str,
                      current_input_stamp: str,
                      knowledge: tuple[KnowledgeUnit, ...]) -> None:
-    findings = validate_ui_map()
-    if findings:
-        raise ValueError("invalid tutor UI map: " + "; ".join(findings))
     cards = load_published()
-    if len(cards) < 6:
-        raise ValueError(f"incomplete tutor seed set: {len(cards)}/6")
-    if sum(card.kind == "capability_overview" for card in cards) != 1:
-        raise ValueError("tutor catalog requires one capability overview")
+    # Le schede sono fonti curate ad alta autorita', non piu' un seed set
+    # F1 a cardinalita' fissa: il ritiro ratificato (RM-0003, tranche 1
+    # 25/7) le riduce senza rompere la compilazione. Ogni scheda resta
+    # validata per integrita' in load_published(); l'unico vincolo di
+    # insieme e' che una sola panoramica possa rivendicare quel ruolo.
+    if sum(card.kind == "capability_overview" for card in cards) > 1:
+        raise ValueError("tutor catalog admits at most one capability overview")
     vectors, dimension, fingerprint = _embed_cards(cards)
     knowledge_vectors, knowledge_dimension, knowledge_fingerprint = (
         _embed_knowledge(knowledge))

@@ -18,18 +18,17 @@ from tutor.sources import (
     KnowledgeUnit, _resolve_language_paths, build_knowledge_units,
 )
 from tutor.service import answer_request
-from tutor.ui_map import validate_ui_map
 from tutor_boundary import http_principal, telegram_principal
 
 
+# Tranche 1 del ritiro (25/7): console-proposte e dispositivi-accoppiamento
+# sono fuori da published/ — le loro query sono servite da F2 (unita' tipizzate
+# e documenti). Qui restano solo le schede superstiti.
 CANONICAL = {
-    "Come faccio ad aggiungere un PC Windows alla mia utenza?":
-        "dispositivi-accoppiamento",
     "Come faccio a creare un task che legga le mie email?":
         "attivita-programmate",
     "Cosa sai fare su GitHub?": "github-capabilities",
     "Come faccio una ricerca su archivi di foto?": "fotografie-dominio",
-    "Come approvo una proposta di modifica?": "console-proposte",
 }
 
 
@@ -90,6 +89,9 @@ def _fake_embedder():
             for index, _text in enumerate(texts):
                 matrix[index, index % 8] = 1.0
             return matrix
+
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
     return Embedder()
 
 
@@ -112,7 +114,6 @@ def _patch_catalog_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(catalog, "_VECTOR_CACHE", None)
     monkeypatch.setattr(catalog, "_KNOWLEDGE_CACHE", None)
     monkeypatch.setattr(catalog, "_KNOWLEDGE_VECTOR_CACHE", None)
-    monkeypatch.setattr(catalog, "validate_ui_map", lambda: ())
     monkeypatch.setattr("virt.get_local_embedder", lambda *_: _fake_embedder())
     return catalog
 
@@ -181,7 +182,10 @@ def test_mixed_forms_are_left_to_the_semantic_mode_classifier(query):
 
 def test_published_cards_have_semantics_and_no_phrase_routing():
     cards = load_published()
-    assert len(cards) == 6
+    assert {card.card_id for card in cards} == {
+        "attivita-programmate", "fotografie-dominio",
+        "github-capabilities", "metnos-capabilities",
+    }
     assert sum(card.kind == "capability_overview" for card in cards) == 1
     for card in cards:
         assert set(card.semantic) == {"it", "en"}
@@ -197,8 +201,6 @@ def test_real_local_embeddings_route_without_runtime_phrase_tables():
         "Cosa fanno executor github": "github-capabilities",
         "Vorrei capire come pianificare un promemoria ricorrente":
             "attivita-programmate",
-        "Mi guidi nel collegamento di un nuovo computer?":
-            "dispositivi-accoppiamento",
         "In che modo cerco immagini nel mio archivio?": "fotografie-dominio",
     }.items():
         matched = retrieve(query, "it", cards=cards, index=index)
@@ -429,6 +431,9 @@ def test_f2_language_fallback_is_per_concept_not_global():
         def embed_texts(self, _texts):
             return np.asarray([[1.0, 0.0]], dtype=np.float32)
 
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
+
     context = retrieve_sources(
         "objets", "fr", "user", cards=(card,), card_index=card_index,
         units=units, knowledge_index=knowledge_index, embedder=Embedder(),
@@ -481,6 +486,9 @@ def test_f2_expands_adjacent_sections_of_a_selected_document():
     class Embedder:
         def embed_texts(self, _texts):
             return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
 
     context = retrieve_sources(
         "argomento pertinente", "it", "user", cards=(card,),
@@ -554,6 +562,9 @@ def test_f2_unified_ranker_can_supersede_the_card_set():
         def embed_texts(self, _texts):
             return np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32)
 
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
+
     context = retrieve_sources(
         "Come leggo tutte le caselle email?", "it", "user",
         cards=(card,), card_index=card_index, units=(unit,),
@@ -585,6 +596,9 @@ def test_f2_restricted_source_body_never_leaves_retrieval():
     class Embedder:
         def embed_texts(self, _texts):
             return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
 
     context = retrieve_sources(
         "Come amministro il sistema?", "it", "user",
@@ -765,8 +779,30 @@ def test_generic_capability_question_uses_metadata_overview(monkeypatch):
     assert "executors=" not in answer.answer_md
 
 
+def _procedure_unit_context(monkeypatch, *, audience: str):
+    """Contesto con la procedura TIPIZZATA del registro (`ui_procedure`):
+    dopo il ritiro tranche-1 la scheda console-proposte non esiste piu' e la
+    procedura vive nelle unita' derivate da ui_surfaces."""
+
+    from tutor.sources import _ui_surface_units
+
+    unit = next(u for u in _ui_surface_units()
+                if u.unit_id == "runtime-ui-procedure-changes-it")
+    monkeypatch.setattr("tutor.catalog.load_cards", lambda: ())
+    hit = SourceHit(source_type="knowledge", source_id=unit.unit_id,
+                    lang="it", score=0.9, unit=unit)
+    restricted = not (audience == "instance_admin"
+                      or unit.audience != "instance_admin")
+    context = (SemanticContext((), 0.9, restricted=True) if restricted
+               else SemanticContext((hit,), top_score=0.9))
+    monkeypatch.setattr(
+        "tutor.service.retrieve_sources", lambda *a, **k: context)
+    monkeypatch.setattr("tutor.mode.classify_mode", lambda *a, **k: "EXPLAIN")
+    return unit
+
+
 def test_admin_procedure_is_audience_filtered(monkeypatch):
-    _route(monkeypatch, "console-proposte", compose=False)
+    _procedure_unit_context(monkeypatch, audience="user")
     monkeypatch.setattr("tutor.service._msg", lambda key: key)
     request = TutorRequest(
         "Come approvo una proposta di modifica?", "it", _principal("user"))
@@ -779,11 +815,14 @@ def test_admin_procedure_is_audience_filtered(monkeypatch):
 
 
 def test_admin_procedure_is_deterministic_and_has_safe_steps(monkeypatch):
-    _route(monkeypatch, "console-proposte", compose=False)
+    unit = _procedure_unit_context(monkeypatch, audience="instance_admin")
     request = TutorRequest(
         "Come approvo una proposta di modifica?", "it", _principal())
     answer = answer_request(request)
-    assert answer is not None and answer.esito == "consolidata"
+    # Primaria ui_procedure = testo del registro consegnato alla lettera,
+    # nessuna composizione LLM.
+    assert answer is not None and answer.esito == "fondata"
+    assert answer.answer_md == unit.text
     assert "/admin/changes" in answer.answer_md
     assert "Fermati se" in answer.answer_md
     assert "non la applica immediatamente" in answer.answer_md
@@ -840,8 +879,10 @@ def test_how_to_composer_contract_leads_with_a_natural_chat_example():
     italian = prompt_loader.get("tutor_compose", "it")
     english = prompt_loader.get("tutor_compose", "en")
 
-    it_lead = "Chiedi a Metnos con una richiesta come quella di questo esempio: «…»"
-    en_lead = "Ask Metnos with a request like this example: “…”"
+    it_lead = ("Chiedi a Metnos con una richiesta come quella di questo "
+               "esempio: «<RICHIESTA_NATURALE>»")
+    en_lead = ("Ask Metnos with a request like this example: "
+               "“<NATURAL_REQUEST>”")
     assert it_lead in italian
     assert en_lead in english
     assert italian.index(it_lead) < italian.index("nomi di executor")
@@ -1170,8 +1211,6 @@ def test_catalog_failure_is_unavailable_only_after_semantic_explain(
     assert answer.answer_md == "MSG_TUTOR_UNAVAILABLE"
 
 
-def test_ui_map_matches_routes_templates_and_i18n():
-    assert validate_ui_map() == ()
 
 
 def test_tutor_telemetry_is_minimized(tmp_path, monkeypatch):
@@ -1199,9 +1238,9 @@ def test_signed_catalog_builds_cards_and_vectors(tmp_path, monkeypatch):
     catalog = _patch_catalog_paths(monkeypatch, tmp_path)
     catalog.compile_catalog()
     assert catalog.verify_catalog()
-    assert len(catalog.load_cards()) == 6
+    assert len(catalog.load_cards()) == 4
     index = catalog.load_vector_index()
-    assert index.matrix.shape == (12, 8)
+    assert index.matrix.shape == (8, 8)
     assert np.isfinite(index.matrix).all()
     units = catalog.load_knowledge_units()
     # The isolated signing-key fixture intentionally makes live executor
@@ -1224,7 +1263,7 @@ def test_signed_catalog_last_good_recovery(tmp_path, monkeypatch):
     monkeypatch.setattr(catalog, "_KNOWLEDGE_VECTOR_CACHE", None)
     catalog.compile_catalog()
     assert catalog.verify_catalog()
-    assert len(catalog.load_cards()) == 6
+    assert len(catalog.load_cards()) == 4
 
 
 def test_failed_catalog_candidate_does_not_replace_current(tmp_path, monkeypatch):
@@ -1263,7 +1302,7 @@ def test_stale_process_cannot_recompile_with_new_file_identity(
 def test_http_boundary_returns_tutor_without_blocking_event_loop(monkeypatch):
     import http_routes_agent
 
-    _route(monkeypatch, "console-proposte", compose=False)
+    _procedure_unit_context(monkeypatch, audience="instance_admin")
     monkeypatch.setattr(http_routes_agent, "_http_has_pending", lambda *_: True)
     async def run_inline(function, *args, **kwargs):
         return function(*args, **kwargs)
@@ -1275,9 +1314,10 @@ def test_http_boundary_returns_tutor_without_blocking_event_loop(monkeypatch):
         query="Come approvo una proposta di modifica?",
         actor="host", conversation_id="c1", sender_id="http:host:c1",
     ))
-    assert result is not None and result.esito == "consolidata"
+    assert result is not None and result.esito == "fondata"
     assert len(result.turn_id) == 16
-    assert "resta in attesa" in result.answer_md
+    assert "/admin/changes" in result.answer_md
+    assert "Fermati se" in result.answer_md
 
 
 def test_async_boundary_preserves_only_valid_persisted_tutor_id():
