@@ -645,7 +645,8 @@ sicurezza.
       23:36: `channel=telegram, mode=tutor`, esito fondata; lead naturale,
       confine chat web rispettato, route e controlli devices completi);
 - [ ] osservazione zero false-steal su corpus operativo;
-- [ ] decisione di ritiro delle schede informative F1.
+- [x] decisione di ritiro delle schede informative F1 (25/7: due
+      tranche; tranche 1 eseguita — vedi §9-bis e registro).
 
 ### F3
 
@@ -662,6 +663,76 @@ sicurezza.
 - [ ] clustering/debt map;
 - [ ] replay controfattuale;
 - [ ] osservazione di due settimane e rollback.
+
+## 9-bis. Revisione 25/7 — F3 ed F4 alla prova di un F2 maturo
+
+Rilettura integrale a valle di: certificazione stabile a ~110/134 non-fail,
+diagnosi della coda (salto semantico dell'embedder, §10 registro), ritiro
+tranche 1 delle schede, A/B embedder (BGE-M3 4/8 → Qwen3-Embedding-0.6B 7/8
+sui casi di coda). Le sezioni 6 e 7 restano la specifica; qui si decide che
+cosa ne è ancora giustificato e in quale forma.
+
+### F3 — ridimensionato a «F3-lite»: handoff subito, probe a domanda
+
+Che cosa è cambiato rispetto al disegno: (1) la proiezione dei servizi entra
+già nel catalogo come fonte statica che dichiara esplicitamente «lo stato
+corrente è live e non è nel catalogo» e indirizza alla pagina giusta; (2) le
+domande di stato reale sono ACT per costruzione e il motore le serve con la
+propria autorità; (3) il corpus certificato non contiene un solo caso che
+richieda un'osservazione live nel Tutor. Il framework completo (registro
+`ProbeSpec`, envelope, binder ownership-aware) oggi non ha domanda misurata
+che lo giustifichi: è costo pronto per un bisogno ipotetico.
+
+Resta giustificato il KERNEL: l'**handoff monouso** (§6.3) — spiegazione che
+termina offrendo l'azione al motore via `dialog_pending` esteso con
+`tutor_handoff`, query canonica letterale, nonce e TTL. È piccolo, riusa uno
+store esistente e chiude l'unico attrito reale osservato (MIXED serviti solo
+a metà). DECISIONE PROPOSTA: implementare il solo handoff; i probe si
+sbloccano quando la telemetria mostra domande live ricorrenti respinte
+(contatore dedicato, non impressione).
+
+### F4 — riformulato: il debito non è più delle schede, è del retrieval
+
+Il disegno §7 nasce quando la conoscenza era card-heavy. Oggi: le fonti
+meccaniche si rigenerano da sole (`input_stamp`), le schede superstiti sono 3
+e la tranche 2 è condizionata solo alla chiusura della coda; il ritiro
+assistito (§7.3) è quasi esaurito prima di nascere. Ciò che resta vivo di F4:
+
+1. **Ledger dei gap privacy-bounded** (§7.1) — utile e leggero: eventi
+   tipizzati (nessuna fonte, stale, insufficiente, ambiguità, feedback
+   negativo) con hash/TTL; niente pipeline notturna finché i volumi non la
+   giustificano.
+2. **Associazioni apprese query→fonte** — il sostituto moderno della debt
+   map: la coda residua di retrieval si chiude col pattern già benedetto
+   altrove (L0 semantico + ✓ umano, ADR 0185): embedding della query fallita
+   → boost firmato verso l'unità corretta, promosso dal ✓, versionato con
+   l'identità del catalogo, TTL. Zero liste di frasi, zero prompt.
+3. **Replay controfattuale** (§7.3) — resta valido come gate di ogni cambio
+   di conoscenza, ed è di fatto già praticato dal certificatore per-corpus.
+
+DECISIONE PROPOSTA: F4 non è più una fase — è due meccanismi (1 e 2) da
+attivare su evidenza, con 3 come gate permanente. Il change-intent
+`update_tutor_knowledge` si introduce solo quando esiste il primo contenuto
+da proporre, non prima.
+
+### Nuovi approcci (ordinati per rapporto valore/rischio)
+
+1. **Embedder Qwen3-Embedding-0.6B** al posto di BGE-M3 nel Tutor: misurato
+   sulla coda (7/8 vs 4/8 in top-5), stessa dimensione 1024, build
+   comparabile, ONNX già in cache; cablaggio dietro la config `virt`
+   esistente (`model_dir` del provider), default invariato fino a cert
+   completa verde. È il singolo intervento che rende superflui i rattoppi.
+2. **Query instruction-aware**: col cablaggio Qwen, il lato query riceve il
+   prefisso di istruzione (asimmetria query/documento) — gratis e misurato
+   nell'A/B.
+3. **Associazioni apprese** (sopra, F4.2) per il residuo post-Qwen.
+4. **Peso navigazionale deterministico**: se dopo Qwen restasse una coda
+   «dove…?», valutare un peso maggiore di titolo/percorso nella componente
+   lessicale del ranker — regola generale, non frasi. Solo su misura, non ora.
+5. **Correttore: ledger del contesto giusto** — osservato che su contesto
+   sbagliato il correttore insegue voci irrilevanti (chiede provider su una
+   domanda di pagina): a retrieval sistemato il sintomo sparisce da sé;
+   nessun intervento ora.
 
 ## 10. Registro di avanzamento
 
@@ -703,3 +774,5 @@ sicurezza.
 | 2026-07-25 | Guida pubblica all'interfaccia | `scripts/generate_ui_reference.py` → `docs/{it,en}/interface.html`: prosa di orientamento + mappa SVG derivata dal registro superfici; dettaglio pagine NON ripubblicato (evidenza ad autorità unica, niente concorrenza di retrieval); freschezza imposta da test + preflight `deploy.sh`; catalogo isolato +20 unità; impatto misurato in cert15 |
 | 2026-07-25 | cert15: doc interfaccia nel corpus + E2E prod | 104+7/134, dentro la banda di rumore di cert14 (106; 2 delle 4 regressioni a fonti identiche, le altre 2 su casi già oscillanti con 1 unità doc in contesto). 22 casi col doc in contesto, 18 pass; recuperato `admin-user-detail`. Verdetto: guadagno per il lettore e route ora attestate anche da fonte pubblica, certificazione invariata — il collo resta la SELEZIONE delle superfici users/services/admin. E2E prod post-restart `dfb4cbbe20d84a4c` (interfaccia, mode tutor, fondata) |
 | 2026-07-25 | Diagnosi della coda di selezione | Replay retrieval con le query REALI del corpus: registro superfici completo (users attesta preferenze e navigazione web; services attesta componenti e riavvio), proiezione con percorso+route+scopo. La coda (~6 casi) è un salto semantico dell'embedder: «persone che possono usare» ≠ «utenti» (vince QuickTour), «lingua/stile/browser per utente» vince `open_sites`, «componenti attivi» vince timers. Conseguenza a valle: il correttore insegue il ledger del contesto sbagliato (chiede provider su una domanda di pagina). Nessun fix ammesso per liste di frasi (§7.3, memoria anti-sinonimi): opzioni = embedder più forte, associazioni apprese (F3), o coda accettata e documentata |
+| 2026-07-25 | Ritiro F1 tranche 1 eseguito | `console-proposte` + `dispositivi-accoppiamento` in `retired/`; vincolo 6-schede rimosso dal compilatore; `ui_map` demolito (zero consumatori verificati); test F1 migrati al mondo a 4 schede (procedura = ramo tipizzato `ui_procedure`). cert16 con schede ATTIVE: f1-changes 6/6, f1-devices 6/6, boundary 12/12 — criterio di coincidenza col run f2-only rispettato. Scoperta collaterale: la scheda photos non vince il retrieval su 3/6 query del suo set (condizione preesistente, in carico alla tranche 2) |
+| 2026-07-25 | Embedder Qwen cablato dietro `virt` | provider `qwen` (`runtime/qwen_embedding.py`): instruction-aware sul solo lato query via `embed_query` (i fake di test espongono i due lati), fingerprint del catalogo provider-aware; default di prodotto BGE INTATTO, override via `METNOS_EMBEDDING_TIERS_CONFIG`. A/B sulla coda: BGE 4/8 → Qwen 7/8 in top-5. cert17 completa in corso |
