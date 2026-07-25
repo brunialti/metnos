@@ -746,6 +746,101 @@ da proporre, non prima.
    domanda di pagina): a retrieval sistemato il sintomo sparisce da sé;
    nessun intervento ora.
 
+## 9-ter. Audit dei 134 casi (25/7) — perché non si chiude, e cosa fa
+
+Tre analisi indipendenti su perimetri disgiunti (selezione admin/conversation;
+corpus, lessico e skip; determinismo). Report integrali:
+`scratchpad/audit_134/esperto{1,2,3}_*.md` della sessione. Ogni causa è
+MISURATA, non ipotizzata; ogni chiusura proposta è universale (§7.3).
+
+### 9-ter.1 La causa dominante: la banda è inerte
+
+Con banda 0,06 i candidati dentro banda sono **21-271**, mentre `top_k=16`
+tronca la camminata di selezione. Il selettore reale non è la banda ma un cap
+piatto su sedici slot in mezzo al rumore: l'unità corretta è spesso DENTRO la
+banda e viene affamata. Ranghi misurati: `/admin` 36 (3ª di 20 unità di
+registro sopra soglia), `/admin/changes` 28 (1ª di 9), `/admin/safety` 25
+(1ª di 11), `/admin/users` 18 (7ª di 23) e 187 su un'altra query (fuori
+banda, con la banda ancorata a un frammento-argomento di executor).
+**Otto dei dieci** casi admin/conversation sono selezione; **zero** sono gate
+lessicali stretti; **zero** sono fatti non attestati (ogni atomo è nel
+registro: «forbidden» in 15 unità IT, «graylist» in 4).
+
+Corollario che spiega cert17/cert18: Qwen «risolveva» la coda perché la sua
+distribuzione è più larga (rapporto IQR 1,56) e la banda si affolla meno —
+curava il sintomo di un difetto di selezione, pagandolo altrove.
+
+### 9-ter.2 Difetti chiusi (universali, con controprova)
+
+| difetto | evidenza | commit |
+|---|---|---|
+| contratto d'uscita non applicato sul path deterministico | `public` filtrava solo sul ramo HTTP: latente, ma esattamente sulla strada proposta per il composer | `3c27c170` |
+| sonda contestuale autoavverante | concatenava la RISPOSTA precedente → vettore quasi-duplicato delle sue stesse fonti, guadagno sempre vinto (0,9317 vs 0,8465) | `94dfe3db` |
+| ledger del correttore catturato da un'altra pagina | 15 voci richieste, tutte estranee alla domanda | `94dfe3db` |
+| la ricomposizione poteva peggiorare la risposta | integra i buchi elencati e ne perde un altro, consegnata senza rilettura | `94dfe3db` |
+| scarto per audience silenzioso | pagina esistente ma non autorizzata scartata in silenzio, risposta che dichiara ASSENZA (§2.8) | `94dfe3db` |
+| rilettura cieca agli identificatori | nessun confine di parola dopo un underscore: voce presente alla lettera dichiarata mancante | `94dfe3db` |
+
+### 9-ter.3 Interventi proposti, per rischio crescente
+
+1. **Igiene della segmentazione** — 13 unità il cui testo estratto è il solo
+   banner di pagina (8 sono sezioni di sola navigazione). Sono attrattori per
+   ogni domanda breve simile a un titolo: due di esse vincono il contesto di
+   `f1-overview#4` con affinità di titolo +0,064 contro banda 0,06. Test
+   deterministico, indipendente da qualunque query.
+2. **Finalità nelle righe provider** — `sources.py` emette
+   `- {object}: {actions}` per i provider mentre le righe overview aggiungono
+   gli scopi: la risposta può solo riecheggiare lo slug (f1-github#4). Prova
+   incrociata: il gemello IT PASSA con la stessa fonte che NON contiene le
+   parole attese → quel verde è glossa non attestata, non evidenza.
+3. **Ledger delle clausole della fonte mantenuta primaria** — le clausole di
+   una scheda curata o di un segmento di documentazione non entrano in
+   checklist, quindi il correttore non vede omissioni di prosa
+   (f1-scheduled#1/#2/#4).
+4. **Autorità prima del micro-punteggio entro la banda** — l'ordine dentro la
+   banda è dato da differenze di 0,02-0,04 non significative, e
+   `priority/10000` vale al massimo 0,01, **sei volte meno della banda**: la
+   priorità dichiarata di una scheda è oggi ininfluente. È la leva grossa
+   (photos#2/#3, e i quattro casi di registro) ed è anche la più rischiosa:
+   va misurata DA SOLA, con la ri-corsa completa dei 134 come gate.
+5. **Budget del composer proporzionale alla checklist** — 44 aree contro 2048
+   token fissi: la compressione estrema è la vera radice della varianza di
+   `f1-overview#5` (verde in 5 run su 7).
+
+### 9-ter.4 Il tetto reale, e i tre casi che richiedono una ratifica
+
+Rumore A/A misurato: **3,1%** (3 casi discordi su 98 a contesto identico);
+9,4% su quattro run. **Quattro dei 21 fallimenti di cert14 sono fantasmi**
+(passano altrove con le stesse fonti). Il tier `wise` è già idoneo al path
+deterministico (provider llamacpp, temp 0, think off): costo misurato **+23%**
+(17,0s contro 13,8s) con SHA identico verificato. Attivarlo rende «134/134»
+un bersaglio misurabile invece che mobile.
+
+Non chiudibili senza toccare il corpus — DECISIONE DI ROBERTO:
+- **ops-google-workspace**: il gate chiede `task|attività` per Google
+  Workspace, ma Google Tasks non è attestato da nessuna delle 3.762 unità e
+  non è una capacità dell'istanza (fallisce in 6 run su 6, zero varianza).
+  Documentarlo sarebbe documentare il falso: la voce va rimossa o riformulata
+  su un'area realmente proiettata.
+- **ops-mail-credentials-typo**: il concetto atteso vive SOLO nel segmento
+  «Compatibilità con configurazioni precedenti», a rango 24 e fuori banda. Una
+  risposta corretta e moderna fallisce per costruzione; i verdi di cert18
+  premiano la risposta pedagogicamente peggiore. Proposta: attendere il
+  concetto della via preferita (vault cifrato), non il percorso legacy.
+- **f1-overview#4**: chiudibile con l'igiene della segmentazione, ma va
+  rimosso il marcatore `known_equal_fail`, che oggi documenta una causa
+  sbagliata (non è un pari-fallimento F1).
+- Edit MECCANICI letterale→`lex:`, già sanzionati da ADR 0198, non gaming:
+  `ops-undo` («ultima» → concetto flessivo `tutor_gate.last`), `f1-devices`
+  IT/EN («un solo|una volta», «one pairing|one-time» → `tutor_gate.one_off`
+  esteso con «monouso», che è il termine della SoT `ui_surfaces`).
+
+Estensioni di lessico RESPINTE perché sarebbero gaming: `verific\w*` e
+`conferma\w*` in un gate «vagli» (falsi positivi misurati: «per verificare lo
+stato di un task» non esprime alcun vaglio) e gli slug `\bpulls?\b`/`\bdirs?\b`
+per f1-github#4 (premierebbero una risposta di soli slug, cioè proprio ciò che
+il ledger vieta).
+
 ## 10. Registro di avanzamento
 
 | Data | Evento | Evidenza |
