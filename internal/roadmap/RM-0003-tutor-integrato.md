@@ -412,12 +412,35 @@ con l'elenco esplicito dei buchi appeso al contesto, poi si consegna comunque
 (cap onesto, niente loop). Un guasto della rilettura non degrada mai una
 composizione riuscita (cintura fail-soft).
 
-**Finding sul matching (generale, niente liste):** una voce lunga (finalità di
-un tool) non è provata da una parola qualunque — «file» compare in mezza
-checklist e maschererebbe «impronta». La rilettura usa le parole DISTINTIVE
-per frequenza documentale interna alla checklist stessa: una radice presente
-in una sola voce identifica quella voce; una condivisa non prova nulla. La
-radice flessiva è la stessa forma dei gate `tutor_gate.*` (prefisso + `\w*`).
+**Finding sul matching (generale, niente liste).** La granularità della
+rilettura dipende dalla lunghezza dell'etichetta, e sbagliarla la rende cieca
+in entrambe le direzioni:
+
+- una voce LUNGA (finalità di un tool, elenco di contenuti visibili) non è
+  provata da una parola qualunque — «file» compare in mezza checklist e
+  maschererebbe «impronta»: valgono le parole DISTINTIVE per frequenza
+  documentale interna alla checklist, cioè con radice presente in una sola
+  voce;
+- una voce CORTA (fino a tre parole) è il nome esatto di un campo o di un
+  controllo — «esegui ora», «nome visualizzato» — e vale solo per intero:
+  spezzarla la dichiarava coperta da un «eseguire» qualsiasi. Ogni parola è
+  richiesta a livello di radice, così «riprova» resta coperto da «riprovare»
+  senza che «esegui ora» lo sia da «eseguire».
+
+La misura che ha imposto la regola: sui casi in cui il correttore era scattato
+e il gate falliva comunque, ZERO dei gate falliti figurava fra i punti
+richiesti dalla ricomposizione — il correttore non li aveva visti, non li
+aveva chiesti invano.
+
+**Confine delle procedure esteso alle superfici (finding, notte 24/7).** Una
+procedura porta passi numerati e condizioni di arresto che il composer deve
+riportare per intero: lasciata nel contesto di un'ALTRA domanda, cattura la
+risposta. Il servizio escludeva dal contesto generativo le sole procedure
+delle schede curate; le unit `ui_procedure` restavano, e il dettaglio utente
+(`/admin/users`) veniva risposto con la procedura delle proposte
+(`/admin/changes`), che aveva portato dodici voci di ledger estranee. La
+regola già ratificata vale ora per ogni procedura tipizzata, schede e unit
+insieme; se restano soltanto procedure, sopravvive la primaria.
 
 Telemetria per misurare il guadagno reale: `tutor_repair_pass` (0|1) e
 `tutor_repair_missing` (voci che hanno chiesto la ricomposizione) nel record
@@ -672,3 +695,9 @@ sicurezza.
 | 2026-07-24 | Gate 7: turno live Telegram | `35bba21a0a774f31` («Dove vedo i dispositivi collegati?»): mode=tutor, fondata, confine chat web + route + controlli completi |
 | 2026-07-24 | Certificazione completa col correttore | cert7: 108/134 non-fail (da 94), boundary 12/12; repair 64 casi (48%), 83% dei riparati passa; 26 residui: 3 mode (Passo 3), ~7 retrieval-selezione, ~12 conformità composer (Passo 4), ~4 concept fuori fonte |
 | 2026-07-25 | Passo 3: mode v2 (imperativi di visualizzazione = EXPLAIN) | `tutor_mode.j2` v2 it+en; boundary ri-verificato 12/12 (cert8); 3/3 bersagli PASS (admin-services-content, ops-calendar-events, ops-github-issues) → proiezione 111/134; E2E prod `f3150fb974b54044` |
+| 2026-07-25 | Misura del tetto a parità di contesto | Un modello forte, con lo STESSO contesto e lo stesso contratto, recupera 4 casi su 6: il tetto è il modello dove l'evidenza c'era, il retrieval dove non c'era (`admin-settings-errors` senza superficie, `admin-restricted-user` senza fonte che attesti il ruolo). Harness `ceiling_dump`/`ceiling_eval` |
+| 2026-07-25 | Confine procedure + rilettura a due granularità | `ui_procedure` non primaria fuori dal contesto generativo; etichette corte richieste per intero a radice. `admin-timers-controls` e `admin-user-detail` recuperati, `admin-changes-content` senza regressione |
+| 2026-07-25 | Baseline cert11 e smentita della regola larga | 99+7/134 non-fail, boundary 12/12. Il diff contro cert7 attribuisce: 0 recuperi all'esclusione `ui_procedure`, 3 perdite causate da essa (la procedura della STESSA pagina era l'unica fonte di `/admin/changes`); i recuperi veri venivano dal budget composer 2048 |
+| 2026-07-25 | Confine procedure ristretto alla co-tematicità | si scarta una procedura non primaria SOLO se la primaria è un'ALTRA pagina (`_surface_key`); cert13 103+7/134, i 3 persi rientrano, 2 regressioni a fonti identiche (rumore); 95 test tutor verdi |
+| 2026-07-25 | Prompt a soli segnaposto (mode v3, composer v9) | §6 completo, zero frasi del corpus, `<SEGNAPOSTO>` al posto dei letterali non-contratto; fix linter L2 a confine di parola («entry to» conteneva «try to»); cert14 106+7/134, admin_ui 17→21 — la regola UI da 126 parole spezzata in tre regole ha sbloccato route e percorsi |
+| 2026-07-25 | Guida pubblica all'interfaccia | `scripts/generate_ui_reference.py` → `docs/{it,en}/interface.html`: prosa di orientamento + mappa SVG derivata dal registro superfici; dettaglio pagine NON ripubblicato (evidenza ad autorità unica, niente concorrenza di retrieval); freschezza imposta da test + preflight `deploy.sh`; catalogo isolato +20 unità; impatto misurato in cert15 |

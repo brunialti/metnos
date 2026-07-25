@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "elapsed_ms": 11135,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "ops-calendar-events",
+      "group": "typical_operations",
+      "query": "Come controllo gli appuntamenti di domani e ne creo uno nuovo?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Controlla gli appuntamenti di domani e creane uno nuovo alle 10:00 con Marco.»\n\nPer gestire gli appuntamenti, Metnos offre le seguenti capacità nel dominio **Calendari**:\n\n**1. Consultazione degli appuntamenti**\nPer controllare gli appuntamenti di domani, puoi chiedere a Metnos di leggere gli eventi nel tuo calendario. Il sistema è in grado di interpretare riferimenti temporali come \"domani\" e risolvere la data corretta.\n*   **Esempio di richiesta:** «Quali appuntamenti ho domani?» oppure «Leggi gli eventi del mio calendario per domani.»\n\n**2. Creazione di un nuovo appuntamento**\nPer creare un nuovo appuntamento, utilizza la capacità di creazione eventi. Dovrai specificare il titolo, l'orario di inizio e fine (o la durata) e, opzionalmente, il calendario di destinazione (di default viene usato il calendario principale).\n*   **Esempio di richiesta:** «Crea una riunione di 45 minuti venerdì alle 10 con Luca.»\n*   **Dettagli tecnici:** L'orario deve essere specificato in formato ISO 8601 (es. `2026-05-14T09:00:00+02:00`). Se indichi \"domani\", Metnos risolve automaticamente la data. Puoi anche specificare un `calendar_id` diverso da quello predefinito (\"primary\").\n\n**Nota importante sulla distinzione tra Calendari ed Eventi:**\n*   **Eventi/Appuntamenti:** Sono le singole voci nel calendario (riunioni, impegni). Si gestiscono con comandi come `create_events` o `read_events`.\n*   **Calendari-contenitore:** Sono i contenitori stessi (es. \"Lavoro\", \"Personale\"). Si creano o eliminano separatamente con `create_calendars` o `delete_calendars`. Eliminare un calendario è un'operazione distruttiva che rimuove anche tutti gli eventi al suo interno.\n\nPer la tua richiesta specifica, una singola frase naturale che combina la consultazione e la creazione è sufficiente, come nell'esempio iniziale.",
+      "source_ids": [
+        "knowledge:doc-public-domains-a05187101c19-it-0013",
+        "knowledge:executor-create_calendars-it",
+        "knowledge:executor-create_events-it",
+        "knowledge:doc-public-domains-a05187101c19-it-0016",
+        "knowledge:executor-create_calendars-arg-761b7ad8ad43-it-01",
+        "knowledge:executor-create_events-arg-cced28c6dc3f-it-01",
+        "knowledge:executor-create_events-arg-4ead06bfc214-it-01",
+        "knowledge:doc-public-domains-a05187101c19-it-0011",
+        "knowledge:doc-public-executor-catalog-d2a92eb1bf89-it-0023",
+        "knowledge:doc-public-domains-a05187101c19-it-0027",
+        "knowledge:executor-delete_calendars-it"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 11135
+    }
+  ]
+}

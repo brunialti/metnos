@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "elapsed_ms": 5775,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "admin-services-content",
+      "group": "admin_ui",
+      "query": "Mostrami cosa contiene la pagina dei servizi di sistema.",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami cosa contiene la pagina dei servizi di sistema.»\n\nLa pagina **Settings > Sistema > Servizi** (route `/admin/services`) è accessibile dalla chat web di Metnos. Questa interfaccia mostra i servizi attivi con i seguenti dettagli:\n\n*   Stato systemd\n*   Salute applicativa\n*   Installazione\n*   PID\n*   Gruppo\n\nLa pagina si aggiorna automaticamente ogni 15 secondi e, dove disponibili, offre le azioni **Avvia**, **Arresta** e **Riavvia**.\n\nI servizi elencati sono:\n\n*   **HTTP server**: API, chat e Settings [Core]\n*   **Telegram daemon**: Canale Telegram e notifiche [Core]\n*   **Side display**: Display grafico virtuale del browser [Website browsing]\n*   **Playwright sidecar**: Browser e sessioni Sites [Website browsing]\n*   **Local language model**: llama-server dei tier locali [Core]\n*   **SearXNG**: Motore di ricerca web [Search & geo]\n*   **Geo server**: Geocoding locale Photon/OSM [Search & geo]\n*   **Cloudflare tunnel**: Accesso remoto alla chat [Connectivity]\n*   **Issues sidecar**: Bridge locale per issue amministrative [Connectivity]\n*   **i18n translator**: Riempimento differito delle traduzioni [Core]",
+      "source_ids": [
+        "knowledge:runtime-settings-services-it"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 5775
+    }
+  ]
+}

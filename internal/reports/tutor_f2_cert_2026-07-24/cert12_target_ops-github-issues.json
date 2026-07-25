@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "elapsed_ms": 11912,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "ops-github-issues",
+      "group": "typical_operations",
+      "query": "Come cerco le issue aperte di un repository e ne aggiorno una?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Trova le issue aperte del repository metnos e chiudi quella numero 42.»\n\nPer cercare e aggiornare le issue di un repository GitHub, Metnos utilizza una skill provider che richiede credenziali configurate. Le capacità effettive dipendono dalle skill ammesse nell'istanza. Ecco come procedere per le due operazioni richieste:\n\n### 1. Cercare le issue aperte\nPer elencare le issue, puoi specificare il repository, lo stato e altri filtri opzionali.\n*   **Comando naturale:** Chiedi di trovare le issue aperte in un repository specifico.\n*   **Esempio:** «Nel repository `metnos` trova le issue aperte con etichetta `bug` create nell'ultima settimana.»\n*   **Dettagli tecnici sottostanti:**\n    *   L'executor `find_issues_github` elenca le issue (segnalazioni/bug/ticket) di un repo GitHub.\n    *   Parametri chiave:\n        *   `repo`: Il nome del repository nel formato `owner/name`.\n        *   `state`: Lo stato delle issue, ad esempio `\"open\"` per quelle aperte.\n        *   `top_k`: (Opzionale, default 50) Il numero massimo di voci restituite.\n\n### 2. Aggiornare una issue\nPer modificare una issue esistente (ad esempio cambiarne lo stato, le etichette o gli assegnatari), devi fare riferimento alla sua posizione specifica.\n*   **Comando naturale:** Chiedi di modificare una issue specifica indicando il repository e il numero della issue.\n*   **Esempio:** «Chiudi la issue numero 42 nel repository `metnos`.» oppure «Assegna la issue numero 10 a Laura.»\n*   **Dettagli tecnici sottostanti:**\n    *   L'executor `set_issues_github` modifica stato, label e assegnatari di una issue.\n    *   Parametri chiave:\n        *   `repo`: Il nome del repository nel formato `owner/name`.\n        *   `number`: Il numero identificativo della issue (obbligatorio).\n        *   `state`: Il nuovo stato desiderato (es. `\"closed\"`).\n\n**Nota:** Se desideri invece creare una nuova issue, puoi chiedere: «Crea una issue nel repository `acme/app` con questo titolo e assegnala a Laura.» Se devi leggere il contenuto completo e i commenti di una singola issue, usa una richiesta come: «Leggi i dettagli della issue numero 5 nel repository `metnos`.»",
+      "source_ids": [
+        "knowledge:doc-public-domains-a05187101c19-it-0024",
+        "knowledge:executor-find_issues_github-it",
+        "knowledge:executor-find_issues_github-arg-071ca2227754-it-01",
+        "knowledge:executor-find_issues_github-arg-7f33de5a7605-it-01",
+        "knowledge:executor-find_issues_github-arg-4ba69735ca53-it-01",
+        "knowledge:executor-set_issues_github-it",
+        "knowledge:executor-create_issues_github-it",
+        "knowledge:executor-read_issues_github-it",
+        "knowledge:doc-public-praxis-engine-36b6fd20a752-it-0033",
+        "knowledge:executor-delete_issues_github-it",
+        "knowledge:doc-public-domains-a05187101c19-it-0025",
+        "knowledge:doc-public-domains-a05187101c19-it-0023"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 11912
+    }
+  ]
+}
