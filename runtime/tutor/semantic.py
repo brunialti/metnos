@@ -259,10 +259,23 @@ def retrieve_sources(
         if (hit.card.visible_to(audience) if hit.card
             else hit.unit.visible_to(audience))
     ]
-    if not visible or (
-            ranked[0] not in visible
-            and ranked[0].score >= visible[0].score - 0.02):
-        return SemanticContext((), ranked[0].score, restricted=True)
+    # Un scarto per audience deve restare VISIBILE come tale. Legare il
+    # segnale al solo ranked[0] lo rendeva silenzioso ogni volta che in testa
+    # c'era una fonte pubblica: la risposta dichiarava allora l'ASSENZA di una
+    # pagina che invece esiste e non e' autorizzata (§2.8, esito non
+    # corrispondente alla realta'). Il segnale scatta se una fonte scartata
+    # sarebbe entrata nella selezione, cioe' e' sopra la soglia assoluta e
+    # dentro la banda della migliore visibile.
+    dropped_in_band = [
+        hit for hit in ranked
+        if hit not in visible
+        and adjusted(hit) >= threshold
+        and (not visible or adjusted(hit) >= adjusted(visible[0]) - band)
+    ]
+    if not visible or dropped_in_band:
+        top_dropped = (adjusted(dropped_in_band[0]) if dropped_in_band
+                       else ranked[0].score)
+        return SemanticContext((), top_dropped, restricted=True)
 
     top = adjusted(visible[0])
     selected: list[SourceHit] = []

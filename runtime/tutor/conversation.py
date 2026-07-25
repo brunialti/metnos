@@ -77,6 +77,28 @@ def recent_context(principal: TutorPrincipal) -> str:
     )
 
 
+def recent_question(principal: TutorPrincipal) -> str:
+    """Solo la DOMANDA precedente, per la sonda di retrieval.
+
+    La domanda precedente risolve il riferimento ellittico; la risposta
+    precedente no: e' un testo lungo generato DALLE fonti del turno prima,
+    quindi concatenarla rende il vettore quasi-duplicato di quelle stesse
+    fonti e ogni follow-up sembra «guadagnare» contesto (misurato: 0,9317
+    contro 0,8465 verso la pagina del turno precedente, che vinceva
+    l'ereditarieta' anche quando non c'entrava). La risposta resta ammessa
+    nel contesto del composer, dove serve a capire a cosa ci si riferisce.
+    """
+
+    key = _key(principal)
+    if key is None:
+        return ""
+    now = time.monotonic()
+    with _LOCK:
+        _prune(now)
+        exchange = _EXCHANGES.get(key)
+    return exchange.query if exchange is not None else ""
+
+
 def remember(request: TutorRequest, answer: TutorAnswer) -> None:
     """Retain one bounded exchange in memory, never on disk."""
 

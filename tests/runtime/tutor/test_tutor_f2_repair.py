@@ -256,3 +256,83 @@ def test_short_labels_need_every_word_at_root_level():
 
     complete = partial + " Il comando esegui ora lo fa partire subito."
     assert _find_gaps(coverage, complete, "it") == []
+
+
+# ------------------------------------------- difetti trovati dall'audit 25/7
+
+def test_identifier_labels_match_the_slug_the_answer_writes():
+    """`\\b` non trova confine dopo un underscore: una voce presente alla
+    lettera veniva dichiarata mancante (misurato su `events_empty`)."""
+
+    from tutor.service import _label_covered, _root_hit
+
+    text = "Copro le aree `events_empty` e `files_spreadsheet`."
+    assert _root_hit("empty", text)
+    assert _label_covered("events_empty", text, set(), {})
+    assert not _label_covered("messages", text, set(), {})
+
+
+def test_ledger_is_scoped_to_the_primary_page():
+    """Con una superficie primaria la checklist non porta le voci di ALTRE
+    pagine: il correttore spendeva l'unica ricomposizione sui buchi
+    sbagliati (misurato: 15 voci tutte estranee alla domanda)."""
+
+    from tutor.service import _ledger_scope
+
+    users = _hit(_unit("ui_surface", key="users"))
+    changes = _hit(_unit("ui_surface", key="changes"))
+    doc = _hit(_unit("capability_catalog", text="- posta [leggi]"))
+    scoped = _ledger_scope((users, changes, doc), users)
+    assert users in scoped and doc in scoped
+    assert changes not in scoped
+    # Primaria non-UI: nessuna pagina in competizione, nessuna restrizione.
+    assert _ledger_scope((doc, users, changes), doc) == (doc, users, changes)
+
+
+def test_composer_ledger_excludes_the_other_page(monkeypatch):
+    """Verifica il CABLAGGIO, non solo l'helper: la checklist che arriva al
+    composer non deve contenere le voci della pagina non primaria."""
+
+    _patch_context(monkeypatch, (_hit(_unit("ui_surface", key="users")),
+                                 _hit(_unit("ui_surface", key="changes"))))
+    seen: dict[str, str] = {}
+
+    def fake_compose(**kwargs):
+        seen["context"] = kwargs["context"]
+        return Composition("answer", "Risposta con /admin/users.")
+
+    monkeypatch.setattr("tutor.compose.compose_answer", fake_compose)
+    answer = answer_request(TutorRequest(
+        "Cosa contiene il dettaglio di un utente?", "it", _principal()))
+    assert answer is not None
+    ledger = seen["context"].split("[COVERAGE_LEDGER]")[-1]
+    assert "/admin/users" in ledger
+    assert "/admin/changes" not in ledger
+    # il corpo della pagina vicina resta pure evidenza: si restringe la
+    # CHECKLIST, non il contesto
+    assert "corpo" in seen["context"] or "Titolo" in seen["context"]
+
+
+def test_revision_is_re_read_and_the_better_draft_wins(monkeypatch):
+    """La ricomposizione integra i buchi elencati ma puo' perderne un altro:
+    consegnarla alla cieca peggiora la risposta. Si sceglie meccanicamente
+    la versione con meno buchi, senza chiamate aggiuntive."""
+
+    _patch_context(monkeypatch, (_hit(_unit("ui_surface", key="changes")),))
+    complete = _surface_complete_text("changes")
+    # bozza: manca solo la route · revisione: ha la route ma perde tre voci
+    draft = complete.replace("/admin/changes", "")
+    worse = " ".join(complete.split()[:6]) + " /admin/changes"
+    calls: list[dict] = []
+
+    def fake_compose(**kwargs):
+        calls.append(kwargs)
+        return Composition("answer", draft if len(calls) == 1 else worse)
+
+    monkeypatch.setattr("tutor.compose.compose_answer", fake_compose)
+    answer = answer_request(TutorRequest(
+        "Come uso la console delle proposte?", "it", _principal()))
+    assert answer is not None and len(calls) == 2
+    assert answer.repair_pass == 1
+    # consegnata la BOZZA: la revisione aveva piu' buchi
+    assert answer.answer_md == draft

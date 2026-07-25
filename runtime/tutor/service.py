@@ -34,6 +34,27 @@ def _with_pending_note(answer: str, request: TutorRequest) -> str:
     return f"{answer.rstrip()}\n\n{_msg('MSG_TUTOR_PENDING_PRESERVED')}"
 
 
+_PREVIOUS_QUESTION_MARKER = "PREVIOUS_USER_QUESTION:"
+_PREVIOUS_ANSWER_MARKER = "PREVIOUS_TUTOR_ANSWER:"
+
+
+def _previous_question(request: TutorRequest) -> str:
+    """Estrae la sola domanda precedente dal contesto di conversazione.
+
+    Il contesto passato al composer resta l'intero scambio; la SONDA di
+    retrieval usa solo la domanda, per il motivo misurato in
+    ``tutor.conversation.recent_question``. La struttura del contesto e'
+    quella dichiarata da quel modulo: se cambia, qui non si indovina —
+    si ricade sul comportamento senza contesto.
+    """
+
+    raw = request.conversation_context or ""
+    if _PREVIOUS_QUESTION_MARKER not in raw:
+        return ""
+    question = raw.split(_PREVIOUS_QUESTION_MARKER, 1)[1]
+    return question.split(_PREVIOUS_ANSWER_MARKER, 1)[0].strip()
+
+
 def _executor_purpose(executor, lang: str) -> str:
     """Read one localized, bounded purpose from the admitted manifest."""
 
@@ -232,6 +253,28 @@ def _surface_key(hit: SourceHit) -> str | None:
     return reference[2] if len(reference) >= 3 else None
 
 
+def _ledger_scope(hits: tuple[SourceHit, ...],
+                  primary: SourceHit) -> tuple[SourceHit, ...]:
+    """Restringe la checklist alla pagina PRIMARIA quando la domanda è su una
+    pagina.
+
+    Il ledger nasce da tutte le fonti strutturate selezionate: giusto per una
+    panoramica, sbagliato quando la primaria è una superficie e nel contesto
+    ci sono anche pagine vicine. In quel caso il correttore chiede voci di
+    un'ALTRA pagina e spende l'unica ricomposizione sul buco sbagliato
+    (misurato: 15 voci richieste, tutte estranee alla domanda). Regola
+    strutturale sull'identità della superficie, nessun tema o frase.
+    """
+
+    primary_key = _surface_key(primary)
+    if primary_key is None:
+        return hits
+    return tuple(
+        hit for hit in hits
+        if _surface_key(hit) in (None, primary_key)
+    )
+
+
 def _coverage_items(hits: tuple[SourceHit, ...]) -> dict:
     """Build the structured completeness checklist from the selected sources.
 
@@ -386,8 +429,14 @@ def _root(word: str) -> str:
 
 
 def _root_hit(word: str, text: str) -> bool:
+    # L'underscore e' un carattere di parola per le regex, quindi dentro un
+    # identificatore composto (`events_empty`) non esiste confine prima della
+    # seconda parola: la rilettura dichiarava mancante una voce che la
+    # risposta conteneva alla lettera. Le etichette sono gia' spezzate sugli
+    # underscore da `_GAP_WORD`; qui si allinea il testo, cosi' i due lati
+    # vedono le stesse parole. Regola generale sugli identificatori.
     return re.search(
-        r"\b" + re.escape(_root(word)) + r"\w*", text,
+        r"\b" + re.escape(_root(word)) + r"\w*", text.replace("_", " "),
         re.IGNORECASE) is not None
 
 
@@ -544,9 +593,10 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             cards=cards,
         )
         conversation_context_used = False
-        if request.conversation_context:
+        previous_question = _previous_question(request)
+        if previous_question:
             contextual = retrieve_sources(
-                f"{request.query_redacted}\n\n{request.conversation_context}",
+                f"{request.query_redacted}\n\n{previous_question}",
                 lang,
                 request.principal.audience,
                 cards=cards,
@@ -555,6 +605,10 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             # Independent questions retain their stronger current-turn match;
             # elliptical follow-ups inherit context only when it materially
             # improves retrieval.  No topic or phrase is encoded here.
+            # The probe carries the previous QUESTION only: adding the previous
+            # ANSWER made the vector a near-duplicate of that answer's own
+            # sources, so the gain test was self-fulfilling for every
+            # follow-up (see tutor.conversation.recent_question).
             if (contextual is not None and (
                     context is None
                     or contextual.top_score >= context.top_score + 0.02)):
@@ -642,7 +696,7 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                 )
                 for hit in effective_hits
             )
-            coverage = _coverage_items(effective_hits)
+            coverage = _coverage_items(_ledger_scope(effective_hits, primary))
             ledger = _render_ledger(coverage)
             if ledger:
                 rendered_context = f"{rendered_context}\n\n{ledger}"
@@ -698,7 +752,17 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                         delivery_channel=request.principal.channel,
                     )
                     if revision.status == "answer" and revision.text:
-                        rendered = revision.text
+                        # La revisione va RILETTA come la bozza: integrando i
+                        # buchi elencati puo' perderne un altro, e sostituirla
+                        # alla cieca peggiora la risposta consegnata (misurato
+                        # su due casi: il buco finale non era fra quelli
+                        # richiesti). Si consegna la versione con MENO buchi;
+                        # nessuna chiamata in piu', il confronto e' meccanico.
+                        revised_gaps = _find_gaps(coverage, revision.text, lang)
+                        if len(revised_gaps) <= len(gaps):
+                            rendered = revision.text
+                        # `repair_missing` resta l'elenco CHIESTO alla bozza:
+                        # e' il contratto di telemetria dichiarato (§5.7).
             except Exception:
                 # La rilettura e' una cintura: un suo guasto non deve mai
                 # degradare una composizione riuscita.

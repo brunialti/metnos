@@ -1030,7 +1030,9 @@ def test_semantic_gain_selects_same_conversation_context(monkeypatch):
 
     def retrieve(query, *_args, **_kwargs):
         observed.setdefault("retrieval_queries", []).append(query)
-        return (contextual_context if "PREVIOUS_USER_QUESTION" in query
+        # La sonda contestuale porta il TESTO della domanda precedente, non
+        # piu' il marcatore dello scambio completo.
+        return (contextual_context if "catalogo all'avvio" in query
                 else current_context)
 
     def compose(**kwargs):
@@ -1050,7 +1052,14 @@ def test_semantic_gain_selects_same_conversation_context(monkeypatch):
     ))
 
     assert answer is not None and answer.esito == "fondata"
-    assert previous in observed["retrieval_queries"][1]
+    # La SONDA di retrieval porta la sola DOMANDA precedente: la risposta
+    # precedente rendeva il vettore quasi-duplicato delle proprie fonti e il
+    # test di guadagno diventava autoavverante (audit 25/7). Il COMPOSER
+    # riceve invece l'intero scambio, che serve a risolvere il riferimento.
+    probe = observed["retrieval_queries"][1]
+    assert "Quanto impiega il catalogo all'avvio?" in probe
+    assert "PREVIOUS_TUTOR_ANSWER" not in probe
+    assert "temporaneamente indisponibile" not in probe
     assert observed["composition_context"] == previous
     assert answer.detection == "semantic_contextual_help"
 
