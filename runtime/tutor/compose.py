@@ -60,7 +60,14 @@ def compose_answer(
                 tier="wise",
                 # Broad catalog questions need room to represent every
                 # admitted area while retaining a natural example when asked.
-                max_tokens=1536,
+                # Measured on the certified corpus: every passing overview
+                # lands between 5.3k and 6.1k characters, i.e. against the
+                # previous 1536-token ceiling, so the prompt's "increase
+                # density rather than drop areas" had no room left.  The
+                # budget is a per-call parameter of this consumer: the shared
+                # ``wise`` binding, and therefore executor synthesis, is
+                # untouched.  Short answers stop on their own and pay nothing.
+                max_tokens=2048,
                 max_query_chars=30000,
                 output_policy="public",
             )

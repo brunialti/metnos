@@ -235,3 +235,24 @@ def test_repair_telemetry_lands_in_turn_record(tmp_path, monkeypatch):
     assert row["tutor_repair_pass"] == 1
     assert any("/admin/changes" in voice
                for voice in row["tutor_repair_missing"])
+
+
+def test_short_labels_need_every_word_at_root_level():
+    """Etichetta corta = nome esatto di un controllo: «esegui ora» non è
+    coperto da un «eseguire» isolato, ma «riprova» resta coperto da
+    «riprovare» (radice, non forma letterale)."""
+
+    coverage = {"providers": [], "areas": [], "operations": [], "tools": [],
+                "surfaces": [{
+                    "entry": "x", "label": "Timer", "route": "/admin/timers",
+                    "visible": (), "controls": ("abilita", "esegui ora"),
+                    "stop": False,
+                }]}
+    partial = ("Dalla pagina /admin/timers puoi abilitare un task oppure "
+               "eseguire le operazioni previste.")
+    gaps = _find_gaps(coverage, partial, "it")
+    assert any("esegui ora" in gap for gap in gaps)
+    assert not any("abilita" in gap for gap in gaps)
+
+    complete = partial + " Il comando esegui ora lo fa partire subito."
+    assert _find_gaps(coverage, complete, "it") == []

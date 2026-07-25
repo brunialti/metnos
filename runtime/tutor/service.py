@@ -222,6 +222,16 @@ _LEDGER_ROW = re.compile(
 )
 
 
+def _surface_key(hit: SourceHit) -> str | None:
+    """Surface key of a UI unit; ``None`` for every other kind of evidence."""
+
+    unit = hit.unit
+    if unit is None or unit.source_kind not in ("ui_surface", "ui_procedure"):
+        return None
+    reference = unit.source_ref.split(":")
+    return reference[2] if len(reference) >= 3 else None
+
+
 def _coverage_items(hits: tuple[SourceHit, ...]) -> dict:
     """Build the structured completeness checklist from the selected sources.
 
@@ -388,18 +398,32 @@ def _content_words(label: str, noise: set[str]) -> list[str]:
     ]
 
 
+_SHORT_LABEL_WORDS = 3
+
+
 def _label_covered(label: str, text: str, noise: set[str],
                    df: dict) -> bool:
-    """Una voce di checklist e' rappresentata se una sua parola DISTINTIVA
-    compare nella risposta a livello di radice.
+    """Una voce di checklist e' rappresentata nella risposta?
 
-    Distintiva = radice presente in UNA sola voce della checklist (frequenza
-    documentale interna): «impronta» identifica la finalita' hash, «file» e'
-    condiviso da mezza checklist e non prova nulla. Senza parole distintive
-    basta una parola di contenuto; le etichette corte senza parole di
-    contenuto richiedono la forma intera (word-boundary)."""
+    Etichetta CORTA (fino a tre parole): e' un nome esatto di campo o di
+    controllo — «esegui ora», «nome visualizzato» — e vale solo per intero.
+    Spezzarla in parole la dichiarerebbe coperta da un «eseguire» qualsiasi,
+    e il buco resterebbe invisibile alla rilettura (misurato: zero dei gate
+    falliti risultava fra i punti richiesti).
+
+    Etichetta LUNGA (una frase di contenuti visibili): basta una sua parola
+    DISTINTIVA, cioe' con radice presente in UNA sola voce della checklist
+    (frequenza documentale interna): «impronta» identifica la finalita' hash,
+    «file» e' condiviso da mezza checklist e non prova nulla.
+    """
 
     import detection_lexicon as dl
+    tokens = _GAP_WORD.findall(label)
+    if tokens and len(tokens) <= _SHORT_LABEL_WORDS:
+        # Ogni parola a livello di radice, tutte insieme: «riprova» resta
+        # coperto da «riprovare», mentre «esegui ora» non lo e' da un
+        # «eseguire» isolato.
+        return all(_root_hit(token, text) for token in tokens)
     words = _content_words(label, noise)
     if not words:
         return dl.match_any([label], text, mode="word")
@@ -589,11 +613,28 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             rendered = primary.unit.text
         else:
             # Procedures not selected as primary never become generative
-            # context.  All other admitted evidence can be composed together.
+            # context.  A procedure carries numbered steps and stop
+            # conditions that the composer must report in full, so beside a
+            # question about a DIFFERENT page it captures the answer (real
+            # turn: the user-detail question answered with the proposals
+            # procedure).  The rule is therefore about topic, not kind: a
+            # procedure is dropped only when the primary source is another
+            # page.  When the primary is the same page — or is not a page at
+            # all — the procedure is often the only source attesting route
+            # and fields, and removing it opens a hole (measured on the
+            # proposals-console cases).  Curated card procedures stay out
+            # regardless: they are whole answers, not evidence.
+            primary_surface = _surface_key(primary)
             effective_hits = tuple(
                 hit for hit in hits
                 if not (hit.card and hit.lang in hit.card.procedure)
+                and not (primary_surface is not None
+                         and hit.unit is not None
+                         and hit.unit.source_kind == "ui_procedure"
+                         and _surface_key(hit) != primary_surface)
             )
+            if not effective_hits:
+                effective_hits = (primary,)
             rendered_context = "\n\n".join(
                 _render_context(
                     hit, cards=cards,
