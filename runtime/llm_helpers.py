@@ -36,17 +36,31 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from llm_provider import LlamaCppProvider
-from llm_router import tier_endpoint as _tier_endpoint
+from llm_provider import LlamaCppProvider, make_provider_from_spec
+from llm_router import resolved_tier_spec, tier_endpoint as _tier_endpoint
 
-TIER_MODELS = {
-    # Tier VIRTUALI → placeholder "local": llama-server serve il GGUF
-    # caricato e ignora il campo model. Il mapping tier→modello FISICO
-    # (datato) sta solo in llm_router.py::DEFAULT_TIERS.
-    "fast": "local",
-    "middle": "local",
-    "wise": "local",
-}
+
+_UNSET = object()
+_OUTPUT_POLICIES = frozenset({"raw", "public"})
+_PUBLIC_FORBIDDEN_MARKERS = (
+    "<think", "</think", "<|channel", "<channel|>", "INLINE_FORM:",
+)
+
+
+def _postprocess_response(text: Any, output_policy: str) -> str:
+    """Provider-neutral response normalization and public-output guard."""
+
+    if output_policy not in _OUTPUT_POLICIES:
+        raise ValueError(
+            f"unknown LLM output policy {output_policy!r}; "
+            f"valid: {sorted(_OUTPUT_POLICIES)}")
+    normalized = str(text or "").strip()
+    if output_policy == "public":
+        folded = normalized.casefold()
+        if any(marker.casefold() in folded
+               for marker in _PUBLIC_FORBIDDEN_MARKERS):
+            raise ValueError("LLM public output contains an internal marker")
+    return normalized
 
 
 def _serialize_query(q: Any, max_chars: int = 12000) -> str:
@@ -189,12 +203,19 @@ def call_llm(
     *,
     tier: str = "middle",
     max_tokens: int = 600,
-    temperature: float = 0.0,
-    think: bool = False,
+    temperature: float | object = _UNSET,
+    think: bool | None | object = _UNSET,
     deterministic: bool = False,
     max_query_chars: int = 12000,
+    output_policy: str = "raw",
 ) -> tuple[str, dict]:
     """Chiama il LLM del tier indicato. Ritorna (text, meta).
+
+    Se `temperature` e `think` non sono specificati, vengono risolti dalla
+    policy centrale del tier in `llm_router.resolved_tier_spec`. I chiamanti
+    normali scelgono quindi un livello logico, non parametri del modello.
+    Override espliciti restano riservati a contratti strutturali che li
+    richiedono (per esempio una grammatica chiusa).
 
     `deterministic=True`: generazione byte-riproducibile via processo
     llama-completion monouso (vedi blocco DETERMINISTICA sopra). Richiede
@@ -212,15 +233,19 @@ def call_llm(
     risponde vuoto. L'executor chiamante deve gestirla e tradurla in
     una observation `{ok: false, error_code: ERR_EXT_SVC_UNAVAILABLE}`.
     """
-    if tier not in TIER_MODELS:
-        raise ValueError(f"unknown tier {tier!r}; valid: {list(TIER_MODELS)}")
-    model = TIER_MODELS[tier]
-    # Endpoint dei tier: SoT llm_router.tier_endpoint (llm_tiers.toml;
-    # LOCAL_DEFAULT_ENDPOINT solo come ultimo default). Un solo punto di
-    # verita' per TUTTI i consumer: provider HTTP + path deterministico.
+    spec = resolved_tier_spec(tier)
+    resolved_temperature = (
+        float(spec.get("temperature", 0.0))
+        if temperature is _UNSET else float(temperature)
+    )
+    resolved_think = spec.get("think") if think is _UNSET else think
+    reasoning_budget = int(spec.get("reasoning_budget") or 0)
+    provider_name = str(spec.get("provider") or "")
     endpoint = _tier_endpoint(tier)
     user_payload = _serialize_query(query, max_chars=max_query_chars)
-    if deterministic and not think and temperature == 0.0:
+    if (deterministic and provider_name == "llamacpp"
+            and resolved_think is not True
+            and resolved_temperature == 0.0):
         _seed = int(os.environ.get("METNOS_LLM_SEED", "42"))
         if _seed >= 0:
             t0 = time.time()
@@ -229,9 +254,15 @@ def call_llm(
                                   max_tokens=max_tokens, seed=_seed,
                                   endpoint=endpoint, meta_out=_proc_meta)
             if text is not None:
-                return text, {
+                # Il contratto d'uscita vale per QUALUNQUE trasporto: senza
+                # questa normalizzazione un consumer che chiede insieme
+                # `deterministic=True` e `output_policy="public"` riceveva
+                # testo non filtrato, cioe' una garanzia dichiarata e non
+                # applicata (§2.8). Il ramo HTTP la applicava, questo no.
+                return _postprocess_response(text, output_policy), {
                     "tier": tier,
-                    "model": model,
+                    "provider": provider_name,
+                    "model": spec.get("model") or "local",
                     "in_tokens": 0,
                     "out_tokens": 0,
                     "latency_ms": int((time.time() - t0) * 1000),
@@ -240,22 +271,40 @@ def call_llm(
                 }
         # Path deterministico non disponibile: fallback HTTP sotto,
         # dichiarato nel meta.
-    # ADR 0120: slot affinity. Default Metnos = id_slot=1 (image enrichment
-    # batch). Override via env var METNOS_LLM_SLOT_ID. None disabilita.
-    _slot_env = os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
-    _slot = int(_slot_env) if _slot_env.isdigit() else None
-    provider = LlamaCppProvider(model=model, endpoint=endpoint, id_slot=_slot)
+    # Provider resolution is central too: a logical tier may move to another
+    # backend without changing Tutor or executor callers.  Slot affinity is a
+    # llama.cpp transport concern and remains confined to this gateway.
+    if provider_name == "llamacpp":
+        _slot_env = os.environ.get("METNOS_LLM_SLOT_ID", "1").strip()
+        _slot = int(_slot_env) if _slot_env.isdigit() else None
+        provider = LlamaCppProvider(
+            model=spec.get("model") or "local",
+            endpoint=endpoint,
+            id_slot=_slot,
+        )
+    else:
+        provider = make_provider_from_spec(spec)
+    call_kwargs = {
+        "max_tokens": max_tokens,
+        "temperature": resolved_temperature,
+        "think": resolved_think,
+    }
+    if provider_name == "llamacpp" and resolved_think is True:
+        call_kwargs["reasoning_budget"] = max(1, reasoning_budget)
     t0 = time.time()
-    r = provider.chat(prompt, user_payload, max_tokens=max_tokens,
-                      temperature=temperature, think=think)
+    r = provider.chat(prompt, user_payload, **call_kwargs)
     latency_ms = int((time.time() - t0) * 1000)
-    text = (r.text or "").strip()
+    # Single response-normalization and policy point.  Future
+    # provider-neutral post-processing belongs here, not in every consumer.
+    text = _postprocess_response(r.text, output_policy)
     meta = {
         "tier": tier,
-        "model": model,
+        "provider": getattr(r, "provider", provider_name),
+        "model": getattr(r, "model", None) or getattr(provider, "model", ""),
         "in_tokens": r.in_tokens,
         "out_tokens": r.out_tokens,
         "latency_ms": latency_ms,
+        "think": resolved_think,
     }
     if deterministic:
         meta["deterministic"] = False
