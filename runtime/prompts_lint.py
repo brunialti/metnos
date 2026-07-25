@@ -186,7 +186,9 @@ def _check_l2_hedge_blacklist(path: Path, content: str) -> list[LintIssue]:
     for idx, line in enumerate(body_lines, start=1):
         low = line.lower()
         for pat in _HEDGE_PATTERNS:
-            if pat in low:
+            # Confine di parola: a sottostringa nuda «entry to» conteneva
+            # «try to» e un prompt corretto risultava in violazione.
+            if re.search(rf"\b{re.escape(pat)}\b", low):
                 issues.append(LintIssue(
                     file=str(path), line=idx, level="error",
                     code="L2_HEDGE",
