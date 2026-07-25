@@ -39,6 +39,9 @@ set +a
 
 cd "$REPO"
 python3 scripts/generate_executor_catalog.py
+python3 scripts/generate_domain_reference.py
+python3 scripts/generate_ui_reference.py
+python3 runtime/published_docs.py validate
 exec node_modules/.bin/wrangler pages deploy docs \
     --project-name=mykleos \
     --commit-dirty=true \

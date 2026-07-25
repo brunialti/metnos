@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos Architecture Handbook — from system to components</title>
     <meta name="description" content="A visual, tutorial handbook to the complete Metnos architecture: principles, request flow, executors, authority, safety, memory, synthesis, channels and the canonical component contracts.">
-    <meta name="keywords" content="Metnos, architecture, executor, remote executors, devices, placement, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, ReAct, local planner, Mētis, mnestome, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, personal AI assistant">
+    <meta name="keywords" content="Metnos, architecture, governed agents, executor, remote executors, devices, placement, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, ReAct, local planner, Mētis, mnestome, fast-path, self-hosted">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/en/architecture/">
@@ -662,7 +662,7 @@ governing architecture.
 <thead><tr><th style="width:26%">Item</th><th>Actual state</th></tr></thead>
 <tbody>
 <tr><td><strong>Shape</strong></td><td>Python &ge; 3.11 process, executor-based microarchitecture; ReAct runtime with one-shot planning (the M&emacr;tis engine, ch. 5).</td></tr>
-<tr><td><strong>Tools</strong></td><td>Signed executors in the catalog, plus those <em>synthesized on the fly</em> and those imported behind a gate (ch. 7). All are vectorized: list in, list out. Current names and counts live in the <a href="executor_catalog.html">generated catalog</a>.</td></tr>
+<tr><td><strong>Tools</strong></td><td>Signed executors in the catalog, plus those <em>synthesized on the fly</em> and those imported behind a gate (ch. 7). All are vectorized: list in, list out. The <a href="../domains.html">domain reference</a> provides the user view; current names and counts live in the <a href="executor_catalog.html">generated catalog</a>.</td></tr>
 <tr><td><strong>Brain</strong></td><td>Compatible local or remote LLM endpoints; four abstract tiers <code>fast / middle / wise / frontier</code> (ch. 8). Frontier = cloud opt-in.</td></tr>
 <tr><td><strong>Channels</strong></td><td>Telegram (outbound long-poll, no open ports) + web on port 8770 (chat and admin dashboards), ch. 11.</td></tr>
 <tr><td><strong>Devices</strong></td><td>A controlled part of the catalog can run on registered PCs in the same network through <code>metnos-client</code>: the server remains the point of policy, selection, signing and audit; the device runs only executors declared compatible. Detail: <a href="remote_executors.html">remote executors</a>.</td></tr>
@@ -1533,6 +1533,51 @@ en = "SCOPE: search files by pattern in directory.
 <figcaption>Figure 8 &mdash; One manifest, four consumers: prefilter, planner pool, grammar and undo each read different fields of the same TOML. The digest binds the manifest to the signed code.</figcaption>
 </figure>
 
+<h2>One execution policy</h2>
+
+<p>
+Every executor call, local or remote, crosses the same execution engine. In one
+place the runtime applies metrics, backpressure, per-resource limits and a cap
+derived from the hardware. The default deliberately remains serial and the
+cross-executor pool is off: adopting the infrastructure does not change the
+order, inputs, outputs or capabilities of existing executors.
+</p>
+
+<pre><code>[execution]
+effect = "unknown"
+parallelism_class = 0
+resource_class = "default"
+concurrency_key = "none"
+equivalence_gate = "unverified"</code></pre>
+
+<table class="compare">
+<thead><tr><th>Class</th><th>Requested budget</th><th>Admission</th></tr></thead>
+<tbody>
+<tr><td><strong>0</strong></td><td>No cross-executor thread.</td><td>Default for every existing and generated executor.</td></tr>
+<tr><td><strong>1</strong></td><td>Moderate concurrency.</td><td rowspan="3">Only after verified equivalence; always within engine and hardware limits.</td></tr>
+<tr><td><strong>2</strong></td><td>High concurrency.</td></tr>
+<tr><td><strong>3</strong></td><td>Controlled maximum.</td></tr>
+</tbody>
+</table>
+
+<p>
+The class measures only a budget: it <strong>grants no authority and does not
+mean read-only</strong>. A future executor that creates or mutates objects may
+run concurrently, but it must declare an isolation key, provide the resource
+identity, and pass equivalence, collision, idempotency and postcondition tests.
+If any evidence is missing, the loader reduces it to class 0.
+</p>
+
+<p>
+All three executor-generation paths &mdash; Synt proposals, reactive synthesis
+and skill generation &mdash; also consume one central contract. The local model
+may design a rich implementation, but it cannot rewrite identity, lifecycle,
+I/O or the initial execution policy. When it parallelizes independent entries,
+the worker count comes from the engine and results must return in input order.
+</p>
+
+<div class="checkpoint"><strong>Preservation rule.</strong> An executor stays serial until it explicitly declares parallel eligibility and passes equivalence testing. Changing the central policy propagates limits and observability to all executors; it never promotes one implicitly.</div>
+
 <h2>Remote authority: declared once, consumed three times</h2>
 
 <p>
@@ -2213,6 +2258,33 @@ does not touch the core.
 </tbody>
 </table>
 
+<h2>The Tutor: explaining without executing</h2>
+
+<p>
+Explicit questions about how to use Metnos are intercepted at the shared
+HTTP/Telegram boundary, before the planner and without consuming a pending
+dialog. A conservative detector recognizes only the request class; the
+relevant card is selected neither by synonyms nor <code>exact</code> phrases,
+but by local BGE-M3 embeddings compared with vectors held in the signed SQLite
+catalog.
+</p>
+
+<p>
+After retrieval, the authenticated principal filters the content.
+Administrative procedures remain deterministic; for informational guides the
+local model composes the answer using only the retrieved card and the admitted
+instance inventory. It receives no tools and crosses the central
+<code>llm</code> slot in the serial class: it can explain, not act. An invalid
+catalog, a weak match, or insufficient context produces an explicit outcome,
+never an invented capability.
+</p>
+
+<div class="callout tip">
+<strong>The essential split.</strong> Deterministic code governs detection,
+identity, audience, integrity, and safety procedures; embeddings and the local
+LLM are used where language variety would make a phrase table brittle.
+</div>
+
 
 <span id="cap5"></span><span id="cap11"></span><span id="cap12"></span>
 <h1 id="s12">12. Safety and reversibility</h1>
@@ -2349,10 +2421,11 @@ half an hour of confusion thirty lines down.
  thing well (read files, send mail, compute a hash, OCR a PDF, discover
  fresh URLs on a site). Every executor takes lists in and returns lists
  out; it has a manifest that describes it, an Ed25519 signature that
- authenticates it, and a sandbox profile that confines it. Shipped,
- synthesised, and imported executors remain distinct by provenance; the
+ authenticates it, and a sandbox profile that confines it. Product membership,
+ origin, and transport remain separate axes. GitHub executors maintained by
+ Metnos are builtin with handcrafted origin, not imports; the
  <a href="executor_catalog.html">generated catalog</a> is the single source
- for the current count and domain breakdown.</dd>
+ for the source-tree domain breakdown.</dd>
 
  <dt>mnest</dt>
  <dd>The <em>thread</em> that links two executors when the planner has
@@ -2592,6 +2665,14 @@ counterpart at
  <td>Two layers of memoization before the planner. <strong>L0 &mdash; fastpath</strong>: the shortcut for the same request, recognised by fingerprint (hash) or semantic proximity (BGE-M3 cosine) and served again with the plan already prepared, concrete arguments included. <strong>L1 &mdash; autopath</strong>: the generalised plan for a cluster of related requests (the skeleton without arguments), promoted from repeated positive feedback and kept in <code>autopath.sqlite</code> (tables <code>autopaths</code>/<code>anti_autopaths</code>). Hybrid argument extractor (rule + memory + optional LLM).</td>
 </tr>
 <tr>
+ <td><a href="tutor.html"><code>Tutor</code></a></td>
+ <td>Local pre-planner guide: compiles admitted manifests, allowlisted public documentation, and curated procedures into a signed BGE-M3 catalog. It answers with no tools, filters audience before the model, separates explanations from actions, and reports gaps. Includes the F2 architecture and F3/F4 roadmap.</td>
+</tr>
+<tr>
+ <td><a href="mail_accounts.html"><code>mail accounts</code></a></td>
+ <td>Configuration of IMAP/SMTP mailboxes, including non-Google providers: encrypted bindings, multiple accounts, env-file compatibility, and the boundary with Gmail-specific features.</td>
+</tr>
+<tr>
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
  <td>Unified system-change lifecycle: one <code>change_intent</code> object, one state machine (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, plus <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), one UI <code>/admin/changes</code>. Funnels the proposal sources (telos, introspective, synt, fast-path, feedback) into one queue. Nightly pipeline: materialization (cross-source fingerprint dedup), per-kind application, observation with a grace window and physical rollback.</td>
 </tr>
@@ -2727,11 +2808,11 @@ The closed vocabulary stands at <strong>26 actions</strong>
 (<code data-vocab="actions">read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share, open, login, act</code>) and
-<strong>24 objects</strong>
+<strong>26 objects</strong>
 (<code data-vocab="objects">files, dirs, packages, messages, events, contacts,
 places, processes, urls, numbers, images, signatures, texts, proposals,
 persons, tasks, inputs, approval, credentials, issues, pulls, calendars,
-entries, sites</code>). Qualifiers come in four
+entries, lists, skills, sites</code>). Qualifiers come in four
 families: format/encoding, modality, safety policy, and provider (for
 specific non-default backends like <code>_google_workspace</code>).
 Centralised in <code>runtime/vocab.py</code>.
@@ -2758,8 +2839,11 @@ filter_lists(op=overlap) &rarr; final_answer</code>.
 </p>
 
 <p>
-The catalog distinguishes shipped, synthesised, and imported executors without
-duplicating a changing count in prose. Five orthogonal producer verbs
+The verified live inventory contains 115 standard, signed executors: 82
+handcrafted executors in the main tree, 16 builtin GitHub executors with
+handcrafted origin, and 17 runtime builtins using in-process transport. The
+Composer sees the same contract for all of them and does not select by
+transport. Five orthogonal producer verbs
 (<code>find</code> for patterns, <code>get</code> for ids/state,
 <code>read</code> for blobs from a source, <code>list</code> for
 containers, <code>filter</code> for reduction).
@@ -2848,7 +2932,17 @@ glossary and design dialogues.
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Component contracts</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Return to the atlas and open the exact implementation contract you need.</div>
   </a>
-  <a href="../Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+  <a href="../domains.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">operational reference</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Domains and examples</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">What you can ask Metnos, domain by domain, with natural phrases ready to adapt.</div>
+  </a>
+  <a href="../interface.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">introductory guide</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">The interface</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The two channels, the Settings sections, and the map of pages with their navigation paths.</div>
+  </a>
+  <a href="../Metnos_QuickTour.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">tour &middot; 10 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Quick Tour</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The fast lap with screenshots: what using it feels like, before studying it.</div>

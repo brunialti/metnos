@@ -10,7 +10,7 @@
     <meta name="robots" content="index, follow">
 
     <meta property="og:type" content="article">
-    <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour_v1">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour">
     <meta property="og:title" content="Metnos — Quick Tour &amp; Survival Kit">
     <meta property="og:description" content="A self-hosted architecture for a governed, extensible agent, explained through nine connected use cases.">
     <meta property="og:locale" content="en_US">
@@ -20,9 +20,9 @@
     <meta name="twitter:title" content="Metnos — Quick Tour &amp; Survival Kit">
     <meta name="twitter:description" content="Metnos in twenty minutes: typed executors, narrow internal agents, remote execution, consent, and explicit limits.">
 
-    <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour_v1">
-    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1">
-    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1">
+    <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour">
 <style>
 /* Skin: identical to the landing (docs/en/index.html) — one cohesive
    stylesheet, no per-chapter decoration. The QuickTour's long-form components
@@ -704,7 +704,7 @@ footer em { color: inherit; }
     <b>installer:</b> included in the repo ·
     <b>license:</b> AGPL-3.0 ·
     <b>code:</b> <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a><span class="pdf-dl"> ·
-    <b>PDF:</b> <a href="Metnos_QuickTour_v1.pdf?v=20260720" type="application/pdf" target="_blank" rel="noopener">printable version</a> (A4, 25 pages)</span>
+    <b>PDF:</b> <a href="Metnos_QuickTour.pdf?v=20260723" type="application/pdf" target="_blank" rel="noopener">A4 typeset edition</a></span>
   </div>
 </div>
 
@@ -715,14 +715,15 @@ footer em { color: inherit; }
     <li><a href="#cap1"><span class="tn">01</span>What Metnos is, in thirty seconds</a></li>
     <li><a href="#cap2"><span class="tn">02</span>Why it's different</a></li>
     <li><a href="#cap3"><span class="tn">03</span>Nine cases, one system</a></li>
-    <li><a href="#cap4"><span class="tn">04</span>Where it lives and how you talk to it</a></li>
-    <li><a href="#cap5"><span class="tn">05</span>What happens when it says “may I?”</a></li>
-    <li><a href="#cap6"><span class="tn">06</span>Its memory</a></li>
-    <li><a href="#cap7"><span class="tn">07</span>How it grows: synt, skills, backends</a></li>
-    <li><a href="#cap8"><span class="tn">08</span>People and devices</a></li>
-    <li><a href="#cap9"><span class="tn">09</span>What the catalog enables, what the core forbids</a></li>
-    <li><a href="#cap10"><span class="tn">10</span>Where the project really stands</a></li>
-    <li><a href="#cap11"><span class="tn">11</span>Minimal glossary &amp; further reading</a></li>
+    <li><a href="#cap4"><span class="tn">04</span>The Tutor: Metnos can explain Metnos</a></li>
+    <li><a href="#cap5"><span class="tn">05</span>Where it lives and how you talk to it</a></li>
+    <li><a href="#cap6"><span class="tn">06</span>What happens when it says “may I?”</a></li>
+    <li><a href="#cap7"><span class="tn">07</span>Its memory</a></li>
+    <li><a href="#cap8"><span class="tn">08</span>How it grows: synt, skills, backends</a></li>
+    <li><a href="#cap9"><span class="tn">09</span>People and devices</a></li>
+    <li><a href="#cap10"><span class="tn">10</span>What the catalog enables, what the core forbids</a></li>
+    <li><a href="#cap11"><span class="tn">11</span>Where the project really stands</a></li>
+    <li><a href="#cap12"><span class="tn">12</span>Minimal glossary &amp; further reading</a></li>
 </ol>
 </nav>
 
@@ -1280,28 +1281,34 @@ artifacts instead of exposing the archiver's technical table.
 
 <!-- SCENE 6 -->
 <div class="scene">
-<div class="group-title">Scene 6 · synt on the fly</div>
-<h3>“Compress this file” — and the tool doesn't exist yet</h3>
-<p class="q">Compress /tmp/cfg.json to gzip.</p>
-<p>The planner inspects the catalog: no fitting executor, and no chain of existing
-ones closes the gap. Synthesis kicks in — five small stages instead of one monster
-prompt, each stage seeing only the slice of context it needs:</p>
+<div class="group-title">Scene 6 · ask before acting</div>
+<h3>“Can you read and write Excel files?” — the system explains itself</h3>
+<p class="q">Can you read and write Excel files? What are the limits?</p>
+<p>This is not an operation: it is a question about Metnos. The Tutor keeps it away
+from the planner, compares it with the signed catalog and admitted local
+documentation, then composes an answer in the current language. It runs no executor
+and opens no file.</p>
 <div class="pipe">
-  1 name <span class="a">→</span> 2 args schema <span class="a">→</span> 3 birth tests <span class="a">→</span> 4 description <span class="a">→</span> 5 code <span class="a">→</span> <span class="note">sandbox tests · human approval · Ed25519 signature</span> <span class="a">→</span> compress_files_gz
+  question <span class="a">→</span> local embedding <span class="a">→</span>
+  admitted manifests + documentation <span class="a">→</span>
+  role filter <span class="a">→</span> grounded answer
 </div>
 <div class="reply">
-I'm building a new component to extend my capabilities. The first time takes two or
-three minutes; every reuse is instant. […] Done:
-<code>cfg.json.gz</code> created.
+Yes. The installed catalog separates reading <code>.xlsx</code> workbooks from
+creating or writing spreadsheets. You can select the sheet to read; for output you
+can provide columns and rows produced by an earlier step. This answer describes the
+available capabilities: I have not opened or changed any file.
 </div>
 <div class="meta">
-  <b>synthesis</b> performed by the local tier within explicit limits ·
-  <b>name</b> conforming to the closed vocabulary: verb_object_qualifier ·
-  <b>reuse</b> from the next time on, &lt;100 ms: a plain function call
+  <b>sources</b> descriptions of executors actually admitted ·
+  <b>languages</b> IT/EN sources, cross-language retrieval, current-chat response ·
+  <b>authority</b> no tools and no execution capability
 </div>
-<p class="small">The catalog grows one capability at a time, motivated by a concrete
-request. Its current count lives in the generated catalog; the full mechanism is in
-chapter 7.</p>
+<div class="truth">
+“Read all my Excel sheets” is not a Tutor question: it goes to the normal operational
+engine and its controls. The boundary prevents an explanation from becoming an
+action by mistake. The next chapter shows the complete design.
+</div>
 </div>
 
 <!-- SCENE 7 -->
@@ -1460,7 +1467,92 @@ on, run somewhere else, or stay on the server.
 
 <!-- ================= CH 4 ================= -->
 <section class="cap" id="cap4">
-<h2>4 · Where it lives and how you talk to it</h2>
+<h2>4 · The Tutor: Metnos can explain Metnos</h2>
+
+<p class="lead">A governed system is useful only if its user can ask what it can
+do, why it stopped, and how to use a feature. The <strong>Tutor</strong> makes
+capabilities and procedures understandable without turning the manual into another
+all-powerful agent.</p>
+
+<h3>Compiled knowledge, not an answer from memory</h3>
+<p>The Tutor indexes multilingual descriptions from manifests actually admitted by
+the loader, a closed set of explicitly listed public documentation, and a few
+high-authority curated procedures. Sources, vectors, and metadata live in one signed
+SQLite catalog replaced atomically. It does not scan Documents, mail, calendars,
+logs, ADRs, or conversations.</p>
+
+<div class="pipe">
+  admitted local sources <span class="a">→</span> typed units
+  <span class="a">→</span> local BGE-M3 <span class="a">→</span>
+  signed catalog <span class="a">→</span> answer with no tools
+</div>
+
+<div class="can-cant">
+  <div class="card can">
+    <h3>Three questions it answers today</h3>
+    <p class="q">How do I read every mailbox without naming them one by one?</p>
+    <p>It retrieves the current <code>read_messages</code> description and explains
+    <code>account="all"</code>.</p>
+    <p class="q">Device pairing: I would like to understand how it works.</p>
+    <p>It uses the administrative guide only when the authenticated principal is
+    authorized; restricted text never reaches the model for other users.</p>
+    <p class="q">read_messages?</p>
+    <p>Even a terse form can be understood semantically, without placing that phrase
+    in a table.</p>
+  </div>
+  <div class="card cant">
+    <h3>Three things it does not do</h3>
+    <p><strong>It does not execute.</strong> “Read all my mail” continues through the
+    normal engine.</p>
+    <p><strong>It does not fill gaps.</strong> If sources are insufficient, it reports
+    the gap.</p>
+    <p><strong>It does not confuse roles.</strong> Audience and identity come from the
+    authenticated channel, never from words in the question.</p>
+  </div>
+</div>
+
+<h3>A new language does not require a third manual</h3>
+<p>Documentation remains Italian and English. A French, German, or Spanish question
+is compared by the multilingual embedding model with the best available source,
+usually English; the local model then answers in the current language. Fallback is
+per concept, so a partial translation cannot hide the rest of the catalog.</p>
+
+<div class="tutor-exclude">
+<h3>In evolution: live state and learning from gaps</h3>
+<div class="callout"><strong>F3/F4 roadmap — this is not released behavior
+yet.</strong> Later phases add typed observations and a local maintenance loop; they
+do not give tools to the Tutor and do not train the model on user data.</div>
+
+<p><strong>F3, live state.</strong> Questions such as “Why did the 7 a.m. task not
+run?” or “Is the study laptop available for this operation?” will be able to attach
+bounded capsules from tasks, services, and owned devices. Every observation will
+have a TTL, owner, partial status, and source; no probe will be freely selected by
+the model.</p>
+
+<p><strong>F4, intelligent maintenance.</strong> Difficult examples such as “Can I
+run the digest only when the laptop comes back online?”, “How do I connect a mailbox
+from a provider the manual does not name?”, and “Why do two pairing explanations
+have different depth?” will not become three rigid cards. Recurrent gaps will be
+redacted, clustered locally, and classified as a missing source, stale source,
+conflict, or composition problem. F4 will prepare a verifiable proposal;
+administrative and safety content will still require human review.</p>
+
+<div class="pipe">
+  honest gap <span class="a">→</span> local redacted clustering
+  <span class="a">→</span> knowledge-debt map
+  <span class="a">→</span> proposal <span class="a">→</span>
+  replay against past questions <span class="a">→</span> signed catalog or rollback
+</div>
+
+<div class="truth">The Tutor matters precisely because it is not a RAG demo: it
+explains only the admitted system, knows when it does not know, and in later phases
+will learn where knowledge is missing without gaining operational authority.</div>
+</div>
+</section>
+
+<!-- ================= CH 5 ================= -->
+<section class="cap" id="cap5">
+<h2>5 · Where it lives and how you talk to it</h2>
 
 <p class="lead">
 Metnos runs on a Linux machine of yours. <strong>The LLM tiers are abstract
@@ -1497,9 +1589,9 @@ translation is reviewed and promoted by hand). Honesty: beyond IT and EN, today,
 it's untested ground. See <a href="architecture/multilang.html">multilang</a>.</p>
 </section>
 
-<!-- ================= CH 5 ================= -->
-<section class="cap" id="cap5">
-<h2>5 · What happens when it says “may I?”</h2>
+<!-- ================= CH 6 ================= -->
+<section class="cap" id="cap6">
+<h2>6 · What happens when it says “may I?”</h2>
 
 <p class="lead">
 This is the most important piece of the experience. Every action that changes the
@@ -1540,9 +1632,9 @@ itself, to the vaglio or to the runtime — and every proposal goes through your
 </div>
 </section>
 
-<!-- ================= CH 6 ================= -->
-<section class="cap" id="cap6">
-<h2>6 · Its memory: what it remembers and what it doesn't</h2>
+<!-- ================= CH 7 ================= -->
+<section class="cap" id="cap7">
+<h2>7 · Its memory: what it remembers and what it doesn't</h2>
 
 <p class="lead">
 Four distinct stores, with different lifetimes and write rules — SQLite tables and
@@ -1568,9 +1660,9 @@ same shape next time. See <a href="architecture/mnestome.html">mnestome</a> and
 <a href="architecture/scratchpad.html">scratchpad</a>.</p>
 </section>
 
-<!-- ================= CH 7 ================= -->
-<section class="cap" id="cap7">
-<h2>7 · How it grows: synt, skills, backends</h2>
+<!-- ================= CH 8 ================= -->
+<section class="cap" id="cap8">
+<h2>8 · How it grows: synt, skills, backends</h2>
 
 <p class="lead">
 An executor is a small Python file that does one thing, with a manifest declaring its
@@ -1630,9 +1722,9 @@ Metnos stays out of the system until you switch it back on.
 </div>
 </section>
 
-<!-- ================= CH 8 ================= -->
-<section class="cap" id="cap8">
-<h2>8 · People and devices: host, guests, remote executors</h2>
+<!-- ================= CH 9 ================= -->
+<section class="cap" id="cap9">
+<h2>9 · People and devices: host, guests, remote executors</h2>
 
 <p class="lead">
 Metnos is not multi-tenant in the SaaS sense: it is one household. Inside it there is
@@ -1668,9 +1760,9 @@ server-to-device boundary. Detail:
 </div>
 </section>
 
-<!-- ================= CH 9 ================= -->
-<section class="cap" id="cap9">
-<h2>9 · What the catalog enables, what the core forbids</h2>
+<!-- ================= CH 10 ================= -->
+<section class="cap" id="cap10">
+<h2>10 · What the catalog enables, what the core forbids</h2>
 
 <div class="can-cant">
 <div class="card yes">
@@ -1718,9 +1810,9 @@ partial. Never a “done” that doesn't match reality.
 </p>
 </section>
 
-<!-- ================= CH 10 ================= -->
-<section class="cap" id="cap10">
-<h2>10 · Operational status</h2>
+<!-- ================= CH 11 ================= -->
+<section class="cap" id="cap11">
+<h2>11 · Operational status</h2>
 
 <p class="lead">
 Metnos is an installable and operational pre-1.0 system, not a polished product.
@@ -1731,7 +1823,7 @@ internal choices. The generated catalog and the tests are the sources of current
 <table>
 <thead><tr><th style="width:30%">Area</th><th>Operational status</th></tr></thead>
 <tbody>
-<tr><td><strong>Capabilities</strong></td><td>Mail, files, photos, web, Workspace, tasks and remote devices are exposed as executors with declared contracts. The <a href="architecture/executor_catalog.html">generated catalog</a> is the sole source for names and counts.</td></tr>
+<tr><td><strong>Capabilities</strong></td><td>Mail, files, photos, web, Workspace, tasks, and remote devices are exposed as executors with declared contracts. The <a href="domains.html">domain reference</a> explains what to ask through natural examples; the <a href="architecture/executor_catalog.html">generated catalog</a> remains the technical source for names and counts.</td></tr>
 <tr><td><strong>Installer</strong></td><td>Included. The <em>managed</em> path prepares services, i18n data and signed executors, profiles the hardware and finishes with an application turn. The <em>custom</em> path connects endpoints already managed by the operator.</td></tr>
 <tr><td><strong>Public repository</strong></td><td>A deterministic export of the components required for installation and operation, checked before publication.</td></tr>
 <tr><td><strong>Maturity</strong></td><td>Pre-1.0: external interfaces and persistent data require care during upgrades. Partial failures, unavailable dependencies and unsupported capabilities must be stated, never hidden.</td></tr>
@@ -1762,9 +1854,9 @@ from the server</strong>.
 If that combination intrigues you, you are the right audience.</p>
 </section>
 
-<!-- ================= CH 11 ================= -->
-<section class="cap" id="cap11">
-<h2>11 · Minimal glossary &amp; further reading</h2>
+<!-- ================= CH 12 ================= -->
+<section class="cap" id="cap12">
+<h2>12 · Minimal glossary &amp; further reading</h2>
 
 <dl class="gloss">
 <dt>Executor</dt>
@@ -1811,6 +1903,13 @@ recurrence; it can grant revocable territories.</dd>
 <div class="further-reading">
 <h3>Keep reading</h3>
 <div class="toc">
+  <div class="toc-item">
+    <div>
+      <a class="t" href="domains.html" data-url="metnos.com/en/domains">Domain reference</a>
+      <span class="d">Every operational domain, its boundaries, and example phrases ready to use in chat.</span>
+    </div>
+    <span class="time">Reference · 15 min</span>
+  </div>
   <div class="toc-item">
     <div>
       <a class="t" href="architecture/index.html" data-url="metnos.com/en/architecture/">Architecture handbook</a>

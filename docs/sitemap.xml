@@ -59,20 +59,58 @@
   </url>
 
   <url>
-    <loc>https://metnos.com/en/Metnos_QuickTour_v1</loc>
-    <lastmod>2026-06-09</lastmod>
+    <loc>https://metnos.com/en/Metnos_QuickTour</loc>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour"/>
   </url>
   <url>
-    <loc>https://metnos.com/it/Metnos_QuickTour_v1</loc>
-    <lastmod>2026-06-09</lastmod>
+    <loc>https://metnos.com/it/Metnos_QuickTour</loc>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
-    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour_v1"/>
-    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour_v1"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/domains</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/domains"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/domains"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/domains"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/domains</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/domains"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/domains"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/domains"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/interface</loc>
+    <lastmod>2026-07-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/interface"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/interface"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/interface</loc>
+    <lastmod>2026-07-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/interface"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/interface"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/interface"/>
   </url>
 
   <url>
@@ -577,6 +615,23 @@
     <priority>0.55</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/observability"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/observability"/>
+  </url>
+
+  <url>
+    <loc>https://metnos.com/en/architecture/mail_accounts</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/mail_accounts</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts"/>
   </url>
 
   <!-- Note dell'autore -->

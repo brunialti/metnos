@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manuale di architettura Metnos — dal sistema ai componenti</title>
     <meta name="description" content="Manuale visuale e tutoriale dell'architettura completa di Metnos: principi, flusso delle richieste, executor, autorità, sicurezza, memoria, sintesi, canali e contratti canonici dei componenti.">
-    <meta name="keywords" content="Metnos, architettura, executor, executor remoti, dispositivi, placement, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, pianificatore locale, Mētis, mnestoma, fast-path, SigLIP, ArcFace, EXIF, Telegram, self-hosted, assistente AI personale">
+    <meta name="keywords" content="Metnos, architettura, agenti governati, executor, executor remoti, dispositivi, placement, vocabolario chiuso, synt, sintesi executor, vaglio, sandbox, GBNF, grammar, routing deterministico, tier LLM, ReAct, pianificatore locale, Mētis, mnestoma, fast-path, self-hosted">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/it/architecture/">
@@ -661,7 +661,7 @@ attive cambia il dominio operativo, senza cambiare l'architettura che lo governa
 <thead><tr><th style="width:26%">Voce</th><th>Stato reale</th></tr></thead>
 <tbody>
 <tr><td><strong>Forma</strong></td><td>Processo Python &ge; 3.11, microarchitettura a executor; runtime ReAct con pianificazione one-shot (motore M&emacr;tis, cap. 5).</td></tr>
-<tr><td><strong>Strumenti</strong></td><td>Executor firmati nel catalogo, pi&ugrave; quelli <em>sintetizzati al volo</em> e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori. Nomi e conteggio correnti sono nel <a href="executor_catalog.html">catalogo generato</a>.</td></tr>
+<tr><td><strong>Strumenti</strong></td><td>Executor firmati nel catalogo, pi&ugrave; quelli <em>sintetizzati al volo</em> e quelli importati dietro gate (cap. 7). Tutti vettoriali: lista dentro, lista fuori. La <a href="../domains.html">reference dei domini</a> offre la vista utente; nomi e conteggio correnti sono nel <a href="executor_catalog.html">catalogo generato</a>.</td></tr>
 <tr><td><strong>Cervello</strong></td><td>Endpoint LLM compatibili, locali o remoti; quattro tier astratti <code>fast / middle / wise / frontier</code> (cap. 8). Frontier = cloud facoltativo.</td></tr>
 <tr><td><strong>Canali</strong></td><td>Telegram (long-poll in uscita, niente porte aperte) + web su porta 8770 (chat e cruscotto admin), cap. 11.</td></tr>
 <tr><td><strong>Dispositivi</strong></td><td>Una parte controllata del catalogo pu&ograve; girare su PC registrati nella stessa rete tramite <code>metnos-client</code>: il server resta il punto di policy, scelta, firma e audit; il device esegue solo executor dichiarati compatibili. Dettaglio: <a href="remote_executors.html">executor remoti</a>.</td></tr>
@@ -1536,6 +1536,54 @@ it = "SCOPO: cerca file per pattern in directory.
 <figcaption>Figura 8 &mdash; Un solo manifest, quattro consumatori: prefilter, pool del pianificatore, grammatica e undo leggono campi diversi dello stesso TOML. Il digest lega il manifest al codice firmato.</figcaption>
 </figure>
 
+<h2>Una sola politica di esecuzione</h2>
+
+<p>
+Ogni chiamata a un executor, locale o remota, attraversa lo stesso motore di
+esecuzione. In un punto solo il runtime applica metriche, retropressione,
+limiti per risorsa e un tetto derivato dall'hardware. Il comportamento
+predefinito resta intenzionalmente seriale e il pool trasversale e' spento:
+adottare l'infrastruttura non cambia l'ordine, gli input, gli output o le
+capacita' degli executor esistenti.
+</p>
+
+<pre><code>[execution]
+effect = "unknown"
+parallelism_class = 0
+resource_class = "default"
+concurrency_key = "none"
+equivalence_gate = "unverified"</code></pre>
+
+<table class="compare">
+<thead><tr><th>Classe</th><th>Budget richiesto</th><th>Ammissione</th></tr></thead>
+<tbody>
+<tr><td><strong>0</strong></td><td>Nessun thread trasversale.</td><td>Predefinita per tutti gli executor esistenti e generati.</td></tr>
+<tr><td><strong>1</strong></td><td>Concorrenza moderata.</td><td rowspan="3">Solo dopo equivalenza verificata; sempre entro i limiti del motore e dell'hardware.</td></tr>
+<tr><td><strong>2</strong></td><td>Concorrenza alta.</td></tr>
+<tr><td><strong>3</strong></td><td>Massimo controllato.</td></tr>
+</tbody>
+</table>
+
+<p>
+La classe misura soltanto un budget: <strong>non concede autorita' e non
+significa sola lettura</strong>. Un futuro executor che crea o modifica oggetti
+puo' essere concorrente, ma deve dichiarare una chiave d'isolamento, fornire
+l'identita' della risorsa e superare prove di equivalenza, collisione,
+idempotenza e postcondizione. Se manca una di queste evidenze, il loader lo
+riporta alla classe 0.
+</p>
+
+<p>
+Anche i tre percorsi che generano executor &mdash; proposta Synt, sintesi
+reattiva e generazione da skill &mdash; consumano un unico contratto centrale.
+Il modello locale puo' progettare un'implementazione ricca, ma non puo'
+riscrivere identita', ciclo di vita, I/O o politica iniziale. Se parallelizza
+elementi indipendenti, il numero di worker arriva dal motore e i risultati
+devono tornare nell'ordine di ingresso.
+</p>
+
+<div class="checkpoint"><strong>Regola di conservazione.</strong> Un executor resta seriale finche' non dichiara esplicitamente di essere parallelizzabile e non supera la prova di equivalenza. Cambiare la politica centrale propaga limiti e osservabilita' a tutti; non promuove implicitamente nessun executor.</div>
+
 <h2>Autorit&agrave; remota: dichiarata una volta, consumata tre volte</h2>
 
 <p>
@@ -2217,6 +2265,34 @@ altri non tocca il nucleo.
 </tbody>
 </table>
 
+<h2>Il Tutor: spiegare senza eseguire</h2>
+
+<p>
+Le domande esplicite su come usare Metnos vengono intercettate allo stesso
+confine HTTP/Telegram, prima del pianificatore e senza consumare un dialogo
+pendente. Un rilevatore prudente riconosce soltanto la classe di richiesta;
+la scheda pertinente non &egrave; scelta da sinonimi o frasi <code>exact</code>, ma
+da embedding BGE-M3 locali confrontati con vettori conservati nel catalogo
+SQLite firmato.
+</p>
+
+<p>
+Dopo il recupero, il principal autenticato filtra il contenuto. Le procedure
+amministrative restano deterministiche; per le guide informative il modello
+locale formula la risposta usando soltanto la scheda recuperata e l'inventario
+ammesso dell'istanza. Non riceve strumenti e attraversa lo slot centrale
+<code>llm</code> in classe seriale: pu&ograve; spiegare, non agire. Catalogo non
+valido, match debole o contesto insufficiente producono un esito dichiarato,
+mai una capacit&agrave; inventata.
+</p>
+
+<div class="callout tip">
+<strong>Separazione essenziale.</strong> Il codice deterministico governa
+rilevamento, identit&agrave;, audience, integrit&agrave; e procedure di sicurezza;
+embedding e LLM locale servono dove la variet&agrave; del linguaggio rende fragile
+una tabella di frasi.
+</div>
+
 
 <span id="cap5"></span><span id="cap11"></span><span id="cap12"></span>
 <h1 id="s12">12. Sicurezza e reversibilit&agrave;</h1>
@@ -2356,9 +2432,10 @@ mezz&rsquo;ora di confusione fra trenta righe.
  tradurre un OCR, scoprire URL nuovi su un sito). Ogni executor accetta liste
  in ingresso e produce liste in uscita; ha un manifest che lo descrive, una
  firma Ed25519 che lo autentica e un profilo di sandbox che lo confina. Gli
- executor distribuiti, sintetizzati e importati restano distinti per
- provenienza; il <a href="executor_catalog.html">catalogo generato</a> &egrave;
- la fonte unica per il conteggio corrente e la suddivisione per dominio.</dd>
+ appartenenza al prodotto, origine e trasporto restano assi distinti. Gli
+ executor GitHub mantenuti da Metnos sono builtin di origine handcrafted, non
+ importati; il <a href="executor_catalog.html">catalogo generato</a> &egrave;
+ la fonte unica per la suddivisione del tree sorgente.</dd>
 
  <dt>mnest</dt>
  <dd>Il <em>filo</em> che collega due executor quando sono stati attivati
@@ -2623,6 +2700,14 @@ controparte inglese in
  <td>Due livelli di memoizzazione prima del pianificatore. <strong>L0 &mdash; fastpath</strong>: la scorciatoia della stessa richiesta, riconosciuta per impronta (hash) o per vicinanza semantica (coseno BGE-M3) e riservita con il piano gi&agrave; pronto, argomenti concreti compresi. <strong>L1 &mdash; autopath</strong>: il piano generalizzato di un cluster di richieste affini (lo scheletro senza argomenti), promosso dai riscontri positivi ripetuti e custodito in <code>autopath.sqlite</code> (tabelle <code>autopaths</code>/<code>anti_autopaths</code>). Estrattore di argomenti ibrido (regola + memoria + LLM opzionale).</td>
 </tr>
 <tr>
+ <td><a href="tutor.html"><code>Tutor</code></a></td>
+ <td>Guida locale pre-planner: compila manifest ammessi, documentazione pubblica allowlist e procedure curate in un catalogo BGE-M3 firmato. Risponde senza strumenti, filtra l'audience prima del modello, distingue spiegazioni da azioni e dichiara le lacune. Include architettura F2 e roadmap F3/F4.</td>
+</tr>
+<tr>
+ <td><a href="mail_accounts.html"><code>account mail</code></a></td>
+ <td>Configurazione di mailbox IMAP/SMTP, anche non Google: binding cifrati, account multipli, compatibilit&agrave; con i file env e confine con le funzioni specifiche di Gmail.</td>
+</tr>
+<tr>
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
  <td>Lifecycle unificato dei cambiamenti al sistema: un solo oggetto <code>change_intent</code>, una sola macchina a stati (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, pi&ugrave; <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), una sola UI <code>/admin/changes</code>. Convoglia le sorgenti di proposta (telos, introvertiva, synt, fast-path, feedback) in un&rsquo;unica coda. Pipeline notturna: materializzazione (dedup fra sorgenti via fingerprint), applicazione per tipo, osservazione con periodo di grazia e rollback fisico.</td>
 </tr>
@@ -2758,11 +2843,11 @@ Il vocabolario chiuso conta <strong>26 azioni</strong>
 (<code data-vocab="actions">read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share, open, login, act</code>) e
-<strong>24 oggetti</strong>
+<strong>26 oggetti</strong>
 (<code data-vocab="objects">files, dirs, packages, messages, events, contacts,
 places, processes, urls, numbers, images, signatures, texts, proposals,
 persons, tasks, inputs, approval, credentials, issues, pulls, calendars,
-entries, sites</code>). I qualifier sono divisi in
+entries, lists, skills, sites</code>). I qualifier sono divisi in
 quattro famiglie: formato (codifica del dato), modalit&agrave; (come
 agisce l&rsquo;executor), criterio di sicurezza, provider (per indicare
 un backend diverso da quello predefinito, ad esempio
@@ -2791,8 +2876,10 @@ sei passi: <code>read_events</code> &rarr; due <code>filter_entries</code>
 </p>
 
 <p>
-Il catalogo distingue executor distribuiti, sintetizzati e importati senza
-duplicare nella prosa un conteggio destinato a cambiare. I verbi produttori
+L'inventario live verificato comprende 115 executor standard e firmati: 82
+handcrafted nel tree principale, 16 builtin GitHub di origine handcrafted e 17
+builtin runtime con trasporto in-process. Il Composer usa lo stesso contratto
+per tutti e non sceglie in base al trasporto. I verbi produttori
 ortogonali sono cinque
 (<code>find</code> per pattern, <code>get</code> per id/stato,
 <code>read</code> per blob da sorgente, <code>list</code> per container,
@@ -2884,7 +2971,17 @@ proseguite con il tour, il glossario e i dialoghi di progetto.
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Contratti dei componenti</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Torna all'atlante e apri il contratto implementativo esatto che ti serve.</div>
   </a>
-  <a href="../Metnos_QuickTour_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+  <a href="../domains.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">reference operativa</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Domini ed esempi</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Che cosa puoi chiedere a Metnos, dominio per dominio, con frasi naturali pronte da adattare.</div>
+  </a>
+  <a href="../interface.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">guida introduttiva</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">L'interfaccia</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">I due canali, le sezioni di Settings e la mappa delle pagine con il loro percorso.</div>
+  </a>
+  <a href="../Metnos_QuickTour.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">tour &middot; 10 min</span>
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Quick Tour</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il giro veloce con le schermate: cosa si prova a usarlo, prima di studiarlo.</div>
