@@ -511,6 +511,18 @@ da una fonte firmata. Dopo conferma:
 `dialog_pending` è riusabile estendendo in modo chiuso `on_complete` con
 `tutor_handoff`; non va creato un secondo store di conferme.
 
+**Scelta scoperta in implementazione (25/7, DA RATIFICARE).** Nel caso MIXED
+la «query canonica letterale» è ambigua: (a) l'intera query utente con
+bypass del boundary Tutor al consume — semplice, ma la clausola interrogativa
+rientra nel planner e produce rumore; (b) la sola CLAUSOLA D'AZIONE
+letterale, segmentata al momento della creazione del pending dall'intent
+extractor del motore (riuso, nessuna nuova logica NL; se la segmentazione è
+ambigua si ricade nell'attuale chiarimento) — fedele allo spirito «letterale,
+mai generato» e pulita per il planner; (c) una richiesta-esempio attestata
+dalla fonte — ma è testo non dell'utente e §6.3 lo vieta per il pending.
+RACCOMANDATA: (b) con ripiego (a-mai, chiarimento-sì). Fino alla ratifica il
+comportamento MIXED resta l'attuale chiarimento.
+
 ### 6.4 Gate F3
 
 - isolamento cross-user e cross-conversation;
