@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "elapsed_ms": 14056,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "admin-user-preferences",
+      "group": "admin_ui",
+      "query": "Dove imposto lingua, stile di risposta e comportamento del browser per un singolo utente?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": false,
+      "failures": [
+        "route assente: /admin/users",
+        "concetto assente: dettaglio",
+        "concetto assente: salva"
+      ],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Imposta la lingua, lo stile di risposta e il comportamento del browser per il mio account»\n\nLe impostazioni richieste non sono configurabili tramite una singola pagina di \"Preferenze Utente\" generica, ma sono gestite attraverso parametri specifici dell'esecuzione (`runtime`) e attraverso la struttura amministrativa dell'interfaccia. Ecco come si articolano le tre aree richieste secondo il contesto disponibile:\n\n### 1. Lingua del turno e del contesto\nLa lingua non è una costante globale fissa, ma un dato dinamico legato al contesto di esecuzione:\n*   **Lingua del turno:** È determinata dal parametro `_lang` dell'executor `open_sites`. Questo valore viene risolto a **runtime** in base al locale o alla timezone del contesto del browser dell'utente.\n*   **Lingua di risposta:** Il modello di embedding è multilingue e il compositore risponde nella lingua corrente della conversazione. Se la fonte è in inglese ma l'utente scrive in italiano, la risposta sarà in italiano. Il fallback per le traduzioni mancanti segue l'ordine: lingua richiesta -> inglese -> altra traduzione disponibile.\n*   **Nota:** Le etichette dell'interfaccia amministrativa (Settings) rimangono in italiano indipendentemente dalla lingua della conversazione.\n\n### 2. Comportamento del browser\nIl comportamento del browser per l'executor `open_sites` è controllato dal parametro `_browser_mode`, anch'esso risolto a **runtime**.\n*   **Valori ammessi:** `headless` o `side`.\n*   **Configurazione:** La scelta della superficie browser (headless o side) avviene nelle **preferenze Website browsing**.\n\n### 3. Stile di risposta\nLo stile di risposta, in particolare per le descrizioni o gli elenchi, può essere influenzato dal contesto fornito agli executor:\n*   Per l'executor `describe_entries`, è possibile specificare un parametro `context` di tipo stringa.\n*   Quando si utilizza `style='by_relevance'`, la richiesta originale dell'utente viene usata come metro di pertinenza per determinare lo stile e la rilevanza della risposta.\n\n### Dove trovare le impostazioni amministrative\nPer gestire le configurazioni generali e le preferenze (come quelle relative al browsing o alle impostazioni amministrative), devi accedere alla sezione **Settings** dell'interfaccia web:\n*   **Percorso:** Si apre dalla chat web e si dirama in quattro sezioni.\n*   **Navigazione:** Ogni pagina si raggiunge seguendo il percorso «Settings > Sezione > Pagina».\n*   **Indirizzo:** Le pagine rispondono a indirizzi che iniziano per `/admin`.\n*   **Lingua UI:** L'ossatura di Settings è resa in italiano anche se la conversazione è in un'altra lingua.\n\nIl contesto non specifica un singolo pannello \"Preferenze Utente\" che raggruppi tutti e tre i parametri in una sola schermata; la lingua e il browser sono gestiti a livello di runtime/executor, mentre lo stile è legato al contesto della richiesta.",
+      "source_ids": [
+        "knowledge:executor-open_sites-arg-f7f75c1b1570-it-01",
+        "knowledge:executor-open_sites-arg-71cb5b5f7106-it-01",
+        "knowledge:doc-public-tutor-45dbbd53facd-it-0010",
+        "knowledge:doc-public-metnos-quicktour-db8f74de6037-it-0036",
+        "knowledge:doc-public-metnos-quicktour-db8f74de6037-it-0040",
+        "knowledge:executor-describe_entries-arg-ea7792a26f40-it-01",
+        "knowledge:doc-public-multilang-184ed87d1720-it-0020",
+        "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0026",
+        "knowledge:doc-public-interface-f59fce699c83-it-0003"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 14055
+    }
+  ]
+}

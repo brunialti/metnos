@@ -586,34 +586,37 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
     try:
         from .catalog import load_cards
         cards = load_cards()
+        # Le due formulazioni della domanda — quella corrente e quella LETTA
+        # NEL SUO CONTESTO — entrano nella STESSA classifica, dove ogni fonte
+        # prende il massimo fra i due punteggi. Una domanda indipendente
+        # conserva cosi' la propria fonte migliore, e un follow-up ellittico
+        # ottiene anche la fonte che risponde alla domanda risolta, senza
+        # scegliere in blocco fra due classifiche costruite su testi di
+        # lunghezza diversa (vedi tutor.semantic.retrieve_sources).
+        #
+        # La seconda formulazione e' la CONGIUNZIONE della domanda precedente
+        # con quella corrente, non la domanda precedente da sola: quest'ultima
+        # non e' una domanda che l'utente ha fatto, e da sola riporta la
+        # classifica sull'argomento del turno prima. Misurato sui dodici
+        # scambi del corpus: la congiunzione migliora il rango della superficie
+        # attesa in undici casi su dodici e ne porta in selezione due che con
+        # la precedente nuda restavano fuori (RM-0003 §9-quinquies). La
+        # risposta precedente resta fuori dalla sonda — renderebbe il vettore
+        # quasi-duplicato delle proprie fonti (vedi
+        # tutor.conversation.recent_question) — e vive nel contesto del
+        # composer, dove serve a risolvere il riferimento.
+        previous_question = _previous_question(request)
+        conversation_context_used = bool(previous_question)
         context = retrieve_sources(
             request.query_redacted,
             lang,
             request.principal.audience,
             cards=cards,
+            companion_query=(
+                f"{previous_question} {request.query_redacted}".strip()
+                if previous_question else ""
+            ),
         )
-        conversation_context_used = False
-        previous_question = _previous_question(request)
-        if previous_question:
-            contextual = retrieve_sources(
-                f"{request.query_redacted}\n\n{previous_question}",
-                lang,
-                request.principal.audience,
-                cards=cards,
-            )
-            # Semantic evidence decides whether the previous exchange helps.
-            # Independent questions retain their stronger current-turn match;
-            # elliptical follow-ups inherit context only when it materially
-            # improves retrieval.  No topic or phrase is encoded here.
-            # The probe carries the previous QUESTION only: adding the previous
-            # ANSWER made the vector a near-duplicate of that answer's own
-            # sources, so the gain test was self-fulfilling for every
-            # follow-up (see tutor.conversation.recent_question).
-            if (contextual is not None and (
-                    context is None
-                    or contextual.top_score >= context.top_score + 0.02)):
-                context = contextual
-                conversation_context_used = True
     except Exception:
         log.warning("tutor catalog unavailable", exc_info=True)
         return TutorAnswer(

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 2,
+  "executed": 2,
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "elapsed_ms": 30930,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "conversation-runs-to-timers#1",
+      "group": "conversation",
+      "query": "Dove vedo le esecuzioni dei task pianificati?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Mostrami gli ultimi esiti del task Backup foto e gli eventuali errori.»\n\nPer visualizzare le esecuzioni dei task pianificati, devi accedere alla pagina **Settings > Attività > Scheduler** (route `/admin/runs`) all'interno della chat web di Metnos. Questa interfaccia mostra in modo chiaro:\n*   L'identificativo della esecuzione (run).\n*   Il nome del task.\n*   L'orario di inizio e fine.\n*   L'esito (avvenuto con successo o meno).\n*   La durata dell'esecuzione.\n\nDa questa pagina è inoltre possibile accedere al collegamento a **Timer**, dove è possibile configurare i task.\n\nOltre alla visualizzazione diretta nella UI, Metnos offre la possibilità di gestire e interrogare le attività programmate tramite linguaggio naturale. Puoi:\n*   **Elencare** i task schedulati visibili all'attore.\n*   **Creare** un task schedulato o ricorrente (specificando etichette, orari o numero di esecuzioni).\n*   **Leggere** il dettaglio di un task schedulato noto o il suo storico limitato di esecuzioni.\n*   **Aggiornare** lo stato o il controllo di accensione di un task schedulato.\n*   **Eliminare** task schedulati identificati per ID o nome.\n\nLe attività programmate includono task ricorrenti, promemoria e schedulazioni; non sono appuntamenti di calendario, ma esecuzioni di richieste a orari o trigger specifici.",
+      "source_ids": [
+        "knowledge:runtime-ui-runs-it",
+        "knowledge:executor-read_tasks_history-it",
+        "knowledge:executor-read_tasks-it",
+        "knowledge:executor-list_tasks-it",
+        "knowledge:doc-public-domains-a05187101c19-it-0015",
+        "knowledge:executor-create_tasks-it",
+        "knowledge:doc-public-tutor-45dbbd53facd-it-0014",
+        "knowledge:doc-public-index-42cffbc24a34-it-0022",
+        "knowledge:executor-set_tasks-it",
+        "knowledge:executor-delete_tasks-it",
+        "knowledge:executor-read_tasks-arg-82a3537ff0db-it-01",
+        "knowledge:doc-public-intelligent-executors-fe5209fb2666-it-0001",
+        "knowledge:doc-public-interface-f59fce699c83-it-0005",
+        "knowledge:executor-create_tasks-arg-2bf61a3bc850-it-01",
+        "knowledge:executor-create_tasks-arg-1aca80e8b55c-it-01"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 1,
+      "repair_missing": [
+        "state the tool purpose: Elenca i task schedulati visibili all'attore",
+        "state the tool purpose: Crea un task schedulato o ricorrente",
+        "state the tool purpose: Aggiorna stato o fire controllato di un task schedulato"
+      ],
+      "elapsed_ms": 19360
+    },
+    {
+      "id": "conversation-runs-to-timers#2",
+      "group": "conversation",
+      "query": "E dove li configuro?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": false,
+      "failures": [
+        "concetto assente: abilita",
+        "concetto assente: disabilita"
+      ],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Configura il task Backup foto per l'esecuzione giornaliera alle 23:00.»\n\nPer configurare i task pianificati, devi accedere alla pagina **Settings > Attività > Timer** (route `/admin/timers`) all'interno della chat web di Metnos.\n\nCome indicato nella pagina delle esecuzioni (**Settings > Attività > Scheduler**, route `/admin/runs`), da lì è possibile accedere direttamente al collegamento a **Timer**, che è l'interfaccia dedicata alla configurazione dei task.\n\nIn alternativa, puoi configurare i task direttamente tramite linguaggio naturale. Metnos permette di:\n*   **Creare** un task schedulato o ricorrente, specificando etichette, orari o numero di esecuzioni.\n*   **Aggiornare** lo stato o il controllo di accensione di un task esistente.\n\nLe attività programmate includono task ricorrenti, promemoria e schedulazioni; non sono appuntamenti di calendario, ma esecuzioni di richieste a orari o trigger specifici.",
+      "source_ids": [
+        "knowledge:runtime-ui-runs-it",
+        "knowledge:doc-public-interface-f59fce699c83-it-0005",
+        "knowledge:doc-public-mail-accounts-766a246aa389-it-0004",
+        "knowledge:executor-list_tasks-it",
+        "knowledge:doc-public-domains-a05187101c19-it-0015",
+        "knowledge:executor-read_tasks_history-it"
+      ],
+      "card_ids": [],
+      "detection": "semantic_contextual_help",
+      "repair_pass": 1,
+      "repair_missing": [
+        "state the exact navigation path /admin/runs for Scheduler",
+        "cover the Scheduler item: identificativo run",
+        "cover the Scheduler item: inizio",
+        "cover the Scheduler item: fine",
+        "cover the Scheduler item: esito",
+        "cover the Scheduler item: durata"
+      ],
+      "elapsed_ms": 11569
+    }
+  ]
+}

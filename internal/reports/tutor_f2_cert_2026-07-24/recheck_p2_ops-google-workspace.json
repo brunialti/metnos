@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "elapsed_ms": 8225,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "ops-google-workspace",
+      "group": "typical_operations",
+      "query": "Quali cose posso fare con Google Workspace tramite Metnos?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": false,
+      "failures": [
+        "concetto assente: task | attività"
+      ],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Crea un evento nel calendario Google Workspace per la riunione di domani alle 10:00»\n\nTramite Metnos, puoi interagire con il provider **Google Workspace** sfruttando 10 aree funzionali specifiche. L'accesso a queste funzionalità richiede che sia stata configurata una credenziale valida per il provider; le operazioni di modifica, invio o eliminazione sono soggette ai normali controlli di sicurezza di Metnos.\n\nEcco cosa puoi fare, suddiviso per area:\n\n*   **Calendari (`calendars`)**: Puoi creare nuovi eventi o eliminare eventi esistenti.\n*   **Contatti (`contacts`)**: Puoi cercare contatti specifici o leggere i dettagli dei contatti salvati.\n*   **Directory (`dirs`)**: Puoi creare nuove directory, eliminarle o cercare directory esistenti.\n*   **Eventi (`events`)**: Oltre alla creazione e cancellazione, puoi leggere i dettagli degli eventi.\n*   **Eventi vuoti (`events_empty`)**: Puoi cercare slot temporali liberi o eventi che risultano vuoti.\n*   **File (`files`)**: Puoi eliminare, cercare, leggere, condividere e scrivere file.\n*   **Documenti (`files_doc`)**: Puoi creare, leggere e modificare documenti di testo.\n*   **Fogli di calcolo (`files_spreadsheet`)**: Puoi creare, leggere e modificare fogli di calcolo.\n*   **Immagini web (`images_web`)**: Puoi cercare immagini disponibili sul web.\n*   **Messaggi (`messages`)**: Puoi spostare, leggere, inviare e impostare messaggi.\n\nPer utilizzare queste capacità, basta formulare una richiesta naturale in italiano descrivendo l'azione desiderata (ad esempio, \"Invia un'email a...\", \"Cerca un file...\", \"Crea un documento...\").",
+      "source_ids": [
+        "knowledge:runtime-capabilities-provider-google-workspace-it-01",
+        "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0059"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 8225
+    }
+  ]
+}

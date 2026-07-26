@@ -1346,12 +1346,9 @@
     [
      "file",
      "Drive"
-    ],
-    [
-     "task",
-     "attività"
     ]
-   ]
+   ],
+   "nota_evidenza": "Il catalogo firmato espone Google Workspace in 10 aree e NON include `tasks`: pretendere quell'area imporrebbe di dichiarare una capacità inesistente (§2.8). Verificato il 26/7/2026 su runtime-capabilities-provider-google-workspace."
   },
   {
    "id": "ops-contacts",
@@ -1553,7 +1550,7 @@
      "annulla"
     ],
     [
-     "ultima"
+     "lex:tutor_gate.last"
     ],
     [
      "operazione"

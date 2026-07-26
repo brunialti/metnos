@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 6,
+  "executed": 6,
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "elapsed_ms": 56814,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "f1-github#1",
+      "group": "f1_equivalence",
+      "query": "Quali operazioni GitHub sono disponibili?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Quali operazioni posso fare su GitHub?»\n\nIl provider GitHub è disponibile in 7 aree operative. L'accesso richiede una credenziale valida configurata per il provider; le operazioni di modifica, invio o eliminazione restano soggette ai normali vagli di Metnos.\n\nLe operazioni disponibili sono:\n\n*   **Directory (dirs):**\n    *   `list`: elencare le directory.\n*   **File (files):**\n    *   `find`: cercare file.\n    *   `read`: leggere il contenuto dei file.\n*   **Frontiera (frontier):**\n    *   `consult`: consultare la frontiera.\n*   **Issue (issues):**\n    *   `create`: creare nuove issue.\n    *   `delete`: eliminare issue.\n    *   `find`: cercare issue.\n    *   `read`: leggere i dettagli delle issue.\n    *   `set`: impostare o modificare le issue.\n*   **Messaggi (messages):**\n    *   `delete`: eliminare messaggi.\n    *   `send`: inviare messaggi.\n*   **Pull Request (pulls):**\n    *   `change`: modificare le pull request.\n    *   `find`: cercare pull request.\n    *   `read`: leggere i dettagli delle pull request.\n    *   `set`: impostare o modificare le pull request.\n*   **Task (tasks):**\n    *   `create`: creare nuovi task.\n    *   `read`: leggere i dettagli dei task.",
+      "source_ids": [
+        "knowledge:runtime-capabilities-provider-github-it-01"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 6481
+    },
+    {
+      "id": "f1-github#2",
+      "group": "f1_equivalence",
+      "query": "Che cosa posso gestire nei repository GitHub tramite Metnos?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Quali file ci sono nel repository owner/name e come posso gestire le issue?»\n\nTramite Metnos è possibile gestire il repository GitHub specificato (nel formato `owner/name`, ad esempio `brunialti/metnos`) attraverso 7 aree funzionali distinte. L'accesso richiede una credenziale valida configurata per il provider GitHub; le operazioni di modifica, invio o eliminazione sono soggette ai normali vagli di sicurezza di Metnos.\n\nEcco cosa puoi gestire in dettaglio:\n\n*   **Directory (`dirs`)**: puoi elencare le cartelle presenti nel repository.\n*   **File (`files`)**: puoi cercare file specifici e leggere il loro contenuto.\n*   **Frontier (`frontier`)**: puoi consultare la \"frontier\" del repository (una struttura di navigazione o stato avanzato).\n*   **Issue (`issues`)**: puoi creare nuove issue, eliminarle, cercarle, leggerne i dettagli e modificarne lo stato, le etichette o gli assegnatari.\n*   **Messaggi (`messages`)**: puoi inviare e eliminare messaggi (probabilmente relativi a notifiche o comunicazioni interne al flusso di lavoro).\n*   **Pull Request (`pulls`)**: puoi cercare le pull request, leggerne i dettagli, modificarle e aggiornarne lo stato, il titolo o i reviewer.\n*   **Task (`tasks`)**: puoi creare nuove attività e leggerne lo stato.\n\nPer interagire con queste funzionalità, Metnos utilizza executor specifici che richiedono come parametro principale il nome del repository nel formato `owner/name`. Ad esempio, per modificare una issue o una pull request, è necessario fornire il numero identificativo dell'elemento (`number=N`) insieme al nome del repository.",
+      "source_ids": [
+        "knowledge:runtime-capabilities-provider-github-it-01",
+        "knowledge:executor-list_dirs_github-arg-071ca2227754-it-01",
+        "knowledge:executor-read_files_github-arg-071ca2227754-it-01",
+        "knowledge:executor-find_files_github-arg-071ca2227754-it-01",
+        "knowledge:doc-public-index-42cffbc24a34-it-0004",
+        "knowledge:executor-set_issues_github-it",
+        "knowledge:executor-set_pulls_github-it"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 8097
+    },
+    {
+      "id": "f1-github#3",
+      "group": "f1_equivalence",
+      "query": "Spiegami la copertura GitHub installata, compresi i prerequisiti.",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Quali capacità offre il provider GitHub e quali credenziali servono?»\n\nLa copertura GitHub installata è strutturata attorno a un singolo provider che espone **7 aree** di funzionalità. L'accesso a queste capacità richiede una **credenziale valida** configurata specificamente per il provider GitHub; le operazioni di modifica, invio o eliminazione sono inoltre soggette ai normali vagli di Metnos.\n\nEcco il dettaglio delle capacità disponibili per area:\n\n*   **Dirs (Directory):** Permette di elencare il contenuto di una cartella specifica di un repository (file e sottocartelle, senza ricorsione).\n*   **Files (File):** Consente di cercare file all'interno di un repository e di leggere il contenuto grezzo dei file stessi.\n*   **Frontier:** Offre funzionalità di consultazione (dettagli non specificati nel contesto oltre alla disponibilità dell'azione).\n*   **Issues (Issue):** Gestisce le segnalazioni, bug e ticket. Le azioni ammesse sono:\n    *   *Create:* Creare nuove issue.\n    *   *Delete:* Chiudere o eliminare issue esistenti.\n    *   *Find:* Elencare le issue di un repository (con filtri per stato, ecc.).\n    *   *Read:* Leggere il contenuto completo di una singola issue (inclusi i commenti).\n    *   *Set:* Modificare lo stato, le etichette o gli assegnatari di una issue.\n*   **Messages (Messaggi):** Permette di inviare messaggi e di eliminarli.\n*   **Pulls (Pull Request):** Gestisce le richieste di merge. Le azioni ammesse sono:\n    *   *Change:* Operare su una pull request (ad esempio, eseguire il merge).\n    *   *Find:* Elencare le pull request di un repository.\n    *   *Read:* Leggere i dettagli di una pull request.\n    *   *Set:* Aggiornare lo stato, il titolo o i reviewer di una pull request.\n*   **Tasks (Task/Workflow):** Gestisce i workflow di GitHub Actions. Le azioni ammesse sono:\n    *   *Create:* Avviare un workflow GitHub Actions.\n    *   *Read:* Elencare le esecuzioni (run) dei workflow di un repository.\n\nTutte queste capacità sono attive e disponibili su piattaforme Linux.",
+      "source_ids": [
+        "knowledge:executor-set_issues_github-it",
+        "knowledge:executor-list_dirs_github-arg-504dbd7ea99e-it-01",
+        "knowledge:executor-read_files_github-it",
+        "knowledge:executor-find_files_github-arg-7e5d444f4d23-it-01",
+        "knowledge:executor-set_issues_github-arg-4ba69735ca53-it-01",
+        "knowledge:executor-set_pulls_github-it",
+        "knowledge:executor-find_issues_github-it",
+        "knowledge:executor-read_tasks_github-it",
+        "knowledge:executor-list_dirs_github-it",
+        "knowledge:executor-find_pulls_github-it",
+        "knowledge:runtime-capabilities-provider-github-it-01",
+        "knowledge:executor-read_issues_github-it",
+        "knowledge:executor-change_pulls_github-it",
+        "knowledge:executor-create_tasks_github-it",
+        "knowledge:executor-delete_issues_github-it",
+        "knowledge:doc-public-domains-a05187101c19-it-0026"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 11503
+    },
+    {
+      "id": "f1-github#4",
+      "group": "f1_equivalence",
+      "query": "Which GitHub operations are available?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": false,
+      "failures": [
+        "concetto assente: lex:tutor_gate.pull_request",
+        "concetto assente: lex:tutor_gate.directory"
+      ],
+      "answer": "Ask Metnos with a request like this example: “What GitHub operations can I perform?”\n\nThe live catalog exposes provider GitHub across 7 areas. Access requires a valid credential configured for the provider; change, send, and delete operations remain subject to the normal Metnos gates. The available operations are:\n\n*   **dirs**: list\n*   **files**: find, read\n*   **frontier**: consult\n*   **issues**: create, delete, find, read, set\n*   **messages**: delete, send\n*   **pulls**: change, find, read, set\n*   **tasks**: create, read",
+      "source_ids": [
+        "knowledge:runtime-capabilities-provider-github-en-01"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 1,
+      "repair_missing": [
+        "cover the capability area: dirs",
+        "cover the capability area: pulls"
+      ],
+      "elapsed_ms": 5373
+    },
+    {
+      "id": "f1-github#5",
+      "group": "f1_equivalence",
+      "query": "What can I manage in GitHub repositories through Metnos?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Ask Metnos with a request like this example: “List the open pull requests for the repository ‘owner/name’”\n\nThrough the GitHub provider, Metnos allows you to manage repositories across seven distinct areas. Access requires a valid credential configured for the provider, and all change, send, and delete operations are subject to normal Metnos gates.\n\nThe specific capabilities available for GitHub repositories are:\n\n*   **Directories (dirs):** You can list the directories within a repository.\n*   **Files (files):** You can find and read files.\n*   **Frontier (frontier):** You can consult the frontier.\n*   **Issues (issues):** You can create, delete, find, read, and set (update state, labels, or assignees) issues.\n*   **Messages (messages):** You can send and delete messages.\n*   **Pull Requests (pulls):** You can find, read, change, and set (update state, title, or reviewers) pull requests.\n*   **Tasks (tasks):** You can create and read tasks.\n\nTo perform these operations, you typically specify the target repository using the `owner/name` format (e.g., `brunialti/metnos`). For example, you can update a pull request's state or title, change an issue's labels or assignees, or list pull requests filtered by state.",
+      "source_ids": [
+        "knowledge:runtime-capabilities-provider-github-en-01",
+        "knowledge:executor-list_dirs_github-arg-071ca2227754-en-01",
+        "knowledge:executor-read_files_github-arg-071ca2227754-en-01",
+        "knowledge:executor-find_files_github-arg-071ca2227754-en-01",
+        "knowledge:doc-public-index-6bc2f9b2d9e7-en-0004",
+        "knowledge:executor-set_pulls_github-en",
+        "knowledge:executor-set_issues_github-en",
+        "knowledge:executor-find_pulls_github-en"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 6346
+    },
+    {
+      "id": "f1-github#6",
+      "group": "f1_equivalence",
+      "query": "Explain the installed GitHub coverage, including prerequisites.",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": true,
+      "failures": [],
+      "answer": "Ask Metnos with a request like this example: “What GitHub capabilities are installed and what are the prerequisites?”\n\nThe installed GitHub coverage is provided by the **GitHub** provider, which is exposed across **7 areas**: `dirs`, `files`, `frontier`, `issues`, `messages`, `pulls`, and `tasks`.\n\n**Prerequisites**\nAccess to these capabilities requires a **valid credential configured for the provider**. Additionally, change, send, and delete operations remain subject to the normal Metnos gates.\n\n**Installed Capabilities**\nThe following capabilities are admitted for the GitHub provider:\n\n*   **dirs**: list\n*   **files**: find, read\n*   **frontier**: consult\n*   **issues**: create, delete, find, read, set\n*   **messages**: delete, send\n*   **pulls**: change, find, read, set\n*   **tasks**: create, read\n\n**Executor Details**\nThese capabilities are supported by the following built-in executors, all available on Linux:\n\n*   **list_dirs_github**: Lists the contents of ONE folder of a GitHub repo (files+subdirs, non-recursive).\n*   **find_files_github**: Finds files in a GitHub repo. It supports arguments such as `top_k` (integer, default 500, 0 for no limit), `path_prefix` (string, to restrict to a subtree), and `include_dirs` (boolean, default false).\n*   **read_files_github**: Reads the raw CONTENT of files of a GitHub repo.\n*   **find_issues_github**: Lists a GitHub repo issues (reports/bugs/tickets).\n*   **read_issues_github**: Reads ONE issue (body + comments) by number.\n*   **delete_issues_github**: Closes/deletes an issue.\n*   **set_issues_github**: Changes an issue state/labels/assignees.\n*   **find_pulls_github**: Lists a GitHub repo pull requests (merge requests).\n*   **set_pulls_github**: Updates a pull request state/title/reviewers.\n*   **change_pulls_github**: Acts on a pull request (e.g. merge).\n*   **read_tasks_github**: Lists a repo GitHub Actions workflow runs.\n*   **create_tasks_github**: Creates tasks (implied by the `tasks: create` capability in the catalog).\n\n**Skills**\nGitHub capabilities can also be extended or managed via **Skills**. A skill is admitted through verification and policy; installing one does not bypass vocabulary, sandboxing, or consent. You can ask Metnos to enable an already installed GitHub skill to see which additional capabilities it adds.",
+      "source_ids": [
+        "knowledge:executor-find_files_github-arg-7f33de5a7605-en-01",
+        "knowledge:executor-set_pulls_github-en",
+        "knowledge:executor-find_files_github-arg-7e5d444f4d23-en-01",
+        "knowledge:executor-find_files_github-arg-0fe373a7b75a-en-01",
+        "knowledge:doc-public-domains-e3925f7197b4-en-0026",
+        "knowledge:executor-set_issues_github-en",
+        "knowledge:executor-read_tasks_github-en",
+        "knowledge:executor-list_dirs_github-en",
+        "knowledge:executor-read_files_github-en",
+        "knowledge:executor-find_issues_github-en",
+        "knowledge:executor-find_pulls_github-en",
+        "knowledge:doc-public-metnos-quicktour-7ca703adf3e8-en-0030",
+        "knowledge:runtime-capabilities-provider-github-en-01",
+        "knowledge:executor-delete_issues_github-en",
+        "knowledge:executor-read_issues_github-en",
+        "knowledge:executor-change_pulls_github-en"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 1,
+      "repair_missing": [
+        "state the tool purpose: list a GitHub repo issues (reports/bugs/tickets)",
+        "state the tool purpose: read ONE issue (body + comments) by number"
+      ],
+      "elapsed_ms": 19010
+    }
+  ]
+}

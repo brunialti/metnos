@@ -500,6 +500,113 @@ def test_f2_expands_adjacent_sections_of_a_selected_document():
     assert third.unit_id in {hit.source_id for hit in context.hits}
 
 
+def _oriented(unit_id, vector_marker, *, authority="published_documentation",
+              kind="operational", priority=95):
+    text = f"Contenuto {vector_marker} indipendente"
+    return KnowledgeUnit(
+        unit_id=unit_id, concept_id=unit_id, lang="it", audience="user",
+        source_kind=kind, authority=authority, priority=priority,
+        title=f"Titolo {vector_marker}", text=text, semantic=text,
+        source_ref=f"docs/it/{unit_id}.html#1",
+        content_hash=f"sha256:{unit_id}",
+    )
+
+
+def _two_axis_embedder(companion_marker: str):
+    class Embedder:
+        def embed_texts(self, texts):
+            return np.asarray([self.embed_query(text) for text in texts],
+                              dtype=np.float32)
+
+        def embed_query(self, text):
+            if companion_marker in text:
+                return np.asarray([0.0, 1.0], dtype=np.float32)
+            return np.asarray([1.0, 0.0], dtype=np.float32)
+
+    return Embedder()
+
+
+def test_companion_probe_admits_the_previous_question_sources():
+    """Una fonte entra se e' pertinente per ALMENO una delle formulazioni.
+
+    La domanda corrente e quella risolta contro il turno precedente concorrono
+    con un massimo per fonte: chi risponde a una delle due entra, chi non
+    risponde a nessuna resta fuori. La controprova e' la terza unita', a mezza
+    strada fra i due assi: pertinente in parte per entrambe, dentro la soglia,
+    fuori dalla banda.
+    """
+
+    from tutor.catalog import VectorIndex
+
+    current = _oriented("solo-corrente", "alfa")
+    companion = _oriented("solo-precedente", "beta")
+    weak = _oriented("estranea", "gamma")
+    units = (current, companion, weak)
+    knowledge_index = VectorIndex(
+        refs=tuple((unit.unit_id, "it") for unit in units),
+        matrix=np.asarray([
+            [1.0, 0.0], [0.0, 1.0], [0.70710678, 0.70710678],
+        ], dtype=np.float32),
+        dimension=2, fingerprint="test",
+    )
+    context = retrieve_sources(
+        "domanda corrente", "it", "user", cards=(), units=units,
+        knowledge_index=knowledge_index,
+        embedder=_two_axis_embedder("riferimento precedente"),
+        minimum_score=0.7, top_k=8,
+        companion_query="riferimento precedente",
+    )
+    assert context is not None
+    identifiers = {hit.source_id for hit in context.hits}
+    assert identifiers == {"solo-corrente", "solo-precedente"}
+
+
+def test_authority_quota_admits_a_starved_registry_unit(monkeypatch):
+    """Dentro la banda, il tetto di contesto non affama una classe intera.
+
+    Le sezioni di prosa riempiono il contesto per differenze di centesimi;
+    l'unita' di registro che attesta il fatto resta fuori. La quota le riserva
+    un posto sfrattando la piu' debole della classe sovrarappresentata, senza
+    toccare il primario. La controprova e' la stessa selezione con la quota
+    spenta, dove l'unita' di registro non compare.
+    """
+
+    from tutor.catalog import VectorIndex
+
+    prose = [_oriented(f"prosa-{index}", "alfa") for index in range(3)]
+    registry = _oriented(
+        "registro", "alfa", authority="runtime_registry", kind="ui_surface")
+    units = (*prose, registry)
+    knowledge_index = VectorIndex(
+        refs=tuple((unit.unit_id, "it") for unit in units),
+        matrix=np.asarray([
+            [1.0, 0.0], [0.99, 0.141], [0.98, 0.199], [0.97, 0.243],
+        ], dtype=np.float32),
+        dimension=2, fingerprint="test",
+    )
+
+    def select():
+        return retrieve_sources(
+            "domanda", "it", "user", cards=(), units=units,
+            knowledge_index=knowledge_index,
+            embedder=_two_axis_embedder("mai presente"),
+            minimum_score=0.7, top_k=3,
+        )
+
+    monkeypatch.setenv("METNOS_TUTOR_AUTHORITY_QUOTA", "0")
+    without = select()
+    assert without is not None
+    assert "registro" not in {hit.source_id for hit in without.hits}
+
+    monkeypatch.delenv("METNOS_TUTOR_AUTHORITY_QUOTA", raising=False)
+    with_quota = select()
+    assert with_quota is not None
+    identifiers = [hit.source_id for hit in with_quota.hits]
+    assert "registro" in identifiers
+    assert identifiers[0] == "prosa-0"
+    assert len(identifiers) == 3
+
+
 @pytest.mark.parametrize("query,lang", [
     ("Comment puis-je lire plusieurs boîtes mail ?", "fr"),
     ("Wie kann ich mehrere E-Mail-Postfächer lesen?", "de"),
@@ -1013,27 +1120,21 @@ def test_composer_insufficient_is_a_lacuna_not_unavailable(monkeypatch):
     assert answer.source_ids == ("card:github-capabilities:it",)
 
 
-def test_semantic_gain_selects_same_conversation_context(monkeypatch):
+def test_same_conversation_probe_is_one_ranking_with_companion(monkeypatch):
     cards = load_published()
     unit = _knowledge_unit(text="Il catalogo viene verificato all'avvio.")
-    current_context = SemanticContext((SourceHit(
+    context = SemanticContext((SourceHit(
         source_type="knowledge", source_id=unit.unit_id, lang="it",
         score=0.78, unit=unit,
     ),), top_score=0.78)
-    contextual_context = SemanticContext((SourceHit(
-        source_type="knowledge", source_id=unit.unit_id, lang="it",
-        score=0.86, unit=unit,
-    ),), top_score=0.86)
     observed = {}
 
     monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
 
-    def retrieve(query, *_args, **_kwargs):
-        observed.setdefault("retrieval_queries", []).append(query)
-        # La sonda contestuale porta il TESTO della domanda precedente, non
-        # piu' il marcatore dello scambio completo.
-        return (contextual_context if "catalogo all'avvio" in query
-                else current_context)
+    def retrieve(query, *_args, **kwargs):
+        observed.setdefault("calls", []).append(
+            (query, kwargs.get("companion_query", "")))
+        return context
 
     def compose(**kwargs):
         observed["composition_context"] = kwargs["conversation_context"]
@@ -1052,14 +1153,22 @@ def test_semantic_gain_selects_same_conversation_context(monkeypatch):
     ))
 
     assert answer is not None and answer.esito == "fondata"
-    # La SONDA di retrieval porta la sola DOMANDA precedente: la risposta
-    # precedente rendeva il vettore quasi-duplicato delle proprie fonti e il
-    # test di guadagno diventava autoavverante (audit 25/7). Il COMPOSER
-    # riceve invece l'intero scambio, che serve a risolvere il riferimento.
-    probe = observed["retrieval_queries"][1]
-    assert "Quanto impiega il catalogo all'avvio?" in probe
-    assert "PREVIOUS_TUTOR_ANSWER" not in probe
-    assert "temporaneamente indisponibile" not in probe
+    # UNA sola classifica, con le due formulazioni dentro: scegliere in blocco
+    # fra due classifiche confrontava punteggi di testa appartenenti a testi di
+    # lunghezza diversa, e scartava la formulazione giusta (audit 25/7).
+    assert len(observed["calls"]) == 1
+    query, companion = observed["calls"][0]
+    assert query == "Motivo del problema?"
+    # La SONDA porta la domanda LETTA NEL SUO CONTESTO: la congiunzione della
+    # precedente con la corrente, che e' la domanda risolta. La precedente da
+    # sola non e' una domanda dell'utente e riportava la classifica
+    # sull'argomento del turno prima. La risposta precedente resta fuori —
+    # renderebbe il vettore quasi-duplicato delle proprie fonti — e vive nel
+    # contesto del COMPOSER, dove serve a risolvere il riferimento.
+    assert companion == (
+        "Quanto impiega il catalogo all'avvio? Motivo del problema?")
+    assert "PREVIOUS_TUTOR_ANSWER" not in companion
+    assert "temporaneamente indisponibile" not in companion
     assert observed["composition_context"] == previous
     assert answer.detection == "semantic_contextual_help"
 

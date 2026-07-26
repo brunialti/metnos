@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "corpus": "tests/runtime/tutor/data/f2_human_certification.json",
+  "selected": 1,
+  "executed": 1,
+  "passed": 0,
+  "failed": 1,
+  "skipped": 0,
+  "elapsed_ms": 8028,
+  "f2_only": true,
+  "catalog_dir": "/tmp/metnos-public-docs-catalog",
+  "records": [
+    {
+      "id": "admin-restricted-user",
+      "group": "admin_ui",
+      "query": "Dove vedo il catalogo degli executor rifiutati?",
+      "expected": "answer",
+      "outcome": "fondata",
+      "passed": false,
+      "failures": [
+        "concetto assente: lex:tutor_gate.admin_role"
+      ],
+      "answer": "Il contesto fornito non specifica un percorso o una pagina dedicata per visualizzare un \"catalogo degli executor rifiutati\".\n\nLe fonti disponibili descrivono:\n1.  Il **Catalogo executor** come un censimento degli executor first-party presenti nel sorgente, organizzato per dominio (es. `files`) e non come un registro di stati di approvazione/rifiuto (fonte `knowledge:doc-public-executor-catalog-d2a92eb1bf89-it-0001`, `it-0002`, `it-0003`).\n2.  La possibilità di configurare un executor da eseguire in caso di rifiuto tramite l'argomento `on_reject` (fonte `knowledge:executor-get_approval-arg-67f7a7c4ae16-it-01`), ma non menzionano un'interfaccia per elencare gli executor che sono stati rifiutati.\n3.  I **Manifest ammessi** che descrivono le capacità degli executor caricati e verificati (fonte `knowledge:doc-public-tutor-45dbbd53facd-it-0003`).\n\nIl contesto non specifica dove si trovi un elenco o una vista degli executor rifiutati.",
+      "source_ids": [
+        "knowledge:doc-public-executor-catalog-d2a92eb1bf89-it-0001",
+        "knowledge:doc-public-metnos-quicktour-db8f74de6037-it-0052",
+        "knowledge:executor-get_approval-arg-67f7a7c4ae16-it-01",
+        "knowledge:executor-find_credentials-arg-a8b771920b83-it-01",
+        "knowledge:doc-public-tutor-45dbbd53facd-it-0003",
+        "knowledge:doc-public-metnos-quicktour-db8f74de6037-it-0054",
+        "knowledge:doc-public-executor-catalog-d2a92eb1bf89-it-0002",
+        "knowledge:doc-public-executor-catalog-d2a92eb1bf89-it-0003"
+      ],
+      "card_ids": [],
+      "detection": "semantic_help",
+      "repair_pass": 0,
+      "repair_missing": [],
+      "elapsed_ms": 8028
+    }
+  ]
+}

@@ -19,6 +19,87 @@ from .catalog import (
 from .sources import KnowledgeUnit
 
 
+def _flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() not in ("0", "false", "no", "off")
+
+
+def _authority_of(hit: "SourceHit") -> str:
+    return hit.unit.authority if hit.unit is not None else "curated_guide"
+
+
+def _document_group(hit: "SourceHit"):
+    if hit.card:
+        return f"card:{hit.source_id}"
+    return (hit.unit.source_ref.split("#", 1)[0], hit.unit.title)
+
+
+def _reserve_authorities(selected, visible, adjusted, threshold, top, band,
+                         per_document, per_kind, limit_total,
+                         pinned=()) -> None:
+    """Una fonte per CLASSE DI AUTORITA' non resta a secco dentro la banda.
+
+    La banda dichiara quali fonti sono equivalenti per pertinenza, ma il tetto
+    di contesto tronca la banda: quando la banda contiene decine di sezioni di
+    prosa, l'unita' di registro o l'inventario di capacita' che attestano il
+    fatto restano fuori per differenze di centesimi, cioe' per rumore. Qui la
+    banda ottiene rappresentanza: per ogni classe presente in banda e assente
+    dalla selezione entra la sua migliore, sfrattando la piu' debole di una
+    classe sovrarappresentata. Il primario non cambia mai e la classifica resta
+    decrescente: e' una regola di copertura, non un riordino per autorita'.
+    """
+
+    in_band = [
+        hit for hit in visible
+        if adjusted(hit) >= threshold and adjusted(hit) >= top - band
+    ]
+    missing = [
+        authority for authority in dict.fromkeys(
+            _authority_of(hit) for hit in in_band)
+        if authority not in {_authority_of(hit) for hit in selected}
+    ]
+    for authority in missing:
+        counts: dict[str, int] = {}
+        for hit in selected:
+            key = _authority_of(hit)
+            counts[key] = counts.get(key, 0) + 1
+        candidate = next(
+            (hit for hit in in_band
+             if _authority_of(hit) == authority
+             and hit not in selected
+             and per_document.get(_document_group(hit), 0) < 1),
+            None,
+        )
+        if candidate is None:
+            continue
+        if len(selected) >= limit_total:
+            victim = next(
+                (hit for hit in reversed(selected[1:])
+                 if counts.get(_authority_of(hit), 0) > 1
+                 and hit not in pinned),
+                None,
+            )
+            if victim is None:
+                continue
+            selected.remove(victim)
+            group = _document_group(victim)
+            per_document[group] = max(0, per_document.get(group, 0) - 1)
+            kind = victim.unit.source_kind if victim.unit else "curated_guide"
+            per_kind[kind] = max(0, per_kind.get(kind, 0) - 1)
+        position = next(
+            (index for index, hit in enumerate(selected)
+             if adjusted(hit) < adjusted(candidate)),
+            len(selected),
+        )
+        selected.insert(position, candidate)
+        group = _document_group(candidate)
+        per_document[group] = per_document.get(group, 0) + 1
+        kind = candidate.unit.source_kind if candidate.unit else "curated_guide"
+        per_kind[kind] = per_kind.get(kind, 0) + 1
+
+
 def _bounded_float(name: str, default: float) -> float:
     try:
         value = float(os.environ.get(name, str(default)))
@@ -127,6 +208,7 @@ def retrieve_sources(
         embedder=None,
         minimum_score: float | None = None,
         top_k: int = 16,
+        companion_query: str = "",
         explain: dict | None = None,
 ) -> SemanticContext | None:
     """Retrieve one bounded context across cards and the dynamic F2 corpus.
@@ -135,6 +217,16 @@ def retrieve_sources(
     answer path.  Audience is checked before any source body is returned.  A
     restricted top result yields only a closed signal and never reaches the
     composer.
+
+    ``companion_query`` e' una seconda formulazione della stessa domanda (la
+    domanda precedente della conversazione, che risolve un riferimento
+    ellittico). Ogni fonte prende il MASSIMO fra i punteggi delle due
+    formulazioni: la domanda corrente resta sufficiente da sola quando lo e',
+    e la fonte che risponde alla domanda risolta entra comunque. Non c'e'
+    confronto fra i due punteggi di TESTA, che appartengono a testi di
+    lunghezza diversa e quindi a scale diverse: quel confronto scartava in
+    blocco la formulazione giusta (misurato: la superficie corretta passava
+    dal rango 155 al 4 e veniva buttata via per 0,004 di margine).
 
     ``explain`` is a measurement hook: when a dict is passed, the full ranked
     candidate list with adjusted scores and the effective policy values are
@@ -145,16 +237,22 @@ def retrieve_sources(
     text = str(query or "").strip()
     if not text:
         return None
+    companion = str(companion_query or "").strip()
+    probes = (text,) if not companion or companion == text else (text, companion)
     units = units if units is not None else load_knowledge_units()
     knowledge_index = knowledge_index or load_knowledge_vector_index()
     if cards:
         card_index = card_index or load_vector_index()
         if card_index.dimension != knowledge_index.dimension:
             raise ValueError("Tutor semantic indexes use different dimensions")
-    normalized = _query_vector(text, knowledge_index.dimension, embedder)
+    vectors = tuple(
+        _query_vector(probe, knowledge_index.dimension, embedder)
+        for probe in probes
+    )
     card_by_id = {card.card_id: card for card in cards}
     unit_by_id = {unit.unit_id: unit for unit in units}
     candidates: list[SourceHit] = []
+    dense: dict[tuple[str, str], tuple[float, ...]] = {}
 
     for row in _preferred_rows(
             card_index.refs if cards and card_index is not None else (),
@@ -163,9 +261,12 @@ def retrieve_sources(
         card = card_by_id.get(card_id)
         if card is None:
             raise ValueError("Tutor vector references an unknown card")
+        scores = tuple(
+            float(card_index.matrix[row] @ vector) for vector in vectors)
+        dense[("card", card_id)] = scores
         candidates.append(SourceHit(
             source_type="card", source_id=card_id, lang=row_lang,
-            score=float(card_index.matrix[row] @ normalized), card=card,
+            score=max(scores), card=card,
         ))
 
     def knowledge_concept(unit_id: str) -> str:
@@ -179,17 +280,18 @@ def retrieve_sources(
         unit = unit_by_id.get(unit_id)
         if unit is None:
             raise ValueError("Tutor vector references an unknown knowledge unit")
+        scores = tuple(
+            float(knowledge_index.matrix[row] @ vector) for vector in vectors)
+        dense[("knowledge", unit_id)] = scores
         candidates.append(SourceHit(
             source_type="knowledge", source_id=unit_id, lang=row_lang,
-            score=float(knowledge_index.matrix[row] @ normalized), unit=unit,
+            score=max(scores), unit=unit,
         ))
     if not candidates:
         return None
 
-    query_tokens = _lexical_tokens(text)
     candidate_tokens: dict[tuple[str, str], set[str]] = {}
     candidate_title_tokens: dict[tuple[str, str], set[str]] = {}
-    document_frequency: dict[str, int] = {}
     for hit in candidates:
         content = (
             " ".join((hit.card.title.get(hit.lang, ""),
@@ -197,44 +299,67 @@ def retrieve_sources(
             if hit.card else
             " ".join((hit.unit.title, hit.unit.semantic, hit.unit.text))
         )
-        tokens = _lexical_tokens(content)
-        candidate_tokens[(hit.source_type, hit.source_id)] = tokens
+        candidate_tokens[(hit.source_type, hit.source_id)] = (
+            _lexical_tokens(content))
         title = (
             hit.card.title.get(hit.lang, "")
             if hit.card else hit.unit.title
         )
         candidate_title_tokens[(hit.source_type, hit.source_id)] = (
             _lexical_tokens(title))
-        for token in query_tokens & tokens:
-            document_frequency[token] = document_frequency.get(token, 0) + 1
     population = max(1, len(candidates))
-    query_weight = sum(
-        math.log((population + 1) / (document_frequency.get(token, 0) + 1))
-        for token in query_tokens
-    ) or 1.0
 
-    def lexical_score(hit: SourceHit) -> float:
-        overlap = query_tokens & candidate_tokens[(hit.source_type, hit.source_id)]
-        return sum(
-            math.log((population + 1) / (document_frequency.get(token, 0) + 1))
-            for token in overlap
-        ) / query_weight
+    def _probe_bonus(probe: str):
+        """Segnali lessicali di UNA formulazione: idf e affinita' di titolo.
 
+        Frequenza documentale e peso della domanda dipendono dai termini di
+        quella formulazione, quindi vanno ricalcolati per ognuna; il contenuto
+        dei candidati e' invariante e si calcola una volta sola.
+        """
+
+        query_tokens = _lexical_tokens(probe)
+        document_frequency: dict[str, int] = {}
+        for key, tokens in candidate_tokens.items():
+            for token in query_tokens & tokens:
+                document_frequency[token] = document_frequency.get(token, 0) + 1
+
+        def idf(token: str) -> float:
+            return math.log(
+                (population + 1) / (document_frequency.get(token, 0) + 1))
+
+        query_weight = sum(idf(token) for token in query_tokens) or 1.0
+
+        def bonus(key: tuple[str, str]) -> float:
+            overlap = query_tokens & candidate_tokens[key]
+            lexical = sum(idf(token) for token in overlap) / query_weight
+            title_overlap = query_tokens & candidate_title_tokens[key]
+            title_affinity = len(title_overlap) / max(1, len(query_tokens))
+            # Authored titles are concise semantic evidence, especially for
+            # short human questions whose dense embedding is otherwise
+            # under-specified.  Both signals are derived from the admitted
+            # source itself; no phrases, synonyms, executor names, or topics
+            # are encoded here.
+            return 0.05 * lexical + 0.08 * title_affinity
+
+        return bonus
+
+    bonuses = tuple(_probe_bonus(probe) for probe in probes)
+
+    # Massimo per fonte fra le formulazioni: una fonte entra se e' pertinente
+    # per ALMENO una di esse, senza che la media diluisca il segnale di quella
+    # corta. Misurato contro la variante che ordina sulla sola domanda corrente
+    # e ammette il compagno in coda (cert22/cert23, tre slot): il massimo per
+    # fonte vince di uno e non introduce il regresso su
+    # conversation-mailbox-credentials#2. Resta noto il prezzo: in tre
+    # follow-up che cambiano argomento il compagno prende il primario
+    # (RM-0003 §9-quater).
     def adjusted(hit: SourceHit) -> float:
         priority = hit.card.priority if hit.card else hit.unit.priority
-        title_overlap = query_tokens & candidate_title_tokens[
-            (hit.source_type, hit.source_id)]
-        title_affinity = len(title_overlap) / max(1, len(query_tokens))
-        # Authored titles are concise semantic evidence, especially for short
-        # human questions whose dense embedding is otherwise under-specified.
-        # Both signals are derived from the admitted source itself; no phrases,
-        # synonyms, executor names, or topics are encoded here.
-        return (
-            hit.score
-            + 0.05 * lexical_score(hit)
-            + 0.08 * title_affinity
-            + max(0, min(100, priority)) / 10000.0
-        )
+        key = (hit.source_type, hit.source_id)
+        return max(
+            score + bonus(key)
+            for score, bonus in zip(dense[key], bonuses)
+        ) + max(0, min(100, priority)) / 10000.0
 
     ranked = sorted(candidates, key=adjusted, reverse=True)
     threshold = (
@@ -259,40 +384,33 @@ def retrieve_sources(
         if (hit.card.visible_to(audience) if hit.card
             else hit.unit.visible_to(audience))
     ]
-    # Un scarto per audience deve restare VISIBILE come tale. Legare il
-    # segnale al solo ranked[0] lo rendeva silenzioso ogni volta che in testa
-    # c'era una fonte pubblica: la risposta dichiarava allora l'ASSENZA di una
-    # pagina che invece esiste e non e' autorizzata (§2.8, esito non
-    # corrispondente alla realta'). Il segnale scatta se una fonte scartata
-    # sarebbe entrata nella selezione, cioe' e' sopra la soglia assoluta e
-    # dentro la banda della migliore visibile.
-    dropped_in_band = [
-        hit for hit in ranked
-        if hit not in visible
-        and adjusted(hit) >= threshold
-        and (not visible or adjusted(hit) >= adjusted(visible[0]) - band)
-    ]
-    if not visible or dropped_in_band:
-        top_dropped = (adjusted(dropped_in_band[0]) if dropped_in_band
-                       else ranked[0].score)
-        return SemanticContext((), top_dropped, restricted=True)
+    # Il rifiuto per autorizzazione e' onesto solo quando la risposta SAREBBE
+    # STATA la fonte scartata, cioe' quando nessuna fonte visibile la eguaglia:
+    # allora, e solo allora, tacere equivarrebbe a negare una pagina che esiste
+    # (§2.8). Estendere il segnale a ogni scarto DENTRO LA BANDA lo fa scattare
+    # quasi sempre, perche' le unita' del registro stanno di norma sopra la
+    # soglia: misurato, 14 casi su 134 passavano da risposta fondata a rifiuto
+    # (cert19 contro cert14) mentre erano fondati su una fonte visibile in
+    # testa. Con una visibile prima, la risposta nasce da quella e non dichiara
+    # alcuna assenza: il criterio resta il primato, valutato sullo STESSO
+    # punteggio che ordina la classifica.
+    if not visible or ranked[0] not in visible:
+        return SemanticContext((), adjusted(ranked[0]), restricted=True)
 
     top = adjusted(visible[0])
+    limit_total = max(1, min(16, int(top_k)))
     selected: list[SourceHit] = []
     per_document: dict[str, int] = {}
     per_kind: dict[str, int] = {}
     for hit in visible:
         if adjusted(hit) < threshold or adjusted(hit) < top - band:
             break
-        if hit.card:
-            group = f"card:{hit.source_id}"
-        else:
-            # A published page is a sequence of independently authored,
-            # titled sections; budgeting on the whole file would let two
-            # strong sections evict a third, unrelated one.  The heading is
-            # part of the admitted source structure, so the key stays
-            # structural — no topic or phrase is encoded here.
-            group = (hit.unit.source_ref.split("#", 1)[0], hit.unit.title)
+        # A published page is a sequence of independently authored, titled
+        # sections; budgeting on the whole file would let two strong sections
+        # evict a third, unrelated one.  The heading is part of the admitted
+        # source structure, so the key stays structural — no topic or phrase
+        # is encoded here.
+        group = _document_group(hit)
         if hit.unit and hit.unit.source_kind == "capability_catalog":
             limit = 8
         else:
@@ -312,7 +430,7 @@ def retrieve_sources(
         selected.append(hit)
         per_document[group] = per_document.get(group, 0) + 1
         per_kind[kind] = per_kind.get(kind, 0) + 1
-        if len(selected) >= max(1, min(16, int(top_k))):
+        if len(selected) >= limit_total:
             break
     if not selected:
         return None
@@ -430,6 +548,14 @@ def retrieve_sources(
             selected.append(sibling)
             in_group.append(sibling)
             protected.append(sibling)
+
+    # Ultima, dopo le espansioni strutturali: la rappresentanza per autorita'
+    # non deve spezzare un inventario ne' perdere una sezione adiacente, e a
+    # sua volta nessuna espansione successiva puo' sfrattarla.
+    if _flag("METNOS_TUTOR_AUTHORITY_QUOTA", True):
+        _reserve_authorities(
+            selected, visible, adjusted, threshold, top, band,
+            per_document, per_kind, maximum, pinned=protected)
     if explain is not None:
         explain["final_selected"] = tuple(
             hit.source_id for hit in selected)

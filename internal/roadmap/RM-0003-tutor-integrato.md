@@ -778,7 +778,7 @@ curava il sintomo di un difetto di selezione, pagandolo altrove.
 | sonda contestuale autoavverante | concatenava la RISPOSTA precedente → vettore quasi-duplicato delle sue stesse fonti, guadagno sempre vinto (0,9317 vs 0,8465) | `94dfe3db` |
 | ledger del correttore catturato da un'altra pagina | 15 voci richieste, tutte estranee alla domanda | `94dfe3db` |
 | la ricomposizione poteva peggiorare la risposta | integra i buchi elencati e ne perde un altro, consegnata senza rilettura | `94dfe3db` |
-| scarto per audience silenzioso | pagina esistente ma non autorizzata scartata in silenzio, risposta che dichiara ASSENZA (§2.8) | `94dfe3db` |
+| scarto per audience silenzioso | pagina esistente ma non autorizzata scartata in silenzio, risposta che dichiara ASSENZA (§2.8) | `94dfe3db`, poi **ristretto al primato** in §9-quater |
 | rilettura cieca agli identificatori | nessun confine di parola dopo un underscore: voce presente alla lettera dichiarata mancante | `94dfe3db` |
 
 ### 9-ter.3 Interventi proposti, per rischio crescente
@@ -841,6 +841,453 @@ stato di un task» non esprime alcun vaglio) e gli slug `\bpulls?\b`/`\bdirs?\b`
 per f1-github#4 (premierebbero una risposta di soli slug, cioè proprio ciò che
 il ledger vieta).
 
+## 9-quater. Post-mortem di cert19 (25/7 sera): un fascio non si misura
+
+I quattro fix di §9-ter.2 sono stati applicati IN BLOCCO: **94+7 contro 106+7**.
+La tabella delle transizioni chiude la diagnosi senza congetture — 14 risposte
+`fondata` diventate `restricted`, più 2 fondate che hanno perso la rotta con
+`repair_pass 1→0`.
+
+### 9-quater.1 Il segnale «restricted» ristretto al primato
+
+Il fix §2.8 faceva scattare il rifiuto per autorizzazione appena UNA fonte
+scartata per audience stava sopra la soglia e dentro la banda della migliore
+visibile. Poiché le unità di registro stanno di norma sopra 0,70 — la soglia è
+sotto il pavimento di rumore del corpus, con 155 candidati sopra soglia su una
+query misurata — la condizione è quasi sempre vera: **14 casi su 134**.
+
+Condizione onesta: il rifiuto è dovuto solo quando la risposta SAREBBE STATA la
+fonte scartata, cioè quando nessuna fonte visibile la eguaglia — il **primato**,
+valutato sullo stesso punteggio che ordina la classifica. Con una fonte visibile
+in testa la risposta nasce da quella e non dichiara alcuna assenza.
+
+### 9-quater.2 Il confronto fra due classifiche era fra scale diverse
+
+I 2 casi restanti sono follow-up ellittici; la pagina non era in contesto,
+quindi il correttore non poteva nemmeno vedere l'omissione. Rango della
+superficie attesa, per formulazione della sonda:
+
+| caso | sola domanda corrente | + domanda precedente |
+|---|---|---|
+| `changes-actions#2` → `/admin/changes` | rango 155, adj 0,7548, fuori banda | **rango 4**, adj 0,8162, selezionata |
+| `device-token#2` → `/admin/devices` | rango 97, adj 0,7042, fuori banda | **rango 8**, adj 0,7562, selezionata |
+
+La sonda arricchita recuperava la fonte giusta e il test di guadagno la buttava
+via: 0,8578 contro 0,8421 + 0,02 richiesti, **mancati per 0,0043**. Il difetto
+non è la soglia ma il confronto: i punteggi di TESTA di due sonde appartengono a
+testi di lunghezza diversa (il normalizzatore dell'affinità di titolo è
+`len(query_tokens)`, la densità si diluisce su un testo più lungo), quindi non
+sono commensurabili. Un confronto fra scale diverse non misura nulla.
+
+Regole a confronto sui 9 follow-up con rotta attesa — solo retrieval, nessun
+modello, quante volte una fonte SELEZIONATA attesta la rotta:
+
+| regola | attestate |
+|---|---|
+| scelta in blocco per punteggio di testa (cert19) | 5/9 |
+| sempre la sonda arricchita | 7/9 |
+| sonda con la RISPOSTA precedente (cert14) | 7/9, ma perde `pronoun-independence#2` |
+| **massimo per fonte fra le due formulazioni** | 7/9 |
+
+Scelta: massimo per fonte. Le due formulazioni entrano nella stessa classifica e
+ogni fonte prende il proprio punteggio migliore; una domanda indipendente
+conserva la fonte che risponde a sé stessa (controprova nel test), un follow-up
+ellittico ottiene quella che risponde alla domanda risolta. Non c'è più una
+scelta in blocco, quindi non c'è più un confronto fra scale.
+
+### 9-quater.3 Rappresentanza per autorità dentro la banda
+
+§9-ter.3 punto 4 implementato come **copertura, non riordino**: per ogni classe
+di autorità presente in banda e assente dalla selezione entra la sua migliore,
+sfrattando la più debole di una classe sovrarappresentata; il primario non cambia
+mai e le espansioni strutturali (inventario di capacità, sezioni adiacenti) sono
+protette dallo sfratto. Un riordino per autorità seppellirebbe invece la prosa
+esplicativa sulle domande concettuali, mentre il difetto misurato è
+l'AFFAMAMENTO: l'unità corretta è dentro la banda e il tetto piatto la taglia.
+
+### 9-quater.4 Nota di accesso al composer: intervento SCARTATO con misura
+
+Sembrava la chiusura onesta di §2.8: invece di rifiutare, dichiarare al composer
+che esiste una fonte pertinente riservata, così la risposta nomina il confine di
+autorizzazione (`admin-restricted-user` chiede esattamente questo: `["executor"]`
++ `lex:tutor_gate.admin_role`). Misurato sui 44 casi ad audience `user`:
+
+| condizione della dichiarazione | scatta su |
+|---|---|
+| fonte riservata DENTRO la banda | 9/44 (20%) |
+| fonte riservata almeno PARI al primario | **0/44** |
+
+Le 9 sono le stesse che cert19 trasformava in rifiuti, e le fonti riservate in
+banda sono estranee alla domanda: `executor-admin` per la LOC dei file,
+`runtime-ui-turns` per una ricerca web, la procedura delle proposte per una
+casella di posta. Dichiararle produrrebbe una nota di autorizzazione FALSA su un
+quinto delle risposte. E su `admin-restricted-user` non scatta affatto: nessuna
+fonte riservata entra in banda, perché la superficie `executors` non è nemmeno
+CONOSCIBILE da un utente (`knowledge_audience` di default `instance_admin`; una
+sola superficie, `devices`, è aperta).
+
+Quindi quel caso non è una leva di retrieval: è una **ratifica** — vedi
+§9-quater.5. L'intervento è chiuso come scartato, con la misura che lo scarta.
+
+### 9-quater.5 Quarta decisione per Roberto: conoscibilità delle pagine admin
+
+Un utente semplice può SAPERE che una pagina amministrativa esiste e che serve il
+ruolo amministratore per aprirla? Oggi no, per tutte tranne `devices`. Se sì:
+(1) `knowledge_audience="user"` sulle superfici che si vogliono conoscibili, e
+(2) il testo dell'unità di superficie dichiara il ruolo d'ACCESSO, derivato dal
+registro (`UiSurfaceSpec.audience`), una riga per ogni superficie. Se no,
+`admin-restricted-user` va riformulato: chiede una risposta che il corpus
+autorizzato non può fondare.
+
+### 9-quater.6 Triage dei 22 fallimenti di cert20, per leva che li chiude
+
+Non congetture: per ogni caso si è cercata nella RISPOSTA la forma flessa che il
+gate letterale non vede. Il risultato ribalta due priorità.
+
+| cluster | casi | leva che lo chiude | verificato |
+|---|---|---|---|
+| rotta e voci di pagina assenti | `admin-settings-errors`, `admin-services-telegram`, `admin-users-list-create`, `conversation-safety-classes#1/#2`, `conversation-device-token#2` | quota di autorità in banda | la superficie giusta è la **prima** unità di registro della classifica in 3 casi su 4 misurati (`registro-che-la-precede=0`) |
+| clausola di prosa omessa | `f1-scheduled#1/#2/#4/#5`, `f1-devices#3` (metà) | ledger delle clausole della fonte primaria (§9-ter.3 punto 3) | nelle risposte **nessuna** forma di «monouso/one-off» è presente in #1/#2/#4: non è un problema di lessico, la clausola manca davvero |
+| gate letterale contro forma flessa | `ops-undo` | edit meccanico `lex:` sanzionato da ADR 0198 | la risposta contiene «ultime» e «operazioni», il gate chiede «ultima»/«operazione» |
+| compressione del composer | `f1-overview#5` (8 concetti mancanti) | budget proporzionale alla checklist (§9-ter.3 punto 5) | 44 aree contro 2048 token |
+| ratifica del corpus | `admin-restricted-user`, `ops-google-workspace`, `ops-mail-credentials-typo`, `f1-github#4` | decisione di Roberto (§9-quater.5 e §9-ter.4) | — |
+| rumore | `conversation-capabilities-local#2`, `f1-scheduled#5` (in parte) | nessuna: A/A 3,1% | passavano in cert14 con le stesse fonti |
+| banda ancorata a un frammento-argomento | `admin-user-preferences` (rango 187, FUORI banda) | igiene della segmentazione, non la quota | la banda è ancorata a `open_sites._lang` |
+
+Correzione di rotta rispetto a §9-ter.3: gli edit di lessico sanzionati valgono
+**un caso**, non quattro; la leva del ledger ne vale quattro. La stima del tetto
+raggiungibile senza ratifiche resta ~117 su 127 non-skip.
+
+### 9-quater.7 Regola di metodo
+
+**Una leva per certificazione, attribuita per gruppo.** cert19 è costato
+un'attribuzione sbagliata: avevo imputato 2 dei 16 regressi al ledger del
+correttore, mentre erano la sonda contestuale. Il fascio è comodo da scrivere e
+impossibile da leggere.
+
+## 9-quinquies. Il quadrato 2×2 della selezione (25/7 notte)
+
+Due leve indipendenti, misurate separatamente e nella loro interazione. Quattro
+run complete, stessa suite, stesso catalogo, nient'altro cambiato:
+
+| | quota di autorità SPENTA | quota di autorità ACCESA |
+|---|---|---|
+| **massimo per fonte** fra le formulazioni | cert20 = 105 | **cert21 = 110** |
+| **ammissione in coda** (3 posti) | cert22 = 104 | cert23 = 108 |
+
+Base cert14 = 106. Letture:
+
+1. **La quota di autorità vale +5, indipendentemente dall'altra leva** (105→110 e
+   104→108). È il rimedio all'affamamento di §9-ter.1 e chiude 4 casi admin che
+   nessuna calibrazione della banda aveva mosso.
+2. **Il massimo per fonte batte l'ammissione in coda di 1-2 casi.** Ero partito
+   dall'ipotesi opposta (§9-quater.2, leva «2b»): l'ammissione in coda era stata
+   scritta proprio per proteggere il primario dai 3 follow-up che cambiano
+   argomento. Misurata, **non li recupera** — regrediscono in entrambe le
+   varianti — e in più perde `conversation-mailbox-credentials#2`. Tre posti in
+   coda diluiscono senza risolvere: il difetto non era l'ORDINE, era la
+   FORMULAZIONE della seconda sonda (§9-quinquies.1).
+3. Le due leve non interferiscono: `+5` additivo e insiemi di casi disgiunti
+   (la quota lavora su `admin_ui`, la sonda su `conversation`).
+
+Configurazione congelata per il commit: primato onesto del rifiuto + massimo per
+fonte + **quota accesa per default** (`METNOS_TUTOR_AUTHORITY_QUOTA`, spegnibile
+come le altre calibrazioni). cert24 la riverifica col default, senza env.
+
+### 9-quinquies.1 La seconda sonda non è la domanda precedente: è la congiunzione
+
+Il difetto residuo, letto sui 4 casi di conversazione che non chiudono in
+cert21: il massimo per fonte fra «domanda corrente» e «domanda precedente» è una
+**disgiunzione** di due argomenti, mentre la domanda che l'utente ha fatto
+davvero è la loro **congiunzione**. «E dove li configuro?» dopo «Dove vedo le
+esecuzioni dei task pianificati?» non vale né come «configurare» né come
+«esecuzioni»: vale come «dove configuro i task pianificati». La domanda
+precedente da sola, poi, **non è una domanda che l'utente ha fatto** — ed è
+proprio quella che si prende il primario e riporta la risposta al turno prima.
+
+Sonda: `probe_conjunction.py`, tutti i 12 scambi del corpus, solo retrieval,
+nessun modello. Rango della superficie attesa e sua presenza in selezione:
+
+| scambio | precedente nuda | **congiunzione** | senza contesto |
+|---|---|---|---|
+| `runs-to-timers#2` | 30, fuori | 11, fuori | 88, fuori |
+| `device-token#2` | 109, fuori | **16, selezionata** | 97, fuori |
+| `pronoun-independence#2` | 24, fuori | **6, selezionata** | 3, fuori |
+| `changes-actions#2` | 19, sel. | **5**, sel. | 38, fuori |
+| `rejected-reason#2` | 46, sel. | **25**, sel. | 975, fuori |
+| `google-followup#2` | 3, sel. | **1**, sel. | 2, sel. |
+| `safety-classes#2` | 26, sel. | 31, sel. | 556, fuori |
+| `capabilities-local#2` | 2, sel. | 3, sel. | 3, sel. |
+| `mailbox-credentials#2`, `services-controls#2`, `telegram-ui-location#2`, `build-details#2` | 1, sel. | 1, sel. | 5-1432 |
+
+Il rango migliora in 11 casi su 12 e nessun caso verde perde la selezione
+(`safety-classes#2` scende di 5 posizioni restando dentro). Due dei quattro rotti
+portano in contesto la superficie che oggi manca. La colonna «senza contesto»
+misura quanto il contesto serva: 8 scambi su 12 non trovano affatto la fonte.
+
+Leva C, una sola riga in `tutor/service.py`: la seconda formulazione diventa
+`f"{precedente} {corrente}"`. `retrieve_sources` resta agnostica — riceve «una
+seconda formulazione della stessa domanda», e la congiunzione lo è più della
+precedente nuda. cert25 la isola contro cert24.
+
+### 9-quinquies.2 Leva D già istruita: il collegamento fra superfici del registro
+
+`runs-to-timers#2` migliora (30→11) ma resta fuori banda, perché la congiunzione
+rafforza anche la pagina del turno prima. Il registro però **dichiara già** la
+relazione che serve: la superficie `runs` elenca fra i controlli «collegamento a
+Timer, dove si configura il task». Terza espansione strutturale, accanto alle
+sezioni adiacenti e ai fratelli d'inventario: se il primario è una superficie che
+dichiara un collegamento a un'altra superficie, quella entra in contesto.
+
+Vincolo di progetto: il collegamento oggi vive nella PROSA di `controls_it/en`.
+Inferirlo dal testo sarebbe indovinare; va dichiarato come dato — un campo
+`links` di chiavi di superficie in `UiSurfaceSpec`, compilato dove il controllo
+già lo dice (3 superfici). Deterministico, dal registro, senza liste di frasi
+(§7.3, §7.9).
+
+## 9-sexies. Leva E istruita con la misura: il ledger ignora la PROSA
+
+I 4 casi `f1-scheduled` sono il gruppo più grande che resta, e la loro diagnosi
+in §9-quater.6 («la clausola manca davvero») ora ha un colpevole preciso.
+
+Il concetto richiesto è `lex:tutor_gate.one_off` — la distinzione fra
+un'esecuzione sola e una ricorrente. Prima ipotesi, misurata e SCARTATA: la
+clausola sta nell'argomento `times` del manifest `create_tasks` («1 = ONE-SHOT,
+esegue una volta sola, poi auto-cancella»), unica fonte strutturata che la
+attesti. Rango di quell'unità sulle sei formulazioni del set:
+
+| formulazione | rango di `create_tasks.times` | selezionata |
+|---|---|---|
+| #1 IT ricorrente/email | 50 (adj 0,7456) | no |
+| #2 IT promemoria periodico | 50 (adj 0,7537) | no |
+| #4 EN recurring/email | 18 (adj 0,7683) | no |
+| #5 EN reminder periodic | 75 (adj 0,7386) | no |
+
+Sopra soglia, sempre fuori banda. Ma la fonte PRIMARIA di #1, #2, #4 e #5 è la
+scheda curata `attivita-programmate` (adj 0,84-0,90), e il suo corpo dichiara
+**entrambi** i concetti mancanti, in entrambe le lingue:
+
+- «Metnos ti mostrerà la schedulazione risultante e applicherà i normali
+  **vagli**» → il gate `vagli | controlli` / `gates | checks`;
+- «Per una **sola esecuzione**, ometti la ricorrenza» / «For a **one-off** run,
+  omit the recurrence» → il gate `one_off`.
+
+Quindi non è un problema di selezione: **la fonte giusta è la prima della
+classifica e il composer ne butta via due frasi su quattro**. Il correttore non
+lo vede perché `_coverage_items` costruisce la checklist SOLO da fonti
+strutturate (inventari, manifest, superfici): una scheda curata, come una
+sezione di prosa, contribuisce **zero** voci.
+
+Leva E, ambito minimo e difendibile: quando la primaria è una **scheda curata**,
+le clausole del suo corpo entrano nel ledger (parola distintiva per clausola,
+stesso meccanismo di `_label_covered`, cap esplicito). Una scheda è una risposta
+BREVE e scritta a mano: perderne una clausola è un difetto per costruzione. Una
+sezione di documento pubblico è invece un estratto di un testo più lungo e non
+ha lo stesso contratto — l'estensione alla prosa `manual` resta separata, da
+misurare dopo.
+
+## 9-septies. Il quadrato misurato, e l'audit dei 14 residui (26/7)
+
+### 9-septies.1 Le quattro leve della notte, con l'attribuzione
+
+| cert | configurazione | pass | contro il precedente |
+|---|---|---|---|
+| 24 | default congelato | 110 | riferimento |
+| **25** | **+ leva C (congiunzione)** | **113** | +3 / -0, tutti in `conversation` |
+| 26 | + leva E (clausole della scheda) | 108 | +0 / -5 |
+| 27 | + leva H (inventario) sopra E | 109 | +2 / -1 |
+| 28 | + leva H senza E | 112 | -1 contro cert25 |
+
+**Leva C validata**: +3 casi, tutti nel gruppo che la leva mira, coerente con
+la sonda offline sui dodici scambi (§9-quinquies.1). È la configurazione tenuta.
+
+**Leva H ritirata**: senza la leva E non recupera `f1-overview#5` e perde
+`ops-calendar-events`. Il recupero visto in cert27 era interazione con E, non
+effetto della leva: rimossa E, il caso torna a fallire. Il codice è tornato allo
+stato certificato in cert25, quindi il ritiro non richiede una misura nuova.
+
+**Leva E ritirata, e per la ragione SBAGLIATA rispetto a quella scritta**: il
+suo −5 non veniva dalle clausole. In `--f2-only` `card_ids` è **vuoto in tutti i
+run** (cert24, 25, 26, 27, 28 verificati): nessuna scheda entra mai in
+selezione, quindi `_guide_clauses`, che si attivava solo su `primary.card`, non
+ha mai prodotto una clausola. Ciò che ha cambiato il comportamento è
+l'**istruzione del ledger**, riscritta per OGNI risposta in modo da chiedere
+«and guide clause» — una famiglia di voci mai fornita. Cinque casi persi per una
+perturbazione del prompt a carico utile nullo. Lezione riusabile: una modifica
+al testo del ledger è essa stessa una leva, e va condizionata alla presenza del
+carico.
+
+### 9-septies.2 I 14 residui: rieseguiti, e classificati per punto di rottura
+
+Due passate indipendenti sugli stessi casi (piloti 17 e 18): **12 falliscono in
+modo riproducibile, 2 cambiano fra passate identiche** — `ops-undo` e
+`f1-scheduled#4`. Il rumore non è nullo, ed è la ragione per cui i verdetti da
+1-2 casi di questa sessione restano deboli finché la banda non è misurata su
+tutto il corpus (cert29a/b, due passate a configurazione invariata).
+
+L'audit incrocia, per ogni concetto mancante, tre fatti: chi lo attesta nel
+catalogo, se quella fonte era in selezione, e se la risposta ne dice una
+flessione. **Nessuna delle 14 attese è impossibile**: tutte sono attestate da
+fonti F2 visibili all'audience del caso. La rottura si divide così:
+
+| natura | voci | casi |
+|---|---|---|
+| **C composer** — la fonte è in selezione, la risposta omette | 10 | `f1-scheduled#1/2/4/5`, `ops-mail-credentials-typo`, `ops-undo` |
+| **B retrieval** — attestato, nessuna fonte selezionata | 17 | `admin-services-telegram`, `admin-users-list-create`, `admin-user-preferences`, `admin-restricted-user`, `conversation-runs-to-timers#2`, `f1-github#4`, `f1-overview#5`, `ops-google-workspace` |
+| **D formulazione** — letterale dove serve un gate | 1 | `ops-undo` |
+
+Dato strutturale sui B: `f1-github#4` seleziona **una sola fonte** e
+`ops-google-workspace` due. Quando la primaria è un'unità di registro, la banda
+0,06 taglia tutto il resto e i concetti attestati dalla pagina dei domini non
+entrano mai. È la causa di 2 residui su 8, e non è la coda dell'embedder: è la
+larghezza della banda attorno a una classe di fonti particolare.
+
+### 9-septies.3 Tre difetti del TEST, corretti con l'evidenza
+
+1. **`ops-undo`** chiedeva il letterale «ultima». La risposta dice «ultimo», ed
+   è la stessa cosa: il caso passava o falliva secondo la flessione scelta dal
+   composer (misurato instabile fra due passate). Il meccanismo sancito per
+   questo è il gate a radice flessiva: nuovo `lex:tutor_gate.last` (it+en) nel
+   seed, e `must_cover` che lo usa. Non è un test addolcito — è il test scritto
+   col meccanismo che il progetto ha già deciso di usare.
+2. **`ops-google-workspace`** pretendeva l'area `tasks`. Il catalogo firmato
+   espone il provider in **10 aree** e `tasks` non è fra queste: soddisfare
+   l'attesa avrebbe richiesto di dichiarare una capacità inesistente (§2.8). La
+   risposta era corretta e completa. Attesa rimossa, con la nota di evidenza
+   dentro il caso.
+3. **`ops-mail-credentials-typo`** pretende il percorso del file di
+   configurazione, oppure la parola «file». La risposta descrive il **modulo
+   iniettato** (ADR 0199), che è la via corrente per un utente. Qui non decido:
+   quale delle due sia la risposta giusta per un utente è una scelta di
+   prodotto, e resta in attesa di ratifica.
+
+### 9-septies.4 Leva E′: le clausole della primaria quando è PROSA
+
+La diagnosi di §9-sexies era giusta nel meccanismo e sbagliata nell'ambito. Le
+fonti che attestano `one_off` e `vagli | controlli` non sono le schede curate,
+ma le sezioni pubbliche `doc-public-tutor-…-0014/0015` — e in `f1-scheduled#2`,
+`#4` e `#5` la sezione è **la primaria**. `_coverage_items` costruisce voci solo
+da fonti strutturate, quindi una sezione di manuale contribuisce zero e la sua
+clausola omessa è invisibile alla rilettura.
+
+Leva E′: `_prose_clauses` legge il corpo della primaria quando è prosa — scheda
+curata **o** unità `manual` — con cap esplicito, minimo di parole, e due
+esclusioni. Fuori le frasi che portano un esempio fra virgolette (chiederne la
+ripetizione letterale genera imitazione semantica, §6) e i segnaposto del
+renderer. L'istruzione del ledger cambia SOLO quando esiste almeno una clausola:
+è la correzione diretta dell'errore misurato in cert26.
+
+Due difetti dell'estrattore trovati dai test prima della misura, entrambi
+sull'esempio che precede la clausola bersaglio:
+
+- il terminatore seguito da una chiusura di citazione (`.»`) non spezzava la
+  frase, e l'esempio si portava dietro la clausola successiva — proprio quella
+  che i casi richiedono;
+- in inglese l'esempio usa virgolette curve (`“ ”`), non caporali, e sfuggiva al
+  filtro. Corretto come **classe tipografica**, non per lingua.
+
+Verificato sulle fonti reali: in IT e in EN entrambi i concetti mancanti sono
+ora clausole distinte del ledger.
+
+### 9-septies.5 Il ledger è un budget SATURO: leva E′ ritirata, e la ragione vale in generale
+
+La leva è stata isolata senza spendere una certificazione, riscorando le
+risposte già registrate di cert25 col corpus corretto: stesse risposte, matcher
+nuovo. Differenza attribuibile alla sola E′: **+3 / −5**.
+
+- **Guadagni**: `f1-scheduled#2`, `#4`, `#5` — esattamente i bersagli. `#1` no,
+  e coerentemente: la sua primaria è un'unità strutturata, quindi la leva non si
+  attiva.
+- **Perdite**: `f1-changes#3`, `#6`, `f1-devices#5`, `ops-sites-login` (più
+  `admin-services-content`, che è rumore del classificatore di modo: risposta
+  `fallthrough` in 417 ms). Tutte e quattro hanno primaria `manual`, cioè sono
+  casi in cui la leva si attiva — e la leva si attiva su **63 casi su 127**,
+  metà corpus.
+
+Il meccanismo, letto nella telemetria: sui tre guadagni la riparazione **non
+scatta mai** (`repair_pass=0` in cert25 e in cert29a), e sulle quattro perdite
+`repair_missing` non contiene nessun buco di clausola. Quindi E′ non agisce come
+correttore: agisce arricchendo il PRIMO prompt. Il ledger elencato al composer
+non è una checklist gratuita — è una lista di richieste che compete con le altre
+per l'attenzione del modello, e il carico che si aggiunge sposta contenuto
+obbligatorio già coperto.
+
+**Regola che ne esce, e che vale oltre questa leva**: il ledger è un budget
+saturo. Aggiungere una famiglia di voci al prompt del composer costa più di
+quanto renda, perché il guadagno si concentra sulla famiglia nuova mentre il
+danno si distribuisce su tutte le altre. Le due leve tentate su questa strada —
+E (che non aveva nemmeno carico utile) ed E′ (che l'aveva, e mirato) — perdono
+entrambe. Prima di riproporre una variante servono due cose: una misura del
+livello di rumore, e un meccanismo che NON passi dal prompt del composer.
+
+**Difetto separato, trovato per strada e non ancora affrontato**: il ledger di
+`ops-sites-login` chiede 46 aree di capacità, tre provider e l'inventario
+completo della pagina Dispositivi — per una domanda su come si fa il login a un
+sito. Quando l'inventario di capacità entra in una domanda che non è una
+panoramica, la rilettura spende l'unica ricomposizione su decine di voci
+estranee. È indipendente da E′ (presente identico in cert25) e vale una leva a
+sé, sul PERIMETRO del ledger e non sulle sue famiglie.
+
+### 9-septies.6 Il livello di rumore, misurato — e quali verdetti resta lecito emettere
+
+Due coppie di passate a **codice e corpus invariati**:
+
+| coppia | carico della macchina | casi che cambiano |
+|---|---|---|
+| cert29a / cert29b | certificazione + turni E2E in parallelo | 2 (`ops-calendar-events`, `ops-places-nearby`) |
+| **cert30 / cert31** | **macchina scarica, nulla in parallelo** | **1** (`conversation-capabilities-local#2`) |
+
+La prima coppia è un **limite superiore**, non la banda: girava in contesa di
+GPU con i turni live, e la contesa allunga la certificazione da ~20 a ~32 s per
+caso. La seconda è la misura buona: **la banda di rumore è 1 caso**, e cresce con
+il carico della macchina — cioè il rumore non è una proprietà del Tutor, è una
+proprietà delle condizioni in cui si misura.
+
+Conseguenza retroattiva sui verdetti della sessione, da applicare senza sconti:
+
+- **Attribuibili**: leva A (+14), quota di autorità (+5 additivi in due coppie),
+  leva C (+3), leva E (−5). Tutte fuori banda.
+- **Dentro la banda, quindi NON attribuibili come effetto**: il −1 della leva H e
+  l'1-2 casi con cui il massimo per fonte batteva l'ammissione in coda. Entrambe
+  le leve restano ritirate, ma per l'argomento strutturale (H non recupera il
+  caso per cui era scritta; 2b non recupera i tre follow-up per cui era scritta),
+  non per il numero.
+- **Immune al rumore per costruzione**: il +3/−5 della leva E′, ottenuto
+  riscorando risposte già registrate. Quando una leva vive nel matcher e non nel
+  modello, il ri-punteggio è la misura giusta e costa zero certificazioni.
+
+Regola di metodo che ne segue, da usare d'ora in avanti: **certificare a
+macchina scarica, e non emettere verdetti da 1-2 casi**. Se una leva promette
+meno di 3 casi, o si misura per ri-punteggio, o non si misura.
+
+### 9-septies.7 Configurazione consegnata
+
+Codice di prodotto: **la sola leva C** (sonda di compagnia = congiunzione della
+domanda precedente con quella corrente). Corpus: le due correzioni di
+§9-septies.3. Nient'altro delle sette leve tentate sopravvive.
+
+| cert | configurazione | pass | contro cert25 |
+|---|---|---|---|
+| 30 | C + corpus corretto | 114 | +2 / −1 |
+| **31** | **identica a cert30** | **115** | +2 / −0 |
+
+**115 + 7 skip / 134**, `boundary` 12/12, 12 residui: 4 `admin_ui`
+(`admin-restricted-user`, `admin-services-telegram`, `admin-user-preferences`,
+`admin-users-list-create`), 1 `conversation` (`conversation-runs-to-timers#2`),
+6 `f1_equivalence` (`f1-github#4`, `f1-overview#5`, `f1-scheduled#1/2/4/5`), 1
+`typical_operations` (`ops-mail-credentials-typo`, in attesa di ratifica).
+
+I due guadagni sul corpus sono guadagni di **verità del test**, non di capacità:
+`ops-undo` ora misura il concetto invece di una flessione, e
+`ops-google-workspace` non pretende più un'area che il catalogo firmato non
+espone. La differenza fra 114 e 115 è la banda.
+
+Le tre strade che restano aperte, in ordine di rapporto valore/rischio: la
+larghezza della banda attorno alle unità di registro (2 residui su 8 dei B,
+§9-septies.2), il PERIMETRO del ledger (46 aree su una domanda di login,
+§9-septies.5), la leva D già istruita (§9-quinquies.2). Nessuna passa dal prompt
+del composer, ed è il punto.
+
 ## 10. Registro di avanzamento
 
 | Data | Evento | Evidenza |
@@ -885,3 +1332,14 @@ il ledger vieta).
 | 2026-07-25 | Embedder Qwen cablato dietro `virt` | provider `qwen` (`runtime/qwen_embedding.py`): instruction-aware sul solo lato query via `embed_query` (i fake di test espongono i due lati), fingerprint del catalogo provider-aware; default di prodotto BGE INTATTO, override via `METNOS_EMBEDDING_TIERS_CONFIG`. A/B sulla coda: BGE 4/8 → Qwen 7/8 in top-5. cert17 completa in corso |
 | 2026-07-25 | cert17: Qwen end-to-end BOCCIATO senza ricalibrazione | f2-only, catalogo dedicato: 85+7/134 (BGE in cert14: 106+7). 27 regressioni, ZERO a fonti identiche = selezione spostata ovunque; 20 esiti «lacuna» (cert14: 0) = la soglia assoluta 0,70 e la banda 0,06 sono CALIBRATE SULLA DISTRIBUZIONE BGE e tagliano fuori i coseni Qwen, che vivono su un'altra scala. L'A/B puro-denso (ordinamento) resta valido: 7/8 vs 4/8 sulla coda. VERDETTO: niente flip di prod; riesame SOLO con ricalibrazione di soglia e banda derivate dalla distribuzione misurata (per percentili, come §7.4 già prescrive) e cert18. Tranche 2 resta in attesa: le 3 schede informative continuano a guadagnarsi il posto. E2E prod post-ritiro verdi: changes `c731ceb2836e4c52`, devices `6768ff36053047e6` |
 | 2026-07-25 | cert18: Qwen ricalibrato per percentili | knowledge_min=0.643 (percentile 0.0 della distribuzione BGE), banda=0.094 (rapporto IQR 1.563). Esito: 100 pass + 7 skip / 134, 27 fail; lacune 1 (cert17: 20). Riferimento BGE (cert14): 106+7/21. Decisione flip = Roberto |
+| 2026-07-25 | cert19: il fascio dei quattro fix BOCCIATO | 94+7/134 contro 106+7. Transizioni: `fondata`→`restricted` ×14 (il fix §2.8 scattava su ogni scarto in banda, e le unità di registro stanno di norma sopra soglia) + 2 follow-up ellittici senza la pagina in contesto. Post-mortem e correzioni: §9-quater. Lezione di metodo: UNA leva per certificazione |
+| 2026-07-25 | cert20: «restricted» al primato + massimo per fonte | 105+7/134. Leva A validata: **+14** contro cert19, `restricted: 0` sul corpus, e la sonda misurata 0/44 sui casi utente conferma che il primato non scatta a vuoto. Leva B (massimo per fonte) SCARTATA: fixa `changes-actions#2` ma rompe 3 casi in cui il follow-up cambia argomento, perché il compagno si prende il primario. Sostituita dall'ammissione in coda (leva 2b, `_COMPANION_SLOTS=3`), con controprova esplicita sull'ordine |
+| 2026-07-25 | cert21-cert23: il quadrato 2×2 della selezione | **cert21 = 110+7/134**, il migliore misurato (base cert14: 106). Quota di autorità **+5 additivi** in entrambe le coppie (105→110, 104→108); massimo per fonte batte l'ammissione in coda di 1-2 casi, che non recupera i 3 follow-up per cui era stata scritta e perde `conversation-mailbox-credentials#2`. Leva 2b ritirata con la sua misura. Configurazione congelata = primato + massimo per fonte + quota ON di default; §9-quinquies |
+| 2026-07-25 | Leva C isolata: la sonda è la congiunzione | La seconda formulazione non è la domanda precedente (che l'utente non ha fatto e che si prende il primario) ma la sua congiunzione con quella corrente = la domanda risolta. Sonda su tutti i 12 scambi, solo retrieval: rango della superficie attesa migliore in 11 casi su 12, due dei quattro rotti entrano in selezione, nessun verde perde la fonte. cert25 la isola contro cert24; §9-quinquies.1 |
+| 2026-07-25 | cert24: il default congelato riproduce la misura | 110+7/134 e **zero casi di differenza** contro cert21, che aveva la quota accesa da variabile d'ambiente. Il default di prodotto è quindi la configurazione misurata, non una sua approssimazione; i 17 residui sono 4 admin_ui, 4 conversation, 6 f1_equivalence, 3 typical_operations |
+| 2026-07-25 | cert25: leva C validata in isolamento | **113+7/134**, il migliore misurato. +3 / -0 contro cert24, tutti e tre nel gruppo `conversation` che la leva mira: la sonda di compagnia deve essere la CONGIUNZIONE della domanda precedente con quella corrente |
+| 2026-07-26 | cert26-cert28: leve E e H ritirate con la misura | E = 108 (-5) e H = 112 (-1 contro cert25). Scoperta che riqualifica il -5 di E: in `--f2-only` nessuna scheda entra MAI in selezione, quindi le clausole non sono mai state prodotte — a cambiare il comportamento era l'istruzione del ledger, riscritta per ogni risposta a chiedere una famiglia mai fornita. Una modifica al testo del ledger è essa stessa una leva (§9-septies.1) |
+| 2026-07-26 | Audit dei 14 residui: nessuna attesa impossibile | Due passate indipendenti: 12 fallimenti riproducibili, 2 instabili. Ogni concetto mancante è attestato da fonti F2 visibili all'audience. Rottura: 10 voci al composer (fonte in selezione, risposta che omette), 17 al retrieval, 1 alla formulazione del test. `f1-github#4` seleziona 1 sola fonte e `ops-google-workspace` 2: attorno a un'unità di registro la banda 0,06 taglia tutto (§9-septies.2) |
+| 2026-07-26 | Tre difetti del corpus corretti con l'evidenza | `ops-undo` letterale «ultima» → gate `lex:tutor_gate.last` (instabilità misurata come prova); `ops-google-workspace` pretendeva l'area `tasks` che il catalogo firmato NON espone (10 aree) e avrebbe imposto di dichiarare una capacità inesistente; `ops-mail-credentials-typo` (file di configurazione contro modulo iniettato ADR 0199) resta in attesa di ratifica |
+| 2026-07-26 | Leva E′: clausole della primaria quando è prosa | Ambito corretto di §9-sexies: le fonti che attestano `one_off` e `vagli` sono sezioni `manual` pubbliche, primarie in 3 dei 4 casi, non le schede. Istruzione del ledger condizionata alla presenza di clausole. Due difetti dell'estrattore trovati dai test: terminatore seguito da chiusura di citazione, e virgolette curve in EN (corretto come classe tipografica). 100 test tutor verdi; cert29a/b misura insieme la leva e il LIVELLO DI RUMORE |
+| 2026-07-26 | Leva E′ ritirata: il ledger è un budget saturo | Isolata a **+3 / −5** riscorando le risposte di cert25 col corpus corretto (stesse risposte, matcher nuovo). Sui guadagni la riparazione NON scatta e sulle perdite non c'è nessun buco di clausola: la leva agisce arricchendo il PRIMO prompt, e il carico aggiunto sposta contenuto obbligatorio già coperto. Si attivava su 63 casi su 127. Regola generale: aggiungere una famiglia di voci al ledger costa più di quanto renda — una variante richiede un meccanismo che non passi dal prompt del composer (§9-septies.5). Difetto separato aperto: 46 aree di capacità chieste a una domanda di login |

@@ -609,6 +609,12 @@ def register_all() -> None:
       it=[r"\bamministrat\w*|\badmin\b"], en=[r"\badmin\w*"])
     R("tutor_gate.retry", "regex",
       it=[r"\briprov\w*"], en=[r"\bretry\b"])
+    # «l'ultima operazione»: il letterale nel corpus di certificazione passava
+    # o falliva secondo la flessione scelta dal composer (misurato instabile
+    # fra due passate: «ultimo» invece di «ultima»). Il gate copre la radice.
+    R("tutor_gate.last", "regex",
+      it=[r"\bultim\w*|\bprecedent\w*"],
+      en=[r"\blast\b|\blatest\b|\bmost recent\b|\bprevious\b"])
     # Termine tecnico invariante fra le lingue: pattern verbatim it+en, come
     # i regex intrecciati in testa al file (il merge deduplica).
     R("tutor_gate.pull_request", "regex",
