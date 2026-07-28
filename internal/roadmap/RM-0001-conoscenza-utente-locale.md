@@ -1,6 +1,9 @@
 # RM-0001 — Conoscenza utente locale: memoria forte, semplice e automatica
 
-**Stato:** `ready`
+**Stato:** `progettata — non pianificata` (decisione di Roberto, 28 luglio 2026:
+«per adesso troppo complesso per troppo poco»). Il documento resta la specifica
+di riferimento e non è una previsione di lavoro. Le condizioni per riaprirlo sono
+in §0-bis, e sono misurabili.
 **Creazione:** 2026-07-23
 **Ultima revisione:** 2026-07-28
 **Implementazione reale:** non iniziata. Esistono soltanto le preferenze W2,
@@ -33,6 +36,64 @@ ordine di costruzione, interruttori e prove, fase per fase. Recepisce inoltre le
 tre decisioni ratificate il 28 luglio — ampiezza dell'oblio per chiave,
 compositore delle risposte aggregate fuori dal nucleo, ratifica di ADR 0200 — e
 chiude i cinque difetti trovati dalla review conclusiva.
+
+## 0-bis. Chiusura: che cosa resta, che cosa è stato fatto, quando riaprire
+
+**La decisione, 28 luglio 2026.** RM-0001 non si implementa ora. Il documento è
+buono come specifica e questo non è una ragione sufficiente per costruirlo: il
+giudizio di Roberto — «troppo complesso per troppo poco» — è sostenuto dalle
+verifiche fatte lo stesso giorno, non contraddetto da esse.
+
+**Che cosa ha retto alla verifica, e che cosa no.** Su dieci richieste che il
+sottosistema avrebbe dovuto migliorare, sei si sono rivelate deboli o già
+risolte: il calendario si nomina in tre parole; l'alias di una casella è già
+letto dal pianificatore; un destinatario per nome è già risolto via `users.db`;
+il posto dove Metnos mette le cose è uno solo per istanza, non uno per utente.
+Restano due capacità solide — la presentazione personale e ciò che il sistema
+**osserva senza che glielo si dichiari** — e la seconda vive nelle fasi ultime e
+più care. Il riassunto onesto è che **la parte economica vale poco e la parte che
+vale è cara**, ed è questo, non la difficoltà tecnica, a fermare il lavoro.
+
+**Che cosa è stato costruito comunque, e non è questa roadmap.** Le preferenze di
+risposta — `reply_length`, `tone`, `units` — esistevano in `user_prefs` dal
+lavoro W2 e non erano lette da alcun percorso di risposta: uno store senza
+consumatori. Il cablaggio della lunghezza al finalizzatore è stato fatto il 28
+luglio, con un solo punto d'effetto, due chiamanti, e la garanzia provata che chi
+non ha preferenze veda un comportamento identico byte a byte. Non richiede
+principale canonico, store, journal né corpus: è la dimostrazione che il primo
+valore di RM-0001 era raggiungibile **senza** RM-0001.
+
+**Che cosa resta di valore in questo documento**, indipendentemente
+dall'implementazione:
+
+- il **perché** dei confini: la review avversariale del 23 luglio dimostra che un
+  profilo nel contesto di pianificazione è un vicolo cieco con cache condivise
+  (§17.5). Vale per qualunque futuro tentativo, anche fuori da qui;
+- il **precedente misurato** di §6.7.1: un sistema vicino, in esercizio, con
+  l'82% di deduzioni inutili e nessuna traccia d'uso. È la prova sperimentale che
+  la prosa libera su una persona non produce conoscenza;
+- le **regole di ammissione** — destinazione obbligatoria, acquisire non è
+  applicare, il sistema non intervista, il peso asimmetrico fra dichiarato e
+  dedotto — che sopravvivono a questo documento e valgono ovunque si conservi
+  qualcosa su un utente;
+- lo **strato di attuazione** (§13) con 108 punti d'innesto verificati riga per
+  riga: se un giorno si costruisce, non si riparte dalla ricognizione;
+- i **quattro punti di contatto col nucleo** e il loro contenimento (§13.9), che
+  restano veri per chiunque tocchi identità, preferenze o segmentazione.
+
+**Quando riaprire, e non è un'opinione.** La misura di prontezza di §11.0 — un
+contatore in sola lettura, poche decine di righe, nessuna dipendenza — dice con
+un numero quante volte un valore viene ripetuto per lo stesso argomento, quante
+riconferme identiche sono state date, quante forme di piano ricorrono. Se quei
+numeri sono bassi, questo documento resta chiuso e ha risparmiato sei fasi. Se
+sono alti, dicono anche **quale** fase aprire. È l'unico modo per decidere con un
+dato invece che con una previsione, e costa un giorno.
+
+**Che cosa è uscito da qui e vive altrove.** La caratterizzazione degli oggetti —
+firme tipizzate, proiezioni, classi derivate per conteggio, firma semantica — è
+in `internal/design/spec_object_signature_28_7.md`: descrive gli oggetti e non
+l'utente, e non dipende da questa roadmap. La sua scala di adozione parte da
+tratti già calcolati oggi.
 
 ## 0. Esito progettuale
 
