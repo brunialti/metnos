@@ -292,6 +292,55 @@ produzione, e la cache di primo livello usa già la vicinanza coseno sulle query
 Manca soltanto un'immersione **per oggetto osservato**, con le sei discipline
 sopra. Il costo del lavoro non è il modello: è la disciplina.
 
+## 1-ter. Un'etichetta grossolana, una classe multimodale
+
+L'utente etichetta con una parola sola. «Spam» copre almeno tre cose diverse —
+pubblicità, tentativo di frode con richiesta di credenziali, allegato ostile — e
+nessuno le distinguerà mai a mano, perché dal suo punto di vista sono tutte «roba
+che non voglio». Ma nello spazio delle firme non sono una regione sola: sono più
+regioni separate, con tratti diversi.
+
+Ne seguono tre conseguenze operative.
+
+**Nessun centroide, mai.** Una classe etichettata è un **insieme di esemplari**,
+non una media. Il confronto di un oggetto nuovo avviene con l'esemplare più vicino
+— o con i pochi più vicini — non con un prototipo della classe. Un centro
+calcolato su regioni separate cade nel vuoto fra loro: somiglia poco a tutto e
+molto a niente, e in compenso attira ciò che sta in mezzo. È l'errore più facile e
+il più difficile da diagnosticare dopo.
+
+**Le sottoclassi non si chiedono all'utente: le separa la firma tipizzata.** È qui
+che le due firme si aiutano. Dentro l'insieme che hai chiamato «spam», i tratti
+tipizzati distinguono già da soli: una promozione ha struttura di invio massivo,
+supera le verifiche di dominio e chiede di seguire un collegamento; un tentativo di
+frode chiede di confermare un'identità e la sua sorgente non è autenticata; un
+allegato ostile si riconosce dal tipo di allegato. Sono tre proiezioni diverse
+dello stesso insieme di giudizi, ottenute con un raggruppamento e senza chiedere
+niente a nessuno. **L'etichetta resta una, le classi diventano tre**, e ognuna
+porta le proprie evidenze.
+
+**E il trattamento non può essere lo stesso.** È la ragione per cui la distinzione
+conta e non è pedanteria:
+
+- una promozione va in fondo all'ordinamento, e un falso positivo costa poco;
+- un tentativo di frode va segnalato con enfasi, e un falso **negativo** costa
+  molto: qui l'asimmetria degli errori si rovescia rispetto al caso ordinario;
+- un allegato ostile non è una questione di preferenza ma di sicurezza, e non
+  appartiene a un meccanismo che impara dai gusti.
+
+Il sistema può quindi restituire la distinzione **nei termini dell'utente**, con
+una domanda utile al posto di mille etichette: «di quelle che hai segnalato,
+quaranta erano promozioni e tre chiedevano le tue credenziali — le tratto allo
+stesso modo?». È una domanda su un caso concreto, quindi ammessa (invariante 31);
+chiedere a qualcuno di classificare in anticipo le proprie categorie non lo
+sarebbe.
+
+**La guardia.** Con classi multimodali ed esemplari, un singolo esemplare
+sbagliato genera una regione spuria che poi si comporta come una classe. Perciò un
+raggruppamento **agisce** solo con un numero minimo di esemplari concordi;
+l'esemplare isolato resta come evidenza, visibile nell'inventario, ma non
+generalizza. Un giudizio non diventa mai una regola da solo.
+
 ## 2. Derivare le classi dal corpus: un reticolo dato, non un albero appreso
 
 L'idea successiva è naturale: su un corpus di messaggi si possono **derivare** le
