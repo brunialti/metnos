@@ -1160,10 +1160,56 @@ modi in cui può andare male è quindi parte della specifica, non un contorno.
 | proposte troppo frequenti che diventano rumore | la proposta è rara e aggregata, mai per singolo messaggio: un'interfaccia che chiede sempre smette di essere letta, e allora chiede a vuoto |
 
 **Quello che resta scoperto, dichiarato.** Il caso in cui la somiglianza utile non
-è né il mittente né la lista — spam da mittenti sempre diversi, riconoscibile solo
-dal contenuto. Lì la via deterministica non arriva, e la via semantica è fuori dal
-nucleo finché non c'è la misura che la giustifica (§8.1). Il risultato onesto è che
-questa capacità coprirà molto ma non tutto, e va promessa per quello che copre.
+è né il mittente né la lista — mittenti sempre diversi, riconoscibili solo da come
+il messaggio è fatto. Il risultato onesto è che questa capacità coprirà molto ma
+non tutto, e va promessa per quello che copre. §6.9.3 indica la direzione con cui
+si affronterebbe, se e quando la misura la giustificherà.
+
+#### 6.9.3 Direzione per il caso scoperto: firma composita, non vettore di testo
+
+Se la via per mittente lascia una lacuna documentata, la risposta **non** è
+l'immersione del testo in un vettore. È una **firma composita tipizzata**: un
+insieme dichiarato di tratti, in larga maggioranza calcolati e non inferiti, di cui
+solo uno o due vengono da un modello e comunque su vocabolario chiuso.
+
+Tre famiglie di tratti, tutte già presenti nel messaggio:
+
+- **Struttura** (deterministica, zero modello): presenza di intestazioni di lista e
+  di disiscrizione; rapporto fra testo e marcatura; numero di collegamenti rispetto
+  al testo; disallineamento fra nome mostrato, mittente e indirizzo di risposta;
+  esito delle verifiche di autenticità del dominio; tipi di allegato; se sei fra i
+  destinatari visibili o in copia nascosta.
+- **Tipo e argomento** (vocabolario chiuso, il modello mappa e non inventa): di che
+  cosa parla, entro un elenco chiuso e piccolo.
+- **Richiesta** (vocabolario chiuso, ed è il tratto più discriminante): che cosa il
+  messaggio vuole che tu faccia — seguire un collegamento, pagare, rispondere,
+  confermare un'identità, scaricare. La truffa cambia parole a ogni invio, ma la
+  richiesta è quasi sempre la stessa.
+
+**Perché è meglio di un vettore, in questo documento.** *Spiegabile*: la
+somiglianza si stampa in una riga — «stessa struttura, nessuna disiscrizione, otto
+collegamenti, mittente non allineato, stessa richiesta» — mentre un coseno non dice
+nulla che si possa contestare. *Deterministica quasi ovunque*: il modello serve
+solo dove il codice non arriva, che è §7.9 applicato. *Chiusa e riproducibile*: a
+vocabolari chiusi lo stesso messaggio produce sempre la stessa firma, che è il
+vantaggio dichiarato di Metnos sulle alternative opache (§17.5). *Ispezionabile e
+cancellabile*: una firma è una riga di valori tipizzati, compare nell'inventario e
+si revoca; un vettore no.
+
+**Il confine con l'esclusione di §8.1, che non è contraddetta.** Ciò che resta
+fuori dal nucleo è il **recupero denso sul corpus delle memorie**: cercare
+semanticamente fra ciò che il sistema sa di te. Qui invece un dominio classifica i
+**propri oggetti** con tratti che dichiara. Sono due cose diverse e non c'è
+eccezione da concedere: RM-0001 non ne è nemmeno la sede: la sede è una ADR del
+dominio posta.
+
+**Il rischio proprio di questa direzione.** I due tratti che vengono dal modello
+sono il punto debole: se l'estrattore cambia, cambiano in silenzio tutte le firme.
+Contromisura, già usata altrove nel documento: la firma porta la versione
+dell'estrattore, e un cambio di versione invalida le firme precedenti invece di
+mescolarle. E una nota di onestà che vale più di una contromisura: chi manda
+truffe si adatta, quindi un classificatore appreso è sempre in ritardo. Si promette
+copertura, mai protezione.
 
 ## 7. Acquisizione automatica
 
