@@ -847,6 +847,86 @@ Il precedente corregge anche una mia priorità: la deduplicazione non è il prob
 Il problema è **l'ammissione della classe sbagliata**, e si risolve al momento della
 scrittura, non a valle.
 
+### 6.8 Attributi stabili e raffinamento di un argomento presente
+
+Un caso che le regole precedenti, da sole, sbagliano: «sono un uomo», poi «cercami
+un paio di scarpe». L'aspettativa legittima è che la ricerca sia di scarpe da uomo.
+Con le sole regole di §6.7 non succederebbe niente, e il motivo va guardato da
+vicino perché sono due difetti distinti.
+
+**Primo: la classe.** «Sono un uomo» non è una preferenza di presentazione, non è
+un default operativo, non è un riferimento, non è un episodio e non è una routine.
+È un **attributo stabile**: un fatto su di sé, di bassa cardinalità, che cambia
+raramente e che modifica *come si interpreta una richiesta*, non *quale argomento
+manca*. La classe esiste e va nominata, altrimenti finisce fra i claim liberi e
+viene scartata per mancanza di destinazione.
+
+Ammetterla non riapre la porta alla prosa, perché la disciplina resta identica e
+si applica al contrario: **un attributo è conoscenza soltanto se un dominio ha
+dichiarato uno slot che lo consuma**, con il suo provider di valori ammessi. Non
+esiste «l'utente può dichiarare qualunque attributo»: esiste «il dominio della
+ricerca dichiara che accetta un segmento di destinatario, quindi quel valore ha
+dove andare». «Mi piace il jazz» non è conoscenza finché nessun dominio dichiara
+una preferenza di genere musicale — e se un giorno la dichiara, lo diventa, senza
+cambiare una riga di questa roadmap. Sono i domini a definire che cosa è sapibile
+dell'utente, perché sono gli unici che possono usarlo. È lo stesso meccanismo delle
+forme credenziale (ADR 0199) e delle dichiarazioni di personalizzazione (§5.4).
+
+**Secondo: il verbo.** «Scarpe» non è un argomento assente da riempire, è un
+argomento **presente da raffinare**. §5.5 punto 4 conosce solo il riempimento di
+ciò che manca, e questa è la sua unica eccezione, sottoposta a quattro vincoli
+perché cambia ciò che l'utente ha chiesto:
+
+1. **Dichiarato dal dominio, per singolo argomento.** Una voce di personalizzazione
+   può portare `mode = "refine"` invece del riempimento; il caricatore accetta il
+   raffinamento soltanto per argomenti il cui dominio lo dichiara, mai per
+   inferenza. Un argomento non dichiarato raffinabile resta intoccabile.
+2. **Visibile nella risposta, sempre.** Il raffinamento è l'unica influenza che
+   modifica una richiesta esplicita, quindi è l'unica che deve comparire
+   nell'esito: «ho cercato scarpe *da uomo*». Un raffinamento silenzioso è un falso
+   successo (§2.8), non una comodità.
+3. **Cede all'esplicito.** «Cercami scarpe da donna» non viene toccato:
+   l'invariante 6 vale qui come altrove, e il conflitto fra attributo e richiesta
+   si risolve sempre a favore della richiesta.
+4. **Dopo il piano, come tutto il resto.** Il raffinamento avviene al punto
+   d'iniezione di §5.5, quindi «cercami un paio di scarpe» resta **una sola voce**
+   nelle cache condivise per tutti i principali, e due persone diverse ricevono
+   ricerche diverse dallo stesso piano memorizzato. È la dimostrazione che
+   l'architettura regge il caso senza eccezioni.
+
+**Terzo verbo: ordinare.** «Considero affidabile il sito X, cercaci per primo» non
+riempie un vuoto e non raffina un valore: esprime una **preferenza d'ordine fra
+alternative**. È ammessa con la stessa disciplina — un dominio dichiara un
+argomento di ordinamento con il suo provider di valori, e la preferenza lo riempie
+dopo il piano — e con lo stesso obbligo di visibilità del raffinamento.
+
+Il confine è netto e va detto, perché è dove si romperebbe tutto: la preferenza
+ordina **entro un piano che resta identico per tutti**. Se onorarla richiedesse di
+scegliere un tool diverso, un numero di passi diverso o una politica di vaglio
+diversa, è fuori: §8.3 lo vieta, e non per prudenza — un profilo che cambia il
+piano rende le cache condivise inservibili (§17.5) e sposta una decisione di
+instradamento dentro un dato personale.
+
+**Il tranello di «affidabile».** La stessa parola italiana copre due cose che
+questo documento tiene separate per costruzione. «Affidabile» come *preferenza
+d'ordine* — guarda prima lì — è conoscenza, e sta qui. «Affidabile» come
+*autorizzazione* — riempi le mie credenziali su quel sito, salta il consenso per
+quell'origine — non è conoscenza e non passerà mai da questa strada: appartiene al
+meccanismo esplicito di autorità d'origine del dominio siti (ADR 0191) ed è
+l'invariante 5. Una memoria non concede mai un permesso, nemmeno quando l'utente
+usa la stessa parola per chiederlo.
+
+**I tre verbi, in sintesi.** Riempire un argomento assente (§5.5, F3); raffinare un
+argomento presente e dichiararlo nell'esito; ordinare fra alternative dichiarate.
+Nessun altro. Ogni verbo richiede una dichiarazione di dominio, agisce dopo il
+piano e cede al valore esplicito del turno.
+
+**Che cosa questo non apre.** Un attributo senza slot dichiarato resta un appunto
+inerte, come qualunque altro claim senza destinazione. Gli attributi che ricadono
+nelle categorie rifiutate dall'invariante 23 non sono ammessi a nessun titolo,
+nemmeno se un dominio dichiarasse uno slot per essi: la dichiarazione di dominio
+concede una destinazione, non un permesso.
+
 ## 7. Acquisizione automatica
 
 ### 7.0 Avvio a freddo: acquisire, non chiedere
