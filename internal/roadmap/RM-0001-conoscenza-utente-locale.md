@@ -1200,6 +1200,60 @@ profilo narrativo di §6.7.1 per un'altra strada.
 **Senza tutto questo RM-0001 resta intera**: la via per mittente e lista di §6.9 è
 indipendente, e copre la maggior parte dei casi reali.
 
+#### 6.9.4 Cinque casi concreti, dal lato di RM-0001
+
+Che cosa questa roadmap conserva davvero, e che cosa accade dopo. In ogni caso il
+record è lo stesso: **un giudizio**, con principale, segno, proiezione, ambito,
+evidenza e data. Nient'altro entra nello store.
+
+**1. La richiesta di denaro da sconosciuto.** Arriva sulla casella personale, da
+una sorgente al primo contatto e non autenticata, con richiesta di denaro. Tu dici
+che è indesiderata.
+RM-0001 scrive **un** record: segno negativo sulla proiezione `(canale: posta ·
+relazione: primo contatto · autenticazione: nessuna · richiesta: denaro)`, ambito
+«casella personale», evidenza il turno in cui l'hai detto.
+Dopo: un messaggio con la stessa proiezione viene **marcato e proposto**, mai
+spostato. L'inventario mostra la voce con il conteggio dei casi trattati e il
+comando per revocarla. Un oblio la toglie, e i messaggi tornano non marcati.
+Non vale sulla casella di assistenza, perché l'ambito è diverso; non vale su una
+piattaforma di codice, perché il canale entra nella proiezione.
+
+**2. Gli interessi.** «Mi interessano intelligenza artificiale e biologia»: segno
+positivo sulla proiezione `(argomento ∈ {…})`, ambito globale, origine
+`dichiarato`.
+Dopo: «che c'è di nuovo?» ordina mettendoli in cima, dichiara di averlo fatto, e
+non fa sparire il resto. Se in seguito il sistema osserva che leggi spesso di una
+terza cosa, **propone** di aggiungerla e non la aggiunge: la tua dichiarazione
+pesa più della sua osservazione (invariante 6). E memorizza «leggi di biologia»,
+mai «sei un biologo» (§6.8).
+
+**3. La newsletter, dove non c'è nulla da memorizzare.** Un messaggio porta già i
+tratti strutturali `lista` e `servizio d'invio massivo`, calcolati senza modello e
+senza che tu abbia detto niente. Sono **segnali neutri**: bastano a ordinare in
+fondo, non a dichiarare qualcosa indesiderato.
+RM-0001 non scrive niente: non c'è giudizio. Il conteggio sa che è insolito o
+frequente; solo tu sai se è sgradito, e finché non lo dici non c'è conoscenza
+utente da conservare.
+
+**4. La segnalazione su una piattaforma di codice, dove il giudizio non deve
+arrivare.** Una richiesta d'aiuto aperta sul tuo repository ha la **stessa
+richiesta** della truffa del caso 1, e non le somiglia affatto: canale diverso,
+autenticazione alta, modo d'arrivo atteso.
+Il giudizio del caso 1 **non si applica**, per costruzione e non per fortuna. È un
+caso di **non azione** e come tale va nel corpus congelato: si verifica che non
+succeda niente, esattamente come si verifica che qualcosa succeda.
+
+**5. Il modo d'arrivo, che distingue senza leggere una parola.** Lo stesso
+documento — stessa tipologia, stesso argomento — vale in modo diverso se l'hai
+scaricato tu o se è arrivato allegato a un messaggio non richiesto. La differenza
+è deterministica e disponibile prima di qualunque analisi del contenuto.
+È il tratto che rende utile la firma anche per i generi di oggetti su cui nessuno
+scriverà mai una funzione di struttura.
+
+In tutti e cinque i casi valgono le stesse tre cose: RM-0001 conserva il giudizio e
+non il classificatore; nessuna delle conseguenze è un'azione mutante; e ogni voce
+è visibile nell'inventario con la sua evidenza e il suo comando di revoca.
+
 ## 7. Acquisizione automatica
 
 ### 7.0 Avvio a freddo: acquisire, non chiedere
