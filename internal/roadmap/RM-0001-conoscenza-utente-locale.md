@@ -1324,6 +1324,32 @@ entrambi mostrabili. Una classe candidata si **propone** — «questi 143 messag
 hanno la stessa firma e ne hai segnalati sette su sette: li tratto tutti così?» —
 e non si applica da sola, per la stessa ragione di §6.9.
 
+**La normalità è locale, e questo cambia il verdetto.** Una classe non è buona o
+cattiva in assoluto: lo è rispetto al **contesto** in cui compare. Su una casella
+di assistenza le richieste d'aiuto sono la norma e costituiscono la maggior parte
+del traffico; la stessa firma su una casella personale, da una sorgente al primo
+contatto e non autenticata, con richiesta di denaro, è un caso su migliaia. Non è
+la firma a essere cambiata: è cambiata la sua frequenza attesa.
+
+Ne segue che la misura utile non è la frequenza assoluta ma la **frequenza
+relativa al contesto**, e resta un conteggio: quante volte quella proiezione
+compare in *questa* casella contro quante ne compare altrove. Anche la spiegazione
+resta a portata di riga: «insolito per questa casella — tre casi su quattromila,
+mentre sulla casella di assistenza è il sessanta per cento».
+
+Il contesto non va inventato: è l'ambito che l'utente ha già dichiarato nominando
+le proprie caselle (§5.6), ed è il campo `scope` che ogni memoria porta già (§6.2).
+Un giudizio nasce quindi legato al proprio contesto, e non si applica altrove per
+inerzia — è la stessa regola del canale, un livello più in basso.
+
+**Raro non significa cattivo.** L'anomalia rispetto a una base attesa richiama
+attenzione, non condanna: può marcare o ordinare, mai agire. Il conteggio sa dire
+che cosa è **insolito**; solo il tuo giudizio sa dire che cosa è **indesiderato**.
+Tenere separate le due cose è ciò che impedisce a una statistica di diventare una
+sentenza — e vale anche al contrario, come partenza a freddo: la rarità si misura
+dal primo giorno, senza che tu abbia segnalato nulla, ma non decide nulla finché
+non lo fai.
+
 **Il parallelo con Leiden, ed è deliberato.** Questa roadmap ha già tolto una
 comunità appresa su grafo, non perché fosse cattiva in sé ma perché il suo
 consumatore era servito meglio da un raggruppamento deterministico (§3.2). Qui
