@@ -544,7 +544,38 @@ Nella prima versione una mutazione memoria deve occupare un'intera clausola
 attribuita all'utente. Se il confine di una richiesta composta non è certo, il
 sistema chiarisce invece di eseguire una mutazione parziale.
 
-### 5.10 Confine cache
+### 5.10 File di profilo ispezionabile
+
+Esiste un file di testo per principale che contiene il profilo in forma leggibile.
+Serve a una cosa sola: poterlo **aprire e leggere**. È la superficie che i sistemi
+a documento di profilo hanno e un inventario generato in chat non dà —
+un posto dove vedere tutto insieme, in una volta, senza fare domande.
+
+È additivo e non tocca l'architettura, a cinque condizioni che ne sono la
+definizione, non un contorno:
+
+1. **È una vista, mai una sorgente.** Viene rigenerato dai record canonici a ogni
+   cambio di revisione. Nessun modulo del runtime lo rilegge per decidere
+   alcunché: se il file sparisce, il sistema si comporta in modo identico.
+2. **Non entra in nessun prompt** — né planner, né vaglio, né compositore. È la
+   condizione che protegge tutto il resto: iniettarlo riaprirebbe il dilemma di
+   §17.5, cioè o resta fuori dalla chiave di cache e viene ignorato proprio sulle
+   richieste frequenti, o vi entra e le cache diventano per utente.
+3. **Le modifiche a mano non sono autorevoli di per sé.** Un comando esplicito le
+   rilegge, le fa passare dal confine di §5.9 come correzioni e le trasforma in
+   record tipizzati con provenienza propria. Una riga modificata che non ha
+   destinazione (§6.7) viene rifiutata con motivo, non accettata in silenzio.
+4. **Vive accanto allo store, non nel repository**, uno per principale, con gli
+   stessi permessi e lo stesso oblio: una cancellazione lo rigenera senza ciò che
+   è stato cancellato.
+5. **Nasce con l'inventario**, in F2, e non prima: è la stessa funzione che
+   risponde a «che cosa sai di me», scritta su file invece che in chat.
+
+Il valore è la lettura, non la scrittura. Chi vuole cambiare qualcosa lo dice in
+chat come farebbe comunque; il file serve a scoprire *che cosa* vale la pena
+cambiare.
+
+### 5.11 Confine cache
 
 - L0 usa la query originale salvo una routine validata; in quel caso usa la
   forma canonica generica.
@@ -1302,6 +1333,32 @@ Obbligatori:
 
 ## 12. Fasi
 
+### Valore per fase, e dove ci si può fermare
+
+Le fasi sono ordinate per dipendenza, ma non valgono uguale. Dichiararlo è parte
+della specifica: una roadmap che non sa dire quanto vale ciascun pezzo non è
+verificabile.
+
+| Fase | Che cosa fa per l'utente | Classe di valore |
+|---|---|---|
+| **F3** default operativi | riempie l'argomento che ometti: mai più «quale calendario?» | **cambia le azioni** |
+| **F6** routine | «prepara le solite cose» diventa una richiesta comprensibile | **cambia che cosa si può dire** |
+| **F3** riferimenti | «i test di Atlas» si risolve senza chiedere | toglie una domanda ricorrente |
+| **F5** apprendimento | fa accadere le tre righe sopra senza doverle dichiarare | moltiplicatore, non capacità |
+| **F2** presentazione | risposte brevi, unità coerenti | piccolo ma costante |
+| F0, F1 | nulla di visibile: identità, store, oblio | prerequisito |
+
+Le due righe in cima sono il motivo per cui questo sottosistema esiste. La classe
+che manca da questa tabella — la prosa libera su di sé, il «profilo» narrativo —
+non compare perché §6.7 le nega la destinazione, e §6.7.1 misura che cosa succede
+a chi la ammette.
+
+**Taglio minimo consigliato: F0 → F1 → F2 → F3.** Al termine si ha un sistema che
+riempie gli argomenti omessi, risolve i riferimenti, si controlla dalla chat e
+dimentica per davvero. F5 e F6 si decidono dopo, con i numeri di F3 in mano: se F3
+non riduce le interazioni, nessuna fase successiva le ridurrà di più, e la regola
+di arresto è già scritta (§11.0, §11.2).
+
 ### P — Prontezza ed estrazione del corpus (precede F0, non è una fase)
 
 **Lavoro:** un modulo in sola lettura sul registro dei turni, con due uscite e
@@ -1371,6 +1428,8 @@ delete/consumer sintetico superano test e fault injection, compresi i crash fra
 - «ricorda/correggi/dimentica/cosa sai»;
 - applicazione effettiva di `reply_length`, `tone`, `units` e lingua dove
   pertinente;
+- **file di profilo ispezionabile** (§5.10): stessa funzione dell'inventario,
+  scritta su file invece che in chat, come vista rigenerata e mai come sorgente;
 - i18n e superficie amministrativa secondaria.
 
 **Uscita:** UC-01, UC-09 e UC-10 verdi end-to-end su HTTP e Telegram; nessun
@@ -2207,7 +2266,7 @@ esplicite e chiavi i18n degli errori di W2 — nasce in **F0** e non è riscritt
 | Scrittura preferenza | `runtime/users.py:695` `set_pref(..., source="explicit")` [PROVATO] | Contratto invariato; il confine passa `source="chat"`. Oggi nessun chiamante di prodotto valorizza `source`: diventa un vocabolario chiuso |
 | Oblio tipizzato | `runtime/users.py:743` `delete_pref` [PROVATO] | Chiamata dal ramo oblio **attraverso** `service.forget`, dentro la transazione e il journal di F1: mai una cancellazione fuori dal protocollo |
 | Superficie admin | `runtime/templates/user_detail.html:152-158` letterali italiani, `:164` chiave tecnica nuda [PROVATO] | Sostituzione con `msg(...)` (§7.13) e sezione inventario in sola lettura. Le chiavi `MSG_SETTINGS_*` del gruppo siti restano il modello |
-| Cache | `runtime/engine/fastpath.py:229` `normalize_hash(query)`, `:55` `NON_CACHEABLE_TOOLS` [PROVATO] | **Nessuna modifica, per prova**: il confine non produce piano né executor, quindi non c'è nulla da escludere dalla cache. L'assenza di modifica è essa stessa un requisito verificato (§5.10) |
+| Cache | `runtime/engine/fastpath.py:229` `normalize_hash(query)`, `:55` `NON_CACHEABLE_TOOLS` [PROVATO] | **Nessuna modifica, per prova**: il confine non produce piano né executor, quindi non c'è nulla da escludere dalla cache. L'assenza di modifica è essa stessa un requisito verificato (§5.11) |
 
 **Ordine di costruzione.**
 
@@ -2225,7 +2284,7 @@ esplicite e chiavi i18n degli errori di W2 — nasce in **F0** e non è riscritt
 4. Accensione della sola presentazione, nessun comando. *Verifica*: A/B a memoria
    accesa e spenta sulle stesse richieste — piano, strumenti e `tools_sig`/`pool_sig`
    identici, lunghezza della risposta misurabilmente diversa. Un solo piano
-   divergente è un fallimento bloccante (§5.10).
+   divergente è un fallimento bloccante (§5.11).
 5. Confine HTTP, ramo inventario in sola lettura. *Verifica*: turno reale, **più**
    la certificazione Tutor a macchina scarica (T15): il confine sottrae casi al
    Tutor e nessun altro strumento lo misura.
@@ -2721,7 +2780,7 @@ memorie indicizzabili: un indice stantio non è un difetto tollerabile.
 - *Turno reale §8.5*: «che cosa abbiamo fatto ieri» su `/agent/turn` e la stessa su
   Telegram, con esito citato e `turn_id` verificabile; più un turno di controllo su
   richiesta irrilevante che dimostra piano e strumenti identici con la fase accesa e
-  spenta (§5.10).
+  spenta (§5.11).
 
 **Fuori da questa fase.**
 
@@ -3415,6 +3474,47 @@ misurando separatamente retrieval, risposta finale e danni.
 I risultati pubblicati da produttori di sistemi di memoria sono segnali di
 confronto, non prova che l'iniezione di prosa nel planner sia corretta per
 Metnos. La prova autorevole resta il corpus Metnos preregistrato.
+
+### 17.5 Confronto con Hermes e Honcho, e la decisione che ne deriva
+
+Il sistema di riferimento su questo terreno ha **due strati distinti**, e vanno
+tenuti separati perché le conclusioni sono opposte: file locali di profilo in prosa
+(`USER.md`, `MEMORY.md`) e un servizio **cloud** che aggiunge il ragionamento
+aperto sull'utente. Il confronto verificato cella per cella è in
+`internal/design/comparison_hermes_metnos_userdata_22_7.md` (matrice a 18
+dimensioni, 22 luglio 2026).
+
+**Dove Metnos è già pari o avanti**, per proprietà che non dipendono da questa
+roadmap: funzionamento locale, isolamento multi-utente, provenienza e data su ogni
+dato, riproducibilità deterministica, esplorabilità completa. Lo strato cloud è
+opaco per costruzione e può sintetizzare affermazioni su una persona senza fonte;
+lo strato a file non ha né provenienza né isolamento né oblio verificabile.
+
+**Dove Metnos oggi è a zero**, ed è il gap che quel confronto ha misurato: le
+capacità d'uso — rispondere a una domanda aperta su di sé, disambiguare dalla
+storia, proporre in anticipo.
+
+**La decisione, e non è un compromesso.** RM-0001 copre la seconda di quelle tre
+capacità in modo deterministico (riferimenti entro candidati reali, §5.6) e
+**rinuncia deliberatamente** alle altre due: la risposta aperta su di sé resta un
+elenco citato (§5.8, decisione ratificata) e la proposta proattiva appartiene al
+ciclo di apprendimento già esistente, non alla memoria (ADR 0185). La rinuncia ha
+un criterio di riapertura scritto, non è definitiva.
+
+**La prova che sostiene la scelta architetturale.** La differenza vera non è di
+capacità ma di collocazione: quei sistemi mettono la conoscenza **prima** del
+ragionamento, nel prompt; RM-0001 la mette **dopo il piano**, negli argomenti. La
+review avversariale del 23 luglio
+(`internal/design/adversarial_review_user_data_design_23_7.md`) ha dimostrato che
+la prima strada è un dilemma senza uscita in un motore con cache di piano
+user-agnostiche: se il profilo non entra nella chiave, viene ignorato proprio sulle
+richieste frequenti, che sono quelle memorizzate; se vi entra, le cache diventano
+per utente e il piano di cluster perde senso. Da lì vengono le invarianti 7 e 8, e
+il punto d'iniezione di §5.5.
+
+**Che cosa si prende comunque.** La superficie di lettura: un profilo che si apre e
+si guarda è più immediato di un inventario da chiedere. Entra come **vista**
+generata, con le cinque condizioni di §5.10, non come sorgente.
 
 ## 18. Registro di avanzamento
 
