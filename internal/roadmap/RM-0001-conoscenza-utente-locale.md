@@ -771,6 +771,51 @@ inutile e la persona deve compilare qualcosa. C'è un periodo in cui il sistema
 **osserva e non applica**, che è esattamente ciò che serve anche per misurare se
 applicare abbia senso (§11.0).
 
+### 7.0.1 Che cosa non è evidenza
+
+Registrato non significa vero, e ripetuto non significa abituale. Un'istanza reale
+accumula molto traffico che *non* rappresenta la persona: prove automatiche,
+esecuzioni di banco ripetute decine di volte, rigiochi di collaudo, sessioni di
+messa a punto in cui la stessa richiesta viene rilanciata perché qualcosa non
+funzionava, periodi in cui il sistema si comportava in modo poi corretto. Su
+un'istanza di sviluppo questa parte è la maggioranza. Un estrattore ingenuo vi
+imparerebbe il banco di prova invece dell'utente, e la misura di prontezza
+conterebbe rumore.
+
+I quattro filtri sono deterministici, generali e non contengono liste di nomi.
+
+1. **Principale verificato, non dedotto.** Un'interazione senza principale
+   costruito da dati autenticati non è evidenza, per l'invariante 2. Non è un
+   filtro aggiunto: è la fabbrica di F0 che fallisce chiusa. Una richiesta ammessa
+   per sola posizione di rete, un rigioco con attore scritto a mano, un'esecuzione
+   di banco senza credenziale non producono nulla, senza che nessuno debba
+   riconoscerli come tali.
+2. **Origine dell'interazione dichiarata.** Chi guida il sistema per collaudarlo lo
+   dichiara: un'esecuzione di prova, di banco o di rigioco porta un'origine propria
+   e non è evidenza. La dichiarazione appartiene a chi lancia l'esecuzione, non a
+   un elenco di nomi di programma dentro il runtime, che invecchierebbe al primo
+   banco nuovo (§7.3). Un'origine non dichiarata resta ammessa: il rischio si
+   sposta su chi collauda, dove è controllabile.
+3. **Indipendenza temporale, non conteggio.** Due occorrenze nella stessa sessione,
+   o entro una finestra minima congelata in F0, valgono **una** evidenza. È ciò che
+   distingue un'abitudine da un rilancio: dieci esecuzioni della stessa richiesta in
+   cinque minuti sono una messa a punto, non una routine. Vale insieme al divieto di
+   auto-rinforzo (§13.0 T12), che esclude i turni in cui la conoscenza era già
+   applicata.
+4. **Epoca di sistema.** Un'evidenza raccolta prima di un cambiamento dichiarato del
+   comportamento del sistema non è comparabile con una successiva e non concorre
+   alle soglie. Il precedente esiste già in Metnos ed è la stessa idea: l'epoca di
+   instradamento che invalida i piani in cache quando la scelta degli strumenti
+   cambia. Qui invalida le evidenze, non i piani.
+
+**Istanza dichiarata di sviluppo.** Dove il traffico è in maggioranza di collaudo,
+i quattro filtri riducono il rumore ma non lo azzerano, e fingere il contrario
+sarebbe un falso successo (§2.8). Un'istanza può quindi dichiararsi in sviluppo:
+**acquisisce** — l'osservazione è inerte, costa nulla ed è cancellabile — e **non
+promuove nulla in automatico**. Ne segue una conseguenza da accettare invece che
+aggirare: la prova di beneficio di §11.2 non si fa su una macchina di sviluppo. Si
+fa dove il sistema viene usato per lavorare.
+
 ### 7.1 Politica del proprietario
 
 Quando F5 viene promossa, il proprietario verificato ha per impostazione
@@ -968,7 +1013,10 @@ F0-F6 non gli restituiranno nulla, per quanto siano ben costruite.
 
 La risposta si misura, non si stima, e si misura **prima di F0** con un contatore
 in sola lettura sui turni già registrati. Non è una fase e non ha prerequisiti:
-legge il registro dei turni, conta e stampa. Quattro grandezze:
+legge il registro dei turni, conta e stampa. Conta soltanto ciò che i quattro
+filtri di §7.0.1 ammettono come evidenza — altrimenti su una macchina di sviluppo
+misurerebbe il banco di prova — e dichiara insieme al risultato quanti turni ha
+scartato e per quale motivo. Quattro grandezze:
 
 1. **Ripetizione di valore per argomento** — quante volte lo stesso argomento di
    uno stesso executor riceve lo stesso valore in turni distinti. È il bacino di
@@ -1389,12 +1437,18 @@ rifiuto all'avvio con motivo esplicito, mai un degrado silenzioso. *Prova*: una
 matrice sulle 128 combinazioni, ciascuna che mappa su una fase effettiva o su un
 rifiuto nominato.
 
-**T12 — Nessun auto-rinforzo, e si verifica.** Un evento `runtime_outcome` è
-evidenza per un claim o per una routine soltanto se quel turno **non** porta
-un'applicazione di quel claim (riga in `applications` con lo stesso `source_id`)
-e non porta quel `routine_id`. È l'attuazione verificabile dell'invariante 27.
-*Prova d'invariante*: una routine attiva usata cento volte non incrementa
-`n_success` di una unità e non sposta la propria scadenza.
+**T12 — Nessun auto-rinforzo, e nessun conteggio di rumore.** Un evento
+`runtime_outcome` è evidenza per un claim o per una routine soltanto se valgono
+tutte e quattro: il turno **non** porta un'applicazione di quel claim (riga in
+`applications` con lo stesso `source_id`) né quel `routine_id`; il principale è
+verificato e non dedotto; l'origine dell'interazione non è dichiarata di collaudo;
+e l'occorrenza è **temporalmente indipendente** dalle precedenti, cioè in una
+sessione diversa e oltre la finestra minima congelata in F0 — due esecuzioni
+ravvicinate valgono una evidenza. Insieme all'epoca di sistema (§7.0.1) è ciò che
+impedisce a una messa a punto o a un banco di prova di diventare un'abitudine.
+*Prove d'invariante*: una routine attiva usata cento volte non incrementa
+`n_success` di una unità e non sposta la propria scadenza; dieci esecuzioni della
+stessa richiesta in cinque minuti producono evidenza uno.
 
 **T13 — Le soglie vivono in F0.** Ogni valore numerico che governa una
 promozione — episodi indipendenti, successi minimi di una routine, margine di
