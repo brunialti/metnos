@@ -107,6 +107,33 @@ oltre alle quattro universali — e vanno bene lo stesso, perché con tipologia,
 sorgente, tempo e modo d'arrivo si distingue già moltissimo senza leggere una
 parola.
 
+## 0-quater. Scala di adozione: che cosa serve davvero, gradino per gradino
+
+Letta tutta insieme questa spec sembra un impianto grosso. Non lo è, se si guarda
+che cosa serve **per ottenere qualcosa**. I gradini sono indipendenti, ognuno dà un
+risultato da solo, e i primi due non richiedono né vettori, né raggruppamenti, né
+un solo giudizio dell'utente.
+
+| Gradino | Che cosa ottiene l'utente | Che cosa serve | Modello |
+|---|---|---|---|
+| **1. Tratti universali** | la posta del mattino ordinata: prima ciò che è atteso e autenticato, in fondo gli invii massivi; le segnalazioni di chi ha già contribuito prima di quelle al primo contatto | tipologia, sorgente, tempo, modo d'arrivo — tutti calcolabili oggi, più i tratti strutturali della posta **che esistono già** | no |
+| **2. Giudizi su proiezioni tipizzate** | «questa è indesiderata» vale per le simili: stesso canale, stessa relazione, stessa richiesta | il record di giudizio in RM-0001 e un confronto per **uguaglianza** | no |
+| **3. Frequenza per contesto** | «insolito per questa casella»: l'anomalia emerge senza che tu abbia segnalato nulla | un conteggio per ambito | no |
+| **4. Classi derivate dal corpus** | «di quelle che hai segnalato, quaranta erano promozioni e tre chiedevano credenziali» | raggruppamenti sulle proiezioni frequenti | no |
+| **5. Tratti linguistici** | argomento, richiesta e tono entrano nelle proiezioni | mappatura in vocabolari chiusi | sì, vincolato |
+| **6. Firma semantica** | «trovami tutto ciò che riguarda X» attraverso posta, documenti, appuntamenti e fotografie | immersione per oggetto, con le sei discipline di §1-bis | sì |
+
+**Il punto della scala.** Il primo gradino non chiede niente a nessuno e usa solo
+cose già presenti; il secondo aggiunge un record e un confronto di uguaglianza. Con
+questi due si copre già la parte del problema che si incontra ogni giorno.
+L'apparato che sembra complesso — esemplari, multimodalità, vettori, reticoli —
+comincia al quinto gradino e serve al caso residuo, non al caso comune.
+
+**Come si sbaglia questa scala**: cominciando dal sesto gradino perché è il più
+interessante. È esattamente ciò che è accaduto nel precedente misurato in RM-0001
+§6.7.1, dove la via libera ha prodotto venticinque volte più materiale di quella
+disciplinata, e nessuno dei due era ordinato.
+
 ## 1. Il principio: firma composita, non vettore di testo
 
 Se la via per mittente lascia una lacuna documentata, la risposta **non** è
