@@ -726,6 +726,96 @@ Classi di conservazione:
 - `behavioral`: inferenze e routine, durata più breve e revisione periodica;
 - `episodic`: durata allineata al TurnLog sorgente.
 
+### 6.7 Qualità: poco e usato, invece di molto e vero
+
+Il modo più probabile di fallire non è scrivere una cosa falsa: è scriverne mille
+vere e inutili. Un compilatore diligente estrae per sempre osservazioni corrette e
+irrilevanti; nessuna viola un'invariante, nessuna fa danno, e insieme rendono
+l'inventario illeggibile, il recupero impreciso e la capacità un peso. **Un profilo
+che nessuno consulta è un costo, non una conoscenza.** Le regole che seguono
+misurano l'utilità, non la verità, e sono tutte deterministiche.
+
+**Destinazione obbligatoria.** Un claim è ammesso come conoscenza soltanto se può
+raggiungere uno dei punti d'effetto dichiarati in §8.3: una chiave di presentazione,
+un argomento dichiarato personalizzabile, uno slot di riferimento, una forma di
+routine. È una verifica a tempo di scrittura e ha una risposta esatta, perché quei
+quattro insiemi sono chiusi e dichiarati. Un claim senza destinazione non è
+conoscenza, è un appunto: viene registrato come inerte, dentro una quota propria e
+piccola, e non concorre mai né al recupero né all'inventario principale. Non si
+rifiuta in silenzio e non si finge di averlo capito.
+
+**Scadenza per non uso.** Una memoria che nella propria finestra di conservazione
+non è mai stata applicata — mai selezionata, mai usata per riempire un argomento,
+mai citata in una risposta — ha dimostrato da sé la propria inutilità e scade. Il
+dato per deciderlo esiste già: ogni influenza esercitata è una riga in
+`applications` (F3). L'asimmetria con l'invariante 27 è voluta e va letta con
+attenzione: **l'uso non allunga la vita di un claim, il non uso la accorcia.** La
+prima direzione sarebbe auto-rinforzo e resta vietata; la seconda è potatura, e ha
+già un precedente nel sistema con la scadenza dei semi in ombra mai riusati.
+
+**Quota che fa competere, non accumulare.** Per gli slot tipizzati la competizione
+è già garantita dall'indice parziale: un solo valore attivo per chiave e ambito. Per
+i claim liberi la quota non è soltanto un tetto di crescita: al raggiungimento, la
+memoria attiva più debole per evidenza e recenza scade a favore della nuova, invece
+di rifiutare la nuova in silenzio. Il numero di cose che il sistema tiene attive su
+una persona è deliberatamente piccolo e resta piccolo.
+
+**L'inutilità si misura, e blocca la promozione.** §11.2 aggiunge due metriche di
+precisione a quelle di beneficio, e la seconda non è giocabile: la frazione di
+memorie attive applicate almeno una volta nella finestra, e la frazione di voci che
+l'utente **corregge o cancella** quando le vede nell'inventario. Se guardando «che
+cosa sai di me?» una persona ne cancella metà, il sottosistema sta producendo
+spazzatura, per quanto ogni singola voce sia tracciabile e vera. Sotto la soglia
+congelata in F0 la fase non si promuove.
+
+#### 6.7.1 Precedente misurato: il sistema di deduzioni di giorgio2
+
+Non è un rischio teorico. Un sistema vicino, in esercizio sulla stessa macchina, ha
+già percorso questa strada, e il suo store è consultabile. giorgio2 possiede ciò che
+sulla carta serve: classi di fatto distinte (`explicit`, `observer`, `inferred`,
+`interests`), scadenza sui dedotti, deduplicazione per somiglianza e — accanto — un
+motore d'inferenza **deterministico e senza modello** che produce insight verificati.
+Misura del 28 luglio 2026, in sola lettura:
+
+| Grandezza | Valore | Che cosa dice |
+|---|---:|---|
+| fatti totali su 4 utenti | 343 | dimensione plausibile, non è un problema di scala |
+| dedotti (`observer` + `inferred`) | **281, l'82%** | il profilo è quasi tutto deduzione |
+| dichiarati (`explicit`) | 62 | ciò che la persona ha davvero detto è un quinto |
+| insight del motore deterministico | **11** | la via disciplinata è battuta 25 a 1 da quella libera |
+| lunghezza mediana del testo | 157 caratteri | sono frasi narrate, non valori tipizzati |
+| età mediana / massima | 18 / 162 giorni | molti descrivono uno stato passato |
+| scaduti e ancora presenti | 7 | la scadenza è un campo, non un passo che gira |
+| quasi-duplicati | 4 su 343 | la deduplicazione funziona: **non è quello il difetto** |
+| traccia d'uso per fatto | **nessuna** | non esiste modo di sapere se un fatto sia mai servito |
+
+La diagnosi non è che quei fatti siano falsi: sono veri. È che **sono episodi
+conservati come fatti**. Una lettura di sensore di ieri sera, l'andamento di una
+misura fra due giorni, un dispositivo irraggiungibile da sei giorni: descrivono che
+cosa è successo in un momento, non che cosa è vero di una persona. Scritti in prosa
+di centocinquanta caratteri, invecchiano in giorni e restano.
+
+Le regole di §6.7 nascono da qui e sono la risposta punto per punto.
+
+- La **destinazione obbligatoria** è ciò che avrebbe fermato l'82%: una lettura
+  narrata non può riempire alcun argomento, non è una chiave di presentazione e non
+  è una forma di routine. Non ha destinazione, quindi non è conoscenza.
+- La separazione fra memorie ed **episodi** (§5.3) e l'invariante 28 — «il runtime
+  registra esito e riferimenti, non una narrazione generata dall'assistente» —
+  esistevano già in questo documento, e il precedente mostra perché sono la parte
+  che è facile sbagliare: la via narrativa è più comoda e produce venticinque volte
+  di più.
+- La **traccia d'uso** è il grande assente: senza `applications` non si può né
+  potare per non uso né misurare il tasso di applicazione. È la ragione per cui
+  quella tabella nasce in F3 e non è un accessorio d'audit.
+- La **scadenza deve girare**, non esistere: sette righe scadute e presenti sono
+  poche, ma dimostrano che un campo `expires` senza un passo di potatura verificato
+  non pota. In §13.3 la potatura è un passo del notturno con prova d'idempotenza.
+
+Il precedente corregge anche una mia priorità: la deduplicazione non è il problema.
+Il problema è **l'ammissione della classe sbagliata**, e si risolve al momento della
+scrittura, non a valle.
+
 ## 7. Acquisizione automatica
 
 ### 7.0 Avvio a freddo: acquisire, non chiedere
@@ -1138,6 +1228,20 @@ La metrica primaria è il numero di interazioni necessarie per raggiungere
 l'esito corretto. Per domande di profilo si aggiungono accuratezza rispetto
 alle fonti, completezza delle citazioni e astensione corretta. L'impianto deve
 battere la baseline lineare, non soltanto l'assenza di memoria.
+
+Accanto al beneficio si misura la **precisione di ciò che è stato conservato**
+(§6.7), perché un impianto può ridurre le interazioni e insieme riempire lo store
+di roba inutile:
+
+- **tasso di applicazione**: frazione delle memorie attive che nella finestra sono
+  state applicate almeno una volta. Si legge da `applications`, senza annotazione;
+- **tasso di ripudio**: frazione delle voci che l'utente corregge o cancella quando
+  le vede nell'inventario. È la metrica meno giocabile del documento, perché il
+  giudice è la persona e l'occasione è una funzione che esiste comunque (UC-09).
+
+Entrambe hanno una soglia congelata in F0 e sono **bloccanti come i criteri di
+danno**: una fase che riduce le interazioni ma sta sotto soglia di precisione non
+viene promossa. È il modo per non scambiare un magazzino pieno per una capacità.
 
 F0 preregistra per ogni fase metrica primaria, due metriche di danno, effetto
 minimo, seed, metodo accoppiato, intervallo, potenza e regola di arresto. Una
