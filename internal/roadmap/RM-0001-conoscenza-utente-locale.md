@@ -202,6 +202,27 @@ da Telegram; un ospite chiede che cosa Metnos sa di lui.
 profilo. Il proprietario non legge automaticamente i claim dell'ospite; la UI
 amministrativa può mostrare stato, quota e cancellazione senza contenuto.
 
+### UC-13 — Interessi dichiarati e novità ordinate
+
+**Richiesta:** «Mi interessano intelligenza artificiale, tecnologia, politica
+estera, biologia». Poi, in giorni diversi: «che c'è di nuovo?».
+
+**Risultato:** la ricerca riceve gli argomenti come valori di un argomento
+dichiarato dal dominio, e il risultato mette in cima ciò che li tocca. L'esito
+dichiara l'ordinamento applicato; il resto non sparisce; «novità su qualunque
+cosa» prevale.
+
+**Perché conta più di quanto sembri:** è l'unico caso in cui il sistema fa qualcosa
+che l'utente non farebbe più in fretta da solo, su una richiesta che si ripete, e
+con una correzione immediata — vedi l'ordine, cancelli la voce sbagliata. È anche
+il caso che si **acquisisce** meglio: che cosa leggi è osservabile, mentre chi sei
+non lo è (§6.8).
+
+**Accettazione:** interessi come valori brevi di un argomento dichiarato, non prosa;
+numero attivo piccolo e in competizione; nessuna affermazione d'identità derivata
+da essi; ordinamento visibile e mai filtrante; piano e cache identici per tutti i
+principali, perché fill e ordinamento avvengono dopo il piano.
+
 ## 2. Stato corrente verificato al 26 luglio 2026
 
 | Area | Stato reale | Conseguenza per RM-0001 |
@@ -264,7 +285,10 @@ scala reale lo giustifica.
 5. **Autorità:** una memoria non concede capacità, credenziali, mandato o
    consenso e non ne riduce uno esistente.
 6. **Precedenza:** il valore esplicito nel turno corrente prevale su default,
-   riferimento, routine e inferenza.
+   riferimento, routine e inferenza. E fra turni diversi: una **dichiarazione**
+   dell'utente prevale su qualunque **inferenza**, anche successiva e anche
+   sostenuta da più evidenze. Un'inferenza non supera mai una dichiarazione: al
+   massimo propone di cambiarla.
 7. **Planner condiviso:** il profilo libero non entra nel planner, nel prompt di
    sistema o nel vaglio.
 8. **Cache condivise:** `user_id`, revisioni e valori personali non entrano
@@ -672,6 +696,34 @@ stessa transazione. Per stesso slot e scope:
 - chiave libera: il modello può proporre una relazione, ma la transizione resta
   chiusa e un dubbio produce `conflict`.
 
+**Il peso della fonte è asimmetrico, e non solo alla promozione.** Ciò che
+l'utente ha dichiarato e ciò che il sistema ha dedotto non sono due opinioni sullo
+stesso piano, e la differenza vale per tutta la vita del dato:
+
+- **Precedenza** (invariante 6): una dichiarazione prevale su un'inferenza anche
+  quando l'inferenza è più recente e sostenuta da più episodi. Se hai detto che per
+  il lavoro usi un calendario e il sistema ne osserva un altro tre volte, il valore
+  applicato resta il tuo. Il caso non è un conflitto fra pari.
+- **L'inferenza discordante non compete: propone.** Un'evidenza che contraddice una
+  dichiarazione non diventa `contradicts` con blocco dell'applicazione, ma una
+  **proposta di correzione** visibile nell'inventario — «lo usi spesso, vuoi
+  cambiarlo?» — che l'utente accoglie o scarta. Trattarla come conflitto paritario
+  spegnerebbe una capacità funzionante per un'osservazione non richiesta.
+- **Soglie diverse per esistere**: una dichiarazione è applicabile dal primo
+  istante (§7.3), un'inferenza deve raggiungere un numero preregistrato di episodi
+  indipendenti (§13.0 T12) prima di poter influenzare qualcosa.
+- **Decadimento diverso**: ciò che hai dichiarato è `durable` e **non scade per
+  mancato uso**; ciò che è stato dedotto è `behavioral` e scade (§6.6, §6.7).
+  Dimenticare in silenzio una cosa che l'utente ha detto sarebbe la rottura di
+  fiducia peggiore del sottosistema.
+- **Visibile, non implicito**: l'inventario dichiara per ogni voce se l'hai detta
+  tu o se è stata osservata, con la data e le evidenze. La distinzione non è un
+  dettaglio interno: è ciò che rende sensato correggere.
+
+Una correzione esplicita, infine, non si limita a vincere: **supera** ogni
+inferenza sulla stessa chiave (`supersedes` deterministico) e lascia un tombstone
+sulle sue evidenze, così la stessa osservazione non la ricrea al giro successivo.
+
 W2 e memoria libera non si ignorano. Il filtro intercetta claim che ricadono in
 una `PreferenceSpec`: li instrada verso W2/default oppure li marca conflitto
 cross-store visibile. W2 prevale nell'applicazione tipizzata.
@@ -775,11 +827,13 @@ conoscenza, è un appunto: viene registrato come inerte, dentro una quota propri
 piccola, e non concorre mai né al recupero né all'inventario principale. Non si
 rifiuta in silenzio e non si finge di averlo capito.
 
-**Scadenza per non uso.** Una memoria che nella propria finestra di conservazione
-non è mai stata applicata — mai selezionata, mai usata per riempire un argomento,
-mai citata in una risposta — ha dimostrato da sé la propria inutilità e scade. Il
-dato per deciderlo esiste già: ogni influenza esercitata è una riga in
-`applications` (F3). L'asimmetria con l'invariante 27 è voluta e va letta con
+**Scadenza per non uso — solo per ciò che è stato dedotto.** Una memoria
+`behavioral` che nella propria finestra non è mai stata applicata — mai
+selezionata, mai usata per riempire un argomento, mai citata in una risposta — ha
+dimostrato da sé la propria inutilità e scade. **Non vale per ciò che l'utente ha
+dichiarato**, che è `durable` per §6.6: dimenticare in silenzio una cosa detta
+esplicitamente sarebbe peggio che conservarne una inutile. Il dato per decidere
+esiste già: ogni influenza esercitata è una riga in `applications` (F3). L'asimmetria con l'invariante 27 è voluta e va letta con
 attenzione: **l'uso non allunga la vita di un claim, il non uso la accorcia.** La
 prima direzione sarebbe auto-rinforzo e resta vietata; la seconda è potatura, e ha
 già un precedente nel sistema con la scadenza dei semi in ombra mai riusati.
