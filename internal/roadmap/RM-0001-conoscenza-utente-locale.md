@@ -1188,9 +1188,32 @@ lo stesso schema a quattro campi:
   verifiche di autenticità, tipi di allegato, destinatario visibile o in copia
   nascosta. Per un documento o una pagina significa altri tratti, calcolati allo
   stesso modo: la definizione dei tratti appartiene alla tipologia, lo schema no.
-- **Sorgente**: la classe di provenienza — un mittente, una testata, un sito
-  aziendale, un archivio locale — distinta dall'identità esatta, che resta il
-  tratto forte quando c'è (§6.9).
+- **Sorgente**: e non è un'etichetta piatta, perché è il tratto che fa più lavoro
+  di tutti. Una segnalazione aperta sul tuo repository e un messaggio di posta che
+  chiede aiuto possono avere **identica** tipologia di richiesta, identico
+  argomento e identico tono, e non sono la stessa cosa. La sorgente si scompone in
+  quattro tratti, tre dei quali deterministici:
+  - **canale**: posta, piattaforma di codice, sito, messaggistica, archivio locale.
+    Porta con sé il contratto implicito dell'interazione: una segnalazione sul tuo
+    repository è un'interazione attesa, un messaggio non richiesto no.
+  - **identità entro il canale**: l'indirizzo esatto, l'account. È il tratto forte
+    quando c'è (§6.9).
+  - **grado di autenticazione della sorgente**: chi garantisce quell'identità. Una
+    piattaforma che autentica il suo utente garantisce molto; un protocollo di
+    posta con verifiche di dominio superate garantisce qualcosa; un mittente non
+    verificato non garantisce nulla. È calcolabile, non inferito, ed è il tratto
+    che distingue l'avviso autentico della banca dalla sua imitazione — cioè
+    esattamente ciò che il tono non sa fare.
+  - **relazione**: primo contatto, sorgente ricorrente, corrispondente noto. Si
+    ricava contando nel corpus, senza modello e senza registro nuovo.
+
+  **Il canale entra obbligatoriamente in ogni proiezione che agisce**, e per una
+  ragione diversa da quella del tono: non perché sia imitabile, ma perché il
+  significato è relativo alla sorgente. Un giudizio imparato sulla posta non deve
+  poter transitare su una piattaforma di codice: «chiede aiuto» segnalato come
+  molesto in una casella non può rendere molesta una segnalazione aperta su un
+  repository. Le due regole insieme dicono che una proiezione che agisce contiene
+  sempre il canale, e non è mai fatta di solo tono.
 - **Argomento e richiesta**: di che cosa parla e che cosa vuole da te. La
   **richiesta** è il tratto più discriminante e il più stabile: chi truffa cambia
   parole a ogni invio, ma quello che vuole — segui un collegamento, paga,
