@@ -481,10 +481,38 @@ Il resolver riceve la lista del turno e può soltanto:
 - chiedere scegliendo dalla stessa lista;
 - astenersi con reason code.
 
-Il primo slot è `project`, alimentato da `project_paths.json`. Un secondo slot
-si aggiunge solo dopo un caso reale e riusa la stessa interfaccia. Contatti,
+Il primo slot è `project`, alimentato da `project_paths.json`. Contatti,
 calendari e account esistenti vengono prima censiti come provider candidati;
 non si creano registri paralleli.
+
+**Secondo slot, con il suo caso reale: `mail_account`.** «La casella X è quella
+del progetto Metnos, la Y è personale», poi «c'è posta per Metnos?». Il caso è
+migliore di un secondo slot inventato, per tre motivi verificabili:
+
+- **il provider esiste già ed è banale**: gli account configurati sono file
+  `~/.config/metnos/mail/<nome>.env` e il nome del file *è* il valore ammesso
+  dell'argomento [PROVATO `executors/read_messages/manifest.toml`, descrizione di
+  `account`]. Enumerare i candidati è elencare una cartella, senza registro nuovo
+  e senza modello;
+- **l'ancora d'identità è ovvia**: l'indirizzo dell'account. Se il file cambia nome
+  ma l'indirizzo resta, il riferimento regge; se cambia l'indirizzo, si richiede;
+- **c'è già un valore predefinito da sostituire**: oggi l'argomento cade su un
+  account d'istanza fissato nel manifest. Un default personale non aggiunge un
+  meccanismo, ne rende personale uno esistente.
+
+L'ordine di risoluzione su quell'argomento diventa allora concreto, ed è quello
+generale di §5.5: valore esplicito nella richiesta, poi alias confermato tramite
+questo slot, poi default personale, poi il predefinito del manifest. Sono quattro
+gradini distinti e ognuno lascia traccia del proprio motivo.
+
+**Lo stesso alias in slot diversi non è ambiguità.** «Metnos» è insieme un account
+di posta e una voce di `project_paths.json`. Non serve disambiguare la parola,
+perché lo slot non viene dalla parola: viene dall'**argomento che si sta
+riempiendo**. Una richiesta di posta risolve `metnos` fra gli account; una
+richiesta sui test lo risolve fra i progetti; nessuna delle due vede l'altro
+insieme di candidati. È una proprietà dell'iniezione dopo il piano e va segnata,
+perché è esattamente ciò che si perde mettendo un profilo nel prompt, dove il
+modello dovrebbe decidere globalmente che cosa significhi una parola.
 
 ### 5.7 Canonicalizzatore delle routine
 
@@ -1016,6 +1044,126 @@ inerte, come qualunque altro claim senza destinazione. Gli attributi che ricadon
 nelle categorie rifiutate dall'invariante 23 non sono ammessi a nessun titolo,
 nemmeno se un dominio dichiarasse uno slot per essi: la dichiarazione di dominio
 concede una destinazione, non un permesso.
+
+### 6.9 Giudizi dell'utente e generalizzazione da un esempio
+
+«Questa mail è spam» — e da lì in avanti le simili dovrebbero esserlo. È un caso
+diverso da tutti i precedenti e va scomposto, perché **metà non appartiene a questa
+roadmap**.
+
+**Il confine.** Ciò che è conoscenza dell'utente è il **giudizio**: tu hai
+classificato quel messaggio, in quel turno, ed è un evento attestato con
+provenienza, principale, data ed evidenza — cancellabile come tutto il resto.
+Ciò che invece **non** è conoscenza dell'utente è il classificatore: trasformare un
+insieme di giudizi in una regola che decide su messaggi mai visti è una capacità
+del **dominio della posta**, non della memoria. RM-0001 conserva e mette a
+disposizione i giudizi; il dominio dichiara di volerli e ne fa qualcosa. La stessa
+separazione di §6.8: i domini definiscono che cosa è usabile, perché sono gli unici
+che possono usarlo.
+
+**«Simili» in modo deterministico, prima che semantico.** La parte difficile è la
+somiglianza, e la strada più corta non è la più ovvia. Quando segnali un messaggio,
+il segnale utile non è il suo testo ma i suoi **attributi stabili**: indirizzo
+esatto del mittente, identificativo di lista, intestazione di disiscrizione.
+«Simile» come *stesso mittente* o *stessa lista* è deterministico, spiegabile in
+una riga — «l'ho considerata spam perché viene dallo stesso mittente che hai
+segnalato» — e revocabile puntualmente. Lo spam reale si ripete molto più per
+mittente che per formulazione, quindi questa via copre la maggior parte dei casi
+con zero modello.
+
+**Il dominio del mittente non è un attributo sicuro.** Generalizzare da un
+indirizzo all'intero dominio è la trappola più facile: dallo stesso dominio da cui
+arriva una promozione arrivano anche le fatture. La generalizzazione a livello di
+dominio richiede quindi una **conferma esplicita** e non nasce mai da sola;
+indirizzo e lista, che identificano una singola sorgente, non ne hanno bisogno.
+
+La somiglianza **testuale** resta fuori dal nucleo alle stesse condizioni di §8.1:
+si aggiunge se, e solo se, la via per attributi viene misurata e lascia una lacuna
+documentata sul corpus congelato. Non è un rifiuto, è un ordine.
+
+**Non muta mai da sola.** Una classificazione appresa può marcare, ordinare e
+**proporre** — «tre messaggi dello stesso mittente che hai segnalato: li sposto?» —
+ma non sposta e non cancella per conto proprio. Spostare posta è un effetto
+mutante e conserva il proprio controllo (§8.3, invariante 5): una regola imparata
+non è un'autorizzazione, esattamente come nel caso di «affidabile» in §6.8.
+
+**Gli errori qui non sono simmetrici.** Un falso positivo nasconde un messaggio
+vero, e vale più di dieci falsi negativi. Ne segue una regola di forma, non di
+soglia: ciò che viene classificato resta **visibile** con il proprio motivo, e non
+sparisce dalla vista. Una classificazione che filtra in silenzio è §2.7 e §2.8
+insieme, come l'ordinamento che diventa filtro.
+
+#### 6.9.1 Apprendimento per esempio e per rinforzo
+
+Sono i due meccanismi che il caso precedente richiede, e vanno nominati con
+precisione perché uno dei due nomi, nel resto del documento, indica una cosa
+vietata.
+
+**Per esempio** è ciò che §6.9 descrive: un'istanza segnalata diventa un giudizio
+attestato, e il dominio generalizza dai suoi attributi stabili. Non c'è
+addestramento e non c'è modello: c'è un insieme di esempi con provenienza e una
+regola deterministica che li usa.
+
+**Per rinforzo: due cose opposte sotto la stessa parola.**
+
+- **Auto-rinforzo — vietato** (invariante 27, §13.0 T12). È il sistema che rinforza
+  una propria convinzione usandola: recuperarla, applicarla o citarla nella propria
+  prosa non aumenta né la forza né la durata di nulla. Senza questo divieto un
+  impianto converge su ciò che ha creduto per primo e si dà ragione da solo. Il
+  precedente di §6.7.1 mostra dove porta.
+- **Rinforzo da segnale esterno — ammesso, ed è il cuore della cosa.** Il segnale
+  viene da te, non dal sistema: una conferma, una smentita, o un'azione che le vale
+  entrambe. Non è un anello chiuso, è supervisione. L'invariante 27 esiste proprio
+  per proteggere questo: se il sistema potesse rinforzarsi da solo, il tuo segnale
+  finirebbe annegato dal suo.
+
+**Quattro regole perché il rinforzo converga invece di oscillare.**
+
+1. **Il segnale negativo pesa più del positivo.** Gli errori sono asimmetrici
+   (§6.9), quindi una smentita revoca più di quanto una conferma costruisca: una
+   regola nasce con un numero preregistrato di conferme e cade con un numero
+   minore di smentite. L'asimmetria è a favore della revoca, sempre.
+2. **Il segnale comportamentale vale più di quello dichiarato.** Rimettere un
+   messaggio fuori dal cestino è una smentita più forte di un «no»: è un'azione, è
+   attestata dal runtime, e non passa da alcuna interpretazione. È la fonte
+   preferita ovunque sia disponibile.
+3. **Isteresi obbligatoria.** Una regola che cambia stato a ogni segnale è peggio
+   di nessuna regola. Fra due cambi di stato della stessa regola c'è una distanza
+   minima, e le oscillazioni sono un fallimento da riportare, non un
+   apprendimento rapido.
+4. **Il rinforzo non concede mai autorità.** Cento conferme non trasformano una
+   proposta in una cancellazione automatica. La fiducia sugli *effetti* si
+   consolida altrove e per altra via — il segno umano sull'autopath e i mandati
+   (ADR 0185, ADR 0190) — e resta fuori dalla memoria (invariante 5). È il punto in
+   cui la parola «rinforzo» inganna di più: suggerisce che qualcosa si guadagni un
+   permesso, e qui non accade mai.
+
+Il segnale esiste già nel sistema e non va inventato: il riscontro binario
+dell'utente alimenta oggi il ciclo di apprendimento delle proposte (ADR 0180,
+0185). Qui se ne riusa la forma, applicata a giudizi su oggetti invece che a
+proposte sul catalogo.
+
+#### 6.9.2 I rischi, e quale resta scoperto
+
+Questa è la parte meno matura del documento: a differenza di §6.7.1 non ha un
+precedente misurato alle spalle, e ragiona in anticipo sull'evidenza. Elencare i
+modi in cui può andare male è quindi parte della specifica, non un contorno.
+
+| Rischio | Che cosa lo contiene |
+|---|---|
+| falso positivo che nasconde posta vera | non muta mai da sola; ciò che è classificato resta visibile con il motivo; la smentita revoca più di quanto la conferma costruisca |
+| generalizzazione troppo larga (dominio invece di mittente) | dominio solo con conferma esplicita; indirizzo e lista identificano una sorgente sola |
+| segnale avvelenato — non è l'utente a produrlo | principale verificato, origine dell'interazione dichiarata, indipendenza temporale (§7.0.1, T12) |
+| regola che oscilla a ogni segnale | isteresi con distanza minima fra due cambi di stato; l'oscillazione è un fallimento riportato |
+| regola giusta che invecchia — cambi lavoro, quella lista torna utile | scadenza per non uso (§6.7) più il segnale negativo |
+| regola invisibile, quindi irrevocabile | ogni regola compare nell'inventario con le sue evidenze e un comando di revoca; una regola che non si trova non esiste |
+| proposte troppo frequenti che diventano rumore | la proposta è rara e aggregata, mai per singolo messaggio: un'interfaccia che chiede sempre smette di essere letta, e allora chiede a vuoto |
+
+**Quello che resta scoperto, dichiarato.** Il caso in cui la somiglianza utile non
+è né il mittente né la lista — spam da mittenti sempre diversi, riconoscibile solo
+dal contenuto. Lì la via deterministica non arriva, e la via semantica è fuori dal
+nucleo finché non c'è la misura che la giustifica (§8.1). Il risultato onesto è che
+questa capacità coprirà molto ma non tutto, e va promessa per quello che copre.
 
 ## 7. Acquisizione automatica
 
