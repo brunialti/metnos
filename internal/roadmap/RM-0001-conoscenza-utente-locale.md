@@ -1172,19 +1172,78 @@ l'immersione del testo in un vettore. È una **firma composita tipizzata**: un
 insieme dichiarato di tratti, in larga maggioranza calcolati e non inferiti, di cui
 solo uno o due vengono da un modello e comunque su vocabolario chiuso.
 
-Tre famiglie di tratti, tutte già presenti nel messaggio:
+E non va costruita per la posta. Va costruita **una volta, per qualunque oggetto
+osservabile** — messaggio, documento, articolo, pagina, contenuto pubblicato — con
+lo stesso schema a quattro campi:
 
-- **Struttura** (deterministica, zero modello): presenza di intestazioni di lista e
-  di disiscrizione; rapporto fra testo e marcatura; numero di collegamenti rispetto
-  al testo; disallineamento fra nome mostrato, mittente e indirizzo di risposta;
-  esito delle verifiche di autenticità del dominio; tipi di allegato; se sei fra i
-  destinatari visibili o in copia nascosta.
-- **Tipo e argomento** (vocabolario chiuso, il modello mappa e non inventa): di che
-  cosa parla, entro un elenco chiuso e piccolo.
-- **Richiesta** (vocabolario chiuso, ed è il tratto più discriminante): che cosa il
-  messaggio vuole che tu faccia — seguire un collegamento, pagare, rispondere,
-  confermare un'identità, scaricare. La truffa cambia parole a ogni invio, ma la
-  richiesta è quasi sempre la stessa.
+- **Tipologia**: che genere di oggetto è. È il campo che seleziona come si calcolano
+  gli altri tre.
+- **Struttura**: la forma, non il contenuto. È l'intuizione centrale, e vale ben
+  oltre la posta: gli oggetti di una stessa categoria si somigliano nella forma
+  molto più che nelle parole. Una truffa e una promozione hanno strutture
+  riconoscibili qualunque cosa dicano; così un comunicato, una fattura, un
+  articolo di cronaca. Per la posta significa intestazioni di lista e di
+  disiscrizione, rapporto fra testo e marcatura, collegamenti rispetto al testo,
+  disallineamento fra nome mostrato e mittente e indirizzo di risposta, esito delle
+  verifiche di autenticità, tipi di allegato, destinatario visibile o in copia
+  nascosta. Per un documento o una pagina significa altri tratti, calcolati allo
+  stesso modo: la definizione dei tratti appartiene alla tipologia, lo schema no.
+- **Sorgente**: la classe di provenienza — un mittente, una testata, un sito
+  aziendale, un archivio locale — distinta dall'identità esatta, che resta il
+  tratto forte quando c'è (§6.9).
+- **Argomento e richiesta**: di che cosa parla e che cosa vuole da te. La
+  **richiesta** è il tratto più discriminante e il più stabile: chi truffa cambia
+  parole a ogni invio, ma quello che vuole — segui un collegamento, paga,
+  rispondi, conferma un'identità, scarica — resta quasi sempre lo stesso.
+
+**L'insieme dei tratti firma l'oggetto, e firma un genere non un esemplare.** È la
+proprietà che rende il meccanismo praticabile. Due messaggi di truffa da mittenti
+diversi non si somigliano: hanno la **stessa firma**, perché la firma non descrive
+il singolo oggetto ma la categoria a cui appartiene. Ne segue la semplificazione
+più importante di tutta questa direzione: con tratti tipizzati e vocabolari chiusi,
+**«simile» non è una distanza ma un'uguaglianza** su un sottoinsieme dei campi.
+Niente vettori, niente soglia da tarare, niente indice denso, nessuna delle cose
+che §8.1 tiene fuori dal nucleo — e la ricerca è un raggruppamento esatto.
+
+Il giudizio dell'utente si applica quindi a una **proiezione dichiarata** della
+firma, ed è la proiezione a governare quanto si generalizza: pochi campi
+significano generalizzazione larga, molti campi generalizzazione stretta. La scelta
+è esplicita, non un parametro nascosto, ed è mostrabile in una riga: «trattata così
+perché ha la stessa tipologia, la stessa struttura e la stessa richiesta, quale che
+sia il mittente». Se generalizza troppo, si aggiunge un campo alla proiezione; se
+troppo poco, se ne toglie uno. Un comportamento che si corregge guardandolo.
+
+*Nota terminologica*: qui «firma» descrive e non autentica. Non ha nulla a che
+vedere con la firma crittografica dei manifest, che attesta l'origine di un
+executor; questa dice a quale genere appartiene un oggetto osservato.
+
+**Lo schema è universale, i vocabolari no.** È il punto che separa questa idea da
+un progetto di ontologia, che invecchierebbe e che nessuno manterrebbe. I quattro
+campi sono comuni; i **valori ammessi di ciascuno li dichiara il dominio** che
+produce quegli oggetti, con lo stesso meccanismo delle dichiarazioni di
+personalizzazione (§5.4) e delle forme credenziale (ADR 0199). Nessun elenco
+centrale di argomenti, di strutture o di tipologie: chi conosce gli oggetti ne
+dichiara i tratti, e il resto del sistema li consuma senza saperne il contenuto.
+
+**Il guadagno vero è che due capacità diventano una.** Con una firma comune,
+«questa mail è spam» e «mi interessa la biologia» (UC-13) sono lo **stesso**
+meccanismo: un giudizio dell'utente su un campo della firma, negativo nel primo
+caso e positivo nel secondo, che il dominio usa per marcare o per ordinare. Non
+servono un classificatore di posta e un ordinatore di notizie: serve una firma e
+due segni. Ed è la stessa ragione per cui vale la pena generalizzare invece di
+risolvere il caso della posta.
+
+**Il confine che non va superato.** La firma descrive **gli oggetti**, non
+l'utente. Ciò che appartiene a questa roadmap resta soltanto il **giudizio** —
+il tuo segno su una firma — con provenienza, evidenza e cancellazione. Se un
+giorno la firma diventasse un modo per descrivere *te* invece che le cose che
+guardi, saremmo tornati al profilo narrativo di §6.7.1 per un'altra strada.
+
+**Sede della decisione.** Questa è una capacità dei domini degli oggetti e vale
+oltre la conoscenza utente: non è RM-0001 a doverla ratificare. RM-0001 ne dichiara
+soltanto l'interfaccia che le serve — una firma stabile, versionata, ispezionabile
+e cancellabile — e resta costruibile anche senza, con la sola via per mittente e
+lista.
 
 **Perché è meglio di un vettore, in questo documento.** *Spiegabile*: la
 somiglianza si stampa in una riga — «stessa struttura, nessuna disiscrizione, otto
