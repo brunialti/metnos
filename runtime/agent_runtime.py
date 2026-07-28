@@ -28,24 +28,19 @@ import re
 import subprocess
 import sys
 import time
-from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 import uuid
-from llm_provider import OllamaProvider, ProviderError, make_provider_from_spec
 from loader import load_catalog, filter_for_visibility, VISIBILITY_COMPOSER
 from messages import get as msg
-from mnestoma import Mnestoma, build_desired_signature
-from prefilter import rank, rank_adaptive
-from scratchpad import Scratchpad, SCRATCHPAD_READ_TOOL
+from mnestoma import Mnestoma
+from scratchpad import Scratchpad
 from synt import Synt, make_request as synt_make_request
-from synth_request import SYNTH_REQUEST_TOOL, handle_synth_request
-import location_request as _location_request
 import prompt_loader  # ADR 0092: prompt LLM in runtime/prompts/<lang>/
 import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
-from config import DEFAULT_LANG, DEFAULT_TIMEZONE
+from config import DEFAULT_TIMEZONE
 
 # Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
 _FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
@@ -98,53 +93,15 @@ def _derive_file_attachments(tool, res: dict) -> list:
                     "path": p, "basename": _P(p).name, "mime": mime})
     return out
 from fast_path import try_fast_path
-
-LOCATION_REQUEST_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "request_location_from_user",
-        "description": (
-            "USA QUESTO TOOL quando hai gia' chiamato get_location come precursor "
-            "di una query LOCATION-RELATIVE (con marker prossimita' tipo 'vicino a "
-            "me', 'qui', 'intorno', 'near me', 'nearby') e get_location ha ritornato "
-            "ok:false con error tipo 'no location received yet'. Il tool rinegozia "
-            "con l'utente via canale (Telegram: bottoni 'Invia posizione'/'Annulla' "
-            "+ campo testo per indirizzo/CAP/citta'). Il TURNO TERMINA SILENZIOSAMENTE "
-            "subito dopo: ritornera' un'observation con awaiting:true e il runtime "
-            "soppimera' il final_answer. Quando l'utente risponde, il daemon "
-            "rilancera' un nuovo turno con la query originale e get_location avra' "
-            "la posizione fresca. NON usare per query con luogo esplicito ('a Roma', "
-            "'in Via X') — quelle vanno a find_places diretto senza get_location."
-        ),
-        "parameters": {
-            "type": "object",
-            "required": ["goal"],
-            "properties": {
-                "goal": {
-                    "type": "string",
-                    "description": (
-                        "Verbo+oggetto della query corrente in italiano breve, da "
-                        "mostrare all'utente nel prompt 'Mi serve la tua posizione "
-                        "per <goal>'. Es. 'trovare la farmacia piu' vicina', "
-                        "'cercare ristoranti nei dintorni'."
-                    ),
-                },
-            },
-        },
-    },
-}
 from describe_entries import DESCRIBE_ENTRIES_TOOL, handle_describe_entries
 from classify_entries import CLASSIFY_ENTRIES_TOOL, handle_classify_entries
 from extract_entries import EXTRACT_ENTRIES_TOOL, handle_extract_entries
 from store_entries import (
     FIND_ENTRIES_TOOL, WRITE_ENTRIES_TOOL, DELETE_ENTRIES_TOOL,
     handle_find_entries, handle_write_entries, handle_delete_entries)
-from compare_entries import COMPARE_ENTRIES_TOOL, handle_compare_entries
+from compare_entries import handle_compare_entries
 from describe_images import handle_describe_images
 from recurring_tasks import (
-    CREATE_TASKS_TOOL, LIST_TASKS_TOOL,
-    DELETE_TASKS_TOOL, READ_TASKS_TOOL,
-    SET_TASKS_TOOL, READ_TASKS_HISTORY_TOOL,
     handle_create_tasks, handle_list_tasks,
     handle_delete_tasks, handle_read_tasks,
     handle_set_tasks, handle_read_tasks_history,
@@ -152,9 +109,8 @@ from recurring_tasks import (
 from skill_admin import (
     handle_list_skills, handle_set_skills,
 )
-from test_runner import check_hints
 from undo import UndoLog
-from vaglio import judge, guard_check
+from vaglio import guard_check
 import config as _C  # §7.11
 
 TURN_LOG_DIR = _C.PATH_USER_DATA / "turns"
@@ -1006,26 +962,22 @@ _LOG = log
 
 
 def _render_project_paths_block() -> str:
-    """Carica `runtime/project_paths.json` e ritorna un blocco testuale per
-    il prompt PLANNER. Formato: una riga per progetto con name → code_root.
+    """Carica ``runtime/project_paths.json`` e rende record strutturati.
 
-    Bug fix 4/5/2026 (ADR 0079): l'utente puo' chiamare un progetto col suo
-    nome ('metnos', 'giorgio2', ...) come oggetto della query. Senza questo
-    blocco il PLANNER interpretava il nome come pattern di filename e
-    chiamava find_files(pattern="*metnos*") invece di usare il code_root
-    canonico. Letto a load-time del modulo: gli aggiornamenti al JSON si
-    rifletteranno al prossimo restart del runtime/daemon.
+    I nomi dei campi sono identificatori semantici stabili, non prosa: il
+    blocco puo' essere inserito in un prompt di qualunque lingua senza creare
+    una sezione italiana dentro un prompt straniero.
     """
     cfg_path = Path(__file__).resolve().parent / "project_paths.json"
     if not cfg_path.exists():
-        return '  (nessun progetto configurato in runtime/project_paths.json)'
+        return "[]"
     try:
         data = json.loads(cfg_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as ex:
         log.warning("project_paths.json read failed: %s", ex)
-        return '  (errore lettura runtime/project_paths.json)'
+        return "[]"
     if not isinstance(data, dict) or not data:
-        return '  (nessun progetto configurato)'
+        return "[]"
     lines = []
     for proj, meta in data.items():
         if not isinstance(meta, dict):
@@ -1033,21 +985,25 @@ def _render_project_paths_block() -> str:
         # Supporto sia codebase (code_root) sia collezioni dati (data_root):
         # se entrambi mancano, "?". Il PLANNER vede comunque description.
         root = meta.get("code_root") or meta.get("data_root") or "?"
-        kind = "codebase" if meta.get("code_root") else "collezione"
+        kind = "codebase" if meta.get("code_root") else "data_collection"
         desc = meta.get("description") or ""
-        lines.append(f'  "{proj}" = {kind} in {root}'
-                      + (f' ({desc})' if desc else ''))
-    return "\n".join(lines) if lines else '  (nessun progetto configurato)'
+        record = {
+            "name": str(proj),
+            "kind": kind,
+            "root": str(root),
+        }
+        if desc:
+            record["description"] = str(desc)
+        lines.append("  - " + json.dumps(record, ensure_ascii=False,
+                                          sort_keys=True))
+    return "\n".join(lines) if lines else "[]"
 
 
 def _render_users_known_block() -> str:
-    """Carica `users.list_users()` e ritorna un blocco testuale per il prompt
-    PLANNER. Formato: una riga per user con name (role, owner, autonomy,
-    canali verificati). Multi-user (4/5/2026, ADR 0083): permette al
-    pianificatore di risolvere "manda a Lucia" → `to_user="lucia"` invece
-    di indovinare chat_id letterali. Letto a load-time: aggiornare l'elenco
-    richiede restart del runtime/daemon (mantiene il prompt deterministico
-    durante la pianificazione di un turno).
+    """Rende gli utenti noti come record strutturati e privi di prosa.
+
+    Il planner usa questi dati per risolvere un nome in ``to_user``. I record
+    non contengono identificatori di recapito e restano validi in ogni lingua.
     """
     try:
         import users as _users
@@ -1055,9 +1011,9 @@ def _render_users_known_block() -> str:
         rows = _users.list_users()
     except Exception as ex:
         log.warning("users.list_users failed: %s", ex)
-        return '  (servizio utenti non disponibile)'
+        return "[]"
     if not rows:
-        return '  (nessun utente registrato)'
+        return "[]"
     out = []
     for u in rows:
         try:
@@ -1067,22 +1023,58 @@ def _render_users_known_block() -> str:
         verified = [c["channel"] for c in chans if c.get("verified_at")]
         pending = [c["channel"] for c in chans
                    if not c.get("verified_at") and c.get("pairing_token")]
-        suffix_chans = []
-        if verified:
-            suffix_chans.append(", ".join(f"{c} OK" for c in verified))
-        if pending:
-            suffix_chans.append(", ".join(f"{c} pending" for c in pending))
-        suffix = " — " + "; ".join(suffix_chans) if suffix_chans else ""
-        owner = ""
+        owner = None
         if u.get("owner_user_id"):
             o = _users.get_user(u["owner_user_id"])
             if o:
-                owner = f", owner={o['name']}"
-        out.append(
-            f'  - {u["name"]} ({u["role"]}{owner}, '
-            f'autonomy={u["autonomy_level"]}){suffix}'
-        )
-    return "\n".join(out)
+                owner = o["name"]
+        record = {
+            "name": u["name"],
+            "role": u["role"],
+            "autonomy": u["autonomy_level"],
+            "channels_verified": verified,
+            "channels_pending": pending,
+        }
+        if owner:
+            record["owner"] = owner
+        out.append("  - " + json.dumps(record, ensure_ascii=False,
+                                        sort_keys=True))
+    return "\n".join(out) if out else "[]"
+
+
+def _render_canonical_query_block(lang: str) -> str:
+    """Istruzioni del by-product ``canonical_query`` nella lingua del turno."""
+    return prompt_loader.get("planner_canonical_query", lang).rstrip()
+
+
+def _render_credentials_context_block(extracted_meta: list[dict],
+                                      lang: str) -> str:
+    """Contesto privo di segreti per il planner, localizzato per richiesta."""
+    rows: list[str] = []
+    for item in extracted_meta:
+        ctx = item.get("context") or {}
+        record = {
+            "credentials_domain": item.get("domain") or "?",
+            "binding": ctx.get("binding") or "?",
+            "host": ctx.get("host") or "?",
+        }
+        if ctx.get("share"):
+            record["share"] = ctx["share"]
+        rows.append("  - " + json.dumps(record, ensure_ascii=False,
+                                         sort_keys=True))
+    return prompt_loader.get(
+        "planner_credentials_context", lang,
+        credential_records="\n".join(rows) if rows else "[]",
+    ).rstrip()
+
+
+def _render_reference_images_block(paths: list[str], lang: str) -> str:
+    """Istruzioni per gli allegati fotografici nella lingua del turno."""
+    return prompt_loader.get(
+        "planner_reference_images", lang,
+        image_count=len(paths),
+        sample_path=paths[0] if paths else "",
+    ).rstrip()
 
 
 def _render_telos_block(lang: str) -> str:
@@ -1126,81 +1118,14 @@ def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
         return ""
     if not rejected:
         return ""
-    hard = consec_errors >= 2
-    if lang == "en":
-        if hard:
-            header = ("RUNTIME HARD CONSTRAINT — USER REJECTED ALL PIPELINES "
-                       "ATTEMPTED ({n} consecutive ✗)").format(n=consec_errors)
-            body_suffix = [
-                "",
-                "DO: try a STRUCTURALLY DIFFERENT approach (different executor "
-                "family, or request_new_executor for synthesis, or "
-                "consult_frontier for high-stakes reasoning).",
-                "DO NOT: produce yet another minor variation of the rejected "
-                "pipelines — the user wants a different SHAPE of answer.",
-                "OK: if no viable alternative exists, emit final_answer "
-                "explicitly stating: \"I don't have a suitable tool for X; "
-                "I can try synthesizing one with request_new_executor.\"",
-                "ERROR: silently re-run a similar pipeline.",
-            ]
-        else:
-            header = ("PIPELINES ALREADY REJECTED BY USER FOR THIS QUERY "
-                       "(do not repeat!)")
-            body_suffix = [
-                "",
-                "DO: pick a DIFFERENT pipeline. DO NOT: replicate those listed.",
-                "OK: use an alternative executor, read metadata directly, "
-                "or reshape the steps.",
-                "ERROR: rebuild the same sequence the user already rejected.",
-            ]
-        lines = [
-            "══════════════════════════════════════════════════════════════════════",
-            header,
-            "══════════════════════════════════════════════════════════════════════",
-            "",
-        ]
-        for p in rejected[:5]:
-            lines.append(f"- {' → '.join(p)}")
-        lines += body_suffix
-        return "\n".join(lines)
-    # IT
-    if hard:
-        header = ("VINCOLO HARD RUNTIME — UTENTE HA RIFIUTATO TUTTE LE "
-                   "PIPELINE TENTATE ({n} ✗ consecutive)").format(n=consec_errors)
-        body_suffix = [
-            "",
-            "DEVI: provare un approccio STRUTTURALMENTE DIVERSO (executor di "
-            "famiglia diversa, o request_new_executor per sintesi, o "
-            "consult_frontier per ragionamento ad alto rischio).",
-            "NON DEVI: produrre l'ennesima variante minore delle pipeline "
-            "rifiutate — l'utente vuole una FORMA diversa di risposta.",
-            "OK: se nessuna alternativa praticabile esiste, emetti final_answer "
-            "esplicitando: \"non ho uno strumento adatto per X; posso "
-            "provare a sintetizzarne uno con request_new_executor.\"",
-            "ERRORE: rilanciare silenziosamente una pipeline simile.",
-        ]
-    else:
-        header = ("PIPELINE GIA' RIFIUTATE DALL'UTENTE PER QUESTA QUERY "
-                   "(non ripetere!)")
-        body_suffix = [
-            "",
-            "DEVI: scegliere una pipeline DIVERSA. NON DEVI: ripetere quelle "
-            "elencate sopra.",
-            "OK: usare un executor alternativo, leggere direttamente metadata, "
-            "o riformulare gli step.",
-            "ERRORE: ricostruire la stessa sequence che l'utente ha gia' "
-            "bocciato.",
-        ]
-    lines = [
-        "══════════════════════════════════════════════════════════════════════",
-        header,
-        "══════════════════════════════════════════════════════════════════════",
-        "",
-    ]
-    for p in rejected[:5]:
-        lines.append(f"- {' → '.join(p)}")
-    lines += body_suffix
-    return "\n".join(lines)
+    return prompt_loader.get(
+        "rejected_pipelines", lang,
+        hard=consec_errors >= 2,
+        consec_errors=consec_errors,
+        pipelines="\n".join(
+            f"- {' → '.join(p)}" for p in rejected[:5]
+        ),
+    ).strip()
 
 
 
@@ -1337,15 +1262,9 @@ _FROM_STEP_DESC = (
 )
 
 
-_WEEKDAY_IT = ["lunedi'", "martedi'", "mercoledi'", "giovedi'",
-                "venerdi'", "sabato", "domenica"]
-_WEEKDAY_EN = ["Monday", "Tuesday", "Wednesday", "Thursday",
-                "Friday", "Saturday", "Sunday"]
-
-
 def _render_now_vars() -> dict:
     """Restituisce dict con riferimenti temporali correnti per il prompt
-    planner footer (Roberto 12/5/2026): today_iso/now_hhmm/weekday_*/tz.
+    planner footer: today_iso/now_hhmm/weekday_iso/tz.
     Iniettato in compose() per evitare step get_now ridondante quando il
     planner deve solo risolvere una data relativa banale. §7.9 deterministico.
     Per orari precisi al secondo o explicit time-of-day request, il planner
@@ -1358,12 +1277,13 @@ def _render_now_vars() -> dict:
         now = datetime.now(tz)
     except Exception:
         now = datetime.now()
-    wd = now.weekday()
     return {
         "today_iso": now.strftime("%Y-%m-%d"),
         "now_hhmm": now.strftime("%H:%M"),
-        "weekday_it": _WEEKDAY_IT[wd],
-        "weekday_en": _WEEKDAY_EN[wd],
+        # ISO 8601 is language-neutral: 1=Monday, 7=Sunday. The localized
+        # prompt explains the labels without requiring per-language runtime
+        # branches or process-global locale changes.
+        "weekday_iso": now.isoweekday(),
         "tz": DEFAULT_TIMEZONE,
     }
 
@@ -1400,25 +1320,39 @@ def planner_facing_schema(schema):
     props = dict(schema.get("properties") or {})
     required = list(schema.get("required") or [])
     has_entries = "entries" in props or "entries" in required
-    if not has_entries:
-        return schema
-    # Rimuovi entries dalla vista del modello: non puo' inventarle.
-    props.pop("entries", None)
-    # Inietta from_step (idempotente).
-    if "from_step" not in props:
-        props["from_step"] = {
-            "type": "integer",
-            "minimum": 1,
-            "description": _FROM_STEP_DESC,
-        }
-    # Sostituisci entries con from_step in required, deduplicando.
-    new_required = []
-    for r in required:
-        target = "from_step" if r == "entries" else r
-        if target not in new_required:
-            new_required.append(target)
-    if "from_step" not in new_required:
-        new_required.append("from_step")
+    if has_entries:
+        # Rimuovi entries dalla vista del modello: non puo' inventarle.
+        props.pop("entries", None)
+        # Inietta from_step (idempotente).
+        if "from_step" not in props:
+            props["from_step"] = {
+                "type": "integer",
+                "minimum": 1,
+                "description": _FROM_STEP_DESC,
+            }
+        # Sostituisci entries con from_step in required, deduplicando.
+        new_required = []
+        for r in required:
+            target = "from_step" if r == "entries" else r
+            if target not in new_required:
+                new_required.append(target)
+        if "from_step" not in new_required:
+            new_required.append("from_step")
+    else:
+        new_required = required
+
+    # Gli argomenti runtime-owned non appartengono alla superficie del modello.
+    # Il filtro deve valere anche nel percorso tool-use nativo, non soltanto
+    # nel proposer testuale; la dichiarazione firmata e la validazione runtime
+    # restano invariate.
+    runtime_owned = {
+        name for name, spec in props.items()
+        if isinstance(spec, dict) and spec.get("runtime_resolved")
+    }
+    for name in runtime_owned:
+        props.pop(name, None)
+    new_required = [name for name in new_required if name not in runtime_owned]
+
     out = dict(schema)
     out["properties"] = props
     out["required"] = new_required
@@ -1439,17 +1373,25 @@ def render_tools_for_provider(executors):
     default). Disable via env METNOS_TOOL_SCHEMA_FULL=1. Vedi
     `runtime/tool_schema_slim.py`.
     """
-    from tool_schema_slim import (
-        slim_description, slim_args_schema, is_slim_enabled,
-    )
+    # Il chiamante puo' passare anche un generatore. Materializzarlo una sola
+    # volta evita che le tre viste parallele (description/schema/tool) si
+    # disallineino consumando l'iteratore al primo passaggio.
+    executors = list(executors)
+    from tool_schema_slim import slim_args_schemas, is_slim_enabled
     apply_slim = is_slim_enabled()
+    descriptions = [ex.description for ex in executors]
+    parameters = [
+        planner_facing_schema(ex.args_schema) or {"type": "object"}
+        for ex in executors
+    ]
+    if apply_slim:
+        # Un solo criterio per ogni superficie model-facing: lo stesso budget
+        # elastico/bounded del proposer e un budget aggregato per gli arg.
+        from manifest_rules import render_heads_budgeted
+        descriptions = render_heads_budgeted(descriptions)
+        parameters = slim_args_schemas(parameters)
     tools = []
-    for ex in executors:
-        desc = ex.description
-        params = planner_facing_schema(ex.args_schema) or {"type": "object"}
-        if apply_slim:
-            desc = slim_description(desc)
-            params = slim_args_schema(params)
+    for ex, desc, params in zip(executors, descriptions, parameters):
         tools.append({
             "type": "function",
             "function": {
@@ -1547,17 +1489,36 @@ def validate_args(args, schema):
                     f"gli ID reali dallo step producer (§4.1)."
                 )
                 continue
-        expected_type = spec.get("type")
-        if expected_type == "string" and not isinstance(value, str):
-            failures.append(f"arg '{name}' deve essere string, e' {type(value).__name__}")
-        elif expected_type == "integer" and not isinstance(value, int):
-            failures.append(f"arg '{name}' deve essere integer, e' {type(value).__name__}")
-        elif expected_type == "number" and not isinstance(value, (int, float)):
-            failures.append(f"arg '{name}' deve essere number, e' {type(value).__name__}")
-        elif expected_type == "boolean" and not isinstance(value, bool):
-            failures.append(f"arg '{name}' deve essere boolean, e' {type(value).__name__}")
-        elif expected_type == "object" and not isinstance(value, dict):
-            failures.append(f"arg '{name}' deve essere object, e' {type(value).__name__}")
+        # ``from_step`` e' un riferimento strutturale del runtime, consumato
+        # prima dell'invocazione. Resta valido come intero anche nei vecchi
+        # manifest che lo includevano per errore in uno schema array condiviso.
+        if name == "from_step" and isinstance(value, int) \
+                and not isinstance(value, bool):
+            continue
+        declared_type = spec.get("type")
+        expected_types = (
+            declared_type if isinstance(declared_type, list)
+            else [declared_type] if isinstance(declared_type, str)
+            else []
+        )
+
+        def _matches(expected):
+            return {
+                "array": lambda: isinstance(value, list),
+                "boolean": lambda: isinstance(value, bool),
+                "integer": lambda: isinstance(value, int) and not isinstance(value, bool),
+                "null": lambda: value is None,
+                "number": lambda: isinstance(value, (int, float)) and not isinstance(value, bool),
+                "object": lambda: isinstance(value, dict),
+                "string": lambda: isinstance(value, str),
+            }.get(expected, lambda: True)()
+
+        if expected_types and not any(_matches(item) for item in expected_types):
+            expected_label = " | ".join(expected_types)
+            failures.append(
+                f"arg '{name}' deve essere {expected_label}, e' "
+                f"{type(value).__name__}"
+            )
         if "enum" in spec and value not in spec["enum"]:
             failures.append(f"arg '{name}' deve essere in {spec['enum']}, e' {value!r}")
     # LLM refusal / meta-text leak detection §7.3 (2/6/2026): il PLANNER LLM,
@@ -1659,7 +1620,7 @@ def _query_has_continuation(query: str) -> bool:
     1. Congiunzione strutturale di continuita' (regex universale IT+EN).
     2. Classe semantica: 2+ verbi canonici distinti nel query (derivato da
        prefilter._VERB_TO_CANONICAL, gia' contiene sinonimi IT+EN per le
-       22 azioni di vocab.ACTIONS). §7.3 generale, non enumerativa.
+       azioni di vocab.ACTIONS). §7.3 generale, non enumerativa.
 
     Esempi positivi:
       - «fissa appuntamento ... e mandami email di conferma» (set+send)
@@ -1675,13 +1636,23 @@ def _query_has_continuation(query: str) -> bool:
         return False
     if _detlex.search("query.multistep", query):
         return True
-    # Multi-verb detection via vocab classes. Tokenize semplice + lookup
-    # _VERB_TO_CANONICAL (gia' usato da prefilter, IT+EN sinonimi per le 22
-    # ACTIONS). 2+ verbi canonici distinti → multi-step.
+    # Multi-verb detection via vocab classes. Per le congiunzioni semplici
+    # ``e``/``and`` richiediamo almeno un verbo su CIASCUN lato: token nominali
+    # polisemici come ``email`` non devono trasformare «dimmi email e telefono»
+    # in due azioni. I marker forti (e poi/and then/inoltre/...) sono gia'
+    # gestiti dal detection lexicon sopra.
     try:
         from prefilter import tokenize, detect_canonical_verbs_all
-        verbs = detect_canonical_verbs_all(tokenize(query))
-        return len(verbs) >= 2
+        import re as _re
+        for conjunction in ("e", "and"):
+            for match in _re.finditer(
+                    rf"(?<!\w){_re.escape(conjunction)}(?!\w)",
+                    query, flags=_re.IGNORECASE):
+                left = detect_canonical_verbs_all(tokenize(query[:match.start()]))
+                right = detect_canonical_verbs_all(tokenize(query[match.end():]))
+                if left and right:
+                    return True
+        return False
     except Exception:
         return False
 
@@ -1710,7 +1681,7 @@ def _format_send_messages_detail(obs: dict) -> str:
 
 
 _MUTATING_VERBS = frozenset({
-    # Sottoinsieme delle 23 ACTIONS §2.2 con side-effect remoto:
+    # Sottoinsieme di ACTIONS §2.2 con side-effect remoto:
     # send, create, delete, set, write, move, share, change, render.
     # NON include: read, find, get, list, filter, sort, group, classify,
     # describe, compute, compare, order, extract, compress.
@@ -3355,6 +3326,79 @@ def _detect_false_mutation(final_message: str | None, counts: dict | None) -> bo
     return bool(_MUTATION_CLAIM_RE.search(final_message))
 
 
+_ARTIFACT_COMPLETION_RE = re.compile(
+    r"\b(?:salvat|creat|generat|scritt|prodott|preparat|saved|created|"
+    r"generated|written|produced|prepared)\w*\b", re.IGNORECASE)
+_ARTIFACT_CLAIM_PATTERNS = {
+    "spreadsheet": re.compile(
+        r"\b(?:fogli\w*(?:\s+di\s+calcolo)?|spreadsheet|xlsx|csv|sheet)\b",
+        re.IGNORECASE),
+    "document": re.compile(
+        r"\b(?:rapport\w*|report\w*|riepilog\w*|document\w*)\b",
+        re.IGNORECASE),
+    "archive": re.compile(
+        r"\b(?:archivi\w*|zip|compressed\s+archive)\b", re.IGNORECASE),
+}
+_ARTIFACT_SINK_CATEGORIES = {
+    "write_files": frozenset({"document"}),
+    "write_files_doc": frozenset({"document"}),
+    "create_files_doc": frozenset({"document"}),
+    "write_files_spreadsheet": frozenset({"spreadsheet"}),
+    "create_files_spreadsheet": frozenset({"spreadsheet"}),
+    "compress_files": frozenset({"archive"}),
+}
+
+
+def _artifact_sink_effects(steps: list) -> set[str]:
+    """Artifact categories backed by at least one real successful sink."""
+    completed: set[str] = set()
+    for step in steps or []:
+        tool = getattr(step, "chosen_tool", None) or (
+            step.get("chosen_tool") if isinstance(step, dict) else None)
+        categories = _ARTIFACT_SINK_CATEGORIES.get(str(tool or ""))
+        if not categories:
+            continue
+        result = getattr(step, "result", None)
+        if result is None and isinstance(step, dict):
+            result = step.get("result")
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            continue
+        count = (result.get("ok_count") or result.get("n_created")
+                 or result.get("n_written") or result.get("n_files")
+                 or (len(result.get("results") or [])
+                     if isinstance(result.get("results"), list) else 0))
+        try:
+            count = int(count or 0)
+        except (TypeError, ValueError):
+            count = 0
+        # A few legacy single-file sinks expose only a concrete path.
+        if count > 0 or result.get("path") or result.get("spreadsheet_id"):
+            completed.update(categories)
+    return completed
+
+
+def _detect_unbacked_artifact_claim(
+        final_message: str | None, steps: list) -> set[str]:
+    """Categories claimed as created/saved but absent from real sink effects.
+
+    Unlike the older mutation counter, this compares like with like: creating
+    a directory cannot substantiate a claim that a report or spreadsheet was
+    saved.  The rule is domain-neutral and uses only durable artifact classes.
+    """
+    if not final_message or not _ARTIFACT_COMPLETION_RE.search(final_message):
+        return set()
+    # Explicitly negative receipts are already honest.
+    if re.search(
+            r"\b(?:non|not|nessun\w*|no)\b.{0,40}\b(?:salvat|creat|generat|"
+            r"scritt|prodott|saved|created|generated|written|produced)\w*\b",
+            final_message, re.IGNORECASE | re.DOTALL):
+        return set()
+    claimed = {category for category, pattern in
+               _ARTIFACT_CLAIM_PATTERNS.items()
+               if pattern.search(final_message)}
+    return claimed - _artifact_sink_effects(steps)
+
+
 def _offer_defer_dialog(*, query, device_id, device_name, actor, channel,
                         conversation_id, sender_id):
     """Fase 7 A.1: dialog yes_no «eseguo appena {device} torna online?».
@@ -3450,8 +3494,91 @@ def _undo_done(op_id, obs):
         log.warning("[undo] append_done fallita (fail-open): %r", _ue)
 
 
-def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
-                    turn_id=None, actor=None, channel=None, target_device=None):
+_REMOTE_DATA_PLANE_ARGS = frozenset({"entries", "values", "rows"})
+
+
+def _stringify_data_floats(value):
+    """Render float data as stable decimals for the signed device wire."""
+    if isinstance(value, float):
+        return format(value, ".15g")
+    if isinstance(value, list):
+        return [_stringify_data_floats(item) for item in value]
+    if isinstance(value, tuple):
+        return [_stringify_data_floats(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _stringify_data_floats(item)
+                for key, item in value.items()}
+    return value
+
+
+def _canonicalize_remote_data_plane(args: dict) -> dict:
+    """Canonicalize runtime data carriers without weakening wire controls.
+
+    Signed cross-language invocations deliberately reject JSON floats.  Entry
+    streams and tabular values are opaque observed data, not control
+    parameters, and may legitimately contain scores or coordinates.  Encode
+    floats only inside those centrally named carriers as stable decimal text;
+    every structural float remains untouched and therefore fails closed at
+    the existing signing boundary.
+    """
+    out = dict(args or {})
+    for key in _REMOTE_DATA_PLANE_ARGS:
+        if key in out:
+            out[key] = _stringify_data_floats(out[key])
+    return out
+
+
+# Sorgenti dei valori per gli arg `runtime_resolved` con `runtime_source`
+# dichiarato nel manifest FIRMATO: dati che il PROCESSO SERVER possiede già
+# (catalogo verificato, registri) e che la sandbox dell'executor non può
+# ricostruire (niente chiavi trusted, niente manifest skill). Il riempimento
+# avviene al choke-point, quindi vale per invocazione fresca E resume; il
+# valore sovrascrive sempre (runtime-owned: il planner non può valorizzarlo
+# e un leak coercito non deve sopravvivere).
+_RUNTIME_ARG_SOURCES = {
+    # ADR 0199 (rev. 24/7 sera): form credenziale dichiarati dai domini,
+    # collezionati server-side e iniettati in `set_credentials`.
+    "credential_forms": lambda: _import_credentials().credential_form_kinds(),
+}
+
+
+def _import_credentials():
+    import credentials
+    return credentials
+
+
+def _fill_runtime_sourced_args(executor, args: dict) -> dict:
+    """Riempe gli arg con `runtime_source` dal registro. Fail-soft: se la
+    sorgente fallisce l'arg resta assente e l'executor riporta l'errore
+    onesto a valle (§2.8)."""
+    try:
+        props = ((getattr(executor, "args_schema", None) or {})
+                 .get("properties") or {})
+    except Exception:
+        return args
+    for name, spec in props.items():
+        if not isinstance(spec, dict) or not spec.get("runtime_resolved"):
+            continue
+        source = spec.get("runtime_source")
+        if not source:
+            continue
+        provider = _RUNTIME_ARG_SOURCES.get(str(source))
+        if provider is None:
+            log.warning("runtime_source %r sconosciuta per %s.%s",
+                        source, executor.name, name)
+            continue
+        try:
+            args[name] = provider()
+        except Exception:
+            log.warning("runtime_source %r fallita per %s.%s",
+                        source, executor.name, name, exc_info=True)
+            args.pop(name, None)
+    return args
+
+
+def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
+                          turn_id=None, actor=None, channel=None,
+                          target_device=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
@@ -3468,6 +3595,24 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     salvato (bug live 12/5/2026: pipeline find_events_empty → get_inputs
     → send_messages perdeva il dialog state).
     """
+    # Metadati di autorita' sempre derivati dal contesto autenticato. Vale
+    # anche per fast-path, resume ed esecuzione remota: gli args del chiamante
+    # non possono impersonare un altro attore o canale.
+    args = dict(args or {})
+    if actor is not None or "_actor" in args:
+        args["_actor"] = actor or "host"
+    if channel is not None or "_channel" in args:
+        args["_channel"] = channel or ""
+    if turn_id is not None or "_turn_id" in args:
+        args["_turn_id"] = turn_id or ""
+    args = _fill_runtime_sourced_args(executor, args)
+
+    # Il journal di undo e' runtime-owned. Un path proposto/replayato non deve
+    # poter trasformare il broker in un interprete di journal arbitrari; il
+    # modulo conserva l'override solo per i test diretti, fuori dal choke-point.
+    if executor.name == "undo_last_turn":
+        args.pop("log_path", None)
+
     # --- Placement remoto (ADR 0034, design doc executor remoti §10/§14) ---
     # [placement] scope="device" nel manifest → l'executor NON gira qui:
     # invocazione firmata al device via coda (remote_exec). Default (nessun
@@ -3528,11 +3673,18 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
             return {"ok": False, "error": _pmsg(e.code, **e.fmt),
                     "error_class": "placement"}
         if _target != _placement.SERVER:
-            _undo_op = _undo_pending(executor, args, turn_id=turn_id,
+            # Il wire firmato device vieta i float JSON.  I soli carrier di
+            # dati runtime sono normalizzati centralmente; gli argomenti di
+            # controllo float restano intatti e falliscono chiusi.
+            remote_args = _canonicalize_remote_data_plane(args)
+            _undo_op = _undo_pending(executor, remote_args, turn_id=turn_id,
                                      actor=actor, channel=channel,
                                      device=str(_target))
+            from executor_scheduler import assigned_worker_environment
             _obs = _remote.invoke_remote(
-                executor, args, _target, timeout_s=timeout_s, turn_id=turn_id,
+                executor, remote_args, _target, timeout_s=timeout_s,
+                turn_id=turn_id,
+                env_injections=assigned_worker_environment(executor) or None,
                 actor=actor or "", channel=channel or "")
             # Marca l'esecuzione REALE sul device: il tag/campo del turno si
             # basa su questo (mai un tag ottimistico su un'operazione locale).
@@ -3541,15 +3693,22 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
             _undo_done(_undo_op, _obs)
             return _obs
 
+    # Signed opt-in path preflight: this remains effective when bubblewrap is
+    # unavailable/disabled and runs before journaling or any subprocess side
+    # effect.  Legacy executors without annotations keep historical semantics.
+    from invocation_scope import check_invocation_scope
+    _scope_denial = check_invocation_scope(
+        executor, args, actor=actor or "host")
+    if _scope_denial:
+        return {
+            "ok": False,
+            "error": _scope_denial,
+            "error_class": "permission_denied",
+            "error_code": "ERR_PERMISSION_DENIED",
+        }
+
     _undo_op = _undo_pending(executor, args, turn_id=turn_id,
                              actor=actor, channel=channel, device="")
-
-    # Isolamento multi-utente dell'undo (7/7/2026): garantisce `_actor` a
-    # undo_last_turn QUI al choke-point — il fast-path «annulla» non passa
-    # dall'injection dell'engine e arriverebbe senza identita' (un guest
-    # filtrerebbe come 'host' e potrebbe ribaltare op altrui).
-    if executor.name == "undo_last_turn" and "_actor" not in args:
-        args = {**args, "_actor": actor or "host"}
 
     payload = json.dumps(args)
     base_cmd = [sys.executable, str(executor.code_path)]
@@ -3558,24 +3717,44 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
     # senza rete → ogni op Google chiedeva il setup OAuth in loop. Bind della
     # SOLA home skill (RW: il refresh riscrive il token) + rete.
     _extra_rw, _force_net = _sandbox.skill_extras(_skill_names)
+    # Local IMAP authority is capability-derived and account-scoped.  The
+    # resolver returns only read-only mail credential files; it never exposes
+    # the shared web-credential vault directory to an executor.
+    _extra_ro, _mail_net = _sandbox.mail_extras(executor, args)
+    # Dynamic filesystem inputs remain exact and capability-derived: only
+    # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
+    _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
+    # Reversible destructive executors write content-addressed backup blobs to
+    # one runtime-managed directory.  Mount only this turn's leaf, derived
+    # from the signed reverse pattern; never expose the shared history root.
+    _extra_rw.extend(_sandbox.undo_history_extras(
+        executor, turn_id=turn_id))
+    _force_net = _force_net or _mail_net
     # I gate costruiti dentro executor di dominio devono persistere oltre il
     # /tmp privato di bwrap. Bind per-sender soltanto: mai l'intero archivio,
     # che puo' contenere input sensibili altrui.
     _extra_rw.extend(_sandbox.dialog_extras(
         executor, actor=actor or "host", channel=channel or ""))
     cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy,
-                                extra_rw=_extra_rw, force_net=_force_net)
+                                extra_ro=_extra_ro, extra_rw=_extra_rw,
+                                force_net=_force_net)
     # PYTHONPATH augmentato: gli executor (specie quelli sintetizzati) importano
     # moduli runtime (mail_client, messages, platform_policy, ...) per nome.
     # Senza questo, il subprocess vede solo stdlib e fallisce con
     # ModuleNotFoundError. Vedi caso live 29/4/2026 sera (move_messages errore in
     # esecuzione anche dopo birth tests verdi).
     env = os.environ.copy()
+    # Executor generated under the central execution contract receive one
+    # runtime-owned item-worker budget. Legacy/handcrafted manifests without
+    # [execution] keep their exact historical internal-concurrency behavior.
+    from executor_scheduler import assigned_worker_environment
+    env.update(assigned_worker_environment(executor))
     runtime_path = str(Path(__file__).resolve().parent)
     existing_pp = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = (
-        runtime_path if not existing_pp
-        else f"{runtime_path}{os.pathsep}{existing_pp}"
+    dependency_pp = os.pathsep.join(
+        str(path) for path in _sandbox.python_package_roots())
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (runtime_path, dependency_pp, existing_pp) if part
     )
     # METNOS_RUNTIME = path canonico della dir runtime/ usata da QUESTO daemon.
     # Gli executor (canonical e synthesized) la leggono per bootstrap sys.path
@@ -3631,6 +3810,52 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         pass
     _undo_done(_undo_op, parsed_result)
     return parsed_result
+
+
+def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
+                    turn_id=None, actor=None, channel=None, target_device=None):
+    """Universal scheduled choke-point for local and remote executors.
+
+    The scheduler is synchronous and serial-first by default, so this wrapper
+    adds bounded backpressure and metrics without changing planner ordering,
+    arguments, outputs, placement, undo or sandbox behavior.
+    """
+    from executor_scheduler import concurrency_identity_for, invoke_scheduled
+
+    return invoke_scheduled(
+        executor,
+        lambda: _invoke_executor_impl(
+            executor, args, timeout_s=timeout_s, autonomy=autonomy,
+            turn_id=turn_id, actor=actor, channel=channel,
+            target_device=target_device,
+        ),
+        concurrency_identity=concurrency_identity_for(
+            executor, args, target_device=target_device),
+    )
+
+
+def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
+                    turn_id=None, actor=None, channel=None,
+                    target_device=None):
+    """Submit one admitted executor call to the single central pool.
+
+    This is deliberately the asynchronous twin of :func:`invoke_executor`:
+    same implementation, arguments, placement and result contract.  Admission
+    remains owned by ``ExecutorScheduler``; an unverified/class-0 executor is
+    executed synchronously and returned as an already-completed Future.
+    """
+    from executor_scheduler import concurrency_identity_for, submit_scheduled
+
+    return submit_scheduled(
+        executor,
+        lambda: _invoke_executor_impl(
+            executor, args, timeout_s=timeout_s, autonomy=autonomy,
+            turn_id=turn_id, actor=actor, channel=channel,
+            target_device=target_device,
+        ),
+        concurrency_identity=concurrency_identity_for(
+            executor, args, target_device=target_device),
+    )
 
 
 # --- Step + Turn log -------------------------------------------------------
@@ -3745,6 +3970,10 @@ class TurnLog:
     # per orchestrare get_inputs sul cap-expand (ADR 0091 generalizzato).
     # Settati da run_turn ai parametri ricevuti.
     actor: str = "host"
+    # Identita' logica stabile della persona. Diversa dall'actor tecnico sui
+    # canali legacy; la chat HTTP la usa per trasferire una conversazione tra
+    # browser senza perdere isolamento o cronologia.
+    owner_user_id: str = ""
     channel: str = ""
     # Destinazione risolta del turno (ADR 0034, chat-driven placement): nome del
     # device su cui è stato instradato, o None = server. Campo STRUTTURATO per
@@ -3821,10 +4050,25 @@ class TurnLog:
                                          tool=s.chosen_tool, device=dev)
                 return
         mut = None
+        top_level_failures = []
         for s in reversed(self.steps):
             res = s.result if isinstance(s.result, dict) else {}
             if not res:
                 continue
+            _is_mut_tool = any((s.chosen_tool or "").startswith(p)
+                               for p in _MUT_PREF)
+            # Alcuni confini (firma wire, placement, sandbox) falliscono prima
+            # che l'executor possa costruire `failed[]`/`results`. Sono comunque
+            # fallimenti mutanti reali e non devono sparire dietro il successo
+            # di uno step precedente della stessa pipeline.
+            if (_is_mut_tool and res.get("ok") is False
+                    and not res.get("failed") and not res.get("not_found")
+                    and (res.get("error") or res.get("error_code"))):
+                top_level_failures.append({
+                    "path": s.chosen_tool or "?",
+                    "error": str(res.get("error")
+                                 or res.get("error_code") or ""),
+                })
             has_signals = (
                 any(k in res for k in self._MUTATE_SUCCESS_KEYS)
                 or "not_found" in res or "failed" in res)
@@ -3836,8 +4080,6 @@ class TurnLog:
             # un fallimento PIENO (conteggio 0/assente) NON si tocca qui, resta
             # alla via error_class che lo traduce via i18n (ERR_<CLASS>) — la
             # mia intercettazione grezza lo avrebbe reso «?: <classe tecnica>».
-            _is_mut_tool = any((s.chosen_tool or "").startswith(p)
-                               for p in _MUT_PREF)
             _positive_count = any(
                 isinstance(res.get(k), int) and res.get(k) > 0
                 for k in self._MUTATE_SUCCESS_KEYS)
@@ -3853,7 +4095,15 @@ class TurnLog:
             if "entries" in res and not has_signals:
                 return
         if mut is None:
-            return
+            if not top_level_failures:
+                return
+            mut = {"results": [], "failed": top_level_failures}
+        elif top_level_failures:
+            mut = dict(mut)
+            existing_failed = mut.get("failed") or []
+            if not isinstance(existing_failed, list):
+                existing_failed = [existing_failed]
+            mut["failed"] = existing_failed + top_level_failures
         not_found = mut.get("not_found") or []
         failed = mut.get("failed") or []
         not_found = list(not_found) if isinstance(not_found, list) else [not_found]
@@ -3936,7 +4186,7 @@ class TurnLog:
         # §7.13: messaggi risolti via i18n DB nella lingua dell'istanza. Le
         # chiavi vivono nel catalogo seed (install/data/i18n_seed.sqlite,
         # IT+EN), NON in-linea nel sorgente. Guard di presenza:
-        # runtime/tests/test_seed_i18n_gate_keys.py.
+        # tests/runtime/i18n/test_seed_i18n_gate_keys.py.
         _prot_note = ""
         if protected:
             _prot_note = msg("MSG_MUTATE_PROTECTED_SKIPPED",
@@ -4613,7 +4863,18 @@ class TurnLog:
         _final_is_describe = bool(
             _describe_sum and _describe_sum.strip()[:80] in
             (self.final_message or ""))
-        if not _detlex.match("health.imperative", _q) and not _final_is_describe:
+        # A health block can be one clause of a multidomain pipeline (for
+        # example file inventory + RAM/CPU/disk).  The health-only fallback
+        # must not erase the planner's summary of the other producers merely
+        # because their wording does not match the small imperative lexicon.
+        _has_non_health_steps = any(
+            (getattr(s, "chosen_tool", "") or "")
+            not in {"get_processes", "final_answer"}
+            for s in self.steps
+        )
+        if (not _detlex.match("health.imperative", _q)
+                and not _final_is_describe
+                and not _has_non_health_steps):
             self.final_message = ""
         self.final_message = (block + "\n\n" + (self.final_message or "")).strip()
 
@@ -4693,6 +4954,19 @@ class TurnLog:
             else:
                 used = res.get("used") or res.get("ok_count") or res.get("count")
                 available = res.get("available_total")
+            # Se extract_entries tocca il token cap, la cardinalità reale è
+            # ignota: available_total e used descrivono entrambi i record già
+            # salvati. Evita «hai 759, ne considero 759» e dichiara il limite
+            # per sorgente con il template no-total già localizzato.
+            if (s.chosen_tool == "extract_entries"
+                    and res.get("output_truncated_sources")):
+                used = res.get("cap_value") or used
+                key = (what, used, "extract_output")
+                if key not in seen:
+                    seen.add(key)
+                    notices.append(msg(
+                        "MSG_TRUNCATED_NO_TOTAL", used=used, what=what))
+                continue
             key = (what, used, available)
             if key in seen:
                 continue
@@ -4875,7 +5149,15 @@ class TurnLog:
             # (caso live: maintenance github schedulata su 0 issue aperte,
             # store a 0 righe). Notice additiva deterministica §7.9, simmetrica
             # a _detect_false_not_found; preserva il messaggio LLM per audit.
-            if _detect_false_success(self.final_message, self.effect_counts):
+            _missing_artifacts = _detect_unbacked_artifact_claim(
+                self.final_message, self.steps)
+            if _missing_artifacts:
+                self.false_success_detected = True
+                self.final_message = msg(
+                    "MSG_MUTATING_INTENT_UNFULFILLED",
+                    verb="write/create artifacts",
+                )
+            elif _detect_false_success(self.final_message, self.effect_counts):
                 self.false_success_detected = True
                 _fs_notice = msg("MSG_FALSE_SUCCESS_NOTICE")
                 # SOSTITUISCE (non antepone) il narrato LLM falso: l'utente
@@ -4929,7 +5211,7 @@ class TurnLog:
                     # (mutazione) non è avvenuta. Singolare/plurale corretto.
                     # §7.13: chiavi risolte via i18n DB (lingua istanza), definite
                     # nel catalogo seed — mai testo in-linea nel sorgente. Guard:
-                    # runtime/tests/test_seed_i18n_gate_keys.py.
+                    # tests/runtime/i18n/test_seed_i18n_gate_keys.py.
                     _n = _ec.get("items", 0)
                     _muts = _ec.get("mutations", 0)
                     if _muts:
@@ -5147,7 +5429,6 @@ class TurnLog:
             tool = getattr(first, "chosen_tool", "") or ""
             if cq and tool:
                 try:
-                    from mnestoma import Mnestoma
                     raw = (first.raw_args if isinstance(first.raw_args, dict)
                            else {})
                     # args_shape: template (placeholders); args_observed:
@@ -5290,6 +5571,7 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "delete_tasks": handle_delete_tasks,
     "read_tasks": handle_read_tasks,
     "set_tasks": handle_set_tasks,
+    "read_tasks_history": handle_read_tasks_history,
     "list_skills": handle_list_skills,
     "set_skills": handle_set_skills,
     "find_entries": handle_find_entries,
@@ -5298,6 +5580,13 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "compare_entries": handle_compare_entries,
     "describe_images": handle_describe_images,
 }
+
+
+@functools.lru_cache(maxsize=None)
+def _builtin_execution_executor(tool_name: str, module_path: str):
+    """Resolve one verified builtin contract once per daemon process."""
+    from loader import builtin_contract_executor
+    return builtin_contract_executor(tool_name, Path(module_path))
 
 # Tool-spec OpenAI-style per i builtin in-process che NON sono iniettati nel
 # catalog via loader (`*_tasks` lo sono via BUILTIN_INPROC_SPECS; describe/
@@ -5315,6 +5604,75 @@ _BUILTIN_TOOL_SPECS: dict = {
 }
 
 
+_BUILTIN_ERROR_CODES = {
+    "invalid_args": "ERR_ARG_INVALID",
+    "not_found": "ERR_NOT_FOUND",
+    "permission_denied": "ERR_PERMISSION_DENIED",
+    "dependency_unavailable": "ERR_EXT_SVC_UNAVAILABLE",
+    "operation_failed": "ERR_BUILTIN_FAILED",
+    "internal_error": "ERR_BUILTIN_INVALID_RESULT",
+}
+
+
+def _normalize_builtin_result(tool_name: str, result: object) -> dict:
+    """Enforce the terminal Executor Standard envelope for in-process tools.
+
+    Individual builtin handlers predate the signed contract registry and use
+    several domain-specific payloads.  This boundary preserves those payloads
+    while making complete failures and mixed outcomes machine-observable.
+    """
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "error": f"builtin {tool_name} returned a non-object result",
+            "error_class": "internal_error",
+            "error_code": _BUILTIN_ERROR_CODES["internal_error"],
+            "tool": tool_name,
+        }
+    out = dict(result)
+    if not isinstance(out.get("ok"), bool):
+        out["ok"] = False
+        out.setdefault("error", f"builtin {tool_name} omitted boolean ok")
+        out.setdefault("error_class", "internal_error")
+
+    if out["ok"] is False:
+        current = str(out.get("error_class") or "").strip()
+        if current in {"missing_input", "wrong_args"}:
+            current = "invalid_args"
+        if not current:
+            message = str(out.get("error") or out.get("summary") or "").lower()
+            code = str(out.get("error_code") or "")
+            if code.startswith("ERR_ARG_") or any(token in message for token in (
+                    "missing", "manca", "required", "must be", "deve ",
+                    "invalid", "specifica ", "mutex", "serve '")):
+                current = "invalid_args"
+            elif code == "ERR_PERMISSION_DENIED" or any(token in message for token in (
+                    "non tuo", "solo host", "security", "permission", "forbidden")):
+                current = "permission_denied"
+            elif code == "ERR_NOT_FOUND" or any(token in message for token in (
+                    "not found", "non trovato", "sconosciut")):
+                current = "not_found"
+            elif code == "ERR_EXT_SVC_UNAVAILABLE" or any(token in message for token in (
+                    "unreachable", "unavailable", "non disponibile")):
+                current = "dependency_unavailable"
+            else:
+                current = "operation_failed"
+        out["error_class"] = current
+        out.setdefault(
+            "error_code",
+            _BUILTIN_ERROR_CODES.get(current, "ERR_BUILTIN_FAILED"),
+        )
+
+    failure_items = out.get("failed") or out.get("failures") or out.get("errors")
+    fail_count = out.get("fail_count")
+    has_failures = bool(failure_items) or (
+        isinstance(fail_count, int) and fail_count > 0
+    )
+    if out.get("ok") is True and has_failures:
+        out["partial"] = True
+    return out
+
+
 def _engine_v2_catalog_with_builtins(catalog: list) -> list:
     """Augmenta il catalog con Executor virtuali per i builtin in-process
     (describe_entries/classify_entries/...) mancanti.
@@ -5329,7 +5687,7 @@ def _engine_v2_catalog_with_builtins(catalog: list) -> list:
     `final_answer` resta virtual (gestito dal Validator nativamente).
     """
     try:
-        from loader import Executor as _LExec
+        from loader import builtin_contract_executor
     except Exception:
         return catalog
     present = {getattr(e, "name", None) for e in catalog}
@@ -5337,17 +5695,13 @@ def _engine_v2_catalog_with_builtins(catalog: list) -> list:
     for name in _BUILTIN_TOOL_HANDLERS:
         if name in present:
             continue
-        spec = _BUILTIN_TOOL_SPECS.get(name)
-        fn_block = (spec or {}).get("function") or {}
-        params = fn_block.get("parameters") or {"type": "object", "properties": {}}
-        desc = fn_block.get("description") or ""
-        out.append(_LExec(
-            name=name, version="1.0.0", description=desc,
-            affinity=[], args_schema=params, capabilities=[], tests=[],
-            code_path=None, manifest_path=Path(""),
-            signed_by="(inproc builtin)", revertible=False,
-            lifecycle="active",
-        ))
+        handler = _BUILTIN_TOOL_HANDLERS.get(name)
+        module = sys.modules.get(getattr(handler, "__module__", ""))
+        module_path = Path(getattr(module, "__file__", ""))
+        try:
+            out.append(builtin_contract_executor(name, module_path))
+        except (OSError, ValueError) as exc:
+            log.error("builtin %s excluded: invalid signed contract: %s", name, exc)
     return out
 
 
@@ -5361,7 +5715,9 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
     """
     handler = _BUILTIN_TOOL_HANDLERS.get(tool_name)
     if handler is None:
-        return {"ok": False, "error": f"unknown builtin: {tool_name}"}
+        return _normalize_builtin_result(
+            tool_name, {"ok": False, "error": f"unknown builtin: {tool_name}",
+                        "error_class": "not_found"})
     # Guard anti-costo run schedulati (12/6/2026): issue già trattate in
     # `issue_qa` NON ri-entrano negli step LLM-costosi (classify/describe/
     # extract → fino a frontier). Deterministico §7.9, fail-open §2.8,
@@ -5383,15 +5739,39 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
     if "turn_id" in accepts:
         kwargs["turn_id"] = turn_id or ""
     # Se signature ha **_ catch-all, possiamo passare safe.
-    try:
+    def _call_handler() -> dict:
         return annotate_skipped_known(handler(args, **kwargs), _treated_info)
+
+    try:
+        # In-process builtins use the same signed execution policy, central
+        # scheduler and assigned worker budget as subprocess/remote executors.
+        # Context-local injection avoids process-wide environment races.
+        module = sys.modules.get(getattr(handler, "__module__", ""))
+        module_path = str(Path(getattr(module, "__file__", "")))
+        executor = _builtin_execution_executor(tool_name, module_path)
+        from executor_scheduler import assigned_worker_budget, invoke_scheduled
+        from executor_workers import worker_budget
+        with worker_budget(assigned_worker_budget(executor)):
+            result = invoke_scheduled(executor, _call_handler)
+        return _normalize_builtin_result(tool_name, result)
+    except (OSError, ValueError) as contract_error:
+        log.error("Builtin %s execution contract rejected: %s",
+                  tool_name, contract_error)
+        return _normalize_builtin_result(
+            tool_name,
+            {"ok": False, "error": str(contract_error),
+             "error_class": "internal_error"},
+        )
     except TypeError as te:
         # Fallback: prova senza kwargs (handler legacy che vuole solo args)
         if "actor" in str(te) or "channel" in str(te):
             log.error("Builtin %s requires kwargs not provided: %s",
                       tool_name, te)
-        return {"ok": False, "error": f"builtin call failed: {te}",
-                "tool": tool_name}
+        return _normalize_builtin_result(
+            tool_name,
+            {"ok": False, "error": f"builtin call failed: {te}",
+             "error_class": "internal_error", "tool": tool_name},
+        )
 
 
 def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
@@ -5764,9 +6144,8 @@ def _run_engine(
         _site_credential_mode = _credential_mandates.site_mode_for_query(query)
     except Exception:
         _site_credential_mode = "default"
-    # ADR 0191 P1: stealth per-turno del dominio `sites`, risolto dalla pref
-    # `sites_stealth` dell'attore ("on"/"off", default off). Iniettato come
-    # `_stealth` all'apertura sessione; il broker applica il ceiling di deployment.
+    # ADR 0191 P1: master + tecniche stealth indipendenti, risolti per-turno
+    # dalle preferenze dell'attore. Il broker applica poi il ceiling deployment.
     try:
         import users as _users
         import devices as _devices
@@ -5774,22 +6153,27 @@ def _run_engine(
         _site_owner = _devices.owner_id_for_actor(actor) or actor
         _site_stealth_pref = _users.get_pref(
             _site_owner, "sites_stealth", "off") or "off"
+        _site_browser_mode = _users.get_pref(
+            _site_owner, "sites_browser_mode", "headless") or "headless"
+        _site_stealth_techniques = [
+            spec["name"]
+            for spec in _users.sites_stealth_preference_specs()
+            if (_users.get_pref(
+                _site_owner, spec["preference_key"], "off") or "off") == "on"
+        ]
         _site_lang = _users.get_pref(_site_owner, "lang", None) or ""
     except Exception:
         _site_stealth_pref = "off"
+        _site_browser_mode = "headless"
+        _site_stealth_techniques = []
         _site_lang = ""
 
-    # Invoke executor callback wrapped — Executor v2 chiama via tool name
-    def _invoke(tool_name: str, args: dict) -> dict:
-        if tool_name in _BUILTIN_TOOL_HANDLERS:
-            # Estrai actor/channel se disponibili nel closure scope
-            _ac = locals().get("actor") or "host"
-            _ch = locals().get("channel") or ""
-            return _invoke_builtin_handler(tool_name, args, actor=_ac, channel=_ch)
-        exec_obj = next((e for e in catalog if e.name == tool_name), None)
-        if exec_obj is None:
-            return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
-                     "error_class": "tool_unknown"}
+    _catalog_by_name = {
+        e.name: e for e in catalog if getattr(e, "name", None)
+    }
+
+    def _effective_executor_args(tool_name: str, args: dict) -> dict:
+        """Apply the same planner-invisible arguments on sync and async paths."""
         effective_args = args
         if tool_name in {"open_sites", "login_sites"}:
             # Internal, planner-invisible per-query restriction. The broker
@@ -5802,10 +6186,23 @@ def _run_engine(
             # Fix #9: `_lang` per locale/timezone del contesto browser.
             effective_args = {**effective_args,
                               "_stealth": _site_stealth_pref,
+                              "_stealth_techniques": _site_stealth_techniques,
+                              "_browser_mode": _site_browser_mode,
                               "_lang": _site_lang}
+        return effective_args
+
+    # Invoke executor callback wrapped — Executor v2 chiama via tool name
+    def _invoke(tool_name: str, args: dict) -> dict:
+        if tool_name in _BUILTIN_TOOL_HANDLERS:
+            return _invoke_builtin_handler(
+                tool_name, args, actor=actor or "host", channel=channel or "")
+        exec_obj = _catalog_by_name.get(tool_name)
+        if exec_obj is None:
+            return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
+                     "error_class": "tool_unknown"}
         try:
             return invoke_executor(
-                exec_obj, effective_args,
+                exec_obj, _effective_executor_args(tool_name, args),
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name)
@@ -5813,10 +6210,53 @@ def _run_engine(
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
                      "error_class": "exception"}
 
+    def _submit(tool_name: str, args: dict):
+        """Async twin used only after the engine and scheduler both admit it."""
+        exec_obj = _catalog_by_name.get(tool_name)
+        if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
+            raise ValueError(f"tool '{tool_name}' is not async-admissible")
+        return submit_executor(
+            exec_obj, _effective_executor_args(tool_name, args),
+            timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
+            autonomy="supervised", turn_id=turn_id,
+            actor=actor, channel=channel, target_device=_target_name)
+
+    def _can_parallelize(tool_name: str) -> bool:
+        exec_obj = _catalog_by_name.get(tool_name)
+        if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
+            return False
+        from executor_scheduler import can_schedule_parallel
+        return can_schedule_parallel(exec_obj)
+
+    # Presentazione personale: le preferenze di risposta esistono in W2 da
+    # tempo e non erano lette da nessun percorso (store senza consumatori).
+    # Sono per-UTENTE e non per-attore grezzo, come le preferenze siti sopra.
+    # Il fallimento è silenzioso e vale «nessuna preferenza»: la presentazione
+    # non è mai una ragione per non rispondere.
+    _presentation = {}
+    try:
+        import users as _u_pres
+        import devices as _d_pres
+        _pres_owner = _d_pres.owner_id_for_actor(actor) or actor
+        for _k in ("reply_length", "tone", "units"):
+            _v = _u_pres.get_pref(_pres_owner, _k, None)
+            if _v:
+                _presentation[_k] = _v
+    except Exception as _pres_ex:  # noqa: BLE001
+        log.debug("presentazione non risolta: %r", _pres_ex)
+
     runtime_ctx = {
         "actor": actor or "",
         "lang": lang,
         "channel": channel or "",
+        # Preferenze di presentazione dell'utente del turno. Consumate SOLO dal
+        # finalizzatore della risposta (un punto d'effetto), mai dal planner e
+        # mai nelle chiavi di cache.
+        "presentation": _presentation,
+        # Identificatore opaco e filesystem-safe del turno. Serve ai sink
+        # create-only per generare destinazioni nuove senza timestamp inventati
+        # dal planner e senza rischio di overwrite su replay concorrenti.
+        "turn_id": turn_id or "",
         "_gate_approved": bool(pre_approved_gate),
         "conversation_id": conversation_id or "",
         # Destinazione del turno (nome device, ""=server): i gate la usano nel
@@ -5892,6 +6332,8 @@ def _run_engine(
         result = _dispatch.run_turn(
             query=query, intent=intent, catalog=catalog_v2,
             invoke_executor_cb=_invoke,
+            submit_executor_cb=_submit,
+            can_parallelize_cb=_can_parallelize,
             llm_call_wise=_llm_call_wise,
             llm_call_fast=_llm_call_fast,
             vaglio_guard=guard_check,  # guardia forbidden-path PRE-invoke (§sicurezza)
@@ -6075,30 +6517,25 @@ def _orchestrate_strato3_escalation(
     `final_message_hint`, `expandable_caps`) oppure None se errore.
     """
     from orchestration import invoke_get_inputs_internal
-    if lang == "en":
-        title = "I tried 3 different paths, all rejected. What do you want?"
-        descr = (f"Pipelines attempted and rejected ({consec_errors} ✗): "
-                  "the answer needs a different shape. Choose how to proceed.")
+    import i18n as _i18n
+    # Il valore postato è un identificatore semantico stabile; soltanto la
+    # label appartiene alla lingua. Una nuova lingua richiede nuove righe nel
+    # catalogo, non nuovi prefix parser o branch nel runtime.
+    action_labels = (
+        ("retry", "MSG_STRATO3_ACTION_RETRY"),
+        ("synth", "MSG_STRATO3_ACTION_SYNTH"),
+        ("frontier", "MSG_STRATO3_ACTION_FRONTIER"),
+        ("reformulate", "MSG_STRATO3_ACTION_REFORMULATE"),
+        ("abandon", "MSG_STRATO3_ACTION_ABANDON"),
+    )
+    with _i18n.language_context(lang):
+        title = msg("MSG_STRATO3_TITLE")
+        descr = msg("MSG_STRATO3_DESCRIPTION", count=consec_errors)
         choices = [
-            "retry: try the same path again (engine may have been updated)",
-            "synth: build a dedicated executor for this",
-            "frontier: ask an external high-stakes LLM",
-            "reformulate: I rewrite the request",
-            "abandon: stop here",
+            {"value": value, "label": msg(label_key)}
+            for value, label_key in action_labels
         ]
-        prompt_text = "Choose one of the five actions"
-    else:
-        title = "Ho provato 3 strade diverse, tutte rifiutate. Cosa preferisci?"
-        descr = (f"Pipeline tentate e rifiutate ({consec_errors} ✗): "
-                  "la risposta richiede una forma diversa. Scegli come procedere.")
-        choices = [
-            "ritenta: prova di nuovo lo stesso path (motore puo' essere aggiornato)",
-            "sintetizza: costruisci un executor dedicato",
-            "frontier: chiedi a un LLM esterno di frontiera",
-            "riformula: riscrivo la richiesta",
-            "abbandona: fermati qui",
-        ]
-        prompt_text = "Scegli una delle cinque azioni"
+        prompt_text = msg("MSG_STRATO3_PROMPT")
     sender_id = f"{channel}:{actor}" if channel else actor
     on_complete = {
         "type": "strato3_choice_dispatch",
@@ -6224,7 +6661,7 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
 def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
              cap_steps=DEFAULT_CAP_STEPS, cap_same=DEFAULT_CAP_SAME_EXECUTOR,
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
-             actor="host", channel="", conversation_id="",
+             actor="host", channel="", conversation_id="", owner_user_id="",
              reference_images=None,
              resume_with_scratchpad=None,
              pre_approved_gate=False,
@@ -6253,8 +6690,14 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     fast_path / seed_step (sono inutili: il context ha gia' steps).
     Determinismo §7.9.
     """
+    # La lingua appartiene al contesto della richiesta, non al processo. Il
+    # middleware HTTP e il daemon di canale impostano il ContextVar i18n per il
+    # proprietario del turno; conservarne qui un solo snapshot evita che prompt,
+    # fast-path e motore divergano durante la stessa esecuzione.
+    _turn_lang = _detlex.current_lang()
     log = TurnLog(ts_start=time.time(), user_query=user_query,
                    actor=actor or "host", channel=channel or "",
+                   owner_user_id=owner_user_id or actor or "host",
                    conversation_id=conversation_id or "")
 
     # ── Strato 1 (ADR 0089): estrazione automatica delle credenziali ──
@@ -6262,7 +6705,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # passiamo al PLANNER una versione redacted. La metadata (solo
     # domain+context, NO password) viene iniettata nel system prompt come
     # blocco prescrittivo cosi' il PLANNER puo' settare credentials_domain
-    # nei tool che lo accettano (admin per CIFS, login_session per web).
+    # nei tool che lo accettano (admin per CIFS, login_urls per HTTP web).
     redacted_query, extracted_meta = apply_credentials_extraction(user_query)
     user_query_for_run = redacted_query
     if extracted_meta:
@@ -6313,11 +6756,11 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # ritorna False → escalation preservata.
     if (_consec >= 3 and channel != ""
             and not _strato3_routing_changed(user_query_for_run,
-                                             lang=DEFAULT_LANG)):
+                                             lang=_turn_lang)):
         try:
             _ask_result = _orchestrate_strato3_escalation(
                 user_query=user_query_for_run,
-                lang=DEFAULT_LANG,
+                lang=_turn_lang,
                 actor=actor or "host",
                 channel=channel,
                 conversation_id=conversation_id or "",
@@ -6345,7 +6788,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # (degrade graceful). Lo split avviene piu' avanti nel turno via re-render
     # se serve, ma per il PLANNER prompt sistema il render iniziale e' OK con
     # all-sections — il routing si concretizza ai prossimi step.
-    # Lang esplicito al call site (5/5/2026): default da config.DEFAULT_LANG.
+    # Lingua esplicita al call site: snapshot del contesto per-utente.
     try:
         # `route_info` non e' ancora disponibile a questo punto (precede
         # l'intent extractor del turno principale). Per il primo prompt
@@ -6358,93 +6801,26 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     _now_vars = _render_now_vars()
     planner_system = prompt_loader.compose(
         "planner",
-        DEFAULT_LANG,
+        _turn_lang,
         sections=_planner_sections,
         vocab_actions=_vocab_actions(),
         vocab_objects=_vocab_objects(),
         vocab_qualifiers=_vocab_qualifiers(),
         project_paths=_render_project_paths_block(),
         users_known=_render_users_known_block(),
-        telos_block=_render_telos_block(DEFAULT_LANG),
+        telos_block=_render_telos_block(_turn_lang),
         rejected_block=("" if bypass_rejected_pipelines
-                         else _render_rejected_pipelines_block(user_query, DEFAULT_LANG)),
+                         else _render_rejected_pipelines_block(user_query, _turn_lang)),
         **_now_vars,
     )
-    # ADR 0149 (18/5/2026): instruction block per il by-product
-    # `canonical_query`. Iniettata solo quando il flag e' on, per non
-    # alterare il behavior di default. Forma compatta + esempi
-    # bilingua. Niente azione su tool selection: solo formato output.
+    # Il by-product `canonical_query` e i contesti dinamici sono prompt-data:
+    # ogni blocco segue la lingua del turno e ricade integralmente su EN per
+    # una lingua nuova ancora priva di traduzione.
     if os.environ.get("METNOS_CANONICAL_QUERY", "1") == "1":
-        _cq_block = [
-            "",
-            "═" * 70,
-            "CANONICAL_QUERY — BY-PRODUCT NORMALIZZAZIONE (ADR 0149)",
-            "═" * 70,
-            "Nel JSON di output, OLTRE a `name` e `arguments`, DEVI emettere",
-            "il campo `canonical_query`: forma LEMMA della richiesta utente.",
-            "",
-            "Regole di flessione (TUTTE LE LINGUE — IT, EN, ES, FR, DE, ...):",
-            "  • Verbi  → INFINITO  (essere/be/ser/sein, non è/is/es/ist)",
-            "  • Nomi   → SINGOLARE non marcato (file/file, mail/email/mail)",
-            "  • Articoli/preposizioni clitiche → RIMOSSI (i, il, le, the, ...)",
-            "  • Aggettivi possessivi/dimostrativi → RIMOSSI (mio, mia, this, ...)",
-            "  • Argomenti specifici → RIMOSSI (path, URL, ID, numeri, nomi propri,",
-            "                                   glob, date concrete come 'oggi'/'domani')",
-            "",
-            "Lingua: stessa della query utente. NON tradurre.",
-            "Lunghezza: ≤ 50 token.",
-            "",
-            "OK (IT):",
-            '  "che ora e?"                       → "che ora essere"',
-            '  "che ore sono?"                    → "che ora essere"  (plurale → sing.)',
-            '  "elenca i file in /tmp"            → "elencare file"',
-            '  "trova *.py in /opt/runtime"       → "trovare file"    (glob rimosso)',
-            '  "leggi /tmp/x.txt"                 → "leggere file"',
-            '  "le mie mail importanti di oggi"   → "leggere mail importante"',
-            '  "dove sono?"                       → "trovare posizione"',
-            '  "scarica https://x.com/api"        → "scaricare url"',
-            "",
-            "OK (EN):",
-            '  "what time is it?"                 → "what time be"',
-            '  "list the files in /tmp"           → "list file"',
-            '  "find my latest photos"            → "find photo recent"',
-            "",
-            "OK (ES):",
-            '  "qué hora es?"                     → "qué hora ser"',
-            '  "encuentra mis archivos"           → "encontrar archivo"',
-            "",
-            "ERRORE:",
-            '  "leggi /tmp/x.txt" → "leggi /tmp/x.txt"   (verbatim, non lemma)',
-            '  "trova *.py"       → "trovare *.py"       (argomenti residui)',
-            '  "che ora e?"       → "get_now"            (nome tool, non lemma)',
-            '  "che ore sono?"    → "che ore essere"     (plurale non normalizzato)',
-            '  "what time is it?" → "che ora essere"     (tradotto in IT — vietato)',
-            "═" * 70,
-            "",
-        ]
-        planner_system = planner_system + "\n" + "\n".join(_cq_block)
+        planner_system += "\n" + _render_canonical_query_block(_turn_lang)
     if extracted_meta:
-        lines = [
-            "",
-            "═" * 70,
-            "CREDENZIALI ESTRATTE DALLA QUERY (Strato 1 — ADR 0089)",
-            "Le credenziali user/pwd sono state estratte e salvate cifrate.",
-            "Le password NON ti sono visibili. Se chiami admin/login_session ",
-            "per operazioni su questi host, passa `credentials_domain` cosi'",
-            "il sudoer/login risolve le credenziali al fire time.",
-            "",
-        ]
-        for m in extracted_meta:
-            ctx = m.get("context") or {}
-            host = ctx.get("host", "?")
-            binding = ctx.get("binding", "?")
-            share = ctx.get("share")
-            line = f"  - domain=\"{m['domain']}\" binding={binding} host={host}"
-            if share:
-                line += f" share={share}"
-            lines.append(line)
-        lines.append("═" * 70)
-        planner_system = planner_system + "\n" + "\n".join(lines)
+        planner_system += "\n" + _render_credentials_context_block(
+            extracted_meta, _turn_lang)
 
     # Reference images uploaded (ADR 0092): blocco prescrittivo al PLANNER
     # cosi' il primo step richiama find_images_indices con from_step=1
@@ -6452,22 +6828,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     _ref_images_for_prompt = [p for p in (reference_images or [])
                                if isinstance(p, str) and p.strip()]
     if _ref_images_for_prompt:
-        n_ref = len(_ref_images_for_prompt)
-        sample = _ref_images_for_prompt[0]
-        ref_block = [
-            "",
-            "═" * 70,
-            f"FOTO ALLEGATE AL TURNO (ADR 0092) — {n_ref} reference image(s)",
-            "L'utente ha allegato foto. Sono gia' in scratchpad come step 1",
-            "virtuale `@uploaded` con `entries=[{path, reference_image, ...}]`.",
-            "DEVI: usare `find_images_indices(from_step=1, idx=\"scene\")` per",
-            "trovare foto simili (image-to-image SigLIP). Per match per volti:",
-            "`idx=\"persons\"`. Per prossimita' GPS: `idx=\"gps\"`.",
-            "NON DEVI: chiedere all'utente altre foto: ce le ha gia' fornite.",
-            f"Esempio path: {sample}",
-            "═" * 70,
-        ]
-        planner_system = planner_system + "\n" + "\n".join(ref_block)
+        planner_system += "\n" + _render_reference_images_block(
+            _ref_images_for_prompt, _turn_lang)
 
     # Progress canale visivo: avvio con messaggio "neutro" prima della
     # decisione fast-path vs PLANNER. Il messaggio "Sto pensando..." era
@@ -6481,7 +6843,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _LOG.warning("silent exception in %s: %s", __name__, _e)
     catalog = filter_for_visibility(load_catalog(), VISIBILITY_COMPOSER)
     if len(catalog) == 0:
-        log.final_kind = "error"; log.final_message = "(catalogo vuoto)"
+        log.final_kind = "error"; log.final_message = msg("ERR_EXECUTOR_CATALOG_EMPTY")
         log.ts_end = time.time(); log.write(); return log
 
     turn_id = uuid.uuid4().hex[:16]
@@ -6506,7 +6868,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _eng_rs_res = _run_engine(
                 user_query_for_run, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
-                lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
                 forced_object=forced_object,
@@ -6608,7 +6970,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         _query_for_planning = user_query_for_run
 
     if not _ref_images_for_prompt and not resume_with_scratchpad:
-        _fp_hit = try_fast_path(_query_for_planning, lang=DEFAULT_LANG,
+        _fp_hit = try_fast_path(_query_for_planning, lang=_turn_lang,
                                   default_timezone=DEFAULT_TIMEZONE)
         # NB (11/6/2026): ritirato il Layer L1 BGE matcher su
         # canonical_query_log (ADR 0149 step 2c) — ridondante con la cache
@@ -6753,7 +7115,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                 _engine_v2_res = _run_engine(
                     _query_for_planning, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
-                    lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                    lang=_turn_lang, verbose=verbose, progress=progress,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
                     forced_object=forced_object,
@@ -6801,7 +7163,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _eng_up_res = _run_engine(
                 _query_for_planning, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
-                lang=DEFAULT_LANG, verbose=verbose, progress=progress,
+                lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
                 forced_object=forced_object,

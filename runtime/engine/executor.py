@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sqlite3
 import time
@@ -64,6 +65,38 @@ _TABLE_MAX_ROWS = 200
 _TABLE_MAX_COLS = 6
 
 
+def _align_url_reader_jit(tool: str, args: dict) -> str:
+    """Choose the non-lossy reader at the last responsible moment.
+
+    ``read_urls_pdf`` rejects every non-PDF response, while
+    ``read_urls_html`` already dispatches ``application/pdf`` to the shared
+    PDF extractor.  Therefore a PDF-only reader is safe only when every
+    explicit URL is unambiguously PDF-shaped.  Mixed and extensionless lists
+    use the content-type-aware reader so a stale/cached plan cannot turn a
+    whole HTML batch into twelve deterministic failures.
+
+    This changes only the invoked sibling, never the framework template or
+    its cached arguments.
+    """
+    if tool != "read_urls_pdf" or not isinstance(args, dict):
+        return tool
+    urls = args.get("urls")
+    if not isinstance(urls, list) or not urls:
+        return tool
+    from urllib.parse import urlsplit
+
+    paths = []
+    for value in urls:
+        if not isinstance(value, str) or not value.strip():
+            return "read_urls_html"
+        try:
+            paths.append(urlsplit(value).path.lower())
+        except ValueError:
+            return "read_urls_html"
+    return "read_urls_pdf" if all(path.endswith(".pdf") for path in paths) \
+        else "read_urls_html"
+
+
 def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
                    max_cols: int = _TABLE_MAX_COLS) -> str:
     """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
@@ -88,14 +121,31 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     if not cols:
         return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
                                      more_key="MSG_RENDER_MORE_HIDDEN")
-    def _cell(v):
+    def _cell(column, v):
         if v is None:
             return ""
-        return str(v).replace("|", "\\|").replace("\n", " ")[:40]
+        # Gli epoch grezzi non sono un formato utente. I produttori filesystem
+        # espongono `mtime` numerico: rendilo ISO UTC senza mutare il payload.
+        if column in {"mtime", "mtime_epoch", "date_modified_epoch"} \
+                and isinstance(v, (int, float)) and not isinstance(v, bool):
+            try:
+                import datetime as _dt
+                v = (_dt.datetime.fromtimestamp(float(v), _dt.timezone.utc)
+                     .isoformat().replace("+00:00", "Z"))
+            except (OSError, OverflowError, ValueError):
+                pass
+        text = str(v).replace("|", "\\|").replace("\n", " ")
+        # Un path troncato non è azionabile e può identificare il file
+        # sbagliato: preservalo integralmente. Per gli altri campi mantieni un
+        # cap generoso ma rendi VISIBILE il troncamento con ellissi.
+        if column in {"path", "url"}:
+            return text
+        max_chars = 120
+        return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
     lines = ["| " + " | ".join(str(c) for c in cols) + " |",
              "| " + " | ".join("---" for _ in cols) + " |"]
     for e in rows[:max_rows]:
-        lines.append("| " + " | ".join(_cell(e.get(c)) for c in cols) + " |")
+        lines.append("| " + " | ".join(_cell(c, e.get(c)) for c in cols) + " |")
     out = "\n".join(lines)
     more = len(rows) - max_rows
     if more > 0:
@@ -173,6 +223,7 @@ def _build_runtime_resolvers(ctx: dict) -> dict[str, str]:
         "actor_email": actor_email,
         "lang": str(ctx.get("lang") or "it"),
         "channel": str(ctx.get("channel") or ""),
+        "turn_id": str(ctx.get("turn_id") or ""),
     }
     return {k: v for k, v in candidates.items() if v != ""}
 
@@ -267,7 +318,9 @@ def _resolve_runtime_placeholders(args: dict, runtime_ctx: dict) -> dict:
         out[k] = _sub_recursive(v)
     for ck, cv in resolvers.items():
         if cv:
-            out.setdefault(f"_{ck}", cv)
+            # Autorita' runtime: un valore omonimo presente nel piano non deve
+            # mai prevalere sull'identita'/contesto autenticati.
+            out[f"_{ck}"] = cv
     return out
 
 
@@ -379,11 +432,22 @@ def _brief_list(items: list, *, max_items: int = _BRIEF_MAX_ITEMS) -> str:
 
 # ── from_step resolver ────────────────────────────────────────────────────
 
-# Helper universali che consumano una lista `entries` (auto-wire prev step).
-_ENTRIES_CONSUMERS = frozenset({
-    "describe_entries", "classify_entries", "extract_entries", "filter_entries",
-    "sort_entries", "group_entries", "compute_entries", "compare_entries",
-})
+# Elenco canonico dei consumer planner-visible della pipeline di entries.
+# Le due categorie alimentano anche la documentazione anti-drift. `filter_lists`
+# richiede due sorgenti e quindi non usa l'auto-wire mono-lista qui sotto.
+ENTRY_PIPELINE_STRUCTURAL = (
+    "filter_entries", "filter_lists", "sort_entries", "group_entries",
+    "compute_entries",
+)
+ENTRY_PIPELINE_SEMANTIC = (
+    "classify_entries", "compare_entries", "extract_entries",
+    "describe_entries",
+)
+ENTRY_PIPELINE_CONSUMERS = frozenset(
+    ENTRY_PIPELINE_STRUCTURAL + ENTRY_PIPELINE_SEMANTIC)
+
+# Helper universali mono-lista che consumano `entries` (auto-wire prev step).
+_ENTRIES_CONSUMERS = ENTRY_PIPELINE_CONSUMERS - {"filter_lists"}
 
 # Executor TRASFORMATIVI che consumano `entries` via un *_template/_field ma NON
 # sono _ENTRIES_CONSUMERS: stesso bug (proposer emette content_template/path_template
@@ -497,6 +561,53 @@ def _seed_done_tools(seed_steps) -> set:
 
 _STEP_REF_RE = re.compile(r"(?:\$\{|\{\{)\s*step(\d+)")
 
+# Consumer che serializzano VALORI gia' materializzati: il payload JSON puo'
+# attraversare server→device in sicurezza. Diverso da get/read/move/compress,
+# che dereferenziano path nel filesystem del producer e devono co-localizzare.
+_DEVICE_VALUE_SINKS = frozenset({"write_files", "create_files_spreadsheet"})
+
+# Trasformazioni che selezionano/riordinano/arricchiscono record senza
+# dereferenziare o cambiare i loro path. Se girano sul server sopra un producer
+# remoto, l'autorita' filesystem resta quella del producer.
+_PATH_PRESERVING_TRANSFORMS = frozenset({
+    "filter_entries", "sort_entries", "classify_entries", "compare_entries",
+})
+
+
+def _referenced_producer(step, history: list):
+    """Producer esplicito `from_step` (o ultimo carrier per auto-wire)."""
+    sa = getattr(step, "args", None)
+    if not isinstance(sa, dict):
+        return None
+    fs = sa.get("from_step")
+    if isinstance(fs, str) and fs.isdigit():
+        fs = int(fs)
+    if isinstance(fs, int):
+        prod = next((s for s in history
+                     if getattr(s, "step_idx", None) == fs), None)
+        if prod is None and 1 <= fs <= len(history):
+            prod = history[fs - 1]
+        return prod
+    # Gli entries-consumer senza from_step vengono auto-cablati dall'ultimo
+    # carrier a monte: replica la stessa scelta per la provenienza.
+    if getattr(step, "tool", "") in _PATH_PRESERVING_TRANSFORMS:
+        for prod in reversed(history):
+            res = prod.result if isinstance(prod.result, dict) else {}
+            if isinstance(res.get("entries"), list):
+                return prod
+    return None
+
+
+def _data_host_for_step(step, history: list, execution_host: str) -> str:
+    """Autorita' dati dello step, distinta dall'host che esegue il codice."""
+    if (execution_host == "server"
+            and getattr(step, "tool", "") in _PATH_PRESERVING_TRANSFORMS):
+        producer = _referenced_producer(step, history)
+        if producer is not None:
+            return getattr(producer, "data_host", None) \
+                or getattr(producer, "host", "server")
+    return execution_host
+
 
 def _references_server_producer(step, history: list) -> bool:
     """True se lo step referenzia un PRODUCER girato sul SERVER (host='server'),
@@ -505,6 +616,8 @@ def _references_server_producer(step, history: list) -> bool:
     deve restare sul server (i path/entries non esistono sul device)."""
     sa = getattr(step, "args", None)
     if not isinstance(sa, dict):
+        return False
+    if getattr(step, "tool", "") in _DEVICE_VALUE_SINKS:
         return False
     idxs: set = set()
     fs = sa.get("from_step")
@@ -522,7 +635,9 @@ def _references_server_producer(step, history: list) -> bool:
         prod = next((s for s in history if getattr(s, "step_idx", None) == n), None)
         if prod is None and 1 <= n <= len(history):
             prod = history[n - 1]
-        if prod is not None and getattr(prod, "host", "server") == "server":
+        if (prod is not None
+                and (getattr(prod, "data_host", None)
+                     or getattr(prod, "host", "server")) == "server"):
             return True
     return False
 
@@ -898,14 +1013,23 @@ def _mutating_input_is_empty(step: StepSpec, history: list[StepRun]) -> bool:
 
 def _step_condition_passes(step: StepSpec, history: list[StepRun]) -> bool:
     """Skip-guard di uno step. Due regole:
-    1. opt-in: step.if_prev_entries_nonempty=True + ultimo step entries vuote.
+    1. opt-in: step.if_prev_entries_nonempty=True + producer referenziato
+       vuoto (oppure ultimo step per il solo auto-wire).
     2. AUTO (strutturale): mutante che consuma una lista d'input VUOTA."""
     if step.if_prev_entries_nonempty:
         if not history:
             return True
-        last = history[-1]
-        entries = last.result.get("entries") if isinstance(last.result, dict) else None
-        if not entries:
+        producer = history[-1]
+        source = (step.args or {}).get("from_step")
+        if source is not None:
+            try:
+                source_index = int(source) - 1
+            except (TypeError, ValueError):
+                source_index = -1
+            if 0 <= source_index < len(history):
+                producer = history[source_index]
+        result = producer.result if isinstance(producer.result, dict) else {}
+        if not _step_list_payload(result):
             return False
     if _mutating_input_is_empty(step, history):
         return False
@@ -1161,6 +1285,11 @@ CONTENT_ARG_KEYS = frozenset({
     # target/contenuto di un'ALTRA query. `_mutating_args_grounded` non li
     # copre (vede solo cifre e slug a/b, non email né testo libero).
     "email", "domain", "summary", "attendees", "location", "description",
+    # Contesto editoriale passato ai renderer/summarizer. Quando deriva dalla
+    # query (describe_entries.context) può contenere scope, esclusioni e numeri
+    # che cambiano il significato del rapporto: sicuro su L0 exact-match, non
+    # ereditabile da query soltanto simili.
+    "context",
 })
 
 # Arg `pattern`/glob: content-bearing SOLO se NON universale (25/6, turn
@@ -1206,6 +1335,12 @@ ARG_TRANSFORM_PIPELINE: tuple = (
                  "query-det", reads=frozenset({"query"}),
                  writes=frozenset({"args.where_field", "args.where_value", "args.where_in"}),
                  rationale="predicato «che contiene X» -> where_* (STOP-list conservativa)"),
+    ArgTransform("read_format", "read_format_resolver", "resolve_read_format",
+                 "query-det", needs_schema=True,
+                 reads=frozenset({"query", "args.entries", "args.paths",
+                                  "args_schema"}),
+                 writes=frozenset({"args.parse", "args.deduplicate_content"}),
+                 rationale="collezione locale PDF/DOCX/XLSX/CSV -> parse auto; dedup logica se richiesta"),
     ArgTransform("junk_mail", "junk_mail_resolver", "resolve_junk_mail",
                  "query-det", reads=frozenset({"query"}),
                  writes=frozenset({"args.where_field", "args.where_in"}),
@@ -1213,8 +1348,9 @@ ARG_TRANSFORM_PIPELINE: tuple = (
     ArgTransform("time_window", "time_window_resolver", "resolve_time_window",
                  "query-det", needs_schema=True,
                  reads=frozenset({"query", "args_schema"}),
-                 writes=frozenset({"args.time_window"}),
-                 rationale="«ultime 24 ore»->last-24h; slot query-specific, non ereditato"),
+                 writes=frozenset({"args.time_window", "args.mtime_after",
+                                   "args.mtime_before"}),
+                 rationale="«ultime 24 ore»->last-24h o bound mtime; slot query-specific, non ereditato"),
     ArgTransform("photo_fields", "photo_fields_resolver", "resolve_photo_fields",
                  "query-det", reads=frozenset({"query", "dl:photo.metadata_fields"}),
                  writes=frozenset({"args.fields"}),
@@ -1385,8 +1521,39 @@ def _render_is_degenerate(template: str, rendered: str) -> bool:
     return norm(r) == norm(static_only) and bool(norm(static_only) != norm(template))
 
 
+# Presentazione personale — primo punto d'effetto delle preferenze utente.
+# Le chiavi `reply_length`, `tone` e `units` esistono da tempo in `user_prefs`
+# (`users.py:633`) e non erano lette da nessun percorso di risposta: erano uno
+# store senza consumatori. Qui viene cablata la SOLA lunghezza, che ha un
+# effetto interamente deterministico e misurabile: quante voci entrano in un
+# elenco e quanto può essere lunga la sintesi finale.
+#
+# `tone` e `units` restano dichiarati senza effetto, e non per dimenticanza:
+# il tono richiede una variabile nel prompt del compositore, che è testo
+# rivolto al modello e non si tocca da qui; le unità richiedono un insieme
+# CHIUSO di campi convertibili, che oggi è vuoto. Insieme vuoto = nessun
+# effetto, dichiarato invece che finto (§2.8).
+_REPLY_BULLETS = {"breve": 6, "normale": 20, "dettagliata": 40}
+_REPLY_TOKENS = {"breve": (220, 380), "normale": (360, 700),
+                 "dettagliata": (700, 1200)}
+
+
+def _presentation_bullets(presentation: dict | None) -> int:
+    """Numero massimo di voci in un elenco, secondo la preferenza utente."""
+    key = (presentation or {}).get("reply_length") or "normale"
+    return _REPLY_BULLETS.get(key, _REPLY_BULLETS["normale"])
+
+
+def _presentation_tokens(presentation: dict | None, *, wide: bool) -> int:
+    """Tetto d'uscita della sintesi finale. `wide` conserva la distinzione
+    esistente fra risposta breve e risposta su più osservazioni."""
+    key = (presentation or {}).get("reply_length") or "normale"
+    narrow_cap, wide_cap = _REPLY_TOKENS.get(key, _REPLY_TOKENS["normale"])
+    return wide_cap if wide else narrow_cap
+
+
 def _finalize_answer_text(framework, steps: list, query: str,
-                          llm_fast) -> str:
+                          llm_fast, presentation: dict | None = None) -> str:
     """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
     turno `answer`. Strategia dichiarata, in ordine:
 
@@ -1432,7 +1599,8 @@ def _finalize_answer_text(framework, steps: list, query: str,
             if is_count_only:
                 bullets = _entries_bullet_lines(
                     entries, fields=_BULLET_FIELDS,
-                    more_key="MSG_RENDER_AND_MORE")
+                    more_key="MSG_RENDER_AND_MORE",
+                    max_items=_presentation_bullets(presentation))
                 rendered = ((rendered.strip() + "\n\n")
                             if rendered.strip() else "") + bullets
     # 3. vuoto/degenere → zero-result, self-presentazione, poi synth LLM.
@@ -1589,7 +1757,8 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
                             break
                     if not picked_long:
                         # 2b) scalari salienti (identita'/valori)
-                        for k in ("name", "subject", "date", "title",
+                        for k in ("name", "subject", "date", "mtime", "modified",
+                                  "size", "size_bytes", "format", "mime", "title",
                                   "description", "value", "summary", "email",
                                   "role", "path", "status"):
                             if e.get(k):
@@ -1644,7 +1813,14 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
         + f"\n\n{_ans}:"
     )
     try:
-        out = llm_fast(sys_msg, user_msg, max_tokens=360, think=False)
+        # Scalar answers benefit from the 360-token fast cap.  A multidomain
+        # result (three or more producer observations) commonly contains paths,
+        # sizes, health and a comparison; the old fixed cap cut the answer
+        # after the first health field even though every executor succeeded.
+        # Raise the cap only for that bounded case.
+        final_tokens = _presentation_tokens(presentation,
+                                            wide=len(obs_lines) >= 3)
+        out = llm_fast(sys_msg, user_msg, max_tokens=final_tokens, think=False)
         return (out or "").strip()
     except Exception as ex:
         log.warning("Executor: synthesize_final fallback failed: %r", ex)
@@ -1691,11 +1867,28 @@ def _deterministic_zero_result(steps) -> str:
     return _msg("MSG_NO_RESULTS") if _turn_is_zero_entries(steps) else ""
 
 
+@dataclass
+class _ParallelCall:
+    args: dict
+    future: object
+    submitted_at: float
+    completed_at: float | None = None
+
+    def finish(self, _future=None) -> None:
+        self.completed_at = time.perf_counter()
+
+    def latency_ms(self) -> int:
+        end = self.completed_at or time.perf_counter()
+        return max(0, int((end - self.submitted_at) * 1000))
+
+
 class Executor:
     """Esegue Framework deterministicamente. SHARED fra tutti gli engine."""
 
     def __init__(self, *,
                  invoke_executor: Callable[[str, dict], dict],
+                 submit_executor: Optional[Callable[[str, dict], object]] = None,
+                 can_parallelize: Optional[Callable[[str], bool]] = None,
                  llm_call_fast: Optional[Callable] = None,
                  vaglio_judge: Optional[Callable] = None,
                  vaglio_guard: Optional[Callable] = None,
@@ -1703,6 +1896,8 @@ class Executor:
                  seed_steps: Optional[list] = None,
                  catalog: Optional[list] = None):
         self.invoke = invoke_executor
+        self.submit = submit_executor
+        self.can_parallelize = can_parallelize
         self.llm_fast = llm_call_fast
         self.vaglio = vaglio_judge
         # Guardia deterministica PRE-invoke (forbidden-path/shell). Distinta dal
@@ -1722,10 +1917,139 @@ class Executor:
         # (es. read_urls_html.urls ← entries[*].url). Senza catalog la
         # proiezione è no-op (degrade graceful, comportamento pre-fix).
         self._schema_map = {}
+        self._catalog_map = {}
         for e in (catalog or []):
             nm = getattr(e, "name", None)
             if nm:
                 self._schema_map[nm] = getattr(e, "args_schema", None)
+                self._catalog_map[nm] = e
+
+    def _prepare_static_read_args(
+            self, step: StepSpec, *, query: str, runtime_ctx: dict) -> dict:
+        """Prepare an admitted root read with the ordinary resolver sequence.
+
+        Cross-step admission rejects pipeline/filler/step references, so this
+        helper has no history input by construction.  Keeping query/runtime
+        transforms here lets a peer be submitted before the main loop reaches
+        it without bypassing canonical account, window or scope resolution.
+        """
+        args = dict(step.args or {})
+        args = _resolve_runtime_placeholders(args, runtime_ctx)
+        args = apply_arg_transforms(
+            step.tool, args, query, scope="exec-only",
+            args_schema=self._schema_map.get(step.tool))
+        args = resolve_query_canonical_args(
+            step.tool, args, query,
+            args_schema=self._schema_map.get(step.tool))
+        try:
+            from args_resolver import resolve_scope_args
+            args = resolve_scope_args(
+                step.tool, args, self._schema_map.get(step.tool),
+                actor=args.get("_actor") or "host", query=query)
+        except Exception as exc:
+            log.debug("args_resolver parallel-prep noop: %r", exc)
+        if isinstance(args.get("values"), list) and args["values"]:
+            if isinstance(args["values"][0], dict):
+                args["values"] = _entries_to_2d_matrix(args["values"])
+        if step.tool in {"find_images_indices", "find_persons_indices"}:
+            top_k = args.get("top_k")
+            if isinstance(top_k, int) and top_k < 100 \
+                    and not re.search(r"\b\d+\b", query or ""):
+                args["top_k"] = 100
+        if step.tool == "find_urls" \
+                and args.get("mode") in {"research", "archive"}:
+            deep = re.search(
+                r"(esplor|mappa|archivi|scandagli|ricorsiv|intero sito|"
+                r"tutto il sito|crawl|approfondit|exhaustive|entire site|"
+                r"whole site|recursiv|\bexplore)", (query or "").lower())
+            if not deep:
+                args["mode"] = "default"
+        return args
+
+    def _parallel_preflight(
+            self, step: StepSpec, args: dict, *, query: str,
+            runtime_ctx: dict) -> bool:
+        """Apply every pre-invoke gate before a read enters a wave."""
+        if not runtime_ctx.get("_gate_approved"):
+            try:
+                from args_resolver import scope_form_request
+                if scope_form_request(
+                        step.tool, args, self._schema_map.get(step.tool), query):
+                    return False
+            except Exception as exc:
+                log.debug("scope_form_request parallel-preflight noop: %r", exc)
+        if self.vaglio_guard is not None:
+            try:
+                allowed, _reason = self.vaglio_guard(step.tool, args)
+            except Exception as exc:
+                # Preserve the existing guard contract; admission remains
+                # read-only even when the best-effort guard itself fails.
+                log.warning("vaglio_guard parallel-preflight raised %r", exc)
+                allowed = True
+            if not allowed:
+                return False
+        return True
+
+    def _start_parallel_wave(
+            self, framework: Framework, start: int, first_args: dict,
+            pending: dict[int, _ParallelCall], *, query: str,
+            runtime_ctx: dict, history: list[StepRun], progress=None) -> None:
+        """Submit one conservative contiguous wave, or leave it serial."""
+        if (self.submit is None or self.can_parallelize is None
+                or self.seed_steps or pending):
+            return
+        from .parallel_steps import contiguous_wave
+        try:
+            indexes = contiguous_wave(
+                framework.steps, start, self._catalog_map,
+                lambda ex: bool(self.can_parallelize(
+                    str(getattr(ex, "name", "") or ""))),
+            )
+        except Exception as exc:
+            log.warning("parallel wave admission failed closed: %r", exc)
+            return
+        if not indexes:
+            return
+
+        prepared: dict[int, dict] = {start: first_args}
+        for index in indexes[1:]:
+            prepared[index] = self._prepare_static_read_args(
+                framework.steps[index], query=query, runtime_ctx=runtime_ctx)
+        if any(not self._parallel_preflight(
+                framework.steps[index], prepared[index], query=query,
+                runtime_ctx=runtime_ctx) for index in indexes):
+            log.info("parallel wave %s degraded to serial by preflight", indexes)
+            return
+
+        base_path = [item.tool for item in history]
+        for offset, index in enumerate(indexes):
+            step = framework.steps[index]
+            args = prepared[index]
+            log.info("Executor: submit_parallel %s args=%s", step.tool,
+                     {k: v for k, v in args.items() if k != "entries"})
+            if progress is not None and hasattr(progress, "tool_call"):
+                try:
+                    progress.tool_call(
+                        tool=step.tool,
+                        step_num=len(history) + offset + 1,
+                        path_so_far=base_path + [
+                            framework.steps[pos].tool
+                            for pos in indexes[:offset + 1]],
+                        args={k: v for k, v in args.items()
+                              if not k.startswith("_") and k != "entries"},
+                        predicted_remaining=[])
+                except Exception as exc:
+                    log.debug("parallel progress.tool_call noop: %r", exc)
+            submitted_at = time.perf_counter()
+            future = self.submit(step.tool, args)
+            call = _ParallelCall(
+                args=args, future=future, submitted_at=submitted_at)
+            add_callback = getattr(future, "add_done_callback", None)
+            if callable(add_callback):
+                add_callback(call.finish)
+            pending[index] = call
+        log.info("Executor: parallel wave started tools=%s",
+                 [framework.steps[index].tool for index in indexes])
 
     def run(self, framework: Framework, *,
             query: str = "",
@@ -1740,10 +2064,32 @@ class Executor:
             result.steps = list(self.seed_steps)
         result.framework_hash = compute_framework_hash(framework)
         t_start = time.time()
+        _parallel_pending: dict[int, _ParallelCall] = {}
+
+        # Il cap storico resta il confine dei piani LLM.  Solo framework
+        # canonici costruiti nel runtime possono chiedere un budget maggiore;
+        # anche per loro esiste un hard ceiling operativo centralizzato.  Il
+        # marker non è deserializzabile da Framework.from_dict, quindi non è
+        # un modo per il proposer di auto-estendere il proprio budget.
+        effective_max_steps = self.max_steps
+        try:
+            runtime_step_cap = int(
+                getattr(framework, "runtime_step_cap", 0) or 0)
+            hard_max_steps = max(12, min(
+                128, int(os.environ.get(
+                    "METNOS_ENGINE_RUNTIME_MAX_STEPS", "32"))))
+            if runtime_step_cap > 0:
+                effective_max_steps = max(
+                    effective_max_steps,
+                    min(runtime_step_cap, hard_max_steps),
+                )
+        except (TypeError, ValueError):
+            # Configurazione invalida: fail-safe sul cap ordinario.
+            effective_max_steps = self.max_steps
 
         for i, step in enumerate(framework.steps):
-            if i >= self.max_steps:
-                result.aborted_reason = f"cap_steps {self.max_steps}"
+            if i >= effective_max_steps:
+                result.aborted_reason = f"cap_steps {effective_max_steps}"
                 break
             if not step.tool:
                 result.aborted_reason = f"step_{i+1}_no_tool"
@@ -1774,7 +2120,8 @@ class Executor:
             # zero/synth in una sola fonte, condivisa col fallback post-loop.
             if step.tool == "final_answer":
                 result.final_text = _finalize_answer_text(
-                    framework, result.steps, query, self.llm_fast)
+                    framework, result.steps, query, self.llm_fast,
+                    presentation=(runtime_ctx or {}).get("presentation"))
                 result.final_kind = "answer"
                 break
 
@@ -1795,7 +2142,12 @@ class Executor:
             #       path legacy ADR 0092: allegato presente = ricerca per-immagine).
             # Local: il framework NON è mutato (idempotenza sugli hit cache,
             # §S3/ADR 0174); opera su una COPIA degli args.
-            _step_args = step.args
+            # Gli argomenti del Framework sono il template cacheabile, non uno
+            # scratchpad di esecuzione. Ogni resolver/auto-wire lavora sempre
+            # su una copia: in precedenza il ramo senza from_step restituiva
+            # lo stesso dict e l'auto-wire vi inseriva entries materializzate,
+            # contaminando il piano dopo il run (e il successivo record L0).
+            _step_args = dict(step.args or {})
             if (self.seed_steps and "from_step" not in _step_args
                     and len(result.steps) == len(self.seed_steps)):
                 _se = _seed_entries(self.seed_steps)
@@ -1828,8 +2180,14 @@ class Executor:
             # verrebbe droppato più sotto (1060) lasciando l'helper a 0 entries
             # (bug q13 4/6: describe_entries terminale ok=False → terminator). Va
             # trattato come ASSENTE: l'auto-wire lo ripesca dallo scratchpad.
+            # La risoluzione dei ${stepN...} avviene poco sotto: la sola
+            # presenza di una multilist non vuota dichiara già una sorgente
+            # intenzionale. Se un placeholder fosse invalido deve emergere
+            # come tale, non essere mascherato con l'ultimo producer.
+            _has_explicit_multilist = bool(args.get("entries_lists"))
             if (step.tool in _ENTRIES_CONSUMERS and result.steps
-                    and (not args.get("entries")
+                    and not _has_explicit_multilist
+                    and ("entries" not in args
                          or _detect_unresolved_placeholders(args.get("entries")))):
                 for _prev in reversed(result.steps):
                     _pr = _prev.result if isinstance(_prev.result, dict) else {}
@@ -2019,6 +2377,17 @@ class Executor:
                 ))
                 continue
 
+            # JIT sibling alignment for explicit URL batches.  A cached
+            # proposer alternative can select read_urls_pdf for object=urls;
+            # delay the correction until args/from_step are fully resolved,
+            # then execute the content-type-aware reader without mutating the
+            # framework cache.  read_urls_html also handles genuine PDF
+            # responses, so mixed/extensionless batches remain lossless.
+            _exec_tool = _align_url_reader_jit(step.tool, args)
+            if _exec_tool != step.tool:
+                log.info("Executor: JIT URL reader %s -> %s", step.tool,
+                         _exec_tool)
+
             # Notifica in-piano nei run schedulati a vuoto (§2.8, 13/6/2026):
             # un send/notify finale («ti ho fatto X») NON deve partire se la
             # pipeline a monte non ha prodotto nulla (bug live: maintenance
@@ -2027,12 +2396,12 @@ class Executor:
             # Generale §7.3, deterministico §7.9, no-op sui turni interattivi.
             try:
                 from treated_issues_guard import suppress_scheduled_notify
-                if suppress_scheduled_notify(step.tool, result.steps):
+                if suppress_scheduled_notify(_exec_tool, result.steps):
                     log.info("[scheduled-notify-guard] skip %s: pipeline a "
                              "vuoto, notifica soppressa (run schedulato, §2.8)",
-                             step.tool)
+                             _exec_tool)
                     result.steps.append(StepRun(
-                        step_idx=i + 1, tool=step.tool, args=args,
+                        step_idx=i + 1, tool=_exec_tool, args=args,
                         result={"ok": True, "ok_count": 0,
                                 "skipped": "scheduled_noop_notify",
                                 "note": "notifica soppressa: run schedulato a "
@@ -2046,25 +2415,41 @@ class Executor:
             # dopo approvazione (runtime_ctx._gate_approved), il gate
             # get_approval e' gia' stato consentito → auto-passa (nessun nuovo
             # dialog) cosi' la pipeline prosegue verso send/write. §7.9.
-            if (step.tool == "get_approval"
+            if (_exec_tool == "get_approval"
                     and (runtime_ctx or {}).get("_gate_approved")):
                 args["_pre_approved"] = True
+
+            if _exec_tool == step.tool:
+                self._start_parallel_wave(
+                    framework, i, args, _parallel_pending, query=query,
+                    runtime_ctx=runtime_ctx or {}, history=result.steps,
+                    progress=progress)
+            _parallel_call = _parallel_pending.pop(i, None)
+            if _parallel_call is not None and _exec_tool != step.tool:
+                # Defensive future-proofing if a preceding wave was built
+                # before the dynamic URL list became available.  Admitted
+                # wave members are read-only; discard/cancel the stale sibling
+                # and execute the aligned reader synchronously.
+                _parallel_call.future.cancel()
+                _parallel_call = None
 
             # Invoke
             # Osservabilità (#4): logga tool + args risolti (escluso il payload
             # `entries`, voluminoso) appena prima dell'invoke. Senza, un turn
             # engine v2 che si blocca su un executor è una scatola nera.
-            log.info("Executor: invoke %s args=%s", step.tool,
-                     {k: v for k, v in args.items()
-                      if k not in ("entries",)})
+            if _parallel_call is None:
+                log.info("Executor: invoke %s args=%s", _exec_tool,
+                         {k: v for k, v in args.items()
+                          if k not in ("entries",)})
             # Breadcrumb live in chat: emette `tool_call` sul progress (sia
             # TurnEventProgress sia _SSEProgress lo accettano). Senza, engine v2
             # mostrava solo `start` poi `final` (⏳ muto per tutto il turno).
-            if progress is not None and hasattr(progress, "tool_call"):
+            if (_parallel_call is None and progress is not None
+                    and hasattr(progress, "tool_call")):
                 try:
                     progress.tool_call(
-                        tool=step.tool, step_num=len(result.steps) + 1,
-                        path_so_far=[s.tool for s in result.steps] + [step.tool],
+                        tool=_exec_tool, step_num=len(result.steps) + 1,
+                        path_so_far=[s.tool for s in result.steps] + [_exec_tool],
                         args={k: v for k, v in args.items()
                               if not k.startswith("_") and k != "entries"},
                         predicted_remaining=[])
@@ -2079,11 +2464,12 @@ class Executor:
             # scope-args (sarebbe un secondo consenso ridondante che blocca il
             # publish). I default config (repo/store) restano risolti a monte
             # (backend_resolver/args_resolver). §7.9 deterministico.
-            if not (runtime_ctx or {}).get("_gate_approved"):
+            if (_parallel_call is None
+                    and not (runtime_ctx or {}).get("_gate_approved")):
                 try:
                     from args_resolver import scope_form_request
                     _form_obs = scope_form_request(
-                        step.tool, args, self._schema_map.get(step.tool), query)
+                        _exec_tool, args, self._schema_map.get(_exec_tool), query)
                 except Exception as _fe:
                     log.debug("scope_form_request noop: %r", _fe)
             # Vaglio GUARD pre-invoke (sicurezza, gap confermato 23/6): blocca le
@@ -2093,17 +2479,18 @@ class Executor:
             # silenziosa sul nucleo non-negoziabile. Solo la GUARDIA
             # deterministica (forbidden-path/shell), NON il giudice teleologico.
             # Pre-invoke = prevenzione vera, non blocco-a-valle.
-            if self.vaglio_guard is not None and _form_obs is None:
+            if (_parallel_call is None and self.vaglio_guard is not None
+                    and _form_obs is None):
                 try:
-                    _ok_g, _why_g = self.vaglio_guard(step.tool, args)
+                    _ok_g, _why_g = self.vaglio_guard(_exec_tool, args)
                 except Exception as _ge:
                     _ok_g, _why_g = True, None  # best-effort: fail-open
                     log.warning("vaglio_guard raised %r — fail-open", _ge)
                 if not _ok_g:
                     log.warning("[vaglio guard] BLOCCO pre-invoke %s: %s",
-                                step.tool, _why_g)
+                                _exec_tool, _why_g)
                     result.steps.append(StepRun(
-                        step_idx=i + 1, tool=step.tool, args=args,
+                        step_idx=i + 1, tool=_exec_tool, args=args,
                         result={"ok": False, "error_class": "vaglio_guard",
                                 "error": _why_g or "forbidden"},
                         ok=False, latency_ms=0))
@@ -2117,39 +2504,74 @@ class Executor:
             # find_images_indices@.33 con device sticky → C:\mnt\... → 0 trovati).
             # Producer via from_step:N O placeholder ${stepN}/{{stepN}} (§4.1).
             # Marker letto e rimosso da invoke_executor prima del placement.
-            if _references_server_producer(step, result.steps):
+            if (_parallel_call is None
+                    and _references_server_producer(step, result.steps)):
                 args = {**args, "_colocate_server": True}
             t0 = time.time()
-            if _form_obs is not None:
+            if _parallel_call is not None:
+                if args != _parallel_call.args:
+                    # The eligibility contract says preparation is history-free.
+                    # A mismatch means that assumption drifted; the call was
+                    # read-only, but its result must not be committed silently.
+                    r = {
+                        "ok": False,
+                        "error_class": "parallel_prepare_mismatch",
+                        "error": "parallel preparation diverged from serial path",
+                    }
+                    log.error("parallel preparation mismatch tool=%s", _exec_tool)
+                else:
+                    try:
+                        r = _parallel_call.future.result()
+                    except Exception as ex:
+                        if type(ex).__name__ == "TimeoutExpired":
+                            _to = getattr(ex, "timeout", None)
+                            r = {"ok": False, "error_class": "timeout",
+                                 "error": _msg(
+                                     "ERR_EXECUTOR_TIMEOUT", tool=_exec_tool,
+                                     seconds=int(_to or 0))}
+                        else:
+                            r = {"ok": False, "error": str(ex),
+                                 "error_class": "exception"}
+                    log.info("Executor: commit_parallel %s latency_ms=%d",
+                             _exec_tool, _parallel_call.latency_ms())
+                lat_ms = _parallel_call.latency_ms()
+            elif _form_obs is not None:
                 r = _form_obs
             else:
                 try:
-                    r = self.invoke(step.tool, args)
+                    # In-process executors may emit bounded progress without
+                    # leaking callbacks into validated/logged JSON args.  The
+                    # context is reset after every invocation, including
+                    # failures, and remote executors simply never observe it.
+                    from executor_progress import bind as _bind_executor_progress
+                    with _bind_executor_progress(progress):
+                        r = self.invoke(_exec_tool, args)
                 except Exception as ex:
                     if type(ex).__name__ == "TimeoutExpired":
                         # §11/§2.8: messaggio CHIARO invece del grezzo
                         # "Command '[...python...]' timed out after Ns".
                         _to = getattr(ex, "timeout", None)
-                        log.warning("Executor: %s timeout (%ss)", step.tool, _to)
+                        log.warning("Executor: %s timeout (%ss)", _exec_tool, _to)
                         r = {"ok": False, "error_class": "timeout",
                              "error": _msg("ERR_EXECUTOR_TIMEOUT",
-                                           tool=step.tool, seconds=int(_to or 0))}
+                                           tool=_exec_tool, seconds=int(_to or 0))}
                     else:
-                        log.warning("Executor: %s raised %r", step.tool, ex)
+                        log.warning("Executor: %s raised %r", _exec_tool, ex)
                         r = {"ok": False, "error": str(ex),
                              "error_class": "exception"}
-            lat_ms = int((time.time() - t0) * 1000)
+            if _parallel_call is None:
+                lat_ms = int((time.time() - t0) * 1000)
 
             # Recovery args remediate (1× per step) — mai per needs_inputs
             if _form_obs is None and not r.get("ok") and remediate_args_cb is not None:
                 try:
-                    fixed = remediate_args_cb(tool=step.tool, args=args,
+                    fixed = remediate_args_cb(tool=_exec_tool, args=args,
                                                 result=r, query=query)
                     if fixed and fixed != args:
                         log.info("Executor: retry %s with remediated args",
-                                  step.tool)
+                                  _exec_tool)
                         t0 = time.time()
-                        r = self.invoke(step.tool, fixed)
+                        r = self.invoke(_exec_tool, fixed)
                         lat_ms = int((time.time() - t0) * 1000)
                         args = fixed
                 except Exception as ex:
@@ -2160,15 +2582,16 @@ class Executor:
             if isinstance(r, dict) and r.get("ok"):
                 try:
                     from args_resolver import remember_scope_args
-                    remember_scope_args(step.tool, args,
+                    remember_scope_args(_exec_tool, args,
                                         actor=args.get("_actor") or "host")
                 except Exception as _rse:
                     log.debug("remember_scope_args noop: %r", _rse)
 
             _host = (r.get("_ran_on_device") or "server") if isinstance(r, dict) else "server"
-            sr = StepRun(step_idx=i + 1, tool=step.tool, args=args,
+            _data_host = _data_host_for_step(step, result.steps, _host)
+            sr = StepRun(step_idx=i + 1, tool=_exec_tool, args=args,
                           result=r, ok=bool(r.get("ok")), latency_ms=lat_ms,
-                          host=_host)
+                          host=_host, data_host=_data_host)
             result.steps.append(sr)
             if sr.ok:
                 result.ok_count += 1
@@ -2196,7 +2619,7 @@ class Executor:
             # Vaglio post-step (opt-in)
             if self.vaglio is not None:
                 try:
-                    if not self.vaglio(step.tool, args, r):
+                    if not self.vaglio(_exec_tool, args, r):
                         result.aborted_reason = f"step_{i+1}_vaglio_block"
                         result.final_kind = "error"
                         break
@@ -2209,6 +2632,16 @@ class Executor:
                 result.final_kind = "error"
                 break
 
+        # A hard stop preserves the historical commit boundary.  Already
+        # running wave peers are read-only by admission; cancel queued work and
+        # discard every uncommitted result.
+        for _call in _parallel_pending.values():
+            try:
+                _call.future.cancel()
+            except Exception:
+                pass
+        _parallel_pending.clear()
+
         result.elapsed_ms = int((time.time() - t_start) * 1000)
         if not result.final_kind:
             result.final_kind = "error" if result.aborted_reason else "answer"
@@ -2217,5 +2650,6 @@ class Executor:
             # UNICA fonte del terminator (ADR 0177 T5) — prima era un blocco
             # gemello divergente (niente arricchimento count-only→bullets).
             result.final_text = _finalize_answer_text(
-                framework, result.steps, query, self.llm_fast)
+                framework, result.steps, query, self.llm_fast,
+                presentation=(runtime_ctx or {}).get("presentation"))
         return result
