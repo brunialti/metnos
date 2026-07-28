@@ -529,6 +529,34 @@ Una `RoutineBinding` contiene:
 La firma del contesto contiene soltanto enum e classi di oggetto dichiarate;
 non contiene principale, path, account, destinatari o altri valori personali.
 
+**Che cosa NON diventa una routine.** «Turno riuscito e forma ripetuta» è un
+criterio troppo largo: quasi ogni turno riesce, molte forme ricorrono, e le
+richieste banali ricorrono più di tutte. Prese così, le «solite cose» sarebbero
+soprattutto rumore. Quattro tagli deterministici, tutti calcolabili dai dati che
+il runtime già produce, precedono qualunque soglia:
+
+1. **Solo forme composte.** Una sequenza di uno o due passi non è una routine: è un
+   comando, e lo dici già in tre parole. Serve una forma con più passi e almeno uno
+   slot che viaggia fra loro.
+2. **Solo richieste che costano da dire.** Il guadagno di una routine è
+   proporzionale alla lunghezza della richiesta che sostituisce. Se l'originale era
+   breve e diretta, riscriverla non fa risparmiare niente: si misura sulla richiesta
+   d'origine, non sul piano.
+3. **Nessun segnale di insoddisfazione.** Un turno seguito dalla **riformulazione
+   della stessa intenzione**, da una correzione o da un annullamento non è
+   evidenza, per quanto l'executor abbia risposto bene. Riuscito non significa
+   voluto, e la differenza è leggibile senza chiedere niente.
+4. **Ricorrenza indipendente**: sessioni distinte, stesso contesto tipizzato, ed
+   esclusi i turni che la routine stessa ha servito (§13.0 T12).
+
+**E la soglia non basta comunque: serve il tuo sì.** Una forma che supera i quattro
+tagli diventa **candidata** e viene proposta **una volta**; diventa attiva solo se
+la accetti. È l'unica capacità della roadmap che cambia l'interpretazione di una
+richiesta prima del piano, e una capacità così invasiva non si accende da sola.
+Non contraddice l'invariante 31: è una proposta su un caso concreto e ripetuto —
+«questa sequenza l'hai fatta quattro volte uguale, le do un nome?» — non un
+questionario da riempire.
+
 Il riconoscimento di una richiesta di routine usa concetti IT/EN nel
 `detection_lexicon`, non frasi nel codice. La scelta è deterministica: match di
 azioni/oggetti espliciti, contesto compatibile, recenza e margine fissati in
@@ -1900,7 +1928,10 @@ finché il registro non possiede il marcatore verificabile previsto in F0.
 
 **Uscita:** UC-07 verde su richieste oggi non comprese; il beneficio supera la
 baseline lineare; nessun valore personale in L0/L1; casi ambigui chiedono o si
-astengono; spegnendo F6 F0-F5 restano integri.
+astengono; **nessuna routine attiva senza una proposta accettata**, e i quattro
+tagli di §5.7 verificati sul corpus (una forma a un passo, una richiesta breve, un
+turno seguito da riformulazione e un turno servito dalla routine stessa non
+producono candidate); spegnendo F6, F0-F5 restano integri.
 
 ## 13. Attuazione
 
