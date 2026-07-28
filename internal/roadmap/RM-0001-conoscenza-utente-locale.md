@@ -315,6 +315,16 @@ scala reale lo giustifica.
     sia da Telegram attraverso lo stesso confine.
 30. **Beneficio causale:** nessuna fase che influenza risposte o argomenti viene
     promossa senza battere una baseline lineare sul medesimo corpus.
+31. **Il sistema non intervista:** la conoscenza si acquisisce osservando ciò che
+    accade, mai interrogando l'utente. Non esistono questionari d'avvio, schede da
+    riempire, richieste di descriversi né conferme per elemento. Le sole domande
+    ammesse sono quelle già previste da un'ambiguità reale (inv. 15) o da un
+    conflitto irrisolto (inv. 17): nascono da un caso concreto, non dal bisogno di
+    popolare uno store vuoto.
+32. **Acquisire non è applicare:** la registrazione di un'osservazione è separata
+    dal suo effetto. L'acquisizione filtrata parte con lo store, non con la fase
+    che applica; ciò che è `observed` è visibile e inerte. Solo l'applicazione
+    richiede la prova di beneficio della propria fase.
 
 ## 5. Architettura
 
@@ -718,6 +728,49 @@ Classi di conservazione:
 
 ## 7. Acquisizione automatica
 
+### 7.0 Avvio a freddo: acquisire, non chiedere
+
+Un'istanza appena installata ha uno store vuoto, e il modo sbagliato di riempirlo
+è chiederlo all'utente. Un questionario d'avvio produce ciò che una persona
+*immagina* di volere, non ciò che fa; invecchia subito; e trasforma il primo
+contatto con il sistema in un modulo da compilare. L'invariante 31 lo vieta.
+
+Il modo giusto è che il sistema **acquisisca da ciò che ha già davanti**. Tre canali,
+tutti attivi dal primo turno e nessuno dei quali richiede una domanda:
+
+1. **Registri già presenti sulla macchina.** Il sistema sa già molto senza chiedere
+   nulla: ruolo, canali e legami del registro utenti; i progetti dichiarati; i
+   calendari, le cartelle, gli account e i contatti che i provider sanno
+   enumerare; la lingua dell'istanza; i dispositivi associati. Non sono claim
+   sull'utente: sono lo **spazio dei candidati** entro cui i riferimenti si
+   risolveranno, ed esistono prima del primo turno. È lo stesso materiale che i
+   provider di §5.6 già producono; su un'istanza fredda sono la conoscenza
+   iniziale, non un ripiego.
+2. **Gli argomenti che l'utente fornisce lavorando.** Ogni valore esplicito in una
+   richiesta — una cartella, un calendario, un destinatario — è una dichiarazione
+   fatta senza che nessuno l'abbia chiesta. Viene registrata come osservazione
+   attribuita al turno che la contiene, e resta inerte finché non ha evidenze
+   sufficienti.
+3. **Gli esiti attestati dei turni.** Che cosa è stato fatto, con quale forma,
+   con quale esito: è il materiale degli episodi e delle routine, e il runtime lo
+   produce comunque, per ogni turno, anche prima che questa roadmap esista.
+
+Nessuno dei tre chiede niente. Il primo esiste all'installazione, gli altri due si
+riempiono da soli mentre la persona usa il sistema per i suoi scopi.
+
+**Acquisizione e applicazione sono separate** (invariante 32). Registrare
+un'osservazione non ha effetti visibili, è reversibile con lo stesso protocollo di
+oblio ed è governato dal solo filtro deterministico di §7.2 — origine, segreti,
+categorie rifiutate, quota — che non ha bisogno né del compilatore né del modello.
+Per questo l'acquisizione **parte con lo store, in F1**, e non con la fase che
+applica: quando F3 arriva, il livello `observed` non è vuoto, e il primo default ha
+evidenze reali dietro di sé invece di dover essere dichiarato a mano.
+
+Conseguenza pratica per un'istanza nuova: non c'è un'attesa in cui il sistema è
+inutile e la persona deve compilare qualcosa. C'è un periodo in cui il sistema
+**osserva e non applica**, che è esattamente ciò che serve anche per misurare se
+applicare abbia senso (§11.0).
+
 ### 7.1 Politica del proprietario
 
 Quando F5 viene promossa, il proprietario verificato ha per impostazione
@@ -932,10 +985,13 @@ soltanto numeri aggregati. Non contraddice l'esclusione di §3.2, che vieta al
 **sottosistema** di ingerire automaticamente i turni storici come conoscenza; qui i
 turni non diventano memoria di nessuno, diventano una misura per decidere.
 
-Su un'**istanza nuova** il contatore non ha nulla da leggere, e la risposta onesta
-è «non ancora»: si usa il sistema per qualche settimana e poi lo si interroga.
-Nessuna quantità di lavoro anticipato può sostituire quel dato. Dichiararlo è più
-utile che fingere che una roadmap valga uguale per tutti.
+Su un'**istanza nuova** il contatore non ha ancora nulla da leggere, e la risposta
+onesta è «non ancora». Ma non è un'attesa a vuoto e non richiede che l'utente
+compili qualcosa: il registro dei turni si riempie da solo dal primo turno, ed è
+già così oggi, prima che questa roadmap esista. Ciò che manca a un'istanza fredda è
+la **prova**, non l'acquisizione: quella parte con lo store (§7.0, invariante 32).
+Nessuna quantità di lavoro anticipato può sostituire quel dato, e nessuna
+compilazione a mano può surrogarlo.
 
 Una soglia di prontezza per fase viene congelata insieme alle altre in F0 (§13.0
 T13): sotto quella soglia, la fase corrispondente non si costruisce. È lecito
@@ -1134,8 +1190,15 @@ preregistrati; nessun comportamento utente modificato.
 
 - schema minimo fino a `evidence_tombstones`;
 - scheletro `compile_queue` con lease e controllo epoch, senza compilatore LLM;
-- `append_event`: accodamento autenticato **senza filtro**, unico scrittore di
-  eventi sorgente per tutte le fasi successive;
+- `append_event`: accodamento autenticato, unico scrittore di eventi sorgente per
+  tutte le fasi successive;
+- il **filtro deterministico** di §7.2 — origine, ripulitura dei segreti, categorie
+  rifiutate, scopo, quota, codici di scarto — che non ha bisogno né del compilatore
+  né del modello e appartiene quindi qui, non a F5;
+- **acquisizione in osservazione dal primo turno** (invarianti 31-32): gli
+  argomenti espliciti e gli esiti attestati entrano come `observed`, inerti e
+  cancellabili. Nessun effetto su alcun turno; è ciò che impedisce a un'istanza
+  nuova di restare vuota fino a F5;
 - i due registri di estensione dello schema, `CASCADE_TABLES` e `KEY_TARGETS`;
 - CRUD legato al principale e risultati vettoriali per elemento;
 - revisioni W2/memoria e istantanea;
@@ -1196,11 +1259,11 @@ locale nel percorso della risposta aggregata.
 
 **Lavoro:**
 
-- enqueue autenticato soltanto dopo F1-F4 certificate;
-- filtro e log degli scarti;
-- compilatore locale in ombra, reconciler deterministico-prima;
-- promozione automatica proprietario per classi non sensibili;
-- conflitto W2/memoria, retention e controllo chat.
+- compilatore locale in ombra, riconciliatore deterministico-prima;
+- **promozione** automatica per il proprietario su classi non sensibili — è questo
+  che F5 aggiunge, non l'acquisizione, che vive già in F1 (invariante 32) e che
+  fino a qui ha prodotto soltanto osservazioni inerti;
+- conflitto fra i due store, conservazione e controllo dalla chat.
 
 **Uscita:** UC-02 attiva senza approvazioni per elemento; il braccio completo
 batte la baseline lineare; danni bloccanti a zero sul denominatore dichiarato;
@@ -1254,13 +1317,18 @@ non ridefinisce; nessuna fase successiva introduce un enum omonimo o un sinonimo
 non altri, perché i tetti di §2.7 e dell'invariante 24 sono tarati su quelle
 chiavi.
 
-**T3 — Un solo emettitore per tipo di evento.** L'accodamento autenticato
-`append_event` nasce in **F1**, senza filtro. F4 emette `runtime_outcome`, uno e
-uno solo per turno, e non dipende dall'interruttore di F5, perché è un dato di
-esito e non apprendimento. F5 aggiunge soltanto `user_clause` e `correction`, il
-filtro di §7.2 e i codici di scarto. *Prova d'invariante*: per ogni `turn_id`
-esiste al più una riga `source_events(kind='runtime_outcome')` e al più una riga
-`episode_refs`.
+**T3 — Un solo emettitore per tipo di evento, e l'acquisizione parte con lo
+store.** `append_event` nasce in **F1** insieme al filtro deterministico di §7.2:
+origine, segreti, categorie rifiutate e quota non hanno bisogno né del compilatore
+né del modello, quindi non appartengono a F5. Da F1 in poi gli argomenti espliciti
+e gli esiti attestati entrano come `observed`, inerti (invarianti 31-32): è ciò che
+impedisce a un'istanza nuova di restare vuota fino all'ultima fase. F4 emette
+`runtime_outcome`, uno e uno solo per turno, e non dipende dall'interruttore di F5,
+perché è un dato di esito e non apprendimento. F5 aggiunge il compilatore e la
+**promozione**, non l'acquisizione. *Prova d'invariante*: per ogni `turn_id` esiste
+al più una riga `source_events(kind='runtime_outcome')` e al più una riga
+`episode_refs`; e con F5 spenta nessuna riga passa da `observed` a uno stato
+applicabile.
 
 **T4 — L'oblio per chiave si estende per registro, non per memoria.** Oltre a
 `store.CASCADE_TABLES` (cancellazione per principale) esiste `store.KEY_TARGETS`:
