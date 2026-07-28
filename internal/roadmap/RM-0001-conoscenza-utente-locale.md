@@ -1195,6 +1195,26 @@ lo stesso schema a quattro campi:
   **richiesta** è il tratto più discriminante e il più stabile: chi truffa cambia
   parole a ogni invio, ma quello che vuole — segui un collegamento, paga,
   rispondi, conferma un'identità, scarica — resta quasi sempre lo stesso.
+- **Tono**: neutro, urgente, minatorio, promozionale, adulatorio, insistente.
+  Vocabolario chiuso e piccolo, con marcatori deterministici prima del modello —
+  imperativi, scadenze, conti alla rovescia, densità di esclamativi, maiuscole —
+  e il modello che mappa soltanto ciò che il codice non riconosce. È un tratto
+  utile perché l'urgenza artificiale è una delle firme più costanti dell'inganno,
+  e perché serve anche altrove: un contenuto allarmistico si può declassare
+  nell'ordinamento delle novità (UC-13) senza toccare l'argomento.
+
+  **Ma il tono non basta mai da solo, ed è una regola, non una cautela.** Un avviso
+  autentico della tua banca e la sua imitazione hanno lo *stesso* tono: l'urgenza è
+  proprio ciò che l'inganno copia meglio. Una proiezione che agisce non può quindi
+  essere fatta di solo tono: deve contenere almeno un tratto di **struttura** o di
+  **sorgente**, che sono i due che l'imitatore non controlla. È anche il tratto
+  epistemicamente più debole — due persone in buona fede discordano fra «urgente» e
+  «insistente» — quindi vale in combinazione e non in isolamento.
+
+I campi non sono cinque per sempre: lo schema è un **insieme dichiarato** di tratti,
+e un dominio può aggiungerne se il suo genere di oggetti lo richiede. Ciò che non
+cambia sono le regole di ammissione — vocabolario chiuso, deterministico prima del
+modello, ispezionabile — e il divieto di un elenco centrale.
 
 **L'insieme dei tratti firma l'oggetto, e firma un genere non un esemplare.** È la
 proprietà che rende il meccanismo praticabile. Due messaggi di truffa da mittenti
@@ -1244,6 +1264,51 @@ oltre la conoscenza utente: non è RM-0001 a doverla ratificare. RM-0001 ne dich
 soltanto l'interfaccia che le serve — una firma stabile, versionata, ispezionabile
 e cancellabile — e resta costruibile anche senza, con la sola via per mittente e
 lista.
+
+#### 6.9.4 Derivare le classi dal corpus: un reticolo dato, non un albero appreso
+
+L'idea successiva è naturale: su un corpus di messaggi si possono **derivare** le
+classi, guardando come le firme si raggruppano. È giusta nella sostanza — il
+corpus contiene le classi e non serve inventarle — ma il meccanismo per estrarle è
+molto più semplice di un albero appreso con distanze fra dimensioni, e per una
+ragione che appartiene alla firma stessa.
+
+**Con campi tipizzati e vocabolari chiusi, le classi non si cercano: si contano.**
+Una classe è una **proiezione frequente**: un sottoinsieme di campi con un
+sottoinsieme di valori che ricorre nel corpus. Trovarla è un raggruppamento con un
+conteggio — l'operazione più economica che una base dati sappia fare — non un
+addestramento. Il risultato è esatto, riproducibile, e si spiega da sé perché la
+classe *è* la sua descrizione: «tipologia messaggio, struttura promozionale, nessuna
+disiscrizione, richiesta segui-collegamento — 143 casi».
+
+**L'albero c'è già, ed è il reticolo delle proiezioni.** Le proiezioni ordinate per
+inclusione formano una gerarchia gratuita: meno campi significa classe più
+generale, più campi classe più specifica. È esattamente il controllo della
+generalizzazione descritto sopra, visto dall'altro lato. Non c'è una struttura da
+apprendere: c'è una struttura da percorrere.
+
+**La distanza fra dimensioni non è definita, e definirla costerebbe tutto.** Fra
+due valori di un vocabolario chiuso non esiste una distanza naturale: quanto dista
+«biologia» da «tecnologia»? Per rispondere servirebbe immergerli in uno spazio
+vettoriale, cioè reintrodurre esattamente ciò che questa direzione ha eliminato —
+opacità, soglie da tarare, irriproducibilità, un indice denso. Su campi chiusi la
+somiglianza è uguaglianza, e va tenuta tale.
+
+**Da classe candidata a classe utile.** Un raggruppamento frequente non è ancora
+una classe che serve: lo diventa quando i tuoi giudizi su quel raggruppamento sono
+concordi. Support e concordanza sono due conteggi, entrambi deterministici, ed
+entrambi mostrabili. Una classe candidata si **propone** — «questi 143 messaggi
+hanno la stessa firma e ne hai segnalati sette su sette: li tratto tutti così?» —
+e non si applica da sola, per la stessa ragione di §6.9.
+
+**Il parallelo con Leiden, ed è deliberato.** Questa roadmap ha già tolto una
+comunità appresa su grafo, non perché fosse cattiva in sé ma perché il suo
+consumatore era servito meglio da un raggruppamento deterministico (§3.2). Qui
+vale lo stesso ragionamento, applicato prima invece che dopo: un clustering sopra
+una firma tipizzata risolverebbe con un metodo approssimato un problema che un
+conteggio risolve in modo esatto. La condizione che riaprirebbe la questione è
+unica e precisa: **se un campo dovesse essere intrinsecamente aperto o continuo**,
+e non fosse possibile chiuderne il vocabolario. Fino ad allora, contare.
 
 **Perché è meglio di un vettore, in questo documento.** *Spiegabile*: la
 somiglianza si stampa in una riga — «stessa struttura, nessuna disiscrizione, otto
