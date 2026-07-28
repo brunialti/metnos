@@ -55,6 +55,58 @@ quella con il modello è la predefinita. È lo stesso ordine di priorità che §
 inverte, e il primo passo utile non è costruire: è misurare quanto coprirebbero le
 regole esistenti se venissero accese.
 
+## 0-ter. Che cosa è davvero universale, e che cosa no
+
+Un classificatore universale deterministico — una funzione che, dato un oggetto
+qualunque, ne dica il genere — **non è realizzabile**, e non va tentato. Ciò che è
+universale non è il calcolo: è il **contratto**. Lo schema è comune, il calcolo è
+locale al dominio, e nessun dominio è obbligato a riempirlo tutto.
+
+Le dimensioni non sono sullo stesso piano, e mescolarle è l'errore che rende la
+cosa «troppo difficile».
+
+**Universali e deterministiche — quattro.** Non richiedono di capire l'oggetto:
+sono note per il solo fatto che l'oggetto è arrivato.
+
+1. **Tipologia.** Non si classifica: la si sa. Il dominio che ha prodotto l'oggetto
+   sa che cos'è, perché è lui ad averlo letto. È il campo che seleziona come si
+   calcolano gli altri.
+2. **Sorgente**, nei suoi quattro tratti — canale, identità entro il canale, grado
+   di autenticazione, relazione (primo contatto, ricorrente, noto). Tutti esistono
+   per qualunque oggetto: un messaggio ha un mittente, una segnalazione un autore,
+   una pagina un dominio, un file un proprietario. I primi tre si leggono, il
+   quarto si conta.
+3. **Tempo.** Momento d'osservazione, momento di creazione quando dichiarato,
+   cadenza rispetto agli altri oggetti della stessa sorgente. Sempre disponibile,
+   sempre calcolabile.
+4. **Modo d'arrivo.** L'hai chiesto tu, è arrivato senza che tu lo chiedessi, o
+   l'ha prodotto il sistema. È deterministico — lo sa il runtime — ed è più
+   discriminante di quanto sembri: la differenza fra ciò che cerchi e ciò che ti
+   cerca è la radice della questione «indesiderato».
+
+**Universale come casella, locale nel contenuto — una.**
+
+5. **Struttura.** Il concetto vale per ogni genere di oggetto, i tratti no: le
+   intestazioni di lista valgono per la posta, non per un documento. È una casella
+   comune riempita da chi conosce il formato. Qui sta il lavoro vero, ed è per
+   dominio.
+
+**Non universali — tre.** Valgono solo per oggetti che comunicano, e richiedono il
+modello entro vocabolari chiusi.
+
+6. **Argomento**, 7. **richiesta**, 8. **tono.** Una fotografia non chiede nulla e
+   non ha tono; un evento di calendario nemmeno. Pretenderli ovunque è precisamente
+   ciò che renderebbe l'impianto impossibile.
+
+**La firma è parziale per costruzione.** Un dominio riempie i campi che sa
+riempire e lascia vuoti gli altri; una proiezione può usare soltanto campi
+presenti. Ne segue che l'impianto è **incrementale e non richiede un piano
+d'insieme**: la posta ha già la struttura, una piattaforma di codice ha
+autenticazione e relazione quasi gratis, i documenti forse non avranno mai nulla
+oltre alle quattro universali — e vanno bene lo stesso, perché con tipologia,
+sorgente, tempo e modo d'arrivo si distingue già moltissimo senza leggere una
+parola.
+
 ## 1. Il principio: firma composita, non vettore di testo
 
 Se la via per mittente lascia una lacuna documentata, la risposta **non** è
