@@ -230,6 +230,68 @@ soltanto l'interfaccia che le serve — una firma stabile, versionata, ispeziona
 e cancellabile — e resta costruibile anche senza, con la sola via per mittente e
 lista.
 
+## 1-bis. La firma semantica: dove il vettore è lo strumento giusto
+
+Fin qui la firma dice **di che genere** è un oggetto. C'è una seconda domanda che
+i vocabolari chiusi non possono soddisfare: **di che cosa parla**. Un documento di
+testo, la descrizione di una fotografia, una segnalazione su una piattaforma di
+codice, la nota di un appuntamento e un messaggio possono riguardare la stessa
+cosa senza condividere una parola. Nessuna tassonomia chiusa lo coglie, e provare
+a chiuderla è il progetto di ontologia che §1 rifiuta.
+
+È esattamente la condizione di riapertura già scritta in §2: *un campo
+intrinsecamente aperto, di cui non si può chiudere il vocabolario*. Il campo è
+`argomento`, e per esso il vettore non è una scorciatoia: è lo strumento adatto.
+
+**Due firme, due lavori distinti, e non vanno confusi.**
+
+| | Firma tipizzata | Firma semantica |
+|---|---|---|
+| risponde a | di che **genere** è | di che **cosa** parla |
+| forma | valori tipizzati, vocabolari chiusi | vettore |
+| operazione | uguaglianza su una proiezione | vicinanza |
+| serve a | **decidere** una classe | **trovare** i correlati |
+| ispezionabile | sì, riga leggibile | no |
+| governa un'azione | sì, entro le regole di §1 | **mai** |
+
+La riga che conta è l'ultima. La firma tipizzata **decide**; quella semantica
+**suggerisce vicinanza**. Un oggetto non diventa indesiderato perché il suo
+vettore è vicino a un altro: diventerebbe un classificatore opaco, che è
+precisamente ciò che questa spec evita. La vicinanza serve a *recuperare*, e il
+recupero si presenta con gli oggetti trovati, mai con una distanza.
+
+**Che cosa abilita, e non è poco.** Il richiamo che attraversa i domini: mettere
+in relazione un messaggio, un documento, un appuntamento e una fotografia che
+parlano della stessa cosa. Oggi il recupero esatto e testuale lo manca per
+costruzione: una parafrasi lessicalmente distante non trova nulla. È il limite già
+dichiarato in RM-0001 §8.1, e questa è la via per superarlo — fuori dallo store
+delle memorie, sugli oggetti.
+
+**Sei discipline, senza le quali torna il difetto di RM-0001 §6.7.1.**
+
+1. **È proprietà dell'oggetto, non conoscenza dell'utente.** La calcola il dominio,
+   vive accanto all'oggetto, e RM-0001 non ne conserva nemmeno una. Ciò che RM-0001
+   conserva resta il giudizio.
+2. **Versionata.** Cambiare modello d'immersione invalida tutti i vettori
+   precedenti invece di mescolarli, come per la versione dell'estrattore.
+3. **Cancellabile.** Un vettore derivato da contenuto personale muore con l'oggetto
+   e con il protocollo di oblio; non sopravvive in un indice separato.
+4. **Non entra nelle chiavi condivise.** Le cache dei piani restano indipendenti
+   dall'utente e dagli oggetti: la vicinanza si calcola dopo, mai prima.
+5. **Sempre accompagnata dalla firma tipizzata.** È il rimedio al suo difetto
+   strutturale: un vettore non si guarda e non si corregge, quindi ogni risposta
+   che lo usa mostra accanto i tratti leggibili che l'hanno accompagnato.
+6. **Calcolata con parsimonia.** Un vettore per oggetto non è gratis: si calcola a
+   richiesta o in lotti notturni, mai dentro un turno interattivo. Il precedente è
+   l'indice immagini costruito pigramente.
+
+**Che cosa esiste già.** L'infrastruttura c'è e non va costruita:
+`runtime/qwen_embedding.py`, `runtime/bge_embedding.py`, `runtime/clip_embedding.py`
+e `runtime/face_embedding.py` sono presenti, gli indici immagine sono in
+produzione, e la cache di primo livello usa già la vicinanza coseno sulle query.
+Manca soltanto un'immersione **per oggetto osservato**, con le sei discipline
+sopra. Il costo del lavoro non è il modello: è la disciplina.
+
 ## 2. Derivare le classi dal corpus: un reticolo dato, non un albero appreso
 
 L'idea successiva è naturale: su un corpus di messaggi si possono **derivare** le
