@@ -1288,6 +1288,66 @@ larghezza della banda attorno alle unità di registro (2 residui su 8 dei B,
 §9-septies.5), la leva D già istruita (§9-quinquies.2). Nessuna passa dal prompt
 del composer, ed è il punto.
 
+## 9-octies. Le due ratifiche del 26/7 alla prova (cert32): una passa, una è bocciata dalla misura
+
+Roberto ha ratificato tre casi in sospeso. Il secondo (`f1-github#4`) resta
+rosso per scelta: l'attesa di otto famiglie a «quali operazioni GitHub sono
+disponibili» è legittima, e il difetto è che quella domanda seleziona UNA fonte
+sola — si chiude allargando la banda attorno alle unità di registro, non
+abbassando l'asta. Gli altri due sono stati implementati e misurati insieme in
+cert32: **110 pass**, cioè **+2 / −7 contro cert31** (115). Fuori banda, quindi
+attribuibile.
+
+### 9-octies.1 Ratifica del corpus mail: validata
+
+`ops-mail-credentials-typo` pretendeva il percorso `~/.config/metnos/mail/<nome>.env`
+e il campo `HOST_IMAP`. Le fonti pubbliche lo attestano — ma come **percorso di
+compatibilità e migrazione**, e dichiarano che «il vault cifrato ha precedenza»
+(`doc-public-mail-accounts-766a246aa389-it-0005`). Il test misurava quindi la via
+deprecata. Riscritta sul meccanismo corrente (modulo credenziali iniettato, ADR
+0199: Metnos chiede i campi in un flusso protetto, i segreti sono cifrati e
+sostituiti da un marcatore redatto prima del planner): **il caso passa**, e
+`typical_operations` chiude a 32/0.
+
+### 9-octies.2 Conoscenza delle pagine admin: la politica regge, l'implementazione no
+
+La politica ratificata — la conoscenza delle superfici è aperta all'utente,
+l'ACCESSO resta admin — è coerente con un fatto già vero: lo stesso registro
+genera la guida pubblica `docs/{it,en}/interface.html`, che pubblica ogni route e
+ogni sommario. Tenere il Tutor più muto della documentazione pubblicata non
+proteggeva niente.
+
+L'implementazione misurata era: `knowledge_audience` con default `user` (28 unità
+di superficie visibili all'audience `user`) più una clausola d'accesso derivata da
+`audience` aggiunta al **testo** di ognuna. Due esiti distinti, entrambi provati:
+
+1. **Non risolve il proprio bersaglio.** `admin-restricted-user` continua a
+   fallire, ed è il record a dirlo: esito `fondata`, otto fonti in selezione, e
+   **nessuna è la superficie** — vincono documenti pubblici (catalogo executor,
+   QuickTour, Tutor) e argomenti di executor. La risposta dice, onestamente, «il
+   contesto non specifica una pagina dedicata». Aprire l'audience non porta la
+   pagina in selezione: la porta solo nel campo dei candidati. Il difetto era, e
+   resta, di RETRIEVAL.
+2. **Costa 6 casi.** Perde `admin-devices-pairing`, `admin-timers-controls`,
+   `admin-turns-channel`, `admin-user-detail` (audience amministratore: per loro
+   la visibilità non è cambiata, solo il testo) e i due
+   `conversation-telegram-ui-location`. I concetti che spariscono sono campi
+   dell'elenco visibile della pagina: `admin-turns-channel` perde «Telegram»,
+   `admin-user-detail` perde «nome visualizzato» ed «email».
+
+**Generalizzazione, ed è più larga di quella di §9-septies.5**: il budget saturo
+non è solo il ledger, è anche il TESTO DELLA FONTE. Una frase aggiunta a ogni
+unità è una leva a tutti gli effetti, e paga il suo posto togliendolo a un campo
+obbligatorio. Il corollario operativo: un'informazione che serve in un caso su
+venti non va scritta nelle venti fonti, va aggiunta a valle nel solo caso che la
+richiede — qui, il richiamo al ruolo appartiene al momento della risposta e al
+solo principal non amministratore, non al catalogo.
+
+La politica resta ratificata e **da implementare**; la reimplementazione va
+misurata da sola, perché la sola visibilità estesa cambia la competizione nei
+casi utente e non è stata isolata da questa passata. Consegnato di cert32 resta
+il solo corpus mail (`typical_operations` 32/0).
+
 ## 10. Registro di avanzamento
 
 | Data | Evento | Evidenza |
@@ -1343,3 +1403,4 @@ del composer, ed è il punto.
 | 2026-07-26 | Tre difetti del corpus corretti con l'evidenza | `ops-undo` letterale «ultima» → gate `lex:tutor_gate.last` (instabilità misurata come prova); `ops-google-workspace` pretendeva l'area `tasks` che il catalogo firmato NON espone (10 aree) e avrebbe imposto di dichiarare una capacità inesistente; `ops-mail-credentials-typo` (file di configurazione contro modulo iniettato ADR 0199) resta in attesa di ratifica |
 | 2026-07-26 | Leva E′: clausole della primaria quando è prosa | Ambito corretto di §9-sexies: le fonti che attestano `one_off` e `vagli` sono sezioni `manual` pubbliche, primarie in 3 dei 4 casi, non le schede. Istruzione del ledger condizionata alla presenza di clausole. Due difetti dell'estrattore trovati dai test: terminatore seguito da chiusura di citazione, e virgolette curve in EN (corretto come classe tipografica). 100 test tutor verdi; cert29a/b misura insieme la leva e il LIVELLO DI RUMORE |
 | 2026-07-26 | Leva E′ ritirata: il ledger è un budget saturo | Isolata a **+3 / −5** riscorando le risposte di cert25 col corpus corretto (stesse risposte, matcher nuovo). Sui guadagni la riparazione NON scatta e sulle perdite non c'è nessun buco di clausola: la leva agisce arricchendo il PRIMO prompt, e il carico aggiunto sposta contenuto obbligatorio già coperto. Si attivava su 63 casi su 127. Regola generale: aggiungere una famiglia di voci al ledger costa più di quanto renda — una variante richiede un meccanismo che non passi dal prompt del composer (§9-septies.5). Difetto separato aperto: 46 aree di capacità chieste a una domanda di login |
+| 2026-07-26 | cert32: ratifica corpus mail validata, conoscenza admin bocciata | 110+7/134 (+2/−7 contro cert31). `ops-mail-credentials-typo` passa col meccanismo corrente (ADR 0199) e `typical_operations` chiude 32/0: il file `.env` che il test pretendeva è documentato come percorso di COMPATIBILITÀ. L'apertura di `knowledge_audience` non porta la superficie in selezione (8 fonti, nessuna è la pagina: difetto di retrieval) e la clausola d'accesso aggiunta al testo di 28 unità costa 6 casi. Il budget saturo vale anche per il TESTO DELLA FONTE, non solo per il ledger (§9-octies) |

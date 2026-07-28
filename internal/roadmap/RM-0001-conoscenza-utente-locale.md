@@ -905,12 +905,52 @@ lingua aggiunge mapping e messaggi, non branch applicativi.
 
 ## 11. Verifica non giocabile
 
+### 11.0 Prontezza: sapere se serve, prima di costruirla
+
+Una domanda precede tutte le altre e non richiede né corpus né implementazione:
+**questa istanza ha qualcosa da guadagnare?** La memoria utente non serve a chi non
+si ripete. Se un utente non ha mai rinominato la stessa cartella, non ha mai
+ripetuto lo stesso calendario, non ha mai corretto due volte la stessa cosa, allora
+F0-F6 non gli restituiranno nulla, per quanto siano ben costruite.
+
+La risposta si misura, non si stima, e si misura **prima di F0** con un contatore
+in sola lettura sui turni già registrati. Non è una fase e non ha prerequisiti:
+legge il registro dei turni, conta e stampa. Quattro grandezze:
+
+1. **Ripetizione di valore per argomento** — quante volte lo stesso argomento di
+   uno stesso executor riceve lo stesso valore in turni distinti. È il bacino di
+   UC-04 e di F3.
+2. **Riconferme identiche** — quante volte una disambiguazione ha ricevuto due
+   volte la stessa risposta. È il bacino di UC-03.
+3. **Correzioni ripetute di presentazione** — quante volte la stessa richiesta di
+   forma torna. È il bacino di UC-01 e UC-02.
+4. **Forme di piano ricorrenti** — quante sequenze canoniche di azioni compaiono
+   più di una volta con lo stesso contesto tipizzato. È il bacino di UC-07 e di F6.
+
+Il contatore non scrive nulla, non applica nulla, non costruisce conoscenza: emette
+soltanto numeri aggregati. Non contraddice l'esclusione di §3.2, che vieta al
+**sottosistema** di ingerire automaticamente i turni storici come conoscenza; qui i
+turni non diventano memoria di nessuno, diventano una misura per decidere.
+
+Su un'**istanza nuova** il contatore non ha nulla da leggere, e la risposta onesta
+è «non ancora»: si usa il sistema per qualche settimana e poi lo si interroga.
+Nessuna quantità di lavoro anticipato può sostituire quel dato. Dichiararlo è più
+utile che fingere che una roadmap valga uguale per tutti.
+
+Una soglia di prontezza per fase viene congelata insieme alle altre in F0 (§13.0
+T13): sotto quella soglia, la fase corrispondente non si costruisce. È lecito
+implementare F2 e fermarsi, se i numeri dicono che F3 non avrebbe bacino.
+
 ### 11.1 Corpus congelato in F0
 
-Minimo:
+Il corpus si divide in due parti che hanno proprietario diverso. Confonderle è
+l'errore che rende la roadmap più costosa di quanto sia.
 
-- 30 coppie sorgente-beneficio separate da almeno una sessione: preferenze,
-  default, riferimenti, decisioni, episodi e routine;
+**Corpus di prodotto — scritto una volta, spedito con Metnos, identico su ogni
+istanza.** Riguarda i danni, non i benefici, e i danni non dipendono dalle
+abitudini di chi usa il sistema: un travaso fra principali è un difetto ovunque.
+Nessun utente deve riscriverlo, e nessuna installazione nuova lo rifà:
+
 - 30 richieste-esca con profilo irrilevante, etichettate prima del test;
 - 10 trappole con riferimento corretto poi rimosso, sostituito o riciclato;
 - 5 trappole di **candidato fabbricato da contenuto esterno prima della
@@ -924,13 +964,62 @@ Minimo:
 - 12 attacchi da testo esterno, citazioni, allegati, codice e output tool;
 - IT ed EN separati; formulazioni e domini non condivisi fra sviluppo e test.
 
+Sono circa 69 casi su un centinaio, e sono la parte che alimenta i criteri
+bloccanti di §11.3. Vivono nel repository con la loro impronta, come qualunque
+altra suite, e valgono su ogni installazione.
+
+**Corpus d'istanza — derivato a macchina, mai compilato a mano.** È la parte che
+dipende da chi usa il sistema, perché il beneficio è per definizione suo. Non viene
+scritta né etichettata da nessuno: la **estrae un estrattore deterministico** dal
+registro dei turni già presente, perché l'oracolo di cui c'è bisogno esiste già ed
+è il comportamento passato dell'utente.
+
+Il meccanismo. Un turno in cui un valore è stato fornito esplicitamente per un
+argomento è una **sorgente**; un turno successivo, separato da almeno una sessione,
+in cui lo stesso valore è stato fornito di nuovo per lo stesso argomento e ambito è
+un **beneficio**; il valore atteso è quello che l'utente ha realmente usato, non
+un'etichetta. Analogamente: due risposte identiche alla stessa disambiguazione
+formano una coppia di riferimento; due correzioni della stessa forma di
+presentazione formano una coppia di preferenza; due esecuzioni della stessa
+sequenza canonica con lo stesso contesto tipizzato formano una coppia di routine.
+Le **esche** sono l'altra faccia dello stesso conteggio: i turni in cui nessun
+argomento, nessuna forma e nessuna risposta si ripetono, che il sistema non deve
+toccare. Nessun passo umano in nessuno dei due rami.
+
+L'estrattore è lo stesso modulo della misura di prontezza (§11.0), che così ha due
+uscite: i conteggi che dicono **se** costruire una fase, e il corpus che dice
+**quanto** ha reso. È in sola lettura, non importa alcun modulo del sottosistema e
+non scrive conoscenza di nessuno.
+
+Tre condizioni perché la prova resti non giocabile, tutte verificabili:
+
+- il corpus viene **congelato e impronta committata prima** che la fase esista.
+  L'oracolo è scritto nel passato: nessuna implementazione successiva può
+  influenzarlo;
+- l'estrattore **non condivide codice** con i moduli che estraggono valore
+  nell'implementazione. Se la stessa funzione decidesse che cosa è «lo stesso
+  argomento» sia nel corpus sia nel prodotto, la prova misurerebbe se stessa. Una
+  verifica sul grafo delle importazioni lo impedisce;
+- la finestra osservata è dichiarata insieme al risultato, perché il registro dei
+  turni ha una conservazione limitata (60 giorni in linea, 365 in archivio).
+
+**Che cosa questo NON copre, dichiarato invece che taciuto.** L'estrazione vede
+soltanto ciò che lascia traccia in un turno: valori d'argomento, risposte a
+disambiguazioni, forme di piano. Un claim libero — «Atlas è il progetto del
+portale» — non produce un beneficio ripetuto e misurabile in quel modo. Per la
+memoria libera la prova di beneficio resta più debole di quella dei default, e va
+riportata come tale; le prove di **danno**, che sono quelle bloccanti, non ne
+risentono, perché vengono per intero dal corpus di prodotto.
+
 Le numerosità qui elencate sono il minimo del corpus. Nessuna fase e nessuna prova
 fissa un proprio conteggio di esche o trappole: lo legge dall'etichetta del corpus
 (§13.0 T16).
 
 Ogni caso porta referente/valore atteso indipendente dall'esito executor. La
 partizione idoneo/non idoneo è nell'etichetta del corpus, non decisa dal sistema
-sotto test.
+sotto test. L'etichetta è binaria più valore atteso: non esiste un punteggio
+graduato di rilevanza, che non falsificherebbe nulla e che nessuna metrica di §11.2
+saprebbe consumare.
 
 ### 11.2 Tre bracci
 
@@ -1004,6 +1093,24 @@ Obbligatori:
 - spegnimento della fase con comportamento della precedente invariato.
 
 ## 12. Fasi
+
+### P — Prontezza ed estrazione del corpus (precede F0, non è una fase)
+
+**Lavoro:** un modulo in sola lettura sul registro dei turni, con due uscite e
+nessuna scrittura: i quattro conteggi di §11.0 e il corpus d'istanza estratto a
+macchina di §11.1. Nessuna dipendenza, nessun interruttore, nessun passo umano: si
+esegue, stampa e congela. Vive in `runtime/user_context_readiness.py`, fuori dal
+pacchetto del sottosistema, perché non ne importa nulla — e non deve importarne
+nulla, altrimenti la prova misurerebbe se stessa — e sopravvive anche se RM-0001
+non viene mai implementata.
+
+**Uscita:** un rapporto con i quattro conteggi, la finestra osservata, i primi
+argomenti e forme per frequenza, e il corpus con la sua impronta. È il dato su cui
+si decide **se** e **quali** fasi costruire. Su un'istanza senza storia entrambe le
+uscite sono vuote e l'esito è «non ancora»: si usa il sistema qualche settimana e
+lo si interroga di nuovo. Nessun lavoro anticipato può sostituire quel dato, e
+nessuna compilazione a mano può surrogarlo — un corpus scritto a tavolino
+misurerebbe ciò che si immagina di fare, non ciò che si fa.
 
 ### F0 — Fondazione, identità e prova
 
