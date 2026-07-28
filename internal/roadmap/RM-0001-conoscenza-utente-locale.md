@@ -921,6 +921,42 @@ argomento presente e dichiararlo nell'esito; ordinare fra alternative dichiarate
 Nessun altro. Ogni verbo richiede una dichiarazione di dominio, agisce dopo il
 piano e cede al valore esplicito del turno.
 
+**Liste aperte: il caso degli interessi.** «Mi interessano intelligenza
+artificiale, tecnologia, politica estera, biologia; quando chiedo novità voglio
+prima quelle». Il caso usa due verbi insieme — riempie un argomento assente
+(«novità» non porta argomenti) e ordina il risultato — e introduce la difficoltà
+vera: un elenco di argomenti è un **dominio aperto**, non un enum. È esattamente la
+porta da cui la prosa rientra, e va tenuta stretta con due guardie deterministiche.
+
+1. **Forma vincolata, non contenuto vincolato.** Un interesse è un termine breve,
+   da una a tre parole; ciò che è più lungo non è un argomento, è una frase. Il
+   controllo è sulla forma e non richiede di sapere quali argomenti esistano al
+   mondo, quindi non invecchia e non è una lista nel codice (§7.3). È la guardia
+   che manca al precedente misurato in §6.7.1, dove il testo mediano è di
+   centocinquanta caratteri.
+2. **Quota che fa competere** (§6.7). Gli interessi attivi sono pochi per scelta:
+   con duecento interessi l'ordinamento non ordina più niente, e avere tutto in
+   cima equivale a non avere preferenze. Al tetto, il più debole per evidenza e
+   recenza cede il posto.
+
+**Dedurre che cosa leggi, mai chi sei.** «Se deduce che sono un biologo» è la
+formulazione che il sistema **non** deve seguire. «Sei un biologo» è
+un'affermazione d'identità: non ha destinazione dichiarata, non è verificabile e
+sbaglia in modo imbarazzante — le domande su una materia possono venire da un
+esame di un figlio. Ciò che il sistema può dedurre è il fatto osservabile che le
+sostiene: **leggi spesso di biologia**, che è una voce dell'argomento dichiarato
+`interessi`, è direttamente provata dai turni che la generano, ed è cancellabile
+con un tratto di penna. La differenza non è di sfumatura: la prima è un claim
+libero senza destinazione e va rifiutata; la seconda è un valore tipizzato con
+evidenza, e serve di più.
+
+**Ordinare non è filtrare.** Una preferenza d'ordine mette i tuoi argomenti in
+cima; non fa sparire il resto e non riduce ciò che viene cercato. Il risultato
+dichiara l'ordinamento applicato — come il raffinamento dichiara la propria
+influenza — e una richiesta esplicita di guardare altrove prevale (invariante 6).
+Un ordinamento che diventa silenziosamente un filtro è un troncamento non
+dichiarato, cioè §2.7 e §2.8 insieme.
+
 **Che cosa questo non apre.** Un attributo senza slot dichiarato resta un appunto
 inerte, come qualunque altro claim senza destinazione. Gli attributi che ricadono
 nelle categorie rifiutate dall'invariante 23 non sono ammessi a nessun titolo,
