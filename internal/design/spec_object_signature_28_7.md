@@ -27,6 +27,34 @@ l'oggetto è fatto**. Questa spec descrive la direzione con cui si affronterebbe
 generalizzata a qualunque genere di oggetto osservabile invece che risolta per la
 posta.
 
+## 0-bis. Che cosa esiste già, verificato
+
+Non è terreno vergine: un embrione esiste, copre **un** tratto di **un** genere di
+oggetti, ed è esattamente nella forma che questa spec propone di generalizzare.
+
+| Pezzo | Stato | Prova |
+|---|---|---|
+| Tratti di **struttura** per la posta, calcolati da intestazioni standard: `list`, `bulk`, `auto`, `noreply`, `esp` | ✅ esiste, deterministico, vocabolario chiuso di cinque valori | `runtime/mail_client.py:398` `_category_hints` |
+| Sono dichiarati **segnali neutri e non un giudizio** | ✅ esiste, ed è la stessa separazione di §2 fra «insolito» e «indesiderato» | docstring della stessa funzione |
+| Emessi su ogni messaggio letto | ✅ esiste | `category_hints` nel contratto d'uscita di `read_messages` |
+| Classificatore generico: lista + dimensione + **insieme chiuso** di classi → etichetta ogni elemento | ✅ esiste | `runtime/classify_entries.py` |
+| Pre-filtro **deterministico** che etichetta i casi inequivocabili senza modello | ⚠️ esiste ma **spento per impostazione predefinita** | `runtime/classify_entries.py:74` regole, `pre_filter` default off |
+| Il modello mappa in un vocabolario chiuso, non inventa classi | ✅ esiste | stesso file, lotti a tier `fast` |
+| Non partiziona: arricchisce e lascia partizionare a valle | ✅ esiste | stesso file |
+
+**Che cosa manca**, ed è la maggior parte: gli altri tratti (sorgente scomposta,
+richiesta, tono, argomento), la firma come oggetto **persistito e versionato**, le
+proiezioni, i **giudizi dell'utente** agganciati a una proiezione, la frequenza
+relativa al contesto, e qualunque forma di derivazione delle classi dal corpus.
+
+Due osservazioni che orientano il lavoro. La prima: il pattern non è estraneo al
+sistema — tratti strutturali calcolati più una mappatura del modello in un insieme
+chiuso è già ciò che il codice fa, e questa spec lo estende invece di sostituirlo.
+La seconda, meno comoda: la via deterministica **c'è già ed è spenta**, mentre
+quella con il modello è la predefinita. È lo stesso ordine di priorità che §7.9
+inverte, e il primo passo utile non è costruire: è misurare quanto coprirebbero le
+regole esistenti se venissero accese.
+
 ## 1. Il principio: firma composita, non vettore di testo
 
 Se la via per mittente lascia una lacuna documentata, la risposta **non** è
