@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Metnos Architecture Handbook — from system to components</title>
-    <meta name="description" content="A visual, tutorial handbook to the complete Metnos architecture: principles, request flow, executors, authority, safety, memory, synthesis, channels and the canonical component contracts.">
-    <meta name="keywords" content="Metnos, architecture, governed agents, executor, remote executors, devices, placement, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, ReAct, local planner, Mētis, mnestome, fast-path, self-hosted">
+    <title>Metnos Architecture Guide — from system to components</title>
+    <meta name="description" content="A visual, tutorial guide to the Metnos architecture: principles, request flow, executors, authority, safety, memory, synthesis, channels and canonical component contracts.">
+    <meta name="keywords" content="Metnos, architecture, governed agents, executor, remote executors, devices, placement, closed vocabulary, synt, executor synthesis, vaglio, sandbox, GBNF, grammar, deterministic routing, LLM tiers, local planner, Mētis, mnestome, fast-path, self-hosted">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
     <link rel="canonical" href="https://metnos.com/en/architecture/">
@@ -14,13 +14,13 @@
     <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/">
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/en/architecture/">
-    <meta property="og:title" content="Metnos Architecture Handbook">
+    <meta property="og:title" content="Metnos Architecture Guide">
     <meta property="og:description" content="One visual path from the system's principles to the contracts of its components.">
     <meta property="og:locale" content="en_US">
     <meta property="og:locale:alternate" content="it_IT">
     <meta property="og:site_name" content="Metnos">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Metnos Architecture Handbook">
+    <meta name="twitter:title" content="Metnos Architecture Guide">
     <meta name="twitter:description" content="The complete architecture, explained as a visual tutorial from overview to component contracts.">
     <style>
 :root {
@@ -144,19 +144,6 @@ figcaption {
     margin-top: 8px;
 }
 
-.callout {
-    border-left: 4px solid;
-    padding: 10px 16px;
-    margin: 15px 0;
-    border-radius: 0 4px 4px 0;
-    font-size: 10pt;
-    page-break-inside: avoid;
-}
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
-
 .title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
 .title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
 .title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
@@ -253,25 +240,12 @@ html { scroll-behavior: smooth; }
     color: #334155;
     font-size: 12pt;
 }
-.hero-stats,
 .learning-path,
 .component-grid,
 .reading-paths {
     display: grid;
     gap: 12px;
 }
-.hero-stats { grid-template-columns: repeat(4, 1fr); margin-top: 28px; }
-.hero-stat {
-    position: relative;
-    z-index: 1;
-    padding: 12px 10px;
-    border: 1px solid rgba(26,71,122,.16);
-    border-radius: 12px;
-    background: rgba(255,255,255,.82);
-}
-.hero-stat strong { display: block; color: var(--navy); font-size: 16pt; line-height: 1.15; }
-.hero-stat span { color: var(--muted); font-size: 9pt; }
-
 .part-banner {
     margin: 60px 0 28px;
     padding: 22px 24px;
@@ -409,7 +383,6 @@ html { scroll-behavior: smooth; }
 @media (max-width: 760px) {
     body { padding: 22px 16px; }
     .title-page { margin: 0 -16px; padding: 70px 22px 42px; border-radius: 0 0 20px 20px; }
-    .hero-stats { grid-template-columns: repeat(2, 1fr); }
     .learning-path { grid-template-columns: 1fr; }
     .learning-step { min-height: 0; }
     .zoom-ladder, .authority-flow, .scope-equation { grid-template-columns: 1fr; }
@@ -428,7 +401,7 @@ html { scroll-behavior: smooth; }
     .title-page h1 { font-size: 28pt; }
     .part-banner { background: white; color: var(--navy); border: 2px solid var(--navy); box-shadow: none; }
     .part-banner h2, .part-banner p { color: var(--navy); }
-    .learning-path, .hero-stats { grid-template-columns: repeat(2, 1fr); }
+    .learning-path { grid-template-columns: repeat(2, 1fr); }
 }
     </style>
 <link rel="stylesheet" href="/assets/metnos.css">
@@ -445,12 +418,12 @@ html { scroll-behavior: smooth; }
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
   <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
     <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
-    <span style="color:#8e8e93;">Foundations &rsaquo; <strong style="color:#1a1a1a;">Architecture handbook</strong></span>
+    <span style="color:#8e8e93;">Foundations &rsaquo; <strong style="color:#1a1a1a;">Architecture guide</strong></span>
   </div>
 </div>
 
 <div class="title-page">
-    <div class="eyebrow">Architecture handbook &middot; July 2026</div>
+    <div class="eyebrow">Architecture guide</div>
     <h1>Metnos</h1>
     <div class="subtitle">From the whole system to its component contracts</div>
     <p class="promise">
@@ -459,16 +432,8 @@ html { scroll-behavior: smooth; }
     </p>
     <div class="meta">
         Status: pre-1.0<br>
-        Self-contained HTML &mdash; printable as PDF<br>
-        <br>
-        Audience: curious readers first, implementers second.<br>
+        HTML format &mdash; printable as PDF<br>
         Simple language, exact contracts, diagrams that can be read without the code.
-    </div>
-    <div class="hero-stats" aria-label="Document at a glance">
-        <div class="hero-stat"><strong>5</strong><span>learning stages</span></div>
-        <div class="hero-stat"><strong>15+</strong><span>visual explanations</span></div>
-        <div class="hero-stat"><strong>26</strong><span>component deep dives</span></div>
-        <div class="hero-stat"><strong>1</strong><span>continuous architecture</span></div>
     </div>
 </div>
 
@@ -506,11 +471,11 @@ html { scroll-behavior: smooth; }
   <div class="zoom-arrow" aria-hidden="true">&rarr;</div>
   <div class="zoom-card"><strong>How it is built</strong><small>Canonical component contracts: schemas, calls, authority and error conditions.</small></div>
 </div>
-<div class="checkpoint"><strong>How to use this handbook.</strong> Read straight through once. On a second pass, use the component links as trapdoors into implementation detail. The overview explains the promise; the component page defines the contract that keeps it.</div>
+<div class="checkpoint"><strong>How to use this guide.</strong> Read straight through once. On a second pass, use the component links as trapdoors into implementation detail. The overview explains the promise; the component page defines the contract that keeps it.</div>
 </div>
 
 
-<div class="part-banner"><div class="part-kicker">Part I &middot; Orientation</div><h2>Know what you are looking at</h2><p>Purpose first, then design bets, then the small vocabulary used throughout the rest of the handbook.</p></div>
+<div class="part-banner"><div class="part-kicker">Part I &middot; Orientation</div><h2>Know what you are looking at</h2><p>Purpose first, then design bets, then the small vocabulary used throughout the rest of the guide.</p></div>
 
 <h1 id="s1">1. What Metnos is</h1>
 
@@ -602,8 +567,8 @@ governing architecture.
 <rect x="288" y="188" width="272" height="92" rx="8" fill="#dbeafe" stroke="#3b82f6"/>
 <text x="424" y="208" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">The mind (ch. 5)</text>
 <text x="424" y="226" text-anchor="middle" fill="#1F2937" font-size="9.5">intent &rarr; plan memory &rarr; M&emacr;tis engine</text>
-<text x="424" y="242" text-anchor="middle" fill="#1F2937" font-size="9.5">a whole plan in ONE LLM call</text>
-<text x="424" y="260" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">deterministic routing: same request, same plan</text>
+<text x="424" y="242" text-anchor="middle" fill="#1F2937" font-size="9.5">a whole plan as structured output</text>
+<text x="424" y="260" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">deterministic boundaries around the LLM proposal</text>
 
 <rect x="288" y="290" width="272" height="50" rx="8" fill="#fef3c7" stroke="#f59e0b"/>
 <text x="424" y="310" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">The guards (ch. 12)</text>
@@ -661,22 +626,16 @@ governing architecture.
 <table>
 <thead><tr><th style="width:26%">Item</th><th>Actual state</th></tr></thead>
 <tbody>
-<tr><td><strong>Shape</strong></td><td>Python &ge; 3.11 process, executor-based microarchitecture; ReAct runtime with one-shot planning (the M&emacr;tis engine, ch. 5).</td></tr>
+<tr><td><strong>Shape</strong></td><td>Python &ge; 3.12 process, executor-based microarchitecture, and constrained one-shot planning in the M&emacr;tis engine (ch. 5).</td></tr>
 <tr><td><strong>Tools</strong></td><td>Signed executors in the catalog, plus those <em>synthesized on the fly</em> and those imported behind a gate (ch. 7). All are vectorized: list in, list out. The <a href="../domains.html">domain reference</a> provides the user view; current names and counts live in the <a href="executor_catalog.html">generated catalog</a>.</td></tr>
 <tr><td><strong>Brain</strong></td><td>Compatible local or remote LLM endpoints; four abstract tiers <code>fast / middle / wise / frontier</code> (ch. 8). Frontier = cloud opt-in.</td></tr>
 <tr><td><strong>Channels</strong></td><td>Telegram (outbound long-poll, no open ports) + web on port 8770 (chat and admin dashboards), ch. 11.</td></tr>
 <tr><td><strong>Devices</strong></td><td>A controlled part of the catalog can run on registered PCs in the same network through <code>metnos-client</code>: the server remains the point of policy, selection, signing and audit; the device runs only executors declared compatible. Detail: <a href="remote_executors.html">remote executors</a>.</td></tr>
 <tr><td><strong>Senses</strong></td><td>In-process image pipeline: semantics + faces + EXIF in one unified index (ch. 10).</td></tr>
-<tr><td><strong>Language</strong></td><td>i18n by construction: every string and prompt is per-language data. IT + EN validated; other languages = drop-in translation packs (not yet tested).</td></tr>
-<tr><td><strong>License / status</strong></td><td>AGPL-3.0; pre-1.0. Public repo: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; a deterministic export-subset of the daily-driven instance.</td></tr>
+<tr><td><strong>Language</strong></td><td>Context per user and per request. Prompts, manifest descriptions, visible messages, and the input lexicon have declared sources and fallbacks. Italian and English are fully supported; adding another language requires translation and testing across all four areas.</td></tr>
+<tr><td><strong>License / status</strong></td><td>AGPL-3.0; pre-1.0. Public repository: <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> &mdash; the public distribution of code and release materials.</td></tr>
 </tbody>
 </table>
-
-<div class="callout note">
-<strong>Pre-1.0, not a polished product.</strong> Metnos is installable and
-operational, but interfaces and defaults may still change. Contracts, security,
-tests and explicit failures take priority over promises of stability.
-</div>
 
 
 <span id="cap2"></span>
@@ -724,17 +683,17 @@ agent frameworks.
 <rect x="648" y="56" width="280" height="190" rx="12" fill="white" stroke="#6B21A8" stroke-width="1.8" filter="url(#f2-sh)"/>
 <rect x="648" y="56" width="280" height="44" rx="12" fill="#6B21A8"/>
 <rect x="648" y="86" width="280" height="14" fill="#6B21A8"/>
-<text x="788" y="84" text-anchor="middle" fill="white" font-size="12.5" font-weight="700">3 &middot; Determinism</text>
-<text x="788" y="124" text-anchor="middle" fill="#1F2937" font-size="10">Same request &rarr; same plan,</text>
-<text x="788" y="140" text-anchor="middle" fill="#1F2937" font-size="10">every run: pinned seed, ties</text>
-<text x="788" y="156" text-anchor="middle" fill="#1F2937" font-size="10">broken by curated data, grammar.</text>
-<text x="788" y="182" text-anchor="middle" fill="#475569" font-size="9.5" font-style="italic">auditable and testable like software,</text>
-<text x="788" y="197" text-anchor="middle" fill="#475569" font-size="9.5" font-style="italic">not like a prompt</text>
+<text x="788" y="84" text-anchor="middle" fill="white" font-size="12.5" font-weight="700">3 &middot; Deterministic boundaries</text>
+<text x="788" y="124" text-anchor="middle" fill="#1F2937" font-size="10">Pools, signatures, validation and</text>
+<text x="788" y="140" text-anchor="middle" fill="#1F2937" font-size="10">execution are controlled code; the model</text>
+<text x="788" y="156" text-anchor="middle" fill="#1F2937" font-size="10">only proposes inside those boundaries.</text>
+<text x="788" y="182" text-anchor="middle" fill="#475569" font-size="9.5" font-style="italic">the probabilistic part stays explicit,</text>
+<text x="788" y="197" text-anchor="middle" fill="#475569" font-size="9.5" font-style="italic">measured and subject to control</text>
 <text x="788" y="226" text-anchor="middle" fill="#6B21A8" font-size="9.5" font-weight="700">ch. 5 &middot; 8</text>
 
 <path d="M 172 250 L 172 274 L 788 274 L 788 250" fill="none" stroke="#64748B" stroke-width="1.4"/>
 <line x1="480" y1="250" x2="480" y2="274" stroke="#64748B" stroke-width="1.4"/>
-<text x="480" y="300" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">together: a reproducible, verifiable agent of your own</text>
+<text x="480" y="300" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">together: a governed, inspectable agent of your own</text>
 </svg>
 <figcaption>Figure 2 &mdash; The three bets. Each one reverses an agent-framework habit: skills imported on trust, cloud-first design, the LLM as an oracle re-rolled every turn.</figcaption>
 </figure>
@@ -747,22 +706,20 @@ agent frameworks.
 <tr><td><strong>Tools</strong></td><td>Hand-written, imported or generated free-form, then run as-is with the assistant's privileges</td><td>Synthesized at runtime too &mdash; but from a <strong>closed, audited vocabulary</strong>: signed, aged, smoke-tested and screened before they can ever run</td></tr>
 <tr><td><strong>Safety</strong></td><td>Trust the author of the package</td><td><em>Don't</em> trust the package: the package must pass the checks (7-layer gate, ch. 7)</td></tr>
 <tr><td><strong>LLM</strong></td><td>Often cloud-first</td><td>Local first; frontier opt-in</td></tr>
-<tr><td><strong>Routing</strong></td><td>The model picks a tool each turn &mdash; non-reproducible</td><td><strong>Deterministic by construction</strong>: seed-pinned local inference, ties broken by curated affinity (ch. 8)</td></tr>
+<tr><td><strong>Routing</strong></td><td>The model may choose freely among ungoverned tools</td><td>A typed pool, grammar, validator, and validity signatures constrain the proposal. A valid cache hit is reproducible; a new LLM proposal may vary (ch. 8)</td></tr>
 <tr><td><strong>Output</strong></td><td>Free-form, different per tool</td><td>Uniform: list in / list out, pipeable between steps (ch. 6)</td></tr>
 <tr><td><strong>Undo</strong></td><td>Rare or best-effort</td><td>First-class: a closed catalog of reverse patterns, moves = COPY-then-DELETE, honest <code>ok_count</code> (ch. 12)</td></tr>
-<tr><td><strong>Language</strong></td><td>English only, strings in the code</td><td>i18n by construction: strings and prompts are per-language data</td></tr>
+<tr><td><strong>Language</strong></td><td>English only, strings in code</td><td>Per-user language; prompts, manifests, messages, and lexicon are distinct validated data</td></tr>
 </tbody>
 </table>
 
-<div class="callout tip">
-<strong>Why determinism pays off.</strong> Most agents treat the LLM as an
-oracle to re-roll: ask twice, get two different plans. Metnos makes the
-opposite bet: a <em>local</em> planner, constrained to a <em>closed</em>
-vocabulary, can be made reproducible. Routing can then be measured, put
-under regression tests, audited &mdash; like ordinary software. And it
-compounds: a request that has been solved once is replayed by a fast path
-<em>with no LLM call at all</em> (ch. 9).
-</div>
+<h2>Where determinism lives</h2>
+<p>Metnos does not present model prose as evidence. Prefiltering, grammar,
+validation, admission gates, execution, and cache-validity checks are
+controlled components under test. When a request has a stored plan that is
+still valid, the fast path reuses it without a new model call. When a plan must
+be generated, the proposal remains probabilistic but bounded and observable
+(ch. 9).</p>
 
 
 <h1 id="s3">3. The key concepts, in seven cards</h1>
@@ -949,7 +906,7 @@ task &mdash; crosses all of them, in order.
 <!-- band 3: engine -->
 <rect x="60" y="200" width="760" height="84" rx="10" fill="url(#f4-navy)" stroke="#0F2A47" stroke-width="2"/>
 <text x="84" y="228" fill="white" font-size="12" font-weight="700">3 &middot; Cognitive engine &mdash; M&emacr;tis</text>
-<text x="84" y="248" fill="#E3ECF5" font-size="10">plan memory (fastpath &#9733; &middot; autopath) &rarr; prefilter &rarr; proposer (1 call, GBNF) &rarr; validator &rarr; execution</text>
+<text x="84" y="248" fill="#E3ECF5" font-size="10">plan memory (L0 &middot; L1) &rarr; prefilter &rarr; constrained proposer &rarr; validator &rarr; execution</text>
 <text x="84" y="266" fill="#B6E1FB" font-size="9.5" font-style="italic">targeted recovery on errors &middot; honest terminator on dead ends &mdash; ch. 5</text>
 <text x="780" y="228" text-anchor="end" fill="#B6E1FB" font-size="9" font-family="Consolas,monospace">runtime/engine/*</text>
 
@@ -1001,19 +958,20 @@ task &mdash; crosses all of them, in order.
 <h1 id="s5">5. Anatomy of a multitool turn</h1>
 
 <p class="lead">
-If you read only one chapter, read this one. We follow a real request
+If you read only one chapter, read this one. We follow an example request
 &mdash; <strong>&laquo;find the spam mails and move them to the trash&raquo;</strong>
-&mdash; from entry to answer: four tools chained together, a single call to
-the model, every step measured and annotated.
+&mdash; from entry to answer: four tools chained together, one structured
+proposal, and every step measured and annotated.
 </p>
 
 <h2>5.1 The cascade, step by step</h2>
 
 <p>
 The ground rule: <strong>the model is the last resort, not the first</strong>.
-Memory is tried first (zero LLM, milliseconds); if the request is new, the
-model is asked <em>once</em>, for the whole plan; the execution that follows is
-pure deterministic mechanics.
+Memory is tried first without an LLM. For a new request, the proposer asks the
+model for the whole structured plan. The number of calls depends on candidate
+and grammar configuration; execution of the validated plan follows
+deterministic rules.
 </p>
 
 <figure>
@@ -1072,10 +1030,10 @@ pure deterministic mechanics.
 <rect x="150" y="258" width="660" height="700" rx="14" fill="#F4F7FB" stroke="#1A477A" stroke-width="1.6" stroke-dasharray="6 4"/>
 <text x="170" y="282" fill="#1A477A" font-size="11" font-weight="700" font-style="italic">the M&emacr;tis engine &mdash; one entry point, every layer records whether it answered</text>
 
-<!-- L0 fastpath approved -->
+<!-- L0 fastpath -->
 <rect x="270" y="296" width="420" height="54" rx="9" fill="white" stroke="#548235" stroke-width="1.6" filter="url(#f5-sh)"/>
-<text x="480" y="316" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Fastpath &#9733; &mdash; user-approved shortcuts</text>
-<text x="480" y="334" text-anchor="middle" fill="#475569" font-size="9.5">exact fingerprint &lt;5 ms &middot; semantic similarity &lt;150 ms</text>
+<text x="480" y="316" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Fastpath L0 &mdash; automatically recorded successes</text>
+<text x="480" y="334" text-anchor="middle" fill="#475569" font-size="9.5">exact fingerprint &middot; semantics only for generalizable plans</text>
 <rect x="166" y="308" width="86" height="26" rx="13" fill="#dcfce7" stroke="#16a34a"/>
 <text x="209" y="325" text-anchor="middle" fill="#14532d" font-size="9" font-weight="700">0 LLM</text>
 <text x="706" y="326" fill="#A0522D" font-size="9.5" font-style="italic">&#10007; miss</text>
@@ -1083,7 +1041,7 @@ pure deterministic mechanics.
 
 <!-- L1 autopath -->
 <rect x="270" y="368" width="420" height="54" rx="9" fill="white" stroke="#548235" stroke-width="1.6" filter="url(#f5-sh)"/>
-<text x="480" y="388" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Autopath &mdash; plans learned from successful turns</text>
+<text x="480" y="388" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Autopath L1 &mdash; plans confirmed by feedback</text>
 <text x="480" y="406" text-anchor="middle" fill="#475569" font-size="9.5">searches by meaning of the request, then by exact intent</text>
 <rect x="166" y="380" width="86" height="26" rx="13" fill="#dcfce7" stroke="#16a34a"/>
 <text x="209" y="397" text-anchor="middle" fill="#14532d" font-size="9" font-weight="700">0 LLM</text>
@@ -1109,12 +1067,12 @@ pure deterministic mechanics.
 
 <!-- proposer -->
 <rect x="270" y="534" width="420" height="92" rx="9" fill="url(#f5-navy)" stroke="#0F2A47" stroke-width="2" filter="url(#f5-sh)"/>
-<text x="480" y="556" text-anchor="middle" fill="white" font-size="12" font-weight="700">M&emacr;tis Proposer &mdash; wise tier, ONE call</text>
+<text x="480" y="556" text-anchor="middle" fill="white" font-size="12" font-weight="700">M&emacr;tis Proposer &mdash; configured wise tier</text>
 <text x="480" y="576" text-anchor="middle" fill="#E3ECF5" font-size="9.5">proposes the <tspan font-weight="700">whole plan</tspan>: steps + links + final message</text>
 <text x="480" y="592" text-anchor="middle" fill="#E3ECF5" font-size="9.5">N adaptive candidates, each constrained by the GBNF grammar</text>
 <text x="480" y="608" text-anchor="middle" fill="#B6E1FB" font-size="9" font-style="italic">verb-filter on the pool &middot; early-stop if the first convinces &middot; teleological ranking</text>
 <rect x="166" y="566" width="86" height="26" rx="13" fill="#dbeafe" stroke="#2B6CB0"/>
-<text x="209" y="583" text-anchor="middle" fill="#1A477A" font-size="9" font-weight="700">1&times; LLM</text>
+<text x="209" y="583" text-anchor="middle" fill="#1A477A" font-size="9" font-weight="700">constrained LLM</text>
 <text x="706" y="572" fill="#475569" font-size="9.5" font-style="italic">the model chooses</text>
 <text x="706" y="586" fill="#475569" font-size="9.5" font-style="italic">INSIDE the rail:</text>
 <text x="706" y="600" fill="#475569" font-size="9.5" font-style="italic">no prose, no invented</text>
@@ -1164,8 +1122,8 @@ pure deterministic mechanics.
 <!-- success path -->
 <line x1="480" y1="926" x2="480" y2="976" stroke="#1A477A" stroke-width="2" marker-end="url(#f5-arr)"/>
 <rect x="170" y="980" width="300" height="56" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1.6"/>
-<text x="320" y="1002" text-anchor="middle" fill="#14532d" font-size="10.5" font-weight="700">Autopath records the successful plan</text>
-<text x="320" y="1020" text-anchor="middle" fill="#14532d" font-size="9.5" font-style="italic">next time: same answer, 0 LLM (ch. 9)</text>
+<text x="320" y="1002" text-anchor="middle" fill="#14532d" font-size="10.5" font-weight="700">L0 records success; L1 observes</text>
+<text x="320" y="1020" text-anchor="middle" fill="#14532d" font-size="9.5" font-style="italic">L1 becomes active after positive feedback (ch. 9)</text>
 <path d="M 480 980 Q 480 1006 476 1008" fill="none" stroke="#16a34a" stroke-width="1.8" marker-end="url(#f5-arrS)"/>
 
 <!-- recovery / terminator -->
@@ -1189,18 +1147,18 @@ pure deterministic mechanics.
 
 <text x="480" y="1140" text-anchor="middle" fill="#64748B" font-size="9.5" font-style="italic">per-phase telemetry: intent_ms &middot; prefilter_ms &middot; vaglio_ms &middot; exec_ms &mdash; every turn is measurable and comparable</text>
 </svg>
-<figcaption>Figure 5 &mdash; The anatomy of a multitool turn. Shortcuts (0 LLM) are tried first; if the request is new, the Proposer asks the model for the whole plan in a single constrained call; execution is deterministic, with the vaglio in front of the only state-changing step. On the right, the two error paths: targeted recovery and the honest dead end.</figcaption>
+<figcaption>Figure 5 &mdash; The anatomy of a multitool turn. Valid shortcuts are tried first; for a new request, the Proposer asks the model for a structured plan and the Validator checks it before execution. Vaglio precedes every step that requires it; the right side shows targeted recovery and the declared dead end.</figcaption>
 </figure>
 
 <ol>
   <li><strong>Literal shortcuts.</strong> A closed table recognizes the most common phrases (&laquo;what time is it&raquo;) in microseconds. Here: no match.</li>
   <li><strong>Intent.</strong> One call to the <code>fast</code> tier (reasoning off, ~0.4&nbsp;s) extracts the canonical verb, the object and keywords. Compound requests become an <em>ordered list of clauses</em>, each with its own pool.</li>
-  <li><strong>Plan memory.</strong> Fastpath (shortcuts you approved with the &#9733; button) and Autopath (plans learned on their own) answer without the model if they recognize the request. Here: miss, it's the first time.</li>
+  <li><strong>Plan memory.</strong> Fastpath L0 reuses an automatically recorded success; Autopath L1 reuses a generalized skeleton confirmed by positive feedback. Both check catalog and pool signatures before a hit. Here: miss, because this is the first time.</li>
   <li><strong>Prefilter.</strong> The catalog shrinks to the relevant pool for the clause: verb+object match, qualifier bonus, and &mdash; to break ties among siblings &mdash; the <em>curated affinity</em> bonus (cap +3). All deterministic: same query, same pool, same order.</li>
-  <li><strong>M&emacr;tis Proposer.</strong> ONE call to the <code>wise</code> tier produces the whole plan: steps, links, final message. It generates up to N candidates (adaptive, with early-stop), each <em>physically constrained</em> by the pool's GBNF grammar; a teleological ranking picks the best.</li>
+  <li><strong>M&emacr;tis Proposer.</strong> The <code>wise</code> tier produces the whole structured plan: steps, links, and final message. Depending on configuration it may generate one or more candidates; the GBNF grammar limits available names and deterministic ranking selects the candidate to validate.</li>
   <li><strong>Validator.</strong> A typecheck of the plan before running it: existing tools, well-formed args, real references. A trivial error costs one re-proposal, not one wrong execution.</li>
   <li><strong>Execution.</strong> Pure mechanics: for every step the runtime resolves the placeholders, passes through the vaglio, invokes in the sandbox, accumulates the observation. Caps: 12 steps per turn, same executor max 3 times in a row.</li>
-  <li><strong>Closing.</strong> The final message is a template filled with the real results. If the turn succeeds, Autopath records it: next time we jump straight to point 3.</li>
+  <li><strong>Closing.</strong> The final message is composed from actual results. If the turn succeeds and is cacheable, L0 records its plan; L1 stores an observation and requires positive feedback before promoting the generalized skeleton.</li>
 </ol>
 
 <h2>5.2 The plan: what the model actually proposes</h2>
@@ -1352,14 +1310,13 @@ moment with a cheap micro-call (cached) or with the default.
 <figcaption>Figure 6 &mdash; The plan of Figure 5 seen as a data flow. Lists stream between steps via <code>from_step</code>; scalars, slots and context pass through typed placeholders that the executor resolves deterministically.</figcaption>
 </figure>
 
-<div class="callout warning">
-<strong>When a cap bites, you see it.</strong> If a limit truncates a result
-(entries, bytes, steps), the executor declares it in the fields
-(<code>truncated: true</code>, <code>used</code>, <code>available_total</code>) and the runtime
-says so in the reply &mdash; offering to widen <em>only</em> if technically
-possible, and never widening on its own. A partial result presented as
-complete is considered a bug, not an optimization.
-</div>
+<h2>Partial results and limits</h2>
+<p>If a limit truncates a result by entries, bytes, or steps, the executor
+declares it through <code>truncated</code>, <code>used</code>, and
+<code>available_total</code> when its contract provides those fields, and the
+runtime makes the limit visible in the answer. It may offer to widen a limit
+only when technically possible, and never widens it on its own. Presenting a
+partial result as complete is an error.</p>
 
 
 <span id="cap9"></span>
@@ -1596,7 +1553,7 @@ non-matching conditions grant nothing.
   <div class="authority-node"><strong>One decision, three effects</strong><small>Mount the provider home read-write, enable network, keep execution on the server.</small></div>
 </div>
 
-<div class="checkpoint"><strong>Authority rule.</strong> The same effective binding governs credentials, network and placement. Names, suffixes and arbitrary arguments are never independent permission paths for conforming executors. Legacy inference exists only as a temporary migration bridge.</div>
+<div class="checkpoint"><strong>Authority rule.</strong> The same effective binding governs credentials, network and placement. Names, suffixes and arbitrary arguments are never independent permission paths for conforming executors.</div>
 
 <h2>Execution on the server or on a registered PC</h2>
 
@@ -1677,9 +1634,8 @@ the work already done.
 <p>
 The remote client is contained by construction: on Windows the Job Object bounds
 duration, memory and process trees; on Linux the sandbox uses bwrap when present.
-On this foundation remote executors are no longer read-only: since C7
-(ADR&nbsp;0183) mutating ones &mdash; file write, move and delete &mdash; run on
-the device too, made safe by the policy they long required: idempotency, audit,
+Remote executors can also perform file-changing operations on the device &mdash;
+write, move, and delete &mdash; under the required safeguards: idempotency, audit,
 and device-aware reversibility (deterministic reverse patterns and blob backups
 queued to the same device for undo; the known gap being that blob-restore is not
 remotable). Executors whose dependencies cannot be resolved on the device stay
@@ -1808,7 +1764,7 @@ new one &mdash; in five stages, each with its own contract.
 <thead><tr><th style="width:16%">Mode</th><th>Trigger</th><th style="width:30%">Timing</th></tr></thead>
 <tbody>
 <tr><td><strong>Reactive</strong></td><td>During a turn: the planner finds no executor that satisfies the request.</td><td>Synchronous &mdash; the user is waiting; composition of existing executors is tried first.</td></tr>
-<tr><td><strong>Introvert</strong></td><td>At night: the <em>ager</em> walks the mnestome and finds recurrences, overlapping traces, families with the same shape.</td><td>Asynchronous, in homeostasis: it proposes merges, generalizations, specializations.</td></tr>
+<tr><td><strong>Introvertive</strong></td><td>At night, the <em>ager</em> walks the mnestome and finds recurrences and overlapping traces.</td><td>Asynchronous, in homeostasis: it currently proposes deduplication only; generalisation and specialisation are not active generators.</td></tr>
 </tbody>
 </table>
 
@@ -1879,13 +1835,13 @@ from outside: no package runs on trust.
 <text x="480" y="216" text-anchor="middle" fill="#475569" font-size="10.5" font-weight="700">&laquo;don't trust the package &mdash; the package has to earn its place&raquo;</text>
 <text x="480" y="238" text-anchor="middle" fill="#64748B" font-size="9.5" font-style="italic">drop-in skill formats execute third-party code with the assistant's privileges: for an agent that touches</text>
 <text x="480" y="254" text-anchor="middle" fill="#64748B" font-size="9.5" font-style="italic">files, mail and shell, that is remote code execution by design. Metnos chooses security by construction.</text>
-<text x="480" y="282" text-anchor="middle" fill="#1A477A" font-size="9" font-family="Consolas,monospace">roadmap: map the public skill ecosystem INTO this model, not run it raw</text>
+<text x="480" y="282" text-anchor="middle" fill="#1A477A" font-size="9" font-family="Consolas,monospace">imported skills pass through the same gate as native executors</text>
 </svg>
 <figcaption>Figure 10 &mdash; The 7-layer gate, identical for synthesized and imported executors: signature, vocabulary, usage quarantine, sandbox, smoke test, semantic verification, audit. Only at the end of the funnel does a package become a trusted executor.</figcaption>
 </figure>
 
 
-<h1 id="s8">8. Four tiers, one deterministic routing</h1>
+<h1 id="s8">8. Four tiers, governed routing</h1>
 
 <p class="lead">
 Tiers are <strong>abstract roles</strong>, not pinned models:
@@ -1904,20 +1860,19 @@ share one endpoint or use separate endpoints: the planner always sees the role.
 </tbody>
 </table>
 
-<div class="callout tip">
-<strong>Tier &ne; model.</strong> No GPU or NPU is required by construction: a
-CPU endpoint, a model you already serve, or the frontier fallback are all
-first-class paths. A weaker local model means weaker planning, not a broken
-install.
-</div>
+<h2>A tier is not a model</h2>
+<p>Tiers describe roles and requirements, not a specific model. A GPU or NPU
+is not mandatory: an administrator can bind a tier to a CPU endpoint, an
+available local model, or an external service where the role permits one. The
+quality of the selected model affects planning quality, not installation
+validity.</p>
 
-<h2>The three locks of determinism</h2>
+<h2>Three controls on variability</h2>
 
 <p>
-An LLM at temperature zero is <em>not</em> enough to make routing
-reproducible: the local server stays non-deterministic because of
-speculative decoding with a random seed. Metnos closes the door with three
-locks, one per noise source:
+An LLM at temperature zero does not automatically make new planning
+reproducible. Metnos reduces variability and, more importantly, separates the
+probabilistic proposal from deterministic controls before and after it:
 </p>
 
 <figure>
@@ -1935,7 +1890,7 @@ locks, one per noise source:
     <path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/>
   </marker>
 </defs>
-<text x="480" y="28" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">Abstract tiers on the left, determinism on the right</text>
+<text x="480" y="28" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">Abstract tiers on the left, controls on the right</text>
 
 <!-- left: tiers -->
 <g>
@@ -1970,27 +1925,27 @@ locks, one per noise source:
 
 <!-- right: the three locks -->
 <rect x="540" y="60" width="392" height="86" rx="10" fill="#F5F0FA" stroke="#6B21A8" stroke-width="1.8" filter="url(#f11-sh)"/>
-<text x="560" y="86" fill="#6B21A8" font-size="11.5" font-weight="700">Lock 1 &mdash; pinned seed</text>
-<text x="560" y="106" fill="#1F2937" font-size="9.5">at temperature 0 the server stays non-deterministic (speculative</text>
-<text x="560" y="121" fill="#1F2937" font-size="9.5">decoding with a random seed): the seed must be pinned via env.</text>
+<text x="560" y="86" fill="#6B21A8" font-size="11.5" font-weight="700">Control 1 &mdash; explicit seed</text>
+<text x="560" y="106" fill="#1F2937" font-size="9.5">a configured seed reduces one source of variability,</text>
+<text x="560" y="121" fill="#1F2937" font-size="9.5">but does not turn the model into a pure mathematical function.</text>
 <text x="560" y="138" fill="#6B21A8" font-size="9" font-family="Consolas,monospace">METNOS_LLM_SEED=42 (default; -1 = explicit randomness)</text>
 
 <rect x="540" y="160" width="392" height="86" rx="10" fill="#F5F0FA" stroke="#6B21A8" stroke-width="1.8" filter="url(#f11-sh)"/>
-<text x="560" y="186" fill="#6B21A8" font-size="11.5" font-weight="700">Lock 2 &mdash; ties broken by curated data</text>
+<text x="560" y="186" fill="#6B21A8" font-size="11.5" font-weight="700">Control 2 &mdash; ties broken by curated data</text>
 <text x="560" y="206" fill="#1F2937" font-size="9.5">among siblings with the same object, the manifest's distinctive</text>
 <text x="560" y="221" fill="#1F2937" font-size="9.5">affinity decides (generic verbs excluded), never a coin flip.</text>
 <text x="560" y="238" fill="#6B21A8" font-size="9" font-family="Consolas,monospace">prefilter: bonus = min(|query &cap; affinity|, 3)</text>
 
 <rect x="540" y="260" width="392" height="86" rx="10" fill="#F5F0FA" stroke="#6B21A8" stroke-width="1.8" filter="url(#f11-sh)"/>
-<text x="560" y="286" fill="#6B21A8" font-size="11.5" font-weight="700">Lock 3 &mdash; the grammar as a rail</text>
+<text x="560" y="286" fill="#6B21A8" font-size="11.5" font-weight="700">Control 3 &mdash; grammar and validator</text>
 <text x="560" y="306" fill="#1F2937" font-size="9.5">from the step's pool a GBNF is generated (discriminated union):</text>
-<text x="560" y="321" fill="#1F2937" font-size="9.5">the model CANNOT emit a malformed tool_call,</text>
-<text x="560" y="336" fill="#1F2937" font-size="9.5">nor mix one tool's name with another tool's args.</text>
+<text x="560" y="321" fill="#1F2937" font-size="9.5">the grammar limits output when enabled;</text>
+<text x="560" y="336" fill="#1F2937" font-size="9.5">the validator rejects inconsistent names, arguments and references.</text>
 
 <!-- output banner -->
 <rect x="160" y="380" width="640" height="60" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2" filter="url(#f11-sh)"/>
-<text x="480" y="406" text-anchor="middle" fill="#14532d" font-size="13" font-weight="700">same request &rarr; same pool &rarr; same plan, every run</text>
-<text x="480" y="426" text-anchor="middle" fill="#14532d" font-size="9.5" font-style="italic">routing goes under benchmarks and regression tests like ordinary software</text>
+<text x="480" y="406" text-anchor="middle" fill="#14532d" font-size="13" font-weight="700">same request &rarr; same pool; valid cache &rarr; same stored plan</text>
+<text x="480" y="426" text-anchor="middle" fill="#14532d" font-size="9.5" font-style="italic">a new proposal may vary; controls and transitions remain testable</text>
 <line x1="736" y1="346" x2="700" y2="376" stroke="#16a34a" stroke-width="2" marker-end="url(#f11-arr)"/>
 <line x1="376" y1="200" x2="376" y2="376" stroke="#16a34a" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#f11-arr)"/>
 
@@ -1998,15 +1953,13 @@ locks, one per noise source:
 <text x="480" y="498" text-anchor="middle" fill="#64748B" font-size="9.5" font-style="italic">the first can be ignored, the second cannot: every candidate token is filtered against the grammar before being chosen</text>
 <text x="480" y="520" text-anchor="middle" fill="#64748B" font-size="9" font-family="Consolas,monospace">+ verb-filter: the pool narrows to the verbs compatible with the clause's intent</text>
 </svg>
-<figcaption>Figure 11 &mdash; On the left, tiers as roles bound to configured endpoints; on the right, the locks that make routing reproducible: pinned seed, curated affinity for ties, and a GBNF decode grammar.</figcaption>
+<figcaption>Figure 11 &mdash; Tiers are roles bound to configured endpoints; controls reduce variability and prevent a structurally invalid proposal from being executed.</figcaption>
 </figure>
 
-<div class="callout note">
-<strong>No fragile parsers.</strong> Tool use is native: the model emits
-structured <code>tool_calls</code>, and the grammar guarantees the shape upstream.
-There is no fishing JSON out of prose &mdash; the classic weak point of
-home-grown agents.
-</div>
+<h2>Controlled structure</h2>
+<p>The proposer requests a structured object, uses grammar when configured,
+and still applies balanced parsing followed by validation. Unreadable or
+non-conforming output is not executed.</p>
 
 
 <div class="part-banner"><div class="part-kicker">Part IV &middot; What surrounds action</div><h2>Memory, senses, channels and safeguards</h2><p>These tissues make the executor system useful over time, visible to the user and safe enough to operate.</p></div>
@@ -2039,7 +1992,7 @@ use it, the less it calls the model.
     <path d="M0,0 L10,5 L0,10 z" fill="#6B21A8"/>
   </marker>
 </defs>
-<text x="480" y="28" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">The circle: use &rarr; remember &rarr; stop asking</text>
+<text x="480" y="28" text-anchor="middle" fill="#1A477A" font-size="15" font-weight="700">The circle: use &rarr; record &rarr; reuse when safe</text>
 
 <rect x="60" y="70" width="240" height="70" rx="10" fill="#dbeafe" stroke="#2B6CB0" stroke-width="1.8" filter="url(#f12-sh)"/>
 <text x="180" y="98" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">a successful turn</text>
@@ -2048,23 +2001,23 @@ use it, the less it calls the model.
 <line x1="300" y1="105" x2="352" y2="105" stroke="#1A477A" stroke-width="2" marker-end="url(#f12-arr)"/>
 
 <rect x="356" y="70" width="240" height="70" rx="10" fill="white" stroke="#548235" stroke-width="1.8" filter="url(#f12-sh)"/>
-<text x="476" y="92" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">Autopath records it</text>
-<text x="476" y="110" text-anchor="middle" fill="#475569" font-size="9.5">the plan is indexed by the meaning</text>
-<text x="476" y="126" text-anchor="middle" fill="#475569" font-size="9.5">of the request (embeddings)</text>
+<text x="476" y="92" text-anchor="middle" fill="#3F6212" font-size="11" font-weight="700">L0 records; L1 observes</text>
+<text x="476" y="110" text-anchor="middle" fill="#475569" font-size="9.5">plan, intent and world signatures</text>
+<text x="476" y="126" text-anchor="middle" fill="#475569" font-size="9.5">indexed for future use</text>
 
 <line x1="596" y1="105" x2="648" y2="105" stroke="#1A477A" stroke-width="2" marker-end="url(#f12-arr)"/>
 
 <rect x="652" y="70" width="248" height="70" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="1.8" filter="url(#f12-sh)"/>
 <text x="776" y="92" text-anchor="middle" fill="#14532d" font-size="11" font-weight="700">a similar request, tomorrow</text>
-<text x="776" y="110" text-anchor="middle" fill="#14532d" font-size="9.5">the plan is ready: replayed</text>
-<text x="776" y="126" text-anchor="middle" fill="#14532d" font-size="9.5" font-weight="700">in milliseconds, 0 LLM</text>
+<text x="776" y="110" text-anchor="middle" fill="#14532d" font-size="9.5">if arguments and signatures remain valid:</text>
+<text x="776" y="126" text-anchor="middle" fill="#14532d" font-size="9.5" font-weight="700">reuse without new planning</text>
 
 <path d="M 776 140 Q 776 190 600 196" fill="none" stroke="#548235" stroke-width="2" marker-end="url(#f12-arrS)"/>
 
 <rect x="356" y="170" width="240" height="60" rx="10" fill="#F8FBF5" stroke="#548235" stroke-width="1.6"/>
-<text x="476" y="192" text-anchor="middle" fill="#3F6212" font-size="10.5" font-weight="700">&#9733; explicit promotion</text>
-<text x="476" y="210" text-anchor="middle" fill="#475569" font-size="9">a button under the reply promotes</text>
-<text x="476" y="223" text-anchor="middle" fill="#475569" font-size="9">the plan to a guaranteed Fastpath shortcut</text>
+<text x="476" y="192" text-anchor="middle" fill="#3F6212" font-size="10.5" font-weight="700">explicit positive feedback</text>
+<text x="476" y="210" text-anchor="middle" fill="#475569" font-size="9">confirms the L1 observation</text>
+<text x="476" y="223" text-anchor="middle" fill="#475569" font-size="9">and may promote the generalized skeleton</text>
 
 <!-- bottom: mnestome + ager + synt -->
 <rect x="60" y="280" width="380" height="120" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.6"/>
@@ -2075,19 +2028,19 @@ use it, the less it calls the model.
 <text x="250" y="380" text-anchor="middle" fill="#64748B" font-size="9" font-style="italic">a system that sleeps does not age</text>
 
 <rect x="500" y="280" width="400" height="120" rx="12" fill="#F5F0FA" stroke="#6B21A8" stroke-width="1.6"/>
-<text x="700" y="306" text-anchor="middle" fill="#6B21A8" font-size="11" font-weight="700">at night: the ager + synt proposals</text>
-<text x="700" y="326" text-anchor="middle" fill="#475569" font-size="9.5">heavily used multi-step sequences (&gt;50 runs) become</text>
-<text x="700" y="342" text-anchor="middle" fill="#475569" font-size="9.5">candidates for synthetic executors; overlapping traces propose</text>
-<text x="700" y="358" text-anchor="middle" fill="#475569" font-size="9.5">merges and generalizations &mdash; always behind the human filter</text>
-<text x="700" y="380" text-anchor="middle" fill="#64748B" font-size="9" font-style="italic">proposals are logged, never auto-applied (ch. 7)</text>
+<text x="700" y="306" text-anchor="middle" fill="#6B21A8" font-size="11" font-weight="700">maintenance and governed proposals</text>
+<text x="700" y="326" text-anchor="middle" fill="#475569" font-size="9.5">configured jobs prune expired records and may</text>
+<text x="700" y="342" text-anchor="middle" fill="#475569" font-size="9.5">turn useful recurrences into synthesis candidates;</text>
+<text x="700" y="358" text-anchor="middle" fill="#475569" font-size="9.5">a proposal remains separate from application</text>
+<text x="700" y="380" text-anchor="middle" fill="#64748B" font-size="9" font-style="italic">changes pass through the change_intent lifecycle (ch. 7)</text>
 
 <path d="M 180 140 Q 180 240 200 276" fill="none" stroke="#64748B" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#f12-arr)"/>
 <text x="148" y="226" fill="#64748B" font-size="8.5" font-style="italic">every turn leaves traces</text>
 <path d="M 440 340 L 496 340" fill="none" stroke="#6B21A8" stroke-width="1.8" stroke-dasharray="5 3" marker-end="url(#f12-arrP)"/>
 
-<text x="480" y="428" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">learning = accumulating verifiable data, never touching weights</text>
+<text x="480" y="428" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">learning = accumulating inspectable records, not training the model</text>
 </svg>
-<figcaption>Figure 12 &mdash; The circle of learning without training: successful plans become shortcuts (Autopath, Fastpath &#9733;), co-activations become mnests, nightly recurrences become synthesis proposals. Everything is readable, reversible data.</figcaption>
+<figcaption>Figure 12 &mdash; Reuse without training: L0 records cacheable successes, L1 promotes a generalization after positive feedback, co-activations feed the mnestome, and proposed changes remain under the decision lifecycle.</figcaption>
 </figure>
 
 
@@ -2130,12 +2083,12 @@ index queried through the ordinary vocabulary.
 
 <!-- three lanes -->
 <rect x="294" y="70" width="320" height="68" rx="10" fill="#dbeafe" stroke="#2B6CB0" stroke-width="1.6" filter="url(#f13-sh)"/>
-<text x="454" y="92" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">semantics &mdash; SigLIP</text>
+<text x="454" y="92" text-anchor="middle" fill="#1A477A" font-size="11" font-weight="700">semantics &mdash; configured visual embedder</text>
 <text x="454" y="110" text-anchor="middle" fill="#475569" font-size="9.5">the image becomes a vector: &laquo;sunset at the sea&raquo;,</text>
 <text x="454" y="126" text-anchor="middle" fill="#475569" font-size="9.5">&laquo;birthday cake&raquo;, &laquo;mountain trail&raquo;</text>
 
 <rect x="294" y="146" width="320" height="68" rx="10" fill="#FBF6F1" stroke="#A0522D" stroke-width="1.6" filter="url(#f13-sh)"/>
-<text x="454" y="168" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">faces &mdash; RetinaFace + ArcFace</text>
+<text x="454" y="168" text-anchor="middle" fill="#7C2D12" font-size="11" font-weight="700">faces &mdash; configured detection and recognition</text>
 <text x="454" y="186" text-anchor="middle" fill="#475569" font-size="9.5">finds the faces, turns them into identity prints;</text>
 <text x="454" y="202" text-anchor="middle" fill="#475569" font-size="9.5">people get registered by name only if you ask</text>
 
@@ -2164,7 +2117,7 @@ index queried through the ordinary vocabulary.
 
 <text x="480" y="398" text-anchor="middle" fill="#475569" font-size="10" font-weight="700">all in-process, on your machine: the photo archive never leaves home</text>
 </svg>
-<figcaption>Figure 13 &mdash; The image pipeline: SigLIP for the scene, RetinaFace+ArcFace for identities, EXIF for place and time. The three signals converge into a unified index queried by an ordinary executor of the vocabulary.</figcaption>
+<figcaption>Figure 13 &mdash; The image pipeline uses configured roles for scene semantics and faces, and reads EXIF for place and time. The three signals converge into a unified index queried through an ordinary executor.</figcaption>
 </figure>
 
 <p>
@@ -2265,8 +2218,8 @@ Explicit questions about how to use Metnos are intercepted at the shared
 HTTP/Telegram boundary, before the planner and without consuming a pending
 dialog. A conservative detector recognizes only the request class; the
 relevant card is selected neither by synonyms nor <code>exact</code> phrases,
-but by local BGE-M3 embeddings compared with vectors held in the signed SQLite
-catalog.
+but by the configured embedder, which compares the question with vectors held
+in the signed SQLite catalog.
 </p>
 
 <p>
@@ -2279,11 +2232,11 @@ catalog, a weak match, or insufficient context produces an explicit outcome,
 never an invented capability.
 </p>
 
-<div class="callout tip">
-<strong>The essential split.</strong> Deterministic code governs detection,
-identity, audience, integrity, and safety procedures; embeddings and the local
-LLM are used where language variety would make a phrase table brittle.
-</div>
+<h2>The Tutor boundary</h2>
+<p>Deterministic code governs detection, identity, audience, integrity, and
+safety procedures. Semantic comparison and the local model are used only
+where language variety would make a phrase table brittle. Tutor can explain
+what admitted sources attest, but receives no tools with which to act.</p>
 
 
 <span id="cap5"></span><span id="cap11"></span><span id="cap12"></span>
@@ -2365,15 +2318,13 @@ the last defense is being able to go back: honest undo, by construction.
 <figcaption>Figure 15 &mdash; Five guards in series (pairing, policy, vaglio, sandbox, signature+audit) and, below, the safety net: an undo with a closed catalog of reverse patterns, verified copies before any deletion, and honest counts.</figcaption>
 </figure>
 
-<div class="callout danger">
-<strong>The power is real, which is why it is bridled.</strong> With the
-corresponding executor set, a Metnos instance can genuinely administer a machine
-(shell, <code>sudo</code>, packages, mounts). That makes it an operational
-architecture rather than a chatbot. But
-every privileged action passes through the vaglio with explicit
-confirmation, runs in the sandbox, lands in the audit; and the whole system
-skill can be disabled, locking Metnos out of the operating system.
-</div>
+<h2>Administrative capabilities and their boundary</h2>
+<p>With the corresponding executor set, a Metnos instance can administer a
+machine through the shell, <code>sudo</code>, packages, and mounts. Every
+privileged action passes through the vaglio and applicable authorization,
+uses the available containment layers, and is recorded. The system skill can
+be disabled, preventing Metnos from using these operating-system
+capabilities.</p>
 
 
 <div class="part-banner"><div class="part-kicker">Part V &middot; Open the machine</div><h2>From promises to component contracts</h2><p>The overview and the implementation model meet here: one map, one worked request and one catalog of deeper contracts.</p></div>
@@ -2440,12 +2391,10 @@ half an hour of confusion thirty lines down.
  is <em>mnestoma</em>.</dd>
 
  <dt>agent runtime</dt>
- <dd>The <em>engine</em> that orchestrates everything: it receives the
- user request, breaks it into steps, picks executors, runs them in a
- sandbox, gathers observations, decides the next step. It implements the
- ReAct loop with native tool-use (local LLM, wise tier) and leans on the
- other components for the hard calls (Vaglio for safety, Synt for missing
- capabilities, Telos for ends).</dd>
+ <dd>The turn runtime: it receives the request, extracts intent, tries L0/L1
+ plan memory, and asks the M&emacr;tis engine for a structured one-shot plan when
+ needed. After validation it runs executors in sequence, collects observations,
+ and applies Vaglio, policy, and sandbox controls to each step.</dd>
 </dl>
 
 <div class="checkpoint">
@@ -2493,8 +2442,8 @@ who <em>calls</em> whom.
 
  <rect class="box core" x="320" y="180" width="240" height="80"/>
  <text x="440" y="208" class="lbl core-t" style="fill:#fff;">agent runtime</text>
- <text x="440" y="228" class="lbl core-t" style="fill:#fff;font-size:10px;">ReAct loop &middot; planner</text>
- <text x="440" y="246" class="lbl core-t" style="fill:#fff;font-size:10px;">native tool-use</text>
+ <text x="440" y="228" class="lbl core-t" style="fill:#fff;font-size:10px;">one-shot plan &middot; validation</text>
+ <text x="440" y="246" class="lbl core-t" style="fill:#fff;font-size:10px;">controlled execution</text>
 
  <rect class="box judge" x="610" y="100" width="140" height="40"/>
  <text x="680" y="125" class="lbl">vaglio</text>
@@ -2562,17 +2511,18 @@ Three observations to read the diagram well.
 </p>
 
 <ol>
- <li><strong>Telos sits above everything</strong>: it is not a service
- one calls, it is an orientation. The runtime weighs alternatives in
- light of the ends declared in the homonymous workspace file.</li>
+ <li><strong>Telos is a soft signal</strong>: it guides the components where
+ it is wired without replacing the request, policy, or capabilities. The
+ workspace file declares ends and weights; it grants no authority.</li>
 
  <li><strong>Vaglio always runs before execution</strong>, never after.
  Once an executor has fired, going back is not free: <em>undo</em> exists,
  but it costs history and backup blobs.</li>
 
- <li><strong>The executor pool is open</strong>: synt can compose new
- executors out of existing ones, or &mdash; if that is not enough &mdash;
- generate one from scratch, with signing and automatic install.</li>
+ <li><strong>The executor pool is extensible but governed</strong>: Synt first
+ tries to compose existing capabilities and, when genuinely needed, can
+ generate a new executor. Naming, manifest, tests, signature, and admission
+ lifecycle remain mandatory.</li>
 </ol>
 
 <h2 id="micro-flow">13.4 A second worked request</h2>
@@ -2594,14 +2544,15 @@ arrived this week&raquo;</em>.
  the <em>intent</em> (canonical verb: <code>move</code>; object:
  <code>files</code>; criterion: invoice-attached PDFs in the &laquo;last
  week&raquo; window), asks the prefilter to narrow the catalog to relevant
- executors, and prepares the first step of the ReAct loop.</li>
+ executors, requests a structured plan from the proposer, and validates it
+ before the first step runs.</li>
 
  <li><strong>Vaglio &mdash; guard + judge.</strong> Before the executor
  fires, Vaglio checks two things: that the path is not forbidden, that
  the shell command is not unrecoverable (<code>rm&nbsp;-rf</code> and
- friends). For grey-zone operations, the rule-based judge assigns a score
- and, above threshold, asks the user for confirmation via the
- <em>three-line card</em> (what / where / why).</li>
+ friends). For grey-zone operations, policy and the judge determine whether a
+ human decision is required. If so, the channel shows a localized proposal
+ that makes the action, target, and relevant consequences recognizable.</li>
 
  <li><strong>Sandbox + executor.</strong> The runtime invokes
  <code>read_messages</code> inside <code>bwrap</code> with the flags
@@ -2646,11 +2597,11 @@ counterpart at
 <tbody>
 <tr>
  <td><a href="praxis_engine.html"><code>Cognitive engine</code></a></td>
- <td>The four-layer engine that plans and executes (replaces the iterative step-by-step planner): <strong>Fastpath</strong> serves user-approved shortcuts (hash + BGE-M3 cosine), <strong>Autopath</strong> recognises and reuses skills learned from feedback (sqlite, semantic + intent match), <strong>Validator</strong> checks the plan before running it, and the <strong>Engine</strong> block proposes the whole plan in a single local LLM call (<strong>Proposer</strong>), executes it deterministically (<strong>Executor</strong>), recovers by classifying the error into 4 classes (<strong>Recovery</strong>) and, if there is no way out, honestly explains what is missing (<strong>Terminator</strong>). One proposal instead of six calls: faster, zero cost, and faster still as it learns.</td>
+ <td>The engine that plans and executes. <strong>Fastpath L0</strong> reuses cacheable successes recorded automatically; <strong>Autopath L1</strong> reuses generalized skeletons confirmed by positive feedback. Catalog and pool signatures are checked before every hit. For a new plan, the <strong>Proposer</strong> produces one or more structured candidates according to configuration, the <strong>Validator</strong> checks them, the <strong>Executor</strong> runs the admitted plan, and recovery or termination reports the outcome without inventing it.</td>
 </tr>
 <tr>
  <td><a href="agent_runtime.html"><code>agent_runtime</code></a></td>
- <td>ReAct loop, mode router, data piping between steps (<code>from_step:&nbsp;int</code> for lists, <code>{{stepN.field}}</code> for scalars), scratchpad, mnestome hooks. The engine that calls everyone else.</td>
+ <td>Turn orchestration: channel and identity, intent extraction, dispatch to the one-shot engine, data flow between steps (<code>from_step:&nbsp;int</code> for lists and placeholders for scalars), suspended dialogs, scratchpad, telemetry, and mnestome hooks.</td>
 </tr>
 <tr>
  <td><a href="scratchpad.html"><code>scratchpad</code></a></td>
@@ -2658,15 +2609,15 @@ counterpart at
 </tr>
 <tr>
  <td><a href="grammar.html"><code>grammar</code></a></td>
- <td>Constrained generation via GBNF for the PLANNER <code>tool_call</code>. Discriminated union name+args, recursive schema, contextual pool filter, post-decode validator. Solves thinking-loop, args mix-match, arbitrary escape-hatches. Bench convergence 50% &rarr; 100%.</td>
+ <td>GBNF-constrained generation when enabled: a discriminated union of name and arguments, recursive schema, and contextual pool filter. The post-decode validator remains mandatory and rejects inconsistent combinations.</td>
 </tr>
 <tr>
  <td><a href="fast_path.html"><code>fastpath and autopath</code></a></td>
- <td>Two layers of memoization before the planner. <strong>L0 &mdash; fastpath</strong>: the shortcut for the same request, recognised by fingerprint (hash) or semantic proximity (BGE-M3 cosine) and served again with the plan already prepared, concrete arguments included. <strong>L1 &mdash; autopath</strong>: the generalised plan for a cluster of related requests (the skeleton without arguments), promoted from repeated positive feedback and kept in <code>autopath.sqlite</code> (tables <code>autopaths</code>/<code>anti_autopaths</code>). Hybrid argument extractor (rule + memory + optional LLM).</td>
+ <td>Two layers before the proposer. <strong>L0</strong> stores the complete plan of a successful turn: a fingerprint serves the same request, while the configured embedder may match only generalizable frameworks. <strong>L1</strong> stores a related cluster's skeleton and becomes active after positive feedback. Both validate current world signatures; requests with content-specific arguments remain exact-match only.</td>
 </tr>
 <tr>
  <td><a href="tutor.html"><code>Tutor</code></a></td>
- <td>Local pre-planner guide: compiles admitted manifests, allowlisted public documentation, and curated procedures into a signed BGE-M3 catalog. It answers with no tools, filters audience before the model, separates explanations from actions, and reports gaps. Includes the F2 architecture and F3/F4 roadmap.</td>
+ <td>Local pre-planner guide: compiles admitted manifests, runtime registries, published documentation, and curated procedures into a signed catalog. It also recognizes public sources by filename, may add typed current observations, and hands an action clause to the engine only after confirmation. Feedback refines retrieval for one user without entering plan caches.</td>
 </tr>
 <tr>
  <td><a href="mail_accounts.html"><code>mail accounts</code></a></td>
@@ -2674,11 +2625,11 @@ counterpart at
 </tr>
 <tr>
  <td><a href="lifecycle.html"><code>lifecycle</code></a></td>
- <td>Unified system-change lifecycle: one <code>change_intent</code> object, one state machine (<em>proposed&rarr;accepted&rarr;applied&rarr;observed&rarr;finalized</em>, plus <em>staged</em>/<em>rejected</em>/<em>failed</em>/<em>rolled_back</em>), one UI <code>/admin/changes</code>. Funnels the proposal sources (telos, introspective, synt, fast-path, feedback) into one queue. Nightly pipeline: materialization (cross-source fingerprint dedup), per-kind application, observation with a grace window and physical rollback.</td>
+ <td>Unified change lifecycle: one <code>change_intent</code> object, one state machine, and the <code>/admin/changes</code> UI. Active adapters are telos, introspective, synt, and user feedback. The daily materializer deduplicates sources; the applier processes accepted records every ten minutes; the daily observer measures effects and finalizes or rolls them back according to kind.</td>
 </tr>
 <tr>
  <td><a href="virtualization.html"><code>model virtualization</code></a></td>
- <td>How Metnos picks and swaps its models: three facades (<code>get_llm</code>, <code>get_embedder</code>, <code>get_vlm</code>) that ask for a <em>role</em>, not a model, and translate the role by reading the <code>{llm,embedding,vlm}_tiers.toml</code> files. Change a model = edit a TOML, never the code. Segregation (no consumer imports the concrete embedder any more), embedding autonomy (BGE-M3 and SigLIP run ONNX in-process), remote endpoint via <code>provider="http"</code>. A lightweight subset of the supranet pattern: Protocol + factory, no registry/DI.</td>
+ <td>How Metnos assigns the <code>llm</code>, <code>embedder</code>, and <code>vlm</code> roles to providers configured through <code>{llm,embedding,vlm}_tiers.toml</code>. Consumers request a function rather than a concrete brand or model, so local or HTTP backends can change without rewriting the planner or Tutor.</td>
 </tr>
 </tbody>
 </table>
@@ -2705,11 +2656,11 @@ counterpart at
 </tr>
 <tr>
  <td><a href="synt.html"><code>synt</code></a></td>
- <td>How new executors are born: five-stage pipeline (<em>naming, signature, tests, description, code</em>), reactive cascade (compose &rarr; generate) and introspective cascade (dedupe, generalize, specialize).</td>
+ <td>How new executors are born: a five-stage pipeline (<em>naming, signature, tests, description, code</em>), a reactive cascade (compose &rarr; generate), and introspective maintenance currently limited to deduplication.</td>
 </tr>
 <tr>
  <td><a href="skill_importer.html"><code>skill_importer</code></a></td>
- <td>Imports third-party skills from <code>agentskills.io</code> and turns them into Metnos executors: five-stage pipeline (fetch, parse, map, wrap, register), verb mapping table <code>skill_vocab_map.json</code>, wrapping helpers with <em>verb boundary</em>, and CLI <code>metnos-skills import|list|uninstall|status|evaluate</code>.</td>
+ <td>Acquires local, <code>agentskills.io</code>, or GitHub skills and turns them into Metnos executors through parsing, closed-vocabulary translation, generation, admission, signing, and registration. The <code>skill_vocab_map.json</code> table and <em>verb boundary</em> guide translation; commands are <code>metnos-skills import|list|uninstall|status|evaluate</code>.</td>
 </tr>
 <tr>
  <td><a href="skills_backends.html"><code>skills &amp; backends</code></a></td>
@@ -2733,7 +2684,7 @@ counterpart at
 </tbody>
 </table>
 
-<div class="role-group">Safety, rules, sandbox</div>
+<div class="role-group">Safety, rules, and isolation</div>
 <table>
 <thead><tr><th style="width:24%">Component</th><th>Scope</th></tr></thead>
 <tbody>
@@ -2770,7 +2721,7 @@ counterpart at
 </tr>
 <tr>
  <td><a href="approval_ux.html"><code>approval_ux</code></a></td>
- <td>Three-line card for confirmation prompts: <code>render_approval_card</code>, <code>ApprovalRequest</code>, modulation full / medium / short by recurrence, Telegram dispatcher <code>approve:&lt;tok&gt;</code> / <code>reject:&lt;tok&gt;</code>.</td>
+ <td>Confirmation flow in web chat and Telegram. Its public contract is semantic rather than a fixed number of lines or buttons: it identifies the action, purpose, and relevant consequences; preserves the user's language and identity; and never turns one confirmation into an implicit persistent grant.</td>
 </tr>
 </tbody>
 </table>
@@ -2808,11 +2759,11 @@ The closed vocabulary stands at <strong>26 actions</strong>
 (<code data-vocab="actions">read, write, move, delete, create, find, list, filter, sort,
 group, classify, get, set, send, describe, render, extract, compress,
 compute, compare, change, order, share, open, login, act</code>) and
-<strong>26 objects</strong>
+<strong>27 objects</strong>
 (<code data-vocab="objects">files, dirs, packages, messages, events, contacts,
 places, processes, urls, numbers, images, signatures, texts, proposals,
 persons, tasks, inputs, approval, credentials, issues, pulls, calendars,
-entries, lists, skills, sites</code>). Qualifiers come in four
+entries, lists, skills, sites, preferences</code>). Qualifiers come in four
 families: format/encoding, modality, safety policy, and provider (for
 specific non-default backends like <code>_google_workspace</code>).
 Centralised in <code>runtime/vocab.py</code>.
@@ -2839,40 +2790,33 @@ filter_lists(op=overlap) &rarr; final_answer</code>.
 </p>
 
 <p>
-The verified live inventory contains 115 standard, signed executors: 82
-handcrafted executors in the main tree, 16 builtin GitHub executors with
-handcrafted origin, and 17 runtime builtins using in-process transport. The
-Composer sees the same contract for all of them and does not select by
-transport. Five orthogonal producer verbs
+This guide does not copy a changing executor count into prose. The
+<a href="executor_catalog.html">generated catalog</a> is rebuilt from signed
+manifests and provides the current inventory. The Composer sees the same
+contract for every executor and does not select by transport. Five orthogonal producer verbs
 (<code>find</code> for patterns, <code>get</code> for ids/state,
 <code>read</code> for blobs from a source, <code>list</code> for
 containers, <code>filter</code> for reduction).
 </p>
 
-<h2 id="micro-conventions">13.7 Contract-writing conventions</h2>
+<h2 id="micro-conventions">13.7 How to read the contracts</h2>
 
 <p>
-Every component-contract file follows the same template as this handbook's
-<a href="#s1">architectural overview</a>:
+The pages linked from this guide distinguish what the system provides today
+from what remains proposed. Read them with these rules:
 </p>
 
 <ul>
- <li>navy / sage / bronze palette; CSS inline, no external dependencies;</li>
- <li>every list presented as exhaustive names its source of truth and is either
- generated from it or covered by an element-for-element equality test;</li>
- <li>title page, numbered table of contents, chapters with stable
- <code>id</code>;</li>
- <li>at least one inline SVG figure (never a PNG: diagrams must remain
- searchable and PDF-printable);</li>
- <li>a <em>Contract</em> section (Protocol + error conditions), an
- <em>Implementations</em> one, a <em>Conformance tests</em> one;</li>
- <li>a sticky breadcrumb navigation at the top;</li>
- <li>prescriptive rules to LLMs follow the
- <code>MUST&nbsp;/&nbsp;MUST&nbsp;NOT&nbsp;/&nbsp;OK&nbsp;/&nbsp;ERROR</code>
- pattern, four lines max;</li>
- <li>option labels as <strong>(a)/(b)/(c)</strong>, never as Greek letters;</li>
- <li>no third-party real names: only &laquo;Roberto&raquo; or generic terms
- (<em>guest</em>, <em>invited family member</em>).</li>
+ <li>a capability described as active must be supported by code, loaded
+ manifests, or automated tests; a future proposal is labelled as such;</li>
+ <li>changing inventories and counts come from generated pages rather than
+ numbers copied into narrative prose;</li>
+ <li>names in <code>monospace</code> are technical identifiers, not necessarily
+ words shown in the interface;</li>
+ <li>natural-language examples show how to ask for a capability; the technical
+ references that follow explain how it is implemented;</li>
+ <li>links to the <a href="../interface.html">interface guide</a> show where a
+ function is found in web chat.</li>
 </ul>
 
 
@@ -2923,7 +2867,7 @@ this list must be resisted.
 <p>
 You now have both levels: the system from above and the map of its component
 contracts. Use the atlas for implementation detail, or continue with the tour,
-glossary and design dialogues.
+the domain reference, and the interface guide.
 </p>
 
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
@@ -2947,20 +2891,10 @@ glossary and design dialogues.
     <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Quick Tour</div>
     <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The fast lap with screenshots: what using it feels like, before studying it.</div>
   </a>
-  <a href="../Metnos_Glossary_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">reference</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Glossary</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Every project term, defined once and linked everywhere.</div>
-  </a>
-  <a href="../Metnos_Dialogue_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogue &middot; 40 min</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogue on ends and limits</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The Galilean origins: teleology, the 4 Laws, the vaglio. Why a proactive agent needs a brake.</div>
-  </a>
-  <a href="../Metnos_Dialogue_Executors_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">dialogue &middot; 45 min</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogue on executors</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The technical foundation: executors, mnest, mnestome, traces, ager, the six original principles.</div>
+  <a href="tutor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">operational guide</span>
+    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Tutor</div>
+    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">How Metnos compiles current sources and explains capabilities, procedures, and pages without executing operations.</div>
   </a>
   <a href="remote_executors.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">component contract</span>
@@ -2977,8 +2911,7 @@ glossary and design dialogues.
 <hr>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>Architecture Handbook</em> (July 2026).<br>
-<em>m&emacr;tis</em> + <em>no&ucirc;s</em>: cunning intelligence in the service of the mind &mdash; on your own hardware.<br>
+Metnos &mdash; <em>Architecture Guide</em>.<br>
 Bilingual IT+EN documentation at <a href="https://metnos.com">metnos.com</a>; code at
 <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a>.
 </p>

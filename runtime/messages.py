@@ -32,8 +32,12 @@ if _RUNTIME not in _sys.path:
 import i18n as _i18n
 
 
-def get(code: str, **kwargs) -> str:
+def get(code: str, /, **kwargs) -> str:
     """Lookup template con substitution kwargs.
+
+    `code` e' posizionale-soltanto per la stessa ragione di `i18n.get`: i
+    kwargs sono segnaposto del testo e non devono poter collidere col nome
+    del parametro.
 
     Wrapper su `i18n.get`. Il dict MESSAGES legacy e' stato rimosso il
     5/5/2026 a consolidamento (39/39 chiavi nel DB IT+EN, verified).

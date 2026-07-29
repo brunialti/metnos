@@ -13,9 +13,8 @@ Convenzione: aggiungere un verbo richiede:
 5. Aggiungere mapping in `intent_extractor` se serve disambiguazione vs
    verbi simili.
 
-NON serve toccare CLAUDE.md §2.2 ad ogni cambio: la doc dichiara la
-convenzione, non la lista. Ma se la lista cambia, aggiornare il numero
-totale ("23 azioni" oggi).
+NON serve duplicare la lista nei documenti prescrittivi: i conteggi e gli
+elenchi esaustivi devono essere derivati o verificati contro questo modulo.
 
 Multilingua (it+en oggi, espandibile):
 - Vocabolario CANONICO in inglese (ACTIONS, OBJECTS, QUALIFIERS).
@@ -25,6 +24,8 @@ Multilingua (it+en oggi, espandibile):
   agnostici devono iterare LANGS, non hardcodare "it"/"en".
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 # ── Lingue supportate ─────────────────────────────────────────────────
 # Ordine = priorita' di rendering nei prompt che mostrano alternative
@@ -175,6 +176,14 @@ OBJECTS = (
     # turno corrente. Nessun executor `find_entries`/`read_entries`/
     # `get_entries` (non si scopre/legge cio' che esiste solo a runtime).
     "entries",
+    # Lists (ADR 0138): meta-oggetto strutturale per operatori fra DUE liste
+    # di entries. Distinto da `entries` (una lista in-memory): oggi ammette
+    # soltanto i verbi filter/compute, enforced dalla Naming Authority.
+    "lists",
+    # Skill installate/abilitate nel catalogo runtime. Oggetto amministrativo
+    # distinto dagli executor che le skill forniscono; list/set sono i soli
+    # verbi builtin correnti.
+    "skills",
     # Sites (spec sites F1, RATIFICATO D-A 10/7/2026): SESSIONE web con stato
     # (cookie/credenziali), distinta da `urls` (pagina pubblica senza stato).
     # Confine manifest: «pagina senza login = read_urls_html; sites = sessione
@@ -182,6 +191,18 @@ OBJECTS = (
     # Il `session_id` e' interno (§12-bis): l'utente dice «il sito X», il planner
     # cabla il session_id via from_step. Gira SOLO server (§10.8).
     "sites",
+    # Preferences (29/7/2026, W2 v1 ADR 0187): le preferenze personali con cui
+    # l'utente decide COME Metnos si comporta con lui — lunghezza e tono della
+    # risposta, unita' di misura, lingua, modalita' del browser. Vocabolario di
+    # chiavi e valori CHIUSO, con fonte unica in `users.PREF_KEYS` /
+    # `allowed_pref_values`. §2.2 (ADR 0156): NECESSARIO — nessun oggetto
+    # esistente copre lo stato personale che governa la risposta (`persons` e'
+    # l'anagrafica, `skills` il catalogo, `inputs` una raccolta di turno);
+    # GENERALE — vale per qualunque preferenza futura, non per una feature;
+    # COMPRENSIBILE — «preferenze» e' la parola che l'utente usa. Tre builtin
+    # get/set/delete in `user_preferences.py`. RICHIEDE ratifica di Roberto
+    # come estensione del vocabolario chiuso.
+    "preferences",
 )
 # NB §2.2 (26/5/2026, ADR 0163): `users` NON è OBJECT vocab. L'account
 # Metnos paired (host/guest, ADR 0083) è runtime-internal, esposto al
@@ -250,6 +271,15 @@ QUALIFIERS = (
     # ...). Lista chiusa: oggi solo `indices`; aggiunte future seguono lo
     # stesso pattern (es. `cache`, `histogram` se emergeranno).
     "indices",
+    # Storico append-only di esecuzioni del dominio tasks.
+    "history",
+    # Famiglia 2 — modalità messaggistica/metadati (23/7/2026).
+    # `thread` distingue una risposta collegata a una conversazione da un nuovo
+    # invio. È generale per sistemi di messaggistica/forum, non provider-specific.
+    # `labels` identifica l'enumerazione/gestione delle etichette applicabili a
+    # entità classificabili (mail e issue tracker). Entrambi soddisfano §2.2:
+    # necessari per evitare collisioni semantiche, generali e comprensibili.
+    "thread", "labels",
     # Famiglia 2 — Modalita': origine ricerca = web pubblico (24/5/2026).
     # Distingue executor che interrogano servizi web (Google Vision Web
     # Detection, web search engines, public APIs) da quelli che operano
@@ -300,6 +330,15 @@ QUALIFIERS = (
 # sicura, mai il contrario). `_metnos` (default) è OMESSO dal nome → non qui.
 PROVIDER_SUFFIXES = frozenset({"github", "google_workspace", "google_photos"})
 
+# Product-facing names for the same canonical provider identities.  Provider
+# registries and user interfaces consume these labels instead of re-inventing
+# capitalization from technical suffixes.
+PROVIDER_DISPLAY_NAMES = {
+    "github": "GitHub",
+    "google_workspace": "Google Workspace",
+    "google_photos": "Google Photos",
+}
+
 # Oggetti CARRIER-di-files (§2.2, nota sopra OBJECTS): domini di contenuto
 # specializzato che per le OPS GENERICHE (enumerare/spostare per path) NON
 # duplicano `files` — «carica le foto di /tmp/dir» enumera FILE di una
@@ -313,11 +352,10 @@ FILE_CARRIER_OBJECTS = frozenset({"images", "texts"})
 # stessa natura di PROVIDER_SUFFIXES: dato, SoT unica — guard
 # `test_provider_skills_cover_suffixes`). `google_photos` usa la STESSA skill
 # google-workspace (spec Photos D4: stesso client secret/token, scope aggiunti).
-# Consumata da `sandbox.invocation_skills`: un'invocazione provider-backed
-# (1) NON è device-eligible (le credenziali skill vivono sul server) e
-# (2) in bwrap riceve bind RW della skill home + rete (fix 10/7: da quando
-# bubblewrap esiste sul sistema, 9/7, senza questi bind ogni op Google
-# chiedeva l'OAuth in loop — token invisibile alla sandbox).
+# Consumata dalla capability canonica `provider:access` e da
+# `sandbox.invocation_skills`: lo stesso binding effettivo (1) rende
+# l'invocazione non eleggibile al device e (2) concede a bwrap la home skill RW
+# + rete. I segnali per nome/client restano solo nel ripiego legacy.
 PROVIDER_SKILLS = {
     "github": "github",
     "google_workspace": "google-workspace",
@@ -365,9 +403,9 @@ QUALIFIER_OBJECT_COMPAT = {
     # qualifier). Origine: turn 6ec02267 «quanti file su github nel repo».
     "github": frozenset({"issues", "pulls", "messages", "tasks", "files", "dirs"}),
     # Provider Google Workspace (ADR 0123): gmail (messages), calendar (events,
-    # calendars), drive (files), contacts (contacts, persons). Asse provider §2.2,
+    # calendars), drive (files, dirs), contacts (contacts, persons). Asse provider §2.2,
     # gemello di github. Object ammessi = i domini coperti dalla skill.
-    "google_workspace": frozenset({"messages", "events", "calendars", "files",
+    "google_workspace": frozenset({"messages", "events", "calendars", "files", "dirs",
                                    "contacts", "persons"}),
     # Provider Google Photos (spec Google Photos): SOLO l'object `images`
     # (upload/album/find/download del creato-da-app). Non tocca `files`.
@@ -380,6 +418,9 @@ QUALIFIER_OBJECT_COMPAT = {
     "segments": frozenset({"texts", "messages", "files"}),
     # Indices (mezzo persistente)
     "indices": frozenset({"images", "messages", "texts", "persons"}),
+    "history": frozenset({"tasks"}),
+    "thread": frozenset({"messages"}),
+    "labels": frozenset({"messages", "issues", "pulls"}),
     # LOC
     "loc": frozenset({"files"}),
     # Formato/codifica
@@ -387,7 +428,7 @@ QUALIFIER_OBJECT_COMPAT = {
     "xlsx": frozenset({"files"}),
     "ocr": frozenset({"files", "images"}),
     "zip": frozenset({"files"}),
-    "pdf": frozenset({"files", "messages"}),
+    "pdf": frozenset({"files", "messages", "urls"}),
     "xml": frozenset({"files", "messages"}),
     "html": frozenset({"files", "messages", "urls"}),
     "json": frozenset({"files", "messages"}),
@@ -498,7 +539,7 @@ PRECURSOR_VERBS = ("read", "find", "list", "get")
 # "events") senza verbo create esplicito; il default mutating per `events`
 # e' `create`, quindi l'azione implicita inferita e' `create_events`.
 # Lookup tabellare §7.9 — niente LLM, niente case-patch per dominio.
-# Closed table allineata ai 23 OBJECTS §2.2. None = nessun mutating default
+# Tabella chiusa allineata a OBJECTS §2.2. None = nessun mutating default
 # per quel object (read-only-by-construction).
 OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "files":      "write",
@@ -521,6 +562,8 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     "approval":   None,        # get_approval: gate UI, nessun mutating proprio
     "credentials": "set",
     "entries":    None,        # entries sono meta-oggetto in-memory
+    "lists":      None,        # coppia di liste in-memory, processor-only
+    "skills":     "set",       # abilita/disabilita skill installate
     # Provider objects (github/calendar): None = mention ≠ mutazione (un "le
     # issue su github" è read/list, non un set) → niente orphan-injection
     # spuria. Completano la tabella vs OBJECTS (drift 21/6).
@@ -530,6 +573,10 @@ OBJECT_DEFAULT_MUTATING_VERB: dict[str, str | None] = {
     # sites: una mention nuda («il sito X») NON implica un verbo mutante (open e
     # login vanno chiesti esplicitamente) → None, niente orphan-injection.
     "sites":      None,
+    # preferences: nominare le proprie preferenze e' quasi sempre una domanda
+    # («che preferenze ho»); cambiarle si dice con un verbo esplicito. None =
+    # nessuna orphan-injection.
+    "preferences": None,
 }
 
 
@@ -547,7 +594,7 @@ SAFE_VERBS = frozenset({
 
 
 # ── System verbs riservati (CLAUDE.md §2.2) ───────────────────────────
-# Verbi-meta di sistema fuori dai 22 verbi canonici. Discriminano la
+# Verbi-meta di sistema fuori dai verbi canonici. Discriminano la
 # chiusura del turno (`undo`), l'esecuzione di shell privilegiata
 # (`admin`), la sintesi al volo di nuovi executor (`synthesize`) o la
 # delega a frontier LLM esterno (`consult`). Stage 1 NAMING NON li
@@ -561,6 +608,15 @@ SAFE_VERBS = frozenset({
 # - consult -> handcrafted executor `consult_frontier` (delega a frontier
 #              LLM esterni: Opus/Sonnet/GPT-5)
 SYSTEM_VERBS = frozenset({"admin", "undo", "synthesize", "consult"})
+
+# Nomi runtime esatti ammessi fuori dalla grammatica user-domain. Non sono
+# token proponibili dal synt: l'eccezione e' chiusa sul nome completo.
+SYSTEM_EXECUTOR_NAMES = frozenset({"undo_last_turn", "consult_frontier"})
+
+# Operazioni intrinsecamente singolari ratificate da ADR 0002. Anche queste
+# sono eccezioni chiuse sul nome completo; non aprono gli oggetti `now` o
+# `location` alla generazione di nuovi executor.
+SINGULAR_EXECUTOR_NAMES = frozenset({"get_now", "get_location"})
 
 # ── MAPPING bilingue per stage 1 di synt + intent extractor ───────────
 # Per ogni verbo: sinonimi IT, sinonimi EN, confine semantico (1 frase).
@@ -625,9 +681,9 @@ ACTION_MAPPING = {
         },
     },
     "filter": {
-        "it": ["filtra", "tieni", "scarta", "seleziona", "subset",
+        "it": ["filtra", "tieni", "scarta", "escludi", "seleziona", "subset",
                 "estrai-righe", "estrai-da-testo"],
-        "en": ["filter", "keep", "discard", "select", "subset",
+        "en": ["filter", "keep", "discard", "exclude", "select", "subset",
                 "extract-lines", "extract-from-text"],
         "boundary": {
             "it": "RIDUCE una lista PREESISTENTE di entries (via `from_step:N` o argomento `entries`) al sottoinsieme che soddisfa un predicato (regex, range, soglia). Pure compute, niente I/O verso sorgenti di sistema. NON get/find (quelli prendono dati NUOVI; filter ha già la lista in mano). Copre anche selezionare un sottoinsieme di righe da un testo (filter_texts_lines): è `filter`, non `extract`.",
@@ -640,9 +696,11 @@ ACTION_MAPPING = {
         "boundary": "Riordina entries per chiave. Opzionale top-K. Pure compute.",
     },
     "group": {
-        "it": ["raggruppa", "aggrega-per", "partiziona-per"],
-        "en": ["group", "aggregate-by", "partition-by"],
-        "boundary": "Raggruppa entries per valore di un campo. Pure compute.",
+        "it": ["raggruppa", "unisci", "combina", "deduplica",
+               "aggrega-per", "partiziona-per"],
+        "en": ["group", "merge", "combine", "deduplicate",
+               "aggregate-by", "partition-by"],
+        "boundary": "Combina uno o piu' flussi di entries, con deduplica opzionale, oppure raggruppa entries per valore di un campo. Pure compute.",
     },
     "classify": {
         "it": ["classifica", "categorizza", "etichetta", "assegna-categoria"],
@@ -826,6 +884,8 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     "approval": (),               # gate UI (get_approval), no sezione planner
     "credentials": ("admin_shell",),
     "entries": (),                # meta-oggetto runtime, no sezione dedicata
+    "lists": (),                  # meta-oggetto bi-lista, no sezione dedicata
+    "skills": (),                 # amministrazione catalogo skill
     "issues": (),                 # provider github, no sezione planner dedicata
     "pulls": (),                  # provider github, no sezione planner dedicata
     "calendars": (),              # provider google_workspace, core-only
@@ -834,6 +894,9 @@ _OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
     # (.j2, dominio Fable) e' un follow-up di qualita' del routing, non un
     # requisito di disponibilita' dei tool.
     "sites": (),
+    # preferences: i tre builtin bastano a se stessi, nessuna sezione di
+    # prompt dedicata.
+    "preferences": (),
 }
 
 
@@ -1061,6 +1124,9 @@ _OBJECT_SYNONYMS_IT: dict[str, str] = {
     # (troppo generico) — l'intent LLM lo gestisce dal few-shot.
     "approvazione": "approval", "approva": "approval", "approvare": "approval",
     "consenso": "approval", "autorizzazione": "approval", "autorizza": "approval",
+    # preferences: il sostantivo con cui l'utente nomina le proprie preferenze.
+    "preferenza": "preferences", "preferenze": "preferences",
+    "impostazione": "preferences", "impostazioni": "preferences",
 }
 _OBJECT_SYNONYMS_EN: dict[str, str] = {
     "appointment": "events", "appointments": "events",
@@ -1089,6 +1155,10 @@ _OBJECT_SYNONYMS_EN: dict[str, str] = {
     # (too generic) — the intent LLM handles it from the few-shot.
     "approval": "approval", "approve": "approval", "consent": "approval",
     "authorization": "approval", "authorize": "approval",
+    # preferences: gemello EN dei termini con cui l'utente nomina le proprie
+    # preferenze.
+    "preference": "preferences", "preferences": "preferences",
+    "setting": "preferences", "settings": "preferences",
 }
 
 
@@ -1159,7 +1229,7 @@ def detect_implicit_actions(query: str,
       - ask:   0.60 <= confidence < 0.85
       - skip:  confidence < 0.60 (entry non emessa)
 
-    NB: §7.3 niente case-patch per dominio. Tutti i 23 OBJECTS §2.2 passano
+    NB: §7.3 niente case-patch per dominio. Tutti gli OBJECTS §2.2 passano
     dallo stesso lookup. Threshold/peso e' parametrico, non hardcoded.
     """
     if not query or not isinstance(query, str):

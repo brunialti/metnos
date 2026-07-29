@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
 <title>Metnos — Un'architettura per agenti governati</title>
-<meta name="description" content="Metnos è un'architettura self-hosted documentata per agenti governati. Il set di executor ammessi determina il dominio operativo; il core offre pianificazione, giudizio indipendente, memoria, audit e autorità circoscritta.">
-<meta name="keywords" content="Metnos, agenti governati, agenti self-hosted, architettura executor, executor firmati, executor remoti, vocabolario chiuso, AI locale, provider-agnostic, astrazione LLM, AI costituzionale, sicurezza AI, teleologia, deontologia, dialogo galileiano, memoria distribuita, architettura software AI">
+<meta name="description" content="Metnos è un'architettura documentata e ospitabile in proprio per agenti governati. L'insieme degli executor ammessi determina il dominio operativo; il nucleo offre pianificazione, giudizio indipendente, memoria, tracciabilità e autorità circoscritta.">
+<meta name="keywords" content="Metnos, agenti governati, agenti ospitati in proprio, architettura executor, executor firmati, executor remoti, vocabolario chiuso, AI locale, indipendenza dal fornitore, astrazione LLM, AI costituzionale, sicurezza AI, teleologia, deontologia, dialogo galileiano, memoria distribuita, architettura software AI">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow">
 
@@ -18,14 +18,14 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://metnos.com/it/">
 <meta property="og:title" content="Metnos — un'architettura per agenti governati">
-<meta property="og:description" content="Un'architettura self-hosted documentata in cui gli executor ammessi definiscono il dominio operativo concreto.">
+<meta property="og:description" content="Un'architettura documentata e ospitabile in proprio, in cui gli executor ammessi definiscono il dominio operativo concreto.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
 
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Metnos — un'architettura per agenti governati">
-<meta name="twitter:description" content="Un'architettura self-hosted costruita su executor firmati, autorità circoscritta e piani sottoposti a giudizio indipendente.">
+<meta name="twitter:description" content="Un'architettura ospitabile in proprio, costruita su executor firmati, autorità circoscritta e piani sottoposti a giudizio indipendente.">
 
 <script type="application/ld+json">
 {
@@ -34,7 +34,7 @@
   "name": "Metnos",
   "alternateName": "Metnos",
   "url": "https://metnos.com/",
-  "description": "Un'architettura self-hosted documentata per agenti governati, il cui dominio operativo è determinato dal set di executor ammessi.",
+  "description": "Un'architettura documentata e ospitabile in proprio per agenti governati, il cui dominio operativo è determinato dall'insieme degli executor ammessi.",
   "author": { "@type": "Person", "name": "Roberto Brunialti" },
   "inLanguage": ["it", "en"],
   "keywords": "agenti governati, architettura executor, executor firmati, astrazione LLM, AI costituzionale, teleologia, dialogo galileiano, telos, hybris"
@@ -371,7 +371,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
     <span class="time">20 min · anche in PDF</span>
   </a>
   <a href="architecture/">
-    <span class="label">Manuale di architettura</span>
+    <span class="label">Guida all'architettura</span>
     <span class="time">tutorial visuale</span>
   </a>
   <a href="code.html">
@@ -381,7 +381,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
 </div>
 
 <section>
-  <p class="opening">Metnos è il progetto di un'architettura self-hosted per agenti governati. L'installazione di riferimento può funzionare come assistente personale o domestico, ma quello è un set di executor, non la definizione del sistema: un altro catalogo ammesso può servire manutenzione software, ricerca, sistemi remoti o un diverso dominio operativo circoscritto. Il core pianifica, giudica, ricorda e registra; gli executor definiscono ciò che si può fare davvero. La parte interessante non è quindi soltanto il codice, ma la definizione che lo precede: quali poteri esistono, quali limiti rispettano e con quale vocabolario il sistema si rivolge all'umano che lo governa.</p>
+  <p class="opening">Metnos è il progetto di un'architettura per agenti governati, ospitabile in proprio. L'installazione di riferimento può funzionare come assistente personale o domestico, ma quello è un insieme di executor, non la definizione del sistema: un altro catalogo ammesso può servire manutenzione software, ricerca, sistemi remoti o un diverso dominio operativo circoscritto. Il nucleo pianifica, giudica, ricorda e registra; gli executor definiscono ciò che si può fare davvero. La parte interessante non è quindi soltanto il codice, ma la definizione che lo precede: quali poteri esistono, quali limiti rispettano e con quale vocabolario il sistema si rivolge all'umano che lo governa.</p>
 </section>
 
 <section>
@@ -391,33 +391,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
 
 <section>
   <h2>Cosa trovi qui</h2>
-  <p>Non il codice. Quello, il codice buono, qualcuno lo scriverà meglio di me &mdash; e va bene così. Qui trovi i <em>documenti</em>: l'architettura, le decisioni, le giornate di riflessione. Il processo di definizione, non il prodotto. Chi legge questi testi riceve, a pensarci bene, un oggetto più durevole di qualsiasi implementazione: una serie di scelte motivate, e un modo per ragionare che si può riutilizzare altrove. E poi alla fine sì, anche il codice, ma quello giusto per assicurare me e il lettore che le idee devono trovare, prima o poi, una via per irrompere nella realtà.</p>
-</section>
-
-<section>
-  <h2>L'autore e la macchina</h2>
-  <p>Questo progetto è stato scritto con l'aiuto costante di un sistema di intelligenza artificiale. Gran parte delle frasi che stai leggendo, delle figure SVG, delle tabelle e dei contratti dei componenti sono nate da un dialogo con una macchina che ha saputo tenermi la penna quando la mia si stancava. Non è solo una confessione: è parte del <em>senso</em> stesso del progetto. Metnos esplora un'architettura che <em>dia le ali</em> alle persone che la governano, permettendo loro di concentrarsi sull'analisi e non sulla realizzazione. Costruirne la definizione con un agente è già, in piccolo, una prova di concetto. Un esperimento ricorsivo.</p>
-</section>
-
-<section>
-  <h2>Dialoghi</h2>
-  <p>I dialoghi sono la traccia del pensiero dietro Metnos messa sotto pressione dell'obiezione: non trattati, non specifiche, ma idee costrette a rispondere a una controparte mai accomodante. La forma è galileiana &mdash; due voci, entrambe dell'autore, una delle quali rifiuta di concedere ragione facile. Non finzione: solo la struttura è dialogica, il contenuto è reale.</p>
-
-  <div class="invitation">
-    <div class="ornament">❦</div>
-
-    <h3>Dialogo sui fini e i limiti</h3>
-    <p>Roberto e L'Altro in quattro giornate. Da come nasce il bisogno di fini ultimi alla frase-cardine &mdash; <em>la Costituzione non giudica, la teleologia sì</em>.</p>
-    <a class="enter" href="Metnos_Dialogo_v1.html">Entra</a>
-    <div class="meta">riflessione &middot; 25 minuti di lettura</div>
-
-    <div style="color:var(--bronze); font-size:14pt; letter-spacing:6px; margin:38px 0 22px;">· · ·</div>
-
-    <h3>Dialogo sugli executor e sulla memoria distribuita</h3>
-    <p>Quattro giornate. Cosa può ricordare un sistema che non apprende; se Metnos sia un organismo, uno specchio, o un'ecologia; la forma emersa del mnestoma, letta attraverso la <em>network medicine</em>; e la verifica finale &mdash; i sei principi che tengono insieme il resto e la specifica tecnica come passo successivo. Executor, mnest, tracce, ager, il tavolo.</p>
-    <a class="enter" href="Metnos_Dialogo_Executor_v1.html">Entra</a>
-    <div class="meta">riflessione &middot; giornate I&ndash;IV &middot; completo</div>
-  </div>
+  <p>La documentazione descrive il prodotto attuale: una guida introduttiva, la mappa dell'interfaccia, una reference dei domini con esempi in linguaggio naturale e la Guida all'architettura con i contratti dei componenti. I cataloghi tecnici e la pagina dell'interfaccia sono generati dai registri del runtime; il Tutor compila queste fonti insieme ai manifest ammessi in un catalogo firmato. Il repository pubblico contiene il codice e l'installer necessari per verificare i contratti descritti.</p>
 </section>
 
 <div class="toc">
@@ -428,14 +402,14 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_QuickTour.pdf" type="application/pdf">Quick tour &amp; Survival kit &mdash; Metnos in quindici-venti minuti</a>
-      <span class="d">Nove scene reali, incluso il dossier Atlas multidominio, e un capitolo dedicato al Tutor: come Metnos spiega capacit&agrave; e procedure senza eseguire, come gestisce le lingue e quali lacune affronteranno F3/F4. Completano il booklet interfaccia, consenso, memoria, crescita, dispositivi, limiti e glossario. Disponibile anche come <a href="Metnos_QuickTour.html">master HTML accessibile</a>.</span>
+      <span class="d">Nove scene reali, incluso il dossier Atlas multidominio, e un capitolo dedicato al Tutor: come Metnos spiega capacit&agrave; e procedure senza eseguire e come gestisce le lingue. Completano la guida interfaccia, consenso, memoria, crescita, dispositivi, limiti e glossario. Disponibile anche come <a href="Metnos_QuickTour.html">versione HTML accessibile</a>.</span>
     </div>
     <span class="time">HTML · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="domains.html">Reference dei domini &mdash; che cosa chiedere a Metnos</a>
-      <span class="d">Tutti i 26 domini canonici spiegati uno per uno, con confini, disponibilit&agrave; ed esempi di richieste in linguaggio naturale. Nomi e conteggi tecnici derivano dai manifest e dai contratti builtin.</span>
+      <span class="d">Tutti i 27 domini canonici spiegati uno per uno, con confini, disponibilit&agrave; ed esempi di richieste in linguaggio naturale. Nomi e conteggi tecnici derivano dai manifest e dai contratti builtin.</span>
     </div>
     <span class="time">Reference · 15 min</span>
   </div>
@@ -452,7 +426,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   <div class="group-title">Fondamenti</div>
   <div class="toc-item">
     <div>
-      <a class="t" href="architecture/">Manuale di architettura</a>
+      <a class="t" href="architecture/">Guida all'architettura</a>
       <span class="d">Un tutorial visuale dallo scopo del sistema e dal flusso delle richieste fino all'autorit&agrave; degli executor e ai contratti esatti di ogni componente. Diagrammi SVG, stampabile in PDF.</span>
     </div>
     <span class="time">20 min</span>
@@ -460,45 +434,45 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   <div class="toc-item">
     <div>
       <a class="t" href="architecture/tutor.html">Tutor &mdash; Metnos sa spiegare Metnos</a>
-      <span class="d">Il componente locale che compila manifest ammessi e documentazione in un catalogo firmato, distingue spiegazioni da azioni, filtra i ruoli e risponde senza strumenti. Architettura F2 e roadmap F3/F4.</span>
+      <span class="d">Il componente locale che compila manifest ammessi, registri runtime e documentazione pubblicata in un catalogo firmato. Distingue spiegazioni da azioni, applica il controllo di accesso prima della composizione e risponde senza strumenti.</span>
     </div>
     <span class="time">8 min</span>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">Giudizio e visione</div>
+  <div class="group-title">Visione e valutazione</div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Prospettive_Giudizio_v1.html">Prospettive e giudizio</a>
-      <span class="d">Il design analizzato da quattro ottiche esperte, sette critiche bloccanti, il piano di lavoro riordinato.</span>
+      <span class="d">Una valutazione critica dell'architettura da pi&ugrave; punti di vista: utilit&agrave;, autonomia, proattivit&agrave;, rischi di antropomorfizzazione e condizioni di governo.</span>
     </div>
-    <span class="time">20 min</span>
+    <span class="time">Analisi · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Prospettive_Estese_v1.html">Prospettive estese</a>
-      <span class="d">Da assistente reattivo a intelligenza ambientale. Cinque famiglie di capacità, più <em>telos</em> come fondante.</span>
+      <span class="d">Le capacit&agrave; che ampliano il raggio di Metnos e le condizioni architetturali necessarie per introdurle senza confondere possibilit&agrave;, progetto e funzione disponibile.</span>
     </div>
-    <span class="time">20 min</span>
+    <span class="time">Analisi · 20 min</span>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">Riflessione</div>
+  <div class="group-title">Dialoghi</div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Dialogo_v1.html">Dialogo sui fini e i limiti</a>
-      <span class="d">Quattro giornate sulla proattività, i divieti e le tendenze, chi giudica il giudice, guardia e giudice. Con un prologo mitologico che legge Metnos come creatura a rischio di hybris.</span>
+      <span class="d">Quattro giornate su proattivit&agrave;, leggi, fini, giudizio e separazione fra guardia deterministica e valutazione graduata.</span>
     </div>
-    <span class="time">25 min</span>
+    <span class="time">Riflessione · 25 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Dialogo_Executor_v1.html">Dialogo sugli executor e sulla memoria distribuita</a>
-      <span class="d">Secondo dialogo, completo in quattro giornate: memoria senza apprendimento (executor, mnest, mnestoma); organismo o specchio (le cinque fonti di creatività, il tavolo); la forma del tavolo (modularità, tracce, network medicine); regge? (ager, freeze, defuse, seme, i sei principi).</span>
+      <span class="d">Quattro giornate sul contratto degli executor e sulle forme di memoria operativa: mnest, tracce, mnestoma, decadimento e composizione.</span>
     </div>
-    <span class="time">I&ndash;IV · completo</span>
+    <span class="time">Riflessione · 25 min</span>
   </div>
 </div>
 
@@ -507,20 +481,27 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Glossario_v1.html">Glossario</a>
-      <span class="d">Circa 35 voci in ordine alfabetico: termini tecnici, componenti, progetti esterni di ispirazione (openclaw, zeroclaw), concetti fondanti (telos, vaglio, interfaccia LLM, hybris). Punto di consultazione quando un termine di un doc non è chiaro.</span>
+      <span class="d">I termini tecnici e concettuali usati nel corpus, con rimandi alle pagine che ne definiscono il contratto corrente.</span>
     </div>
-    <span class="time">consulta</span>
+    <span class="time">Consultazione</span>
   </div>
 </div>
 
 <div class="group">
   <div class="group-title">Contratti dei componenti</div>
-  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">Il manuale contiene l'atlante completo dei componenti. Da l&igrave; ogni nome apre il contratto implementativo canonico: schemi, chiamate, autorit&agrave;, condizioni di errore e verifiche di conformit&agrave;.</p>
-</div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">La Guida all'architettura contiene l'atlante completo dei componenti. Da l&igrave; ogni nome apre il contratto implementativo canonico: schemi, chiamate, autorit&agrave;, condizioni di errore e verifiche di conformit&agrave;.</p>
 </div>
 
-<div style="border-left: 4px solid var(--navy, #1A477A); background: #f0f6ff; color: #0f2f57; padding: 16px 22px; margin: 40px 0; border-radius: 0 8px 8px 0; font-size: 11.5pt;">
-<strong>E adesso, anche il codice.</strong> Il repository &egrave; pubblico &mdash; il sottoinsieme run-essential dell'istanza in esercizio, con installer e architettura: <a href="https://github.com/brunialti/metnos" style="color: var(--navy-light, #2B6CB0); border:none;">github.com/brunialti/metnos</a> (AGPL-3.0). I documenti restano la parte pi&ugrave; preziosa; il codice, adesso, &egrave; l&igrave; a confermarli. <a href="code.html" style="border:none;">La nota sul codice &rarr;</a>
+<div class="group">
+  <div class="group-title">Codice</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="https://github.com/brunialti/metnos">Repository pubblico</a>
+      <span class="d">Codice, installer e documentazione tecnica in inglese, distribuiti con licenza AGPL-3.0. La <a href="code.html">nota sul codice</a> chiarisce il rapporto fra repository pubblico e istanza installata.</span>
+    </div>
+    <span class="time">GitHub</span>
+  </div>
+</div>
 </div>
 
 <div class="references">

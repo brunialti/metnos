@@ -383,7 +383,7 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
     <span class="time">20 min · PDF available</span>
   </a>
   <a href="architecture/">
-    <span class="label">Architecture handbook</span>
+    <span class="label">Architecture guide</span>
     <span class="time">visual tutorial</span>
   </a>
   <a href="code.html">
@@ -403,33 +403,7 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
 
 <section>
   <h2>What you will find here</h2>
-  <p>Not the code. Good code, someone will write better than me — and that is fine. Here you will find the <em>documents</em>: the architecture, the decisions, the days of reflection. The process of definition, not the product. A reader of these texts receives, on closer look, a more durable object than any implementation: a set of motivated choices, and a way of reasoning that can be reused elsewhere. And in the end, yes, also the code — but only the code that is needed to reassure the author and the reader that ideas must, sooner or later, find their way into reality.</p>
-</section>
-
-<section>
-  <h2>The author and the machine</h2>
-  <p>This project has been written with the constant help of an artificial intelligence system. Much of what you are reading, the SVG figures, the tables and the component contracts, were born from a dialogue with a machine that held the pen when mine grew tired. It is not merely a confession: it is part of the <em>point</em> of the project itself. Metnos explores an architecture that <em>gives wings</em> to the people who govern it, so that they can focus on analysis rather than execution. Building its definition with an agent is already, in miniature, a proof of concept. A recursive experiment.</p>
-</section>
-
-<section>
-  <h2>Dialogues</h2>
-  <p>The dialogues are the trace of the thought behind Metnos, put under the pressure of objection: not treatises, not specifications, but ideas compelled to answer an uncomfortable peer. The form is Galilean &mdash; two voices, both the author's, one of which refuses to give easy agreement. Not fiction: only the structure is dialogic, the content is real.</p>
-
-  <div class="invitation">
-    <div class="ornament">❦</div>
-
-    <h3>Dialogue on ends and limits</h3>
-    <p>Roberto and The Other, in four Giornate. From how the need for ultimate ends first arises, to the cardinal sentence &mdash; <em>the Constitution does not judge; teleology does</em>.</p>
-    <a class="enter" href="Metnos_Dialogue_v1.html">Enter</a>
-    <div class="meta">reflection &middot; 25 min read</div>
-
-    <div style="color:var(--bronze); font-size:14pt; letter-spacing:6px; margin:38px 0 22px;">· · ·</div>
-
-    <h3>Dialogue on executors and distributed memory</h3>
-    <p>Four Giornate. What a system that does not learn can remember; whether Metnos is an organism, a mirror, or an ecology; the emergent shape of the mnestome, read through <em>network medicine</em>; and the final test &mdash; the six principles that hold the rest together and the technical specification as the next step. Executors, mnests, traces, ager, the table.</p>
-    <a class="enter" href="Metnos_Dialogue_Executors_v1.html">Enter</a>
-    <div class="meta">reflection &middot; Giornate I&ndash;IV &middot; complete</div>
-  </div>
+  <p>The documentation describes the current product: an introductory guide, the interface map, a domain reference with natural-language examples, and the Architecture guide with component contracts. Technical catalogs and the interface page are generated from runtime registries; the Tutor compiles these sources together with admitted manifests into a signed catalog. The public repository contains the code and installer needed to verify the documented contracts.</p>
 </section>
 
 <div class="toc">
@@ -440,14 +414,14 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_QuickTour.pdf" type="application/pdf">Quick tour &amp; Survival kit &mdash; Metnos in 15&ndash;20 minutes</a>
-      <span class="d">Nine real scenes, including the cross-domain Atlas dossier, and a dedicated Tutor chapter: how Metnos explains capabilities and procedures without executing, how it handles languages, and which gaps F3/F4 will address. The booklet also covers interface, consent, memory, growth, devices, limits, and a glossary. Also available as an <a href="Metnos_QuickTour.html">accessible HTML master</a>.</span>
+      <span class="d">Nine real scenes, including the cross-domain Atlas dossier, and a dedicated Tutor chapter: how Metnos explains capabilities and procedures without executing and how it handles languages. The guide also covers interface, consent, memory, growth, devices, limits, and a glossary. An <a href="Metnos_QuickTour.html">accessible HTML version</a> is also available.</span>
     </div>
     <span class="time">HTML · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="domains.html">Domain reference &mdash; what to ask Metnos</a>
-      <span class="d">All 26 canonical domains explained one by one, with boundaries, availability, and natural-language request examples. Technical names and counts derive from manifests and builtin contracts.</span>
+      <span class="d">All 27 canonical domains explained one by one, with boundaries, availability, and natural-language request examples. Technical names and counts derive from manifests and builtin contracts.</span>
     </div>
     <span class="time">Reference · 15 min</span>
   </div>
@@ -464,7 +438,7 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
   <div class="group-title">Foundations</div>
   <div class="toc-item">
     <div>
-      <a class="t" href="architecture/">Architecture handbook</a>
+      <a class="t" href="architecture/">Architecture guide</a>
       <span class="d">One visual tutorial from the system's purpose and request flow to executor authority and the exact contracts of every component. Inline SVG diagrams, printable as PDF.</span>
     </div>
     <span class="time">20 min</span>
@@ -472,45 +446,45 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
   <div class="toc-item">
     <div>
       <a class="t" href="architecture/tutor.html">Tutor &mdash; Metnos can explain Metnos</a>
-      <span class="d">The local component that compiles admitted manifests and documentation into a signed catalog, separates explanations from actions, filters roles, and answers with no tools. F2 architecture and F3/F4 roadmap.</span>
+      <span class="d">The local component that compiles admitted manifests, runtime registries, and published documentation into a signed catalog. It separates explanations from actions, applies access control before composition, and answers with no tools.</span>
     </div>
     <span class="time">8 min</span>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">Judgement and vision</div>
+  <div class="group-title">Vision and assessment</div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Perspectives_Judgement_v1.html">Perspectives and judgement</a>
-      <span class="d">The design analysed from four expert angles, seven blocking critiques, the reordered work plan.</span>
+      <span class="d">A critical assessment of the architecture from several viewpoints: usefulness, autonomy, proactivity, anthropomorphism risks, and conditions for governance.</span>
     </div>
-    <span class="time">20 min</span>
+    <span class="time">Analysis · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Extended_Perspectives_v1.html">Extended perspectives</a>
-      <span class="d">From reactive assistant to ambient intelligence. Five families of capabilities, plus <em>Telos</em> as a foundation.</span>
+      <span class="d">Capabilities that broaden Metnos's reach and the architectural conditions required to introduce them without confusing a possibility, a design, and an available function.</span>
     </div>
-    <span class="time">20 min</span>
+    <span class="time">Analysis · 20 min</span>
   </div>
 </div>
 
 <div class="group">
-  <div class="group-title">Reflection</div>
+  <div class="group-title">Dialogues</div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a>
-      <span class="d">Four Giornate on proactivity, laws and tendencies, who judges the judge, guard and judge. With a mythological prologue that reads Metnos as a creature at risk of hybris.</span>
+      <span class="d">Four Giornate on proactivity, laws, ends, judgement, and the separation between deterministic guard and graduated evaluation.</span>
     </div>
-    <span class="time">25 min</span>
+    <span class="time">Reflection · 25 min</span>
   </div>
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and distributed memory</a>
-      <span class="d">Second dialogue, complete in four Giornate: memory without learning (executors, mnests, the mnestome); organism or mirror (the five sources of creativity, the table); the shape of the table (modularity, traces, network medicine); does it hold? (ager, freeze, defuse, seed, the six principles).</span>
+      <span class="d">Four Giornate on executor contracts and forms of operational memory: mnests, traces, the mnestome, decay, and composition.</span>
     </div>
-    <span class="time">I&ndash;IV · complete</span>
+    <span class="time">Reflection · 25 min</span>
   </div>
 </div>
 
@@ -519,20 +493,27 @@ If you would like the <em>how</em> after the <em>why</em>, three doors. The note
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_Glossary_v1.html">Glossary</a>
-      <span class="d">About 35 entries in alphabetical order: technical terms, components, external projects of inspiration (openclaw, zeroclaw), foundational concepts (telos, vaglio, LLM abstraction, hybris).</span>
+      <span class="d">Technical and conceptual terms used throughout the corpus, with links to the pages that define their current contract.</span>
     </div>
-    <span class="time">reference</span>
+    <span class="time">Reference</span>
   </div>
 </div>
 
 <div class="group">
   <div class="group-title">Component contracts</div>
-  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">The handbook includes the complete component atlas. From there, each component name opens its canonical implementation contract: schemas, calls, authority, failure conditions and conformance checks.</p>
-</div>
+  <p style="font-style:italic; color:var(--ink-dim); font-size:11pt; margin-top:8px;">The Architecture guide includes the complete component atlas. From there, each component name opens its canonical implementation contract: schemas, calls, authority, failure conditions and conformance checks.</p>
 </div>
 
-<div style="border-left: 4px solid var(--navy, #1A477A); background: #f0f6ff; color: #0f2f57; padding: 16px 22px; margin: 40px 0; border-radius: 0 8px 8px 0; font-size: 11.5pt;">
-<strong>And now, the code too.</strong> The repository is public &mdash; the run-essential subset of the live instance, with installer and architecture: <a href="https://github.com/brunialti/metnos" style="color: var(--navy-light, #2B6CB0); border:none;">github.com/brunialti/metnos</a> (AGPL-3.0). The documents remain the most precious part; the code, now, is there to confirm them. <a href="code.html" style="border:none;">The note on code &rarr;</a>
+<div class="group">
+  <div class="group-title">Code</div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="https://github.com/brunialti/metnos">Public repository</a>
+      <span class="d">Code, installer, and English technical documentation under the AGPL-3.0 license. The <a href="code.html">code note</a> explains the relationship between the public repository and an installed instance.</span>
+    </div>
+    <span class="time">GitHub</span>
+  </div>
+</div>
 </div>
 
 <div class="references">

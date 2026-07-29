@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import config as _C  # §7.11
+from playwright_sidecar import stealth as _sites_stealth
 
 DEFAULT_DB_PATH = _C.PATH_USER_DATA / "users.db"
 
@@ -454,6 +455,9 @@ def consume_pairing_token(channel: str, recipient_id: str, token: str) -> dict:
         raise ValueError("invalid arguments")
     conn = _open_db()
     try:
+        # Serializza select+consume: due processi concorrenti non possono
+        # osservare entrambi lo stesso token one-shot come ancora valido.
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT * FROM user_channels WHERE channel=? AND pairing_token=?",
             (channel, token),
@@ -473,18 +477,25 @@ def consume_pairing_token(channel: str, recipient_id: str, token: str) -> dict:
                     "pairing_expires_at=NULL WHERE user_id=? AND channel=?",
                     (row["user_id"], channel),
                 )
+                conn.commit()
                 raise ValueError("token expired")
-        conn.execute(
+        cur = conn.execute(
             "UPDATE user_channels SET recipient_id=?, verified_at=?, "
             "pairing_token=NULL, pairing_expires_at=NULL "
-            "WHERE user_id=? AND channel=?",
-            (str(recipient_id), _now_iso(), row["user_id"], channel),
+            "WHERE user_id=? AND channel=? AND pairing_token=?",
+            (str(recipient_id), _now_iso(), row["user_id"], channel, token),
         )
+        if cur.rowcount != 1:
+            conn.rollback()
+            raise ValueError("token unknown or already consumed")
         u = conn.execute(
             "SELECT * FROM users WHERE id=?", (row["user_id"],)
         ).fetchone()
+        conn.commit()
         return dict(u) if u else {}
     finally:
+        if conn.in_transaction:
+            conn.rollback()
         conn.close()
 
 
@@ -616,16 +627,68 @@ __all__ = [
 
 # --- User prefs (W2 v1, ADR 0187) -------------------------------------------
 
-PREF_KEYS = ("lang", "tone", "reply_length", "units", "sites_stealth")
+_SITE_STEALTH_PREF_KEYS = tuple(
+    spec["preference_key"] for spec in _sites_stealth.preference_specs())
+PREF_KEYS = (
+    "lang", "tone", "reply_length", "units", "sites_browser_mode",
+    "sites_stealth",
+    *_SITE_STEALTH_PREF_KEYS,
+)
 PREF_ALLOWED = {
-    "lang": ("it", "en"),
+    # Valori risolti da `allowed_pref_values`: il catalogo i18n è la fonte
+    # canonica e una lingua nuova non richiede una modifica a questo file.
+    "lang": (),
     "tone": ("neutro", "informale", "formale"),
     "reply_length": ("breve", "normale", "dettagliata"),
     "units": ("metric", "imperial"),
-    # ADR 0191 P1: stealth per-turno del dominio `sites` (opt-in, default off).
-    # Vocabolario CHIUSO on|off; letta da `dispatch` e iniettata come `_stealth`.
+    # Superficie Website browsing: side = Chromium completo grafico pilotato.
+    "sites_browser_mode": ("headless", "side"),
+    # ADR 0191 P1: master stealth per-turno (opt-in, default off).
     "sites_stealth": ("on", "off"),
+    # Le tecniche sono sotto-opzioni indipendenti generate dal registro
+    # canonico del sidecar. Assenza = off; il master resta il ceiling utente.
+    **{key: ("on", "off") for key in _SITE_STEALTH_PREF_KEYS},
 }
+
+
+# Preferenze DICHIARATE ma senza consumatore: la chiave si scrive e si legge,
+# e nessun percorso di risposta la applica ancora. Serve a non dichiarare un
+# esito che non corrisponde alla realta' (§2.8): chi la imposta dalla chat o
+# dal pannello deve saperlo. Si toglie una voce da qui NELLO STESSO commit che
+# ne cabla il consumatore, mai prima.
+#   tone  -> vuole una variabile nel prompt del compositore (testo model-facing)
+#   units -> vuole un insieme chiuso di campi convertibili, oggi vuoto
+PREF_WITHOUT_EFFECT = ("tone", "units")
+
+
+def allowed_pref_values(key: str) -> tuple[str, ...]:
+    """Valori ammessi per una preferenza, derivati dal registro competente."""
+    if key != "lang":
+        return tuple(PREF_ALLOWED.get(key, ()))
+    try:
+        import i18n as _i18n
+        languages = _i18n.available_languages()
+        if languages:
+            return languages
+        return (_i18n.current_lang(),)
+    except Exception:
+        # Fresh bootstrap con DB non ancora installato: la lingua di istanza
+        # resta l'unico valore onesto, senza inventare un elenco nella UI.
+        try:
+            import config as _config
+            return (str(_config.DEFAULT_LANG or "it").lower(),)
+        except Exception:
+            return ("it",)
+
+
+def preference_allowed_map() -> dict[str, tuple[str, ...]]:
+    """Snapshot dei valori mostrati nella pagina preferenze utente."""
+    return {key: allowed_pref_values(key) for key in PREF_KEYS}
+
+
+def sites_stealth_preference_specs() -> tuple[dict, ...]:
+    """Metadati del gruppo UI, derivati dal registro stealth canonico."""
+    return _sites_stealth.preference_specs()
 
 _PREFS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS user_prefs (
@@ -645,14 +708,15 @@ def set_pref(user_id_or_name: str, key: str, value: str,
     u = get_user(user_id_or_name)
     if not u:
         return {"ok": False, "error": f"utente sconosciuto: {user_id_or_name}"}
-    if key not in PREF_ALLOWED:
+    if key not in PREF_KEYS:
         return {"ok": False,
                 "error": f"pref sconosciuta: {key} (valide: {PREF_KEYS})"}
     v = str(value).strip().lower()
-    if v not in PREF_ALLOWED[key]:
+    allowed = allowed_pref_values(key)
+    if v not in allowed:
         return {"ok": False,
                 "error": f"valore '{value}' non valido per {key} "
-                         f"(ammessi: {PREF_ALLOWED[key]})"}
+                         f"(ammessi: {allowed})"}
     import datetime as _dt
     conn = _open_db()
     conn.execute(
@@ -676,14 +740,28 @@ def get_pref(user_id_or_name: str, key: str, default: str | None = None):
     return row[0] if row else default
 
 
-def list_prefs(user_id_or_name: str) -> dict:
+def list_prefs_detailed(user_id_or_name: str) -> dict:
+    """{key: {value, source, updated_at}} — proiezione completa della riga.
+
+    `source` dice DA DOVE arriva la preferenza ('chat', 'explicit' dal
+    pannello, ...): la superficie conversazionale la mostra all'utente insieme
+    al valore, perche' «chi l'ha decisa» e' parte della risposta a «che
+    preferenze ho».
+    """
     u = get_user(user_id_or_name)
     if not u:
         return {}
     rows = _open_db().execute(
-        "SELECT key, value FROM user_prefs WHERE user_id=?",
+        "SELECT key, value, source, updated_at FROM user_prefs WHERE user_id=?",
         (u["id"],)).fetchall()
-    return {r[0]: r[1] for r in rows}
+    return {r[0]: {"value": r[1], "source": r[2], "updated_at": r[3]}
+            for r in rows}
+
+
+def list_prefs(user_id_or_name: str) -> dict:
+    """{key: value} — proiezione essenziale, per i consumatori di solo valore."""
+    return {k: rec["value"]
+            for k, rec in list_prefs_detailed(user_id_or_name).items()}
 
 
 def delete_pref(user_id_or_name: str, key: str) -> bool:

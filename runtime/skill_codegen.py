@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import Optional, Any
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from generated_executor_contract import (
+    generated_contract_context,
+    validate_generated_manifest_text,
+)
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -76,7 +80,7 @@ def _tojson(value: Any) -> str:
 # il termine plurale non lo deriva ovviamente (eventi/evento ok dal token match
 # parziale? No: prefilter fa exact substring match sulla parola).
 _AFFINITY_BY_OBJ = {
-    # Coverage di vocab.OBJECTS §2.2 (19 plurali). Bug F4 mitigato:
+    # Coverage di vocab.OBJECTS §2.2. Bug F4 mitigato:
     # ogni object ha entry, cosi' il cartesian (verb × obj) produce
     # affinity qualified anche per oggetti rari.
     "events":      ["appuntamento", "appuntamenti", "agenda", "evento",
@@ -93,6 +97,8 @@ _AFFINITY_BY_OBJ = {
                     "contacts", "address", "persona"],
     "credentials": ["credenziale", "credenziali", "chiave", "token",
                     "credentials", "keys", "password"],
+    "approval":    ["approvazione", "approvazioni", "consenso", "conferma",
+                    "approval", "approvals", "consent", "confirmation"],
     "processes":   ["processo", "processi", "process", "processes",
                     "task", "pid"],
     "urls":        ["url", "urls", "link", "links", "sito", "siti",
@@ -106,12 +112,19 @@ _AFFINITY_BY_OBJ = {
                     "location"],
     "numbers":     ["numero", "numeri", "number", "numbers", "telefono"],
     "tasks":       ["task", "tasks", "promemoria", "scheduler"],
+    "skills":      ["skill", "skills", "capability", "modulo"],
+    "calendars":   ["calendario", "calendari", "calendar", "calendars",
+                    "agenda"],
     "inputs":      ["input", "inputs", "valore", "valori"],
     "proposals":   ["proposta", "proposte", "proposal", "proposals"],
     "signatures":  ["firma", "firme", "signature", "signatures"],
     "packages":    ["pacchetto", "pacchetti", "package", "packages"],
     "entries":     ["voce", "voci", "entry", "entries", "elemento",
                     "elementi"],
+    "lists":       ["liste", "lists", "due liste", "two lists",
+                    "insiemi", "sets"],
+    "sites":       ["sito", "siti", "site", "sites", "website",
+                    "websites", "sessione web", "web session"],
     # OBJECTS estesi a 21 per GitHub (ADR 0141): issues/pulls. Senza queste
     # entry l'affinity cadeva sul fallback verb-only (['cerca','find',...]),
     # IDENTICA fra find_issues_github e find_pulls_github → il proposer non
@@ -120,11 +133,13 @@ _AFFINITY_BY_OBJ = {
                     "bug", "ticket", "problema", "problemi"],
     "pulls":       ["pull request", "pull requests", "pr", "merge",
                     "richiesta di merge", "patch", "contributo"],
+    "preferences": ["preferenza", "preferenze", "preference", "preferences",
+                    "impostazione", "impostazioni", "setting", "settings"],
 }
 
 
 _AFFINITY_BY_VERB = {
-    # Coverage completa dei 23 verbi canonici §2.2 ACTIONS. Una chiave per
+    # Coverage completa di vocab.ACTIONS. Una chiave per
     # ogni verb mutating/non-mutating: il bug F4 (bare nouns nell'affinity)
     # nasceva quando il verb non era in tabella e il cartesian fallback
     # ritornava solo i nomi degli object.
@@ -151,6 +166,10 @@ _AFFINITY_BY_VERB = {
     "compute":  ["calcola", "compute"],
     "compare":  ["confronta", "compare"],
     "order":    ["ordina", "order"],
+    "open":     ["apri", "open", "avvia sessione", "start session"],
+    "login":    ["accedi", "autentica", "login", "sign in", "authenticate"],
+    "act":      ["agisci", "interagisci", "esegui azione", "act",
+                 "interact", "perform action"],
 }
 
 
@@ -244,12 +263,31 @@ def _en_fallback(it: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _vectorial_hint_from_plan(plan) -> Optional[dict]:
-    """Per delete/send executor che iterano N volte uno script che accetta
-    UN id POSIZIONALE per chiamata, prepara il blocco vettoriale
-    (_coalesce_<entity>).
+def _resource_input_group(plan) -> Optional[list[str]]:
+    """Return the scalar/plural/entries group for a positional resource id.
 
-    Ritorna None se l'executor non e' iterativo (output entries o N=1 fisso).
+    The translator creates this trio from an uppercase positional placeholder
+    in the source CLI.  Deriving the group from ``ArgSpec`` keeps codegen
+    independent from provider names and natural-language command examples.
+    """
+    args = list(plan.args)
+    names = {arg.name for arg in args}
+    for arg in args:
+        if not getattr(arg, "positional", False) or arg.type != "string":
+            continue
+        plural = f"{arg.name}s"
+        if plural in names and "entries" in names:
+            return [arg.name, plural, "entries"]
+    return None
+
+
+def _vectorial_hint_from_plan(plan) -> Optional[dict]:
+    """Prepare coalescing for a CLI accepting one positional resource id.
+
+    The wrapper interface remains vectorial for both readers and mutators:
+    callers may provide the scalar id, a list of ids, or upstream entries.
+    The source CLI is invoked once per id and results are aggregated according
+    to the executor output contract.
 
     1/6/2026: emetti il blocco SOLO se il plan ha davvero un arg id su cui
     iterare — `<obj>_id`/`<obj>_ids` (derivati da un positional MAIUSCOLO della
@@ -258,27 +296,17 @@ def _vectorial_hint_from_plan(plan) -> Optional[dict]:
     caso il coalesce inventerebbe nomi inesistenti e appenderebbe un positional
     che lo script non accetta (mismatch description-vs-code + chiamata rotta).
     """
-    if plan.output_kind != "results":
+    if plan.output_kind not in ("entries", "results"):
         return None
-    if plan.verb not in ("delete", "send"):
+    group = _resource_input_group(plan)
+    if group is None:
         return None
-    # Mapping singolare/plurale standard dal vocabolario chiuso.
-    obj_singular = {
-        "events":   "event",
-        "messages": "message",
-        "files":    "file",
-        "contacts": "contact",
-    }.get(plan.obj, plan.obj.rstrip("s"))
-    singular = f"{obj_singular}_id"
-    plural = f"{obj_singular}_ids"
-    arg_names = {a.name for a in plan.args}
-    if not (singular in arg_names or plural in arg_names or "entries" in arg_names):
-        # Niente id posizionale da iterare: executor single-call flag-based.
-        return None
+    singular, plural, _entries = group
     return {
         "entity": "rows",
         "singular": singular,
         "plural":   plural,
+        "output_kind": plan.output_kind,
     }
 
 
@@ -325,6 +353,8 @@ def _passthrough_flags(plan) -> list:
     for a in plan.args:
         if a.name in _NON_PASSTHROUGH:
             continue
+        if getattr(a, "positional", False):
+            continue
         if a.type == "array" and a.items_type == "object":
             # Es. events: list[dict] -> non e' passthrough, viene splittato in N call
             continue
@@ -340,6 +370,15 @@ def _passthrough_flags(plan) -> list:
             "skip_default": a.default if a.name == "calendar_id" else None,
         })
     return out
+
+
+def _positional_cli_args(plan) -> list[dict]:
+    """Args declared positionally by the source skill examples, in order."""
+    return [
+        {"name": arg.name}
+        for arg in plan.args
+        if getattr(arg, "positional", False)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -522,29 +561,49 @@ def _tests_for_plan(plan) -> list:
     """Costruisce 4-6 test in stile §3 (caso felice, lista vuota, args invalidi,
     edge dominio = auth missing).
     """
+    def sample(arg):
+        if arg.name == "repo":
+            return "owner/repo"
+        if arg.name in {"number", "comment_id", "workflow_id"}:
+            return 1
+        if arg.name == "target":
+            return "issue:1"
+        if arg.type == "integer":
+            return 1
+        if arg.type == "number":
+            return 1.0
+        if arg.type == "boolean":
+            return True
+        if arg.type == "array":
+            return ["test"]
+        return "test"
+
+    valid_input = {arg.name: sample(arg) for arg in plan.args if arg.required}
     out = []
-    # Test 1: validates_invalid_args (args non dict o args essenziali mancanti)
+    # Test 1: unknown args fail before any provider process is started.
     out.append({
-        "name": "validates_args_must_be_object",
-        "input_toml": _toml_inline_value({"_force_invalid_type": True}),
-        "expect_toml": _toml_inline_value({"ok": True}),  # placeholder
+        "name": "rejects_unknown_args_offline",
+        "input_toml": _toml_inline_value({"unknown_contract_arg": True}),
+        "expect_toml": _toml_inline_value(
+            {"ok": False, "error_class": "invalid_args"}),
+        "env_toml": "",
     })
-    # Test 2: happy path mocked. `_force_empty` corto-circuita il subprocess
-    # (nessuna chiamata reale) ed e' domain-agnostico: niente literal
-    # calendar-specifici (summary/start/end/event_id) che, su skill non-Google,
-    # divergono dagli arg dichiarati nel manifest e fanno fallire la verifica
-    # description-vs-code (L6 stage 6). Fix 1/6/2026.
-    happy_input = {"_force_empty": True}
+    # Test 2: provider subprocess esplicitamente fake, mai rete/credenziali.
+    fake = ("skill_test_fakes.empty" if plan.output_kind == "entries"
+            else "skill_test_fakes.success")
     out.append({
-        "name": "happy_path_mocked",
-        "input_toml": _toml_inline_value(happy_input),
+        "name": "happy_path_offline",
+        "input_toml": _toml_inline_value(valid_input),
         "expect_toml": _toml_inline_value({"ok": True}),
+        "env_toml": _toml_inline_value({"METNOS_SUBPROCESS_FAKE": fake}),
     })
-    # Test 3: auth missing -> needs_inputs
+    # Test 3: auth failure fake -> needs_inputs, no host token or provider call.
     out.append({
-        "name": "auth_missing_returns_needs_inputs",
-        "input_toml": _toml_inline_value({"_force_error": "auth_required"}),
+        "name": "auth_missing_offline_needs_inputs",
+        "input_toml": _toml_inline_value(valid_input),
         "expect_toml": _toml_inline_value({"decision": "needs_inputs"}),
+        "env_toml": _toml_inline_value({
+            "METNOS_SUBPROCESS_FAKE": "skill_test_fakes.auth_required"}),
     })
     # Test 4: invalid args (specific al verbo)
     if plan.verb == "set":
@@ -552,18 +611,22 @@ def _tests_for_plan(plan) -> list:
             "name": "validates_missing_required",
             "input_toml": _toml_inline_value({}),
             "expect_toml": _toml_inline_value({"ok": False, "error_class": "invalid_args"}),
+            "env_toml": "",
         })
     elif plan.verb == "delete":
         out.append({
             "name": "validates_missing_id",
             "input_toml": _toml_inline_value({}),
             "expect_toml": _toml_inline_value({"ok": False, "error_class": "invalid_args"}),
+            "env_toml": "",
         })
     elif plan.output_kind == "entries":
         out.append({
             "name": "empty_result",
-            "input_toml": _toml_inline_value({"_force_empty": True}),
+            "input_toml": _toml_inline_value(valid_input),
             "expect_toml": _toml_inline_value({"ok": True, "used": 0}),
+            "env_toml": _toml_inline_value({
+                "METNOS_SUBPROCESS_FAKE": "skill_test_fakes.empty"}),
         })
     return out
 
@@ -589,6 +652,7 @@ def _output_schema_inline(plan) -> str:
             "  cap_value?: int,\n"
             "  error?: str,\n"
             "  error_class?: str,\n"
+            "  error_code?: str,\n"
             "  final_message_hint?: str\n"
             "}"
         )
@@ -608,6 +672,7 @@ def _output_schema_inline(plan) -> str:
         "  failures?: Array<{id, error, error_class}>,\n"
         "  error?: str,\n"
         "  error_class?: str,\n"
+        "  error_code?: str,\n"
         "  _undo?: {pattern, ids},\n"
         "  final_message_hint?: str\n"
         "}"
@@ -730,8 +795,14 @@ def build_context(plan, parsed_skill, *, description_it=None,
         affinity = _default_affinity(plan)
 
     vectorial_coalesce = _vectorial_hint_from_plan(plan)
+    resource_input_group = _resource_input_group(plan)
     iso_validations = _iso_validations(plan)
     passthrough = _passthrough_flags(plan)
+    positional = _positional_cli_args(plan)
+    if vectorial_coalesce is not None:
+        for arg in positional:
+            arg["coalesced"] = (
+                arg["name"] == vectorial_coalesce["singular"])
 
     # Drop degli arg auto-plurali `<x>_ids` orfani (1/6/2026): build_args
     # (§2.1) aggiunge il plurale per ogni flag id scalare `<x>_id`, ma se
@@ -812,6 +883,11 @@ def build_context(plan, parsed_skill, *, description_it=None,
     return {
         "name": plan.name,
         "skill_name": parsed_skill.name,
+        # GitHub is a Metnos-owned builtin skill whose executors are authored
+        # and maintained by us.  Its installation path reuses the skill bundle
+        # substrate, but that path must never turn its origin into "imported".
+        "builtin_handcrafted": parsed_skill.name == "github",
+        **generated_contract_context(lifecycle="active"),
         "skill_domain": plan.skill_domain,
         "skill_action": plan.skill_action,
         "skill_script": skill_script,
@@ -819,6 +895,11 @@ def build_context(plan, parsed_skill, *, description_it=None,
         "description_it": description_it,
         "description_en": description_en,
         "args": args_ctx,
+        "allowed_args_py": repr([arg["name"] for arg in args_ctx]),
+        "required_args_py": repr(tuple(
+            arg["name"] for arg in args_ctx if arg.get("required"))),
+        "requires_one_of": ([resource_input_group]
+                            if resource_input_group is not None else []),
         "output_kind": plan.output_kind,
         "output_schema_inline": _output_schema_inline(plan),
         "capabilities": capabilities_ctx,
@@ -840,6 +921,7 @@ def build_context(plan, parsed_skill, *, description_it=None,
         "vectorial_entries": plan.verb in ("send", "create", "set", "change"),
         "iso_validations": iso_validations,
         "passthrough_flags": passthrough,
+        "positional_cli_args": positional,
         "status_word": status_word,
         "truncated_what": truncated_what,
         "empty_default": empty_default,
@@ -857,7 +939,9 @@ def build_context(plan, parsed_skill, *, description_it=None,
 def render_manifest(context: dict) -> str:
     env = _jinja_env()
     tmpl = env.get_template("manifest.toml.j2")
-    return tmpl.render(**context)
+    rendered = tmpl.render(**context)
+    validate_generated_manifest_text(rendered, expected_lifecycle="active")
+    return rendered
 
 
 def render_executor_py(context: dict) -> str:

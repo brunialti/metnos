@@ -18,13 +18,22 @@ API:
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+import logging
 import os
+from pathlib import Path
+import re
 import sqlite3
 
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 DB_PATH = _C.DB_I18N
 DEFAULT_LANG = "it"
 FALLBACK_CHAIN = ("en", "it")  # tentativi se current_lang non disponibile
+_SEED_DB_PATH = (
+    Path(__file__).resolve().parent.parent / "install/data/i18n_seed.sqlite"
+)
+_log = logging.getLogger(__name__)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS i18n (
@@ -58,14 +67,72 @@ def _sha256_full(text: str) -> str:
 
 _lang_cache: str | None = None
 _conn: sqlite3.Connection | None = None
+_lang_override: ContextVar[str | None] = ContextVar(
+    "metnos_i18n_language", default=None,
+)
+
+
+def _normalize_lang(value: str | None) -> str:
+    """Normalizza un codice lingua senza inventare una lingua supportata.
+
+    Sono ammessi tag BCP-47 semplici (``it``, ``en-GB``, ``pt-BR``). Un valore
+    non valido non entra nel contesto: il chiamante ricade sulla lingua
+    dell'istanza e il catalogo conserva la propria catena di fallback.
+    """
+    candidate = str(value or "").strip().replace("_", "-").lower()
+    if not re.fullmatch(r"[a-z]{2,8}(?:-[a-z0-9]{1,8})*", candidate):
+        return ""
+    return candidate
 
 
 def current_lang() -> str:
-    """Lingua corrente del sistema. Cached al primo accesso (boot-time)."""
+    """Lingua del contesto corrente, con fallback alla lingua dell'istanza.
+
+    L'override usa ``ContextVar``: richieste concorrenti di utenti diversi non
+    modificano l'ambiente del processo e non possono contaminarsi a vicenda.
+    """
+    contextual = _lang_override.get()
+    if contextual:
+        return contextual
     global _lang_cache
     if _lang_cache is None:
-        _lang_cache = os.environ.get("METNOS_LANG", DEFAULT_LANG).lower()
+        _lang_cache = (
+            _normalize_lang(os.environ.get("METNOS_LANG")) or DEFAULT_LANG
+        )
     return _lang_cache
+
+
+@contextmanager
+def language_context(lang: str | None):
+    """Applica una lingua soltanto al turno o alla richiesta corrente.
+
+    Un valore vuoto o malformato significa "eredita la lingua dell'istanza".
+    Il token viene sempre ripristinato, anche se il rendering o il turno
+    sollevano un'eccezione.
+    """
+    normalized = _normalize_lang(lang)
+    token = _lang_override.set(normalized or None)
+    try:
+        yield current_lang()
+    finally:
+        _lang_override.reset(token)
+
+
+def available_languages() -> tuple[str, ...]:
+    """Lingue presenti nel catalogo, ordinate e utilizzabili come preferenza.
+
+    Il registro i18n, non una lista della UI, è la fonte canonica. Anche una
+    lingua in traduzione può essere selezionata: le singole chiavi incomplete
+    ricadono su inglese e italiano secondo la normale catena di fallback.
+    """
+    rows = _open().execute(
+        "SELECT DISTINCT lower(lang) FROM i18n "
+        "WHERE lang IS NOT NULL AND trim(lang)<>'' ORDER BY lower(lang)"
+    ).fetchall()
+    return tuple(sorted({
+        lang for (raw,) in rows
+        if (lang := _normalize_lang(raw))
+    }))
 
 
 def _open() -> sqlite3.Connection:
@@ -116,13 +183,74 @@ def _open_rw() -> sqlite3.Connection:
                 "UPDATE i18n SET version_hash=? WHERE key=? AND lang=?",
                 (_sha256_full(row[2]), row[0], row[1]),
             )
+        # Upgrade non distruttivo del catalogo per ogni utente. Il seed è la
+        # baseline distribuita: aggiungiamo soltanto coppie (key, lang)
+        # assenti, senza sovrascrivere traduzioni o revisioni locali. Questo
+        # rende disponibili nuove stringhe e nuove lingue anche a chi conserva
+        # il proprio i18n.sqlite fra un rilascio e il successivo.
+        try:
+            _merge_missing_seed_rows(c)
+        except sqlite3.Error as exc:
+            # Un catalogo utente già valido deve restare usabile anche se il
+            # seed del checkout è temporaneamente assente o illeggibile.
+            _log.warning("i18n seed merge skipped: %s", exc)
         c.commit()
     return c
 
 
-def get(key: str, **kwargs) -> str:
+def _merge_missing_seed_rows(
+    connection: sqlite3.Connection,
+    seed_path: Path | str | None = None,
+) -> int:
+    """Insert missing seed rows without changing existing user translations.
+
+    The intersection of the two schemas is used so older per-user databases
+    can be upgraded before all optional metadata columns exist.  Returns the
+    number of inserted ``(key, lang)`` rows.
+    """
+    seed = Path(seed_path) if seed_path is not None else _SEED_DB_PATH
+    if not seed.is_file():
+        return 0
+    try:
+        if seed.resolve() == Path(DB_PATH).resolve():
+            return 0
+    except OSError:
+        pass
+
+    source = sqlite3.connect(f"file:{seed}?mode=ro", uri=True)
+    try:
+        source_columns = {
+            row[1] for row in source.execute("PRAGMA table_info(i18n)")
+        }
+        target_columns = [
+            row[1] for row in connection.execute("PRAGMA table_info(i18n)")
+        ]
+        columns = [name for name in target_columns if name in source_columns]
+        if not {"key", "lang", "text"}.issubset(columns):
+            raise sqlite3.DatabaseError("seed i18n schema is incomplete")
+        quoted = ", ".join(f'"{name}"' for name in columns)
+        placeholders = ", ".join("?" for _ in columns)
+        before = connection.total_changes
+        rows = source.execute(f"SELECT {quoted} FROM i18n")
+        connection.executemany(
+            f"INSERT OR IGNORE INTO i18n ({quoted}) VALUES ({placeholders})",
+            rows,
+        )
+        return connection.total_changes - before
+    finally:
+        source.close()
+
+
+def get(key: str, /, **kwargs) -> str:
     """Fetch testo per chiave. Fallback chain: current → en → it → <missing>.
-    `**kwargs` passati a .format() sul template."""
+    `**kwargs` passati a .format() sul template.
+
+    La chiave e' POSIZIONALE-SOLTANTO: i `**kwargs` sono segnaposto del
+    template, e senza questo vincolo un messaggio che contiene `{key}` — parola
+    ovvia in mezzo dominio — esploderebbe con «got multiple values for argument
+    'key'» invece di rendersi. Il nome del parametro non deve poter collidere
+    con il vocabolario dei testi.
+    """
     conn = _open()
     try_langs = [current_lang()]
     for fb in FALLBACK_CHAIN:
@@ -210,16 +338,16 @@ def register_key_if_missing(
     text_it: str,
     text_en: str | None = None,
     *,
-    needs_translation: bool = True,
+    needs_translation: bool = False,
 ) -> bool:
     """Registra una chiave i18n SOLO se assente. Idempotente, no-op se gia'
     presente in DB. Ritorna True se ha scritto, False se gia' esisteva.
 
     Fase 11 (c) scaffolding 19/5/2026 v4: usato dal pipeline synth quando
     emette `messages.get("ERR_NUOVA")` con chiave non in DB, per evitare
-    orfani. Il flag `needs_translation=True` marca le entry per review
-    successivo da admin (i18n_translator daemon ADR 0092 puo' poi
-    completare con LLM se opportuno).
+    orfani. `needs_translation` descrive SOLO una traduzione da eseguire,
+    non una review editoriale: la review delle stringhe generate usa il
+    metadato separato `auto_translated` del job i18n.
 
     Convenzione naming chiavi: §6.1 + dedup CLAUDE.md 19/5 — famiglie
     ERR_/WARN_/MSG_/LOG_ + suffisso semantico breve (max 2-3 segmenti).
@@ -227,19 +355,97 @@ def register_key_if_missing(
     if key_exists(key):
         return False
     if text_en is None:
-        text_en = text_it  # fallback IT come EN (translator daemon lo rifina)
-    set(key, "it", text_it, source_lang="it")
-    set(key, "en", text_en, source_lang="en")
+        # Una sola lingua disponibile: nessun falso testo EN. Il fallback di
+        # get() serve l'IT finche' il daemon materializza la vera traduzione.
+        set(key, "it", text_it)
+        mark_for_translation(key, "en", "it")
+        return True
+
+    # Due testi completi sono un'unita' editoriale gia' allineata. Scriverli
+    # con due set() consecutivi attiverebbe latest-wins sul primo e creerebbe
+    # pending stantie. La write atomica registra invece la relazione IT→EN.
+    set_catalog_translations(key, {"it": text_it, "en": text_en})
     if needs_translation:
-        # Mark entrambe le lingue per review (set() resetta needs_translation=0
-        # di default; qui lo riattiva esplicitamente come "auto-registered").
+        # Compat esplicita: se il caller chiede davvero una traduzione,
+        # invalida solo EN rispetto alla sorgente IT, mai entrambe le lingue.
         conn = _open()
         conn.execute(
-            "UPDATE i18n SET needs_translation=1 WHERE key=?",
+            "UPDATE i18n SET needs_translation=1, source_lang='it' "
+            "WHERE key=? AND lang='en'",
             (key,),
         )
         conn.commit()
+        _checkpoint(conn)
     return True
+
+
+def set_catalog_translations(
+    key: str,
+    translations: dict[str, str],
+    *,
+    source_lang: str = DEFAULT_LANG,
+) -> None:
+    """Scrive atomicamente un set di traduzioni gia' approvate.
+
+    Il testo `source_lang` e' la sorgente editoriale; le altre righe salvano
+    il suo hash come baseline. Nessuna riga viene accodata al traduttore.
+    Questa API e' il percorso corretto per seed, manifest e registrazioni
+    bilingui; `set()` resta l'edit di UNA lingua e quindi invalida le altre.
+    """
+    clean = {
+        str(lang).strip().lower(): str(text)
+        for lang, text in translations.items()
+        if str(lang).strip() and text is not None
+    }
+    if not clean:
+        raise ValueError("translations must contain at least one text")
+    if source_lang not in clean:
+        source_lang = DEFAULT_LANG if DEFAULT_LANG in clean else sorted(clean)[0]
+
+    conn = _open()
+    source_text = clean[source_lang]
+    source_legacy_hash = _hash_text(source_text)
+    source_version_hash = _sha256_full(source_text)
+    for lang, text in clean.items():
+        is_source = lang == source_lang
+        conn.execute(
+            "INSERT INTO i18n(key, lang, text, needs_translation, source_lang, "
+            "source_hash, version_hash, source_text_hash, updated_at) "
+            "VALUES (?, ?, ?, 0, ?, ?, ?, ?, "
+            "strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
+            "ON CONFLICT(key, lang) DO UPDATE SET "
+            "text=excluded.text, needs_translation=0, "
+            "source_lang=excluded.source_lang, source_hash=excluded.source_hash, "
+            "version_hash=excluded.version_hash, "
+            "source_text_hash=excluded.source_text_hash, "
+            "updated_at=excluded.updated_at",
+            (
+                key,
+                lang,
+                text,
+                None if is_source else source_lang,
+                None if is_source else source_legacy_hash,
+                _sha256_full(text),
+                None if is_source else source_version_hash,
+            ),
+        )
+    # Se lo schema esteso del job e' gia' presente, una write editoriale
+    # manuale non deve restare marcata come auto-generata.
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(i18n)")}
+    optional_sets = []
+    if "translated_at_iso" in cols:
+        optional_sets.append("translated_at_iso=NULL")
+    if "translated_by" in cols:
+        optional_sets.append("translated_by=NULL")
+    if "auto_translated" in cols:
+        optional_sets.append("auto_translated=0")
+    if optional_sets:
+        conn.execute(
+            f"UPDATE i18n SET {', '.join(optional_sets)} WHERE key=?",
+            (key,),
+        )
+    conn.commit()
+    _checkpoint(conn)
 
 
 def set(key: str, lang: str, text: str, *, source_lang: str | None = None) -> None:
@@ -287,27 +493,148 @@ def _checkpoint(conn) -> None:
 
 
 def mark_for_translation(key: str, target_lang: str, source_lang: str) -> None:
-    """Crea placeholder row per traduzione lazy (text=NULL, needs_translation=1)."""
+    """Accoda una traduzione, creando il target o invalidando quello esistente."""
     conn = _open()
+    target_lang = str(target_lang).strip().lower()
+    source_lang = str(source_lang).strip().lower()
+    if not target_lang or not source_lang or target_lang == source_lang:
+        raise ValueError("target_lang and source_lang must be different")
+    source = conn.execute(
+        "SELECT text FROM i18n WHERE key=? AND lang=?",
+        (key, source_lang),
+    ).fetchone()
+    if not source or not source[0]:
+        raise ValueError(f"missing source text for {key}[{source_lang}]")
     conn.execute(
-        "INSERT OR IGNORE INTO i18n(key, lang, text, needs_translation, source_lang, updated_at) "
-        "VALUES (?, ?, NULL, 1, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+        "INSERT INTO i18n(key, lang, text, needs_translation, source_lang, updated_at) "
+        "VALUES (?, ?, NULL, 1, ?, strftime('%Y-%m-%dT%H:%M:%SZ','now')) "
+        "ON CONFLICT(key, lang) DO UPDATE SET needs_translation=1, "
+        "source_lang=excluded.source_lang, "
+        "updated_at=excluded.updated_at",
         (key, target_lang, source_lang),
     )
     conn.commit()
+    _checkpoint(conn)
 
 
 def list_pending(limit: int = 50) -> list[dict]:
-    """Rows con needs_translation=1 + source text. Usato dal daemon translator."""
+    """Traduzioni realmente eseguibili, ordinate e senza righe stantie.
+
+    Una pending e' azionabile solo se dichiara una lingua sorgente diversa
+    dal target e la relativa riga sorgente contiene testo. Il filtro evita
+    che flag legacy con `source_lang=NULL` o self-reference monopolizzino la
+    testa della coda ad ogni ciclo.
+    """
     conn = _open()
     rows = conn.execute(
-        "SELECT i.key, i.lang AS target_lang, i.source_lang, "
-        "       (SELECT text FROM i18n WHERE key=i.key AND lang=i.source_lang) AS source_text "
-        "FROM i18n i WHERE needs_translation=1 LIMIT ?",
+        "SELECT i.key, i.lang AS target_lang, i.source_lang, s.text "
+        "FROM i18n i "
+        "JOIN i18n s ON s.key=i.key AND s.lang=i.source_lang "
+        "WHERE i.needs_translation=1 "
+        "AND i.source_lang IS NOT NULL AND i.source_lang!=i.lang "
+        "AND s.text IS NOT NULL AND trim(s.text)!='' "
+        "ORDER BY i.key, i.lang LIMIT ?",
         (limit,),
     ).fetchall()
     return [{"key": r[0], "target_lang": r[1], "source_lang": r[2], "source_text": r[3]}
             for r in rows]
+
+
+def count_pending(*, actionable_only: bool = False) -> int:
+    """Conta la coda totale o soltanto le traduzioni realmente azionabili."""
+    conn = _open()
+    if not actionable_only:
+        return int(conn.execute(
+            "SELECT COUNT(*) FROM i18n WHERE needs_translation=1"
+        ).fetchone()[0])
+    return int(conn.execute(
+        "SELECT COUNT(*) FROM i18n i "
+        "JOIN i18n s ON s.key=i.key AND s.lang=i.source_lang "
+        "WHERE i.needs_translation=1 "
+        "AND i.source_lang IS NOT NULL AND i.source_lang!=i.lang "
+        "AND s.text IS NOT NULL AND trim(s.text)!=''"
+    ).fetchone()[0])
+
+
+def repair_complete_pending() -> dict[str, int]:
+    """Accetta come baseline il catalogo completo legacy e ripara i link.
+
+    Per ogni chiave con tutti i testi presenti sceglie la row editata piu' di
+    recente come sorgente, azzera gli eventuali flag e collega le altre lingue
+    al suo hash. Normalizzare anche le righe gia' non-pending evita che un
+    futuro `align_messages()` riaccodi falsi drift per metadati v2 mancanti.
+    Stub auto-synth e righe `auto_translated=1` sono esclusi: non sono
+    traduzioni editoriali approvate. Operazione amministrativa esplicita usata
+    dal CLI dopo audit; non gira automaticamente al boot.
+    """
+    conn = _open()
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(i18n)")}
+    auto_expr = "coalesce(auto_translated,0)" if "auto_translated" in cols else "0"
+    keys = [row[0] for row in conn.execute(
+        "SELECT DISTINCT key FROM i18n ORDER BY key"
+    )]
+    repaired_keys = 0
+    repaired_rows = 0
+    skipped_keys = 0
+    for key in keys:
+        rows = conn.execute(
+            f"SELECT lang, text, updated_at, {auto_expr} FROM i18n "
+            "WHERE key=? ORDER BY updated_at DESC, lang DESC",
+            (key,),
+        ).fetchall()
+        if not rows or any(
+            not row[1] or row[1].startswith("<auto-synth: ") or int(row[3] or 0)
+            for row in rows
+        ):
+            skipped_keys += 1
+            continue
+        src_lang, src_text = rows[0][0], rows[0][1]
+        src_legacy_hash = _hash_text(src_text)
+        src_version_hash = _sha256_full(src_text)
+        for lang, text, _updated_at, _auto in rows:
+            is_source = lang == src_lang
+            conn.execute(
+                "UPDATE i18n SET needs_translation=0, source_lang=?, "
+                "source_hash=?, version_hash=?, source_text_hash=? "
+                "WHERE key=? AND lang=?",
+                (
+                    None if is_source else src_lang,
+                    None if is_source else src_legacy_hash,
+                    _sha256_full(text),
+                    None if is_source else src_version_hash,
+                    key,
+                    lang,
+                ),
+            )
+            repaired_rows += 1
+        repaired_keys += 1
+    conn.commit()
+    _checkpoint(conn)
+    return {
+        "keys": repaired_keys,
+        "rows": repaired_rows,
+        "skipped_keys": skipped_keys,
+    }
+
+
+def delete_keys(keys: list[str] | tuple[str, ...] | set[str]) -> dict[str, int]:
+    """Elimina SOLO chiavi esatte (tutte le lingue); niente glob/prefix."""
+    exact = sorted({str(key).strip() for key in keys if str(key).strip()})
+    if not exact:
+        return {"keys": 0, "rows": 0}
+    conn = _open()
+    placeholders = ",".join("?" for _ in exact)
+    found = int(conn.execute(
+        f"SELECT COUNT(DISTINCT key) FROM i18n WHERE key IN ({placeholders})",
+        exact,
+    ).fetchone()[0])
+    cur = conn.execute(
+        f"DELETE FROM i18n WHERE key IN ({placeholders})",
+        exact,
+    )
+    conn.commit()
+    _checkpoint(conn)
+    return {"keys": found, "rows": int(cur.rowcount)}
 
 
 def set_translated(key: str, lang: str, text: str) -> None:
@@ -351,5 +678,3 @@ def stats() -> dict:
         out["total"] += count
         out["pending"] += pending or 0
     return out
-
-

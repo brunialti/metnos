@@ -196,6 +196,13 @@ DOMAIN_COPY = {
          "A skill is admitted through verification and policy; installing one does not bypass vocabulary, sandboxing, or consent."),
         ("Quali skill sono installate e quali risultano abilitate?", "Abilita la skill GitHub già installata e mostrami quali capacità aggiunge."),
         ("Which skills are installed and which are enabled?", "Enable the already installed GitHub skill and show which capabilities it adds.")),
+    "preferences": _copy("governance", ("Preferenze personali", "Personal preferences"),
+        ("Elenca, imposta e rimuove le preferenze con cui l'utente decide come Metnos si comporta con lui: lunghezza e tono della risposta, unità di misura, lingua, modalità del browser.",
+         "Lists, sets, and removes the preferences with which a user decides how Metnos behaves towards them: reply length and tone, units, language, browser mode."),
+        ("Chiavi e valori formano un vocabolario chiuso, e ciascuno vede soltanto le proprie preferenze. Una preferenza registrata ma non ancora applicata da nessun percorso di risposta viene dichiarata come tale.",
+         "Keys and values form a closed vocabulary, and each person sees only their own preferences. A preference that is recorded but not yet applied by any answer path is declared as such."),
+        ("Che preferenze ho impostato?", "D'ora in poi rispondimi in modo sintetico."),
+        ("Which preferences have I set?", "From now on, answer me concisely.")),
     "processes": _copy("governance", ("Processi e salute del sistema", "Processes and system health"),
         ("Ottiene uno snapshot dei processi e dei segnali di salute del sistema locale o di un dispositivo eleggibile.",
          "Obtains a snapshot of processes and system-health signals on the local system or an eligible device."),
@@ -211,8 +218,8 @@ DOMAIN_COPY = {
         ("Mostrami le signature attualmente in graylist e la loro classificazione.", "Calcola la signature canonica del comando proposto senza eseguirlo."),
         ("Show the signatures currently on the greylist and their classification.", "Compute the canonical signature of the proposed command without executing it.")),
     "proposals": _copy("governance", ("Proposte di evoluzione", "Evolution proposals"),
-        ("Espone proposte locali in attesa di revisione, per esempio deduplicazione, generalizzazione o specializzazione di capacità.",
-         "Exposes local proposals awaiting review, such as capability deduplication, generalisation, or specialisation."),
+        ("Espone proposte locali in attesa di revisione. Il produttore notturno corrente propone deduplicazioni; generalizzazioni e specializzazioni restano consultabili soltanto nei record storici.",
+         "Exposes local proposals awaiting review. The current nightly producer proposes deduplication; generalisation and specialisation remain readable only in historical records."),
         ("Consultare una proposta non la approva. Accettazione, rifiuto e rollback avvengono nelle superfici amministrative previste.",
          "Reading a proposal does not approve it. Acceptance, rejection, and rollback occur through the designated administrative surfaces."),
         ("Mostrami le proposte di deduplicazione ancora da revisionare.", "Spiegami questa proposta, i rischi e come raggiungo la pagina per approvarla."),
@@ -278,7 +285,7 @@ TEXT = {
         "eyebrow": "Reference operativa · generata dal catalogo canonico",
         "lead": "Che cosa puoi chiedere a Metnos, dominio per dominio",
         "intro": "Questa pagina descrive tutti i domini canonici del vocabolario Metnos. Ogni esempio è una frase che puoi usare direttamente in chat: non occorre conoscere executor, argomenti o sintassi tecniche.",
-        "contract": "La struttura della reference deriva dai 26 oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest firmati e dai contratti builtin. Le skill installate possono aggiungere provider e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.",
+        "contract": "La struttura della reference deriva dai {domain_total} oggetti canonici del runtime; nomi e conteggi delle operazioni distribuite derivano dai manifest firmati e dai contratti builtin. Le skill installate possono aggiungere provider e operazioni. Per sapere che cosa è disponibile adesso sulla tua istanza, chiedi al Tutor.",
         "ask": "Chiedi a Metnos con una richiesta come quella di questo esempio:",
         "boundary": "Confine",
         "operations": "Operazioni distribuite",
@@ -287,7 +294,7 @@ TEXT = {
         "available_one": "operazione documentata",
         "nav_home": "Metnos",
         "nav_interface": "L'interfaccia",
-        "nav_manual": "Manuale di architettura",
+        "nav_manual": "Guida all'architettura",
         "nav_catalog": "Catalogo tecnico",
         "nav_tutor": "Come funziona il Tutor",
         "provider_title": "Provider e disponibilità reale",
@@ -301,7 +308,7 @@ TEXT = {
         "eyebrow": "Operational reference · generated from the canonical catalog",
         "lead": "What you can ask Metnos, domain by domain",
         "intro": "This page describes every canonical domain in the Metnos vocabulary. Each example is a sentence you can use directly in chat: no executor names, arguments, or technical syntax are required.",
-        "contract": "The reference structure comes from the runtime's 26 canonical objects; names and counts of distributed operations come from signed manifests and builtin contracts. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.",
+        "contract": "The reference structure comes from the runtime's {domain_total} canonical objects; names and counts of distributed operations come from signed manifests and builtin contracts. Installed skills may add providers and operations. Ask the Tutor to learn what is currently available on your instance.",
         "ask": "Ask Metnos with a request like this example:",
         "boundary": "Boundary",
         "operations": "Distributed operations",
@@ -310,7 +317,7 @@ TEXT = {
         "available_one": "documented operation",
         "nav_home": "Metnos",
         "nav_interface": "The interface",
-        "nav_manual": "Architecture manual",
+        "nav_manual": "Architecture guide",
         "nav_catalog": "Technical catalog",
         "nav_tutor": "How the Tutor works",
         "provider_title": "Providers and actual availability",
@@ -444,7 +451,7 @@ def render(lang: str, operations: dict[str, tuple[str, ...]]) -> str:
 <div class="shell">
 <nav><a href="index.html">← {text["nav_home"]}</a><a href="interface.html">{text["nav_interface"]}</a><a href="architecture/index.html">{text["nav_manual"]}</a><a href="architecture/executor_catalog.html">{text["nav_catalog"]}</a><a href="architecture/tutor.html">{text["nav_tutor"]}</a><a href="/{other}/domains.html" hreflang="{other}">{other.upper()}</a></nav>
 <header class="hero"><div><div class="eyebrow">{text["eyebrow"]}</div><h1>{text["lead"]}</h1><p class="lead">{text["intro"]}</p></div><div class="hero-note"><strong>{len(OBJECTS)}</strong><span>{text["domain_count"]}</span><strong>{total_operations}</strong><span>{text["available"]}</span></div></header>
-<p class="contract">{text["contract"]}</p>
+<p class="contract">{text["contract"].format(domain_total=len(OBJECTS))}</p>
 <div class="jump">{group_links}</div>
 {"".join(sections)}
 <section class="provider"><h2>{text["provider_title"]}</h2><p>{text["provider_text"]}</p></section>

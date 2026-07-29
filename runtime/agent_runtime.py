@@ -109,6 +109,9 @@ from recurring_tasks import (
 from skill_admin import (
     handle_list_skills, handle_set_skills,
 )
+from user_preferences import (
+    handle_get_preferences, handle_set_preferences, handle_delete_preferences,
+)
 from undo import UndoLog
 from vaglio import guard_check
 import config as _C  # §7.11
@@ -3349,6 +3352,38 @@ _ARTIFACT_SINK_CATEGORIES = {
 }
 
 
+def _artifact_was_requested(intent_verb: str, steps: list) -> bool:
+    """True se questo turno poteva davvero produrre un artefatto.
+
+    La guardia sotto legge il final_message con un'espressione regolare, e un
+    testo che ELENCA contenuti altrui puo' contenere le stesse parole di un
+    testo che RACCONTA le proprie azioni: «decisions/» pieno di documenti con
+    «creazione» nel titolo bastava a far sostituire una risposta corretta con
+    «l'azione write/create artifacts non e' stata completata» (E2E 29/7,
+    `elenca i file in /opt/metnos/decisions`).
+
+    La premessa mancante era che il turno CAMBIASSE qualcosa. Due segnali
+    deterministici gia' presenti: l'intento estratto e' un verbo mutante,
+    oppure il piano ha chiamato almeno un tool mutante — e allora un artefatto
+    poteva nascere e mancare davvero (caso vivo: cartella creata, rapporto
+    promesso e mai scritto). Se il turno e' di sola lettura quelle parole sono
+    contenuto altrui, non una promessa (§7.9, §2.8).
+    """
+    try:
+        from vocab import DESTRUCTIVE_VERBS
+    except Exception:  # noqa: BLE001 — vocabolario assente: nessun gate
+        return True
+    if (intent_verb or "").strip() in DESTRUCTIVE_VERBS:
+        return True
+    from pipeline_effects import MUTATING_TOOL_PREFIXES
+    for step in steps or []:
+        tool = str(getattr(step, "chosen_tool", None) or (
+            step.get("chosen_tool") if isinstance(step, dict) else "") or "")
+        if any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
+            return True
+    return False
+
+
 def _artifact_sink_effects(steps: list) -> set[str]:
     """Artifact categories backed by at least one real successful sink."""
     completed: set[str] = set()
@@ -5149,8 +5184,11 @@ class TurnLog:
             # (caso live: maintenance github schedulata su 0 issue aperte,
             # store a 0 righe). Notice additiva deterministica §7.9, simmetrica
             # a _detect_false_not_found; preserva il messaggio LLM per audit.
-            _missing_artifacts = _detect_unbacked_artifact_claim(
-                self.final_message, self.steps)
+            _missing_artifacts = (
+                _detect_unbacked_artifact_claim(self.final_message, self.steps)
+                if _artifact_was_requested(
+                    getattr(self, "intent_verb", "") or "", self.steps)
+                else set())
             if _missing_artifacts:
                 self.false_success_detected = True
                 self.final_message = msg(
@@ -5579,6 +5617,9 @@ _BUILTIN_TOOL_HANDLERS: dict = {
     "delete_entries": handle_delete_entries,
     "compare_entries": handle_compare_entries,
     "describe_images": handle_describe_images,
+    "get_preferences": handle_get_preferences,
+    "set_preferences": handle_set_preferences,
+    "delete_preferences": handle_delete_preferences,
 }
 
 

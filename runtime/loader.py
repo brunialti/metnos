@@ -20,6 +20,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from sign import verify_executor
+from executor_metadata import (
+    execution_policy as _execution_policy,
+    membership_kind as _membership_kind,
+    output_schema as _declared_output_schema,
+    source_kind as _source_kind,
+    standard_state as _standard_state,
+    transport_kind as _transport_kind,
+)
 
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -30,6 +38,9 @@ log = get_logger(__name__)
 import config as _C  # noqa: E402  (sys.path insert above)
 DEFAULT_EXECUTORS_DIR = _C.PATH_EXECUTORS
 SYNTHESIZED_EXECUTORS_DIR = _C.PATH_USER_DATA / "executors"
+BUILTIN_EXECUTOR_CONTRACTS_DIR = (
+    Path(__file__).resolve().parent / "builtin_executor_contracts"
+)
 
 # Valori ammessi per il manifest [platforms] (W3.2, executor remoti §16.3
 # design doc). Vocabolario chiuso, come §2.2 — nessuna estensione implicita.
@@ -126,6 +137,116 @@ def _normalize_capabilities(raw) -> list[dict]:
         elif isinstance(c, str):
             out.append({"name": c})
     return out
+
+
+def _load_builtin_contract(name: str, module_path: Path) -> tuple[dict, Path, str]:
+    """Load and verify the signed contract for one in-process builtin.
+
+    The implementation stays in its runtime module, while the planner-facing
+    identity/schema/authority is admitted exactly like a subprocess manifest.
+    Missing, stale, unsigned, or mismatched contracts fail closed.
+    """
+    directory = BUILTIN_EXECUTOR_CONTRACTS_DIR / name
+    path = directory / "manifest.toml"
+    if not path.is_file():
+        raise ValueError(f"builtin contract missing for {name!r}: {path}")
+    ok, signature = verify_executor(directory)
+    if not ok:
+        raise ValueError(
+            f"builtin contract signature invalid for {name!r}: "
+            f"{signature.get('reason', 'unknown')}"
+        )
+    with path.open("rb") as handle:
+        manifest = tomllib.load(handle)
+    if manifest.get("name") != name:
+        raise ValueError(
+            f"builtin contract identity mismatch: expected {name!r}, "
+            f"got {manifest.get('name')!r}"
+        )
+    from executor_standard import validate_for_lifecycle
+    findings = validate_for_lifecycle(manifest, require_declaration=True)
+    if findings:
+        detail = "; ".join(f"{item.code}:{item.message}" for item in findings)
+        raise ValueError(f"builtin contract nonconformant for {name!r}: {detail}")
+    code_paths = {
+        (directory / filename).resolve()
+        for filename in (manifest.get("code") or {}).get("files", [])
+    }
+    if module_path.resolve() not in code_paths:
+        raise ValueError(
+            f"builtin contract code mismatch for {name!r}: "
+            f"{module_path.resolve()} is not signed"
+        )
+    return manifest, path, str(signature.get("signed_by") or "")
+
+
+def _localized_builtin_contract(name: str, module_path: Path,
+                                *, current_lang: str | None = None) -> tuple:
+    manifest, path, signed_by = _load_builtin_contract(name, module_path)
+    if not current_lang:
+        try:
+            import i18n as _i18n
+            current_lang = _i18n.current_lang()
+        except Exception:
+            try:
+                from config import DEFAULT_LANG as current_lang
+            except Exception:
+                current_lang = "it"
+    description = _resolve_lang_text(
+        manifest.get("description", {}), where=f"{name}.description",
+        current_lang=current_lang,
+    )
+    args_schema = dict(manifest.get("args") or {})
+    localized_props = {}
+    for arg_name, original in (args_schema.get("properties") or {}).items():
+        spec = dict(original)
+        if "description" in spec:
+            spec["description"] = _resolve_lang_text(
+                spec["description"],
+                where=f"{name}.args.properties.{arg_name}.description",
+                current_lang=current_lang,
+            )
+        localized_props[arg_name] = spec
+    args_schema["properties"] = localized_props
+    return manifest, path, signed_by, description, args_schema
+
+
+def builtin_contract_executor(name: str, module_path: Path,
+                              *, current_lang: str | None = None) -> "Executor":
+    """Build a catalog Executor from a verified builtin contract."""
+    manifest, path, signed_by, description, args_schema = (
+        _localized_builtin_contract(name, module_path, current_lang=current_lang)
+    )
+    return Executor(
+        name=name,
+        version=str(manifest.get("version") or "1.0.0"),
+        description=description,
+        affinity=list(manifest.get("affinity") or []),
+        args_schema=args_schema,
+        capabilities=_normalize_capabilities(manifest.get("capabilities")),
+        tests=list(manifest.get("tests") or []),
+        code_path=module_path,
+        manifest_path=path,
+        signed_by=signed_by,
+        revertible=bool(manifest.get("revertible", False)),
+        lifecycle=str(manifest.get("lifecycle") or "active"),
+        superseded_by=None,
+        reverse_pattern=manifest.get("reverse_pattern"),
+        deprecated_at=None,
+        deprecation_ttl_hours=24,
+        placement=dict(manifest.get("placement") or {}),
+        platforms=list(manifest.get("platforms") or ["linux"]),
+        digest=str((manifest.get("code") or {}).get("digest") or ""),
+        executor_standard=str(manifest.get("executor_standard") or ""),
+        standard_state=_standard_state(
+            manifest.get("executor_standard"), manifest.get("lifecycle", "active")),
+        membership="builtin",
+        source="builtin",
+        transport="in-process",
+        output_schema=_declared_output_schema(manifest),
+        execution_policy=_execution_policy(manifest),
+        execution_policy_declared=isinstance(manifest.get("execution"), dict),
+    )
 
 
 class VerbUniqueViolation(Exception):
@@ -263,7 +384,8 @@ def boot_register_verb_unique_builtins() -> list[str]:
 
 
 def _build_admin_executor_from_manifest_virtual(manifest: dict,
-                                                 *, manifest_path: Path) -> "Executor":
+                                                 *, manifest_path: Path,
+                                                 current_lang: str | None = None) -> "Executor":
     """Costruisce un `Executor` dataclass da `MANIFEST_VIRTUAL` di un
     verb-unique builtin esposto al PLANNER (ADR 0088).
 
@@ -272,23 +394,8 @@ def _build_admin_executor_from_manifest_virtual(manifest: dict,
     riconosce l'executor come `is_verb_unique_builtin` e instrada via
     `invoke_verb_unique` invece di subprocess.
     """
-    return Executor(
-        name=manifest["name"],
-        version=manifest.get("version", "1.0.0"),
-        description=manifest.get("description", ""),
-        affinity=list(manifest.get("affinity", [])),
-        args_schema=manifest.get("args", {}),
-        capabilities=_normalize_capabilities(manifest.get("capabilities")),
-        tests=[],
-        code_path=manifest_path,  # punta al .py del modulo
-        manifest_path=manifest_path,
-        signed_by="(verb-unique builtin)",
-        revertible=bool(manifest.get("revertible", False)),
-        lifecycle=manifest.get("lifecycle", "active"),
-        superseded_by=None,
-        reverse_pattern=None,
-        deprecated_at=None,
-        deprecation_ttl_hours=24,
+    return builtin_contract_executor(
+        manifest["name"], manifest_path, current_lang=current_lang,
     )
 
 
@@ -313,10 +420,14 @@ _INPROC_TOOL_MODULE_PATHS: tuple[str, ...] = (
     "store_entries",    # find/write/delete_entries — skill store generico (16/6)
     "compare_entries",  # compare_entries — distanza semantica universale (17/6)
     "describe_images",  # describe_images — VLM content-describe (upload, 30/6)
+    "describe_entries",
+    "classify_entries",
+    "extract_entries",
+    "user_preferences",  # get/set/delete_preferences — preferenze personali
 )
 
 
-def _inject_inproc_tool_specs(catalog: "Catalog") -> None:
+def _inject_inproc_tool_specs(catalog: "Catalog", *, current_lang: str) -> None:
     """Scopre i `BUILTIN_INPROC_SPECS` dei moduli registrati e inietta i
     relativi `Executor` virtuali nel catalog.
 
@@ -346,32 +457,18 @@ def _inject_inproc_tool_specs(catalog: "Catalog") -> None:
             if name in catalog.executors:
                 # Handcrafted wins
                 continue
-            spec = entry.get("tool_spec") or {}
-            fn_block = spec.get("function") or {}
-            desc = fn_block.get("description") or ""
-            params = fn_block.get("parameters") or {}
-            executor = Executor(
-                name=name,
-                version=entry.get("version", "1.0.0"),
-                description=desc,
-                affinity=list(entry.get("affinity", [])),
-                args_schema=params,
-                capabilities=_normalize_capabilities(entry.get("capabilities")),
-                tests=[],
-                code_path=mod_path,
-                manifest_path=mod_path,
-                signed_by="(inproc builtin)",
-                revertible=bool(entry.get("revertible", False)),
-                lifecycle="active",
-                superseded_by=None,
-                reverse_pattern=entry.get("reverse_pattern"),
-                deprecated_at=None,
-                deprecation_ttl_hours=24,
-            )
+            try:
+                executor = builtin_contract_executor(
+                    name, mod_path, current_lang=current_lang,
+                )
+            except ValueError as exc:
+                catalog.rejected.append((str(mod_path), str(exc)))
+                continue
             catalog.executors[name] = executor
 
 
-def _inject_planner_visible_verb_unique(catalog: "Catalog") -> None:
+def _inject_planner_visible_verb_unique(catalog: "Catalog",
+                                        *, current_lang: str) -> None:
     """Inietta nel catalog i verb-unique builtin che dichiarano
     `EXPOSE_TO_PLANNER=True` (ADR 0088). Idempotente: se gia' presente,
     no-op. Collision con un executor handcrafted del medesimo nome →
@@ -398,7 +495,7 @@ def _inject_planner_visible_verb_unique(catalog: "Catalog") -> None:
         module = entry["module"]
         manifest_path = Path(getattr(module, "__file__", ""))
         executor = _build_admin_executor_from_manifest_virtual(
-            manifest, manifest_path=manifest_path,
+            manifest, manifest_path=manifest_path, current_lang=current_lang,
         )
         catalog.executors[name] = executor
 
@@ -472,6 +569,20 @@ class Executor:
     # Vuoto per builtin/virtual (cambiano solo col deploy+restart, che azzera
     # la cache in-process; limite onesto documentato in ADR 0182).
     digest: str = ""
+    # Executor Standard/catalog identity. ``standard_state='declared'`` means
+    # the manifest declared the supported version and passed deterministic
+    # loader checks; semantic conformance still requires its review/test gates.
+    executor_standard: str = ""
+    standard_state: str = "legacy"
+    # Appartenenza al prodotto, distinta da origine e trasporto (ADR 0195).
+    membership: str = "builtin"
+    source: str = "handcrafted"
+    transport: str = "local-subprocess"
+    output_schema: str = ""
+    # Scheduler policy normalized by the loader.  Default serial preserves the
+    # exact historical execution semantics for every existing executor.
+    execution_policy: dict = field(default_factory=_execution_policy)
+    execution_policy_declared: bool = False
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)
@@ -574,7 +685,9 @@ def _catalog_cache_signature(dirs: list) -> tuple:
     return tuple(sig)
 
 
-def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_synth=True, include_verb_unique=True) -> Catalog:
+def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *,
+                 include_synth=True, include_verb_unique=True,
+                 lang: str | None = None) -> Catalog:
     """Scansiona executors_dir + (opzionale) SYNTHESIZED_EXECUTORS_DIR.
 
     `include_synth=True` (default): carica anche gli executor sintetizzati
@@ -603,17 +716,32 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
     # vengono silenziosamente scartati (digest mismatch) e il PLANNER non
     # li vede mai. NIENTE in produzione.
     if verify and os.environ.get("METNOS_LOADER_VERIFY", "1") == "0":
-        verify = False
-    # Cache key include lang corrente: descrizioni multilingua risolte al
-    # load (ADR 0092) usano `config.DEFAULT_LANG` (modulo, non env). Lo
-    # leggiamo qui per ogni call → cache hit corretto sui cambi di lingua
-    # in-process (test multilingua, future utenti per-lang).
-    try:
-        from config import DEFAULT_LANG as _cfg_lang
-    except Exception:
-        _cfg_lang = ""
+        profile = os.environ.get("METNOS_RUNTIME_PROFILE", "").strip().lower()
+        if profile in {"test", "dev", "development", "e2e"}:
+            verify = False
+            log.warning("[loader] signature verification disabled in %s profile",
+                        profile)
+        else:
+            # In esercizio l'env isolata non basta a spegnere la catena di
+            # fiducia: l'override viene ignorato e la verifica resta attiva.
+            log.error("[loader] ignored METNOS_LOADER_VERIFY=0 outside dev/test")
+    # Descrizioni e argomenti model-facing seguono la lingua della richiesta.
+    # ``i18n.current_lang`` usa un ContextVar, quindi richieste concorrenti non
+    # mutano la lingua del processo. La lingua esplicita resta utile per CLI e
+    # test fuori da un contesto di richiesta.
+    if lang:
+        _catalog_lang = str(lang).strip().lower()
+    else:
+        try:
+            import i18n as _i18n
+            _catalog_lang = _i18n.current_lang()
+        except Exception:
+            try:
+                from config import DEFAULT_LANG as _catalog_lang
+            except Exception:
+                _catalog_lang = "it"
     _hidden_env = os.environ.get("METNOS_HIDE_EXECUTORS", "")
-    cache_key = f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|{_cfg_lang}|{_hidden_env}"
+    cache_key = f"{executors_dir}|{verify}|{include_synth}|{include_verb_unique}|{_catalog_lang}|{_hidden_env}"
     dirs_for_sig = [Path(executors_dir)]
     if include_synth and SYNTHESIZED_EXECUTORS_DIR.exists():
         dirs_for_sig.append(SYNTHESIZED_EXECUTORS_DIR)
@@ -630,7 +758,10 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
     for i, d in enumerate(dirs_to_scan):
         if not d.exists():
             continue
-        _load_dir_into_catalog(d, catalog, verify, is_synthesized=(i > 0))
+        _load_dir_into_catalog(
+            d, catalog, verify, is_synthesized=(i > 0),
+            current_lang=_catalog_lang,
+        )
 
     # Hidden executors (env-driven): permette di nascondere selettivamente
     # executor dal catalog senza tocco filesystem. Use case principale: test
@@ -662,11 +793,13 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
     # asseriscono cardinalità sull'executors_dir custom (es. carica_*).
     if include_verb_unique:
         try:
-            _inject_planner_visible_verb_unique(catalog)
+            _inject_planner_visible_verb_unique(
+                catalog, current_lang=_catalog_lang,
+            )
         except Exception as e:
             log.warning("[loader] verb-unique injection failed: %s", e)
         try:
-            _inject_inproc_tool_specs(catalog)
+            _inject_inproc_tool_specs(catalog, current_lang=_catalog_lang)
         except Exception as e:
             log.warning("[loader] inproc-tool injection failed: %s", e)
         # Registra gli store di PRODUZIONE (attiva i CRUD universali *_entries
@@ -728,6 +861,11 @@ def load_catalog(executors_dir=DEFAULT_EXECUTORS_DIR, verify=True, *, include_sy
         pass
     except Exception as e:
         log.warning("loader: executor_aging override failed: %s", e)
+
+    # Ogni reject è visibile almeno nel log anche quando nessuna UI admin è
+    # aperta. Il Catalog conserva la stessa lista per la superficie HTTP.
+    for rejected_path, rejected_reason in catalog.rejected:
+        log.warning("[loader] rejected %s: %s", rejected_path, rejected_reason)
 
     # Aggiorna cache (ADR 0099): memorizza catalog + firma corrente.
     _CATALOG_CACHE[cache_key] = (catalog, current_sig)
@@ -1001,7 +1139,8 @@ def _gc_collisions(catalog: Catalog) -> None:
                  n_moved, gc_root)
 
 
-def _iter_executor_dirs(executors_dir: Path):
+def _iter_executor_dirs(executors_dir: Path,
+                        rejected: list[tuple[str, str]] | None = None):
     """Yield le subdir con `manifest.toml`. Visita 1 livello + caso speciale
     `skills/<skill>/<executor>/manifest.toml` (ADR 0123 + ADR 0160) e back-
     compat `_imports/<skill>/<executor>/manifest.toml` (legacy installazioni):
@@ -1019,8 +1158,12 @@ def _iter_executor_dirs(executors_dir: Path):
                     from skill_registry import is_skill_enabled as _isen
                     if not _isen(skill_dir.name):
                         continue
-                except Exception:
-                    pass
+                except Exception as ex:
+                    reason = f"skill_enable_gate_unavailable:{type(ex).__name__}:{ex}"
+                    if rejected is not None:
+                        rejected.append((str(skill_dir), reason))
+                    log.warning("[loader] %s: %s", skill_dir, reason)
+                    continue
                 for ex_dir in sorted(skill_dir.iterdir()):
                     if ex_dir.is_dir() and (ex_dir / "manifest.toml").is_file():
                         yield ex_dir
@@ -1030,8 +1173,9 @@ def _iter_executor_dirs(executors_dir: Path):
 
 
 def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
-                           *, is_synthesized: bool = False) -> None:
-    for sub in _iter_executor_dirs(executors_dir):
+                           *, is_synthesized: bool = False,
+                           current_lang: str = "it") -> None:
+    for sub in _iter_executor_dirs(executors_dir, catalog.rejected):
         manifest_path = sub / "manifest.toml"
         if not manifest_path.exists():
             continue
@@ -1044,8 +1188,36 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             continue
 
         lifecycle = str(manifest.get("lifecycle", "active"))
-        # proposed: manifest senza code, niente verify firma
+        # Executor Standard v1: i legacy senza dichiarazione continuano a
+        # caricarsi durante la migrazione. Chi dichiara conformita', invece,
+        # deve provarla deterministicamente prima ancora della firma. Un draft
+        # proposed usa il profilo candidate; ogni stato planner-visible usa il
+        # profilo active completo.
+        if manifest.get("executor_standard") is not None:
+            try:
+                from executor_standard import validate_for_lifecycle as _validate_standard
+                _standard_findings = _validate_standard(
+                    manifest,
+                    require_declaration=True,
+                )
+            except Exception as e:
+                catalog.rejected.append((str(sub), f"executor_standard_error:{e}"))
+                continue
+            if _standard_findings:
+                _summary = "; ".join(
+                    f"{finding.code}:{finding.message}"
+                    for finding in _standard_findings[:5]
+                )
+                catalog.rejected.append((str(sub), f"executor_standard:{_summary}"))
+                continue
+        declared_code_files = manifest.get("code", {}).get("files", [])
+        # proposed è solo metadato di triage: non può legare codice non
+        # firmato. Appena compare codice, deve attraversare il normale gate.
         if lifecycle == "proposed":
+            if declared_code_files:
+                catalog.rejected.append((
+                    str(sub), "proposed_executor_must_not_bind_code"))
+                continue
             signed_by = "(proposed, no code yet)"
         elif verify:
             ok, info = verify_executor(sub)
@@ -1065,7 +1237,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         if is_synthesized and name in catalog.executors:
             catalog.rejected.append((str(sub), f"name collision with handcrafted '{name}' (synth ignored)"))
             continue
-        code_files = manifest.get("code", {}).get("files", [])
+        code_files = declared_code_files
         if not code_files and lifecycle != "proposed":
             catalog.rejected.append((str(sub), "no [code].files"))
             continue
@@ -1103,14 +1275,10 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         # Pattern latest-wins simmetrico (CLAUDE.md §7.3): nessuna lingua
         # canonica IT-only.
         try:
-            from config import DEFAULT_LANG as _CURRENT_LANG
-        except Exception:
-            _CURRENT_LANG = "it"
-        try:
             raw_desc = _resolve_lang_text(
                 manifest.get("description", {}),
                 where=f"{name}.description",
-                current_lang=_CURRENT_LANG,
+                current_lang=current_lang,
             )
         except ValueError as e:
             catalog.rejected.append((str(sub), str(e)))
@@ -1137,7 +1305,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
                         arg_def_resolved["description"] = _resolve_lang_text(
                             arg_def_resolved["description"],
                             where=f"{name}.args.properties.{arg_name}.description",
-                            current_lang=_CURRENT_LANG,
+                            current_lang=current_lang,
                         )
                     except ValueError as e:
                         catalog.rejected.append((str(sub), str(e)))
@@ -1191,13 +1359,29 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         if not _dormant:
             try:
                 from skills_catalog import skill_for_executor as _sfe
-                from skill_registry import is_skill_enabled as _isen
                 _fp_skill = _sfe(name)
-                if _fp_skill != "core" and not _isen(_fp_skill):
+            except Exception as ex:
+                _fp_skill = ""
+                # Gli import third-party non diventano attivi se la loro
+                # classificazione di skill è indisponibile.
+                if manifest.get("provenance"):
                     _dormant = True
-                    _dormant_reason = f"skill_disabled:{_fp_skill}"
-            except Exception:
-                pass
+                    _dormant_reason = (
+                        f"skill_catalog_unavailable:{type(ex).__name__}")
+                log.warning("[loader] skill catalog lookup failed for %s: %s",
+                            name, ex)
+            if not _dormant and _fp_skill and _fp_skill != "core":
+                try:
+                    from skill_registry import is_skill_enabled as _isen
+                    if not _isen(_fp_skill):
+                        _dormant = True
+                        _dormant_reason = f"skill_disabled:{_fp_skill}"
+                except Exception as ex:
+                    _dormant = True
+                    _dormant_reason = (
+                        f"skill_enable_gate_unavailable:{type(ex).__name__}")
+                    log.warning("[loader] skill enable lookup failed for %s: %s",
+                                name, ex)
 
         # Sandbox profile dichiarativo (mini-version 17/5/2026):
         # legge [sandbox] dal manifest senza enforcement. Default vuoto
@@ -1205,8 +1389,9 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
         sandbox_profile = manifest.get("sandbox") or {}
         if not isinstance(sandbox_profile, dict):
             sandbox_profile = {}
-        # Provenance: skill imports hanno [provenance] (ADR 0123).
-        # Builtin handcrafted: dict vuoto = is_imported False.
+        # Provenance: soltanto gli import third-party hanno [provenance]
+        # (ADR 0123). I builtin handcrafted, incluso GitHub, lasciano il dict
+        # vuoto e dichiarano separatamente ``origin = "handcrafted"``.
         provenance = manifest.get("provenance") or {}
         if not isinstance(provenance, dict):
             provenance = {}
@@ -1263,6 +1448,15 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             complexity=_complexity,
             platforms=_platforms,
             digest=str((manifest.get("code") or {}).get("digest") or ""),
+            executor_standard=str(manifest.get("executor_standard") or ""),
+            standard_state=_standard_state(
+                manifest.get("executor_standard"), lifecycle),
+            membership=_membership_kind(manifest),
+            source=_source_kind(manifest, synthesized=is_synthesized),
+            transport=_transport_kind(manifest),
+            output_schema=_declared_output_schema(manifest),
+            execution_policy=_execution_policy(manifest),
+            execution_policy_declared=isinstance(manifest.get("execution"), dict),
         )
         catalog.executors[name] = ex
 
