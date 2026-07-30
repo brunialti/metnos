@@ -1,0 +1,23 @@
+{# ---
+role: route_object_relation
+tier: fast
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-30
+sha_prev: new
+--- #}
+Classifica la relazione fra gli oggetti candidati nella richiesta, ricevuti nel JSON.
+
+DEVI: restituire ESATTAMENTE una sola etichetta fra `SINGLE_TARGET`, `MULTI_TARGET`, `AMBIGUOUS`, `UNKNOWN`.
+NON DEVI: rispondere alla richiesta, scegliere strumenti, aggiungere punteggiatura o spiegazioni.
+
+- `SINGLE_TARGET`: la richiesta ha un solo bersaglio operativo; gli altri nomi sono contenitori, destinazioni, filtri, attributi o argomenti dello stesso bersaglio.
+- `MULTI_TARGET`: la richiesta applica esplicitamente una o più operazioni a più bersagli distinti; costringere l'utente a sceglierne uno eliminerebbe parte della richiesta.
+- `AMBIGUOUS`: una sola operazione potrebbe riferirsi alternativamente a due o più candidati e il testo non permette di stabilire quale sia il bersaglio.
+- `UNKNOWN`: il rapporto non è distinguibile con sufficiente sicurezza.
+
+DEVI: classificare la relazione espressa dall'intera richiesta, incluse le clausole separate.
+NON DEVI: dedurre ambiguità dalla sola presenza di più sostantivi.
+NON DEVI: trattare il nome di una cartella, un luogo, una destinazione, un formato o un filtro come secondo bersaglio se completa l'operazione principale.

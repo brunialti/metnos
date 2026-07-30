@@ -1,0 +1,62 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:68c2f3303a527f0cca54d03b5449ba4c0725602f53ca2435f31c589380fecef6",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:b191764508460d1a0777eaddb4e8b29b09b06499ff334553b3257d6183fa19b4",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.year.description": {
+    "it": {
+      "version_hash": "sha256:6340c5e3b0581ede7f728324d26595a8a43d2d4189b74b99430f0d8377dc1f5c",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:3f003730d9ddf95313a535d2b127dd007e63ea43d33991e6fb3c9a04ef1068cf",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.album.description": {
+    "it": {
+      "version_hash": "sha256:97f8f141af31b033659270b92f29672c58f4ae61fcecbdf2ffbb1f3cec8ffee2",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:de9428709a4e0ec48720a2dd9dd61e0a53ac2edd05bb235ff477f4fcfc8fc75a",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.albums.description": {
+    "it": {
+      "version_hash": "sha256:aa47da00da2e751a6c52fe7c5fb59cfff6366dab47067a7c6b00ea8c615b99b5",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:cc5278f3ae2f09e8b5b0e630e6d79c3a574e811608219017a9c1631287ef7e09",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.max_results.description": {
+    "it": {
+      "version_hash": "sha256:a2c04bd0bb796e072bba2cbdf5167c42a1d36051a2dbf98067c182c3e6aadc85",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:124928a3ca1f2968e9dc1196c361d330d70859376f275141468265242d6aef9a",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

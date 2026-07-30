@@ -1,0 +1,31 @@
+{# ---
+role: describe_grouping
+tier: auto
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+YOU MUST: write the result in {{ lang_name }}; this user request overrides grouping by affinity or topic.
+YOU MUST NOT: use the language of this prompt when it differs from {{ lang_name }}.
+OK: the structure and final text use {{ lang_name }}.
+ERROR: the text follows the fallback prompt language.
+
+{% if mode == "concept" %}
+YOU MUST: organize the summary into sections according to `{{ key_text }}`.
+YOU MUST NOT: replace `{{ key_text }}` with another criterion.
+OK: each section follows the requested criterion.
+ERROR: generic topic grouping.
+{% elif mode == "sections" %}
+YOU MUST: create {{ section_count }} sections, one for each `{{ field }}` value, in this order: {{ sections }}; start each section with the value in bold.
+YOU MUST NOT: mix items with different `{{ field }}` values in one section.
+OK: one distinct section for every listed value.
+ERROR: items with two values in the same section.
+{% elif mode == "ordered" %}
+YOU MUST: present items in the received order, already sorted by `{{ field }}`, and cite the `{{ field }}` value.
+YOU MUST NOT: reorder the items or group them by topic.
+OK: the received order remains unchanged.
+ERROR: model-added sorting or grouping.
+{% endif %}

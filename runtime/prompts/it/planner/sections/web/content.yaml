@@ -1,0 +1,33 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: web_content
+  header: "WEB / GESTIONE CONTENUTO (post-lettura, history, lista risultati)"
+  preamble: |
+    POST-LETTURA URL + RISULTATI WEB
+    -> Contenuto gia' letto in history = describe_entries. Lista cliccabile find_urls appesa automaticamente dal runtime.
+
+rules:
+  - name: url_already_read
+    when: "in history c'e' uno step read_urls_html (o read_urls_pdf, get_urls_text) con ok=true E entries[0].text/body non-vuoto (>=200 caratteri). HAI GIA' IL CONTENUTO della pagina"
+    must: "chiamare describe_entries(from_step=N, style=\"by_relevance\", context=<domanda originale dell'utente>) come PROSSIMO step. Lo step successivo sara' final_answer formulato dal summary dell'observation di describe_entries"
+    must_not: "emettere final_answer direttamente saltando describe_entries: il modello fatica a sintetizzare body_text >2000 char senza l'aiuto di describe_entries, e tende a includere il proprio reasoning come testo finale (thinking-leak). NON DEVI rifare read_urls_html, read_urls_pdf, get_urls, get_urls_text, find_urls sullo STESSO URL gia' letto: e' rumore, il contenuto e' nello scratchpad"
+    ok: "history step1 = read_urls_html(urls=[\"https://x.it/about\"]) ok=true, entries[0].text 4000 char. User chiede «di che parla?». Step 2 -> describe_entries(from_step=1, style=\"by_relevance\", context=\"dimmi di che parla la pagina\") -> final_answer"
+    error: "stesso scenario -> step2 find_urls(seed_urls=[\"https://x.it\"]) oppure get_urls_text(urls=[\"https://x.it/about\"]) (E' UN ERRORE: URL gia' letto, refetch e' tempo perso)"
+
+  - name: search_results_list
+    when: "uno step find_urls ritorna entries con almeno una URL. Il runtime appende AUTOMATICAMENTE in coda al final_message la lista cliccabile (titolo+url+snippet+score+documenti scoperti) via output_format.format_search_results. Tu non devi formattarla. Due pattern accettati a seconda dell'intento utente"
+    must: |
+      (a) Utente cerca INFORMAZIONI (dati, valori, contenuto, fatti): find_urls -> read_urls_html(urls=[top-1 o top-3 by score]) -> describe_entries(from_step=N_read_urls, style="by_relevance", context=<query originale>) -> final_answer. La sintesi LLM e' costruita sul CONTENUTO HTML letto, non sulla URL list. La risposta puo' provenire dal corpo di una pagina HTML (non solo da un PDF allegato): «sul sito X la tabella organico 2024 indica 1234 cattedre». Se le top-K read_urls_html falliscono (error_class), final_answer onesto secondo url_failed_soft_fail.
+      (b) Utente vuole l'elenco di siti / link su X: find_urls -> final_answer breve «Ecco i siti piu' pertinenti per <X>». Niente describe_entries. Il runtime appende la lista
+    must_not: "invocare describe_entries(by_relevance) direttamente sull'observation di find_urls: scarta gli URL, produce testo educato senza contenuto utile. Se ti serve il contenuto, leggi prima con read_urls_html poi descrivi quello"
+    ok: "(a) «file dati X» -> find_urls(search_query=...) -> read_urls_html(urls=[from_step:1, top-1]) -> describe_entries(from_step=2, by_relevance) -> final_answer con la sintesi del contenuto + lista URL appesa dal runtime. (b) «siti che parlano di X» -> find_urls(...) -> final_answer \"Ecco N siti pertinenti\""
+    error: "find_urls -> describe_entries(by_relevance) -> final_answer narrativo senza link e senza contenuto letto (E' UN ERRORE)"

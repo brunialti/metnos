@@ -1,0 +1,115 @@
+# Root → English default (301 permanente per consolidare PageRank verso target).
+/ /en/ 301
+
+# Le bozze non appartengono alla pubblicazione. Gli URL storici conducono alla
+# documentazione pubblica invece di conservare copie tecniche non revisionate.
+/drafts/* /en/ 301
+
+# ===========================================================================
+# Rebrand 24/4/2026: account_personal → Metnos. Vecchi URL legacy → nuovi file Metnos_*
+# ===========================================================================
+
+# IT — vecchio prefisso "Myclaw_" → "Metnos_"
+/Myclaw_Architettura_Intro_v1.html       /it/Metnos_Architettura_Intro_v1.html       301
+/Myclaw_Dialogo_v1.html                  /it/Metnos_Dialogo_v1.html                  301
+/Myclaw_Dialogo_Executor_v1.html         /it/Metnos_Dialogo_Executor_v1.html         301
+/Myclaw_Glossario_v1.html                /it/Metnos_Glossario_v1.html                301
+/Myclaw_Neuroni_Memoria_v1.html          /it/Metnos_Architettura_Intro_v1.html       301
+/Myclaw_Prospettive_Estese_v1.html       /it/Metnos_Prospettive_Estese_v1.html       301
+/Myclaw_Prospettive_Giudizio_v1.html     /it/Metnos_Prospettive_Giudizio_v1.html     301
+/Myclaw_QuickTour_v1.html                /it/Metnos_QuickTour.html                   301
+
+/it/Myclaw_Architettura_Intro_v1.html       /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Dialogo_v1.html                  /it/Metnos_Dialogo_v1.html                  301
+/it/Myclaw_Dialogo_Executor_v1.html         /it/Metnos_Dialogo_Executor_v1.html         301
+/it/Myclaw_Glossario_v1.html                /it/Metnos_Glossario_v1.html                301
+/it/Myclaw_Neuroni_Memoria_v1.html          /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Prospettive_Estese_v1.html       /it/Metnos_Prospettive_Estese_v1.html       301
+/it/Myclaw_Prospettive_Giudizio_v1.html     /it/Metnos_Prospettive_Giudizio_v1.html     301
+/it/Myclaw_QuickTour_v1.html                /it/Metnos_QuickTour.html                   301
+
+# EN — vecchio prefisso "account_personal_" → "Metnos_"
+/en/account_personal_Architecture_Intro_v1.html      /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Dialogue_v1.html                /en/Metnos_Dialogue_v1.html                301
+/en/account_personal_Dialogue_Executors_v1.html      /en/Metnos_Dialogue_Executors_v1.html      301
+/en/account_personal_Glossary_v1.html                /en/Metnos_Glossary_v1.html                301
+/en/account_personal_Neurons_Memory_v1.html          /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Extended_Perspectives_v1.html   /en/Metnos_Extended_Perspectives_v1.html   301
+/en/account_personal_Perspectives_Judgement_v1.html  /en/Metnos_Perspectives_Judgement_v1.html  301
+/en/account_personal_QuickTour_v1.html               /en/Metnos_QuickTour.html                  301
+
+# Senza estensione
+/it/Myclaw_Architettura_Intro_v1       /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Dialogo_v1                  /it/Metnos_Dialogo_v1.html                  301
+/it/Myclaw_Dialogo_Executor_v1         /it/Metnos_Dialogo_Executor_v1.html         301
+/it/Myclaw_Glossario_v1                /it/Metnos_Glossario_v1.html                301
+/it/Myclaw_Neuroni_Memoria_v1          /it/Metnos_Architettura_Intro_v1.html       301
+/it/Myclaw_Prospettive_Estese_v1       /it/Metnos_Prospettive_Estese_v1.html       301
+/it/Myclaw_Prospettive_Giudizio_v1     /it/Metnos_Prospettive_Giudizio_v1.html     301
+/it/Myclaw_QuickTour_v1                /it/Metnos_QuickTour.html                   301
+/en/account_personal_Architecture_Intro_v1      /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Dialogue_v1                /en/Metnos_Dialogue_v1.html                301
+/en/account_personal_Dialogue_Executors_v1      /en/Metnos_Dialogue_Executors_v1.html      301
+/en/account_personal_Glossary_v1                /en/Metnos_Glossary_v1.html                301
+/en/account_personal_Neurons_Memory_v1          /en/Metnos_Architecture_Intro_v1.html      301
+/en/account_personal_Extended_Perspectives_v1   /en/Metnos_Extended_Perspectives_v1.html   301
+/en/account_personal_Perspectives_Judgement_v1  /en/Metnos_Perspectives_Judgement_v1.html  301
+/en/account_personal_QuickTour_v1               /en/Metnos_QuickTour.html                  301
+
+# Survival Kit (gia' mergiata in QuickTour, mantiene compat)
+/Myclaw_Survival_Kit_v1.html       /it/Metnos_QuickTour.html  301
+/it/Myclaw_Survival_Kit_v1.html    /it/Metnos_QuickTour.html  301
+/en/account_personal_Survival_Kit_v1.html   /en/Metnos_QuickTour.html  301
+/it/Myclaw_Survival_Kit_v1         /it/Metnos_QuickTour.html  301
+/en/account_personal_Survival_Kit_v1        /en/Metnos_QuickTour.html  301
+
+# Quick Tour: il nome pubblico resta stabile; la versione vive nel documento.
+/it/Metnos_QuickTour_v1             /it/Metnos_QuickTour.html 301
+/it/Metnos_QuickTour_v1.html        /it/Metnos_QuickTour.html 301
+/it/Metnos_QuickTour_v1.pdf         /it/Metnos_QuickTour.pdf  301
+/en/Metnos_QuickTour_v1             /en/Metnos_QuickTour.html 301
+/en/Metnos_QuickTour_v1.html        /en/Metnos_QuickTour.html 301
+/en/Metnos_QuickTour_v1.pdf         /en/Metnos_QuickTour.pdf  301
+
+# Index legacy
+/index.html /it/index.html 301
+
+# Legacy architecture folder (era senza /it/)
+/architecture/* /it/architecture/:splat 301
+
+# Manuale unificato (17/7/2026): le vecchie introduzioni non sono fonti autonome.
+/it/Metnos_Architettura_Intro_v1       /it/architecture/ 301
+/it/Metnos_Architettura_Intro_v1.html  /it/architecture/ 301
+/en/Metnos_Architecture_Intro_v1       /en/architecture/ 301
+/en/Metnos_Architecture_Intro_v1.html  /en/architecture/ 301
+
+# 11/7/2026: il documento pubblico descrive l'astrazione generale, non un dominio.
+/it/architecture/sites       /it/architecture/intelligent_executors.html 301
+/it/architecture/sites.html  /it/architecture/intelligent_executors.html 301
+/en/architecture/sites       /en/architecture/intelligent_executors.html 301
+/en/architecture/sites.html  /en/architecture/intelligent_executors.html 301
+
+# ===========================================================================
+# 26/4/2026: doc microdesign v1.0 cancellati (palesemente inutili dopo POC)
+# Redirect 301 verso il canonico v1.1 piu' affine.
+# ===========================================================================
+/it/architecture/neuron.html        /it/architecture/executor.html       301
+/it/architecture/synapse.html       /it/architecture/mnest.html          301
+/it/architecture/synthesizer.html   /it/architecture/synt.html           301
+/it/architecture/gateway.html       /it/architecture/agent_runtime.html  301
+/it/architecture/tool.html          /it/architecture/executor.html       301
+/it/architecture/memory.html        /it/architecture/mnestoma.html       301
+/it/architecture/eval.html          /it/architecture/                    301
+/it/architecture/types.html         /it/architecture/                    301
+/it/architecture/rl_offline.html    /it/architecture/synt.html           301
+/it/architecture/coerenza_v1.html   /it/architecture/                    301
+/it/architecture/constitution       /it/architecture/vaglio.html         301
+/it/architecture/constitution.html  /it/architecture/vaglio.html         301
+/it/architecture/workspace          /it/architecture/                    301
+/it/architecture/workspace.html     /it/architecture/                    301
+/en/architecture/constitution       /en/architecture/vaglio.html         301
+/en/architecture/constitution.html  /en/architecture/vaglio.html         301
+/en/architecture/workspace          /en/architecture/                    301
+/en/architecture/workspace.html     /en/architecture/                    301
+/it/Metnos_Neuroni_Memoria_v1.html  /it/Metnos_Architettura_Intro_v1.html 301
+/en/Metnos_Neurons_Memory_v1.html   /en/Metnos_Architecture_Intro_v1.html 301

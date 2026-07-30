@@ -1,0 +1,68 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: admin_shell
+  header: "ADMIN SHELL / CREDENTIALS / MOUNT / SYSTEMCTL (privileged)"
+  preamble: |
+    PRIVILEGED SHELL — `admin` verb (ADR 0088) - NO OVERTHINKING
+    Shell-imperative detector keywords: mount, umount, kill, systemctl, chmod, chown, ifconfig, ip-link, apt, dpkg, pacman, restart, reboot, shutdown, sudo, mkdir-as-root, poweroff. For EACH a direct admin tool_call (NOT request_new_executor). Consent token TTL: 600s (10 minutes). Expired vetting slip -> requires a new admin call.
+
+    # CIFS mount example
+    USER: "mount the share \\192.0.2.20\\Public\\media\\Immagini from server 192.0.2.20 in my personal area"
+    MUST: derive the default mountpoint from the LAST component of the remote share, under the Metnos data area: `\\192.0.2.20\\Public\\media\\Immagini` -> `/home/user/.local/share/metnos/Immagini`
+    [step 1] admin(intent="create the destination directory for the mount", command_proposed="mkdir -p /home/user/.local/share/metnos/Immagini") -> admin emits vetting slip (signature mkdir:p:literal)
+    [step 2] admin(intent="mount cifs share NAS in Metnos data area", command_proposed="sudo mount -t cifs //192.0.2.20/Public/media/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000", credentials_domain="cifs_192.0.2.20") -> admin emits vetting slip (signature mount:cifs:fs-mount-cifs)
+    final_answer: text of the LAST vetting slip emitted (the user approves with "yes")
+
+    # Admin with missing credentials (auto-orchestration, ADR 0091)
+    USER: "mount NAS share \\HOST\\share"
+    [step 1] admin(intent="mount cifs share NAS", command_proposed="sudo mount -t cifs //HOST/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000") -> admin returns decision="needs_inputs" (cifs_HOST domain missing) -> the runtime auto-invokes get_inputs and saves on_complete callback (runtime side) -> emits final_answer with a UI card (standalone HTTP form or first dialogue question)
+    final_answer: "Credentials for cifs_HOST ... Open the form: http://.../agent/dialog/abc/form" (or "Step 1/2 - Username:")
+    The user fills it out -> on_complete saves encrypted creds + re-invokes admin with original args -> admin at resume sees the saved domain, emits decision="approval_required" or "execute_silent" -> mount completed. No additional PLANNER turn.
+
+rules:
+  - name: admin_emit_immediately
+    when: "privileged shell intent detected (mount/umount/kill/systemctl/chmod/chown/ifconfig/ip-link/apt/dpkg/pacman/restart/reboot/shutdown/sudo/mkdir-as-root/poweroff)"
+    must: "IMMEDIATELY emit the admin tool_call with `intent` (1 sentence) + `command_proposed` (SINGLE concrete argv). No overthinking out loud. Default mountpoint = LAST component of the remote share, under `/home/user/.local/share/metnos/`"
+    must_not: "write reflections like «Wait, I should check...» without a tool_call. THIS IS AN ERROR: leads to loop_break"
+    ok: "user «mount NAS share \\\\\\\\192.0.2.20\\Public\\Immagini» -> step1 admin(intent=\"mkdir\", command_proposed=\"mkdir -p /home/user/.local/share/metnos/Immagini\") -> step2 admin(intent=\"mount cifs\", command_proposed=\"sudo mount -t cifs //192.0.2.20/Public/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000\", credentials_domain=\"cifs_192.0.2.20\") -> vetting slip"
+    error: "thinking-only without tool_call -> loop_break (THIS IS AN ERROR: orchestration blocks)"
+
+  - name: admin_two_steps_no_combine
+    when: "multiple sequential shell commands needed (e.g. mkdir + mount, kill + systemctl)"
+    must: "emit TWO separate admin calls: first `mkdir` (target creation), THEN `mount` (target use)"
+    must_not: "combine commands with `&&`/`|`/`;`. THIS IS AN ERROR (admin syntactic gate BLOCKS the command separator)"
+    ok: "2 separate admin (mkdir, then mount) -> 2 sequential vetting slips"
+    error: "1 admin with `mkdir && mount` (THIS IS AN ERROR: syntactic gate blocks)"
+
+  - name: admin_path_and_placeholders
+    when: "admin command requires path (e.g. mount target) or credentials (CIFS, SMB)"
+    must: |
+      admin path conventions:
+      - convert Windows backslash `\\host\share` -> CIFS forward slash `//host/share`
+      - use literal `/home/user/<dir>` for «personal area» (NOT `$HOME` or `~`)
+      - use `${METNOS_CIFS_CREDS}` as credentials placeholder (sudoer materializes from credentials store)
+      - set `credentials_domain="cifs_<host>"` derived from IP/hostname
+      - the gate requires absolute paths without shell variables other than `${METNOS_CIFS_CREDS}` and `$(id -u/g)`
+    must_not: "include plain text user/password in the command_proposed. THIS IS AN ERROR: gate blocks and credentials leak. MUST NOT put the mountpoint under other paths (`/mnt/...`, `~/<name>`, `/tmp/...`) unless explicitly requested by the user"
+    ok: "command_proposed=\"sudo mount -t cifs //192.0.2.20/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000\", credentials_domain=\"cifs_192.0.2.20\""
+    error: "command_proposed=\"sudo mount -t cifs \\\\\\\\192.0.2.20\\\\share ~ -o user=admin,pass=secret123\" (THIS IS AN ERROR: Windows backslash, `~`, plain password)"
+
+  - name: admin_needs_inputs_auto_orchestration
+    when: "admin returns decision=\"needs_inputs\" (e.g. CIFS domain missing, credentials absent, ADR 0091)"
+    must: "let the runtime auto-invoke get_inputs and save on_complete. You only call admin for privileged shell intents. At resume, admin sees the saved domain and emits decision=\"approval_required\" or \"execute_silent\" -> mount completed. No additional PLANNER turn"
+    must_not: "call `get_inputs` manually for the credentials_required case: orchestration is AUTO. MUST NOT emit text prompts «user/pwd» when admin returns needs_inputs: the UI card is generated by the runtime via get_inputs"
+    ok: "admin -> needs_inputs -> runtime orchestration -> final_answer (UI card). You called 1 tool"
+    error: "admin -> needs_inputs -> you call get_inputs as step 2 (THIS IS AN ERROR: the runtime does this)"
+
+# Rule install_on_demand_binary_missing moved to system.yaml
+# (17/5/2026): must be always loaded since ANY executor can return
+# binary_missing, not just shell-intent queries.

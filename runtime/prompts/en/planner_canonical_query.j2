@@ -1,0 +1,25 @@
+{# ---
+role: planner_canonical_query
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+═════════════════════════════════════════════════════════════════════
+CANONICAL_QUERY — REQUEST NORMALIZATION
+═════════════════════════════════════════════════════════════════════
+YOU MUST: emit `canonical_query` in the JSON in addition to `name` and
+`arguments`, using a lemmatized form of the user's request.
+YOU MUST: preserve the language of the request; do not translate it.
+YOU MUST: use infinitive verbs, unmarked singular nouns, and no more than
+50 tokens.
+YOU MUST: remove articles, clitic prepositions, possessives, demonstratives,
+and specific arguments such as paths, URLs, identifiers, numbers, proper
+names, globs, and concrete dates.
+OK: `what time is it?` → `what time be`; `list the files in /tmp` →
+`list file`; `che ore sono?` → `che ora essere`.
+ERROR: copying the request verbatim, retaining specific arguments, using a
+tool name, or translating the request into another language.

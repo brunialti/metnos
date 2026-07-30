@@ -1,0 +1,70 @@
+[package]
+name = "metnos-client"
+version = "0.2.25"
+edition = "2021"
+description = "Metnos remote executor client (Rust)"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1.0"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+dirs = "5"
+ed25519-dalek = { version = "2", features = ["rand_core", "pem"] }
+# Lock single-instance cross-platform (flock su unix, LockFileEx su Windows):
+# due `run` con la stessa identita' = doppio poller + race su spool/cache.
+fs2 = "0.4"
+rand = "0.8"
+# MVP: trasporto HTTP dentro l'overlay Headscale (§6 design doc: TLS =
+# fase successiva). Niente feature TLS => niente `ring` (C) => static-link
+# musl PURO Rust, zero cross-gcc (ADR 0037). rustls torna con mTLS (W3+).
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Estrazione runtime python-build-standalone PURE-Rust (§16.2 W3.1):
+# sostituisce lo shell-out a `tar` di sistema in pyenv.rs, unico path di
+# codice per entrambe le piattaforme. Solo .tar.gz (niente crate zstd).
+tar = "0.4"
+flate2 = "1"
+
+[target.'cfg(unix)'.dependencies]
+# kill(2) sul process GROUP al timeout executor (§12): tokio kill_on_drop
+# uccide solo il figlio diretto; il gruppo copre l'albero senza bwrap.
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Job Object sandbox (§16.2 W3.1): kill d'albero garantito anche a crash
+# del client (KILL_ON_JOB_CLOSE), cap memoria/processi. FFI raw, zero
+# runtime C aggiuntivo (coerente con lo static-link mingw esistente).
+# W4 (AppContainer, appcontainer.rs) aggiunge:
+#   - Win32_Security_Isolation      → CreateAppContainerProfile/Derive/Delete (userenv)
+#   - Win32_Security_Authorization  → Get/SetNamedSecurityInfoW, SetEntriesInAclW,
+#                                     ConvertStringSidToSidW, EXPLICIT_ACCESS_W (advapi32)
+#   - Win32_System_Pipes            → CreatePipe (stdin/stdout/stderr del figlio)
+# STARTUPINFOEXW/attribute list/CreateProcessW vivono gia' in Win32_System_Threading;
+# SECURITY_CAPABILITIES/ACL/SID in Win32_Security; SetHandleInformation in Win32_Foundation.
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    # FreeConsole nel path `run` (§B6): la Scheduled Task console-subsystem
+    # lasciava una finestra aperta per tutta la vita del daemon.
+    "Win32_System_Console",
+] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"

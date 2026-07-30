@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>Metnos &mdash; executor intelligenti</title>
+ <meta name="description" content="Come Metnos inserisce un agente a mandato ristretto dietro il contratto stabile di un executor.">
+ <link rel="canonical" href="https://metnos.com/it/architecture/intelligent_executors">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/intelligent_executors">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/intelligent_executors">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/intelligent_executors">
+ <meta property="og:title" content="Executor intelligenti — Metnos">
+ <meta property="og:description" content="Un agente a mandato ristretto dietro il contratto stabile e verificabile di un executor.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Executor intelligenti — Metnos">
+ <meta name="twitter:description" content="Intelligenza interna, mandato ristretto e contratto esterno stabile.">
+ <style>
+ :root{--ink:#18324a;--blue:#1a477a;--sky:#dcecf7;--green:#416b4b;--mint:#e4f1e7;--amber:#9a6418;--sand:#fff3d7;--paper:#fbfaf6;--line:#cbd5df;--muted:#5d6d7d}
+ *{box-sizing:border-box}body{margin:0;color:var(--ink);background:linear-gradient(135deg,#f4f8fa 0,#fbfaf6 45%,#edf4ef 100%);font-family:"Segoe UI",Calibri,sans-serif;line-height:1.65}
+ main,nav{max-width:980px;margin:auto}nav{padding:22px 28px 0;font-size:.92rem}nav a{color:var(--blue)}main{padding:20px 28px 64px}
+ .hero{padding:52px 46px;margin:18px 0 28px;border:1px solid var(--line);border-radius:22px;background:radial-gradient(circle at 85% 15%,#d7eadd 0,transparent 32%),linear-gradient(120deg,#fff 0,#f3f7f9 100%);box-shadow:0 18px 50px rgba(24,50,74,.08)}
+ h1{font-size:clamp(2.15rem,5vw,4.15rem);line-height:1.02;letter-spacing:-.045em;margin:0 0 18px;color:var(--blue);max-width:760px}h2{font-size:1.45rem;margin:42px 0 12px;color:var(--blue)}h3{margin:0 0 6px;font-size:1.05rem}p{margin:9px 0}.lead{font-size:1.22rem;max-width:760px}.status{margin-top:26px;padding:14px 18px;border-left:5px solid var(--green);background:var(--mint);border-radius:0 10px 10px 0}
+ .principles,.use-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.card{padding:18px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.82)}.card strong{display:block;color:var(--blue);margin-bottom:4px}.use-grid{grid-template-columns:1fr 1fr}.yes{border-top:4px solid var(--green)}.no{border-top:4px solid var(--amber)}
+ figure{margin:26px 0;padding:18px;background:#fff;border:1px solid var(--line);border-radius:18px}svg{width:100%;height:auto;display:block}figcaption{color:var(--muted);font-size:.9rem;margin-top:10px;text-align:center}
+ table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line)}th{background:var(--blue);color:#fff;text-align:left}th,td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}code{background:#edf1f4;padding:1px 5px;border-radius:4px}.note{padding:15px 18px;background:var(--sand);border-left:5px solid var(--amber);border-radius:0 10px 10px 0}.related{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted)}
+ @media(max-width:720px){main{padding:14px 18px 44px}.hero{padding:32px 22px}.principles,.use-grid{grid-template-columns:1fr}table{font-size:.9rem}th,td{padding:8px}figure{padding:8px}}
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<nav><a href="index.html">&larr; Guida all'architettura</a> &middot; <a href="/en/architecture/intelligent_executors.html" hreflang="en">EN</a></nav>
+<main>
+ <header class="hero">
+  <h1>Agente dentro.<br>Executor fuori.</h1>
+  <p class="lead">Un executor intelligente affronta percorsi variabili senza cambiare incarico. Osserva, sceglie un passo e verifica; il pianificatore continua a vedere un normale executor.</p>
+  <div class="status"><strong>Idea centrale.</strong> L'intelligenza risolve l'incertezza del percorso. Non amplia permessi, scopo o formato del risultato.</div>
+ </header>
+
+ <section class="principles" aria-label="Principi">
+  <div class="card"><strong>Contratto stabile</strong>Stessi argomenti e stesso risultato di un executor diretto.</div>
+  <div class="card"><strong>Mandato ristretto</strong>Obiettivo, azioni ammesse e condizioni di arresto sono fissati dal codice.</div>
+  <div class="card"><strong>Esito verificato</strong>Il successo richiede una postcondizione osservabile, non una supposizione del modello.</div>
+ </section>
+
+ <h2>Il confine architetturale</h2>
+ <p>Il mandato nasce dal nome, dalla descrizione, dallo schema degli argomenti, dalle capacit&agrave; dichiarate, dalle regole di consenso, dai limiti e dalla postcondizione. Il modello interno riceve soltanto l'osservazione necessaria e pu&ograve; scegliere solo fra azioni enumerate dal runtime.</p>
+
+ <figure>
+  <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
+   <title id="flow-title">Ciclo di un executor intelligente</title>
+   <desc id="flow-desc">Il contratto pubblico contiene un ciclo interno limitato, circondato da autorit&agrave; e verifiche deterministiche.</desc>
+   <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#1a477a"/></marker></defs>
+   <rect x="18" y="18" width="864" height="254" rx="20" fill="#f7faf8" stroke="#416b4b" stroke-width="2"/>
+   <text x="42" y="49" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#416b4b">AUTORIT&Agrave; FISSA: capacit&agrave; &middot; consenso &middot; segreti &middot; destinazioni</text>
+   <g font-family="Segoe UI,sans-serif" text-anchor="middle">
+    <rect x="50" y="92" width="145" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="122" y="121" font-size="14" font-weight="700" fill="#1a477a">Osserva</text><text x="122" y="143" font-size="12" fill="#18324a">stato minimo</text>
+    <rect x="250" y="92" width="160" height="72" rx="12" fill="#e4f1e7" stroke="#416b4b"/><text x="330" y="121" font-size="14" font-weight="700" fill="#416b4b">Risolvi</text><text x="330" y="143" font-size="12" fill="#18324a">prima con regole</text>
+    <rect x="465" y="92" width="160" height="72" rx="12" fill="#fff3d7" stroke="#9a6418"/><text x="545" y="121" font-size="14" font-weight="700" fill="#9a6418">Disambigua</text><text x="545" y="143" font-size="12" fill="#18324a">LLM solo se serve</text>
+    <rect x="680" y="92" width="165" height="72" rx="12" fill="#dcecf7" stroke="#1a477a"/><text x="762" y="121" font-size="14" font-weight="700" fill="#1a477a">Agisci e verifica</text><text x="762" y="143" font-size="12" fill="#18324a">postcondizione</text>
+   </g>
+   <g stroke="#1a477a" stroke-width="2" marker-end="url(#arrow)"><line x1="195" y1="128" x2="242" y2="128"/><line x1="410" y1="128" x2="457" y2="128"/><line x1="625" y1="128" x2="672" y2="128"/></g>
+   <text x="450" y="217" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700" fill="#1a477a">USCITA TIPIZZATA: successo verificato &middot; passaggio all'utente &middot; errore causale</text>
+   <text x="450" y="244" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="12" fill="#5d6d7d">Numero di passi, tempo e dimensione dell'osservazione sono limitati.</text>
+  </svg>
+  <figcaption>Il modello opera nel tratto ambiguo; autorit&agrave;, limiti e verifica restano deterministici.</figcaption>
+ </figure>
+
+ <h2>Stesso involucro, due modi di eseguire</h2>
+ <table>
+  <tr><th>Propriet&agrave;</th><th>Executor diretto</th><th>Executor intelligente</th></tr>
+  <tr><td>Contratto pubblico</td><td>Input e output tipizzati</td><td>Identico</td></tr>
+  <tr><td>Percorso</td><td>Procedura prestabilita</td><td>Ciclo adattivo e limitato</td></tr>
+  <tr><td>Scopo</td><td>Fissato dal nome</td><td>Identico e non ridefinibile</td></tr>
+  <tr><td>Autorit&agrave;</td><td>Manifest e consenso</td><td>Identica; non pu&ograve; auto-estendersi</td></tr>
+  <tr><td>Esito</td><td>Schema e postcondizione</td><td>Identico, compreso il fallimento esplicito</td></tr>
+ </table>
+
+ <h2>Dove porta un vantaggio reale</h2>
+ <div class="use-grid">
+  <div class="card yes"><h3>Adatto</h3><p>Scopo stretto, percorso variabile, azioni limitate, progresso riosservabile e conclusione verificabile.</p><p>Esempi: accesso a un sito, procedure a pi&ugrave; schermate, estrazione da strutture variabili, scelta fra controlli equivalenti.</p></div>
+  <div class="card no"><h3>Non adatto</h3><p>Ricerca aperta, strategia fra domini o compiti creativi senza un criterio netto di completamento.</p><p>Queste decisioni appartengono al pianificatore, non a un executor nascosto.</p></div>
+ </div>
+ <p>Una nuova lingua, disposizione o sequenza di schermate dovrebbe essere assorbita dallo stesso executor. Serve nuovo codice quando manca una primitiva, un canale di osservazione, un'autorit&agrave; oppure una postcondizione verificabile: l'intelligenza non inventa sensori o permessi.</p>
+
+ <h2>Se non riesce</h2>
+ <p>L'executor si arresta in modo chiuso: restituisce un codice causale nello schema pubblico, conserva soltanto lo stato necessario a una ripresa sicura e non inventa risultati. Conferme esterne o ambiguit&agrave; non risolvibili producono un passaggio esplicito all'utente; limiti esauriti, bersaglio instabile e postcondizione assente producono errori distinguibili.</p>
+ <div class="note"><strong>Trasporto e intelligenza sono indipendenti.</strong> Un executor locale, remoto o basato in futuro su MCP pu&ograve; essere diretto oppure intelligente. MCP descrive come raggiungere uno strumento; non decide mandato, autorit&agrave; o criterio di successo.</div>
+
+ <p class="related">Approfondimenti: <a href="executor.html">contratto executor</a> &middot; <a href="sandbox.html">sandbox</a> &middot; <a href="skills_backends.html">skill e backend</a> &middot; <a href="agent_runtime.html">runtime agentico</a></p>
+</main>
+</body>
+</html>

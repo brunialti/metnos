@@ -1,0 +1,74 @@
+{
+  "description": {
+    "it": {
+      "version_hash": "sha256:faa15817433c8b98631c9bb952a5e33a717eba22d6d53502330d5bb4f5af3cba",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:10a9f934db7d46d217b98dd4cbcd07c44929f2458037051f4ea0a2edae39f55a",
+      "source_lang": "it",
+      "source_hash": "sha256:b7a485172010aa33daf00b5dc1c639b1d36eda773dd1b69ea9cfda5e437cb910"
+    }
+  },
+  "args.top.description": {
+    "it": {
+      "version_hash": "sha256:ca493c7693ee4f149973d6edaf0f9d707522171938e46cf51a2ded8e6b239331",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:769d2109f8c185b8bc4721a783d15ba3c4976ad71c3eb0a2479c005d6343e635",
+      "version_hash": "sha256:0f88d5b6a6c99258af3cb3e593238c84d26319ab82d9d170580d7ed9d9da8838"
+    }
+  },
+  "args.filters.description": {
+    "it": {
+      "version_hash": "sha256:5f30a6df2d665779f0d17b430b1ecb759b55de5dfefd24ddc6137592a638bff0",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:3daba89edcb1bb58b35ebfb116b261538798c37f13b2019956671e136d04bad0",
+      "version_hash": "sha256:ec3030a24bc85c0f5a4d3fa2a6fcbdda43d955a0aec4235ab5c56964c7f5f28a"
+    }
+  },
+  "args.include_health.description": {
+    "it": {
+      "version_hash": "sha256:858b157e67a0c05a3c98938c5930dfc393756b2cbf6898ff26423b3d6e53c359",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:22018f2d82c8d3e2ad4217f07d57db0d3bb012aa57f1f8dd7308c270380583f4",
+      "version_hash": "sha256:fb647921f1811ffe4188b2c03b2f1166e295d7053d988790578065f4764a5adf"
+    }
+  },
+  "args.services_extra.description": {
+    "it": {
+      "version_hash": "sha256:075ca4f68f57ec163a7c7bc02565f78b41960de032854835aba3e72b33d2814f",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "source_lang": "it",
+      "source_hash": "sha256:9874c4baeddde6fb5344260c8022500e7bb0768f094fd2cc5e940e9ce13d4902",
+      "version_hash": "sha256:e377e4ef50eccd08fd7dca1f2536e86f8c6d5bf4dbfa7c717283d895f08e04a0"
+    }
+  },
+  "args.scheduler_health.description": {
+    "it": {
+      "version_hash": "sha256:7ef5bb2751e6e15d95e210bfce8f7998f5825af429bd139a2813df87ce2d050c",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:48ccad41ca3fdb0908546c8a42669df5375f3ee7888b292f857e0e65fb28c01a",
+      "source_lang": null,
+      "source_hash": null
+    }
+  }
+}

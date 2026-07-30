@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; flusso di approvazione</title>
+ <meta name="description" content="Come Metnos sospende un'azione, presenta una proposta localizzata e applica una decisione legata all'utente e al turno.">
+ <meta name="keywords" content="Metnos, approvazione, consenso, Telegram, chat web, i18n, sicurezza">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/approval_ux">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/approval_ux">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/approval_ux">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/approval_ux">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/approval_ux.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/approval_ux.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">approvazione</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Flusso di approvazione</div>
+ <div class="meta">Come una proposta viene mostrata, decisa ed eseguita senza perdere identit&agrave;, lingua o stato.</div>
+</div>
+
+<p class="lead">Quando la policy richiede una decisione umana, Metnos non esegue il
+passo. Registra una proposta pendente, la presenta sul canale dell'utente e riprende
+soltanto dopo una decisione valida. Testo, etichette e pulsanti seguono la lingua del
+singolo utente.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Quando viene chiesta una decisione</a></li>
+ <li><a href="#cap2">Il flusso corrente</a></li>
+ <li><a href="#cap3">Chat web e Telegram</a></li>
+ <li><a href="#cap4">Lingua e isolamento per utente</a></li>
+ <li><a href="#cap5">Esempio in linguaggio naturale</a></li>
+ <li><a href="#cap6">Invarianti di sicurezza</a></li>
+ <li><a href="#cap7">Confini attuali e riferimenti</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Quando viene chiesta una decisione</h1>
+
+<p>Il <a href="vaglio.html">vaglio</a> e la <a href="policy.html">policy</a>
+valutano il passo preparato dal pianificatore. L'esito pu&ograve; consentire l'esecuzione,
+negarla oppure produrre una proposta <code>approval_required</code>. Soltanto il terzo
+caso apre un dialogo di consenso.</p>
+
+<p>La forma della proposta dipende dalla capability e dal canale. Non esiste un
+contratto pubblico che imponga sempre tre righe o sempre due pulsanti. Il contratto
+stabile &egrave; semantico: la persona deve poter riconoscere l'azione, il suo obiettivo e
+le conseguenze rilevanti prima di decidere.</p>
+
+<h1 id="cap2">2. Il flusso corrente</h1>
+
+<ol>
+ <li>Il runtime prepara executor e argomenti, senza eseguire l'azione.</li>
+ <li>La policy produce una proposta tipizzata e il canale la salva nello stato
+ <code>cap_pending</code>, legato al mittente e al <code>turn_id</code>.</li>
+ <li>La UI mostra il testo della proposta e le scelte disponibili.</li>
+ <li>Una risposta testuale oppure un callback valido consuma la stessa proposta.</li>
+ <li>Lo stato viene rimosso prima dell'esecuzione, cos&igrave; un doppio clic o una risposta
+ ripetuta non pu&ograve; eseguire due volte il passo.</li>
+ <li>Un rifiuto, una scadenza o un identificatore non pi&ugrave; corrente non esegue nulla.</li>
+</ol>
+
+<p>Per i flussi che usano il registro atomico <code>approval_registry</code>, il token
+&egrave; inoltre monouso, ha una scadenza predefinita di dieci minuti ed &egrave; vincolato a
+canale e mittente. Il registro applica la transizione con una transazione SQLite.</p>
+
+<h1 id="cap3">3. Chat web e Telegram</h1>
+
+<table>
+<thead><tr><th>Canale</th><th>Presentazione</th><th>Decisione</th></tr></thead>
+<tbody>
+<tr><td>Chat web</td><td>La proposta compare nella conversazione; i dialoghi
+strutturati possono aprirsi come modulo incorporato.</td><td>La risposta o il modulo
+vengono risolti nella stessa conversazione e nello stesso spazio utente.</td></tr>
+<tr><td>Telegram</td><td>Quando il tipo lo consente, il messaggio include i pulsanti
+localizzati <em>Approva</em> e <em>Rifiuta</em>. I dialoghi non rappresentabili come
+pulsanti restano testuali.</td><td>Il callback <code>cap:&lt;turn_id&gt;:yes|no</code>
+deve coincidere con la proposta ancora pendente. Anche una risposta testuale s&igrave;/no
+usa lo stesso stato.</td></tr>
+</tbody>
+</table>
+
+<p>Il trasferimento di una conversazione tra dispositivi non trasferisce l'identit&agrave;
+a un altro utente: conversazione, sessione attiva e stato pendente restano nello
+spazio del proprietario.</p>
+
+<h1 id="cap4">4. Lingua e isolamento per utente</h1>
+
+<p>Le etichette user-facing sono chiavi del catalogo i18n, non stringhe possedute dal
+renderer. La preferenza <code>lang</code> viene risolta dal binding canale&ndash;utente e
+applicata al solo turno tramite un contesto locale. Lo stesso contesto viene propagato
+ai processi che eseguono il pianificatore e al Tutor.</p>
+
+<p>Due utenti possono quindi usare lingue diverse nello stesso processo senza
+modificare <code>METNOS_LANG</code>. Se viene aggiunta una lingua, la pagina delle
+preferenze ricava l'elenco dal catalogo i18n; una chiave non ancora tradotta segue la
+catena di ripiego lingua utente &rarr; inglese &rarr; italiano.</p>
+
+<h1 id="cap5">5. Esempio in linguaggio naturale</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Invia il rapporto a direzione@example.org e mostrami cosa verr&agrave; inviato prima di
+procedere&raquo;.</p>
+
+<p>Metnos prepara il passo e, se la policy richiede conferma, mostra una proposta
+localizzata. Un possibile contenuto &egrave;:</p>
+
+<pre><code>Inviare il rapporto mensile a direzione@example.org
+Operazione non annullabile dopo la consegna
+[Approva] [Rifiuta]</code></pre>
+
+<p>L'esempio illustra le informazioni necessarie, non un layout fisso. Su Telegram le
+scelte possono essere pulsanti; nella chat web possono essere una risposta o un modulo
+incorporato.</p>
+
+<h1 id="cap6">6. Invarianti di sicurezza</h1>
+
+<table>
+<thead><tr><th>Invariante</th><th>Effetto</th></tr></thead>
+<tbody>
+<tr><td>Decisore = richiedente</td><td>Inoltrare un messaggio o conoscere un token non
+trasferisce l'autorit&agrave; a un'altra persona.</td></tr>
+<tr><td>Identificatore corrente</td><td>Un pulsante appartenente a un turno precedente
+viene rifiutato.</td></tr>
+<tr><td>Consumo prima dell'esecuzione</td><td>Doppi clic e retry non duplicano l'azione.</td></tr>
+<tr><td>Scadenza</td><td>Una proposta troppo vecchia deve essere generata di nuovo.</td></tr>
+<tr><td>Isolamento per utente</td><td>Stato, lingua, conversazione e decisione non sono
+condivisi fra utenti.</td></tr>
+<tr><td>Nessuna delega implicita</td><td>Approvare un passo non crea automaticamente un
+permesso generale o permanente.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap7">7. Confini attuali e riferimenti</h1>
+
+<p>Una concessione persistente deve essere rappresentata esplicitamente dalla policy,
+avere un ambito riconoscibile e offrire un percorso di revoca. Metnos non la deduce
+dalla frequenza delle approvazioni, dalla loro formulazione o dal silenzio
+dell'utente.</p>
+
+<ul>
+ <li><code>runtime/channels/inline_ui.py</code>: pulsanti e callback Telegram.</li>
+ <li><code>runtime/channels/daemon.py</code>: stato pendente, consumo e dispatch.</li>
+ <li><code>runtime/http_routes_agent.py</code>: percorso equivalente della chat web.</li>
+ <li><code>runtime/approval_registry.py</code>: token atomici con TTL e verifica del decisore.</li>
+ <li><code>runtime/i18n.py</code>: catalogo e contesto lingua per richiesta.</li>
+ <li><code>tests/runtime/channels/test_telegram_authorization_buttons.py</code> e
+ <code>tests/runtime/safety/test_approval_registry_atomic.py</code>: regressioni principali.</li>
+</ul>
+
+<p>Per il percorso utente delle pagine e dei canali, vedi la
+<a href="../interface.html">guida all'interfaccia</a>.</p>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+<div class="panel" data-expires="{{ expires_at }}">
+  <p><strong>Token emesso per <code>{{ name }}</code></strong> — scade fra
+  <span id="token-countdown">10:00</span>. Uso singolo.</p>
+
+  <h3>Linux</h3>
+  <pre><code>curl -fsSL {{ server_url }}/agent/client/install.sh | \
+  METNOS_SERVER={{ server_url }} \
+  METNOS_TOKEN={{ token }} sh</code></pre>
+
+  <h3>Windows (PowerShell, non-admin)</h3>
+  <pre><code>$env:METNOS_SERVER='{{ server_url }}'; $env:METNOS_TOKEN='{{ token }}'; `
+iwr {{ server_url }}/agent/client/install.ps1 -UseBasicParsing | iex</code></pre>
+
+  <script>
+    (function () {
+      var el = document.getElementById("token-countdown");
+      var left = 600;
+      var t = setInterval(function () {
+        left -= 1;
+        if (left <= 0) { el.textContent = "SCADUTO"; clearInterval(t); return; }
+        var m = Math.floor(left / 60), s = left % 60;
+        el.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+      }, 1000);
+    })();
+  </script>
+</div>

@@ -1,0 +1,20 @@
+{# ---
+role: tutor_observation_select
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-29
+sha_prev: new
+--- #}
+Select one observation view from the closed `views` inventory in the input JSON to satisfy `user_query`.
+
+YOU MUST: return EXACTLY the `view_id` of a view in the inventory or `NONE`.
+YOU MUST NOT: answer the request, invent identifiers, or add punctuation or explanations.
+
+YOU MUST: select a view only when one view covers ALL requested real facts and no requested fact appears among its exclusions.
+YOU MUST: return `NONE` if even one datum is missing, multiple views are needed, the target is ambiguous, the request changes state, or it requires a normal operational tool to run.
+YOU MUST NOT: extend a view by analogy, topical similarity, previous conversation, or documentation outside the inventory.
+
+The `coverage`, `excluded`, and `fact_paths` fields are the view's complete contract. Only the selected `view_id` grants data access; titles and descriptions grant no additional authority.

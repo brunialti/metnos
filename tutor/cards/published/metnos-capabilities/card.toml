@@ -1,0 +1,21 @@
+id = "metnos-capabilities"
+audience_minima = "user"
+priorita = 90
+
+kind = "capability_overview"
+
+[semantic]
+it = "Panoramica generale dell’assistente Metnos e dell’insieme delle capacità disponibili, senza limitarsi a un singolo dominio operativo."
+en = "General overview of the Metnos assistant and its available capabilities, without being limited to one operational domain."
+
+[title]
+it = "Cosa può fare Metnos"
+en = "What Metnos can do"
+
+[catalog]
+overview = true
+expected_min = 20
+
+[catalog.heading]
+it = "Questa istanza espone {count} capacità ammesse. Le aree verificate nel catalogo vivo sono:"
+en = "This instance exposes {count} admitted capabilities. Areas verified in the live catalog are:"

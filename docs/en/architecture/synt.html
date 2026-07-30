@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; Synt and new executor creation</title>
+ <meta name="description" content="How Synt verifies a genuine gap, generates an executor in separate stages, keeps it quarantined, and promotes it only after testing and admission.">
+ <meta name="keywords" content="Metnos, Synt, synthesis, executor, birth tests, promoter, quarantine">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/synt">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/synt">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/synt">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/synt">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/synt.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/synt.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Synt</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Synt: creating a capability without activating it blindly</div>
+ <div class="meta">Verified gap, staged generation, quarantine, evaluation, and rollback.</div>
+</div>
+
+<p class="lead">Synt builds an executor candidate when the catalog has no suitable
+capability. It does not turn model prose into immediately executable code: it first
+rules out duplicates, separates contract from implementation, runs checks and birth
+tests, signs the artifact in quarantine, and hands it to a promoter with evaluation,
+an observation period, and rollback.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">What it does and does not do</a></li>
+ <li><a href="#cap2">When it runs</a></li>
+ <li><a href="#cap3">Composition or new synthesis</a></li>
+ <li><a href="#cap4">The five stages</a></li>
+ <li><a href="#cap5">Post-generation checks</a></li>
+ <li><a href="#cap6">Candidate lifecycle</a></li>
+ <li><a href="#cap7">Natural-language example</a></li>
+ <li><a href="#cap8">Decision, observation, and rollback</a></li>
+ <li><a href="#cap9">Language, data, and audit</a></li>
+ <li><a href="#cap10">Limits of the guarantees</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What it does and does not do</h1>
+
+<p>Synt receives an uncovered intent and produces a proposal conforming to the
+executor contract. Its result may include a canonical name, argument schema,
+capabilities, reversibility, tests, description, affinity, and Python code.</p>
+
+<p>Synt does not enlarge a user's permissions, create verbs or objects outside the
+vocabulary, overwrite handcrafted executors, or make a candidate planner-visible
+merely because the code compiles. Policy, standard conformance, signatures,
+sandboxing, and consent remain separate controls.</p>
+
+<h1 id="cap2">2. When it runs</h1>
+
+<p>The internal <code>request_new_executor</code> request must provide an expected
+name and the intent to cover. Before spending generation calls, the runtime applies
+admission checks:</p>
+
+<ul>
+ <li>if the name already exists in the catalog, it returns the current executor;</li>
+ <li>if an equivalent canonical producer exists, it redirects to that producer;</li>
+ <li>if an imported skill already covers the verb and object, it uses that capability;</li>
+ <li>if the request belongs to a native binding such as remote files, SSH, or an
+ authenticated site, it uses the corresponding builtin path;</li>
+ <li>if a <code>proposed</code> or <code>synthesized</code> candidate already exists,
+ it does not create a duplicate.</li>
+</ul>
+
+<p>These controls are driven by the catalog, vocabulary, and binding registry, not
+by exceptions written for one sentence.</p>
+
+<h1 id="cap3">3. Composition or new synthesis</h1>
+
+<p>The least invasive solution is to compose already-signed capabilities. The
+composer can search the mnestoma for a short chain that closes the intent and return
+the suggested first step to the engine. No new executor is created in this case.</p>
+
+<p>When an atomic capability or promotable pipeline is genuinely missing, staged
+synthesis begins. The outcomes remain distinct:</p>
+
+<table>
+<thead><tr><th>Outcome</th><th>Artifact</th><th>Visibility</th></tr></thead>
+<tbody>
+<tr><td>Composition</td><td>Chain of existing executors</td><td>Usable in the turn after ordinary controls</td></tr>
+<tr><td>Synthesis</td><td>New candidate with manifest, code, and tests</td><td>Quarantined until promotion</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap4">4. The five stages</h1>
+
+<table>
+<thead><tr><th>Stage</th><th>Binding output</th></tr></thead>
+<tbody>
+<tr><td>1. Name and class</td><td><code>action_object[_qualifier]</code>, criticality, reversibility, and target kind.</td></tr>
+<tr><td>2. Operational signature</td><td>Argument schema, declared capabilities, and a reverse pattern when required.</td></tr>
+<tr><td>3. Birth tests</td><td>At least three cases with input and an observable expected outcome.</td></tr>
+<tr><td>4. Description</td><td>Conforming manifest head, affinities, and usage boundaries.</td></tr>
+<tr><td>5. Code</td><td>An <code>invoke</code> implementation, and a reverse operation when needed, built against the earlier contract.</td></tr>
+</tbody>
+</table>
+
+<p>Stages 1&ndash;4 use the <code>middle</code> LLM role; code uses
+<code>wise</code>. These roles are configurable and may point to the same local
+provider. Each stage receives only the request and validated outputs from earlier
+stages, so code cannot silently redefine the contract.</p>
+
+<h1 id="cap5">5. Post-generation checks</h1>
+
+<ol>
+ <li><strong>Per-stage validation.</strong> Name shape, vocabulary, types,
+ reversibility, tests, and description are checked before proceeding.</li>
+ <li><strong>Structural lint.</strong> The manifest cannot cite nonexistent
+ arguments, runtime-resolved fields, or an incompatible output shape.</li>
+ <li><strong>Semantic verification.</strong> A separate judge compares description
+ and code. Its verdict is probabilistic; code applies the decision to reject an
+ explicit mismatch.</li>
+ <li><strong>Generated contract.</strong> Manifest format, standard, lifecycle,
+ and execution policy must match the runtime-owned envelope.</li>
+ <li><strong>Real birth tests.</strong> The candidate runs against its declared
+ cases. A failure removes the quarantined installation.</li>
+</ol>
+
+<p>An infrastructure failure in the semantic judge is recorded but does not alone
+reject the candidate: deterministic checks, tests, and the downstream evaluator
+remain mandatory. This is explicit degradation, not proof of alignment.</p>
+
+<h1 id="cap6">6. Candidate lifecycle</h1>
+
+<p>When all stages and birth tests succeed, the runtime writes the candidate to the
+user executor store with lifecycle <code>synthesized</code> and signs its manifest.
+The signature establishes artifact integrity; it is not activation. The loader can
+inspect the candidate while the composer's catalog excludes it.</p>
+
+<p>The promoter then evaluates the proposal document using deterministic signals:
+name conformance, overlap with existing capabilities, tests, reversibility parity,
+error classes, schema stability, call frequency, estimated benefit, and routing
+interference risk.</p>
+
+<table>
+<thead><tr><th>Verdict</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><code>accept</code></td><td>Fresh admission checks, active signature, rollback archive, and a grace period.</td></tr>
+<tr><td><code>gray</code></td><td>Administrative review is required; there is no implicit activation.</td></tr>
+<tr><td><code>reject</code></td><td>Archive with a reason; the candidate does not enter the active catalog.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap7">7. Natural-language example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “In the CSV files
+under Sensors, find runs of at least five measurements that increase without a
+break, and create a summary for each sensor.”</p>
+
+<p>Metnos first attempts a pipeline of existing capabilities: find files, read CSV,
+extract, and group. Only if the catalog cannot represent the required operation may
+it propose a new capability. The answer must distinguish three outcomes clearly:
+the operation completed with existing tools, a candidate was created but is not
+active yet, or synthesis was rejected with a reason.</p>
+
+<p>The same sentence can be used in Telegram. If an administrative decision is
+needed, Metnos must state that management happens in the web chat and provide the
+current navigation path, such as <strong>Settings &rsaquo; Lifecycle &rsaquo; Changes</strong>, instead of
+showing only a proposal identifier.</p>
+
+<h1 id="cap8">8. Decision, observation, and rollback</h1>
+
+<p>An accepted proposal normally enters a configurable grace period. The promoter
+creates a rollback archive first. During grace, hard failures observed in real turns
+may trigger the kill switch. The administrator can also confirm or withdraw the
+promotion from the delivered digest. The promotion is finalized after grace expires
+without a negative signal.</p>
+
+<p>The Synt-candidate promoter and the unified
+<a href="lifecycle.html">change-intent lifecycle</a> have distinct ownership. A
+<code>synthesized</code> candidate is not duplicated as a false approval request in
+a second store.</p>
+
+<h1 id="cap9">9. Language, data, and audit</h1>
+
+<p>Stage prompts are loaded in the turn language. Descriptions and affinity can be
+localized; canonical names, schema fields, and identifiers remain stable. Any i18n
+keys introduced by generated code are registered for the normal translation
+pipeline rather than invented in one UI.</p>
+
+<p>Proposals, stage results, rejection reasons, evaluations, promotions, and
+rollbacks are retained in local stores and JSONL audit logs. Prompts do not receive
+plaintext credentials. Generated code remains subject to allowed imports, sandbox
+profiles, and executor-standard limits.</p>
+
+<h1 id="cap10">10. Limits of the guarantees</h1>
+
+<ul>
+ <li>Name, description, test, and code generation is probabilistic; gates reduce
+ risk but are not a formal proof.</li>
+ <li>A birth test covers only its declared cases. Smoke tests, grace, and rollback
+ cover failures that emerge under real use.</li>
+ <li>The evaluator score governs a configured decision; it does not prove that a
+ capability is universally useful.</li>
+ <li>Synt must not create a copy of work already covered by L0, L1, a skill, or a
+ provider.</li>
+</ul>
+
+<p>Code references:</p>
+<ul>
+ <li><code>runtime/synth_request.py</code>: initial admission and candidate persistence;</li>
+ <li><code>runtime/synt_multistage.py</code>: five stages, lint, and semantic verification;</li>
+ <li><code>runtime/generated_executor_contract.py</code>: generated-manifest envelope;</li>
+ <li><code>runtime/proposal_evaluator.py</code>: deterministic evaluation;</li>
+ <li><code>runtime/jobs/promoter*.py</code>: promotion, digest, grace, and rollback;</li>
+ <li><code>runtime/loader.py</code>: lifecycle visibility.</li>
+</ul>
+
+</body>
+</html>

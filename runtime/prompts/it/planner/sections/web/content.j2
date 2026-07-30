@@ -1,0 +1,71 @@
+{# ---
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / GESTIONE CONTENUTO (post-lettura, history, lista risultati)
+══════════════════════════════════════════════════════════════════════
+
+  (url_already_read) URL GIA' LETTO IN HISTORY (seed_step o step precedente):
+      Quando in history c'e' uno step `read_urls_html` (o `read_urls_pdf`,
+      `get_urls_text`) con `ok=true` E `entries[0].text`/`body` non-vuoto
+      (>=200 caratteri), HAI GIA' IL CONTENUTO della pagina.
+    DEVI: chiamare `describe_entries(from_step=N, style="by_relevance",
+         context=<domanda originale dell'utente>)` come PROSSIMO step.
+         Lo step successivo sara' `final_answer` formulato dal `summary`
+         dell'observation di describe_entries.
+    NON DEVI: emettere `final_answer` direttamente saltando describe_entries —
+         il modello fatica a sintetizzare body_text >2000 char senza l'aiuto
+         di describe_entries, e tende a includere il proprio reasoning come
+         testo finale (thinking-leak).
+    NON DEVI: rifare `read_urls_html`, `read_urls_pdf`, `get_urls`,
+         `get_urls_text`, `find_urls` sullo STESSO URL gia' letto.
+         E' rumore: il contenuto e' nello scratchpad.
+    OK: history step1 = read_urls_html(urls=["https://x.it/about"]) ok=true,
+         entries[0].text 4000 char. User chiede "di che parla?". Step 2 →
+         describe_entries(from_step=1, style="by_relevance",
+         context="dimmi di che parla la pagina") → final_answer.
+    ERRORE: stesso scenario → step2 find_urls(seed_urls=["https://x.it"])
+         (URL gia' letto, refetch e' tempo perso). E' UN ERRORE.
+    ERRORE: stesso scenario → step2 get_urls_text(urls=["https://x.it/about"])
+         (URL gia' letto in step1 con read_urls_html). E' UN ERRORE.
+
+  (search_results_list) RISULTATI WEB — il runtime appende auto la lista cliccabile:
+      Quando uno step `find_urls` ritorna `entries` con almeno una URL,
+      il runtime appende AUTOMATICAMENTE in coda al final_message la
+      lista cliccabile (titolo+url+snippet+score+documenti scoperti)
+      via `output_format.format_search_results`. Tu non devi formattarla.
+      Due pattern accettati a seconda dell'intento utente:
+
+    DEVI (a) — Utente cerca INFORMAZIONI (dati, valori, contenuto, fatti):
+        find_urls -> read_urls_html(urls=[top-1 o top-3 by score]) ->
+        describe_entries(from_step=N_read_urls, style="by_relevance",
+        context=<query originale>) -> final_answer.
+        La sintesi LLM e' costruita sul CONTENUTO HTML letto, non sulla
+        URL list. La risposta puo' provenire dal corpo di una pagina HTML
+        (non solo da un PDF allegato): «sul sito X la tabella organico
+        {{ current_year }} indica 1234 cattedre». Se le top-K read_urls_html
+        falliscono (`error_class`), final_answer onesto secondo url_failed_soft_fail.
+
+    DEVI (b) — Utente vuole l'elenco di siti / link su X:
+        find_urls -> final_answer breve "Ecco i siti piu' pertinenti
+        per <X>". Niente describe_entries. Il runtime appende la lista.
+
+    NON DEVI: invocare `describe_entries(by_relevance)` direttamente
+        sull'observation di `find_urls` (scarta gli URL, produce testo
+        educato senza contenuto utile). Se ti serve il contenuto, leggi
+        prima con `read_urls_html` poi descrivi quello.
+    OK (a): «file dati X» -> find_urls(search_query=...) ->
+        read_urls_html(urls=[from_step:1, top-1]) ->
+        describe_entries(from_step=2, by_relevance) -> final_answer
+        con la sintesi del contenuto + lista URL appesa dal runtime.
+    OK (b): «siti che parlano di X» -> find_urls(...) ->
+        final_answer "Ecco N siti pertinenti".
+    ERRORE: find_urls -> describe_entries(by_relevance) -> final_answer
+        narrativo senza link e senza contenuto letto. E' UN ERRORE.

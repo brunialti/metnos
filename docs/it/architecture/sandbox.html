@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; sandbox</title>
+ <meta name="description" content="Guida alla sandbox di Metnos: isolamento degli executor sul server e sui dispositivi, risorse derivate dal manifest, declassamenti e limiti effettivi.">
+ <meta name="keywords" content="sandbox, bubblewrap, bwrap, isolamento, executor, manifest, capabilities, metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/sandbox">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/sandbox">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/sandbox">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/sandbox">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/sandbox">
+ <meta property="og:title" content="Metnos &mdash; sandbox">
+ <meta property="og:description" content="Come Metnos isola gli executor sul server e sui dispositivi, quali risorse rende visibili e quali limiti conserva.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — sandbox degli executor",
+ "description": "Isolamento degli executor sul server e sui dispositivi, risorse derivate dal manifest, declassamenti e limiti effettivi.",
+ "url": "https://metnos.com/it/architecture/sandbox.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/sandbox.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/sandbox.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">sandbox</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Sandbox degli executor</div>
+ <div class="meta">Come viene contenuta un'esecuzione sul server e sui dispositivi associati.</div>
+</div>
+
+<p class="lead">La sandbox limita ci&ograve; che il processo di un executor pu&ograve;
+vedere e modificare. Le risorse dipendono dal manifest firmato e, quando
+necessario, dall'invocazione concreta. Questo livello si aggiunge al Vaglio,
+alla verifica dell'identit&agrave; e ai controlli applicativi: non li sostituisce e
+non concede, da solo, l'autorizzazione a compiere un'azione.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Ambito</a></li>
+ <li><a href="#cap2">Interfacce del modulo</a></li>
+ <li><a href="#cap3">Risorse rese visibili sul server</a></li>
+ <li><a href="#cap4">Esecuzione senza bubblewrap</a></li>
+ <li><a href="#cap5">Integrazione nel runtime</a></li>
+ <li><a href="#cap6">Autonomia e policy</a></li>
+ <li><a href="#cap7">Verifiche</a></li>
+ <li><a href="#cap8">Diagnostica e installazione</a></li>
+ <li><a href="#cap9">Confini di sicurezza</a></li>
+ <li><a href="#cap10">Sandbox sui dispositivi associati</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Ambito</h1>
+
+<p>Quando un executor gira sul server Linux, <code>runtime/sandbox.py</code>
+pu&ograve; anteporre <code>bwrap</code> al comando Python. Bubblewrap costruisce una
+vista separata del file system, rende privato <code>/tmp</code>, separa alcuni
+spazi dei nomi e, se l'executor non richiede la rete, aggiunge
+<code>--unshare-net</code>. Non esiste un demone separato: il profilo viene
+costruito per ogni invocazione.</p>
+
+<p>Se il lavoro viene trasferito a un dispositivo associato, il client Rust
+applica invece il meccanismo disponibile su quel sistema operativo. Il server
+sceglie il dispositivo e verifica l'appartenenza all'utente; il client esegue
+il comando e restituisce anche il livello di contenimento realmente usato.</p>
+
+<h1 id="cap2">2. Interfacce del modulo</h1>
+
+<table>
+<tr><th>Funzione</th><th>Responsabilit&agrave;</th></tr>
+<tr><td><code>bwrap_available</code>, <code>sandbox_disabled</code></td><td>Rilevano la presenza di <code>bwrap</code> e l'eventuale disattivazione mediante <code>METNOS_SANDBOX</code>.</td></tr>
+<tr><td><code>wrap_command</code></td><td>Restituisce il comando avvolto da <code>bwrap</code>, oppure il comando originario quando l'involucro non &egrave; attivo.</td></tr>
+<tr><td><code>filesystem_extras</code></td><td>Risolve soltanto gli argomenti indicati da una capacit&agrave; firmata <code>fs:read</code> con forma <code>arg:&lt;nome&gt;</code>; l'argomento pu&ograve; restringere l'ambito, non ampliarlo.</td></tr>
+<tr><td><code>undo_history_extras</code></td><td>Rende scrivibile la sola cartella dei contenuti di ripristino appartenente al turno corrente, quando il manifest dichiara il modello inverso previsto.</td></tr>
+<tr><td><code>invocation_skills</code>, <code>skill_extras</code></td><td>Individuano i fornitori necessari all'invocazione, rendono visibile la sola cartella della relativa integrazione e abilitano la rete. Per gli executor conformi l'origine &egrave; <code>provider:access</code>; i manifest precedenti conservano un percorso di compatibilit&agrave;.</td></tr>
+<tr><td><code>mail_extras</code></td><td>Per <code>mail:read</code> rende visibili in sola lettura le credenziali dei soli account richiesti e abilita la rete. Non monta l'intero deposito delle credenziali.</td></tr>
+<tr><td><code>dialog_extras</code></td><td>Per <code>dialog.user_input</code> rende scrivibile la sola cartella del mittente autenticato.</td></tr>
+<tr><td><code>python_package_roots</code></td><td>Individua le radici dei pacchetti usate dall'interprete corrente, senza esporre l'intera cartella personale.</td></tr>
+<tr><td><code>status</code></td><td>Restituisce percorso, disponibilit&agrave;, disattivazione e stato effettivo di <code>bwrap</code>.</td></tr>
+</table>
+
+<h1 id="cap3">3. Risorse rese visibili sul server</h1>
+
+<h2>3.1 Base di esecuzione</h2>
+
+<p>Il profilo monta in sola lettura i percorsi di sistema esistenti fra
+<code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, le directory delle
+librerie, <code>/etc</code>, <code>/opt</code>, <code>/var/lib/python3</code> e
+<code>/sys</code>. Aggiunge inoltre:</p>
+
+<ul>
+<li><code>/proc</code> e un <code>/dev</code> minimo;</li>
+<li>un <code>/tmp</code> privato;</li>
+<li>in sola lettura, la cartella dell'executor, il runtime Metnos e l'ambiente Python effettivamente in uso;</li>
+<li>in sola lettura, i database i18n e del lessico di riconoscimento, quando presenti.</li>
+</ul>
+
+<p>Sono sempre richiesti <code>--unshare-user</code>,
+<code>--unshare-ipc</code>, <code>--unshare-uts</code> e
+<code>--die-with-parent</code>. Il profilo del server non aggiunge attualmente
+uno spazio dei nomi PID, Landlock o un filtro seccomp personalizzato.</p>
+
+<h2>3.2 Risorse derivate dalle capacit&agrave;</h2>
+
+<table>
+<tr><th>Dichiarazione</th><th>Effetto sul profilo</th></tr>
+<tr><td><code>fs:read</code> / <code>fs:write</code></td><td>Montaggio in sola lettura o in lettura e scrittura. Gli ambiti fissi in forma glob vengono ridotti alla loro radice; gli ambiti <code>arg:</code> sono risolti sul valore concreto e soltanto se il percorso esiste.</td></tr>
+<tr><td><code>metnos:read</code>, <code>metnos:write</code>, <code>metnos:create</code></td><td>Traduzione di risorse semantiche chiuse &mdash; per esempio fogli, registro persone o proposte &mdash; nei soli percorsi canonici gestiti da Metnos.</td></tr>
+<tr><td><code>index:read</code></td><td>Accesso in sola lettura alla radice canonica dell'indice dichiarato; un nome sconosciuto non concede nulla.</td></tr>
+<tr><td><code>systemd:read</code> e <code>system:read</code></td><td>Visibilit&agrave; limitata alle risorse note necessarie alla lettura dello stato. La richiesta delle interfacce di rete mantiene disponibile la rete dell'host.</td></tr>
+<tr><td><code>provider:access</code> o <code>skill:&lt;nome&gt;</code></td><td>Cartella dell'integrazione in lettura e scrittura, necessaria anche al rinnovo OAuth, e rete dell'host.</td></tr>
+<tr><td><code>mail:read</code></td><td>Singoli file di credenziali dell'account richiesto in sola lettura e rete dell'host.</td></tr>
+</table>
+
+<p>Le capacit&agrave; <code>network:*</code> e <code>net:*</code>, le integrazioni
+esterne e alcuni casi di lettura del sistema impediscono l'aggiunta di
+<code>--unshare-net</code>. In questo caso il processo dispone della rete
+dell'host: la limitazione a un dominio o a un fornitore resta compito dei
+controlli applicativi e delle credenziali circoscritte.</p>
+
+<h1 id="cap4">4. Esecuzione senza bubblewrap</h1>
+
+<p>Se <code>bwrap</code> non &egrave; nel <code>PATH</code>, oppure se
+<code>METNOS_SANDBOX</code> vale <code>0</code>, <code>off</code>,
+<code>no</code> o <code>false</code>, <code>wrap_command</code> restituisce il
+comando invariato. Non c'&egrave; un terzo percorso che trasformi automaticamente
+un'eccezione di rilevamento in un esito negativo.</p>
+
+<p>Il controllo preventivo dell'ambito dell'invocazione continua a essere
+eseguito prima del sottoprocesso, cos&igrave; come restano operativi il Vaglio e i
+controlli propri degli executor. Ci&ograve; non equivale per&ograve; al contenimento del
+sistema operativo. Sul server locale il risultato dell'executor non porta
+automaticamente un campo che dichiari l'assenza di <code>bwrap</code>; questa
+condizione va osservata mediante <code>status()</code> o la diagnostica del
+servizio.</p>
+
+<h1 id="cap5">5. Integrazione nel runtime</h1>
+
+<p><code>invoke_executor</code> &egrave; il punto comune di esecuzione. L'ordine
+essenziale &egrave; il seguente:</p>
+
+<ol>
+<li>ricava attore, canale e turno dal contesto autenticato;</li>
+<li>valuta l'eventuale collocazione remota, mostrando soltanto i dispositivi appartenenti allo stesso utente;</li>
+<li>mantiene sul server le invocazioni che dipendono da un'integrazione esterna installata sul server;</li>
+<li>verifica l'ambito firmato dei percorsi anche quando <code>bwrap</code> non &egrave; disponibile;</li>
+<li>prepara il registro di annullamento e le sole risorse aggiuntive necessarie all'invocazione;</li>
+<li>avvia <code>sys.executable</code>, cio&egrave; l'interprete dell'ambiente Metnos corrente, attraverso <code>wrap_command</code>.</li>
+</ol>
+
+<p>Il punto pubblico passa inoltre dallo schedulatore centrale, che applica
+limiti di concorrenza senza cambiare collocazione, argomenti o contratto del
+risultato.</p>
+
+<h1 id="cap6">6. Autonomia e policy</h1>
+
+<p>Il parametro <code>autonomy</code> &egrave; accettato da
+<code>wrap_command</code>, ma oggi &egrave; informativo: non seleziona profili
+diversi. Il confinamento deriva dalle capacit&agrave; del manifest e dalle risorse
+risolte per l'invocazione. Le decisioni su consenso, criticit&agrave; e ammissibilit&agrave;
+appartengono alla <a href="policy.html">policy</a> e al
+<a href="vaglio.html">Vaglio</a>, non alla sandbox.</p>
+
+<h1 id="cap7">7. Verifiche</h1>
+
+<p>I test non dipendono da un numero dichiarato nella documentazione. Le
+verifiche dedicate coprono i montaggi del runtime e dell'ambiente Python, i
+database i18n, le integrazioni esterne, le credenziali di posta e i casi di
+declassamento. Le principali suite sono:</p>
+
+<pre>tests/runtime/safety/test_sandbox_runtime_bind.py
+tests/runtime/safety/test_sandbox_i18n_bind.py
+tests/runtime/safety/test_sandbox_skill_backed.py</pre>
+
+<p>I moduli Rust contengono inoltre test vicini alle implementazioni comuni,
+Linux, Windows e AppContainer. Le prove che confrontano gli argomenti di
+<code>bwrap</code> possono essere eseguite anche senza avviare una sandbox
+reale; le prove di sistema verificano separatamente il meccanismo disponibile
+sulla piattaforma.</p>
+
+<h1 id="cap8">8. Diagnostica e installazione</h1>
+
+<p>Lo stato corrente si legge con <code>sandbox.status()</code>. La funzione
+controlla il <code>PATH</code> al momento della chiamata e restituisce
+<code>bwrap_available</code>, <code>bwrap_path</code>,
+<code>disabled_via_env</code> e <code>active</code>; il risultato non viene
+memorizzato dal modulo.</p>
+
+<pre># Debian e Ubuntu
+sudo apt install bubblewrap
+
+# Fedora e RHEL
+sudo dnf install bubblewrap
+
+# Arch Linux
+sudo pacman -S bubblewrap</pre>
+
+<p>Dopo l'installazione occorre verificare sia <code>status()</code> sia una
+vera invocazione nell'ambiente del servizio. Un <code>PATH</code> diverso o la
+variabile <code>METNOS_SANDBOX</code> possono produrre un esito differente da
+quello della sessione amministrativa.</p>
+
+<h1 id="cap9">9. Confini di sicurezza</h1>
+
+<ul>
+<li><strong>Visibile non significa autorizzato.</strong> Un montaggio permette al processo di raggiungere una risorsa; l'identit&agrave;, il consenso e la finalit&agrave; dell'azione devono essere verificati prima.</li>
+<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code>, <code>/opt</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. La sola lettura impedisce modifiche, ma non garantisce la riservatezza di ogni file presente in quelle radici.</li>
+<li><strong>La rete &egrave; binaria.</strong> Quando serve, viene ereditata la rete dell'host; bubblewrap non applica una lista di host ammessi.</li>
+<li><strong>Il profilo non usa Landlock o seccomp personalizzati</strong> e, sul server, non separa lo spazio dei nomi PID.</li>
+<li><strong><code>system:undo</code> &egrave; un'eccezione esplicita.</strong> L'annullamento deve ricostruire dal registro risorse note soltanto al momento dell'esecuzione; per questo <code>wrap_command</code> lascia passare direttamente il broker firmato. Il Vaglio e il vincolo di esecuzione sul server restano necessari, ma non costituiscono una sandbox del sistema operativo.</li>
+<li><strong>L'assenza di bubblewrap &egrave; un declassamento reale.</strong> I controlli applicativi che restano attivi non devono essere descritti come isolamento a livello di kernel.</li>
+</ul>
+
+<h1 id="cap10">10. Sandbox sui dispositivi associati</h1>
+
+<p class="lead">Il client remoto usa un contratto di risultato comune, ma il
+contenimento dipende dalla piattaforma. Il campo <code>sandbox</code> descrive
+il livello realmente applicato; un eventuale
+<code>sandbox_downgrade_reason</code> spiega il passaggio a un livello meno
+forte.</p>
+
+<table>
+<tr><th>Piattaforma</th><th>Implementazione corrente</th><th>Comportamento in caso di declassamento</th></tr>
+<tr><td><strong>Linux</strong></td><td>Bubblewrap con spazio dei nomi dei montaggi e PID, rete separata quando non richiesta, cartella temporanea privata e gruppo di processi dedicato. Landlock e seccomp personalizzati non sono implementati.</td><td>Se <code>bwrap</code> manca o &egrave; disattivato, esecuzione diretta con avviso; il risultato dichiara <code>sandbox:"none"</code>. Il gruppo di processi continua a consentire la terminazione dell'albero alla scadenza.</td></tr>
+<tr><td><strong>Windows</strong></td><td>AppContainer con concessioni derivate dalle capacit&agrave;, posto a sua volta in un Job Object. AppContainer &egrave; tentato per impostazione predefinita quando supportato.</td><td>Per sottoprocessi di sistema, percorsi non ancorabili, ambiti troppo ampi o indisponibilit&agrave; del contenitore, il client usa il Job Object e comunica il motivo. Se il manifest richiede AppContainer come livello minimo, l'invocazione non deve essere declassata silenziosamente.</td></tr>
+<tr><td><strong>macOS</strong></td><td>Non esiste oggi un modulo nativo <code>sandbox_macos.rs</code>. Il percorso Unix comune non offre un equivalente operativo di bubblewrap su macOS.</td><td>L'esecuzione non va presentata come isolata: il livello effettivo &egrave; <code>none</code>, pur restando il controllo della scadenza sul gruppo di processi.</td></tr>
+</table>
+
+<p>Il Job Object limita la memoria del singolo processo, il numero di processi
+attivi e la durata dell'albero. Il processo nasce sospeso, viene assegnato al
+Job Object e soltanto allora viene avviato; alla scadenza l'intero Job Object
+viene terminato. AppContainer aggiunge l'isolamento di file e rete mediante
+concessioni calcolate per l'invocazione.</p>
+
+<p>Prima dell'esecuzione remota, il client verifica il pacchetto firmato e usa
+un interprete Python predisposto e verificato. Queste verifiche proteggono la
+provenienza del codice; non sostituiscono il contenimento dichiarato nel
+risultato.</p>
+
+</body>
+</html>

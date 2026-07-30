@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Settings · Metnos{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+<p class="page-sub">Stato del sistema in un colpo d'occhio: attività recente,
+ciclo di vita degli executor, sicurezza e accessi.</p>
+{% set up = uptime_s|int %}
+<p class="muted meta-line">versione <code>{{ version }}</code> · attivo da
+  {%- if up >= 86400 %} {{ up // 86400 }}g {{ (up % 86400) // 3600 }}h
+  {%- elif up >= 3600 %} {{ up // 3600 }}h {{ (up % 3600) // 60 }}m
+  {%- else %} {{ up // 60 }}m {{ up % 60 }}s
+  {%- endif %}</p>
+
+<div class="ov-grid">
+
+  <div class="ov-card">
+    <h2>Turni recenti</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ turn_summary.total }}</b><span>ultime 24h</span></div>
+      <div class="ov-num {% if turn_summary.errors %}is-err{% endif %}"><b>{{ turn_summary.errors }}</b><span>errori</span></div>
+      <div class="ov-num"><b>{{ turn_summary.median_ms|round(0)|int }}<small> ms</small></b><span>latenza mediana</span></div>
+    </div>
+    <div class="ov-actions"><a class="btn" href="/admin/turns">vedi tutti</a></div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Proposte introspettive</h2>
+    <div class="ov-nums">
+      <div class="ov-num {% if proposals_summary.pending %}is-warn{% endif %}"><b>{{ proposals_summary.pending }}</b><span>pending</span></div>
+      <div class="ov-num"><b>{{ proposals_summary.dormant }}</b><span>dormant</span></div>
+      <div class="ov-num"><b>{{ proposals_summary.applied }}</b><span>applied</span></div>
+    </div>
+    <div class="ov-actions"><a class="btn" href="/admin/changes">vedi tutte</a></div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Proposte telos</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ telos_proposals_summary.total }}</b><span>totali</span></div>
+      <div class="ov-num {% if telos_proposals_summary.pending %}is-warn{% endif %}"><b>{{ telos_proposals_summary.pending }}</b><span>pending</span></div>
+      <div class="ov-num"><b>{{ telos_proposals_summary.accepted }}</b><span>accepted</span></div>
+      <div class="ov-num"><b>{{ telos_proposals_summary.rejected }}</b><span>rejected</span></div>
+      <div class="ov-num"><b>{{ telos_proposals_summary.staged }}</b><span>staged</span></div>
+    </div>
+    <div class="ov-actions"><a class="btn" href="/admin/changes?family=telos">triage proposte</a></div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Catalogo executor</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ executors_summary.total }}</b><span>executor</span></div>
+      <div class="ov-num"><b>{{ executors_summary.handcrafted }}</b><span>handcrafted</span></div>
+      <div class="ov-num"><b>{{ executors_summary.synth }}</b><span>synth</span></div>
+      <div class="ov-num"><b>{{ executors_summary.deprecated }}</b><span>deprecated</span></div>
+    </div>
+    <div class="ov-actions">
+      <a class="btn" href="/admin/executors">vedi tutti</a>
+      <a class="btn" href="/admin/executors/stats">statistiche</a>
+    </div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Scheduler</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ runs_summary.total_today }}</b><span>run oggi</span></div>
+      <div class="ov-num {% if runs_summary.failures_today %}is-err{% endif %}"><b>{{ runs_summary.failures_today }}</b><span>failure</span></div>
+      <div class="ov-num"><b>{{ runs_summary.tasks }}</b><span>task registrati</span></div>
+    </div>
+    <div class="ov-actions">
+      <a class="btn" href="/admin/runs">history</a>
+      <a class="btn" href="/admin/timers">gestione timer</a>
+    </div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Safety</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ safety_summary.whitelist }}</b><span>whitelist</span></div>
+      <div class="ov-num"><b>{{ safety_summary.blacklist }}</b><span>blacklist</span></div>
+      <div class="ov-num"><b>{{ safety_summary.graylist }}</b><span>graylist</span></div>
+      <div class="ov-num {% if safety_summary.forbidden %}is-err{% endif %}"><b>{{ safety_summary.forbidden }}</b><span>forbidden</span></div>
+    </div>
+    <div class="ov-actions"><a class="btn" href="/admin/safety">tabella firme</a></div>
+  </div>
+
+  <div class="ov-card">
+    <h2>Utenti</h2>
+    <div class="ov-nums">
+      <div class="ov-num"><b>{{ users_summary.hosts }}</b><span>host</span></div>
+      <div class="ov-num"><b>{{ users_summary.guests }}</b><span>guest</span></div>
+    </div>
+    {% if users_summary.recent %}
+      <p class="muted ov-recent">ultimi pairati:
+        {% for u in users_summary.recent %}
+          <span class="chip">{{ u.name }} ({{ u.role }}, {{ u.channels|join(",") }})</span>
+        {% endfor %}
+      </p>
+    {% endif %}
+    <div class="ov-actions"><a class="btn" href="/admin/users">gestione utenti</a></div>
+  </div>
+
+</div>
+
+<style>
+  .meta-line{margin:0 0 var(--sp-4);font-size:var(--fs-1)}
+  .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+           gap:var(--sp-4)}
+  .ov-card{background:var(--surface);border:1px solid var(--border);
+           border-radius:var(--r-2);box-shadow:var(--shadow-1);
+           padding:var(--sp-4) var(--sp-5);display:flex;flex-direction:column;
+           gap:var(--sp-3);
+           transition:border-color var(--t-2) var(--ease)}
+  .ov-card:hover{border-color:var(--border-strong)}
+  .ov-card h2{margin:0}
+  .ov-nums{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-5)}
+  .ov-num b{display:block;font-size:var(--fs-5);font-weight:650;line-height:1.15;
+            font-variant-numeric:tabular-nums;color:var(--ink)}
+  .ov-num b small{font-size:var(--fs-1);font-weight:500;color:var(--muted)}
+  .ov-num span{font-size:var(--fs-0);font-weight:600;letter-spacing:.05em;
+               text-transform:uppercase;color:var(--muted)}
+  .ov-num.is-err b{color:var(--err-fg)}
+  .ov-num.is-warn b{color:var(--warn-fg)}
+  .ov-actions{margin-top:auto;display:flex;gap:var(--sp-2);flex-wrap:wrap}
+  .ov-recent{margin:0}
+</style>
+{% endblock %}

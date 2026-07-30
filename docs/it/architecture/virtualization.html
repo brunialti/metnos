@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; virtualizzazione dei modelli</title>
+ <meta name="description" content="Come Metnos configura modelli linguistici, embedding e VLM: ruoli logici, pagina Modelli, salvataggio validato, ripristino e file TOML effettivi.">
+ <meta name="keywords" content="virtualizzazione, modelli, LLM, embedding, VLM, configurazione, tier, TOML, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/virtualization">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/virtualization">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/virtualization">
+ <meta property="og:title" content="Metnos &mdash; virtualizzazione dei modelli">
+ <meta property="og:description" content="Ruoli logici e configurazione effettiva di LLM, embedding e VLM, modificabile dalla chat web.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; virtualizzazione dei modelli">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — virtualizzazione dei modelli",
+ "description": "Come Metnos configura modelli linguistici, embedding e VLM attraverso ruoli logici, una pagina amministrativa e file TOML validati.",
+ "url": "https://metnos.com/it/architecture/virtualization",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Virtualizzazione dei modelli in Metnos"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bg: #FAFBFC; --text: #1a1a1a; --muted: #64748B;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.title-page { text-align: center; padding: 50px 0 20px; }
+.title-page h1 { font-size: 30pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 15pt; color: var(--navy-light); margin: 10px 0 24px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 5px; }
+.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }
+.path { font-weight: 650; color: var(--navy); }
+.small { color: var(--muted); font-size: 10pt; }
+@media (max-width: 680px) {
+ body { padding: 24px 18px; }
+ table { display: block; overflow-x: auto; }
+}
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/virtualization.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/virtualization.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">virtualizzazione dei modelli</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">virtualizzazione dei modelli &mdash; <code>LLM</code> &middot; <code>embedding</code> &middot; <code>VLM</code></div>
+ <div class="meta">Guida alla configurazione e ai confini del runtime</div>
+</div>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Mostrami dove posso modificare il modello e il budget di ragionamento del
+tier <code>wise</code>&raquo;.</p>
+
+<p>Metnos ti conduce alla pagina amministrativa della chat web:
+<span class="path">Settings &gt; Sistema &gt; Modelli</span>. Se poni la domanda da
+Telegram, il Tutor pu&ograve; spiegarti il percorso, ma la pagina si apre nella chat
+web. L'indirizzo interno &egrave; <code>/admin/virt</code> e richiede un accesso da
+amministratore.</p>
+
+<p class="lead">Il runtime non lega i propri componenti a un nome di modello.
+Ogni componente chiede un ruolo logico; la configurazione effettiva associa
+quel ruolo a un fornitore, a un modello, a un endpoint e ai relativi parametri.
+La pagina <strong>Modelli</strong> mostra questa associazione e permette di
+modificarla senza cambiare il codice dei componenti che la usano.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Usare la pagina Modelli</a></li>
+ <li><a href="#cap2">Ruoli logici e interfacce del runtime</a></li>
+ <li><a href="#cap3">Che cosa mostra la pagina</a></li>
+ <li><a href="#cap4">Modificare e salvare</a></li>
+ <li><a href="#cap5">Ripristino e copie di recupero</a></li>
+ <li><a href="#cap6">File effettivi e precedenza</a></li>
+ <li><a href="#cap7">Confini locali e remoti</a></li>
+ <li><a href="#cap8">Riferimenti tecnici</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Usare la pagina Modelli</h1>
+
+<ol>
+ <li>Apri la chat web di Metnos ed entra come amministratore.</li>
+ <li>Apri <span class="path">Settings &gt; Sistema &gt; Modelli</span>. La stessa
+ pagina risponde all'indirizzo <code>/admin/virt</code>.</li>
+ <li>Scegli la famiglia che vuoi esaminare: modelli linguistici,
+ <em>embedding</em> o modello visivo-linguistico.</li>
+ <li>Premi <strong>Modifica</strong> per rendere modificabili i valori visibili
+ di quella famiglia.</li>
+ <li>Controlla i valori e premi <strong>Salva modifiche</strong>. Il messaggio di conferma
+ indica che le chiamate successive useranno la nuova configurazione.</li>
+</ol>
+
+<p>La pagina si apre in modalit&agrave; di consultazione. Il pulsante
+<strong>Rileggi configurazione</strong> carica di nuovo il file e aggiorna la visualizzazione; non salva
+modifiche e non riavvia i modelli. La modifica &egrave; separata per famiglia, cos&igrave;
+un intervento sull'LLM non riscrive anche la configurazione di embedding o VLM.</p>
+
+<p>Questa configurazione appartiene all'istanza Metnos eseguita da quell'account
+di sistema. Non &egrave; una preferenza personale dell'utente della conversazione.</p>
+
+<h1 id="cap2">2. Ruoli logici e interfacce del runtime</h1>
+
+<p>Un consumatore dichiara che cosa gli serve, non quale prodotto o modello
+debba soddisfare la richiesta. La risoluzione passa da tre punti pubblici del
+pacchetto <code>runtime/virt</code>:</p>
+
+<table>
+<thead><tr><th>Famiglia</th><th>Ruoli</th><th>Interfaccia</th><th>Risultato</th></tr></thead>
+<tbody>
+<tr>
+ <td>modello linguistico</td>
+ <td><code>fast</code>, <code>middle</code>, <code>wise</code>, <code>frontier</code></td>
+ <td><code>virt.get_llm(role)</code></td>
+ <td>un fornitore linguistico risolto dal router dei tier</td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td><code>text</code>, <code>image</code></td>
+ <td><code>virt.get_embedder(role)</code></td>
+ <td>un fornitore che produce vettori per la modalit&agrave; richiesta</td>
+</tr>
+<tr>
+ <td>modello visivo-linguistico</td>
+ <td><code>default</code></td>
+ <td><code>virt.get_vlm(role)</code></td>
+ <td>la specifica effettiva del VLM, non un modello gi&agrave; caricato</td>
+</tr>
+</tbody>
+</table>
+
+<p>I nomi dei tier LLM esprimono un'intenzione del chiamante. Non certificano
+da soli la qualit&agrave; del modello concreto: &egrave; l'amministratore a decidere quale
+fornitore e quale modello soddisfano ciascun ruolo. In una configurazione LLM
+esplicita, <code>fast</code> e <code>wise</code> sono obbligatori;
+<code>middle</code>, se assente, viene associato a <code>wise</code>.
+<code>frontier</code> &egrave; facoltativo e chi lo richiede deve gestirne
+l'eventuale indisponibilit&agrave;.</p>
+
+<pre>from virt import get_embedder, get_llm, get_vlm
+
+text_encoder = get_embedder("text")
+planner = get_llm("wise")
+vision_spec = get_vlm("default")</pre>
+
+<p>La virtualizzazione separa quindi due decisioni: il componente sceglie il
+ruolo; la configurazione dell'istanza sceglie il backend. Cambiare un
+collegamento tra fornitori gi&agrave; supportati non richiede di modificare gli
+executor o il pianificatore. Aggiungere un tipo di fornitore che il runtime non
+conosce, invece, richiede una sua implementazione.</p>
+
+<h1 id="cap3">3. Che cosa mostra la pagina</h1>
+
+<p>Per ciascuna famiglia la pagina presenta:</p>
+
+<ul>
+ <li>il percorso del file effettivamente letto e l'eventuale variabile
+ d'ambiente che lo sostituisce;</li>
+ <li>lo stato <strong>configurato</strong>, <strong>valori iniziali</strong> o
+ <strong>non valido</strong>;</li>
+ <li>i ruoli risolti e la provenienza di ogni valore: configurazione, valori
+ iniziali, alias o ripiego;</li>
+ <li>il collegamento a fornitore, modello ed endpoint;</li>
+ <li>la politica di generazione dei tier LLM, compresi
+ <code>think</code>, <code>temperature</code> e
+ <code>reasoning_budget</code> quando presenti;</li>
+ <li>gli altri parametri scalari effettivi, per esempio
+ <code>num_predict</code>, limiti, timeout e percorsi del modello.</li>
+</ul>
+
+<p>I valori della politica di generazione sono i valori predefiniti del tier.
+Un'operazione con esigenze specifiche pu&ograve; sostituirli per una sola chiamata;
+la pagina non presenta quell'eccezione temporanea come nuova configurazione.</p>
+
+<p>Password, token, chiavi, credenziali e parti sensibili degli URL non vengono
+mostrati. Restano esclusi anche dai campi inviati dal modulo. I segreti gi&agrave;
+presenti nel documento vengono conservati durante il salvataggio, ma si
+gestiscono attraverso il flusso protetto delle credenziali o l'ambiente del
+servizio, non da questa pagina.</p>
+
+<p>La lettura della pagina non inizializza fornitori e non carica modelli: costruisce
+una proiezione limitata e priva di segreti della configurazione risolta.</p>
+
+<h1 id="cap4">4. Modificare e salvare</h1>
+
+<p>Premendo <strong>Modifica</strong>, Metnos espone soltanto i valori scalari
+visibili che sa rappresentare senza cambiarne il tipo. I campi sensibili e i
+valori non modificabili restano in sola lettura. Al salvataggio il runtime:</p>
+
+<ol>
+ <li>accetta soltanto l'insieme di campi mostrato dall'editor;</li>
+ <li>ricostruisce i tipi TOML, valida fornitori, URL, valori numerici e vincoli
+ della famiglia;</li>
+ <li>rifiuta una versione non pi&ugrave; corrente, evitando di sovrascrivere una modifica
+ concorrente;</li>
+ <li>conserva una copia privata del file precedente, se esiste;</li>
+ <li>scrive il nuovo documento in modo atomico con permessi <code>0600</code>;</li>
+ <li>invalida le cache pertinenti del runtime.</li>
+</ol>
+
+<p>Una configurazione non valida non sostituisce il file precedente. Dopo un
+salvataggio valido non servono una reinstallazione, una ricompilazione o il
+riavvio del server: le chiamate successive risolvono i nuovi valori. Un turno
+gi&agrave; in esecuzione conclude invece il proprio lavoro con le risorse che aveva
+gi&agrave; acquisito.</p>
+
+<h1 id="cap5">5. Ripristino e copie di recupero</h1>
+
+<p>Il pulsante <strong>Ripristina</strong> opera su una sola famiglia e richiede
+conferma. Riscrive i valori iniziali forniti dalla versione di Metnos
+installata. Non sceglie automaticamente una vecchia configurazione personale
+e non ricostruisce le scelte compiute durante un'installazione precedente.</p>
+
+<p>Prima del ripristino Metnos conserva una copia privata del file corrente, se
+il file esiste. Le copie create da salvataggi e ripristini si trovano sotto
+<code>$METNOS_USER_STATE/virt-config-history/&lt;famiglia&gt;/</code>; con i
+percorsi predefiniti, la radice &egrave;
+<code>~/.local/state/metnos/virt-config-history/</code>. La pagina non offre un
+selettore delle versioni storiche: il recupero di una copia specifica &egrave;
+un'operazione amministrativa distinta.</p>
+
+<h1 id="cap6">6. File effettivi e precedenza</h1>
+
+<p>La pagina mostra sempre il percorso effettivo, che &egrave; pi&ugrave; affidabile di
+un percorso ricordato a memoria. In assenza di sostituzioni, i documenti
+appartengono all'account di sistema che esegue Metnos.</p>
+
+<table>
+<thead><tr><th>Famiglia</th><th>Ordine di risoluzione del file</th></tr></thead>
+<tbody>
+<tr>
+ <td>LLM</td>
+ <td><code>METNOS_LLM_TIERS_CONFIG</code>; poi
+ <code>$METNOS_USER_CONFIG/llm_tiers.toml</code> se esiste; infine il percorso
+ di compatibilità <code>&lt;install_root&gt;/workspace/.config/llm_tiers.toml</code></td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td><code>METNOS_EMBEDDING_TIERS_CONFIG</code>; altrimenti
+ <code>$METNOS_USER_CONFIG/embedding_tiers.toml</code></td>
+</tr>
+<tr>
+ <td>VLM</td>
+ <td><code>METNOS_VLM_TIERS_CONFIG</code>; altrimenti
+ <code>$METNOS_USER_CONFIG/vlm_tiers.toml</code></td>
+</tr>
+</tbody>
+</table>
+
+<p><code>$METNOS_USER_CONFIG</code> vale normalmente
+<code>~/.config/metnos</code>. Se un file non esiste, il runtime usa i valori
+iniziali della versione installata e la pagina lo dichiara. Se il documento
+non &egrave; leggibile o non supera la validazione, la pagina segnala lo stato non
+valido e distingue gli eventuali valori di ripiego da una configurazione
+valida.</p>
+
+<h1 id="cap7">7. Confini locali e remoti</h1>
+
+<table>
+<thead><tr><th>Famiglia</th><th>Confine operativo</th></tr></thead>
+<tbody>
+<tr>
+ <td>LLM</td>
+ <td>Il router crea il fornitore dichiarato dal tier. Le associazioni supportate
+ possono puntare a un endpoint locale o a un servizio remoto; credenziali e
+ disponibilit&agrave; del servizio restano requisiti separati.</td>
+</tr>
+<tr>
+ <td>embedding</td>
+ <td>I valori iniziali usano fornitori locali nello stesso processo. La
+ configurazione generale pu&ograve; scegliere un endpoint compatibile; gli executor
+ in sola lettura che dichiarano calcolo locale usano invece
+ <code>get_local_embedder()</code> e non acquisiscono autorit&agrave; di rete per
+ effetto di quella scelta.</td>
+</tr>
+<tr>
+ <td>VLM</td>
+ <td><code>get_vlm()</code> restituisce la specifica. L'avvio &egrave; separato e
+ pigro: <code>ensure_vlm_up()</code> controlla <code>/health</code>, pu&ograve;
+ tentare una volta per processo lo script VLM configurato e restituisce
+ <code>false</code> se il servizio non diventa disponibile. Il chiamante decide
+ il ripiego.</td>
+</tr>
+</tbody>
+</table>
+
+<p>La virtualizzazione centralizza la scelta del backend; non trasforma un
+endpoint remoto in una risorsa locale e non concede da sola rete, credenziali
+o capacit&agrave; aggiuntive a un executor.</p>
+
+<h1 id="cap8">8. Riferimenti tecnici</h1>
+
+<ul>
+ <li><code>runtime/virt/__init__.py</code> &mdash; facciate e valori iniziali di
+ embedding e VLM;</li>
+ <li><code>runtime/llm_router.py</code> &mdash; tier LLM, associazioni, alias e
+ politica di inferenza;</li>
+ <li><code>runtime/virt/configuration.py</code> &mdash; proiezione effettiva,
+ provenienza e oscuramento dei segreti;</li>
+ <li><code>runtime/virt/config_editor.py</code> &mdash; modifica validata,
+ scrittura atomica, copie di recupero e ripristino.</li>
+</ul>
+
+<p>Per la mappa completa della chat web consulta la
+<a href="../interface.html">guida alla navigazione dell'interfaccia</a>. Per
+capire come i componenti eseguibili consumano questi ruoli, prosegui con la
+<a href="executor.html">guida agli executor</a> o torna alla
+<a href="index.html">Guida all'architettura</a>.</p>
+
+</body>
+</html>

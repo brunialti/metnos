@@ -1,0 +1,16 @@
+[Unit]
+Description=Metnos bounded composite watchdog
+After=metnos.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO_DIR@/runtime
+ExecStart=@VENV@/bin/python -m stack_reconcile watchdog --require-sidecar auto
+TimeoutStartSec=180
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+Environment=METNOS_USER_CONFIG=@CONFIG_DIR@
+Environment=METNOS_USER_STATE=@STATE_DIR@
+SyslogIdentifier=metnos-stack-watchdog

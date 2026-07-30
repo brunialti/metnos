@@ -1,0 +1,8 @@
+# Metnos — vulnerability disclosure
+# https://www.rfc-editor.org/rfc/rfc9116
+
+Contact: mailto:admin@metnos.com
+Expires: 2027-04-26T00:00:00Z
+Canonical: https://metnos.com/.well-known/security.txt
+Preferred-Languages: en, it
+Policy: https://metnos.com/security/

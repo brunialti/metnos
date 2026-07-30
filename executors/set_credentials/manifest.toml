@@ -1,0 +1,154 @@
+# Manifest dell'executor `set_credentials` — Metnos v1.1
+# Naming compositivo: azione_oggetto. 16 OBJECT credentials (10/5/2026).
+# Invariante di sicurezza: metadata-only (capability metnos:credentials_metadata_only).
+# `fields` accetta i valori cleartext in INPUT (li cifra) ma il return e' metadata-only.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "set_credentials"
+version     = "0.4.0"
+revertible  = false
+author      = "Roberto Brunialti"
+affinity    = ["salva credenziale", "configura account", "registra token",
+                "memorizza chiave", "imposta credenziali", "save credential",
+                "configure account", "register token", "set credentials",
+                "store key", "api key", "oauth setup"]
+
+[description]
+it = "SCOPO: cifra credenziali; definisce il mandato. PATTERN: set_credentials(binding='x', fields={}); senza fields apre il form o aggiorna il mandato. NON: leggere credenziali (-> find_credentials); esporre segreti. OUT: metadati del binding."
+en = "SCOPO: encrypts credentials; defines the mandate. PATTERN: set_credentials(binding='x', fields={}); without fields opens the form or updates the mandate. NON: read credentials (-> find_credentials); expose secrets. OUT: binding metadata."
+
+[code]
+files  = ["set_credentials.py"]
+digest = "sha256:67356a924084456d5ab74a5ac73247af862130315c922b921b4b7154c8076ab6"
+
+[args]
+type     = "object"
+required = ["binding"]
+
+[args.properties.binding]
+type        = "string"
+
+[args.properties.binding.description]
+it = "Identificatore univoco della credenziale (es. 'google-workspace', 'spaggiari'). Per un account mail IMAP/SMTP chiamato 'work' usa il binding canonico 'smtp_work': gli executor mail ricevono poi account='work'. Vieta path-traversal: niente '/', '\\\\', '..', NUL. Conservato as-is come chiave dello storage."
+en = "Unique credential identifier (e.g. 'google-workspace', 'spaggiari'). For an IMAP/SMTP mail account named 'work', use the canonical 'smtp_work' binding; mail executors then receive account='work'. No path-traversal: '/', '\\\\', '..', NUL forbidden. Stored as-is as the storage key."
+
+[args.properties.fields]
+type        = "object"
+
+[args.properties.fields.description]
+it = "Dict opzionale di campi da cifrare. Obbligatorio per un nuovo binding; omettibile su un binding esistente per aggiornare soltanto scopes/mandato senza reinserire i segreti. Per smtp_<nome> lo schema consumato dal runtime mail è: user, password, imap_host, imap_port (tipico 993), smtp_host, smtp_port (tipico 465), verify_tls (default true); smtp_host può mancare per un account di sola lettura."
+en = "Optional dict of fields to encrypt. Required for a new binding; may be omitted on an existing binding to update scopes/mandate without re-entering secrets. For smtp_<name>, the mail runtime consumes: user, password, imap_host, imap_port (typically 993), smtp_host, smtp_port (typically 465), verify_tls (default true); smtp_host may be absent for a read-only account."
+
+[args.properties.credential_kind]
+type        = "string"
+
+[args.properties.credential_kind.description]
+it = "Tipo di credenziale per il form guidato su binding NUOVO senza fields. MATCH ESATTO su un tipo dichiarato da un dominio del catalogo (es. 'mail' per IMAP/SMTP, 'site' per un sito web, 'github', 'api' per chiave o token generica). Se omesso viene dedotto dal prefisso del binding (es. smtp_ -> mail) oppure chiesto all'utente nel form."
+en = "Credential kind for the guided form on a NEW binding without fields. EXACT MATCH against a kind declared by a catalog domain (e.g. 'mail' for IMAP/SMTP, 'site' for a website, 'github', 'api' for a generic key or token). If omitted it is derived from the binding prefix (e.g. smtp_ -> mail) or asked in the form."
+
+[args.properties.account_name]
+type        = "string"
+
+[args.properties.account_name.description]
+it = "Nome account usato dal form per il binding canonico (es. 'lavoro' con kind='mail' -> 'smtp_lavoro'). Se omesso usa il binding così com'è."
+en = "Account name the form uses for the canonical binding (e.g. 'work' with kind='mail' -> 'smtp_work'). Defaults to the binding as given."
+
+[args.properties.scopes]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.scopes.description]
+it = "Lista di scopes/autorizzazioni associate (opzionale, es. ['calendar.read','gmail.send']). MATCH ESATTO: ogni scope e' un identificatore canonico OAuth, wildcard `*`/`?` NON supportati. Persistita come metadato cifrato accanto a `fields`."
+en = "List of associated scopes/permissions (optional, e.g. ['calendar.read','gmail.send']). EXACT MATCH: each scope is a canonical OAuth identifier, wildcards `*`/`?` NOT supported. Persisted as encrypted metadata alongside `fields`."
+
+[args.properties.expires_at]
+type        = "string"
+
+[args.properties.expires_at.description]
+it = "Data ISO 8601 di scadenza (opzionale, es. '2027-01-01T00:00:00Z'). `find_credentials` usa questo campo per derivare status='expired'."
+en = "ISO 8601 expiration date (optional, e.g. '2027-01-01T00:00:00Z'). `find_credentials` uses this field to derive status='expired'."
+
+[args.properties.replace]
+type        = "boolean"
+default     = false
+runtime_resolved = true
+
+[args.properties.replace.description]
+it = "Solo runtime: viene impostato dopo una conferma valida per riprendere la sovrascrittura. Il planner non può valorizzarlo."
+en = "Runtime only: set after valid confirmation to resume the overwrite. The planner cannot set it."
+
+[args.properties.overwrite_confirmed]
+type        = "boolean"
+runtime_resolved = true
+
+[args.properties.overwrite_confirmed.description]
+it = "Solo runtime: risposta yes/no autenticata del callback di conferma sovrascrittura."
+en = "Runtime only: authenticated yes/no answer from the overwrite-confirmation callback."
+
+[args.properties.credential_forms]
+type        = "object"
+runtime_resolved = true
+runtime_source   = "credential_forms"
+
+[args.properties.credential_forms.description]
+it = "Solo runtime: form per tipo di credenziale, collezionati dal server dalle sezioni [credential_form] del catalogo ammesso e iniettati a ogni invocazione. Il planner non può valorizzarlo."
+en = "Runtime only: per-kind credential forms, collected by the server from the [credential_form] sections of the admitted catalog and injected on every invocation. The planner cannot set it."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: 'needs_inputs',
+  needs_inputs?: {title, dialog, fmt, on_complete},
+  results?: Array<{binding, fingerprint, fields_count, scopes, replaced}>,
+  error?: str,
+  final_message_hint?: str
+}
+"""
+
+[[capabilities]]
+name = "metnos:credentials_metadata_only"
+hint = []
+
+[[capabilities]]
+name = "metnos:write"
+hint = []
+
+[[tests]]
+name   = "rejects_empty_binding"
+input  = { binding = "", fields = { api_key = "abc" } }
+expect = { ok = false, error_contains = "binding" }
+
+[[tests]]
+name   = "rejects_empty_fields"
+input  = { binding = "svc", fields = {} }
+expect = { ok = false, error_contains = "fields" }
+
+# I due test del form guidato iniettano `credential_forms` come fa il
+# runtime al choke-point (rev. 24/7 sera): il test_runner invoca diretto,
+# senza collezione server-side.
+[[tests]]
+name   = "new_binding_without_fields_opens_kind_form"
+input  = { binding = "servizio-di-prova-inesistente", credential_forms = { api = { kind = "api", label_key = "MSG_CREDENTIAL_KIND_OPTION_API", fields = [ { name = "api_key", required = true, secret = true, input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_API_KEY" } ] } } }
+expect = { ok = true, decision = "needs_inputs" }
+
+[[tests]]
+name   = "smtp_prefix_without_fields_opens_fields_form"
+input  = { binding = "smtp_account-di-prova-inesistente", credential_forms = { mail = { kind = "mail", label_key = "MSG_CREDENTIAL_KIND_OPTION_MAIL", binding_prefix = "smtp_", detect_prefixes = ["smtp_", "imap_"], fields = [ { name = "password", required = true, secret = true, input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_PASSWORD" } ] } } }
+expect = { ok = true, decision = "needs_inputs" }
+
+[[tests]]
+name   = "missing_runtime_forms_is_honest_error"
+input  = { binding = "servizio-di-prova-inesistente" }
+expect = { ok = false, error_contains = "credential_forms" }
+
+# Il tipo GENERICO appartiene al dominio credenziali stesso: chiave o token
+# di un servizio qualunque, senza semantica di dominio.
+[credential_form]
+kind = "api"
+label_key = "MSG_CREDENTIAL_KIND_OPTION_API"
+fields = [
+  { name = "api_key", required = true, secret = true, input = "credentials", prompt_key = "MSG_CREDENTIAL_FIELD_API_KEY" },
+]

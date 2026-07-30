@@ -1,0 +1,382 @@
+# Inventario corrente dell’installazione di Metnos.
+#
+# Il punto d’ingresso supportato è `install/bootstrap.sh`, che consegna il
+# controllo alle sei fasi Python in `install/phases/`. Questo file descrive i
+# componenti installabili e viene mantenuto insieme alle sorgenti eseguibili;
+# non è un registro cronologico del progetto.
+
+[meta]
+name = "metnos"
+version = "0.1.0"
+description = "Architettura self-hosted per agenti governati, definita dagli executor ammessi e configurata per livelli di modello astratti."
+maintainer = "the owner"
+process_name = "metnos"
+domain = "metnos.com"
+installer_entry = "install/bootstrap.sh"
+generated_at = "2026-07-28T00:00:00Z"
+manifest_schema_version = 2
+
+[runtime]
+python_min = "3.12"
+install_root_default = "/opt/metnos"
+venv = "${METNOS_INSTALL_ROOT}/.venv"
+data_dir = "~/.local/share/metnos"
+state_dir = "~/.local/state/metnos"
+config_dir = "~/.config/metnos"
+workspace_dir = "${METNOS_INSTALL_ROOT}/workspace"
+history_dir = "~/.local/share/metnos/turns"
+synthesized_executors_dir = "~/.local/share/metnos/executors"
+
+[runtime.python_packages]
+requirements_file = "requirements.txt"
+optional_requirements_file = "requirements-optional.txt"
+required = [
+    "aiohttp==3.13.5",
+    "Jinja2==3.1.6",
+    "minijinja==2.19.0",
+    "PyYAML==6.0.3",
+    "numpy==2.4.4",
+    "cryptography==47.0.0",
+    "rich==14.3.4",
+    "httpx==0.28.1",
+    "croniter",
+    "psutil",
+    "python-dateutil",
+    "tomli-w",
+    "openpyxl==3.1.5",
+    "pypdf==6.10.2",
+    "pdfminer.six==20260107",
+    "onnxruntime==1.24.4",
+    "tokenizers==0.22.2",
+    "Pillow==12.2.0",
+    "stopwordsiso==0.7.0",
+    "google-api-python-client==2.196.0",
+    "google-auth-oauthlib==1.4.0",
+    "google-auth",
+]
+optional = [
+    "torch",
+    "sentence-transformers",
+    "playwright==1.61.0",
+]
+dev = ["pytest>=8"]
+
+[system_packages]
+distribution_family = "Debian/Ubuntu"
+debian = [
+    "python3.12",
+    "python3.12-venv",
+    "python3-pip",
+    "git",
+    "curl",
+    "ca-certificates",
+    "libstdc++6",
+    "libgomp1",
+    "tesseract-ocr",
+    "tesseract-ocr-ita",
+    "tesseract-ocr-eng",
+    "poppler-utils",
+    "imagemagick",
+    "xvfb",
+]
+debian_optional = [
+    "tesseract-ocr-fra",
+    "tesseract-ocr-deu",
+    "ffmpeg",
+    "exiftool",
+]
+
+# I livelli LLM sono ruoli configurabili. Il modello concreto viene scelto
+# dall’installatore gestito oppure indicato dall’operatore in llm_tiers.toml.
+[[model_bindings.entry]]
+name = "text_llm_tiers"
+roles = ["fast", "middle", "wise", "frontier"]
+config = "~/.config/metnos/llm_tiers.toml"
+managed_by = "install/llm_manager.py"
+accepted_sources = ["compatible_endpoint", "managed_llama_cpp", "frontier_api"]
+required = true
+
+[[models.entry]]
+name = "embedding_text_bge_m3"
+role = "embedding:text"
+provider = "bge"
+purpose = "Embedding testuale multilingue in-process per selezione semantica, cluster, Tutor e indici."
+source = "huggingface"
+source_url = "https://huggingface.co/Xenova/bge-m3"
+source_revision = "46ce10a0ac77ca4bab460d6676ba8260b33e68dc"
+managed_by = "install/phases/phase2_infra.py"
+config = "~/.config/metnos/embedding_tiers.toml"
+required = true
+size_mb = 560
+embedding_dim = 1024
+files = [
+  { name = "onnx/sentence_transformers_int8.onnx", local = "models/embedding-bge/onnx/sentence_transformers_int8.onnx", sha256 = "e5b42096865cef734247dd8c7a44e35d305b70ba0c3736758065e1cad50f6453" },
+  { name = "tokenizer.json", local = "models/embedding-bge/tokenizer.json", sha256 = "6710678b12670bc442b99edc952c4d996ae309a7020c1fa0096dd245c2faf790" },
+]
+
+[[models.entry]]
+name = "embedding_image_siglip"
+role = "embedding:image"
+provider = "siglip"
+purpose = "Embedding incrociato testo-immagine per ricerca visiva e confronto semantico."
+source = "huggingface"
+source_url = "https://huggingface.co/Xenova/siglip-base-patch16-224"
+managed_by = "install/download_models.sh"
+config = "~/.config/metnos/embedding_tiers.toml"
+required = false
+size_mb = 210
+embedding_dim = 768
+files = [
+  { name = "onnx/text_model_quantized.onnx", local = "models/siglip/text_model_quantized.onnx", sha256 = "ad0329b1f35acc66d8953ff2559ce358da8eb0a7011794cf951523d63a4dbce2" },
+  { name = "onnx/vision_model_quantized.onnx", local = "models/siglip/vision_model_quantized.onnx", sha256 = "ef14a954f3d57e1806666432bd9785004c1dc27100aa260eee0cb0f10a5de058" },
+  { name = "tokenizer.json", local = "models/siglip/tokenizer.json", sha256 = "4a17c975210be5ab4c36b47d8dae4eefb866dbfb1e676e394aad85dc30a3ae08" },
+]
+
+[[models.entry]]
+name = "face_pack_buffalo_l"
+role = "embedding:face"
+provider = "insightface"
+purpose = "Rilevamento dei volti ed embedding facciale per gli indici fotografici."
+source = "github"
+source_url = "https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip"
+managed_by = "install/download_models.sh"
+required = false
+size_mb = 280
+embedding_dim = 512
+files = [
+  { name = "buffalo_l.zip", local = "models/face/buffalo_l.zip", sha256 = "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f" },
+  { name = "det_10g.onnx", local = "models/face/det_10g.onnx", sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91" },
+  { name = "w600k_r50.onnx", local = "models/face/w600k_r50.onnx", sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43" },
+]
+
+[[models.entry]]
+name = "vlm_default"
+role = "vision_language:default"
+provider = "llamacpp"
+purpose = "Descrizione e arricchimento semantico delle immagini."
+source = "huggingface"
+source_url = "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF"
+source_revision = "52d6c8ffea26cc873ac5ad116f8631268d7eb503"
+managed_by = "install/sidecar.py"
+config = "~/.config/metnos/vlm_tiers.toml"
+required = false
+size_mb = 1900
+files = [
+  { name = "Qwen3VL-2B-Instruct-Q4_K_M.gguf", local = "models/vlm/Qwen3VL-2B-Instruct-Q4_K_M.gguf", sha256 = "089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae" },
+  { name = "mmproj-Qwen3VL-2B-Instruct-F16.gguf", local = "models/vlm/mmproj-Qwen3VL-2B-Instruct-F16.gguf", sha256 = "c3d5afbef5287953acd57b4043d2269456e5761a4eaccb3b71b062996970aea5" },
+]
+notes = "Il server VLM viene avviato su richiesta e si arresta dopo un periodo di inattività."
+
+[[scripts.entry]]
+name = "metnos-cli"
+src = "scripts/metnos-cli"
+dest = "/usr/local/bin/metnos-cli"
+mode = "0755"
+needs_sudo = true
+required = false
+
+# Le unità principali sono user unit. `metnos.target` coordina il loro ciclo di
+# vita; i componenti opzionali vengono aggiunti soltanto quando configurati.
+[[services.entry]]
+name = "metnos.target"
+type = "systemd-user-target"
+unit_file_local = "install/units/metnos.target.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos.target"
+enabled_at_install = true
+condition = "fresh_install_without_active_system_http"
+
+[[services.entry]]
+name = "metnos-http.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-http.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-http.service"
+description = "Server HTTP, chat e pannello amministrativo sulla porta configurata."
+enabled_at_install = true
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-stack-ready.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-stack-ready.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-stack-ready.service"
+enabled_at_install = true
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-stack-quarantine.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-stack-quarantine.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-stack-quarantine.service"
+enabled_at_install = true
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-stack-watchdog.timer"
+type = "systemd-user-timer"
+unit_file_local = "install/units/metnos-stack-watchdog.timer.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-stack-watchdog.timer"
+enabled_at_install = true
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-side-display.service"
+type = "systemd-user"
+unit_file_local = "systemd/metnos-side-display.service"
+unit_file_dest = "~/.config/systemd/user/metnos-side-display.service"
+enabled_at_install = false
+condition = "xvfb_available"
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-playwright.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-playwright.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-playwright.service"
+enabled_at_install = false
+condition = "playwright_selected"
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-telegram-daemon.service"
+type = "systemd-user"
+unit_file_local = "install/units/metnos-telegram-daemon.service.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-telegram-daemon.service"
+enabled_at_install = false
+condition = "telegram_configured"
+owner = "metnos.target"
+
+[[services.entry]]
+name = "metnos-i18n-translator.timer"
+type = "systemd-user-timer"
+unit_file_local = "install/units/metnos-i18n-translator.timer.tmpl"
+unit_file_dest = "~/.config/systemd/user/metnos-i18n-translator.timer"
+enabled_at_install = true
+condition = "translator_importable"
+owner = "metnos.target"
+
+[[directories.entry]]
+path = "~/.local/share/metnos"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/turns"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/executors"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/skills"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/index"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/share/metnos/models"
+mode = "0755"
+
+[[directories.entry]]
+path = "~/.local/state/metnos/install"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos/credentials"
+mode = "0700"
+
+[[directories.entry]]
+path = "~/.config/metnos/keys"
+mode = "0700"
+
+[[config_files.entry]]
+path = "~/.config/metnos/llm_tiers.toml"
+purpose = "Associazione dei livelli LLM a provider, endpoint, modelli e parametri di generazione."
+mode = "0600"
+
+[[config_files.entry]]
+path = "~/.config/metnos/embedding_tiers.toml"
+purpose = "Provider degli embedding testuali e visivi."
+mode = "0600"
+
+[[config_files.entry]]
+path = "~/.config/metnos/vlm_tiers.toml"
+purpose = "Provider e parametri del modello visivo-linguistico."
+mode = "0600"
+
+[[config_files.entry]]
+path = "~/.config/metnos/runtime.toml"
+purpose = "Impostazioni persistenti del runtime."
+mode = "0600"
+
+[[secrets.entry]]
+name = "admin_key"
+path = "~/.config/metnos/admin.key"
+generator = "secrets.token_hex(32)"
+mode = "0600"
+purpose = "Chiave principale per accesso amministrativo e derivazione della cifratura delle credenziali."
+
+[[secrets.entry]]
+name = "executor_author_keypair"
+private_path = "~/.config/metnos/keys/author_priv.bin"
+public_path = "~/.config/metnos/keys/author_pub.bin"
+generator = "runtime/sign.py sign-all"
+private_mode = "0600"
+public_mode = "0644"
+purpose = "Firma locale degli executor ammessi dall’installazione."
+
+[[external_services.entry]]
+name = "compatible_llm_endpoint"
+purpose = "Inferenza per i livelli fast, middle e wise quando non si usa il motore locale gestito."
+optional = true
+config = "~/.config/metnos/llm_tiers.toml"
+
+[[external_services.entry]]
+name = "frontier_api"
+purpose = "Livello frontier esplicitamente configurato."
+optional = true
+credentials = ["anthropic_api_key", "openai_api_key"]
+
+[[external_services.entry]]
+name = "searxng"
+purpose = "Ricerca web self-hosted."
+optional = true
+service_url_default = "http://127.0.0.1:8888"
+managed_by = "install/sidecar.py"
+
+[[external_services.entry]]
+name = "photon"
+purpose = "Geocodifica e ricerca di luoghi."
+optional = true
+service_url_default = "http://127.0.0.1:2322"
+managed_by = "install/sidecar.py"
+
+[[external_services.entry]]
+name = "playwright"
+purpose = "Rendering JavaScript e sessioni grafiche sui siti."
+optional = true
+service_url_default = "http://127.0.0.1:8771"
+managed_by = "install/playwright_sidecar.py"
+
+[catalogs]
+i18n_seed = "install/data/i18n_seed.sqlite"
+tutor_compiler = "scripts/compile_tutor_catalog.py"
+executor_catalog = "runtime/loader.py"
+service_catalog = "runtime/services_registry.py"
+
+[env_vars]
+METNOS_INSTALL_ROOT = { default = "directory del clone", purpose = "codice, executor canonici, modelli incorporati e ambiente virtuale" }
+METNOS_VENV = { default = "${METNOS_INSTALL_ROOT}/.venv", purpose = "ambiente Python dell’installazione" }
+METNOS_USER_DATA = { default = "~/.local/share/metnos", purpose = "dati applicativi separati per utente" }
+METNOS_USER_STATE = { default = "~/.local/state/metnos", purpose = "stato operativo separato per utente" }
+METNOS_USER_CONFIG = { default = "~/.config/metnos", purpose = "configurazione e credenziali separate per utente" }
+METNOS_HTTP_PORT = { default = "8770", purpose = "porta del server HTTP" }
+METNOS_LANG = { default = "it", purpose = "lingua corrente del runtime" }
+METNOS_LLM_ENDPOINT = { default = "http://127.0.0.1:8080", purpose = "endpoint compatibile proposto durante l’installazione" }
+METNOS_SEARXNG_URL = { default = "http://127.0.0.1:8888", purpose = "endpoint della ricerca web" }
+METNOS_PHOTON_URL = { default = "http://127.0.0.1:2322", purpose = "endpoint della geocodifica" }

@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Quick Tour &amp; Survival Kit</title>
+    <meta name="description" content="Metnos in twenty minutes: typed executors, narrow-mandate agentification, execution on remote devices, consent, undo, and nine connected use cases.">
+    <meta name="keywords" content="Metnos, quick tour, governed agent architecture, self-hosted AI, intelligent executors, remote executors, agentification, narrow mandate, devices, closed vocabulary, consent, sandbox, undo, local LLM">
+    <meta name="author" content="the owner">
+    <meta name="robots" content="index, follow">
+
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/en/Metnos_QuickTour">
+    <meta property="og:title" content="Metnos — Quick Tour &amp; Survival Kit">
+    <meta property="og:description" content="A self-hosted architecture for a governed, extensible agent, explained through nine connected use cases.">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos — Quick Tour &amp; Survival Kit">
+    <meta name="twitter:description" content="Metnos in twenty minutes: typed executors, narrow internal agents, remote execution, consent, and explicit limits.">
+
+    <link rel="canonical" href="https://metnos.com/en/Metnos_QuickTour">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_QuickTour">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour">
+<style>
+/* Skin: identical to the landing (docs/en/index.html) — one cohesive
+   stylesheet, no per-chapter decoration. The QuickTour's long-form components
+   (tables, executor chains, scenes, glossary) are rendered in the same
+   visual language as the landing. */
+:root {
+  --paper: #FCFAF6;
+  --paper-warm: #F5F0E5;
+  --border-warm: #E0D5C0;
+  --ink: #2a2a2a;
+  --ink-dim: #5a5a5a;
+  --muted: #8a8378;
+  --navy: #1A477A;
+  --bronze: #A0522D;
+  --plum: #6B21A8;
+  --sage: #548235;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 90px 32px 60px;
+  line-height: 1.78;
+  font-size: 12.5pt;
+  font-weight: 400;
+}
+p { margin: 16px 0; text-align: justify; hyphens: auto; }
+a { color: var(--bronze); text-decoration: none; border-bottom: 1px solid rgba(160,82,45,0.3); transition: border-color .15s; }
+a:hover { border-bottom-color: var(--bronze); }
+em { color: var(--ink); }
+code { font-family: Consolas, 'Courier New', monospace; font-size: 10.5pt; background: transparent; }
+ul, ol { margin: 16px 0; padding-left: 26px; }
+li { margin-bottom: 8px; }
+
+/* Language switcher — always top right */
+.lang-switch {
+  position: fixed; top: 18px; right: 24px;
+  z-index: 100;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt; letter-spacing: 2px;
+  background: var(--paper); border: 1px solid var(--border-warm);
+  border-radius: 14px; padding: 4px 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; }
+.lang-switch a:hover { color: var(--bronze); }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: var(--border-warm); }
+
+/* Back to the index */
+.back {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt; letter-spacing: 2px; text-transform: uppercase;
+  margin-bottom: 30px;
+}
+.back a { color: var(--muted); border: none; }
+.back a:hover { color: var(--bronze); }
+
+/* Hero */
+.hero { text-align: left; margin: 40px 0 70px; }
+.hero .eyebrow {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: Georgia, serif;
+  font-size: 52pt;
+  font-weight: 400;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+}
+.hero .subtitle {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 16pt;
+  color: var(--ink-dim);
+  margin-top: 22px;
+  max-width: 640px;
+  line-height: 1.4;
+}
+.hero .subtitle strong { color: var(--ink); }
+.hero .kleos {
+  font-family: Georgia, serif;
+  font-size: 13pt;
+  color: var(--bronze);
+  margin-top: 18px;
+  letter-spacing: 0.5px;
+}
+
+/* Fact strip (real numbers) */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border-warm);
+  border-bottom: 1px solid var(--border-warm);
+  margin: 40px 0 18px;
+}
+.facts .f {
+  padding: 18px 10px;
+  text-align: center;
+  border-right: 1px solid var(--border-warm);
+}
+.facts .f:last-child { border-right: none; }
+.facts .v {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: 15pt;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.facts .k {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+}
+
+/* Meta lines (status, scene footers) */
+.meta {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  line-height: 2;
+  margin: 12px 0;
+  text-align: left;
+}
+.meta b { color: var(--ink-dim); font-weight: 600; }
+
+/* Sections (chapters) */
+section { margin: 56px 0; }
+section h2 {
+  font-family: Georgia, serif;
+  font-size: 14pt;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin-top: 40px;
+  margin-bottom: 14px;
+  border: none;
+  letter-spacing: 0.2px;
+}
+section h2::before {
+  content: "§ ";
+  color: var(--bronze);
+  font-style: normal;
+}
+h3 {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 30px 0 10px;
+}
+p.lead { font-style: italic; color: var(--ink-dim); }
+p.lead strong { color: var(--ink); }
+.small { font-size: 11pt; color: var(--ink-dim); }
+
+/* Index and reading cards */
+.group-title {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.toc { margin: 60px 0 30px; }
+.toc ol { list-style: none; padding: 0; margin: 12px 0 0; }
+.toc ol li { border-bottom: 1px dotted var(--border-warm); padding: 9px 0; margin: 0; }
+.toc ol li:last-child { border-bottom: none; }
+.toc ol a { border: none; color: var(--ink); }
+.toc ol a:hover { color: var(--bronze); }
+.toc .tn {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-right: 12px;
+}
+.toc-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px dotted var(--border-warm);
+  align-items: baseline;
+}
+.toc-item:last-child { border-bottom: none; }
+.toc-item .t {
+  font-family: Georgia, serif;
+  font-size: 12.5pt;
+  color: var(--ink);
+  border: none;
+}
+.toc-item .t:hover { color: var(--bronze); border-bottom: 1px solid var(--bronze); }
+.toc-item .d {
+  display: block;
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 11pt;
+  color: var(--ink-dim);
+  margin-top: 4px;
+}
+.toc-item .time {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Use cases form one sequence rather than nine miniature chapters. */
+#cap3 { counter-reset: scene; }
+.scene {
+  counter-increment: scene;
+  position: relative;
+  margin: 0 0 0 18px;
+  padding: 24px 0 30px 38px;
+  border-left: 1px solid var(--border-warm);
+}
+.scene + .scene { border-top: none; padding-top: 24px; }
+.scene::before {
+  content: counter(scene, decimal-leading-zero);
+  position: absolute;
+  top: 25px;
+  left: -18px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--bronze);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--bronze);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: .5px;
+}
+.scene .group-title { display: none; }
+.scene h3 { margin: 0 0 10px; font-size: 13pt; }
+
+/* Two architectural ideas brought to the foreground. */
+.concept-grid {
+  position: relative;
+  left: 50%;
+  width: 960px;
+  max-width: calc(100vw - 48px);
+  margin: 28px 0 34px;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.concept-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-warm);
+  border-radius: 14px;
+  background: #fff;
+  padding: 24px;
+  box-shadow: 0 8px 28px rgba(42,42,42,.06);
+}
+.concept-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--navy);
+}
+.concept-card.remote::before { background: var(--sage); }
+.concept-kicker {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 2.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.concept-card h3 { margin: 5px 0 9px; font-size: 16pt; }
+.concept-card p { margin: 8px 0; text-align: left; font-size: 11pt; }
+.concept-flow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 16px 0;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  color: var(--ink-dim);
+}
+.concept-flow span {
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid var(--border-warm);
+  border-radius: 7px;
+  background: var(--paper-warm);
+  text-align: center;
+}
+.concept-flow b { color: var(--bronze); font-size: 11pt; }
+.concept-card ul { margin: 12px 0; padding-left: 18px; }
+.concept-card li { margin-bottom: 5px; font-size: 10.5pt; }
+.agent-difference {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 14px 0;
+}
+.agent-difference div {
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: var(--paper-warm);
+  font-size: 9.5pt;
+  line-height: 1.45;
+}
+.agent-difference strong { display: block; color: var(--navy); margin-bottom: 3px; }
+.axis-strip {
+  position: relative;
+  left: 50%;
+  width: 960px;
+  max-width: calc(100vw - 48px);
+  margin: -16px 0 38px;
+  transform: translateX(-50%);
+  padding: 14px 18px;
+  border: 1px dashed var(--border-warm);
+  border-radius: 10px;
+  background: var(--paper-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--ink-dim);
+  text-align: center;
+}
+.axis-strip strong { color: var(--ink); }
+.axis-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.axis-options span {
+  padding: 7px 5px;
+  border: 1px solid var(--border-warm);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+}
+
+/* User request */
+.q {
+  font-style: italic;
+  color: var(--ink);
+  margin: 14px 0;
+  padding: 2px 0 2px 18px;
+  border-left: 2px solid var(--border-warm);
+}
+
+/* Executor chain */
+.pipe {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9.5pt;
+  line-height: 1.9;
+  color: var(--ink-dim);
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  padding: 10px 16px;
+  margin: 14px 0;
+  overflow-x: auto;
+}
+.pipe .a { color: var(--bronze); padding: 0 2px; }
+.pipe .note { color: var(--muted); }
+
+/* Assistant reply */
+.reply {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 12px 18px;
+  margin: 14px 0;
+  font-size: 11.5pt;
+}
+.reply::before {
+  content: "METNOS";
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 3px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+/* Honesty note */
+.truth {
+  border-left: 4px solid var(--bronze);
+  background: var(--paper-warm);
+  padding: 12px 18px;
+  margin: 16px 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 11pt;
+  color: var(--ink-dim);
+}
+.truth::before {
+  content: "HONESTY";
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 8.5pt;
+  letter-spacing: 3px;
+  color: var(--bronze);
+  margin-bottom: 3px;
+}
+
+/* Approval card (mock-up) */
+.approval-card {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 16px 0;
+  max-width: 540px;
+  font-size: 11pt;
+}
+.approval-card .line1 { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.approval-card .line2, .approval-card .line3 {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 9.5pt;
+  color: var(--ink-dim);
+  margin: 3px 0;
+}
+.approval-card .line3 { color: var(--muted); margin-bottom: 12px; }
+.approval-card .btns { display: flex; gap: 10px; }
+.approval-card .btn {
+  padding: 6px 18px;
+  border-radius: 14px;
+  font-size: 9.5pt;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  letter-spacing: 0.5px;
+  border: 1px solid var(--border-warm);
+  background: var(--paper);
+}
+.approval-card .btn.ok { background: var(--sage); border-color: var(--sage); color: #fff; }
+.approval-card .btn.no { color: var(--bronze); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 11.5pt; }
+.table-scroll { width: 100%; overflow-x: auto; }
+.table-scroll table { min-width: 650px; }
+th {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  padding: 8px 14px 8px 0;
+  border-bottom: 1px solid var(--border-warm);
+}
+td { padding: 10px 14px 10px 0; border-bottom: 1px dotted var(--border-warm); vertical-align: top; }
+tr:last-child td { border-bottom: 1px solid var(--border-warm); }
+
+/* Pipeline steps (in place of the diagram) */
+.steps { list-style: none; padding: 0; margin: 18px 0; counter-reset: step; }
+.steps li {
+  border-bottom: 1px dotted var(--border-warm);
+  padding: 10px 0;
+  margin: 0;
+  counter-increment: step;
+}
+.steps li:last-child { border-bottom: none; }
+.steps li::before {
+  content: counter(step);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9pt;
+  color: var(--bronze);
+  margin-right: 12px;
+}
+.steps code { font-size: 10pt; }
+.steps .res {
+  display: block;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+  margin-top: 3px;
+  padding-left: 22px;
+}
+
+/* Figure (a single diagram) and figure notes */
+figure { margin: 28px 0; text-align: center; }
+figure svg { max-width: 100%; height: auto; }
+figcaption, .fig-note {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  line-height: 1.7;
+  margin: 10px 0 0;
+  text-align: left;
+}
+figcaption b, .fig-note b { color: var(--ink-dim); font-weight: 600; }
+
+/* Flow diagram (Fig. 1) — landing palette */
+.flow .b  { fill: #ffffff; stroke: var(--border-warm); stroke-width: 1.2; }
+.flow .bx { fill: var(--paper-warm); stroke: var(--border-warm); stroke-width: 1.2; }
+.flow .bg { fill: #ffffff; stroke: var(--sage); stroke-width: 1.2; }
+.flow .bs { fill: none; stroke: var(--bronze); stroke-width: 1.2; stroke-dasharray: 5 3; }
+.flow .bc { fill: var(--paper-warm); stroke: var(--bronze); stroke-width: 1.2; }
+.flow .t  { font-family: Georgia, serif; font-size: 11px; fill: var(--ink); }
+.flow .tb { font-family: Georgia, serif; font-size: 11.5px; font-weight: 700; fill: var(--ink); }
+.flow .m  { font-family: Consolas, 'Courier New', monospace; font-size: 9px; fill: var(--ink-dim); }
+.flow .mc { font-family: Consolas, 'Courier New', monospace; font-size: 9px; font-weight: 700; fill: var(--bronze); }
+.flow .ln { stroke: var(--muted); stroke-width: 1.2; fill: none; }
+.flow .lc { stroke: var(--bronze); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; }
+.flow text.sage { fill: var(--sage); }
+.flow text.bronze { fill: var(--bronze); }
+
+/* Terminal */
+pre {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10pt;
+  line-height: 1.8;
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 18px 0;
+  overflow-x: auto;
+}
+pre .p { color: var(--bronze); }
+pre .c { color: var(--muted); }
+
+/* Does / doesn't */
+.can-cant { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 26px 0; }
+.can-cant .card {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 6px;
+  padding: 18px 22px;
+}
+.can-cant h3 { margin: 0 0 6px; font-size: 12.5pt; }
+.can-cant .yes h3 { color: var(--sage); }
+.can-cant .no h3 { color: var(--bronze); }
+.can-cant ul { margin: 8px 0 0; padding-left: 20px; }
+.can-cant li { font-size: 11pt; margin-bottom: 6px; }
+
+/* Glossary */
+dl.gloss { margin: 18px 0; }
+dl.gloss dt { margin-top: 14px; font-weight: 700; color: var(--ink); }
+dl.gloss dd { margin: 2px 0 0 18px; color: var(--ink-dim); }
+
+/* Invitation button — as on the landing */
+a.enter {
+  display: inline-block;
+  border: 1px solid var(--bronze);
+  background: transparent;
+  color: var(--bronze);
+  padding: 11px 30px;
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 11pt;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  transition: background .15s, color .15s;
+}
+a.enter:hover { background: var(--bronze); color: var(--paper); }
+
+/* Footer */
+footer {
+  margin-top: 80px;
+  padding-top: 26px;
+  border-top: 1px solid var(--border-warm);
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 9.5pt;
+  color: var(--muted);
+  text-align: center;
+  letter-spacing: 0.5px;
+  line-height: 1.8;
+}
+footer a { color: inherit; border: none; }
+footer em { color: inherit; }
+.print-cover { display: none; }
+
+/* Responsive */
+@media (max-width: 620px) {
+  body { padding: 50px 22px 40px; font-size: 12pt; }
+  .hero h1 { font-size: 38pt; }
+  .hero .subtitle { font-size: 14pt; }
+  .facts { grid-template-columns: 1fr; }
+  .facts .f { border-right: none; border-bottom: 1px dotted var(--border-warm); }
+  .facts .f:last-child { border-bottom: none; }
+  .can-cant { grid-template-columns: 1fr; }
+  .concept-grid { grid-template-columns: 1fr; left: 0; width: 100%; max-width: none; transform: none; }
+  .axis-strip { left: 0; width: 100%; max-width: none; transform: none; }
+  .axis-options { grid-template-columns: 1fr 1fr; }
+  .agent-difference { grid-template-columns: 1fr; }
+  .scene { margin-left: 14px; padding-left: 28px; }
+  .scene::before { line-height: 34px; text-align: center; }
+  .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 8px; }
+}
+
+@media print {
+  body { max-width: none; padding: 0; font-size: 11pt; background: white; }
+  .hero h1 { font-size: 32pt; }
+  a { color: var(--ink); border: none; }
+  .lang-switch, .back { display: none; }
+  .scene, .approval-card, figure, .can-cant .card, table { break-inside: avoid; }
+  .reply, .truth, .approval-card, pre, .pipe, .can-cant .card { background: white; }
+}
+</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+<link rel="stylesheet" href="../assets/quicktour-print.css" media="print">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<nav class="back"><a href="index.html">&larr; Documentation index</a></nav>
+
+<div class="print-cover" aria-hidden="true">
+  <img class="print-cover__art" src="../assets/metnos-quicktour-cover.png" alt="">
+  <div class="print-cover__title">
+    <div class="print-cover__eyebrow">Quick tour · Survival kit</div>
+    <h1>Metnos</h1>
+    <p class="print-cover__deck">An architecture for governed, extensible and verifiable agents.</p>
+  </div>
+  <div class="print-cover__credit">Introductory booklet · the owner · 2026</div>
+</div>
+
+<!-- ================= COVER ================= -->
+<div class="hero">
+  <div class="eyebrow">Quick tour &amp; survival kit</div>
+  <h1>Metnos</h1>
+  <div class="subtitle">
+    A self-hosted architecture for a <strong>governed, extensible agent</strong>.
+    The reference instance runs on a Linux home server, plans with a local LLM,
+    <strong>can build candidates for tools it lacks</strong>
+    inside a closed, governed vocabulary, <strong>asks for a decision</strong>
+    when authority and risk require one, and keeps observed outcomes distinct
+    from attempts and partial results.
+  </div>
+  <div class="kleos">mētis (μῆτις) “cunning intelligence” + noûs (νοῦς) “mind”</div>
+
+  <div class="facts">
+    <div class="f"><span class="v">I/O</span><span class="k">stable executor contracts</span></div>
+    <div class="f"><span class="v">closed</span><span class="k">governed vocabulary</span></div>
+    <div class="f"><span class="v">audit</span><span class="k">verifiable actions and outcomes</span></div>
+    <div class="f"><span class="v">IT + EN</span><span class="k">localized text and prompts</span></div>
+    <div class="f"><span class="v">0</span><span class="k">cloud required to think</span></div>
+  </div>
+
+  <div class="meta">
+    <b>status:</b> pre-1.0, installable and operational ·
+    <b>installer:</b> included in the repo ·
+    <b>license:</b> AGPL-3.0 ·
+    <b>code:</b> <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a><span class="pdf-dl"> ·
+    <b>PDF:</b> <a href="Metnos_QuickTour.pdf" type="application/pdf" target="_blank" rel="noopener">A4 typeset edition</a></span>
+  </div>
+</div>
+
+<!-- ================= TOC ================= -->
+<nav class="toc" aria-label="Contents">
+<div class="group-title">On this page</div>
+<ol>
+    <li><a href="#cap1"><span class="tn">01</span>What Metnos is, in thirty seconds</a></li>
+    <li><a href="#cap2"><span class="tn">02</span>Why it's different</a></li>
+    <li><a href="#cap3"><span class="tn">03</span>Nine cases, one system</a></li>
+    <li><a href="#cap4"><span class="tn">04</span>The Tutor: Metnos can explain Metnos</a></li>
+    <li><a href="#cap5"><span class="tn">05</span>Where it lives and how you talk to it</a></li>
+    <li><a href="#cap6"><span class="tn">06</span>What happens when it says “may I?”</a></li>
+    <li><a href="#cap7"><span class="tn">07</span>Its memory</a></li>
+    <li><a href="#cap8"><span class="tn">08</span>How it grows: synt, skills, backends</a></li>
+    <li><a href="#cap9"><span class="tn">09</span>People and devices</a></li>
+    <li><a href="#cap10"><span class="tn">10</span>What the catalog enables, what the core forbids</a></li>
+    <li><a href="#cap11"><span class="tn">11</span>Where the project really stands</a></li>
+    <li><a href="#cap12"><span class="tn">12</span>Minimal glossary &amp; further reading</a></li>
+</ol>
+</nav>
+
+<!-- ================= CH 1 ================= -->
+<section class="cap" id="cap1">
+<h2>1 · What Metnos is, in thirty seconds</h2>
+
+<p class="lead">
+You give it goals in natural language through a <strong>browser</strong>,
+<strong>Telegram</strong>, or another admitted channel. The reference installation
+reads mail, files, photos, calendars, the web and GitHub, but those are examples,
+not its boundary: every governed capability that can be expressed as a signed
+	executor can join the same architecture. It applies explicit policy and consent before
+	actions that require them. There is no Metnos cloud and no “sign up”: data and control remain with
+the operator.
+</p>
+
+<p>What happens on every request, in one drawing:</p>
+
+<figure>
+<svg class="flow" viewBox="0 0 760 576" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One turn end to end: intent, fastpath, autopath, typed proposal, vaglio, direct or intelligent executor, synthesizer">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#8a8378"/>
+    </marker>
+    <marker id="arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#A0522D"/>
+    </marker>
+  </defs>
+
+  <!-- row 1: you → intent → fastpath -->
+  <rect x="16" y="22" width="130" height="52" rx="5" class="bx"/>
+  <text x="30" y="44" class="tb">You</text>
+  <text x="30" y="60" class="m">browser · Telegram</text>
+
+  <line x1="146" y1="48" x2="186" y2="48" class="ln" marker-end="url(#ar)"/>
+
+  <rect x="188" y="22" width="180" height="52" rx="5" class="b"/>
+  <text x="202" y="44" class="tb">Intent extractor</text>
+  <text x="202" y="60" class="m">structured classification</text>
+
+  <line x1="368" y1="48" x2="408" y2="48" class="ln" marker-end="url(#ar)"/>
+
+  <rect x="410" y="22" width="170" height="52" rx="5" class="b"/>
+  <text x="424" y="44" class="tb">L0 · fastpath</text>
+  <text x="424" y="60" class="m">shape solved before?</text>
+
+  <!-- fastpath yes → answer -->
+  <line x1="580" y1="48" x2="620" y2="48" class="ln" marker-end="url(#ar)"/>
+  <text x="584" y="38" class="m">yes</text>
+  <rect x="622" y="22" width="122" height="52" rx="5" class="bg"/>
+  <text x="636" y="44" class="tb sage">Answer</text>
+  <text x="636" y="60" class="m">0 LLM calls</text>
+
+  <!-- fastpath no → routing -->
+  <line x1="495" y1="74" x2="495" y2="106" class="ln" marker-end="url(#ar)"/>
+  <text x="503" y="94" class="m">no: plan it</text>
+
+  <rect x="330" y="108" width="330" height="56" rx="5" class="b"/>
+  <text x="344" y="130" class="tb">L1 · autopath + routing pool</text>
+  <text x="344" y="147" class="m">learned reuse or a narrow set of relevant executors</text>
+
+  <line x1="495" y1="164" x2="495" y2="196" class="ln" marker-end="url(#ar)"/>
+
+  <!-- planner -->
+  <rect x="330" y="198" width="330" height="62" rx="5" class="b"/>
+  <text x="344" y="221" class="tb">Proposer · typed plan</text>
+  <text x="344" y="238" class="m">composes executors from the governed closed vocabulary</text>
+  <text x="344" y="252" class="m">lists in → lists out, data passed by reference</text>
+
+  <!-- synt branch -->
+  <line x1="330" y1="229" x2="240" y2="229" class="lc" marker-end="url(#arc)"/>
+  <text x="252" y="220" class="mc">missing a tool?</text>
+  <rect x="40" y="198" width="198" height="100" rx="5" class="bs"/>
+  <text x="54" y="221" class="tb bronze">Reactive Synt</text>
+  <text x="54" y="238" class="m">first composes signed executors;</text>
+  <text x="54" y="252" class="m">a turn never generates code silently</text>
+  <text x="54" y="270" class="m">a new candidate starts only through</text>
+  <text x="54" y="284" class="m">a governed request</text>
+  <path d="M139 298 L139 330 L330 330" class="lc" marker-end="url(#arc)"/>
+  <text x="150" y="322" class="mc">reused chain or governed candidate</text>
+
+  <line x1="495" y1="260" x2="495" y2="292" class="ln" marker-end="url(#ar)"/>
+
+  <!-- vaglio -->
+  <rect x="330" y="294" width="330" height="56" rx="5" class="b"/>
+  <text x="344" y="316" class="tb">Vaglio</text>
+  <text x="344" y="333" class="m">binary guard (never negotiable) + graded judge against your telos</text>
+
+  <!-- card -->
+  <line x1="660" y1="322" x2="700" y2="322" class="ln" marker-end="url(#ar)"/>
+  <rect x="690" y="296" width="58" height="52" rx="4" class="bc"/>
+  <text x="719" y="316" class="m bronze" text-anchor="middle">proposal</text>
+  <text x="719" y="329" class="m bronze" text-anchor="middle">localized</text>
+  <text x="719" y="342" class="m bronze" text-anchor="middle">choices</text>
+
+  <line x1="495" y1="350" x2="495" y2="382" class="ln" marker-end="url(#ar)"/>
+  <text x="503" y="370" class="m">consent obtained (or not needed)</text>
+
+  <!-- executor -->
+  <rect x="330" y="384" width="330" height="56" rx="5" class="b"/>
+  <text x="344" y="406" class="tb">Executor boundary · direct or intelligent</text>
+  <text x="344" y="423" class="m">same contract, sandbox and verified postcondition</text>
+
+  <!-- observation loop -->
+  <path d="M330 412 L296 412 L296 229" class="ln" marker-end="url(#ar)"/>
+  <text x="222" y="412" class="m">observation</text>
+  <text x="222" y="425" class="m">→ next step</text>
+
+  <!-- final answer -->
+  <path d="M660 412 L712 412 L712 478" class="ln" marker-end="url(#ar)"/>
+  <rect x="330" y="480" width="412" height="54" rx="5" class="bg"/>
+  <text x="344" y="502" class="tb sage">Answer + execution record</text>
+  <text x="344" y="519" class="m">real counts, declared truncations, undo available where promised</text>
+  <path d="M495 440 L495 478" class="ln" marker-end="url(#ar)"/>
+
+  <text x="40" y="562" class="m">successful chains may feed the fastpath: reuse lasts only while the plan remains valid</text>
+</svg>
+<figcaption><b>Fig. 1</b> — One turn end to end. L0 and L1 may reuse validated plans; otherwise the proposer sees a narrow routing pool. Intelligence inside an executor does not change the contract visible to the planner.</figcaption>
+</figure>
+
+<p>Six properties that set it apart from a generic agent:</p>
+<ul>
+<li><strong>It asks before acting.</strong> A two-phase evaluator — binary guard, then
+a graded judge against your <a href="architecture/telos.html">telos</a> — decides
+whether an action passes silently, asks for consent, or is refused. The request is
+shown as a localized proposal with the choices available on that channel. See
+<a href="architecture/vaglio.html">vaglio</a>.</li>
+<li><strong>It can build the tools it lacks.</strong> No endless hand-written catalog:
+during a turn Synt first tries to compose already signed executors. Generating a new
+candidate starts only through an explicit request and passes governed naming, tests,
+signing, and admission. See <a href="architecture/synt.html">Synt</a> and scene 6.</li>
+<li><strong>It can add bounded agency inside an executor without expanding the planner.</strong> When
+the route is uncertain but the purpose is narrow, an internal LLM disambiguates
+steps within fixed actions and limits. To the planner it remains the same typed
+executor. See <a href="architecture/intelligent_executors.html">intelligent executors</a>.</li>
+<li><strong>It takes execution to where the data lives.</strong> A compatible executor
+may run on a registered PC; decision, consent, signing, and audit remain on the
+server. The device executes, but does not become a second agent. See
+<a href="architecture/remote_executors.html">remote executors</a>.</li>
+<li><strong>It separates deterministic controls from probabilistic generation.</strong>
+Vocabulary, signatures, guards, policy, cache identity, and validity checks are
+testable. New-plan generation and final prose remain model outputs and are not claimed
+to be reproducible.</li>
+<li><strong>It doesn't lie about outcomes.</strong> Counts reflect what was
+<em>actually</em> done; truncations are declared; every action that claims to be
+undoable is undoable by construction (a closed catalog of reverse patterns).</li>
+</ul>
+</section>
+
+<!-- ================= CH 2 ================= -->
+<section class="cap" id="cap2">
+<h2>2 · Why it's different</h2>
+
+<p class="lead">
+Agents already exist, in whole families — frameworks you assemble, terminal
+companions, chat-borne butlers (OpenClaw and friends) and the ecosystem of importable
+“skills”. Metnos makes different choices across several axes, and
+for a precise reason: <strong>a local planner is not a frontier model</strong>, and it
+must be put in a position where it cannot go wrong.
+</p>
+
+<div class="table-scroll" role="region" aria-label="Comparison of agent frameworks and Metnos" tabindex="0">
+<table>
+<thead><tr><th style="width:18%"></th><th style="width:41%">Typical agent framework</th><th>Metnos</th></tr></thead>
+<tbody>
+<tr><td><strong>Tools</strong></td>
+<td>Hand-written, imported, or generated free-form at runtime — then run as-is, with the assistant's privileges.</td>
+<td>May be synthesized as governed candidates from a <strong>closed, audited vocabulary</strong>: signed, birth-tested, aged, and admitted only through a seven-layer gate.</td></tr>
+<tr><td><strong>Routing</strong></td>
+<td>The model picks a tool each turn: ask twice, get two plans.</td>
+<td><strong>Governed and reusable</strong>: closed vocabulary, plan caches with explicit identity and validity, deterministic controls. A new LLM-generated plan may vary.</td></tr>
+<tr><td><strong>Output</strong></td>
+<td>Free-form, per tool.</td>
+<td>Uniform: <strong>lists in, lists out</strong>, composable between steps with no glue.</td></tr>
+<tr><td><strong>Internal intelligence</strong></td>
+<td>Concentrated in the general agent that selects goals and tools.</td>
+<td>May also live inside a narrow-mandate executor without changing its input, output, or authority.</td></tr>
+<tr><td><strong>Placement</strong></td>
+<td>Tools run where the agent lives.</td>
+<td>A compatible executor may run on a signed device; the server retains decision and audit.</td></tr>
+<tr><td><strong>Undo</strong></td>
+<td>Rare, or at best “fingers crossed”.</td>
+<td>First-class: closed catalog of reverse patterns, move = COPY-then-DELETE, honest <code>ok_count</code>.</td></tr>
+<tr><td><strong>Language</strong></td>
+<td>English, strings hard-coded.</td>
+<td>i18n by construction: every string and prompt is <em>per-language data</em>. IT+EN validated; other languages drop-in, not yet tested.</td></tr>
+<tr><td><strong>Security</strong></td>
+<td>Trust the package author.</td>
+<td>Do <em>not</em> trust the package: the package has to pass the checks.</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>The architectural context</h3>
+<p>Agent systems may let the model choose tools freely, or constrain that choice with
+graphs, permissions, and sandboxes. Metnos chooses a narrower boundary: the planner
+sees only typed, admitted capabilities; whether a tool is local, imported, or remote
+does not expand its authority.</p>
+
+<p>This choice gives up some of the speed with which arbitrary tools can be connected.
+In return, provenance, policy, consent, execution placement, and audit are
+inspectable. It does not turn an LLM into a pure function: controls and plan reuse are
+verifiable, while fresh generation and answer wording may vary.</p>
+
+<h3>Two choices that change the boundary</h3>
+<p>These are not two more tools. They are general ways to make executors more
+capable without expanding the planner's language.</p>
+
+<div class="concept-grid">
+<article class="concept-card intelligent">
+  <div class="concept-kicker">Uncertainty inside a boundary</div>
+  <h3>Agent inside, executor outside</h3>
+  <p>An <strong>intelligent executor</strong> receives the same typed input and
+  must produce the same output as a direct executor. The difference is internal:
+  it may observe, choose one step, and observe again when the route is not known in
+  advance.</p>
+  <div class="agent-difference">
+    <div><strong>General agent</strong>Decomposes goals, selects tools, and may cross domains.</div>
+    <div><strong>Intelligent executor</strong>Has one mandate, enumerated actions, budgets, and fixed stop conditions.</div>
+  </div>
+  <p>The distinction is deliberate: calling both simply “agents” would hide who
+  may change the goal or authority. Metnos puts adaptive capability <em>inside</em>
+  a boundary that the planner can still compose and verify.</p>
+  <div class="concept-flow" aria-label="Intelligent executor flow">
+    <span>typed goal</span><b>&rarr;</b><span>rules</span><b>&rarr;</b><span>LLM if ambiguous</span><b>&rarr;</b><span>verified outcome</span>
+  </div>
+  <ul>
+    <li>The LLM is a fallback for the route, not the authority that chooses the purpose.</li>
+    <li>Secrets, consent, and permissions remain outside the model.</li>
+    <li>Without an observable postcondition it cannot report success.</li>
+  </ul>
+  <p><strong>Example:</strong> <code>login_sites</code> finds the sign-in area,
+  handles one- or multi-step forms, and checks the outcome; it cannot navigate
+  toward a different goal. <a href="architecture/intelligent_executors.html">How it works</a>.</p>
+</article>
+
+<article class="concept-card remote">
+  <div class="concept-kicker">Compute near the data</div>
+  <h3>Same executor, another machine</h3>
+  <p>A <strong>remote executor</strong> is not a copy of Metnos and not a second
+  agent. The server still plans, applies policy and consent, signs the work, and
+  writes the audit; a thin client executes on the registered device.</p>
+  <div class="concept-flow" aria-label="Remote executor flow">
+    <span>server decides</span><b>&rarr;</b><span>signed invocation</span><b>&rarr;</b><span>PC verifies and runs</span><b>&rarr;</b><span>signed result</span>
+  </div>
+  <ul>
+    <li>Data can remain on the PC that owns it.</li>
+    <li>Identity, allowed platforms, and placement belong to the contract.</li>
+    <li>An offline or revoked PC yields an explicit error, never covert execution on the server.</li>
+  </ul>
+  <p><strong>Implication:</strong> the home becomes a distributed execution
+  surface while retaining one point of decision and accountability.
+  <a href="architecture/remote_executors.html">Details and limits</a>.</p>
+</article>
+</div>
+
+<div class="axis-strip"><strong>Two independent axes:</strong> direct or
+intelligent describes <em>how</em> an executor solves its task; local or remote
+describes <em>where</em> it runs. Each executor must still declare explicitly
+which combinations it supports.
+<div class="axis-options" aria-label="Combinations of mode and placement">
+  <span>direct · local</span><span>intelligent · local</span>
+  <span>direct · remote</span><span>intelligent · remote</span>
+</div></div>
+
+<h3>Why Metnos did not adopt the standard “skill” format</h3>
+<p>
+The popular skill formats — markdown skills, MCP servers — are convenient and
+dangerous in equal measure: you import a
+package and the assistant <em>executes its code with its own privileges</em>. For an
+assistant that touches your files, mail and shell, that is remote code execution by
+design: one malicious or sloppy package is enough. Metnos chooses <strong>security by
+construction</strong>: a closed vocabulary (you cannot name a tool the grammar doesn't
+allow), a 7-layer admission gate for every new or imported executor (signature →
+affinity overlap → aging → sandbox → smoke test → LLM verification → append-only
+audit), explicit consent before anything destructive. The slogan: <em>don't trust the
+package — the package has to earn its place</em>. The public skill ecosystem isn't
+ignored: it gets <a href="architecture/skill_importer.html">translated</a> into this
+model, never executed raw.
+</p>
+
+<h3>Determinism has a precise boundary</h3>
+<p>
+Metnos makes deterministic the stages that must be controllable: vocabulary,
+signatures, safety rules, policy, cache keys, and cache-validity checks. A valid
+fastpath may reuse a plan without invoking the planner; a fresh plan is still produced
+by an LLM and may vary even with a low temperature or pinned seed. The same applies to
+answer prose. Tests must therefore distinguish reused-plan identity from the quality
+of fresh generation.
+</p>
+
+<h3>What a terminal agent does better</h3>
+<p>
+Due honesty: as a real-time coding companion inside a repository, a mature terminal
+agent remains superior, with an extension ecosystem Metnos neither has nor chases.
+But Metnos is not defined by household tasks or by one vertical. It is an operational
+architecture that keeps planning, executable capabilities, authority, memory and
+audit under one governed boundary. Mail, photos and calendar are reference uses;
+maintaining Metnos through its GitHub workflows is already a non-household use. The
+two kinds of system coexist just fine.
+</p>
+</section>
+
+<!-- ================= CH 3 ================= -->
+<section class="cap" id="cap3">
+<h2>3 · Nine cases, one system</h2>
+
+<p class="lead">
+These cases are not separate modules and do not define an exhaustive product scope:
+they use the same planner, contracts, and guards. The line keeps them together; each
+stop shows only the request, the relevant chain, and the operational boundary that
+changes. The GitHub maintenance case deliberately shows that the architecture is not
+confined to the home.
+</p>
+
+<!-- SCENE 1 -->
+<div class="scene">
+<div class="group-title">Scene 1 · reading</div>
+<h3>“Summarize today's mail”</h3>
+<p class="q">Give me a summary of today's important mail.</p>
+<div class="pipe">
+  read_messages <span class="a">→</span> classify_entries <span class="a">→</span> filter_entries <span class="a">→</span> describe_entries <span class="a">→</span> answer
+</div>
+<div class="reply">
+3 emails today: the lawyer asks for the document by Friday; the bank confirms
+yesterday's transfer; your sister about Sunday lunch. Want me to try answering
+one of these?
+</div>
+<div class="meta">
+  <b>capability</b> mail:read ·
+  <b>consent</b> none — read-only verbs skip the judgment ·
+  <b>latency</b> ~3 s
+</div>
+</div>
+
+<!-- SCENE 2 -->
+<div class="scene">
+<div class="group-title">Scene 2 · acting with consent</div>
+<h3>“You answer the lawyer”</h3>
+<p class="q">Ok, you answer the lawyer: tell him I'll send the document by Thursday.</p>
+<p>An outbound mail to an external recipient never leaves silently, at any autonomy
+level. Metnos drafts the reply and this bubble lands on Telegram, two buttons
+attached:</p>
+
+<div class="approval-card">
+<div class="line1">May I send an email?</div>
+<div class="line2">to lawyer@firm.example · subject: “document delivery” · ~140 characters</div>
+<div class="line3">reversible: no · class: mail:send</div>
+<div class="btns">
+<button class="btn ok">✓ Approve</button>
+<button class="btn no">✗ Reject</button>
+</div>
+</div>
+
+<p>You tap Approve: the daemon checks that the token is still pending, not expired,
+and that <em>the person deciding is the same paired sender who asked</em>. Then:
+<em>“Sent at 11:34. Audit line #1247.”</em></p>
+<div class="meta">
+  <b>capability</b> mail:send (irreversible) ·
+  <b>token</b> single-use, TTL 600 s ·
+  <b>identity</b> approver == requester
+</div>
+<p class="small">This is one example of a proposal. The actual wording depends on
+the action and channel, while labels and buttons are resolved in the user's language
+through the i18n catalog. The decision remains bound to the proposal and the user who
+requested it. See <a href="architecture/approval_ux.html">approval_ux</a>.</p>
+</div>
+
+<!-- SCENE 3 -->
+<div class="scene">
+<div class="group-title">Scene 3 · compose + undo</div>
+<h3>“Sort these photos by year and place” — then “undo”</h3>
+<p class="q">Sort all image files in ~/images into subfolders by year, prefixing each
+name with shooting date and place. If the place is missing, use “unknown”.</p>
+<p>There is no “sort photos” tool: the planner composes four from the library,
+wiring each output into the next input. Raw data never transits through the model:
+it passes by reference (<code>from_step</code>).</p>
+
+<ol class="steps">
+<li><code>find_files(base_path="~/images", patterns=["*.jpg","*.png","*.heic"], recursive=true)</code>
+<span class="res">→ 98 entries (size and mtime already included)</span></li>
+<li><code>filter_entries(from_step=1, kind="image")</code>
+<span class="res">→ 98 entries · in-memory filter, confirms the MIME-declared type</span></li>
+<li><code>get_files(from_step=2, fields=["dates","place"])</code>
+<span class="res">→ 98 enriched entries: EXIF → date; GPS → place via reverse-geocode (local cache); no GPS → "unknown"</span></li>
+<li><code>move_files(from_step=3, dst_template="~/images/{year}/{date}_{place}_{name}")</code>
+<span class="res">→ 98 moved, 0 errors · every source→destination pair recorded in the undo log</span></li>
+</ol>
+<p class="fig-note">Four independent executors, chosen and wired by the planner. The same flow handles one or many photos.</p>
+
+<p>The next day, change of heart:</p>
+<p class="q">Undo the last operation.</p>
+<div class="reply">
+I undid the last operation: 98 files are back at their original paths.
+</div>
+<div class="meta">
+  <b>undo</b> multistage reverse: files first, then the created folders — only if left empty ·
+  <b>undo latency</b> ~3 s for 98 files ·
+  <b>idempotent</b> a second “undo” does nothing
+</div>
+<div class="truth">
+Not everything is undoable, and Metnos doesn't pretend otherwise: a sent email cannot
+be recalled. Undo declares “X not undoable” and reverses the rest. Every move is
+COPY-then-DELETE: never a deletion without a confirmed copy.
+</div>
+</div>
+
+<!-- SCENE 4 -->
+<div class="scene">
+<div class="group-title">Scene 4 · multi-user + login + recurrence</div>
+<h3>“Every morning, the school register — to my daughter, not to me”</h3>
+<p>The school portal requires a login. The summary must reach the daughter's
+Telegram; she is paired as a guest. Three messages of setup, then it runs on its
+own.</p>
+<p class="q">Add credentials for school-portal.example: user roberto.b,
+password ●●●●●●●.</p>
+<p>Metnos recognizes a value that looks like a password and raises a dedicated card:
+it offers to encrypt the secret in a local vault and to <em>scrub the clear value
+from the turn log</em> (<code>&lt;REDACTED:cred&gt;</code>). Approved, it tries a
+test login.</p>
+<p class="q">Every morning at 7, look for news on the portal (homework, grades,
+circulars), read the attached PDFs too, and send the 5 most relevant items to my
+daughter on Telegram.</p>
+<div class="pipe">
+  <span class="note">scheduler 07:00 ·</span> open_sites <span class="a">→</span> login_sites <span class="note">(intelligent executor)</span> <span class="a">→</span> act_sites <span class="a">→</span> read_urls_pdf <span class="a">→</span> group_entries <span class="a">→</span> describe_entries <span class="a">→</span> send_messages(to_user="daughter")
+</div>
+<div class="reply">
+<strong>School — daily report</strong><br>
+1. Teachers' strike 05/07 (circular 198) — morning classes suspended<br>
+2. Math test moved to 05/10<br>
+3. Weekend homework: chapters 4–6 + short essay<br>
+4. Coordinators' meeting Friday 05/09, 3:30 pm<br>
+5. Latin grade published
+</div>
+<div class="meta">
+  <b>credentials</b> encrypted locally, never in code nor in logs ·
+  <b>internal intelligence</b> login_sites adapts the route but cannot change its mandate ·
+  <b>cookie</b> reused ~14 days; on expiry, automatic re-login ·
+  <b>LLM</b> 1 call per run (the summary) — HTML is extracted deterministically ·
+  <b>latency</b> ~25–40 s/run
+</div>
+<div class="truth">
+If even the re-login fails (password changed on the portal), the task pauses and the
+host gets a notice — not silence, not an invented report.
+</div>
+</div>
+
+<!-- SCENE 5 -->
+<div class="scene">
+<div class="group-title">Scene 5 · cross-domain documents, tested live</div>
+<h3>From a mixed folder to a verifiable dossier</h3>
+<p>One request crosses PDF, Word, Excel and CSV files on the paired PC, combining
+time filtering, deduplication, extraction, cross-checking and three outputs:</p>
+<p class="q">In the Documents/Project Atlas folder, find PDFs, documents and
+spreadsheets modified in the last 60 days. Logically remove duplicates by comparing
+signatures and content; extract deadlines, amounts, people and decisions; then
+create a deadline-ordered summary and a sheet with source, date, owner, amount and
+confidence level. Flag conflicting data and unreadable files. Save the results in a
+new subfolder and also create a compressed archive, but do not overwrite or delete
+anything without approval.</p>
+<div class="pipe">
+  find_files <span class="a">→</span> filter_entries <span class="note">(60 days)</span> <span class="a">→</span> read_files <span class="note">(auto + signatures)</span> <span class="a">→</span> extract_entries <span class="a">→</span> sort_entries <span class="a">→</span> describe_entries <span class="a">→</span> create_dirs + write_files <span class="a">→</span> create_files_spreadsheet <span class="a">→</span> find_files <span class="a">→</span> compress_files
+</div>
+<div class="reply">
+6 candidate files · 1 duplicate removed logically · 5 unique sources · 7 extracted
+rows. Conflict flagged: approved budget €120,000 due 09/30, revision €135,000 due
+09/15. One PDF is unreadable. Created in a new subfolder:
+<code>riepilogo.md</code>, <code>dati_estratti.xlsx</code> and
+<code>risultati.zip</code>.
+</div>
+<div class="meta">
+  <b>formats</b> PDF + DOCX + XLSX + CSV, read in one flow ·
+  <b>checks</b> binary hash + signature + content hash, deterministic anomalies ·
+  <b>safety</b> create-only outputs; no overwriting or deletion ·
+  <b>placement</b> files stay on the paired Windows PC
+</div>
+<div class="truth">
+Live E2E on the actual Windows PC: 11 of 11 steps succeeded in 74.9 seconds; the
+sheet contains one header plus 7 data rows, the ZIP contains the two requested
+results, and all 8 input hashes stayed unchanged. A confidence level does not turn
+an estimate into certainty, so unreadable files, duplicates and conflicting values
+remain visible in the summary. The final receipt lists the folder and all three
+artifacts instead of exposing the archiver's technical table.
+</div>
+</div>
+
+<!-- SCENE 6 -->
+<div class="scene">
+<div class="group-title">Scene 6 · ask before acting</div>
+<h3>“Can you read and write Excel files?” — the system explains itself</h3>
+<p class="q">Can you read and write Excel files? What are the limits?</p>
+<p>This is not an operation: it is a question about Metnos. The Tutor keeps it away
+from the planner, compares it with the signed catalog and admitted local
+documentation, then composes an answer in the current language. It runs no executor
+and opens no file.</p>
+<div class="pipe">
+  question <span class="a">→</span> local embedding <span class="a">→</span>
+  admitted manifests + documentation <span class="a">→</span>
+  role filter <span class="a">→</span> grounded answer
+</div>
+<div class="reply">
+Yes. The installed catalog separates reading <code>.xlsx</code> workbooks from
+creating or writing spreadsheets. You can select the sheet to read; for output you
+can provide columns and rows produced by an earlier step. This answer describes the
+available capabilities: I have not opened or changed any file.
+</div>
+<div class="meta">
+  <b>sources</b> descriptions of executors actually admitted ·
+  <b>languages</b> IT/EN sources, cross-language retrieval, current-chat response ·
+  <b>authority</b> no tools and no execution capability
+</div>
+<div class="truth">
+“Read all my Excel sheets” is not a Tutor question: it goes to the normal operational
+engine and its controls. The boundary prevents an explanation from becoming an
+action by mistake. The next chapter shows the complete design.
+</div>
+</div>
+
+<!-- SCENE 7 -->
+<div class="scene">
+<div class="group-title">Scene 7 · photos: understanding, not just listing</div>
+<h3>“Find the mountain photos” — visual semantics, at home</h3>
+<p>Tens of thousands of photos on a network drive. The first time, Metnos offers to
+index them: indexing runs in the background and pings you on Telegram when done.
+From then on:</p>
+<p class="q">Find the mountain photos.</p>
+<div class="pipe">
+  find_images_indices(query="mountain") <span class="a">→</span> 20 previews + web gallery (100)
+</div>
+<p class="q">My daughter's photos at the seaside?</p>
+<div class="pipe">
+  find_persons_indices <span class="note">(faces: after a one-time “who is who” labeling)</span> <span class="a">→</span> gallery
+</div>
+<div class="meta">
+  <b>models</b> scene embeddings + face recognition + EXIF — all in-process, on your server ·
+  <b>privacy</b> no photo leaves home; the index is an inspectable SQLite file ·
+  <b>interface</b> previews in chat, full gallery in the browser
+</div>
+<div class="truth">
+A search that combines person and scene must state which signals it applied. If
+fusion is unavailable, Metnos returns an explicit partial outcome instead of
+presenting it as a complete search.
+</div>
+</div>
+
+<!-- SCENE 8 -->
+<div class="scene">
+<div class="group-title">Scene 8 · the repo maintains itself with two sentences</div>
+<h3>GitHub maintenance with no daemon: two scheduled commands</h3>
+<p>The project's own support runs this way — no dedicated service, no ad-hoc code:
+two natural-language requests, registered as recurring tasks, that the planner turns
+into the usual executor chains.</p>
+<p class="q">Every 30 minutes: find the repo's new issues, skip those already in the
+local db, for each one search the db for similar already-resolved issues, classify
+and analyze it with the frontier tier, save the draft reply with status “prepared”,
+and notify me.</p>
+<p class="q">After my approval: read from the db the “approved” issues not yet
+posted, publish the reply as a GitHub comment, mark them “posted”.</p>
+<div class="pipe">
+  find_issues_github <span class="a">→</span> find_issues <span class="note">(dedup in the local db)</span> <span class="a">→</span> classify_entries + consult_frontier <span class="a">→</span> write_issues("prepared") <span class="a">→</span> <span class="note">human approval</span> <span class="a">→</span> send_messages_github <span class="a">→</span> write_issues("posted")
+</div>
+<div class="meta">
+  <b>state machine</b> new → prepared → approved → posted: double-posting is prevented by state, not by hope ·
+  <b>consent</b> nothing reaches GitHub without an explicit “approve” ·
+  <b>scheduling</b> one sentence: “create a recurring task every 30 minutes: …”
+</div>
+<div class="truth">
+It's a declared dogfooding experiment: a Metnos instance helping maintain Metnos. If
+the frontier tier is down or over budget, the issue stays “new” and is flagged for
+manual treatment — never an invented reply, never a silent skip.
+</div>
+</div>
+
+<!-- SCENE 9 -->
+<style>
+/* Scene 9 — chat window, bubble style. Every class carries the qt-rx- prefix
+   so it cannot collide with the page's own stylesheet. */
+.qt-rx-chat{background:#fff;border:1px solid #d7dee7;border-radius:16px;overflow:hidden;
+  box-shadow:0 2px 10px rgba(20,40,70,.05);margin:18px 0;
+  font-family:'Segoe UI',Calibri,system-ui,sans-serif;line-height:1.5;color:#1c2430}
+.qt-rx-bar{display:flex;align-items:center;gap:10px;padding:11px 16px;background:#1A477A;color:#fff}
+.qt-rx-bar .qt-rx-dot{width:10px;height:10px;border-radius:50%;background:#7fd39b}
+.qt-rx-bar b{font-weight:600;font-size:14px}
+.qt-rx-dest{margin-left:auto;font-size:11.5px;background:rgba(255,255,255,.15);
+  padding:3px 9px;border-radius:999px}
+.qt-rx-thread{padding:18px 16px;display:flex;flex-direction:column;gap:14px;background:#f7f9fc}
+.qt-rx-turn{display:flex;flex-direction:column;gap:6px}
+.qt-rx-turn.qt-rx-user{align-items:flex-end}
+.qt-rx-bubble{max-width:82%;padding:10px 13px;border-radius:14px;font-size:14.5px;text-align:left}
+.qt-rx-user .qt-rx-bubble{background:#1A477A;color:#fff;border-bottom-right-radius:5px}
+.qt-rx-bot .qt-rx-bubble{background:#fff;border:1px solid #d7dee7;border-bottom-left-radius:5px}
+.qt-rx-bubble .qt-rx-mono{font-family:ui-monospace,'Cascadia Code',Consolas,monospace;font-size:13px;
+  background:#f2f5f9;border:1px solid #e3e9f1;border-radius:8px;padding:8px 10px;margin-top:8px;
+  white-space:pre-wrap;color:#25303f}
+.qt-rx-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  padding:3px 9px;border-radius:999px;width:max-content}
+.qt-rx-chip.qt-rx-server{background:#eef0f3;color:#4a5568;border:1px solid #cfd6df}
+.qt-rx-chip.qt-rx-device{background:#e8effa;color:#1A477A;border:1px solid #bcd2f0}
+.qt-rx-chip.qt-rx-offline{background:#fdeaea;color:#b23b3b;border:1px solid #eec2c2}
+.qt-rx-route{display:flex;align-items:center;gap:8px;align-self:center;font-size:12.5px;color:#b5730f;
+  background:#fdf3e0;border:1px dashed #e6c187;border-radius:999px;padding:5px 12px}
+.qt-rx-route b{color:#8a5709}
+.qt-rx-sticky{align-self:center;font-size:12px;color:#5b6675;font-style:italic;
+  display:inline-flex;gap:6px;align-items:center}
+.qt-rx-destnow{align-self:center;font-size:12px;font-weight:600;color:#1A477A;
+  background:#e8effa;border:1px solid #bcd2f0;border-radius:999px;padding:4px 12px}
+</style>
+<div class="scene">
+<div class="group-title">Scene 9 · from the server to one of your PCs</div>
+<h3>From the chat to one of your PCs, with a destination that sticks</h3>
+<p>The same natural-language commands, except execution can move to a PC you've
+<em>paired</em>. The chat starts with the destination on the <strong>server</strong>;
+at each change a <strong>&ldquo;destination now: &hellip;&rdquo;</strong> pill appears,
+telling you where the next command lands if you name no PC (the destination is sticky).</p>
+
+<div class="qt-rx-chat" aria-label="Example conversation: from the server to a user's PC">
+  <div class="qt-rx-bar"><span class="qt-rx-dot"></span><b>Metnos · Roberto's chat</b></div>
+  <div class="qt-rx-thread">
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">How many lines of code are in the project?</div></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-server">🖥 server</span>
+      <div class="qt-rx-bubble">The count was run on the server.
+        <div class="qt-rx-mono">first turn, no PC named → destination = server</div>
+      </div>
+    </div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">List the Documents folder on my <b>office-laptop</b></div></div>
+    <div class="qt-rx-route">🔀 recognized <b>OFFICE-LAPTOP</b> → routing there, and it's the destination from now on</div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-device">💻 OFFICE-LAPTOP</span>
+      <div class="qt-rx-bubble">On <b>OFFICE-LAPTOP</b>, in <b>Documents</b>:
+        <div class="qt-rx-mono">invoices/       (folder)
+contracts/      (folder)
+notes.txt       4 KB
+budget.xlsx     88 KB</div>
+      </div>
+    </div>
+
+    <div class="qt-rx-destnow">📍 destination now: OFFICE-LAPTOP</div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">Zip it up</div></div>
+    <div class="qt-rx-sticky">↳ no PC named → the last destination stays: <b>OFFICE-LAPTOP</b></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-device">💻 OFFICE-LAPTOP</span>
+      <div class="qt-rx-bubble">Done on the laptop: created <b>Documents.zip</b> (1.2 MB) next to the folder.</div>
+    </div>
+
+    <div class="qt-rx-turn qt-rx-user"><div class="qt-rx-bubble">How much free space is there on the <b>home-desktop</b>?</div></div>
+    <div class="qt-rx-turn qt-rx-bot">
+      <span class="qt-rx-chip qt-rx-offline">💻 HOME-DESKTOP · not connected</span>
+      <div class="qt-rx-bubble"><b>HOME-DESKTOP is not connected</b> (no heartbeat for over a minute).
+        I won't quietly run this elsewhere: turn it on and try again, or tell me “on the server”.
+        <div class="qt-rx-mono">connection check before every dispatch → an explicit error, never a silent fallback</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<div class="meta">
+  <b>destination</b> sticky: it stays on the last PC until you name another or say “on the server” ·
+  <b>connection</b> checked before every dispatch (heartbeat) — if the PC is off, an explicit error, no covert fallback ·
+  <b>pairing</b> only the PCs you've registered yourself
+</div>
+<div class="truth">
+Metnos never runs “blind” on a PC that doesn't answer: no recent heartbeat, no
+execution. It tells you the device is offline and leaves the choice to you — turn it
+on, run somewhere else, or stay on the server.
+</div>
+</div>
+</section>
+
+<!-- ================= CH 4 ================= -->
+<section class="cap" id="cap4">
+<h2>4 · The Tutor: Metnos can explain Metnos</h2>
+
+<p class="lead">A governed system is useful only if its user can ask what it can
+do, why it stopped, and how to use a feature. The <strong>Tutor</strong> makes
+capabilities and procedures understandable without turning the manual into another
+all-powerful agent.</p>
+
+<h3>Compiled knowledge, not an answer from memory</h3>
+<p>The Tutor indexes multilingual descriptions from manifests actually admitted by
+the loader, every public indexable HTML page shipped with Metnos, selected curated
+procedures, and explicit projections of runtime registries. Deployment and Tutor use
+the same validated inventory: publishing or updating a public page updates its source
+at the next compilation. Text, vectors, and metadata live in one signed SQLite
+catalog replaced atomically. The <code>internal/</code> directory never enters the
+corpus in any environment: useful information must first be verified and moved into
+the public documentation. The Tutor does not scan user Documents, mail, calendars,
+logs, technical notes, or conversations.</p>
+
+<p>If a question names a document in the public inventory exactly &mdash; by filename,
+relative path, or canonical URL &mdash; Tutor recognizes that source before semantic
+retrieval and limits the answer to its sections. The word “file” is not enough: an
+unknown name stays in the ordinary file domain, while a deletion request remains an
+action even when the document is recognized.</p>
+
+<div class="pipe">
+  admitted local sources <span class="a">→</span> typed units
+  <span class="a">→</span> configured local embedder <span class="a">→</span>
+  signed catalog <span class="a">→</span> answer with no tools
+</div>
+
+<div class="can-cant">
+  <div class="card can">
+    <h3>Questions it answers today</h3>
+    <p class="q">How do I read every mailbox without naming them one by one?</p>
+    <p>It retrieves the current <code>read_messages</code> description and explains
+    <code>account="all"</code>.</p>
+    <p class="q">Device pairing: I would like to understand how it works.</p>
+    <p>It uses the administrative guide only when the authenticated principal is
+    authorized; restricted text never reaches the model for other users.</p>
+    <p class="q">read_messages?</p>
+    <p>Even a terse form can be understood semantically, without placing that phrase
+    in a table.</p>
+    <p class="q">What does the file Metnos_Extended_Perspectives_v1.html contain?</p>
+    <p>It recognizes the name in the published inventory, summarizes that document,
+    and provides its canonical link.</p>
+  </div>
+  <div class="card cant">
+    <h3>Three things it does not do</h3>
+    <p><strong>It does not execute by itself.</strong> “Read all my mail” continues
+    through the normal engine. In a mixed request, Tutor explains first and asks for
+    confirmation before handing the user-written action clause to the engine.</p>
+    <p><strong>It does not fill gaps.</strong> If sources are insufficient, it reports
+    the gap.</p>
+    <p><strong>It does not confuse roles.</strong> Audience and identity come from the
+    authenticated channel, never from words in the question.</p>
+  </div>
+</div>
+
+<h3>Current state through bounded observations</h3>
+<p>Signed sources that describe Services, Executors, Devices, and scheduled tasks
+may refer to a registered, read-only runtime probe. Tutor can therefore distinguish
+what a page means from its current state. Every observation has bounded size and
+duration, applies the user's identity, and reports whether data is complete,
+partial, stale, or unavailable. The model neither chooses the probe nor receives
+secrets, keys, endpoints, or private run output.</p>
+
+<h3>Personal feedback, not a rule for everyone</h3>
+<p>Positive feedback may associate a request semantically with the source that
+produced the answer, for the same user only. Negative feedback removes the
+association and records a typed gap. The request text is not stored in clear text;
+associations and evidence expire, are invalidated when the source or embedder
+changes, and remain outside the planner and plan caches.</p>
+
+<h3>A new language does not require duplicating the guide</h3>
+<p>The catalog retains the language of each source and uses a multilingual semantic
+representation model. When a new language is admitted and selected, retrieval first
+looks for sources in that language, then English, and finally other available
+translations. The composer always receives the response language as explicit data:
+the fallback prompt language does not choose the user's language. Offering a language
+as a complete option still requires its i18n pack and reviewed translations.</p>
+</section>
+
+<!-- ================= CH 5 ================= -->
+<section class="cap" id="cap5">
+<h2>5 · Where it lives and how you talk to it</h2>
+
+<p class="lead">
+Metnos runs on a Linux machine of yours. <strong>The LLM tiers are abstract
+roles</strong>, not pinned models: a CPU endpoint, a local or remote model you
+already serve, and an optional frontier fallback are all first-class paths.
+Phones and laptops are <em>clients</em>: the mind, the memory and the audit live on
+one machine.
+</p>
+
+<h3>Two surfaces, one mind</h3>
+<p><strong>The browser</strong>: a chat served by the server itself (port 8770), with
+photo previews, the gallery, and the admin dashboards (synt proposals, executors,
+runs, turns). <strong>Telegram</strong>: the same brain in your pocket, with approval
+cards as inline buttons. For automation, the HTTP API (<code>/agent/turn</code>,
+streaming too) is the same door the chat uses.</p>
+<p>The web chat also shows ✓/✗ feedback badges on every reply. On Tutor turns, a
+verdict may refine retrieval for that user or record a gap without changing the
+behavior of other accounts.</p>
+
+<p><strong>A conversation can move between devices.</strong> If the same user opens
+the web chat while another web session is active elsewhere, Metnos offers three
+choices: <em>Continue the previous session</em> transfers that conversation and its
+history to the current device; <em>Make this session active</em> keeps the conversation
+opened locally and revokes the other session; <em>Cancel</em> changes nothing.
+Conversations are never merged, and a revoked device loses its write lease. Sessions,
+history, and active selection remain isolated per user.</p>
+
+<h3>Who you are, to the bot: pairing</h3>
+<p>Telegram is a public surface: anyone who knows the bot's name can write to it.
+Metnos binds every <em>(channel, sender)</em> pair to an autonomy level with a
+single-use signed code: <code>/pair PAIR.&lt;code&gt;</code> (Ed25519, expires in
+minutes) for pairings decided by the host; <code>/start &lt;token&gt;</code> for
+guests created from the admin UI. No central account, no password: a
+per-channel-per-sender directory only the host can edit.
+See <a href="architecture/pairing.html">pairing</a>.</p>
+
+<h3>Language is data, not a constant</h3>
+<p>Every visible message, every tool description and every LLM prompt lives as
+<em>per-language data</em>: Italian and English are validated, a new language is
+added by translating the packs, no code changes
+(<code>prompts_cli add-language &lt;code&gt;</code> scaffolds the structure; the
+translation is reviewed and promoted by hand). Honesty: beyond IT and EN, today,
+it's untested ground. See <a href="architecture/multilang.html">multilang</a>.</p>
+</section>
+
+<!-- ================= CH 6 ================= -->
+<section class="cap" id="cap6">
+<h2>6 · What happens when it says “may I?”</h2>
+
+<p class="lead">
+This is the most important piece of the experience. Before executing a step, Metnos
+applies safety controls and the capability policy. When that policy requires a human
+decision, the step remains suspended until the user who requested it approves or
+rejects it.
+</p>
+
+<table>
+<thead><tr><th style="width:16%">Phase</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>1 · Planner</strong></td><td>Prepares the step (executor + arguments) in memory. Nothing is executed yet.</td></tr>
+<tr><td><strong>2 · Vaglio</strong></td><td>First the <em>binary guard</em>: forbidden paths (<code>~/.ssh</code>, <code>/etc</code>…) and near-unrecoverable shell patterns (<code>rm -rf /</code>, <code>mkfs</code>, fork bombs) are denied outright, at every autonomy level. Then the <em>graded judge</em>: an alignment score against your <a href="architecture/telos.html">telos</a> (the aims written in <code>TELOS.md</code>).</td></tr>
+<tr><td><strong>3 · Policy</strong></td><td>Capability class × autonomy level × persistent grants → one of <em>allow_silent</em>, <em>approval_required</em>, <em>deny</em>.</td></tr>
+<tr><td><strong>4 · Dialog</strong></td><td>The channel shows the proposal and its localized choices. The decision is bound to the turn and requesting user; an expired or already consumed proposal executes nothing. Only after a valid approval does the executor run under the execution policy declared by its contract.</td></tr>
+</tbody>
+</table>
+
+<p><strong>Control without ambiguity.</strong> Approval, rejection, expiry, and
+consumption are distinct states. Any persistent grant must be created and revoked
+explicitly by policy: approving one step is not documented as a general
+authorization. See <a href="architecture/approval_ux.html">approval_ux</a>.</p>
+
+<p><strong>And once it has acted, it can walk back.</strong> Undo is not an LLM
+“doing its best”: it is a closed catalog of reverse patterns declared in each mutating
+executor's manifest (swap source/destination, delete what was created, restore the
+blob backup, delete by id). Honest counts: if it says it undid three things, it was
+three.</p>
+
+<h3>Limits that autonomy does not remove</h3>
+<p>The binary guard is not configurable from a file: forbidden paths and
+catastrophic patterns change only through a code change. Generation also has a
+precise boundary: Synt produces executor candidates; it does not rewrite itself,
+the vaglio, or the runtime. Admission, tests, and lifecycle then decide whether
+and when a candidate may become operational, while protected operations retain
+their consent requirements.</p>
+</section>
+
+<!-- ================= CH 7 ================= -->
+<section class="cap" id="cap7">
+<h2>7 · Its memory: what it remembers and what it doesn't</h2>
+
+<p class="lead">
+Four distinct stores, with different lifetimes and write rules — SQLite tables and
+text files you can open, not an opaque vector somewhere.
+</p>
+
+<table>
+<thead><tr><th style="width:22%">Store</th><th style="width:16%">Scope</th><th>What it holds</th><th style="width:30%">Rule</th></tr></thead>
+<tbody>
+<tr><td><strong>Scratchpad</strong></td><td>the turn</td><td>The observations of intermediate steps.</td><td>emptied at end of turn</td></tr>
+<tr><td><strong>Turn history</strong></td><td>days</td><td>“What did I ask you last Tuesday?”</td><td>one record per turn, feeds the dashboards</td></tr>
+<tr><td><strong>Explicit preferences</strong></td><td>until removed</td><td>Language, tone, reply length, units, and browsing options.</td><td>closed vocabulary, user-selected values isolated per user</td></tr>
+<tr><td><strong>Mnestome</strong></td><td>about itself</td><td>Which tools worked together, with what outcome; and the attempts left halfway.</td><td>the substrate the synt reads before proposing</td></tr>
+</tbody>
+</table>
+<p class="fig-note">Turn state, operational history, a person's preferences, and
+the system's memory of its own operation have separate purposes and write rules.
+They are not combined into a generic profile.</p>
+
+<p>Metnos does not currently infer or automatically store free-form facts about a
+person. Its persistent user preferences belong to a closed vocabulary and are set
+explicitly; each user retains their own values. Turn history remains an operational
+record and is not promoted into a personal profile. A request for which no suitable
+tools exist can instead leave a <em>proto-mnest</em>: a system gap, not a biographical
+memory. See <a href="architecture/mnestome.html">mnestome</a> and
+<a href="architecture/scratchpad.html">scratchpad</a>.</p>
+</section>
+
+<!-- ================= CH 8 ================= -->
+<section class="cap" id="cap8">
+<h2>8 · How it grows: synt, skills, backends</h2>
+
+<p class="lead">
+An executor is a small Python file that does one thing, with a manifest declaring its
+arguments, capabilities and sandbox profile. Once signed it is a stable artifact: it
+doesn't learn, it doesn't change. The growth intelligence lives elsewhere — in the
+<strong>synthesizer</strong>.
+</p>
+
+<h3>Synthesis in five stages</h3>
+
+<table>
+<thead><tr><th style="width:24%">Stage</th><th>What it produces</th></tr></thead>
+<tbody>
+<tr><td><strong>1 · Name</strong></td><td>from the closed vocabulary — middle tier</td></tr>
+<tr><td><strong>2 · Signature</strong></td><td>args schema, capabilities, reverse pattern</td></tr>
+<tr><td><strong>3 · Tests</strong></td><td>4–6 birth tests: happy, empty, invalid args</td></tr>
+<tr><td><strong>4 · Description</strong></td><td>the “tool's prompt” + affinity keywords</td></tr>
+<tr><td><strong>5 · Code</strong></td><td>wise tier, local — <code>def invoke(args)</code> → lists</td></tr>
+</tbody>
+</table>
+<p>At the exit, the seven-layer <strong>admission gate</strong> checks signature,
+affinity overlap, aging, isolation, an operational test, description-to-code
+consistency, and append-only registration. The candidate then follows its declared
+evaluation and Ed25519-signing lifecycle.</p>
+<p class="fig-note">Five small, focused prompts instead of one monolith separate
+responsibilities and produce artifacts that can be inspected and tested separately.
+Only stage 1 sees the closed vocabulary; only stage 5 writes code.</p>
+
+<p>When a turn encounters a gap, reactive synthesis only tries to
+<strong>compose already signed executors</strong>; it does not generate code silently.
+Requests for a new executor and other system-change proposals enter the governed
+<code>change_intent</code> lifecycle, where they remain visible and require the
+prescribed checks and decisions before changing the catalog. Active nightly
+introvertive maintenance only reports obsolete or orphaned mnest relations for
+deduplication; it does not generate generalizations or specializations. See
+<a href="architecture/synt.html">synt</a> and
+<a href="architecture/lifecycle.html">lifecycle</a>.</p>
+
+<h3>Skills and execution backends: two axes that don't blur</h3>
+<p>A <strong>skill</strong> is a governed capability group that may be active,
+disabled, or dormant. The registry distinguishes core, Metnos-maintained skills, and
+imported skills. Where a deterministic prerequisite check exists, a skill missing a
+credential, index, or registered store remains visible while its executors are not
+offered. You manage skills from the command line or by asking in chat (“which skills
+do I have?”, “disable web starting with the next turn”).</p>
+<p>The <strong>execution backend</strong> is the other axis: <em>how</em> an action
+reaches a concrete service. Files, directories, events, and contacts use a central
+resolver; mail uses the account resolver; GitHub keeps provider-qualified executors.
+In every case the choice derives from configuration and explicit context rather than
+a free model preference. See
+<a href="architecture/skills_backends.html">skills and execution backends</a>.</p>
+
+<h3>Operating-system administration</h3>
+<p>The <code>system</code> skill covers the command shell, <code>sudo</code>,
+packages, and network mounts. Every privileged action requires a vaglio judgment
+and the applicable authorization. The skill can be disabled; while it remains
+off, Metnos does not use these operating-system capabilities.</p>
+</section>
+
+<!-- ================= CH 9 ================= -->
+<section class="cap" id="cap9">
+<h2>9 · People and devices: host, guests, remote executors</h2>
+
+<p class="lead">
+Metnos is not multi-tenant in the SaaS sense: it is one household. Inside it there is
+a <strong>host</strong> — the server's owner, keeper of the signing key — and zero or
+more <strong>guests</strong>, each with their own level.
+</p>
+
+<table>
+<thead><tr><th style="width:18%">Level</th><th>For whom</th><th>What it allows</th></tr></thead>
+<tbody>
+<tr><td><strong>ReadOnly</strong></td><td>A guest, a delicate channel</td><td>Read-only executors only; every write is politely refused before it even reaches the planner.</td></tr>
+<tr><td><strong>Supervised</strong></td><td>Everyday use</td><td>The full turn; delicate actions raise the approval card on the same channel.</td></tr>
+<tr><td><strong>Full</strong></td><td>The host</td><td>The widest perimeter the policy admits. Forbidden paths stay forbidden here too.</td></tr>
+</tbody>
+</table>
+
+<p>Scene 4 shows the model at work: the host configures, the guest receives, audit
+lines stay separate per pairing. Every channel has its own door, its own key, its
+own history.</p>
+
+<h3>Remote executors: how far the code can reach</h3>
+<p>One server, but not one filesystem: many things you'd want acted upon (laptop
+files, an open application, a screen) live elsewhere. Gateway, policy and memory
+stay on the server; <em>some executors</em> run on
+registered devices — a thin client with its own Ed25519 identity, admitted with a
+single-use signed code, revocable from the server in one gesture.</p>
+<div class="truth">
+The remote client is a small Rust binary with its own sandbox and a signed build;
+the server invocation channel applies idempotency over flaky networks, replay
+protection and deferred result delivery after a disconnect. E2E tests cover the
+server-to-device boundary. Detail:
+<a href="architecture/remote_executors.html">remote executors</a>.
+</div>
+</section>
+
+<!-- ================= CH 10 ================= -->
+<section class="cap" id="cap10">
+<h2>10 · What the catalog enables, what the core forbids</h2>
+
+<div class="can-cant">
+<div class="card yes">
+<p class="lead">The first list describes the current reference executor set, not an intrinsic Metnos domain. The second describes architectural boundaries that remain in force as the catalog changes.</p>
+
+<h3>✓ What the reference catalog enables today</h3>
+<ul>
+  <li>Multi-step turns from browser and Telegram, plans up to 12 steps</li>
+  <li>Mail: reads, summarizes, archives, replies — sending always behind a card</li>
+  <li>Files: finds, filters, moves, compresses, extracts — with declared undo</li>
+  <li>Photos: indexes at home (scene, faces, EXIF) and searches by meaning</li>
+  <li>Google Workspace with one OAuth: Gmail, Calendar, Drive, Docs, Sheets</li>
+  <li>GitHub: issues, pull requests and repo files as first-class objects</li>
+  <li>Web: search and reading via self-hosted services (search, geocoding)</li>
+  <li>Recurring tasks in natural language (“every morning at 7…”)</li>
+  <li>Multi-user on the same bot, with separate autonomies and records</li>
+  <li>Remote executors on registered Linux/Windows devices, for executors explicitly enabled for the platform</li>
+  <li>Can generate executor candidates through a governed request; current nightly maintenance deduplicates obsolete relations</li>
+  <li>Speaks Italian and English by construction; every string is data</li>
+  <li>Append-only action records and observability dashboards</li>
+</ul>
+</div>
+<div class="card no">
+<h3>— What the core forbids, or the current catalog does not yet provide</h3>
+<ul>
+  <li>Act outside the house without consent: outbound capabilities go through the card</li>
+  <li>Spend on the frontier tier beyond the configured ceiling</li>
+  <li>Touch <code>~/.ssh</code>, <code>/etc</code>, <code>~/.gnupg</code> and the like: a list wired in code, not in a config file</li>
+  <li>Run catastrophic patterns (<code>rm -rf /</code>, <code>mkfs</code>, fork bombs), at any autonomy</li>
+  <li>Modify itself: the synt generates executors only, never the runtime or the vaglio</li>
+  <li>Install an executor without your explicit approval</li>
+  <li>Listen on a microphone (voice channel on hold, by choice)</li>
+  <li>Use a site beyond the mandate granted to its credentials</li>
+  <li>Run unsigned, unaudited or OS-incompatible executors on remote devices</li>
+  <li>Present a photo search as complete when one requested signal is unavailable</li>
+  <li>Guarantee languages beyond IT/EN: drop-in, but not yet tested</li>
+</ul>
+</div>
+</div>
+
+<p class="small">
+Cross-cutting rule: <b>no silent failure</b>. Cap reached → it says so (how many
+used, how many available) and asks before widening. Partial outcome → counted as
+partial. Never a “done” that doesn't match reality.
+</p>
+</section>
+
+<!-- ================= CH 11 ================= -->
+<section class="cap" id="cap11">
+<h2>11 · Operational status</h2>
+
+<p class="lead">
+Metnos is an installable and operational pre-1.0 system, not a polished product.
+Contracts, safety, and verification govern upgrades. The generated catalog, code,
+and automated tests are the sources of current status.
+</p>
+
+<table>
+<thead><tr><th style="width:30%">Area</th><th>Operational status</th></tr></thead>
+<tbody>
+<tr><td><strong>Capabilities</strong></td><td>Mail, files, photos, web, Workspace, tasks, and remote devices are exposed as executors with declared contracts. The <a href="domains.html">domain reference</a> explains what to ask through natural examples; the <a href="architecture/executor_catalog.html">generated catalog</a> remains the technical source for names and counts.</td></tr>
+<tr><td><strong>Installer</strong></td><td>Included. The <em>managed</em> path prepares services, i18n data and signed executors, profiles the hardware, and verifies startup and the health endpoint. Operational verification is completed after onboarding with one harmless request in the chat. The <em>custom</em> path connects endpoints already managed by the operator.</td></tr>
+<tr><td><strong>Public repository</strong></td><td>A deterministic export of the components required for installation and operation, checked before publication.</td></tr>
+<tr><td><strong>Maturity</strong></td><td>Pre-1.0: external interfaces and persistent data require care during upgrades. Partial failures, unavailable dependencies and unsupported capabilities must be stated, never hidden.</td></tr>
+</tbody>
+</table>
+
+<h3>Trying it</h3>
+<p>The real requirement is hardware: a machine that can serve a capable local LLM.
+Tiers are abstract roles — a CPU endpoint or a model you already serve is fine; a
+weaker model means weaker planning, not a broken install. No GPU is required on
+principle.</p>
+
+<pre><span class="p">$</span> git clone https://github.com/brunialti/metnos.git &amp;&amp; cd metnos
+<span class="p">$</span> bash install/bootstrap.sh --check   <span class="c"># checks requirements; may initialise .venv</span>
+<span class="p">$</span> bash install/bootstrap.sh           <span class="c"># interactive, six phases, idempotent</span></pre>
+
+<h3>The fifty-cent description</h3>
+<p>If you take away one thing: Metnos is a self-hosted architecture for a governed
+agent, with five distinct commitments — <strong>it asks before actions that
+require confirmation</strong>, <strong>builds tools inside verifiable rules</strong>,
+<strong>keeps routing, policy, and audit deterministic without pretending that
+LLM prose is reproducible</strong>, <strong>concentrates adaptive intelligence inside narrow-mandate executors</strong>,
+and <strong>takes signed executors to devices without moving decision and audit away
+from the server</strong>.
+If that combination intrigues you, you are the right audience.</p>
+</section>
+
+<!-- ================= CH 12 ================= -->
+<section class="cap" id="cap12">
+<h2>12 · Minimal glossary &amp; further reading</h2>
+
+<dl class="gloss">
+<dt>Executor</dt>
+<dd>A tool in the catalog: Python file + manifest + Ed25519 signature + sandbox
+profile. Vectorized by construction: lists in, lists out.</dd>
+<dt>Intelligent executor</dt>
+<dd>An executor with a bounded internal observation-and-action loop. It may use an
+LLM to disambiguate the route, while mandate, authority, input, output, and
+verification remain those of the public contract.</dd>
+<dt>Remote executor</dt>
+<dd>An executor run by a client on a registered device. The server plans,
+authorizes, signs, and audits; the device verifies and executes.</dd>
+<dt>Synt</dt>
+<dd>The synthesizer: during a turn it first tries to compose signed executors; a
+governed request can generate a new candidate. Active introvertive maintenance is
+limited to deduplication; automatic generalization and specialization are retired.</dd>
+<dt>Vaglio</dt>
+<dd>The two-phase evaluator between a proposed action and its execution:
+non-negotiable binary guard + graded judge against the telos.</dd>
+<dt>Telos</dt>
+<dd>Your aims, written in <code>TELOS.md</code> as soft tendencies. The judge
+measures proposed actions against them.</dd>
+<dt>fastpath</dt>
+<dd>The learned fast path: a request shape solved once is replayed with no LLM
+calls. Same outcome, minimal latency and cost. When a shape recurs across a whole
+group of similar requests, the generalized plan becomes an <em>autopath</em>.</dd>
+<dt>Mnestome</dt>
+<dd>The memory the system keeps about itself: successful co-activations (mnests) and
+attempts left halfway (proto-mnests). The substrate of growth proposals.</dd>
+<dt>Skill / Backend</dt>
+<dd>Two orthogonal axes: the skill governs <em>whether</em> a capability is active
+and available; the backend governs <em>how</em> it reaches a concrete provider. The
+choice belongs to configuration and explicit context rather than a free model
+preference.</dd>
+<dt>Pairing</dt>
+<dd>The authenticated association of a channel or device with a Metnos user.
+Roles, preferences, sessions, and histories remain independent per user.</dd>
+<dt>Approval card</dt>
+<dd>The localized dialog that explains the proposed action, its target, and its
+consequences, then presents only the choices admitted by the current flow.</dd>
+</dl>
+
+<div class="further-reading">
+<h3>Keep reading</h3>
+<div class="toc">
+  <div class="toc-item">
+    <div>
+      <a class="t" href="domains.html" data-url="metnos.com/en/domains">Domain reference</a>
+      <span class="d">Every operational domain, its boundaries, and example phrases ready to use in chat.</span>
+    </div>
+    <span class="time">Reference · 15 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="architecture/index.html" data-url="metnos.com/en/architecture/">Architecture guide</a>
+      <span class="d">The system view and complete component atlas: topology, request flow, authority, and contracts.</span>
+    </div>
+    <span class="time">Complete guide · 20 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="interface.html" data-url="metnos.com/en/interface">The interface</a>
+      <span class="d">The web chat, Telegram, per-user sessions, and the map of Settings pages.</span>
+    </div>
+    <span class="time">Guide · 8 min</span>
+  </div>
+  <div class="toc-item">
+    <div>
+      <a class="t" href="code.html" data-url="metnos.com/en/code.html">A note on the code</a>
+      <span class="d">What the repository publishes and how it compares with an installed instance.</span>
+    </div>
+    <span class="time">Note · 5 min</span>
+  </div>
+</div>
+</div>
+</section>
+
+<footer>
+<div>
+Metnos — <em>Quick tour &amp; survival kit</em><br>
+mētis + noûs · meant to be read in twenty minutes ·
+the <a href="architecture/index.html">Architecture</a> is the natural sequel<br>
+<a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> · <code>metnos.com</code> · <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
+</div>
+</footer>
+
+</body>
+</html>

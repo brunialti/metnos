@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; multilinguismo</title>
+ <meta name="description" content="Guida al multilinguismo di Metnos: lingua per utente e per richiesta, prompt, manifest, testi visibili, lessico di comprensione e procedura per aggiungere una lingua.">
+ <meta name="keywords" content="multilinguismo, i18n, lingua utente, prompt, manifest, lessico, fallback, add-language, METNOS_LANG, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/multilang">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/multilang">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/multilang">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/multilang">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/multilang">
+ <meta property="og:title" content="Metnos &mdash; multilinguismo">
+ <meta property="og:description" content="Come Metnos sceglie la lingua di ogni utente e mantiene coerenti prompt, manifest, messaggi e lessico di comprensione.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; multilinguismo">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — multilinguismo",
+ "description": "Lingua per utente e per richiesta, prompt, manifest, testi visibili, lessico di comprensione e aggiunta di una lingua.",
+ "url": "https://metnos.com/it/architecture/multilang",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Metnos multilingual architecture"
+}
+ </script>
+ <style>
+:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bg: #FAFBFC; --text: #1a1a1a; --border: #d0d7de;
+ --code-bg: #f6f8fa; --table-header: #1A477A; --table-alt: #f0f4f8;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 5px; }
+.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }
+.title-page { text-align: center; padding: 70px 0 35px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+@media print {
+ body { max-width: none; padding: 0; font-size: 10pt; }
+ h1 { font-size: 16pt; }
+ h2 { font-size: 12pt; }
+ .title-page { padding: 60px 0 30px; }
+ .title-page h1 { font-size: 24pt; }
+}
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+ <a href="/it/architecture/multilang.html" class="active" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a href="/en/architecture/multilang.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+  <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">multilinguismo</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Lingua per utente, prompt e testi visibili</div>
+ <div class="meta">Guida all'architettura</div>
+</div>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+«Qual è la lingua impostata per il mio account e dove posso cambiarla?»</p>
+
+<p>
+Chi amministra l'istanza può cambiarla nella chat web seguendo
+<strong>Settings &gt; Sistema &gt; Utenti &gt; nome dell'utente &gt;
+Preferenze</strong>, quindi scegliendo il valore del campo <code>lang</code>.
+La pagina dell'utente risponde all'indirizzo
+<code>/admin/users/&lt;id-utente&gt;</code>. Se la domanda viene fatta da
+Telegram, il percorso indicato si trova comunque nella chat web di Metnos,
+non dentro Telegram.
+</p>
+
+<p class="lead">
+La lingua è una preferenza di ciascun utente e viene applicata alla singola
+richiesta. Due utenti possono usare contemporaneamente lingue diverse senza
+modificare la configurazione globale dell'istanza e senza influenzarsi a
+vicenda.
+</p>
+
+<div class="toc">
+ <h2>Indice</h2>
+ <ol>
+  <li><a href="#cap1">Il contratto multilingua</a></li>
+  <li><a href="#cap2">Come viene scelta la lingua di una richiesta</a></li>
+  <li><a href="#cap3">Le quattro aree da mantenere coerenti</a></li>
+  <li><a href="#cap4">Lingua del prompt e lingua della risposta</a></li>
+  <li><a href="#cap5">Allineamento delle traduzioni</a></li>
+  <li><a href="#cap6">Aggiungere una lingua</a></li>
+  <li><a href="#cap7">Verifiche e strumenti amministrativi</a></li>
+ </ol>
+</div>
+
+<h1 id="cap1">1. Il contratto multilingua</h1>
+
+<p>
+Metnos deve mantenere coerenti quattro tipi di contenuto: le istruzioni date
+ai modelli, le descrizioni degli strumenti, i testi mostrati alle persone e
+il lessico usato per comprendere le richieste. Tradurre soltanto
+l'interfaccia non basta: un pulsante può essere in francese mentre il
+pianificatore legge ancora istruzioni inglesi, oppure la risposta può essere
+corretta ma il riconoscimento di una formulazione francese può fallire.
+</p>
+
+<p>
+Italiano e inglese sono le lingue registrate come pienamente supportate nel
+codice attuale. Gli archivi possono contenere altre lingue anche durante la
+traduzione; la loro presenza non prova, da sola, che l'intero prodotto sia
+pronto in quelle lingue.
+</p>
+
+<p>Il contratto operativo è il seguente:</p>
+
+<ul>
+ <li>la lingua appartiene all'utente autorizzato, non al dispositivo;</li>
+ <li>la stessa preferenza vale nella chat web e nei canali associati a quell'utente;</li>
+ <li>ogni richiesta conserva il proprio contesto linguistico fino alla risposta finale;</li>
+ <li>un testo mancante segue un ripiego dichiarato e non interrompe il servizio;</li>
+ <li>una lingua viene dichiarata supportata soltanto dopo traduzione, revisione e prove complete.</li>
+</ul>
+
+<h1 id="cap2">2. Come viene scelta la lingua di una richiesta</h1>
+
+<p>
+Nella chat web il server identifica l'utente autenticato e legge la sua
+preferenza <code>lang</code>. Telegram fa lo stesso partendo
+dall'associazione fra il canale e l'utente. Anche le attività ricorrenti
+eseguite per conto di una persona applicano la lingua del relativo
+proprietario.
+</p>
+
+<p>
+Il valore viene inserito in un contesto locale alla richiesta. Questo
+contesto è isolato anche quando più turni vengono eseguiti in parallelo:
+impostare l'inglese per un utente non cambia la lingua di un altro utente né
+quella del processo.
+</p>
+
+<table>
+ <thead>
+  <tr><th style="width:27%">Origine</th><th>Valore usato</th><th>Ambito</th></tr>
+ </thead>
+ <tbody>
+  <tr><td>Preferenza <code>lang</code></td><td>Lingua dell'utente autenticato o associato al canale.</td><td>Una richiesta o un turno.</td></tr>
+  <tr><td><code>METNOS_LANG</code></td><td>Ripiego dell'istanza quando l'utente non ha una preferenza valida.</td><td>Processo; viene memorizzato al primo utilizzo.</td></tr>
+  <tr><td>Valore predefinito</td><td><code>it</code>, se non è definito neppure <code>METNOS_LANG</code>.</td><td>Istanza.</td></tr>
+ </tbody>
+</table>
+
+<p>
+Le lingue proposte dal campo <code>lang</code> non provengono da una lista
+scritta nella pagina: vengono ricavate dalle lingue presenti nel catalogo
+<code>i18n.sqlite</code>. Per questo il comando di preparazione di una nuova
+lingua può renderla selezionabile prima che tutte le traduzioni siano state
+completate. I ripieghi mantengono il servizio utilizzabile, ma
+l'amministratore non dovrebbe offrirla agli utenti prima delle verifiche
+descritte più avanti.
+</p>
+
+<h1 id="cap3">3. Le quattro aree da mantenere coerenti</h1>
+
+<table>
+ <thead>
+  <tr><th style="width:21%">Area</th><th>Contenuto</th><th>Fonte in esecuzione</th><th>Ripiego</th></tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><strong>Prompt dei modelli</strong></td>
+   <td>Istruzioni per pianificazione, valutazione, descrizione, Tutor e generazione della risposta finale.</td>
+   <td><code>runtime/prompts/&lt;lingua&gt;/</code></td>
+   <td>File approvato della lingua; candidato della stessa lingua; inglese approvato; candidato inglese.</td>
+  </tr>
+  <tr>
+   <td><strong>Manifest degli executor</strong></td>
+   <td>Descrizione dell'executor e descrizione dei suoi argomenti, lette dal pianificatore.</td>
+   <td>Tabelle linguistiche nel relativo <code>manifest.toml</code>.</td>
+   <td>Lingua della richiesta; inglese; prima lingua disponibile in ordine deterministico.</td>
+  </tr>
+  <tr>
+   <td><strong>Testi rivolti all'utente</strong></td>
+   <td>Messaggi, errori, conferme, etichette e notifiche deterministiche.</td>
+   <td><code>i18n.sqlite</code></td>
+   <td>Lingua della richiesta; inglese; italiano; infine <code>&lt;missing:CHIAVE&gt;</code>.</td>
+  </tr>
+  <tr>
+   <td><strong>Lessico di comprensione</strong></td>
+   <td>Forme naturali e associazioni usate per riconoscere intenti e parametri nella richiesta.</td>
+   <td><code>detection.sqlite</code>, inizializzato dal registro del runtime.</td>
+   <td>Unione della lingua corrente con italiano e inglese; le lacune vengono segnalate e accodate.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2>Prompt dei modelli</h2>
+
+<p>
+Ogni chiamante passa esplicitamente un codice lingua al caricatore dei
+prompt. Se manca un file approvato, il caricatore può usare il candidato
+presente nella directory <code>_pending</code>; se manca anche quello,
+ricorre all'inglese. Un candidato non sostituisce un file approvato già
+presente: per una lingua esistente occorre rivederlo e promuoverlo.
+</p>
+
+<p>
+Il pianificatore è composto da un nucleo, sezioni pertinenti e una parte
+finale. Se nella lingua richiesta manca il nucleo, l'intero pianificatore
+ricorre all'inglese. Se il nucleo esiste ma manca una singola sezione, quella
+sezione può ricorrere all'equivalente inglese.
+</p>
+
+<h2>Manifest degli executor</h2>
+
+<pre><code>[description]
+it = "Cerca file per nome, percorso e intervallo temporale."
+en = "Find files by name, path, and time window."
+
+[args.properties.patterns.description]
+it = "Nomi o espressioni da cercare."
+en = "Names or patterns to find."
+
+affinity = ["cerca", "trova", "find", "search", "files"]</code></pre>
+
+<p>
+Il loader legge direttamente le tabelle del manifest. Le descrizioni non
+vengono importate nel database dei messaggi. Anche <code>affinity</code> non
+è una tabella per lingua: è una sola lista di segnali misti, perché serve al
+riconoscimento semantico e non viene mostrata come testo all'utente.
+Il file <code>manifest.lang_state.json</code> conserva gli hash necessari
+all'allineamento, ma non sostituisce il contenuto del manifest.
+</p>
+
+<h2>Testi visibili e lessico di comprensione</h2>
+
+<p>
+I testi deterministici vengono recuperati per chiave dal database i18n. Il
+campo <code>needs_translation</code> indica il lavoro ancora da svolgere al
+traduttore; se una riga contiene già un testo non vuoto, quel testo rimane
+utilizzabile.
+</p>
+
+<p>
+Il lessico di comprensione è separato dai testi visibili. Per una lingua
+nuova, le forme comuni e le associazioni possono essere tradotte in modo
+assistito; le espressioni regolari restano da redigere e verificare
+manualmente. In assenza di forme native, Metnos continua a riconoscere le
+forme italiane e inglesi, ma registra esplicitamente la copertura incompleta.
+</p>
+
+<h1 id="cap4">4. Lingua del prompt e lingua della risposta</h1>
+
+<p>
+Un modello tende a seguire la lingua delle istruzioni che riceve, ma non è
+una garanzia. Non è quindi corretto affidare la lingua della risposta alla
+sola lingua del prompt.
+</p>
+
+<p>
+Metnos passa ai prompt sia il codice della lingua del turno sia il suo nome
+leggibile. I prompt che producono testo visibile, compresi l'assemblatore
+finale, le descrizioni e il Tutor, chiedono esplicitamente di scrivere in
+quella lingua. Di conseguenza un prompt inglese usato come ripiego può ancora
+chiedere una risposta in francese. Se il codice non è registrato con un nome
+leggibile, il modello riceve il codice stesso: il turno può funzionare, ma il
+comportamento è meno affidabile e la lingua non è pronta per il rilascio.
+</p>
+
+<p>
+Se un prompt viene scritto nella lingua sbagliata e non contiene
+l'istruzione sulla lingua d'uscita, il modello può effettivamente rispondere
+nella lingua del prompt. Le verifiche devono quindi controllare entrambe le
+cose: scelta corretta del template e indicazione esplicita della lingua
+della risposta. I messaggi deterministici non dipendono da questo
+comportamento del modello: seguono sempre la catena del database i18n.
+</p>
+
+<h1 id="cap5">5. Allineamento delle traduzioni</h1>
+
+<p>
+Prompt, descrizioni dei manifest e messaggi registrano l'impronta del testo
+corrente e quella della versione da cui è stata prodotta una traduzione.
+Quando viene modificata una lingua, quella versione diventa la sorgente per
+riallineare le altre.
+</p>
+
+<table>
+ <thead>
+  <tr><th style="width:24%">Risorsa</th><th>Come viene individuata la modifica</th><th>Risultato</th></tr>
+ </thead>
+ <tbody>
+  <tr><td>Prompt</td><td>Confronto dell'hash del contenuto; l'ora del file serve soltanto a risolvere più modifiche concorrenti.</td><td>Un nuovo candidato viene scritto nella directory <code>_pending</code> della lingua da aggiornare.</td></tr>
+  <tr><td>Descrizione nel manifest</td><td>Confronto degli hash per ogni campo e lingua.</td><td>La tabella del manifest viene aggiornata e il manifest viene nuovamente firmato.</td></tr>
+  <tr><td>Messaggio i18n</td><td>Versione del testo e data di aggiornamento della riga.</td><td>Le altre lingue non più allineate vengono accodate al traduttore.</td></tr>
+ </tbody>
+</table>
+
+<p>
+Il confronto e la scelta delle risorse da aggiornare sono deterministici; il
+modello interviene soltanto per produrre il testo candidato. La traduzione
+resta quindi un contenuto generato da rivedere, non una prova automatica di
+correttezza linguistica.
+</p>
+
+<p>
+È opportuno modificare una sola lingua per risorsa prima di eseguire
+l'allineamento. Nei prompt, modifiche contemporanee vengono risolte in base
+all'ora del file; in un manifest tutte le lingue condividono lo stesso file e
+un conflitto viene risolto in ordine alfabetico. Non bisogna affidare a
+questi criteri due correzioni divergenti.
+</p>
+
+<p>
+Il lessico di comprensione segue un ciclo distinto: viene accodato per lingua
+e verificato con un controllo di copertura. Non partecipa alla scelta della
+sorgente delle altre tre aree.
+</p>
+
+<h1 id="cap6">6. Aggiungere una lingua</h1>
+
+<p>
+Il comando seguente prepara una lingua, ma non la dichiara supportata. Va
+eseguito dalla directory <code>runtime</code> con l'ambiente Python
+dell'installazione di Metnos:
+</p>
+
+<pre><code>cd &lt;directory-di-installazione&gt;/runtime
+../.venv/bin/python -m admin.prompts_cli add-language fr --source-lang=it</code></pre>
+
+<p>Il comando compie tre operazioni immediate:</p>
+
+<ol>
+ <li>crea <code>runtime/prompts/fr/</code> e la relativa directory <code>_pending</code>;</li>
+ <li>crea nel database i18n le righe francesi in attesa, a partire dalle chiavi della lingua sorgente;</li>
+ <li>registra, se possibile, l'operazione nel diario multilingua dell'installazione.</li>
+</ol>
+
+<p>
+Non traduce immediatamente i manifest, non completa il lessico di
+comprensione, non aggiunge il codice ai registri delle lingue supportate e
+non cambia la lingua predefinita dell'istanza.
+</p>
+
+<h2>Procedura di rilascio</h2>
+
+<ol>
+ <li>
+  Registrare il codice in <code>vocab.LANGS</code> e aggiungere il nome
+  leggibile della lingua ai registri usati dal caricatore dei prompt e dai
+  traduttori. Verificare anche le parti del vocabolario che espongono forme
+  linguistiche proprie.
+ </li>
+ <li>
+  Eseguire il processo di allineamento, che tratta prompt, descrizioni dei
+  manifest e messaggi:
+  <pre><code>../deploy/run_prompts_translator.sh</code></pre>
+ </li>
+ <li>
+  Preparare il lessico della lingua e tradurre le forme assistite:
+  <pre><code>../.venv/bin/python cli/detection_cli.py enqueue fr
+../.venv/bin/python cli/detection_cli.py translate</code></pre>
+  Ripetere la traduzione finché la coda traducibile è vuota; redigere e
+  verificare manualmente le espressioni regolari rimaste in attesa.
+ </li>
+ <li>
+  Esaminare ogni candidato dei prompt e promuovere soltanto quelli corretti:
+  <pre><code>../.venv/bin/python -m admin.prompts_cli sync-status
+../.venv/bin/python -m admin.prompts_cli review &lt;ruolo&gt; --lang=fr
+../.venv/bin/python -m admin.prompts_cli mark-synced &lt;ruolo&gt; --lang=fr</code></pre>
+ </li>
+ <li>
+  Verificare sintassi, simmetria, segnaposto, database e copertura del
+  lessico con i comandi del capitolo successivo.
+ </li>
+ <li>
+  Eseguire una revisione linguistica umana e prove funzionali nella chat web,
+  nei dialoghi, nelle approvazioni, in Settings, su Telegram e nelle attività
+  ricorrenti. Provare anche due utenti con lingue diverse nello stesso
+  momento. Per una lingua da destra a sinistra occorrono inoltre prove visive
+  della direzione, dell'ordine dei controlli e dell'impaginazione.
+ </li>
+ <li>
+  Solo dopo questi controlli offrire la lingua agli utenti. Il campo
+  <code>lang</code> ricava automaticamente i valori dal catalogo i18n; non
+  richiede una lista separata nella pagina. Impostare
+  <code>METNOS_LANG</code> è facoltativo e cambia soltanto il ripiego
+  dell'istanza, non le preferenze individuali.
+ </li>
+</ol>
+
+<h1 id="cap7">7. Verifiche e strumenti amministrativi</h1>
+
+<p>
+I comandi seguenti si eseguono da
+<code>&lt;directory-di-installazione&gt;/runtime</code> con
+<code>../.venv/bin/python</code>.
+</p>
+
+<table>
+ <thead>
+  <tr><th style="width:47%">Comando</th><th>Verifica</th></tr>
+ </thead>
+ <tbody>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli validate</code></td><td>Sintassi dei template e invarianti di caricamento.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli lint --strict</code></td><td>Struttura, metadati e simmetria dei prompt.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli validate-cross-lang</code></td><td>Segnaposto, sintassi e proporzioni fra le versioni linguistiche.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli stats</code></td><td>Numero di righe e traduzioni ancora in attesa.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli pending</code></td><td>Righe del catalogo che richiedono traduzione.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli validate --verbose</code></td><td>Completezza delle lingue registrate in <code>vocab.LANGS</code>.</td></tr>
+  <tr><td><code>../.venv/bin/python cli/detection_cli.py coverage fr</code></td><td>Copertura nativa del lessico di comprensione.</td></tr>
+ </tbody>
+</table>
+
+<p>
+Ogni testo visibile nella chat, nei dialoghi, nelle richieste di
+approvazione e nelle pagine di Settings deve provenire dal catalogo i18n.
+Una frase scritta direttamente in un template o in JavaScript viola questo
+contratto anche quando coincide con la lingua predefinita
+dell'installazione.
+</p>
+
+<h2>Documenti collegati</h2>
+
+<ul>
+ <li><a href="../interface.html">Guida all'interfaccia</a>: percorsi della chat web e delle pagine di Settings.</li>
+ <li><a href="channel.html">Guida ai canali</a>: identità, autorizzazioni e resa sui diversi canali.</li>
+ <li><a href="executor.html">Guida agli executor</a>: struttura e ammissione dei manifest.</li>
+</ul>
+
+</body>
+</html>

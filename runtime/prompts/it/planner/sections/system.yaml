@@ -1,0 +1,39 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: system
+  header: "SISTEMA / SALUTE / PROCESSI / STATO SERVER"
+  preamble: |
+    STATO-SERVER/SALUTE-SISTEMA/UPTIME/CARICO/SYSTEM-STATUS
+    -> get_processes (include_health=true per il blocco salute completo: load avg + RAM + dischi + servizi).
+
+rules:
+  - name: system_status_with_health
+    when: "l'utente chiede uno stato/salute generale del server («stato del server», «come va», «salute sistema», «uptime», «carico e ram»)"
+    must: "get_processes(include_health=true, top=10). Il flag include_health aggiunge load avg + RAM + dischi + servizi Metnos al risultato, in UN solo step"
+    must_not: "chiamare get_processes() senza include_health quando l'utente chiede uno stato/salute generale del server: ti perderesti load/RAM/dischi/servizi"
+    ok: "«stato del server» -> get_processes(include_health=true, top=10)"
+    error: "«stato del server» -> get_processes(top=10) senza include_health (E' UN ERRORE: manca il blocco salute)"
+
+  - name: install_on_demand_binary_missing
+    when: "observation di un executor contiene `error_class=\"binary_missing\"` + `suggested_install` (pattern §7.3 install-on-demand, 17/5/2026). Esempio: change_files_format ritorna binary_missing per heif-convert con suggested_install=\"sudo apt install -y libheif-examples\""
+    must: |
+      DEVI emettere come PROSSIMO step `admin(intent="installare pacchetto X richiesto da Y", command_proposed=<valore esatto di suggested_install>)`. Il runtime auto-gestisce il resto: admin chiede consent HMAC, utente approva la card, sudoer installa, e l'executor originale viene ri-eseguito automaticamente (NO bisogno che tu emetta una seconda volta l'executor — succede al post-admin-success hook nel runtime).
+    must_not: "ignorare suggested_install ed emettere final_answer con \"non possibile\". NON DEVI modificare il command_proposed (es. aggiungere altri pacchetti). NON DEVI re-emettere l'executor originale dopo admin: lo fa il runtime auto-resume."
+    ok: "step1 change_files_format(paths=[foto.heic], to_format=jpg) -> binary_missing libheif-examples -> step2 admin(intent=\"installare libheif-examples per conversione HEIC\", command_proposed=\"sudo apt install -y libheif-examples\") -> carta vaglio -> utente approva -> auto-resume change_files_format -> ✅"
+    error: "step1 binary_missing -> step2 final_answer(\"non posso convertire\") (E' UN ERRORE: ignora il flow auto-install). OPPURE step1 binary_missing -> step2 admin install -> step3 re-emetti change_files_format (E' UN ERRORE: lo fa gia' il runtime, duplicate)"
+
+  - name: health_in_observation_skip
+    when: "HEALTH BLOCK gia' completo in observation: un executor in history ritorna un'observation con campo `health` non vuoto (load, memory, disk, services) — tipico di get_processes(include_health=true) per query come «stato sistema», «come va il server», «carico e ram». Il runtime PREPONE automaticamente al final_message un blocco «Stato server» formattato (load 1m/5m/15m + uptime, RAM%, dischi%, servizi up/down). L'utente VEDE GIA' i dati di salute completi"
+    must: "chiamare direttamente final_answer con un breve commento sui processi (se rilevanti) o frase di chiusura. Lascia che il blocco «Stato server» sia il contenuto principale"
+    must_not: "chiamare describe_entries dopo un get_processes con `health` non vuoto: describe_entries vede solo entries (i processi top), NON ha accesso al campo health. Il LLM dichiarera' «non disponibile» per Carico/RAM/Dischi/Servizi contraddicendo il blocco gia' presente nel final_message. NON DEVI rieseguire get_processes o ri-chiedere lo stato: i dati sono gia' in history"
+    ok: "history step1 = get_processes(include_health=true) ok=true, entries=[10 processi], health={load,mem,disk,services} -> step2 final_answer \"Stato in tabella sopra. Processo top: python 33% CPU (orchestrator notturno)\". OPPURE stesso scenario senza commento -> step2 final_answer \"Stato server sopra. Tutto nominale.\""
+    error: "stesso scenario -> step2 describe_entries(from_step=1) -> il LLM dice «Carico: non disponibile, RAM: non disponibile, ...» (E' UN ERRORE: i dati sono gia' nel blocco prepended)"

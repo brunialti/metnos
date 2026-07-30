@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Prospettive e giudizio v1.1</title>
+    <meta name="description" content="Valutazione del progetto Metnos attraverso prospettive agentiche, psicologiche, UI e AI/ML, con criteri espliciti di utilità, intelligenza e autonomia.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
+    <meta property="og:title" content="Prospettive e giudizio — Metnos">
+    <meta property="og:description" content="Una valutazione multidisciplinare del progetto Metnos e dei suoi criteri di qualità.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Prospettive e giudizio — Metnos">
+    <meta name="twitter:description" content="Il progetto Metnos valutato da quattro prospettive complementari.">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --code-bg: #f6f8fa;
+    --table-header: #1A477A; --table-alt: #f0f4f8;
+    --note-bg: #dbeafe; --note-border: #3b82f6;
+    --tip-bg: #dcfce7; --tip-border: #16a34a;
+    --warn-bg: #fef3c7; --warn-border: #f59e0b;
+    --danger-bg: #fee2e2; --danger-border: #dc2626;
+    --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: 'Segoe UI', Calibri, -apple-system, sans-serif;
+    font-size: 11pt; line-height: 1.65; color: var(--text);
+    background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px;
+}
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+
+
+.title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
+.title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 18pt; color: var(--navy-light); margin: 10px 0 40px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+
+.verdict { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 9pt; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+.v-must    { background: #dcfce7; color: #14532d; }
+.v-reinf   { background: #E5EBDA; color: #3F6212; }
+.v-defer   { background: #FDF3DC; color: #92400E; }
+.v-tension { background: #EDE4F7; color: #6B21A8; }
+.v-reject  { background: #fee2e2; color: #7F1D1D; }
+
+.persp {
+    padding: 14px 18px; border-radius: 8px; margin: 16px 0;
+    border-left: 5px solid; page-break-inside: avoid;
+}
+.persp h3 { margin-top: 0; color: inherit; }
+.p-agentic    { background: #F0F9FF; border-color: #0369A1; color: #0C4A6E; }
+.p-psych      { background: #FAF5FF; border-color: #7C3AED; color: #4C1D95; }
+.p-ui         { background: #FFF7ED; border-color: #EA580C; color: #7C2D12; }
+.p-ai         { background: #F0FDF4; border-color: #16A34A; color: #14532D; }
+
+.triangle {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px; margin: 20px 0; text-align: center;
+}
+.triangle .t-cell {
+    padding: 16px 12px; border-radius: 8px;
+    border: 2px solid;
+}
+.triangle .t-utile      { background: #DBEAFE; border-color: #2563EB; color: #1E3A8A; }
+.triangle .t-intell     { background: #E9EFDB; border-color: #548235; color: #3F6212; }
+.triangle .t-auto       { background: #EDE4F7; border-color: #7C3AED; color: #4C1D95; }
+.triangle h4 { margin: 0 0 6px; font-size: 12pt; }
+.triangle p  { margin: 0; font-size: 10pt; }
+
+@media print {
+    body { max-width: none; padding: 0; font-size: 10pt; }
+    h1 { font-size: 16pt; } h2 { font-size: 12pt; }
+    .title-page { padding: 80px 0 40px; }
+    .title-page h1 { font-size: 28pt; }
+}
+    </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<!-- lang-switch -->
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/Metnos_Prospettive_Giudizio_v1.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/Metnos_Perspectives_Judgement_v1.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+    <a href="index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">← Indice documentazione</a>
+    <span style="color:#8e8e93;">Fondamenti &rsaquo; <strong style="color:#1a1a1a;">Prospettive &amp; Giudizio</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+    <h1>Metnos</h1>
+    <div class="subtitle">Prospettive e giudizio</div>
+    <div class="meta">
+        Criteri per valutare utilità, affidabilità, autonomia e iniziativa.<br>
+        Le decisioni operative correnti sono documentate nella
+        <a href="architecture/index.html">Guida all'architettura</a>.
+    </div>
+</div>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+    <li><a href="#cap1">Scopo e metodo</a></li>
+    <li><a href="#cap2">Quattro qualità da non confondere</a></li>
+    <li><a href="#cap3">Le prospettive di valutazione</a></li>
+    <li><a href="#cap4">Come formulare un giudizio</a></li>
+    <li><a href="#cap5">Sette condizioni non negoziabili</a></li>
+    <li><a href="#cap6">Tensioni che non scompaiono</a></li>
+    <li><a href="#cap7">Autonomia e proattività sono proprietà del mandato</a></li>
+    <li><a href="#cap7b">La lente proattiva</a></li>
+    <li><a href="#cap8">Uso pratico del giudizio</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo e metodo</h1>
+
+<p class="lead">Questa pagina fornisce un metodo stabile per valutare una
+capacità di Metnos. Non racconta l'ordine in cui i componenti sono stati
+progettati e non sostituisce i loro contratti tecnici.</p>
+
+<p>La domanda di partenza non è «la funzione è interessante?», ma «produce un
+risultato utile, con fonti e limiti comprensibili, nel contesto dell'utente
+corretto?». La valutazione combina comportamento osservabile, prove,
+tracciabilità e qualità dell'interazione. Una descrizione convincente o una
+risposta ben formulata non costituiscono da sole una prova.</p>
+
+<h1 id="cap2">2. Quattro qualità da non confondere</h1>
+
+<table>
+<thead><tr><th style="width:20%">Qualità</th><th>Significato operativo</th><th>Non significa</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Utile</strong></td>
+  <td>Porta l'utente a un risultato pertinente con un costo proporzionato.</td>
+  <td>Fare più passi o mostrare più testo.</td>
+</tr>
+<tr>
+  <td><strong>Intelligente</strong></td>
+  <td>Sceglie strumenti e strategie adatti, esplicita l'incertezza e usa le fonti corrette.</td>
+  <td>Produrre prosa sicura di sé o antropomorfizzare il sistema.</td>
+</tr>
+<tr>
+  <td><strong>Autonomo</strong></td>
+  <td>Completa entro un mandato dichiarato i passi che non richiedono un nuovo consenso.</td>
+  <td>Ampliare da solo scopo, privilegi o durata dell'incarico.</td>
+</tr>
+<tr>
+  <td><strong>Proattivo</strong></td>
+  <td>Formula una proposta o avvia un incarico già autorizzato quando si verifica un criterio esplicito.</td>
+  <td>Osservare indiscriminatamente o decidere ciò che l'utente dovrebbe volere.</td>
+</tr>
+</tbody>
+</table>
+
+<p>Le quattro qualità possono divergere. Un flusso può essere autonomo ma
+inutile, intelligente ma non autorizzato, oppure utile proprio perché si
+ferma e chiede conferma.</p>
+
+<h1 id="cap3">3. Le prospettive di valutazione</h1>
+
+<table>
+<thead><tr><th style="width:24%">Prospettiva</th><th>Domande essenziali</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Esito per l'utente</strong></td>
+  <td>Il risultato risponde alla richiesta? È presentato nella lingua e nel canale corretti? L'utente sa che cosa è stato fatto e che cosa resta da decidere?</td>
+</tr>
+<tr>
+  <td><strong>Correttezza e sicurezza</strong></td>
+  <td>Ingressi, risultati e permessi sono convalidati? I dati esterni restano non attendibili? Le operazioni con effetti richiedono il consenso previsto?</td>
+</tr>
+<tr>
+  <td><strong>Affidabilità operativa</strong></td>
+  <td>Errori, scadenze temporali e ripartenze hanno esiti definiti? Il lavoro può essere ripreso senza duplicare effetti? Esistono registri e strumenti di recupero?</td>
+</tr>
+<tr>
+  <td><strong>Fonti e diritti sui dati</strong></td>
+  <td>Ogni affermazione personale rimanda a una fonte originaria? Dati, credenziali e preferenze sono isolati per utente, correggibili e cancellabili?</td>
+</tr>
+</tbody>
+</table>
+
+<h1 id="cap4">4. Come formulare un giudizio</h1>
+
+<p>Un giudizio utile dichiara la decisione, l'evidenza e la conseguenza. Le
+categorie seguenti servono a evitare formule vaghe come «da migliorare».</p>
+
+<table>
+<thead><tr><th style="width:22%">Esito</th><th>Quando usarlo</th></tr></thead>
+<tbody>
+<tr><td><span class="verdict v-must">necessario</span></td><td>Manca un requisito senza il quale la capacità non è corretta, isolata o controllabile.</td></tr>
+<tr><td><span class="verdict v-reinf">da rafforzare</span></td><td>Il contratto è valido, ma prove, messaggi o gestione degli errori non coprono ancora casi rilevanti.</td></tr>
+<tr><td><span class="verdict v-defer">condizionato</span></td><td>Il beneficio è plausibile ma dipende da un segnale misurabile, da una fonte o da un mandato che oggi manca.</td></tr>
+<tr><td><span class="verdict v-tension">tensione accettata</span></td><td>Due obiettivi legittimi restano in conflitto; sono documentati limite, scelta e mitigazione.</td></tr>
+<tr><td><span class="verdict v-reject">escluso</span></td><td>Viola un confine del prodotto oppure il costo e il rischio superano il beneficio dimostrato.</td></tr>
+</tbody>
+</table>
+
+<p>Ogni esito deve citare una prova controllabile: risultato di una verifica, voce del registro, sorgente
+originaria, stato persistito o comportamento riproducibile entro condizioni
+dichiarate. La prosa generata da un LLM non diventa evidenza solo perché è
+stata salvata.</p>
+
+<h1 id="cap5">5. Sette condizioni non negoziabili</h1>
+
+<ol>
+    <li><strong>Identità e autorizzazione.</strong> Ogni richiesta, sessione,
+        credenziale e dato appartiene a un utente autenticato. Un guest o un
+        altro utente non può interrogare il profilo, le fonti o i servizi del
+        titolare.</li>
+    <li><strong>Contratti degli executor.</strong> Argomenti, tipi, effetti,
+        errori e reversibilità devono essere dichiarati e validati prima
+        dell'esecuzione.</li>
+    <li><strong>Separazione fra contenuto e controllo.</strong> Web, documenti,
+        risultati degli strumenti e testo dei modelli non possono modificare
+        policy, privilegi o istruzioni di sistema.</li>
+    <li><strong>Consenso comprensibile.</strong> L'approvazione mostra azione,
+        destinatario, account, dispositivo e conseguenze rilevanti; non
+        nasconde effetti dietro etichette tecniche.</li>
+    <li><strong>Tracciabilità e recupero.</strong> Piano servito, approvazioni,
+        esiti ed errori devono essere correlabili senza esporre segreti e
+        senza duplicare effetti dopo una ripartenza.</li>
+    <li><strong>Fonti personali originarie.</strong> Preferenze e osservazioni
+        citano il turno o il dato autorizzato da cui derivano. Una sintesi LLM
+        non può citare un'altra sintesi LLM come prova.</li>
+    <li><strong>Valutazione rappresentativa.</strong> Le prove coprono lingue,
+        canali, utenti, errori e capacità effettive, non soltanto il percorso
+        ideale di un singolo programmatore.</li>
+</ol>
+
+<h1 id="cap6">6. Tensioni che non scompaiono</h1>
+
+<h2>Personalizzazione e instradamento riproducibile</h2>
+
+<p>Un profilo può migliorare tono, esempi e forma della risposta finale, ma
+non deve essere iniettato nel pianificatore soggetto a cache condivise. Se non entra
+nella chiave della cache viene ignorato quando la cache trova una corrispondenza;
+se vi entra, trasforma una cache di piani condivisi in una cache per utente e riduce il tasso di riuso, compromettendo la
+riproducibilità. Le alternative corrette sono applicarlo alla generazione
+finale oppure riscrivere esplicitamente la richiesta prima della cache, con
+una firma coerente.</p>
+
+<h2>Autonomia e controllo</h2>
+
+<p>Ridurre le conferme rende il flusso più rapido, ma aumenta il rischio di
+effetti inattesi. La soluzione non è un livello globale di «fiducia»:
+l'autorità va delimitata per tipo di operazione, fonte, durata, account e
+utente.</p>
+
+<h2>Utilità e riservatezza</h2>
+
+<p>Più fonti possono migliorare la risposta e allo stesso tempo creare un
+dossier personale eccessivo. Le directory sensibili, i dati sanitari o
+finanziari e i segreti richiedono esclusione predefinita o consenso
+specifico; la semplice possibilità tecnica di leggerli non autorizza la
+loro trasformazione in profilo.</p>
+
+<h2>Fluidità e trasparenza</h2>
+
+<p>Una risposta naturale non deve nascondere quale servizio è stato usato,
+quale dato è stato trovato o quale operazione è fallita. La trasparenza va
+resa leggibile, non eliminata.</p>
+
+<h1 id="cap7">7. Autonomia e proattività sono proprietà del mandato</h1>
+
+<p>Metnos non è autonomo o proattivo in senso assoluto. Lo è rispetto a uno
+specifico incarico: «ogni lunedì controlla il calendario», «se arriva un
+messaggio da questo mittente avvisami», «continua finché hai trovato tre fonti
+ufficiali». Il mandato definisce:</p>
+
+<ul>
+    <li>utente e canale di consegna;</li>
+    <li>evento o frequenza di attivazione;</li>
+    <li>fonti consultabili e account utilizzabili;</li>
+    <li>operazioni consentite e punti di approvazione;</li>
+    <li>limite di costo, numero di tentativi e scadenza;</li>
+    <li>modalità di revoca e comportamento in caso di errore.</li>
+</ul>
+
+<p>Fuori da questi confini Metnos deve fermarsi, chiedere un nuovo mandato o
+presentare una proposta. Non può ampliare l'incarico facendo leva su una
+preferenza presunta.</p>
+
+<h1 id="cap7b">7-bis. La lente proattiva</h1>
+
+<p>Prima di introdurre una nuova condizione di avvio o una nuova proposta automatica,
+verificare in ordine:</p>
+
+<ol>
+    <li><strong>Segnale:</strong> quale evento osservabile la attiva?</li>
+    <li><strong>Pertinenza:</strong> perché il segnale riguarda proprio
+        quell'utente e quel mandato?</li>
+    <li><strong>Fonte:</strong> l'accesso alla fonte è autorizzato e
+        necessario?</li>
+    <li><strong>Azione:</strong> il sistema propone, notifica o esegue?</li>
+    <li><strong>Consenso:</strong> dove si colloca l'approvazione?</li>
+    <li><strong>Limite:</strong> quando scade o viene sospesa?</li>
+    <li><strong>Riconciliazione:</strong> come vengono gestiti dati nuovi che
+        contraddicono osservazioni precedenti?</li>
+    <li><strong>Verifica:</strong> quale evento o prova dimostra che il
+        comportamento è corretto?</li>
+</ol>
+
+<p>Se una domanda non ha risposta, la capacità non è pronta per essere
+presentata come disponibile.</p>
+
+<h1 id="cap8">8. Uso pratico del giudizio</h1>
+
+<p>Per una modifica o una nuova capacità, il risultato della revisione dovrebbe
+essere leggibile in questa forma:</p>
+
+<table>
+<thead><tr><th style="width:24%">Campo</th><th>Contenuto</th></tr></thead>
+<tbody>
+<tr><td>Richiesta dell'utente</td><td>Un esempio concreto in linguaggio naturale.</td></tr>
+<tr><td>Esito atteso</td><td>Ciò che l'utente vedrà, incluso il punto di conferma.</td></tr>
+<tr><td>Mandato e fonti</td><td>Utente, account, dispositivo, percorsi e servizi coinvolti.</td></tr>
+<tr><td>Riscontro</td><td>Prove, eventi e dati originari che dimostrano l'esito.</td></tr>
+<tr><td>Rischi e limiti</td><td>Effetti non reversibili, dati sensibili, costi e condizioni di errore.</td></tr>
+<tr><td>Giudizio</td><td>Necessario, da rafforzare, condizionato, tensione accettata o escluso.</td></tr>
+</tbody>
+</table>
+
+<p>Le specifiche correnti da consultare sono
+<a href="architecture/agent_runtime.html">motore dell'agente</a>,
+<a href="architecture/executor.html">executor</a>,
+<a href="architecture/approval_ux.html">approvazioni</a>,
+<a href="architecture/observability.html">osservabilità</a>,
+<a href="architecture/pairing.html">utenti e sessioni</a>,
+<a href="architecture/telos.html">telos</a> e
+<a href="architecture/vaglio.html">vaglio</a>.</p>
+
+<hr>
+
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>Prospettive e giudizio</em><br>
+Criteri correnti per valutare capacità, limiti e qualità dell'interazione.
+</p>
+
+</body>
+</html>

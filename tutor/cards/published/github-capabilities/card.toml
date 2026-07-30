@@ -1,0 +1,57 @@
+id = "github-capabilities"
+audience_minima = "user"
+priorita = 95
+
+[semantic]
+it = "Capacità degli executor GitHub per repository, cartelle, file, issue, pull request, task, messaggi e notifiche."
+en = "GitHub executor capabilities for repositories, folders, files, issues, pull requests, tasks, messages, and notifications."
+
+[title]
+it = "Capacità GitHub disponibili"
+en = "Available GitHub capabilities"
+
+
+[catalog]
+suffix = "_github"
+membership = "builtin"
+expected_min = 16
+
+[catalog.heading]
+it = "Questa istanza espone {count} capacità GitHub builtin verificate:"
+en = "This instance exposes {count} verified builtin GitHub capabilities:"
+
+[catalog.labels.it]
+issues = "Issue"
+pulls = "Pull request"
+files = "File del repository"
+dirs = "Cartelle del repository"
+tasks = "Task"
+messages = "Messaggi e notifiche"
+
+[catalog.labels.en]
+issues = "Issues"
+pulls = "Pull requests"
+files = "Repository files"
+dirs = "Repository folders"
+tasks = "Tasks"
+messages = "Messages and notifications"
+
+[catalog.verbs.it]
+change = "modificare"
+create = "creare"
+delete = "eliminare"
+find = "cercare"
+list = "elencare"
+read = "leggere"
+send = "inviare"
+set = "aggiornare"
+
+[catalog.verbs.en]
+change = "change"
+create = "create"
+delete = "delete"
+find = "find"
+list = "list"
+read = "read"
+send = "send"
+set = "update"

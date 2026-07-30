@@ -1,0 +1,99 @@
+# Manifest dell'executor `read_files_ocr` — Metnos v1.1
+# Naming compositivo: verbo_oggetto_plurale_qualificatore. Vettoriale per costruzione.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "read_files_ocr"
+version     = "0.2.0"
+timeout_s   = 1800
+author      = "Roberto Brunialti"
+affinity    = ["read", "leggi", "ocr", "scansione", "image", "immagine", "pdf", "tesseract", "estrai", "testo"]
+revertible  = false
+lifecycle   = "active"
+
+[description]
+it = "SCOPO: estrae testo da immagini e PDF scansionati: OCR locale prima, VLM bounded solo se insufficiente. PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: leggere file nativi o convertire formati. OUT: entries=[{content}]."
+en = "SCOPO: extracts text from images and scanned PDFs: local OCR first, bounded VLM only if insufficient. PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: read native files or convert formats. OUT: entries=[{content}]."
+
+[code]
+files  = ["read_files_ocr.py"]
+digest = "sha256:b007369ea29aed58a19b8a18b5e3113bd41012b1da7f67e0013c9c014ff95278"
+
+[args]
+type     = "object"
+required = ["paths"]
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Path esatti senza glob a immagini o PDF; assoluti o con ~. Formati: jpg/png/tiff/bmp/gif/webp/heic/pdf."
+en = "Exact non-glob image or PDF paths; absolute or with ~. Formats: jpg/png/tiff/bmp/gif/webp/heic/pdf."
+
+[args.properties.lang]
+type        = "string"
+default     = "ita+eng"
+
+[args.properties.lang.description]
+it = "Lingua/lingue Tesseract. Default 'ita+eng' (multilingua). Singola: 'ita' o 'eng'. Verifica lingue installate con `tesseract --list-langs`."
+en = "Tesseract language/languages. Default 'ita+eng' (multilingual). Single: 'ita' or 'eng'. Verify installed languages with `tesseract --list-langs`."
+
+[args.properties.max_files]
+type        = "integer"
+minimum     = 0
+maximum     = 100
+default     = 20
+
+[args.properties.max_files.description]
+it = "Numero massimo di file elaborati nella singola chiamata. Default 20, limite di sicurezza 100; 0 usa il limite di sicurezza. Se restano file, l'output espone il troncamento."
+en = "Maximum files processed in one call. Default 20, safety ceiling 100; 0 uses the safety ceiling. If files remain, the output reports truncation."
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/**", "/tmp/**"]
+
+[[capabilities]]
+name = "code:exec"
+hint = ["tesseract", "pdftoppm"]
+
+[[capabilities]]
+name = "llm:local"
+hint = ["bounded_ocr_fallback"]
+
+[[capabilities]]
+name = "network:http"
+hint = ["127.0.0.1"]
+
+[output]
+schema_inline = "{ ok: bool, entries: array, failed: array, ok_count: integer, fail_count: integer, partial?: bool, truncated?: bool, truncated_what?: string, used?: integer, available_total?: integer, cap_field?: string, cap_value?: integer, error?: string, error_class?: string, error_code?: string }"
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { paths = [] }
+expect = { ok = true, ok_count_eq = 0 }
+
+[[tests]]
+name   = "args_invalidi_paths_non_lista"
+input  = { paths = "/tmp/foo.png" }
+expect = { ok = false, error_contains = "deve essere una lista" }
+
+[[tests]]
+name   = "path_inesistente_fallisce_solo_quella"
+input  = { paths = ["/tmp/metnos_does_not_exist.png"] }
+expect = { ok = false, fail_count_eq = 1, error_contains = "does not exist" }
+
+[[tests]]
+name   = "estensione_non_supportata"
+setup  = "echo x > /tmp/metnos_test_ocr.csv"
+input  = { paths = ["/tmp/metnos_test_ocr.csv"] }
+expect = { ok = false, error_contains = "unsupported extension" }
+teardown = "rm -f /tmp/metnos_test_ocr.csv"
+
+[[tests]]
+name     = "ocr_immagine_reale"
+setup    = "convert -size 400x80 xc:white -font DejaVu-Sans -pointsize 24 -fill black -draw 'text 20,50 \"Metnos OCR test 123\"' /tmp/metnos_test_ocr.png 2>/dev/null || python3 -c \"from PIL import Image, ImageDraw, ImageFont; img=Image.new('RGB',(400,80),'white'); d=ImageDraw.Draw(img); d.text((20,30),'Metnos OCR test 123', fill='black'); img.save('/tmp/metnos_test_ocr.png')\""
+input    = { paths = ["/tmp/metnos_test_ocr.png"], lang = "eng" }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -f /tmp/metnos_test_ocr.png"

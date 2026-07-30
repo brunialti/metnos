@@ -1,0 +1,55 @@
+role: synt_description
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: synt_description
+  header: "Stage 4 DESCRIPTION of synt-multistage"
+  preamble: |
+    MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown fences,
+    NO comments. The response MUST start with `{` and end with `}`.
+
+context:
+  decisions_locked:
+    name: "{{ name }}"
+    args_required: "{{ args_required }}"
+    capabilities: "{{ capabilities }}"
+    revertible: "{{ revertible }}"
+    reverse_pattern: "{{ reverse_pattern }}"
+    num_tests: "{{ num_tests }}"
+  user_request: "{{ user_request }}"
+
+rules:
+  - name: description_constraints
+    body: |
+      MINIMUM CONSTRAINTS for description:
+      - A single string, NO newline (TOML manifest).
+      - Length 2-5 sentences.
+      - Must cover: what it does, what output it returns, a possible example if the API is not obvious.
+      - NO Python jargon (no Path(), subprocess, lambda).
+  - name: affinity_constraints
+    body: |
+      RULES for affinity:
+      - List of 6-10 keywords in Italian + English, lowercase.
+      - Synonyms and variants that the user might use.
+
+output_schema:
+  type: object
+  required: [description, affinity]
+  properties:
+    description: {type: string, minLength: 80}
+    affinity: {type: array, minItems: 6, maxItems: 10}
+
+examples:
+  - name_for: delete_files
+    output:
+      description: "Deletes one or more files from the filesystem. Vectorial: always accepts a list of paths (even with a single element, or empty). Returns ok/ok_count/fail_count/results/failed; best-effort, one failed entry does not block the others. Example: paths=['/tmp/old.log']. Irreversible critical."
+      affinity: [delete, cancella, rimuovi, elimina, rm, del, fs]
+
+footer:
+  instruction: "NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else."

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; telos e proposte di miglioramento</title>
+ <meta name="description" content="Come Metnos legge i fini dichiarati in TELOS.md, li usa come segnali non vincolanti e produce proposte sottoposte alla decisione umana.">
+ <meta name="keywords" content="Metnos, telos, TELOS.md, allineamento, proposte, change intent">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/telos">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/telos">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/telos.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/telos.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">telos</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Telos e proposte di miglioramento</div>
+ <div class="meta">Dai fini dichiarati dall'utente a una proposta verificabile e sottoposta a decisione umana.</div>
+</div>
+
+<p class="lead">Un telos &egrave; un fine generale dichiarato dall'utente nel file
+<code>workspace/TELOS.md</code>. Metnos lo tratta come un segnale graduato: pu&ograve;
+preferire una strategia o ordinare una proposta, ma non pu&ograve; ricavarne nuovi
+permessi, superare le regole di autorizzazione o bloccare arbitrariamente una richiesta esplicita.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Che cosa contiene TELOS.md</a></li>
+ <li><a href="#cap2">Dove interviene il telos</a></li>
+ <li><a href="#cap3">Come nasce una proposta</a></li>
+ <li><a href="#cap4">Valutazione e controlli</a></li>
+ <li><a href="#cap5">Decisione e ciclo di vita</a></li>
+ <li><a href="#cap6">Esempio pratico</a></li>
+ <li><a href="#cap7">Limiti attuali e riferimenti</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Che cosa contiene <code>TELOS.md</code></h1>
+
+<p>Il loader riconosce da tre a sette sezioni nel formato seguente:</p>
+
+<pre><code>## t.tempo &mdash; Liberare il mio tempo dalle incombenze ripetitive
+peso: 0.25
+soglia_attivazione: 0.30
+note: considera soprattutto attivit&agrave; ripetitive e verificabili.</code></pre>
+
+<table>
+<thead><tr><th>Campo</th><th>Significato</th></tr></thead>
+<tbody>
+<tr><td>Identificatore</td><td>Nome stabile nel formato <code>t.&lt;slug&gt;</code>.</td></tr>
+<tr><td>Frase</td><td>Il fine scritto dall'utente, conservato nella sua lingua.</td></tr>
+<tr><td><code>peso</code></td><td>Importanza relativa. Se la somma non &egrave; circa uno, il loader normalizza i pesi.</td></tr>
+<tr><td><code>soglia_attivazione</code></td><td>Valore minimo di aderenza necessario perch&eacute; il contributo positivo conti.</td></tr>
+<tr><td><code>note</code></td><td>Contesto utile a interpretare il fine senza cambiarne il significato.</td></tr>
+</tbody>
+</table>
+
+<p>Il file viene riletto quando cambia. Se manca o non contiene sezioni valide, il
+runtime prosegue senza il segnale teleologico. Il parser &egrave; deterministico; non usa
+un modello linguistico per inventare o modificare i fini.</p>
+
+<h1 id="cap2">2. Dove interviene il telos</h1>
+
+<p>Il telos ha due impieghi distinti:</p>
+
+<ol>
+ <li><strong>Contesto di pianificazione.</strong> Il runtime pu&ograve; rendere i fini correnti
+ nel contesto del pianificatore. Le istruzioni precisano che sono segnali orientativi: servono
+ a scegliere fra alternative con esito comparabile e non sostituiscono regole,
+ capacit&agrave; o richiesta dell'utente.</li>
+ <li><strong>Generazione facoltativa di proposte.</strong> Un'attivit&agrave; offline pu&ograve;
+ esaminare catalogo, schemi d'uso e fini dichiarati per formulare possibili
+ miglioramenti. Il risultato &egrave; una proposta; non &egrave; un'azione gi&agrave; autorizzata.</li>
+</ol>
+
+<p>Le due strade non attribuiscono autorit&agrave; al testo di <code>TELOS.md</code>. Una
+richiesta diretta resta soggetta alle normali regole di esecuzione; una proposta
+spontanea deve attraversare il proprio ciclo di revisione.</p>
+
+<h1 id="cap3">3. Come nasce una proposta</h1>
+
+<p>Il processo <code>telos_introspect_nightly</code> &egrave; disattivato per impostazione
+predefinita. Viene eseguito soltanto quando l'operatore abilita
+<code>METNOS_TELOS_NIGHTLY=1</code>. In quella modalit&agrave; applica dieci lenti registrate
+ai telos correnti:</p>
+
+<ul>
+ <li><code>scamper</code>, <code>oulipo</code>, <code>inverse_rl</code>;</li>
+ <li><code>endgame_book</code>, <code>analogy_transfer</code>, <code>boden_transformational</code>;</li>
+ <li><code>pattern_language</code>, <code>generative_design</code>;</li>
+ <li><code>counterfactual</code> e <code>constitutional</code>.</li>
+</ul>
+
+<p>Le lenti usano un modello locale per la parte generativa. Attorno a questa parte
+probabilistica, il runtime applica regole deterministiche: selezione delle lenti,
+controlli anti-paternalismo, convalida dei nomi, limite delle proposte, eliminazione dei duplicati
+per coppia obiettivo&ndash;lente e persistenza locale.</p>
+
+<p>Le proposte grezze sono registrate in
+<code>~/.local/share/metnos/telos_proposals.jsonl</code>. L'archivio raggruppa quelle che
+puntano allo stesso obiettivo e misura la convergenza fra lenti diverse. Solo le teste
+dei gruppi con un esito nominale azionabile vengono trasformate in
+<code>change_intent</code>.</p>
+
+<h1 id="cap4">4. Valutazione e controlli</h1>
+
+<p>Per ogni proposta, il giudice teleologico stima un valore di aderenza per ciascun
+telos. La stima &egrave; prodotta da un modello linguistico; pesi, soglie, composizione e
+ordinamento sono invece applicati dal codice. Il punteggio aiuta l'esame preliminare, ma non
+costituisce una prova oggettiva della qualit&agrave; della proposta.</p>
+
+<table>
+<thead><tr><th>Controllo</th><th>Effetto</th></tr></thead>
+<tbody>
+<tr><td>Regole e Vaglio</td><td>Restano superiori al telos e possono negare l'azione.</td></tr>
+<tr><td>Anti-paternalismo</td><td>Scarta forme che sostituiscono la decisione dell'utente.</td></tr>
+<tr><td>Catalogo e autorit&agrave; dei nomi</td><td>Separano estensioni valide, nuove capacit&agrave; e rumore non azionabile.</td></tr>
+<tr><td>Eliminazione dei duplicati e convergenza</td><td>Riducono ripetizioni senza presentarle come conferme indipendenti della verit&agrave;.</td></tr>
+<tr><td>Revisione umana</td><td>Nessuna proposta diventa modifica soltanto perch&eacute; ha un punteggio alto.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap5">5. Decisione e ciclo di vita</h1>
+
+<p>L'adattatore telos traduce la testa di un gruppo in uno dei tipi supportati, per
+esempio creazione di un executor, estensione parametrica o esecuzione controllata di
+una sequenza. Il materializzatore la inserisce nell'archivio unificato come
+<code>proposed</code>.</p>
+
+<p>L'utente la esamina nella pagina <code>/admin/changes</code> e pu&ograve; accettarla,
+rifiutarla o rimandarla. Soltanto una proposta accettata passa all'applicatore; dopo
+l'applicazione viene osservata e pu&ograve; essere finalizzata oppure annullata secondo il
+tipo di modifica. Il flusso completo &egrave; descritto nella pagina sul
+<a href="lifecycle.html">ciclo di vita delle modifiche</a>.</p>
+
+<h1 id="cap6">6. Esempio pratico</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Quali modifiche al sistema sono in attesa della mia decisione?&raquo;</p>
+
+<p>Metnos pu&ograve; spiegare che le proposte si amministrano nella chat web. Se la domanda
+parte da Telegram, apri quindi la chat web, vai all'area di amministrazione e scegli
+<strong>Modifiche</strong>; il percorso tecnico corrispondente &egrave;
+<code>/admin/changes</code>. Una proposta telos resta distinta dalle preferenze scritte
+in <code>TELOS.md</code>: approvarla autorizza quella modifica, non tutte le azioni
+future che sembrano coerenti con lo stesso fine.</p>
+
+<h1 id="cap7">7. Limiti attuali e riferimenti</h1>
+
+<ul>
+ <li>Il costo di disturbo previsto dalla formula di allineamento viene passato come
+ <code>0</code> nel flusso introspettivo corrente: non esiste ancora un limite operativo
+ delle interruzioni.</li>
+ <li>Il sistema non deduce nuovi telos o permessi dal silenzio dell'utente.</li>
+ <li>La prosa e i punteggi generati dal modello non sono prove deterministiche; la
+ decisione deve poter risalire ai dati locali e alla proposta originale.</li>
+ <li>Il processo notturno resta facoltativo e disattivato per impostazione predefinita.</li>
+</ul>
+
+<p>Riferimenti nel codice:</p>
+
+<ul>
+ <li><code>runtime/telos_loader.py</code>: parsing, normalizzazione e ricarica di <code>TELOS.md</code>.</li>
+ <li><code>runtime/telos_lenses/</code> e <code>runtime/telos_introspect.py</code>: generazione e controlli.</li>
+ <li><code>runtime/alignment_engine.py</code>: stima e composizione dell'allineamento.</li>
+ <li><code>runtime/telos_proposals_store.py</code>: persistenza, raggruppamento e convergenza.</li>
+ <li><code>runtime/change_intent_adapters/telos.py</code> e <code>runtime/change_intents.py</code>: ingresso nel ciclo di vita.</li>
+</ul>
+
+</body>
+</html>

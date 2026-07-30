@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Metnos &mdash; remote executors</title>
+<meta name="description" content="Guide to Metnos remote executors: device pairing, placement, per-OS sandboxing, installation from the interface, and operational limits.">
+<meta name="keywords" content="Metnos, remote executors, metnos-client, devices, placement, sandbox, Windows, Linux, pairing">
+<meta name="author" content="the owner">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="https://metnos.com/en/architecture/remote_executors">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/remote_executors">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/remote_executors">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/remote_executors">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://metnos.com/en/architecture/remote_executors">
+<meta property="og:title" content="Metnos &mdash; remote executors">
+<meta property="og:description" content="How Metnos runs selected executors on registered devices while keeping policy, audit and control on the server.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="it_IT">
+<meta property="og:site_name" content="Metnos">
+<style>
+:root { --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235; --bronze:#A0522D; --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de; --code-bg:#f6f8fa; --muted:#64748B; }
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,BlinkMacSystemFont,Roboto,sans-serif; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; line-height:1.65; font-size:11pt; }
+h1 { color:var(--navy); font-size:22pt; border-bottom:3px solid var(--navy); padding-bottom:10px; margin-top:38px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:15pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+h3 { color:var(--navy); font-size:12.5pt; margin-top:22px; }
+p { margin:10px 0; }
+a { color:var(--navy); text-decoration:none; }
+a:hover { text-decoration:underline; }
+code { font-family:Consolas,'Courier New',monospace; background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:10pt; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--navy); color:white; padding:8px 10px; text-align:left; }
+td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:#f0f4f8; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+.nav { background:#fff; border-bottom:1px solid var(--border); padding:10px 0; font-size:14px; margin:-40px -30px 20px -30px; }
+.nav-inner { max-width:960px; margin:0 auto; padding:0 20px; display:flex; justify-content:space-between; gap:16px; }
+.crumb { color:var(--muted); }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:22px 0; }
+.toc { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 22px; margin:22px 0; }
+.toc ol { margin:4px 0 0 18px; padding:0; }
+.toc li { margin:3px 0; }
+footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:9.5pt; }
+</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/remote_executors.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="nav">
+ <div class="nav-inner">
+ <a href="../index.html">&larr; Documentation index</a>
+ <span class="crumb">Architecture guide &rsaquo; <strong>remote_executors</strong></span>
+ </div>
+</div>
+
+<h1>Remote Executors</h1>
+
+<p class="lead">
+A remote executor is a Metnos executor that is not launched on the server,
+but on a device registered to the same user, such as a Windows PC or Linux
+laptop. The server remains the decision point: it checks whether
+the action is allowed, signs the payload, receives the result and writes the
+audit trail.
+</p>
+
+<p>The client supports pairing guided by the interface, contained execution on
+Linux and Windows, process-tree termination at the deadline, controlled restart
+if sandbox construction does not return, single-instance locking, and
+server-side revocation.</p>
+
+<div class="toc">
+<strong>On this page</strong>
+<ol>
+ <li><a href="#idea">Core idea</a></li>
+ <li><a href="#identity">Device identity and pairing</a></li>
+ <li><a href="#placement">Placement: when an executor may leave the server</a></li>
+ <li><a href="#installation">Installation from the UI</a></li>
+ <li><a href="#sandbox">Per-OS sandboxing</a></li>
+ <li><a href="#failure">Failures, duplicates and revocation</a></li>
+ <li><a href="#limits">Declared limits</a></li>
+</ol>
+</div>
+
+<h2 id="idea">1. Core Idea</h2>
+
+<p>
+Metnos is designed as a household system: many data live on the server, but not
+all of them. A document may sit on a laptop, a work folder on a Windows PC, a
+screen or an application may exist only there. Remote executors bring a controlled
+part of the catalog to the place where the data actually live, without turning
+each machine into a second Metnos.
+</p>
+
+<p>
+The asymmetry is deliberate: the device executes, but it does not decide. The
+server keeps policy, Vaglio, executor selection, signing, the device registry and
+audit. The remote client, <code>metnos-client</code>, polls the server, verifies
+the signature of the received job, runs it inside the containment available for
+its OS and returns a signed result.
+</p>
+
+<h2 id="identity">2. Device Identity and Pairing</h2>
+
+<p>
+Each device has its own Ed25519 identity. Admission happens through a single-use
+code generated by the server: the client consumes it, registers the device public
+key and receives the server public key for pinning. From that point on the device
+is not "an open browser": it is a known, revocable and recognisable machine.
+</p>
+
+<p>
+The detailed flow is described in
+<a href="pairing.html#cap6">Identity and pairing, ch. 6</a>.
+The essential parts are: short token, one-time consume, unique device fingerprint,
+periodic heartbeat and explicit revocation from the admin panel.
+</p>
+
+<h2 id="placement">3. Placement: When an Executor May Leave the Server</h2>
+
+<p>
+An executor does not become remote by accident. The loader reads its manifest:
+allowed platforms, capabilities, signature and optional placement section. Only
+when the contract is compatible may the runtime assign the job to a device.
+Otherwise the executor stays local or is refused with an explicit error.
+</p>
+
+<table>
+<thead><tr><th>Check</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td><code>platforms</code></td><td>Prevents sending to Windows an executor written only for Linux, or the reverse.</td></tr>
+<tr><td>server signature</td><td>The client runs only code that matches what the server signed.</td></tr>
+<tr><td>capabilities</td><td>Policy and Vaglio stay server-side; the device does not widen permissions.</td></tr>
+<tr><td>placement</td><td>States whether the job may stay on the server or requires a specific device.</td></tr>
+</tbody>
+</table>
+
+<p>
+A selected provider backend is always bound to the server: network access,
+credential home, and placement derive from the same effective
+<code>provider:access</code> capability. A local backend of the same executor does not
+inherit that restriction and remains device-eligible when
+<code>placement.device_ok</code> allows it.
+</p>
+
+<p>
+Browser, credential, and ACL-sharing authority are separate in the canonical
+registry: <code>network:sites</code> restricts a session to approved origins,
+<code>auth.password_storage</code> restricts reads to the credential scope, and
+<code>drive:permissions</code> identifies a critical remote grant. All
+<code>*_sites</code> executors remain server-only.
+</p>
+
+<p>
+Metnos-managed resources also use separate authority:
+<code>metnos:read</code>, <code>metnos:write</code>,
+<code>metnos:create</code>, and the
+<code>metnos:credentials_metadata_only</code> constraint. The latter prevents
+vault executors from returning secrets to the planner.
+</p>
+
+<p>
+In compound flows, presentation follows the terminal operation: when a search
+ends by creating an archive, chat returns an artifact-and-folder receipt rather
+than the technical <code>compress_files</code> table. Legitimate tables stay
+inside the message bubble and scroll horizontally when a path or URL cannot be
+broken without losing information.
+</p>
+
+<h3 id="placement-chat">3.1 Chat-driven placement: the server or one of your PCs</h3>
+
+<p>
+The table above tells you <em>whether</em> an executor may leave the server. The
+practical question remains: <em>on which machine</em> does a command you type in chat
+actually run? Metnos answers with no panels and no manual toggles &mdash; it works it
+out from the sentence itself. We call <b>destination</b> the machine where the next
+command will run: either the server where Metnos lives
+or one of the PCs you have <b>paired</b>, that is, registered once through the pairing
+flow. Each paired PC has a <b>name</b> you chose (for example <code>OFFICE-LAPTOP</code>)
+and belongs to a user: the server knows which devices are yours.
+</p>
+
+<p>
+The conversation below shows a single chat whose destination changes turn after turn.
+On the right: the three steps by which Metnos decides <em>where</em> to run, the two
+guarantees, and a diagram of the server / PC fork.
+</p>
+
+<style>
+/* --- styles local to 3.1, prefixed rx- so they cannot touch the rest of the page --- */
+.rx-scope{
+  --rx-navy:#1A477A; --rx-ink:#1c2430; --rx-muted:#5b6675;
+  --rx-card:#ffffff; --rx-line:#d7dee7;
+  --rx-amber:#b5730f; --rx-amber-bg:#fdf3e0;
+  --rx-green:#2f7d4f; --rx-green-bg:#e8f3ec;
+  --rx-server:#4a5568; --rx-server-bg:#eef0f3;
+  --rx-device:#1A477A; --rx-device-bg:#e8effa;
+  margin:18px 0 8px;
+}
+.rx-scope, .rx-scope *{ box-sizing:border-box; }
+.rx-layout{ display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start; }
+@media(max-width:820px){ .rx-layout{ grid-template-columns:1fr; } }
+
+.rx-chat{ background:var(--rx-card); border:1px solid var(--rx-line); border-radius:16px;
+  overflow:hidden; box-shadow:0 2px 10px rgba(20,40,70,.05); }
+.rx-bar{ display:flex; align-items:center; gap:10px; padding:11px 16px; background:var(--rx-navy); color:#fff; }
+.rx-bar .rx-dot{ width:10px; height:10px; border-radius:50%; background:#7fd39b; }
+.rx-bar b{ font-weight:600; font-size:11pt; }
+.rx-bar .rx-dest{ margin-left:auto; font-size:9.5pt; background:rgba(255,255,255,.15);
+  padding:3px 9px; border-radius:999px; }
+.rx-thread{ padding:18px 16px; display:flex; flex-direction:column; gap:14px; background:#f7f9fc; }
+
+.rx-turn{ display:flex; flex-direction:column; gap:6px; }
+.rx-turn.rx-user{ align-items:flex-end; }
+.rx-bubble{ max-width:82%; padding:10px 13px; border-radius:14px; font-size:10.5pt; line-height:1.5; }
+.rx-user .rx-bubble{ background:var(--rx-navy); color:#fff; border-bottom-right-radius:5px; }
+.rx-bot .rx-bubble{ background:#fff; border:1px solid var(--rx-line); border-bottom-left-radius:5px; color:var(--rx-ink); }
+.rx-mono{ font-family:Consolas,'Courier New',monospace; font-size:9pt;
+  background:#f2f5f9; border:1px solid #e3e9f1; border-radius:8px;
+  padding:8px 10px; margin-top:8px; white-space:pre-wrap; color:#25303f; }
+.rx-chip{ display:inline-flex; align-items:center; gap:6px; font-size:9.5pt; font-weight:600;
+  padding:3px 9px; border-radius:999px; width:max-content; }
+.rx-chip.rx-server{ background:var(--rx-server-bg); color:var(--rx-server); border:1px solid #cfd6df; }
+.rx-chip.rx-device{ background:var(--rx-device-bg); color:var(--rx-device); border:1px solid #bcd2f0; }
+.rx-chip.rx-offline{ background:#fdeaea; color:#b23b3b; border:1px solid #eec2c2; }
+.rx-route{ display:flex; align-items:center; gap:8px; align-self:center; font-size:9.5pt; color:var(--rx-amber);
+  background:var(--rx-amber-bg); border:1px dashed #e6c187; border-radius:999px; padding:5px 12px; text-align:center; }
+.rx-route b{ color:#8a5709; }
+.rx-sticky{ align-self:center; font-size:9.5pt; color:var(--rx-muted); font-style:italic;
+  display:inline-flex; gap:6px; align-items:center; text-align:center; }
+.rx-destnow{ align-self:center; font-size:9.5pt; font-weight:600; color:var(--rx-navy);
+  background:var(--rx-device-bg); border:1px solid #bcd2f0; border-radius:999px; padding:4px 12px; }
+
+.rx-panel{ background:var(--rx-card); border:1px solid var(--rx-line); border-radius:16px; padding:18px; }
+.rx-panel h4{ font-size:11.5pt; margin:0 0 12px; color:var(--rx-navy); border:0; }
+.rx-step{ display:flex; gap:11px; padding:9px 0; border-top:1px solid #eef2f6; }
+.rx-step:first-of-type{ border-top:0; }
+.rx-step .rx-n{ flex:0 0 24px; height:24px; border-radius:50%; background:var(--rx-navy); color:#fff;
+  font-size:10pt; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.rx-step .rx-t{ font-size:10pt; }
+.rx-step .rx-t b{ color:var(--rx-ink); } .rx-step .rx-t span{ color:var(--rx-muted); }
+.rx-safe{ margin-top:14px; font-size:9.5pt; background:var(--rx-green-bg); color:var(--rx-green);
+  border:1px solid #c3e3cf; border-radius:10px; padding:10px 12px; }
+.rx-safe b{ color:#215a39; }
+.rx-safe.rx-warn{ background:#fdf3e0; color:#8a5709; border-color:#e6c187; }
+.rx-safe.rx-warn b{ color:#7a4e08; }
+.rx-fig{ margin:18px 0 0; }
+.rx-cap{ font-size:9pt; color:var(--rx-muted); text-align:center; margin-top:6px; }
+.rx-legend{ display:flex; gap:16px; flex-wrap:wrap; margin-top:14px; font-size:9pt; color:var(--rx-muted); }
+.rx-legend i{ font-style:normal; display:inline-flex; align-items:center; gap:6px; }
+.rx-sw{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+</style>
+
+<div class="rx-scope">
+ <div class="rx-layout">
+  <section class="rx-chat" aria-label="Example conversation">
+   <div class="rx-bar"><span class="rx-dot"></span><b>Metnos &middot; Roberto's chat</b></div>
+   <div class="rx-thread">
+
+    <div class="rx-turn rx-user"><div class="rx-bubble">How many lines of code are in the project?</div></div>
+    <div class="rx-turn rx-bot">
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">The count was run on the server.
+      <div class="rx-mono">first turn, no PC named &rarr; initial destination = server</div>
+     </div>
+    </div>
+
+    <div class="rx-turn rx-user"><div class="rx-bubble">List the Documents folder on my <b>office-laptop</b></div></div>
+    <div class="rx-route">&#128256; device <b>OFFICE-LAPTOP</b> recognised &rarr; routing there, and from now on it is the destination</div>
+    <div class="rx-turn rx-bot">
+     <span class="rx-chip rx-device">&#128187; OFFICE-LAPTOP</span>
+     <div class="rx-bubble">On <b>OFFICE-LAPTOP</b>, in <b>Documents</b>:
+      <div class="rx-mono">invoices/       (folder)
+contracts/      (folder)
+notes.txt       4 KB
+budget.xlsx     88 KB</div>
+     </div>
+    </div>
+
+    <div class="rx-destnow">&#128205; destination now: OFFICE-LAPTOP</div>
+
+    <div class="rx-turn rx-user"><div class="rx-bubble">Zip it up</div></div>
+    <div class="rx-sticky">&#8627; no PC named &rarr; the last destination stays: <b>OFFICE-LAPTOP</b></div>
+    <div class="rx-turn rx-bot">
+     <span class="rx-chip rx-device">&#128187; OFFICE-LAPTOP</span>
+     <div class="rx-bubble">Done on the laptop: created <b>Documents.zip</b> (1.2 MB) next to the folder.</div>
+    </div>
+
+    <div class="rx-turn rx-user"><div class="rx-bubble">How much free space is there on <b>home-desktop</b>?</div></div>
+    <div class="rx-turn rx-bot">
+     <span class="rx-chip rx-offline">&#128187; HOME-DESKTOP &middot; not connected</span>
+     <div class="rx-bubble"><b>HOME-DESKTOP is not connected</b> (no heartbeat for over a minute).
+      I will not silently run elsewhere: switch it on and try again, or tell me &ldquo;on the server&rdquo; or &ldquo;on office-laptop&rdquo;.
+      <div class="rx-mono">connectivity check before every dispatch &rarr; explicit error, never a silent fallback</div>
+     </div>
+    </div>
+
+    <div class="rx-turn rx-user"><div class="rx-bubble">How many processes are running, <b>here on the server</b>?</div></div>
+    <div class="rx-route">&#128256; destination reset to the <b>server</b></div>
+    <div class="rx-turn rx-bot">
+     <span class="rx-chip rx-server">&#128421; server</span>
+     <div class="rx-bubble">The process count was run on the server.</div>
+    </div>
+    <div class="rx-destnow">&#128205; destination now: server</div>
+
+   </div>
+  </section>
+
+  <aside class="rx-panel">
+   <h4>How Metnos decides <em>where</em> to run</h4>
+   <div class="rx-step"><div class="rx-n">1</div><div class="rx-t">
+    <b>Who you are</b> <span>&mdash; the chat is authenticated: Metnos knows the user (the actor) and the PCs that belong to them.</span></div></div>
+   <div class="rx-step"><div class="rx-n">2</div><div class="rx-t">
+    <b>Which PC</b> <span>&mdash; from the device <em>name</em> cited in the request, anchored by a locative preposition (&ldquo;on office-laptop&rdquo;). If you name nothing, <b>the last destination stays</b>; on the first turn that is the server.</span></div></div>
+   <div class="rx-step"><div class="rx-n">3</div><div class="rx-t">
+    <b>Tag and route</b> <span>&mdash; the turn is tagged with the resolved device; the current destination is always shown at the top of the chat.</span></div></div>
+   <div class="rx-safe">
+    <b>The server is the initial destination</b> and you return to it whenever you want with &ldquo;on the server&rdquo; or &ldquo;here&rdquo;.
+    Only a reference to one of your PCs (or the last destination, which is sticky) moves execution.
+   </div>
+   <div class="rx-safe rx-warn">
+    <b>Before every dispatch, Metnos checks that the PC is connected.</b> If the target &mdash; named or
+    the last destination &mdash; does not answer (no heartbeat for over a minute), Metnos says so
+    (&ldquo;device not connected&rdquo;) and does not run elsewhere in secret.
+   </div>
+   <figure class="rx-fig">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 210" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',sans-serif;font-size:11px;">
+     <defs><marker id="rx-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+     <rect x="8" y="82" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
+     <text x="51" y="100" text-anchor="middle" fill="#1A477A" font-weight="600">chat</text>
+     <text x="51" y="114" text-anchor="middle" fill="#5b6675">(known user)</text>
+     <rect x="126" y="78" width="90" height="50" rx="9" fill="#fff" stroke="#1A477A"/>
+     <text x="171" y="97" text-anchor="middle" fill="#1A477A" font-weight="600">Metnos</text>
+     <text x="171" y="112" text-anchor="middle" fill="#5b6675">name? or last?</text>
+     <rect x="246" y="18" width="86" height="42" rx="9" fill="#eef0f3" stroke="#cfd6df"/>
+     <text x="289" y="36" text-anchor="middle" fill="#4a5568" font-weight="600">&#128421; server</text>
+     <text x="289" y="50" text-anchor="middle" fill="#5b6675">(initial)</text>
+     <rect x="246" y="146" width="86" height="42" rx="9" fill="#e8effa" stroke="#bcd2f0"/>
+     <text x="289" y="164" text-anchor="middle" fill="#1A477A" font-weight="600">&#128187; your PC</text>
+     <text x="289" y="178" text-anchor="middle" fill="#5b6675">(named/last)</text>
+     <line x1="94" y1="103" x2="122" y2="103" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
+     <line x1="216" y1="92" x2="243" y2="48" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
+     <line x1="216" y1="114" x2="243" y2="160" stroke="#1A477A" stroke-width="2" marker-end="url(#rx-ar)"/>
+    </svg>
+    <div class="rx-cap">The same request goes to the server or to one of your PCs depending on the name cited &mdash; or on the last destination.</div>
+   </figure>
+   <div class="rx-legend">
+    <i><span class="rx-sw" style="background:#eef0f3;border:1px solid #cfd6df"></span> run on the server</i>
+    <i><span class="rx-sw" style="background:#e8effa;border:1px solid #bcd2f0"></span> run on one of your PCs</i>
+   </div>
+  </aside>
+ </div>
+</div>
+
+<p><strong>How the device is recognised.</strong> The target PC is identified by its <em>name</em>, not by
+<em>where</em> the connection comes from. Identifying it from the network origin (the IP
+address) would be unreliable: through a public tunnel the server may see only
+the ingress address, and a Telegram message has no originating PC behind it.
+That is why the anchor is the device name &mdash; matched against the real names of
+your paired PCs &mdash; and not the network fingerprint. A name dropped mid-sentence, without a
+locative preposition to anchor it, does not move the destination.
+</p>
+
+<h2 id="installation">4. Installation from the UI</h2>
+
+<p>
+The natural operational point is <code>/admin/devices</code>: the server shows
+registered devices and can issue a join link. If the user opens the UI directly
+on the server, there is nothing to install: local executors are already available.
+If the UI is instead running on a PC different from the server, the page can offer
+the installer for the current platform and show registration progress.
+</p>
+
+<p>
+The click does not give special privileges to the browser: on Windows it downloads
+<code>MetnosClientSetup.cmd</code>, which installs and starts <code>metnos-client</code>
+as a persistent operating-system process. The UI observes the join: token issued,
+client registered, heartbeat alive, client version, last error.
+</p>
+
+<ol>
+<li>In the Metnos web chat, open <strong>Settings &gt; System &gt;
+Devices</strong> (<code>/admin/devices</code>) and select the user who
+will own the PC.</li>
+<li>Select <strong>I need to install on another PC</strong>, give the device
+a short recognizable name, and generate the link.</li>
+<li>Open the link on the target Windows PC, download the self-contained
+client, and complete the pairing shown by the client.</li>
+<li>Return to Devices and verify that the PC is paired, active, and has a
+recent heartbeat.</li>
+</ol>
+<p>The link is temporary and intended for one pairing. If the PC is already
+listed, inspect the existing device before generating another link.</p>
+
+<h2 id="sandbox">5. Per-OS Sandboxing</h2>
+
+<p>
+On the Linux server the canonical sandbox is <code>bwrap</code>. On a remote
+device containment is chosen by the client according to the operating system, but
+the interface is single: run this payload with these limits and return stdout,
+stderr, exit code, timeout and containment metadata.
+</p>
+
+<table>
+<thead><tr><th>System</th><th>Current containment</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Linux</td><td>Client-side <code>bwrap</code> when available</td><td>Mount and PID namespaces, a restricted filesystem, and a separate network when it is not requested. Custom Landlock and seccomp are not implemented.</td></tr>
+<tr><td>Windows</td><td>AppContainer inside a Job Object</td><td>Targeted ACLs for absolute paths; when a relative path cannot be anchored before spawn, the client explicitly falls back to the Job Object instead of attempting ambiguous ACLs.</td></tr>
+<tr><td>macOS</td><td>No native sandbox</td><td>The common Unix path runs without an operating-system wrapper and reports <code>sandbox:"none"</code>.</td></tr>
+</tbody>
+</table>
+
+<p>
+See <a href="sandbox.html#cap10">sandbox, ch. 10</a> for the per-OS detail.
+Remote results always report the containment actually applied. A separate watchdog
+terminates the client, leaving restart to its supervisor, if sandbox construction
+does not return within the deadline plus a bounded grace period.
+</p>
+
+<h2 id="failure">6. Failures, Duplicates and Revocation</h2>
+
+<p>
+The channel is built for an imperfect home network. The client periodically polls
+the server, so it does
+not require open ports on the PC. Each invocation has idempotency and a deadline:
+if the network drops, the server can distinguish between a job not yet picked up,
+a job in progress and a result already delivered. If a client is stuck, the local
+lock prevents a second concurrent instance; if a job exceeds its timeout, the
+client kills the process tree. Heartbeat runs in
+a separate task, so the device remains observable even while it is preparing its
+own execution environment.
+</p>
+
+<p>
+Revocation is server-side: the revoked device gets an error on polling or
+heartbeat and stops receiving work. The server does not need to trust that the old
+client will behave well: it simply stops assigning payloads to it.
+</p>
+
+<h2 id="limits">7. Declared Limits</h2>
+
+<p>Remote executors do not mean "run arbitrary code on the PC". They mean: run only
+signed executors, compatible with the platform, admitted by policy and sufficiently
+contained by the client. The admitted mutating executors (file write and move)
+carry their own undo: reverting an operation executed on a device runs
+<em>on that same device</em>, never on the server. Remote deletion is admitted as well: the backup (blob) is written on the
+device before removal, and undo restores it <em>on that same device</em>.
+</p>
+
+<ul>
+ <li>On Windows, AppContainer isolates files and network when it can be constructed; the Job Object fallback contains resources and the process tree, but does not provide the same isolation.</li>
+ <li>The device must remain reachable by the server on the expected network or an equivalent private network.</li>
+ <li>An executor must declare platforms and placement: absence of declaration is not remote consent.</li>
+ <li>macOS has no equivalent native containment today: a run at level <code>none</code> must not be described as isolated.</li>
+</ul>
+
+<footer>
+Metnos &mdash; guide to <code>remote executors</code>. See also
+<a href="executor.html"><code>executor</code></a>,
+<a href="pairing.html#cap6"><code>pairing</code></a>,
+<a href="sandbox.html#cap10"><code>sandbox</code></a> and
+<a href="http_api.html"><code>http_api</code></a>.
+</footer>
+</body>
+</html>

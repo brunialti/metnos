@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; change lifecycle</title>
+ <meta name="description" content="How Metnos collects, presents, applies, observes, and rolls back changes to the system.">
+ <meta name="keywords" content="Metnos, change intent, changes, approval, application, rollback">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/lifecycle.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/lifecycle.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">changes</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Change lifecycle</div>
+ <div class="meta">One shared object for proposing, deciding, applying, and observing a change.</div>
+</div>
+
+<p class="lead">Sources that suggest an improvement do not modify Metnos directly.
+They translate the suggestion into a <code>change_intent</code>: a typed record with
+origin, target, rationale, score, and state. The <code>/admin/changes</code> page
+presents these records and keeps their progress visible.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">The shared object</a></li>
+ <li><a href="#cap2">States and transitions</a></li>
+ <li><a href="#cap3">Active sources</a></li>
+ <li><a href="#cap4">Materialization, application, and observation</a></li>
+ <li><a href="#cap5">What gets applied</a></li>
+ <li><a href="#cap6">Natural-language example</a></li>
+ <li><a href="#cap7">Guarantees and limits</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. The shared object</h1>
+
+<p>Records are stored in
+<code>~/.local/state/metnos/change_intents.sqlite</code>. Their main fields are:</p>
+
+<table>
+<thead><tr><th>Group</th><th>Contents</th></tr></thead>
+<tbody>
+<tr><td>Identity</td><td>An <code>id</code> and deterministic fingerprint for deduplicating equivalent proposals.</td></tr>
+<tr><td>Provenance</td><td>Source family, module, original identifier, and discovery time.</td></tr>
+<tr><td>Intent</td><td>Closed kind, target, summary, rationale, and kind-specific payload.</td></tr>
+<tr><td>Priority</td><td>Score, confidence, and number of converging sources.</td></tr>
+<tr><td>Decision</td><td>Person, action, reason, and decision time.</td></tr>
+<tr><td>Outcome</td><td>Applied effect, observed metrics, error, or rollback data.</td></tr>
+</tbody>
+</table>
+
+<p>The fingerprint excludes the source family. If two sources describe the same
+change, the upsert can merge them into one record and increase convergence without
+duplicating the action. A score is an ordering aid, not an authorization.</p>
+
+<h1 id="cap2">2. States and transitions</h1>
+
+<pre><code>proposed  --accept--&gt; accepted --apply--&gt; applied
+    |                       |                  |
+    |                       +--error--&gt; failed +--measure--&gt; observed
+    +--stage--&gt; staged                              |
+    +--reject--&gt; rejected                           +--ok--&gt; finalized
+                                                   +--problem--&gt; rolled_back</code></pre>
+
+<p>A staged proposal may return for review. A failed change may be retried or
+rejected. Rollback is terminal in the registry and performs a physical reversal when
+the change kind supports one. The state machine blocks arbitrary jumps: a proposal
+cannot become <code>applied</code> before it is <code>accepted</code>.</p>
+
+<h1 id="cap3">3. Active sources</h1>
+
+<p>The materializer reads four side-effect-free adapters:</p>
+
+<table>
+<thead><tr><th>Source</th><th>What it can produce</th></tr></thead>
+<tbody>
+<tr><td>Telos</td><td>Executor creation or extension and a controlled pipeline trial, from actionable cluster heads.</td></tr>
+<tr><td>Introvertiva</td><td>Executor deduplication; it also preserves already-recorded states that must remain inspectable.</td></tr>
+<tr><td>Synt</td><td>Executor-creation requests and their terminal or in-progress states.</td></tr>
+<tr><td>User feedback</td><td>A proposal to reject a pattern after at least two consistent negative reports.</td></tr>
+</tbody>
+</table>
+
+<p>Adapters translate different storage formats into the same schema. They neither
+apply the change nor turn an automatic inference into human consent.</p>
+
+<h1 id="cap4">4. Materialization, application, and observation</h1>
+
+<table>
+<thead><tr><th>Task</th><th>Default frequency</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td><code>change_intent_materialize</code></td><td>Daily at 01:00</td><td>Reads adapters, deduplicates by fingerprint, and updates the store.</td></tr>
+<tr><td><code>change_applier</code></td><td>Every 10 minutes</td><td>Processes up to 20 accepted records and records either their effect or error.</td></tr>
+<tr><td><code>change_observer</code></td><td>Daily at 03:15</td><td>Measures up to 200 applied or observed changes and decides whether to finalize or roll them back.</td></tr>
+</tbody>
+</table>
+
+<p>The default observation period is seven days and can be changed with
+<code>METNOS_CHANGE_GRACE_DAYS</code>. Criteria vary by kind: executor health, alias
+integrity, the result of the turn used to try a pipeline, or new feedback about a
+rejected pattern.</p>
+
+<h1 id="cap5">5. What gets applied</h1>
+
+<table>
+<thead><tr><th>Kind</th><th>Current effect</th><th>Rollback</th></tr></thead>
+<tbody>
+<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated.</td><td>Archives the synthesized executor.</td></tr>
+<tr><td><code>extend_executor</code></td><td>Extends the manifest, stores a copy, and signs the executor again.</td><td>Restores the stored manifest and re-signs it.</td></tr>
+<tr><td><code>dedupe_executors</code></td><td>Creates an alias and retires the duplicate only when provenance permits it.</td><td>Removes the alias and reactivates the duplicate.</td></tr>
+<tr><td><code>materialize_pipeline</code></td><td>Runs the proposed request once as a real turn, under normal policy and controls.</td><td>Records rollback; the turn installs no persistent pipeline artifact to remove.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Adds the approved pattern to the registry of paths to avoid.</td><td>Removes the matching registration.</td></tr>
+<tr><td><code>cache_pattern</code></td><td>Remains supported for compatible records already present in the store.</td><td>Demotes the associated registration.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap6">6. Natural-language example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Show me the system
+changes waiting for my decision and explain the first one in plain language.”</p>
+
+<p>Decisions are made in the web chat. If you are talking to Metnos through Telegram,
+open the web chat, enter the administration area, and choose
+<strong>Changes</strong>; the technical route is <code>/admin/changes</code>. The page
+can filter by state, source, and kind and offers only the transitions allowed for
+each record.</p>
+
+<h1 id="cap7">7. Guarantees and limits</h1>
+
+<ul>
+ <li>Acceptance is an explicit decision attributed to the administrator; a high
+ score does not replace it.</li>
+ <li>The applier is idempotent per kind and writes a local audit. An error leads to
+ <code>failed</code>, not apparent success.</li>
+ <li>Rollback depends on the kind. A pipeline run as a real turn cannot reverse
+ external effects that have already occurred; normal consent gates still apply
+ before execution.</li>
+ <li>Text produced by automatic generators helps triage, but must be read alongside
+ provenance, payload, and recorded effects.</li>
+</ul>
+
+<p>Code references: <code>runtime/change_intents.py</code>,
+<code>runtime/change_intent_adapters/</code>,
+<code>runtime/jobs/change_intent_materialize.py</code>,
+<code>runtime/change_applier.py</code>, <code>runtime/change_observer.py</code>,
+<code>runtime/change_rollback.py</code>, and <code>runtime/http_routes_admin.py</code>.</p>
+
+</body>
+</html>

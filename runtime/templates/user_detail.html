@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}Utente {{ user.name }} · Console Metnos{% endblock %}
+{% block body %}
+<p><a href="/admin/users">&larr; tutti gli utenti</a></p>
+<h1>{{ user.name }}
+  {% if user.role == "host" %}<span class="chip ok">host</span>
+  {% else %}<span class="chip">guest</span>{% endif %}
+</h1>
+
+<div class="section">
+  <h2>Anagrafica</h2>
+  <dl class="kv">
+    <dt>id</dt><dd><code>{{ user.id }}</code></dd>
+    <dt>creato il</dt><dd>{{ user.created_at }}</dd>
+  </dl>
+  <form method="post" action="/admin/users/{{ user.id }}/update" class="user-form">
+    <label for="f_display">nome visualizzato</label>
+    <input id="f_display" type="text" name="display_name"
+           value="{{ user.display_name or '' }}" placeholder="Roberto">
+
+    <label for="f_email">email</label>
+    <input id="f_email" type="email" name="email"
+           value="{{ user.email or '' }}" placeholder="nome@dominio.it">
+
+    <label for="f_aut">autonomia</label>
+    <select id="f_aut" name="autonomy_level">
+      <option value="read_only"{% if user.autonomy_level == "read_only" %} selected{% endif %}>read_only</option>
+      <option value="restricted"{% if user.autonomy_level == "restricted" %} selected{% endif %}>restricted</option>
+      <option value="full"{% if user.autonomy_level == "full" %} selected{% endif %}>full</option>
+    </select>
+
+    <label for="f_notes" class="top">note</label>
+    <textarea id="f_notes" name="notes" rows="2">{{ user.notes or '' }}</textarea>
+
+    <span></span>
+    <button class="btn primary" type="submit">Salva modifiche</button>
+  </form>
+</div>
+
+<style>
+  /* User detail — anagrafica e form di update allineati a griglia. */
+  .kv{display:grid;grid-template-columns:140px 1fr;gap:.3rem .8rem;
+       align-items:baseline;margin:.5rem 0 1rem;}
+  .kv dt{color:var(--muted);font-size:var(--fs-0);font-weight:600;
+       letter-spacing:.05em;text-transform:uppercase;}
+  .kv dd{margin:0;}
+  .user-form{display:grid;grid-template-columns:140px 1fr;gap:.6rem .8rem;
+              align-items:center;max-width:860px;margin-top:.5rem;}
+  .user-form label{color:var(--ink-2);font-weight:500;}
+  .user-form label.top{align-self:start;padding-top:.4rem;}
+  .user-form input,.user-form select,.user-form textarea{width:100%;}
+  .user-form textarea{resize:vertical;min-height:2.6em;}
+  .user-form button{grid-column:2;justify-self:end;}
+  .prefs-form{max-width:860px;}
+  .prefs-intro{max-width:720px;margin:.35rem 0 1.1rem;line-height:1.5;}
+  .prefs-block{padding:1rem 1.1rem;border:1px solid var(--line);border-radius:14px;
+               background:var(--surface);}
+  .prefs-block h3{margin:0 0 .2rem;font-size:1rem;}
+  .prefs-block > .muted{margin:.15rem 0 .85rem;}
+  .prefs-general{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+                 gap:.8rem;}
+  .pref-field{display:grid;gap:.35rem;padding:.7rem;border:1px solid var(--line);
+              border-radius:10px;background:var(--surface-2,var(--surface));}
+  .pref-field label{font-size:var(--fs-0);font-weight:700;color:var(--ink-2);}
+  .pref-field code{font-size:.82em;overflow-wrap:anywhere;}
+  .web-panel{margin:1.2rem 0 1rem;padding:1.1rem;border:1px solid var(--line);
+             border-radius:14px;background:linear-gradient(135deg,
+             var(--surface) 0%,var(--accent-soft) 160%);}
+  .web-head h3{margin:0 0 .25rem;}
+  .browser-mode-group{border:0;padding:0;margin:1rem 0;}
+  .browser-mode-group legend{font-weight:700;margin-bottom:.55rem;}
+  .browser-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+                 gap:.65rem;}
+  .browser-mode{display:grid;grid-template-columns:auto 1fr;gap:.1rem .65rem;
+                align-items:start;padding:.75rem;border:1px solid var(--line);
+                border-radius:10px;background:var(--surface);cursor:pointer;}
+  .browser-mode input{margin-top:.2rem;accent-color:var(--accent);}
+  .browser-mode small{grid-column:2;color:var(--muted);line-height:1.35;}
+  .stealth-section{padding-top:.9rem;border-top:1px solid var(--line);}
+  .stealth-head{display:flex;justify-content:space-between;gap:1rem;
+                align-items:flex-start;padding-bottom:.85rem;
+                border-bottom:1px solid var(--line);}
+  .stealth-head h3{margin:0 0 .25rem;}
+  .stealth-master{display:flex;align-items:center;gap:.55rem;font-weight:700;
+                  white-space:nowrap;}
+  .stealth-master input,.stealth-option input{width:1.15rem;height:1.15rem;
+                                              accent-color:var(--accent);}
+  .stealth-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+                   gap:.65rem;margin-top:.85rem;}
+  .stealth-option{display:grid;grid-template-columns:auto 1fr;gap:.1rem .65rem;
+                  align-items:start;padding:.7rem;border:1px solid var(--line);
+                  border-radius:10px;background:var(--surface);cursor:pointer;}
+  .stealth-option input{margin-top:.15rem;}
+  .stealth-option strong{display:flex;align-items:center;gap:.4rem;}
+  .stealth-option small{grid-column:2;color:var(--muted);line-height:1.35;}
+  .stealth-options[data-master="off"]{opacity:.66;}
+  .prefs-actions{display:flex;justify-content:flex-end;margin-top:1rem;
+                 padding-top:.9rem;border-top:1px solid var(--line);}
+  @media(max-width:680px){
+    .prefs-general,.browser-modes,.stealth-options{grid-template-columns:1fr;}
+    .stealth-head{display:block;}
+    .stealth-master{margin-top:.7rem;}
+  }
+</style>
+
+<div class="section">
+  <h2>Canali</h2>
+  <div class="table-wrap" style="box-shadow:none;margin:.5rem 0 1rem">
+  <table>
+    <thead><tr><th>canale</th><th>recipient</th><th>stato</th><th>azioni</th></tr></thead>
+    <tbody>
+    {% for c in user.channels %}
+      <tr>
+        <td><span class="chip">{{ c.channel }}</span></td>
+        <td><code>{{ c.recipient_id or "-" }}</code></td>
+        <td>
+          {% if c.verified %}<span class="chip ok">verified</span>
+          {% else %}<span class="chip warn">pending</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/admin/users/{{ user.id }}/channels/{{ c.channel }}/remove" style="display:inline">
+            <button class="btn" type="submit"
+                    onclick="return confirm('Scollegare {{ c.channel }} da {{ user.name }}?');">
+              scollega
+            </button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">nessun canale</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <h3>Pair nuovo canale</h3>
+  <form method="post" action="" class="row">
+    <label>canale
+      <select id="ch-select" name="channel">
+        <option value="telegram" selected>telegram</option>
+        <option value="mail">mail</option>
+        <option value="http">http</option>
+      </select>
+    </label>
+    <button class="btn" type="button" onclick="
+      var ch=document.getElementById('ch-select').value;
+      this.form.action='/admin/users/{{ user.id }}/channels/'+ch+'/pair';
+      this.form.submit();
+    ">emetti token</button>
+  </form>
+</div>
+
+<div class="section">
+<h2>Preferenze</h2>
+<p class="muted prefs-intro">Personalizza il comportamento predefinito di questo utente. Un campo vuoto eredita il valore configurato a livello di istanza.</p>
+<form method="post" action="/admin/users/{{ user.id }}/prefs" class="prefs-form">
+  <section class="prefs-block" aria-labelledby="general-prefs-title">
+  <h3 id="general-prefs-title">Preferenze generali</h3>
+  <p class="muted">Stile di risposta, lingua e unità di misura.</p>
+  <div class="prefs-general">
+  {% for key, allowed in pref_allowed.items() %}
+  <div class="pref-field">
+  <label for="pref_{{ key }}"><code>{{ key }}</code></label>
+  <select id="pref_{{ key }}" name="{{ key }}" aria-label="{{ key }}">
+    <option value=""{% if not prefs.get(key) %} selected{% endif %}>—</option>
+    {% for v in allowed %}
+    <option value="{{ v }}"{% if prefs.get(key) == v %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  </div>
+  {% endfor %}
+  </div>
+  </section>
+
+  <section class="web-panel" aria-labelledby="web-browsing-title">
+    <input type="hidden" name="_sites_web_browsing_group" value="1">
+    <div class="web-head">
+      <h3 id="web-browsing-title">{{ msg("MSG_SETTINGS_WEB_BROWSING_TITLE") }}</h3>
+      <div class="muted">{{ msg("MSG_SETTINGS_WEB_BROWSING_DESCRIPTION") }}</div>
+    </div>
+    <fieldset class="browser-mode-group">
+      <legend>{{ msg("MSG_SETTINGS_BROWSER_MODE") }}</legend>
+      <div class="browser-modes">
+        <label class="browser-mode" for="pref_sites_browser_headless">
+          <input id="pref_sites_browser_headless" type="radio"
+                 name="sites_browser_mode" value="headless"
+                 {% if prefs.get("sites_browser_mode", "headless") == "headless" %}checked{% endif %}>
+          <strong>{{ msg("MSG_SETTINGS_BROWSER_HEADLESS") }}</strong>
+          <small>{{ msg("MSG_SETTINGS_BROWSER_HEADLESS_HELP") }}</small>
+        </label>
+        <label class="browser-mode" for="pref_sites_browser_side">
+          <input id="pref_sites_browser_side" type="radio"
+                 name="sites_browser_mode" value="side"
+                 {% if prefs.get("sites_browser_mode") == "side" %}checked{% endif %}>
+          <strong>{{ msg("MSG_SETTINGS_BROWSER_SIDE") }}</strong>
+          <small>{{ msg("MSG_SETTINGS_BROWSER_SIDE_HELP") }}</small>
+        </label>
+      </div>
+    </fieldset>
+    <div class="stealth-section">
+    <div class="stealth-head">
+      <div>
+        <h3 id="stealth-title">{{ msg("MSG_SETTINGS_STEALTH_TITLE") }}</h3>
+        <div class="muted">{{ msg("MSG_SETTINGS_STEALTH_DESCRIPTION") }}</div>
+      </div>
+      <label class="stealth-master" for="pref_sites_stealth">
+        <input id="pref_sites_stealth" type="checkbox"
+               name="sites_stealth" value="on"
+               {% if prefs.get("sites_stealth") == "on" %}checked{% endif %}>
+        <span>{{ msg("MSG_SETTINGS_STEALTH_MASTER") }}</span>
+      </label>
+    </div>
+    <p class="muted" style="margin:.65rem 0 0">
+      {{ msg("MSG_SETTINGS_STEALTH_MASTER_HELP") }}
+    </p>
+    <div class="stealth-options" id="stealth-options"
+         data-master="{{ 'on' if prefs.get('sites_stealth') == 'on' else 'off' }}">
+      {% for item in stealth_options %}
+      <label class="stealth-option" for="pref_{{ item.preference_key }}">
+        <input id="pref_{{ item.preference_key }}" type="checkbox"
+               name="{{ item.preference_key }}" value="on"
+               {% if prefs.get(item.preference_key) == "on" %}checked{% endif %}>
+        <strong>{{ msg(item.label_key) }} <code>{{ item.layer }}</code></strong>
+        <small>{{ msg(item.help_key) }}</small>
+      </label>
+      {% endfor %}
+    </div>
+    </div>
+  </section>
+  <div class="prefs-actions"><button class="btn primary" type="submit">Salva modifiche</button></div>
+</form>
+<script>
+  (() => {
+    const master = document.getElementById('pref_sites_stealth');
+    const options = document.getElementById('stealth-options');
+    if (!master || !options) return;
+    const sync = () => { options.dataset.master = master.checked ? 'on' : 'off'; };
+    master.addEventListener('change', sync);
+    sync();
+  })();
+</script>
+
+  </div>
+
+<div class="section">
+<h2>Dispositivi</h2>
+  <p class="muted" style="margin:.3rem 0 .6rem">Device remoti (client
+  <code>metnos-client</code>) di proprietà di questo utente. All'appaiamento
+  (<a href="/admin/devices">Dispositivi</a>) l'admin sceglie il proprietario;
+  ogni connessione del device identifica l'utente.</p>
+  <div class="table-wrap" style="box-shadow:none;margin:.5rem 0 1rem">
+  <table>
+    <thead><tr><th>nome</th><th>id</th><th>OS</th><th>heartbeat</th><th>stato</th></tr></thead>
+    <tbody>
+    {% for d in devices %}
+      <tr>
+        <td><code>{{ d.name }}</code></td>
+        <td class="muted">{{ d.id[:12] }}</td>
+        <td>{{ d.os }}</td>
+        <td class="muted">{{ d.last_heartbeat or "mai" }}</td>
+        <td>
+          {% if d.available %}<span class="chip ok">raggiungibile</span>
+          {% else %}<span class="chip warn">offline</span>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">nessun device</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Operazioni</h2>
+  <form method="post" action="/admin/users/{{ user.id }}/delete" style="display:inline">
+    <button class="btn bad" type="submit"
+            onclick="return confirm('Eliminare {{ user.name }}? L\\'operazione è irreversibile.');">
+      elimina utente
+    </button>
+  </form>
+</div>
+{% endblock %}

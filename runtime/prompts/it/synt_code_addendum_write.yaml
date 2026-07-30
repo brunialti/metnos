@@ -1,0 +1,82 @@
+role: synt_code_addendum_write
+tier: wise
+lang: it
+style: few_shot
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+# Stage 5 addendum verbo `write` (the design guide §6.1: style few_shot).
+# YAML envelope: il body resta prosa narrativa (pseudocodice + invarianti +
+# esempi di codice). Il rendering yaml_raw/json_raw produce un wrapper
+# strutturato senza spezzare gli esempi few_shot.
+section:
+  name: synt_code_addendum_write
+  header: "Stage 5 addendum verbo `write`"
+
+body: |
+  REGOLE VERBO `write` (oltre al generic):
+  
+  DEFINIZIONE: `write` = produce/sovrascrive un file/value. Distruttivo se
+  sovrascrive contenuto esistente. Reversibile via `restore_blob_backup`.
+  
+  PSEUDOCODICE UNIVERSALE:
+  
+    def invoke(args):
+        entries, results, failed = args.get("entries", []), [], []
+        overwrite = args.get("overwrite", False)
+        parents = args.get("parents", True)
+        encoding = args.get("encoding", "utf-8")
+        for i, e in enumerate(entries):
+            try:
+                dst, content = e["path"], e["content"]
+                existed = dst_exists(dst)
+                if existed and not overwrite:
+                    failed.append({"index": i, "path": dst,
+                                   "error": "exists, use overwrite=True"}); continue
+                if parents: ensure_parent_dirs(dst)
+                prev_blob = snapshot(dst) if (revertible and existed) else None
+                n = atomic_write(dst, content, encoding)   # tmp + os.replace
+                results.append({"path": dst, "bytes_written": n,
+                                "prev_blob_sha256": prev_blob})
+            except Exception as ex:
+                failed.append({"index": i, "error": str(ex)})
+  
+  INVARIANTI:
+  DEVI: pre-flight `Path(dst).exists()` con `overwrite` gate.
+  DEVI: scrittura ATOMICA: scrivi in `<dst>.<random>.tmp` poi
+    `os.replace(tmp, dst)`. Un crash a meta' NON deve lasciare il file finale
+    troncato.
+  DEVI: `parents=True` (default) → `parent.mkdir(parents=True, exist_ok=True)`.
+  DEVI: se `revertible=True` E dst esiste E sta per essere sovrascritto,
+    snapshot del contenuto pre-overwrite. Convenzione path:
+  
+        import os, hashlib
+        _HISTORY = os.path.expanduser(os.environ.get(
+            "METNOS_HISTORY_DIR", "~/.local/share/metnos/_history"))
+        _TURN_DIR = os.path.join(_HISTORY, os.environ.get("METNOS_TURN_ID", "default"), "blob")
+        os.makedirs(_TURN_DIR, exist_ok=True)
+        prev_bytes = Path(dst).read_bytes()
+        prev_sha = hashlib.sha256(prev_bytes).hexdigest()
+        prev_blob_path = os.path.join(_TURN_DIR, prev_sha + ".bin")
+        with open(prev_blob_path, "wb") as fh: fh.write(prev_bytes)
+  
+    Includi `prev_blob_path` (assoluto) e `prev_blob_sha256` nei results.
+  DEVI: encoding esplicito (default utf-8). Per bytes, `args.get("binary", False)`.
+  DEVI: rifiuta `is_protected_path()` UNLESS `allow_system=True`.
+  NON DEVI: `open(dst, "w")` direttamente sul path finale (non atomic).
+  NON DEVI: scrivere senza encoding esplicito (dipenderebbe dal locale del SO).
+  NON DEVI: dichiarare revertible=True senza emettere prev_blob_sha256 al
+    primo overwrite (undo non sa ripristinare).
+  
+  DOMINIO FILESYSTEM (write_files):
+  - entry: `{"path": str, "content": str|bytes, "encoding": str?}`
+  - atomic_write: usa `tempfile.NamedTemporaryFile(dir=parent, delete=False)` poi
+    `os.replace(tmp.name, dst)`.
+  - mode: `"w"` testuale (encoding) o `"wb"` binario (no encoding).
+  - results: `{"path": str, "bytes_written": int, "prev_blob_path": str|null, "prev_blob_sha256": str|null}`.
+  
+  DOMINIO KV/store (set_*):
+  - entry: `{"key": ..., "value": ...}`; uso store strutturato (sqlite/json).
+  - atomicita': BEGIN TRANSACTION → write → COMMIT (DB), o tmp+rename per JSON.

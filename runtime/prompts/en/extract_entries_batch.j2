@@ -1,0 +1,20 @@
+{# ---
+role: extract_entries_batch
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-20
+sha_prev: 00000000
+--- #}
+The input is a JSON array of INDEPENDENT SOURCES, each shaped as {"source_index": integer, "text": text}.
+Extract relevant records from each source independently. Never combine facts from different source_index values.
+The fields, in fixed order, are: {{ fields_json }}.
+Return ONLY one JSON object {"seen_source_indexes":[...],"records":[...]}. Copy ALL examined input indexes into seen_source_indexes, including sources with no records. Every item in records is a list [source_index, field_1_value, field_2_value, ...] with exactly {{ field_count }} items in the declared order. Shape example: {"seen_source_indexes":[0],"records":[{{ example_row }}]}.
+In every row copy the exact integer source_index as the first value. Use "" when another field cannot be inferred.
+Extract all relevant records, up to {{ max_per_text }} per source. When no source contains a record, records must be [] but seen_source_indexes must still contain all examined indexes.
+{% if instruction %}WHAT to extract: {{ instruction }}
+{% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 only when all components are explicit; otherwise preserve the observed literal.
+{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to YYYY-MM-DD only when day, month, and year are explicit; otherwise preserve the observed literal.
+{% endif %}Do not leave records empty when at least one source mentions a person, organization, date, amount, or commitment. Output ONLY the JSON object, without prose, markdown, or <think>.

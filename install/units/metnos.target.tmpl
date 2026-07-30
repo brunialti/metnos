@@ -1,0 +1,14 @@
+[Unit]
+Description=Metnos integrated local stack
+Documentation=file://@REPO_DIR@/systemd/README.md
+Requires=metnos-http.service metnos-stack-ready.service
+BindsTo=metnos-stack-ready.service
+Wants=metnos-side-display.service metnos-playwright.service
+Wants=metnos-telegram-daemon.service metnos-stack-watchdog.timer
+Wants=metnos-llm.service metnos-searxng.service metnos-photon.service
+Wants=cloudflared-metnos-chat.service metnos-issues-sidecar.service
+Wants=metnos-i18n-translator.timer
+After=metnos-stack-ready.service
+
+[Install]
+WantedBy=default.target

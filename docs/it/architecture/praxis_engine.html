@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; motore di pianificazione e riuso</title>
+ <meta name="description" content="La cascata del motore Metnos: fast path L0, autopath L1, validator L2 e proposta, esecuzione, recupero e terminazione L3.">
+ <meta name="keywords" content="Metnos, motore, fastpath, autopath, validator, proposer, recovery, framework">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/praxis_engine">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/praxis_engine.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/praxis_engine.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">motore di pianificazione</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Motore di pianificazione e riuso</div>
+ <div class="meta">Quattro livelli, una sequenza comune di controlli.</div>
+</div>
+
+<p class="lead">Il motore prova prima i piani riutilizzabili, poi costruisce un
+nuovo framework quando serve. La proposta del modello rimane probabilistica; firma
+della cache, validazione, guardie e semantica degli executor sono applicate dal
+codice. Non esiste quindi una promessa di &laquo;un'unica chiamata al modello&raquo; per
+ogni turno: il numero dipende dal percorso, dalla validazione e dall'eventuale
+recupero.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Scopo</a></li>
+ <li><a href="#cap3">Contratto del motore</a></li>
+ <li><a href="#cap4">I quattro livelli</a></li>
+ <li><a href="#cap5">La cascata di un turno</a></li>
+ <li><a href="#cap6">Il framework</a></li>
+ <li><a href="#cap7">L0: fastpath</a></li>
+ <li><a href="#cap8">L1: autopath</a></li>
+ <li><a href="#cap9">L2: validatore</a></li>
+ <li><a href="#cap10">L3: proposta, esecuzione e recupero</a></li>
+ <li><a href="#cap11">Riscontri e invecchiamento</a></li>
+ <li><a href="#cap12">Uso dalla chat</a></li>
+ <li><a href="#cap13">Confini delle garanzie</a></li>
+ <li><a href="#cap14">Console Praxis</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scopo</h1>
+
+<p>Il motore deve trasformare una richiesta naturale in una sequenza finita di
+capacit&agrave; ammesse. Deve conciliare due esigenze:</p>
+
+<ul>
+ <li>evitare una nuova pianificazione costosa quando esiste gi&agrave; un piano valido;</li>
+ <li>non riutilizzare un piano quando richiesta, catalogo, schema, fornitore o
+ destinazione possono averne cambiato il significato.</li>
+</ul>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Trova i PDF modificati questa settimana in Progetti, calcola l'hash SHA-256 di
+ciascuno e crea un foglio con nome, data e hash.&raquo; La prima esecuzione pu&ograve;
+richiedere un nuovo framework; una richiesta ripetuta riusa il precedente solo se il piano resta
+cacheabile e le firme del mondo operativo coincidono.</p>
+
+<h1 id="cap3">2. Contratto del motore</h1>
+
+<p>L'ingresso contiene richiesta, intenti ordinati, catalogo visibile, lingua,
+utente, canale, destinazione e stato gi&agrave; prodotto dal turno. L'uscita contiene:</p>
+
+<ul>
+ <li>testo e tipo finale: risposta, domanda, input necessario o errore;</li>
+ <li>framework e relativa impronta;</li>
+ <li>origine della decisione: fastpath, autopath, motore, recupero o terminatore;</li>
+ <li>passi realmente eseguiti, risultati e tempi;</li>
+ <li>eventuale dialogo da riprendere dopo una scelta o un consenso.</li>
+</ul>
+
+<p>Il catalogo viene passato dal chiamante e costituisce il mondo dell'esecuzione.
+Un executor non presente o non ammesso non pu&ograve; essere reso disponibile dal testo
+del prompt.</p>
+
+<h1 id="cap4">3. I quattro livelli</h1>
+
+<table>
+<thead><tr><th>Livello</th><th>Stato</th><th>Responsabilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td>L0 &mdash; fastpath</td><td>Persistente</td><td>Associa una query a un framework gi&agrave; riuscito ed efficace.</td></tr>
+<tr><td>L1 &mdash; autopath</td><td>Persistente</td><td>Associa cluster semantici e intenti a un framework generalizzabile.</td></tr>
+<tr><td>L2 &mdash; validatore</td><td>Per turno</td><td>Controlla nomi, schemi, campi obbligatori e riferimenti prima dell'esecuzione.</td></tr>
+<tr><td>L3 &mdash; motore completo</td><td>Per turno</td><td>Propone, finalizza, esegue, classifica gli errori e conclude.</td></tr>
+</tbody>
+</table>
+
+<p>L2 non viene interrogato come livello separato: interviene fra la nuova proposta e
+l'esecuzione. Piani L0 e L1 attraversano comunque la finalizzazione corrente, che
+applica guardie, ordine, regole di presentazione e richieste di consenso.</p>
+
+<h1 id="cap5">4. La cascata di un turno</h1>
+
+<ol>
+ <li>L'instradamento costruisce l'insieme delle capacit&agrave; pertinenti.</li>
+ <li>L0 tenta prima una corrispondenza esatta e poi, soltanto per framework
+ generalizzabili, una corrispondenza semantica.</li>
+ <li>Se L0 non risponde, L1 cerca un campione attivo compatibile con intenti,
+ oggetto e cluster.</li>
+ <li>In assenza di un riuso valido, il proponente selezionato produce uno o pi&ugrave;
+ framework candidati secondo la propria configurazione.</li>
+ <li>Le guardie strutturali e il validatore controllano il candidato e, nei casi ammessi, chiedono una
+ sola nuova proposta correttiva.</li>
+ <li>L'executor condiviso esegue il framework. Se fallisce senza aver gi&agrave;
+ prodotto effetti, il recupero pu&ograve; tentare un'alternativa.</li>
+ <li>Il terminatore presenta il risultato, una richiesta di dati o un limite
+ esplicito; un turno efficace e memorizzabile alimenta L0 e le osservazioni L1.</li>
+</ol>
+
+<h1 id="cap6">5. Il framework</h1>
+
+<p>Il formato canonico &egrave; indipendente dal proponente:</p>
+
+<pre><code>{
+  "steps": [
+    {"tool": "find_files", "args": {"base_path": "Progetti", "pattern": "*.pdf"}},
+    {"tool": "compute_signatures", "args": {"from_step": 1}},
+    {"tool": "create_files_spreadsheet", "args": {"from_step": 2}},
+    {"tool": "final_answer", "args": {}}
+  ],
+  "fillers": {},
+  "final_message": ""
+}</code></pre>
+
+<p><code>from_step</code> e i placeholder <code>${stepN.field}</code> collegano i
+dati senza chiedere al modello di ricopiarli. Il runtime pu&ograve; inserire valori
+interni con <code>${RUNTIME:key}</code>. I campi di configurazione marcati
+<code>runtime_resolved</code>, come account o client predefinito, non vengono
+scelti dal proponente: li risolve il contesto dell'utente.</p>
+
+<h1 id="cap7">6. L0: fastpath</h1>
+
+<p>L0 nasce automaticamente dopo un turno riuscito, efficace e cacheabile. Non
+richiede un pulsante di approvazione. La ricerca ha due forme:</p>
+
+<ul>
+ <li><strong>0a, esatta.</strong> L'impronta della query pu&ograve; riusare anche un piano
+ legato ai valori specifici di quella stessa frase.</li>
+ <li><strong>0b, semantica.</strong> La somiglianza usa l'embedder configurato e pu&ograve;
+ servire soltanto framework non legati a valori specifici della query originale.</li>
+</ul>
+
+<p>Sono esclusi i piani dipendenti dal contesto del turno, come dialoghi, consenso,
+annullamento e sessioni web autenticate. Sono esclusi anche valori temporali
+assoluti che diventerebbero obsoleti. Prima della riesecuzione, le firme degli executor e delle famiglie
+di candidati devono coincidere; per una mutazione, i valori discriminanti devono
+essere fondati nella richiesta corrente.</p>
+
+<h1 id="cap8">7. L1: autopath</h1>
+
+<p>L1 conserva osservazioni di framework memorizzabili insieme a intenti, gruppi,
+tempi e riscontri. Un riscontro positivo pu&ograve; promuovere il framework a campione
+attivo. Per sequenze lunghe e ripetute il runtime pu&ograve; creare un campione
+<em>shadow</em>: viene servito con le stesse guardie, ma resta esplicitamente
+distinto da un piano confermato dall'utente.</p>
+
+<p>La corrispondenza semantica rispetta il confine dell'oggetto canonico e una soglia di
+pertinenza. Anche L1 rifiuta framework legati a valori specifici della query e controlla le firme del
+catalogo al momento del riuso. Riscontri negativi ripetuti possono retrocedere il
+campione e creare un'anti-autopath temporanea; un riscontro positivo successivo
+pu&ograve; rimuovere l'esclusione corrispondente.</p>
+
+<h1 id="cap9">8. L2: validatore</h1>
+
+<p>Il validatore &egrave; attivo per impostazione predefinita e non usa un modello.
+Controlla:</p>
+
+<ul>
+ <li>esistenza del tool nel catalogo corrente;</li>
+ <li>tipi dei campi e argomenti obbligatori;</li>
+ <li>vincoli <code>requires_one_of</code>;</li>
+ <li><code>from_step</code> rivolti soltanto a passi precedenti;</li>
+ <li>placeholder che il runtime possa risolvere.</li>
+</ul>
+
+<p>Se trova un errore, il proponente pu&ograve; essere invocato una volta con l'impronta del
+framework esclusa. Il nuovo candidato attraversa nuovamente le guardie
+deterministiche.</p>
+
+<h1 id="cap10">9. L3: proposta, esecuzione e recupero</h1>
+
+<p>Il proponente &egrave; intercambiabile tramite configurazione. Le varianti supportate
+condividono lo stesso contratto <code>Proposer</code>; possono generare un solo
+candidato o pi&ugrave; alternative e ordinarle. La grammatica, quando abilitata, limita la
+forma dell'output, ma non rende deterministica la scelta semantica del modello.</p>
+
+<p>L'esecutore risolve riferimenti, valori di riempimento e dati del runtime, controlla le
+condizioni di ogni passo e invoca la capacit&agrave;. Passi indipendenti vengono
+eseguiti in parallelo soltanto quando il contratto e il controllo preliminare lo consentono. Gli
+effetti esterni restano variabili: rete, filesystem, fornitori e contenuti possono
+cambiare fra due esecuzioni.</p>
+
+<p>Il recupero distingue errori strutturali da errori operativi. Pu&ograve; cambiare piano
+per strumento, argomenti o input mancanti; non finge di riparare una rete assente.
+Se un passo ha gi&agrave; prodotto una modifica, non ripete l'intera sequenza e restituisce
+un esito parziale dichiarato come tale.</p>
+
+<h1 id="cap11">10. Riscontri e invecchiamento</h1>
+
+<p>Il riscontro valuta l'esito di un turno, non addestra direttamente il modello.
+L0 pu&ograve; eliminare la scorciatoia della query bocciata; L1 aggiorna osservazione,
+campione e anti-autopath. Le righe inutilizzate, retrocesse, scadute o riferite a
+executor non pi&ugrave; presenti vengono eliminate dai processi di manutenzione.</p>
+
+<p>Questa memoria conserva decisioni operative e osservazioni strutturate. Non &egrave;
+un profilo biografico dell'utente e non deve diventare una fonte di preferenze
+aperte inserite nel pianificatore.</p>
+
+<h1 id="cap12">11. Uso dalla chat</h1>
+
+<p>Non occorre conoscere L0, L1 o i nomi degli executor. L'utente descrive il
+risultato desiderato in linguaggio naturale. Per esempio:</p>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Confronta i file delle cartelle Preventivi e Contratti e mostrami quelli che
+hanno lo stesso contenuto ma un nome diverso.&raquo;</p>
+
+<p>Per ispezionare o svuotare le cache serve invece la chat web: apri
+<strong>Impostazioni</strong> e scegli <strong>Praxis</strong>. Se la domanda parte da
+Telegram, Metnos deve spiegare questo percorso e specificare che la console non si
+trova nel client Telegram.</p>
+
+<h1 id="cap13">12. Confini delle garanzie</h1>
+
+<ul>
+ <li>Un riuso valido della cache riprende lo stesso framework, ma non garantisce lo stesso
+ risultato di un fornitore esterno.</li>
+ <li>Una nuova proposta pu&ograve; variare anche con la stessa query. Insieme dei candidati, grammatica e
+ validatore ne delimitano la forma, non ne provano la correttezza.</li>
+ <li>I punteggi di ranking aiutano a scegliere fra candidati; non sono una prova
+ oggettiva di qualit&agrave;.</li>
+ <li>L'osservazione del turno e la sorgente originaria restano l'evidenza utile;
+ una spiegazione generata non pu&ograve; convalidare se stessa.</li>
+</ul>
+
+<h1 id="cap14">13. Console Praxis</h1>
+
+<p>La pagina <code>/admin/praxis</code> mostra gli strati persistenti: fastpath L0,
+autopath L1 attive o retrocesse, osservazioni e anti-autopath. Consente di eliminare
+una riga L0 o svuotare L0, L1 o entrambe. Lo svuotamento &egrave; amministrativo e non
+annullabile: rimuove capitale operativo appreso e pu&ograve; rallentare le richieste finch&eacute;
+le cache non vengono ricostruite.</p>
+
+<p>Le cache sono operative a livello dell'istanza e non contengono credenziali. Al
+riuso, account, lingua, consenso, destinazione e autorizzazioni vengono risolti di
+nuovo nel contesto dell'utente corrente.</p>
+
+<p>Riferimenti nel codice:</p>
+<ul>
+ <li><code>runtime/engine/dispatch.py</code>: cascata e sequenza comune di finalizzazione;</li>
+ <li><code>runtime/engine/fastpath.py</code>: L0;</li>
+ <li><code>runtime/engine/autopath.py</code>: L1, riscontri e anti-autopath;</li>
+ <li><code>runtime/engine/validator.py</code>: L2;</li>
+ <li><code>runtime/engine/proposer*.py</code>, <code>executor.py</code>, <code>recovery*.py</code> e <code>terminator*.py</code>: L3;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: validit&agrave; del mondo operativo;</li>
+ <li><code>runtime/http_routes_admin.py</code> e <code>runtime/templates/praxis.html</code>: console.</li>
+</ul>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: workspace_drive
+  header: "GOOGLE WORKSPACE / DRIVE (cloud files and folders)"
+  preamble: |
+    DRIVE/GOOGLE-DRIVE/CLOUD-FILES/CLOUD-DOCUMENTS
+    -> find_files_google_workspace (search), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (delete), create_dirs_google_workspace (folder), share_files_google_workspace (share).
+
+rules:
+  - name: drive_vs_local_filesystem
+    when: "the query mentions Drive/Google-Drive/cloud-files/cloud-documents, OR concerns files on Google Workspace"
+    must: "use Google Workspace domain tools: find_files_google_workspace (search), read_files_google_workspace (download), write_files_google_workspace (upload), delete_files_google_workspace (delete), create_dirs_google_workspace (folder), share_files_google_workspace (share)"
+    must_not: "confuse with find_files/read_files (local filesystem on .33). The two endpoints are separate: find_files/read_files work on local .33 filesystem, NOT on Drive"
+    ok: "«search Drive for the budget {{ current_year }} file» -> find_files_google_workspace(query=\"budget {{ current_year }}\") -> final_answer"
+    error: "«search Drive for the budget {{ current_year }} file» -> find_files(pattern=\"budget*\") (THIS IS AN ERROR: find_files is local filesystem, not Drive)"
+
+  - name: share_outbound_consent
+    when: "the user asks to SHARE a Drive file with another user («share with Mario», «give Mario access to this doc»)"
+    must: "share_files_google_workspace (ADR 0128: outbound CONSENT, ACL grant). The recipient gets a PERMISSION, not a copy. Distinct from send_messages (mail outbound, copy/notification) and set_* (idempotent upsert of internal record state/labels)"
+    must_not: "use send_messages: the recipient does not receive the object via mail. MUST NOT use set_*: set_* updates internal record state, not outbound ACL grant"
+    ok: "«share the budget doc with mario@x.it as reader» -> share_files_google_workspace(file_id=\"...\", emails=[\"mario@x.it\"], role=\"reader\") -> final_answer"
+    error: "«share the doc with Mario» -> send_messages(to=\"mario@x.it\", body=\"link...\") (THIS IS AN ERROR: sends mail, not ACL grant). OR -> set_files(file_id=\"...\", state=\"shared\") (THIS IS AN ERROR: set_* is internal upsert)"

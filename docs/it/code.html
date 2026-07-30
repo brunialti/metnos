@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metnos — Where is the beef (code)?</title>
+    <meta name="description" content="Che cosa contiene il repository pubblico di Metnos, come viene esportato e verificato e come si collega alla documentazione e a un'istanza installata.">
+    <meta name="keywords" content="Metnos, codice, repository pubblico, installer, documentazione, export, sicurezza">
+    <meta name="author" content="the owner">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://metnos.com/it/code">
+    <link rel="alternate" hreflang="it" href="https://metnos.com/it/code">
+    <link rel="alternate" hreflang="en" href="https://metnos.com/en/code">
+    <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/code">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://metnos.com/it/code">
+    <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta property="og:description" content="Contenuto, confini e verifiche del repository pubblico di Metnos.">
+    <meta property="og:locale" content="it_IT">
+    <meta property="og:site_name" content="Metnos">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
+    <meta name="twitter:description" content="Codice, installer e documentazione tecnica di Metnos su GitHub.">
+    <style>
+:root {
+    --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+    --bronze: #A0522D; --plum: #6B21A8;
+    --bg: #FAFBFC; --text: #1a1a1a;
+    --border: #d0d7de; --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 12pt; line-height: 1.75; color: var(--text); background: var(--bg); max-width: 760px; margin: 0 auto; padding: 40px 30px; }
+h1, h2 { color: var(--navy); }
+h2 { font-size: 16pt; margin-top: 36px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+p { margin: 14px 0; }
+.title-page { text-align: center; padding: 50px 0 24px; }
+.title-page h1 { font-size: 28pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 14pt; color: var(--navy-light); margin: 10px 0 22px; font-style: italic; }
+.title-page .meta { font-size: 11pt; color: var(--muted); }
+nav.lang { position: fixed; top: 16px; right: 20px; z-index: 9999; font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10pt; letter-spacing: 2px; background: #FAFBFC; border: 1px solid #d0d7de; border-radius: 14px; padding: 4px 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+nav.lang a { padding: 0 4px; text-decoration: none; border: none; }
+nav.lang a.active { color: #1a1a1a; font-weight: 700; }
+nav.lang a:not(.active) { color: var(--muted); }
+.back { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; margin-bottom: 16px; }
+.back .inner { max-width: 760px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; }
+.back a { color: var(--navy); text-decoration: none; font-weight: 500; }
+footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 10.5pt; color: var(--muted); text-align: center; }
+footer a { color: inherit; text-decoration: none; }
+    </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/code.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/code.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div class="back">
+  <div class="inner">
+    <a href="./">&larr; Indice del sito</a>
+    <span style="color:#8e8e93;">Metnos &rsaquo; <strong style="color:#1a1a1a;">Code</strong></span>
+  </div>
+</div>
+
+<div class="title-page">
+  <h1>Code</h1>
+  <div class="subtitle">repository pubblico, confini e verifiche</div>
+</div>
+
+<p>Il codice &egrave; disponibile su <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> con licenza AGPL-3.0. Il repository contiene il sottoinsieme necessario a installare, eseguire e studiare Metnos: runtime, executor e manifest ammessi, client per i dispositivi, programma di installazione, test di contratto e documentazione tecnica pubblica in italiano e inglese. Il README e la guida dell'installer nel repository sono invece soltanto in inglese.</p>
+
+<h2>Rapporto con l'istanza installata</h2>
+
+<p>Il repository pubblico &egrave; un export deterministico dell'albero di lavoro, non una copia dei dati di un'istanza. Il processo di pubblicazione esclude stato privato, credenziali, log, report interni, benchmark e documentazione riservata; prima del push controlla inoltre l'albero finale alla ricerca di segreti e dati identificativi. Le chiavi, gli account, le preferenze e le cronologie di ogni utente restano nei percorsi dati e configurazione dell'installazione.</p>
+
+<p>Il software &egrave; ancora precedente alla versione 1.0: &egrave; adatto a valutazione, sperimentazione su un'installazione propria e sviluppo, ma interfacce e valori predefiniti possono ancora cambiare. Il <a href="https://github.com/brunialti/metnos/blob/main/README.md">README pubblico</a> &egrave; in inglese e riporta requisiti, installazione e confini di sicurezza.</p>
+
+<h2>Documentazione e codice</h2>
+
+<p>La <a href="architecture/">Guida all'architettura</a> descrive responsabilit&agrave;, autorit&agrave;, condizioni di errore e contratti dei componenti. Il <a href="domains.html">riferimento dei domini</a> e la <a href="interface.html">guida dell'interfaccia</a> derivano dai registri del runtime. A ogni pubblicazione le pagine indicizzabili entrano anche nel catalogo firmato del Tutor; una modifica documentale invalida quel catalogo e ne fa costruire un candidato completo prima del rilascio.</p>
+
+<p>Per installare Metnos, inizia dalla <a href="https://github.com/brunialti/metnos/blob/main/install/README.md">guida dell'installer</a>. Per segnalare un problema, indica richiesta, piattaforma, risultato osservabile e log con i segreti rimossi.</p>
+
+<footer>
+Metnos &middot; <a href="./">metnos.com</a> &middot; contatti: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>
+</footer>
+
+</body>
+</html>

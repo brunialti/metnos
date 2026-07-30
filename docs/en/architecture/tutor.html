@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; the integrated Tutor</title>
+ <meta name="description" content="How the Metnos Tutor recognizes product questions, uses verified local sources, observes current state, separates actions, and learns from each user's feedback.">
+ <meta name="keywords" content="Metnos, Tutor, documentation, signed catalog, service health, devices, scheduled tasks, feedback, privacy">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/tutor">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/tutor">
+ <meta property="og:title" content="Metnos &mdash; the integrated Tutor">
+ <meta property="og:description" content="A guide to documentary answers, current observations, and safe action handoff in Metnos.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; the integrated Tutor">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — the integrated Tutor",
+ "description": "How Tutor answers from verified sources, observes current state, and learns from one user's feedback without becoming a planner.",
+ "url": "https://metnos.com/en/architecture/tutor",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "The integrated Metnos Tutor"
+}
+ </script>
+ <style>
+:root{--navy:#1A477A;--blue:#2B6CB0;--sage:#548235;--bg:#FAFBFC;--text:#1a1a1a;--muted:#64748B;--border:#d0d7de;--code:#f6f8fa;--alt:#f0f4f8}
+*{box-sizing:border-box}body{font-family:'Segoe UI',Calibri,-apple-system,sans-serif;font-size:11pt;line-height:1.65;color:var(--text);background:var(--bg);max-width:960px;margin:0 auto;padding:40px 30px}
+h1{color:var(--navy);font-size:20pt;border-bottom:3px solid var(--navy);padding-bottom:8px;margin-top:46px}h1:first-of-type{margin-top:0}h2{color:var(--blue);font-size:14pt;margin-top:28px;border-bottom:1px solid var(--border);padding-bottom:4px}p{margin:10px 0}ul,ol{padding-left:24px}li{margin-bottom:5px}
+table{width:100%;border-collapse:collapse;margin:15px 0;font-size:10pt}th{background:var(--navy);color:#fff;padding:8px 10px;text-align:left}td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}tr:nth-child(even) td{background:var(--alt)}code{font-family:Consolas,'Courier New',monospace}p code,li code,td code{background:var(--code);padding:1px 5px;border-radius:3px;font-size:9.5pt}
+.title-page{text-align:center;padding:54px 20px 26px}.title-page h1{font-size:30pt;border:0;margin:0}.title-page .subtitle{font-size:15pt;color:var(--blue);margin-top:9px}.lead{font-size:12pt;color:var(--navy);margin:18px 0}.path{font-weight:650;color:var(--navy)}.flow{margin:18px 0;padding:13px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;text-align:center;color:var(--navy)}.small{font-size:10pt;color:var(--muted)}
+@media(max-width:680px){body{padding:24px 18px}table{display:block;overflow-x:auto}}
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/tutor.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/tutor.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;gap:16px;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Tutor</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>The integrated Tutor</h1>
+ <div class="subtitle">verified knowledge, current state, and private learning</div>
+</div>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“What does the file <code>Metnos_Extended_Perspectives_v1.html</code> contain?”</p>
+
+<p class="lead">Tutor answers questions about Metnos before the operational
+planner is involved. It composes the answer from admitted sources and may add
+current observations, but it owns no tools and performs no actions.</p>
+
+<div class="flow">
+question &rarr; explanation/action distinction &rarr; authorized sources
+&rarr; optional current observation &rarr; answer
+</div>
+
+<h1 id="recognition">1. How it recognizes a product question</h1>
+
+<p>The first step distinguishes four cases: an explanation, an action, a request
+containing both, or an intent that is not clear enough. Only the informational
+part enters Tutor. An operational request continues through the normal Metnos
+engine.</p>
+
+<p>Grammar alone is not enough. “Show me the Services page” asks for an
+explanation of an interface surface; “show me the files in my folder” asks for
+real data. The target of the request, not the verb by itself, determines the
+route.</p>
+
+<h2 id="source-identity">The signal for a documentation source</h2>
+
+<p>When a question contains the <strong>exact name</strong>, relative path, or
+canonical URL of a page in the public inventory, the runtime recognizes that
+source identity before classification. This is not a similarity search: it is
+a case-insensitive match against the published catalog.</p>
+
+<table>
+<thead><tr><th>Request</th><th>Outcome</th></tr></thead>
+<tbody>
+<tr><td>“What does <code>Metnos_Extended_Perspectives_v1.html</code> contain?”</td><td>Tutor binds retrieval to that document and summarizes its contents.</td></tr>
+<tr><td>“Summarize <code>docs/en/Metnos_QuickTour.html</code>.”</td><td>The path identifies a published source; the answer cites sections from that page only.</td></tr>
+<tr><td>“Delete <code>Metnos_Extended_Perspectives_v1.html</code>.”</td><td>The name is recognized, but the intent is operational, so Tutor does not take the request from the engine.</td></tr>
+<tr><td>“What does <code>private_notes.html</code> contain?”</td><td>The name is not part of the published documentation and remains a normal file request.</td></tr>
+</tbody>
+</table>
+
+<p>If translations share the same filename, the current language resolves the
+match. If the identity remains ambiguous, the check stops without guessing.
+An explicit path outside the publication, such as <code>/tmp/name.html</code> or
+<code>C:\Users\...\name.html</code>, remains a user path and is not reduced to
+its basename. The word “file” by itself is not a documentation signal.</p>
+
+<h1 id="sources">2. Which sources support an answer</h1>
+
+<p>Tutor's catalog is compiled and signed locally. It includes:</p>
+
+<ul>
+ <li>multilingual manifests of executors actually admitted by the loader;</li>
+ <li>public, indexable HTML pages shipped with Metnos;</li>
+ <li>declared projections of runtime and interface registries;</li>
+ <li>curated procedures whose steps and stop conditions must be preserved.</li>
+</ul>
+
+<p>It does not include personal files, messages, calendars, conversations,
+execution logs, roadmaps, or internal development notes. Authorization is
+applied before text reaches the model. A source that is not visible to the
+person asking cannot contribute to the answer.</p>
+
+<p>Long documents are split into sections. Semantic matching selects the
+relevant sections; when a document identity has been recognized, similarity
+only ranks sections within that same source. The model composes the final prose,
+but it cannot introduce capabilities, permissions, or facts that the sources do
+not attest.</p>
+
+<h1 id="current-state">3. When current state is needed</h1>
+
+<p>Some questions ask not only what a page is meant to show, but what it is
+showing now. A signed source may then refer to a registered, read-only runtime
+probe. The model does not choose the probe and cannot invent its arguments.</p>
+
+<table>
+<thead><tr><th>Observation</th><th>Scope</th><th>Protection</th></tr></thead>
+<tbody>
+<tr><td>admitted executors, lifecycle, and origin</td><td>instance administrator</td><td>no rejected paths or details</td></tr>
+<tr><td>service health</td><td>instance administrator</td><td>no endpoints, PIDs, or unit names exposed to the model</td></tr>
+<tr><td>scheduler health and cause</td><td>instance administrator</td><td>loop state and bounded diagnosis; no task text or run output</td></tr>
+<tr><td>registered devices and reachability</td><td>devices owned by the user only</td><td>keys, fingerprints, and profiles remain excluded</td></tr>
+<tr><td>scheduled tasks and recent runs</td><td>authenticated actor only</td><td>request text and run output remain excluded</td></tr>
+</tbody>
+</table>
+
+<p>Every observation states its time, expiry, source version, and a status among
+<code>ok</code>, <code>partial</code>, <code>stale</code>, and
+<code>unavailable</code>. Size, wait time, and retention are bounded. Expired or
+incomplete data is reported as such and never silently presented as healthy.</p>
+
+<p>Scheduler v2 lives inside the HTTP process; it is not a separate systemd
+service. Its probe observes the loop directly and distinguishes
+<code>running</code>, <code>degraded</code>, <code>failed</code>, and
+<code>stopped</code>. One failed job does not make the scheduler inactive, just
+as a period with no executions does not prove that the engine is down. If a
+question starts from an incorrect failure premise, Tutor corrects it; it states
+a cause only when the current observation attests that cause.</p>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“Which services are running, and what are they for?”</p>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“Why is the scheduler down?”</p>
+
+<h1 id="mixed-requests">4. Explanation and action in one request</h1>
+
+<p>A request may contain an informational part and an operational part:
+“Explain the Services page, then find <code>README.md</code>.” If the two clauses
+can be separated without rewriting them, Tutor:</p>
+
+<ol>
+ <li>answers the informational part;</li>
+ <li>retains the action clause exactly as the user wrote it;</li>
+ <li>asks whether to hand it to the ordinary Metnos engine;</li>
+ <li>hands it over only after confirmation.</li>
+</ol>
+
+<p>The confirmation is bound to the user, conversation, catalog version, and an
+expiry time. It can be used once. If system knowledge changes, data no longer
+match, or the confirmation has already been consumed, no operation starts.
+After confirmation, the same controls as any new turn still apply: planning,
+Vaglio, autonomy, consent, and executors.</p>
+
+<p>An existing dialog is never replaced. If clause separation is not safe,
+Metnos asks the user to state the explanation and action separately.</p>
+
+<h1 id="learning">5. How user feedback is used</h1>
+
+<p>The feedback controls in the chat can improve retrieval for that same person.
+Positive feedback associates the request representation with the primary source
+that was actually served. Negative feedback removes any such association and
+records a typed gap.</p>
+
+<p>This learning has narrow boundaries:</p>
+
+<ul>
+ <li>it is isolated per user and cannot change another user's answers;</li>
+ <li>it does not retain the clear-text request, only a fingerprint and, when
+ needed, a vector under bounded retention and quotas;</li>
+ <li>it remains valid only while the representation model, signed catalog, and
+ source content fingerprint still match;</li>
+ <li>it acts in retrieval after the explanation/action distinction, so it never
+ changes the planner or enters plan caches;</li>
+ <li>it can be purged together with the gap ledger for that user alone.</li>
+</ul>
+
+<p>Gaps are grouped by cause and semantic neighborhood without reconstructing
+the original wording. A counterfactual check verifies that retained associations
+still point to present, unchanged sources. Tutor never publishes new
+documentation by itself and never turns its own generated prose into evidence.</p>
+
+<h1 id="languages">6. Language and channel</h1>
+
+<p>Retrieval prefers the current language for each concept and falls back to
+English when a translation is missing. Response language is explicit; it is not
+chosen by the language of a source or of the model instruction.</p>
+
+<p>The same questions may be asked in the web chat or through Telegram. When an
+answer names a <span class="path">Settings</span> page, that path belongs to the
+instance's web chat. Telegram can show its instructions and link, but it does not
+embed the administrative interface.</p>
+
+<h1 id="updates">7. Updates and failure behavior</h1>
+
+<p>Any admitted-source change alters the input stamp. The compiler builds a
+complete candidate, verifies its schema, vectors, and signature, and atomically
+replaces the current catalog. Vectors for unchanged units may be reused, but a
+partial catalog is never admitted.</p>
+
+<p>If no source is sufficient, Tutor reports a knowledge gap. If the catalog,
+representation, or composition subsystem fails instead, it reports technical
+unavailability. In either case, an informational question is not accidentally
+turned into an action.</p>
+
+<h1 id="references">8. Technical references</h1>
+
+<ul>
+ <li><a href="../domains.html">Domain reference</a>: capabilities, sources,
+ and operational boundaries described by Tutor.</li>
+ <li><a href="../interface.html">Interface guide</a>: web-chat paths and
+ <span class="path">Settings</span> pages cited in answers.</li>
+ <li><a href="fast_path.html">Fastpath and autopath</a>: why Tutor learning
+ remains outside plan caches.</li>
+ <li><a href="http_api.html">HTTP channel and web chat</a>: identity,
+ conversations, and feedback.</li>
+ <li><a href="observability.html">Observability</a>: outcomes and measurements
+ without retaining clear-text requests.</li>
+ <li><a href="virtualization.html">Model virtualization</a>: roles of the mode
+ classifier, composer, and embedder.</li>
+</ul>
+
+</body>
+</html>

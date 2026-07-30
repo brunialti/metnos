@@ -1,0 +1,13 @@
+{# ---
+role: engine_prior_steps
+tier: wise
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+DONE SO FAR (previous turn): do not re-emit these steps; use `from_step=N` to reference their results and plan only the remaining steps.
+{% for step in steps %}  {{ step.idx }}) {{ step.tool }} → {% if step.has_count %}{{ step.count }} results{% else %}ok{% endif %}
+{% endfor %}

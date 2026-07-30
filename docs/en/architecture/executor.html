@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; executor (introduction)</title>
+ <meta name="description" content="What an executor is in Metnos, told for those who want to understand without having to implement one. Anatomy, manifest, runtime fence, life cycle, examples.">
+ <meta name="keywords" content="executor, manifest, signature, sandbox, lifecycle, synt, mnest, mnestome, microdesign, metnos, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/executor">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/executor">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/executor">
+ <meta property="og:title" content="Metnos &mdash; executor (introduction)">
+ <meta property="og:description" content="What an executor is in Metnos, told for those who want to understand without having to implement one.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; executor (introduction)">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — executor (introduction)",
+ "description": "What an executor is in Metnos: anatomy, signed manifest, runtime fence, life cycle, examples.",
+ "url": "https://metnos.com/en/architecture/executor.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Metnos component: executor (didactic introduction)"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.three-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.three-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 10pt; }.three-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }.four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.four-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 9.5pt; }.four-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.three-cols { grid-template-columns: 1fr 1fr 1fr; }.four-cols { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) {.three-cols,.four-cols { grid-template-columns: 1fr; } }
+@media (max-width: 1024px) and (min-width: 721px) {.four-cols { grid-template-columns: 1fr 1fr; } }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<p class="lead">An executor is an operational unit whose arguments, effects,
+capabilities, and isolation profile are declared in a signed manifest. The system
+keeps shipped, generated, and imported executor provenance separate; the
+<a href="executor_catalog.html">generated catalog</a> supplies current counts,
+domains, and status without duplicating them on this page.</p>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/executor.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/executor.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">executor</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>executor</code> &mdash; how it is made</div>
+ <div class="meta">
+ Introductory guide<br>
+ </div>
+</div>
+
+<p><strong>Ask Metnos with a request like this example:</strong> &ldquo;Find
+every PDF in Documents that contains the word contract.&rdquo; Metnos may compose
+several executors: one finds the files, another reads their contents, and a
+third filters the results. The user describes the outcome and does not need to
+know executor names.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">What an executor is (in thirty seconds)</a></li>
+ <li><a href="#cap2">Anatomy: manifest, signature, and implementation</a></li>
+ <li><a href="#cap3">The manifest: the calling card</a></li>
+ <li><a href="#cap4">The fence: what it can and cannot do</a></li>
+ <li><a href="#cap5">An executor's life</a></li>
+ <li><a href="#cap6">Four origins: handwritten, generated, imported, builtin</a></li>
+ <li><a href="#cap7">Four concrete examples</a></li>
+ <li><a href="#cap8">Going deeper</a></li>
+</ol>
+</div>
+
+<!-- ============================================================== -->
+<h1 id="cap1">1. What an executor is (in thirty seconds)</h1>
+
+<p class="lead">
+An executor is a small specialised operational unit that does <strong>one
+thing only</strong>: reads mail, finds a file, obtains the time, or sends a
+message. Subprocess executors have their own folders; in-process executors
+retain the same logical contract.
+</p>
+
+<p>
+Think of a toolbox. Every tool is simple and recognisable: the screwdriver tightens
+screws, the hammer drives nails. Nobody would ask the screwdriver to drive a nail.
+In Metnos it is the same: every executor is a tool with a clear job. When the user
+asks for something, the planner picks the right tool and uses it.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schema of an executor: input, sealed box with label, output">
+ <defs>
+ <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+ <path d="M0,0 L10,5 L0,10 Z" fill="#1A477A"/>
+ </marker>
+ </defs>
+ <rect x="20" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
+ <text x="90" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">arguments</text>
+ <text x="90" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="11" fill="#444">{tz: "Europe/Rome"}</text>
+ <line x1="160" y1="115" x2="245" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
+ <rect x="250" y="50" width="220" height="130" rx="10" fill="white" stroke="#548235" stroke-width="2.5"/>
+ <text x="360" y="80" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="14" fill="#548235" font-weight="700">get_now</text>
+ <text x="360" y="105" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">one thing only:</text>
+ <text x="360" y="125" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">returns date and time</text>
+ <rect x="270" y="145" width="80" height="22" rx="3" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
+ <text x="310" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#A0522D" font-weight="600">manifest</text>
+ <rect x="370" y="145" width="80" height="22" rx="3" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+ <text x="410" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#14532d" font-weight="600">signature</text>
+ <line x1="470" y1="115" x2="555" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
+ <rect x="560" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
+ <text x="630" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">result</text>
+ <text x="630" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="10" fill="#444">2026-05-06 16:45</text>
+ <text x="90" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">what I ask</text>
+ <text x="360" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">the tool that runs</text>
+ <text x="630" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">what I get back</text>
+</svg>
+<figcaption>An executor is a box with a precise job, an inbound contract, and an outbound contract.</figcaption>
+</figure>
+
+<p>Three things define it:</p>
+
+<ul>
+ <li><strong>it does one thing only</strong> &mdash; its whole life revolves around a narrow task;</li>
+ <li><strong>it has a contract</strong> &mdash; it declares what it accepts as input and what it returns;</li>
+ <li><strong>it declares its scope</strong> &mdash; it states which folders, network access, and services it needs; the runtime applies the available controls.</li>
+</ul>
+
+<h2>Why executors are small</h2>
+<p>The more tasks a tool combines, the harder it becomes to verify its
+contract, authority, and effects. Separating file deletion from mail delivery
+makes every step legible and controllable. When Metnos composes several
+executors, the plan and each execution retain their own controls.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap2">2. Anatomy: manifest, signature, and implementation</h1>
+
+<p>
+Executors in the distributed catalog normally use a flat folder containing
+four files. The contract does not impose that number: a manifest may list
+multiple code files, and in-process executors keep their signed contracts
+separate from their implementations.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="An executor's folder with its four files">
+ <path d="M 30 30 L 90 30 L 110 50 L 250 50 L 250 80 L 30 80 Z" fill="#A0522D" stroke="#7B3F1F" stroke-width="1.5"/>
+ <text x="60" y="70" font-family="Segoe UI, sans-serif" font-size="13" fill="white" font-weight="600">get_processes/</text>
+ <g font-family="Segoe UI, sans-serif" font-size="12" fill="#1a1a1a">
+ <rect x="60" y="100" width="600" height="38" rx="4" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
+ <text x="80" y="115" font-weight="700" fill="#A0522D">manifest.toml</text>
+ <text x="80" y="131" font-size="10" fill="#555">the calling card: name, what it does, arguments, examples, output schema</text>
+ <rect x="60" y="148" width="600" height="38" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+ <text x="80" y="163" font-weight="700" fill="#14532d">manifest.toml.sig</text>
+ <text x="80" y="179" font-size="10" fill="#555">the cryptographic signature of the calling card: it proves who wrote it</text>
+ <rect x="60" y="196" width="600" height="38" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+ <text x="80" y="211" font-weight="700" fill="#1A477A">get_processes.py</text>
+ <text x="80" y="227" font-size="10" fill="#555">the actual code: an <tspan font-family="Consolas, monospace">invoke(args)</tspan> function that performs the task</text>
+ <rect x="60" y="244" width="600" height="38" rx="4" fill="#f0f4f8" stroke="#64748B" stroke-width="1" stroke-dasharray="3,3"/>
+ <text x="80" y="259" font-weight="700" fill="#64748B">manifest.lang_state.json</text>
+ <text x="80" y="275" font-size="10" fill="#555">translation state (multilingual): only when descriptions exist in more than one language</text>
+ </g>
+ <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">common layout of the distributed catalog</text>
+</svg>
+<figcaption>The layout used by distributed executors: manifest, signature,
+entry point, and translation state. The manifest remains authoritative for
+the signed code files.</figcaption>
+</figure>
+
+<p>
+For an active subprocess executor, manifest, signature, and code form the
+core. The code does the work, the manifest lets the planner evaluate its
+contract, and cryptographic verification detects changes made after signing.
+</p>
+
+<table>
+<tr><th>File</th><th>What it holds</th><th>Who reads it</th></tr>
+<tr><td><code>manifest.toml</code></td><td>Name, description, arguments, examples, output schema, declared capabilities, and execution policy</td><td>the planner (to choose), the loader (to load)</td></tr>
+<tr><td><code>manifest.toml.sig</code></td><td>Ed25519 signature of the manifest bytes; the manifest also carries the code digest</td><td>the loader during catalog admission</td></tr>
+<tr><td><code>&lt;entrypoint&gt;.py</code></td><td>The subprocess entry point; additional files may be declared in <code>[code].files</code></td><td>the runtime when the executor is invoked</td></tr>
+<tr><td><code>manifest.lang_state.json</code></td><td>Per-language description fingerprints</td><td>the tools that keep translations aligned</td></tr>
+</table>
+
+<p>The loader does not infer a contract from folder shape. It reads the
+manifest, validates the standard, signature, and code digest, checks the entry
+point, and only then admits the executor. Contracts for in-process executors
+live under <code>runtime/builtin_executor_contracts/</code> and undergo the same
+cryptographic verification.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap3">3. The manifest: the calling card</h1>
+
+<p>
+The manifest is a TOML file. You open it with a text editor and you can make sense of
+it even without being a programmer. It declares everything the planner needs to know:
+the executor's name, what it does, which arguments it takes, what the result looks
+like, a few examples for orientation.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Annotated anatomy of the manifest">
+ <rect x="20" y="20" width="480" height="380" rx="6" fill="white" stroke="#d0d7de" stroke-width="1.5"/>
+ <text x="35" y="45" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "get_now"</text>
+ <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">version = "0.1.0"</text>
+ <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">affinity = ["time", "date", "now", "ora"]</text>
+ <text x="35" y="115" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[description]</text>
+ <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">en = "Returns the current date and time."</text>
+ <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[args.properties.tz]</text>
+ <text x="35" y="185" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">type = "string"</text>
+ <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">default = "UTC"</text>
+ <text x="35" y="235" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[output]</text>
+ <text x="35" y="255" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">schema_inline = "{ ok: bool,... }"</text>
+ <text x="35" y="285" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[code]</text>
+ <text x="35" y="305" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">files = ["get_now.py"]</text>
+ <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">digest = "sha256:e6e609f6..."</text>
+ <text x="35" y="355" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[[capabilities]]</text>
+ <text x="35" y="375" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "time:read"</text>
+ <line x1="320" y1="55" x2="540" y2="55" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="59" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">identity</text>
+ <line x1="320" y1="90" x2="540" y2="90" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="94" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">keywords</text>
+ <text x="545" y="108" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">helps the planner</text>
+ <text x="545" y="120" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">find this tool</text>
+ <line x1="320" y1="155" x2="540" y2="155" stroke="#16a34a" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="159" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#14532d" font-weight="600">what it does</text>
+ <text x="545" y="173" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">a clear sentence,</text>
+ <text x="545" y="185" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">translated per language</text>
+ <line x1="320" y1="195" x2="540" y2="195" stroke="#6B21A8" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="199" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#6B21A8" font-weight="600">arguments</text>
+ <text x="545" y="213" font-family="Segoe UI, sans-serif" font-size="9" fill="#4c1280">type, default, description</text>
+ <line x1="320" y1="245" x2="540" y2="245" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="249" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">result shape</text>
+ <text x="545" y="263" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">what comes out of the tool,</text>
+ <text x="545" y="275" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">field by field</text>
+ <line x1="320" y1="315" x2="540" y2="315" stroke="#64748B" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="319" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">code + fingerprint</text>
+ <text x="545" y="333" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">the digest changes if the</text>
+ <text x="545" y="345" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">code is touched</text>
+ <line x1="320" y1="365" x2="540" y2="365" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="369" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">permissions</text>
+ <text x="545" y="383" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">what it may touch</text>
+</svg>
+<figcaption>A real manifest, simplified. Every block plays a clear role: identity, keywords for retrieval, description, arguments, result shape, code with fingerprint, permissions.</figcaption>
+</figure>
+
+<h2>What deserves a second look</h2>
+
+<p>Three things stand out, because the whole system rests on them.</p>
+
+<p>
+<strong>The code fingerprint</strong> (<code>digest</code>): a cryptographic fingerprint
+computed over the bytes of the <code>.py</code> file. If anyone modifies even a single
+comma in the code without recomputing the fingerprint, the loader rejects the executor.
+The manifest and the code are bound like a certificate and the document it certifies.
+</p>
+
+<p>
+<strong>The result shape</strong> (<code>output.schema_inline</code>): declares field by
+field what the executor returns. It serves whoever composes chains of executors (the
+planner does not fly blind: it reads the schema and knows what to expect at the next
+step) and whoever auto-generates code.
+</p>
+
+<p>
+<strong>The permissions</strong> (<code>capabilities</code>): the manifest does not
+decide what the executor may do. The manifest <em>declares</em> what it would need in
+order to function; the system then decides whether to grant those permissions and
+under which constraints. See <a href="sandbox.html">sandbox</a>.
+</p>
+
+<pre>[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }</pre>
+
+<p>
+For a remote backend, the <code>when</code> clause narrows the declaration to one
+invocation. Only when the final <code>client</code> value matches does the same binding
+enable network access, the read-write credential home, and server placement. An
+arbitrary value in <code>client</code> grants nothing.
+</p>
+
+<h2>One execution policy</h2>
+
+<p>
+Every invocation passes through a central runtime scheduler. If the
+<code>[execution]</code> section is missing, incomplete, or invalid, the loader
+always selects serial execution. Parallelism is therefore an <em>opt-in</em>
+property of the signed contract, admitted only after repeated equivalence tests
+between serial and concurrent execution.
+</p>
+
+<table>
+<thead><tr><th>Class</th><th>Portable meaning</th><th>Behaviour</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td>No thread</td><td>Stays on the caller thread.</td></tr>
+<tr><td><code>1</code></td><td>Moderate</td><td>Uses a small share of the central pool.</td></tr>
+<tr><td><code>2</code></td><td>High</td><td>Requests more concurrency within resource limits.</td></tr>
+<tr><td><code>3</code></td><td>Maximum</td><td>Still bounded by hardware, backend, and global ceilings.</td></tr>
+</tbody>
+</table>
+
+<p>
+The signed class is a <strong>maximum</strong>, not a fixed thread count: the
+runtime may only lower it. In one place it applies bounded queues, backpressure,
+per-resource pools, and metrics without changing arguments, results, causal
+order, permissions, or success criteria. A non-read-only executor may declare a
+positive class, but it must also provide a resolvable concurrency identity;
+invocations sharing that identity remain serial.
+</p>
+
+<p>
+LLM-backed executors follow the same rule. At startup, framework and hardware
+determine the LLM resource ceiling: a single-slot backend degrades to class 0,
+whereas a batching backend can admit more requests. Executors do not hide
+independent competing concurrency pools.
+</p>
+
+<h2>Why the contract uses TOML</h2>
+<p>A manifest must remain readable, commentable, and editable during review.
+TOML preserves that legibility while retaining a structure that the loader can
+validate rigorously.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap4">4. The fence: what it can and cannot do</h1>
+
+<p>
+The manifest declares the maximum capabilities requested by the executor.
+Before invocation, the runtime checks the concrete arguments, resolves only
+the required resources, and applies identity, vaglio, and policy controls. The
+sandbox is an additional containment layer; it grants no authority and does
+not replace those controls.
+</p>
+
+<table>
+<tr><th>Layer</th><th>Current server behaviour</th></tr>
+<tr><td>Contract</td><td><code>capabilities</code>, placement, platforms, and execution policy come from the signed manifest.</td></tr>
+<tr><td>Application controls</td><td>Arguments may narrow a signed scope but never widen it; identity, consent, and destination are checked before the subprocess starts.</td></tr>
+<tr><td>Bubblewrap active</td><td>Code and runtime are read-only, <code>/tmp</code> is private, data resources are mounted with the required access, and the network is separated when no capability needs it.</td></tr>
+<tr><td>Bubblewrap absent or disabled</td><td>Application checks remain, but the command runs directly and must not be described as operating-system isolation.</td></tr>
+</table>
+
+<p>Network access is currently binary: when required, the process inherits
+the host network; there is no domain allowlist. Some system roots, including
+<code>/etc</code>, are visible read-only. See the <a href="sandbox.html">sandbox
+guide</a> for mounts, exceptions, downgrades, and the differences among Linux,
+Windows, and macOS.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap5">5. An executor's life</h1>
+
+<p>
+The <code>lifecycle</code> field separates candidates from executors available
+to the planner. It is not a mandatory sequence for every origin: reviewed,
+distributed executors may begin as <code>active</code>, while Synt candidates
+pass through preparation and admission states.
+</p>
+
+<table>
+<tr><th>State</th><th>Meaning</th><th>In pool?</th></tr>
+<tr><td><code>proposed</code></td><td>Triage metadata without code files; the loader rejects it if it binds code.</td><td>No; visible only to work and audit surfaces.</td></tr>
+<tr><td><code>synthesized</code></td><td>A candidate with code. When signature verification is enabled, it must already pass signature, digest, and entry-point checks, but the composer still cannot use it.</td><td>No; available to the Synt path.</td></tr>
+<tr><td><code>active</code></td><td>An admitted contract visible to the planner.</td><td>Yes, unless disabled or dormant because prerequisites are missing.</td></tr>
+<tr><td><code>deprecated</code></td><td>Excluded from new compositions; retained as a compact index for diagnosis and replacement.</td><td>No.</td></tr>
+<tr><td><code>archived</code></td><td>Excluded from the operational catalog; its state remains in the lifecycle registry.</td><td>No.</td></tr>
+</table>
+
+<p>Automatic inactivity ageing applies only to Synt-generated executors: after
+30 unused days they become <code>deprecated</code>, and after another 14 days
+in that state they become <code>archived</code>. Handcrafted executors,
+skill imports, and protected names are not retired merely because they are
+rarely used. The thresholds are configurable and restoration is explicit.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap6">6. Four origins: handwritten, generated, imported, builtin</h1>
+
+<p>
+All executors expose the same logical contract, but they originate in four
+different ways. The distinction is not cosmetic: it changes who writes them,
+where they live, and which provenance is recorded.
+</p>
+
+<div class="four-cols">
+ <div>
+ <h4 style="color:#A0522D;">Handwritten</h4>
+ <p style="color:#444;">The author crafts them with care. They form the stable core, the <em>seed</em> from which everything else grows.</p>
+ <p><strong>Folder</strong>: <code>executors/</code> in the installation.</p>
+ <p><strong>Examples</strong>: <code>get_now</code>, <code>find_files</code>, <code>read_messages</code>, <code>send_messages</code>.</p>
+ <p style="color:#64748B;font-style:italic;">Tight, robust, reviewed many times.</p>
+ </div>
+ <div>
+ <h4 style="color:#3b82f6;">Generated on the fly</h4>
+ <p style="color:#444;">When the catalog does not cover a request, the <a href="synt.html">Synt</a> composes a new executor in five steps (name, contract, tests, description, code).</p>
+ <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/</code></p>
+ <p><strong>Example</strong>: a narrow candidate prepared through a governed request when the catalog lacks a required capability.</p>
+ <p style="color:#64748B;font-style:italic;">Kept apart: they can never overshadow handwritten seeds.</p>
+ </div>
+ <div>
+ <h4 style="color:#9333ea;">Imported from an external skill</h4>
+ <p style="color:#444;">A public skill describes how to use a third-party service. Parsing and deterministic closed-vocabulary mapping turn it into one or more Metnos executors.</p>
+ <p><strong>Folder</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
+ <p><strong>Examples</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (from a calendar skill).</p>
+ <p style="color:#64748B;font-style:italic;">Same checks as a generated one: no special treatment for coming from outside.</p>
+ </div>
+ <div>
+ <h4 style="color:#16a34a;">Builtin</h4>
+ <p style="color:#444;">Internal services executed in process. Their implementations live in the runtime, separately from their signed contracts.</p>
+ <p><strong>Contracts</strong>: <code>runtime/builtin_executor_contracts/</code></p>
+ <p><strong>Examples</strong>: <code>admin</code>, <code>create_tasks</code>, <code>list_skills</code>, <code>describe_images</code>.</p>
+ <p style="color:#64748B;font-style:italic;">System services, not regular tools.</p>
+ </div>
+</div>
+
+<h2>Precedence of the curated catalog</h2>
+<p>A generated or imported executor cannot use the name of a handwritten
+executor. Admission rejects the collision. If it is discovered while the
+catalog loads, the curated executor remains active and the synthesized folder
+is moved to a recoverable temporary area. Generation or a third-party skill
+therefore cannot silently replace the catalog's curated core.</p>
+
+<h2>Why the imported origin exists</h2>
+
+<p>
+A third-party library typically has its own textual documentation explaining
+how to use it: &laquo;to list the calendar, call <code>gws calendar list</code>;
+to create an event, use <code>--summary</code> and <code>--start</code>&raquo;.
+The <em>agentskills.io</em> standard encodes this documentation in a precise
+format (a Markdown file with a structured front matter). Metnos's importer
+reads that format, translates it into the system's closed vocabulary, and
+generates the executor folder as if it had been handwritten.
+</p>
+
+<p>
+The upside: any service already documented as a skill (Google calendar,
+mail, file storage,...) can be brought into Metnos without rewriting from
+scratch. The downside: you have to trust whoever wrote the skill (and its
+helper scripts). For this reason the importer does not install anything in
+<code>executors/</code>: imported executors live in the separate data
+folder, under watch, and still pass through the <a href="vaglio.html">vetting</a>
+before every call.
+</p>
+
+<p>
+One operational detail: an executor that requires credentials remains
+<em>dormant</em> and is excluded from the planner pool until its prerequisites
+are available. The configuration flow may collect the data through a dialog
+and store it encrypted; it is not correct to promise that every first call can
+always continue automatically. See the <a href="skill_importer.html">skill
+importer guide</a> for the admitted cases.
+</p>
+
+<!-- ============================================================== -->
+<h1 id="cap7">7. Four concrete examples</h1>
+
+<p>
+Four executors actually in use, told from the outside. No source code: just what you
+ask for and what you get.
+</p>
+
+<h2>7.1 <code>get_now</code> &mdash; &laquo;what time is it?&raquo;</h2>
+
+<p>
+The simplest tool in the catalog. No required arguments. Returns a dictionary with the
+current date and time.
+</p>
+
+<pre>call: get_now(timezone="Europe/Rome")
+response: { ok: true,
+ content: "2026-05-06T16:45:23+02:00",
+ metadata: { timezone: "Europe/Rome", iso8601: "...", epoch:... } }</pre>
+
+<p>
+No network, no file read, no write. Permissions: <code>time:read</code>. It is one of
+those tools that look superfluous until you see why they matter:
+<strong>the planner must never invent the date from training memory</strong>. When it
+needs to compute &laquo;yesterday's mail&raquo;, it calls <code>get_now</code> first, then
+subtracts a day. That way &laquo;yesterday&raquo; is always today's yesterday, not the
+yesterday from when the model was trained.
+</p>
+
+<h2>7.2 <code>find_files</code> &mdash; &laquo;find the photos&raquo;</h2>
+
+<p>
+Searches files by name or pattern (the classic &laquo;extensions&raquo;). Returns the list
+together with basic metadata: path, name, size, last modified, type.
+</p>
+
+<pre>call: find_files(base_path="/home/user/images", pattern="*.jpg")
+response: { ok: true,
+ entries: [
+ {path: "/home/.../foto1.jpg", size: 2458123,...},
+ {path: "/home/.../foto2.jpg", size: 1923456,...},...
+ ],
+ metadata: { count: 247,... } }</pre>
+
+<p>
+The planner uses it when it has to hand the list off to another tool: for example to
+keep only the most recent photos, compute total size, compress the older ones. Note
+that <em>filtering</em> does not live in <code>find_files</code>: the tool returns the
+files and that is it. If you want a subset, you ask via the pattern, or you pipe the
+result into a tool that filters. One thing at a time.
+</p>
+
+<h2>7.3 <code>filter_lists</code> &mdash; &laquo;find overlapping events&raquo;</h2>
+
+<p>
+A tool that works on <em>two</em> lists rather than one. Useful when a
+user question intersects two sets: "which HLT appointments overlap
+with MNM ones in the next three months?", or "which files are present
+in both folders?".
+</p>
+
+<pre>call: filter_lists(op="overlap",
+ from_step=2, # list A (HLT events)
+ with_step=3) # list B (MNM events)
+reply: { ok: true,
+ op: "overlap",
+ entries: [...entries of A that overlap with at least one of B... ],
+ metadata: { count_a: 4, count_b: 5, count_out: 0 } }</pre>
+
+<p>
+Available operations: <code>intersect</code> (entries common to both
+lists, match on a key), <code>union</code> (entries from either, deduped),
+<code>difference</code> (entries of A not in B), <code>symdiff</code>
+(symmetric difference), <code>overlap</code> (temporal AND: entries of
+A whose time window overlaps with at least one in B; auto-detect
+start/end), and <code>delta</code> (items that are new or have advanced from a
+reference list, used by incremental monitors).
+</p>
+
+<p>
+The taxonomy of list operators is closed and readable:
+<code>filter_entries</code> reduces a single list (predicates:
+where_starts_with, where_contains, where_glob, where_regex),
+<code>filter_lists</code> combines two lists with set ops,
+<code>compute_entries</code> computes a scalar (sum, average, min, max,
+count). The three primitives together cover almost every list
+manipulation without inventing new verbs.
+</p>
+
+<h2>7.4 <code>send_messages</code> &mdash; &laquo;send a message to a family member&raquo;</h2>
+
+<p>
+Sends one or more messages over Telegram or email. Main
+argument: a list of messages, each with recipient and body.
+</p>
+
+<pre>call: send_messages(messages=[
+ {to_user: "lucia", body: "Out for a bit, back at seven."}
+ ])
+response: { ok: true, ok_count: 1, fail_count: 0,
+ results: [{to_user: "lucia", channel: "telegram", message_id: "abc123"}] }</pre>
+
+<p>
+A &laquo;transformative&raquo; tool: it changes the world, it really sends a message. For
+this reason, executors that change the world get treated with more care: their
+manifest declares <code>mail:send</code> and <code>channel:out</code>, and the
+destination is resolved against the bound user and channel. Delivery is
+recorded but cannot be undone: the manifest declares
+<code>revertible=false</code>. Controls must therefore run before delivery. See
+<a href="vaglio.html">vaglio</a> for pre-execution checks and
+<a href="approval_ux.html">approval_ux</a> for how the user is asked to confirm.
+</p>
+
+<!-- ============================================================== -->
+<h1 id="cap8">8. Going deeper</h1>
+
+<p>
+This document is an introduction. If you want to understand the mechanisms beneath
+&mdash; how a manifest gets signed, how the fence is applied, how the Synt generates
+code, how the planner picks a tool &mdash; the documents below should be read one at
+a time.
+</p>
+
+<table>
+<tr><th>To understand&hellip;</th><th>Read</th></tr>
+<tr><td>the planner that picks the right executor</td><td><a href="agent_runtime.html">agent_runtime</a></td></tr>
+<tr><td>the fence in detail (forbidden paths, exceptions, &laquo;sort the photos&raquo;)</td><td><a href="sandbox.html">sandbox</a></td></tr>
+<tr><td>how the Synt composes new executors</td><td><a href="synt.html">synt</a></td></tr>
+<tr><td>how an external skill is imported as an executor</td><td><a href="skill_importer.html">skill importer</a></td></tr>
+<tr><td>the check that precedes the execution of risky actions</td><td><a href="vaglio.html">vaglio</a></td></tr>
+<tr><td>how the user sees and approves actions</td><td><a href="approval_ux.html">approval_ux</a></td></tr>
+<tr><td>the memory that executions leave behind</td><td><a href="mnest.html">mnest</a> and <a href="mnestome.html">mnestome</a></td></tr>
+<tr><td>the dialogue with the world (Telegram, web, voice)</td><td><a href="channel.html">channel</a></td></tr>
+<tr><td>which <em>models</em> (LLM, embedding, VLM) power the executors and how to change them from a TOML</td><td><a href="virtualization.html">model virtualization</a></td></tr>
+<tr><td>observability (what happened, why, when)</td><td><a href="observability.html">observability</a></td></tr>
+</table>
+
+<p>
+You do not need to read these guides in order. Start with the concrete
+question, follow the relevant links, and stop at the level of detail you need.
+</p>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>executor</em>, didactic introduction
+</p>
+</body>
+</html>

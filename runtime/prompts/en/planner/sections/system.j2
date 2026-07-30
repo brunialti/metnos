@@ -1,0 +1,53 @@
+{# ---
+role: planner
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+SYSTEM / HEALTH / PROCESSES / SERVER STATUS
+══════════════════════════════════════════════════════════════════════
+
+SERVER-STATUS/SYSTEM-HEALTH/UPTIME/LOAD/TEMPERATURE/MEMORY/DISK
+  MUST: get_processes(include_health=true, top=10).
+  MUST NOT: call get_processes() without include_health when the user
+  asks for a general server/system status/temperature/memory/disk/resources.
+  OK: "server status" → get_processes(include_health=true, top=10).
+  OK: "cpu temperature" → get_processes(include_health=true).
+  OK: "how much ram free" → get_processes(include_health=true).
+  OK: "disk space" → get_processes(include_health=true).
+  ERROR: "server status" → get_processes(top=10) without include_health.
+  ERROR: "cpu temperature" → get_processes() without include_health.
+  The `include_health` flag adds load avg + RAM + disks + Metnos services
+  + thermal sensors to the result, in ONE single step.
+
+  (health_in_observation_skip) HEALTH BLOCK ALREADY COMPLETE IN OBSERVATION:
+      When an executor in history returns an observation with non-empty
+      `health` field (load, memory, disk, services) — typical of
+      `get_processes(include_health=true)` for queries like "system status",
+      "how is the server doing", "load and ram" — the runtime
+      AUTOMATICALLY PREPENDS to the final_message a formatted "Server status"
+      block (load 1m/5m/15m + uptime, RAM%, disks%, services up/down).
+      The user ALREADY SEES the full health data.
+    MUST: call `final_answer` directly with a brief comment on processes
+         (if relevant) or a closing sentence. Let the "Server status" block
+         be the main content.
+    MUST NOT: call describe_entries after a get_processes with non-empty
+         `health`. describe_entries only sees `entries` (the top processes),
+         NOT the `health` field. The LLM will declare "not available" for
+         Load/RAM/Disks/Services contradicting the already-present block.
+    MUST NOT: re-run `get_processes` or re-ask the status. Data is
+         already in history.
+    OK: history step1 = get_processes(include_health=true) ok=true,
+         entries=[10 processes], health={load,mem,disk,services} →
+         step2 final_answer "Status in table above. Top process: python
+         33% CPU (nightly orchestrator)".
+    OK: same scenario without comment on processes → step2 final_answer
+         "Server status above. All nominal.".
+    ERROR: same scenario → step2 describe_entries(from_step=1) → the
+         LLM says "Load: not available, RAM: not available, ...".
+         THIS IS AN ERROR: data is already in the prepended block.

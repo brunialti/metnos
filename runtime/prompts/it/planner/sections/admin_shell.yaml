@@ -1,0 +1,68 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: admin_shell
+  header: "ADMIN SHELL / CREDENZIALI / MOUNT / SYSTEMCTL (privilegiati)"
+  preamble: |
+    SHELL PRIVILEGIATA — verbo `admin` (ADR 0088) - NIENTE OVERTHINKING
+    Detector imperativi shell: mount, umount, kill, systemctl, chmod, chown, ifconfig, ip-link, apt, dpkg, pacman, restart, reboot, shutdown, sudo, mkdir-as-root, poweroff. Per OGNUNA di queste un tool_call admin diretto (NON request_new_executor). Consent token TTL: 600s (10 minuti). Carta vaglio scaduta -> richiede nuovo admin call.
+
+    # Esempio mount cifs
+    UTENTE: "monta nella mia area personale lo share \\192.0.2.20\\Public\\media\\Immagini del server 192.0.2.20"
+    DEVI: derivare il mountpoint di default dall'ULTIMO componente dello share remoto, sotto l'area dati Metnos: `\\192.0.2.20\\Public\\media\\Immagini` -> `/home/user/.local/share/metnos/Immagini`
+    [step 1] admin(intent="creare la directory di destinazione per il mount", command_proposed="mkdir -p /home/user/.local/share/metnos/Immagini") -> admin emette carta vaglio (signature mkdir:p:literal)
+    [step 2] admin(intent="mount cifs share NAS in area dati Metnos", command_proposed="sudo mount -t cifs //192.0.2.20/Public/media/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000", credentials_domain="cifs_192.0.2.20") -> admin emette carta vaglio (signature mount:cifs:fs-mount-cifs)
+    final_answer: testo dell'ULTIMA carta vaglio emessa (l'utente approva con "si")
+
+    # Esempio admin con credenziali mancanti (auto-orchestrazione, ADR 0091)
+    UTENTE: "monta share NAS \\HOST\\share"
+    [step 1] admin(intent="mount cifs share NAS", command_proposed="sudo mount -t cifs //HOST/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000") -> admin ritorna decision="needs_inputs" (dominio cifs_HOST manca) -> il runtime auto-invoca get_inputs e salva on_complete callback (lato runtime) -> emette final_answer con carta UI (form HTTP standalone oppure prima domanda dialogue)
+    final_answer: "Credenziali per cifs_HOST ... Apri il form: http://.../agent/dialog/abc/form" (oppure "Step 1/2 - Username:")
+    L'utente compila -> on_complete salva creds cifrate + ri-invoca admin con args originali -> admin al resume vede dominio salvato, emette decision="approval_required" oppure "execute_silent" -> mount completato. Nessun turno PLANNER aggiuntivo.
+
+rules:
+  - name: admin_emit_immediately
+    when: "intento shell privilegiato rilevato (mount/umount/kill/systemctl/chmod/chown/ifconfig/ip-link/apt/dpkg/pacman/restart/reboot/shutdown/sudo/mkdir-as-root/poweroff)"
+    must: "emettere SUBITO il tool_call admin con `intent` (1 frase) + `command_proposed` (argv SINGOLO concreto). Niente overthinking ad alta voce. Mountpoint default = ULTIMO componente dello share remoto, sotto `/home/user/.local/share/metnos/`"
+    must_not: "scrivere riflessioni «Wait, I should check...» senza tool_call. E' UN ERRORE: porta a loop_break"
+    ok: "user «monta share NAS \\\\192.0.2.20\\Public\\Immagini» -> step1 admin(intent=\"mkdir\", command_proposed=\"mkdir -p /home/user/.local/share/metnos/Immagini\") -> step2 admin(intent=\"mount cifs\", command_proposed=\"sudo mount -t cifs //192.0.2.20/Public/Immagini /home/user/.local/share/metnos/Immagini -o credentials=${METNOS_CIFS_CREDS},uid=1000,gid=1000\", credentials_domain=\"cifs_192.0.2.20\") -> carta vaglio"
+    error: "thinking-only senza tool_call -> loop_break (E' UN ERRORE: l'orchestrazione si blocca)"
+
+  - name: admin_two_steps_no_combine
+    when: "servono piu' comandi shell sequenziali (es. mkdir + mount, kill + systemctl)"
+    must: "emettere DUE admin separate: prima `mkdir` (creazione target), POI `mount` (uso target)"
+    must_not: "combinare comandi con `&&`/`|`/`;`. E' UN ERRORE (gate sintattico admin BLOCCA i command separator)"
+    ok: "2 admin separate (mkdir, poi mount) -> 2 carte vaglio sequenziali"
+    error: "1 admin con `mkdir && mount` (E' UN ERRORE: gate sintattico blocca)"
+
+  - name: admin_path_and_placeholders
+    when: "comando admin richiede path (es. mount target) o credenziali (CIFS, SMB)"
+    must: |
+      convenzioni admin path:
+      - convertire backslash Windows `\\host\share` -> forward slash CIFS `//host/share`
+      - usare `/home/user/<dir>` letterale per «area personale» (NON `$HOME` o `~`)
+      - usare `${METNOS_CIFS_CREDS}` come placeholder credenziali (sudoer materializza dal credentials store)
+      - settare `credentials_domain="cifs_<host>"` derivato dall'IP/hostname
+      - il gate richiede path assoluti senza variabili shell oltre a `${METNOS_CIFS_CREDS}` e `$(id -u/g)`
+    must_not: "includere user/password in chiaro nel command_proposed. E' UN ERRORE: il gate blocca e leak credenziali. NON DEVI mettere il mountpoint sotto altri path (`/mnt/...`, `~/<nome>`, `/tmp/...`) salvo richiesta esplicita dell'utente"
+    ok: "command_proposed=\"sudo mount -t cifs //192.0.2.20/share /home/user/.local/share/metnos/share -o credentials=${METNOS_CIFS_CREDS},uid=1000\", credentials_domain=\"cifs_192.0.2.20\""
+    error: "command_proposed=\"sudo mount -t cifs \\\\\\\\192.0.2.20\\\\share ~ -o user=admin,pass=segreta123\" (E' UN ERRORE: backslash Windows, `~`, password in chiaro)"
+
+  - name: admin_needs_inputs_auto_orchestration
+    when: "admin ritorna decision=\"needs_inputs\" (es. dominio CIFS manca, credenziali assenti, ADR 0091)"
+    must: "lasciare che il runtime auto-invochi get_inputs e salvi on_complete. Tu chiami SOLO admin per intenti shell privilegiati. Al resume, admin vede dominio salvato ed emette decision=\"approval_required\" oppure \"execute_silent\" -> mount completato. Nessun turno PLANNER aggiuntivo"
+    must_not: "chiamare `get_inputs` manualmente per il caso credentials_required: l'orchestrazione e' AUTO. NON DEVI emettere prompt testuali «user/pwd» quando admin ritorna needs_inputs: la carta UI viene generata dal runtime via get_inputs"
+    ok: "admin -> needs_inputs -> runtime orchestrazione -> final_answer (carta UI). Tu hai chiamato 1 tool"
+    error: "admin -> needs_inputs -> tu chiami get_inputs come step 2 (E' UN ERRORE: lo fa il runtime)"
+
+# Rule install_on_demand_binary_missing spostata in system.yaml
+# (17/5/2026): deve essere sempre caricata perche' qualsiasi executor
+# puo' ritornare binary_missing, non solo shell-intent query.

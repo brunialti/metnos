@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Account di posta in Metnos — IMAP e SMTP, anche non Google</title>
+<meta name="description" content="Come configurare e usare account di posta IMAP e SMTP in Metnos, inclusi fornitori diversi da Google, con credenziali cifrate e account multipli.">
+<link rel="canonical" href="https://metnos.com/it/architecture/mail_accounts">
+<link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mail_accounts">
+<link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mail_accounts">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mail_accounts">
+<style>:root{--n:#1A477A;--b:#2B6CB0;--g:#548235;--br:#A0522D;--bg:#FAFBFC;--t:#1a1a1a;--bd:#d0d7de;--c:#f6f8fa}*{box-sizing:border-box}body{font-family:'Segoe UI',Calibri,sans-serif;color:var(--t);background:var(--bg);max-width:900px;margin:auto;padding:40px 30px;line-height:1.65;font-size:11pt}a{color:var(--n)}h1{color:var(--n);font-size:23pt;border-bottom:3px solid var(--n);padding-bottom:10px}h2{color:var(--b);font-size:15pt;margin-top:32px;border-bottom:1px solid var(--bd);padding-bottom:5px}.lead{font-size:12.5pt;color:var(--n);border-left:4px solid var(--g);padding-left:15px}.note{border-left:4px solid var(--br);background:#fff7ed;padding:12px 16px}.ok{border-left:4px solid var(--g);background:#f0fdf4;padding:12px 16px}code{background:var(--c);padding:1px 5px;border-radius:3px}table{width:100%;border-collapse:collapse;background:white}th{background:var(--n);color:white;text-align:left}th,td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:top}</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<nav><a href="index.html">&larr; Guida all'architettura</a> &middot; <a href="/en/architecture/mail_accounts.html" hreflang="en">EN</a></nav>
+<h1>Account di posta IMAP e SMTP</h1>
+<p class="lead">Metnos può usare caselle di fornitori diversi da Google. La posta
+standard passa da IMAP per la lettura e SMTP per l'invio; Google Workspace
+resta un'integrazione distinta per le funzioni specifiche di Gmail.</p>
+
+<h2>Identità dell'account</h2>
+<p>Ogni account ha un nome stabile, per esempio <code>work</code>. Nell'archivio
+cifrato delle credenziali l'associazione è <code>smtp_work</code>; negli executor di posta il valore di
+<code>account</code> è <code>work</code>. <code>account="all"</code> legge tutti
+gli account configurati e aggrega i risultati; può essere usata anche una lista
+esplicita di nomi.</p>
+
+<h2>Configurazione preferita</h2>
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo
+esempio:</strong> &laquo;Spiegami come configurare un account di posta non Google
+chiamato work, con IMAP e SMTP, senza inserire la password nel
+messaggio.&raquo;</p>
+<p>La voce cifrata <code>smtp_&lt;nome&gt;</code> contiene questi campi:</p>
+<table><thead><tr><th>Campo</th><th>Significato</th></tr></thead><tbody>
+<tr><td><code>user</code>, <code>password</code></td><td>Credenziali della casella.</td></tr>
+<tr><td><code>imap_host</code>, <code>imap_port</code></td><td>Server di lettura; porta tipica 993.</td></tr>
+<tr><td><code>smtp_host</code>, <code>smtp_port</code></td><td>Server di invio; porta tipica SMTPS 465. Può essere omesso per un account di sola lettura.</td></tr>
+<tr><td><code>verify_tls</code></td><td>Verifica TLS, attiva per impostazione predefinita; disattivarla richiede una decisione amministrativa esplicita.</td></tr>
+</tbody></table>
+<p>Esempio di contratto, con valori segreti sostituiti da segnaposto:</p>
+<pre><code>set_credentials(
+  binding="smtp_work",
+  fields={
+    "user": "persona@example.test",
+    "password": "&lt;password&gt;",
+    "imap_host": "imap.example.test",
+    "imap_port": 993,
+    "smtp_host": "smtp.example.test",
+    "smtp_port": 465,
+    "verify_tls": true
+  }
+)</code></pre>
+<p>Durante l'installazione interattiva, la fase <em>Dati sensibili</em> può
+creare uno o più account. Dopo l'installazione, la stessa struttura può essere
+salvata con <code>set_credentials</code>; i valori entrano nell'archivio locale
+cifrato, mentre risposta e telemetria espongono soltanto metadati.</p>
+
+<h2>Compatibilità con configurazioni precedenti</h2>
+<p>È ancora accettato un file <code>~/.config/metnos/mail/&lt;nome&gt;.env</code>
+con permessi <code>0600</code> e campi
+<code>HOST_IMAP</code>, <code>PORT_IMAP</code>, <code>HOST_SMTP</code>,
+<code>PORT_SMTP</code>, <code>USER</code>, <code>PASS</code> e
+<code>VERIFY_TLS</code>. L'archivio cifrato ha precedenza; il file resta un
+percorso di compatibilità e migrazione.</p>
+
+<h2>Confini</h2>
+<p class="ok"><code>read_messages</code> legge IMAP;
+<code>send_messages</code> invia SMTP; <code>move_messages</code> gestisce
+cartelle IMAP. Etichette Gmail, conversazioni Gmail e altre funzioni specifiche
+rimangono nell'integrazione Google Workspace.</p>
+<p class="note">Le password non devono essere inserite in documentazione,
+manifest o file di log. Se vengono fornite tramite un flusso credenziali della
+chat, sono estratte prima del pianificatore, cifrate e sostituite da un
+segnaposto privo del segreto.</p>
+</body>
+</html>

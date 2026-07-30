@@ -1,0 +1,163 @@
+# Manifest dell'executor `delete_files` — Metnos v1.1 (19/5/2026 v4).
+# Naming compositivo §2.2: verbo_oggetto_plurale. Vettoriale per costruzione.
+# Reversible §2.3: ogni file ha backup blob → restore_blob_backup.
+
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "delete_files"
+version     = "0.2.0"
+platforms   = ["linux", "windows"]
+author      = "Roberto Brunialti"
+affinity    = [
+    "delete", "elimina", "cancella", "rimuovi", "remove",
+    "file", "files", "documento", "documenti", "unlink",
+            ]
+
+revertible = true
+reverse_pattern = ["restore_blob_backup", "restore_trashed_files"]
+
+[description]
+it = "SCOPO: cancella file dopo un backup verificato. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directory (-> delete_dirs), symlink o spostamenti (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed e conteggi."
+en = "SCOPO: delete files after a verified backup. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directories (-> delete_dirs), symlinks, or moves (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed, and counts."
+
+[code]
+files  = ["delete_files.py"]
+digest = "sha256:6ff34a57a05f8a2ffbefd14cfd44f8b5cf95cc4e1180891156d0234f13a1cd2f"
+
+[args]
+type     = "object"
+required = []
+requires_one_of = [["paths", "file_ids", "file_id", "entries"]]
+
+[args.properties.paths]
+type        = "array"
+items       = { type = "string" }
+
+[args.properties.paths.description]
+it = "Lista di path di file da rimuovere. Path assoluti o ~ espandibile. Valori con `*`/`?` = glob, espansi a soli file regolari (es. \"/tmp/logs/*.log\"). Tutti devono essere FILE (non directory) e dentro lo scope fs:write autorizzato. Esempio: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
+en = "List of file paths to remove. Absolute paths or ~ expandable. Values with `*`/`?` = glob, expanded to regular files only (e.g. \"/tmp/logs/*.log\"). All must be FILES (not directories) and within the authorized fs:write scope. Example: [\"/tmp/temp1.txt\", \"~/Downloads/foo.log\"]."
+
+[args.properties.file_ids]
+type = "array"
+items = { type = "string" }
+
+[args.properties.file_ids.description]
+it = "ID esatti di file Google Drive. Usato con client=`google_workspace`; nessun wildcard."
+en = "Exact Google Drive file IDs. Used with client=`google_workspace`; no wildcards."
+
+[args.properties.file_id]
+type = "string"
+
+[args.properties.file_id.description]
+it = "Forma singolare di `file_ids` per Google Drive."
+en = "Singular form of `file_ids` for Google Drive."
+
+[args.properties.entries]
+type = "array"
+items = { type = "object" }
+
+[args.properties.entries.description]
+it = "Record risolti dal runtime: path locali oppure ID Drive, secondo il client finale."
+en = "Runtime-resolved records: local paths or Drive IDs, according to the final client."
+
+[args.properties.client]
+type        = "string"
+enum        = ["local", "google_workspace"]
+default     = "local"
+
+[args.properties.client.description]
+it = "Backend finale: local per path filesystem, google_workspace per ID Drive; il runtime lo allinea alla clausola."
+en = "Final backend: local for filesystem paths, google_workspace for Drive IDs; the runtime aligns it to the clause."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  results: Array<{
+    path?: str,
+    removed?: bool,
+    blob_path?: str,
+    blob_sha256?: str,
+    restore_mode?: 'create',
+    mode?: int,
+    mtime_ns?: int,
+    atime_ns?: int,
+    id?: str,
+    status?: 'trashed' | 'permanently_deleted'
+  }>,
+  failed: Array<{
+    index?: int,
+    path?: str,
+    error_code?: str,
+    expected?: str,
+    actual?: str,
+    error: str
+  }>,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/notes/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[[tests]]
+name     = "rimuove_file_singolo"
+setup    = "mkdir -p /tmp/metnos_test_delete_files && echo x > /tmp/metnos_test_delete_files/a.txt"
+input    = { paths = ["/tmp/metnos_test_delete_files/a.txt"] }
+expect   = { ok = true, ok_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_delete_files"
+
+[[tests]]
+name   = "lista_vuota_ok"
+input  = { paths = [] }
+expect = { ok = true, ok_count_eq = 0, fail_count_eq = 0 }
+
+[[tests]]
+name     = "rifiuta_directory"
+setup    = "mkdir -p /tmp/metnos_test_delete_files/subdir"
+input    = { paths = ["/tmp/metnos_test_delete_files/subdir"] }
+expect   = { ok = false, error_contains = "directory" }
+teardown = "rm -rf /tmp/metnos_test_delete_files"
+
+[[tests]]
+name   = "path_inesistente_fallisce"
+input  = { paths = ["/tmp/metnos_does_not_exist_xyz.txt"] }
+expect = { ok = false, fail_count_eq = 1 }
+
+[[tests]]
+name   = "args_invalidi_paths_non_lista"
+input  = { paths = "/tmp/foo" }
+expect = { ok = false, error_contains = "must be a list" }
+
+[[tests]]
+name     = "rifiuta_symlink_senza_toccare_target"
+setup    = "mkdir -p /tmp/metnos_test_delete_files_link && printf target > /tmp/metnos_test_delete_files_link/target.txt && ln -s target.txt /tmp/metnos_test_delete_files_link/link.txt"
+input    = { paths = ["/tmp/metnos_test_delete_files_link/link.txt"] }
+expect   = { ok = false, fail_count_eq = 1 }
+teardown = "rm -rf /tmp/metnos_test_delete_files_link"
+
+[[tests]]
+name   = "client_ignoto_fallisce_tipizzato"
+input  = { paths = [], client = "unknown" }
+expect = { ok = false, field_eq = { error_code = "ERR_NOT_APPLICABLE" } }
+
+[placement]
+# C7 Area-2 est. (6/7): il reverse è ora REMOTABILE (ADR 0183 D3 chiuso —
+# restore = copy device-locale blob→path, vedi reverse_patterns): cade
+# l'asimmetria che teneva delete server-only. Blob scritti dal device nella
+# SUA history prima dell'unlink (§2.9).
+scope    = "any"
+device_ok = true
+min_sandbox = "appcontainer"

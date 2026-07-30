@@ -1,0 +1,23 @@
+{# ---
+role: route_object_relation
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-30
+sha_prev: new
+--- #}
+Classify the relationship among the candidate objects in the request supplied as JSON.
+
+YOU MUST: return EXACTLY one label from `SINGLE_TARGET`, `MULTI_TARGET`, `AMBIGUOUS`, `UNKNOWN`.
+YOU MUST NOT: answer the request, select tools, add punctuation, or provide an explanation.
+
+- `SINGLE_TARGET`: the request has one operational target; the other nouns are containers, destinations, filters, attributes, or arguments of that same target.
+- `MULTI_TARGET`: the request explicitly applies one or more operations to multiple distinct targets; forcing the user to select one would discard part of the request.
+- `AMBIGUOUS`: one operation could alternatively refer to two or more candidates, and the text does not establish which one is the target.
+- `UNKNOWN`: the relationship cannot be determined with sufficient confidence.
+
+YOU MUST: classify the relationship expressed by the whole request, including separate clauses.
+YOU MUST NOT: infer ambiguity merely because several nouns occur.
+YOU MUST NOT: treat a folder name, place, destination, format, or filter as a second target when it completes the primary operation.

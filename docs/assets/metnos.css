@@ -1,0 +1,476 @@
+/* ==========================================================================
+   Metnos — house style unica per la documentazione (metnos.com)
+   Sistema editoriale-tecnico: titoli serif · corpo sans · codice mono.
+   Palette calda condivisa (carta crema + navy/bronzo). Print-ready (manuale).
+
+   Caricato ULTIMO nel <head> di ogni pagina: vince sul CSS inline residuo per
+   cascade order (stessa specificità). I componenti bespoke di pagina restano
+   nei loro blocchi ed ereditano token, font e colori da qui.
+   Unità in `pt` per fedeltà di stampa. Nessun font esterno (offline + print).
+   ========================================================================== */
+
+:root {
+  /* — superfici e inchiostri (palette calda unificata) — */
+  --paper:        #FCFAF6;   /* fondo pagina (crema) */
+  --paper-warm:   #F5F0E5;   /* superfici sollevate, zebra tabella */
+  --surface:      #FFFFFF;   /* card/figure su carta */
+  --code-bg:      #F4EFE4;   /* fondo codice, tinta calda */
+  --ink:          #26221C;   /* testo primario (near-black caldo) */
+  --ink-dim:      #574F42;   /* testo secondario */
+  --muted:        #8A8378;   /* meta, didascalie, ui minore */
+
+  /* — bordi — */
+  --border:       #E4DCCC;   /* hairline caldo */
+  --border-strong:#CFC5B0;   /* bordi di controllo */
+
+  /* — accenti brand (condivisi fra i due vecchi sistemi) — */
+  --navy:         #1A477A;   /* titoli, header tabella, autorità */
+  --navy-light:   #2B6CB0;   /* sottotitoli, link tecnici */
+  --bronze:       #A0522D;   /* link, ornamenti editoriali */
+  --sage:         #548235;   /* stato positivo, lead */
+  --plum:         #6B21A8;   /* accento raro */
+
+  /* — semantica callout — */
+  --note-bg:  #DCE9FB; --note-border:  #3B82F6;
+  --tip-bg:   #DCF3E4; --tip-border:   #16A34A;
+  --warn-bg:  #FBEFCE; --warn-border:  #E0900B;
+  --danger-bg:#FBE0E0; --danger-border:#DC2626;
+
+  /* — tabella — */
+  --table-header: var(--navy);
+  --table-alt:    var(--paper-warm);
+
+  /* — tipografia — */
+  --font-serif: Georgia, Cambria, "Palatino Linotype", "Times New Roman", serif;
+  --font-sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono:  "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas,
+                "Liberation Mono", "Courier New", monospace;
+
+  /* — misura di lettura — */
+  --measure: 54rem;          /* ~ 864px: prosa comoda, tollera tabelle/diagrammi */
+}
+
+/* — reset minimo — */
+* { box-sizing: border-box; }
+html { background: var(--paper); scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 11pt;
+  line-height: 1.72;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 58px 30px 96px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* — titoli: serif, navy, ritmo verticale coerente — */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--navy);
+  scroll-margin-top: 72px;      /* ancore non nascoste dal selettore lingua */
+}
+h1 {
+  font-size: 23pt;
+  font-weight: 600;
+  border-bottom: 3px solid var(--navy);
+  padding-bottom: 8px;
+  margin: 52px 0 18px;
+  letter-spacing: -0.2px;
+}
+h1:first-of-type { margin-top: 6px; }
+h2 {
+  font-size: 15.5pt;
+  color: var(--navy-light);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 5px;
+  margin: 34px 0 12px;
+}
+h3 { font-size: 12.5pt; margin: 22px 0 8px; }
+h4 { font-size: 11pt; margin: 18px 0 6px; color: var(--ink-dim); }
+h5, h6 { font-size: 10.5pt; margin: 14px 0 6px; color: var(--ink-dim); }
+
+/* — corpo — */
+p  { margin: 12px 0; }
+b, strong { font-weight: 700; color: var(--ink); }
+em, i { font-style: italic; }
+small { font-size: 9.5pt; color: var(--muted); }
+hr {
+  border: none; height: 1px; background: var(--border);
+  margin: 32px 0;
+}
+img, svg, video { max-width: 100%; height: auto; }
+figure { margin: 18px 0; }
+figure figcaption, .fig-note {
+  font-size: 9.5pt; color: var(--muted); font-style: italic;
+  text-align: center; margin-top: 6px;
+}
+
+/* — link: bronzo con sottolineatura discreta (tratto editoriale) — */
+a { color: var(--bronze); text-decoration: none;
+    border-bottom: 1px solid rgba(160,82,45,0.28);
+    transition: border-color .15s, color .15s; }
+a:hover { border-bottom-color: var(--bronze); }
+a:focus-visible { outline: 2px solid var(--navy-light); outline-offset: 2px; border-radius: 2px; }
+
+/* — liste — */
+ul, ol { margin: 10px 0; padding-left: 24px; }
+li { margin-bottom: 5px; }
+li > ul, li > ol { margin: 5px 0; }
+blockquote {
+  margin: 16px 0; padding: 4px 18px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--ink-dim); font-style: italic;
+}
+
+/* — tabelle — */
+table {
+  width: 100%; border-collapse: collapse; margin: 18px 0;
+  font-size: 10pt; line-height: 1.5;
+}
+th {
+  background: none; color: var(--ink);
+  padding: 6px 12px 5px; text-align: left; font-weight: 700;
+  font-family: var(--font-sans); font-size: 9.5pt;
+  letter-spacing: 0.2px; border-bottom: 2px solid var(--navy);
+}
+td { padding: 7px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:last-child td { border-bottom: 1.5px solid var(--ink-dim); }
+table code { background: var(--code-bg); }
+
+/* — codice — */
+pre {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 13px 16px; overflow-x: auto;
+  font-family: var(--font-mono); font-size: 9.5pt; line-height: 1.55;
+  color: var(--ink);
+}
+code { font-family: var(--font-mono); font-size: 0.92em; }
+p code, li code, td code, h1 code, h2 code, h3 code, dd code, dt code {
+  background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+  font-size: 9.4pt; color: #3a3226;
+  border: 1px solid var(--border);
+}
+pre code { background: none; padding: 0; border: none; font-size: inherit; }
+
+/* — callout (note/tip/warning/danger) — */
+.callout {
+  background: none; border-left: 2px solid var(--border-strong);
+  padding: 2px 0 2px 18px; margin: 16px 0;
+  border-radius: 0; font-size: 10.5pt; line-height: 1.6;
+}
+.callout > :first-child { margin-top: 0; }
+.callout > :last-child  { margin-bottom: 0; }
+.callout.note    { border-left-color: var(--navy); }
+.callout.tip     { border-left-color: var(--sage); }
+.callout.warning { border-left-color: #B8860B; }
+.callout.danger  { border-left-color: #9A2A2A; }
+
+/* — lead / example / status — */
+.lead {
+  font-size: 12pt; color: var(--navy);
+  border-left: 4px solid var(--sage); padding-left: 15px; margin: 20px 0;
+}
+.example {
+  background: none; border: none;
+  border-left: 2px solid var(--bronze); border-radius: 0;
+  padding: 2px 0 2px 18px; margin: 16px 0; font-size: 10.5pt;
+}
+.example .ex-label {
+  font-weight: 700; color: var(--bronze); font-size: 9pt;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.status-banner {
+  margin: 20px 0; border-left: 3px solid var(--sage);
+  background: none; color: var(--ink);
+  padding: 4px 0 4px 18px; border-radius: 0;
+  font-size: 10.5pt; line-height: 1.55;
+}
+.status-banner strong, .status-banner a { color: var(--ink); }
+.status-banner .status-chip {
+  display: inline-block; background: none; color: var(--sage);
+  border: 1px solid var(--sage);
+  padding: 1px 9px; border-radius: 3px; font-size: 9pt;
+  letter-spacing: 1px; font-weight: 700; margin-right: 6px;
+}
+.status-banner .seq { font-size: 9pt; color: var(--muted); margin-top: 8px; }
+
+/* — pagina-titolo e sottotitoli editoriali — */
+.title-page { text-align: center; padding: 52px 0 26px; }
+.title-page h1 { font-size: 30pt; border: none; margin: 0; }
+.subtitle, .title-page .subtitle {
+  font-family: var(--font-serif); font-style: italic;
+  font-size: 15pt; color: var(--ink-dim); margin: 12px 0 26px; line-height: 1.4;
+}
+.title-page .meta, .meta { font-size: 10pt; color: var(--muted); }
+
+/* — hero (landing) — */
+.hero { text-align: left; margin: 36px 0 60px; }
+.hero .eyebrow, .eyebrow {
+  font-family: var(--font-sans); font-size: 9.5pt; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+}
+.hero h1 {
+  font-family: var(--font-serif); font-size: 50pt; font-weight: 400;
+  color: var(--ink); border: none; margin: 0; padding: 0;
+  line-height: 1.05; letter-spacing: -0.5px;
+}
+.hero .subtitle {
+  font-size: 16pt; color: var(--ink-dim); margin-top: 20px;
+  max-width: 34rem; line-height: 1.4;
+}
+.hero .kleos {
+  font-family: var(--font-serif); font-size: 13pt; color: var(--bronze);
+  margin-top: 16px; letter-spacing: 0.5px;
+}
+
+/* — capolettera ornamentale — */
+.opening::first-letter {
+  font-size: 42pt; float: left; line-height: 0.9; padding: 8px 10px 0 0;
+  font-family: var(--font-serif); color: var(--bronze);
+}
+
+/* — sezioni con segno di paragrafo — */
+section { margin: 46px 0; }
+section > h2 {
+  font-family: var(--font-serif); font-weight: 400; font-style: italic;
+  color: var(--ink-dim); border: none; letter-spacing: 0.2px;
+}
+section > h2::before { content: "§ "; color: var(--bronze); font-style: normal; }
+
+/* — invito (call-to-action editoriale) — */
+.invitation {
+  background: none; border: none;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  border-radius: 0; padding: 30px 20px; margin: 52px 0 40px; text-align: center;
+}
+.invitation .ornament { color: var(--bronze); font-size: 18pt; letter-spacing: 8px; margin-bottom: 8px; }
+.invitation .intro {
+  font-family: var(--font-sans); font-size: 9pt; text-transform: uppercase;
+  letter-spacing: 3px; color: var(--muted); margin-bottom: 16px;
+}
+.invitation h3 { font-family: var(--font-serif); font-size: 22pt; font-weight: 400; color: var(--ink); margin: 0 0 12px; line-height: 1.2; }
+.invitation p { text-align: center; font-style: italic; color: var(--ink-dim); font-size: 12.5pt; max-width: 30rem; margin: 12px auto 22px; }
+.invitation a.enter {
+  display: inline-block; border: 1px solid var(--bronze); background: transparent;
+  color: var(--bronze); padding: 11px 30px; font-family: var(--font-sans);
+  font-size: 10.5pt; letter-spacing: 2px; text-transform: uppercase;
+  border-radius: 3px; transition: background .15s, color .15s;
+}
+.invitation a.enter:hover { background: var(--bronze); color: var(--paper); }
+
+/* — indice (TOC) — */
+.toc { margin: 20px 0 34px; }
+.toc h2 { border: none; }
+.toc ol, .toc ul { font-size: 10.5pt; line-height: 1.85; }
+.toc a { color: var(--navy); border-bottom: none; }
+.toc a:hover { color: var(--bronze); text-decoration: underline; }
+
+/* — selettore lingua (chrome fisso, unificato) — */
+.lang-switch {
+  position: fixed; top: 16px; right: 20px; z-index: 9999;
+  font-family: var(--font-sans); font-size: 9.5pt; letter-spacing: 2px;
+  background: rgba(252,250,246,0.92); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  padding: 4px 12px; box-shadow: 0 1px 5px rgba(38,34,28,0.06);
+}
+.lang-switch a { color: var(--muted); border: none; padding: 0 4px; text-decoration: none; }
+.lang-switch a:hover { color: var(--bronze); }
+.lang-switch a.active { color: var(--ink); font-weight: 700; }
+.lang-switch .sep { color: var(--border-strong); }
+
+/* — breadcrumb / back — */
+nav.back, .back {
+  font-family: var(--font-sans); font-size: 9.5pt; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 18px;
+}
+nav.back a, .back a { color: var(--muted); border-bottom: none; }
+nav.back a:hover, .back a:hover { color: var(--bronze); }
+
+/* — footer — */
+footer {
+  margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--border);
+  font-size: 9.5pt; color: var(--muted); line-height: 1.6;
+}
+footer a { color: var(--bronze); }
+
+/* — card / tag generici — */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 16px 18px;
+}
+.tag {
+  display: inline-block; font-family: var(--font-mono); font-size: 8.5pt;
+  background: var(--paper-warm); color: var(--ink-dim);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 1px 7px; letter-spacing: 0.3px;
+}
+
+::selection { background: rgba(26,71,122,0.16); }
+
+/* ==========================================================================
+   RESTRAINT — tono da manuale: niente riquadri/gradienti colorati.
+   Neutralizza i "frame" decorativi delle pagine bespoke (fondi pieni,
+   gradienti, ombre) lasciando struttura tipografica e, al piu', un filetto
+   hairline. Non tocca le classi 1-lettera dei diagrammi SVG.
+   ========================================================================== */
+.agent-difference, .approval-card, .ascii, .authority-flow, .axis-strip, .callout,
+.can-cant, .card, .checkpoint, .concept-card, .concept-flow, .contact-card,
+.decision, .entry, .formula, .hero, .hero-card, .hero-stat, .hero-stats,
+.in-progress, .invitation, .italian-notice, .journey, .lang, .learning-path,
+.learning-step, .masthead, .note, .p-agentic, .p-ai, .p-psych, .p-ui,
+.part-banner, .persp, .pipe, .preface, .principle, .qt-rx-bar, .qt-rx-bubble,
+.qt-rx-chip, .qt-rx-dest, .qt-rx-destnow, .qt-rx-route, .qt-rx-thread, .qt-rx-user,
+.reply, .rx-bar, .rx-bubble, .rx-chip, .rx-mono, .rx-safe, .rx-thread,
+.sev-hi, .sev-lo, .sev-md, .status, .status-banner, .title-page, .toc,
+.toc-item, .triangle, .truth, .v-allow, .v-approve, .v-defer, .v-deny,
+.v-must, .v-reinf, .v-reject, .v-tension {
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+/* i frame-contenitore tengono al piu' un filetto neutro (nessun fondo) */
+.card, .concept-card, .approval-card, .cap-card, .decision, .preface,
+.glossary-card, .contact-card, .qt-rx-bubble, .rx-bubble, .instance,
+.learning-step, .hero-stat, .component-group, .entry {
+  border: 1px solid var(--border); border-radius: 3px;
+}
+/* le "PARTI" del manuale: titolo tipografico con filetti, mai un gradiente */
+.part-banner {
+  border: none; border-top: 2px solid var(--navy);
+  border-bottom: 1px solid var(--border); border-radius: 0;
+  padding: 14px 0 12px; margin: 50px 0 10px; color: var(--ink);
+}
+.part-banner :is(h1, h2, h3) { color: var(--navy) !important; border: none; margin: 2px 0 6px; }
+.part-banner p { color: var(--ink-dim) !important; }
+.part-banner .part-kicker { color: var(--bronze) !important; opacity: 1; }
+
+/* etichette/tag: outline neutro, niente pillole colorate.
+   Selettori multi-carattere: NON tocca .b/.t/.s/.h/.a degli SVG. */
+.tag, .gtag, .lbl, .group-title, .sev-hi, .sev-md, .sev-lo,
+.v-must, .v-reinf, .v-defer, .v-tension, .v-reject,
+.p-agentic, .p-psych, .p-ui, .p-ai, .t-utile, .t-intell, .t-auto {
+  background: none !important; background-image: none !important;
+  color: var(--ink-dim) !important; border: 1px solid var(--border-strong);
+  border-radius: 3px; box-shadow: none !important; font-weight: 600;
+}
+
+/* ==========================================================================
+   APERTURA DA MANUALE — frontespizio e intestazioni PURAMENTE tipografiche.
+   Nessun header dentro frame; nessuna barra web; niente cruscotti.
+   ========================================================================== */
+/* frontespizio / apertura: come la versione stampa, niente cornice/gradiente */
+.title-page {
+  background: none !important; border: none !important;
+  border-radius: 0 !important; box-shadow: none !important;
+  text-align: center; padding: 44px 0 34px; margin: 0; overflow: visible !important;
+}
+/* frame decorativo interno (pseudo-elemento) — via */
+.title-page::before, .title-page::after,
+.part-banner::before, .part-banner::after {
+  content: none !important; display: none !important; border: none !important;
+}
+/* la pill "MANUALE DI…" diventa un maiuscoletto sobrio (occhiello) */
+.title-page .eyebrow, .eyebrow {
+  background: none !important; border: none !important; border-radius: 0 !important;
+  display: block; padding: 0; margin: 0 0 6px;
+  font-size: 9pt; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+/* un frontespizio non ha un cruscotto di statistiche */
+.hero-stats, .hero-stat { display: none !important; }
+.title-page .promise { color: var(--ink-dim); }
+/* aperture bespoke (intelligent_executors, remote_executors, skill_importer):
+   header MAI dentro una cornice */
+.hero { border: none !important; border-radius: 0 !important; padding-left: 0; padding-right: 0; }
+
+/* apertura CAPITOLO (deep-dive: title-page SENZA occhiello): il titolo e' il
+   COMPONENTE, non il brand. "Metnos" scende a riga di serie; il sottotitolo
+   (es. «agent_runtime — …») sale a titolo di capitolo. L'hub (con .eyebrow)
+   resta il frontespizio col brand grande. */
+.title-page:not(:has(.eyebrow)) h1 {
+  font-family: var(--font-sans); font-size: 10.5pt; font-weight: 600;
+  color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.title-page:not(:has(.eyebrow)) .subtitle {
+  font-family: var(--font-serif); font-size: 22pt; font-style: normal;
+  color: var(--navy); margin: 2px 0 18px; line-height: 1.2;
+}
+
+/* breadcrumb: da barra sticky web-app a riga sobria, allineata al testo */
+[style*="position:sticky"] {
+  position: static !important; background: none !important;
+  border: none !important; box-shadow: none !important; top: auto !important;
+  padding: 2px 0 0 !important; margin: 0 0 4px !important;
+  font-size: 9.5pt !important; z-index: auto !important;
+}
+[style*="position:sticky"] > div { max-width: none !important; padding: 0 !important; }
+
+/* diagrammi SVG -> line-art sobria da manuale: desaturati, niente patchwork di
+   colori. `saturate` preserva la LUMINOSITA', quindi il testo bianco sui box
+   scuri resta leggibile e la struttura non cambia. In stampa: monocromo. */
+svg { filter: saturate(0.28) contrast(1.02); }
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+@media (max-width: 720px) {
+  body { padding: 46px 18px 72px; font-size: 10.5pt; }
+  .hero h1 { font-size: 34pt; }
+  .title-page h1 { font-size: 23pt; }
+  h1 { font-size: 19pt; }
+  h2 { font-size: 14pt; }
+  table { font-size: 9pt; }
+  pre { font-size: 8.5pt; }
+  .invitation { padding: 24px 20px; }
+  .lang-switch { top: 10px; right: 10px; font-size: 9pt; padding: 3px 9px; }
+}
+
+/* ==========================================================================
+   STAMPA — compatibile "manuale" (A4/Letter)
+   ========================================================================== */
+@media print {
+  :root { --paper: #fff; --paper-warm: #f3f3f3; --code-bg: #f4f4f4; }
+  @page { margin: 20mm 18mm 22mm; }
+
+  html, body {
+    background: #fff; color: #000;
+    max-width: none; margin: 0; padding: 0;
+    font-size: 10.5pt; line-height: 1.55;
+  }
+  /* mantieni i colori semantici di callout/tabelle/titoli su carta */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* nasconde il chrome interattivo non utile su carta */
+  .lang-switch, nav.back, .back, nav[aria-label="Language"],
+  [style*="position:sticky"] { display: none !important; }
+  .title-page { break-after: page; page-break-after: always; }
+
+  /* i capitoli (h1) iniziano su pagina nuova; il primo no */
+  h1 { break-before: page; }
+  h1:first-of-type, .title-page h1, .hero h1 { break-before: auto; }
+  h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+  h2, h3 { orphans: 3; widows: 3; }
+
+  /* blocchi che non devono spezzarsi a metà pagina */
+  pre, table, figure, svg, .callout, .example, .status-banner, .card {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  /* il codice si manda a capo invece di essere tagliato dal margine */
+  pre { white-space: pre-wrap; word-wrap: break-word; overflow: visible;
+        border-color: #bbb; }
+  table, td, th { border-color: #999; }
+  a { color: #000; border-bottom: none; }
+  /* per un manuale: espliciti l'URL dei soli link esterni */
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #555; word-break: break-all; }
+  a[href^="http"].active::after, .lang-switch a::after { content: none; }
+  img, svg { max-width: 100% !important; }
+  p, li, blockquote { orphans: 2; widows: 2; }
+}

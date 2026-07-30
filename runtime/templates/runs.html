@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Scheduler · Console Metnos{% endblock %}
+{% block body %}
+<h1>Scheduler — run (ultimi {{ rows|length }})</h1>
+<p class="page-sub">Esecuzioni dei task schedulati, con esito e durata.
+La configurazione dei task vive in <a href="/admin/timers">Timer</a>.</p>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>id</th><th>task</th><th>inizio</th><th>fine</th>
+        <th>esito</th><th>durata</th></tr>
+  </thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="muted">{{ r.id }}</td>
+      <td><code>{{ r.task }}</code></td>
+      <td class="muted">{{ r.started_at }}</td>
+      <td class="muted">{{ r.ended_at or "-" }}</td>
+      <td>
+        {% if r.status == "ok" %}<span class="chip ok">{{ r.status }}</span>
+        {% elif r.status == "error" %}<span class="chip bad">{{ r.status }}</span>
+        {% else %}<span class="chip">{{ r.status }}</span>{% endif %}
+      </td>
+      <td>{{ r.duration_s or "-" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">nessun run</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

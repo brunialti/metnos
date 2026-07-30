@@ -1,0 +1,11 @@
+id = "attivita-programmate"
+audience_minima = "user"
+priorita = 90
+
+[semantic]
+it = "Guida per creare e gestire attività programmate, task ricorrenti, promemoria e schedulazioni che eseguono operazioni come leggere la posta a un orario stabilito."
+en = "Guide to creating and managing scheduled activities, recurring tasks, reminders, and schedules that run operations such as reading mail at a set time."
+
+[title]
+it = "Creare un’attività programmata"
+en = "Create a scheduled task"

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; grammatica del pianificatore</title>
+ <meta name="description" content="Come Metnos vincola il piano prodotto dal modello: Framework JSON, nomi degli executor ammessi, argomenti tipizzati, filtri semantici e validazione.">
+ <meta name="keywords" content="Metnos, GBNF, grammatica, pianificatore, Framework, executor, generazione vincolata">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/grammar">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/grammar">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/grammar">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/grammar">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/grammar">
+ <meta property="og:title" content="Metnos &mdash; grammatica del pianificatore">
+ <meta property="og:description" content="Il contratto di generazione vincolata che lega il piano agli executor ammessi.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — grammatica del pianificatore",
+ "description": "Framework JSON, nomi degli executor ammessi, argomenti tipizzati, filtri semantici e validazione.",
+ "url": "https://metnos.com/it/architecture/grammar.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+h3 { color:var(--navy); font-size:12pt; margin-top:18px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/grammar.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/grammar.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">grammar</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">La grammatica del pianificatore</div>
+ <div class="meta">Come un'uscita probabilistica viene ricondotta a un contratto eseguibile.</div>
+</div>
+
+<p class="lead">Il modello propone un piano, ma non decide liberamente la forma
+del comando. Metnos gli presenta un insieme ristretto di executor e, quando il
+servizio del modello supporta GBNF, vincola la decodifica alla struttura del
+Framework e ai nomi ammessi. Parsing, validazione e Vaglio controllano poi il
+risultato prima di ogni esecuzione.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Un esempio</a></li>
+ <li><a href="#cap2">I due livelli di grammatica</a></li>
+ <li><a href="#cap3">Dal sottoinsieme di executor al piano</a></li>
+ <li><a href="#cap4">Garanzie e limiti</a></li>
+ <li><a href="#cap5">Vincoli di compatibilit&agrave;</a></li>
+ <li><a href="#cap6">Determinismo e costo</a></li>
+ <li><a href="#cap7">Verifiche</a></li>
+ <li><a href="#cap8">Rapporto con i servizi dei modelli</a></li>
+ <li><a href="#cap9">Fonti canoniche</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Un esempio</h1>
+
+<p>Chiedi a Metnos con una richiesta come questa:</p>
+
+<pre>Trova i PDF modificati questa settimana nella cartella Progetti,
+calcola l'impronta SHA-256 di ciascuno e mostrami il risultato.</pre>
+
+<p>Il pianificatore non deve rispondere con una spiegazione vaga. Deve produrre
+una struttura simile a questa, limitata ai nomi presenti nel sottoinsieme
+calcolato per il turno:</p>
+
+<pre>{
+  "steps": [
+    {"tool": "find_files", "args": {"path": "Progetti", "extension": "pdf"}},
+    {"tool": "compute_signatures", "args": {"algorithm": "sha256"}}
+  ]
+}</pre>
+
+<p>L'esempio illustra la forma, non autorizza i percorsi e non sostituisce il
+riempimento degli argomenti. Le date relative, i riferimenti fra passi e gli
+ambiti del file system vengono risolti e verificati dagli strati successivi.</p>
+
+<h1 id="cap2">2. I due livelli di grammatica</h1>
+
+<table>
+<tr><th>Livello</th><th>Stato e funzione</th></tr>
+<tr><td><code>build_framework_grammar</code></td><td>&Egrave; il percorso ordinario quando <code>METNOS_PROPOSER_GRAMMAR=1</code>, valore predefinito. Vincola la forma del Framework e il campo <code>tool</code> ai nomi del sottoinsieme effettivo; include <code>final_answer</code> come terminale valido.</td></tr>
+<tr><td><code>build_framework_grammar_typed</code></td><td>Con <code>METNOS_PROPOSER_GRAMMAR_ARGS=1</code> lega inoltre ogni nome allo schema dei suoi argomenti. Esclude gli argomenti marcati <code>runtime_resolved</code>, che appartengono al runtime. Questa modalit&agrave; non &egrave; il valore predefinito.</td></tr>
+</table>
+
+<p><code>runtime/tool_grammar.py</code> contiene il traduttore da JSON Schema a
+GBNF, la validazione della chiamata e i filtri semantici riusati dal motore.
+L'API <code>generate_tool_grammar</code> genera una singola
+<code>tool_call</code>; il pianificatore usa invece la grammatica del Framework,
+che pu&ograve; contenere pi&ugrave; passi.</p>
+
+<h1 id="cap3">3. Dal sottoinsieme di executor al piano</h1>
+
+<ol>
+<li>Il motore estrae intento, oggetto e segnali semantici dalla richiesta.</li>
+<li>Il prefiltraggio riduce il catalogo agli executor pertinenti e disponibili per quell'utente.</li>
+<li>I filtri deterministici conservano i produttori necessari, escludono le vie speciali non richieste e scelgono la variante del fornitore soltanto quando la richiesta la indica.</li>
+<li>Il generatore costruisce la GBNF usando esattamente i nomi rimasti.</li>
+<li>Il servizio del modello decodifica un Framework compatibile con quella grammatica.</li>
+<li>Il parser ricostruisce il piano; validatori, riempimento degli argomenti, policy e Vaglio controllano ci&ograve; che la grammatica non pu&ograve; decidere.</li>
+</ol>
+
+<p>I segnali in linguaggio naturale &mdash; per esempio annullamento,
+ricorrenza, prossimit&agrave;, skill e nomi dei fornitori &mdash; provengono dal
+lessico di riconoscimento traducibile. Una nuova lingua richiede dati lessicali
+per quella lingua, non condizioni inserite nel codice per singole frasi.</p>
+
+<h2>3.1 Unione discriminata degli argomenti</h2>
+
+<p>Quando il vincolo sugli argomenti &egrave; attivo, ogni passo ha un ramo
+proprio: il nome <code>compute_signatures</code> pu&ograve; essere seguito soltanto
+dagli argomenti ricavati dal suo schema. Gli elenchi chiusi diventano
+alternative GBNF; stringhe, numeri, booleani, array e oggetti annidati sono
+tradotti nelle primitive corrispondenti. Se uno schema non &egrave; tipizzabile,
+quel ramo usa argomenti JSON liberi e lascia la verifica all'executor.</p>
+
+<h1 id="cap4">4. Garanzie e limiti</h1>
+
+<table>
+<tr><th>La grammatica garantisce</th><th>La grammatica non garantisce</th></tr>
+<tr><td>Una struttura JSON ammessa dal profilo generato.</td><td>Che il piano soddisfi davvero la richiesta dell'utente.</td></tr>
+<tr><td>Nel percorso ordinario, nomi di executor appartenenti al sottoinsieme del turno.</td><td>Che l'utente abbia autorizzato l'azione o il percorso indicato.</td></tr>
+<tr><td>Con la modalit&agrave; tipizzata, corrispondenza fra nome e schema degli argomenti per i rami traducibili.</td><td>Postcondizioni, effetti reali, disponibilit&agrave; del servizio o correttezza dei dati.</td></tr>
+<tr><td>Un'uscita pi&ugrave; facile da analizzare e rifiutare in modo esplicito.</td><td>Riproducibilit&agrave; assoluta del ragionamento linguistico o del contenuto libero.</td></tr>
+</table>
+
+<p>La profondit&agrave; della traduzione degli schemi &egrave; limitata. Oltre il
+limite, o davanti a costrutti complessi, il generatore ricorre a JSON generico.
+La validazione successiva controlla forma superiore, nome, argomenti obbligatori
+e terminali sintetici; la convalida profonda resta responsabilit&agrave;
+dell'executor e del contratto comune.</p>
+
+<h1 id="cap5">5. Vincoli di compatibilit&agrave;</h1>
+
+<p>La costruzione della grammatica applica alcune regole necessarie al servizio
+locale attuale:</p>
+
+<ul>
+<li>i nomi delle regole GBNF generate non contengono trattini bassi;</li>
+<li>vengono emesse soltanto le primitive raggiungibili dalla regola principale;</li>
+<li>una stessa regola non viene definita due volte quando la grammatica del Framework e quella degli argomenti vengono unite;</li>
+<li>in modalit&agrave; GBNF la richiesta al servizio non invia contemporaneamente il campo nativo <code>tools</code>;</li>
+<li>il ragionamento esteso del modello viene disattivato per questo passaggio, cos&igrave; l'uscita resta entro il bilancio e la forma vincolata.</li>
+</ul>
+
+<p>Se il servizio non accetta il parametro <code>grammar</code>, il passaggio
+alla modalit&agrave; senza grammatica viene registrato. Il piano deve comunque
+superare l'analisi sintattica e la validazione, ma non beneficia pi&ugrave; del
+vincolo applicato durante la decodifica.</p>
+
+<h1 id="cap6">6. Determinismo e costo</h1>
+
+<p>Dato lo stesso sottoinsieme ordinato e gli stessi schemi, la stringa GBNF
+generata &egrave; deterministica. Questo rende confrontabile la superficie
+offerta al modello e impedisce che un nome assente compaia nel percorso
+vincolato. Non rende deterministica l'intera risposta del modello: testo libero,
+valori semantici e piani nuovi restano prodotti da un'inferenza probabilistica.</p>
+
+<p>La grammatica viene costruita in memoria e non compie chiamate di rete. Il
+costo principale &egrave; nella decodifica, perch&eacute; il servizio deve
+eliminare a ogni passo i token non ammessi. Metnos riduce tale costo costruendo
+la grammatica sul sottoinsieme del turno, non sull'intero catalogo, e assegna al
+proponente un bilancio di uscita calcolato dalla complessit&agrave; della
+richiesta.</p>
+
+<h1 id="cap7">7. Verifiche</h1>
+
+<p>Le prove non sono descritte con un conteggio fisso, che diventerebbe presto
+obsoleto. Le suite principali sono:</p>
+
+<pre>tests/runtime/engine/test_tool_grammar.py
+tests/runtime/engine/test_grammar_args_typed.py
+tests/runtime/engine/test_routing_pool.py
+tests/runtime/engine/test_tool_call_parser.py</pre>
+
+<p>Coprono generazione deterministica, unione nome-argomenti, schemi annidati,
+elenchi chiusi, filtri per intento e fornitore, terminali sintetici,
+eliminazione dei duplicati e recupero delle uscite troncate. Le prove del
+motore verificano inoltre che il piano non possa nominare executor esclusi dal
+sottoinsieme.</p>
+
+<h1 id="cap8">8. Rapporto con i servizi dei modelli</h1>
+
+<p>GBNF &egrave; il meccanismo usato dal servizio locale compatibile con
+llama.cpp. Altri servizi possono offrire JSON Schema vincolato o chiamate di
+strumenti native. Il contratto di Metnos non dipende dal nome commerciale del
+fornitore: un adattatore &egrave; adatto soltanto se dichiara con precisione
+quale livello di vincolo applica e restituisce dati che il parser e i
+validatori comuni possono controllare.</p>
+
+<p>La pagina <a href="virtualization.html">Virtualizzazione dei modelli</a>
+spiega come i ruoli logici vengono associati ai servizi configurati. Cambiare
+servizio non deve cambiare il vocabolario degli executor, l'autorit&agrave;
+dell'utente o le regole del Vaglio.</p>
+
+<h1 id="cap9">9. Fonti canoniche</h1>
+
+<ul>
+<li><code>runtime/engine/grammar_framework.py</code> &mdash; grammatica del Framework e variante con argomenti tipizzati;</li>
+<li><code>runtime/tool_grammar.py</code> &mdash; traduzione degli schemi, validazione e filtri deterministici;</li>
+<li><code>runtime/engine/proposer.py</code> &mdash; scelta della modalit&agrave; e invocazione del modello;</li>
+<li><code>runtime/llm_provider.py</code> &mdash; trasporto della grammatica e parsing delle risposte del servizio.</li>
+</ul>
+
+</body>
+</html>

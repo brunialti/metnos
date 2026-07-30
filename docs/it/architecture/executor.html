@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; executor (introduzione)</title>
+ <meta name="description" content="Cos'&egrave; un executor in Metnos, raccontato per chi vuole capire senza dover implementare. Anatomia, manifesto, recinto di esecuzione, ciclo di vita, esempi.">
+ <meta name="keywords" content="executor, manifesto, firma, recinto, sandbox, ciclo di vita, lifecycle, synt, mnest, mnestoma, microprogettazione, metnos, Metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/it/architecture/executor">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/executor">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/executor">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/executor">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/it/architecture/executor">
+ <meta property="og:title" content="Metnos &mdash; executor (introduzione)">
+ <meta property="og:description" content="Cos'&egrave; un executor in Metnos, raccontato per chi vuole capire senza dover implementare.">
+ <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; executor (introduzione)">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — executor (introduzione)",
+ "description": "Cos'è un executor in Metnos: anatomia, manifesto firmato, recinto di esecuzione, ciclo di vita, esempi.",
+ "url": "https://metnos.com/it/architecture/executor.html",
+ "inLanguage": "it",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"},
+ "about": "Metnos component: executor (introduzione didattica)"
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
+h1:first-of-type { page-break-before: avoid; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
+figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.three-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.three-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 10pt; }.three-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }.four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.four-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 9.5pt; }.four-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }
+@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.three-cols { grid-template-columns: 1fr 1fr 1fr; }.four-cols { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) {.three-cols,.four-cols { grid-template-columns: 1fr; } }
+@media (max-width: 1024px) and (min-width: 721px) {.four-cols { grid-template-columns: 1fr 1fr; } }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+<p class="lead">Un executor &egrave; un'unit&agrave; operativa con argomenti, effetti,
+capacit&agrave; e profilo di isolamento dichiarati in un manifest firmato. Il sistema
+mantiene distinta la provenienza degli executor distribuiti, generati e importati;
+il <a href="executor_catalog.html">catalogo generato</a> fornisce conteggi, domini e
+stato corrente senza duplicarli in questa pagina.</p>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/executor.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/executor.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">executor</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>executor</code> &mdash; capire come &egrave; fatto</div>
+ <div class="meta">
+ Guida introduttiva<br>
+ </div>
+</div>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Cerca nella cartella Documenti tutti i PDF che contengono la parola
+contratto&raquo;. Metnos pu&ograve; comporre pi&ugrave; executor: uno trova i file, un altro
+ne legge il contenuto e un terzo filtra i risultati. L'utente descrive il
+risultato voluto; non deve conoscere i nomi degli executor.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">Cos'&egrave; un executor (in trenta secondi)</a></li>
+ <li><a href="#cap2">Anatomia: manifest, firma e implementazione</a></li>
+ <li><a href="#cap3">Il manifesto: il biglietto da visita</a></li>
+ <li><a href="#cap4">Il recinto: cosa pu&ograve; fare e cosa no</a></li>
+ <li><a href="#cap5">La vita di un executor</a></li>
+ <li><a href="#cap6">Le quattro origini: a mano, generato, importato, di sistema</a></li>
+ <li><a href="#cap7">Quattro esempi concreti</a></li>
+ <li><a href="#cap8">Per andare pi&ugrave; a fondo</a></li>
+</ol>
+</div>
+
+<!-- ============================================================== -->
+<h1 id="cap1">1. Cos'&egrave; un executor (in trenta secondi)</h1>
+
+<p class="lead">
+Un executor &egrave; una piccola unit&agrave; operativa specializzata che fa
+<strong>una cosa sola</strong>: legge la posta, cerca un file, ottiene l'ora,
+manda un messaggio. Quelli eseguiti come sottoprocesso hanno una propria
+cartella; quelli interni al processo conservano lo stesso contratto logico.
+</p>
+
+<p>
+Pensa a una cassetta degli attrezzi. Ogni attrezzo &egrave; semplice e riconoscibile:
+il cacciavite stringe le viti, il martello batte i chiodi. Nessuno chiederebbe al cacciavite
+di battere un chiodo. In Metnos &egrave; lo stesso: ogni executor &egrave; un attrezzo
+con un compito chiaro. Quando l'utente chiede qualcosa, il pianificatore sceglie
+l'attrezzo giusto e lo usa.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schema di un executor: input, scatola sigillata con etichetta, output">
+ <defs>
+ <marker id="arr1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+ <path d="M0,0 L10,5 L0,10 Z" fill="#1A477A"/>
+ </marker>
+ </defs>
+ <!-- input box -->
+ <rect x="20" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
+ <text x="90" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">argomenti</text>
+ <text x="90" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="11" fill="#444">{tz: "Europe/Rome"}</text>
+
+ <!-- arrow in -->
+ <line x1="160" y1="115" x2="245" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
+
+ <!-- executor box -->
+ <rect x="250" y="50" width="220" height="130" rx="10" fill="white" stroke="#548235" stroke-width="2.5"/>
+ <text x="360" y="80" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="14" fill="#548235" font-weight="700">get_now</text>
+ <text x="360" y="105" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">una cosa sola:</text>
+ <text x="360" y="125" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#666">restituisce data e ora</text>
+ <!-- mini "label" -->
+ <rect x="270" y="145" width="80" height="22" rx="3" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
+ <text x="310" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#A0522D" font-weight="600">manifesto</text>
+ <rect x="370" y="145" width="80" height="22" rx="3" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+ <text x="410" y="161" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" fill="#14532d" font-weight="600">firma</text>
+
+ <!-- arrow out -->
+ <line x1="470" y1="115" x2="555" y2="115" stroke="#1A477A" stroke-width="2" marker-end="url(#arr1)"/>
+
+ <!-- output -->
+ <rect x="560" y="80" width="140" height="70" rx="6" fill="#f0f4f8" stroke="#1A477A" stroke-width="1.5"/>
+ <text x="630" y="108" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#1A477A" font-weight="600">risultato</text>
+ <text x="630" y="130" text-anchor="middle" font-family="Consolas, monospace" font-size="10" fill="#444">2026-05-06 16:45</text>
+
+ <!-- captions -->
+ <text x="90" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">cosa chiedo</text>
+ <text x="360" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">l'attrezzo che esegue</text>
+ <text x="630" y="200" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">cosa ricevo</text>
+</svg>
+<figcaption>Un executor &egrave; una scatola con un compito preciso, un contratto in entrata e uno in uscita.</figcaption>
+</figure>
+
+<p>
+Le tre cose che lo definiscono sono:
+</p>
+
+<ul>
+ <li><strong>fa una cosa sola</strong> &mdash; tutta la sua vita gira intorno a un compito ristretto;</li>
+ <li><strong>ha un contratto</strong> &mdash; dichiara cosa accetta in entrata e cosa restituisce;</li>
+ <li><strong>ha un ambito dichiarato</strong> &mdash; indica cartelle, rete e servizi di cui ha bisogno; il runtime applica i controlli disponibili.</li>
+</ul>
+
+<h2>Perché gli executor sono piccoli</h2>
+<p>Più compiti riunisce uno strumento, più diventa difficile verificarne
+contratto, autorizzazioni ed effetti. Separare la cancellazione dei file
+dall'invio di posta rende ogni passaggio leggibile e controllabile. Quando
+Metnos compone più executor, il piano e ciascuna esecuzione conservano i
+propri controlli.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap2">2. Anatomia: manifest, firma e implementazione</h1>
+
+<p>
+Gli executor distribuiti nel catalogo principale usano normalmente una
+cartella piatta con quattro file. Il contratto, per&ograve;, non impone il numero
+quattro: il manifest pu&ograve; elencare pi&ugrave; file di codice e gli executor interni al
+processo conservano il contratto firmato separato dall'implementazione.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cartella di un executor con i suoi quattro file">
+ <!-- folder header -->
+ <path d="M 30 30 L 90 30 L 110 50 L 250 50 L 250 80 L 30 80 Z" fill="#A0522D" stroke="#7B3F1F" stroke-width="1.5"/>
+ <text x="60" y="70" font-family="Segoe UI, sans-serif" font-size="13" fill="white" font-weight="600">get_processes/</text>
+
+ <!-- file rows -->
+ <g font-family="Segoe UI, sans-serif" font-size="12" fill="#1a1a1a">
+ <!-- 1 -->
+ <rect x="60" y="100" width="600" height="38" rx="4" fill="#fef3c7" stroke="#A0522D" stroke-width="1"/>
+ <text x="80" y="115" font-weight="700" fill="#A0522D">manifest.toml</text>
+ <text x="80" y="131" font-size="10" fill="#555">il biglietto da visita: nome, cosa fa, argomenti, esempi, schema dell'output</text>
+
+ <!-- 2 -->
+ <rect x="60" y="148" width="600" height="38" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+ <text x="80" y="163" font-weight="700" fill="#14532d">manifest.toml.sig</text>
+ <text x="80" y="179" font-size="10" fill="#555">la firma crittografica del biglietto da visita: dimostra chi l'ha scritto</text>
+
+ <!-- 3 -->
+ <rect x="60" y="196" width="600" height="38" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+ <text x="80" y="211" font-weight="700" fill="#1A477A">get_processes.py</text>
+ <text x="80" y="227" font-size="10" fill="#555">il codice vero e proprio: una funzione <tspan font-family="Consolas, monospace">invoke(args)</tspan> che esegue il compito</text>
+
+ <!-- 4 -->
+ <rect x="60" y="244" width="600" height="38" rx="4" fill="#f0f4f8" stroke="#64748B" stroke-width="1" stroke-dasharray="3,3"/>
+ <text x="80" y="259" font-weight="700" fill="#64748B">manifest.lang_state.json</text>
+ <text x="80" y="275" font-size="10" fill="#555">stato di traduzione (multilingua): solo se ci sono descrizioni in più lingue</text>
+ </g>
+
+ <!-- legend -->
+ <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">struttura comune del catalogo distribuito</text>
+</svg>
+<figcaption>La struttura usata dagli executor distribuiti: manifest, firma,
+entry point e stato delle traduzioni. Il manifest resta la fonte autorevole
+per i file di codice firmati.</figcaption>
+</figure>
+
+<p>
+Per un executor attivo eseguito come sottoprocesso, manifest, firma e codice
+formano il nucleo. Il codice fa il lavoro; il manifest permette al
+pianificatore di valutarne il contratto; la verifica crittografica rileva
+modifiche successive alla firma.
+</p>
+
+<table>
+<tr><th>File</th><th>Cosa contiene</th><th>Chi lo legge</th></tr>
+<tr><td><code>manifest.toml</code></td><td>Nome, descrizione, argomenti, esempi, schema dell'output, capacità dichiarate e policy di esecuzione</td><td>il pianificatore (per scegliere), il loader (per caricare)</td></tr>
+<tr><td><code>manifest.toml.sig</code></td><td>Firma Ed25519 dei byte del manifest; il manifest contiene anche l'impronta dei file di codice</td><td>il loader, durante l'ammissione al catalogo</td></tr>
+<tr><td><code>&lt;entrypoint&gt;.py</code></td><td>Il punto d'ingresso del sottoprocesso; altri file possono essere dichiarati in <code>[code].files</code></td><td>il runtime, quando l'executor viene invocato</td></tr>
+<tr><td><code>manifest.lang_state.json</code></td><td>Impronte delle descrizioni per lingua</td><td>gli strumenti che mantengono allineate le traduzioni</td></tr>
+</table>
+
+<p>Il loader non deduce il contratto dalla forma della cartella: legge il
+manifest, verifica standard, firma e impronta del codice, controlla l'entry
+point e soltanto allora ammette l'executor. I contratti degli executor interni
+al processo si trovano in <code>runtime/builtin_executor_contracts/</code> e
+subiscono la stessa verifica crittografica.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap3">3. Il manifesto: il biglietto da visita</h1>
+
+<p>
+Il manifesto &egrave; un file in formato TOML. Lo apri con un editor di testo e ci capisci
+qualcosa anche senza essere un programmatore. Dichiara tutto quello che il pianificatore
+deve sapere: come si chiama l'executor, cosa fa, che argomenti accetta, come &egrave; fatto
+il risultato, qualche esempio per orientarsi.
+</p>
+
+<figure>
+<svg viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anatomia del manifesto annotato">
+ <!-- background paper -->
+ <rect x="20" y="20" width="480" height="380" rx="6" fill="white" stroke="#d0d7de" stroke-width="1.5"/>
+ <text x="35" y="45" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "get_now"</text>
+ <text x="35" y="65" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">version = "0.1.0"</text>
+ <text x="35" y="85" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">affinity = ["ora", "data", "now", "time"]</text>
+ <text x="35" y="115" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[description]</text>
+ <text x="35" y="135" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">it = "Restituisce data e ora correnti."</text>
+ <text x="35" y="165" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[args.properties.tz]</text>
+ <text x="35" y="185" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">type = "string"</text>
+ <text x="35" y="205" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">default = "UTC"</text>
+ <text x="35" y="235" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[output]</text>
+ <text x="35" y="255" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">schema_inline = "{ ok: bool,... }"</text>
+ <text x="35" y="285" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[code]</text>
+ <text x="35" y="305" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">files = ["get_now.py"]</text>
+ <text x="35" y="325" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">digest = "sha256:e6e609f6..."</text>
+ <text x="35" y="355" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">[[capabilities]]</text>
+ <text x="35" y="375" font-family="Consolas, monospace" font-size="11" fill="#1a1a1a">name = "time:read"</text>
+
+ <!-- annotations -->
+ <line x1="320" y1="55" x2="540" y2="55" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="59" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">identit&agrave;</text>
+
+ <line x1="320" y1="90" x2="540" y2="90" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="94" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">parole-chiave</text>
+ <text x="545" y="108" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">aiuta il pianificatore</text>
+ <text x="545" y="120" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">a trovarlo</text>
+
+ <line x1="320" y1="155" x2="540" y2="155" stroke="#16a34a" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="159" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#14532d" font-weight="600">cosa fa</text>
+ <text x="545" y="173" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">una frase chiara,</text>
+ <text x="545" y="185" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">tradotta nelle lingue</text>
+
+ <line x1="320" y1="195" x2="540" y2="195" stroke="#6B21A8" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="199" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#6B21A8" font-weight="600">argomenti</text>
+ <text x="545" y="213" font-family="Segoe UI, sans-serif" font-size="9" fill="#4c1280">tipo, default, descrizione</text>
+
+ <line x1="320" y1="245" x2="540" y2="245" stroke="#1A477A" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="249" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">forma del risultato</text>
+ <text x="545" y="263" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">cosa esce dall'attrezzo,</text>
+ <text x="545" y="275" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">campo per campo</text>
+
+ <line x1="320" y1="315" x2="540" y2="315" stroke="#64748B" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="319" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#1A477A" font-weight="600">codice + impronta</text>
+ <text x="545" y="333" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">il digest cambia se il</text>
+ <text x="545" y="345" font-family="Segoe UI, sans-serif" font-size="9" fill="#444">codice viene toccato</text>
+
+ <line x1="320" y1="365" x2="540" y2="365" stroke="#A0522D" stroke-width="1" stroke-dasharray="2,3"/>
+ <text x="545" y="369" font-family="Segoe UI, sans-serif" font-size="10.5" fill="#A0522D" font-weight="600">permessi</text>
+ <text x="545" y="383" font-family="Segoe UI, sans-serif" font-size="9" fill="#7B3F1F">cosa pu&ograve; toccare</text>
+</svg>
+<figcaption>Un manifesto reale, semplificato. Ogni blocco serve a una funzione chiara: identit&agrave;, parole-chiave per essere trovato, descrizione, argomenti, forma del risultato, codice con impronta, permessi.</figcaption>
+</figure>
+
+<h2>Cosa c'&egrave; di importante</h2>
+
+<p>
+Tre cose meritano un secondo sguardo, perch&eacute; sono quelle su cui si regge l'intero sistema.
+</p>
+
+<p>
+<strong>L'impronta del codice</strong> (<code>digest</code>): &egrave; un'impronta crittografica
+calcolata sui byte del file <code>.py</code>. Se qualcuno modifica anche solo una virgola
+nel codice senza ricalcolare l'impronta, il loader rifiuta l'executor. Il manifesto e
+il codice sono legati come un certificato e il documento che certifica.
+</p>
+
+<p>
+<strong>La forma del risultato</strong> (<code>output.schema_inline</code>): dichiara
+campo per campo cosa restituisce l'executor. Serve a chi compone catene di executor
+(il pianificatore non vola alla cieca: legge lo schema e sa cosa aspettarsi al passo
+successivo) e a chi genera codice in automatico.
+</p>
+
+<p>
+<strong>I permessi</strong> (<code>capabilities</code>): non &egrave; il manifesto a stabilire
+cosa l'executor pu&ograve; fare. Il manifesto <em>dichiara</em> di cosa avrebbe bisogno per
+funzionare; poi il sistema decide se concedere quei permessi e con che vincoli.
+Vedi <a href="sandbox.html">sandbox</a>.
+</p>
+
+<pre>[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }</pre>
+
+<p>
+Per un backend remoto la clausola <code>when</code> restringe la dichiarazione alla
+singola invocazione. Solo quando il valore finale di <code>client</code> corrisponde,
+lo stesso binding abilita rete, home delle credenziali in lettura-scrittura e
+collocazione sul server. Un valore arbitrario in <code>client</code> non concede nulla.
+</p>
+
+<h2>Una sola politica di esecuzione</h2>
+
+<p>
+Ogni invocazione passa da uno scheduler centrale del runtime. Se la sezione
+<code>[execution]</code> manca, &egrave; incompleta o non &egrave; valida, il loader sceglie
+sempre la modalit&agrave; seriale. Il parallelismo &egrave; quindi una propriet&agrave;
+<em>opt-in</em> del contratto firmato, ammessa soltanto dopo test ripetuti di
+equivalenza fra esecuzione seriale e concorrente.
+</p>
+
+<table>
+<thead><tr><th>Classe</th><th>Significato portabile</th><th>Comportamento</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td>Nessun thread</td><td>Resta sul thread del chiamante.</td></tr>
+<tr><td><code>1</code></td><td>Moderata</td><td>Usa una quota contenuta del pool centrale.</td></tr>
+<tr><td><code>2</code></td><td>Alta</td><td>Richiede pi&ugrave; concorrenza, entro i limiti della risorsa.</td></tr>
+<tr><td><code>3</code></td><td>Massima</td><td>&Egrave; comunque limitata da hardware, backend e tetti globali.</td></tr>
+</tbody>
+</table>
+
+<p>
+La classe firmata &egrave; un <strong>massimo</strong>, non un numero fisso di thread:
+il runtime pu&ograve; solo ridurla. Applica nello stesso punto code limitate,
+backpressure, pool per risorsa e metriche, senza cambiare argomenti, risultati,
+ordine causale, permessi o criteri di successo. Un executor non di sola lettura
+pu&ograve; dichiarare una classe positiva, ma deve anche fornire un'identit&agrave; di
+concorrenza verificabile; invocazioni sulla stessa identit&agrave; restano seriali.
+</p>
+
+<p>
+Gli executor che usano un LLM seguono la stessa regola. All'avvio, framework e
+hardware determinano il tetto della risorsa LLM: un backend a singolo slot
+degrada a classe 0, mentre un backend con batching pu&ograve; ammettere pi&ugrave; richieste.
+Non esistono pool concorrenti indipendenti nascosti nei singoli executor.
+</p>
+
+<h2>Perché il contratto usa TOML</h2>
+<p>Il manifest deve poter essere letto, commentato e aggiornato durante una
+revisione. TOML conserva questa leggibilità senza rinunciare a una struttura
+che il loader può convalidare in modo rigoroso.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap4">4. Il recinto: cosa pu&ograve; fare e cosa no</h1>
+
+<p>
+Il manifest dichiara le capacit&agrave; massime richieste dall'executor. Prima
+dell'invocazione il runtime controlla gli argomenti concreti, risolve le sole
+risorse necessarie e applica i controlli di identit&agrave;, Vaglio e policy. La
+sandbox &egrave; un ulteriore livello di contenimento; non concede autorizzazioni e
+non sostituisce quei controlli.
+</p>
+
+<table>
+<tr><th>Livello</th><th>Comportamento corrente sul server</th></tr>
+<tr><td>Contratto</td><td><code>capabilities</code>, collocazione, piattaforme e politica di esecuzione provengono dal manifest firmato.</td></tr>
+<tr><td>Controlli applicativi</td><td>Gli argomenti possono restringere un ambito firmato, mai ampliarlo; identit&agrave;, consenso e destinazione vengono verificati prima del sottoprocesso.</td></tr>
+<tr><td>Bubblewrap attivo</td><td>Codice e runtime sono in sola lettura, <code>/tmp</code> &egrave; privato, le risorse dati sono montate con l'accesso necessario e la rete viene separata quando nessuna capacit&agrave; la richiede.</td></tr>
+<tr><td>Bubblewrap assente o disabilitato</td><td>Restano i controlli applicativi, ma il comando gira direttamente: non va descritto come isolamento del sistema operativo.</td></tr>
+</table>
+
+<p>La rete &egrave; attualmente binaria: quando serve, il processo eredita la rete
+dell'host; non viene applicata una lista di domini. Alcune radici di sistema,
+fra cui <code>/etc</code>, sono visibili in sola lettura. Per montaggi, eccezioni,
+declassamenti e differenze fra Linux, Windows e macOS, vedi la guida alla
+<a href="sandbox.html">sandbox</a>.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap5">5. La vita di un executor</h1>
+
+<p>
+Il campo <code>lifecycle</code> separa i candidati dagli executor disponibili
+al pianificatore. Non descrive una sequenza obbligatoria per ogni origine: gli
+executor distribuiti e revisionati possono nascere direttamente come
+<code>active</code>, mentre i candidati di Synt attraversano i passaggi di
+preparazione e ammissione.
+</p>
+
+<table>
+<tr><th>Stato</th><th>Significato</th><th>&Egrave; in pool?</th></tr>
+<tr><td><code>proposed</code></td><td>Metadati di triage senza file di codice; se dichiara codice, il loader lo rifiuta.</td><td>No; visibile soltanto alle superfici di lavoro e audit.</td></tr>
+<tr><td><code>synthesized</code></td><td>Candidato con codice. Quando la verifica delle firme &egrave; attiva deve gi&agrave; superare firma, impronta ed entry point, ma non &egrave; ancora ammesso al composer.</td><td>No; disponibile al percorso Synt.</td></tr>
+<tr><td><code>active</code></td><td>Contratto ammesso e visibile al pianificatore.</td><td>S&igrave;, salvo disabilitazione o dormienza per prerequisiti mancanti.</td></tr>
+<tr><td><code>deprecated</code></td><td>Escluso dalle nuove composizioni; resta indicizzato in forma compatta per diagnosi e sostituzione.</td><td>No.</td></tr>
+<tr><td><code>archived</code></td><td>Escluso dal catalogo operativo; lo stato resta nel registro di durata.</td><td>No.</td></tr>
+</table>
+
+<p>L'invecchiamento automatico per inattivit&agrave; riguarda soltanto gli executor
+generati da Synt: dopo 30 giorni senza uso diventano <code>deprecated</code> e,
+dopo altri 14 giorni in quello stato, <code>archived</code>. Gli executor curati
+a mano, quelli importati come skill e i nomi protetti non vengono ritirati per
+il solo fatto di essere usati di rado. Le soglie sono configurabili e il
+ripristino richiede un'azione esplicita.</p>
+
+<!-- ============================================================== -->
+<h1 id="cap6">6. Le quattro origini: a mano, generato, importato, di sistema</h1>
+
+<p>
+Tutti gli executor espongono lo stesso contratto logico, ma nascono in quattro
+modi diversi. La distinzione non &egrave; cosmetica: cambia chi li scrive, dove
+vivono e quale provenienza viene registrata.
+</p>
+
+<div class="four-cols">
+ <div>
+ <h4 style="color:#A0522D;">Scritti a mano</h4>
+ <p style="color:#444;">L'autore li compone con pazienza. Sono il nucleo stabile, il <em>seed</em> da cui parte tutto.</p>
+ <p><strong>Cartella</strong>: <code>executors/</code> nell'installazione.</p>
+ <p><strong>Esempi</strong>: <code>get_now</code>, <code>find_files</code>, <code>read_messages</code>, <code>send_messages</code>.</p>
+ <p style="color:#64748B;font-style:italic;">Stretti, robusti, rivisti pi&ugrave; volte.</p>
+ </div>
+ <div>
+ <h4 style="color:#3b82f6;">Generati al volo</h4>
+ <p style="color:#444;">Quando il catalogo non copre una richiesta, il <a href="synt.html">Synt</a> compone un nuovo executor con cinque passi (nome, contratto, prove, descrizione, codice).</p>
+ <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/</code></p>
+ <p><strong>Esempio</strong>: un candidato ristretto preparato, su richiesta governata, quando il catalogo non copre una capacit&agrave; necessaria.</p>
+ <p style="color:#64748B;font-style:italic;">Tenuti separati: non possono mai fare ombra ai seed scritti a mano.</p>
+ </div>
+ <div>
+ <h4 style="color:#9333ea;">Importati da skill esterna</h4>
+ <p style="color:#444;">Una skill pubblica descrive l'uso di un servizio terzo. Il parser e la mappatura deterministica nel vocabolario chiuso la convertono in uno o pi&ugrave; executor Metnos.</p>
+ <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
+ <p><strong>Esempi</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (da una skill calendario).</p>
+ <p style="color:#64748B;font-style:italic;">Stessi controlli di un generato: niente trattamento di favore per il fatto di venire da fuori.</p>
+ </div>
+ <div>
+ <h4 style="color:#16a34a;">Di sistema (builtin)</h4>
+ <p style="color:#444;">Servizi interni eseguiti nel processo. L'implementazione vive nel runtime e il contratto firmato resta separato.</p>
+ <p><strong>Contratti</strong>: <code>runtime/builtin_executor_contracts/</code></p>
+ <p><strong>Esempi</strong>: <code>admin</code>, <code>create_tasks</code>, <code>list_skills</code>, <code>describe_images</code>.</p>
+ <p style="color:#64748B;font-style:italic;">Servizi del sistema, non attrezzi normali.</p>
+ </div>
+</div>
+
+<h2>Precedenza del catalogo curato</h2>
+<p>Un executor generato o importato non può usare il nome di un executor
+scritto a mano. L'ammissione rifiuta la collisione; se questa viene rilevata
+durante il caricamento, il catalogo conserva l'executor curato e sposta la
+cartella sintetizzata in un'area temporanea recuperabile. Una generazione o
+una skill di terzi non può quindi sostituire silenziosamente il nucleo del
+catalogo.</p>
+
+<h2>Perch&eacute; l'origine importata esiste</h2>
+
+<p>
+Una libreria di terzi ha tipicamente una sua documentazione testuale che
+spiega come si usa: «per leggere il calendario chiama <code>gws calendar list</code>;
+per creare un evento usa <code>--summary</code> e <code>--start</code>». Lo standard
+<em>agentskills.io</em> ha codificato questa documentazione in un formato
+preciso (un file Markdown con intestazione strutturata). L'importatore di
+Metnos legge quel formato, lo traduce nel vocabolario chiuso del sistema, e
+genera la cartella dell'executor come se fosse scritta a mano.
+</p>
+
+<p>
+Il vantaggio: ogni servizio gi&agrave; documentato come skill (calendario di Google,
+posta, drive di archiviazione,...) si pu&ograve; portare in Metnos senza riscriverlo
+da capo. Lo svantaggio: bisogna fidarsi di chi ha scritto la skill (e dei suoi
+script di supporto). Per questo l'importatore non installa nulla in
+<code>executors/</code>: gli executor importati vivono nella directory dati
+separata, sotto sorveglianza, e passano comunque dal <a href="vaglio.html">vaglio</a>
+prima di ogni chiamata.
+</p>
+
+<p>
+Un dettaglio operativo: un executor che richiede credenziali resta
+<em>dormant</em> e viene escluso dal pool finch&eacute; i prerequisiti non sono
+disponibili. Il flusso di configurazione pu&ograve; raccogliere i dati con un dialogo
+e conservarli cifrati; non &egrave; corretto promettere che qualunque prima chiamata
+possa sempre proseguire da sola. Vedi la guida allo
+<a href="skill_importer.html">skill importer</a> per i casi ammessi.
+</p>
+
+<!-- ============================================================== -->
+<h1 id="cap7">7. Quattro esempi concreti</h1>
+
+<p>
+Vediamo quattro executor realmente in uso, raccontati da fuori. Niente codice sorgente:
+solo cosa chiedi e cosa ottieni.
+</p>
+
+<h2>7.1 <code>get_now</code> &mdash; "che ora &egrave;?"</h2>
+
+<p>
+L'attrezzo pi&ugrave; semplice del catalogo. Non ha argomenti obbligatori. Ritorna un dizionario
+con la data e l'ora correnti.
+</p>
+
+<pre>chiamata: get_now(timezone="Europe/Rome")
+risposta: { ok: true,
+ content: "2026-05-06T16:45:23+02:00",
+ metadata: { timezone: "Europe/Rome", iso8601: "...", epoch:... } }</pre>
+
+<p>
+Niente rete, nessun file letto, nessuna scrittura. Permessi: <code>time:read</code>.
+&Egrave; uno di quegli attrezzi che sembrano superflui finch&eacute; non si capisce perch&eacute; servono:
+<strong>il pianificatore non deve mai inventarsi la data dalla memoria di addestramento</strong>.
+Quando deve calcolare "le mail di ieri", chiama prima <code>get_now</code>, poi calcola
+"ieri" sottraendo. Cos&igrave; "ieri" &egrave; sempre quello vero, non quello del giorno in cui il modello &egrave; stato addestrato.
+</p>
+
+<h2>7.2 <code>find_files</code> &mdash; "trovami le foto"</h2>
+
+<p>
+Cerca file per nome o per modello (le classiche "estensioni"). Restituisce la lista
+con i metadati di base: percorso, nome, dimensione, data ultima modifica, tipo.
+</p>
+
+<pre>chiamata: find_files(base_path="/home/user/images", pattern="*.jpg")
+risposta: { ok: true,
+ entries: [
+ {path: "/home/.../foto1.jpg", size: 2458123,...},
+ {path: "/home/.../foto2.jpg", size: 1923456,...},...
+ ],
+ metadata: { count: 247,... } }</pre>
+
+<p>
+Il pianificatore lo usa quando deve passare la lista a un altro attrezzo: per esempio
+filtrare le foto pi&ugrave; recenti, calcolare la dimensione totale, comprimere quelle pi&ugrave; vecchie.
+Notare che la <em>filtrazione</em> non sta in <code>find_files</code>: l'attrezzo torna i
+file e basta. Se vuoi un sottoinsieme, glielo chiedi col modello, oppure passi il
+risultato a un altro attrezzo che filtra. Una cosa sola alla volta.
+</p>
+
+<h2>7.3 <code>filter_lists</code> &mdash; "trovami eventi che si sovrappongono"</h2>
+
+<p>
+Un attrezzo che mette in relazione <em>due</em> liste invece di una.
+Lo usi quando la domanda dell&rsquo;utente incrocia due insiemi:
+&laquo;quali appuntamenti HLT si sovrappongono a quelli MNM nei
+prossimi tre mesi?&raquo;, oppure &laquo;quali file sono presenti sia
+in questa cartella sia nell&rsquo;altra?&raquo;.
+</p>
+
+<pre>chiamata: filter_lists(op="overlap",
+ from_step=2, # lista A (eventi HLT)
+ with_step=3) # lista B (eventi MNM)
+risposta: { ok: true,
+ op: "overlap",
+ entries: [...gli eventi di A che si sovrappongono ad almeno uno di B... ],
+ metadata: { count_a: 4, count_b: 5, count_out: 0 } }</pre>
+
+<p>
+Le operazioni disponibili sono sei. <code>intersect</code> tiene
+solo le entries presenti in entrambe le liste (il confronto avviene su
+una chiave indicata, ad esempio il percorso del file).
+<code>union</code> unisce le due liste eliminando i duplicati.
+<code>difference</code> tiene le entries di A che non compaiono in B.
+<code>symdiff</code> &egrave; la differenza simmetrica (quel che c&rsquo;&egrave;
+solo in A o solo in B). <code>overlap</code> &egrave; un&rsquo;operazione
+temporale: tiene gli eventi di A che cadono in un intervallo
+sovrapposto a qualche evento di B, riconoscendo da solo i campi di
+inizio e fine. <code>delta</code> individua invece elementi nuovi o avanzati
+rispetto a una lista di riferimento e viene usato nei monitor incrementali.
+</p>
+
+<p>
+Le tre primitive che lavorano sulle liste hanno ruoli complementari e
+ben separati: <code>filter_entries</code> riduce una lista applicando
+un predicato a un campo (<code>where_starts_with</code>,
+<code>where_contains</code>, <code>where_glob</code>,
+<code>where_regex</code>); <code>filter_lists</code> combina due liste
+con le operazioni di insieme appena viste; <code>compute_entries</code>
+calcola un singolo numero a partire da una lista (somma, media,
+minimo, massimo, conteggio). Le tre primitive coprono insieme la
+quasi totalit&agrave; delle manipolazioni che servono, senza dover
+introdurre verbi nuovi.
+</p>
+
+<h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a un familiare"</h2>
+
+<p>
+Spedisce uno o pi&ugrave; messaggi via Telegram o email. Argomento
+principale: una lista di messaggi, ognuno con destinatario e testo.
+</p>
+
+<pre>chiamata: send_messages(messages=[
+ {to_user: "lucia", body: "Sono uscito, torno alle 7."}
+ ])
+risposta: { ok: true, ok_count: 1, fail_count: 0,
+ results: [{to_user: "lucia", channel: "telegram", message_id: "abc123"}] }</pre>
+
+<p>
+Un attrezzo "trasformativo": modifica il mondo, manda davvero un messaggio. Per questo
+gli executor che cambiano qualcosa al mondo vengono trattati con pi&ugrave; cautela: il loro
+manifesto dichiara le capacit&agrave; <code>mail:send</code> e
+<code>channel:out</code>, e la destinazione viene risolta rispetto all'utente e
+al canale associati. L'invio &egrave; tracciato, ma non &egrave; annullabile: il manifest
+dichiara infatti <code>revertible=false</code>. I controlli devono quindi
+precedere la consegna.
+Vedi <a href="vaglio.html">vaglio</a> per i controlli pre-esecuzione e
+<a href="approval_ux.html">approval_ux</a> per come si chiede conferma all'utente.
+</p>
+
+<!-- ============================================================== -->
+<h1 id="cap8">8. Per andare pi&ugrave; a fondo</h1>
+
+<p>
+Questo documento &egrave; un'introduzione. Se vuoi capire i meccanismi che stanno sotto
+&mdash; come si firma un manifesto, come si applica il recinto, come il Synt
+genera il codice, come il pianificatore sceglie un attrezzo &mdash;
+i documenti seguenti vanno letti uno alla volta.
+</p>
+
+<table>
+<tr><th>Per capire&hellip;</th><th>Leggi</th></tr>
+<tr><td>il pianificatore che sceglie l'executor giusto</td><td><a href="agent_runtime.html">agent_runtime</a></td></tr>
+<tr><td>il recinto in dettaglio (forbidden paths, deroghe, &laquo;riordina le foto&raquo;)</td><td><a href="sandbox.html">sandbox</a></td></tr>
+<tr><td>come il Synt compone executor nuovi</td><td><a href="synt.html">synt</a></td></tr>
+<tr><td>come si importa una skill esterna come executor</td><td><a href="skill_importer.html">skill importer</a></td></tr>
+<tr><td>il controllo che precede l'esecuzione di azioni rischiose</td><td><a href="vaglio.html">vaglio</a></td></tr>
+<tr><td>come l'utente vede e approva le azioni</td><td><a href="approval_ux.html">approval_ux</a></td></tr>
+<tr><td>la memoria che le esecuzioni lasciano dietro di s&eacute;</td><td><a href="mnest.html">mnest</a> e <a href="mnestoma.html">mnestoma</a></td></tr>
+<tr><td>il dialogo con il mondo (Telegram, web, voce)</td><td><a href="channel.html">channel</a></td></tr>
+<tr><td>quali <em>modelli</em> (LLM, embedding, VLM) muovono gli executor e come si cambiano da un TOML</td><td><a href="virtualization.html">virtualizzazione dei modelli</a></td></tr>
+<tr><td>l'osservabilit&agrave; (cosa &egrave; successo, perch&eacute;, quando)</td><td><a href="observability.html">observability</a></td></tr>
+</table>
+
+<p>
+Non occorre leggere queste guide in ordine. Parti dalla domanda concreta,
+segui i collegamenti pertinenti e fermati quando hai raggiunto il livello di
+dettaglio che ti serve.
+</p>
+
+<hr>
+<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
+Metnos &mdash; <em>executor</em>, introduzione didattica
+</p>
+</body>
+</html>

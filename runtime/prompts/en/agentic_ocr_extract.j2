@@ -1,0 +1,14 @@
+{# ---
+role: agentic_ocr_extract
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-15
+sha_prev: 00000000
+--- #}
+YOU MUST: transcribe every readable character exactly, preserve line order, and return only valid JSON `{"description":"verbatim visible text","keywords":[]}`.
+YOU MUST NOT: describe the image, infer missing words, translate, or add commentary.
+OK: return an empty `description` when no text is readable.
+ERROR: reconstructed, translated, summarized, or explanatory text.

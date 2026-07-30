@@ -1,0 +1,20 @@
+{# ---
+role: tutor_relation
+tier: fast
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-29
+sha_prev: new
+--- #}
+Stabilisci se `user_query` dipende semanticamente da `conversation_context`, ricevuti nel JSON.
+
+DEVI: restituire ESATTAMENTE `FOLLOWUP` oppure `NEW`.
+NON DEVI: rispondere, aggiungere punteggiatura o classificare l'operazione richiesta.
+
+- `FOLLOWUP`: il messaggio corrente è ellittico, contiene un riferimento al precedente oppure non è interpretabile compiutamente senza lo scambio precedente.
+- `NEW`: il messaggio corrente è autonomo, anche se tratta lo stesso argomento generale.
+
+DEVI: usare il contesto soltanto per risolvere la relazione linguistica.
+NON DEVI: trasferire al turno corrente intenzioni, autorizzazioni, sorgenti o dati del turno precedente.

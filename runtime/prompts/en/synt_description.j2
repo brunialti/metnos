@@ -1,0 +1,58 @@
+{# ---
+role: synt_description
+tier: middle
+lang: en
+style: definitional
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: 748f8aac
+--- #}
+YOU are phase 4 (DESCRIPTION) of synt-multistage.
+
+MANDATORY OUTPUT: a single JSON object. NO prose, NO markdown fences, NO comments. The response MUST start with `{` and end with `}`.
+
+Previous decisions (DO NOT change them):
+  name: {{ name }}
+  args required: {{ args_required }}
+  capabilities: {{ capabilities }}
+  revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
+  num tests: {{ num_tests }}
+
+Original user request: {{ user_request }}
+
+TOML MANIFEST STYLE RULES (the design guide §6 + §7.12):
+1. PRESCRIPTIVE: MUST / MUST NOT / OK pattern / ERROR pattern. No prose
+   "because", no "if possible", no "preferably".
+2. PATTERN ORIENTED: 3-7 "pattern" examples with note "(do not copy
+   literally: replace with the query terms)".
+3. NO REPETITIONS: do NOT duplicate USAGE + ARG NAMES, do NOT repeat
+   "Example: X" after every rule, do NOT repeat OUTPUT in description +
+   schema_inline.
+4. COMPACT: max 25 words/sentence. Inline backticks (`top=5`) not
+   "Example: top=5". No redundant bullets. IT/EN parallel, not
+   identical-translated.
+
+description CONSTRAINTS — HEAD ONLY §2.5 (UNIVERSAL RULE):
+- Single string, NO newline (TOML manifest). NO Python jargon.
+- EXACTLY 4 chapters in this order, terse and pattern-oriented:
+  SCOPO: <1 sentence: what it does>. PATTERN: <literal call: name(arg="...", arg=N)>. NON: <anti-pattern + disambiguation vs sibling tools>. OUT: <pipeable output shape>.
+- HEAD ONLY: the description is ONLY these 4 chapters. FORBIDDEN the implementation tail (strip-tags, caps, backend, User-Agent, headers...): it lives in the code, NOT here. The machine reads only the head.
+- HARD LIMITS: head (start->OUT:) <= {{ head_max }} char; whole description <= {{ desc_max }} char. Beyond = you're writing tail, cut it.
+- SCOPO+PATTERN front-loaded (the proposer reads them). The §2.2 verb boundary goes in NON: (e.g. "NON directories -> delete_dirs").
+
+affinity RULES:
+- 6-10 keywords italiano + english, lowercase.
+- User-facing synonyms/variants.
+
+OK pattern (name=delete_files):
+{
+  "description": "SCOPO: delete files from filesystem (vectorial §2.1, even 1 or 0). PATTERN: delete_files(paths=[\"/tmp/old.log\"]). NON: pass 'files'/'targets'; use for directories (-> delete_dirs). OUT: {ok,ok_count,fail_count,results,failed}, best-effort.",
+  "affinity": ["delete", "cancella", "rimuovi", "elimina", "rm", "del", "fs"]
+}
+
+ERROR pattern (verbose):
+"description": "USAGE: query 'delete file' -> use delete_files. ARG NAMES exact: MUST: 'paths'. MUST NOT: 'files', 'targets'. DEFAULT: paths=[]. OUTPUT: like delete_dirs but for files. Example: delete_files(paths=['/tmp/x']). Example 2: delete_files(paths=['/a','/b']). Critical: yes, irreversible..."
+(Anti-pattern: USAGE+ARG NAMES+DEFAULT+OUTPUT each duplicated. Compress.)
+
+NOW produce the JSON for `{{ name }}`. ONLY JSON, nothing else.

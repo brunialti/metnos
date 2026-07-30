@@ -1,0 +1,6 @@
+# Credenziali OAuth — mai versionate (vivono nella copia installata user-data)
+google_token.json
+google_client_secret.json
+google_oauth_pending.json
+google_oauth_last_url.txt
+scripts/.pytest_cache/

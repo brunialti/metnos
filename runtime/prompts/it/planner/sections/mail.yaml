@@ -1,0 +1,81 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: mail
+  header: "EMAIL / MAIL / IMAP"
+  preamble: |
+    EMAIL/MAIL/POSTA/MESSAGGI/IMAP/MITTENTE/OGGETTO (IMAP locale + Google Workspace)
+    -> read_messages (lettura+ricerca IMAP locale, combina time_window+criteri testuali in UNA call), send_messages (invio), move_messages (sposta in cartelle IMAP), set_messages (aggiorna labels/state Gmail).
+    -> Per Gmail/Google Workspace: find_messages_google_workspace (ricerca), read_messages_google_workspace (lettura), send_messages_google_workspace (invio).
+
+rules:
+  - name: delete_mail_is_move_to_trash
+    when: "richiesta di CANCELLARE / ELIMINARE / RIMUOVERE mail («cancella le mail X», «elimina la mail Y», «butta via le mail di pubblicita», «cestina le newsletter»)"
+    must: "in Metnos NON esiste `delete_messages`: la cancellazione mail e' SEMANTICAMENTE uno spostamento in cestino/cestino spam. Usa la pipeline read_messages -> classify_entries -> filter_entries -> move_messages(dst_folder=\"Trash\" o \"Junk\") -> final_answer."
+    must_not: "chiamare delete_messages (NON ESISTE) o delete_events (calendar, sbagliato dominio) o read_messages senza azione successiva (sostituisce la cancellazione con una lettura, anti-pattern §2.6)"
+    ok: "«cancella le mail di pubblicita di oggi» -> read_messages(time_window=\"today\") -> classify_entries(from_step=1, dimension=\"relevance\") -> filter_entries(from_step=2, where_in=[\"junk\",\"low\"]) -> move_messages(from_step=3, dst_folder=\"Trash\") -> final_answer"
+    error: "«cancella le mail» -> read_messages + describe_entries senza move (E' UN ERRORE: cancellazione richiesta non eseguita, sostituita con riassunto)"
+
+  - name: mail_core_pipeline
+    when: "richiesta di SPOSTARE mail in una cartella IMAP (spam/cestino/archivio/etichette) o di filtrare e archiviare"
+    must: "se move_messages e' nel catalogo, pipeline read_messages -> classify_entries -> filter_entries -> move_messages. Se NON nel catalogo, request_new_executor(expected_name=\"move_messages\", intent=\"Sposta lista IMAP da sorgente a destinazione, pre-flight check dst, COPY+check status poi STORE \\Deleted+EXPUNGE solo se COPY ok, salva message_id per swap_src_dst undo\") al primo step, poi pipeline standard al passo successivo (synthesized observation)"
+    must_not: "sostituire l'azione richiesta con un riassunto (read_messages + describe_entries senza move). Hai REPLACATO l'azione con una lettura. E' UN ERRORE. NON DEVI usare move_files per mail: le mail vivono in IMAP, non sul filesystem"
+    ok: "«sposta in spam le mail di pubblicita' di oggi» -> read_messages(account=\"all\", time_window=\"today\") -> classify_entries(from_step=1, dimension=\"relevance\") -> filter_entries(from_step=2, where_field=\"relevance\", where_in=[\"junk\",\"low\"]) -> move_messages(from_step=3, dst_folder=\"Junk\") -> final_answer \"Spostate N mail in Junk\""
+    error: "«sposta in spam le mail» -> move_files(dst_template=\"Junk\") (E' UN ERRORE: move_files e' filesystem, le mail vivono in IMAP). OPPURE «sposta in spam» -> read_messages + describe_entries senza move (E' UN ERRORE: sostituito move con summary)"
+
+  - name: missing_tool_request
+    when: "la richiesta utente menziona un'azione SPECIFICA (sposta/archivia/etichetta) e il tool corrispondente NON e' nel toolset esposto al passo corrente"
+    must: "invocare request_new_executor col nome canonico (es. expected_name=\"move_messages\"), con intent verbose dell'azione necessaria. Al passo successivo l'observation dichiara \"synthesized\" o \"rejected/abandoned\". Procedere con la pipeline solo dopo synthesized"
+    must_not: "sostituire l'azione con read/describe come surrogato. NON usare un tool di un altro dominio (es. move_files per mail) come surrogato"
+    ok: "utente «sposta X in Y» -> request_new_executor(expected_name=\"move_<oggetto>\") -> step successivo chiami il nuovo tool"
+    error: "«sposta in spam le mail» -> read_messages + classify_entries + describe_entries (E' UN ERRORE: sostituito move con summary). OPPURE «sposta mail» -> move_files con dst_template=\"Junk\" (E' UN ERRORE: move_files e' filesystem)"
+
+  - name: dst_folder_resolution
+    when: "destinazione mail e' spam/cestino/archivio/etichetta (\"Junk\", \"Spam\", \"Posta indesiderata\", \"Archivio\", \"Trash\")"
+    must: "passa il nome utente DIRETTAMENTE come `dst_folder`/`dst_template` di move_messages. L'executor risolve automaticamente il nome reale del server (es. \"Posta indesiderata\" -> \"INBOX.Posta indesiderata\" su example.com, \"Junk\" -> \"INBOX.Junk\" o \"[Gmail]/Junk\", \"Spam\" -> \"INBOX.Spam\"). list_folders_messages SOLO se l'utente chiede esplicitamente di elencare le cartelle"
+    must_not: "hardcodare un nome di cartella IMAP specifico (\"INBOX.Junk\", \"[Gmail]/Spam\") senza prima verificarne l'esistenza per l'account. NON chiamare list_folders_messages prima del move standard: e' un passo ridondante che triggera sintesi non necessarie"
+    ok: "«sposta in spam» -> move_messages(from_step=N, dst_folder=\"Junk\") (l'executor risolve internamente sull'account corretto)"
+    error: "move_messages(dst_folder=\"INBOX.Junk\") hardcoded -> ERR_DST_FOLDER_NOT_FOUND su server diversi da Migadu (E' UN ERRORE: nome IMAP server-specific senza pre-check)"
+
+  - name: imap_forbidden_filesystem_tools
+    when: "qualsiasi richiesta su mail/messaggi/IMAP"
+    must: "usare ESCLUSIVAMENTE tool del dominio mail: read_messages, send_messages, move_messages, set_messages, list_folders_messages, find_messages_google_workspace, read_messages_google_workspace, send_messages_google_workspace"
+    must_not: "invocare move_files, get_files, find_files, list_dirs, read_files*, get_location su mail. Le mail vivono in IMAP, NON sul filesystem. Questi tool sono PER FILESYSTEM"
+    ok: "«mail di Mario» -> read_messages(account=\"all\", from=\"Mario\") -> final_answer"
+    error: "«mail di Mario» -> find_files(pattern=\"*Mario*\", base_dir=\"~/Mail\") (E' UN ERRORE: find_files e' filesystem, non IMAP)"
+
+  - name: gmail_vs_imap_local
+    when: "la query menziona esplicitamente Gmail/Google Workspace/posta-Google, OPPURE l'account corrente e' un alias Google"
+    must: "usare i tool del dominio Google Workspace: find_messages_google_workspace (ricerca), read_messages_google_workspace (lettura), send_messages_google_workspace (invio), set_messages (labels/state modifica - gmail.modify)"
+    must_not: "confondere con read_messages (IMAP locale Migadu: metnos@metnos.com). I due endpoint sono separati: read_messages legge solo gli account IMAP configurati in mail.env, NON Gmail"
+    ok: "«cerca mail su Gmail con allegato fattura» -> find_messages_google_workspace(query=\"has:attachment fattura\") -> final_answer"
+    error: "«mail Gmail» -> read_messages (E' UN ERRORE: read_messages e' IMAP locale, non Gmail)"
+
+  - name: send_vs_read_disambiguation
+    when: "la query dice «manda/invia/scrivi/spedisci email» (azione OUTBOUND), oppure «mandami email con la scelta» (notifica)"
+    must: "send_messages (IMAP locale) o send_messages_google_workspace (Gmail). Args canonici: messages=[{to:..., subject:..., body:...}] o to_user/via_channel per routing automatico. Se l'utente specifica «email/mail/posta» come canale -> via_channel=\"mail\" ESPLICITO. Se «telegram» -> via_channel=\"telegram\""
+    must_not: "invocare find_messages_*/read_messages: la query INVIA mail, non CERCA mail. «email» qui e' il MEZZO di consegna, non il dato cercato"
+    ok: "«manda email a roberto con riassunto giornata» -> send_messages(messages=[{to:\"roberto@example.com\", subject:\"Riassunto\", body:\"...\"}]) -> final_answer"
+    error: "«manda email» -> find_messages_google_workspace (E' UN ERRORE: la query INVIA, non CERCA). OPPURE «mandami con la scelta» -> send_messages al primo step prima di avere la scelta (E' UN ERRORE: body vuoto)"
+
+  - name: classify_relevance_pipeline
+    when: "la query coinvolge una DECISIONE su «mail importanti/urgenti/spam/pubblicita'/junk/low»: filtraggio per RILEVANZA"
+    must: "dopo read_messages (o find_messages_google_workspace), inserire classify_entries(from_step=N, dimension=\"relevance\") -> filter_entries(from_step=M, where_field=\"relevance\", where_in=[...]). classify_entries usa LLM per scoring; filter_entries e' deterministico"
+    must_not: "filtrare per parole chiave nell'oggetto come surrogato di classify_entries (false positive/negative). NON usare describe_entries come passo finale al posto di un'azione mutating richiesta"
+    ok: "«mail urgenti questa settimana» -> read_messages(time_window=\"last-7d\") -> classify_entries(from_step=1, dimension=\"urgency\") -> filter_entries(from_step=2, where_field=\"urgency\", where_in=[\"high\"]) -> final_answer"
+    error: "«mail urgenti» -> read_messages(subject=\"URGENT\") (E' UN ERRORE: subject keyword filter perde mail senza la parola \"URGENT\")"
+
+  - name: date_relative_resolution
+    when: "query contiene QUALSIASI data relativa: oggi, ieri, domani, dopodomani, lunedi..domenica, «la prossima settimana», «il mese prossimo», «entro N giorni», «N giorni fa», «stasera», «stamattina», «stanotte», «questa sera», «questa mattina»"
+    must: "passare time_window canonical a read_messages (\"today\", \"yesterday\", \"last-Nd\", \"next-Nd\", ISO range \"YYYY-MM-DD/YYYY-MM-DD\"). Per «questa settimana» / «settimana scorsa» -> \"last-7d\". Per Google Workspace, find_messages_google_workspace accetta query gmail-syntax `after:YYYY/MM/DD before:YYYY/MM/DD` quando serve granularita' giorno"
+    must_not: "inferire/calcolare/inventare la data assoluta. La tua conoscenza delle date e' stantia di mesi. Se serve la data assoluta, get_now PRIMA. time_window=\"10-12 Mag\" e' un formato libero non parsato"
+    ok: "«mail di oggi» -> read_messages(time_window=\"today\"). OPPURE «mail di ieri» -> read_messages(time_window=\"yesterday\"). OPPURE «ultime 5 mail» -> read_messages(time_window=\"last-7d\", max_results=5)"
+    error: "read_messages(time_window=\"10 Mag\") (E' UN ERRORE: formato libero non parsato). OPPURE read_messages(after=\"2026-04-29\") senza get_now quando «ieri» dipende dalla data corrente reale"

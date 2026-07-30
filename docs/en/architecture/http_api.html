@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; web chat and HTTP API</title>
+ <meta name="description" content="Metnos's HTTP interface: chat, resumable turns, per-user sessions, Settings, authentication, SSE, and network boundaries.">
+ <meta name="keywords" content="Metnos, HTTP API, web chat, SSE, Settings, authentication, sessions, multi-user">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/http_api">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/http_api">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/http_api">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/http_api">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/http_api">
+ <meta property="og:title" content="Metnos &mdash; web chat and HTTP API">
+ <meta property="og:description" content="Routes, identity, per-user isolation, streaming, and operational boundaries of the HTTP interface.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — web chat and HTTP API",
+ "description": "Chat, resumable turns, per-user sessions, Settings, authentication, and SSE.",
+ "url": "https://metnos.com/en/architecture/http_api.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+h3 { color:var(--navy); font-size:12pt; margin-top:18px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/http_api.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/http_api.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">HTTP API</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Web chat and HTTP API</div>
+ <div class="meta">One boundary for conversation, administration, and resumable state.</div>
+</div>
+
+<p class="lead"><code>metnos_http_server</code> serves the web chat, turn API,
+and Settings area. Its default is <code>127.0.0.1:8770</code>; an installation
+may change both address and port. The remote-executor protocol on
+<code>8765</code> and browser service on <code>8771</code> are separate
+components with their own authority and routes.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">A natural-language example</a></li>
+ <li><a href="#cap2">Server composition</a></li>
+ <li><a href="#cap3">Main routes</a></li>
+ <li><a href="#cap4">Identity and authorisation</a></li>
+ <li><a href="#cap5">Sessions and per-user isolation</a></li>
+ <li><a href="#cap6">Direct and resumable turns</a></li>
+ <li><a href="#cap7">HTML, JSON, and caching</a></li>
+ <li><a href="#cap8">Settings and localisation</a></li>
+ <li><a href="#cap9">Network and capacity boundaries</a></li>
+ <li><a href="#cap10">Verification and canonical sources</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. A natural-language example</h1>
+
+<p>Ask Metnos with a request such as:</p>
+
+<pre>Show me where I can inspect recent turns and change the model configuration.</pre>
+
+<p>The answer should begin with the route visible in the chat:
+<strong>Settings &gt; Activity &gt; Turns</strong> and
+<strong>Settings &gt; System &gt; Models</strong>. If the question came from
+Telegram, the answer must state that Settings opens in the web chat. Only a
+person asking for a technical integration then needs the HTTP paths
+<code>/admin/turns</code> and <code>/admin/virt</code>.</p>
+
+<h1 id="cap2">2. Server composition</h1>
+
+<p>The <code>make_app</code> factory creates one <code>aiohttp</code>
+application with a 50 MiB request-body limit and mounts three route
+registries:</p>
+
+<table>
+<tr><th>Module</th><th>Responsibility</th></tr>
+<tr><td><code>http_routes_agent.py</code></td><td>Chat, discovery, turns, sessions, dialogs, attachments, web pairing, and OAuth callback.</td></tr>
+<tr><td><code>http_routes_admin.py</code></td><td>Settings, users, models, services, devices, scheduler, Safety, and executor evolution.</td></tr>
+<tr><td><code>http_routes_stack.py</code></td><td>Combined readiness for the server, catalog, and browser service.</td></tr>
+</table>
+
+<p>The same middleware order applies to every route: the first layer
+classifies the caller; the second places that user's language in the request
+context. The language context is copied into the turn pool as well, so
+concurrent requests do not share a global language variable.</p>
+
+<h2>2.1 Adjacent services</h2>
+
+<ul>
+<li><code>agent_server</code>, normally on <code>127.0.0.1:8765</code>, handles polling, heartbeats, signed bundles, and remote-executor results. The Telegram daemon may host it in its own thread.</li>
+<li><code>playwright_sidecar</code>, normally on <code>127.0.0.1:8771</code>, manages browser sessions and is not exposed as a user API.</li>
+<li><code>POST /agent/register</code> also exists on the chat port and reuses <code>agent_server</code>'s canonical handler; one-time-token semantics are not duplicated.</li>
+</ul>
+
+<h1 id="cap3">3. Main routes</h1>
+
+<h2>3.1 Entry and discovery</h2>
+
+<table>
+<tr><th>Method and path</th><th>Function</th><th>Access</th></tr>
+<tr><td>GET <code>/</code></td><td>Web chat; an anonymous caller is redirected to administrator login.</td><td>User or administrator; initial anonymous entry is admitted for the redirect.</td></tr>
+<tr><td>GET <code>/agent/health</code></td><td>Liveness, API version, product version, and uptime.</td><td>Anonymous.</td></tr>
+<tr><td>GET <code>/.well-known/metnos.json</code></td><td>Node descriptor and pairing URL; no administrative key or fingerprint is disclosed.</td><td>Anonymous.</td></tr>
+<tr><td>POST <code>/agent/register</code></td><td>Consumes a remote executor's one-time token.</td><td>Anonymous with a valid token.</td></tr>
+<tr><td>GET <code>/pair/{token}</code></td><td>Consumes a web pairing token and sets the paired-device cookie.</td><td>Anonymous with a valid token.</td></tr>
+<tr><td>GET <code>/oauth/callback</code></td><td>Completes an OAuth flow using short-lived state issued by Metnos.</td><td>Public for redirect purposes; state is the boundary.</td></tr>
+</table>
+
+<p>The PWA manifest, service worker, and files below <code>/static/</code> are
+available without authentication. Photographs below
+<code>/agent/photos/</code> instead require a signed, expiring URL: the URL is
+itself a capability and must be treated as confidential.</p>
+
+<h2>3.2 Turns, sessions, and dialogs</h2>
+
+<table>
+<tr><th>Group</th><th>Paths</th><th>Contract</th></tr>
+<tr><td>Direct turn</td><td>POST <code>/agent/turn</code></td><td>JSON or an SSE stream on the same connection.</td></tr>
+<tr><td>Resumable turn</td><td>POST <code>/agent/turn/submit</code>; GET <code>/agent/turns/{id}/stream</code>; GET <code>/agent/turns/{id}</code></td><td>Immediate acceptance, reconnectable events, and polling fallback.</td></tr>
+<tr><td>History and judgement</td><td>GET <code>/agent/turns/recent</code>; POST <code>/agent/turns/{id}/feedback</code>; POST <code>/agent/turns/{id}/retry</code></td><td>Conversation history, explicit feedback, and retry.</td></tr>
+<tr><td>Writer session</td><td><code>/agent/session/register</code>, <code>takeover</code>, <code>ping</code>, <code>revoke</code>, <code>events</code></td><td>One writing device per user-channel pair and explicit transfer.</td></tr>
+<tr><td>Dialogs</td><td><code>/agent/dialog/{id}/form</code>, <code>submit</code>, <code>cancel</code>, <code>preview</code>, <code>context</code></td><td>Input collection with ownership and, when needed, a short-lived delegable capability.</td></tr>
+<tr><td>Attachments</td><td><code>/agent/gallery/{turn_id}</code>, <code>/agent/photos/{turn_id}/{idx}</code>, <code>/agent/photos/web</code></td><td>Owner-bound gallery; signed local-file URLs; web proxy with SSRF defences and size limits.</td></tr>
+</table>
+
+<h2>3.3 Administration</h2>
+
+<p>Every route below <code>/admin</code>, except the login entry, requires the
+administrator role. The main areas are:</p>
+
+<ul>
+<li><code>/admin/virt</code> and <code>/admin/services</code> for models and services;</li>
+<li><code>/admin/turns</code>, <code>/admin/runs</code>, <code>/admin/builds</code>, and <code>/admin/timers</code> for activity;</li>
+<li><code>/admin/changes</code>, <code>/admin/executors</code>, and <code>/admin/praxis</code> for lifecycle and the cognitive engine;</li>
+<li><code>/admin/safety</code>, <code>/admin/users</code>, and <code>/admin/devices</code> for signatures, identities, and devices;</li>
+<li><code>/agent/stack/health</code> for combined readiness, despite its <code>/agent</code> prefix.</li>
+</ul>
+
+<p>The code-level route registries remain authoritative. This grouping
+explains the surface without freezing a route count that would become stale.</p>
+
+<h1 id="cap4">4. Identity and authorisation</h1>
+
+<p>Middleware assigns one of three roles: <code>anonymous</code>,
+<code>user</code>, or <code>admin</code>:</p>
+
+<ol>
+<li>a Bearer equal to the administrator key grants <code>admin</code>;</li>
+<li>another Bearer is valid only if it matches a registered device;</li>
+<li>without a Bearer, a valid administrator or user cookie grants the corresponding role; the user cookie is also checked against the pairing registry, which is the revocation authority;</li>
+<li>when no credential was presented, selected local addresses may receive <code>user</code> as an installation-compatibility path;</li>
+<li>otherwise the caller remains anonymous.</li>
+</ol>
+
+<p>An invalid Bearer never falls through to local-network trust.
+<code>CF-Connecting-IP</code> and <code>X-Forwarded-For</code> are considered
+only when the TCP peer belongs to <code>METNOS_TRUSTED_PROXIES</code>; an
+ordinary client cannot declare itself local through a header.</p>
+
+<p>The administrator key lives at <code>PATH_USER_CONFIG/admin.key</code>, is
+created with mode <code>0600</code>, and also derives signatures and encryption
+keys through separate domains. The administrator cookie lasts seven days and
+is <code>HttpOnly</code>, <code>Secure</code>, and
+<code>SameSite=Strict</code>; the user cookie lasts ninety days and is
+<code>HttpOnly</code>, <code>Secure</code>, and
+<code>SameSite=Lax</code>.</p>
+
+<h1 id="cap5">5. Sessions and per-user isolation</h1>
+
+<p>The active session is keyed by <code>(user_id, channel)</code>. Hosts and
+guests can therefore use the chat concurrently without sharing a lease,
+conversation, or browser-local memory. The client also separates tokens,
+command buffers, and history through an opaque scope derived from the user.</p>
+
+<p>When a second device finds an active session, the server issues a one-time
+token and leaves three choices to the interface:</p>
+
+<ul>
+<li><strong>Cancel</strong>: makes no state change;</li>
+<li><strong>Make this session active</strong>: revokes the old writer and keeps the conversation proposed by the current device;</li>
+<li><strong>Continue the previous session</strong>: revokes the old writer and transfers the previous conversation identifier to the current device.</li>
+</ul>
+
+<p>Transfer rechecks both user and old writer atomically. Recent history
+requires a conversation belonging to the user. Turn status, stream, gallery,
+feedback, and retry also verify the turn owner: knowledge of a
+<code>turn_id</code> does not grant access. Older records without
+<code>owner_user_id</code> use only deterministic conversation or actor
+bindings; an identity-store failure is denied rather than converted into
+permission.</p>
+
+<h1 id="cap6">6. Direct and resumable turns</h1>
+
+<h2>6.1 Direct request</h2>
+
+<p><code>POST /agent/turn</code> accepts JSON or multipart data containing a
+request and reference images. With <code>Accept: text/event-stream</code> it
+sends <code>thinking</code>, <code>progress</code>, and
+<code>tool_call</code> events followed by <code>final</code> or
+<code>error</code>; periodic comments keep the connection alive. Without SSE
+it returns one JSON document.</p>
+
+<h2>6.2 Execution independent of the connection</h2>
+
+<p><code>POST /agent/turn/submit</code> first reserves pool capacity and then
+returns <code>202</code> with a <code>turn_id</code> and
+<code>stream_url</code>. The turn continues if the page refreshes or the
+network drops. The stream accepts <code>Last-Event-ID</code> and replays later
+events; <code>GET /agent/turns/{id}</code> provides a polling fallback.</p>
+
+<p>In-memory events remain for a bounded interval after completion. Once they
+are gone, the status route searches the persisted daily record. Persistence
+does not replace the ownership check.</p>
+
+<h2>6.3 Bounded capacity</h2>
+
+<p>Blocking turns pass through a dedicated pool with a global limit, a finite
+queue, and a per-principal limit. If capacity cannot be reserved within the
+admission window, the server returns
+<code>503 turn_capacity_exhausted</code> with <code>Retry-After: 1</code>. A
+disconnect does not release capacity prematurely while the worker thread is
+still running.</p>
+
+<h1 id="cap7">7. HTML, JSON, and caching</h1>
+
+<p>Administration collections that use
+<code>negotiate_collection</code> return HTML when <code>Accept</code>
+contains <code>text/html</code>, and JSON otherwise. The body receives a
+SHA-256-derived ETag; an equal <code>If-None-Match</code> produces
+<code>304</code>. This does not apply to every route: some are HTML-only,
+JSON-only, or SSE.</p>
+
+<p>The chat uses <code>no-cache, no-store</code> so the client receives the
+current contract. Negotiated administration responses have a short private
+cache; model configuration and services use <code>no-store</code>. Signed
+attachment URLs have their own lifetime and must not be confused with a user
+session.</p>
+
+<h1 id="cap8">8. Settings and localisation</h1>
+
+<p>Settings uses Jinja2 templates, the
+<code>runtime/ui_surfaces.py</code> registry for navigation and descriptions,
+htmx for selected updates, and uPlot only in the executor-statistics view.
+There is no front-end build step.</p>
+
+<p>Every visible string must come from the i18n catalog or already-localised
+data. Language is an individual user preference held in a request-local
+<code>ContextVar</code>; a new language requires catalog entries, a detection
+lexicon, and corresponding documentation rather than phrase-specific
+conditions in templates.</p>
+
+<p>Settings is the interactive administration interface. The HTML report
+generated by <code>runtime.observability</code> is a separate artifact described
+in <a href="observability.html">operational observability</a>.</p>
+
+<h1 id="cap9">9. Network and capacity boundaries</h1>
+
+<ul>
+<li><strong>aiohttp does not terminate TLS.</strong> The service starts on loopback. A public hostname needs a configured, trusted HTTPS reverse proxy or tunnel; keys and cookies must not cross an untrusted network in clear text.</li>
+<li><strong>LAN trust is explicit and limited.</strong> The code admits loopback, <code>10.0.0.0/8</code>, and <code>192.168.0.0/16</code>; this does not mean “every private network” and does not replace device pairing.</li>
+<li><strong>There is no general per-IP rate limiter.</strong> The pool bounds turns, but assets, login, and other routes also need proxy-level protection when exposed.</li>
+<li><strong>The process is single-instance.</strong> A lock below <code>PATH_USER_STATE</code> prevents two servers for the same installation.</li>
+<li><strong>Readiness is distinct from liveness.</strong> <code>/agent/health</code> says the process responds; administrator-only <code>/agent/stack/health</code> also checks the catalog, browser contract, and adjacent service.</li>
+</ul>
+
+<h1 id="cap10">10. Verification and canonical sources</h1>
+
+<pre>curl -fsS http://127.0.0.1:8770/agent/health
+curl -fsS http://127.0.0.1:8770/.well-known/metnos.json
+curl -fsS -H "Authorization: Bearer &lt;administrator-key&gt;" \
+  http://127.0.0.1:8770/agent/stack/health</pre>
+
+<p>The first probe proves liveness only. The third is suitable evidence before
+a restart or a full-stack test. Suites below <code>tests/runtime/http/</code>
+cover authentication, sessions, turn isolation, SSE, caching, uploads,
+rendering, and administration pages; this guide does not freeze a test count.</p>
+
+<ul>
+<li><code>runtime/metnos_http_server.py</code> &mdash; factory, middleware, lifecycle, and pool;</li>
+<li><code>runtime/http_auth.py</code> &mdash; roles, cookies, Bearer tokens, networks, and trusted proxies;</li>
+<li><code>runtime/http_routes_agent.py</code> &mdash; chat, turns, sessions, dialogs, and attachments;</li>
+<li><code>runtime/http_routes_admin.py</code> &mdash; Settings and administrative actions;</li>
+<li><code>runtime/http_routes_stack.py</code> &mdash; combined readiness;</li>
+<li><code>runtime/http_render.py</code> &mdash; templates, negotiation, and ETags;</li>
+<li><code>runtime/turn_events.py</code> &mdash; resumable events and their ownership.</li>
+</ul>
+
+</body>
+</html>

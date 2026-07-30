@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; ciclo di vita delle modifiche</title>
+ <meta name="description" content="Come Metnos raccoglie, sottopone a decisione, applica, osserva e annulla le modifiche al sistema.">
+ <meta name="keywords" content="Metnos, change intent, modifiche, approvazione, applicazione, rollback">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/it/architecture/lifecycle">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Lingua">
+<a href="/it/architecture/lifecycle.html" class="active" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/lifecycle.html" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">modifiche</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Ciclo di vita delle modifiche</div>
+ <div class="meta">Un oggetto comune per proporre, decidere, applicare e osservare un cambiamento.</div>
+</div>
+
+<p class="lead">Le sorgenti che suggeriscono un miglioramento non modificano
+direttamente Metnos. Traducono il suggerimento in un <code>change_intent</code>, cio&egrave;
+un record tipizzato con origine, obiettivo, motivazione, punteggio e stato. La pagina
+<code>/admin/changes</code> presenta questi record e mantiene visibile il loro percorso.</p>
+
+<div class="toc">
+<h2>Indice</h2>
+<ol>
+ <li><a href="#cap1">L'oggetto comune</a></li>
+ <li><a href="#cap2">Stati e transizioni</a></li>
+ <li><a href="#cap3">Sorgenti attive</a></li>
+ <li><a href="#cap4">Materializzazione, applicazione e osservazione</a></li>
+ <li><a href="#cap5">Cosa viene applicato</a></li>
+ <li><a href="#cap6">Esempio in linguaggio naturale</a></li>
+ <li><a href="#cap7">Garanzie e limiti</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. L'oggetto comune</h1>
+
+<p>I record sono conservati in
+<code>~/.local/state/metnos/change_intents.sqlite</code>. I campi principali sono:</p>
+
+<table>
+<thead><tr><th>Gruppo</th><th>Contenuto</th></tr></thead>
+<tbody>
+<tr><td>Identit&agrave;</td><td><code>id</code> e impronta deterministica per deduplicare proposte equivalenti.</td></tr>
+<tr><td>Provenienza</td><td>Famiglia, modulo sorgente, identificatore originario e data di scoperta.</td></tr>
+<tr><td>Intento</td><td>Tipo chiuso, obiettivo, sintesi, motivazione e payload specifico.</td></tr>
+<tr><td>Priorit&agrave;</td><td>Punteggio, confidenza e numero di sorgenti convergenti.</td></tr>
+<tr><td>Decisione</td><td>Persona, azione, motivazione e istante della decisione.</td></tr>
+<tr><td>Esito</td><td>Effetto applicato, metriche osservate, errore o dati di ripristino.</td></tr>
+</tbody>
+</table>
+
+<p>L'impronta non contiene la famiglia d'origine. Se due sorgenti descrivono la
+stessa modifica, l'upsert pu&ograve; riunirle in un record e aumentare la convergenza senza
+duplicare l'azione. Il punteggio resta un criterio di ordinamento, non
+un'autorizzazione.</p>
+
+<h1 id="cap2">2. Stati e transizioni</h1>
+
+<pre><code>proposed  --accetta--&gt; accepted --applica--&gt; applied
+    |                         |                    |
+    |                         +--errore--&gt; failed  +--misura--&gt; observed
+    +--rimanda--&gt; staged                              |
+    +--rifiuta--&gt; rejected                            +--ok--&gt; finalized
+                                                     +--problema--&gt; rolled_back</code></pre>
+
+<p>Una proposta rimandata pu&ograve; tornare in valutazione. Un errore pu&ograve; essere
+riprovato oppure rifiutato. Il ripristino &egrave; terminale nel registro e viene eseguito
+fisicamente quando il tipo di modifica lo consente. La macchina a stati impedisce
+passaggi arbitrari: una proposta non pu&ograve; diventare <code>applied</code> senza essere
+prima <code>accepted</code>.</p>
+
+<h1 id="cap3">3. Sorgenti attive</h1>
+
+<p>Il materializzatore interroga quattro adapter senza effetti collaterali:</p>
+
+<table>
+<thead><tr><th>Sorgente</th><th>Che cosa pu&ograve; produrre</th></tr></thead>
+<tbody>
+<tr><td>Telos</td><td>Creazione o estensione di executor e prova controllata di una sequenza, a partire dalle teste di gruppi azionabili.</td></tr>
+<tr><td>Introvertiva</td><td>Deduplica di executor; conserva inoltre gli stati gi&agrave; registrati che devono restare consultabili.</td></tr>
+<tr><td>Synt</td><td>Richieste di creazione di executor e relativi stati terminali o ancora in corso.</td></tr>
+<tr><td>Riscontri dell'utente</td><td>Proposta di rifiutare uno schema ricorrente dopo almeno due riscontri negativi coerenti.</td></tr>
+</tbody>
+</table>
+
+<p>Gli adapter traducono strutture diverse nello stesso schema. Non applicano la
+modifica e non trasformano una deduzione automatica in consenso umano.</p>
+
+<h1 id="cap4">4. Materializzazione, applicazione e osservazione</h1>
+
+<table>
+<thead><tr><th>Attivit&agrave;</th><th>Frequenza predefinita</th><th>Responsabilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td><code>change_intent_materialize</code></td><td>Ogni giorno alle 01:00</td><td>Legge gli adattatori, elimina i duplicati in base all'impronta e aggiorna l'archivio.</td></tr>
+<tr><td><code>change_applier</code></td><td>Ogni 10 minuti</td><td>Elabora fino a 20 record accettati e registra l'effetto o l'errore.</td></tr>
+<tr><td><code>change_observer</code></td><td>Ogni giorno alle 03:15</td><td>Misura fino a 200 modifiche applicate o in osservazione e decide se finalizzarle o ripristinarle.</td></tr>
+</tbody>
+</table>
+
+<p>Il periodo di osservazione predefinito &egrave; di sette giorni ed &egrave;
+configurabile con <code>METNOS_CHANGE_GRACE_DAYS</code>. I criteri dipendono dal tipo:
+salute dell'executor, integrit&agrave; di un alias, risultato del turno usato per provare una
+sequenza o un nuovo riscontro sullo schema rifiutato.</p>
+
+<h1 id="cap5">5. Cosa viene applicato</h1>
+
+<table>
+<thead><tr><th>Tipo</th><th>Effetto corrente</th><th>Ripristino</th></tr></thead>
+<tbody>
+<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica.</td><td>Archivia l'executor sintetizzato.</td></tr>
+<tr><td><code>extend_executor</code></td><td>Estende il manifest, conserva una copia e firma di nuovo l'executor.</td><td>Ripristina il manifest conservato e lo firma di nuovo.</td></tr>
+<tr><td><code>dedupe_executors</code></td><td>Crea un alias e ritira il duplicato solo se la provenienza consente l'operazione.</td><td>Rimuove l'alias e riattiva il duplicato.</td></tr>
+<tr><td><code>materialize_pipeline</code></td><td>Esegue una volta la richiesta proposta come turno reale, con policy e controlli normali.</td><td>Registra il ripristino; il turno non installa un artefatto persistente da rimuovere.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Aggiunge lo schema approvato al registro dei percorsi da evitare.</td><td>Rimuove la registrazione corrispondente.</td></tr>
+<tr><td><code>cache_pattern</code></td><td>Resta supportato per record compatibili gi&agrave; presenti nell'archivio.</td><td>Retrocede la registrazione associata.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap6">6. Esempio in linguaggio naturale</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Mostrami le modifiche al sistema che aspettano una mia decisione e spiegami la
+prima in parole semplici&raquo;.</p>
+
+<p>Le decisioni si prendono nella chat web. Se stai parlando con Metnos da Telegram,
+apri la chat web, entra nell'area di amministrazione e scegli
+<strong>Modifiche</strong>; il percorso tecnico &egrave; <code>/admin/changes</code>. La pagina
+permette di filtrare per stato, sorgente e tipo e offre soltanto le transizioni ammesse
+per ciascun record.</p>
+
+<h1 id="cap7">7. Garanzie e limiti</h1>
+
+<ul>
+ <li>L'accettazione &egrave; una decisione esplicita attribuita all'utente amministratore;
+ un punteggio alto non la sostituisce.</li>
+ <li>L'applicatore &egrave; idempotente per tipo e conserva una traccia locale; un errore porta
+ a <code>failed</code>, non a un successo apparente.</li>
+ <li>Il ripristino dipende dal tipo. Per una sequenza eseguita come turno reale non &egrave;
+ possibile annullare effetti esterni gi&agrave; avvenuti; restano validi i normali gate di
+ consenso prima dell'esecuzione.</li>
+ <li>I testi provenienti da generatori automatici aiutano il triage, ma devono essere
+ letti insieme a origine, payload ed effetti registrati.</li>
+</ul>
+
+<p>Riferimenti nel codice: <code>runtime/change_intents.py</code>,
+<code>runtime/change_intent_adapters/</code>,
+<code>runtime/jobs/change_intent_materialize.py</code>,
+<code>runtime/change_applier.py</code>, <code>runtime/change_observer.py</code>,
+<code>runtime/change_rollback.py</code> e <code>runtime/http_routes_admin.py</code>.</p>
+
+</body>
+</html>

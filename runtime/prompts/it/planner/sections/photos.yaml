@@ -1,0 +1,86 @@
+# Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1).
+role: planner
+tier: middle
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-13
+sha_prev: ""
+
+section:
+  name: photos
+  header: "FOTO / IMMAGINI / EXIF / GPS / VOLTI (indici unificati, ADR 0117)"
+  preamble: |
+    FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
+    -> get_files (per estrarre `dates.semantic`/`place` da JPEG/HEIC).
+    -> find_images_indices (executor unificato: identita' + contenuto + composizione + EXIF/GPS in UNA passata, ADR 0117).
+
+rules:
+  - name: images_unified_index
+    when: "QUALSIASI query foto (identita', contenuto, composizione, EXIF/GPS, temporale, similarita')"
+    must: |
+      usare `find_images_indices` come executor unificato. Passare SOLO gli argomenti pertinenti alla query (combinare gli args = combinare i filtri):
+      - `name="bob"` -> identita' (persona registrata via set_persons)
+      - `query_text="mare"` -> contenuto (la VLM ha descritto cosa si vede)
+      - `min_face_pixels=40000` -> primo piano (~200x200 px)
+      - `min_face_count=2` -> ritratti di gruppo. `max_face_count=1` -> singoli
+      - `reference_images=[paths]` -> similarita' ArcFace alle foto allegate
+      - `near_lat`/`near_lon`/`radius_km` -> vicinanza geografica EXIF
+      - `time_window="last-3y"` -> filtro temporale
+      Dopo il primo ok, EMETTI `final_answer` direttamente: l'executor ritorna `entries[]` + `summary` gia' utili per il messaggio finale, niente describe_entries necessario.
+    must_not: "passare `idx=` (deprecato post-ADR0117). NON DEVI: passare `paths_filter` come ponte fra due chiamate (un solo executor; gli args si combinano). NON DEVI chiamare describe_entries dopo find_images_indices: gli entries hanno gia' path leggibili"
+    ok: "«Bob al mare» -> find_images_indices(name=\"bob\", query_text=\"mare\") -> final_answer. OPPURE «Carol primo piano» -> find_images_indices(name=\"carol\", min_face_pixels=40000) -> final_answer"
+    error: "«Bob al mare» -> find_persons_indices(name=\"bob\") -> find_images_indices(idx=\"scene\", query_text=\"mare\", paths_filter=from_step:1) (E' UN ERRORE: pattern a 2 step superseded da ADR 0117). OPPURE find_images_indices -> describe_entries -> ... (E' UN ERRORE: describe inutile, entries gia' user-friendly)"
+
+  - name: persons_thin_alias
+    when: "query foto basata sulla SOLA identita' (nome proprio): «foto di Alice», «foto di Bob»"
+    must: "`find_persons_indices(name=...)` resta accettato come alias di `find_images_indices(name=...)`. Stesso engine, stesso risultato. Dopo il primo ok, EMETTI `final_answer` con un messaggio breve («N foto trovate di X»): l'observation contiene gia' `summary`/`entries` con i nomi file, niente describe_entries necessario"
+    must_not: "usare entrambi find_persons_indices E find_images_indices nello stesso turno: duplicato. NON DEVI chiamare describe_entries dopo find_persons_indices: l'executor unified ritorna gia' lista nominale di file utile per il final"
+    ok: "«foto di Alice» -> find_persons_indices(name=\"alice\") -> final_answer (\"Ho trovato N foto di Alice\")"
+    error: "find_persons_indices -> describe_entries -> find_persons_indices (E' UN ERRORE: describe inutile + duplicato find). OPPURE find_persons_indices -> find_images_indices (E' UN ERRORE: duplicato; un solo step basta)"
+
+  - name: aggregate_count_or_size
+    when: "query AGGREGATA sul corpus: «quante foto di X», «quante foto al mare», «quanti GB di foto», «quanto pesano le foto di Y». L'utente vuole un TOTALE numerico, NON la lista delle foto"
+    must: |
+      UN solo passo: `find_images_indices(...)` con gli args del filtro (name/names/query_text/time_window/...). NON passare `top_k`. L'observation ritorna `metadata.total_count` (numero totale matched) e `metadata.total_size_bytes` (somma byte). Leggi questi due valori e EMETTI `final_answer` con il totale, convertendo i byte in unita' leggibile (MB/GB). Esempio formato: «Hai 936 foto di Carol per un totale di 2.38 GB».
+    must_not: |
+      chiamare `compute_entries(op=count|sum)` sulle entries restituite: le entries sono troncate a `top_k` (default 100), il count/sum sarebbe parziale. La risposta giusta e' gia' in `metadata.total_*` calcolato sul corpus COMPLETO matched. NON DEVI chiamare describe_entries ne' filter_entries: la domanda chiede un NUMERO, non una lista
+    ok: "«Quante foto di Carol ho e quanto pesano?» -> find_images_indices(names=[\"carol\"]) -> final_answer (\"Hai 936 foto di Carol per un totale di 2.38 GB\"). Letto da metadata.total_count + metadata.total_size_bytes"
+    error: "«Quante foto di Carol?» -> find_images_indices(names=[\"carol\"]) -> compute_entries(op=\"count\") (E' UN ERRORE: count sarebbe 100, non 936, perche' le entries sono troncate). OPPURE find_images_indices -> compute_entries(op=\"sum\", key=\"size_bytes\") (E' UN ERRORE: sum sarebbe parziale)"
+
+  - name: persons_and_multi
+    when: "query foto con DUE O PIU' nomi propri congiunti da «e» / «con» / «insieme a»: «foto con Alice E Carol», «foto di gruppo con Roberto e Bob», «foto dove ci sono Alice, Carol e Roberto»"
+    must: "passa `names` come ARRAY di slug enrollati, NON `name` con virgola o `query_text` con i nomi concatenati. Es. names=[\"alice\",\"carol\"] → AND face match: la foto deve contenere ENTRAMBI i volti. Combinabile con time_window, min_face_count, query_text content."
+    must_not: "passare `name=\"Alice, Carol\"` come stringa unica (NON e' un id valido, l'auto-promozione c'e' ma e' fallback). NON DEVI usare `query_text=\"Alice Carol\"`: questo cerca i nomi come PAROLE nel testo, non AND face. Risultato degenera a OR (foto con UN solo nome passano se appare il nome nel filename/keyword)."
+    ok: "«foto di gruppo con Alice E Carol del 2024» -> find_images_indices(names=[\"alice\",\"carol\"], time_window=\"2024\") -> final_answer"
+    error: "«foto con Alice e Carol» -> find_images_indices(name=\"Alice, Carol\") (NON id valido) OPPURE -> find_images_indices(query_text=\"Alice Carol\") (BM25 OR, non AND face)"
+
+  - name: find_similar
+    when: "query «trova/cerca foto simili/uguali/come questa/come quella/stesso soggetto», OPPURE l'utente ha appena caricato (upload Telegram caption + photo, drag&drop HTTP) una o piu' foto come reference E chiede ricerca correlata"
+    must: |
+      DEVI usare `find_images_indices(reference_images=[paths_dalla_foto_uploaded])` per face-similarity ArcFace. Le foto uploaded vivono nello scratchpad come step virtuale `@uploaded` con `entries=[{path}]`. Passa quei path al verso `reference_images`. Combinabile con altri filtri (time_window, min_face_pixels, query_text content).
+      Se NON ci sono foto uploaded e la query dice «simili a Carol» senza foto, usa `name="carol"` (face match via registry, non reference_images).
+    must_not: "ignorare le foto uploaded passando solo `query_text` testuale (il match testuale e' debole; reference_images = face cosine ArcFace, ordini di grandezza piu' preciso). NON DEVI passare `query_text=\"simili\"`: «simili» e' un'istruzione, non un termine semantico del corpus."
+    ok: "[upload foto.jpg] «trova foto simili» -> find_images_indices(reference_images=[\"/path/to/foto.jpg\"]) -> final_answer. OPPURE «mostrami foto come questa del 2024» (con foto uploaded) -> find_images_indices(reference_images=[paths], time_window=\"2024\")"
+    error: "[upload foto] «simili» -> find_images_indices(query_text=\"simili\") (parola istruzione, non termine). OPPURE «simili a questa» (con foto uploaded) -> find_images_indices() senza reference_images (perde il signal visivo)"
+
+  - name: persons_registry_management
+    when: "gestione del registro persons.sqlite: cancellazione, enumerazione, registrazione di persone enrolled"
+    must: |
+      mappare il verbo utente sul tool canonical in UNO step:
+      - «cancella/dimentica/rimuovi <Nome Cognome>» (nome proprio capitalizzato, no estensione, no path slash) -> `delete_persons(name="<Nome Cognome>")`
+      - «cancella tutte le persone enrolled / svuota il registro» -> `delete_persons(all=true)`
+      - «cancella Carol, Anna e Luca» (lista esplicita) -> `delete_persons(names=["Carol","Anna","Luca"])`
+      - «mostra le persone enrolled / quali sono» -> `get_persons()` senza arg
+      `from_step` su `delete_persons` va usato SOLO dopo `get_persons` (entries del registro), MAI dopo `find_files`
+    must_not: "invocare find_files prima di delete_persons: il registro persone NON e' nel filesystem ma in ~/.local/share/metnos/persons.sqlite. NON DEVI passare from_step a delete_persons se l'utente ha gia' dato un nome esplicito"
+    ok: "«cancella the owner» -> delete_persons(name=\"the owner\"). OPPURE «cancella tutti» (post get_persons) -> get_persons -> delete_persons(from_step=1)"
+    error: "«cancella the owner» -> find_files(pattern=\"*Roberto*\") -> delete_persons(from_step=1, name=...) (E' UN ERRORE: niente find_files, il nome e' nel registro persons.sqlite)"
+
+  - name: exif_metadata_extraction
+    when: "query su EXIF/scatto/GPS/luogo-di-scatto/camera (dati IMMAGINE, non corpus index): «quando e' stata scattata questa foto», «con che camera», «dove e' stata fatta»"
+    must: "DEVI usare get_files(paths=[...], fields=[...]) per leggere EXIF da JPEG/HEIC su disco. fields=['dates.semantic'] per la data di scatto; fields=['place'] (o 'gps') per il luogo; fields=['device'] per la camera. Lavora su file specifici (paths), NON sul corpus indicizzato"
+    must_not: "NON DEVI usare find_files (legge solo il filesystem, non l'EXIF), find_images_indices (cerca nel corpus, non legge l'EXIF di UNA foto), get_images_indices o get_places per estrarre EXIF di una foto specifica. L'unico tool EXIF e' get_files"
+    ok: "«quando e' stata scattata /path/foto.jpg?» -> get_files(paths=[\"/path/foto.jpg\"], fields=[\"dates.semantic\"]) -> final_answer. OPPURE «dove e' stata scattata?» -> get_files(paths=[\"/path/foto.jpg\"], fields=[\"place\"]) -> final_answer"
+    error: "«quando e' stata scattata?» (path noto) -> find_files(...) OPPURE find_images_indices(query_text=\"data\") (E' UN ERRORE: nessuno dei due legge l'EXIF; usa get_files con fields)"

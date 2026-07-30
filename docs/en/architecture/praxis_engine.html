@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; planning and reuse engine</title>
+ <meta name="description" content="The Metnos engine cascade: L0 fast paths, L1 autopaths, the L2 validator, and L3 proposal, execution, recovery, and termination.">
+ <meta name="keywords" content="Metnos, engine, fastpath, autopath, validator, proposer, recovery, framework">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/praxis_engine">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/praxis_engine.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/praxis_engine.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">planning engine</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Planning and reuse engine</div>
+ <div class="meta">Four layers sharing one control pipeline.</div>
+</div>
+
+<p class="lead">The engine tries reusable plans first and builds a new framework
+when necessary. The model's proposal remains probabilistic; cache signatures,
+validation, guards, and executor semantics are enforced by code. There is therefore
+no promise of “one model call” for every turn: the number depends on the path,
+validation, and possible recovery.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Purpose</a></li>
+ <li><a href="#cap3">Engine contract</a></li>
+ <li><a href="#cap4">The four layers</a></li>
+ <li><a href="#cap5">The turn cascade</a></li>
+ <li><a href="#cap6">The framework</a></li>
+ <li><a href="#cap7">L0: fast path</a></li>
+ <li><a href="#cap8">L1: autopath</a></li>
+ <li><a href="#cap9">L2: validator</a></li>
+ <li><a href="#cap10">L3: proposal, execution, and recovery</a></li>
+ <li><a href="#cap11">Feedback and aging</a></li>
+ <li><a href="#cap12">Using it from chat</a></li>
+ <li><a href="#cap13">Limits of the guarantees</a></li>
+ <li><a href="#cap14">Praxis console</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Purpose</h1>
+
+<p>The engine turns a natural-language request into a finite sequence of admitted
+capabilities. It balances two requirements:</p>
+
+<ul>
+ <li>avoid a costly new planning step when a valid plan already exists;</li>
+ <li>avoid reusing a plan when the request, catalog, schema, provider, or target
+ may have changed its meaning.</li>
+</ul>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Find PDFs changed
+this week under Projects, compute each file's SHA-256 hash, and create a spreadsheet
+with the name, date, and hash.” The first run may need a new framework. A repeated
+request is reused only if the plan remains cacheable and its operational-world
+signatures still match.</p>
+
+<h1 id="cap3">2. Engine contract</h1>
+
+<p>Input includes the request, ordered intents, visible catalog, language, user,
+channel, destination, and state already produced in the turn. Output includes:</p>
+
+<ul>
+ <li>final text and kind: answer, question, required input, or error;</li>
+ <li>framework and its fingerprint;</li>
+ <li>decision source: fast path, autopath, engine, recovery, or terminator;</li>
+ <li>steps actually run, their results, and timings;</li>
+ <li>any dialog to resume after a choice or consent.</li>
+</ul>
+
+<p>The caller supplies the catalog, which defines the execution world. Prompt text
+cannot make an absent or unadmitted executor available.</p>
+
+<h1 id="cap4">3. The four layers</h1>
+
+<table>
+<thead><tr><th>Layer</th><th>State</th><th>Responsibility</th></tr></thead>
+<tbody>
+<tr><td>L0 &mdash; fast path</td><td>Persistent</td><td>Maps a query to a framework that previously succeeded effectively.</td></tr>
+<tr><td>L1 &mdash; autopath</td><td>Persistent</td><td>Maps semantic clusters and intents to a generalizable framework.</td></tr>
+<tr><td>L2 &mdash; validator</td><td>Per turn</td><td>Checks names, schemas, required fields, and references before execution.</td></tr>
+<tr><td>L3 &mdash; full engine</td><td>Per turn</td><td>Proposes, finalizes, executes, classifies failures, and terminates.</td></tr>
+</tbody>
+</table>
+
+<p>L2 is not a separate lookup: it sits between a new proposal and execution. L0
+and L1 plans still cross the current finalization pipeline, which applies guards,
+ordering, output policy, and consent gates.</p>
+
+<h1 id="cap5">4. The turn cascade</h1>
+
+<ol>
+ <li>Routing builds a pool of relevant capabilities.</li>
+ <li>L0 tries an exact match and then—only for generalizable frameworks—a semantic match.</li>
+ <li>If L0 does not answer, L1 looks for an active champion compatible with the intent, object, and cluster.</li>
+ <li>Without a valid hit, the selected proposer produces one or more candidate frameworks according to configuration.</li>
+ <li>Structural guards and the validator inspect the candidate and, in admitted cases, request one corrective proposal.</li>
+ <li>The shared executor runs the framework. If it fails without committed effects, recovery may try an alternative.</li>
+ <li>The terminator presents the result, asks for input, or states an honest limit; an effective cacheable turn feeds L0 and L1 observations.</li>
+</ol>
+
+<h1 id="cap6">5. The framework</h1>
+
+<p>The canonical format is independent of the proposer:</p>
+
+<pre><code>{
+  "steps": [
+    {"tool": "find_files", "args": {"base_path": "Projects", "pattern": "*.pdf"}},
+    {"tool": "compute_signatures", "args": {"from_step": 1}},
+    {"tool": "create_files_spreadsheet", "args": {"from_step": 2}},
+    {"tool": "final_answer", "args": {}}
+  ],
+  "fillers": {},
+  "final_message": ""
+}</code></pre>
+
+<p><code>from_step</code> and <code>${stepN.field}</code> placeholders connect data
+without asking the model to copy it. The runtime can insert internal values through
+<code>${RUNTIME:key}</code>. Configuration fields marked
+<code>runtime_resolved</code>, such as the default account or client, are not
+chosen by the proposer; the user context resolves them.</p>
+
+<h1 id="cap7">6. L0: fast path</h1>
+
+<p>L0 is created automatically after a successful, effective, cacheable turn. It
+does not require an approval button. Lookup has two forms:</p>
+
+<ul>
+ <li><strong>0a, exact.</strong> The query fingerprint may reuse a plan tied to
+ values specific to that exact sentence.</li>
+ <li><strong>0b, semantic.</strong> Similarity uses the configured embedder and may
+ serve only frameworks that are not tied to values from the original query.</li>
+</ul>
+
+<p>Plans dependent on turn context—such as dialogs, consent, undo, and authenticated
+web sessions—are excluded. So are absolute time values that would become stale.
+Before replay, executor and candidate-family signatures must match. For mutations,
+discriminating argument values must also be grounded in the current request.</p>
+
+<h1 id="cap8">7. L1: autopath</h1>
+
+<p>L1 retains observations of cacheable frameworks together with intents, clusters,
+timings, and feedback. Positive feedback can promote a framework to an active
+champion. For repeated long pipelines, the runtime may create a <em>shadow</em>
+champion: it is served with the same guards but remains explicitly distinct from a
+plan confirmed by the user.</p>
+
+<p>Semantic matching respects canonical-object boundaries and a relevance floor. L1
+also rejects query-specific frameworks and validates catalog signatures on every
+hit. Repeated negative feedback can demote a champion and create a temporary
+anti-autopath; later positive feedback can remove the corresponding exclusion.</p>
+
+<h1 id="cap9">8. L2: validator</h1>
+
+<p>The validator is enabled by default and uses no model. It checks:</p>
+
+<ul>
+ <li>that each tool exists in the current catalog;</li>
+ <li>field types and required arguments;</li>
+ <li><code>requires_one_of</code> constraints;</li>
+ <li><code>from_step</code> references to earlier steps only;</li>
+ <li>placeholders that the runtime can resolve.</li>
+</ul>
+
+<p>If it finds an error, the proposer may be called once with the failed framework
+fingerprint excluded. The new candidate crosses the deterministic guards again.</p>
+
+<h1 id="cap10">9. L3: proposal, execution, and recovery</h1>
+
+<p>The proposer is selected through configuration. Supported variants share the same
+<code>Proposer</code> contract; they may generate one candidate or several
+alternatives and rank them. A grammar, when enabled, constrains output shape but
+does not make the model's semantic choice deterministic.</p>
+
+<p>The executor resolves references, fillers, and runtime values, checks step
+conditions, and invokes each capability. Independent steps run in parallel only
+when their contracts and preflight admit it. External effects remain variable:
+networks, filesystems, providers, and content can change between executions.</p>
+
+<p>Recovery separates structural from operational failures. It may change a plan for
+a wrong tool, wrong arguments, or missing input; it does not pretend to repair a
+network outage. If a step has already committed a mutation, the whole pipeline is
+not repeated, and the result reports the partial outcome honestly.</p>
+
+<h1 id="cap11">10. Feedback and aging</h1>
+
+<p>Feedback evaluates a turn outcome; it does not directly train the model. L0 may
+remove the rejected query's shortcut. L1 updates its observation, champion, and
+anti-autopath. Maintenance removes unused, demoted, expired, or dead-catalog rows.</p>
+
+<p>This memory stores operational decisions and structured observations. It is not a
+biographical user profile and must not become a source of open-ended preferences
+injected into the planner.</p>
+
+<h1 id="cap12">11. Using it from chat</h1>
+
+<p>People do not need to know L0, L1, or executor names. They describe the desired
+outcome in natural language. For example:</p>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Compare the files
+in the Quotes and Contracts folders and show those with identical content but
+different names.”</p>
+
+<p>Inspecting or flushing caches instead requires the web chat: open
+<strong>Settings</strong> and choose <strong>Praxis</strong>. If the question starts
+on Telegram, Metnos must explain this path and state that the console is not part of
+the Telegram client.</p>
+
+<h1 id="cap13">12. Limits of the guarantees</h1>
+
+<ul>
+ <li>A valid cache hit reuses the same framework; it does not guarantee the same
+ result from an external provider.</li>
+ <li>A fresh proposal may vary for the same query. Pool, grammar, and validation
+ constrain its shape but do not prove correctness.</li>
+ <li>Ranking scores help choose among candidates; they are not objective evidence
+ of quality.</li>
+ <li>The turn observation and original source remain useful evidence; generated
+ prose cannot validate itself.</li>
+</ul>
+
+<h1 id="cap14">13. Praxis console</h1>
+
+<p><code>/admin/praxis</code> shows the persistent layers: L0 fast paths, active or
+demoted L1 autopaths, observations, and anti-autopaths. It can delete an individual
+L0 row or flush L0, L1, or both. Flushing is an administrative, non-reversible
+operation: it removes accumulated operational capital and may slow requests until
+the caches are rebuilt.</p>
+
+<p>The caches are operational at instance scope and contain no credentials. On
+replay, account, language, consent, target, and authorization are resolved again in
+the current user's context.</p>
+
+<p>Code references:</p>
+<ul>
+ <li><code>runtime/engine/dispatch.py</code>: cascade and shared finalization pipeline;</li>
+ <li><code>runtime/engine/fastpath.py</code>: L0;</li>
+ <li><code>runtime/engine/autopath.py</code>: L1, feedback, and anti-autopaths;</li>
+ <li><code>runtime/engine/validator.py</code>: L2;</li>
+ <li><code>runtime/engine/proposer*.py</code>, <code>executor.py</code>, <code>recovery*.py</code>, and <code>terminator*.py</code>: L3;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: operational-world validity;</li>
+ <li><code>runtime/http_routes_admin.py</code> and <code>runtime/templates/praxis.html</code>: console.</li>
+</ul>
+
+</body>
+</html>

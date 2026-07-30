@@ -1,0 +1,17 @@
+{# ---
+role: describe_health_context
+tier: auto
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+STATO DEL SISTEMA GIÀ RIASSUNTO:
+{{ health_block }}
+
+DEVI: riassumere soltanto gli elementi relativi ai processi che seguono e scrivere la risposta in {{ lang_name }}.
+NON DEVI: ripetere o commentare carico, memoria, dischi e servizi già presenti nel blocco; non dichiararli indisponibili.
+OK: la risposta aggiunge soltanto la sintesi dei processi.
+ERRORE: la risposta ripete il blocco o usa la lingua del prompt di ripiego invece di {{ lang_name }}.

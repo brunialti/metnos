@@ -1,0 +1,48 @@
+[Unit]
+Description=Metnos Playwright JS-render sidecar (local, no external provider)
+After=network-online.target
+Wants=network-online.target
+Requires=metnos-side-display.service
+After=metnos-side-display.service
+Before=metnos-stack-ready.service
+PartOf=metnos.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStartPre=@VENV@/bin/python -c "import aiohttp, playwright"
+ExecStart=@VENV@/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
+WorkingDirectory=@REPO_DIR@/runtime
+Restart=always
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=20
+WatchdogSec=45
+KillMode=mixed
+Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:99
+Environment=PYTHONPATH=@REPO_DIR@:@REPO_DIR@/runtime
+Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
+Environment=METNOS_USER_DATA=@DATA_DIR@
+# Chromium headless e' scaricato in locale; il rendering NON passa da
+# nessun servizio esterno (privacy: la pagina e' caricata da questa macchina).
+Environment=PLAYWRIGHT_BROWSERS_PATH=@BROWSERS_DIR@
+MemoryHigh=900M
+MemoryMax=1200M
+TasksMax=512
+LimitNOFILE=8192
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=metnos.target

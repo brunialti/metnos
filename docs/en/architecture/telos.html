@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; telos and improvement proposals</title>
+ <meta name="description" content="How Metnos reads the ends declared in TELOS.md, uses them as non-binding signals, and creates proposals subject to human decision.">
+ <meta name="keywords" content="Metnos, telos, TELOS.md, alignment, proposals, change intent">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1">
+ <link rel="canonical" href="https://metnos.com/en/architecture/telos">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/telos">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/telos">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/telos">
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/telos.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/telos.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">telos</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Telos and improvement proposals</div>
+ <div class="meta">From user-declared ends to a traceable proposal under human control.</div>
+</div>
+
+<p class="lead">A telos is a broad end declared by the user in
+<code>workspace/TELOS.md</code>. Metnos treats it as a graded signal: it may prefer a
+strategy or rank a proposal, but it cannot derive new permissions from it, override
+policy, or arbitrarily block an explicit request.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">What TELOS.md contains</a></li>
+ <li><a href="#cap2">Where telos takes effect</a></li>
+ <li><a href="#cap3">How a proposal is created</a></li>
+ <li><a href="#cap4">Scoring and controls</a></li>
+ <li><a href="#cap5">Decision and lifecycle</a></li>
+ <li><a href="#cap6">Practical example</a></li>
+ <li><a href="#cap7">Current limits and references</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What <code>TELOS.md</code> contains</h1>
+
+<p>The loader recognizes between three and seven sections. The descriptive text may
+be written in any language, while the current parser expects the field names
+<code>peso</code>, <code>soglia_attivazione</code>, and <code>note</code>:</p>
+
+<pre><code>## t.time &mdash; Free my time from repetitive chores
+peso: 0.25
+soglia_attivazione: 0.30
+note: focus on repetitive activities whose result can be checked.</code></pre>
+
+<table>
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Identifier</td><td>A stable name in the form <code>t.&lt;slug&gt;</code>.</td></tr>
+<tr><td>Phrase</td><td>The end written by the user and preserved in its original language.</td></tr>
+<tr><td><code>peso</code></td><td>Relative importance. If the sum is not close to one, the loader normalizes all weights.</td></tr>
+<tr><td><code>soglia_attivazione</code></td><td>Minimum fit required for a positive contribution to count.</td></tr>
+<tr><td><code>note</code></td><td>Context that helps interpret the end without changing it.</td></tr>
+</tbody>
+</table>
+
+<p>The file is reloaded when it changes. If it is missing or has no valid sections,
+the runtime proceeds without the teleological signal. Parsing is deterministic; no
+language model invents or edits the declared ends.</p>
+
+<h1 id="cap2">2. Where telos takes effect</h1>
+
+<p>Telos has two separate uses:</p>
+
+<ol>
+ <li><strong>Planning context.</strong> The runtime can render the current ends into
+ planner context. Its instructions define them as soft signals: they help choose
+ among alternatives with comparable outcomes and do not replace policy,
+ capabilities, or the user's request.</li>
+ <li><strong>Optional proposal generation.</strong> An offline job can examine the
+ catalog, usage patterns, and declared ends to formulate possible improvements. Its
+ result is a proposal, not an already-authorized action.</li>
+</ol>
+
+<p>Neither path gives authority to the text in <code>TELOS.md</code>. A direct request
+remains subject to normal execution rules, while a spontaneous proposal must pass
+through its review lifecycle.</p>
+
+<h1 id="cap3">3. How a proposal is created</h1>
+
+<p>The <code>telos_introspect_nightly</code> job is disabled by default. It runs only
+when the operator enables <code>METNOS_TELOS_NIGHTLY=1</code>. In that mode it applies
+ten registered lenses to the current telos entries:</p>
+
+<ul>
+ <li><code>scamper</code>, <code>oulipo</code>, and <code>inverse_rl</code>;</li>
+ <li><code>endgame_book</code>, <code>analogy_transfer</code>, and <code>boden_transformational</code>;</li>
+ <li><code>pattern_language</code> and <code>generative_design</code>;</li>
+ <li><code>counterfactual</code> and <code>constitutional</code>.</li>
+</ul>
+
+<p>The lenses use a local model for their generative work. Deterministic rules wrap
+that probabilistic step: lens selection, anti-paternalism checks, name validation,
+proposal limits, target&ndash;lens deduplication, and local persistence.</p>
+
+<p>Raw proposals are recorded in
+<code>~/.local/share/metnos/telos_proposals.jsonl</code>. The store clusters proposals
+that target the same outcome and measures convergence across distinct lenses. Only
+cluster heads with an actionable naming result are converted into a
+<code>change_intent</code>.</p>
+
+<h1 id="cap4">4. Scoring and controls</h1>
+
+<p>For each proposal, the teleological judge estimates a fit value for every telos.
+A language model produces that estimate; code applies weights, thresholds,
+composition, and ordering. The resulting score supports triage but is not objective
+proof that the proposal is good.</p>
+
+<table>
+<thead><tr><th>Control</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>Policy and Vaglio</td><td>Remain above telos and may deny an action.</td></tr>
+<tr><td>Anti-paternalism</td><td>Rejects forms that replace the user's decision.</td></tr>
+<tr><td>Catalog and Naming Authority</td><td>Separate valid extensions, new capabilities, and non-actionable noise.</td></tr>
+<tr><td>Deduplication and convergence</td><td>Reduce repetition without presenting it as independent confirmation of truth.</td></tr>
+<tr><td>Human review</td><td>No proposal becomes a change merely because it has a high score.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap5">5. Decision and lifecycle</h1>
+
+<p>The telos adapter translates a cluster head into a supported kind, such as
+creating an executor, extending one parametrically, or running a controlled
+pipeline. The materializer stores it in the unified repository as
+<code>proposed</code>.</p>
+
+<p>The user reviews it at <code>/admin/changes</code> and can accept, reject, or stage
+it. Only an accepted proposal reaches the applier. After application, the change is
+observed and can be finalized or rolled back according to its kind. The
+<a href="lifecycle.html">change lifecycle</a> page describes the complete flow.</p>
+
+<h1 id="cap6">6. Practical example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Which system changes
+are waiting for my decision?”</p>
+
+<p>Metnos can explain that proposals are administered in the web chat. If the
+question starts on Telegram, open the web chat, go to the administration area, and
+choose <strong>Changes</strong>; the technical route is <code>/admin/changes</code>. A
+telos proposal remains separate from the preferences written in
+<code>TELOS.md</code>: accepting it authorizes that change, not every future action
+that may look consistent with the same end.</p>
+
+<h1 id="cap7">7. Current limits and references</h1>
+
+<ul>
+ <li>The disturbance cost supported by the alignment formula is passed as
+ <code>0</code> by the current introspection flow: there is no operational
+ interruption budget yet.</li>
+ <li>The system does not infer new telos entries or permissions from user silence.</li>
+ <li>Model-generated prose and scores are not deterministic evidence; a decision
+ must remain traceable to local data and the original proposal.</li>
+ <li>The nightly job remains optional and disabled by default.</li>
+</ul>
+
+<p>Code references:</p>
+
+<ul>
+ <li><code>runtime/telos_loader.py</code>: parsing, normalization, and reload of <code>TELOS.md</code>.</li>
+ <li><code>runtime/telos_lenses/</code> and <code>runtime/telos_introspect.py</code>: generation and controls.</li>
+ <li><code>runtime/alignment_engine.py</code>: fit estimation and score composition.</li>
+ <li><code>runtime/telos_proposals_store.py</code>: persistence, clustering, and convergence.</li>
+ <li><code>runtime/change_intent_adapters/telos.py</code> and <code>runtime/change_intents.py</code>: entry into the lifecycle.</li>
+</ul>
+
+</body>
+</html>

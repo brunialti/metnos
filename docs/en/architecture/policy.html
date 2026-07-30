@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; capability registry and grants</title>
+ <meta name="description" content="Guide to the Metnos capability registry, autonomy-level matrix, and persistent grants. It separates the available APIs from their integration into the execution path.">
+ <meta name="keywords" content="policy, capability registry, autonomy, grants, approval, vaglio, sandbox, metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/policy">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/policy">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/policy">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/policy">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/policy">
+ <meta property="og:title" content="Metnos &mdash; capability registry and grants">
+ <meta property="og:description" content="Canonical registry, autonomy-level matrix, and persistent grants: available functions and the boundaries of current integration.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <meta name="twitter:card" content="summary">
+ <meta name="twitter:title" content="Metnos &mdash; capability registry and grants">
+ <meta name="twitter:description" content="Canonical registry, autonomy matrix, persistent grants, and integration status.">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — capability registry and grants",
+ "description": "Guide to the canonical capability registry, autonomy-level matrix, persistent grants, and their integration status.",
+ "url": "https://metnos.com/en/architecture/policy.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bronze: #A0522D; --plum: #6B21A8;
+ --bg: #FAFBFC; --text: #1a1a1a;
+ --border: #d0d7de; --code-bg: #f6f8fa;
+ --table-header: #1A477A; --table-alt: #f0f4f8;
+ --note-bg: #dbeafe; --note-border: #3b82f6;
+ --tip-bg: #dcfce7; --tip-border: #16a34a;
+ --warn-bg: #fef3c7; --warn-border: #f59e0b;
+ --danger-bg: #fee2e2; --danger-border: #dc2626;
+ --muted: #64748B;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }.v-allow { display: inline-block; background: #dcfce7; color: #166534; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-deny { display: inline-block; background: #fee2e2; color: #7F1D1D; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }.v-approve { display: inline-block; background: #fef3c7; color: #92400E; padding: 1px 7px; border-radius: 8px; font-size: 9pt; font-weight: 700; }
+table.policy-table td { text-align: center; }
+table.policy-table td:first-child { text-align: left; font-weight: 600; }
+ </style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/policy.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/policy.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">policy</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle"><code>policy</code> &mdash; capability registry and grants</div>
+ <div class="meta">A guide to the declarative authorization model</div>
+</div>
+<p><strong>Ask Metnos with a request like this example:</strong> “Explain which
+controls apply when I ask to read a file and which apply when I ask to modify
+it.” The answer must distinguish active runtime controls from the declarative
+matrix documented on this page.</p>
+
+<p class="lead"><code>runtime/policy.py</code> provides a canonical registry, a
+deterministic autonomy-level matrix, and persistent grants scoped to a target. These
+APIs are available and inspectable, but they are not yet the general gate on the
+ordinary execution path. Effective runtime authorization is documented by the
+components that enforce it.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">What policy is</a></li>
+ <li><a href="#cap2">Capability Registry</a></li>
+ <li><a href="#cap3">Autonomy &times; capability table</a></li>
+ <li><a href="#cap4">Persistent target-scoped grants</a></li>
+ <li><a href="#cap5">Combined outcome (<code>effective_outcome</code>)</a></li>
+ <li><a href="#cap6">Runtime integration</a></li>
+ <li><a href="#cap7">CLI</a></li>
+ <li><a href="#cap8">How to verify the module</a></li>
+ <li><a href="#cap9">Module boundaries</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. What policy is</h1>
+
+<p class="lead">
+The <code>policy</code> module describes an authorization outcome for a tuple made of
+an autonomy level, a capability, and a target. The result is <em>allowed</em>,
+<em>denied</em>, or <em>approval required</em>. It is a deterministic model available
+in the code; it must not be confused with a gate already applied to every executor.
+</p>
+
+ <figure>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
+<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
+<rect x="10" y="70" width="178" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
+<text x="99" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">requested capability</text>
+<text x="99" y="112" text-anchor="middle" fill="#475569" font-size="9.5">from the executor</text>
+<rect x="206" y="70" width="178" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
+<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">autonomy level</text>
+<text x="295" y="112" text-anchor="middle" fill="#475569" font-size="9.5">ReadOnly/Supervised/Full</text>
+<rect x="402" y="70" width="178" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
+<text x="491" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">per_target grants</text>
+<text x="491" y="112" text-anchor="middle" fill="#475569" font-size="9.5">persistent</text>
+<rect x="598" y="70" width="178" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
+<text x="687" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">effective_outcome</text>
+<text x="687" y="112" text-anchor="middle" fill="#475569" font-size="9.5">allow / ask / deny</text>
+<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+
+</svg>
+<figcaption>Figure 1 &mdash; The calculation exposed by the module: capability, autonomy level, and target-scoped grant produce an outcome.</figcaption>
+</figure>
+
+
+<p>
+The model separates three responsibilities assigned to different components:
+</p>
+
+<ul>
+<li>the <strong>policy</strong> module computes a structured outcome from the data supplied to it;</li>
+<li>the <a href="vaglio.html">vaglio</a> decides <em>sense</em> &mdash; does it make sense to do it, given the request context?</li>
+<li>the <a href="sandbox.html">sandbox</a> applies the isolation available on
+the host and reports when it has to run in a degraded mode.</li>
+</ul>
+
+<p>
+This separation describes the subsystem design, not the order of the current
+execution path. The current code uses the registry to validate capabilities declared
+by manifests; it does not yet call <code>effective_outcome</code> as a general gate
+before every execution.
+</p>
+
+<p>
+<strong>Declarative contract.</strong> Active manifests declare capabilities from the
+canonical registry. Effective controls remain distributed across manifest
+validation, vaglio, approval dialogs, sandboxing, and dispatcher-specific rules;
+this page does not attribute all of them to <code>policy.py</code>.
+</p>
+
+<h1 id="cap2">2. Capability Registry</h1>
+
+<p>
+The registry is the closed dictionary of actions Metnos recognises. Canonical entries are defined in <code>runtime/policy.py:CAPABILITY_REGISTRY</code>. Each entry is a <code>CapabilitySpec</code> with four attributes:
+</p>
+
+<ul>
+<li><code>name</code> &mdash; the canonical name (format <code>family:mode</code>, e.g. <code>fs:read</code>);</li>
+<li><code>critical</code> &mdash; <code>True</code> if the action is irreversible or high-stakes (write, send, exec);</li>
+<li><code>default_approval</code> &mdash; class used to build the matrix: <code>none</code>, <code>per_target</code>, or <code>always</code>;</li>
+<li><code>target_kind</code> &mdash; target type: <code>path_glob</code>, <code>host</code>, <code>exact</code>, <code>none</code>.</li>
+</ul>
+
+<p>The following table is a representative subset. The registry in the code and the
+output of the <code>registry</code> command are the complete, current sources.</p>
+
+<table>
+<tr><th>name</th><th>critical</th><th>default_approval</th><th>target_kind</th><th>description</th></tr>
+<tr><td><code>compute:pure</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>deterministic in-memory computation without external I/O</td></tr>
+<tr><td><code>fs:read</code></td><td>no</td><td><code>per_target</code></td><td><code>path_glob</code></td><td>read files from the local filesystem within declared path_globs</td></tr>
+<tr><td><code>fs:write</code></td><td><strong>yes</strong></td><td><code>per_target</code></td><td><code>path_glob</code></td><td>write/modify files within path_globs (critical)</td></tr>
+<tr><td><code>code:exec</code></td><td><strong>yes</strong></td><td><code>always</code></td><td><code>exact</code></td><td>execute a shell command from a whitelist (e.g. package manager)</td></tr>
+<tr><td><code>network:http</code></td><td>no</td><td><code>per_target</code></td><td><code>host</code></td><td>HTTP/HTTPS GET/POST to authorised hosts</td></tr>
+<tr><td><code>llm:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>local LLM call (llama-server, llama.cpp), zero cost</td></tr>
+<tr><td><code>llm:online</code></td><td>no</td><td><code>per_target</code></td><td><code>none</code></td><td>online LLM call (Anthropic, OpenAI,...), cost &gt; 0</td></tr>
+<tr><td><code>mail:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read IMAP messages from an authorised mailbox</td></tr>
+<tr><td><code>mail:send</code></td><td><strong>yes</strong></td><td><code>always</code></td><td><code>exact</code></td><td>SMTP send to recipients (irreversible, high stakes)</td></tr>
+<tr><td><code>channel:in</code></td><td>no</td><td><code>none</code></td><td><code>exact</code></td><td>receive messages from a channel (Telegram, CLI, voice)</td></tr>
+<tr><td><code>channel:out</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>send messages to a specific channel</td></tr>
+<tr><td><code>time:read</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>read current time and timezones</td></tr>
+<tr><td><code>parse:local</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>local parsing of known formats (PDF, HTML, JSON, CSV)</td></tr>
+<tr><td><code>calendar:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read events from an authorised calendar</td></tr>
+<tr><td><code>index:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local index managed by Metnos</td></tr>
+<tr><td><code>metnos:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local resource managed by Metnos</td></tr>
+<tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read system diagnostics on an authorised host or device</td></tr>
+<tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>access the network and credentials of an authorised provider</td></tr>
+</table>
+
+<p>
+The registry is closed: <code>record_grant</code> rejects a capability outside it. Adding one means changing the registry in code and validating the manifests &mdash; there is no dynamic registration during execution. The action vocabulary is therefore a controlled contract.
+</p>
+
+<p>
+<code>provider:access</code> uses the skill binding as its exact target. A manifest
+<code>when</code> clause may narrow it to one backend of one invocation; policy never
+derives this permission from the executor name or a free plan value.
+</p>
+
+<h2>2.1 Reading the registry</h2>
+
+<p>
+The registry covers reads, writes, external-provider access, administrative operations, and human interaction. The <code>critical</code> flag and <code>default_approval</code> class contribute to the module's matrix. By themselves, they do not prove that the current execution path presents an approval prompt.
+</p>
+
+<p>
+For example, <code>compute:pure</code> and <code>time:read</code> use <code>none</code>; <code>fs:write</code> uses <code>per_target</code>; and <code>mail:send</code>, <code>mail:write</code>, <code>system:admin</code>, and <code>drive:permissions</code> use <code>always</code>. Read the complete set from the registry rather than a hand-maintained list on this page.
+</p>
+
+<h1 id="cap3">3. Autonomy &times; capability table</h1>
+
+<p>
+The matrix is the product of the three autonomy levels (ReadOnly, Supervised, Full) and the registered capabilities. Each cell yields <span class="v-allow">allowed</span>, <span class="v-approve">approval_required</span>, or <span class="v-deny">denied</span>. <code>_init_table</code> generates it. The table below is an excerpt; the <code>table</code> command prints the complete matrix.
+</p>
+
+<table class="policy-table">
+<tr><th style="text-align:left;">capability</th><th>ReadOnly</th><th>Supervised</th><th>Full</th></tr>
+<tr><td><code>compute:pure</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>fs:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>fs:write</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>code:exec</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td></tr>
+<tr><td><code>network:http</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>llm:local</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>llm:online</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>mail:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>mail:send</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td></tr>
+<tr><td><code>channel:in</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>channel:out</code></td><td><span class="v-deny">denied</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>time:read</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>parse:local</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>calendar:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>index:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>metnos:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+</table>
+
+<h2>3.1 The three rules that generate the table</h2>
+
+<p>
+The table is not arbitrary: it derives from three rules, one per level, that <code>_init_table</code> applies while iterating over the registry.
+</p>
+
+<p>
+<strong>ReadOnly.</strong> Non-critical capabilities in class <code>none</code> are allowed. An explicit set of scoped reads and accesses &mdash; including <code>fs:read</code>, <code>mail:read</code>, <code>calendar:read</code>, <code>network:sites</code>, and <code>provider:access</code> &mdash; yields <code>approval_required</code>. Other critical or approval-class capabilities are denied.
+</p>
+
+<p>
+<strong>Supervised.</strong> Capabilities in class <code>none</code> are allowed; all others yield <code>approval_required</code>. This is matrix semantics, not proof that the current dispatcher presents the corresponding dialog.
+</p>
+
+<p>
+<strong>Full.</strong> Capabilities in class <code>always</code> still yield <code>approval_required</code>; all others are allowed. Current <code>always</code> entries include <code>code:exec</code>, <code>mail:send</code>, <code>mail:write</code>, <code>system:admin</code>, and <code>drive:permissions</code>.
+</p>
+
+<p>
+<strong>An outcome is not the same as an enforced gate.</strong> The matrix retains
+<code>approval_required</code> for class <code>always</code> even at Full. Until the
+dispatcher uses this outcome as a general constraint, treat it as a module contract,
+not a whole-system guarantee.
+</p>
+
+<h2 id="undo">Reversibility in practice: the undo engine</h2>
+
+<p>
+Reversibility is a contract separate from the autonomy matrix. A standard-compliant executor declaring <code>revertible = true</code> must name a <code>reverse_pattern</code>. The runtime keeps the execution data needed for reversal, and <code>undo_last_turn</code> attempts the inverse path while reporting failures.
+</p>
+
+<p>The closed catalog in <code>runtime/reverse_patterns.py</code> includes, among others:</p>
+
+<ul>
+<li><code>swap_src_dst</code> &mdash; a move or rename is undone by swapping source and destination (filesystem paths and IMAP folders alike, the latter keyed by stable <code>Message-ID</code>).</li>
+<li><code>delete_created_dirs</code> / <code>delete_created_paths</code> &mdash; a creation is undone by removing what was created, only while it is still empty/untouched.</li>
+<li><code>restore_blob_backup</code> &mdash; before any destructive write the runtime stores a byte copy of the previous version at <code>$METNOS_HISTORY_DIR/&lt;turn&gt;/blob/&lt;sha256&gt;.bin</code>; the undo restores it. This is the "catch the change and keep a copy of the previous version" part, done once and deterministically.</li>
+<li><code>delete_*_by_id</code> patterns &mdash; a creation on an external service is reversed using the identifier returned by the operation.</li>
+</ul>
+
+<p>
+For standard-compliant manifests, the validator checks consistency between the reversibility claim and the inverse pattern. Compatibility paths remain for some manually maintained executors, so it would be inaccurate to say that every mutating operation uses only the catalog.
+</p>
+
+<p>
+An inverse pattern neither grants authority nor removes an approval requirement by itself. Reversibility, authorization, and isolation are separate controls.
+</p>
+
+<h1 id="cap4">4. Persistent target-scoped grants</h1>
+
+<p>
+The module also provides a SQLite store for scoped grants. Each record binds a
+channel, sender, capability, target, and optional expiry. The store exists and can be
+queried; the ordinary approval path does not yet write grants to it.
+</p>
+
+<h2>4.1 SQLite schema</h2>
+
+<p>
+The schema is defined by <code>runtime/policy.py:SCHEMA</code>:
+</p>
+
+<pre>CREATE TABLE IF NOT EXISTS grants (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ channel TEXT NOT NULL,
+ sender_id TEXT NOT NULL,
+ capability TEXT NOT NULL,
+ target TEXT NOT NULL,
+ granted_at TEXT NOT NULL,
+ expires_at TEXT,
+ granted_by TEXT,
+ revoked_at TEXT
+);</pre>
+
+<p>
+A grant is identified by the tuple (<code>channel</code>, <code>sender_id</code>, <code>capability</code>, <code>target</code>). Dates <code>granted_at</code>, <code>expires_at</code>, and <code>revoked_at</code> are UTC. Logical user separation depends on the caller supplying the correct channel and sender.
+</p>
+
+<p>
+The default file is <code>~/.local/state/metnos/grants.db</code> for the installation user; <code>METNOS_GRANTS_DB</code> can select another path. Multiple application users served by one process therefore share the physical container while rows remain separated by the identity supplied to the API.
+</p>
+
+<h2>4.2 API</h2>
+
+<table>
+<tr><th>function</th><th>what it does</th></tr>
+<tr>
+ <td><code>record_grant(channel, sender_id, capability, target, expires_at=None, granted_by=None)</code></td>
+ <td>Records a concession. Raises <code>ValueError</code> if <code>capability</code> is not in the registry. Returns the <code>Grant</code> object with assigned <code>id</code>.</td>
+</tr>
+<tr>
+ <td><code>has_grant(channel, sender_id, capability, target)</code></td>
+ <td>True if an active grant (not revoked, not expired) exists for the four-tuple. The query compares <code>expires_at</code> with the current time.</td>
+</tr>
+<tr>
+ <td><code>list_grants(channel=None, sender_id=None, include_revoked=False)</code></td>
+ <td>Lists grants, filterable by channel/sender, optionally including revoked. Sorted by <code>granted_at</code> descending.</td>
+</tr>
+<tr>
+ <td><code>revoke_grant(grant_id)</code></td>
+ <td>Sets <code>revoked_at</code> to the current time. Returns True if something was modified, False if the grant was already revoked or did not exist.</td>
+</tr>
+</table>
+
+<p>
+The functions open and close one connection per call; they keep no global SQLite session.
+</p>
+
+<h2>4.3 Integration status</h2>
+
+<p>
+The current runtime has no production callers of <code>record_grant</code>, and the
+planner does not consult <code>effective_outcome</code>. The table can be populated
+by calling the module API directly, but no active administration surface does so,
+and it must not be described as the memory of user confirmations.
+</p>
+
+<h1 id="cap5">5. Combined outcome (<code>effective_outcome</code>)</h1>
+
+<p>
+The <code>effective_outcome</code> function combines the matrix and grants into one
+result. It is available to module callers and the CLI; it is not currently the
+planner's entry point.
+</p>
+
+<table>
+<tr><th>table says</th><th>active grant for (channel, sender, target)?</th><th>outcome</th></tr>
+<tr><td><span class="v-allow">allowed</span></td><td>indifferent, the DB is not queried</td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><span class="v-deny">denied</span></td><td>indifferent, the DB is not queried</td><td><span class="v-deny">denied</span></td></tr>
+<tr><td><span class="v-approve">approval_required</span></td><td>yes</td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><span class="v-approve">approval_required</span></td><td>no (or scope parameters missing)</td><td><span class="v-approve">approval_required</span></td></tr>
+</table>
+
+<p>
+The logic is linear: if the table already decides cleanly (<code>allowed</code> or <code>denied</code>), the grant is not even consulted; if it decides <code>approval_required</code>, an active grant turns it into <code>allowed</code>, otherwise it stays <code>approval_required</code>.
+</p>
+
+<p>
+<strong>Function invariant:</strong> a grant never turns <code>denied</code> into
+<code>allowed</code>. It can turn <code>approval_required</code> into
+<code>allowed</code>.
+</p>
+
+<p>
+<strong>Known limitation.</strong> When it finds an active grant,
+<code>effective_outcome</code> does not distinguish <code>per_target</code> from
+<code>always</code>. A capability classified as <code>always</code> would therefore be
+elevated to <code>allowed</code> if a caller recorded such a grant. Before connecting
+the module to the dispatcher, this case must be prevented or given an explicit,
+different meaning.
+</p>
+
+<h2>5.1 Verifiable example</h2>
+
+<p><strong>Module evaluation, not turn execution.</strong>
+The command <code>check Supervised fs:write</code>, without identity and target,
+returns <code>approval_required</code>. The command
+<code>check ReadOnly fs:write</code> returns <code>denied</code>. These results show
+the matrix; they neither save a file nor open a chat dialog.
+</p>
+
+<h1 id="cap6">6. Runtime integration</h1>
+
+<p>The module participates in the runtime at these points:</p>
+
+<ul>
+<li>manifest validation uses <code>CAPABILITY_REGISTRY</code> to reject unknown names;</li>
+<li><code>effective_outcome</code> is called by the CLI, but not by the ordinary planner or dispatcher path;</li>
+<li><code>approval_registry</code> and its channel renderer have no production caller that creates pending requests;</li>
+<li>active confirmation dialogs follow the semantic contract described in <a href="approval_ux.html">approval experience</a>: action, scope, consequences, and admitted choices, with no fixed number of lines or buttons.</li>
+</ul>
+
+<p>This grant store must therefore not be interpreted as the planner's active
+authorization mechanism. Any caller must preserve exact actor and target
+identity, enforce per-user isolation, handle <code>always</code> classes
+correctly, and use a localized semantic renderer.</p>
+
+<h1 id="cap7">7. CLI</h1>
+
+<p>
+From the repository root, inspect the module with the Metnos environment. It exposes five subcommands.
+</p>
+
+<table>
+<tr><th>command</th><th>what it does</th></tr>
+<tr><td><code>PYTHONPATH=runtime ./.venv/bin/python -m policy registry</code></td><td>prints one JSON line per capability with all attributes.</td></tr>
+<tr><td><code>PYTHONPATH=runtime ./.venv/bin/python -m policy table</code></td><td>prints one JSON line per level with every capability outcome.</td></tr>
+<tr><td><code>PYTHONPATH=runtime ./.venv/bin/python -m policy check &lt;level&gt; &lt;capability&gt; [--channel C --sender S --target T]</code></td><td>prints <code>effective_outcome</code>. Without identity and target, it shows the matrix-only result.</td></tr>
+<tr><td><code>PYTHONPATH=runtime ./.venv/bin/python -m policy grants [--channel C] [--sender S] [--all]</code></td><td>lists active grants; <code>--all</code> includes revoked rows.</td></tr>
+<tr><td><code>PYTHONPATH=runtime ./.venv/bin/python -m policy revoke &lt;grant_id&gt;</code></td><td>revokes a grant by identifier.</td></tr>
+</table>
+
+<p>
+The <code>registry</code>, <code>table</code>, and <code>grants</code> commands emit JSON Lines and can be filtered with <code>jq</code>.
+</p>
+
+<h1 id="cap8">8. How to verify the module</h1>
+
+<p>Module verification comprises:</p>
+
+<ul>
+<li>importing the module with the Metnos environment;</li>
+<li>running <code>registry</code>, <code>table</code>, and the desired <code>check</code> cases;</li>
+<li>running manifest-validator tests, which include rejection of unknown capabilities;</li>
+<li>testing the <code>get_approval</code> dialog separately, because it is the active mechanism and does not depend on this grant store.</li>
+</ul>
+
+<h1 id="cap9">9. Policy boundaries</h1>
+
+<ul>
+<li><strong>Closed registry.</strong> Only canonical capabilities can enter the table
+or receive a grant. An executor declaring an unknown capability is not admitted by
+analogy.</li>
+<li><strong>Caller-supplied identity.</strong> Grants are separated by channel and
+sender, but the module does not authenticate these values. Effective isolation must
+be enforced by the layer that eventually calls it.</li>
+<li><strong>No elevation of a denial.</strong> A grant cannot override
+<code>denied</code>; handling of <code>always</code> classes still needs correction
+before integration.</li>
+<li><strong>Separated responsibilities.</strong> Rate, cost, provider availability,
+and process isolation belong to other layers. Policy neither infers nor hides them.</li>
+</ul>
+
+<h2>Final notes</h2>
+
+<p>
+The module's current value is narrow but concrete: a closed registry, deterministic
+matrix, and structured store. The public guarantee remains limited to what the
+runtime actually wires in.
+</p>
+
+<p>
+Presenting this API as a general gate before it is connected to the dispatcher would
+claim more than the demonstrated behavior.
+</p>
+
+</body>
+</html>

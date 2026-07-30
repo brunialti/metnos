@@ -1,0 +1,15 @@
+{# ---
+role: engine_excluded_signal
+tier: wise
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+{% if not has_excluded %}(none){% else %}{{ shapes_block }}{% if unresolved %}
+- {{ unresolved }} more plans were already rejected (shape unavailable){% endif %}
+YOU MUST: propose a plan different from those above{% if first_tools %}: use a first tool other than {{ first_tools }}, or change the sequence or arguments{% endif %}.
+YOU MUST NOT: re-emit a plan listed above.{% if example_shape %}
+ERROR: repeating «{{ example_shape }}» verbatim.{% endif %}{% endif %}

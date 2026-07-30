@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Security disclosure — Metnos</title>
+<meta name="description" content="How to report security vulnerabilities affecting metnos.com and the Metnos project. Coordinated disclosure, contact, scope, safe harbor for good-faith research.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://metnos.com/security/">
+<link rel="alternate" hreflang="en" href="https://metnos.com/security/">
+<link rel="alternate" hreflang="x-default" href="https://metnos.com/security/">
+<style>
+:root {
+  --paper: #FCFAF6;
+  --paper-warm: #F5F0E5;
+  --border-warm: #E0D5C0;
+  --ink: #2a2a2a;
+  --ink-dim: #5a5a5a;
+  --muted: #8a8378;
+  --bronze: #A0522D;
+}
+* { box-sizing: border-box; }
+body {
+  font-family: Georgia, Cambria, 'Times New Roman', serif;
+  color: var(--ink);
+  background: var(--paper);
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 90px 32px 60px;
+  line-height: 1.78;
+  font-size: 12.5pt;
+}
+h1 {
+  font-family: Georgia, serif;
+  font-size: 32pt;
+  font-weight: 400;
+  margin: 0 0 8px;
+  letter-spacing: -0.3px;
+}
+.eyebrow {
+  font-family: 'Segoe UI', Calibri, sans-serif;
+  font-size: 10pt;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.subtitle {
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-size: 14pt;
+  color: var(--ink-dim);
+  margin: 14px 0 50px;
+}
+h2 {
+  font-family: Georgia, serif;
+  font-size: 14pt;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin: 40px 0 14px;
+}
+h2::before { content: "§ "; color: var(--bronze); font-style: normal; }
+p { margin: 16px 0; text-align: justify; hyphens: auto; }
+a { color: var(--bronze); text-decoration: none; border-bottom: 1px solid rgba(160,82,45,0.3); }
+a:hover { border-bottom-color: var(--bronze); }
+ul { padding-left: 20px; }
+li { margin: 6px 0; }
+.contact-card {
+  background: var(--paper-warm);
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  padding: 22px 26px;
+  margin: 28px 0;
+}
+.contact-card p { margin: 6px 0; }
+footer {
+  margin-top: 70px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-warm);
+  font-size: 10.5pt;
+  color: var(--muted);
+}
+</style>
+<link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<div class="eyebrow">Vulnerability disclosure</div>
+<h1>Security</h1>
+<p class="subtitle">If you find a security issue affecting metnos.com or the Metnos project, please tell us — we read every report.</p>
+
+<h2>How to report</h2>
+<div class="contact-card">
+  <p><strong>Email:</strong> <a href="mailto:admin@metnos.com">admin@metnos.com</a></p>
+  <p><strong>Languages:</strong> English, Italian</p>
+  <p><strong>Acknowledgement:</strong> within 5 working days</p>
+</div>
+<p>Please include enough detail to reproduce the issue: affected URL or component, steps, expected vs. observed behaviour, and — if relevant — proof-of-concept payloads. A working demonstration helps, but is not required.</p>
+
+<h2>Scope</h2>
+<p>In scope: <code>metnos.com</code> and any subdomain we publish, plus any source code released under the Metnos project.</p>
+<p>Out of scope: third-party services we do not control (the upstream hosting platform, registrar, mail provider), social-engineering of the maintainer, denial-of-service tests, automated scanner output without a verified finding.</p>
+
+<h2>What we ask</h2>
+<ul>
+  <li>Give us a reasonable window to fix the issue before public disclosure — typically 90 days, sooner if we agree.</li>
+  <li>Do not access, modify, or exfiltrate data that is not your own.</li>
+  <li>Do not degrade the service for other users.</li>
+  <li>Test only against accounts and resources you control.</li>
+</ul>
+
+<h2>What you can expect</h2>
+<ul>
+  <li>An initial human reply within 5 working days.</li>
+  <li>An honest assessment: severity, planned fix, expected timeline.</li>
+  <li>Credit in our acknowledgements when the fix ships, if you want it.</li>
+  <li>No legal action against good-faith research that follows this policy.</li>
+</ul>
+<p>Metnos is a small, self-funded project: there is no monetary bug bounty. What we offer is attention, transparency, and a public thank-you.</p>
+
+<h2>Machine-readable</h2>
+<p>The corresponding <a href="/.well-known/security.txt">security.txt</a> follows <a href="https://www.rfc-editor.org/rfc/rfc9116">RFC 9116</a>.</p>
+
+<footer>
+  Last updated: 2026-04-26 · <a href="/">Home</a>
+</footer>
+
+</body>
+</html>

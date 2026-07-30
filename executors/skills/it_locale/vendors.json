@@ -1,0 +1,46 @@
+{
+  "_doc": "Vendor whitelist + extraction strategy for Italian utility/telecom bills. Pattern §7.3: aggiungere provider qui, NIENTE modifiche al codice. Carico lazy in `bills_extract.VENDOR_WHITELIST`. Override env METNOS_BILLS_VENDORS_PATH per test/custom.",
+  "vendors": {
+    "eniplenitude.com": {
+      "vendor": "Eni Plenitude",
+      "category": "gas",
+      "magic_link_pattern": "https?://interattiva\\.eniplenitude\\.com/[a-f0-9]+"
+    },
+    "fastweb.it": {
+      "vendor": "Fastweb",
+      "category": "telecom",
+      "magic_link_pattern": null
+    },
+    "iliad.it": {
+      "vendor": "Iliad",
+      "category": "telecom",
+      "magic_link_pattern": null
+    },
+    "enelenergia.enel.com": {
+      "vendor": "Enel Energia",
+      "category": "electricity",
+      "magic_link_pattern": "https?://interattiva\\.enel\\.it/[a-f0-9]+"
+    },
+    "acea.it": {
+      "vendor": "Acea",
+      "category": "water",
+      "magic_link_pattern": null
+    },
+    "amaroma.it": {
+      "vendor": "AMA",
+      "category": "waste",
+      "magic_link_pattern": null
+    },
+    "vodafone.it": {
+      "vendor": "Vodafone",
+      "category": "telecom",
+      "magic_link_pattern": null
+    },
+    "windtre.it": {
+      "vendor": "WindTre",
+      "category": "telecom",
+      "magic_link_pattern": null
+    }
+  },
+  "not_bill_subject_pattern": "(passa a|sconto|promozione|offerta|news|newsletter|info@|recommendations|spedito|consegnato|ordine|reso|enjoy)"
+}

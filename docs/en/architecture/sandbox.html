@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Metnos &mdash; executor sandbox</title>
+ <meta name="description" content="Guide to the Metnos sandbox: executor isolation on the server and paired devices, manifest-derived resources, downgrades, and effective boundaries.">
+ <meta name="keywords" content="sandbox, bubblewrap, bwrap, isolation, executor, manifest, capabilities, metnos">
+ <meta name="author" content="the owner">
+ <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <link rel="canonical" href="https://metnos.com/en/architecture/sandbox">
+ <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/sandbox">
+ <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/sandbox">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/sandbox">
+ <meta property="og:type" content="article">
+ <meta property="og:url" content="https://metnos.com/en/architecture/sandbox">
+ <meta property="og:title" content="Metnos &mdash; executor sandbox">
+ <meta property="og:description" content="How Metnos isolates executors on the server and paired devices, which resources it exposes, and which boundaries remain.">
+ <meta property="og:locale" content="en_US">
+ <meta property="og:locale:alternate" content="it_IT">
+ <meta property="og:site_name" content="Metnos">
+ <script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "TechArticle",
+ "headline": "Metnos — executor sandbox",
+ "description": "Executor isolation on the server and paired devices, manifest-derived resources, downgrades, and effective boundaries.",
+ "url": "https://metnos.com/en/architecture/sandbox.html",
+ "inLanguage": "en",
+ "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
+ "author": {"@type": "Person", "name": "the owner"}
+}
+ </script>
+ <style>:root {
+ --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
+ --bg: #FAFBFC; --text: #1a1a1a; --border: #d0d7de;
+ --code-bg: #f6f8fa; --table-header: #1A477A; --table-alt: #f0f4f8;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
+h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
+h1:first-of-type { margin-top: 0; }
+h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+p { margin: 10px 0; }
+table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
+th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr:nth-child(even) td { background: var(--table-alt); }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
+code { font-family: Consolas, 'Courier New', monospace; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
+.title-page { text-align: center; padding: 60px 0 30px; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 1.9; }
+.toc a { color: var(--navy); text-decoration: none; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin-bottom: 4px; }
+.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
+ </style>
+ <link rel="stylesheet" href="/assets/metnos.css">
+</head>
+<body>
+
+<nav class="lang-switch" aria-label="Language">
+<a href="/it/architecture/sandbox.html" hreflang="it" lang="it">IT</a>
+<span class="sep">&middot;</span>
+<a href="/en/architecture/sandbox.html" class="active" hreflang="en" lang="en">EN</a>
+</nav>
+
+<div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
+ <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
+ <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">sandbox</strong></span>
+ </div>
+</div>
+
+<div class="title-page">
+ <h1>Metnos</h1>
+ <div class="subtitle">Executor sandbox</div>
+ <div class="meta">How an execution is contained on the server and on paired devices.</div>
+</div>
+
+<p class="lead">The sandbox limits what an executor process can see and
+modify. Its resources come from the signed manifest and, where needed, the
+concrete invocation. This layer complements Vaglio, identity checks, and
+application controls: it does not replace them, nor does it grant permission
+to perform an action by itself.</p>
+
+<div class="toc">
+<h2>Contents</h2>
+<ol>
+ <li><a href="#cap1">Scope</a></li>
+ <li><a href="#cap2">Module interfaces</a></li>
+ <li><a href="#cap3">Resources exposed on the server</a></li>
+ <li><a href="#cap4">Execution without bubblewrap</a></li>
+ <li><a href="#cap5">Runtime integration</a></li>
+ <li><a href="#cap6">Autonomy and policy</a></li>
+ <li><a href="#cap7">Verification</a></li>
+ <li><a href="#cap8">Diagnostics and installation</a></li>
+ <li><a href="#cap9">Security boundaries</a></li>
+ <li><a href="#cap10">Sandboxing on paired devices</a></li>
+</ol>
+</div>
+
+<h1 id="cap1">1. Scope</h1>
+
+<p>When an executor runs on the Linux server, <code>runtime/sandbox.py</code>
+can prefix its Python command with <code>bwrap</code>. Bubblewrap builds a
+separate filesystem view, provides a private <code>/tmp</code>, separates
+selected namespaces, and adds <code>--unshare-net</code> when the executor
+does not require network access. There is no separate daemon: a profile is
+built for every invocation.</p>
+
+<p>When work is placed on a paired device, the Rust client applies the
+mechanism available on that operating system. The server selects the device
+and checks that it belongs to the user; the client runs the command and
+returns the containment level it actually used.</p>
+
+<h1 id="cap2">2. Module interfaces</h1>
+
+<table>
+<tr><th>Function</th><th>Responsibility</th></tr>
+<tr><td><code>bwrap_available</code>, <code>sandbox_disabled</code></td><td>Detect whether <code>bwrap</code> is present and whether <code>METNOS_SANDBOX</code> explicitly disables it.</td></tr>
+<tr><td><code>wrap_command</code></td><td>Return a command wrapped by <code>bwrap</code>, or the original command when the wrapper is inactive.</td></tr>
+<tr><td><code>filesystem_extras</code></td><td>Resolve only arguments named by a signed <code>fs:read</code> capability in the form <code>arg:&lt;name&gt;</code>. The argument may narrow the scope, never widen it.</td></tr>
+<tr><td><code>undo_history_extras</code></td><td>Make writable only the current turn's managed backup directory when the manifest declares the supported reverse pattern.</td></tr>
+<tr><td><code>invocation_skills</code>, <code>skill_extras</code></td><td>Identify provider bindings required by this invocation, expose only that integration's home, and enable network access. Declared executors use <code>provider:access</code>; older manifests retain a compatibility path.</td></tr>
+<tr><td><code>mail_extras</code></td><td>For <code>mail:read</code>, expose the selected accounts' credential files read-only and enable network access. It does not mount the whole credential vault.</td></tr>
+<tr><td><code>dialog_extras</code></td><td>For <code>dialog.user_input</code>, make writable only the authenticated sender's dialog directory.</td></tr>
+<tr><td><code>python_package_roots</code></td><td>Find the package roots used by the current interpreter without exposing the whole home directory.</td></tr>
+<tr><td><code>status</code></td><td>Return the path, availability, explicit-disable flag, and effective state of <code>bwrap</code>.</td></tr>
+</table>
+
+<h1 id="cap3">3. Resources exposed on the server</h1>
+
+<h2>3.1 Execution base</h2>
+
+<p>The profile mounts existing system paths read-only from among
+<code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, the library
+directories, <code>/etc</code>, <code>/opt</code>,
+<code>/var/lib/python3</code>, and <code>/sys</code>. It also adds:</p>
+
+<ul>
+<li><code>/proc</code> and a minimal <code>/dev</code>;</li>
+<li>a private <code>/tmp</code>;</li>
+<li>the executor directory, the Metnos runtime, and the active Python environment, all read-only;</li>
+<li>the i18n and detection-lexicon databases read-only when present.</li>
+</ul>
+
+<p><code>--unshare-user</code>, <code>--unshare-ipc</code>,
+<code>--unshare-uts</code>, and <code>--die-with-parent</code> are always
+requested. The server profile currently adds neither a PID namespace nor
+Landlock or a custom seccomp filter.</p>
+
+<h2>3.2 Capability-derived resources</h2>
+
+<table>
+<tr><th>Declaration</th><th>Effect on the profile</th></tr>
+<tr><td><code>fs:read</code> / <code>fs:write</code></td><td>Read-only or read-write mount. Fixed glob-like scopes are reduced to their root; <code>arg:</code> scopes resolve the concrete value only when the path exists.</td></tr>
+<tr><td><code>metnos:read</code>, <code>metnos:write</code>, <code>metnos:create</code></td><td>Translate closed semantic resources—such as spreadsheets, the persons registry, or proposals—to canonical Metnos-managed paths.</td></tr>
+<tr><td><code>index:read</code></td><td>Read-only access to the canonical root of the declared index. An unknown name grants nothing.</td></tr>
+<tr><td><code>systemd:read</code> and <code>system:read</code></td><td>Expose only known resources required for status inspection. Requesting network-interface information keeps the host network available.</td></tr>
+<tr><td><code>provider:access</code> or <code>skill:&lt;name&gt;</code></td><td>Read-write access to the integration home, including what OAuth refresh needs, plus host network access.</td></tr>
+<tr><td><code>mail:read</code></td><td>Read-only access to individual credential files for the requested account, plus host network access.</td></tr>
+</table>
+
+<p><code>network:*</code> and <code>net:*</code> capabilities, external
+integrations, and selected system-inspection requests prevent
+<code>--unshare-net</code> from being added. The process then receives the
+host network; bubblewrap does not restrict it to one host or provider.
+Application controls and narrowly scoped credentials must enforce that
+boundary.</p>
+
+<h1 id="cap4">4. Execution without bubblewrap</h1>
+
+<p>If <code>bwrap</code> is not on <code>PATH</code>, or if
+<code>METNOS_SANDBOX</code> is <code>0</code>, <code>off</code>,
+<code>no</code>, or <code>false</code>, <code>wrap_command</code> returns the
+command unchanged. There is no third branch that automatically converts a
+detection exception into an unavailable result.</p>
+
+<p>The signed invocation-scope preflight still runs before the subprocess, and
+Vaglio and executor-specific controls remain in force. They are not
+equivalent to operating-system containment. Local executor results do not
+automatically carry a field that reports the absence of <code>bwrap</code>;
+operators must inspect <code>status()</code> or service diagnostics.</p>
+
+<h1 id="cap5">5. Runtime integration</h1>
+
+<p><code>invoke_executor</code> is the common execution point. Its relevant
+order is:</p>
+
+<ol>
+<li>derive actor, channel, and turn from the authenticated context;</li>
+<li>evaluate remote placement using only devices owned by that user;</li>
+<li>keep provider-backed invocations on the server that holds the integration;</li>
+<li>check signed path scope even when <code>bwrap</code> is unavailable;</li>
+<li>prepare undo journaling and only the invocation-specific extra resources;</li>
+<li>run <code>sys.executable</code>—the interpreter of the current Metnos environment—through <code>wrap_command</code>.</li>
+</ol>
+
+<p>The public entry point also passes through the central scheduler, which
+applies concurrency limits without changing placement, arguments, or the
+result contract.</p>
+
+<h1 id="cap6">6. Autonomy and policy</h1>
+
+<p><code>wrap_command</code> accepts an <code>autonomy</code> parameter, but
+it is currently informational and does not select different profiles.
+Containment comes from manifest capabilities and resources resolved for the
+invocation. Consent, criticality, and admission belong to
+<a href="policy.html">policy</a> and <a href="vaglio.html">Vaglio</a>, not to
+the sandbox.</p>
+
+<h1 id="cap7">7. Verification</h1>
+
+<p>The documentation does not freeze a test count. Dedicated suites cover
+runtime and Python-environment mounts, i18n databases, provider integrations,
+mail credentials, and downgrade paths. The main suites are:</p>
+
+<pre>tests/runtime/safety/test_sandbox_runtime_bind.py
+tests/runtime/safety/test_sandbox_i18n_bind.py
+tests/runtime/safety/test_sandbox_skill_backed.py</pre>
+
+<p>The Rust modules also contain tests next to the common, Linux, Windows, and
+AppContainer implementations. Argument-construction tests can run without
+starting a real sandbox; system tests separately verify the mechanism
+available on the target platform.</p>
+
+<h1 id="cap8">8. Diagnostics and installation</h1>
+
+<p>Call <code>sandbox.status()</code> to inspect the current state. It checks
+<code>PATH</code> at call time and returns <code>bwrap_available</code>,
+<code>bwrap_path</code>, <code>disabled_via_env</code>, and
+<code>active</code>; the module does not cache that result.</p>
+
+<pre># Debian and Ubuntu
+sudo apt install bubblewrap
+
+# Fedora and RHEL
+sudo dnf install bubblewrap
+
+# Arch Linux
+sudo pacman -S bubblewrap</pre>
+
+<p>After installation, verify both <code>status()</code> and a real invocation
+in the service environment. A different <code>PATH</code> or
+<code>METNOS_SANDBOX</code> value can make the service behave differently
+from an administrator's shell.</p>
+
+<h1 id="cap9">9. Security boundaries</h1>
+
+<ul>
+<li><strong>Visible does not mean authorised.</strong> A mount lets the process reach a resource; identity, consent, and purpose must already have been checked.</li>
+<li><strong>Some base mounts are broad.</strong> The server exposes <code>/etc</code>, <code>/opt</code>, and <code>/sys</code> read-only when they exist. Read-only prevents modification, but does not guarantee confidentiality for every file under those roots.</li>
+<li><strong>Network access is binary.</strong> When required, the process inherits the host network; bubblewrap does not enforce an allowlist of hosts.</li>
+<li><strong>The profile uses neither Landlock nor custom seccomp</strong> and does not separate the server's PID namespace.</li>
+<li><strong><code>system:undo</code> is an explicit exception.</strong> Undo must reconstruct resources known only from the runtime journal at execution time, so <code>wrap_command</code> passes the signed broker through directly. Vaglio and server-only placement remain necessary, but are not an operating-system sandbox.</li>
+<li><strong>Missing bubblewrap is a real downgrade.</strong> Remaining application controls must not be described as kernel isolation.</li>
+</ul>
+
+<h1 id="cap10">10. Sandboxing on paired devices</h1>
+
+<p class="lead">The remote client uses a common result contract, while
+containment depends on the platform. The <code>sandbox</code> field names the
+level actually applied; <code>sandbox_downgrade_reason</code>, when present,
+explains why a weaker level was used.</p>
+
+<table>
+<tr><th>Platform</th><th>Current implementation</th><th>Downgrade behaviour</th></tr>
+<tr><td><strong>Linux</strong></td><td>Bubblewrap with mount and PID namespaces, network separation when not requested, a private temporary directory, and a dedicated process group. Custom Landlock and seccomp are not implemented.</td><td>If <code>bwrap</code> is missing or disabled, execution is direct and logged; the result reports <code>sandbox:"none"</code>. The process group still supports tree termination at the deadline.</td></tr>
+<tr><td><strong>Windows</strong></td><td>AppContainer with capability-derived grants, itself placed inside a Job Object. AppContainer is attempted by default when supported.</td><td>System subprocesses, unanchored paths, scopes too broad for safe ACL changes, or an unavailable container cause an explicit downgrade to the Job Object. If the manifest requires AppContainer as its minimum, the invocation must not silently downgrade.</td></tr>
+<tr><td><strong>macOS</strong></td><td>There is currently no native <code>sandbox_macos.rs</code> module. The common Unix path has no operational bubblewrap equivalent on macOS.</td><td>The run must not be presented as isolated: its effective level is <code>none</code>, although process-group deadline handling remains.</td></tr>
+</table>
+
+<p>The Job Object limits per-process memory, the number of active processes,
+and the lifetime of the tree. The process is created suspended, assigned to
+the Job Object, and only then resumed; a deadline terminates the whole job.
+AppContainer adds filesystem and network isolation through grants computed
+for the invocation.</p>
+
+<p>Before remote execution, the client verifies the signed package and uses a
+provisioned, verified Python interpreter. These checks protect code
+provenance; they do not replace the containment level declared in the
+result.</p>
+
+</body>
+</html>

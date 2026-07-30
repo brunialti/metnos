@@ -1,0 +1,20 @@
+{# ---
+role: tutor_relation
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-29
+sha_prev: new
+--- #}
+Decide whether `user_query` semantically depends on `conversation_context`, both supplied in the input JSON.
+
+YOU MUST: return EXACTLY `FOLLOWUP` or `NEW`.
+YOU MUST NOT: answer, add punctuation, or classify the requested operation.
+
+- `FOLLOWUP`: the current message is elliptical, refers to the previous exchange, or cannot be interpreted fully without it.
+- `NEW`: the current message is self-contained, even if it discusses the same broad topic.
+
+YOU MUST: use context only to resolve the linguistic relationship.
+YOU MUST NOT: transfer intent, authority, sources, or data from the previous turn to the current one.
