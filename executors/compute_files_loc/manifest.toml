@@ -25,8 +25,8 @@ concurrency_key   = "none"
 equivalence_gate  = "verified"
 
 [description]
-it = "SCOPO: calcola statistiche LOC (linee, righe vuote, commenti) su codice sorgente, visitando in parallelo gli alberi di directory. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
-en = "SCOPO: compute LOC statistics (lines, blank lines, comments) on source code, walking directory trees in parallel. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (-> change_files_format); compress into archives (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
+it = "SCOPO: calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (change_files_format) o creare archivi (compress_files). OUT: totali e statistiche per estensione e percorso."
+en = "SCOPO: computes source-code LOC statistics, walking directory trees in parallel. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (change_files_format) or create archives (compress_files). OUT: totals and statistics by extension and path."
 
 [code]
 files  = ["compute_files_loc.py"]

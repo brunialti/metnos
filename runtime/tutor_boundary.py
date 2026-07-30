@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import functools
+import re
 
 from logging_setup import get_logger
 from messages import get as _msg
@@ -85,7 +86,8 @@ def _owner_scoped_answer(function):
 
 @_owner_scoped_answer
 def _answer(query: str, principal, *, has_pending: bool,
-            pending_sender_id: str):
+            pending_sender_id: str, deadline_s: float | None = None,
+            turn_id_hint: str = ""):
     """Execute one fully guarded Tutor lifecycle."""
 
     from credential_intake import contains_sensitive_input
@@ -103,7 +105,9 @@ def _answer(query: str, principal, *, has_pending: bool,
     # channel-specific handling intact instead of manufacturing a Tutor error.
     if contains_sensitive_input(query):
         return None
-    deadline_at = new_deadline()
+    deadline_at = (
+        new_deadline() if deadline_s is None else new_deadline(deadline_s)
+    )
     lang = current_lang()
     conversation_context = recent_context(principal)
     remaining(deadline_at)
@@ -168,6 +172,15 @@ def _answer(query: str, principal, *, has_pending: bool,
         remember(request, result)
     except Exception:
         log.warning("Tutor conversation memory unavailable", exc_info=True)
+    # The resumable HTTP endpoint allocates its public turn identifier before
+    # Tutor starts, so that it can return 202 immediately.  Reuse that trusted
+    # identifier for Tutor telemetry instead of creating a second identity for
+    # the same turn.  Other channels leave the hint empty and retain the
+    # existing telemetry allocation path.
+    if (turn_id_hint and not result.turn_id
+            and re.fullmatch(r"[0-9a-f]{16}", turn_id_hint)):
+        from dataclasses import replace
+        result = replace(result, turn_id=turn_id_hint)
     try:
         return record_async(request, result)
     except Exception:
@@ -178,7 +191,8 @@ def _answer(query: str, principal, *, has_pending: bool,
 
 
 def answer(query: str, principal, *, has_pending: bool = False,
-           pending_sender_id: str = ""):
+           pending_sender_id: str = "", deadline_s: float | None = None,
+           turn_id_hint: str = ""):
     """Narrow total boundary shared by HTTP and Telegram.
 
     ``None`` means Tutor did not acquire authority: a positively classified
@@ -192,6 +206,8 @@ def answer(query: str, principal, *, has_pending: bool = False,
             query, principal,
             has_pending=bool(has_pending),
             pending_sender_id=pending_sender_id,
+            deadline_s=deadline_s,
+            turn_id_hint=turn_id_hint,
         )
     except Exception:
         log.warning("Tutor boundary failed closed", exc_info=True)

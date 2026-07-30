@@ -400,7 +400,7 @@ def _http_has_pending(sender_id: str, actor: str,
 
 async def _apply_tutor_http(request: web.Request, *, query: str, actor: str,
                             user_id: str, conversation_id: str,
-                            sender_id: str):
+                            sender_id: str, turn_id_hint: str = ""):
     """Pure-help escape before pending consumers; never consumes state."""
     has_pending = _http_has_pending(sender_id, actor, user_id)
     app = getattr(request, "app", None)
@@ -446,6 +446,7 @@ async def _apply_tutor_http(request: web.Request, *, query: str, actor: str,
                 principal,
                 has_pending=has_pending,
                 pending_sender_id=sender_id if allow_handoff else "",
+                turn_id_hint=turn_id_hint,
             ))
         return await asyncio.wait_for(
             asyncio.shield(worker),
@@ -1066,6 +1067,154 @@ def _build_final_event_payload(log_obj, admin_key: str) -> dict:
     }
 
 
+def _preprocessed_turn_data(
+        *, query_for_run: str, immediate_msg: str | None,
+        immediate_source: str, immediate_turn_id: str, actor: str,
+        user_id: str, conversation_id: str, sender_id: str,
+        reference_images: list[str], original_query: str,
+        credential_meta: list[dict] | None = None,
+        redacted_fields: int = 0, tutor_deferred: bool = False,
+        deferred_query: str = "") -> dict:
+    """Build the one internal hand-off shape used by both HTTP turn paths.
+
+    ``deferred_query`` exists only in the in-memory task hand-off for the
+    resumable endpoint.  It is never copied to the event log or a TurnLog;
+    credentials are never deferred because their structural redaction skips
+    Tutor and follows the synchronous preparation path.
+    """
+
+    data = {
+        "query_for_run": query_for_run,
+        "immediate_msg": immediate_msg,
+        "immediate_source": immediate_source,
+        "immediate_turn_id": immediate_turn_id,
+        "actor": actor,
+        "user_id": user_id,
+        "conversation_id": conversation_id,
+        "sender_id": sender_id,
+        "reference_images": reference_images,
+        "original_query": original_query,
+        "credential_meta": list(credential_meta or []),
+        "redacted_fields": int(redacted_fields or 0),
+    }
+    if tutor_deferred:
+        data["_tutor_deferred"] = True
+        data["_deferred_query"] = deferred_query
+    return data
+
+
+async def _resolve_open_http_turn(
+        request: web.Request, *, query: str, safe_original_query: str,
+        sensitive_fields: int, actor: str, user_id: str,
+        conversation_id: str, sender_id: str,
+        reference_images: list[str], turn_id_hint: str = "") -> dict:
+    """Resolve Tutor and open pending state after deterministic pre-passes.
+
+    The resumable endpoint runs this phase in its background turn task, after
+    returning ``202``.  The legacy inline endpoint awaits the same function.
+    Keeping one implementation preserves identical semantic authority,
+    per-user pending isolation and credential preparation across transports.
+    """
+
+    tutor_error = None
+    tutor_busy = False
+    try:
+        tutor = (
+            None if sensitive_fields else
+            await _apply_tutor_http(
+                request, query=query, actor=actor, user_id=user_id,
+                conversation_id=conversation_id, sender_id=sender_id,
+                turn_id_hint=turn_id_hint,
+            )
+        )
+    except TutorBoundaryBusy:
+        tutor = None
+        tutor_busy = True
+
+    if tutor is not None and tutor.esito != "tutor_error":
+        return _preprocessed_turn_data(
+            query_for_run=safe_original_query,
+            immediate_msg=tutor.answer_md,
+            immediate_source="tutor",
+            immediate_turn_id=tutor.turn_id or turn_id_hint or "tutor",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            redacted_fields=sensitive_fields,
+        )
+    if tutor is not None:
+        tutor_error = tutor
+
+    query_for_run = query
+    immediate_msg = None
+    boundary_failed = tutor_error is not None or tutor_busy
+    if boundary_failed:
+        # The deterministic closed-schema pre-pass has already accepted every
+        # valid reply.  During a Tutor outage only an exact yes/no twin may
+        # reach the capability consumer; arbitrary prose must preserve an
+        # open dialog instead of being swallowed by it.
+        from channels.daemon import _classify_yes_no
+        if _classify_yes_no(query) is not None:
+            query_for_run, _consumed_pending, immediate_msg = (
+                _apply_cap_pending(
+                    sender_id, query, actor=actor,
+                    owner_user_id=user_id)
+            )
+        if immediate_msg is None and tutor_error is not None:
+            return _preprocessed_turn_data(
+                query_for_run=safe_original_query,
+                immediate_msg=tutor_error.answer_md,
+                immediate_source="tutor",
+                immediate_turn_id=(
+                    tutor_error.turn_id or turn_id_hint or "tutor"),
+                actor=actor, user_id=user_id,
+                conversation_id=conversation_id, sender_id=sender_id,
+                reference_images=reference_images,
+                original_query=safe_original_query,
+                redacted_fields=sensitive_fields,
+            )
+        if tutor_busy:
+            # Tutor is an optional semantic pre-gate. Saturating its bounded
+            # workers preserves the pending interaction and falls through to
+            # the ordinary runtime.
+            log.info("HTTP Tutor busy; falling through to runtime")
+    else:
+        immediate_msg = _apply_dialog_pending(
+            sender_id, query, actor=actor, channel="http",
+            conversation_id=conversation_id or "",
+            owner_user_id=user_id,
+        )
+        if immediate_msg is None:
+            query_for_run, _consumed_pending, immediate_msg = (
+                _apply_cap_pending(
+                    sender_id, query, actor=actor,
+                    owner_user_id=user_id)
+            )
+
+    credential_meta: list[dict] = []
+    prepared_fields = sensitive_fields
+    if immediate_msg is None:
+        # Pending consumers have seen the in-memory raw reply. From here on,
+        # both planner and persistence receive only the prepared form.
+        import agent_runtime as _credential_runtime
+        query_for_run, credential_meta, prepared_fields = (
+            _credential_runtime.prepare_credentials_for_routing(query_for_run)
+        )
+    return _preprocessed_turn_data(
+        query_for_run=query_for_run,
+        immediate_msg=immediate_msg,
+        immediate_source="pending" if immediate_msg is not None else "",
+        immediate_turn_id="",
+        actor=actor, user_id=user_id,
+        conversation_id=conversation_id, sender_id=sender_id,
+        reference_images=reference_images,
+        original_query=safe_original_query,
+        credential_meta=credential_meta,
+        redacted_fields=prepared_fields,
+    )
+
+
 async def _preprocess_turn(request: web.Request):
     """Pre-elabora una richiesta di turno (JSON o multipart immagini) in modo
     condiviso fra `turn()` (streaming inline legacy) e `turn_submit()`
@@ -1210,143 +1359,83 @@ async def _preprocess_turn(request: web.Request):
                     owner_user_id=user_id)
         except Exception:
             pass
-        query_for_run = query
-        immediate_msg = None
-    else:
-        # Dialog cancel intercept: se c'e' un dialog pending e l'utente scrive
-        # "annulla"/"undo", cancella il dialog invece di routare a undo.
-        _dialog_cancel_msg = _apply_dialog_cancel(
-            sender_id, query, owner_user_id=user_id)
-        if _dialog_cancel_msg is not None:
-            query_for_run = query
-            immediate_msg = _dialog_cancel_msg
-        else:
-            # Closed-schema replies are unambiguous and must remain usable
-            # even when the Tutor provider is unavailable. Open text still
-            # gets the semantic help chance first, preserving its pending.
-            _closed_reply = _apply_dialog_pending(
-                sender_id, query, actor=actor, channel="http",
-                conversation_id=conversation_id or "",
-                owner_user_id=user_id,
-                admit_only_valid_closed=True,
-            )
-            if _closed_reply is not None:
-                query_for_run = query
-                immediate_msg = _closed_reply
-            else:
-                tutor_error = None
-                tutor_busy = False
-                try:
-                    tutor = (
-                        None if sensitive_fields else
-                        await _apply_tutor_http(
-                            request, query=query, actor=actor, user_id=user_id,
-                            conversation_id=conversation_id,
-                            sender_id=sender_id,
-                        )
-                    )
-                except TutorBoundaryBusy:
-                    tutor = None
-                    tutor_busy = True
-                if tutor is not None and tutor.esito != "tutor_error":
-                    return None, {
-                        "query_for_run": safe_original_query,
-                        "immediate_msg": tutor.answer_md,
-                        "immediate_source": "tutor",
-                        "immediate_turn_id": tutor.turn_id or "tutor",
-                        "actor": actor,
-                        "user_id": user_id,
-                        "conversation_id": conversation_id,
-                        "sender_id": sender_id,
-                        "reference_images": reference_images,
-                        "original_query": safe_original_query,
-                        "credential_meta": [],
-                        "redacted_fields": sensitive_fields,
-                    }
-                if tutor is not None:
-                    tutor_error = tutor
-
-                boundary_failed = tutor_error is not None or tutor_busy
-                if boundary_failed:
-                    # The closed dialog pre-pass above already accepted every
-                    # schema-valid deterministic reply.  A cap approval has
-                    # one additional closed text twin (exact yes/no); do not
-                    # call its generic consumer for arbitrary prose because
-                    # that would clear or feed an open dialog during outage.
-                    from channels.daemon import _classify_yes_no
-                    if _classify_yes_no(query) is not None:
-                        query_for_run, consumed_pending, immediate_msg = (
-                            _apply_cap_pending(
-                                sender_id, query, actor=actor,
-                                owner_user_id=user_id)
-                        )
-                    else:
-                        query_for_run = query
-                        consumed_pending = None
-                        immediate_msg = None
-                    if immediate_msg is not None:
-                        pass
-                    elif tutor_error is not None:
-                        return None, {
-                            "query_for_run": safe_original_query,
-                            "immediate_msg": tutor_error.answer_md,
-                            "immediate_source": "tutor",
-                            "immediate_turn_id": tutor_error.turn_id or "tutor",
-                            "actor": actor,
-                            "user_id": user_id,
-                            "conversation_id": conversation_id,
-                            "sender_id": sender_id,
-                            "reference_images": reference_images,
-                            "original_query": safe_original_query,
-                            "credential_meta": [],
-                            "redacted_fields": sensitive_fields,
-                        }
-                    elif tutor_busy:
-                        # Tutor is an optional semantic pre-gate.  Saturating
-                        # its small worker pool must preserve any open dialog
-                        # and fall through to the ordinary planner, not consume
-                        # global turn capacity with a misleading HTTP 503.
-                        log.info("HTTP Tutor busy; falling through to runtime")
-                else:
-                    _dlg_resp = _apply_dialog_pending(
-                        sender_id, query, actor=actor, channel="http",
-                        conversation_id=conversation_id or "",
-                        owner_user_id=user_id,
-                    )
-                    if _dlg_resp is not None:
-                        query_for_run = query
-                        immediate_msg = _dlg_resp
-                        consumed_pending = None
-                    else:
-                        query_for_run, consumed_pending, immediate_msg = (
-                            _apply_cap_pending(
-                                sender_id, query, actor=actor,
-                                owner_user_id=user_id)
-                        )
-    credential_meta: list[dict] = []
-    prepared_fields = sensitive_fields
-    if immediate_msg is None:
-        # Pending consumers have already seen the in-memory raw response. From
-        # here onward both planner and persistence receive only this prepared
-        # representation; pair credentials are encrypted before redaction.
         import agent_runtime as _credential_runtime
         query_for_run, credential_meta, prepared_fields = (
-            _credential_runtime.prepare_credentials_for_routing(query_for_run)
+            _credential_runtime.prepare_credentials_for_routing(query)
         )
-    return None, {
-        "query_for_run": query_for_run,
-        "immediate_msg": immediate_msg,
-        "immediate_source": "pending" if immediate_msg is not None else "",
-        "immediate_turn_id": "",
-        "actor": actor,
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "sender_id": sender_id,
-        "reference_images": reference_images,
-        "original_query": safe_original_query,
-        "credential_meta": credential_meta,
-        "redacted_fields": prepared_fields,
-    }
+        return None, _preprocessed_turn_data(
+            query_for_run=query_for_run, immediate_msg=None,
+            immediate_source="", immediate_turn_id="",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            credential_meta=credential_meta,
+            redacted_fields=prepared_fields,
+        )
+
+    # Dialog cancel intercept: se c'e' un dialog pending e l'utente scrive
+    # "annulla"/"undo", cancella il dialog invece di routare a undo.
+    _dialog_cancel_msg = _apply_dialog_cancel(
+        sender_id, query, owner_user_id=user_id)
+    if _dialog_cancel_msg is not None:
+        return None, _preprocessed_turn_data(
+            query_for_run=query, immediate_msg=_dialog_cancel_msg,
+            immediate_source="pending", immediate_turn_id="",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            redacted_fields=sensitive_fields,
+        )
+
+    # Closed-schema replies are unambiguous and must remain usable even when
+    # the Tutor provider is unavailable. Open text gets the semantic help
+    # chance first and therefore preserves its pending interaction.
+    _closed_reply = _apply_dialog_pending(
+        sender_id, query, actor=actor, channel="http",
+        conversation_id=conversation_id or "",
+        owner_user_id=user_id,
+        admit_only_valid_closed=True,
+    )
+    if _closed_reply is not None:
+        return None, _preprocessed_turn_data(
+            query_for_run=query, immediate_msg=_closed_reply,
+            immediate_source="pending", immediate_turn_id="",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            redacted_fields=sensitive_fields,
+        )
+
+    if request.path == "/agent/turn/submit" and not sensitive_fields:
+        # The chat endpoint is resumable: semantic admission and any slow
+        # Tutor composition belong behind its 202 boundary.  EventSource can
+        # then keep the connection alive and a proxy timeout cannot replace a
+        # valid turn with an HTML 524 page.
+        return None, _preprocessed_turn_data(
+            query_for_run=safe_original_query, immediate_msg=None,
+            immediate_source="", immediate_turn_id="",
+            actor=actor, user_id=user_id,
+            conversation_id=conversation_id, sender_id=sender_id,
+            reference_images=reference_images,
+            original_query=safe_original_query,
+            redacted_fields=sensitive_fields,
+            tutor_deferred=True, deferred_query=query,
+        )
+
+    return None, await _resolve_open_http_turn(
+        request,
+        query=query,
+        safe_original_query=safe_original_query,
+        sensitive_fields=sensitive_fields,
+        actor=actor,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        sender_id=sender_id,
+        reference_images=reference_images,
+    )
 
 
 async def turn(request: web.Request) -> web.Response:
@@ -2966,18 +3055,63 @@ async def turn_submit(request: web.Request) -> web.Response:
     import agent_runtime as _agent_runtime
     async def _run_async():
         progress = TurnEventProgress(turn_id, log=event_log)
+        reservation_handed_off = False
         try:
+            runtime_data = data
+            if data.get("_tutor_deferred"):
+                deferred_query = str(data.pop("_deferred_query", ""))
+                runtime_data = await _resolve_open_http_turn(
+                    request,
+                    query=deferred_query,
+                    safe_original_query=original_query,
+                    sensitive_fields=0,
+                    actor=actor,
+                    user_id=user_id,
+                    conversation_id=conv_id,
+                    sender_id=sender_id,
+                    reference_images=refs,
+                    turn_id_hint=turn_id,
+                )
+                deferred_immediate = runtime_data["immediate_msg"]
+                if deferred_immediate is not None:
+                    immediate_http = _decorate_dialog_markers(
+                        deferred_immediate, admin_key)
+                    event_log.append(turn_id, "final", {
+                        "turn_id": turn_id,
+                        "final_message": immediate_http,
+                        "final_message_html": _safe_final_html(immediate_http),
+                        "final_kind": "answer",
+                        "total_ms": 0,
+                        "expandable_caps": [],
+                        "attachments": [],
+                        "gallery_url": None,
+                        "n_total_matches": 0,
+                        "path": [],
+                    })
+                    pool = _turn_pool(request)
+                    if pool is not None:
+                        pool.release(reservation, completed=True)
+                    reservation_handed_off = True
+                    return
+
+            query_to_run = runtime_data["query_for_run"]
+            runtime_credentials = runtime_data.get("credential_meta") or []
+            runtime_redacted_fields = int(
+                runtime_data.get("redacted_fields") or 0)
+            # From this point the dedicated pool owns release semantics,
+            # including cancellation while its worker thread is still alive.
+            reservation_handed_off = True
             log_obj = await _run_turn_reserved(
                 request, reservation,
                 lambda: _agent_runtime.run_turn(
-                    query_for_run, actor=actor, channel="http",
+                    query_to_run, actor=actor, channel="http",
                     owner_user_id=user_id,
                     conversation_id=conv_id,
                     progress=progress,
                     reference_images=refs or None,
-                    credential_meta=credential_meta,
+                    credential_meta=runtime_credentials,
                     credentials_prepared=True,
-                    redacted_fields=redacted_fields,
+                    redacted_fields=runtime_redacted_fields,
                 ),
             )
             _save_cap_pending_if_any(
@@ -2992,6 +3126,10 @@ async def turn_submit(request: web.Request) -> web.Response:
                 "type": type(ex).__name__,
             })
         finally:
+            if not reservation_handed_off:
+                pool = _turn_pool(request)
+                if pool is not None:
+                    pool.release(reservation, completed=True)
             event_log.close(turn_id)
 
     try:

@@ -307,11 +307,13 @@ def _digest_jobs(jobs, digest_fn, *, workers: int | None = None):
 
 
 def _stream_worker_count(jobs) -> int:
-    """Adatta lo streaming completo alla dimensione media dei file.
+    """Use the runtime-owned I/O budget, with an optional lower override.
 
-    Le impronte brevi beneficiano di molta concorrenza. Per file grandi,
-    invece, pochi stream saturano gia' un NAS e altri thread aggiungono seek e
-    contesa. L'override d'ambiente consente tuning specifico dell'installazione.
+    The central scheduler has already sized the instance from the host and the
+    signed parallelism class. A local average-size heuristic used to clamp
+    large files to eight streams; on high-latency network filesystems that
+    discarded three quarters of the assigned budget and made cold scans much
+    slower. The executor may still be lowered explicitly, never raised.
     """
     explicit = os.environ.get("METNOS_FIND_HASH_STREAM_WORKERS")
     if explicit:
@@ -325,12 +327,15 @@ def _stream_worker_count(jobs) -> int:
             pass
     if not jobs:
         return 1
-    average_size = sum(size for _path, size in jobs) / len(jobs)
-    if average_size >= 1024 * 1024:
-        return min(assigned_workers(item_count=len(jobs)), 8)
-    if average_size >= 256 * 1024:
-        return min(assigned_workers(item_count=len(jobs)), 16)
     return min(assigned_workers(item_count=len(jobs)), _MAX_IO_WORKERS)
+
+
+def _batches(values: list, workers: int):
+    """Yield bounded batches so completed hashes survive interruption."""
+
+    batch_size = max(64, min(512, max(1, int(workers)) * 8))
+    for start in range(0, len(values), batch_size):
+        yield values[start:start + batch_size]
 
 
 def _failure(path: Path, reason: str) -> dict:
@@ -437,6 +442,7 @@ def invoke(args):
             inode=int(stat.st_ino),
         )
 
+    scan_started = time.perf_counter()
     walk = parallel_walk(
         base,
         accept=lambda path, kind, _depth: (
@@ -455,6 +461,7 @@ def invoke(args):
     for stamp in stamps:
         by_size[stamp.size].append(stamp)
     scanned_files = len(stamps)
+    scan_elapsed_ms = int((time.perf_counter() - scan_started) * 1000)
 
     same_size_candidates = sum(
         len(stamps) for stamps in by_size.values() if len(stamps) > 1)
@@ -485,20 +492,28 @@ def invoke(args):
             hashes_by_key[stamp.cache_key] = full_hash
         by_sample[(stamp.size, sample)].append(stamp.path)
 
-    raw_sample_jobs = [
-        (stamp.path, stamp.size) for stamp in missing_sample_jobs]
-    for stamp, (digest, reason) in zip(
-            missing_sample_jobs,
-            _digest_jobs(raw_sample_jobs, _sample_digest_stable)):
-        if digest is None:
-            failed.append(_failure(stamp.path, reason or "sample_failed"))
-            continue
-        sampled_files += 1
-        samples_by_key[stamp.cache_key] = digest
-        by_sample[(stamp.size, digest)].append(stamp.path)
+    sample_started = time.perf_counter()
+    sample_workers = assigned_workers(item_count=len(missing_sample_jobs))
+    for batch in _batches(missing_sample_jobs, sample_workers):
+        raw_batch = [(stamp.path, stamp.size) for stamp in batch]
+        for stamp, (digest, reason) in zip(
+                batch, _digest_jobs(
+                    raw_batch, _sample_digest_stable,
+                    workers=sample_workers)):
+            if digest is None:
+                failed.append(_failure(stamp.path, reason or "sample_failed"))
+                continue
+            sampled_files += 1
+            samples_by_key[stamp.cache_key] = digest
+            by_sample[(stamp.size, digest)].append(stamp.path)
+        # Checkpoint each completed batch. A daemon restart no longer throws
+        # away every sample collected during a long remote-filesystem walk.
+        _cache_store(cache_connection, batch, samples_by_key, hashes_by_key)
+    sample_elapsed_ms = int((time.perf_counter() - sample_started) * 1000)
 
+    stamps_by_path = {stamp.path: stamp for stamp in sample_jobs}
     hash_jobs = [
-        next(stamp for stamp in by_size[size] if stamp.path == path)
+        stamps_by_path[path]
         for (size, _sample), paths in sorted(by_sample.items())
         if len(paths) > 1
         for path in paths
@@ -507,6 +522,8 @@ def invoke(args):
     by_hash: dict[tuple[int, str], list[Path]] = defaultdict(list)
     hashed_files = 0
     hash_cache_hits = 0
+    hashed_bytes = 0
+    hash_cache_bytes = 0
     missing_hash_jobs: list[_FileStamp] = []
     for stamp in hash_jobs:
         digest = hashes_by_key.get(stamp.cache_key)
@@ -515,23 +532,30 @@ def invoke(args):
             continue
         hash_cache_hits += 1
         hashed_files += 1
+        hash_cache_bytes += stamp.size
         by_hash[(stamp.size, digest)].append(stamp.path)
 
     raw_hash_jobs = [(stamp.path, stamp.size) for stamp in missing_hash_jobs]
     hash_workers = _stream_worker_count(raw_hash_jobs)
-    for stamp, (digest, reason) in zip(
-            missing_hash_jobs,
-            _digest_jobs(
-                raw_hash_jobs, _sha256_stable, workers=hash_workers)):
-        if digest is None:
-            failed.append(_failure(stamp.path, reason or "hash_failed"))
-            continue
-        hashed_files += 1
-        hashes_by_key[stamp.cache_key] = digest
-        by_hash[(stamp.size, digest)].append(stamp.path)
+    hash_started = time.perf_counter()
+    for batch in _batches(missing_hash_jobs, hash_workers):
+        raw_batch = [(stamp.path, stamp.size) for stamp in batch]
+        for stamp, (digest, reason) in zip(
+                batch, _digest_jobs(
+                    raw_batch, _sha256_stable, workers=hash_workers)):
+            if digest is None:
+                failed.append(_failure(stamp.path, reason or "hash_failed"))
+                continue
+            hashed_files += 1
+            hashed_bytes += stamp.size
+            hashes_by_key[stamp.cache_key] = digest
+            by_hash[(stamp.size, digest)].append(stamp.path)
+        # Full hashes are the expensive part. Persist them incrementally so a
+        # killed HTTP/service session resumes from the last completed batch.
+        _cache_store(cache_connection, batch, samples_by_key, hashes_by_key)
+    hash_elapsed_ms = int((time.perf_counter() - hash_started) * 1000)
 
-    _cache_store(
-        cache_connection, sample_jobs, samples_by_key, hashes_by_key)
+    cache_enabled = cache_connection is not None
     if cache_connection is not None:
         try:
             cache_connection.close()
@@ -577,8 +601,10 @@ def invoke(args):
         "full_hash_candidates": full_hash_candidates,
         "hashed_files": hashed_files,
         "hash_cache_hits": hash_cache_hits,
+        "hashed_bytes": hashed_bytes,
+        "hash_cache_bytes": hash_cache_bytes,
         "hash_workers": hash_workers,
-        "cache_enabled": cache_connection is not None,
+        "cache_enabled": cache_enabled,
         "duplicate_groups_count": len(groups),
         "duplicate_files_count": duplicate_files_count,
         "redundant_files_count": redundant_files_count,
@@ -593,6 +619,9 @@ def invoke(args):
             "patterns": patterns,
             "recursive": recursive,
             "case_sensitive": case_sensitive,
+            "scan_elapsed_ms": scan_elapsed_ms,
+            "sample_elapsed_ms": sample_elapsed_ms,
+            "hash_elapsed_ms": hash_elapsed_ms,
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
@@ -612,7 +641,7 @@ def invoke(args):
     elif results_truncated:
         out.update({
             "truncated": True,
-            "truncated_what": "duplicate_files",
+            "truncated_what": "MSG_OBJECT_DUPLICATE_FILES",
             "used": len(entries),
             "available_total": redundant_files_count,
             "cap_field": "max_results",

@@ -90,7 +90,12 @@ preference. The generated inventory is published in the
 For example, ask: “Find exact duplicate image files under Pictures.” Metnos
 uses one content-based operation: it scans the requested source completely,
 compares full SHA-256 digests after safe size and sample filters, and applies a
-display limit only after computing the complete duplicate groups.
+display limit only after computing the complete duplicate groups. Broad file
+kinds such as images, video, audio, documents, and archives are resolved by a
+translatable input lexicon into the corresponding filename formats. Exact
+digests are checkpointed in a persistent cache scoped to the user: a cold scan
+of a large or network-mounted corpus must still read every candidate byte, while
+later scans reuse hashes only when the full filesystem signature is unchanged.
 
 ### Central execution policy
 

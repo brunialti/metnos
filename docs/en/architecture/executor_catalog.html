@@ -17,12 +17,12 @@
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>
 <tr><td><code>change_files_format</code></td><td>converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).</td><td>standard; any; -</td><td><code>executors/change_files_format/</code></td></tr>
 <tr><td><code>compress_files</code></td><td>compress files into a new zip/tar/gz archive.</td><td>standard; any; linux, windows</td><td><code>executors/compress_files/</code></td></tr>
-<tr><td><code>compute_files_loc</code></td><td>compute LOC statistics (lines, blank lines, comments) on source code, walking directory trees in parallel.</td><td>standard; any; linux, windows</td><td><code>executors/compute_files_loc/</code></td></tr>
+<tr><td><code>compute_files_loc</code></td><td>computes source-code LOC statistics, walking directory trees in parallel.</td><td>standard; any; linux, windows</td><td><code>executors/compute_files_loc/</code></td></tr>
 <tr><td><code>create_files_doc</code></td><td>creates a new Google Doc.</td><td>standard; any; -</td><td><code>executors/create_files_doc/</code></td></tr>
 <tr><td><code>create_files_spreadsheet</code></td><td>creates and POPULATES a NEW local .xlsx sheet («save data to spreadsheet»).</td><td>standard; any; linux, windows</td><td><code>executors/create_files_spreadsheet/</code></td></tr>
 <tr><td><code>delete_files</code></td><td>delete files after a verified backup.</td><td>standard; any; linux, windows</td><td><code>executors/delete_files/</code></td></tr>
 <tr><td><code>find_files</code></td><td>search files by pattern with a parallel recursive walk.</td><td>standard; any; linux, windows</td><td><code>executors/find_files/</code></td></tr>
-<tr><td><code>find_files_hash</code></td><td>finds files with identical content through a complete SHA-256 comparison, without modifying them.</td><td>standard; any; linux, windows</td><td><code>executors/find_files_hash/</code></td></tr>
+<tr><td><code>find_files_hash</code></td><td>finds exact duplicates through complete SHA-256; broad file types expand into globs.</td><td>standard; any; linux, windows</td><td><code>executors/find_files_hash/</code></td></tr>
 <tr><td><code>get_files</code></td><td>gets size, dates, and EXIF for KNOWN files.</td><td>standard; any; linux, windows</td><td><code>executors/get_files/</code></td></tr>
 <tr><td><code>move_files</code></td><td>move or rename files in batch.</td><td>standard; any; linux, windows</td><td><code>executors/move_files/</code></td></tr>
 <tr><td><code>read_files</code></td><td>reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures.</td><td>standard; any; linux, windows</td><td><code>executors/read_files/</code></td></tr>
@@ -41,7 +41,7 @@
 <tr><td><code>create_dirs</code></td><td>create directories (batch, even empty).</td><td>standard; any; linux, windows</td><td><code>executors/create_dirs/</code></td></tr>
 <tr><td><code>delete_dirs</code></td><td>delete directories (empty or forced).</td><td>standard; any; linux, windows</td><td><code>executors/delete_dirs/</code></td></tr>
 <tr><td><code>find_dirs</code></td><td>find directories and compute aggregate metadata with a parallel recursive walk.</td><td>standard; any; linux, windows</td><td><code>executors/find_dirs/</code></td></tr>
-<tr><td><code>list_dirs</code></td><td>list directories and files; in recursive mode, walk subdirectories in parallel and sort the complete set before limiting display.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
+<tr><td><code>list_dirs</code></td><td>lists directories and files; recursive mode walks subdirectories in parallel.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
 </tbody></table>
 <h2 id="domain-packages">Domain: <code>packages</code> (1)</h2>
 <table><thead><tr><th>Executor</th><th>Purpose</th><th>Properties</th><th>Location</th></tr></thead><tbody>

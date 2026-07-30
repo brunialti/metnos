@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files_hash"
-version     = "0.3.0"
+version     = "0.4.0"
 timeout_s   = 600
 author      = "Roberto Brunialti"
 affinity    = [
@@ -22,12 +22,12 @@ concurrency_key   = "none"
 equivalence_gate  = "verified"
 
 [description]
-it = "SCOPO: trova file con contenuto identico tramite confronto completo SHA-256, senza modificarli. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"], recursive=true). NON: concatenare find_files, get_files o compute_entries; non impostare max_files se l'utente non chiede esplicitamente una scansione parziale; max_results limita soltanto l'output, mai la scansione. OUT: entries=[{path,duplicate_of,size,sha256,group_count}] e conteggi dell'intero corpus."
-en = "SCOPO: finds files with identical content through a complete SHA-256 comparison, without modifying them. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"], recursive=true). NON: chain find_files, get_files, or compute_entries; do not set max_files unless the user explicitly requests a partial scan; max_results limits only output, never the scan. OUT: entries=[{path,duplicate_of,size,sha256,group_count}] and whole-corpus counts."
+it = "SCOPO: trova duplicati esatti tramite SHA-256 completo; i tipi generali sono espansi in glob. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"]). NON: concatenare altri tool; max_files solo per scansioni parziali esplicite. OUT: duplicati e conteggi completi; cache persistente per utente."
+en = "SCOPO: finds exact duplicates through complete SHA-256; broad file types expand into globs. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"]). NON: chain other tools; max_files only for explicitly partial scans. OUT: duplicates and complete counts; persistent per-user cache."
 
 [code]
 files  = ["find_files_hash.py"]
-digest = "sha256:f5188d837ba4e55e4af0628125675b6f362ccc558fc943ea928611a2d7f9b0cc"
+digest = "sha256:815424fbc39b7ba87b8a8752878c080325420cb2acf40839776668e8b987107e"
 
 [args]
 type     = "object"
@@ -49,10 +49,11 @@ en = "One or more globs separated by comma or '|', for example '*.jpg,*.png'. Om
 
 [args.properties.patterns]
 type = "array"
+semantic_type = "file_globs"
 
 [args.properties.patterns.description]
-it = "Lista di glob dei nomi file, per esempio ['*.jpg','*.png']; il confronto non distingue maiuscole per default."
-en = "List of filename globs, for example ['*.jpg','*.png']; matching is case-insensitive by default."
+it = "Lista di glob dei nomi file, per esempio ['*.jpg','*.png']; il confronto non distingue maiuscole per default. Il runtime può ricavarla da tipi naturali generali come «file immagine» o «video»."
+en = "List of filename globs, for example ['*.jpg','*.png']; matching is case-insensitive by default. The runtime can derive it from broad natural types such as 'image files' or 'video'."
 
 [args.properties.recursive]
 type = "boolean"
@@ -112,6 +113,8 @@ schema_inline = """
   full_hash_candidates: int,
   hashed_files: int,
   hash_cache_hits: int,
+  hashed_bytes: int,
+  hash_cache_bytes: int,
   hash_workers: int,
   cache_enabled: bool,
   duplicate_groups_count: int,
@@ -123,7 +126,11 @@ schema_inline = """
   results_truncated: bool,
   walk_workers: int,
   visited_dirs: int,
-  metadata: {base_path: str, patterns: Array<str>, recursive: bool, case_sensitive: bool},
+  metadata: {
+    base_path: str, patterns: Array<str>, recursive: bool,
+    case_sensitive: bool, scan_elapsed_ms: int,
+    sample_elapsed_ms: int, hash_elapsed_ms: int
+  },
   partial?: bool,
   truncated?: bool,
   truncated_what?: str,

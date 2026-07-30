@@ -5405,7 +5405,7 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
         from messages import get as _msg_get
         from .types import StepSpec
         rc = runtime_ctx or {}
-        where = rc.get("target_device") or _msg_get("MSG_LOCAL_HERE")
+        target_device = rc.get("target_device")
         for idx, s in enumerate(steps):
             verb = (s.tool or "").split("_", 1)[0]
             if verb not in _MASS_MUTATION_VERBS:
@@ -5448,8 +5448,17 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
                         continue  # non contabile, o sotto soglia
                     guard_count, n_display = n_inline, n_inline
             action = _msg_get(_MASS_ACTION_KEY.get(verb, "MSG_ACTION_DELETE"))
-            prompt = _msg_get("MSG_CONSENT_GATE_MASS_MUTATION",
-                              action=action, n=n_display, where=where)
+            if target_device:
+                prompt = _msg_get(
+                    "MSG_CONSENT_GATE_MASS_MUTATION",
+                    action=action, n=n_display, where=target_device)
+            else:
+                # Nessuna collocazione inventata: gli elementi possono vivere
+                # in una mailbox, in un servizio remoto o sul server. Il
+                # template senza luogo è universale e resta interamente i18n.
+                prompt = _msg_get(
+                    "MSG_CONSENT_GATE_MASS_MUTATION_GENERIC",
+                    action=action, n=n_display)
             gate = StepSpec(tool="get_approval", args={
                 "prompt": prompt,
                 "on_approve": {"tool": "final_answer", "args": {}},

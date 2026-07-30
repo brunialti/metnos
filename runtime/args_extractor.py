@@ -103,7 +103,7 @@ _LANG_EXT_MAP = {
     "yaml": "yaml", "json": "json", "toml": "toml", "html": "html", "css": "css",
     "csharp": "cs", "cpp": "cpp", "header": "h", "perl": "pl", "php": "php",
     "scala": "scala", "elixir": "ex", "haskell": "hs", "lua": "lua", "sql": "sql",
-    "text": "txt", "csv": "csv", "xml": "xml", "image": "png",
+    "text": "txt", "csv": "csv", "xml": "xml",
 }
 # Ordinato per lunghezza decrescente: «javascript» prima di «java» (evita che
 # «file javascript» matchi «java»). Confine di parola su entrambi i lati.
@@ -251,6 +251,50 @@ def _extract_file_ext_glob(query: str) -> Optional[str]:
             if cand in _KNOWN_EXTENSIONS:
                 return f"*.{cand}"
     return None
+
+
+def _extract_file_kind_globs(query: str) -> list[str]:
+    """Expand broad, translated file kinds into technical glob lists.
+
+    Surface forms come from ``detection_lexicon`` and extension sets from
+    ``file_kinds``. A form immediately used as a container name is ignored:
+    ``folder Images`` identifies the search root, while ``image files`` or
+    ``duplicate images in folder Images`` identify the requested file kind.
+    """
+    if not query:
+        return []
+    try:
+        import detection_lexicon as dl
+        from file_kinds import globs_for_kinds
+    except ImportError:
+        return []
+    mapping = dl.mapping("files.kind") or {}
+    container_forms = dl.forms("files.container_marker") or []
+    low = query.casefold()
+    selected: list[str] = []
+
+    def _is_container_name(start: int) -> bool:
+        prefix = low[:start].rstrip()
+        return any(re.search(
+            r"\b" + re.escape(str(form).casefold()) + r"\s*$", prefix)
+            for form in container_forms if str(form).strip()
+        )
+
+    for kind, forms in mapping.items():
+        matched = False
+        for form in sorted(
+                (str(value).casefold() for value in (forms or []) if value),
+                key=len, reverse=True):
+            for occurrence in re.finditer(
+                    r"\b" + re.escape(form) + r"\b", low):
+                if not _is_container_name(occurrence.start()):
+                    matched = True
+                    break
+            if matched:
+                break
+        if matched:
+            selected.append(str(kind))
+    return globs_for_kinds(selected)
 
 
 def _extract_date_keyword(query: str) -> Optional[str]:
@@ -405,6 +449,8 @@ def regex_extract(query: str, schema: dict | None) -> dict:
             g = _extract_file_ext_glob(query)
             if g:
                 _emit([g])
+            elif _spec.get("semantic_type") == "file_globs":
+                _emit(_extract_file_kind_globs(query))
         elif lname in _EMAIL_NAMES:
             _emit(_extract_emails(query))
         elif lname in _REPO_NAMES:

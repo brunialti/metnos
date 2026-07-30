@@ -17,12 +17,12 @@
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Percorso</th></tr></thead><tbody>
 <tr><td><code>change_files_format</code></td><td>converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio).</td><td>standard; any; -</td><td><code>executors/change_files_format/</code></td></tr>
 <tr><td><code>compress_files</code></td><td>comprime file in un nuovo archivio zip/tar/gz.</td><td>standard; any; linux, windows</td><td><code>executors/compress_files/</code></td></tr>
-<tr><td><code>compute_files_loc</code></td><td>calcola statistiche LOC (linee, righe vuote, commenti) su codice sorgente, visitando in parallelo gli alberi di directory.</td><td>standard; any; linux, windows</td><td><code>executors/compute_files_loc/</code></td></tr>
+<tr><td><code>compute_files_loc</code></td><td>calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo.</td><td>standard; any; linux, windows</td><td><code>executors/compute_files_loc/</code></td></tr>
 <tr><td><code>create_files_doc</code></td><td>crea un nuovo Google Doc.</td><td>standard; any; -</td><td><code>executors/create_files_doc/</code></td></tr>
 <tr><td><code>create_files_spreadsheet</code></td><td>crea e POPOLA un NUOVO foglio .xlsx locale («salva dati in spreadsheet»).</td><td>standard; any; linux, windows</td><td><code>executors/create_files_spreadsheet/</code></td></tr>
 <tr><td><code>delete_files</code></td><td>cancella file dopo un backup verificato.</td><td>standard; any; linux, windows</td><td><code>executors/delete_files/</code></td></tr>
 <tr><td><code>find_files</code></td><td>cerca file per pattern con visita ricorsiva parallela.</td><td>standard; any; linux, windows</td><td><code>executors/find_files/</code></td></tr>
-<tr><td><code>find_files_hash</code></td><td>trova file con contenuto identico tramite confronto completo SHA-256, senza modificarli.</td><td>standard; any; linux, windows</td><td><code>executors/find_files_hash/</code></td></tr>
+<tr><td><code>find_files_hash</code></td><td>trova duplicati esatti tramite SHA-256 completo; i tipi generali sono espansi in glob.</td><td>standard; any; linux, windows</td><td><code>executors/find_files_hash/</code></td></tr>
 <tr><td><code>get_files</code></td><td>ottiene dimensione, date ed EXIF di file NOTI.</td><td>standard; any; linux, windows</td><td><code>executors/get_files/</code></td></tr>
 <tr><td><code>move_files</code></td><td>sposta o rinomina file in batch.</td><td>standard; any; linux, windows</td><td><code>executors/move_files/</code></td></tr>
 <tr><td><code>read_files</code></td><td>legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256.</td><td>standard; any; linux, windows</td><td><code>executors/read_files/</code></td></tr>
@@ -41,7 +41,7 @@
 <tr><td><code>create_dirs</code></td><td>crea directory (batch, anche vuote).</td><td>standard; any; linux, windows</td><td><code>executors/create_dirs/</code></td></tr>
 <tr><td><code>delete_dirs</code></td><td>cancella directory (vuote o forzate).</td><td>standard; any; linux, windows</td><td><code>executors/delete_dirs/</code></td></tr>
 <tr><td><code>find_dirs</code></td><td>trova directory e calcola metadati aggregati con visita ricorsiva parallela.</td><td>standard; any; linux, windows</td><td><code>executors/find_dirs/</code></td></tr>
-<tr><td><code>list_dirs</code></td><td>elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo e ordina l&#x27;insieme completo prima di limitarne la visualizzazione.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
+<tr><td><code>list_dirs</code></td><td>elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo.</td><td>standard; any; linux, windows</td><td><code>executors/list_dirs/</code></td></tr>
 </tbody></table>
 <h2 id="domain-packages">Dominio: <code>packages</code> (1)</h2>
 <table><thead><tr><th>Executor</th><th>Scopo</th><th>Proprietà</th><th>Percorso</th></tr></thead><tbody>

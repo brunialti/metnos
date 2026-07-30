@@ -726,10 +726,10 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
     """Read-only credential binds and network authority for local IMAP.
 
     The grant exists only when the signed manifest declares an effective
-    ``mail:read`` capability. Invocation arguments can then *narrow* it to the
-    selected channel/backend/account; they can never create it. Google mail is
-    governed by ``provider:access`` and Telegram inquiry has no synchronous
-    mailbox, so neither receives the local IMAP vault surface.
+    ``mail:read`` or ``mail:write`` capability. Invocation arguments can then
+    *narrow* it to the selected channel/backend/account; they can never create
+    it. Google mail is governed by ``provider:access`` and Telegram inquiry has
+    no synchronous mailbox, so neither receives the local IMAP vault surface.
 
     The encrypted credential directory is shared with web logins. Therefore
     this resolver binds individual ``smtp_<account>.json.age`` files, never
@@ -743,7 +743,8 @@ def mail_extras(executor, args) -> tuple[list[Path], bool]:
         getattr(executor, "args_schema", None) or {},
         args,
     )
-    if not any(cap.get("name") == "mail:read" for cap in effective):
+    if not any(cap.get("name") in {"mail:read", "mail:write"}
+               for cap in effective):
         return [], False
 
     invocation = args if isinstance(args, dict) else {}

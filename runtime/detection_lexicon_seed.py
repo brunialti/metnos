@@ -50,6 +50,34 @@ _PROVIDER_MARKERS_EN = {
 def register_all() -> None:
     R = _dl.register
 
+    # ── FILESYSTEM: classi semantiche dei file ─────────────────────────
+    # Le chiavi canoniche sono tecniche e risolte da file_kinds; qui vivono
+    # soltanto le forme naturali traducibili. Il classifier degli argomenti
+    # ignora una forma usata come nome di cartella (es. «cartella Immagini»),
+    # quindi il nome del contenitore non diventa da solo un filtro sui file.
+    R("files.kind", "mapping", match_mode="word",
+      it={
+          "image": ["immagine", "immagini", "foto", "fotografia",
+                    "fotografie", "fotografico", "fotografici"],
+          "video": ["video", "filmato", "filmati"],
+          "audio": ["audio", "musica", "brano", "brani", "registrazione",
+                    "registrazioni"],
+          "document": ["documento", "documenti", "testo", "testi"],
+          "archive": ["archivio", "archivi", "compresso", "compressi"],
+      },
+      en={
+          "image": ["image", "images", "picture", "pictures", "photo",
+                    "photos", "photograph", "photographs"],
+          "video": ["video", "videos", "movie", "movies", "clip", "clips"],
+          "audio": ["audio", "music", "song", "songs", "recording",
+                    "recordings"],
+          "document": ["document", "documents", "text", "texts"],
+          "archive": ["archive", "archives", "compressed"],
+      })
+    R("files.container_marker", "phrases", match_mode="word",
+      it=["cartella", "directory"],
+      en=["folder", "directory"])
+
     # ── UNDO ───────────────────────────────────────────────────────────
     # tool_grammar._UNDO_MARKERS (word-boundary, query_has_undo_marker)
     R("undo.grammar_marker", "phrases", match_mode="word",

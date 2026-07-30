@@ -2578,83 +2578,10 @@ def _lookup_field(obj, dotted):
     return cur, None
 
 
-def _consumer_match_arg(consumer_schema: dict | None, prev_entries: list) -> str | None:
-    """Layer 4 (5/5/2026): rileva l'arg consumer naturale per una lista
-    di entries, basandosi sulla convenzione I/O Metnos (plurale↔singolare).
-
-    Esempio: find_urls produce entries=[{url, title, ...}], read_urls_html
-    consuma `urls`. Match: arg `urls` → singolare `url` → presente in
-    entries[0] → estrai entries[*].url.
-
-    Caso degenere `prev_entries=[]`: non possiamo ispezionare entries[0],
-    quindi prendiamo come consumer arg il primo array required dello schema
-    (esclusi entries/from_step). Il caller iniettera' lista vuota — l'executor
-    decide se ok_count=0 o errore di dominio.
-
-    Ritorna il nome dell'arg consumer (string) o None se nessun match.
-    Esclude `entries` stesso (target di fallback gestito dal caller).
-    """
-    if not isinstance(consumer_schema, dict) or not isinstance(prev_entries, list):
-        return None
-    props = consumer_schema.get("properties") or {}
-    if not isinstance(props, dict):
-        return None
-    required = consumer_schema.get("required") or []
-    if not isinstance(required, list):
-        required = []
-
-    # Caso degenere: lista vuota. Prendi il primo array required, escludendo
-    # `entries`/`from_step`. Senza required, ritorna None → fallback `entries`.
-    if not prev_entries:
-        for arg_name in required:
-            if arg_name in ("entries", "from_step"):
-                continue
-            spec = props.get(arg_name)
-            if isinstance(spec, dict):
-                t = spec.get("type")
-                if t and t != "array":
-                    continue
-            return arg_name
-        return None
-
-    if not isinstance(prev_entries[0], dict):
-        return None
-    sample_keys = set(prev_entries[0].keys())
-    # Ranking: prima l'arg required (semantica piu' forte), poi alfabetico stabile.
-    candidates = []
-    for arg_name, spec in props.items():
-        if arg_name == "entries":
-            continue  # gestito dal fallback
-        if arg_name == "from_step":
-            continue
-        # Solo arg di tipo array: l'auto-espansione consegna una lista.
-        if isinstance(spec, dict):
-            t = spec.get("type")
-            if t and t != "array":
-                continue
-        # `from_entries_key` (25/5/2026) §7.3: dichiarazione esplicita di
-        # quale campo delle entries usare quando from_step espande in
-        # quest'arg. Risolve l'ambiguita' quando il singular naïve di
-        # arg_name punta a un campo non utile (es. move_messages.message_ids
-        # → singular "message_id" matcha RFC822 header invece dello UID
-        # IMAP usato dal backend). Manifest property opt-in.
-        from_key = (spec.get("from_entries_key")
-                    if isinstance(spec, dict) else None)
-        if isinstance(from_key, str) and from_key in sample_keys:
-            priority = 0 if arg_name in required else 1
-            # boost priorita' per dichiarazione esplicita
-            candidates.append((priority - 1, arg_name, from_key))
-            continue
-        # Singolare = arg.rstrip('s'). Match esatto contro un campo di entries[0].
-        singular = arg_name[:-1] if arg_name.endswith("s") and len(arg_name) > 1 else arg_name
-        if singular in sample_keys:
-            priority = 0 if arg_name in required else 1
-            candidates.append((priority, arg_name, singular))
-    if not candidates:
-        return None
-    # Sort: prima i required (priority=0), tie-break alfabetico.
-    candidates.sort(key=lambda t: (t[0], t[1]))
-    return candidates[0][1]  # nome arg consumer
+from from_step_projection import (  # noqa: E402
+    consumer_match_arg as _consumer_match_arg,
+    project_from_entries as _project_from_entries,
+)
 
 
 def _expand_nested_from_step(args: dict, history: list) -> tuple[dict, list]:
@@ -2827,34 +2754,12 @@ def resolve_from_step(args, history, consumer_schema=None):
     prev_list = step_obs[list_field]
     new_args = dict(args)
     new_args.pop("from_step", None)
-    # Layer 4 (5/5/2026): consumer-arg auto-espansione. Se lo schema consumer
-    # ha un arg matchabile sul singolare di un campo di entries[0] e l'arg
-    # consumer non e' gia' presente in args, estrae i valori scalari.
-    consumer_arg = _consumer_match_arg(consumer_schema, prev_list)
-    if consumer_arg and consumer_arg not in new_args:
-        # Match key: prima `from_entries_key` (dichiarazione esplicita),
-        # fallback singular naïve.
-        match_key = None
-        if isinstance(consumer_schema, dict):
-            _spec = (consumer_schema.get("properties") or {}).get(consumer_arg)
-            if isinstance(_spec, dict):
-                fek = _spec.get("from_entries_key")
-                if isinstance(fek, str) and fek:
-                    match_key = fek
-        if not match_key:
-            match_key = (consumer_arg[:-1]
-                         if consumer_arg.endswith("s") and len(consumer_arg) > 1
-                         else consumer_arg)
-        values = []
-        for e in prev_list:
-            if isinstance(e, dict) and match_key in e:
-                v = e[match_key]
-                if v is not None:
-                    values.append(v)
-        new_args[consumer_arg] = values
+    # Proiezione condivisa col motore v3: payload vettoriale e contesto scalare
+    # omogeneo sono entrambi dichiarati nel manifest del consumer.
+    new_args, consumer_arg = _project_from_entries(
+        new_args, prev_list, consumer_schema)
+    if consumer_arg:
         return new_args, errors
-    # Fallback storico: inietta sotto `entries` (target standard universale).
-    new_args["entries"] = prev_list
     # Injection metadata upstream per executor che possono usare available_total
     # senza materializzare l'intera lista (es. compute_entries op=count su
     # find_files truncated: usa available_total invece di len(entries) capped).

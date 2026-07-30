@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files"
-version     = "0.3.0"
+version     = "0.4.0"
 # Il walk ricorsivo usa il visitor parallelo comune. `max_results` limita
 # l'output; un sondaggio interno molto piu' ampio mantiene affidabili i conteggi
 # ordinari senza materializzare corpus arbitrariamente grandi.
@@ -54,10 +54,11 @@ en = "Single glob pattern to search for in names. E.g. 'README.md', '*.pdf', 'di
 
 [args.properties.patterns]
 type        = "array"
+semantic_type = "file_globs"
 
 [args.properties.patterns.description]
-it = "Lista di pattern glob. Match se almeno un pattern matcha. Es. ['*.jpg','*.png']. Cumulativo con pattern."
-en = "List of glob patterns. Match if at least one pattern matches. E.g. ['*.jpg','*.png']. Cumulative with patterns."
+it = "Lista di pattern glob. Corrisponde se almeno un pattern coincide, per esempio ['*.jpg','*.png']; è cumulativa con pattern. Il runtime può ricavarla da tipi naturali generali come «file immagine» o «video»."
+en = "List of glob patterns. Matches when at least one pattern matches, for example ['*.jpg','*.png']; cumulative with pattern. The runtime can derive it from broad natural types such as 'image files' or 'video'."
 
 [args.properties.case_sensitive]
 type        = "boolean"

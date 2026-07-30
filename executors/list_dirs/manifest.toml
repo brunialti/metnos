@@ -26,8 +26,8 @@ concurrency_key   = "none"
 equivalence_gate  = "verified"
 
 [description]
-it = "SCOPO: elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo e ordina l'insieme completo prima di limitarne la visualizzazione. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs). OUT: entries=[{name,type,kind,mime,size,mtime}] e available_total."
-en = "SCOPO: list directories and files; in recursive mode, walk subdirectories in parallel and sort the complete set before limiting display. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). OUT: entries=[{name,type,kind,mime,size,mtime}] and available_total."
+it = "SCOPO: elenca directory e file; in modalità ricorsiva visita le sottocartelle in parallelo. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: creare (create_dirs), cancellare (delete_dirs), cercare pattern (find_dirs). OUT: elementi ordinati e conteggio completo."
+en = "SCOPO: lists directories and files; recursive mode walks subdirectories in parallel. PATTERN: list_dirs(path=\"/tmp\", recursive=false). NON: create (create_dirs), delete (delete_dirs), search patterns (find_dirs). OUT: sorted entries and complete count."
 
 # path_alias.py e' co-locato (symlink -> runtime/path_alias.py, zero-drift): e'
 # una dipendenza runtime SPECIFICA di list_dirs (non universale come lo shim
