@@ -24,10 +24,8 @@ Caratteristiche:
 """
 from __future__ import annotations
 
-import multiprocessing
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
@@ -35,14 +33,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
-
-# Parallelismo (ADR 0100). I/O FS dominante: thread bastano (open+read
-# rilascia il GIL). SSD locale gestisce 4-8 letture in parallelo senza
-# saturare bandwidth; bilanciamo con cpu*2.
-_LOC_WORKERS = int(os.environ.get(
-    "METNOS_COMPUTE_LOC_WORKERS",
-    min(16, max(2, multiprocessing.cpu_count() * 2))
-))
+from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
 
 
 # ── Default di set ──────────────────────────────────────────────────────
@@ -91,7 +82,7 @@ def _excluded_by_substring(path_str: str, exclude: tuple[str, ...]) -> bool:
 
 
 def _walk_paths(roots, include_ext, exclude_subs, max_files):
-    """Genera Path di file candidati. Si ferma a max_files."""
+    """Genera candidati con visita parallela e cap globale deterministico."""
     seen = 0
     for root in roots:
         p = Path(os.path.expanduser(str(root)))
@@ -107,21 +98,20 @@ def _walk_paths(roots, include_ext, exclude_subs, max_files):
             if seen >= max_files:
                 return
             continue
-        # directory: rglob
-        for cand in p.rglob("*"):
-            try:
-                if not cand.is_file():
-                    continue
-            except OSError:
-                continue
-            if cand.is_symlink():
-                # Evita loop di symlink: skip silenzioso (i file di codice
-                # «veri» sono raggiunti dalla rglob normale).
-                continue
-            if _excluded_by_substring(str(cand), exclude_subs):
-                continue
-            if cand.suffix.lower() not in include_ext:
-                continue
+        remaining = max_files - seen
+        walk = parallel_walk(
+            p,
+            accept=lambda cand, kind, _depth: (
+                kind == "file"
+                and not _excluded_by_substring(str(cand), exclude_subs)
+                and cand.suffix.lower() in include_ext
+            ),
+            descend=lambda directory, _depth: not _excluded_by_substring(
+                str(directory), exclude_subs),
+            recursive=True,
+            max_items=remaining,
+        )
+        for cand in walk.items:
             yield cand
             seen += 1
             if seen >= max_files:
@@ -211,7 +201,7 @@ def invoke(args):
         else:
             return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="max_files")}
 
-    # Walk seriale (deterministico) → lista di candidati. Cap a max_files.
+    # Walk ricorsivo parallelo, con fusione deterministica e cap a max_files.
     candidates: list[Path] = list(_walk_paths(paths, include_ext, exclude_subs, max_files))
     visited_files = len(candidates)
 
@@ -227,25 +217,19 @@ def invoke(args):
             return cand, None
         return cand, {"lines": lines, "blank": blank, "comment": comment}
 
+    def _process_one_safe(cand: Path) -> tuple[Path, dict | None]:
+        try:
+            return _process_one(cand)
+        except Exception:
+            return cand, None
+
     by_ext: dict[str, dict] = {}
     # by_path mantiene l'ordine di walk per stabilita' visiva (cap 200).
     # Costruiamo una mappa pos→result e poi iteriamo in ordine candidates.
-    results_map: dict[int, tuple[Path, dict | None]] = {}
-    if candidates:
-        if len(candidates) == 1:
-            # Sync fast-path (no overhead pool).
-            results_map[0] = _process_one(candidates[0])
-        else:
-            workers = min(_LOC_WORKERS, len(candidates))
-            with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = {ex.submit(_process_one, c): i
-                        for i, c in enumerate(candidates)}
-                for fut in as_completed(futs):
-                    i = futs[fut]
-                    try:
-                        results_map[i] = fut.result()
-                    except Exception:
-                        results_map[i] = (candidates[i], None)
+    processed = parallel_map_ordered(candidates, _process_one_safe)
+    results_map: dict[int, tuple[Path, dict | None]] = {
+        index: result for index, result in enumerate(processed)
+    }
 
     by_path: list[dict] = []
     total_files = 0

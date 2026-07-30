@@ -7,7 +7,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "compute_files_loc"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["compute", "calcola", "loc", "linee", "righe", "lines", "code", "codice", "count", "conta", "statistiche", "stats", "lines-of-code", "sloc"]
 revertible  = false
@@ -17,13 +17,20 @@ lifecycle   = "active"
 # device), pathlib ovunque, encoding esplicito, nessun comando POSIX.
 platforms   = ["linux", "windows"]
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
-it = "SCOPO: calcola statistiche LOC (linee, blank, commenti) su codice sorgente. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
-en = "SCOPO: compute LOC stats (lines, blank, comments) on source code. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (-> change_files_format); compress into archives (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
+it = "SCOPO: calcola statistiche LOC (linee, righe vuote, commenti) su codice sorgente, visitando in parallelo gli alberi di directory. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
+en = "SCOPO: compute LOC statistics (lines, blank lines, comments) on source code, walking directory trees in parallel. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (-> change_files_format); compress into archives (-> compress_files). OUT: {total_files,total_lines,total_blank,total_comment,by_ext,by_path}."
 
 [code]
 files  = ["compute_files_loc.py"]
-digest = "sha256:eab88a37eddc4cc68e05f1e68a2cd899ee85e24811e6eaadfafc3fd5897dbeeb"
+digest = "sha256:be8875ae3ede0aa63b0b287d02c5843564492f017c520f4c9f6de7d194bee3fc"
 
 [args]
 type     = "object"
@@ -106,6 +113,8 @@ name     = "mix_py_md_html"
 setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\nb\\nc\\n' > /tmp/metnos_loc_test/main.py && printf '# title\\n\\npar\\n' > /tmp/metnos_loc_test/README.md && printf '<html></html>\\n' > /tmp/metnos_loc_test/page.html"
 input    = { paths = ["/tmp/metnos_loc_test"] }
 expect   = { ok = true, field_eq = { total_files = 3 } }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
 teardown = "rm -rf /tmp/metnos_loc_test"
 
 [[tests]]

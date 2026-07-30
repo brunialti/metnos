@@ -87,6 +87,11 @@ executor declares the same Executor Standard; transport is not a Composer
 preference. The generated inventory is published in the
 [executor catalog](https://metnos.com/en/architecture/executor_catalog).
 
+For example, ask: “Find exact duplicate image files under Pictures.” Metnos
+uses one content-based operation: it scans the requested source completely,
+compares full SHA-256 digests after safe size and sample filters, and applies a
+display limit only after computing the complete duplicate groups.
+
 ### Central execution policy
 
 All executor invocations pass through one runtime-owned scheduler. The loader
@@ -94,11 +99,13 @@ defaults every missing, legacy, or invalid execution policy to serial execution;
 an executor may request concurrency only through signed metadata and verified
 equivalence tests.
 
-Parallelism classes are portable ceilings rather than literal thread counts:
+At startup the scheduler derives one instance ceiling from the host environment
+(visible CPUs and the configured `max_workers`). Parallelism classes are
+portable reductions of that ceiling rather than literal thread counts:
 `0` stays on the caller thread, while `1`, `2`, and `3` request moderate, high,
-and hardware-bounded maximum concurrency. The runtime may always lower a class
-according to the backend, available hardware, global limits, or a missing
-concurrency identity. It never raises the signed class. This lets one central
+and the instance maximum. An executor can only lower its assignment according
+to its workload, backend, resource profile, or a missing concurrency identity;
+it cannot create a larger private budget. This lets one central
 policy apply queues, backpressure, resource pools, and timing metrics without
 changing arguments, result shapes, planner order, authority, or success
 criteria. Read-only work is the simplest case, but create-only and mutating

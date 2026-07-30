@@ -52,6 +52,7 @@ if _RUNTIME not in sys.path:
 
 from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
+from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
 from executor_helpers import (  # noqa: E402
     backup_file_for_undo, restore_file_from_undo_backup, vector_result,
 )
@@ -1053,9 +1054,11 @@ def find(args: dict) -> dict:
     if not base_path:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="base_path")}
-    if not isinstance(max_results, int) or max_results < 1:
+    if (not isinstance(max_results, int) or isinstance(max_results, bool)
+            or max_results < 1):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
-                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be a positive integer")}
+                "error": _msg("ERR_ARG_NOT_POSITIVE_INT",
+                              arg="max_results")}
     if not isinstance(max_depth, int) or max_depth < 0:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
@@ -1090,162 +1093,98 @@ def find(args: dict) -> dict:
         nlower = name.lower()
         return any(fnmatch.fnmatchcase(nlower, p.lower()) for p in patterns)
 
-    def _walk_limited():
-        """Itera senza scendere oltre ``max_depth``.
+    def _entry(path, ftype, _depth, directory_entry):
+        if ftype == "other":
+            ftype = "file"
+        stat_result = directory_entry.stat(follow_symlinks=False)
+        if ftype == "file":
+            mime = _mime_for(path.name)
+            kind = _kind_for(mime)
+        elif ftype == "dir":
+            mime = ""
+            kind = "dir"
+        else:
+            mime = ""
+            kind = "symlink"
+        return {
+            "path": str(path),
+            "name": path.name,
+            "type": ftype,
+            "mime": mime,
+            "kind": kind,
+            "size": int(stat_result.st_size),
+            "mtime": float(stat_result.st_mtime),
+        }
 
-        ``Path.rglob`` non consente di potare l'albero: il vecchio controllo
-        sulla profondita' scartava i risultati troppo profondi, ma visitava
-        comunque tutto il sottoalbero (molto costoso su home/OneDrive/NAS).
-        ``os.walk(topdown=True)`` permette invece di svuotare ``dirnames``
-        prima della discesa. L'ordinamento rende stabile il batch fra OS.
-        """
-        if not recursive:
-            yield from base.iterdir()
-            return
-
-        def _raise_walk_error(error):
-            raise error
-
-        for root, dirnames, filenames in os.walk(
-                base, topdown=True, onerror=_raise_walk_error,
-                followlinks=False):
-            dirnames.sort()
-            filenames.sort()
-            root_path = Path(root)
-            try:
-                root_depth = len(root_path.relative_to(base).parts)
-            except ValueError:
-                continue
-            child_depth = root_depth + 1
-            if child_depth <= max_depth:
-                for name in dirnames:
-                    yield root_path / name
-                for name in filenames:
-                    yield root_path / name
-            if child_depth >= max_depth:
-                dirnames.clear()
-
-    walker = _walk_limited()
-    entries: list[dict] = []
-    truncated = False
-    visited = 0
-
-    try:
-        for p in walker:
-            visited += 1
-            try:
-                depth = len(p.relative_to(base).parts)
-            except ValueError:
-                continue
-            if depth > max_depth:
-                continue
-            # Il nome e' disponibile senza syscall. Su pattern selettivi
-            # (es. PDF/DOCX/XLSX) evita is_dir/stat per la grande maggioranza
-            # delle entry attraversate.
-            if not name_matches(p.name):
-                continue
-            try:
-                is_link = p.is_symlink()
-                is_dir = p.is_dir() and not is_link
-            except OSError:
-                continue
-            ftype = "symlink" if is_link else ("dir" if is_dir else "file")
-            if ftype != "file" and not include_dirs:
-                continue
-            if ftype == "file":
-                mime = _mime_for(p.name)
-                kind = _kind_for(mime)
-            elif ftype == "dir":
-                mime = ""
-                kind = "dir"
-            else:
-                mime = ""
-                kind = "symlink"
-            try:
-                st = p.lstat() if is_link else p.stat()
-                size = int(st.st_size)
-                mtime = float(st.st_mtime)
-            except OSError:
-                size = 0
-                mtime = 0.0
-            entries.append({
-                "path": str(p),
-                "name": p.name,
-                "type": ftype,
-                "mime": mime,
-                "kind": kind,
-                "size": size,
-                "mtime": mtime,
-            })
-            if len(entries) >= max_results:
-                truncated = True
-                break
-    except PermissionError as e:
-        return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
-                "error": _msg("ERR_PERMISSION_DENIED"), "detail": str(e)}
-    except OSError as e:
-        return {"ok": False, "error_code": "ERR_OP_FAILED",
-                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
-
-    # Sondaggio post-cap §2.11
-    extra_matches = 0
-    if truncated:
-        # Probe esteso (22/5/2026): per query count-style ("quanti file in X")
-        # con max_results piccolo (1000) ma corpus grande (es. NAS 33K+),
-        # serve un sondaggio profondo per available_total veritiero.
-        # Floor 100k per ~secondi su NAS lenti; senza pattern (`*`) il caller
-        # vuole comunque un count globale, quindi paghiamo lo scan.
-        probe_cap = max(100 * max_results, max_results + 100000)
-        try:
-            for p in walker:
-                visited += 1
-                try:
-                    depth = len(p.relative_to(base).parts)
-                except ValueError:
-                    continue
-                if depth > max_depth:
-                    continue
-                if not name_matches(p.name):
-                    continue
-                try:
-                    is_link = p.is_symlink()
-                    is_dir = p.is_dir() and not is_link
-                except OSError:
-                    continue
-                ftype = "symlink" if is_link else ("dir" if is_dir else "file")
-                if ftype != "file" and not include_dirs:
-                    continue
-                extra_matches += 1
-                if extra_matches >= probe_cap:
-                    break
-        except (PermissionError, OSError):
-            pass
+    # `max_results` governa l'output. Il sondaggio interno e' molto piu'
+    # ampio e parallelo, cosi' i conteggi ordinari sono completi senza
+    # materializzare corpus arbitrariamente grandi.
+    scan_cap = max(100 * max_results, max_results + 100000)
+    walk = parallel_walk(
+        base,
+        accept=lambda path, ftype, _depth: (
+            name_matches(path.name)
+            and (ftype in ("file", "other") or include_dirs)
+        ),
+        transform=_entry,
+        recursive=recursive,
+        max_depth=max_depth,
+        max_items=scan_cap,
+    )
+    all_entries = walk.items
+    entries = all_entries[:max_results]
+    truncated = len(entries) < len(all_entries) or walk.truncated
+    failed = [{
+        "path": str(error.path),
+        "error_class": "permission_denied"
+        if error.reason == "permission_denied" else "io_error",
+        "error_code": "ERR_PERMISSION_DENIED"
+        if error.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
+        "error": _msg("ERR_PERMISSION_DENIED")
+        if error.reason == "permission_denied"
+        else _msg("ERR_FILE_READ_FAILED", path=str(error.path)),
+        "detail": error.reason,
+    } for error in walk.errors]
 
     matches = [e["path"] for e in entries]
     out = {
-        "ok": True,
+        "ok": not failed,
         "entries": entries,
         "matches": matches,
+        "ok_count": len(entries),
+        "fail_count": len(failed),
+        "failed": failed,
         "metadata": {
             "base_path": str(base),
             "patterns": patterns,
             "recursive": recursive,
             "case_sensitive": case_sensitive,
             "count": len(entries),
-            "visited": visited,
+            "visited": walk.visited_entries,
+            "visited_dirs": walk.visited_dirs,
+            "walk_workers": walk.workers,
+            "source_complete": walk.source_complete and not failed,
             "truncated": truncated,
             # Se il path originale non esisteva ma e' stato risolto via alias
             # bilingue IT/EN, lo segnaliamo nei metadata (planner + UI).
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
+    if failed:
+        out["error"] = failed[0]["error"]
+        if entries:
+            out["partial"] = True
     if truncated:
         out["truncated"] = True
         out["truncated_what"] = "file"
         out["used"] = len(entries)
         out["cap_field"] = "max_results"
         out["cap_value"] = max_results
-        out["available_total"] = len(entries) + extra_matches
+        if walk.truncated:
+            out["available_at_least"] = len(all_entries)
+            out["source_scan_truncated"] = True
+        else:
+            out["available_total"] = len(all_entries)
     return out
 
 
@@ -1639,9 +1578,11 @@ def find_dirs(args: dict) -> dict:
     if not base_path:
         return {"ok": False, "error_code": "ERR_ARG_MISSING",
                 "error": _msg("ERR_ARG_MISSING", arg="base_path")}
-    if not isinstance(max_results, int) or max_results < 1:
+    if (not isinstance(max_results, int) or isinstance(max_results, bool)
+            or max_results < 1):
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
-                "error": _msg("ERR_ARG_INVALID", arg="max_results", reason="must be a positive integer")}
+                "error": _msg("ERR_ARG_NOT_POSITIVE_INT",
+                              arg="max_results")}
     if not isinstance(max_depth, int) or max_depth < 0:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="max_depth", reason="must be >= 0")}
@@ -1657,11 +1598,7 @@ def find_dirs(args: dict) -> dict:
         return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
                 "error": _msg("ERR_PATH_WRONG_TYPE", expected="directory", actual="file", path=str(base))}
 
-    entries: list[dict] = []
-    truncated = False
-    visited_dirs = 0
-
-    def _scan_dir(d: Path) -> dict | None:
+    def _scan_dir(d: Path) -> tuple[dict | None, str | None]:
         try:
             file_count = 0
             total_bytes = 0
@@ -1687,7 +1624,7 @@ def find_dirs(args: dict) -> dict:
                 mt = d.stat().st_mtime
             except OSError:
                 mt = 0.0
-            return {
+            return ({
                 "path": str(d),
                 "name": d.name,
                 "file_count": file_count,
@@ -1695,47 +1632,63 @@ def find_dirs(args: dict) -> dict:
                 "size_min": size_min if size_min is not None else 0,
                 "size_max": size_max if size_max is not None else 0,
                 "mtime": float(mt),
-            }
+            }, None)
         except PermissionError:
-            return None
-        except OSError:
-            return None
+            return None, "permission_denied"
+        except OSError as exc:
+            return None, str(exc) or type(exc).__name__
 
     # La base NON e' una "directory IN base" (e' il contenitore della ricerca):
     # ne misuriamo i file diretti SOLO per l'aggregato file_count_total, ma non
     # entra in `entries`. recursive=false → figli immediati (iterdir);
     # recursive=true → tutti i discendenti (rglob). Bug 31/5/2026: prima la base
     # era l'unica entry con recursive=false → "quante directory in /etc" = 1.
-    base_entry = _scan_dir(base)
+    scan_cap = max(100 * max_results, max_results + 100000)
+    walk = parallel_walk(
+        base,
+        accept=lambda path, kind, _depth: (
+            kind == "dir"
+            and (include_hidden or not path.name.startswith("."))
+        ),
+        transform=lambda path, _kind, _depth, _entry: path,
+        descend=lambda path, _depth: (
+            include_hidden or not path.name.startswith(".")),
+        recursive=recursive,
+        max_depth=max_depth,
+        max_items=scan_cap,
+    )
+    directory_paths = walk.items
+    scanned = parallel_map_ordered([base, *directory_paths], _scan_dir)
+    base_entry = scanned[0][0] if scanned else None
     base_file_count = int((base_entry or {}).get("file_count", 0) or 0)
-    try:
-        iterator = base.rglob("*") if recursive else base.iterdir()
-        for p in iterator:
-            try:
-                if p.is_symlink() or not p.is_dir():
-                    continue
-                rel_parts = p.relative_to(base).parts
-            except (ValueError, OSError):
-                continue
-            if recursive and len(rel_parts) > max_depth:
-                continue
-            if not include_hidden and any(seg.startswith(".") for seg in rel_parts):
-                continue
-            entry = _scan_dir(p)
-            visited_dirs += 1
-            if entry is None:
-                continue
-            entries.append(entry)
-            if len(entries) >= max_results:
-                truncated = True
-                break
-    except PermissionError as e:
-        return {"ok": False,
-                "error_code": "ERR_PERMISSION_DENIED",
-                "error": _msg("ERR_PERMISSION_DENIED"), "detail": str(e)}
-    except OSError as e:
-        return {"ok": False, "error_code": "ERR_OP_FAILED",
-                "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}
+    all_entries = [entry for entry, _reason in scanned[1:]
+                   if entry is not None]
+    entries = all_entries[:max_results]
+    truncated = len(entries) < len(all_entries) or walk.truncated
+    failed = [{
+        "path": str(error.path),
+        "error_class": "permission_denied"
+        if error.reason == "permission_denied" else "io_error",
+        "error_code": "ERR_PERMISSION_DENIED"
+        if error.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
+        "error": _msg("ERR_PERMISSION_DENIED")
+        if error.reason == "permission_denied"
+        else _msg("ERR_FILE_READ_FAILED", path=str(error.path)),
+        "detail": error.reason,
+    } for error in walk.errors]
+    for path, (_entry, reason) in zip([base, *directory_paths], scanned):
+        if reason:
+            failed.append({
+                "path": str(path),
+                "error_class": "permission_denied"
+                if reason == "permission_denied" else "io_error",
+                "error_code": "ERR_PERMISSION_DENIED"
+                if reason == "permission_denied" else "ERR_FILE_READ_FAILED",
+                "error": _msg("ERR_PERMISSION_DENIED")
+                if reason == "permission_denied"
+                else _msg("ERR_FILE_READ_FAILED", path=str(path)),
+                "detail": reason,
+            })
 
     matches = [e["path"] for e in entries]
     # Aggregati anti-confusione (turn af6447da 22/5/2026): il LLM ha letto
@@ -1746,29 +1699,46 @@ def find_dirs(args: dict) -> dict:
     #   totale di file ricorsivo sotto base_path, senza dover lanciare anche
     #   find_files).
     count_dirs = len(entries)
-    file_count_total = base_file_count + sum(int(e.get("file_count", 0) or 0) for e in entries)
+    available_dirs = len(all_entries)
+    file_count_total = base_file_count + sum(
+        int(entry.get("file_count", 0) or 0) for entry in all_entries)
     out = {
-        "ok": True,
+        "ok": not failed,
         "entries": entries,
         "matches": matches,
+        "ok_count": len(entries),
+        "fail_count": len(failed),
+        "failed": failed,
         "metadata": {
             "base_path": str(base),
             "recursive": recursive,
             "include_hidden": include_hidden,
             "count": count_dirs,            # legacy, ambiguo
             "count_dirs": count_dirs,        # esplicito
+            "available_dirs": available_dirs,
             "file_count_total": file_count_total,
-            "visited_dirs": visited_dirs,
+            "visited_dirs": walk.visited_dirs,
+            "walk_workers": walk.workers,
+            "source_complete": walk.source_complete and not failed,
             "truncated": truncated,
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
+    if failed:
+        out["error"] = failed[0]["error"]
+        if entries:
+            out["partial"] = True
     if truncated:
         out["truncated"] = True
         out["truncated_what"] = "directory"
         out["used"] = len(entries)
         out["cap_field"] = "max_results"
         out["cap_value"] = max_results
+        if walk.truncated:
+            out["available_at_least"] = available_dirs
+            out["source_scan_truncated"] = True
+        else:
+            out["available_total"] = available_dirs
     return out
 
 

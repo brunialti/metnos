@@ -714,7 +714,7 @@ _OBJECT_PRIMARY_TOOLS = {
                    "find_persons_indices", "delete_persons"),
     "tasks":     ("list_tasks", "read_tasks", "create_tasks",
                    "delete_tasks", "set_tasks", "read_tasks_history"),
-    "files":     ("find_files", "read_files", "get_files"),
+    "files":     ("find_files", "find_files_hash", "read_files", "get_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),
     # Calendar events (Google Workspace skill, importati 10/5/2026,
@@ -724,7 +724,8 @@ _OBJECT_PRIMARY_TOOLS = {
     "calendars": ("create_calendars", "delete_calendars"),
     # Contatti Google Workspace (read_contacts dal skill):
     "contacts":  ("read_contacts",),
-    "images":    ("find_images_indices", "change_images", "find_files", "get_files"),
+    "images":    ("find_images_indices", "change_images", "find_files",
+                   "find_files_hash", "get_files"),
     "packages":  ("find_packages",),  # canonical handcrafted name (no get_packages)
     "numbers":   (),  # niente primary, lascia al ranker
     "texts":     ("read_files", "filter_texts_lines"),

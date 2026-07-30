@@ -535,11 +535,18 @@ def scheduler_metrics_snapshot() -> dict[str, dict]:
 
 
 def assigned_worker_budget(executor: object) -> int:
-    """Return the one centrally governed intra-executor worker allowance."""
+    """Return the one centrally governed intra-executor worker allowance.
+
+    ``max_workers`` is the total budget derived for this Metnos instance.
+    A signed executor class and a resource-specific cap can only lower it.
+    """
     if not _DEFAULT_SCHEDULER.parallel_enabled:
         return 1
-    budget = _DEFAULT_SCHEDULER.parallelism_limit(
-        _DEFAULT_SCHEDULER.effective_parallelism_class(executor))
+    budget = min(
+        _DEFAULT_SCHEDULER.max_workers,
+        _DEFAULT_SCHEDULER.parallelism_limit(
+            _DEFAULT_SCHEDULER.effective_parallelism_class(executor)),
+    )
     policy = _DEFAULT_SCHEDULER.policy_for(executor)
     if policy.get("resource_class") == "llm":
         budget = min(

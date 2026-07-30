@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_dirs"
-version     = "0.1.0"
+version     = "0.2.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -17,9 +17,16 @@ affinity    = [
 revertible      = false
 lifecycle       = "active"
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
-it = "SCOPO: trova directory con metadati aggregati. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: elencare file (-> find_files); contenuti dir (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
-en = "SCOPO: find directories with aggregated metadata. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: list files (-> find_files); dir contents (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime,count_dirs,file_count_total}]."
+it = "SCOPO: trova directory e calcola metadati aggregati con visita ricorsiva parallela. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: elencare file (-> find_files); contenuti dir (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime}], conteggi complessivi e completezza della sorgente."
+en = "SCOPO: find directories and compute aggregate metadata with a parallel recursive walk. PATTERN: find_dirs(base_path=\"/x\", recursive=true). NON: list files (-> find_files); directory contents (-> list_dirs). OUT: entries=[{name,file_count,total_bytes,size_min,size_max,mtime}], whole-set counts, and source completeness."
 
 [code]
 files  = ["find_dirs.py"]
@@ -41,8 +48,8 @@ type        = "boolean"
 default     = true
 
 [args.properties.recursive.description]
-it = "Se true (default), attraversa tutto l'albero discendente. Se false, ritorna solo la base_path con i suoi metadati immediati."
-en = "If true (default), traverse the entire descendant tree. If false, return only the base_path with its immediate metadata."
+it = "Se true (default), attraversa l'albero discendente; se false, restituisce soltanto le sottocartelle immediate. La base non è una voce del risultato, ma contribuisce agli aggregati."
+en = "If true (default), traverse the descendant tree; if false, return immediate subdirectories only. The base is not a result entry but contributes to aggregates."
 
 [args.properties.max_depth]
 type        = "integer"
@@ -59,8 +66,8 @@ minimum     = 1
 default     = 1000
 
 [args.properties.max_results.description]
-it = "Tetto massimo di directory restituite. Default 1000. Quando raggiunto, l'output ha truncated=true e il runtime aggiunge un avviso al messaggio finale."
-en = "Maximum number of directories returned. Default 1000. When reached, the output has truncated=true and the runtime adds a warning to the final message."
+it = "Numero massimo di directory mostrate. Default 1000. La scansione usa un sondaggio interno molto più ampio e dichiara se viene esaurito."
+en = "Maximum displayed directories. Default 1000. The scan uses a much wider internal probe and reports if it is exhausted."
 
 [args.properties.include_hidden]
 type        = "boolean"
@@ -99,19 +106,27 @@ schema_inline = """
     mtime?: number
   }>,
   matches?: Array<str>,
+  ok_count?: int,
+  fail_count?: int,
+  failed?: Array<{path: str, error_class: str, error_code: str, error: str}>,
   metadata?: {
     base_path: str,
     recursive: bool,
     include_hidden: bool,
     count: int,
     count_dirs: int,
+    available_dirs: int,
     file_count_total: int,
     visited_dirs: int,
+    walk_workers: int,
+    source_complete: bool,
     truncated: bool,
     alias_resolved?: str
   },
   used?: int,
   available_total?: int,
+  available_at_least?: int,
+  source_scan_truncated?: bool,
   files_source?: 'google_workspace',
   truncated?: bool,
   truncated_what?: str,
@@ -137,6 +152,8 @@ name     = "walk_semplice"
 setup    = "mkdir -p /tmp/metnos_test_finddirs/a/aa /tmp/metnos_test_finddirs/b && echo 1 > /tmp/metnos_test_finddirs/a/x.txt && echo 2 > /tmp/metnos_test_finddirs/a/aa/y.txt && echo 3 > /tmp/metnos_test_finddirs/b/z.txt"
 input    = { base_path = "/tmp/metnos_test_finddirs" }
 expect   = { ok = true, metadata_field_eq = { count = 3 } }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
 teardown = "rm -rf /tmp/metnos_test_finddirs"
 
 [[tests]]

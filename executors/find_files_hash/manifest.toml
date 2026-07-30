@@ -1,0 +1,184 @@
+manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
+
+name        = "find_files_hash"
+version     = "0.3.0"
+timeout_s   = 600
+author      = "Roberto Brunialti"
+affinity    = [
+  "trova", "find", "file duplicati", "immagini duplicate",
+  "duplicati", "duplicate", "copie identiche", "contenuto identico",
+  "duplicate files", "duplicate images", "hash", "sha256"
+]
+revertible  = false
+lifecycle   = "active"
+platforms   = ["linux", "windows"]
+
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
+[description]
+it = "SCOPO: trova file con contenuto identico tramite confronto completo SHA-256, senza modificarli. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"], recursive=true). NON: concatenare find_files, get_files o compute_entries; non impostare max_files se l'utente non chiede esplicitamente una scansione parziale; max_results limita soltanto l'output, mai la scansione. OUT: entries=[{path,duplicate_of,size,sha256,group_count}] e conteggi dell'intero corpus."
+en = "SCOPO: finds files with identical content through a complete SHA-256 comparison, without modifying them. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"], recursive=true). NON: chain find_files, get_files, or compute_entries; do not set max_files unless the user explicitly requests a partial scan; max_results limits only output, never the scan. OUT: entries=[{path,duplicate_of,size,sha256,group_count}] and whole-corpus counts."
+
+[code]
+files  = ["find_files_hash.py"]
+digest = "sha256:0d758685a4a2e4d7ebbd9f30887d4deb7ea2859aee659170c38f3ad627f3c66a"
+
+[args]
+type     = "object"
+required = ["base_path"]
+
+[args.properties.base_path]
+type = "string"
+
+[args.properties.base_path.description]
+it = "Directory radice da analizzare, per esempio '/server/Immagini'."
+en = "Root directory to analyze, for example '/server/Pictures'."
+
+[args.properties.pattern]
+type = "string"
+
+[args.properties.pattern.description]
+it = "Uno o più glob separati da virgola o '|', per esempio '*.jpg,*.png'. Se omesso equivale a '*'."
+en = "One or more globs separated by comma or '|', for example '*.jpg,*.png'. Omitted means '*'."
+
+[args.properties.patterns]
+type = "array"
+
+[args.properties.patterns.description]
+it = "Lista di glob dei nomi file, per esempio ['*.jpg','*.png']; il confronto non distingue maiuscole per default."
+en = "List of filename globs, for example ['*.jpg','*.png']; matching is case-insensitive by default."
+
+[args.properties.recursive]
+type = "boolean"
+default = true
+
+[args.properties.recursive.description]
+it = "Se true esplora le sottocartelle; se false considera soltanto i file immediati. Default true."
+en = "When true, scans subdirectories; when false, considers immediate files only. Default true."
+
+[args.properties.max_depth]
+type = "integer"
+minimum = 0
+default = 0
+
+[args.properties.max_depth.description]
+it = "Profondità massima opzionale della scansione ricorsiva. 0 significa nessun limite ed è il default."
+en = "Optional maximum recursive scan depth. 0 means unlimited and is the default."
+
+[args.properties.case_sensitive]
+type = "boolean"
+default = false
+
+[args.properties.case_sensitive.description]
+it = "Se true applica i glob distinguendo maiuscole e minuscole. Default false."
+en = "When true, applies globs case-sensitively. Default false."
+
+[args.properties.max_files]
+type = "integer"
+minimum = 0
+default = 0
+
+[args.properties.max_files.description]
+it = "Limite opzionale dei file analizzati. 0 significa nessun limite ed è il default; un valore positivo rende esplicita una scansione parziale."
+en = "Optional analyzed-file limit. 0 means unlimited and is the default; a positive value explicitly makes the scan partial."
+
+[args.properties.max_results]
+type = "integer"
+minimum = 0
+default = 500
+
+[args.properties.max_results.description]
+it = "Numero massimo di duplicati mostrati, dopo la scansione completa. Default 500; 0 restituisce tutti i duplicati."
+en = "Maximum duplicate rows returned after the complete scan. Default 500; 0 returns every duplicate."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  entries: Array<{path: str, duplicate_of: str, size: int, sha256: str, group_count: int}>,
+  failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
+  scanned_files: int,
+  same_size_candidates: int,
+  sampled_files: int,
+  sample_cache_hits: int,
+  full_hash_candidates: int,
+  hashed_files: int,
+  hash_cache_hits: int,
+  hash_workers: int,
+  cache_enabled: bool,
+  duplicate_groups_count: int,
+  duplicate_files_count: int,
+  redundant_files_count: int,
+  redundant_bytes: int,
+  source_complete: bool,
+  scan_truncated: bool,
+  results_truncated: bool,
+  walk_workers: int,
+  visited_dirs: int,
+  metadata: {base_path: str, patterns: Array<str>, recursive: bool, case_sensitive: bool},
+  partial?: bool,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str
+}
+"""
+
+[[capabilities]]
+name = "fs:read"
+hint = ["**/*"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["$XDG_CACHE_HOME/metnos/file_hashes-*.sqlite*"]
+
+[[tests]]
+name = "trova_duplicato_esatto"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'uguale' > /tmp/metnos_hash_find/a.jpg && cp /tmp/metnos_hash_find/a.jpg /tmp/metnos_hash_find/b.jpg"
+input = { base_path = "/tmp/metnos_hash_find", patterns = ["*.jpg"] }
+expect = { ok = true, field_eq = { scanned_files = 2, duplicate_groups_count = 1, redundant_files_count = 1 } }
+env = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32", METNOS_FIND_HASH_CACHE = "0" }
+equivalence_runs = 2
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "stessa_dimensione_non_basta"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'abc' > /tmp/metnos_hash_find/a.bin && printf 'xyz' > /tmp/metnos_hash_find/b.bin"
+input = { base_path = "/tmp/metnos_hash_find", patterns = ["*.bin"] }
+expect = { ok = true, field_eq = { scanned_files = 2, duplicate_groups_count = 0, redundant_files_count = 0 } }
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "pattern_non_distingue_maiuscole"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'x' > /tmp/metnos_hash_find/A.JPG && cp /tmp/metnos_hash_find/A.JPG /tmp/metnos_hash_find/B.jpg"
+input = { base_path = "/tmp/metnos_hash_find", patterns = ["*.jpg"] }
+expect = { ok = true, field_eq = { scanned_files = 2, redundant_files_count = 1 } }
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "risultato_vuoto_valido"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'solo' > /tmp/metnos_hash_find/solo.txt"
+input = { base_path = "/tmp/metnos_hash_find" }
+expect = { ok = true, field_eq = { duplicate_groups_count = 0, redundant_files_count = 0 } }
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "path_assente_fallisce"
+input = { base_path = "/tmp/metnos_hash_find_non_esiste" }
+expect = { ok = false, field_eq = { error_code = "ERR_PATH_NOT_FOUND" } }
+
+[placement]
+scope = "any"
+device_ok = true
+min_sandbox = "appcontainer"

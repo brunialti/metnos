@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_urls"
-version     = "0.2.1"
+version     = "0.3.0"
 timeout_s   = 900
 author      = "Roberto Brunialti"
 # Affinity bilingue IT+EN (§9.3): "informazioni/notizie/novità/information"
@@ -18,13 +18,20 @@ affinity    = [
                 "feed", "rss", "topic", "informazioni", "information", "notizie", "novità"
             ]
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "network_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
 it = "SCOPO: cerca e scopri URL e documenti sul web. PATTERN: find_urls(search_query=\"...\") o find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read su URL noti. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated."
 en = "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls(search_query=\"...\") or find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read on known URLs. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated."
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:edccec30ec882e9b3389006c54c4e92e1018982cebafe348952f6ab8654d6c61"
+digest = "sha256:48b4251198a070e80ccd9391fa5e802a83840751c0581319c024cb833e728a32"
 
 [args]
 type     = "object"
@@ -219,3 +226,8 @@ expect = { ok = false, error_contains = "seed_urls" }
 name   = "errore_se_seed_urls_vuoto_senza_search_query"
 input  = { seed_urls = [] }
 expect = { ok = false, error_contains = "seed_urls" }
+
+[[tests]]
+name = "bfs_parallela_equivalente"
+reference = "tests/runtime/executors/test_find_urls_parallel_recursive.py::test_parallel_bfs_is_structurally_equivalent_to_serial"
+equivalence_runs = 2

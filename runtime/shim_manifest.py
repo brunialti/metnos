@@ -10,7 +10,8 @@ del poll (`shim_sha256`, fuori dal payload firmato per-invocazione: i client
 romperebbe la verifica). Il client ≥0.2.15 confronta e ri-scarica.
 
 Lo sha è calcolato sui CONTENUTI (nome + bytes, ordinato per nome) con cache
-invalidata dagli mtime/size dei file: costo per-poll = 8 stat.
+invalidata dagli mtime/size dei file: costo per-poll lineare nei pochi moduli
+esplicitamente inclusi.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ def shim_sources() -> dict[str, Path]:
     r = _RUNTIME_DIR
     return {
         "executor_helpers.py": r / "executor_helpers.py",
+        "executor_workers.py": r / "executor_workers.py",
         "worker_policy.py": r / "worker_policy.py",
         "messages.py": r / "device_shim" / "messages.py",
         # Repertorio i18n (en+it) bundleato: il device rende i messaggi
@@ -34,6 +36,7 @@ def shim_sources() -> dict[str, Path]:
         # (device_shim/gen_i18n.py), guardia-drift in test_device_shim_i18n.
         "messages_i18n.json": r / "device_shim" / "messages_i18n.json",
         "path_alias.py": r / "path_alias.py",
+        "parallel_walk.py": r / "parallel_walk.py",
         "backends/__init__.py": r / "backends" / "__init__.py",
         "backends/files/__init__.py": r / "backends" / "files" / "__init__.py",
         "backends/files/local.py": r / "backends" / "files" / "local.py",

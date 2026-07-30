@@ -390,14 +390,15 @@ def _host_capacity() -> dict:
     T1 unknown=2, T2 trusted=6, T3 owned=12. Valori conservativi: si puo'
     abbassare via env METNOS_FIND_URLS_GLOBAL_MAX e METNOS_FIND_URLS_PER_HOST_*.
     """
-    import multiprocessing
-    import os
-    cpu = max(1, multiprocessing.cpu_count())
-    # Banda upstream tipica .33 fiber 2.5 Gbps: ben oltre 32 conn possibili.
-    # Cap = min(64, cpu * 4) bilancia FD ulimit + memoria parsing (~10MB/conn).
-    global_max = int(os.environ.get(
-        "METNOS_FIND_URLS_GLOBAL_MAX", min(64, cpu * 4)
-    ))
+    # Il runtime assegna il tetto firmato. L'override locale puo' soltanto
+    # ridurlo: non esiste piu' un secondo scheduler nascosto nel crawler.
+    assigned = assigned_workers()
+    try:
+        configured = int(os.environ.get(
+            "METNOS_FIND_URLS_GLOBAL_MAX", assigned))
+    except (TypeError, ValueError):
+        configured = assigned
+    global_max = max(1, min(assigned, configured))
     return {
         "global_max": global_max,
         "per_host": {
@@ -417,6 +418,11 @@ def _host_capacity() -> dict:
 # Throttle condiviso (ADR 0103) — modulo runtime/host_throttle.py.
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from executor_workers import (  # noqa: E402
+    assigned_workers,
+    map_ordered,
+    worker_budget,
+)
 from host_throttle import HostThrottle  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
 try:
@@ -1543,17 +1549,16 @@ def _invoke_default(args: dict) -> dict:
         """
         if len(urls) <= 1:
             return {urls[0]: _fetch_html(urls[0])} if urls else {}
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        out: dict[str, tuple | None] = {}
         workers = min(_global_inflight_max, len(urls))
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(_fetch_html, u): u for u in urls}
-            for fut in as_completed(futs):
-                u = futs[fut]
-                try:
-                    out[u] = fut.result()
-                except Exception:
-                    out[u] = None
+        def _safe_fetch(url: str):
+            try:
+                return _fetch_html(url)
+            except Exception:
+                return None
+        with worker_budget(workers):
+            completed, skipped = map_ordered(_safe_fetch, urls)
+        out = {urls[index]: result for index, result in completed}
+        out.update({urls[index]: None for index in skipped})
         return out
 
     # Pre-fetch dei seed per scoprire eventuali RSS feed (link rel=alternate)

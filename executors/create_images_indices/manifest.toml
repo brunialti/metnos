@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "create_images_indices"
-version     = "0.2.0"
+version     = "0.3.0"
 author      = "Roberto Brunialti"
 affinity    = ["indicizza", "indicizza foto", "indicizza cartella",
                 "build index", "rebuild", "vlm", "qwen", "arcface",
@@ -17,10 +17,17 @@ revertible  = true
 reverse_pattern = "module.reverse"
 
 [output]
-schema_inline = "{ ok: bool, schema_version?: integer, base_path?: string, ok_count?: integer, fail_count?: integer, n_entries_total?: integer, refreshed_count?: integer, last_refresh_at?: number, index_path?: string, index_created?: bool, model_text?: string, model_vlm?: string, model_face?: string, model_image?: string, dim_text?: integer, dim_image?: integer, dry_run?: bool, would_index_count?: integer, n_other_files?: integer, est_time_s?: number, est_size_mb?: number, truncated?: bool, truncated_what?: string, used?: integer, cap_field?: string, cap_value?: integer, warning?: string, error?: string }"
+schema_inline = "{ ok: bool, schema_version?: integer, base_path?: string, ok_count?: integer, fail_count?: integer, n_entries_total?: integer, refreshed_count?: integer, last_refresh_at?: number, index_path?: string, index_created?: bool, model_text?: string, model_vlm?: string, model_face?: string, model_image?: string, dim_text?: integer, dim_image?: integer, dry_run?: bool, would_index_count?: integer, n_other_files?: integer, visited_dirs?: integer, walk_workers?: integer, est_time_s?: number, est_size_mb?: number, truncated?: bool, truncated_what?: string, used?: integer, cap_field?: string, cap_value?: integer, warning?: string, error?: string }"
 
 # Build VLM+ArcFace su 30k+ foto puo' richiedere ore: timeout esteso.
 timeout_s = 14400
+
+[execution]
+effect            = "mutating"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "path"
+equivalence_gate  = "verified"
 
 [description]
 it = "SCOPO: indicizza foto in `base_path` (incrementale o rebuild). PATTERN: create_images_indices(base_path='~/foto', force=false). NON: idx='scene' (deprecated); `find_files` (filesystem, no indice). OUT: {ok,schema_version,ok_count,fail_count,base_path,n_entries_total,refreshed_count,last_refresh_at,index_path,model_text,model_vlm,model_face}."
@@ -28,7 +35,7 @@ en = "SCOPO: index photos in `base_path` (incremental or rebuild). PATTERN: crea
 
 [code]
 files  = ["create_images_indices.py"]
-digest = "sha256:3d882d59c4216dfce1546300b5c14ae6a2baf702051432ee5bc0ed4ecba64040"
+digest = "sha256:3b128c8d4b3933cd8f2b91d451c6781ff342a1c31cae75aa047c73da298bbab7"
 
 [args]
 type     = "object"
@@ -46,8 +53,8 @@ type        = "boolean"
 default     = true
 
 [args.properties.recursive.description]
-it = "Se true (default), indicizza anche le sottocartelle."
-en = "If true (default), also index subdirectories."
+it = "Se true (default), visita in parallelo anche le sottocartelle e indicizza le immagini trovate."
+en = "If true (default), walk subdirectories in parallel and index the images found."
 
 [args.properties.force]
 type        = "boolean"
@@ -98,3 +105,12 @@ expect   = { ok = false, error_contains = "Percorso non trovato" }
 name     = "missing_base_path_fallisce"
 input    = { recursive = true }
 expect   = { ok = false, error_contains = "base_path" }
+
+[[tests]]
+name     = "dry_run_ricorsivo_equivalente"
+setup    = "mkdir -p /tmp/metnos_image_walk_test/sub && printf x > /tmp/metnos_image_walk_test/a.jpg && printf y > /tmp/metnos_image_walk_test/sub/b.png"
+input    = { base_path = "/tmp/metnos_image_walk_test", recursive = true, dry_run = true }
+expect   = { ok = true, field_eq = { would_index_count = 2 } }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
+teardown = "rm -rf /tmp/metnos_image_walk_test"

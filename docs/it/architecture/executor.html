@@ -389,8 +389,11 @@ equivalenza fra esecuzione seriale e concorrente.
 </table>
 
 <p>
-La classe firmata &egrave; un <strong>massimo</strong>, non un numero fisso di thread:
-il runtime pu&ograve; solo ridurla. Applica nello stesso punto code limitate,
+All'avvio il runtime osserva le CPU visibili e il limite operativo
+<code>max_workers</code>, e stabilisce un solo tetto per l'istanza. La classe
+firmata &egrave; una <strong>riduzione di quel tetto</strong>, non un numero fisso di
+thread: il singolo executor pu&ograve; soltanto ridurre l'assegnazione in base alla
+quantit&agrave; di lavoro o al profilo di I/O. Applica nello stesso punto code limitate,
 backpressure, pool per risorsa e metriche, senza cambiare argomenti, risultati,
 ordine causale, permessi o criteri di successo. Un executor non di sola lettura
 pu&ograve; dichiarare una classe positiva, ma deve anche fornire un'identit&agrave; di
@@ -402,6 +405,15 @@ Gli executor che usano un LLM seguono la stessa regola. All'avvio, framework e
 hardware determinano il tetto della risorsa LLM: un backend a singolo slot
 degrada a classe 0, mentre un backend con batching pu&ograve; ammettere pi&ugrave; richieste.
 Non esistono pool concorrenti indipendenti nascosti nei singoli executor.
+</p>
+
+<p>
+Le ricerche ricorsive sul filesystem usano un visitor comune: le directory
+formano una coda dinamica, i worker liberi prendono il prossimo ramo e i
+risultati vengono riordinati prima di applicare un limite. Per esempio, la
+ricerca dei duplicati confronta prima dimensione e campioni, poi calcola
+SHA-256 completo sui soli candidati; il limite di visualizzazione non riduce
+l'insieme confrontato.
 </p>
 
 <h2>Perché il contratto usa TOML</h2>

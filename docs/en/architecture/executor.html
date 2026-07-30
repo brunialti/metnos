@@ -349,8 +349,11 @@ between serial and concurrent execution.
 </table>
 
 <p>
-The signed class is a <strong>maximum</strong>, not a fixed thread count: the
-runtime may only lower it. In one place it applies bounded queues, backpressure,
+At startup the runtime observes visible CPUs and the operational
+<code>max_workers</code> setting and establishes one instance ceiling. A signed
+class is a <strong>reduction of that ceiling</strong>, not a fixed thread count:
+an executor may only lower its assignment according to available work or its
+I/O profile. In one place the runtime applies bounded queues, backpressure,
 per-resource pools, and metrics without changing arguments, results, causal
 order, permissions, or success criteria. A non-read-only executor may declare a
 positive class, but it must also provide a resolvable concurrency identity;
@@ -362,6 +365,14 @@ LLM-backed executors follow the same rule. At startup, framework and hardware
 determine the LLM resource ceiling: a single-slot backend degrades to class 0,
 whereas a batching backend can admit more requests. Executors do not hide
 independent competing concurrency pools.
+</p>
+
+<p>
+Recursive filesystem searches use one shared visitor: directories form a
+dynamic queue, idle workers take the next branch, and results are reordered
+before a limit is applied. Exact duplicate search, for example, filters by
+size and samples before computing complete SHA-256 digests for the remaining
+candidates; its display limit does not reduce the compared source.
 </p>
 
 <h2>Why the contract uses TOML</h2>
