@@ -415,6 +415,47 @@ def _manifest_descriptions(executor, manifest: dict | None = None) -> dict[str, 
     return {lang: fallback}
 
 
+def _manifest_affinity(manifest: dict | None) -> tuple[str, ...]:
+    """Return the canonical semantic vocabulary admitted by a manifest.
+
+    ``affinity`` is already the executor catalog's reviewed, multilingual
+    semantic surface.  Projecting it as the *embedding-only* body lets the
+    parent operation compete with its argument fragments without exposing
+    routing metadata in Tutor's answer or teaching query-specific aliases.
+    """
+
+    raw = manifest.get("affinity") if isinstance(manifest, dict) else None
+    if not isinstance(raw, list):
+        return ()
+    return tuple(dict.fromkeys(
+        _SPACE.sub(" ", str(value)).strip()
+        for value in raw
+        if _SPACE.sub(" ", str(value)).strip()
+    ))
+
+
+def _semantic_with_parent(parent: str, detail: str) -> str:
+    """Embed a child contract together with its parent operation.
+
+    An argument such as ``email`` is not a standalone capability: it may be a
+    recipient, an account selector, or a sharing destination.  The reviewed
+    manifest affinity provides that missing provenance.  The exact child text
+    remains intact and receives the bounded semantic budget before its parent.
+    """
+
+    child = _SPACE.sub(" ", str(detail or "")).strip()
+    context = _SPACE.sub(" ", str(parent or "")).strip()
+    if not context:
+        return child
+    available = _MAX_CHARS - len(child) - 2
+    if available <= 0:
+        return child[:_MAX_CHARS].rstrip()
+    if len(context) > available:
+        boundary = context.rfind(" ", 0, available + 1)
+        context = context[:boundary if boundary > 0 else available].rstrip()
+    return f"{context}. {child}" if context else child
+
+
 def _manifest_argument_descriptions(
         executor, manifest: dict | None = None,
 ) -> tuple[tuple[str, str, str, str], ...]:
@@ -475,6 +516,7 @@ def _executor_units() -> list[KnowledgeUnit]:
     for executor in sorted(catalog, key=lambda item: item.name):
         manifest = _manifest_document(executor)
         descriptions = _manifest_descriptions(executor, manifest)
+        affinity = _manifest_affinity(manifest)
         if not descriptions:
             continue
         membership = str(getattr(executor, "membership", "") or "unknown")
@@ -486,6 +528,10 @@ def _executor_units() -> list[KnowledgeUnit]:
         platforms = ", ".join(getattr(executor, "platforms", ()) or ())
         audience = "instance_admin" if executor.name == "admin" else "user"
         priority = 100 if membership == "builtin" else 85
+        parent_semantic = (
+            f"executor={executor.name}; affinity={', '.join(affinity)}"
+            if affinity else ""
+        )
         for lang, description in sorted(descriptions.items()):
             # Structured neutral labels reduce translation maintenance.  The
             # localized manifest description remains the substantive text.
@@ -495,6 +541,10 @@ def _executor_units() -> list[KnowledgeUnit]:
                 + (f"; platforms={platforms}" if platforms else "")
             )
             text = f"{metadata}. {description}"
+            # Keep the rendered evidence exactly equal to the signed manifest
+            # contract.  Affinity is retrieval metadata, so it belongs only to
+            # the embedding projection and cannot leak into the composed reply.
+            semantic = parent_semantic or text
             units.append(_unit(
                 unit_id=f"executor-{executor.name}-{lang}",
                 concept_id=f"executor-{executor.name}",
@@ -505,6 +555,7 @@ def _executor_units() -> list[KnowledgeUnit]:
                 priority=priority,
                 title=executor.name,
                 text=text,
+                semantic=semantic,
                 source_ref=f"manifest:{executor.name}:{lang}",
             ))
         for path, lang, schema, description in _manifest_argument_descriptions(
@@ -526,6 +577,7 @@ def _executor_units() -> list[KnowledgeUnit]:
                     priority=priority,
                     title=f"{executor.name}.{path}",
                     text=part,
+                    semantic=_semantic_with_parent(parent_semantic, part),
                     source_ref=(f"manifest:{executor.name}:arg:{path}:{lang}"
                                 f"#{part_number}"),
                 ))
@@ -918,28 +970,15 @@ def _observation_view_units() -> list[KnowledgeUnit]:
     units: list[KnowledgeUnit] = []
     for view in catalog():
         slug = view.view_id.lower().replace("_", "-")
-        for lang in ("it", "en"):
+        for lang in view.languages():
             title = view.localized("title", lang)
             coverage = view.localized("coverage", lang)
             excluded = view.localized("excluded", lang)
-            if lang == "it":
-                text_value = (
-                    f"Vista live di sola lettura: {coverage} "
-                    f"Non comprende: {excluded}"
-                )
-                semantic = (
-                    f"Osservazione reale corrente in chat. {coverage} "
-                    f"Limiti della vista: {excluded}"
-                )
-            else:
-                text_value = (
-                    f"Read-only live view: {coverage} "
-                    f"It does not include: {excluded}"
-                )
-                semantic = (
-                    f"Current real observation in chat. {coverage} "
-                    f"View limits: {excluded}"
-                )
+            # Every user-facing word comes from the localized registry.  The
+            # compiler therefore needs no language branch: adding a complete
+            # locale to one view automatically creates its signed unit.
+            text_value = f"{coverage} {excluded}"
+            semantic = f"{title}. {coverage}"
             units.append(_unit(
                 unit_id=f"runtime-observation-{slug}-{lang}",
                 concept_id=f"runtime-observation-{slug}",

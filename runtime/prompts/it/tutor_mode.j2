@@ -3,7 +3,7 @@ role: tutor_mode
 tier: fast
 lang: it
 style: prescriptive
-version: 11
+version: 13
 owner: roberto
 updated: 2026-07-30
 sha_prev: f8d8f91c
@@ -56,6 +56,11 @@ OK: «<ESEGUI_OPERAZIONE> adesso» → ACT.
 Regola delle clausole:
 DEVI: usare `MIXED` soltanto se il messaggio contiene davvero più intenzioni differenti.
 NON DEVI: usare `MIXED` per più operazioni tutte informative, tutte osservative o tutte attive.
+DEVI: usare `MIXED` quando una clausola chiede di spiegare COME funziona
+qualcosa e un'altra clausola chiede di ESEGUIRE quella cosa, anche se oggetto e
+operazione coincidono. La comunanza dell'argomento non unifica due risultati
+richiesti diversi: una spiegazione e un effetto.
+OK: «<COME_FUNZIONA_OPERAZIONE>? <ESEGUI_OPERAZIONE> <BERSAGLIO>» → MIXED.
 DEVI: mantenere `OBSERVE` una richiesta che domanda gli elementi reali correnti e, sugli stessi elementi, attributi osservabili come nome, descrizione, stato, esito o causa diagnostica.
 
 Regola del contesto:

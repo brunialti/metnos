@@ -27,7 +27,7 @@ en = "SCOPO: finds files with identical content through a complete SHA-256 compa
 
 [code]
 files  = ["find_files_hash.py"]
-digest = "sha256:0d758685a4a2e4d7ebbd9f30887d4deb7ea2859aee659170c38f3ad627f3c66a"
+digest = "sha256:f5188d837ba4e55e4af0628125675b6f362ccc558fc943ea928611a2d7f9b0cc"
 
 [args]
 type     = "object"
@@ -137,11 +137,11 @@ schema_inline = """
 
 [[capabilities]]
 name = "fs:read"
-hint = ["**/*"]
+hint = ["arg:base_path"]
 
 [[capabilities]]
-name = "fs:write"
-hint = ["$XDG_CACHE_HOME/metnos/file_hashes-*.sqlite*"]
+name = "metnos:cache"
+hint = ["file_hash_cache:local"]
 
 [[tests]]
 name = "trova_duplicato_esatto"

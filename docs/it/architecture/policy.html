@@ -207,6 +207,7 @@ l'uscita del comando <code>registry</code> sono le fonti complete e aggiornate.<
 <tr><td><code>calendar:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura eventi da un calendario autorizzato</td></tr>
 <tr><td><code>index:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura di un indice locale amministrato da Metnos</td></tr>
 <tr><td><code>metnos:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura di una risorsa locale amministrata da Metnos</td></tr>
+<tr><td><code>metnos:cache</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>cache tecnica best-effort in un sottoalbero amministrato da Metnos, senza effetti sui dati utente</td></tr>
 <tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>lettura diagnostica di sistema su host o dispositivo autorizzato</td></tr>
 <tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>accesso alla rete e alle credenziali di un fornitore autorizzato</td></tr>
 </table>
@@ -256,6 +257,7 @@ La matrice &egrave; il prodotto dei tre livelli di autonomia (ReadOnly, Supervis
 <tr><td><code>calendar:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>index:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>metnos:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>metnos:cache</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 </table>

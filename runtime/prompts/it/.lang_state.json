@@ -355,14 +355,14 @@
     "version_hash": "sha256:2844019e4ff4e5396a4e0783c7a5c65eec7f50112a63394efbce8511730acf00"
   },
   "tutor_mode": {
-    "source_hash": "sha256:39bc979d8a6536569830f115a7924fba5a2f4a32fccc3cd94e701ed468f6dc43",
-    "source_lang": "en",
-    "version_hash": "sha256:00827d7ed1268e10105ef6ca0b5adaf7fc7c074227278cd248cce8f54594982b"
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:d36f948ed2cf1914b9c645696cdf035cc5c16c6f0f3e49d5d13e95ee4f39e3c8"
   },
   "tutor_observation_select": {
-    "source_hash": "sha256:20c1f1dd65fd370599be0c4cf0d75a31d1fa4dada05e754845dcb4db260b02f9",
+    "source_hash": "sha256:3154000c2fa6924a1e11f709a20b95c61f35debc641688e6ffac0d413f1d4f7f",
     "source_lang": "en",
-    "version_hash": "sha256:b9c21e48616689d1049b609af66c9dee7caeef856aa09ace472069454675d08e"
+    "version_hash": "sha256:3fbed7046b9a5b17a886fff3f6b695ba5ada09c2b99c608f8d532bb00d23ce4e"
   },
   "tutor_relation": {
     "source_hash": "sha256:f24615a5ca1a3f66160cca89667d1c53f9c27dc6a29cc3e3bfa949622845534d",

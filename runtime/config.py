@@ -115,6 +115,10 @@ PATH_USER_STATE    = _env_path("METNOS_USER_STATE",
                                 _home() / ".local" / "state" / "metnos")
 PATH_USER_CONFIG   = _env_path("METNOS_USER_CONFIG",
                                 _home() / ".config" / "metnos")
+PATH_USER_CACHE    = _env_path(
+    "METNOS_USER_CACHE",
+    Path(os.environ.get("XDG_CACHE_HOME") or (_home() / ".cache")) / "metnos",
+)
 
 # Synth executors (synth on-the-fly, ADR 0066)
 PATH_SYNTH_EXECUTORS = PATH_USER_DATA / "executors"

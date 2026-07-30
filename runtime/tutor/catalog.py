@@ -529,7 +529,11 @@ def _build_candidate(path: Path, current_source_hash: str,
                      current_input_stamp: str,
                      knowledge: tuple[KnowledgeUnit, ...]) -> None:
     from ui_surfaces import validate_surfaces
-    from .observation_views import registered_view_ids, validate_views
+    from .observation_views import (
+        catalog as observation_view_catalog,
+        registered_view_ids,
+        validate_views,
+    )
 
     surface_findings = validate_surfaces()
     if surface_findings:
@@ -561,14 +565,16 @@ def _build_candidate(path: Path, current_source_hash: str,
         raise ValueError(
             "Tutor observation authority appears on invalid knowledge units: "
             + ", ".join(invalid_view_units))
+    views_by_id = {view.view_id: view for view in observation_view_catalog()}
     for view_id in admitted_views:
         view_units = tuple(
             unit for unit in knowledge
             if unit.observation_ref == view_id
             and unit.source_kind == "live_observation"
         )
-        if (len(view_units) != 2
-                or {unit.lang for unit in view_units} != {"it", "en"}):
+        expected_languages = set(views_by_id[view_id].languages())
+        if (len(view_units) != len(expected_languages)
+                or {unit.lang for unit in view_units} != expected_languages):
             raise ValueError(
                 f"Tutor observation view has incomplete signed units: {view_id}")
     cards = load_published()

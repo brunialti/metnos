@@ -27,7 +27,11 @@ def request_budget_s() -> float:
 
 
 def mode_budget_s() -> float:
-    return _bounded_env_float("METNOS_TUTOR_MODE_DEADLINE_S", 45.0, 2.0, 120.0)
+    # This is the complete pre-authority budget, shared by mode, mixed-query
+    # segmentation, and live-view admission. Local classifications normally
+    # complete well below two seconds; a bounded queue must never hold an
+    # operational request until an HTTP edge timeout.
+    return _bounded_env_float("METNOS_TUTOR_MODE_DEADLINE_S", 8.0, 2.0, 60.0)
 
 
 def new_deadline(seconds: float | None = None) -> float:

@@ -78,10 +78,11 @@ question &rarr; explanation/action distinction &rarr; authorized sources
 
 <h1 id="recognition">1. How it recognizes a product question</h1>
 
-<p>The first step distinguishes four cases: an explanation, an action, a request
-containing both, or an intent that is not clear enough. Only the informational
-part enters Tutor. An operational request continues through the normal Metnos
-engine.</p>
+<p>The first step distinguishes an explanation, a real observation, a
+state-changing action, a mixed request, or an intent that is not clear enough.
+An explanation may enter Tutor. An observation enters only when one registered
+view covers all the requested data; otherwise it continues through the normal
+Metnos engine.</p>
 
 <p>Grammar alone is not enough. “Show me the Services page” asks for an
 explanation of an interface surface; “show me the files in my folder” asks for
@@ -133,11 +134,38 @@ only ranks sections within that same source. The model composes the final prose,
 but it cannot introduce capabilities, permissions, or facts that the sources do
 not attest.</p>
 
+<p>Manifests also have structure. The complete executor contract describes the
+operation, while individual arguments refine its parameters and limits. If a
+generic field is close to the request but a complete contract lies in the same
+relevance band, that contract becomes the primary source. Its argument
+descriptions remain supporting evidence. This rule follows source hierarchy; it
+does not contain lists of requests, special words, or domain-specific
+exceptions.</p>
+
 <h1 id="current-state">3. When current state is needed</h1>
 
 <p>Some questions ask not only what a page is meant to show, but what it is
 showing now. A signed source may then refer to a registered, read-only runtime
 probe. The model does not choose the probe and cannot invent its arguments.</p>
+
+<p>Topical proximity is not enough. The runtime first proposes a view, then
+independently verifies that this view alone covers every requested fact, and
+finally compares it semantically with all other visible views. It must be the
+primary match with a sufficient margin. If any check fails, Tutor steps aside
+and the request reaches the ordinary read executor. For example, “Check whether
+the Metnos mailbox has mail” uses the mailbox; it is not answered with service
+status.</p>
+
+<p>The checks that grant Tutor authority share a short admission window. Once a
+view has been admitted, its read-only probe and composition use the full turn
+deadline. If Tutor's optional pre-gate is busy, or the view or composer does not
+produce a valid result, the request continues through the ordinary engine:
+optional help does not become an HTTP error and does not take the turn away from
+the planner.</p>
+
+<p>For a newly added language, a view may temporarily use its English contract
+as fallback evidence. The composer still receives the user's current language,
+so the evidence language does not determine the answer language.</p>
 
 <table>
 <thead><tr><th>Observation</th><th>Scope</th><th>Protection</th></tr></thead>
@@ -190,6 +218,15 @@ Vaglio, autonomy, consent, and executors.</p>
 
 <p>An existing dialog is never replaced. If clause separation is not safe,
 Metnos asks the user to state the explanation and action separately.</p>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“How do I archive email? Also archive yesterday's messages.”</p>
+
+<p>Tutor explains the operation attested by the <code>move_messages</code>
+manifest, retains “Also archive yesterday's messages” without rewriting it,
+and asks for consent. Only after confirmation does the clause reach the ordinary
+engine, where context, planning, autonomy, and consent checks still apply. The
+answer remains limited to procedures attested by its sources.</p>
 
 <h1 id="learning">5. How user feedback is used</h1>
 

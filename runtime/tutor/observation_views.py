@@ -12,6 +12,8 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
+import numpy as np
+
 from logging_setup import get_logger
 
 from .models import TutorPrincipal
@@ -31,6 +33,15 @@ class ObservationViewSpec:
     coverage: dict[str, str]
     excluded: dict[str, str]
     fact_paths: tuple[str, ...]
+
+    def languages(self) -> tuple[str, ...]:
+        """Locales fully authored for this view, derived from registry data."""
+
+        fields = (self.title, self.coverage, self.excluded)
+        return tuple(sorted(set.intersection(*(
+            {str(lang).lower() for lang in values if str(lang).strip()}
+            for values in fields
+        ))))
 
     def localized(self, field: str, lang: str) -> str:
         values = getattr(self, field)
@@ -246,11 +257,25 @@ def validate_views() -> tuple[str, ...]:
         if unknown:
             findings.append(
                 f"unknown_fact_paths:{view.view_id}:{','.join(sorted(unknown))}")
-        for field in ("title", "coverage", "excluded"):
-            localized = getattr(view, field)
-            if not all(str(localized.get(lang) or "").strip()
-                       for lang in ("it", "en")):
-                findings.append(f"missing_locale:{view.view_id}:{field}")
+        language_sets = {
+            field: {
+                str(lang).lower() for lang, value in getattr(view, field).items()
+                if str(lang).strip() and str(value).strip()
+            }
+            for field in ("title", "coverage", "excluded")
+        }
+        declared = set().union(*language_sets.values())
+        if "en" not in declared:
+            findings.append(f"missing_fallback_locale:{view.view_id}:en")
+        for lang in sorted(declared):
+            missing = [
+                field for field, languages in language_sets.items()
+                if lang not in languages
+            ]
+            if missing:
+                findings.append(
+                    f"incomplete_locale:{view.view_id}:{lang}:"
+                    f"{','.join(missing)}")
     return tuple(findings)
 
 
@@ -308,7 +333,111 @@ def select_view(*, query: str, lang: str, principal: TutorPrincipal,
     view = next((item for item in visible if item.view_id == selected), None)
     if view is None:
         return ViewSelection(None, False, "unregistered_selection")
+
+    # A second context-free pass sees only the proposed contract.  Selection
+    # and verification are deliberately separate decisions: topical
+    # proximity may propose a view, but cannot by itself grant live authority.
+    verified, verify_reason = _invoke_closed_classifier(
+        prompt_name="tutor_observation_select",
+        executor=_SELECTOR,
+        payload={
+            "language": lang,
+            "user_query": query,
+            "verification_pass": True,
+            "views": [{
+                "view_id": view.view_id,
+                "title": view.localized("title", lang),
+                "coverage": view.localized("coverage", lang),
+                "excluded": view.localized("excluded", lang),
+                "fact_paths": list(view.fact_paths),
+            }],
+        },
+        lang=lang,
+        allowed=frozenset({"NONE", view.view_id}),
+        deadline_at=deadline_at,
+    )
+    if verified is None:
+        return ViewSelection(None, False, verify_reason)
+    if verified != view.view_id:
+        return ViewSelection(None, True, "verification_rejected")
     return ViewSelection(view, True, "semantic_view")
+
+
+def verify_semantic_coverage(*, query: str, lang: str,
+                             principal: TutorPrincipal,
+                             selected: ObservationViewSpec,
+                             snapshot, deadline_at: float) -> tuple[bool, str]:
+    """Require a strong, contrastive coverage match for live authority.
+
+    The first two gates are closed LLM classifications.  This independent
+    dense gate uses only the signed live-view units already present in the
+    admitted Tutor generation.  A selected view must be the unique semantic
+    primary among all visible views, sit one relevance band above the general
+    documentation floor, and lead the runner-up by a fraction of that same
+    corpus-wide band.  No query wording, topic, view id, or user affinity is
+    encoded in the decision.
+    """
+
+    from .deadline import remaining
+    from .semantic import (
+        _language_order,
+        _query_vector,
+        knowledge_band,
+        knowledge_minimum,
+    )
+
+    remaining(deadline_at)
+    visible = tuple(
+        view for view in _VIEWS if view.visible_to(principal.audience))
+    if selected not in visible:
+        return False, "view_not_visible"
+
+    units = tuple(
+        unit for unit in getattr(snapshot, "units", ())
+        if unit.source_kind == "live_observation"
+        and unit.observation_ref in {view.view_id for view in visible}
+        and unit.visible_to(principal.audience)
+    )
+    language_order = _language_order(lang)
+    chosen_units = []
+    for view in visible:
+        candidates = tuple(
+            unit for unit in units if unit.observation_ref == view.view_id)
+        unit = next(
+            (item for candidate_lang in language_order for item in candidates
+             if item.lang == candidate_lang),
+            None,
+        )
+        if unit is None:
+            return False, "coverage_unit_missing"
+        chosen_units.append((view, unit))
+
+    index = getattr(snapshot, "knowledge_index", None)
+    refs = getattr(index, "refs", ())
+    row_by_ref = {ref: row for row, ref in enumerate(refs)}
+    rows = []
+    for view, unit in chosen_units:
+        row = row_by_ref.get((unit.unit_id, unit.lang))
+        if row is None:
+            return False, "coverage_vector_missing"
+        rows.append((view, row))
+
+    vector = _query_vector(
+        query, int(index.dimension), deadline_at=deadline_at)
+    ranked = sorted(
+        ((float(index.matrix[row] @ vector), view) for view, row in rows),
+        key=lambda item: (-item[0], item[1].view_id),
+    )
+    if not ranked or ranked[0][1] != selected:
+        return False, "coverage_not_primary"
+
+    band = knowledge_band()
+    authority_floor = min(1.0, knowledge_minimum() + band)
+    if not np.isfinite(ranked[0][0]) or ranked[0][0] < authority_floor:
+        return False, "coverage_below_authority_floor"
+    if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < band / 3.0:
+        return False, "coverage_ambiguous"
+    return True, "coverage_verified"
 
 
 def project_capsule(view: ObservationViewSpec,

@@ -97,7 +97,12 @@ def _plan_tools(framework) -> list[str]:
 # destinatari/canali) + sinonimi carica/upload→write — cambia l'intent.
 # 2026-07-10.6: @gallery_fallback nel terminale G (presentazione: entries
 # remote senza path → bullet dei campi salienti).
-ROUTING_EPOCH = "2026-07-10.6"
+# 2026-07-30.1: i candidati filesystem che trasportano contenuti specializzati
+# (images/texts) partecipano alla firma della famiglia. Una nuova capability
+# `*_files_*` può cambiare la decisione per un intent `images` o `texts` e deve
+# quindi invalidare i piani precedenti, come già avviene nell'allineamento
+# semantico del runtime tramite FILE_CARRIER_OBJECTS.
+ROUTING_EPOCH = "2026-07-30.1"
 
 
 def tools_sig(framework, catalog) -> str:
@@ -112,14 +117,30 @@ def tools_sig(framework, catalog) -> str:
 
 def _family(verb: str, obj: str, names: set) -> set:
     """Famiglia di candidati per una clausola: canonici + varianti qualifier
-    + fratelli-produttori (per i verbi produttori)."""
+    + fratelli-produttori (per i verbi produttori).
+
+    Gli oggetti di contenuto specializzato dichiarati da
+    :data:`vocab.FILE_CARRIER_OBJECTS` includono anche i carrier filesystem
+    ``files``/``dirs``. La relazione è vocabolario canonico, non una frase NL:
+    resta quindi deterministica, multilingue e condivisibile da L0/L1.
+    """
     fam = set()
     verbs = _PRODUCER_VERBS if verb in _PRODUCER_VERBS else (verb,)
+    objects = {obj}
+    try:
+        from vocab import FILE_CARRIER_OBJECTS
+        if obj in FILE_CARRIER_OBJECTS:
+            objects.update(("files", "dirs"))
+    except ImportError:
+        # Il modulo è sempre presente nel runtime; il ripiego mantiene la
+        # funzione pura e conservativa nei consumer minimali.
+        pass
     for v in verbs:
-        base = f"{v}_{obj}"
-        for n in names:
-            if n == base or n.startswith(base + "_"):
-                fam.add(n)
+        for family_obj in objects:
+            base = f"{v}_{family_obj}"
+            for n in names:
+                if n == base or n.startswith(base + "_"):
+                    fam.add(n)
     return fam
 
 

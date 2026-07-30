@@ -157,6 +157,14 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         target_kind="exact",
         description="Creazione di una risorsa amministrata da Metnos",
     ),
+    "metnos:cache": CapabilitySpec(
+        "metnos:cache", critical=False, default_approval="none",
+        target_kind="none",
+        description=(
+            "Scrittura best-effort in una cache tecnica amministrata da "
+            "Metnos, priva di effetti sui dati utente"
+        ),
+    ),
     "metnos:credentials_metadata_only": CapabilitySpec(
         "metnos:credentials_metadata_only", critical=False,
         default_approval="none", target_kind="none",

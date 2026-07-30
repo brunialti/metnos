@@ -3,10 +3,10 @@ role: tutor_observation_select
 tier: fast
 lang: en
 style: prescriptive
-version: 1
+version: 2
 owner: roberto
-updated: 2026-07-29
-sha_prev: new
+updated: 2026-07-30
+sha_prev: 20c1f1dd
 --- #}
 Select one observation view from the closed `views` inventory in the input JSON to satisfy `user_query`.
 
@@ -18,3 +18,9 @@ YOU MUST: return `NONE` if even one datum is missing, multiple views are needed,
 YOU MUST NOT: extend a view by analogy, topical similarity, previous conversation, or documentation outside the inventory.
 
 The `coverage`, `excluded`, and `fact_paths` fields are the view's complete contract. Only the selected `view_id` grants data access; titles and descriptions grant no additional authority.
+
+When `verification_pass` is `true`, the inventory contains only the already
+proposed view. Reassess the target and every requested fact from scratch:
+return its `view_id` only if its coverage fully entails all of them; otherwise
+return `NONE`. Topical affinity, the Metnos name, or the absence of an
+alternative view does not constitute coverage.

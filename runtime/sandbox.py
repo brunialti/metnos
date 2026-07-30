@@ -120,6 +120,12 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
                 Path(_C.PATH_AUDIT),
                 Path(_C.PATH_USER_STATE) / "proposals_state.db",
             ), False),
+            # Cache tecnica: un sottoalbero dedicato, mai l'intera cache
+            # dell'account di servizio. La correttezza dell'executor non deve
+            # dipenderne e ogni corpus/utente resta separato nel DB applicativo.
+            "file_hash_cache": ((
+                Path(_C.PATH_USER_CACHE) / "file_hashes",
+            ), True),
         }
     except Exception:
         return []
@@ -185,10 +191,13 @@ def filesystem_extras(executor, args) -> list[Path]:
     """Resolve signed ``fs:read`` hints of the form ``arg:<name>``.
 
     The manifest chooses which typed argument may carry filesystem authority;
-    the invocation can only narrow that declaration to concrete existing
-    paths.  Other arguments and unknown hints never create a bind.  Traditional
-    absolute/glob hints remain handled by ``_build_bwrap_args`` for migrated
-    executors that intentionally expose a fixed filesystem scope.
+    the invocation can only narrow that declaration to one concrete existing
+    path. If the literal path is absent, the same central bilingual user-dir
+    resolver used by the file backends may translate it before the sandbox is
+    built. Only its closed alias vocabulary is considered, and only the exact
+    resolved target is mounted. Other arguments and unknown hints never create
+    a bind. Traditional absolute/glob hints remain handled by
+    ``_build_bwrap_args`` for migrated executors with fixed filesystem scope.
     """
     from capabilities import effective_capabilities
 
@@ -218,7 +227,14 @@ def filesystem_extras(executor, args) -> list[Path]:
                 if not path.is_absolute():
                     path = (Path.cwd() / path).resolve()
                 if not path.exists():
-                    continue
+                    try:
+                        from path_alias import resolve_path_with_alias
+                        resolved, _note = resolve_path_with_alias(value)
+                    except (ImportError, OSError, RuntimeError, ValueError):
+                        continue
+                    if not resolved.exists():
+                        continue
+                    path = resolved
                 key = str(path)
                 if key in seen:
                     continue
@@ -455,8 +471,9 @@ def _build_bwrap_args(
                     args += ["--ro-bind", str(p), str(p)]
                 else:  # write o altro
                     args += ["--bind", str(p), str(p)]
-        elif kind == "metnos" and mode in {"read", "write", "create"}:
-            writable = mode in {"write", "create"}
+        elif kind == "metnos" and mode in {
+                "read", "write", "create", "cache"}:
+            writable = mode in {"write", "create", "cache"}
             for p in _managed_local_resource_paths(hints, writable=writable):
                 args += ["--bind" if writable else "--ro-bind",
                          str(p), str(p)]

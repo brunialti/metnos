@@ -38,27 +38,6 @@ def _with_pending_note(answer: str, request: TutorRequest) -> str:
     return f"{answer.rstrip()}\n\n{_msg('MSG_TUTOR_PENDING_PRESERVED')}"
 
 
-_PREVIOUS_QUESTION_MARKER = "PREVIOUS_USER_QUESTION:"
-_PREVIOUS_ANSWER_MARKER = "PREVIOUS_TUTOR_ANSWER:"
-
-
-def _previous_question(request: TutorRequest) -> str:
-    """Estrae la sola domanda precedente dal contesto di conversazione.
-
-    Il contesto passato al composer resta l'intero scambio; la SONDA di
-    retrieval usa solo la domanda, per il motivo misurato in
-    ``tutor.conversation.recent_question``. La struttura del contesto e'
-    quella dichiarata da quel modulo: se cambia, qui non si indovina —
-    si ricade sul comportamento senza contesto.
-    """
-
-    raw = request.conversation_context or ""
-    if _PREVIOUS_QUESTION_MARKER not in raw:
-        return ""
-    question = raw.split(_PREVIOUS_QUESTION_MARKER, 1)[1]
-    return question.split(_PREVIOUS_ANSWER_MARKER, 1)[0].strip()
-
-
 def _executor_purpose(executor, lang: str) -> str:
     """Read one localized, bounded purpose from the admitted manifest."""
 
@@ -305,6 +284,91 @@ def _surface_key(hit: SourceHit) -> str | None:
     return reference[2] if len(reference) >= 3 else None
 
 
+def _manifest_family(hit: SourceHit) -> str:
+    unit = hit.unit
+    if unit is None or unit.authority != "admitted_manifest":
+        return ""
+    parts = str(unit.source_ref or "").split(":")
+    return parts[1] if len(parts) >= 2 and parts[0] == "manifest" else ""
+
+
+def _coherent_manifest_scope(
+        hits: tuple[SourceHit, ...], primary: SourceHit,
+) -> tuple[SourceHit, ...]:
+    """Bound operation help to one explicit manifest neighbourhood.
+
+    Executor arguments are leaf evidence, while retrieved manuals may discuss
+    a nearby but different pipeline.  When the primary is a complete admitted
+    manifest, retain its leaves, complete manifests that explicitly cross-link
+    it in their signed descriptions, the best published explanation, and one
+    additional publication that names the primary executor.  This derives the
+    neighbourhood entirely from source structure and authored cross-references;
+    it contains no query words, domains, or executor-specific table.
+    """
+
+    unit = primary.unit
+    if unit is None or unit.source_kind != "executor_manifest":
+        return hits
+    primary_family = _manifest_family(primary)
+    if not primary_family:
+        return hits
+
+    roots = [primary]
+    primary_text = str(unit.text or "").casefold()
+    for hit in hits:
+        if hit is primary or hit.unit is None:
+            continue
+        if hit.unit.source_kind != "executor_manifest":
+            continue
+        family = _manifest_family(hit)
+        if not family:
+            continue
+        linked = (
+            family.casefold() in primary_text
+            or primary_family.casefold() in str(hit.unit.text or "").casefold()
+        )
+        if linked:
+            roots.append(hit)
+        if len(roots) >= 3:
+            break
+    admitted_families = {_manifest_family(hit) for hit in roots}
+
+    first_document = next((
+        hit for hit in hits
+        if hit.unit is not None
+        and hit.unit.authority == "published_documentation"
+    ), None)
+    selected: list[SourceHit] = []
+    argument_counts: dict[str, int] = {}
+    document_count = 0
+    for hit in hits:
+        candidate = hit.unit
+        if hit in roots:
+            selected.append(hit)
+        elif candidate is None:
+            continue
+        elif candidate.source_kind == "executor_manifest_argument":
+            family = _manifest_family(hit)
+            if (family in admitted_families
+                    and argument_counts.get(family, 0) < 2):
+                selected.append(hit)
+                argument_counts[family] = argument_counts.get(family, 0) + 1
+        elif candidate.source_kind == "executor_manifest":
+            continue
+        elif candidate.authority == "published_documentation":
+            explicitly_linked = primary_family.casefold() in (
+                f"{candidate.title} {candidate.text}".casefold())
+            if (document_count < 2
+                    and (hit is first_document or explicitly_linked)):
+                selected.append(hit)
+                document_count += 1
+        # Other source shapes are separate authorities.  Once a complete
+        # manifest is primary they cannot expand its operational contract.
+        if len(selected) >= 8:
+            break
+    return tuple(selected or (primary,))
+
+
 def _ledger_scope(hits: tuple[SourceHit, ...],
                   primary: SourceHit) -> tuple[SourceHit, ...]:
     """Restringe le voci UI della checklist alla pagina PRIMARIA.
@@ -321,10 +385,26 @@ def _ledger_scope(hits: tuple[SourceHit, ...],
     """
 
     primary_key = _surface_key(primary)
-    if primary_key is None:
-        return tuple(hit for hit in hits if _surface_key(hit) is None)
-    return tuple(
+    primary_manifest = (
+        primary.unit is not None
+        and primary.unit.source_kind == "executor_manifest"
+    )
+    # A secondary manifest is candidate evidence, not a mandatory topic.  The
+    # completeness ledger may force only the manifest that won semantic
+    # primacy; otherwise a focused question expands into every nearby tool.
+    without_secondary_manifests = tuple(
         hit for hit in hits
+        if not (hit.unit is not None
+                and hit.unit.source_kind == "executor_manifest"
+                and (not primary_manifest or hit is not primary))
+    )
+    if primary_key is None:
+        return tuple(
+            hit for hit in without_secondary_manifests
+            if _surface_key(hit) is None
+        )
+    return tuple(
+        hit for hit in without_secondary_manifests
         if _surface_key(hit) in (None, primary_key)
     )
 
@@ -623,7 +703,8 @@ def _evidence(trace: dict, catalog_version: str,
 
 def _answer_live_observation(
         request: TutorRequest, *, query: str, lang: str, started: float,
-        deadline_at: float) -> TutorAnswer | None:
+        authority_deadline_at: float,
+        request_deadline_at: float) -> TutorAnswer | None:
     """Answer through one signed view, or leave the ordinary runtime intact.
 
     ``OBSERVE`` is descriptive, not authority.  A request reaches a probe only
@@ -638,18 +719,35 @@ def _answer_live_observation(
 
     try:
         from .catalog import load_request_snapshot
-        from .observation_views import project_capsule, select_view
+        from .observation_views import (
+            project_capsule,
+            select_view,
+            verify_semantic_coverage,
+        )
         snapshot = load_request_snapshot()
-        remaining(deadline_at)
+        remaining(authority_deadline_at)
         selection = select_view(
             query=query, lang=lang, principal=request.principal,
-            deadline_at=deadline_at)
+            deadline_at=authority_deadline_at)
         if not selection.available or selection.view is None:
             return None
         view = selection.view
+        coverage_ok, coverage_reason = verify_semantic_coverage(
+            query=query,
+            lang=lang,
+            principal=request.principal,
+            selected=view,
+            snapshot=snapshot,
+            deadline_at=authority_deadline_at,
+        )
+        if not coverage_ok:
+            log.info("Tutor live observation declined reason=%s",
+                     coverage_reason)
+            return None
 
+        from .semantic import _language_order
         requested = str(lang or "en").lower().split("-", 1)[0]
-        language_order = tuple(dict.fromkeys((requested, "en", "it")))
+        language_order = _language_order(lang)
         candidates = tuple(
             unit for unit in snapshot.units
             if unit.observation_ref == view.view_id
@@ -663,6 +761,11 @@ def _answer_live_observation(
         )
         if unit is None:
             return None
+        # Authority is now complete.  Probing and composing are read-only
+        # post-authority work and use the full request budget; keeping them in
+        # the short admission window would turn harmless LLM contention into a
+        # terminal Tutor response and suppress the ordinary runtime.
+        remaining(authority_deadline_at)
 
         from .probes import (
             capsules_are_fresh,
@@ -675,7 +778,7 @@ def _answer_live_observation(
             principal=request.principal,
             lang=lang,
             injected=request.probes,
-            deadline_at=deadline_at,
+            deadline_at=request_deadline_at,
         )
         if len(raw) != 1:
             return None
@@ -685,7 +788,7 @@ def _answer_live_observation(
         if not capsules_are_fresh((capsule,)):
             return None
         capsule = compact_for_composition((capsule,))[0]
-        remaining(deadline_at)
+        remaining(request_deadline_at)
 
         hit = SourceHit(
             source_type="knowledge", source_id=unit.unit_id,
@@ -710,20 +813,15 @@ def _answer_live_observation(
             # The selector and composer therefore see only the current request.
             conversation_context="",
             delivery_channel=request.principal.channel,
-            deadline_at=deadline_at,
+            deadline_at=request_deadline_at,
         )
         if composition.status != "answer" or not composition.text:
-            return TutorAnswer(
-                esito="tutor_error",
-                answer_md=_with_pending_note(
-                    _msg("MSG_TUTOR_UNAVAILABLE"), request),
-                source_ids=source_ids,
-                score_band="none",
-                elapsed_ms=int((time.monotonic() - started) * 1000),
-                detection="semantic_live_observation",
-                probe_statuses=((view.probe_id, capsule.status),),
-                gap_reason="composer_unavailable",
-            )
+            # A live observation is an optional, read-only acceleration.  It
+            # has performed no effect that would make ordinary runtime fallback
+            # unsafe, so composition failure must not steal the user's turn.
+            log.info("Tutor live observation declined reason=composer_%s",
+                     composition.status)
+            return None
         gap_reason = (
             "live_observation_incomplete"
             if capsule.status == "partial" else
@@ -744,7 +842,11 @@ def _answer_live_observation(
             evidence=None,
         )
     except TutorDeadlineExceeded:
-        raise
+        # No side effect was performed.  Exhausting either the admission phase
+        # or the read-only delivery phase leaves the request to the ordinary
+        # runtime instead of producing a terminal Tutor error.
+        log.info("Tutor live observation declined reason=deadline")
+        return None
     except Exception:
         log.warning("Tutor live observation declined", exc_info=True)
         return None
@@ -753,29 +855,29 @@ def _answer_live_observation(
 def answer_request(request: TutorRequest) -> TutorAnswer | None:
     """Return an answer only for a high-confidence help request.
 
-    Any internal failure is handled by the channel adapter, which can emit the
-    localized unavailable message without routing the help query to the
-    planner.  Non-help returns ``None`` and leaves the existing path intact.
+    Technical failures before a semantic mode or a complete live view has
+    acquired Tutor authority return ``None`` and leave the existing runtime
+    intact. Failures after a request is positively established as help are
+    terminal and localized by the Tutor/channel boundary.
     """
 
     if not enabled():
         return None
     started = time.monotonic()
-    from .deadline import TutorDeadlineExceeded, new_deadline, remaining
+    from .deadline import (
+        TutorDeadlineExceeded,
+        mode_budget_s,
+        new_deadline,
+        phase_deadline,
+        remaining,
+    )
     deadline_at = request.deadline_at or new_deadline()
     remaining(deadline_at)
     try:
         detection = classify(request.query_redacted)
     except Exception:
         log.warning("tutor detection unavailable", exc_info=True)
-        return TutorAnswer(
-            esito="tutor_error",
-            answer_md=_with_pending_note(_msg("MSG_TUTOR_UNAVAILABLE"), request),
-            score_band="none",
-            elapsed_ms=int((time.monotonic() - started) * 1000),
-            detection="detection_unavailable",
-            gap_reason="mode_unavailable",
-        )
+        return None
     remaining(deadline_at)
     if detection.reason in {"sensitive_shape", "control_command"}:
         return None
@@ -786,23 +888,25 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
         request.query_redacted, lang=lang)
     remaining(deadline_at)
     from .mode import classify_mode_decision
-    mode_decision = classify_mode_decision(
-        request.query_redacted,
-        lang,
-        conversation_context=request.conversation_context,
-        deadline_at=deadline_at,
-    )
+    # Mode, mixed segmentation, and live-view admission form one
+    # pre-authority transaction. Sharing a single short deadline prevents a
+    # sequence of individually bounded classifiers from consuming the whole
+    # HTTP budget before the ordinary runtime gets a chance to act.
+    authority_deadline_at = phase_deadline(deadline_at, mode_budget_s())
+    try:
+        mode_decision = classify_mode_decision(
+            request.query_redacted,
+            lang,
+            conversation_context=request.conversation_context,
+            deadline_at=authority_deadline_at,
+        )
+    except TutorDeadlineExceeded:
+        log.info("Tutor mode declined reason=authority_deadline")
+        return None
     if not mode_decision.available:
         log.warning(
             "Tutor mode unavailable reason=%s", mode_decision.reason)
-        return TutorAnswer(
-            esito="tutor_error",
-            answer_md=_with_pending_note(_msg("MSG_TUTOR_UNAVAILABLE"), request),
-            score_band="none",
-            elapsed_ms=int((time.monotonic() - started) * 1000),
-            detection="semantic_unavailable",
-            gap_reason="mode_unavailable",
-        )
+        return None
     # Reading an exact document admitted by the publication registry is
     # static help even though the current-query classifier correctly treats
     # arbitrary file contents as an observation.  Source identity is applied
@@ -830,32 +934,17 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                 request.query_redacted,
                 lang,
                 conversation_context=request.conversation_context,
-                deadline_at=deadline_at,
+                deadline_at=authority_deadline_at,
             )
         except TutorDeadlineExceeded:
-            raise
+            log.info("Tutor mixed segmentation declined reason=authority_deadline")
+            return None
         except MixedSplitUnavailable:
             log.warning("Tutor mixed segmentation unavailable", exc_info=True)
-            return TutorAnswer(
-                esito="tutor_error",
-                answer_md=_with_pending_note(
-                    _msg("MSG_TUTOR_UNAVAILABLE"), request),
-                score_band="none",
-                elapsed_ms=int((time.monotonic() - started) * 1000),
-                detection="semantic_unavailable",
-                gap_reason="mode_unavailable",
-            )
+            return None
         except Exception:
             log.warning("Tutor mixed segmentation failed", exc_info=True)
-            return TutorAnswer(
-                esito="tutor_error",
-                answer_md=_with_pending_note(
-                    _msg("MSG_TUTOR_UNAVAILABLE"), request),
-                score_band="none",
-                elapsed_ms=int((time.monotonic() - started) * 1000),
-                detection="semantic_unavailable",
-                gap_reason="mode_unavailable",
-            )
+            return None
         if split is None:
             # A MIXED request not proven to be exactly one explanation plus
             # one operational clause belongs to the ordinary compound
@@ -875,7 +964,8 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             query=working_query,
             lang=lang,
             started=started,
-            deadline_at=deadline_at,
+            authority_deadline_at=authority_deadline_at,
+            request_deadline_at=deadline_at,
         )
     if mode != "EXPLAIN":
         if mode != "MIXED":
@@ -915,7 +1005,8 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
         # tutor.conversation.recent_question) — e vive nel contesto del
         # composer, dove serve a risolvere il riferimento.
         previous_question = (
-            _previous_question(request) if mode_decision.is_followup else "")
+            request.previous_question.strip()
+            if mode_decision.is_followup else "")
         conversation_context_used = bool(previous_question)
         retrieval_trace: dict = {}
         context = retrieve_sources(
@@ -1029,6 +1120,8 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             )
             if not effective_hits:
                 effective_hits = (primary,)
+            effective_hits = _coherent_manifest_scope(
+                effective_hits, primary)
             rendered_blocks = tuple((
                 hit,
                 _render_context(

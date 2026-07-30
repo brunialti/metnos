@@ -36,6 +36,23 @@ def _document_group(hit: "SourceHit"):
     return (hit.unit.source_ref.split("#", 1)[0], hit.unit.title)
 
 
+def _manifest_family(hit: "SourceHit") -> str:
+    """Return the canonical executor family carried by a manifest unit."""
+
+    unit = hit.unit
+    if unit is None or unit.authority != "admitted_manifest":
+        return ""
+    parts = str(unit.source_ref or "").split(":")
+    return parts[1] if len(parts) >= 2 and parts[0] == "manifest" else ""
+
+
+def _is_manifest_argument(hit: "SourceHit") -> bool:
+    return bool(
+        hit.unit is not None
+        and hit.unit.source_kind == "executor_manifest_argument"
+    )
+
+
 def _reserve_authorities(selected, visible, adjusted, threshold, top, band,
                          per_document, per_kind, limit_total,
                          pinned=()) -> None:
@@ -112,6 +129,16 @@ def knowledge_band() -> float:
     """Return the single configured relevance band used by Tutor ranking."""
 
     return _bounded_float("METNOS_TUTOR_KNOWLEDGE_BAND", 0.06)
+
+
+def knowledge_minimum() -> float:
+    """Return the corpus-wide semantic relevance floor.
+
+    Live observation authority builds on the same calibrated scale instead of
+    introducing a second, independently tuned threshold.
+    """
+
+    return _bounded_float("METNOS_TUTOR_KNOWLEDGE_MIN", 0.70)
 
 
 def association_adjusted_score(*, base: float, natural_top: float,
@@ -441,7 +468,7 @@ def retrieve_sources(
         # aggregate source at 0.70+, while mode classification still excludes
         # actions before retrieval.  This is one corpus-wide confidence floor,
         # not a phrase, topic, or source-specific exception.
-        _bounded_float("METNOS_TUTOR_KNOWLEDGE_MIN", 0.70)
+        knowledge_minimum()
         if minimum_score is None else float(minimum_score)
     )
     band = knowledge_band()
@@ -542,14 +569,66 @@ def retrieve_sources(
     if not visible or ranked[0] not in visible:
         return SemanticContext((), adjusted(ranked[0]), restricted=True)
 
-    top = adjusted(visible[0])
+    # An argument fragment is a leaf of an admitted manifest, not a complete
+    # operation.  Dense retrieval can rank a generic field (for example an
+    # ``email`` argument) above the executor whose reviewed semantic surface
+    # actually answers the question.  When a complete executor manifest is in
+    # the same corpus-wide relevance band, its operation becomes the semantic
+    # primary; the leaf remains eligible only as supporting evidence.
+    # Parameter-only questions still retain their leaf primary when no
+    # complete manifest clears the band.  This is a hierarchy rule over source
+    # shape, never query text.
+    ranked_top = adjusted(visible[0])
+    eligible = [
+        hit for hit in visible
+        if adjusted(hit) >= threshold and adjusted(hit) >= ranked_top - band
+    ]
+    primary = eligible[0]
+    if _is_manifest_argument(primary):
+        primary = next(
+            (hit for hit in eligible
+             if (hit.unit is not None
+                 and hit.unit.source_kind == "executor_manifest")),
+            primary,
+        )
+    top = adjusted(primary)
+    complete_manifest_families = {
+        family
+        for hit in eligible
+        if (hit.unit is not None
+            and hit.unit.source_kind == "executor_manifest"
+            and (family := _manifest_family(hit)))
+    }
     limit_total = max(1, min(16, int(top_k)))
     selected: list[SourceHit] = []
     per_document: dict[str, int] = {}
     per_kind: dict[str, int] = {}
-    for hit in visible:
-        if adjusted(hit) < threshold or adjusted(hit) < top - band:
-            break
+    primary_family = _manifest_family(primary)
+    primary_leaves = [
+        hit for hit in eligible
+        if hit is not primary
+        and primary_family
+        and _is_manifest_argument(hit)
+        and _manifest_family(hit) == primary_family
+    ]
+    # Once a complete manifest wins primacy, reserve the bounded leaf budget
+    # for its own best parameters before considering leaves from neighbouring
+    # executors.  Otherwise generic fields from earlier dense ranks can consume
+    # the global leaf cap and evict the exact destination/filter contract.
+    ordered = [
+        primary,
+        *primary_leaves,
+        *(hit for hit in eligible
+          if hit is not primary and hit not in primary_leaves),
+    ]
+    for hit in ordered:
+        if (_is_manifest_argument(hit)
+                and hit is not primary
+                and complete_manifest_families
+                and _manifest_family(hit) not in complete_manifest_families):
+            # A leaf from an executor whose complete contract did not clear the
+            # same semantic band is lexical noise, not standalone evidence.
+            continue
         # A published page is a sequence of independently authored, titled
         # sections; budgeting on the whole file would let two strong sections
         # evict a third, unrelated one.  The heading is part of the admitted

@@ -1302,7 +1302,11 @@ async def _preprocess_turn(request: web.Request):
                             "redacted_fields": sensitive_fields,
                         }
                     elif tutor_busy:
-                        return _turn_busy_response(), None
+                        # Tutor is an optional semantic pre-gate.  Saturating
+                        # its small worker pool must preserve any open dialog
+                        # and fall through to the ordinary planner, not consume
+                        # global turn capacity with a misleading HTTP 503.
+                        log.info("HTTP Tutor busy; falling through to runtime")
                 else:
                     _dlg_resp = _apply_dialog_pending(
                         sender_id, query, actor=actor, channel="http",

@@ -206,6 +206,7 @@ output of the <code>registry</code> command are the complete, current sources.</
 <tr><td><code>calendar:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read events from an authorised calendar</td></tr>
 <tr><td><code>index:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local index managed by Metnos</td></tr>
 <tr><td><code>metnos:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read a local resource managed by Metnos</td></tr>
+<tr><td><code>metnos:cache</code></td><td>no</td><td><code>none</code></td><td><code>none</code></td><td>best-effort technical cache in a Metnos-managed subtree, with no effect on user data</td></tr>
 <tr><td><code>system:read</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>read system diagnostics on an authorised host or device</td></tr>
 <tr><td><code>provider:access</code></td><td>no</td><td><code>per_target</code></td><td><code>exact</code></td><td>access the network and credentials of an authorised provider</td></tr>
 </table>
@@ -254,6 +255,7 @@ The matrix is the product of the three autonomy levels (ReadOnly, Supervised, Fu
 <tr><td><code>calendar:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>index:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>metnos:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
+<tr><td><code>metnos:cache</code></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>system:read</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 <tr><td><code>provider:access</code></td><td><span class="v-approve">approval</span></td><td><span class="v-approve">approval</span></td><td><span class="v-allow">allowed</span></td></tr>
 </table>

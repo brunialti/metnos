@@ -38,6 +38,9 @@ class TutorRequest:
     catalog_version: str = ""
     probes: dict[str, object] = field(default_factory=dict)
     conversation_context: str = ""
+    # Typed copy of the previous user question. Retrieval must never recover
+    # it by parsing the rendered composer context.
+    previous_question: str = ""
     # Monotonic process-local deadline. It is never persisted or rendered.
     deadline_at: float = field(default=0.0, repr=False, compare=False)
 

@@ -91,13 +91,18 @@ def _answer(query: str, principal, *, has_pending: bool,
     from credential_intake import contains_sensitive_input
     from i18n import current_lang
     from tutor import TutorRequest, answer_request
-    from tutor.conversation import forget, recent_context, remember
-    from tutor.deadline import new_deadline, remaining, require_commit_window
-    # Direct callers cannot use a secret-shaped request to probe Tutor and
-    # then fall through with the original value. Channel adapters normally
-    # consume these before reaching this function; this is the final guard.
+    from tutor.conversation import (
+        forget,
+        recent_context,
+        recent_question,
+        remember,
+    )
+    from tutor.deadline import new_deadline, remaining
+    # Tutor must never inspect a secret-shaped request. Channel adapters
+    # normally consume it before this boundary; ``None`` leaves its safe,
+    # channel-specific handling intact instead of manufacturing a Tutor error.
     if contains_sensitive_input(query):
-        return unavailable_answer(has_pending=has_pending)
+        return None
     deadline_at = new_deadline()
     lang = current_lang()
     conversation_context = recent_context(principal)
@@ -108,6 +113,7 @@ def _answer(query: str, principal, *, has_pending: bool,
         principal=principal,
         has_pending=bool(has_pending),
         conversation_context=conversation_context,
+        previous_question=recent_question(principal),
         deadline_at=deadline_at,
     )
     result = answer_request(request)
@@ -118,10 +124,6 @@ def _answer(query: str, principal, *, has_pending: bool,
         # retrieval context (never authority, but still the wrong topic).
         forget(principal)
         return None
-    # One preflight before the lifecycle commit. After a handoff becomes
-    # visible, best-effort memory/telemetry must never turn the ready answer
-    # into an unavailable response and leave an invisible pending behind.
-    require_commit_window(deadline_at, minimum_s=2.0)
     if result.handoff_query:
         if not has_pending and pending_sender_id:
             try:
@@ -179,9 +181,10 @@ def answer(query: str, principal, *, has_pending: bool = False,
            pending_sender_id: str = ""):
     """Narrow total boundary shared by HTTP and Telegram.
 
-    ``None`` means the semantic gate positively classified a non-help request.
-    Every technical failure is a localized terminal result, never implicit
-    permission to continue into the planner.
+    ``None`` means Tutor did not acquire authority: a positively classified
+    non-help request and an expected pre-authority timeout both preserve the
+    ordinary runtime. Unexpected boundary failures remain localized terminal
+    results and never become implicit permission to continue.
     """
 
     try:

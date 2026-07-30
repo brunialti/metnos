@@ -78,7 +78,8 @@ def _cache_scope(args: dict) -> str:
 def _cache_path(scope: str) -> Path:
     base = Path(os.environ.get("XDG_CACHE_HOME")
                 or Path.home() / ".cache")
-    return base / "metnos" / f"file_hashes-{scope}.sqlite"
+    root = Path(os.environ.get("METNOS_USER_CACHE") or (base / "metnos"))
+    return root / "file_hashes" / f"file_hashes-{scope}.sqlite"
 
 
 def _open_cache(scope: str) -> sqlite3.Connection | None:

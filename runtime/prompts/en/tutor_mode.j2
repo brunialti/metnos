@@ -3,7 +3,7 @@ role: tutor_mode
 tier: fast
 lang: en
 style: prescriptive
-version: 11
+version: 13
 owner: roberto
 updated: 2026-07-30
 sha_prev: 0e4ae4ef
@@ -56,6 +56,11 @@ OK: "<PERFORM_OPERATION> now" → ACT.
 Clause rule:
 YOU MUST: use `MIXED` only when the message truly contains different intents.
 YOU MUST NOT: use `MIXED` for several operations that are all explanatory, all observational, or all active.
+YOU MUST: use `MIXED` when one clause asks HOW something works and another
+clause asks to PERFORM that same thing, even when their object and operation
+are identical. A shared topic does not merge two different requested outcomes:
+an explanation and an effect.
+OK: "<HOW_DOES_OPERATION_WORK>? <PERFORM_OPERATION> <TARGET>" → MIXED.
 YOU MUST: keep a request `OBSERVE` when it asks for current real items and, about those same items, observable attributes such as name, description, state, outcome, or diagnostic cause.
 
 Context rule:

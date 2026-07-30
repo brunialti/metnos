@@ -26,10 +26,11 @@ from typing import Optional
 
 import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
 
-# Connettori sequenziali: i SIMBOLI (,;&&) sono lingua-invarianti e restano
-# qui; le PAROLE connettore (e/and/poi/then/...) vivono nel concept
-# traducibile `compound.connector_word` (detection_lexicon). Il pattern di
-# split e' ricostruito deterministicamente dalle forme della lingua corrente.
+# Connettori sequenziali: i SIMBOLI (,;&&) e i terminatori interrogativi o
+# esclamativi sono lingua-invarianti e restano qui; le PAROLE connettore
+# (e/and/poi/then/...) vivono nel concept traducibile
+# `compound.connector_word` (detection_lexicon). Il pattern lessicale di split
+# e' ricostruito deterministicamente dalle forme della lingua corrente.
 
 
 # Apostrofi (tutte le forme Unicode: ASCII, typographic, modifier-letter, grave).
@@ -37,6 +38,13 @@ import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
 # lingua — IT «e'»/«cos'»/«l'», FR «j'»/«qu'», EN «it's»/«don't». Un connettore
 # adiacente a un apostrofo è parte di una parola elisa, NON un separatore.
 _APOSTROPHES = "".join(chr(c) for c in (0x27, 0x2019, 0x02BC, 0x60))  # ' ’ ʼ `
+
+# Confine forte fra frasi letterali. Richiedere spazio dopo i terminatori
+# ASCII evita di spezzare query-string e altri token (`...?q=...`); i segni
+# Unicode coprono gli equivalenti non latini con lo stesso contratto. Il
+# terminatore resta nel chunk precedente, quindi ogni risultato e' ancora uno
+# span letterale della richiesta e puo' essere validato senza riscritture LLM.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[?!。！？؟])\s+(?=\S)")
 
 
 @functools.lru_cache(maxsize=8)
@@ -93,11 +101,18 @@ TRANSFORM_VERBS = {"filter", "sort", "group", "classify", "describe",
 
 
 def split_query_chunks(query: str) -> list[str]:
-    """Split query su connettori sequenziali universali. Ritorna chunks
-    non vuoti puliti."""
+    """Split su confini forti e connettori sequenziali universali.
+
+    La punteggiatura separa frasi autonome prima del lessico traducibile. In
+    questo modo una richiesta composta non dipende dalla presenza di una
+    congiunzione specifica e ogni chunk conserva esattamente il testo utente.
+    """
     if not query or not query.strip():
         return []
-    parts = _connector_pattern(_dl.current_lang()).split(query)
+    parts: list[str] = []
+    connector = _connector_pattern(_dl.current_lang())
+    for sentence in _SENTENCE_BOUNDARY.split(query.strip()):
+        parts.extend(connector.split(sentence))
     return [p.strip() for p in parts if p.strip()]
 
 
