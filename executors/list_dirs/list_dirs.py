@@ -26,7 +26,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import format_exact_integer, run_stdio  # noqa: E402
 from parallel_walk import parallel_walk  # noqa: E402
 from path_alias import resolve_path_with_alias  # noqa: E402
 
@@ -54,6 +54,57 @@ def _kind_for(mime: str) -> str:
         if any(mime.startswith(pref) for pref in prefixes):
             return kind
     return "binary"
+
+
+def _mtime_iso(value: float) -> str | None:
+    """Render a filesystem timestamp without rejecting the whole entry.
+
+    Remote and legacy filesystems can expose representable numeric mtimes
+    outside ``datetime``'s year range.  The file is still readable and must be
+    counted; only the human-readable timestamp is unavailable.
+    """
+    try:
+        return _dt.datetime.fromtimestamp(
+            value, _dt.timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _count_presentation(*, base: Path, recursive: bool, max_depth: int,
+                        shown: int, total: int, files: int, directories: int,
+                        symlinks: int, truncated: bool) -> dict:
+    """Authoritative count fragment, selected centrally for count intents.
+
+    The executor declares *what* this fragment answers.  The runtime decides
+    whether that semantic scope applies to the turn; neither side matches a
+    particular query, path, or language phrase.
+    """
+    summary = _msg(
+        "MSG_LIST_DIRS_EXACT_COUNTS",
+        path=str(base),
+        scope=_msg(
+            ("MSG_LIST_DIRS_SCOPE_RECURSIVE_UNBOUNDED"
+             if recursive and max_depth == 0
+             else "MSG_LIST_DIRS_SCOPE_RECURSIVE" if recursive
+             else "MSG_LIST_DIRS_SCOPE_DIRECT"),
+            depth=format_exact_integer(max_depth),
+        ),
+        files=format_exact_integer(files),
+        directories=format_exact_integer(directories),
+        symlinks=format_exact_integer(symlinks),
+        total=format_exact_integer(total),
+    )
+    if truncated:
+        summary += "\n\n" + _msg(
+            "MSG_LIST_DIRS_DISPLAY_LIMIT_ONLY",
+            shown=format_exact_integer(shown),
+            total=format_exact_integer(total),
+        )
+    return {
+        "scope": "count",
+        "text": summary,
+        "covers_truncation": True,
+    }
 
 
 def invoke(args):
@@ -116,8 +167,7 @@ def invoke(args):
             "kind": kind,
             "mime": mime,
             "size": stat.st_size,
-            "mtime": _dt.datetime.fromtimestamp(
-                stat.st_mtime, _dt.timezone.utc).isoformat(),
+            "mtime": _mtime_iso(stat.st_mtime),
             "mtime_epoch": stat.st_mtime,
         }
 
@@ -125,7 +175,10 @@ def invoke(args):
         base,
         transform=_entry,
         recursive=recursive,
-        max_depth=max_depth,
+        # Shared executor convention: 0 is the caller's explicit
+        # "unbounded" sentinel.  ``recursive=false`` remains the way to ask
+        # for immediate children only.
+        max_depth=None if max_depth == 0 else max_depth,
     )
     all_entries = walk.items
 
@@ -138,6 +191,10 @@ def invoke(args):
         all_entries.sort(key=lambda e: (e["size"], e["path"]), reverse=True)
 
     available_total = len(all_entries)
+    file_count_total = sum(entry["type"] == "file" for entry in all_entries)
+    dir_count_total = sum(entry["type"] == "dir" for entry in all_entries)
+    symlink_count_total = sum(
+        entry["type"] == "symlink" for entry in all_entries)
     entries = (all_entries if max_results == 0
                else all_entries[:max_results])
     truncated = len(entries) < available_total
@@ -164,6 +221,9 @@ def invoke(args):
             "recursive": recursive,
             "count": len(entries),
             "available_total": available_total,
+            "file_count_total": file_count_total,
+            "dir_count_total": dir_count_total,
+            "symlink_count_total": symlink_count_total,
             "truncated": truncated,
             "sort": sort_by,
             "visited_dirs": walk.visited_dirs,
@@ -172,6 +232,18 @@ def invoke(args):
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
+    if out["metadata"]["source_complete"]:
+        out["authoritative_presentation"] = _count_presentation(
+            base=base,
+            recursive=recursive,
+            max_depth=max_depth,
+            shown=len(entries),
+            total=available_total,
+            files=file_count_total,
+            directories=dir_count_total,
+            symlinks=symlink_count_total,
+            truncated=truncated,
+        )
     if failed:
         out["error"] = failed[0]["error"]
         if entries:

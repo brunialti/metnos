@@ -28,7 +28,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(parent / "runtime") for parent in Path(__file__).resolve().parents
     if (parent / "runtime" / "config.py").is_file()))
 
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import format_exact_integer, run_stdio  # noqa: E402
 from executor_workers import (  # noqa: E402
     assigned_workers,
     map_ordered,
@@ -354,6 +354,70 @@ def _failure(path: Path, reason: str) -> dict:
     }
 
 
+def _markdown_code(value) -> str:
+    """Render untrusted path/hash text as a safe Markdown code span."""
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    fence = "`" * (max((len(run) for run in re.findall(r"`+", text)),
+                       default=0) + 1)
+    padding = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{padding}{text}{padding}{fence}"
+
+
+def _exact_duplicate_presentation(out: dict) -> dict | None:
+    """Build the executor-owned, factual presentation of a complete scan.
+
+    This is deliberately derived only from measured output fields.  It never
+    describes candidates as similar or probable: size and sampled fingerprints
+    are negative prefilters, while every emitted duplicate relation has a
+    complete SHA-256 content digest.
+    """
+    if not out.get("ok") or not out.get("source_complete"):
+        return None
+
+    scanned = format_exact_integer(out.get("scanned_files", 0))
+    groups = int(out.get("duplicate_groups_count") or 0)
+    if groups:
+        text = _msg(
+            "MSG_FIND_HASH_EXACT_COMPLETE",
+            scanned=scanned,
+            groups=format_exact_integer(groups),
+            duplicate_files=format_exact_integer(
+                out.get("duplicate_files_count", 0)),
+            redundant_files=format_exact_integer(
+                out.get("redundant_files_count", 0)),
+            redundant_bytes=format_exact_integer(
+                out.get("redundant_bytes", 0)),
+        )
+        entries = out.get("entries") or []
+        examples = []
+        for entry in entries[:5]:
+            if not isinstance(entry, dict):
+                continue
+            examples.append(_msg(
+                "MSG_FIND_HASH_EXACT_PAIR",
+                path=_markdown_code(entry.get("path", "")),
+                original=_markdown_code(entry.get("duplicate_of", "")),
+                sha256=_markdown_code(entry.get("sha256", "")),
+            ))
+        if examples:
+            text += "\n\n" + _msg("MSG_FIND_HASH_EXACT_EXAMPLES")
+            text += "\n" + "\n".join(examples)
+    else:
+        text = _msg("MSG_FIND_HASH_NONE_COMPLETE", scanned=scanned)
+
+    if out.get("results_truncated"):
+        text += "\n\n" + _msg(
+            "MSG_FIND_HASH_DISPLAY_LIMIT_ONLY",
+            shown=format_exact_integer(len(out.get("entries") or [])),
+            total=format_exact_integer(out.get("redundant_files_count", 0)),
+        )
+    return {
+        "scope": "always",
+        "text": text,
+        "covers_truncation": True,
+    }
+
+
 def invoke(args):
     if not isinstance(args, dict):
         return {
@@ -647,6 +711,9 @@ def invoke(args):
             "cap_field": "max_results",
             "cap_value": max_results,
         })
+    presentation = _exact_duplicate_presentation(out)
+    if presentation:
+        out["authoritative_presentation"] = presentation
     return out
 
 

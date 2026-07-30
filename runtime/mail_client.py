@@ -321,6 +321,19 @@ def open_imap(account: str = "metnos_system", *,
             conn = imaplib.IMAP4_SSL(
                 c["imap_host"], c["imap_port"], **kwargs)
             conn.login(c["user"], c["password"])
+            # IMAP capabilities are state-dependent.  ``imaplib`` caches the
+            # greeting's pre-authentication CAPABILITY response and LOGIN does
+            # not refresh it; many servers advertise MOVE/UIDPLUS only after
+            # authentication.  Refresh at the single connection choke point so
+            # every backend makes safety decisions from the authoritative set.
+            # Failure is fail-soft: callers retain the greeting set and their
+            # capability gates still fail closed before mutation.
+            try:
+                conn._get_capabilities()
+            except Exception as capability_error:  # noqa: BLE001
+                log.warning(
+                    "open_imap %s post-login capability refresh failed: %r",
+                    account, capability_error)
             return conn
         except (ssl.SSLError, OSError) as e:
             last = e

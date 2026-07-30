@@ -350,6 +350,30 @@ successivo) e a chi genera codice in automatico.
 </p>
 
 <p>
+Quando un dato non deve essere attenuato dalla prosa generata, l'executor può
+restituire anche una <code>authoritative_presentation</code> con un ambito
+semantico chiuso: per esempio un conteggio esatto o un insieme di duplicati
+verificati. Il runtime usa questi frammenti soltanto se coprono tutti i passi
+produttivi del turno; negli altri casi conserva il normale compositore finale.
+Il limite di visualizzazione resta così distinto dal lavoro svolto: un frammento
+può dichiarare completa una scansione solo se l'executor attesta anche la
+completezza della sorgente. Il frammento sostituisce il normale avviso di
+troncamento soltanto quando questa composizione integrale riesce per l'intero
+turno: un passo coperto non può nascondere il limite di una pipeline che, nel
+suo insieme, non è coperta.
+</p>
+
+<p>
+Gli identificativi possono inoltre richiedere un contesto di origine dichiarato
+nel manifest. Una lista può proiettare <code>entries[*].uid</code> tramite
+<code>from_entries_key</code>; proprietà scalari come account e cartella di
+origine possono dichiarare un <code>from_entries_required</code> condizionale.
+La proiezione accetta questi valori soltanto se tutte le righe concordano. Una
+chiamata diretta deve fornire esplicitamente lo stesso contesto applicabile; se
+manca, il punto unico di invocazione la rifiuta prima di qualunque effetto.
+</p>
+
+<p>
 <strong>I permessi</strong> (<code>capabilities</code>): non &egrave; il manifesto a stabilire
 cosa l'executor pu&ograve; fare. Il manifesto <em>dichiara</em> di cosa avrebbe bisogno per
 funzionare; poi il sistema decide se concedere quei permessi e con che vincoli.

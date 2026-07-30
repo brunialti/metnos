@@ -5,7 +5,8 @@ Tool UNICO per spostare 1+ messaggi fra cartelle (mail folders, Gmail
 labels). Dispatcher sottile che instrada al backend (channel, client).
 
 Architettura coerente con send_messages/read_messages:
-- (email, metnos)           -> email_metnos.move (IMAP COPY+STORE+EXPUNGE)
+- (email, metnos)           -> email_metnos.move (UID MOVE atomico quando
+                               disponibile; fallback mirato solo se sicuro)
 - (email, google_workspace) -> gmail_google_workspace.modify (labels)
 - (telegram, *)             -> non supportato (chat senza folder)
 
@@ -41,7 +42,7 @@ from backends.messages import gmail_google_workspace  # noqa: E402
 _VIA_CHANNEL_ALIAS = {"mail": "email"}
 
 # Dispatch table (channel, client) → (module, method_name).
-# Gmail "move" → modify labels; email IMAP → move (COPY+STORE+EXPUNGE).
+# Gmail "move" → modify labels; email IMAP → spostamento mirato sicuro.
 _HANDLERS = {
     ("email", "metnos"):           (email_metnos, "move"),
     ("email", "google_workspace"): (gmail_google_workspace, "modify"),
@@ -51,6 +52,7 @@ _DEFAULT_CLIENT = "metnos"
 
 
 def invoke(args):
+    args = dict(args or {})
     via_raw = args.get("via_channel") or "email"
     via_channel = _VIA_CHANNEL_ALIAS.get(via_raw, via_raw)
     client = args.get("client") or _DEFAULT_CLIENT
@@ -59,10 +61,13 @@ def invoke(args):
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"{via_channel}/{client}")}
     backend, method = entry
-    # Normalize uids → message_ids for gmail; preserve uids for IMAP.
-    if client == "metnos" and "message_ids" in args and "uids" not in args:
-        args = dict(args)
-        args["uids"] = args.get("message_ids")
+    # The public schema accepts one id or a vector. Normalize once before the
+    # backend split so both IMAP and Gmail receive the same canonical vector.
+    if not args.get("message_ids") and args.get("message_id") is not None:
+        args["message_ids"] = [str(args["message_id"])]
+    # Preserve Gmail message_ids; IMAP consumes the same values as UIDs.
+    if client == "metnos" and args.get("message_ids") and "uids" not in args:
+        args["uids"] = list(args["message_ids"])
     return normalize_vector_result(
         getattr(backend, method)(args), entry_key="results"
     )

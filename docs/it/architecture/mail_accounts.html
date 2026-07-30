@@ -69,6 +69,18 @@ percorso di compatibilità e migrazione.</p>
 <code>send_messages</code> invia SMTP; <code>move_messages</code> gestisce
 cartelle IMAP. Etichette Gmail, conversazioni Gmail e altre funzioni specifiche
 rimangono nell'integrazione Google Workspace.</p>
+<p>Lo spostamento di un messaggio nel Cestino non elimina mai in blocco il
+contenuto di una cartella. Metnos usa l'operazione atomica <code>MOVE</code>
+quando il server la offre; altrimenti procede soltanto se può copiare, marcare
+ed eliminare esattamente gli UID selezionati. Se il server non garantisce
+queste operazioni, lo spostamento fallisce senza modificare la casella. Gli UID
+restano legati all'account e alla cartella di origine: i risultati provenienti
+da account diversi non vengono mai inoltrati a un unico spostamento ambiguo.
+Quando gli UID IMAP sono forniti direttamente, invece di provenire da un passo
+di lettura precedente, account e cartella di origine devono essere entrambi
+espliciti. Metnos rifiuta un UID privo di questo legame prima di contattare il
+backend: non presume mai la casella predefinita. Il vincolo non riguarda gli ID
+dei messaggi Gmail, il cui ambito di identità è fornito dal provider.</p>
 <p class="note">Le password non devono essere inserite in documentazione,
 manifest o file di log. Se vengono fornite tramite un flusso credenziali della
 chat, sono estratte prima del pianificatore, cifrate e sostituite da un

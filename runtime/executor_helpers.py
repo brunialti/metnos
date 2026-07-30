@@ -167,6 +167,29 @@ def coerce_cap(args: dict, key: str, default: int, *,
     return max(1, n)
 
 
+def format_exact_integer(value: Any) -> str:
+    """Render an integer exactly with language-neutral digit grouping.
+
+    Executor output can be rendered on the server or on a remote device where
+    a full locale database is not guaranteed.  A narrow no-break space is a
+    readable grouping separator across the supported languages and, unlike a
+    comma or a full stop, cannot be mistaken for a decimal separator.
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+    sign = "-" if number < 0 else ""
+    digits = str(abs(number))
+    head = len(digits) % 3 or 3
+    groups = [digits[:head]]
+    groups.extend(
+        digits[index:index + 3]
+        for index in range(head, len(digits), 3)
+    )
+    return sign + "\u202f".join(groups)
+
+
 def vector_result(entries: list, failed: list, *,
                   entry_key: str = "entries") -> dict:
     """Build the common envelope for independent vector operations.

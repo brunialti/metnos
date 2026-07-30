@@ -27,7 +27,7 @@ en = "SCOPO: finds exact duplicates through complete SHA-256; broad file types e
 
 [code]
 files  = ["find_files_hash.py"]
-digest = "sha256:815424fbc39b7ba87b8a8752878c080325420cb2acf40839776668e8b987107e"
+digest = "sha256:c871b02180d5424ae9afced8bda08eb03903068ce20a82046c528b6d21fa93b4"
 
 [args]
 type     = "object"
@@ -131,6 +131,7 @@ schema_inline = """
     case_sensitive: bool, scan_elapsed_ms: int,
     sample_elapsed_ms: int, hash_elapsed_ms: int
   },
+  authoritative_presentation?: {scope: 'always', text: str, covers_truncation: bool},
   partial?: bool,
   truncated?: bool,
   truncated_what?: str,

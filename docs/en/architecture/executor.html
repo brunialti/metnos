@@ -310,6 +310,29 @@ step) and whoever auto-generates code.
 </p>
 
 <p>
+For facts that must not be softened by generated prose, an executor may also
+return an <code>authoritative_presentation</code> with a closed semantic scope.
+Exact counts and duplicate groups are examples. The runtime uses those fragments
+only when every productive step in the turn is covered; otherwise it keeps the
+ordinary finalizer. A display limit therefore remains distinct from the work
+performed: a fragment may claim a complete scan only when the executor also
+attests that its source was complete. A fragment suppresses the ordinary
+truncation notice only when this all-or-nothing composition succeeds for the
+whole turn; a covered step cannot hide a limit in an otherwise uncovered
+pipeline.
+</p>
+
+<p>
+Identifiers may also carry manifest-declared source context. An array can map
+<code>entries[*].uid</code> through <code>from_entries_key</code>, while scalar
+properties such as account and source folder can declare a conditional
+<code>from_entries_required</code>. The projection accepts those values only
+when every source entry agrees. A direct call must provide the same applicable
+context explicitly, and the invocation choke-point rejects it before any side
+effect if that context is absent.
+</p>
+
+<p>
 <strong>The permissions</strong> (<code>capabilities</code>): the manifest does not
 decide what the executor may do. The manifest <em>declares</em> what it would need in
 order to function; the system then decides whether to grant those permissions and

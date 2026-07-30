@@ -67,6 +67,17 @@ compatibility and migration path.</p>
 <code>send_messages</code> sends SMTP; <code>move_messages</code> manages IMAP
 folders. Gmail labels, Gmail threads, and other provider-specific features
 remain in the Google Workspace backend.</p>
+<p>Moving a message to Trash never expunges an entire folder. Metnos uses the
+server's atomic <code>MOVE</code> operation when available; otherwise it proceeds
+only when it can copy, mark, and expunge exactly the selected UIDs. If the
+server cannot provide those guarantees, the operation fails without changing
+the mailbox. UIDs remain bound to their source account and folder: results from
+different accounts are never forwarded to one ambiguous move. When IMAP UIDs
+are supplied directly instead of coming from a preceding read step, both the
+account and source folder must be explicit. Metnos rejects an unbound UID
+before contacting the backend; it never guesses the default mailbox. This
+requirement does not apply to Gmail message IDs, whose provider supplies their
+own identity scope.</p>
 <p class="note">Passwords must not be placed in documentation, manifests, or
 logs. When supplied through a chat credential flow, they are extracted before
 the planner, encrypted, and replaced by a redaction marker.</p>

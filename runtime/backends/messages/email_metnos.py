@@ -10,8 +10,9 @@ Verbi esposti:
 - `send(args)`: SMTP send con allegati, vettoriale.
 - `read(args)`: IMAP fetch con window temporale + criteri testuali.
 - `find(args)`: alias di read (criteri obbligatori).
-- `delete(args)`: IMAP STORE \\Deleted + EXPUNGE per UID.
-- `move(args)`: IMAP COPY-then-DELETE per UID.
+- `delete(args)`: IMAP STORE \\Deleted + UID EXPUNGE mirato.
+- `move(args)`: UID MOVE atomico; fallback COPY/STORE/UID EXPUNGE solo quando
+  il server dichiara il supporto necessario.
 
 Contratto common: tutti ritornano dict con `ok: bool` + campi verbo-specifici.
 Errori per-item in `failed[]`, mai silenzio (the design guide §2.8).
@@ -807,6 +808,44 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
 
 # --- delete / move ---------------------------------------------------------
 
+def _imap_capabilities(conn) -> set[str]:
+    return {
+        (value.decode("ascii", "ignore")
+         if isinstance(value, bytes) else str(value)).upper()
+        for value in (getattr(conn, "capabilities", ()) or ())
+    }
+
+
+def _supports_uid_expunge(conn) -> bool:
+    # UID EXPUNGE is an extension for IMAP4rev1 (RFC 4315), but part of the
+    # base IMAP4rev2 protocol (RFC 9051).  Rev2 servers therefore need not
+    # advertise UIDPLUS separately.
+    caps = _imap_capabilities(conn)
+    return "UIDPLUS" in caps or "IMAP4REV2" in caps
+
+
+def _supports_atomic_move(conn) -> bool:
+    # MOVE is likewise in the IMAP4rev2 base set and an advertised extension
+    # on IMAP4rev1 servers.
+    caps = _imap_capabilities(conn)
+    return "MOVE" in caps or "IMAP4REV2" in caps
+
+
+def _unselect_without_expunge(conn) -> None:
+    """Leave selected state without the destructive semantics of CLOSE.
+
+    ``imaplib.close()`` permanently removes *every* message already carrying
+    ``\\Deleted`` in the mailbox, including flags set by another client.  The
+    safe release is UNSELECT; LOGOUT remains the final fallback and, by the
+    IMAP specification, implicitly closes without expunging.
+    """
+    unselect = getattr(conn, "unselect", None)
+    if callable(unselect):
+        try:
+            unselect()
+        except Exception:
+            pass
+
 def _uid_expunge(conn, uids: list[str]) -> str | None:
     """Espunge soltanto gli UID appena marcati, mai l'intera cartella.
 
@@ -816,12 +855,8 @@ def _uid_expunge(conn, uids: list[str]) -> str | None:
     """
     if not uids:
         return None
-    caps = {
-        (c.decode("ascii", "ignore") if isinstance(c, bytes) else str(c)).upper()
-        for c in (getattr(conn, "capabilities", ()) or ())
-    }
-    if "UIDPLUS" not in caps:
-        return "UIDPLUS required for safe targeted expunge"
+    if not _supports_uid_expunge(conn):
+        return "UIDPLUS or IMAP4rev2 required for safe targeted expunge"
     try:
         status, _ = conn.uid("EXPUNGE", ",".join(str(uid) for uid in uids))
     except Exception as ex:
@@ -855,6 +890,19 @@ def delete(args: dict) -> dict:
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
                     "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(folder))}
+        if not _supports_uid_expunge(conn):
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": len(uids),
+                "results": [],
+                "failed": [{"uid": str(uid),
+                            "error_code": "ERR_IMAP_SAFE_DELETE_UNSUPPORTED",
+                            "error": _msg("ERR_IMAP_SAFE_DELETE_UNSUPPORTED")}
+                           for uid in uids],
+                "error_code": "ERR_IMAP_SAFE_DELETE_UNSUPPORTED",
+                "error": _msg("ERR_IMAP_SAFE_DELETE_UNSUPPORTED"),
+            }
         for uid in uids:
             try:
                 u = str(uid)
@@ -869,21 +917,34 @@ def delete(args: dict) -> dict:
         expunge_error = _uid_expunge(
             conn, [r["uid"] for r in results if r.get("ok")])
         if expunge_error:
-            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
-                            "error": _msg("ERR_IMAP_CMD", cmd="UID EXPUNGE",
-                                          reason=expunge_error)})
+            pending = [{**item, "ok": False,
+                        "completion_state": "marked_deleted"}
+                       for item in results]
+            failed.extend({
+                "uid": item["uid"],
+                "error_code": "ERR_IMAP_DELETE_INCOMPLETE",
+                "error": _msg("ERR_IMAP_DELETE_INCOMPLETE"),
+            } for item in results)
+            results = []
+        else:
+            pending = []
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        _unselect_without_expunge(conn)
         try:
             conn.logout()
         except Exception:
             pass
-    return {"ok": len(failed) == 0,
+    out = {"ok": len(failed) == 0,
             "ok_count": len(results), "fail_count": len(failed),
             "results": results, "failed": failed}
+    if pending:
+        out.update({
+            "pending": pending,
+            "completion_state": "marked_deleted",
+            "error_code": "ERR_IMAP_DELETE_INCOMPLETE",
+            "error": _msg("ERR_IMAP_DELETE_INCOMPLETE"),
+        })
+    return out
 
 
 # Termini user-facing -> special-use IMAP flag (§5: «Spam»/«Posta indesiderata»
@@ -957,7 +1018,7 @@ def _fetch_message_id(conn, uid) -> str | None:
 
 
 def move(args: dict) -> dict:
-    """Sposta mail fra folder IMAP (COPY-then-STORE \\Deleted + EXPUNGE).
+    """Sposta mail fra folder IMAP senza espungere messaggi estranei.
 
     Args: account, src_folder, dst_folder, uids (list of str).
     """
@@ -989,6 +1050,20 @@ def move(args: dict) -> dict:
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
                     "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(src_folder))}
+        atomic_move = _supports_atomic_move(conn)
+        if not atomic_move and not _supports_uid_expunge(conn):
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": len(uids),
+                "results": [],
+                "failed": [{"uid": str(uid),
+                            "error_code": "ERR_IMAP_SAFE_MOVE_UNSUPPORTED",
+                            "error": _msg("ERR_IMAP_SAFE_MOVE_UNSUPPORTED")}
+                           for uid in uids],
+                "error_code": "ERR_IMAP_SAFE_MOVE_UNSUPPORTED",
+                "error": _msg("ERR_IMAP_SAFE_MOVE_UNSUPPORTED"),
+            }
         # §2.8: valida gli uid contro la cartella sorgente REALE. Un UID COPY di
         # un uid INESISTENTE nel folder selezionato ritorna OK ma NON copia
         # nulla (no-op) → il move dichiarerebbe successo senza spostare (bug
@@ -1017,13 +1092,32 @@ def move(args: dict) -> dict:
             # ORA, mentre la mail e' ancora in src e la folder e' selezionata.
             mid = _fetch_message_id(conn, u)
             try:
+                if atomic_move:
+                    st, _ = conn.uid("MOVE", u, dst_imap)
+                    if st != "OK":
+                        failed.append({
+                            "uid": u, "error_code": "ERR_IMAP_CMD",
+                            "error": _msg("ERR_IMAP_CMD", cmd="UID MOVE",
+                                          reason=str(st)),
+                        })
+                        continue
+                    results.append({
+                        "uid": u, "account": account,
+                        "src": src_folder, "dst": dst_folder,
+                        "src_folder": src_folder,
+                        "dst_folder": dst_folder,
+                        "message_id": mid, "ok": True,
+                        "completion_state": "moved",
+                    })
+                    continue
                 # COPY first (so we never DELETE before confirming, §2.9)
                 st, _ = conn.uid("COPY", u, dst_imap)
                 if st != "OK":
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="COPY", reason=str(st))})
                     continue
-                st2, _ = conn.uid("STORE", u, "+FLAGS", "(\\Deleted)")
+                st2, _ = conn.uid(
+                    "STORE", u, "+FLAGS.SILENT", "(\\Deleted)")
                 if st2 != "OK":
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="STORE-post-COPY", reason=str(st2))})
@@ -1037,21 +1131,37 @@ def move(args: dict) -> dict:
                                 "message_id": mid, "ok": True})
             except Exception as e:
                 failed.append({"uid": u, "error": str(e)})
-        expunge_error = _uid_expunge(
-            conn, [r["uid"] for r in results if r.get("ok")])
-        if expunge_error:
-            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
-                            "error": _msg("ERR_IMAP_CMD", cmd="UID EXPUNGE",
-                                          reason=expunge_error)})
+        pending = []
+        if not atomic_move:
+            expunge_error = _uid_expunge(
+                conn, [r["uid"] for r in results if r.get("ok")])
+            if expunge_error:
+                pending = [{**item, "ok": False,
+                            "completion_state": "copied_and_marked_deleted"}
+                           for item in results]
+                failed.extend({
+                    "uid": item["uid"],
+                    "error_code": "ERR_IMAP_MOVE_INCOMPLETE",
+                    "error": _msg("ERR_IMAP_MOVE_INCOMPLETE"),
+                } for item in results)
+                results = []
+            else:
+                for item in results:
+                    item["completion_state"] = "moved"
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        _unselect_without_expunge(conn)
         try:
             conn.logout()
         except Exception:
             pass
-    return {"ok": len(failed) == 0,
+    out = {"ok": len(failed) == 0,
             "ok_count": len(results), "fail_count": len(failed),
             "results": results, "failed": failed}
+    if pending:
+        out.update({
+            "pending": pending,
+            "completion_state": "copied_and_marked_deleted",
+            "error_code": "ERR_IMAP_MOVE_INCOMPLETE",
+            "error": _msg("ERR_IMAP_MOVE_INCOMPLETE"),
+        })
+    return out

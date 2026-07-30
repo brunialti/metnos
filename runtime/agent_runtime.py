@@ -1394,6 +1394,14 @@ def validate_args(args, schema):
             failures.append(
                 f"requires one of {group} (none provided non-empty)"
             )
+    from from_step_projection import required_source_context_fields
+    _missing_context = required_source_context_fields(
+        args, schema, allow_deferred_from_step=True)
+    if _missing_context:
+        failures.append(msg(
+            "ERR_SOURCE_CONTEXT_REQUIRED",
+            fields=", ".join(_missing_context),
+        ))
     # Placeholder value detection §7.3 (25/5/2026): property con
     # `forbid_placeholder_values: true` rifiuta valori sintetici tipo
     # "msg_1", "mail_2", "id_3" emessi dal PLANNER LLM quando inventa
@@ -2579,6 +2587,7 @@ def _lookup_field(obj, dotted):
 
 
 from from_step_projection import (  # noqa: E402
+    CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     consumer_match_arg as _consumer_match_arg,
     project_from_entries as _project_from_entries,
 )
@@ -2758,6 +2767,14 @@ def resolve_from_step(args, history, consumer_schema=None):
     # omogeneo sono entrambi dichiarati nel manifest del consumer.
     new_args, consumer_arg = _project_from_entries(
         new_args, prev_list, consumer_schema)
+    context_errors = new_args.pop(_FROM_STEP_CONTEXT_ERRORS_KEY, None)
+    if isinstance(context_errors, list) and context_errors:
+        fields = ", ".join(sorted({
+            str(item.get("arg"))
+            for item in context_errors
+            if isinstance(item, dict) and item.get("arg")
+        })) or "?"
+        errors.append(msg("ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields))
     if consumer_arg:
         return new_args, errors
     # Injection metadata upstream per executor che possono usare available_total
@@ -3481,6 +3498,26 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     if turn_id is not None or "_turn_id" in args:
         args["_turn_id"] = turn_id or ""
 
+    # Source-scoped identifiers (for example IMAP UIDs) are meaningless and
+    # potentially dangerous without the scalar context declared by the
+    # manifest.  Enforce that contract at the invocation choke-point so it
+    # also covers fast paths, resumes, async submission and validator-off
+    # deployments.  No executor name or provider is hardcoded here.
+    from from_step_projection import required_source_context_fields
+    _missing_source_context = required_source_context_fields(
+        args, getattr(executor, "args_schema", None),
+        allow_deferred_from_step=False,
+    )
+    if _missing_source_context:
+        _fields = ", ".join(_missing_source_context)
+        return {
+            "ok": False,
+            "error_class": "missing_source_context",
+            "error_code": "ERR_SOURCE_CONTEXT_REQUIRED",
+            "error": msg("ERR_SOURCE_CONTEXT_REQUIRED", fields=_fields),
+            "context_fields": _missing_source_context,
+        }
+
     # Il journal di undo e' runtime-owned. Un path proposto/replayato non deve
     # poter trasformare il broker in un interprete di journal arbitrari; il
     # modulo conserva l'override solo per i test diretti, fuori dal choke-point.
@@ -3572,6 +3609,11 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # device-capable executor would carry server state to the remote machine
     # and could report it as if it belonged to that device.
     args = _fill_runtime_sourced_args(executor, args)
+
+    # Resolve manifest-declared local read paths only after placement chose
+    # this server.  Cached plans keep logical/user paths; the concrete path is
+    # per-host execution state and must match the exact bubblewrap grant.
+    args = _sandbox.resolve_filesystem_read_args(executor, args)
 
     # Signed opt-in path preflight: this remains effective when bubblewrap is
     # unavailable/disabled and runs before journaling or any subprocess side
@@ -3797,6 +3839,94 @@ def _is_count_intent(intent_verb: str, user_query: str) -> bool:
         return True
     q = f" {(user_query or '').lower()} "
     return _detlex.match("count.quantifier", q)
+
+
+def _presentation_scope_applies(presentation: dict, *, intent_verb: str,
+                                user_query: str) -> bool:
+    """Evaluate a closed semantic presentation scope.
+
+    Executors declare the scope in structured output; the runtime owns the
+    language-aware intent decision.  This keeps presentation independent from
+    executor names, paths and particular phrasings.
+    """
+    scope = presentation.get("scope") if isinstance(presentation, dict) else None
+    if scope == "always":
+        return True
+    if scope == "count":
+        return _is_count_intent(intent_verb, user_query)
+    return False
+
+
+def _authoritative_turn_presentation(steps: list, *, intent_verb: str,
+                                     user_query: str,
+                                     effect_counts: dict | None = None) -> str:
+    """Compose executor-owned factual fragments when they cover the turn.
+
+    Replacement is intentionally all-or-nothing: every productive successful
+    step must expose an applicable authoritative fragment.  A mixed plan with
+    an unrelated result therefore stays with the normal finalizer instead of
+    silently losing one part of the answer.
+    """
+    if (effect_counts or {}).get("mutating_attempted"):
+        return ""
+    texts: list[str] = []
+    productive = 0
+    for step in steps or []:
+        tool = str(getattr(step, "chosen_tool", "") or "")
+        result = getattr(step, "result", None)
+        if tool == "final_answer" or not isinstance(result, dict):
+            continue
+        # A skipped processor is an execution detail, not an uncovered user
+        # request. Input pseudo-steps remain productive and prevent an
+        # incomplete replacement when their content is not represented.
+        if result.get("skipped"):
+            continue
+        productive += 1
+        if result.get("ok") is False:
+            return ""
+        presentation = result.get("authoritative_presentation")
+        if not isinstance(presentation, dict):
+            return ""
+        if not _presentation_scope_applies(
+                presentation, intent_verb=intent_verb,
+                user_query=user_query):
+            return ""
+        text = presentation.get("text")
+        if (not isinstance(text, str) or not text.strip()
+                or "<missing:" in text or len(text) > 20_000):
+            return ""
+        clean = text.strip()
+        if clean not in texts:
+            texts.append(clean)
+    return "\n\n".join(texts) if productive and texts else ""
+
+
+_I18N_PAYLOAD_KEY_RE = re.compile(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+")
+
+
+def _resolve_i18n_payload_value(value):
+    """Resolve key-shaped executor payload labels through the server catalog."""
+    if (isinstance(value, str)
+            and _I18N_PAYLOAD_KEY_RE.fullmatch(value)):
+        try:
+            resolved = msg(value)
+        except Exception:
+            resolved = ""
+        if (isinstance(resolved, str) and resolved
+                and not resolved.startswith("<missing:")):
+            return resolved
+        return msg("MSG_TRUNCATED_DEFAULT_WHAT")
+    return value
+
+
+def _turn_has_authoritative_presentation(turn) -> bool:
+    """Whether executor fragments cover the whole turn, not just one step."""
+    return bool(_authoritative_turn_presentation(
+        getattr(turn, "steps", []) or [],
+        intent_verb=getattr(turn, "intent_verb", ""),
+        user_query=getattr(turn, "user_query", ""),
+        effect_counts=getattr(turn, "effect_counts", None),
+    ))
 
 
 @dataclass
@@ -4170,10 +4300,15 @@ class TurnLog:
         """
         proposals = []
         seen = set()
+        _turn_authoritative = _turn_has_authoritative_presentation(self)
         # Pentade ADR 0161 ext: skip cap-expand per query count.
-        # Query con quantificatore → utente vuole il numero, dialog e' rumore.
+        # Query con quantificatore e presentazione strutturata COMPLETA → il
+        # numero e l'eventuale limite di visualizzazione sono gia' coperti.
+        # Se la composizione all-or-nothing non si applica, non sopprimere qui
+        # i segnali strutturati di uno step isolato.
         if _is_count_intent(getattr(self, "intent_verb", ""),
-                             getattr(self, "user_query", "")):
+                             getattr(self, "user_query", "")) \
+                and _turn_authoritative:
             return proposals
         # ── Pass 1: propaga expandable_caps custom (ADR 0090) ──
         for s in self.steps:
@@ -4218,6 +4353,15 @@ class TurnLog:
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
+                continue
+            _presentation = res.get("authoritative_presentation")
+            if (_turn_authoritative
+                    and isinstance(_presentation, dict)
+                    and _presentation.get("covers_truncation") is True
+                    and _presentation_scope_applies(
+                        _presentation,
+                        intent_verb=getattr(self, "intent_verb", ""),
+                        user_query=getattr(self, "user_query", ""))):
                 continue
             # Some caps are execution-policy ceilings rather than user-tunable
             # result limits (for example a synchronous model-work budget).
@@ -4322,7 +4466,7 @@ class TurnLog:
                 res = s.result if isinstance(s.result, dict) else {}
                 tw = res.get("truncated_what")
                 if isinstance(tw, str) and tw:
-                    preview_label = tw
+                    preview_label = _resolve_i18n_payload_value(tw)
                 break
 
         prompt = msg("MSG_CAP_EXPAND_ASK", used=used, label=preview_label,
@@ -4729,20 +4873,33 @@ class TurnLog:
         (nome leggibile della unita': 'email', 'file', 'risultati', ...).
         Vedi feedback_truncation_visibility.
 
-        Pentade ADR 0161 ext: skip notice se intent.verb=compute o query
-        contiene marker count (pattern §7.3 universale, no per-tool).
-        Per query count l'utente vuole SOLO il numero, notice e' rumore.
+        Per un intent di conteggio il notice è omesso soltanto se una
+        presentazione strutturata copre l'intero turno, compreso il rapporto
+        fra lavoro completo e limite di visualizzazione.
         """
         notices = []
         seen = set()
-        # Skip per query count (verb=compute o pattern testuale)
+        _turn_authoritative = _turn_has_authoritative_presentation(self)
+        # Skip per query count soltanto quando la presentazione strutturata
+        # copre l'intero turno. Una fragment per-step non deve nascondere il
+        # limite se un altro step fa decadere la composizione all-or-nothing.
         if _is_count_intent(getattr(self, "intent_verb", ""),
-                             getattr(self, "user_query", "")):
+                             getattr(self, "user_query", "")) \
+                and _turn_authoritative:
             return notices
         from vocab import PROCESSOR_VERBS as _PROC_VERBS
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
+                continue
+            _presentation = res.get("authoritative_presentation")
+            if (_turn_authoritative
+                    and isinstance(_presentation, dict)
+                    and _presentation.get("covers_truncation") is True
+                    and _presentation_scope_applies(
+                        _presentation,
+                        intent_verb=getattr(self, "intent_verb", ""),
+                        user_query=getattr(self, "user_query", ""))):
                 continue
             # Qualifier `_empty` (ADR 0127): l'executor ritorna ESATTAMENTE
             # quanto chiesto dall'utente (es. find_events_empty max_results=3).
@@ -4783,8 +4940,7 @@ class TurnLog:
             # shim SENZA DB i18n → i campi payload a forma di chiave (es.
             # truncated_what='MSG_OBJECT_PROCESSES') arrivano CRUDI. Il server
             # ha il DB: risolvi qui ogni valore chiave-forma, per costruzione.
-            if isinstance(what, str) and re.fullmatch(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+", what):
-                what = msg(what)
+            what = _resolve_i18n_payload_value(what)
             if what == "input_sources":
                 # extract_entries ha capato le SORGENTI in INPUT (non l'output):
                 # i campi corretti sono available_INPUT_total + cap_value (50),
@@ -4838,6 +4994,20 @@ class TurnLog:
         # final_kind cosi' i consumer (notice falso-successo qui sotto,
         # gate push schedulato in recurring_tasks) leggono lo stesso dato.
         self.effect_counts = pipeline_effect_counts(self.steps)
+        # Calcola la composizione strutturata anche quando il finalizer non ha
+        # prodotto testo. In caso contrario un turno interamente coperto
+        # potrebbe sopprimere correttamente i notice ma perdere proprio i
+        # frammenti che giustificano quella soppressione.
+        _authoritative = ""
+        if self.final_kind == "answer":
+            _authoritative = _authoritative_turn_presentation(
+                self.steps,
+                intent_verb=getattr(self, "intent_verb", ""),
+                user_query=getattr(self, "user_query", ""),
+                effect_counts=self.effect_counts,
+            )
+            if _authoritative and not self.final_message:
+                self.final_message = _authoritative
         # Anti thinking-leak (ADR 0102, 7/5/2026): rimuovi righe di
         # reasoning interno emesse erroneamente dal PLANNER nel canale
         # text. Applicato PRIMA di qualsiasi prepend (truncation/health/
@@ -4857,6 +5027,12 @@ class TurnLog:
             # _compose_final_message_from_obs branch).
             if _has_runtime_internal_leak(self.final_message):
                 self.final_message = _compose_honest_from_last_error(self)
+            # Complete structured presentations outrank prose synthesized
+            # from capped observations. The closed protocol is executor-name,
+            # query-phrase and path independent; mixed uncovered plans keep
+            # the normal finalizer rather than dropping part of the answer.
+            if _authoritative:
+                self.final_message = _authoritative
             # §4.3 mutating intent honesty: se la user_query contiene un
             # verbo mutating (move/delete/send/write/create/share) ma
             # nessuno step ok=True ha quel verbo → l'azione non e' stata
@@ -4902,11 +5078,9 @@ class TurnLog:
             self._append_search_results_if_any()
         # Prepend di eventuali notice di truncation prima della final answer.
         # Una sola volta, idempotente: se la stringa e' gia' presente non duplica.
-        # Skip quando l'ultimo step e' `final_answer` synthetic (ADR 0133 ext):
-        # il LLM ha ricevuto la describe_entries (con info `truncated`) e ha
-        # gia' formulato un final consapevole — prependere ridonda e copre il
-        # messaggio utile (bug live 15/5/2026 mail run 1: prepend mascherava
-        # la sintesi LLM del riassunto mail).
+        # Il finalizer LLM non costituisce prova di aver riportato il limite:
+        # i notice strutturati restano l'autorita' sui cap. Sono soppressi solo
+        # quando una presentazione executor-owned copre l'intero turno.
         if self.final_kind == "answer":
             # §2.8: un final mutating non puo' claimare un esito non avvenuto.
             self._enforce_mutating_honesty()
@@ -4915,13 +5089,11 @@ class TurnLog:
                 if _fn and _fn not in (self.final_message or ""):
                     self.final_message = ((self.final_message or "").rstrip()
                                           + "\n\n" + _fn).strip()
-            _llm_synth_final = bool(
-                self.steps and self.steps[-1].chosen_tool == "final_answer"
-            )
-            if not _llm_synth_final:
-                for notice in self._collect_truncation_notices():
-                    if notice and notice not in (self.final_message or ""):
-                        self.final_message = (notice + "\n\n" + (self.final_message or "")).strip()
+            for notice in self._collect_truncation_notices():
+                if notice and notice not in (self.final_message or ""):
+                    self.final_message = (
+                        notice + "\n\n" + (self.final_message or "")
+                    ).strip()
             # Bug C estensione (6/5/2026): se uno step ha prodotto una sezione
             # `health` (get_processes(include_health=true)), prepend il blocco
             # salute al final_message. describe_entries non sa leggere health

@@ -877,6 +877,25 @@ _GENERIC_AFFINITY_VERBS = frozenset({
 })
 
 
+def affinity_phrase_score(query, executor) -> int:
+    """Return the strongest distinctive multi-token affinity match.
+
+    A score is intentionally available separately from pool recall so the
+    deterministic routing guards can compare two already-admitted executors
+    without duplicating the affinity semantics.  Single-token tags and generic
+    action verbs never constitute enough evidence for a routing rewrite.
+    """
+    qtokens = tokenize(query) if query else set()
+    if not qtokens:
+        return 0
+    best = 0
+    for tag in (getattr(executor, "affinity", None) or []):
+        distinctive = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
+        if len(distinctive) >= 2 and distinctive <= qtokens:
+            best = max(best, len(distinctive))
+    return best
+
+
 def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
     """Cross-object recall affinity-based (misroute live 10/6/2026: "quali
     account mail hai?" → read_messages legge 426 email). Causa: l'intent
@@ -896,19 +915,14 @@ def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
     (ordinamento -n_token, name) per l'igiene del pool.
 
     Ritorna lista executor (mai i gia' presenti in `exclude_names`)."""
-    qtokens = tokenize(query) if query else set()
-    if not qtokens:
+    if not tokenize(query):
         return []
     hits = []
     for e in _filter_dormant(catalog):
         name = getattr(e, "name", None)
         if not name or name in exclude_names:
             continue
-        best = 0
-        for tag in (getattr(e, "affinity", None) or []):
-            dt = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
-            if len(dt) >= 2 and dt <= qtokens:
-                best = max(best, len(dt))
+        best = affinity_phrase_score(query, e)
         if best:
             hits.append((best, name, e))
     hits.sort(key=lambda h: (-h[0], h[1]))

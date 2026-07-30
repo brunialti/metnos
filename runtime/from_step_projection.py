@@ -21,6 +21,7 @@ from typing import Any
 
 
 _SCALAR_TYPES = frozenset({"string", "integer", "number", "boolean"})
+CONTEXT_ERRORS_KEY = "_from_step_context_errors"
 
 
 def _properties(schema: dict | None) -> dict:
@@ -47,6 +48,106 @@ def _is_scalar_property(spec: Any) -> bool:
         values = {value for value in declared if isinstance(value, str)}
         return bool(values) and values <= (_SCALAR_TYPES | {"null"})
     return declared in _SCALAR_TYPES
+
+
+def _is_provided(value: Any) -> bool:
+    """Return whether an argument carries a concrete, non-empty value."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict, tuple, set)):
+        return bool(value)
+    return True
+
+
+def _effective_arg_value(args: dict, properties: dict, arg_name: str):
+    """Read an explicit argument, falling back to its manifest default."""
+    if arg_name in args and args.get(arg_name) is not None:
+        return args.get(arg_name)
+    spec = properties.get(arg_name)
+    return spec.get("default") if isinstance(spec, dict) else None
+
+
+def _context_requirement_applies(requirement: Any, args: dict,
+                                 properties: dict) -> bool:
+    """Evaluate a manifest-declared source-context requirement.
+
+    ``true`` keeps the historical unconditional meaning.  A mapping makes the
+    requirement backend-aware without naming a backend in runtime code, for
+    example ``{arg = "client", values = ["metnos"]}``.
+    """
+    if requirement is True:
+        return True
+    if not isinstance(requirement, dict):
+        return False
+    selector = requirement.get("arg")
+    values = requirement.get("values")
+    if not isinstance(selector, str) or not selector.strip():
+        return False
+    actual = _effective_arg_value(args, properties, selector)
+    if isinstance(values, list):
+        return actual in values
+    if requirement.get("nonempty") is True:
+        return _is_provided(actual)
+    return False
+
+
+def required_source_context_fields(
+        args: dict, consumer_schema: dict | None, *,
+        allow_deferred_from_step: bool = False) -> list[str]:
+    """Return source-context fields missing from a direct payload call.
+
+    A manifest can mark scalar properties with ``from_entries_required``.
+    The value may be ``true`` or a data-driven condition.  When identifiers
+    are supplied directly, every applicable field must be explicit; when a
+    planner still carries ``from_step``, pre-execution validation may defer the
+    check until projection has inspected the producer entries.
+    """
+    if not isinstance(args, dict):
+        return []
+    properties = _properties(consumer_schema)
+    if not properties:
+        return []
+
+    source_groups = [
+        group for group in (
+            consumer_schema.get("requires_one_of", [])
+            if isinstance(consumer_schema, dict) else [])
+        if isinstance(group, list) and "from_step" in group
+    ]
+    deferred = _is_provided(args.get("from_step"))
+    if allow_deferred_from_step and deferred:
+        return []
+
+    if source_groups:
+        direct_payload = any(
+            _is_provided(args.get(name))
+            for group in source_groups for name in group
+            if name != "from_step"
+        )
+    else:
+        direct_payload = any(
+            _is_array_property(spec)
+            and isinstance(spec.get("from_entries_key"), str)
+            and _is_provided(args.get(name))
+            for name, spec in properties.items()
+            if isinstance(spec, dict)
+        )
+    if not direct_payload:
+        return []
+
+    missing: list[str] = []
+    for arg_name, spec in properties.items():
+        if not (_is_scalar_property(spec)
+                and isinstance(spec.get("from_entries_key"), str)):
+            continue
+        if not _context_requirement_applies(
+                spec.get("from_entries_required"), args, properties):
+            continue
+        if not _is_provided(args.get(arg_name)):
+            missing.append(arg_name)
+    return sorted(missing)
 
 
 def consumer_match_arg(consumer_schema: dict | None,
@@ -155,6 +256,7 @@ def project_from_entries(args: dict, entries: list,
     # Scalar context is strictly manifest-driven. A consumer opts in by
     # declaring from_entries_key on a primitive property. Explicit arguments
     # always win; mixed/missing producer values remain unresolved.
+    context_errors: list[dict[str, str]] = []
     for arg_name, spec in properties.items():
         if arg_name in out or not _is_scalar_property(spec):
             continue
@@ -164,5 +266,15 @@ def project_from_entries(args: dict, entries: list,
         homogeneous, value = _uniform_scalar(entries, source_key)
         if homogeneous:
             out[arg_name] = value
+        elif _context_requirement_applies(
+                spec.get("from_entries_required"), out, properties):
+            context_errors.append({
+                "arg": arg_name,
+                "source_key": source_key,
+                "reason": "mixed_or_missing",
+            })
+
+    if context_errors:
+        out[CONTEXT_ERRORS_KEY] = context_errors
 
     return out, used_vector_arg

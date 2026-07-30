@@ -35,7 +35,7 @@ en = "SCOPO: lists directories and files; recursive mode walks subdirectories in
 # sul device non dipende da uno shim aggiornato. §7.2 modulare, §7.3 generale.
 [code]
 files  = ["list_dirs.py", "path_alias.py"]
-digest = "sha256:bebcf91dfd2168da86b3af7e76896f0b1ee6d1cc0530824fca2ae9cd79ef1b34"
+digest = "sha256:0fe2a4b765ddb2a6ebedeba1cfa3758ad4efa2619fe9f6b2fbd0604b980bac2e"
 
 [args]
 type     = "object"
@@ -80,8 +80,8 @@ minimum     = 0
 default     = 10
 
 [args.properties.max_depth.description]
-it = "Quanti livelli di sottocartelle considerare in modalità ricorsiva. 0 = solo la dir indicata. Default 10."
-en = "How many levels of subdirectories to consider in recursive mode. 0 = only the indicated dir. Default 10."
+it = "Quanti livelli di sottocartelle considerare in modalità ricorsiva. 0 = nessun limite. Default 10."
+en = "How many subdirectory levels to consider in recursive mode. 0 = unlimited. Default 10."
 
 [output]
 schema_inline = """
@@ -94,7 +94,7 @@ schema_inline = """
     kind: str,
     mime: str,
     size: int,
-    mtime: str,
+    mtime: str | null,
     mtime_epoch: number
   }>,
   ok_count: int,
@@ -105,6 +105,9 @@ schema_inline = """
     recursive: bool,
     count: int,
     available_total: int,
+    file_count_total: int,
+    dir_count_total: int,
+    symlink_count_total: int,
     truncated: bool,
     sort: 'name' | 'mtime' | 'size',
     visited_dirs: int,
@@ -112,6 +115,7 @@ schema_inline = """
     source_complete: bool,
     alias_resolved?: str
   },
+  authoritative_presentation?: {scope: 'count', text: str, covers_truncation: bool},
   truncated?: bool,
   truncated_what?: str,
   used?: int,
@@ -125,7 +129,7 @@ schema_inline = """
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/notes/**", "/tmp/**"]
+hint = ["arg:path"]
 
 [[tests]]
 name     = "lista_dir_semplice"
@@ -149,9 +153,11 @@ input  = { path = "/tmp/metnos_does_not_exist_xyz" }
 expect = { ok = false, error_contains = "Percorso non trovato" }
 
 [[tests]]
-name   = "blocca_path_fuori_scope"
-input  = { path = "/etc" }
-expect = { ok = false, error_contains = "outside allowed scope" }
+name   = "rifiuta_file_al_posto_di_directory"
+setup  = "printf 'x' > /tmp/metnos_list_dirs_not_a_directory"
+input  = { path = "/tmp/metnos_list_dirs_not_a_directory" }
+expect = { ok = false }
+teardown = "rm -f /tmp/metnos_list_dirs_not_a_directory"
 
 [placement]
 # F2 (review 2026-07-04): manifest-driven — l'executor puo' girare su

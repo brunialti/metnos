@@ -243,6 +243,80 @@ def filesystem_extras(executor, args) -> list[Path]:
     return selected
 
 
+def resolve_filesystem_read_args(executor, args) -> dict:
+    """Resolve signed local read-path arguments before sandbox execution.
+
+    Plans deliberately retain the user's logical path (for example
+    ``Immagini``), so cached plans stay independent from the machine on which
+    they run.  Once placement has selected this server, however, the executor
+    and its bubblewrap grant must refer to the *same* concrete path.  Resolving
+    only while building the grant left the raw logical value in the child;
+    this broke executors whose sandbox did not also expose the alias roots.
+
+    The transformation is capability-driven: only arguments named by a signed
+    ``fs:read`` hint of the form ``arg:<name>`` are considered.  Unknown,
+    missing, globbed, or non-existing values are left unchanged so the
+    executor can report its normal, precise error.  Existing logical symlinks
+    are preserved so equivalent requests share the same executor cache; the
+    exact logical object is also the one mounted read-only.
+    """
+    from capabilities import effective_capabilities
+
+    if not isinstance(args, dict):
+        return args
+    out = dict(args)
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {},
+        out,
+    )
+    for capability in effective:
+        if capability.get("name") != "fs:read":
+            continue
+        for hint in capability.get("hint", []) or []:
+            if not isinstance(hint, str) or not hint.startswith("arg:"):
+                continue
+            arg_name = hint[4:]
+            if not arg_name or ":" in arg_name or arg_name not in out:
+                continue
+            raw = out[arg_name]
+            values = raw if isinstance(raw, list) else [raw]
+            resolved_values = []
+            changed = False
+            for value in values:
+                if (not isinstance(value, str) or not value.strip()
+                        or any(char in value for char in "*?[]")
+                        or "${" in value or "{{" in value):
+                    resolved_values.append(value)
+                    continue
+                try:
+                    from path_alias import resolve_path_with_alias
+                    # Preserve the workspace's logical spelling when it
+                    # already exists (including an intentional symlink to a
+                    # mounted archive). Equivalent aliases then share caches
+                    # whose keys include the lexical path.
+                    candidate = Path(os.path.expanduser(value))
+                    if not candidate.is_absolute():
+                        from path_alias import workspace_default
+                        candidate = workspace_default() / candidate
+                    if candidate.exists():
+                        resolved = candidate.absolute()
+                    else:
+                        resolved, _note = resolve_path_with_alias(value)
+                    if resolved.exists():
+                        concrete = str(resolved)
+                        resolved_values.append(concrete)
+                        changed = changed or concrete != value
+                        continue
+                except (ImportError, OSError, RuntimeError, ValueError):
+                    pass
+                resolved_values.append(value)
+            if changed:
+                out[arg_name] = (resolved_values if isinstance(raw, list)
+                                 else resolved_values[0])
+    return out
+
+
 def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
     """Expose only the invocation's managed undo-blob directory as RW.
 

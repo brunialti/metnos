@@ -1279,6 +1279,290 @@ def _align_framework_objects(framework: Framework, intent,
         return framework
 
 
+def _entry_schema(entry) -> dict:
+    """Return an executor args schema for object or mapping catalog entries."""
+    if isinstance(entry, dict):
+        schema = entry.get("args_schema") or entry.get("args")
+    else:
+        schema = getattr(entry, "args_schema", None)
+    return schema if isinstance(schema, dict) else {}
+
+
+def _entry_name(entry) -> str:
+    return ((entry.get("name") if isinstance(entry, dict)
+             else getattr(entry, "name", None)) or "")
+
+
+def _entry_can_produce_object(entry, requested_obj: str) -> bool:
+    """Prove object compatibility from naming grammar and typed schema.
+
+    A same-object producer is directly compatible.  ``files`` and ``dirs``
+    remain interchangeable only inside their filesystem sibling class.  A
+    generic filesystem producer may satisfy a content-kind object (images,
+    audio, documents, ...) only when its manifest declares a ``file_globs``
+    argument: that typed selector is the evidence that the output can actually
+    be restricted to the requested kind.
+    """
+    import naming_grammar as _ng
+    nc = _ng.parse_name(_entry_name(entry))
+    if not nc or not nc.obj or not requested_obj:
+        return False
+    if nc.obj == requested_obj:
+        return True
+    if nc.obj in _FS_SIBLING_OBJECTS and requested_obj in _FS_SIBLING_OBJECTS:
+        return True
+    try:
+        from file_kinds import (FILE_KIND_EXTENSIONS,
+                                canonical_objects_for_kinds)
+        kind_objects = canonical_objects_for_kinds(FILE_KIND_EXTENSIONS)
+    except Exception:
+        kind_objects = set()
+    if nc.obj not in _FS_SIBLING_OBJECTS or requested_obj not in kind_objects:
+        return False
+    props = (_entry_schema(entry).get("properties") or {})
+    return any(isinstance(spec, dict)
+               and spec.get("semantic_type") == "file_globs"
+               for spec in props.values())
+
+
+def _affinity_chunks(query: str, verb: str, obj: str) -> list[str]:
+    """Return clause chunks semantically aligned with one requested action."""
+    try:
+        from compound_decomposer import split_query_chunks, detect_chunk_action
+        chunks = split_query_chunks(query)
+    except Exception:
+        chunks = []
+        detect_chunk_action = None
+    aligned: list[str] = []
+    for chunk in chunks:
+        try:
+            action = detect_chunk_action(chunk) if detect_chunk_action else None
+        except Exception:
+            action = None
+        if not action or action[0] != verb:
+            continue
+        chunk_obj = action[1]
+        if chunk_obj == obj or _fs_equivalent(chunk_obj, [obj]) \
+                or _fs_equivalent(obj, [chunk_obj]):
+            aligned.append(chunk)
+    # A single opaque clause is still a valid scope.  The >=2 distinctive-token
+    # affinity threshold remains the precision gate.
+    if aligned:
+        return aligned
+    # Whole-query fallback is safe only for one opaque clause. In a real
+    # compound it would let affinity evidence from clause B rewrite the
+    # producer assigned to clause A.
+    return [query] if query and len(chunks) <= 1 else []
+
+
+def _strong_affinity_candidate(query: str, catalog: Optional[list],
+                               verb: str, obj: str, *,
+                               current_name: str = ""):
+    """Select one strictly stronger manifest-affinity producer, or ``None``.
+
+    The candidate must have the exact requested producer verb, prove object
+    compatibility, match at least two distinctive terms in the same clause and
+    win uniquely.  Equal evidence is deliberately left to the planner.
+    """
+    try:
+        import naming_grammar as _ng
+        from compound_decomposer import PRODUCER_VERBS
+        from prefilter import affinity_phrase_score
+        if verb not in PRODUCER_VERBS:
+            return None
+        chunks = _affinity_chunks(query, verb, obj)
+        entries = list(catalog or [])
+        by_name = {_entry_name(entry): entry for entry in entries}
+
+        def _score(entry) -> int:
+            return max((affinity_phrase_score(chunk, entry)
+                        for chunk in chunks), default=0)
+
+        current_score = _score(by_name[current_name]) \
+            if current_name in by_name else 0
+        hits = []
+        for entry in entries:
+            name = _entry_name(entry)
+            nc = _ng.parse_name(name) if name else None
+            if (not nc or nc.verb != verb
+                    or not _entry_can_produce_object(entry, obj)):
+                continue
+            score = _score(entry)
+            if score >= 2:
+                hits.append((score, name, entry, chunks))
+        hits.sort(key=lambda item: (-item[0], item[1]))
+        if not hits:
+            return None
+        if len(hits) > 1 and hits[1][0] == hits[0][0]:
+            return None
+        # The current producer may itself be the unique affinity winner.  It
+        # still needs its typed selector derived before object-level coverage
+        # is evaluated (e.g. a file producer gains image globs).  Returning it
+        # lets the caller complete args without rewriting the tool.
+        if hits[0][1] == current_name:
+            return hits[0][2], hits[0][3]
+        if hits[0][0] <= current_score:
+            return None
+        return hits[0][2], hits[0][3]
+    except Exception as ex:
+        log.warning("strong_affinity_candidate noop: %r", ex)
+        return None
+
+
+def _candidate_args(entry, old_args: dict, framework: Framework,
+                    query: str, chunks: list[str], *, exclude_step=None) -> dict:
+    """Conform and deterministically fill args for an affinity-selected tool."""
+    schema = _entry_schema(entry)
+    props = (schema.get("properties") or {}) if schema else {}
+    args = {key: value for key, value in (old_args or {}).items()
+            if key in props or key.startswith("_")}
+    try:
+        from args_extractor import regex_extract, _PATH_NAMES
+        for scope in [*chunks, query]:
+            for key, value in regex_extract(scope, schema).items():
+                if key not in args or args[key] in (None, "", [], {}):
+                    args[key] = value
+
+        # Compound clauses often name one shared container only once.  If the
+        # candidate requires a path and exactly one other read producer already
+        # carries it, inherit that logical path.  Ambiguous multi-path plans are
+        # untouched; placement resolves the logical alias on the chosen host.
+        required = set(schema.get("required") or [])
+        missing_paths = [name for name in required
+                         if name in _PATH_NAMES and not args.get(name)]
+        if missing_paths:
+            import naming_grammar as _ng
+            from compound_decomposer import PRODUCER_VERBS
+            values: set[str] = set()
+            for step in (getattr(framework, "steps", None) or []):
+                if step is exclude_step:
+                    continue
+                nc = _ng.parse_name(getattr(step, "tool", "") or "")
+                if not nc or nc.verb not in PRODUCER_VERBS:
+                    continue
+                for key, value in (getattr(step, "args", None) or {}).items():
+                    if (key in _PATH_NAMES and isinstance(value, str)
+                            and value.strip() and "${" not in value):
+                        values.add(value.strip())
+            if len(values) == 1:
+                shared = next(iter(values))
+                for name in missing_paths:
+                    args[name] = shared
+    except Exception as ex:
+        log.debug("candidate args derivation noop: %r", ex)
+    return args
+
+
+def _drop_step(framework: Framework, target) -> None:
+    """Drop one unconsumed step and remap all remaining references."""
+    steps = list(getattr(framework, "steps", None) or [])
+    kept = [step for step in steps if step is not target]
+    old_pos = {id(step): idx + 1 for idx, step in enumerate(steps)}
+    new_pos = {id(step): idx + 1 for idx, step in enumerate(kept)}
+    idx_map = {old_pos[id(step)]: new_pos[id(step)] for step in kept}
+    for step in kept:
+        step.args = _remap_step_refs(getattr(step, "args", None) or {}, idx_map)
+    framework.final_message = _remap_step_refs(
+        getattr(framework, "final_message", "") or "", idx_map)
+    framework.steps = kept
+
+
+def _align_strong_affinity_producers(framework: Framework, intent,
+                                     query: str,
+                                     catalog: Optional[list]) -> Framework:
+    """Correct a producer only when manifest evidence is uniquely stronger.
+
+    This is a semantic backstop for planner/cache variants: it does not know
+    tool names or natural-language phrases.  Affinity, naming grammar and typed
+    schemas are the only routing evidence.
+    """
+    try:
+        from compound_decomposer import PRODUCER_VERBS
+        import naming_grammar as _ng
+        actions = [action for action in
+                   (getattr(intent, "actions", None) or [])
+                   if isinstance(action, dict)]
+        if not actions:
+            verb = (getattr(intent, "verb", "") or "").lower()
+            obj = (getattr(intent, "object", "") or "").lower()
+            if verb and obj:
+                actions = [{"verb": verb, "object": obj}]
+        used_steps: set[int] = set()
+        changed = False
+        for action in actions:
+            verb = (action.get("verb") or "").lower()
+            obj = (action.get("object") or "").lower()
+            if verb not in PRODUCER_VERBS or not obj:
+                continue
+            steps = [step for step in
+                     (getattr(framework, "steps", None) or [])
+                     if (getattr(step, "tool", "") or "") != "final_answer"]
+            exact = []
+            compatible = []
+            for step in steps:
+                if id(step) in used_steps:
+                    continue
+                nc = _ng.parse_name(getattr(step, "tool", "") or "")
+                if not nc or nc.verb != verb:
+                    continue
+                entry = next((item for item in (catalog or [])
+                              if _entry_name(item) == step.tool), None)
+                if nc.obj == obj:
+                    exact.append(step)
+                elif entry and _entry_can_produce_object(entry, obj):
+                    compatible.append(step)
+            current = (exact or compatible or [None])[0]
+            if current is None:
+                continue
+            selected = _strong_affinity_candidate(
+                query, catalog, verb, obj, current_name=current.tool)
+            if not selected:
+                used_steps.add(id(current))
+                continue
+            candidate, chunks = selected
+            candidate_name = _entry_name(candidate)
+            if candidate_name == current.tool:
+                completed = _candidate_args(
+                    candidate, current.args, framework, query, chunks,
+                    exclude_step=current)
+                if completed != (current.args or {}):
+                    current.args = completed
+                    changed = True
+                used_steps.add(id(current))
+                continue
+            existing = next((step for step in steps
+                             if step is not current
+                             and step.tool == candidate_name), None)
+            if existing is not None:
+                existing.args = _candidate_args(
+                    candidate, existing.args, framework, query, chunks,
+                    exclude_step=existing)
+                pos = (getattr(framework, "steps", None) or []).index(current) + 1
+                if not _step_is_consumed(
+                        framework.steps, pos, framework.final_message):
+                    _drop_step(framework, current)
+                    changed = True
+                # Both producers have now been assigned to this action. Mark
+                # them even when the current step is consumed and cannot be
+                # dropped, otherwise another same-verb action may reuse it.
+                used_steps.add(id(current))
+                used_steps.add(id(existing))
+                continue
+            current.tool = candidate_name
+            current.args = _candidate_args(
+                candidate, current.args, framework, query, chunks,
+                exclude_step=current)
+            used_steps.add(id(current))
+            changed = True
+        if changed:
+            log.info("[strong_affinity] produttori riallineati: %s",
+                     [step.tool for step in framework.steps])
+        return framework
+    except Exception as ex:
+        log.warning("align_strong_affinity_producers noop: %r", ex)
+        return framework
+
+
 def _is_get_inputs_misroute(framework: Framework) -> bool:
     """True se l'UNICO step-executor del framework (escluso final_answer) è
     get_inputs → non-decomposizione (il planner chiede invece di agire). Vedi
@@ -1619,11 +1903,13 @@ def _contains_stepref(obj, pos: int) -> bool:
     return False
 
 
-def _step_is_consumed(steps, pos: int) -> bool:
+def _step_is_consumed(steps, pos: int, final_message: str = "") -> bool:
     """True se un ALTRO step consuma l'output dello step in posizione `pos`
     (1-based): via `from_step`/`from_steps` o un riferimento ${stepN.field}.
     Serve a non DROPpare un produttore-fantasma che qualcuno consuma (romperebbe
     la pipe). §7.9 deterministico."""
+    if _contains_stepref(final_message or "", pos):
+        return True
     for i, s in enumerate(steps, 1):
         if i == pos:
             continue
@@ -1692,7 +1978,8 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
                 changed = True
         else:
             pos = steps.index(st) + 1
-            if not _step_is_consumed(steps, pos):
+            if not _step_is_consumed(
+                    steps, pos, getattr(framework, "final_message", "") or ""):
                 to_drop.add(id(st))
                 changed = True
     if to_drop:
@@ -1856,10 +2143,40 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         names.discard(None)
         steps = list(getattr(framework, "steps", None) or [])
         produced = set()
+        cat_by_name = {
+            (entry.get("name") if isinstance(entry, dict)
+             else getattr(entry, "name", None)): entry
+            for entry in (catalog or [])
+        }
         for s in steps:
             nc = _ng.parse_name(s.tool or "")
             if nc and nc.verb in PRODUCER_VERBS and nc.obj:
                 produced.add(nc.obj)
+            # A generic filesystem producer can expose a more specific
+            # canonical object through manifest-typed file globs.  Example:
+            # find_files_hash(patterns=[*.jpg, ...]) already produces images;
+            # appending find_images_indices would be a second, unrelated
+            # search.  The projection is entirely schema+registry driven.
+            entry = cat_by_name.get(s.tool)
+            schema = ((entry.get("args_schema") if isinstance(entry, dict)
+                       else getattr(entry, "args_schema", None))
+                      if entry else None)
+            props = (schema.get("properties") or {}) \
+                if isinstance(schema, dict) else {}
+            for arg_name, arg_spec in props.items():
+                if (not isinstance(arg_spec, dict)
+                        or arg_spec.get("semantic_type") != "file_globs"):
+                    continue
+                raw_globs = (s.args or {}).get(arg_name)
+                if isinstance(raw_globs, str):
+                    raw_globs = [part.strip() for part in
+                                 re.split(r"[,|]", raw_globs) if part.strip()]
+                if not isinstance(raw_globs, list):
+                    continue
+                from file_kinds import (canonical_objects_for_kinds,
+                                        kinds_for_globs)
+                produced.update(canonical_objects_for_kinds(
+                    kinds_for_globs(raw_globs)))
         # Oggetti che RICHIEDONO un producer: clausole PRODUCER (col loro verbo) +
         # TRANSFORM (filter/sort/group/classify su O → §2.2 «TRANSFORMER RICHIEDE
         # PRODUCER»: produci O prima). Senza, un intent come «trova le spese sopra
@@ -1892,7 +2209,11 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                 # COPRE l'oggetto-produttore `files` — senza, qui si appendeva
                 # un find_files SPURIO dopo il piano corretto (hit id=246).
                 continue
-            tool = derive_tool_name(v, o, names, query=query)
+            affinity_selected = _strong_affinity_candidate(
+                query, catalog, v, o)
+            tool = (_entry_name(affinity_selected[0])
+                    if affinity_selected else
+                    derive_tool_name(v, o, names, query=query))
             if not tool:   # fallback: qualunque producer dell'object
                 for pv in ("find", "read", "get", "list"):
                     if pv == v:
@@ -1902,7 +2223,10 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                         break
             if not tool:
                 continue
-            new_steps.append(StepSpec(tool=tool, args={}))
+            args = (_candidate_args(affinity_selected[0], {}, framework,
+                                    query, affinity_selected[1])
+                    if affinity_selected else {})
+            new_steps.append(StepSpec(tool=tool, args=args))
             added.add(o)
         if not new_steps:
             return framework
@@ -2388,7 +2712,7 @@ def _route_mail_delete_to_trash(framework: Framework,
             if prod_idx is not None:
                 new_args["from_step"] = prod_idx + 1
                 acct = steps[prod_idx].args.get("account")
-                if acct:
+                if acct and acct != "all":
                     new_args["account"] = acct
             s.tool = "move_messages"
             s.args = new_args
@@ -4913,6 +5237,13 @@ GUARD_PIPELINE: tuple = (
           scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "catalog", "query"}),
           rationale="appende il produttore per un verbo RICHIESTO scoperto (usa _align_foreign_producers_v3 come helper interno)",
+          adr="0177"),
+    Guard("align_strong_affinity_producers",
+          _align_strong_affinity_producers,
+          v3_only=True, scope="routing",
+          writes=frozenset({"step", "step.tool", "args.*"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="riallinea un produttore solo su affinity composta univoca, verbo compatibile e output provato da naming grammar/schema tipizzato; prima dell'enforce object-level per evitare produttori ridondanti",
           adr="0177"),
     Guard("enforce_missing_objects",
           lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c),

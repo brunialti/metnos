@@ -485,6 +485,7 @@ def _step_list_payload(step_result: dict):
 
 
 from from_step_projection import (  # noqa: E402
+    CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     consumer_match_arg as _consumer_match_arg,
     project_from_entries as _project_from_entries,
 )
@@ -2124,6 +2125,31 @@ class Executor:
             args = _resolve_from_step(
                 _step_args, result.steps,
                 consumer_schema=self._schema_map.get(step.tool))
+            _context_errors = args.pop(
+                _FROM_STEP_CONTEXT_ERRORS_KEY, None)
+            if isinstance(_context_errors, list) and _context_errors:
+                fields = ", ".join(sorted({
+                    str(item.get("arg"))
+                    for item in _context_errors
+                    if isinstance(item, dict) and item.get("arg")
+                })) or "?"
+                failure = {
+                    "ok": False,
+                    "error_class": "ambiguous_source_context",
+                    "error_code": "ERR_FROM_STEP_CONTEXT_AMBIGUOUS",
+                    "error": _msg(
+                        "ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields),
+                    "context_errors": _context_errors,
+                }
+                log.warning(
+                    "Executor: %s ambiguous required source context: %s",
+                    step.tool, fields)
+                step_idx = len(result.steps) + 1
+                result.steps.append(StepRun(
+                    step_idx=step_idx, tool=step.tool, args=args,
+                    result=failure, ok=False, latency_ms=0,
+                ))
+                continue
             # Universal §7.3: gli helper che consumano `entries` (describe/
             # classify/filter/sort/group/compute/compare_entries) sono spesso
             # emessi dal Proposer SENZA from_step → ricevono 0 entries →

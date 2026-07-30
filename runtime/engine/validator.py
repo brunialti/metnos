@@ -1,4 +1,4 @@
-"""engine/validator.py — Layer 2: typecheck framework pre-execute (opt-in).
+"""engine/validator.py — Layer 2: typecheck framework pre-execute.
 
 Cattura errori prima dell'esecuzione:
   - tool inesistente nel catalog
@@ -7,19 +7,22 @@ Cattura errori prima dell'esecuzione:
   - from_step out-of-range
   - placeholder ${stepN.field} non risolvibile
 
-Riusa `validate_args` esistente + catalog lookup. Senza Validator
-attivo (default OFF), errori vengono catturati dall'Executor a runtime
-con costo LLM call sprecato.
+Riusa `validate_args` esistente + catalog lookup. Il Validator è attivo per
+default; se viene disabilitato esplicitamente, gli errori vengono catturati
+dall'Executor a runtime con il costo di una chiamata LLM sprecata.
 
 §7.9 deterministic: zero LLM. Lookup catalog + schema check.
 
-Toggle: METNOS_VALIDATOR=1
+Toggle: METNOS_VALIDATOR=1 (default); 0 lo disabilita.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+from from_step_projection import required_source_context_fields
+from messages import get as _msg
 
 from .types import Framework
 
@@ -129,6 +132,13 @@ class Validator:
                 break
             if not provided:
                 return f"requires_one_of {group} violato"
+        missing_context = required_source_context_fields(
+            args, schema, allow_deferred_from_step=True)
+        if missing_context:
+            return _msg(
+                "ERR_SOURCE_CONTEXT_REQUIRED",
+                fields=", ".join(missing_context),
+            )
         # Type check (basic)
         for k, v in args.items():
             if k.startswith("_") or k in ("from_step", "entries"):

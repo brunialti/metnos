@@ -44,7 +44,7 @@ _APOSTROPHES = "".join(chr(c) for c in (0x27, 0x2019, 0x02BC, 0x60))  # ' ’ ʼ
 # Unicode coprono gli equivalenti non latini con lo stesso contratto. Il
 # terminatore resta nel chunk precedente, quindi ogni risultato e' ancora uno
 # span letterale della richiesta e puo' essere validato senza riscritture LLM.
-_SENTENCE_BOUNDARY = re.compile(r"(?<=[?!。！？؟])\s+(?=\S)")
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.?!。！？؟])\s+(?=\S)")
 
 
 @functools.lru_cache(maxsize=8)
