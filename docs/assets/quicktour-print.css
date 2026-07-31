@@ -53,7 +53,7 @@
   }
 
   @top-right {
-    content: "QUICK TOUR · SURVIVAL KIT";
+    content: "";
     color: #777168;
     font: 400 6.5pt/1 "Metnos Sans", sans-serif;
     letter-spacing: 0.13em;
@@ -485,6 +485,11 @@ pre,
   break-inside: avoid;
 }
 
+pre {
+  color: #2b2724 !important;
+  border: 0.25mm solid #d3c7b6 !important;
+}
+
 .q {
   position: relative;
   margin: 5mm 0 !important;
@@ -518,7 +523,7 @@ pre,
   overflow-wrap: anywhere;
 }
 .pipe::before {
-  content: "CATENA DI EXECUTOR";
+  content: "";
   position: absolute;
   top: 0.3mm;
   left: 6mm;
@@ -764,6 +769,18 @@ dl.gloss dd {
   break-inside: avoid;
 }
 
+.source-note {
+  break-inside: avoid;
+}
+
+.source-note + .source-note {
+  break-before: avoid;
+}
+
+td:first-child {
+  hyphens: none;
+}
+
 .toc-item .t {
   font-size: 9.5pt !important;
 }
@@ -794,16 +811,15 @@ footer {
   break-before: auto;
   break-inside: avoid;
   min-height: 115mm;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  display: block;
   margin: 15mm 0 0 !important;
-  padding: 0 26mm !important;
+  padding: 48mm 26mm 0 !important;
   border-top: 0 !important;
   color: #5f5852 !important;
   font: 400 9pt/1.55 "Metnos Sans", sans-serif !important;
   text-align: center;
   hyphens: none;
+  white-space: nowrap;
 }
 
 /* Prevent lonely headings and accidental blank trailing fragments. */

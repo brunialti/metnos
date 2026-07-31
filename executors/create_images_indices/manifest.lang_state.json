@@ -37,14 +37,14 @@
   },
   "args.recursive.description": {
     "it": {
-      "version_hash": "sha256:a10f28402e8796f28cfad85cd1f9670cc379e7be349d5d1af441d64be8abac96",
+      "version_hash": "sha256:b513b776986f44def772a52b726933e3e92a37572734e278d3b29114bca19ebc",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
       "source_lang": "it",
       "source_hash": "sha256:a10f28402e8796f28cfad85cd1f9670cc379e7be349d5d1af441d64be8abac96",
-      "version_hash": "sha256:47c7670da426060db8659662e0afc14a00f71b34f1f269e538cb1a64d6a56af1"
+      "version_hash": "sha256:de0aae1f25b04c68ffff0aafc588ab9c2f8d1a9f9632101639dbb9c36b5e1093"
     }
   },
   "args.idx.description": {

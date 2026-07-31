@@ -16,9 +16,9 @@ supports it.
 *mētis* (practical intelligence) + *noûs* (mind).
 
 [Explore the documentation](https://metnos.com) ·
-[Take the visual tour](https://metnos.com/en/Metnos_QuickTour.html) ·
+[Take the visual tour](https://metnos.com/en/Metnos_QuickTour) ·
 [Install Metnos](install/README.md) ·
-[Read the security model](https://metnos.com/security/)
+[Read the policy and authority model](https://metnos.com/en/architecture/policy.html)
 
 </div>
 
@@ -38,6 +38,20 @@ You describe the result. Metnos determines which admitted capabilities can
 produce it, how their outputs connect, where they must run, and which decisions
 still belong to you.
 
+## Easy to start, built to remain understandable
+
+You do not need to learn executor names before Metnos becomes useful. Run the
+read-only preflight, follow the guided installer, open the web chat, and ask for
+an outcome. The six installation phases are idempotent and resumable: an
+interrupted model download or Tutor build can continue instead of turning into
+a fresh installation.
+
+When you do not know whether a feature exists, where a setting lives, or why an
+operation stopped, ask Metnos itself. The integrated Tutor answers from the
+documentation and manifests installed on that instance, in the user's language,
+and links to the relevant official page. The product therefore remains
+discoverable from the same chat in which it is used.
+
 ## Not a shell with a chat box
 
 Metnos receives requests through a web chat or Telegram. It classifies each
@@ -54,7 +68,9 @@ An executor is a small capability with:
 - a reverse pattern when the operation is genuinely reversible.
 
 The planner never receives an unrestricted shell or an arbitrary bag of tools.
-It sees only the capabilities admitted by the installed executor set.
+It sees only the capabilities admitted by the installed executor set. Shell
+access exists as a declared, policy-gated, disableable system capability — not
+as an open channel the planner can use outside that contract.
 
 <p align="center">
   <img src="https://metnos.com/assets/architecture-flow.png" alt="A Metnos request becomes a canonical intent and a typed plan, passes deterministic guards and policy, then runs through a direct or narrow-mandate executor before an observed result is reported." width="850">
@@ -68,9 +84,10 @@ It sees only the capabilities admitted by the installed executor set.
 - **The answer follows the evidence.** Counts, partial failures, truncation,
   and postconditions come from executor results. Generated prose cannot turn a
   bounded display into a complete scan or an estimate into an exact match.
-- **Local-first is the default, not a slogan.** Local LLM tiers can plan and
-  answer without a cloud model. A remote frontier tier is an explicit,
-  credentialed fallback.
+- **Local-first by default.** Local LLM tiers can plan and answer without a
+  cloud model. A remote frontier tier is an explicit, credentialed fallback;
+  if no local planning tier is bound, the installer says that turns will use
+  the remote tier instead.
 - **Authority is minted for the call.** Filesystem access follows the resolved
   path; provider access follows the selected backend; device placement follows
   the request and manifest. Authority is not ambient.
@@ -113,6 +130,44 @@ question and a separable action, it answers the question first and can hand the
 literal action clause to the normal engine only after confirmation. Retrieval
 feedback is scoped to the current user and never changes another user's
 answers.
+
+## A different design boundary
+
+OpenClaw, Hermes Agent, and Metnos can all be installed locally and used in
+natural language. The meaningful difference is not who has a chat box; it is
+where each system places trust, guidance, and recovery.
+
+OpenClaw and Hermes both provide capable setup and operating surfaces. Metnos's
+distinction is the depth of the integrated whole: one installer provisions and
+verifies the stack, one authenticated Settings area governs the instance, and
+one Tutor explains the capabilities and live configuration that instance
+actually admits.
+
+| | OpenClaw | Hermes Agent | Metnos |
+|---|---|---|---|
+| **Getting started** | One-line installers followed by guided onboarding; broad desktop and messaging support. | Desktop packages or a one-line installer, then a setup wizard; native Windows is supported. | Four commands on a Linux host start a read-only preflight and six idempotent, resumable phases. They configure the isolated environment, model tiers, optional sidecars, encrypted secrets, services, and verified Tutor catalog — then prove the instance ready. |
+| **Everyday use** | A personal assistant across WebChat and many messaging channels. | CLI, desktop, and several messaging channels, with natural-language automation and delegation. | Web chat and Telegram turn ordinary-language outcomes into typed workflows across local, provider, and paired-device capabilities. |
+| **Managing the instance** | A Control UI and CLI cover the gateway, channels, agents, and configuration. | Desktop, TUI, CLI configuration, and a self-hosted dashboard provide operational surfaces. | The authenticated web Settings area unifies 14 pages for turns, schedules, index builds, executor lifecycle, memory, editable model configuration, service health and controls, safety, users, and paired devices. |
+| **Help inside the product** | Documentation, setup flows, and configuration commands are available from chat and the UI. | `/help`, setup, doctor, and extensive documentation guide the operator. | The Tutor is part of the product: it is compiled from that instance's admitted manifests, published documentation, and permitted live registries. It answers capability, configuration, and UI-navigation questions in the user's language, with exact paths and direct official links. |
+| **Execution boundary** | The main personal session runs tools on the host by default; sandbox modes, tool policies, pairing, and security audits are available. | Dangerous-command approval, protected paths, pairing, and optional container or remote isolation provide defence in depth. | The planner sees admitted executors rather than a general shell; signed contracts, per-call authority, policy, consent, and observed postconditions apply to every execution path. |
+| **Undo and recovery** | Recovery is session- or tool-specific; the official core documentation does not describe a uniform cross-domain inverse-operation contract. | `/undo` manages conversation state; opt-in project checkpoints can restore files changed by file tools and destructive shell commands. | Supported executors declare an inverse operation and the runtime records the exact resources affected, including account and device identity. Unsupported or irreversible effects are stated explicitly. |
+| **Extending the system** | Skills and plugins teach the agent new procedures and tools. | Skills can be installed or learned from experience; MCP and toolsets extend the agent. | New code becomes routable only after its executor name, schema, authority, signature, tests, and admission status satisfy the same governed contract as built-in code. |
+
+The recovery row is deliberately two-sided. Hermes checkpoints can restore
+everything below a tracked project root, including changes no individual tool
+declared reversible; inside that tree, Metnos has no equivalent snapshot.
+Metnos inverse operations instead reach effects a workspace snapshot cannot —
+for example a message moved on an IMAP server or files moved on a paired PC —
+but only when the responsible executor declares and records a valid reverse.
+Neither approach recalls a sent email.
+
+This is a comparison of documented design defaults, not an absolute security or
+quality ranking. It was checked against the official
+[OpenClaw project](https://github.com/openclaw/openclaw),
+[OpenClaw security documentation](https://docs.openclaw.ai/cli/security),
+[Hermes Agent project](https://github.com/NousResearch/hermes-agent), and
+[Hermes checkpoint documentation](https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/)
+on 31 July 2026; all three projects continue to evolve.
 
 ## What it can connect
 
@@ -186,9 +241,8 @@ request a signed parallelism class and may lower their assigned budget; they
 cannot create a larger private pool. The same contract applies whether code is
 handwritten, generated, imported, local, or executed on a paired device.
 
-Metnos does not expose a generic MCP escape hatch to the planner. An MCP tool
-would need to become an admitted backend or narrow executor under the same
-contract.
+Metnos has no generic MCP passthrough. An MCP tool would have to become an
+admitted backend or narrow executor under the same contract.
 
 ## Install
 
@@ -227,7 +281,7 @@ optional services, or non-interactive installation.
 
 ## For readers and builders
 
-- [Visual quick tour](https://metnos.com/en/Metnos_QuickTour.html) — the product
+- [Visual quick tour](https://metnos.com/en/Metnos_QuickTour) — the product
   through real natural-language scenes.
 - [Architecture guide](https://metnos.com/en/architecture/) — request flow,
   policy, memory, Tutor, devices, intelligent executors, and observability.
@@ -235,8 +289,9 @@ optional services, or non-interactive installation.
   — the current signed capability inventory.
 - [Executor Standard](EXECUTOR_STANDARD.md) — the normative capability
   contract.
-- [Security guide](https://metnos.com/security/) — trust boundaries and
-  threat model.
+- [Policy and authority](https://metnos.com/en/architecture/policy.html) and
+  [sandboxing](https://metnos.com/en/architecture/sandbox.html) — trust
+  boundaries, execution grants, and isolation.
 
 The public repository is a deterministic, sanitized export of the
 run-essential source tree. Internal reports, credentials, private state, and

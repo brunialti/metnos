@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files_hash"
-version     = "0.4.0"
+version     = "0.5.0"
 timeout_s   = 600
 author      = "Roberto Brunialti"
 affinity    = [
@@ -52,8 +52,8 @@ type = "array"
 semantic_type = "file_globs"
 
 [args.properties.patterns.description]
-it = "Lista di glob dei nomi file, per esempio ['*.jpg','*.png']; il confronto non distingue maiuscole per default. Il runtime può ricavarla da tipi naturali generali come «file immagine» o «video»."
-en = "List of filename globs, for example ['*.jpg','*.png']; matching is case-insensitive by default. The runtime can derive it from broad natural types such as 'image files' or 'video'."
+it = "Glob dei nomi file, per esempio ['*.jpg','*.png']; per default ignora le maiuscole. Il runtime li ricava anche da tipi generali come «immagini» o «video»."
+en = "Filename globs, for example ['*.jpg','*.png']; case-insensitive by default. The runtime also derives them from broad types such as 'images' or 'video'."
 
 [args.properties.recursive]
 type = "boolean"
@@ -93,6 +93,8 @@ en = "Optional analyzed-file limit. 0 means unlimited and is the default; a posi
 type = "integer"
 minimum = 0
 default = 500
+pipeline_role = "presentation_limit"
+complete_value = 0
 
 [args.properties.max_results.description]
 it = "Numero massimo di duplicati mostrati, dopo la scansione completa. Default 500; 0 restituisce tutti i duplicati."

@@ -54,7 +54,11 @@ from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
 from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
 from executor_helpers import (  # noqa: E402
-    backup_file_for_undo, restore_file_from_undo_backup, vector_result,
+    backup_file_for_undo, format_exact_integer, restore_file_from_undo_backup,
+    vector_result,
+)
+from tabular_projection import (  # noqa: E402
+    TabularProjectionError, project_entries,
 )
 import config as _C  # noqa: E402 §7.11
 # path_alias modulo riusabile (D.1, D.3). Re-export degli alias come moduli
@@ -2362,71 +2366,13 @@ def _write_xlsx_stdlib(path: Path, rows: list, sheet_name: str) -> None:
         raise
 
 
-# Sinonimi di campo bilingui per il mapping entries→colonne (§2.10): il planner
-# nomina le colonne in linguaggio utente ("descrizione", "percorso") mentre le
-# entries hanno chiavi tecniche ("description", "path"). Riusabile/estendibile.
-_FIELD_SYNONYMS = {
-    "path": ("percorso", "image_path", "filepath", "file", "src"),
-    "description": ("descrizione", "desc", "caption"),
-    "name": ("nome", "filename", "title", "titolo"),
-    "size_bytes": ("size", "dimensione", "bytes"),
-    "score": ("punteggio", "rilevanza", "relevance"),
-    "keywords": ("parole_chiave", "tags", "tag"),
-    "date": ("data", "datetime", "timestamp"),
-    "dominio": ("domini", "domain", "domains"),
-    "origine": ("origini", "origin", "origins", "source", "sources"),
-}
-
-
-def _entry_cell(entry: dict, col: str):
-    """Valore di `entry` per la colonna `col`, risolvendo i sinonimi di campo."""
-    def _render(value):
-        return (", ".join(map(str, value))
-                if isinstance(value, (list, tuple)) else value)
-
-    def _usable(value) -> bool:
-        return value is not None and value != "" and value != []
-
-    if col in entry and _usable(entry[col]):
-        return _render(entry[col])
-    cl = col.strip().lower()
-    if cl in entry and _usable(entry[cl]):
-        return _render(entry[cl])
-    for canon, syns in _FIELD_SYNONYMS.items():
-        names = (canon,) + syns
-        if cl in names:
-            for n in names:
-                if n in entry and _usable(entry[n]):
-                    return _render(entry[n])
-    return ""
-
-
-def _entries_to_values(entries, columns) -> list:
+def _entries_to_values(entries, columns, column_specs=None) -> list:
     """Costruisce la matrice [header + righe] da una LISTA di entries (dict) e
-    una lista di colonne (nomi di campo). Risolve la frizione list→matrice che
-    il planner non sa esprimere coi placeholder (§2.10). Colonne assenti =
-    chiavi non-interne della prima entry."""
-    rows_in = [e for e in (entries or []) if isinstance(e, dict)]
-    cols = [c for c in (columns or []) if isinstance(c, str) and c.strip()]
-    if not cols and rows_in:
-        cols = [k for k in rows_in[0].keys() if not str(k).startswith("_")]
-    if not cols:
-        return []
-    out = [list(cols)]
-    n = len(cols)
-    for e in rows_in:
-        cells = [_entry_cell(e, c) for c in cols]
-        # §2.4 robustezza NL→determinismo: se la risoluzione per-chiave/sinonimo
-        # lascia colonne vuote (il planner ha nominato `fields` e `columns` in
-        # lingue/nomi diversi, es. date↔data, address↔indirizzo) ma l'entry ha
-        # lo STESSO numero di campi → mapping POSIZIONALE (liste parallele nello
-        # stesso ordine). Recupera i dati invece di celle vuote. Turn 1671283e.
-        if sum(1 for c in cells if c not in ("", None)) < n:
-            vals = [v for k, v in e.items() if not str(k).startswith("_")]
-            if len(vals) == n:
-                cells = vals
-        out.append(cells)
-    return out
+    una lista di colonne. Il mapping vive nel helper core semanticamente
+    tipizzato: chiavi esatte, concetti di campo o ``column_specs`` espliciti.
+    Non esiste fallback posizionale, perché potrebbe etichettare dati corretti
+    con un significato falso."""
+    return project_entries(entries or [], columns or [], column_specs or [])
 
 
 def _rows_to_values(rows_source, columns) -> list:
@@ -2476,10 +2422,25 @@ def _resolve_values(args: dict):
         has_rows = any(isinstance(e, (list, tuple)) for e in entries)
         if has_rows and not has_dict:
             return _rows_to_values(entries, args.get("columns"))
-        return _entries_to_values(entries, args.get("columns"))
+        return _entries_to_values(entries, args.get("columns"),
+                                  args.get("column_specs"))
     if isinstance(values, list):  # lista vuota esplicita = foglio vuoto
         return []
     return None
+
+
+def _data_row_count(args: dict, rows: list) -> int:
+    """Conteggia i record, non l'eventuale riga d'intestazione."""
+    entries = args.get("entries")
+    if isinstance(entries, list):
+        return len(entries)
+    columns = [str(column).strip() for column in (args.get("columns") or [])
+               if isinstance(column, str) and column.strip()]
+    if columns and rows and len(rows[0]) == len(columns):
+        head = [str(value).strip().casefold() for value in rows[0]]
+        if head == [column.casefold() for column in columns]:
+            return max(0, len(rows) - 1)
+    return len(rows)
 
 
 def create_spreadsheet(args: dict) -> dict:
@@ -2521,8 +2482,21 @@ def create_spreadsheet(args: dict) -> dict:
                 "error": _msg("ERR_DST_EXISTS", path=str(path)),
                 "error_class": "conflict",
                 "results": [], "used": 0, "n_created": 0}
+    try:
+        rows = _resolve_values(args) or []
+    except TabularProjectionError as exc:
+        return {
+            "ok": False,
+            "error_code": "ERR_TABULAR_PROJECTION_AMBIGUOUS",
+            "error": _msg(
+                "ERR_TABULAR_PROJECTION_AMBIGUOUS",
+                columns=", ".join(exc.unresolved),
+                fields=", ".join(exc.fields),
+            ),
+            "error_class": "invalid_args",
+            "results": [], "used": 0, "n_created": 0,
+        }
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows = _resolve_values(args) or []
     sheet_name = (args.get("sheet_name") or "Sheet1").strip() or "Sheet1"
     try:
         if _is_csv(path):
@@ -2541,13 +2515,23 @@ def create_spreadsheet(args: dict) -> dict:
                 "error": _msg("ERR_IO", detail=str(e)),
                 "error_class": "io_error", "results": [], "used": 0, "n_created": 0}
     sid = str(path)
+    data_rows = _data_row_count(args, rows)
+    display_title = title or path.stem
+    final_message_hint = _msg(
+        "MSG_SPREADSHEET_CREATED_RECEIPT",
+        title=display_title,
+        rows=format_exact_integer(data_rows),
+    )
     # `created: True` + `path`: contratto richiesto da reverse_patterns.
     # _delete_created_paths (undo: il file appena creato viene rimosso, §2.8).
     result_row = {"ok": True, "created": True, "spreadsheet_id": sid, "path": sid,
-                  "title": title or path.stem, "rows": len(rows), "kind": "spreadsheet"}
+                  "title": display_title, "rows": len(rows),
+                  "data_rows": data_rows, "kind": "spreadsheet"}
     return {
         "ok": True, "n_created": 1, "spreadsheet_id": sid, "path": sid,
-        "title": title or path.stem, "results": [result_row], "used": 1,
+        "title": display_title, "rows": len(rows), "data_rows": data_rows,
+        "final_message_hint": final_message_hint,
+        "results": [result_row], "used": 1,
         "files_source": "local",
         "_undo": {
             "reverse_pattern": "delete_created_paths",
@@ -2575,7 +2559,20 @@ def write_spreadsheet(args: dict) -> dict:
     # `rows` da `values` (matrice diretta) o da `entries`+`columns` (pipe §2.10):
     # il planner non sa comporre una matrice con placeholder su una LISTA, quindi
     # accettiamo le entries (from_step) + le colonne e costruiamo la matrice qui.
-    rows = _resolve_values(args)
+    try:
+        rows = _resolve_values(args)
+    except TabularProjectionError as exc:
+        return {
+            "ok": False,
+            "error_code": "ERR_TABULAR_PROJECTION_AMBIGUOUS",
+            "error": _msg(
+                "ERR_TABULAR_PROJECTION_AMBIGUOUS",
+                columns=", ".join(exc.unresolved),
+                fields=", ".join(exc.fields),
+            ),
+            "error_class": "invalid_args",
+            "results": [], "used": 0, "n_written": 0,
+        }
     if rows is None:
         return {"ok": False, "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="values",
@@ -2675,13 +2672,15 @@ def write_spreadsheet(args: dict) -> dict:
                 "error_class": "io_error", "results": [], "used": 0, "n_written": 0}
     sid = str(path)
     updated_cells = sum(len(r) for r in written_rows)
+    data_rows = _data_row_count(args, rows)
     created = not existed
     # Schema result §2.6 con campi-undo §2.3 letti dal catalogo:
     #   - file NUOVO → `created=true`+`path` → `delete_created_paths` lo rimuove.
     #   - file PREESISTENTE → `path`+`prev_blob_path` → `restore_blob_backup`
     #     ripristina i bytes previ (annulla overwrite/append).
     result_row = {"ok": True, "spreadsheet_id": sid, "path": sid,
-                  "updated_cells": updated_cells, "mode": mode, "created": created}
+                  "updated_cells": updated_cells, "updated_rows": len(written_rows),
+                  "data_rows": data_rows, "mode": mode, "created": created}
     if created:
         result_row["created"] = True
     elif prev_blob_path:
@@ -2689,9 +2688,15 @@ def write_spreadsheet(args: dict) -> dict:
     out = {
         "ok": True, "n_written": 1, "updated_cells": updated_cells,
         "updated_rows": len(written_rows), "spreadsheet_id": sid, "path": sid,
-        "mode": mode, "created": created,
+        "data_rows": data_rows, "mode": mode, "created": created,
         "results": [result_row], "used": 1, "files_source": "local",
     }
+    out["final_message_hint"] = _msg(
+        "MSG_SPREADSHEET_CREATED_RECEIPT" if created
+        else "MSG_SPREADSHEET_UPDATED_RECEIPT",
+        title=path.stem,
+        rows=format_exact_integer(data_rows),
+    )
     # Undo onesto (§2.8): reverse_pattern multistage nel manifest
     # (`restore_blob_backup` + `delete_created_paths`); ogni stadio agisce sul
     # campo che lo riguarda (prev_blob_path vs created), saltando gli altri.

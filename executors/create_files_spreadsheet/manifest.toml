@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.3.0"
+version          = "0.4.0"
 platforms        = ["linux", "windows"]
 author           = "Roberto Brunialti"
 affinity         = [
@@ -20,8 +20,8 @@ reverse_pattern  = ["delete_created_paths", "delete_files_by_id"]
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: crea e POPOLA un NUOVO foglio .xlsx locale («salva dati in spreadsheet»). PATTERN: create_files_spreadsheet(title=\"foto\", values=[[\"a\",\"b\"]]). NON: foglio ESISTENTE -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id E' il PATH, allegabile a send_messages."
-en = "SCOPO: creates and POPULATES a NEW local .xlsx sheet («save data to spreadsheet»). PATTERN: create_files_spreadsheet(title=\"photos\", values=[[\"a\",\"b\"]]). NON: EXISTING sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, title, rows}]; spreadsheet_id IS the PATH, attachable to send_messages."
+it = "SCOPO: crea e popola un nuovo .xlsx locale. PATTERN: create_files_spreadsheet(title=\"foto\", values=[[\"a\",\"b\"]]); da step usa from_step+columns. NON: foglio esistente -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=path allegabile."
+en = "SCOPO: creates and populates a new local .xlsx. PATTERN: create_files_spreadsheet(title=\"photos\", values=[[\"a\",\"b\"]]); from a step use from_step+columns. NON: existing sheet -> write_files_spreadsheet; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,title,rows,data_rows}]; id=attachable path."
 
 [code]
 files  = ["create_files_spreadsheet.py"]
@@ -39,6 +39,7 @@ requires_one_of = [["values", "entries", "from_step", "title", "path"]]
 type    = "array"
 items   = { type = "object" }
 runtime_resolved = true
+source_cardinality = "complete"
 
 [args.properties.entries.description]
 it = "Lista di record (dict) da un passo precedente, popolata via `from_step`. Mappata a righe secondo `columns`. Non passare a mano: usa from_step=N."
@@ -50,8 +51,17 @@ items   = { type = "string" }
 default = []
 
 [args.properties.columns.description]
-it = "Intestazioni ordinate: selezionano i campi di entries; con values vengono anteposte solo se la prima riga non coincide. Vuoto = automatico."
-en = "Ordered headers: they select entry fields; with values they are prepended only when the first row does not match. Empty means automatic."
+it = "Intestazioni ordinate. Il runtime le collega semanticamente ai campi; se il collegamento non è univoco usa column_specs. Vuoto = automatico."
+en = "Ordered headers. The runtime maps them semantically to fields; use column_specs when that mapping is not unique. Empty means automatic."
+
+[args.properties.column_specs]
+type    = "array"
+items   = { type = "object" }
+default = []
+
+[args.properties.column_specs.description]
+it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
+en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
 
 [args.properties.title]
 type    = "string"
@@ -108,7 +118,10 @@ schema_inline = """
   path?: str,            // LOCAL only
   web_view_url?: str,    // google_workspace only
   title: str,
-  results: Array<{ok, spreadsheet_id, path?, title, rows?, kind: 'spreadsheet'}>,
+  rows?: int,
+  data_rows?: int,
+  final_message_hint?: str,
+  results: Array<{ok, spreadsheet_id, path?, title, rows?, data_rows?, kind: 'spreadsheet'}>,
   used: int,
   files_source: 'local' | 'google_workspace',
   _undo?: {reverse_pattern, paths|ids, scope?},

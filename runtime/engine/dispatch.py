@@ -5117,6 +5117,90 @@ def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
     return framework
 
 
+def _enforce_complete_sink_cardinality(
+        framework: Framework, catalog: Optional[list]) -> Framework:
+    """Lift presentation-only caps along a complete consumer dataflow.
+
+    The contract is entirely declarative:
+
+    * a consumer payload property declares ``source_cardinality="complete"``;
+    * an upstream producer argument declares
+      ``pipeline_role="presentation_limit"`` and ``complete_value``.
+
+    If the planner did not explicitly set that producer argument, this guard
+    applies its complete value.  Explicit user/planner limits always win.  The
+    lineage is followed through ordinary ``from_step``/``from_steps`` links,
+    so neither executor names nor query wording are encoded here.  Running the
+    guard on L0/L1 cache hits is safe and idempotent: it changes only the
+    per-run framework copy, after cache selection.
+    """
+    steps = list(getattr(framework, "steps", None) or [])
+    schema_by_name: dict[str, dict] = {}
+    for item in catalog or []:
+        if isinstance(item, dict):
+            name = item.get("name")
+            schema = item.get("args_schema") or item.get("args")
+        else:
+            name = getattr(item, "name", None)
+            schema = getattr(item, "args_schema", None)
+        if isinstance(name, str) and isinstance(schema, dict):
+            schema_by_name[name] = schema
+
+    changed: list[tuple[str, str]] = []
+
+    def _sources(args: dict) -> list[int]:
+        out: list[int] = []
+        one = args.get("from_step")
+        if isinstance(one, int) and not isinstance(one, bool):
+            out.append(one)
+        many = args.get("from_steps")
+        if isinstance(many, list):
+            out.extend(value for value in many
+                       if isinstance(value, int) and not isinstance(value, bool))
+        return list(dict.fromkeys(out))
+
+    for sink in steps:
+        sink_schema = schema_by_name.get(sink.tool or "") or {}
+        sink_props = sink_schema.get("properties") or {}
+        if not isinstance(sink_props, dict):
+            continue
+        requires_complete_source = any(
+            isinstance(spec, dict)
+            and spec.get("source_cardinality") == "complete"
+            for spec in sink_props.values()
+        )
+        if not requires_complete_source:
+            continue
+
+        pending = _sources(dict(sink.args or {}))
+        visited: set[int] = set()
+        while pending:
+            position = pending.pop()
+            if position in visited or not 1 <= position <= len(steps):
+                continue
+            visited.add(position)
+            producer = steps[position - 1]
+            producer_schema = schema_by_name.get(producer.tool or "") or {}
+            producer_props = producer_schema.get("properties") or {}
+            if isinstance(producer_props, dict):
+                args = dict(producer.args or {})
+                for arg_name, spec in producer_props.items():
+                    if (not isinstance(spec, dict)
+                            or spec.get("pipeline_role") != "presentation_limit"
+                            or "complete_value" not in spec
+                            or arg_name in args):
+                        continue
+                    args[arg_name] = spec["complete_value"]
+                    changed.append((producer.tool or "", arg_name))
+                producer.args = args
+            pending.extend(_sources(dict(producer.args or {})))
+
+    if changed:
+        log.info("[complete-cardinality] lifted presentation caps: %s",
+                 ", ".join(f"{tool}.{arg}" for tool, arg in changed))
+    return framework
+
+
 def _normalize_grouped_artifact_templates(
         framework: Framework, query: str) -> Framework:
     """Resolve planner-level virtual group placeholders before execution.
@@ -5378,6 +5462,14 @@ GUARD_PIPELINE: tuple = (
           scope="cross-clause", writes=frozenset({"args.fields"}),
           reads=frozenset({"step.tool", "args.from_step", "args.columns"}),
           rationale="schema dataflow: le colonne richieste dal sink tabellare fanno parte del contratto extract a monte, attraverso trasformazioni entries pure",
+          adr="0177"),
+    Guard("enforce_complete_sink_cardinality",
+          lambda fw, i, q, c: _enforce_complete_sink_cardinality(fw, c),
+          scope="cross-clause",
+          writes=frozenset({"args.@presentation_limit"}),
+          reads=frozenset({"catalog", "step.tool", "args.from_step",
+                           "args.from_steps"}),
+          rationale="contratto dataflow dichiarativo: un sink completo disattiva soltanto i cap di presentazione impliciti lungo la propria lineage; i limiti espliciti restano intatti",
           adr="0177"),
     Guard("normalize_grouped_artifact_templates",
           lambda fw, i, q, c: _normalize_grouped_artifact_templates(fw, q),

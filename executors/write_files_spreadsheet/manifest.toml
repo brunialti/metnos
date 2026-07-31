@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "write_files_spreadsheet"
-version     = "0.3.0"
+version     = "0.4.0"
 author      = "Roberto Brunialti"
 affinity    = [
     "spreadsheet", "foglio elettronico", "foglio di calcolo", "xlsx",
@@ -22,8 +22,8 @@ reverse_pattern = ["restore_blob_backup", "delete_created_paths"]
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: scrive un foglio LOCALE (lo crea se manca); «salva/esporta dati in uno spreadsheet». PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); da step -> from_step+columns. NON: testo -> write_files; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, updated_cells, created, mode}]; spreadsheet_id E' il PATH."
-en = "SCOPO: writes a LOCAL sheet (creates it if missing); «save/export data into a spreadsheet». PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); from step -> from_step+columns. NON: text -> write_files; Google -> client=\"google_workspace\". OUT: results: list[{spreadsheet_id, path, updated_cells, created, mode}]; spreadsheet_id IS the PATH."
+it = "SCOPO: scrive un foglio locale, creandolo se manca. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); da step usa from_step+columns. NON: testo -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}]."
+en = "SCOPO: writes a local sheet, creating it if missing. PATTERN: write_files_spreadsheet(values=[[\"a\",1]]); from a step use from_step+columns. NON: text -> write_files; Google -> client=\"google_workspace\". OUT: results[{spreadsheet_id,path,updated_cells,created,mode,data_rows}]."
 
 [code]
 files  = ["write_files_spreadsheet.py"]
@@ -40,6 +40,7 @@ requires_one_of = [["values", "entries", "from_step"]]
 type    = "array"
 items   = { type = "object" }
 runtime_resolved = true
+source_cardinality = "complete"
 
 [args.properties.entries.description]
 it = "Lista di record (dict) da un passo precedente, popolata via `from_step`. Mappata a righe secondo `columns`. Non passare a mano: usa from_step=N."
@@ -51,8 +52,17 @@ items   = { type = "string" }
 default = []
 
 [args.properties.columns.description]
-it = "Intestazioni ordinate: selezionano i campi di entries; con values vengono anteposte solo se la prima riga non coincide. Vuoto = automatico."
-en = "Ordered headers: they select entry fields; with values they are prepended only when the first row does not match. Empty means automatic."
+it = "Intestazioni ordinate. Il runtime le collega semanticamente ai campi; se il collegamento non è univoco usa column_specs. Vuoto = automatico."
+en = "Ordered headers. The runtime maps them semantically to fields; use column_specs when that mapping is not unique. Empty means automatic."
+
+[args.properties.column_specs]
+type    = "array"
+items   = { type = "object" }
+default = []
+
+[args.properties.column_specs.description]
+it = "Mappa non ambigua, indipendente dalla lingua: [{header='Nome file', source='path', transform='basename'}]. transform: identity, basename o dirname."
+en = "Unambiguous language-independent mapping: [{header='File name', source='path', transform='basename'}]. transform: identity, basename, or dirname."
 
 [args.properties.spreadsheet_id]
 type    = "string"
@@ -67,8 +77,8 @@ default = ""
 runtime_resolved = true
 
 [args.properties.spreadsheet_id.description]
-it = "LOCAL: PATH del file .xlsx/.csv. OPZIONALE: se omesso, auto-nome; se il path non esiste, il file viene CREATO (upsert). google_workspace: ID Drive esistente (richiesto). MATCH ESATTO, wildcard NON supportati."
-en = "LOCAL: PATH of the .xlsx/.csv file. OPTIONAL: if omitted, auto name; if the path does not exist, the file is CREATED (upsert). google_workspace: existing Drive ID (required). EXACT MATCH, wildcards NOT supported."
+it = "Locale: path .xlsx/.csv opzionale; se omesso usa un nome automatico, se manca crea il file. Google: ID Drive esistente. Match esatto, niente wildcard."
+en = "Local: optional .xlsx/.csv path; omitted means an automatic name, a missing path creates the file. Google: existing Drive ID. Exact match, no wildcards."
 
 [args.properties.values]
 type    = "array"
@@ -119,9 +129,11 @@ schema_inline = """
   n_written: int,
   updated_cells: int,
   updated_rows: int,
+  data_rows?: int,
   spreadsheet_id: str,
   mode: 'overwrite'|'append',
-  results: Array<{ok, spreadsheet_id, updated_cells, mode}>,
+  final_message_hint?: str,
+  results: Array<{ok, spreadsheet_id, updated_cells, updated_rows, data_rows?, mode}>,
   used: int,
   files_source: 'local' | 'google_workspace',
   error?: str,

@@ -1108,8 +1108,17 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             return "\n".join(links)
         if path == "@table":
             # L-mode (output_policy): entries → tabella markdown deterministica
-            # + la nota @note in coda.
+            # + la nota @note in coda. Un producer che espone una
+            # ``final_message_hint`` ha però già una presentazione canonica:
+            # per una mutazione/creazione la tabella dei campi tecnici
+            # (ok/path/kind/rows/...) non è il risultato utile in chat.
             _note = _sub_one(result, "@note")
+            _hint = result.get("final_message_hint")
+            if isinstance(_hint, str) and _hint.strip():
+                rendered_hint = _hint.strip()
+                if _note.strip() and _note.strip() not in rendered_hint:
+                    rendered_hint += _note
+                return rendered_hint
             entries = result.get("entries")
             if not (isinstance(entries, list) and entries):
                 entries = result.get("results")
