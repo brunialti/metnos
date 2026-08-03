@@ -51,7 +51,7 @@ header form button:hover{color:var(--accent)}
    esterno centrato. La leggibilita' sta sulla MISURA delle bolle
    (.msg max-width sotto), non su un cassetto stretto. */
 #log{flex:1;padding:1.1rem 1rem 1.4rem;display:flex;flex-direction:column;
-     gap:.7rem;width:100%}
+     gap:.7rem;width:100%;-webkit-user-select:text;user-select:text}
 /* Stato vuoto (prima query): invito discreto.
    Sparisce appena compare il primo messaggio (#log:empty). */
 #log:empty::before{content:"";display:block;width:12px;height:12px;
@@ -72,7 +72,7 @@ header form button:hover{color:var(--accent)}
      max-width:min(92%, 960px);
      border:1px solid var(--border);line-height:1.5;
      min-width:0;overflow-wrap:anywhere;word-wrap:break-word;
-     white-space:pre-wrap}
+     white-space:pre-wrap;-webkit-user-select:text;user-select:text}
 /* HTML mode (final_message del bot via to_safe_html_full): struttura
    semantica gia' wrappata — pre-wrap mostrerebbe i \n come alinee extra. */
 .msg[data-html-mode="true"]{white-space:normal}
@@ -154,7 +154,7 @@ header form button:hover{color:var(--accent)}
 .msg .msg-fb-retry:hover{opacity:1;color:var(--accent);background:var(--accent-soft)}
 .msg .msg-fb-retry:active{background:var(--surface-3)}
 
-/* ---------- copia testo messaggio (bolle utente): discreto come i badge
+/* ---------- copia testo messaggio (bolle testuali): discreto come i badge
    feedback (visibile a riposo via opacity, niente hover-only per touch).
    Riga azioni sotto il testo, allineata a destra. ---------- */
 .msg .msg-actions{display:flex;justify-content:flex-end;margin-top:.25rem}
@@ -1129,13 +1129,14 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   // turn_id/executor restano visibili senza dover scorrere sotto l'iframe.
   if(inlineFormContext) d.appendChild(inlineFormContext);
   if(inlineFormWrap) d.appendChild(inlineFormWrap);
-  // Copia testo (bolle utente): la query originale e' `text` letterale
-  // (le 'me' non vanno mai in htmlMode). Riga azioni in coda alla bolla,
-  // dopo meta — nessuna interferenza con feedback/lightbox/autoscroll.
-  if(cls === 'me'){
+  // Copia il testo pulito di ogni bolla conversazionale. Usare lo snapshot
+  // data-copytext evita di includere metadati, feedback e la stessa riga
+  // azioni; rende inoltre copiabili le risposte bot, non solo le query.
+  if(['me', 'bot', 'err', 'tool', 'tool-info'].includes(cls)
+      && d.dataset.copytext){
     const act = document.createElement('div');
     act.className = 'msg-actions';
-    act.appendChild(makeCopyBtn(() => (text == null ? '' : String(text))));
+    act.appendChild(makeCopyBtn(() => d.dataset.copytext || ''));
     d.appendChild(act);
   }
   log.appendChild(d);
