@@ -37,6 +37,10 @@ def shim_sources() -> dict[str, Path]:
         "messages_i18n.json": r / "device_shim" / "messages_i18n.json",
         "path_alias.py": r / "path_alias.py",
         "parallel_walk.py": r / "parallel_walk.py",
+        # backends.files.local imports this at module load.  Keeping it in the
+        # signed shim closure is required even for scalar read_files calls;
+        # otherwise every file executor fails on a device before invocation.
+        "tabular_projection.py": r / "tabular_projection.py",
         "backends/__init__.py": r / "backends" / "__init__.py",
         "backends/files/__init__.py": r / "backends" / "files" / "__init__.py",
         "backends/files/local.py": r / "backends" / "files" / "local.py",
