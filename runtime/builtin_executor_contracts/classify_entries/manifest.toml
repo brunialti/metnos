@@ -15,7 +15,7 @@ en = "SCOPO: Classifies entries into a closed set of classes. PATTERN: natural r
 
 [code]
 files = ["../../classify_entries.py"]
-digest = "sha256:9f2d0049957a6410faa637221c47ec7efeea3667e9343ad3f2ddeed550a050ce"
+digest = "sha256:c473d866b1651f57a27678c52b448c94592818f6d7ab98f273773bb532c794c0"
 
 [args]
 type = "object"
