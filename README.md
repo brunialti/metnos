@@ -2,11 +2,15 @@
 
 # Metnos
 
-**A self-hosted assistant that turns natural language into governed action.**
+**A self-hosted agent governor that turns natural language into governed action.**
 
 Across your files, mail, calendars, web, services, and paired devices — with
 typed plans, explicit authority, and undo wherever the operation safely
 supports it.
+
+LLM-powered agents receive narrow mandates and bounded authority. They may
+adapt how they pursue the requested outcome, but they cannot widen their own
+goal, permissions, or admission status.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-%E2%89%A53.12-green)
@@ -229,6 +233,11 @@ website is the clearest example. Metnos can place a **narrow-mandate agent
 inside an executor**: the internal cycle may observe and choose among
 runtime-enumerated actions, but it cannot change the goal, authority, or output
 contract.
+
+That cycle is adaptive rather than scripted: observations can change its route
+without changing its mandate. Changes to the capability itself follow a
+separate governed-growth path, entering as candidates that must pass tests,
+signing, policy, and admission instead of authorizing their own modification.
 
 When a capability is missing, Metnos can compose existing executors or create
 and import a candidate. Candidates do not become planner tools merely because
