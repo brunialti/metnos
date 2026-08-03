@@ -199,6 +199,11 @@ def _imap_date(d):
     return f"{d.day:02d}-{_MONTHS_IMAP[d.month - 1]}-{d.year}"
 
 
+def _window_now() -> datetime.datetime:
+    """One clock source for both the coarse IMAP query and exact filtering."""
+    return datetime.datetime.now(datetime.timezone.utc).astimezone()
+
+
 def _resolve_attachments(raw, *, max_total_bytes=_MAX_ATTACH_BYTES_PER_MSG):
     """Normalizza/valida la lista attachments (stringhe o dict).
     Ritorna (list[dict_normalized], errors_list).
@@ -412,11 +417,77 @@ def send(args: dict) -> dict:
 
 # --- read / find -----------------------------------------------------------
 
-def _resolve_window(tw):
+def _rolling_window_delta(tw):
+    """Return the rolling duration represented by a mail time-window preset.
+
+    IMAP ``SINCE`` only has calendar-day precision.  Keeping this parser next
+    to ``_resolve_window`` lets ``read`` apply a second, exact timestamp filter
+    without changing the deliberately mail-specific meaning of ``m`` (month).
+    """
+    if not tw or isinstance(tw, dict):
+        return None
+    s = str(tw).strip().lower()
+    word_days = {
+        "last-week": 7, "last-month": 30, "last-year": 365,
+        "last-settimana": 7, "last-mese": 30, "last-anno": 365,
+    }
+    if s in word_days:
+        return datetime.timedelta(days=word_days[s])
+    norm = s.replace("now_minus_", "").replace("now-minus-", "")
+    match = re.search(
+        r"(\d+)\s*[-_ ]?\s*"
+        r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
+        r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
+        r"y|year|years|ann[oi])\b",
+        norm,
+    )
+    if not match or not (
+            any(key in s for key in ("last", "past", "minus", "ago"))
+            or s[0:1].isdigit()):
+        return None
+    n, unit = int(match.group(1)), match.group(2)
+    if n < 1:
+        return None
+    if unit in ("d", "day", "days", "giorno", "giorni"):
+        return datetime.timedelta(days=n)
+    if unit in ("h", "hour", "hours", "ora", "ore"):
+        return datetime.timedelta(hours=n)
+    if unit in ("w", "week", "weeks", "settimana", "settimane"):
+        return datetime.timedelta(weeks=n)
+    if unit in ("mo", "month", "months", "mese", "mesi", "m", "min"):
+        return datetime.timedelta(days=30 * n)
+    if unit in ("y", "year", "years", "anno", "anni"):
+        return datetime.timedelta(days=365 * n)
+    return None
+
+
+def _rolling_window_cutoff(tw, *, now=None):
+    delta = _rolling_window_delta(tw)
+    if delta is None:
+        return None
+    return (now or _window_now()) - delta
+
+
+def _entry_datetime(entry: dict):
+    """Parse an RFC 5322 Date header, retaining unknown/naive dates safely."""
+    from email.utils import parsedate_to_datetime
+    try:
+        value = parsedate_to_datetime(entry.get("date") or "")
+    except Exception:
+        return None
+    # A Date header without a zone cannot be compared reliably.  IMAP already
+    # admitted it through the coarse SINCE filter, so retain it rather than
+    # silently losing a possibly relevant message.
+    if value is None or value.tzinfo is None:
+        return None
+    return value
+
+
+def _resolve_window(tw, *, now=None):
     """Ritorna (since_str | None, before_str | None, label)."""
     if not tw:
         return None, None, None
-    now = datetime.datetime.now(datetime.timezone.utc).astimezone()
+    now = now or _window_now()
     if isinstance(tw, dict):
         return tw.get("since"), tw.get("before"), f"custom:{tw}"
     s = str(tw).strip().lower()
@@ -431,7 +502,7 @@ def _resolve_window(tw):
     _WORD = {"last-week": 7, "last-month": 30, "last-year": 365,
              "last-settimana": 7, "last-mese": 30, "last-anno": 365}
     if s in _WORD:
-        d = (now - datetime.timedelta(days=_WORD[s])).date()
+        d = (now - _rolling_window_delta(s)).date()
         return _imap_date(d), None, s
     # §2.4 robustezza NL→determinismo: "N unita' fa". Tollera i prefissi che
     # l'LLM inventa (last-/past-/now_minus_/-ago) e separatori liberi. Per IMAP
@@ -448,17 +519,8 @@ def _resolve_window(tw):
     if m and any(k in s for k in ("last", "past", "minus", "ago")) or (m and s[0:1].isdigit()):
         n = int(m.group(1)); u = m.group(2)
         if n >= 1:
-            if u in ("d", "day", "days", "giorno", "giorni"):
-                delta = datetime.timedelta(days=n)
-            elif u in ("h", "hour", "hours", "ora", "ore"):
-                delta = datetime.timedelta(hours=n)
-            elif u in ("w", "week", "weeks", "settimana", "settimane"):
-                delta = datetime.timedelta(weeks=n)
-            elif u in ("mo", "month", "months", "mese", "mesi", "m", "min"):
-                delta = datetime.timedelta(days=30 * n)
-            elif u in ("y", "year", "years", "anno", "anni"):
-                delta = datetime.timedelta(days=365 * n)
-            else:
+            delta = _rolling_window_delta(s)
+            if delta is None:
                 return None, None, f"unknown_preset:{s}"
             d = (now - delta).date()
             return _imap_date(d), None, f"last-{n}{u}"
@@ -542,7 +604,8 @@ def read(args: dict) -> dict:
         max_total = _DEFAULT_MAX_TOTAL
     max_total = min(max_total, _MAX_TOTAL_CAP)
 
-    since, before, window_label = _resolve_window(time_window)
+    window_now = _window_now()
+    since, before, window_label = _resolve_window(time_window, now=window_now)
     if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
         return {"ok": False, "error_code": "ERR_TIME_WINDOW_INVALID",
                 "error": _msg("ERR_TIME_WINDOW_INVALID", label=str(window_label))}
@@ -594,17 +657,35 @@ def read(args: dict) -> dict:
         accounts_read += 1
     deadline_hit = bool(skipped_indexes)
 
+    # ``SINCE`` is calendar-day based: at 15:00, ``last-3d`` also returns
+    # messages from midnight to 14:59 on the boundary day.  Apply the exact
+    # rolling cutoff after fetching.  Unparseable/zone-less Date headers stay
+    # visible (the server-side filter is still authoritative for them).
+    exact_cutoff = (
+        _rolling_window_cutoff(time_window, now=window_now)
+        if time_window and not since_explicit else None
+    )
+    if exact_cutoff is not None and entries:
+        exact_entries = []
+        excluded = 0
+        for entry in entries:
+            received = _entry_datetime(entry)
+            if received is not None and received < exact_cutoff:
+                excluded += 1
+                continue
+            exact_entries.append(entry)
+        entries = exact_entries
+        available_total = max(len(entries), available_total - excluded)
+
     # §2.1 «le piu' recenti PRIMA» GLOBALE su multi-account: senza, l'aggregazione
     # e' per-account (account1 tutto, poi account2...) → le mail recenti di un
     # account iterato per ultimo finiscono in fondo, oltre i cap a valle (es.
     # extract_entries _MAX_INPUTS=50) → un ago recente in 426 mail viene perso.
     # Riordina l'intera lista per data desc (mail non parsabili → in coda).
     if len(accounts) > 1 and len(entries) > 1:
-        from email.utils import parsedate_to_datetime
-
         def _entry_ts(e):
             try:
-                d = parsedate_to_datetime(e.get("date") or "")
+                d = _entry_datetime(e)
                 return d.timestamp() if d else 0.0
             except Exception:
                 return 0.0
