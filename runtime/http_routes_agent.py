@@ -483,6 +483,57 @@ def _turn_id_for_preprocessed(data: dict) -> str:
     return uuid.uuid4().hex[:16]
 
 
+def _persist_pending_http_turn(*, turn_id: str, query: str, message: str,
+                               actor: str, owner_user_id: str,
+                               conversation_id: str,
+                               redacted_fields: int = 0) -> None:
+    """Persist a short-circuited pending-dialog turn for history/recovery.
+
+    Ordinary runtime turns persist through ``TurnLog.write`` and Tutor turns
+    through Tutor telemetry.  Pending replies never enter either path, so the
+    resumable event log used to be their only copy and they disappeared after
+    its retention window.  Build the canonical TurnLog shape without running
+    its operational post-processing; ``query`` is already the scrubbed HTTP
+    boundary value.
+    """
+
+    try:
+        import config as _config
+        import users as _users
+        from dataclasses import asdict
+        import agent_runtime as _agent_runtime
+
+        if _users.owner_deletion_started(owner_user_id):
+            return
+        now = time.time()
+        record = asdict(_agent_runtime.TurnLog(
+            ts_start=now,
+            ts_end=now,
+            user_query=query,
+            turn_id=turn_id,
+            mode="pending",
+            final_message=message,
+            final_kind="answer",
+            actor=actor,
+            owner_user_id=owner_user_id,
+            channel="http",
+            conversation_id=conversation_id,
+            redacted=bool(redacted_fields),
+            n_redacted_fields=max(0, int(redacted_fields or 0)),
+        ))
+        _config.ensure_private_dir(_config.PATH_TURNS)
+        path = _config.PATH_TURNS / f"{time.strftime('%Y-%m-%d')}.jsonl"
+        _config.append_private_bytes(
+            path,
+            (json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            .encode("utf-8"),
+        )
+    except Exception:
+        # The response remains available in the resumable event log.  A
+        # persistence outage must not turn a valid dialog response into 500.
+        log.warning("pending HTTP turn persistence failed", exc_info=True)
+
+
 def _apply_dialog_cancel(sender_id: str, query: str, *,
                          owner_user_id: str) -> str | None:
     """Intercetta "annulla" come abort di dialog pending (24/5/2026).
@@ -532,6 +583,39 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     return _msg("MSG_DIALOG_CANCELLED_N", n=cancelled)
 
 
+def _with_dialog_form_marker(message: str, dialog: dict, dialog_id: str,
+                             *, channel: str) -> str:
+    """Keep an HTTP form actionable when a pending step is re-presented."""
+
+    if (str(channel or "").lower() != "http"
+            or str(dialog.get("fmt") or "").lower() != "form"
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                                str(dialog_id or ""))):
+        return message
+    marker = f"INLINE_FORM:/agent/dialog/{dialog_id}/form"
+    if marker in message:
+        return message
+    return f"{message.rstrip()}\n\n{marker}"
+
+
+def _is_repeated_defer_request(dialog: dict, query: str) -> bool:
+    """True when a user repeats the request held by an offline-device offer.
+
+    Repeating the literal request is an unambiguous retry, not an attempt to
+    choose Approve/Reject.  This is deliberately limited to ``defer_turn``;
+    security-sensitive handoff/approval dialogs continue to require an
+    explicit declared choice.
+    """
+
+    on_complete = dialog.get("on_complete") or {}
+    if str(on_complete.get("type") or "") != "defer_turn":
+        return False
+    original = str(on_complete.get("original_query") or "")
+    normalized_query = " ".join(str(query or "").casefold().split())
+    normalized_original = " ".join(original.casefold().split())
+    return bool(original) and normalized_query == normalized_original
+
+
 def _apply_dialog_pending(sender_id: str, query: str,
                             actor: str = "host",
                             channel: str = "http",
@@ -549,7 +633,9 @@ def _apply_dialog_pending(sender_id: str, query: str,
     a flusso normale run_turn).
     """
     try:
-        from dialog_pending import list_pending, consume_pending_step
+        from dialog_pending import (
+            cancel_pending, consume_pending_step, list_pending,
+        )
     except ImportError:
         return None
     # Universal §7.9: prova multipli sender_id formats per backward compat.
@@ -586,15 +672,38 @@ def _apply_dialog_pending(sender_id: str, query: str,
     from channels.daemon import parse_step_value
     valid, parsed_value, parse_error = parse_step_value(query, schema)
     if not valid:
+        if _is_repeated_defer_request(dlg, query):
+            # The original device request was submitted again (typically
+            # after the device came back online).  Retire both halves of the
+            # stale offer so Tutor/runtime can evaluate the request afresh.
+            if cancel_pending(
+                    sender_id_used, dialog_id,
+                    owner_user_id=owner_user_id):
+                try:
+                    from channels.daemon import (
+                        _cap_pending_clear, _cap_pending_load,
+                    )
+                    for cap_sender in dict.fromkeys(
+                            (sender_id, sender_id_used)):
+                        cap = _cap_pending_load(
+                            cap_sender, owner_user_id=owner_user_id)
+                        proposal = (cap or {}).get("proposal") or {}
+                        if str(proposal.get("dialog_id") or "") == dialog_id:
+                            _cap_pending_clear(cap_sender)
+                except Exception:
+                    log.debug("stale defer cap cleanup failed", exc_info=True)
+                log.info("repeated deferred request retired dialog=%s",
+                         dialog_id)
+                return None
         if admit_only_valid_closed:
             return None
-        return _msg(
+        return _with_dialog_form_marker(_msg(
             "MSG_DIALOG_STEP_REPROMPT",
             err=parse_error or "invalid_value",
             n=step_index + 1,
             total=len(steps),
             prompt=current_step.get("prompt") or "",
-        )
+        ), dlg, dialog_id, channel=channel)
     # Avanza dialog con valore raccolto
     consume_res = consume_pending_step(
         sender_id_used, dialog_id, current_var, parsed_value,
@@ -603,13 +712,13 @@ def _apply_dialog_pending(sender_id: str, query: str,
         # A value that does not satisfy a declared dialog schema is not a new
         # operational query.  Keep the pending interaction and reprompt just
         # as the Telegram adapter does; the user can explicitly cancel it.
-        return _msg(
+        return _with_dialog_form_marker(_msg(
             "MSG_DIALOG_STEP_REPROMPT",
             err=consume_res.get("error") or "invalid_value",
             n=step_index + 1,
             total=len(steps),
             prompt=current_step.get("prompt") or "",
-        )
+        ), dlg, dialog_id, channel=channel)
     # Se dialog completato → call canonical dispatcher process_completion_callback
     if consume_res.get("completed"):
         try:
@@ -625,13 +734,13 @@ def _apply_dialog_pending(sender_id: str, query: str,
             return _msg("ERR_DIALOG_DISPATCH_FAILED", error=ex)
     next_index = int(consume_res.get("step_index") or step_index + 1)
     next_step = steps[next_index] if next_index < len(steps) else {}
-    return _msg(
+    return _with_dialog_form_marker(_msg(
         "MSG_DIALOG_STEP_PROMPT",
         n=next_index + 1,
         total=len(steps),
         prompt=next_step.get("prompt") or "",
         hint="",
-    )
+    ), dlg, dialog_id, channel=channel)
 
 
 def _apply_cap_pending(
@@ -829,6 +938,12 @@ def _consume_http_get_inputs_response(
     schema_kind = (schema or {}).get("kind")
     ok, value, err = parse_step_value(query or "", schema)
     if not ok:
+        if _is_repeated_defer_request(state, query):
+            _dp.cancel_pending(
+                sender_for_state, dialog_id,
+                owner_user_id=owner_user_id)
+            _cap_pending_clear(sender_id)
+            return query, None, None
         # Per dialog yes_no (caso tipico cap-expand): se l'utente NON
         # risponde sì/no ma scrive una query lunga (>10 char), interpretiamo
         # come "non era una risposta, ho cambiato idea, ecco una nuova
@@ -847,10 +962,10 @@ def _consume_http_get_inputs_response(
             return query, None, None
         # Altrimenti: re-prompt dello stesso step (input troppo breve o
         # malformato — verosimilmente errore di battitura).
-        return (query, None, _msg(
+        return (query, None, _with_dialog_form_marker(_msg(
             "MSG_DIALOG_STEP_REPROMPT", err=err, n=idx + 1,
             total=len(dialog), prompt=cur_step.get("prompt") or "?",
-        ))
+        ), state, dialog_id, channel="http"))
 
     cres = _dp.consume_pending_step(
         sender_for_state, dialog_id, var, value,
@@ -875,10 +990,10 @@ def _consume_http_get_inputs_response(
     # Prossimo step (raro per cap-expand a 1 step).
     next_step = dialog[idx + 1]
     next_prompt = next_step.get("prompt") or "?"
-    return (query, None, _msg(
+    return (query, None, _with_dialog_form_marker(_msg(
         "MSG_DIALOG_STEP_PROMPT", n=idx + 2, total=len(dialog),
         prompt=next_prompt, hint="",
-    ))
+    ), state, dialog_id, channel="http"))
 
 
 def _save_cap_pending_if_any(sender_id: str, original: str, turn_log, *,
@@ -3036,6 +3151,16 @@ async def turn_submit(request: web.Request) -> web.Response:
             "path": [],
         })
         event_log.close(turn_id)
+        if data.get("immediate_source") == "pending":
+            _persist_pending_http_turn(
+                turn_id=turn_id,
+                query=original_query,
+                message=immediate_msg,
+                actor=actor,
+                owner_user_id=user_id,
+                conversation_id=conv_id,
+                redacted_fields=redacted_fields,
+            )
         return web.json_response({
             "turn_id": turn_id,
             "stream_url": f"/agent/turns/{turn_id}/stream",
@@ -3088,6 +3213,17 @@ async def turn_submit(request: web.Request) -> web.Response:
                         "n_total_matches": 0,
                         "path": [],
                     })
+                    if runtime_data.get("immediate_source") == "pending":
+                        _persist_pending_http_turn(
+                            turn_id=turn_id,
+                            query=runtime_data["original_query"],
+                            message=deferred_immediate,
+                            actor=actor,
+                            owner_user_id=user_id,
+                            conversation_id=conv_id,
+                            redacted_fields=int(
+                                runtime_data.get("redacted_fields") or 0),
+                        )
                     pool = _turn_pool(request)
                     if pool is not None:
                         pool.release(reservation, completed=True)

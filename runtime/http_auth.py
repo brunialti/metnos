@@ -38,6 +38,11 @@ ADMIN_KEY_PATH = _C.PATH_USER_CONFIG / "admin.key"
 ANON_WHITELIST_PREFIXES = (
     "/agent/health", "/.well-known/",
     "/admin/login",  # form di login deve essere raggiungibile per autenticarsi
+    # I form possono essere aperti su un secondo browser tramite una capability
+    # HMAC limitata a un solo dialogo. Le route applicano ownership/capability
+    # prima di leggere o mutare lo stato; il middleware deve lasciarle arrivare
+    # a quel verificatore invece di sostituire il suo 403 con un 401 generico.
+    "/agent/dialog/",
     "/agent/photos/",  # auth via signed token nell URL stesso
     "/pair/",          # consumo pair token (ADR 0083 + 11/5/2026 channel='http')
     "/oauth/callback", # callback OAuth Google (state token nell URL)
