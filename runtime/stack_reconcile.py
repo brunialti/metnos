@@ -17,6 +17,7 @@ import fcntl
 import json
 import os
 import pwd
+import signal
 import stat
 import subprocess
 import time
@@ -62,6 +63,7 @@ RUNTIME_COMPONENT_UNITS = (
 FAILURE_WINDOW_S = 10 * 60
 FAILURE_LIMIT = 3
 OPEN_INTERVAL_S = 15 * 60
+WATCHED_SERVICE_KEYS = ("searxng", "llm")
 
 
 class StackFailure(RuntimeError):
@@ -281,6 +283,87 @@ def _catalog_names() -> set[str]:
     return out
 
 
+def _read_process_state(pid: int) -> str:
+    """Read the one-letter Linux process state for an exact numeric PID."""
+    if pid <= 1:
+        return ""
+    try:
+        for line in (Path("/proc") / str(pid) / "status").read_text(
+                encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("State:"):
+                value = line.split(":", 1)[1].strip()
+                return value[:1]
+    except OSError:
+        return ""
+    return ""
+
+
+def _read_process_uid(pid: int) -> int | None:
+    """Read the real UID of an exact PID from procfs."""
+    if pid <= 1:
+        return None
+    try:
+        for line in (Path("/proc") / str(pid) / "status").read_text(
+                encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Uid:"):
+                return int(line.split(":", 1)[1].split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _service_uid() -> int:
+    from services_registry import service_user
+    try:
+        return pwd.getpwnam(service_user()).pw_uid
+    except KeyError as exc:
+        raise StackFailure(
+            "service_user_invalid", "Metnos service user does not exist",
+        ) from exc
+
+
+def _watched_service_snapshot(key: str, *,
+                              probe_endpoint: bool | None = None) -> dict:
+    """Resolve one closed-catalog dependency and add process-state evidence.
+
+    SearXNG is checked functionally.  The LLM is deliberately not HTTP-probed
+    during every readiness pass because a long inference may occupy its slots;
+    its critical false-``active`` failure is instead detected from a stopped
+    systemd MainPID (Linux state ``T``/``t``).  Recovery performs an explicit
+    endpoint probe before declaring success.
+    """
+    from services_registry import get, snapshot_one
+
+    spec = get(key)
+    if spec is None or key not in WATCHED_SERVICE_KEYS:
+        raise StackFailure("unknown_service", "service is outside watchdog scope")
+    should_probe = key == "searxng" if probe_endpoint is None else probe_endpoint
+    row = snapshot_one(spec, probe_endpoint=should_probe)
+    if key == "llm":
+        try:
+            pid = int(row.get("main_pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        process_state = _read_process_state(pid)
+        row["process_state"] = process_state
+        row["process_stopped"] = process_state in {"T", "t"}
+    return row
+
+
+def _watched_service_ok(key: str, row: dict) -> bool:
+    if row.get("load_state") == "not-found" or not row.get("installed"):
+        return not bool(row.get("observation_error"))
+    if row.get("observation_error"):
+        return False
+    if row.get("active_state") != "active":
+        return False
+    if key == "searxng":
+        return row.get("healthy") is True
+    if key == "llm":
+        return not bool(row.get("process_stopped"))
+    return False
+
+
 def verify_named_executors(names: list[str], *, sign_first: bool = False) -> list[dict]:
     """Sign/verify only explicitly named, direct children of executors/."""
     from sign import sign_executor, verify_executor
@@ -431,6 +514,25 @@ class StackReconciler:
             "ok": components_ok,
             "components": component_states,
         })
+
+        # Dependencies that previously produced false-positive ``active``
+        # states: SearXNG is probed functionally and llama-server is checked
+        # for a kernel-stopped MainPID observed during a provider outage.
+        for service_key in WATCHED_SERVICE_KEYS:
+            try:
+                service = _watched_service_snapshot(service_key)
+                service_ok = _watched_service_ok(service_key, service)
+            except Exception as exc:  # keep a complete diagnostic report
+                service = {
+                    "observation_error": type(exc).__name__,
+                    "detail": str(exc),
+                }
+                service_ok = False
+            checks.append({
+                "name": f"service_health:{service_key}",
+                "ok": service_ok,
+                "service": service,
+            })
 
         quiescent = bool(composite.get("quiescent"))
         checks.append({
@@ -588,10 +690,124 @@ class StackReconciler:
         finally:
             lock.release()
 
+    @staticmethod
+    def _validate_watched_target(key: str, row: dict) -> tuple[str, str]:
+        from services_registry import get
+
+        spec = get(key)
+        allowed = {
+            (target.scope, target.unit) for target in (spec.targets if spec else ())
+        }
+        target = (str(row.get("scope") or ""), str(row.get("unit") or ""))
+        if key not in WATCHED_SERVICE_KEYS or target not in allowed:
+            raise StackFailure(
+                "invalid_service_target",
+                "resolved service target is outside the closed catalog",
+                details={"service": key, "scope": target[0], "unit": target[1]},
+            )
+        return target
+
+    @staticmethod
+    def _wait_watched_healthy(key: str, *, timeout_s: float = 20) -> dict:
+        deadline = time.monotonic() + timeout_s
+        last: dict = {}
+        while time.monotonic() < deadline:
+            last = _watched_service_snapshot(key, probe_endpoint=True)
+            if _watched_service_ok(key, last) and last.get("healthy") is True:
+                return last
+            time.sleep(0.5)
+        raise StackFailure(
+            "service_repair_timeout", f"{key} did not become healthy",
+            details={"service": key, "last": last},
+        )
+
+    def _repair_watched(self, keys: list[str], *,
+                        require_sidecar: str = "auto") -> dict:
+        lock = ReconcileLock()
+        lock.acquire(wait_s=2)
+        breaker = CircuitBreaker()
+        actions: list[dict] = []
+        try:
+            breaker.assert_closed()
+            for key in keys:
+                row = _watched_service_snapshot(key)
+                scope, unit = self._validate_watched_target(key, row)
+                if _watched_service_ok(key, row):
+                    continue
+
+                if key == "llm" and row.get("process_stopped"):
+                    try:
+                        pid = int(row.get("main_pid") or 0)
+                    except (TypeError, ValueError):
+                        pid = 0
+                    process_uid = _read_process_uid(pid)
+                    expected_uid = _service_uid()
+                    # Re-read state immediately before the signal.  PID,
+                    # ownership and closed unit identity must all still agree.
+                    if (
+                        pid <= 1
+                        or process_uid is None
+                        or process_uid != expected_uid
+                        or _read_process_state(pid) not in {"T", "t"}
+                    ):
+                        raise StackFailure(
+                            "unsafe_process_resume",
+                            "refusing to resume an unverified LLM process",
+                            details={
+                                "pid": pid, "process_uid": process_uid,
+                                "expected_uid": expected_uid,
+                            },
+                        )
+                    os.kill(pid, signal.SIGCONT)
+                    actions.append({
+                        "service": key, "action": "sigcont", "pid": pid,
+                        "scope": scope, "unit": unit,
+                    })
+                    self._wait_watched_healthy(key)
+                    continue
+
+                # A functional SearXNG failure (or a normally stopped LLM)
+                # needs a real unit restart.  Prove no user turn/browser
+                # operation can be interrupted before asking systemd.
+                self.require_quiescent()
+                result = self.systemctl.run(
+                    scope, "restart", unit, timeout_s=60)
+                if result.returncode != 0:
+                    raise StackFailure(
+                        "service_restart_failed",
+                        f"systemd rejected restart of {unit}",
+                        details={
+                            "service": key,
+                            "detail": (result.stderr or result.stdout or "")[-300:],
+                        },
+                    )
+                actions.append({
+                    "service": key, "action": "restart",
+                    "scope": scope, "unit": unit,
+                })
+                self._wait_watched_healthy(key)
+
+            ready = self.wait_ready(require_sidecar=require_sidecar)
+            breaker.success()
+            return {"ok": True, "repaired": actions, "readiness": ready}
+        except StackFailure as exc:
+            if exc.code != "circuit_open":
+                breaker.failure()
+            raise
+        finally:
+            lock.release()
+
     def watchdog(self, *, require_sidecar: str = "auto") -> dict:
         try:
             return self.check(require_sidecar=require_sidecar)
-        except StackFailure:
+        except StackFailure as exc:
+            failed = set(exc.details.get("failed_checks") or [])
+            prefix = "service_health:"
+            watched_checks = {f"{prefix}{key}" for key in WATCHED_SERVICE_KEYS}
+            if failed and failed.issubset(watched_checks):
+                keys = sorted(name[len(prefix):] for name in failed)
+                return self._repair_watched(
+                    keys, require_sidecar=require_sidecar)
             return self.restart(
                 automatic=True, require_sidecar=require_sidecar,
             )

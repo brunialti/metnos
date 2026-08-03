@@ -269,9 +269,10 @@ def run(args: Any) -> dict[str, Any]:
     ui.step(f"Installing metnos-http.service (port {port})")
     _install_unit(tmpl_dir / "metnos-http.service.tmpl", "metnos-http.service", port, lang)
 
-    # 1a. Integrated owner + readiness/quarantine/watchdog units.  They are
-    # rendered even on a legacy mixed host, but never activated there: the
-    # migration pilot must prove two E2E cycles and rollback first.
+    # 1a. Integrated owner + readiness/quarantine/watchdog units.  The target
+    # remains inactive on a legacy mixed host, but the read-only/targeted
+    # watchdog timer can run independently from default.target: it never
+    # starts a second HTTP listener and preserves the rollback baseline.
     for template_name, unit_name in STACK_UNIT_TEMPLATES:
         _install_unit(tmpl_dir / template_name, unit_name, port, lang)
     notes["stack_units_installed"] = True
@@ -337,6 +338,25 @@ def run(args: Any) -> dict[str, Any]:
         notes["target_enabled"] = False
         notes["migration_required"] = True
         notes["http_healthy"] = _wait_for_http(port)
+        if runtime_importable:
+            ui.step("Enabling bounded watchdog for the legacy baseline")
+            wanted = _systemctl_user(
+                "add-wants", "default.target", "metnos-stack-watchdog.timer")
+            started = (
+                _systemctl_user("start", "metnos-stack-watchdog.timer")
+                if wanted.returncode == 0 else wanted
+            )
+            notes["watchdog_enabled"] = (
+                wanted.returncode == 0 and started.returncode == 0)
+            if notes["watchdog_enabled"]:
+                ui.ok("metnos-stack-watchdog.timer enabled")
+            else:
+                ui.warn(
+                    "watchdog timer could not be enabled: "
+                    f"{(started.stderr or wanted.stderr).strip()}"
+                )
+        else:
+            notes["watchdog_enabled"] = False
     elif not runtime_importable:
         ui.warn("runtime.metnos_http_server not importable in the venv. "
                 "Unit file is in place, but enable is skipped to avoid a "
@@ -345,6 +365,7 @@ def run(args: Any) -> dict[str, Any]:
         notes["http_healthy"] = False
         notes["target_enabled"] = False
         notes["migration_required"] = False
+        notes["watchdog_enabled"] = False
     else:
         # Remove an upgrade-era direct default.target symlink without stopping
         # the service.  metnos.target now owns the start/stop relationship.
@@ -363,6 +384,7 @@ def run(args: Any) -> dict[str, Any]:
             notes["http_enabled"] = True
             notes["target_enabled"] = True
         notes["migration_required"] = False
+        notes["watchdog_enabled"] = bool(notes.get("target_enabled"))
 
         # 5. Health probe (only if start succeeded)
         if notes["http_enabled"]:
