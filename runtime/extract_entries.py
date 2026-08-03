@@ -1171,14 +1171,14 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
             log.warning("extract_entries: field inference failed: %r", ex)
             return {
                 "ok": False, "entries": [],
-                "error": _msg("ERR_LLM_UNAVAILABLE"),
+                "error": _msg("ERR_LLM_UNAVAILABLE_ACTION"),
                 "error_code": "ERR_LLM_UNAVAILABLE",
                 "error_class": "field_inference_failed",
             }
         if not fields:
             return {
                 "ok": False, "entries": [],
-                "error": _msg("ERR_LLM_UNAVAILABLE"),
+                "error": _msg("ERR_LLM_UNAVAILABLE_ACTION"),
                 "error_code": "ERR_LLM_UNAVAILABLE",
                 "error_class": "field_inference_failed",
                 "in_tokens": int(schema_meta.get("in_tokens") or 0),

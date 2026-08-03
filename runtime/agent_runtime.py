@@ -5942,6 +5942,45 @@ def _maybe_remediate_obs(
 
 # --- L3 Engine v2 dispatcher (ADR 0164) ----------------------------------
 
+def _bounded_engine_llm_timeout(env_name: str, default: float) -> float:
+    try:
+        return max(5.0, min(300.0, float(os.environ.get(env_name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+# Planner calls used to inherit the provider's 600-second socket timeout.  A
+# suspended llama-server therefore consumed multiple full waits before the
+# user saw an unrelated planner error.  These are per-call bounds;
+# normal local inference is substantially faster.
+ENGINE_FAST_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
+    "METNOS_ENGINE_FAST_LLM_TIMEOUT_S", 30.0)
+ENGINE_WISE_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
+    "METNOS_ENGINE_WISE_LLM_TIMEOUT_S", 90.0)
+
+
+def _llm_dependency_failure(exc: Exception) -> bool:
+    """Recognise transport/provider outages, including wrapped timeouts."""
+    current = exc
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        name = type(current).__name__.lower()
+        text = str(current).lower()
+        if (
+            isinstance(current, (TimeoutError, ConnectionError))
+            or any(token in name for token in (
+                "timeout", "urlerror", "providererror"))
+            or any(token in text for token in (
+                "timed out", "unreachable", "connection refused",
+                "request deadline exhausted",
+            ))
+        ):
+            return True
+        current = getattr(current, "__cause__", None)
+    return False
+
+
 def _run_engine(
     query: str,
     catalog: list,
@@ -5985,6 +6024,35 @@ def _run_engine(
         log.warning("engine v2 import failed: %r", ex)
         return None
 
+    _llm_state = {"unavailable": False, "reported": False}
+
+    def _report_llm_unavailable() -> str:
+        message = msg("ERR_LLM_UNAVAILABLE_ACTION")
+        _llm_state["unavailable"] = True
+        if progress is not None and not _llm_state["reported"]:
+            try:
+                progress.update_free(message)
+            except Exception as ex:  # progress is best-effort
+                log.debug("LLM outage progress update failed: %r", ex)
+        _llm_state["reported"] = True
+        return message
+
+    def _unavailable_result():
+        return {
+            "steps": [],
+            "final_text": _report_llm_unavailable(),
+            "final_kind": "error",
+            "framework_hash": "",
+            "verb": "",
+            "object": "",
+            "keywords": [],
+            "match_source": "llm_unavailable",
+            "elapsed_ms": 0,
+            "error_class": "provider_unavailable",
+            "needs_inputs_obs": None,
+            "gate_obs": None,
+        }
+
     # Provider LLM fast (per filler resolve)
     def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
         # Robustezza + osservabilità (ADR 0181-ext): la fast-call era un
@@ -5993,10 +6061,16 @@ def _run_engine(
         # declino intermittente → legacy). Ora: log + UN retry su errore
         # transitorio; su fallimento persistente ritorna "" e il chiamante
         # procede con intent VUOTO (non declina — vedi sotto).
+        if _llm_state["unavailable"]:
+            return ""
         for _attempt in (1, 2):
             try:
                 from llm_router import LLMRouter
-                ck = {"max_tokens": max_tokens, "think": think}
+                ck = {
+                    "max_tokens": max_tokens,
+                    "think": think,
+                    "request_timeout_s": ENGINE_FAST_LLM_TIMEOUT_S,
+                }
                 if kw.get("grammar") is not None:
                     ck["grammar"] = kw["grammar"]
                 res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
@@ -6004,10 +6078,18 @@ def _run_engine(
             except Exception as _e:  # noqa: BLE001
                 log.warning("engine v2 _llm_call_fast tentativo %d fallito: %r",
                             _attempt, _e)
+                # A full timeout or a known provider outage is not transient
+                # within this turn.  Retrying used to multiply an outage into
+                # 40 minutes of silence; surface it once and stop immediately.
+                if _llm_dependency_failure(_e):
+                    _report_llm_unavailable()
+                    break
         return ""
 
     # Provider LLM wise (per Proposer)
     def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+        if _llm_state["unavailable"]:
+            return ""
         try:
             from llm_router import LLMRouter
             tier = kw.get("tier_override") or "wise"
@@ -6016,7 +6098,11 @@ def _run_engine(
             # METNOS_PROPOSER_GRAMMAR=1 → nomi tool allucinati (es. get_issues)
             # fuori dal pool (bug 2/6/2026). chat() supporta grammar →
             # payload['grammar'] a llama-server.
-            ck = {"max_tokens": max_tokens, "think": think}
+            ck = {
+                "max_tokens": max_tokens,
+                "think": think,
+                "request_timeout_s": ENGINE_WISE_LLM_TIMEOUT_S,
+            }
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
             if kw.get("reasoning_budget") is not None:
@@ -6025,10 +6111,14 @@ def _run_engine(
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)
+            if _llm_dependency_failure(ex):
+                _report_llm_unavailable()
             return ""
 
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
+    if _llm_state["unavailable"]:
+        return _unavailable_result()
     if not intent_raw:
         # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
         # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
@@ -6419,17 +6509,26 @@ def _run_engine(
     # `_ran_on_device`), in _finalize_engine_result — così un'operazione non
     # impacchettabile, girata in locale nonostante la destinazione, non viene
     # etichettata come remota.
+    # A provider outage after intent extraction (usually the first proposer
+    # call) must not be rewritten as "query not understood".  Preserve any
+    # real tool observations, but when no step ran, make the dependency and
+    # user action visible.
+    _outage_without_steps = _llm_state["unavailable"] and not steps_out
     return {
         "steps": steps_out,
-        "final_text": result.final_text,
-        "final_kind": result.final_kind,
+        "final_text": (msg("ERR_LLM_UNAVAILABLE_ACTION")
+                       if _outage_without_steps
+                       else result.final_text),
+        "final_kind": ("error" if _outage_without_steps
+                       else result.final_kind),
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
         "object": intent.object,
         "keywords": intent.keywords,
         "match_source": result.match_source,
         "elapsed_ms": result.elapsed_ms,
-        "error_class": result.error_class,
+        "error_class": ("provider_unavailable" if _outage_without_steps
+                        else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
     }
