@@ -37,12 +37,12 @@
   },
   "args.patterns.description": {
     "it": {
-      "version_hash": "sha256:9aac9a1fb50c4f70aa65908a67239ccd8c9f21da7e0d2fd4aad64aa3809df1c6",
+      "version_hash": "sha256:c9c7192800be1bb6654dd727f2ee94b0a61234f5988b43baccc6573bef924ad4",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:f7abc1ac7b95b55eeb07beb3d0e7bbaab7f612ce1c39a2698f9a357183fe7f56",
+      "version_hash": "sha256:2b998a82520e40162c226cc97afd88c1b21e12c13894d658e407cdecf02a2508",
       "source_lang": null,
       "source_hash": null
     }
