@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_spreadsheet"
-version          = "0.4.0"
+version          = "0.4.1"
 platforms        = ["linux", "windows"]
 author           = "Roberto Brunialti"
 affinity         = [
@@ -25,7 +25,7 @@ en = "SCOPO: creates and populates a new local .xlsx. PATTERN: create_files_spre
 
 [code]
 files  = ["create_files_spreadsheet.py"]
-digest = "sha256:209ef20c6fc3072b0acb1bb0cd93b45fd2931bd3979c1f5685a99996c3657174"
+digest = "sha256:c0087c29c441fa2443ee905bc5040535cbbac81b525906ebe3ab7b163b6e8647"
 
 [args]
 type     = "object"
