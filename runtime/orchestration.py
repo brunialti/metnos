@@ -2159,10 +2159,10 @@ def _resolve_oauth_redirect_uri(host_override: Optional[str] = None) -> str:
     derivato da http_port localhost.
 
     `host_override` puo' essere:
-      - URL prefix completo (`https://chat.metnos.com`) → usato as-is.
+      - URL prefix completo (`https://metnos.example`) → usato as-is.
       - Solo host (`192.0.2.10:8770`) → prefisso `http://` (LAN).
 
-    Necessario per reverse proxy / tunnel HTTPS (Cloudflare, nginx, ecc.):
+    Necessario per reverse proxy HTTPS:
     Metnos riceve HTTP plain ma il client originale ha usato HTTPS. Il
     chiamante (`dialog_submit`) legge `X-Forwarded-Proto` per costruire
     l'origin corretto."""

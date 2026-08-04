@@ -27,7 +27,7 @@ import i18n as _i18n
 from html_sanitizer import to_safe_html_full
 from http_render import _error, render_template
 from http_app_state import (
-    ADMIN_KEY as APP_ADMIN_KEY, SSE_RESPONSES, STARTED_AT,
+    ADMIN_KEY as APP_ADMIN_KEY, CATALOG_PROVIDER, SSE_RESPONSES, STARTED_AT,
     TURN_POOL, TUTOR_GATE, app_get, app_setdefault,
 )
 from http_turn_pool import TurnPoolBusy
@@ -215,10 +215,21 @@ async def chat_root(request: web.Request) -> web.Response:
         # guest. L'admin autenticato resta il solo fallback compatibile con
         # la vecchia installazione single-user.
         migrate_legacy_storage = role == "admin"
+    executor_intelligence = {}
+    try:
+        provider = app_get(request.app, CATALOG_PROVIDER)
+        catalog = provider() if callable(provider) else []
+        executor_intelligence = {
+            ex.name: getattr(ex, "intelligence", "deterministic")
+            for ex in catalog
+        }
+    except Exception as ex:
+        log.warning("chat executor metadata unavailable: %s", ex)
     html = render_template(
         "chat.html", role=role, ui_lang=_i18n.current_lang(),
         chat_user_scope=chat_user_scope,
         chat_migrate_legacy_storage=migrate_legacy_storage,
+        executor_intelligence=executor_intelligence,
     )
     return web.Response(
         text=html,
@@ -2067,10 +2078,10 @@ async def dialog_submit(request: web.Request) -> web.Response:
     completion_meta = {}
     if on_complete:
         try:
-            # Reverse proxy / Cloudflare tunnel: leggi X-Forwarded-Proto per
-            # determinare il vero scheme del client (HTTPS al edge anche se
-            # qui arriva HTTP plain). Fallback al request.scheme diretto.
-            xfp = request.headers.get("X-Forwarded-Proto") or request.scheme
+            # Usa lo scheme attestato dal collegamento diretto o da un reverse
+            # proxy fidato per costruire l'origine restituita al browser.
+            from http_auth import external_request_scheme
+            xfp = external_request_scheme(request)
             origin_override = f"{xfp}://{request.host}"
             from orchestration import process_completion_callback
             _cr = process_completion_callback(
@@ -3389,12 +3400,24 @@ async def turn_status(request: web.Request) -> web.Response:
                         access_error = await _turn_access_error(request, d)
                         if access_error is not None:
                             return access_error
+                        ts_start = float(d.get("ts_start") or 0)
+                        ts_end = float(d.get("ts_end") or 0)
+                        final_msg = _decorate_dialog_markers(
+                            d.get("final_message") or "",
+                            app_get(request.app, APP_ADMIN_KEY, ""),
+                        )
                         return web.json_response({
                             "turn_id": turn_id,
                             "state": "complete",
                             "persistent": True,
-                            "final_message": d.get("final_message"),
+                            "final_message": final_msg,
+                            "final_message_html": _safe_final_html(final_msg)
+                            if final_msg else "",
                             "final_kind": d.get("final_kind"),
+                            "ts_end": ts_end if ts_end else None,
+                            "total_ms": int((ts_end - ts_start) * 1000)
+                            if ts_end else None,
+                            "target_device": d.get("target_device"),
                             "steps_summary": [
                                 {"step": s.get("step_num"),
                                  "tool": s.get("chosen_tool"),
@@ -3510,6 +3533,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                         "ts_start": ts_start,
                         "ts_end": ts_end if ts_end else None,
                         "total_ms": int((ts_end - ts_start) * 1000) if ts_end else None,
+                        "target_device": t.get("target_device"),
                         "in_flight": in_flight,
                         "steps_summary": steps_summary,
                         "expandable_caps": t.get("expandable_caps") or [],
@@ -3544,6 +3568,7 @@ async def turns_recent(request: web.Request) -> web.Response:
                 "ts_start": ts_start,
                 "ts_end": None,
                 "total_ms": None,
+                "target_device": None,
                 "in_flight": True,
                 "steps_summary": [],
                 "expandable_caps": [],
@@ -3611,13 +3636,16 @@ async def pair_consume(request: web.Request) -> web.Response:
     Flusso (ADR 0083 multi-user, 11/5/2026 estensione channel='http'):
       1. L'admin (Roberto) emette il token via `/admin/users/<id>/channels/http/pair`
          o via comando Telegram (TODO). Il token vive in `users.user_channels.pairing_token`.
-      2. L'admin invia il URL `https://chat.metnos.com/pair/<token>` al device target
+      2. L'admin invia il URL `https://metnos.example/pair/<token>` al device target
          (cellulare, notebook fuori LAN) via canale fidato (Telegram, AirDrop, ...).
       3. Il device apre il URL UNA VOLTA → token consumato + binding device_id
          in user_channels.recipient_id + cookie USER_COOKIE firmato set.
       4. Future richieste dal device portano il cookie → ruolo `user`.
     """
-    from http_auth import USER_COOKIE, USER_COOKIE_TTL_S, issue_user_cookie
+    from http_auth import (
+        USER_COOKIE, USER_COOKIE_TTL_S, external_request_scheme,
+        issue_user_cookie,
+    )
     import users as _users
 
     token = request.match_info["token"]
@@ -3648,7 +3676,7 @@ async def pair_consume(request: web.Request) -> web.Response:
         USER_COOKIE, cookie_val,
         max_age=USER_COOKIE_TTL_S,
         httponly=True,
-        secure=True,
+        secure=external_request_scheme(request) == "https",
         samesite="Lax",
         path="/",
     )

@@ -174,12 +174,22 @@ header form button:hover{color:var(--accent)}
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
                    font-size:var(--fs-0);color:var(--muted);margin-top:.35rem}
 .msg .path-badges .arrow{color:var(--border-strong);font-size:.85em;margin:0 .05rem}
-.msg .path-badges .badge{display:inline-block;padding:.05rem .5rem;
+.msg .path-badges .badge{display:inline-flex;align-items:center;gap:.28rem;
+                          padding:.09rem .5rem;
                           background:var(--surface-2);
                           border:1px solid var(--border);
                           border-radius:var(--r-pill);color:var(--ink-2);
                           font-family:var(--font-mono);font-size:.95em;
-                          line-height:1.5}
+                          line-height:1.45}
+.msg .path-badges .executor-brain{width:16px;height:16px;flex:none;
+                                  overflow:visible}
+.msg .path-badges .badge[data-intelligence="deterministic"] .executor-brain{
+                                  opacity:.68}
+.msg .path-badges .badge[data-intelligence="agentic"] .executor-brain{
+                                  color:var(--accent);width:23px;height:17px}
+.msg .path-badges .badge[data-intelligence="agentic"]{
+                                  background:var(--accent-soft);
+                                  border-color:var(--accent-line)}
 .msg .path-badges .badge.failed{background:var(--err-soft);
                                  border-color:var(--err-line);color:var(--err-fg)}
 .msg .path-badges .badge.active{background:var(--accent-soft);
@@ -354,6 +364,9 @@ body.readonly #log .dialog-stale button{opacity:.5;pointer-events:none;cursor:no
    verderame a sinistra: ancora la risposta sul canvas quasi-bianco. */
 .msg.bot:not(.gallery){max-width:min(92%,640px);
                        border-left:2px solid var(--accent-line)}
+/* Risposta ricca temporanea: una tabella ha bisogno della colonna intera;
+   il resto delle risposte mantiene la misura di lettura compatta. */
+.msg.bot.wide-table:not(.gallery){width:100%;max-width:none}
 /* R3 raggruppamento dei turni: più aria PRIMA del messaggio utente, così
    ogni coppia domanda→risposta si legge come un blocco (il #log ha gap .7). */
 .msg.me{margin-top:.7rem}
@@ -494,6 +507,7 @@ const CHAT_I18N = {
 const CHAT_LOCALE = {{ ui_lang|tojson }};
 const CHAT_USER_SCOPE = {{ chat_user_scope|default("unscoped", true)|tojson }};
 const CHAT_MIGRATE_LEGACY_STORAGE = {{ chat_migrate_legacy_storage|default(false)|tojson }};
+const EXECUTOR_INTELLIGENCE = {{ executor_intelligence|default({}, true)|tojson }};
 
 function chatText(name, vars){
   let out = String(CHAT_I18N[name] || '');
@@ -501,6 +515,62 @@ function chatText(name, vars){
     out = out.replaceAll('{' + key + '}', String(value == null ? '' : value));
   }
   return out;
+}
+
+function executorBrainIcon(mode){
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  // Il viewBox segue il disegno, non una tela con margini inutili: a parita'
+  // di badge il tratto resta leggibile anche su display non-HiDPI.
+  svg.setAttribute('viewBox', mode === 'agentic'
+    ? '1.3 0 19.7 14.7' : '1.3 1.3 13.4 13.4');
+  svg.setAttribute('class', 'executor-brain');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.35');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  const paths = [
+    'M7.9 3.2A2 2 0 0 0 4.2 4.3 2.2 2.2 0 0 0 3 8.1 2.3 2.3 0 0 0 4.4 11.8 2 2 0 0 0 7.9 12.7Z',
+    'M8.1 3.2a2 2 0 0 1 3.7 1.1A2.2 2.2 0 0 1 13 8.1a2.3 2.3 0 0 1-1.4 3.7 2 2 0 0 1-3.5.9Z',
+    'M4.2 6.1c.8-.2 1.5.2 1.7.9M4 9.3c.7-.4 1.5-.2 1.9.4M11.8 6.1c-.8-.2-1.5.2-1.7.9M12 9.3c-.7-.4-1.5-.2-1.9.4',
+  ];
+  if(mode === 'deterministic') paths.push('M2.1 2.1 13.9 13.9');
+  paths.forEach((d, index) => {
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', d);
+    if(index === paths.length - 1 && mode === 'deterministic'){
+      path.setAttribute('stroke-width', '1.75');
+    }
+    svg.appendChild(path);
+  });
+  if(mode === 'agentic'){
+    [
+      'M16.9.4c.18 1.72 1.48 3.02 3.2 3.2-1.72.18-3.02 1.48-3.2 3.2-.18-1.72-1.48-3.02-3.2-3.2 1.72-.18 3.02-1.48 3.2-3.2Z',
+      'M19.2 8.3c.08.72.62 1.26 1.34 1.34-.72.08-1.26.62-1.34 1.34-.08-.72-.62-1.26-1.34-1.34.72-.08 1.26-.62 1.34-1.34Z',
+    ].forEach((d) => {
+      const sparkle = document.createElementNS(ns, 'path');
+      sparkle.setAttribute('d', d);
+      sparkle.setAttribute('class', 'agent-spark');
+      sparkle.setAttribute('fill', 'var(--warn-fg)');
+      sparkle.setAttribute('stroke', 'var(--warn-fg)');
+      sparkle.setAttribute('stroke-width', '.7');
+      svg.appendChild(sparkle);
+    });
+  }
+  return svg;
+}
+
+function fillExecutorBadge(badge, tool){
+  const name = String(tool || '?');
+  const declared = EXECUTOR_INTELLIGENCE[name];
+  const mode = ['deterministic', 'llm', 'agentic'].includes(declared)
+    ? declared : 'deterministic';
+  badge.dataset.intelligence = mode;
+  badge.title = ({deterministic: 'DET', llm: 'LLM', agentic: 'AGENT'})[mode];
+  badge.appendChild(executorBrainIcon(mode));
+  badge.appendChild(document.createTextNode(name));
 }
 
 // Drag&drop foto reference (ADR 0092). attachedFiles[] = File array,
@@ -846,6 +916,9 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   if(htmlMode === true){
     d.innerHTML = text;
     d.setAttribute('data-html-mode', 'true');
+    if(cls === 'bot' && d.querySelector('table')){
+      d.classList.add('wide-table');
+    }
   } else {
     d.textContent = text;
   }
@@ -1075,7 +1148,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
           }
           const b = document.createElement('span');
           b.className = 'badge' + (step.ok === false ? ' failed' : '');
-          b.textContent = step.tool || '?';
+          fillExecutorBadge(b, step.tool);
           row.appendChild(b);
         });
         d.appendChild(row);
@@ -1283,7 +1356,7 @@ function renderLivePath(path, predicted){
     }
     const b = document.createElement('span');
     b.className = 'badge ' + step.kind;
-    b.textContent = step.tool;
+    fillExecutorBadge(b, step.tool);
     row.appendChild(b);
   });
   d.appendChild(row);
@@ -1307,6 +1380,84 @@ function addTool(tool, args){
   log.appendChild(d);
   if(stick) scrollToEnd();
   return d;
+}
+
+// Un turno completato deve avere la stessa rappresentazione indipendentemente
+// da come arriva: stream live, stream riagganciato o polling dopo un reload.
+// Tenere qui l'unica costruzione di body/meta evita che i percorsi di recovery
+// conservino soltanto l'HTML perdendo badge, host, durata e feedback.
+function renderAtPlaceholder(placeholder, render){
+  if(!placeholder) return render();
+  // SSE e poll possono completare quasi insieme: il primo sostituisce il
+  // placeholder, il secondo vede il nodo ormai staccato e non duplica il turn.
+  if(!placeholder.isConnected) return null;
+  const boundary = document.createComment('metnos-recovered-turn');
+  log.appendChild(boundary);
+  const rendered = render();
+  const fragment = document.createDocumentFragment();
+  let node = boundary.nextSibling;
+  while(node){
+    const next = node.nextSibling;
+    fragment.appendChild(node);
+    node = next;
+  }
+  boundary.remove();
+  placeholder.replaceWith(fragment);
+  return rendered;
+}
+
+function renderCompletedTurn(data, options){
+  data = (data && typeof data === 'object') ? data : {};
+  options = (options && typeof options === 'object') ? options : {};
+  const turnId = data.turn_id || options.turnId || '';
+  const elapsedMs = (typeof data.total_ms === 'number') ? data.total_ms
+    : ((typeof options.elapsedMs === 'number') ? options.elapsedMs : null);
+  const path = Array.isArray(data.path) ? data.path
+    : Array.isArray(data.steps_summary)
+      ? data.steps_summary
+          .map(s => ({tool: s.tool, ok: s.ok}))
+          .filter(s => !!s.tool)
+      : [];
+  const where = data.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};
+  const leftParts = [];
+  if(turnId){
+    leftParts.push({{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + turnId.slice(0,8));
+  }
+  if(elapsedMs !== null){
+    leftParts.push(chatText('durationSeconds', {
+      seconds: (elapsedMs / 1000).toFixed(1),
+    }));
+  }
+  let closeDate = null;
+  if(typeof data.ts_end === 'number') closeDate = new Date(data.ts_end * 1000);
+  else if(options.closeNow) closeDate = new Date();
+  const closeHms = closeDate
+    ? closeDate.toLocaleTimeString(CHAT_LOCALE, { hour12: false }) : '';
+
+  const bodyPlain = data.final_message || CHAT_I18N.noResponse;
+  const bodyHtml = data.final_message_html || null;
+  let body = bodyHtml || bodyPlain;
+  const bodyAsHtml = !!bodyHtml;
+  if(bodyAsHtml){
+    body = body.replace(/\n*<i>elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?<\/i>\s*$/, '').trimEnd();
+  } else {
+    body = body.replace(/\n*_elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?_\s*$/, '').trimEnd();
+  }
+  const galleryInfo = (data.gallery_url && data.n_total_matches)
+    ? { gallery_url: data.gallery_url,
+        n_total_matches: data.n_total_matches }
+    : null;
+  const meta = {
+    path: path,
+    where: where,
+    whereRemote: !!data.target_device,
+    left: leftParts.join(' · '),
+    right: closeHms,
+    turn_id: turnId,
+  };
+  return renderAtPlaceholder(options.placeholder || null, () => add(
+    'bot', body, meta, options.persist !== false,
+    data.attachments || null, galleryInfo, bodyAsHtml));
 }
 
 // Ricostruisce la chat dai messaggi salvati (su page load).
@@ -1369,22 +1520,7 @@ async function fetchServerHistory(){
         if(ph) ph.dataset.inFlight = '1';
         reattachTurnStream(t.turn_id, ph);
       } else if(t.final_message){
-        // Stessa forma del percorso live: dove · turn:id · tempo | ora-fine.
-        const where = t.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};
-        const metaLeft = {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + (t.turn_id || '').slice(0,8) +
-                          (t.total_ms ? ' · ' + chatText('durationSeconds', {
-                            seconds: (t.total_ms/1000).toFixed(1),
-                          }) : '');
-        const closeHms = (typeof t.ts_end === 'number')
-          ? new Date(t.ts_end * 1000).toLocaleTimeString(CHAT_LOCALE, { hour12: false }) : '';
-        const rpath = Array.isArray(t.path) ? t.path
-          : Array.isArray(t.steps_summary)
-            ? t.steps_summary.map(s => ({tool: s.tool, ok: s.ok})) : [];
-        add('bot', t.final_message_html || t.final_message,
-            { path: rpath, where: where, whereRemote: !!t.target_device,
-              left: metaLeft, right: closeHms, turn_id: t.turn_id }, true,
-            t.attachments || null, null,
-            !!t.final_message_html);
+        renderCompletedTurn(t);
       }
     }
     scrollToEnd();
@@ -1402,32 +1538,37 @@ async function fetchServerHistory(){
 // il TTL, fallback al risultato persistente via GET /agent/turns/{id}.
 function reattachTurnStream(turnId, ph){
   if(!turnId || !ph) return;
-  const settle = (html) => {
-    if(!ph) return;
-    delete ph.dataset.inFlight;
-    ph.innerHTML = '';
-    const inner = document.createElement('div');
-    inner.className = 'msg';
-    inner.innerHTML = html;
-    ph.appendChild(inner);
+  const settleFinal = (payload) => {
+    renderCompletedTurn(payload, { placeholder: ph, turnId: turnId });
+  };
+  const settleError = (payload) => {
+    renderAtPlaceholder(ph, () => add(
+      'err', '✗ ' + ((payload && payload.message) || CHAT_I18N.genericError),
+      null, true));
   };
   let done = false;
   const es = new EventSource('/agent/turns/' + turnId + '/stream');
-  ['final', 'error'].forEach(k => es.addEventListener(k, (ev) => {
+  es.addEventListener('final', (ev) => {
     let data = {}; try { data = JSON.parse(ev.data); } catch(_) {}
     done = true; es.close();
-    settle(k === 'final'
-      ? (data.final_message_html || data.final_message || CHAT_I18N.noResponse)
-      : ('✗ ' + (data.message || CHAT_I18N.genericError)));
-  }));
+    settleFinal(data);
+  });
+  // Un evento SSE `error` del server porta JSON in `data`; l'evento nativo
+  // di rete no e deve lasciare spazio al fallback persistente qui sotto.
+  es.addEventListener('error', (ev) => {
+    if(!ev || ev.data == null) return;
+    let data = {}; try { data = JSON.parse(ev.data); } catch(_) { return; }
+    done = true; es.close();
+    settleError(data);
+  });
   es.onerror = () => {
     if(es.readyState === EventSource.CLOSED && !done){
       // Event log non più disponibile: recupera l'esito persistente.
       fetch('/agent/turns/' + turnId).then(r => r.ok ? r.json() : null).then(dd => {
         if(!dd) return;
         const fin = (dd.events || []).find(e => e.event_type === 'final');
-        if(fin){ settle(fin.payload.final_message_html || fin.payload.final_message || ''); return; }
-        if(dd.persistent && dd.final_message != null){ settle(dd.final_message); return; }
+        if(fin){ settleFinal(fin.payload); return; }
+        if(dd.persistent && dd.final_message != null){ settleFinal(dd); return; }
         // Ancora running (reconnect transitorio): lascia ⏳, il poller riprende.
       }).catch(() => {});
     }
@@ -1450,13 +1591,7 @@ async function pollInFlight(){
         const ph = log.querySelector('[data-turn-id="' + t.turn_id + '"]');
         if(!ph) continue;
         if(!t.in_flight && t.final_message){
-          // Sostituisci placeholder col messaggio reale
-          ph.innerHTML = '';
-          const inner = document.createElement('div');
-          inner.className = 'msg';
-          inner.innerHTML = t.final_message_html || t.final_message;
-          ph.appendChild(inner);
-          delete ph.dataset.inFlight;
+          renderCompletedTurn(t, { placeholder: ph, turnId: t.turn_id });
         }
       }
     }
@@ -2043,39 +2178,10 @@ form.addEventListener('submit', async (e) => {
     } else if(kind === 'final'){
       receivedFinal = true;
       if(pending){ pending.remove(); pending = null; }
-      const ms = data.total_ms || (Date.now() - tStart);
-      const galleryInfo = (data.gallery_url && data.n_total_matches)
-        ? { gallery_url: data.gallery_url, n_total_matches: data.n_total_matches }
-        : null;
-      const bodyPlain = data.final_message || CHAT_I18N.noResponse;
-      const bodyHtml = data.final_message_html || null;
-      let body = bodyPlain;
-      let bodyAsHtml = false;
-      if(bodyHtml){ body = bodyHtml; bodyAsHtml = true; }
-      if(bodyAsHtml){
-        body = body.replace(/\n*<i>elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?<\/i>\s*$/, '').trimEnd();
-      } else {
-        body = body.replace(/\n*_elapsed:\s*[\d.]+\s*s(\s*·\s*chiuso\s+\d{2}:\d{2}:\d{2})?_\s*$/, '').trimEnd();
-      }
-      const closeDate = (typeof data.ts_end === 'number')
-        ? new Date(data.ts_end * 1000) : new Date();
-      const closeHms = closeDate.toLocaleTimeString(CHAT_LOCALE, { hour12: false });
-      // Linea di stato (2026-07-04): SX = dove · turn:id · tempo ; DX = ora-fine.
-      // Il «dove» sostituisce il badge 📍 in testa (rimosso da _apply_device_tag);
-      // remoto = nome device (accento), locale = "server Metnos".
-      const where = data.target_device || {{ msg("MSG_CHAT_EXEC_LOCAL")|tojson }};
-      const metaLeft = (data.turn_id ? {{ msg("MSG_CHAT_TURN_LABEL")|tojson }} + data.turn_id.slice(0,8) + ' · ' : '') +
-                        chatText('durationSeconds', {seconds: (ms/1000).toFixed(1)});
-      const metaRight = closeHms;
-      const path = Array.isArray(data.path) ? data.path
-        : Array.isArray(data.steps_summary)
-          ? data.steps_summary.map(s => ({tool: s.tool, ok: s.ok}))
-          : [];
-      add('bot', body,
-          { path: path, where: where, whereRemote: !!data.target_device,
-            left: metaLeft, right: metaRight, turn_id: data.turn_id },
-          true,
-          data.attachments || null, galleryInfo, bodyAsHtml);
+      renderCompletedTurn(data, {
+        elapsedMs: Date.now() - tStart,
+        closeNow: true,
+      });
     } else if(kind === 'error'){
       receivedFinal = true;
       if(pending){ pending.remove(); pending = null; }

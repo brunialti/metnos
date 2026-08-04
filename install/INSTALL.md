@@ -191,6 +191,20 @@ systemctl --user status metnos.target
 curl http://127.0.0.1:8770/agent/health
 ```
 
+Al termine, la fase 6 stampa l’URL locale e gli URL esatti rilevati per le
+interfacce IPv4 della LAN privata. Sul server si apre l’URL con
+`127.0.0.1`; da un altro dispositivo sulla stessa rete fidata si apre uno degli
+URL LAN stampati. L’installazione guidata propone l’accesso LAN come scelta
+predefinita; è possibile scegliere l’ascolto solo locale. Anche `--yes` abilita
+la LAN.
+
+Il listener predefinito usa HTTP non cifrato: non inoltrare la porta dal router
+e non esporla direttamente a Internet. Il collegamento di onboarding è valido
+15 minuti e si usa una sola volta. Se scade, eseguire
+`./.venv/bin/python -m install --force-phase 6`, oppure accedere a
+`/admin/login` con la chiave in `~/.config/metnos/admin.key`. Gli stessi URL
+restano nel file `~/.local/share/metnos/install_summary.md`.
+
 La fase 5 verifica l’avvio e l’endpoint di salute. Non certifica da sola la
 qualità del modello né esegue un turno applicativo completo. Dopo il primo
 accesso alla chat, inviare una richiesta innocua, per esempio:
@@ -210,8 +224,10 @@ guidato descritto in [`../systemd/README.md`](../systemd/README.md), con due cic
 di prova e ripristino verificato.
 
 Lo stato dei componenti è visibile nella chat web seguendo **Impostazioni →
-Sistema → Servizi**. I componenti posseduti dal target sono mostrati in sola
-lettura perché avvio, arresto e ripristino devono rimanere coordinati.
+Sistema → Servizi**. La pagina propone **Avvia** per un servizio arrestato e
+**Arresta** o **Riavvia** per un servizio attivo, sempre entro il catalogo
+chiuso dei componenti gestibili. Le operazioni di deploy coordinato continuano
+a passare dal riconciliatore dello stack.
 
 ## Ruolo del manifest
 

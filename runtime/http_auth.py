@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import ipaddress
 import secrets
+import threading
 import time
 
 from aiohttp import web
@@ -53,7 +54,7 @@ ANON_WHITELIST_PREFIXES = (
 
 # Path completi (no-prefix match) accessibili ad anonymous: gestiscono
 # il proprio redirect a login quando opportuno.
-ANON_EXACT_PATHS = ("/", "/agent/register")
+ANON_EXACT_PATHS = ("/", "/agent/register", "/admin/onboard")
 ADMIN_PREFIX = "/admin"
 ADMIN_COOKIE = "metnos_admin"
 ADMIN_COOKIE_TTL_S = 86400 * 7  # 7 giorni
@@ -88,12 +89,11 @@ def _parse_lan_nets() -> tuple:
 LAN_NETS = _parse_lan_nets()
 
 # Proxy fidati: SOLO se il peer TCP reale (`request.remote`) cade in queste
-# reti gli header `CF-Connecting-IP` / `X-Forwarded-For` vengono onorati per
+# reti gli header standard inoltrati vengono onorati per
 # derivare l'IP del client. Altrimenti chiunque potrebbe spoofare
 # `X-Forwarded-For: 127.0.0.1` e ottenere il bypass LAN → ruolo `user`.
 #
-# Default = loopback: il tunnel Cloudflare (`cloudflared`) gira sullo stesso
-# host e consegna a 127.0.0.1, quindi il deploy resta funzionante. Override
+# Default = loopback: un reverse proxy locale consegna a 127.0.0.1. Override
 # (es. reverse-proxy su altro host LAN) via env `METNOS_TRUSTED_PROXIES`
 # come lista CIDR separata da virgole (es. "127.0.0.0/8,10.0.0.5/32").
 def _parse_trusted_proxies() -> tuple:
@@ -117,7 +117,7 @@ TRUSTED_PROXY_NETS = _parse_trusted_proxies()
 
 
 def _is_trusted_proxy(remote: str | None) -> bool:
-    """True se il peer TCP reale e' un proxy fidato (puo' dettare XFF/CF-IP)."""
+    """True se il peer TCP reale e' un proxy fidato."""
     if not remote:
         return False
     try:
@@ -125,6 +125,25 @@ def _is_trusted_proxy(remote: str | None) -> bool:
     except ValueError:
         return False
     return any(ip in net for net in TRUSTED_PROXY_NETS)
+
+
+def external_request_scheme(request: web.Request) -> str:
+    """Return the browser-facing scheme without trusting spoofable headers."""
+    direct = str(getattr(request, "scheme", "http") or "http").lower()
+    if direct == "https" or not _is_trusted_proxy(request.remote):
+        return direct if direct in {"http", "https"} else "http"
+
+    forwarded = request.headers.get("Forwarded", "").split(",", 1)[0]
+    for field in forwarded.split(";"):
+        key, separator, value = field.partition("=")
+        if separator and key.strip().lower() == "proto":
+            candidate = value.strip().strip('"').lower()
+            if candidate in {"http", "https"}:
+                return candidate
+
+    candidate = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0]
+    candidate = candidate.strip().lower()
+    return candidate if candidate in {"http", "https"} else "http"
 
 
 def get_or_create_admin_key() -> str:
@@ -165,6 +184,40 @@ def verify_admin_cookie(value: str, admin_key: str) -> bool:
     expected = hmac.new(_cookie_secret(admin_key), exp_s.encode(),
                         hashlib.sha256).hexdigest()[:32]
     return hmac.compare_digest(sig, expected)
+
+
+_CONSUMED_ONBOARD_TOKENS: dict[str, int] = {}
+_ONBOARD_TOKEN_LOCK = threading.Lock()
+
+
+def consume_admin_onboard_token(
+        value: str, admin_key: str, *, now: int | None = None) -> bool:
+    """Verify and atomically consume a short-lived installer onboarding token."""
+    current = int(time.time()) if now is None else int(now)
+    try:
+        exp_s, nonce, sig = value.split(".", 2)
+        exp = int(exp_s)
+        secret = bytes.fromhex(admin_key)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if exp < current or len(nonce) != 16 or len(sig) != 32:
+        return False
+    if any(char not in "0123456789abcdef" for char in nonce + sig.lower()):
+        return False
+    payload = f"{exp_s}.{nonce}"
+    expected = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig.lower(), expected):
+        return False
+    fingerprint = hashlib.sha256(value.encode()).hexdigest()
+    with _ONBOARD_TOKEN_LOCK:
+        expired = [key for key, deadline in _CONSUMED_ONBOARD_TOKENS.items()
+                   if deadline < current]
+        for key in expired:
+            _CONSUMED_ONBOARD_TOKENS.pop(key, None)
+        if fingerprint in _CONSUMED_ONBOARD_TOKENS:
+            return False
+        _CONSUMED_ONBOARD_TOKENS[fingerprint] = exp
+    return True
 
 
 def issue_user_cookie(admin_key: str, device_id: str,
@@ -302,26 +355,22 @@ async def auth_middleware(request: web.Request, handler):
 
     if role == "anonymous":
         # LAN bypass solo se il chiamante non ha provato un Bearer fallito.
-        # Reverse proxy / Cloudflare tunnel: il vero IP del client arriva
-        # nell'header `CF-Connecting-IP` (Cloudflare) o `X-Forwarded-For`
-        # (proxy generico). Se Metnos riceve da localhost (tunnel) ma il
+        # Reverse proxy: il vero IP del client arriva in `X-Forwarded-For`.
+        # Se Metnos riceve da localhost
+        # ma il
         # client originale e' su Internet, NON e' LAN trusted. Senza questa
         # logica, chiunque dietro tunnel HTTPS si vedrebbe ruolo `user`
         # automatico (request.remote == 127.0.0.1).
         effective_remote = request.remote
         # Gli header forwarded sono fidati SOLO se il peer TCP reale e' un
-        # proxy fidato (default: loopback = tunnel Cloudflare). Senza questo
+        # proxy fidato (default: loopback). Senza questo
         # gate, `X-Forwarded-For: 127.0.0.1` da Internet otterrebbe il bypass
         # LAN → ruolo `user` (spoofing).
         if _is_trusted_proxy(request.remote):
-            cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-            if cf_ip:
-                effective_remote = cf_ip
-            else:
-                xff = request.headers.get("X-Forwarded-For", "").strip()
-                if xff:
-                    # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
-                    effective_remote = xff.split(",")[0].strip()
+            xff = request.headers.get("X-Forwarded-For", "").strip()
+            if xff:
+                # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
+                effective_remote = xff.split(",")[0].strip()
         if (_env_enabled("METNOS_TRUST_LAN_ANONYMOUS", False)
                 and _is_lan_trusted(effective_remote) and not token):
             role = "user"

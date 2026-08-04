@@ -6,6 +6,7 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "read_files_ocr"
 version     = "0.2.0"
+intelligence = "agentic"
 timeout_s   = 1800
 author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "ocr", "scansione", "image", "immagine", "pdf", "tesseract", "estrai", "testo"]

@@ -6,6 +6,7 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "find_urls"
 version     = "0.3.0"
+intelligence = "llm"
 timeout_s   = 900
 author      = "Roberto Brunialti"
 # Affinity bilingue IT+EN (§9.3): "informazioni/notizie/novità/information"

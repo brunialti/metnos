@@ -84,14 +84,40 @@ li { margin-bottom:4px; }
 </div>
 
 <p class="lead"><code>metnos_http_server</code> serves the web chat, turn API,
-and Settings area. Its default is <code>127.0.0.1:8770</code>; an installation
-may change both address and port. The remote-executor protocol on
+and Settings area. A new guided installation defaults to
+<code>0.0.0.0:8770</code> so the UI is reachable from the same private LAN; phase
+4 can select loopback-only access or a different port. The installer prints the
+exact usable URLs and saves them. The remote-executor protocol on
 <code>8765</code> and browser service on <code>8771</code> are separate
 components with their own authority and routes.</p>
+
+<h1 id="cap0">Connecting after installation</h1>
+
+<p>At the end of phase 6, the installer shows one complete, one-use
+administrator URL for the server and, when LAN access is enabled, one for every
+detected private IPv4 address. It saves the same URLs in
+<code>~/.local/share/metnos/install_summary.md</code>.</p>
+
+<ul>
+<li>on the server, open the complete URL whose address is <code>127.0.0.1</code>;</li>
+<li>from another device on the same trusted private LAN, open one of the complete LAN URLs.</li>
+</ul>
+
+<p>You do not need to derive an address or replace a placeholder: use one of
+the printed URLs exactly as shown, including its scheme, address, port, and
+temporary token. If the token has expired, run
+<code>./.venv/bin/python -m install --force-phase 6</code> again or sign in at
+<code>/admin/login</code>. Do not forward the port from a router or expose the
+plain-HTTP listener directly to the Internet.</p>
+
+<p>Opening the Web UI from another browser is only interface access and does
+not require installing or pairing a remote executor. Pairing is needed only
+when the remote computer must also perform operations on its own local data.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
+ <li><a href="#cap0">Connecting after installation</a></li>
  <li><a href="#cap1">A natural-language example</a></li>
  <li><a href="#cap2">Server composition</a></li>
  <li><a href="#cap3">Main routes</a></li>
@@ -204,15 +230,16 @@ explains the surface without freezing a route count that would become stale.</p>
 <li>otherwise the caller remains anonymous.</li>
 </ol>
 
-<p>An invalid Bearer never falls through to local-network trust.
-<code>CF-Connecting-IP</code> and <code>X-Forwarded-For</code> are considered
-only when the TCP peer belongs to <code>METNOS_TRUSTED_PROXIES</code>; an
+<p>An invalid Bearer never falls through to local-network trust. Standard
+forwarding headers such as <code>X-Forwarded-For</code> are considered only when
+the TCP peer belongs to <code>METNOS_TRUSTED_PROXIES</code>; an
 ordinary client cannot declare itself local through a header.</p>
 
 <p>The administrator key lives at <code>PATH_USER_CONFIG/admin.key</code>, is
 created with mode <code>0600</code>, and also derives signatures and encryption
-keys through separate domains. The administrator cookie lasts seven days and
-is <code>HttpOnly</code>, <code>Secure</code>, and
+keys through separate domains. The administrator cookie lasts seven days, is
+<code>HttpOnly</code>, uses <code>Secure</code> when the external request is
+HTTPS, and is
 <code>SameSite=Strict</code>; the user cookie lasts ninety days and is
 <code>HttpOnly</code>, <code>Secure</code>, and
 <code>SameSite=Lax</code>.</p>
@@ -308,7 +335,7 @@ in <a href="observability.html">operational observability</a>.</p>
 <h1 id="cap9">9. Network and capacity boundaries</h1>
 
 <ul>
-<li><strong>aiohttp does not terminate TLS.</strong> The service starts on loopback. A public hostname needs a configured, trusted HTTPS reverse proxy or tunnel; keys and cookies must not cross an untrusted network in clear text.</li>
+<li><strong>aiohttp does not terminate TLS.</strong> The managed listener is for the server itself and its trusted private LAN. It serves plain HTTP by default: do not port-forward it or expose it directly to the Internet.</li>
 <li><strong>LAN trust is explicit and limited.</strong> The code admits loopback, <code>10.0.0.0/8</code>, and <code>192.168.0.0/16</code>; this does not mean “every private network” and does not replace device pairing.</li>
 <li><strong>There is no general per-IP rate limiter.</strong> The pool bounds turns, but assets, login, and other routes also need proxy-level protection when exposed.</li>
 <li><strong>The process is single-instance.</strong> A lock below <code>PATH_USER_STATE</code> prevents two servers for the same installation.</li>

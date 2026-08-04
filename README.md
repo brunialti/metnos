@@ -271,7 +271,10 @@ bash install/bootstrap.sh
 The six-phase installer is idempotent and resumable. It creates the
 installation-owned `.venv`, runtime directories, encrypted credential store,
 model bindings, selected companion services, user-level systemd units, the
-verified Tutor catalog, and a one-shot admin onboarding link.
+verified Tutor catalog, and a one-shot admin onboarding link. In its final
+screen it prints the exact URL for this server and every detected private-LAN
+IPv4 address; the same addresses are saved in
+`~/.local/share/metnos/install_summary.md`.
 
 After installation:
 
@@ -280,7 +283,14 @@ systemctl --user status metnos.target
 curl http://127.0.0.1:8770/agent/health
 ```
 
-Then open the web chat and send a harmless complete turn, such as:
+On the server, open the printed `127.0.0.1` onboarding URL. From another device
+on the same trusted private network, open one of the printed LAN onboarding
+URLs instead. The default guided installation enables private-LAN access; it
+can be restricted to this server during phase 4. Metnos serves plain HTTP by
+default, so do not forward its port from a router or expose it directly to the
+Internet.
+
+Then send a harmless complete turn, such as:
 “What time is it, and which time zone are you using?” An open health endpoint
 proves reachability; the answer proves that planning and execution work
 together.

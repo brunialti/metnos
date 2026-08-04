@@ -21,13 +21,14 @@ integrations are skipped, and the user can add them after install via
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import secrets
 import sys
 from pathlib import Path
 from typing import Any
 
-from .. import ui
+from .. import i18n, ui
 
 
 def _config_dir() -> Path:
@@ -124,6 +125,39 @@ def _ask_http_port(args: Any) -> int:
             if not ui.confirm(f"port {port} looks already in use — use it anyway?", default=False):
                 continue
         return port
+
+
+def _ask_http_host(args: Any) -> str:
+    """Choose loopback-only or private-LAN reachability for the Web UI."""
+    configured = os.environ.get("METNOS_HTTP_HOST", "").strip()
+    if configured:
+        try:
+            address = ipaddress.ip_address(configured)
+        except ValueError:
+            ui.warn(i18n.t("p4_http_host_invalid", value=configured))
+        else:
+            if address.version == 4 and str(address) == "0.0.0.0":
+                return "0.0.0.0"
+            if address.version == 4 and address.is_loopback:
+                return "127.0.0.1"
+            if (
+                address.version == 4
+                and address.is_private
+                and not address.is_link_local
+                and not address.is_multicast
+            ):
+                return str(address)
+            ui.warn(i18n.t("p4_http_host_not_private", value=configured))
+    if args.yes:
+        return "0.0.0.0"
+    ui.console().print(i18n.t("p4_http_host_head"))
+    ui.console().print(i18n.t("p4_http_host_desc"))
+    if ui.confirm(
+        i18n.t("p4_http_host_confirm"),
+        default=True,
+    ):
+        return "0.0.0.0"
+    return "127.0.0.1"
 
 
 def _ask_telegram(args: Any) -> bool:
@@ -253,10 +287,13 @@ def run(args: Any) -> dict[str, Any]:
     # 3. HTTP port
     notes["http_port"] = _ask_http_port(args)
 
-    # 4. Locale
+    # 4. Web UI reachability
+    notes["http_host"] = _ask_http_host(args)
+
+    # 5. Locale
     notes["locale"] = _write_locale(args)
 
-    # 5. Optional credentials
+    # 6. Optional credentials
     notes["telegram"] = _ask_telegram(args)
     notes["imap_accounts"] = _ask_imap(args)
     notes["anthropic"] = _ask_apikey(
@@ -266,7 +303,7 @@ def run(args: Any) -> dict[str, Any]:
     notes["github_pat"] = _ask_apikey(
         args, "GitHub", "GITHUB_PAT", "github")
 
-    # 6. Workspace paths
+    # 7. Workspace paths
     paths = _ask_workspace_paths(args)
     if paths:
         notes["workspace"] = paths

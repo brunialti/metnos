@@ -190,7 +190,7 @@ name = "metnos-http.service"
 type = "systemd-user"
 unit_file_local = "install/units/metnos-http.service.tmpl"
 unit_file_dest = "~/.config/systemd/user/metnos-http.service"
-description = "Server HTTP, chat e pannello amministrativo sulla porta configurata."
+description = "Server HTTP, chat e pannello amministrativo sulla porta configurata; ascolto LAN privata o solo loopback scelto in fase 4."
 enabled_at_install = true
 owner = "metnos.target"
 

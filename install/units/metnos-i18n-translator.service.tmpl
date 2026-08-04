@@ -1,6 +1,7 @@
 [Unit]
 Description=Metnos i18n translator (lazy fill of the i18n DB)
 After=network.target metnos-llm.service
+PartOf=metnos.target
 
 [Service]
 Type=oneshot

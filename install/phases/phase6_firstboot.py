@@ -20,14 +20,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import os
 import secrets
+import socket
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .. import state, ui
+from .. import i18n, state, ui
 
 
 def _onboard_token(admin_key_hex: str) -> str:
@@ -35,7 +37,9 @@ def _onboard_token(admin_key_hex: str) -> str:
     expires = int(time.time()) + 15 * 60
     nonce = secrets.token_hex(8)
     payload = f"{expires}.{nonce}"
-    sig = hmac.new(bytes.fromhex(admin_key_hex), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    sig = hmac.new(
+        bytes.fromhex(admin_key_hex), payload.encode(), hashlib.sha256,
+    ).hexdigest()[:32]
     return f"{payload}.{sig}"
 
 
@@ -46,7 +50,88 @@ def _read_admin_key() -> str | None:
     return p.read_text().strip()
 
 
-def _write_summary(rows: list[dict]) -> Path:
+def _private_ipv4(value: str) -> str:
+    try:
+        address = ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return ""
+    if (
+        address.version != 4
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_unspecified
+        or not address.is_private
+    ):
+        return ""
+    return str(address)
+
+
+def _lan_ipv4_addresses() -> tuple[str, ...]:
+    """Return useful private IPv4 addresses, with the default route first."""
+    found: list[str] = []
+
+    def add(value: str) -> None:
+        normalized = _private_ipv4(value)
+        if normalized and normalized not in found:
+            found.append(normalized)
+
+    override = os.environ.get("METNOS_INSTALL_LAN_IP", "").strip()
+    if override:
+        add(override)
+
+    # A UDP connect selects the default interface without sending application
+    # data. It works even when DNS is unavailable.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))
+            add(probe.getsockname()[0])
+    except OSError:
+        pass
+
+    # Fallback for a LAN with no default route. Avoid container/bridge links,
+    # which are not useful addresses for a browser on another device.
+    try:
+        import psutil
+
+        ignored_prefixes = ("docker", "veth", "br-", "virbr", "lo")
+        stats = psutil.net_if_stats()
+        for name, addresses in sorted(psutil.net_if_addrs().items()):
+            if name.startswith(ignored_prefixes) or not stats.get(name, None):
+                continue
+            if not stats[name].isup:
+                continue
+            for address in addresses:
+                if address.family == socket.AF_INET:
+                    add(address.address)
+    except (ImportError, OSError):
+        pass
+    return tuple(found)
+
+
+def _connection_urls(
+    port: int,
+    bind_host: str,
+    *,
+    lan_addresses: tuple[str, ...] | None = None,
+) -> tuple[str, tuple[str, ...]]:
+    local_url = f"http://127.0.0.1:{port}/"
+    host = str(bind_host or "127.0.0.1").strip()
+    if host == "127.0.0.1":
+        return local_url, ()
+    if host != "0.0.0.0":
+        address = _private_ipv4(host)
+        return local_url, ((f"http://{address}:{port}/",) if address else ())
+    addresses = lan_addresses if lan_addresses is not None else _lan_ipv4_addresses()
+    return local_url, tuple(f"http://{address}:{port}/" for address in addresses)
+
+
+def _write_summary(
+    rows: list[dict],
+    *,
+    port: int = 8770,
+    bind_host: str = "0.0.0.0",
+    lan_urls: tuple[str, ...] | None = None,
+) -> Path:
     home = Path(os.environ.get("METNOS_USER_DATA", Path.home() / ".local" / "share" / "metnos"))
     home.mkdir(parents=True, exist_ok=True)
     p = home / "install_summary.md"
@@ -65,6 +150,25 @@ def _write_summary(rows: list[dict]) -> Path:
         status = "✓ done" if r["done"] else "⋯ pending"
         notes = ", ".join(f"`{k}={v}`" for k, v in (r.get("notes") or {}).items()) or "—"
         lines.append(f"| {r['phase']} | {r['name']} | {status} | {notes} |")
+
+    local_url, detected_lan_urls = _connection_urls(port, bind_host)
+    resolved_lan_urls = detected_lan_urls if lan_urls is None else tuple(lan_urls)
+    connection_lines = [f"- On this server: `{local_url}`"]
+    connection_lines.extend(
+        f"- From another device on the same private LAN: `{url}`"
+        for url in resolved_lan_urls
+    )
+    if not resolved_lan_urls:
+        if bind_host == "127.0.0.1":
+            connection_lines.append(
+                "- Other devices are not enabled for this installation "
+                "(`METNOS_HTTP_HOST=127.0.0.1`)."
+            )
+        else:
+            connection_lines.append(
+                "- No active private-LAN IPv4 address was detected. Connect "
+                "the network interface, then run `ip -brief address`."
+            )
 
     lines += [
         "",
@@ -99,17 +203,23 @@ def _write_summary(rows: list[dict]) -> Path:
         "",
         "## How to connect",
         "",
-        "Metnos talks to you over **two channels**:",
+        "### Web UI",
         "",
-        "- **Web UI (HTTP)** — open `http://127.0.0.1:<port>/` in a browser (from",
-        "  another device, replace `127.0.0.1` with this machine's IP).",
-        "  **First connect needs the admin key** (`~/.config/metnos/admin.key`,",
-        "  auto-created on first boot). Easiest path: the one-shot onboarding URL",
-        "  printed during install (valid 15 min) claims access for your browser; if it",
-        "  expired, `cat ~/.config/metnos/admin.key` or re-run `--force-phase 6`.",
-        "- **Telegram** — if configured, open your BotFather bot, send `/start`, and",
-        "  paste the pairing code from the Web UI. Not configured? Create a bot with",
-        "  @BotFather, then `python -m install --force-phase 4` to add the token.",
+        *connection_lines,
+        "",
+        "Use the LAN URL only from the same trusted private network. Metnos serves",
+        "plain HTTP by default: do not forward this port from a router or expose it",
+        "directly to the Internet.",
+        "",
+        "The first connection needs the one-shot onboarding URL printed during",
+        "installation (valid for 15 minutes). Re-run `python -m install",
+        "--force-phase 6` to issue a fresh URL.",
+        "",
+        "### Telegram",
+        "",
+        "If configured, open your BotFather bot, send `/start`, and paste the pairing",
+        "code from the Web UI. To configure it later, run `python -m install",
+        "--force-phase 4`.",
         "",
         "## Next steps",
         "",
@@ -134,11 +244,10 @@ def _select_skills(args: Any) -> dict[str, bool]:
         from runtime.skills_catalog import FIRST_PARTY_SKILLS
         from runtime.skill_registry import set_skill_enabled
     except Exception as e:  # pragma: no cover — never block first boot on this
-        ui.warn(f"skill selection unavailable ({e}); leaving defaults.")
+        ui.warn(i18n.t("p6_skill_unavailable", err=e))
         return {}
-    ui.step("Skills (modular capabilities)")
-    ui.info("'core' is always on. Each skill below is dormant until its "
-            "backend/credential is configured. Change later: metnos-skills.")
+    ui.step(i18n.t("p6_step_skills"))
+    ui.info(i18n.t("p6_skills_info"))
     decisions: dict[str, bool] = {}
     for sk in FIRST_PARTY_SKILLS:
         name = sk["name"]
@@ -146,27 +255,37 @@ def _select_skills(args: Any) -> dict[str, bool]:
         if getattr(args, "yes", False):
             enabled = default_on
         else:
-            enabled = ui.confirm(
-                f"Enable '{name}' — {sk.get('desc', '')} (needs {sk.get('requires','—')})",
-                default=default_on)
+            enabled = ui.confirm(i18n.t(
+                "p6_skill_confirm",
+                name=name,
+                desc=sk.get("desc", ""),
+                requires=sk.get("requires", "—"),
+            ), default=default_on)
         try:
             set_skill_enabled(name, enabled)
         except Exception as e:  # pragma: no cover
-            ui.warn(f"could not persist skill '{name}': {e}")
+            ui.warn(i18n.t("p6_skill_persist_failed", name=name, err=e))
         decisions[name] = enabled
     on = [k for k, v in decisions.items() if v]
-    ui.ok(f"skills enabled: {', '.join(on) if on else '(core only)'}")
+    skills = ", ".join(on) if on else i18n.t("p6_skills_core_only")
+    ui.ok(i18n.t("p6_skills_enabled", skills=skills))
     return decisions
 
 
 def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
-    ui.banner("Phase 6 — First boot", "Admin onboarding + summary + next steps")
+    ui.banner(i18n.t("p6_banner_title"), i18n.t("p6_banner_subtitle"))
 
     # Pull port + telegram + service state from phase 4/5
     phase4 = state.load(4)
     phase5 = state.load(5)
     port = (phase5.notes.get("http_port") if phase5 else None) or (phase4.notes.get("http_port") if phase4 else 8770)
+    http_host = (
+        (phase5.notes.get("http_host") if phase5 else None)
+        or (phase4.notes.get("http_host") if phase4 else None)
+        or "127.0.0.1"
+    )
+    local_url, lan_urls = _connection_urls(port, http_host)
     telegram_on = bool(phase4 and phase4.notes.get("telegram"))
     http_enabled = bool(phase5 and phase5.notes.get("http_enabled"))
     http_healthy = bool(phase5 and phase5.notes.get("http_healthy"))
@@ -174,79 +293,83 @@ def run(args: Any) -> dict[str, Any]:
     # 0. If the HTTP service never started, the onboarding URL would be a
     #    dead link. Be honest (§2.8): tell the user how to recover instead.
     if not http_enabled:
-        ui.warn("The HTTP service is not running (phase 5 could not start it). "
-                "The onboarding URL below would not resolve yet.")
-        ui.console().print("  [bold]To recover:[/bold]")
-        ui.console().print("    1) Inspect: [cyan]systemctl --user status metnos-http[/cyan]")
-        ui.console().print("    2) Logs:    [cyan]journalctl --user -u metnos-http -e[/cyan]")
-        ui.console().print("    3) Re-run:  [cyan]python -m install --force-phase 5[/cyan]")
+        ui.warn(i18n.t("p6_http_not_running"))
+        ui.console().print(i18n.t("p6_recover_head"))
+        ui.console().print(i18n.t("p6_recover_inspect"))
+        ui.console().print(i18n.t("p6_recover_logs"))
+        ui.console().print(i18n.t("p6_recover_rerun"))
         ui.console().print()
         notes["http_enabled"] = False
     elif not http_healthy:
-        ui.warn("metnos-http started but did not pass the health probe yet — it may "
-                "still be warming up. Check `systemctl --user status metnos-http`.")
+        ui.warn(i18n.t("p6_http_unhealthy"))
 
     # 1. Onboarding URL (only meaningful once the service is up)
     admin_key = _read_admin_key()
     if admin_key and http_enabled:
         token = _onboard_token(admin_key)
-        url = f"http://127.0.0.1:{port}/admin/onboard?t={token}"
+        bases = (local_url, *lan_urls)
+        urls = tuple(f"{base}admin/onboard?t={token}" for base in bases)
         ui.console().print()
-        ui.console().print("  [bold green]One-shot admin onboarding URL[/bold green] (valid 15 min):")
-        ui.console().print(f"  [link={url}]{url}[/link]")
+        ui.console().print(i18n.t("p6_onboard_head_many"))
+        for url in urls:
+            ui.console().print(f"    [link={url}]{url}[/link]")
         ui.console().print()
         notes["onboard_url_emitted"] = True
     elif not admin_key:
-        ui.warn("admin.key not found — was phase 4 completed?")
+        ui.warn(i18n.t("p6_onboard_no_key"))
         notes["onboard_url_emitted"] = False
     else:
         # admin.key present but the service is down — URL deferred, not emitted.
-        ui.info("Onboarding URL deferred until the service is up (see recovery steps above).")
+        ui.info(i18n.t("p6_onboard_deferred"))
         notes["onboard_url_emitted"] = False
 
     # 2. How to connect — Web UI (needs the admin key on first connect)
-    ui.console().print("  [bold green]Connect to the Web UI[/bold green]:")
-    ui.console().print(f"    • From this machine:   http://127.0.0.1:{port}/")
-    ui.console().print(f"    • From another device: http://<this-machine-ip>:{port}/")
-    ui.console().print("    [bold]First connect needs the admin key.[/bold] Easiest: open the")
-    ui.console().print("    one-shot onboarding URL above (valid 15 min) — it claims access for")
-    ui.console().print("    your browser. The key itself lives at [cyan]~/.config/metnos/admin.key[/cyan]")
-    ui.console().print("    (`cat` it if you need it). Lost the URL? re-run")
-    ui.console().print("    `python -m install --force-phase 6` to print a fresh one.")
+    ui.console().print(i18n.t("p6_webui_head"))
+    ui.console().print(i18n.t("p6_webui_local_url", url=local_url))
+    for url in lan_urls:
+        ui.console().print(i18n.t("p6_webui_lan_url", url=url))
+    if not lan_urls and http_host == "127.0.0.1":
+        ui.console().print(i18n.t("p6_webui_lan_disabled"))
+    elif not lan_urls:
+        ui.console().print(i18n.t("p6_webui_lan_missing"))
+    ui.console().print(i18n.t("p6_webui_private_warning"))
+    ui.console().print(i18n.t("p6_webui_keynote"))
     ui.console().print()
 
     # 3. How to connect — Telegram
     if telegram_on:
-        ui.console().print("  [bold green]Connect via Telegram[/bold green] (enabled):")
-        ui.console().print("    1) On Telegram, open the bot you configured (the one BotFather gave you).")
-        ui.console().print("    2) Send /start.")
-        ui.console().print("    3) Paste the pairing code shown on the Web UI to link your account.")
+        ui.console().print(i18n.t("p6_tg_connect_head"))
+        ui.console().print(i18n.t("p6_tg_connect_1"))
+        ui.console().print(i18n.t("p6_tg_connect_2"))
+        ui.console().print(i18n.t("p6_tg_connect_3"))
     else:
-        ui.console().print("  [bold]Telegram[/bold] is not configured. To enable it later:")
-        ui.console().print("    1) Create a bot with @BotFather on Telegram and copy its token.")
-        ui.console().print("    2) Run:  python -m install --force-phase 4   (enter the token)")
-        ui.console().print("    3) Then /start the bot and pair as above.")
+        ui.console().print(i18n.t("p6_tg_disabled_head"))
+        ui.console().print(i18n.t("p6_tg_disabled_1"))
+        ui.console().print(i18n.t("p6_tg_disabled_2"))
+        ui.console().print(i18n.t("p6_tg_disabled_3"))
     ui.console().print()
 
     # 2b. Skill selection (modular capabilities)
     notes["skills"] = _select_skills(args)
 
     # 3. Write the summary
-    ui.step("Writing install summary")
-    summary_path = _write_summary(state.summary())
-    ui.ok(f"summary at {summary_path}")
+    ui.step(i18n.t("p6_step_summary"))
+    summary_path = _write_summary(
+        state.summary(), port=port, bind_host=http_host, lan_urls=lan_urls,
+    )
+    ui.ok(i18n.t("p6_summary_at", path=summary_path))
     notes["summary_path"] = str(summary_path)
 
     # 4. Final note — honest about whether the service is actually up.
     ui.console().print()
     if http_enabled and http_healthy:
-        ui.console().print("  [bold]All done.[/bold] Metnos is installed and running.")
+        ui.console().print(i18n.t("p6_final_done"))
     elif http_enabled:
-        ui.console().print("  [bold]Installed.[/bold] The service started but has not passed its "
-                           "health check yet — give it a moment, then re-check.")
+        ui.console().print(i18n.t("p6_final_started"))
     else:
-        ui.console().print("  [bold yellow]Installed, but the service is not running yet.[/bold yellow] "
-                           "Follow the recovery steps above before connecting.")
-    ui.console().print("  [dim]Run `cat ~/.local/share/metnos/install_summary.md` anytime.[/dim]")
+        ui.console().print(i18n.t("p6_final_not_running"))
+    ui.console().print(i18n.t("p6_final_anytime"))
+    notes["http_host"] = http_host
+    notes["web_ui_urls"] = [local_url, *lan_urls]
 
     return notes

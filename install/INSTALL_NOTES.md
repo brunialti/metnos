@@ -63,11 +63,15 @@ turn history, signing keys, session registry or mutable databases.
    trusted by this installation.
 4. **Sensitive data** creates the administrator key and can collect Telegram,
    IMAP/SMTP, Anthropic, OpenAI and GitHub credentials through the encrypted
-   runtime store. Google Workspace is connected later through OAuth.
+   runtime store. It also records whether the Web UI listens on every private-
+   LAN IPv4 interface (the guided and `--yes` default) or on loopback only.
+   Google Workspace is connected later through OAuth.
 5. **Systemd services** renders user units, establishes `metnos.target` as the
    integrated owner where safe, and records bounded health results.
-6. **First boot** selects catalogued capabilities, emits an administrator link
-   only when the HTTP service is available, and writes the installation summary.
+6. **First boot** selects catalogued capabilities, emits a consumable
+   administrator link only when the HTTP service is available, prints exact
+   detected local/LAN URLs without placeholders, and writes those URLs to the
+   installation summary.
 
 Each completed phase writes a per-user sentinel below
 `$METNOS_USER_STATE/install/`. Re-running the installer skips completed phases;
@@ -161,7 +165,12 @@ when its assets have been installed.
 ## Integrated service lifecycle
 
 On a fresh host, `metnos.target` owns the HTTP server and installed companion
-units. Composite readiness checks the server and catalog contracts rather than
+units. The i18n translator timer is a non-optional dependency: phase 5 installs
+it before target activation, the target requires it, and composite readiness
+fails when the timer is not active. Its oneshot worker may be inactive between
+runs; the continuously active timer is the lifecycle and health object shown in
+the Services page. Private development-only units are not part of the public
+service catalog. Composite readiness checks the server and catalog contracts rather than
 only checking whether a port is open. Coordinated lifecycle operations use
 `runtime/stack_reconcile.py` and must first establish that there is no active
 turn or browser session that would be interrupted.
@@ -174,6 +183,11 @@ prove the replacement and its rollback before ownership changes.
 The HTTP health endpoint proves reachability, not planning quality or end-to-end
 operation. A release installation is complete only after a harmless natural-
 language request passes through the chat and returns a normal answer.
+
+The public installer does not install, own or document a maintainer-specific
+remote-access service. Its supported browser path is direct access from the
+server or the same trusted private LAN. The default HTTP listener must never be
+described as safe for router port forwarding or direct Internet exposure.
 
 ## Manifest boundaries
 
@@ -191,6 +205,10 @@ When an installation contract changes, update together:
 - `install/manifest.toml` for inventory;
 - `install/INSTALL.md`, `install/README.md` and public documentation for users;
 - Tutor's compiled catalog and its provenance report.
+
+The phase-4 `http_host` note is authoritative for phase 5. A new installation
+records `0.0.0.0` for private-LAN access or `127.0.0.1` for loopback-only
+access. Missing notes from an older installation fail closed to loopback.
 
 Do not place dates, obsolete module names, host-specific production paths or a
 narrative of past fixes in the manifest or user-facing installation guides.

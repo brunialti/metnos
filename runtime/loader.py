@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from sign import verify_executor
 from executor_metadata import (
     execution_policy as _execution_policy,
+    intelligence_kind as _intelligence_kind,
     membership_kind as _membership_kind,
     output_schema as _declared_output_schema,
     source_kind as _source_kind,
@@ -242,6 +243,7 @@ def builtin_contract_executor(name: str, module_path: Path,
             manifest.get("executor_standard"), manifest.get("lifecycle", "active")),
         membership="builtin",
         source="builtin",
+        intelligence=_intelligence_kind(manifest),
         transport="in-process",
         output_schema=_declared_output_schema(manifest),
         execution_policy=_execution_policy(manifest),
@@ -581,6 +583,9 @@ class Executor:
     # Appartenenza al prodotto, distinta da origine e trasporto (ADR 0195).
     membership: str = "builtin"
     source: str = "handcrafted"
+    # Internal reasoning is independent from transport and scheduling.
+    # Agentic is explicit; legacy llm:* capabilities retain a truthful default.
+    intelligence: str = "deterministic"
     transport: str = "local-subprocess"
     output_schema: str = ""
     # Scheduler policy normalized by the loader.  Default serial preserves the
@@ -1470,6 +1475,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
                 manifest.get("executor_standard"), lifecycle),
             membership=_membership_kind(manifest),
             source=_source_kind(manifest, synthesized=is_synthesized),
+            intelligence=_intelligence_kind(manifest),
             transport=_transport_kind(manifest),
             output_schema=_declared_output_schema(manifest),
             execution_policy=_execution_policy(manifest),

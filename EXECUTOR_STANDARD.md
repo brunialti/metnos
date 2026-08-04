@@ -192,6 +192,14 @@ freedom to select and repair the path inside them.
 The model may choose a path inside the mandate. It may not change the mandate,
 invent a new capability, or report an unverified success.
 
+The optional top-level manifest field `intelligence` makes this internal mode
+visible without changing executor authority or routing. Its closed values are
+`deterministic` (no model call), `llm` (a model call inside a predetermined
+flow), and `agentic` (a bounded model-guided action loop). Absence is treated
+conservatively as `deterministic`, except that legacy `llm:*` capabilities are
+reported as `llm`. The runtime MUST NOT infer `agentic` from a name or model
+capability.
+
 ## 6. Transport independence
 
 Local process, signed remote invocation, and MCP are transport adapters below

@@ -22,6 +22,13 @@ signed executors, and optional support services, then verifies service startup
 and the HTTP health endpoint. A complete installation check also requires one
 harmless request through the chat after onboarding.
 
+The final phase prints the exact local Web UI URL and, when private-LAN access
+is enabled, the exact URL for every detected private IPv4 address. Use the
+local URL on the server or a printed LAN URL from another device on the same
+trusted network. The UI is plain HTTP by default: never port-forward that port
+or expose it directly to the Internet. The same connection details are saved
+in `~/.local/share/metnos/install_summary.md`.
+
 ## Architecture: Metnos is self-contained
 
 ```

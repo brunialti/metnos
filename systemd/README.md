@@ -5,20 +5,20 @@ manager. The managed installer renders and installs the appropriate templates;
 manual copying is intended for development only.
 
 The Metnos service panel at `/admin/services` presents registered services
-through one inventory. Components owned by `metnos.target` are read-only in the
-panel: start, stop and restart must go through the serialized stack reconciler,
-never through a component-level action.
+through one closed inventory. It offers Start for a stopped service and Stop or
+Restart for a running service when that action is valid. Coordinated executor
+deployments still go through the serialized stack reconciler.
 
 ## Integrated stack ownership
 
 `metnos.target` is the single user-level owner of the installed Metnos stack:
 HTTP, graphical display, Playwright and the installed Telegram, LLM, search,
-geocoder, tunnel, issues sidecar and translation units. Optional components
-remain optional; the target owns only units that exist on that host.
+geocoder and translation units. The i18n timer is a required target dependency;
+the other companion components remain optional and are owned only when present.
 
 `metnos-stack-ready.service` gates readiness on the HTTP server contract,
 catalog parity, Playwright fingerprint equality when that sidecar is installed,
-and a readable broker state. `metnos-stack-quarantine.service` stops the closed
+the active i18n timer, and a readable broker state. `metnos-stack-quarantine.service` stops the closed
 unit set after a failed start, including both i18n timer and in-flight translator
 service. The first watchdog check is scheduled three minutes after target
 activation, later than the readiness timeout. Recovery is bounded by a

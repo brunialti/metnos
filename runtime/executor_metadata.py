@@ -10,6 +10,7 @@ from executor_standard import STANDARD_ID
 
 SOURCE_KINDS = frozenset({"handcrafted", "synthesized", "imported", "builtin"})
 MEMBERSHIP_KINDS = frozenset({"builtin", "third-party"})
+INTELLIGENCE_KINDS = frozenset({"deterministic", "llm", "agentic"})
 TRANSPORT_KINDS = frozenset({
     "local-subprocess", "local-or-remote", "remote-device", "in-process",
 })
@@ -73,6 +74,27 @@ def membership_kind(manifest: dict | None = None, *, builtin: bool = False) -> s
     if isinstance(provenance, dict) and provenance.get("imported_from"):
         return "third-party"
     return "builtin"
+
+
+def intelligence_kind(manifest: dict | None = None) -> str:
+    """Return the executor's declared internal reasoning mode.
+
+    Agentic execution is never inferred: it is a behavioral claim and must be
+    explicit.  Existing manifests with an LLM capability retain an honest
+    compatibility default; everything else fails closed to deterministic.
+    """
+    data = manifest if isinstance(manifest, dict) else {}
+    declared = data.get("intelligence")
+    if declared in INTELLIGENCE_KINDS:
+        return str(declared)
+    capabilities = data.get("capabilities") or []
+    if any(
+        isinstance(capability, dict)
+        and str(capability.get("name") or "").startswith("llm:")
+        for capability in capabilities
+    ):
+        return "llm"
+    return "deterministic"
 
 
 def transport_kind(manifest: dict | None = None, *, in_process: bool = False) -> str:

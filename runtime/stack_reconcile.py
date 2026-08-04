@@ -44,8 +44,6 @@ STACK_UNITS = (
     "metnos-llm.service",
     "metnos-searxng.service",
     "metnos-photon.service",
-    "cloudflared-metnos-chat.service",
-    "metnos-issues-sidecar.service",
     "metnos-i18n-translator.service",
     "metnos-i18n-translator.timer",
     "metnos-stack-watchdog.timer",
@@ -57,8 +55,7 @@ RUNTIME_COMPONENT_UNITS = (
     "metnos-llm.service",
     "metnos-searxng.service",
     "metnos-photon.service",
-    "cloudflared-metnos-chat.service",
-    "metnos-issues-sidecar.service",
+    "metnos-i18n-translator.timer",
 )
 FAILURE_WINDOW_S = 10 * 60
 FAILURE_LIMIT = 3
@@ -452,6 +449,9 @@ class StackReconciler:
             return True
         if mode == "no":
             return False
+        from services_registry import desired_state
+        if desired_state("playwright") == "stopped":
+            return False
         state = self.systemctl.show("metnos-playwright.service")
         return state.get("LoadState") not in {"not-found", "error", ""}
 
@@ -497,17 +497,25 @@ class StackReconciler:
         })
 
         component_states = []
+        from services_registry import desired_state, key_for_unit
         for unit in RUNTIME_COMPONENT_UNITS:
             state = self.systemctl.show(unit)
             installed = state.get("LoadState") not in {"not-found", "error", ""}
             active = state.get("ActiveState") == "active"
+            service_key = key_for_unit(unit, "user")
+            target_state = desired_state(service_key) if service_key else "running"
             component_states.append({
                 "unit": unit,
                 "installed": installed,
                 "active": active,
+                "service": service_key,
+                "desired_state": target_state,
             })
         components_ok = all(
-            not row["installed"] or row["active"] for row in component_states
+            not row["installed"]
+            or row["active"]
+            or row["desired_state"] == "stopped"
+            for row in component_states
         )
         checks.append({
             "name": "managed_components",
@@ -521,7 +529,12 @@ class StackReconciler:
         for service_key in WATCHED_SERVICE_KEYS:
             try:
                 service = _watched_service_snapshot(service_key)
-                service_ok = _watched_service_ok(service_key, service)
+                target_state = desired_state(service_key)
+                service["desired_state"] = target_state
+                service_ok = (
+                    target_state == "stopped"
+                    or _watched_service_ok(service_key, service)
+                )
             except Exception as exc:  # keep a complete diagnostic report
                 service = {
                     "observation_error": type(exc).__name__,
@@ -799,18 +812,31 @@ class StackReconciler:
 
     def watchdog(self, *, require_sidecar: str = "auto") -> dict:
         try:
-            return self.check(require_sidecar=require_sidecar)
+            from service_health_monitor import run as monitor_services
+            monitoring = monitor_services()
+        except Exception as exc:  # notification failure must not mask repair
+            monitoring = {
+                "ok": False,
+                "error": type(exc).__name__,
+            }
+        try:
+            result = self.check(require_sidecar=require_sidecar)
+            result["service_monitor"] = monitoring
+            return result
         except StackFailure as exc:
             failed = set(exc.details.get("failed_checks") or [])
             prefix = "service_health:"
             watched_checks = {f"{prefix}{key}" for key in WATCHED_SERVICE_KEYS}
             if failed and failed.issubset(watched_checks):
                 keys = sorted(name[len(prefix):] for name in failed)
-                return self._repair_watched(
+                result = self._repair_watched(
                     keys, require_sidecar=require_sidecar)
-            return self.restart(
-                automatic=True, require_sidecar=require_sidecar,
-            )
+            else:
+                result = self.restart(
+                    automatic=True, require_sidecar=require_sidecar,
+                )
+            result["service_monitor"] = monitoring
+            return result
 
 
 def _failure_payload(exc: StackFailure) -> dict:

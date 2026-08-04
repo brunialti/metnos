@@ -41,6 +41,7 @@ _EXECUTION_KEYS = frozenset({
     "none", "device", "account", "browser_session", "path",
 })
 _EQUIVALENCE_GATES = frozenset({"unverified", "verified"})
+_INTELLIGENCE_KINDS = frozenset({"deterministic", "llm", "agentic"})
 _EXECUTION_FIELDS = frozenset({
     "effect", "parallelism_class", "resource_class", "concurrency_key",
     "equivalence_gate",
@@ -497,6 +498,15 @@ def _validate_execution(findings: list[StandardFinding], manifest: dict,
             )
 
 
+def _validate_intelligence(findings: list[StandardFinding], manifest: dict) -> None:
+    value = manifest.get("intelligence")
+    if value is not None and value not in _INTELLIGENCE_KINDS:
+        _add(
+            findings, "intelligence_kind",
+            f"intelligence must be one of {sorted(_INTELLIGENCE_KINDS)}",
+        )
+
+
 def validate_manifest(manifest: dict, *, require_declaration: bool = True,
                       active: bool = True) -> list[StandardFinding]:
     """Return deterministic conformance findings for one parsed manifest.
@@ -536,6 +546,7 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
 
     _validate_description(findings, manifest, active=active)
     _validate_args(findings, manifest, active=active)
+    _validate_intelligence(findings, manifest)
     _validate_execution(findings, manifest, active=active)
 
     code = manifest.get("code")

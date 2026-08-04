@@ -4,6 +4,7 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "login_sites"
 version     = "0.2.0"
+intelligence = "agentic"
 timeout_s   = 180
 platforms   = ["linux"]
 author      = "Roberto Brunialti"

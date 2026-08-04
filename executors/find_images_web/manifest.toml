@@ -8,6 +8,7 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "find_images_web"
 version     = "0.3.0"
+intelligence = "agentic"
 author      = "Roberto Brunialti"
 affinity    = [
     "image-search", "cerca-immagini-web", "web-images", "images-online",

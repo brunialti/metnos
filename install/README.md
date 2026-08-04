@@ -2,8 +2,8 @@
 
 A guided, **idempotent, six-phase** installer for a self-hosted Metnos
 instance. Safe to interrupt and re-run at any point: every phase checks the
-system before it acts and records what it did. English-only (i18n is not applied
-to the installer).
+system before it acts and records what it did. The installer currently renders
+English while its messages are maintained in the IT/EN installer catalog.
 
 Planning quality and latency depend on the models assigned to the Metnos tiers.
 A local accelerator is useful but not mandatory: the tiers may point to a
@@ -165,8 +165,10 @@ bounded watchdog. On a fresh installation the target is the single owner of
 the HTTP service and every installed companion unit; readiness requires HTTP,
 catalog and sidecar contract checks rather than only an open port.
 
-The service panel reports integrated component state but does not expose
-component-level start, stop or restart. Coordinated operations use
+The service panel reports each registered component and exposes only the
+actions valid for its observed state: **Start** for a stopped service and
+**Stop** or **Restart** for a running one. Core lifecycle changes remain bounded
+by the closed service catalog; coordinated deployment operations use
 `runtime/stack_reconcile.py`, which first proves turn and browser quiescence.
 
 An upgrade that still has an active system-level `metnos-http.service` is not
@@ -248,6 +250,21 @@ normal answer.
 
 The first-boot phase prints a one-shot admin onboarding URL and writes
 `~/.local/share/metnos/install_summary.md` recording every choice you made.
+It prints a local URL and, when LAN access was selected, one exact URL for each
+detected private IPv4 address. Open the local URL on the server or a printed LAN
+URL from another device on the same trusted network. The guided default and
+`--yes` enable LAN access; phase 4 can instead bind the UI to loopback only.
+
+The default listener is plain HTTP. Do not forward its port from a router or
+expose it directly to the Internet. The onboarding URL is valid for 15 minutes
+and can be used once; if it expires, run
+`./.venv/bin/python -m install --force-phase 6` or sign in at `/admin/login`
+with `~/.config/metnos/admin.key`.
+
+The i18n translator is part of the mandatory core lifecycle. Systemd keeps its
+timer active through `metnos.target`, runs the short translation worker every
+five minutes, and the Services page reports the timer rather than treating the
+worker's normal idle period as a stopped service.
 
 See [`../README.md`](../README.md) for the project overview and security model.
 The normative installation procedure is [`INSTALL.md`](INSTALL.md); current

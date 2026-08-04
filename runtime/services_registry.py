@@ -51,6 +51,7 @@ class ServiceSpec:
     label_en: str = ""
     description_en: str = ""
     group_en: str = ""
+    health_policy: str = "endpoint"  # endpoint | process | systemd
 
 
 def _target(unit: str, scope: str = "user") -> ServiceTarget:
@@ -61,7 +62,7 @@ def _target(unit: str, scope: str = "user") -> ServiceTarget:
 # i target successivi coprono installazioni system-level altrettanto valide.
 SERVICES: tuple[ServiceSpec, ...] = (
     ServiceSpec(
-        "http", "HTTP server", "API, chat e Settings", "Core",
+        "http", "Server HTTP", "API, chat e Settings", "Nucleo",
         (_target("metnos-http.service"),
          _target("metnos-http.service", "system")),
         "http://127.0.0.1:8770", "METNOS_HTTP_URL", "/agent/health",
@@ -70,38 +71,39 @@ SERVICES: tuple[ServiceSpec, ...] = (
         group_en="Core",
     ),
     ServiceSpec(
-        "telegram", "Telegram daemon", "Canale Telegram e notifiche", "Core",
+        "telegram", "Daemon Telegram", "Canale Telegram e notifiche", "Nucleo",
         (_target("metnos-telegram-daemon.service"),),
         integrated=True,
         label_en="Telegram daemon",
         description_en="Telegram channel and notifications", group_en="Core",
     ),
     ServiceSpec(
-        "side_display", "Side display", "Display grafico virtuale del browser",
-        "Website browsing", (_target("metnos-side-display.service"),),
+        "side_display", "Display laterale", "Display grafico virtuale del browser",
+        "Navigazione web", (_target("metnos-side-display.service"),),
         integrated=True,
         label_en="Side display",
         description_en="Virtual browser display", group_en="Website browsing",
     ),
     ServiceSpec(
         "playwright", "Playwright sidecar", "Browser e sessioni Sites",
-        "Website browsing", (_target("metnos-playwright.service"),),
+        "Navigazione web", (_target("metnos-playwright.service"),),
         "http://127.0.0.1:8771", "METNOS_PLAYWRIGHT_URL", "/health",
         integrated=True,
         label_en="Playwright sidecar",
         description_en="Browser and Sites sessions", group_en="Website browsing",
     ),
     ServiceSpec(
-        "llm", "Local language model", "llama-server dei tier locali", "Core",
+        "llm", "Modello linguistico locale", "llama-server dei tier locali", "Nucleo",
         (_target("metnos-llm.service"),
          _target("llama-server.service", "system")),
         "http://127.0.0.1:8080", "METNOS_LLM_MID_URL", "/health",
         integrated=True,
         label_en="Local language model",
         description_en="llama-server for local tiers", group_en="Core",
+        health_policy="process",
     ),
     ServiceSpec(
-        "searxng", "SearXNG", "Motore di ricerca web", "Search & geo",
+        "searxng", "SearXNG", "Motore di ricerca web", "Ricerca e geografia",
         (_target("metnos-searxng.service"),
          _target("searxng.service", "system")),
         "http://127.0.0.1:8888", "METNOS_SEARXNG_URL", "/search?q=metnos-health&format=json",
@@ -110,7 +112,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
         group_en="Search & geo",
     ),
     ServiceSpec(
-        "photon", "Geo server", "Geocoding locale Photon/OSM", "Search & geo",
+        "photon", "Server geografico", "Geocoding locale Photon/OSM", "Ricerca e geografia",
         (_target("metnos-photon.service"),
          _target("photon.service", "system")),
         "http://127.0.0.1:2322", "METNOS_PHOTON_URL", "/api/?q=Rome&limit=1",
@@ -119,24 +121,9 @@ SERVICES: tuple[ServiceSpec, ...] = (
         description_en="Local Photon/OSM geocoding", group_en="Search & geo",
     ),
     ServiceSpec(
-        "cloudflare", "Cloudflare tunnel", "Accesso remoto alla chat",
-        "Connectivity", (_target("cloudflared-metnos-chat.service"),),
-        integrated=True,
-        label_en="Cloudflare tunnel",
-        description_en="Remote access to chat", group_en="Connectivity",
-    ),
-    ServiceSpec(
-        "issues", "Issues sidecar", "Bridge locale per issue amministrative",
-        "Connectivity", (_target("metnos-issues-sidecar.service"),),
-        integrated=True,
-        label_en="Issues sidecar",
-        description_en="Local bridge for administrative issues",
-        group_en="Connectivity",
-    ),
-    ServiceSpec(
-        "i18n", "i18n translator", "Riempimento differito delle traduzioni",
-        "Core", (_target("metnos-i18n-translator.timer"),),
-        integrated=True,
+        "i18n", "Traduttore i18n", "Riempimento differito delle traduzioni",
+        "Nucleo", (_target("metnos-i18n-translator.timer"),),
+        required=True, integrated=True,
         label_en="i18n translator",
         description_en="Deferred translation completion", group_en="Core",
     ),
@@ -144,6 +131,7 @@ SERVICES: tuple[ServiceSpec, ...] = (
 
 _BY_KEY = {service.key: service for service in SERVICES}
 _ACTIONS = frozenset({"start", "stop", "restart"})
+_DESIRED_STATES = frozenset({"running", "stopped"})
 _CONTROL_LOCK = threading.Lock()
 _SNAPSHOT_POOL: ThreadPoolExecutor | None = None
 _SNAPSHOT_POOL_LOCK = threading.Lock()
@@ -211,6 +199,99 @@ polkit.addRule(function(action, subject) {{
 
 def get(key: str) -> ServiceSpec | None:
     return _BY_KEY.get(key)
+
+
+def key_for_unit(unit: str, scope: str | None = None) -> str:
+    """Resolve an exact catalog target back to its logical service key."""
+    for spec in SERVICES:
+        if any(
+            target.unit == unit and (scope is None or target.scope == scope)
+            for target in spec.targets
+        ):
+            return spec.key
+    return ""
+
+
+def _desired_state_path() -> Path:
+    return Path(_C.PATH_USER_STATE) / "service_desired_states.json"
+
+
+def _load_desired_states() -> dict[str, str]:
+    """Load administrator intent; invalid state fails closed to ``running``.
+
+    The file records only logical catalog keys, never unit names supplied by
+    callers.  A missing/corrupt file therefore cannot broaden the control
+    surface or silently suppress availability alerts.
+    """
+    try:
+        raw = json.loads(_desired_state_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    values = raw.get("services") if isinstance(raw, dict) else None
+    if not isinstance(values, dict):
+        return {}
+    return {
+        key: value
+        for key, value in values.items()
+        if (key in _BY_KEY and value in _DESIRED_STATES
+            and not _BY_KEY[key].required)
+    }
+
+
+def desired_state(key: str) -> str:
+    """Return the centrally recorded target state for a catalog service."""
+    service = _BY_KEY.get(key)
+    if service is None:
+        return ""
+    if service.required:
+        return "running"
+    return _load_desired_states().get(key, "running")
+
+
+def _record_desired_state(key: str, value: str) -> None:
+    if key not in _BY_KEY or value not in _DESIRED_STATES:
+        raise ValueError("invalid desired service state")
+    if _BY_KEY[key].required and value != "running":
+        raise ValueError("required services must remain running")
+    path = _desired_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    states = _load_desired_states()
+    states[key] = value
+    payload = {
+        "schema_version": 1,
+        "services": dict(sorted(states.items())),
+        "updated_at": time.time(),
+    }
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    fd = os.open(
+        tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+
+def _allowed_actions(spec: ServiceSpec, state: dict) -> list[str]:
+    if state.get("load_state") in {"not-found", "error"}:
+        return []
+    # Stopping the HTTP server from the page it serves would remove the only
+    # control that could start it again.  It remains centrally catalogued and
+    # restartable, but deliberate shutdown requires an independent control
+    # plane (CLI/systemd).
+    if spec.key == "http":
+        return ["restart"]
+    if spec.required:
+        return ["start", "restart"]
+    return ["start", "stop", "restart"]
 
 
 def service_user() -> str:
@@ -370,6 +451,30 @@ def _probe(url: str, *, deadline_at: float | None = None
         return False, type(exc).__name__
 
 
+def _probe_process(state: dict) -> tuple[bool | None, str]:
+    """Cheap liveness evidence for services whose HTTP slots may be busy.
+
+    The local LLM can legitimately keep its health endpoint occupied during a
+    long inference.  Process state catches stopped/zombie failures without
+    turning normal queueing into a false admin alert.
+    """
+    try:
+        pid = int(state.get("main_pid") or 0)
+    except (TypeError, ValueError):
+        pid = 0
+    if pid <= 1:
+        return False, "main_pid_unavailable"
+    try:
+        fields = (Path("/proc") / str(pid) / "stat").read_text(
+            encoding="utf-8", errors="replace",
+        ).split()
+        process_state = fields[2] if len(fields) > 2 else ""
+    except OSError as exc:
+        return False, type(exc).__name__
+    healthy = process_state not in {"", "T", "t", "X", "x", "Z"}
+    return healthy, f"process:{process_state or '?'}"
+
+
 def _canonical_status(row: dict, *, required: bool, healthy: bool | None) -> str:
     if row.get("load_state") == "not-found":
         return "missing"
@@ -391,21 +496,34 @@ def snapshot_one(spec: ServiceSpec, *, probe_endpoint: bool = True,
                  deadline_at: float | None = None) -> dict:
     state = resolve_target(spec, deadline_at=deadline_at)
     url = health_url(spec)
-    healthy, health_detail = (
-        _probe(url, deadline_at=deadline_at)
-        if probe_endpoint else (None, ""))
+    if not probe_endpoint:
+        healthy, health_detail = None, ""
+    elif spec.health_policy == "process":
+        healthy, health_detail = _probe_process(state)
+    elif spec.health_policy == "systemd":
+        healthy, health_detail = None, ""
+    else:
+        healthy, health_detail = _probe(url, deadline_at=deadline_at)
     installed = state.get("load_state") not in {"not-found", "error"}
+    actions = _allowed_actions(spec, state) if installed else []
+    target_state = desired_state(spec.key)
     row = {
         **asdict(spec), **state,
         "installed": installed,
         "healthy": healthy,
         "health_detail": health_detail,
         "health_url": url,
-        "actionable": installed and not spec.integrated,
+        "actionable": bool(actions),
+        "allowed_actions": actions,
+        "desired_state": target_state,
         "managed_by": "metnos.target" if spec.integrated else "",
     }
     row["status"] = _canonical_status(
         row, required=spec.required, healthy=healthy,
+    )
+    row["in_desired_state"] = (
+        (target_state == "running" and row["status"] == "running")
+        or (target_state == "stopped" and row["status"] == "stopped")
     )
     return row
 
@@ -425,6 +543,9 @@ def _failed_snapshot(spec: ServiceSpec, reason: str) -> dict:
         "observation_error": reason,
         "health_url": health_url(spec),
         "actionable": False,
+        "allowed_actions": [],
+        "desired_state": desired_state(spec.key),
+        "in_desired_state": False,
         "status": "failed" if spec.required else "missing",
     }
 
@@ -496,6 +617,22 @@ def snapshots(*, probe_endpoints: bool = True,
     return rows
 
 
+def localized(rows: list[dict], lang: str) -> list[dict]:
+    """Localize catalog prose without changing technical state fields."""
+    use_english = not str(lang or "it").lower().startswith("it")
+    out: list[dict] = []
+    for source in rows:
+        row = dict(source)
+        if use_english:
+            row["label"] = row.get("label_en") or row.get("label") or row["key"]
+            row["description"] = (
+                row.get("description_en") or row.get("description") or ""
+            )
+            row["group"] = row.get("group_en") or row.get("group") or ""
+        out.append(row)
+    return out
+
+
 def control(key: str, action: str) -> tuple[bool, str]:
     """Esegue un'azione chiusa sul target risolto dal catalogo.
 
@@ -506,11 +643,11 @@ def control(key: str, action: str) -> tuple[bool, str]:
     spec = _BY_KEY.get(key)
     if spec is None or action not in _ACTIONS:
         return False, "invalid service action"
-    if spec.integrated:
-        return False, "service is managed by metnos.target; use stack_reconcile"
     state = resolve_target(spec)
     if state.get("load_state") in {"not-found", "error"}:
         return False, "service unit is not installed"
+    if action not in _allowed_actions(spec, state):
+        return False, "service action is unavailable from this control plane"
     target = ServiceTarget(state["unit"], state["scope"])
     cmd, env = _systemctl(target, "--no-block", action, target.unit)
     try:
@@ -519,6 +656,10 @@ def control(key: str, action: str) -> tuple[bool, str]:
                 cmd, capture_output=True, text=True, timeout=30,
                 check=False, env=env,
             )
+            if result.returncode == 0:
+                _record_desired_state(
+                    key, "stopped" if action == "stop" else "running",
+                )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as exc:
         return False, type(exc).__name__
     detail = (result.stderr or result.stdout or "").strip()[-300:]

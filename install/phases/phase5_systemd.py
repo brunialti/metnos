@@ -4,10 +4,9 @@
 Writes user-level systemd units from the templates in
 ``install/units/*``, runs ``systemctl --user daemon-reload``, enables and
 starts the integrated ``metnos.target``, probes its composite readiness,
-conditionally enables
+installs the mandatory ``metnos-i18n-translator.timer``, and conditionally enables
 ``metnos-telegram-daemon.service`` if phase 4 collected a Telegram
-token, and enables the ``metnos-i18n-translator.timer`` (lazy
-translation of newly-added i18n keys).
+token.
 
 User-level units (vs system-level) means **no sudo is required**.
 The service runs as the invoking user, dies when the session ends
@@ -25,7 +24,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .. import llm_manager, state, ui
+from .. import i18n, llm_manager, state, ui
 
 
 STACK_UNIT_TEMPLATES = (
@@ -34,6 +33,8 @@ STACK_UNIT_TEMPLATES = (
     ("metnos-stack-quarantine.service.tmpl", "metnos-stack-quarantine.service"),
     ("metnos-stack-watchdog.service.tmpl", "metnos-stack-watchdog.service"),
     ("metnos-stack-watchdog.timer.tmpl", "metnos-stack-watchdog.timer"),
+    ("metnos-i18n-translator.service.tmpl", "metnos-i18n-translator.service"),
+    ("metnos-i18n-translator.timer.tmpl", "metnos-i18n-translator.timer"),
 )
 STACK_OWNED_OPTIONAL_UNITS = (
     "metnos-side-display.service",
@@ -42,10 +43,6 @@ STACK_OWNED_OPTIONAL_UNITS = (
     "metnos-llm.service",
     "metnos-searxng.service",
     "metnos-photon.service",
-    "cloudflared-metnos-chat.service",
-    "metnos-issues-sidecar.service",
-    "metnos-i18n-translator.service",
-    "metnos-i18n-translator.timer",
 )
 
 # The readiness probe owns its functional deadline. systemd gets a bounded
@@ -92,7 +89,12 @@ def _completion_env_line() -> str:
             "back to HTTP generation (meta.deterministic=false)")
 
 
-def _substitute(template: str, port: int, lang: str) -> str:
+def _substitute(
+    template: str,
+    port: int,
+    lang: str,
+    http_host: str = "127.0.0.1",
+) -> str:
     """Replace @VAR@ placeholders in unit template content."""
     repl = {
         "@VENV@":       str(_venv_dir()),
@@ -101,6 +103,7 @@ def _substitute(template: str, port: int, lang: str) -> str:
         "@STATE_DIR@":  os.environ.get("METNOS_USER_STATE", str(Path.home() / ".local" / "state" / "metnos")),
         "@REPO_DIR@":   str(_repo_dir()),
         "@PORT@":       str(port),
+        "@HTTP_HOST@":  http_host,
         "@LANG@":       lang,
         "@COMPLETION_ENV@": _completion_env_line(),
         "@STACK_READY_PROBE_TIMEOUT@": str(STACK_READY_PROBE_TIMEOUT_S),
@@ -111,12 +114,18 @@ def _substitute(template: str, port: int, lang: str) -> str:
     return template
 
 
-def _install_unit(template_path: Path, dest_name: str, port: int, lang: str) -> bool:
+def _install_unit(
+    template_path: Path,
+    dest_name: str,
+    port: int,
+    lang: str,
+    http_host: str = "127.0.0.1",
+) -> bool:
     """Render one template into the user systemd dir."""
     if not template_path.exists():
         ui.warn(f"missing template: {template_path}")
         return False
-    rendered = _substitute(template_path.read_text(), port, lang)
+    rendered = _substitute(template_path.read_text(), port, lang, http_host)
     dest = _systemd_user_dir() / dest_name
     dest.write_text(rendered)
     ui.ok(f"wrote {dest}")
@@ -124,7 +133,8 @@ def _install_unit(template_path: Path, dest_name: str, port: int, lang: str) -> 
 
 
 def _install_optional_unit(template_path: Path, dest_name: str,
-                           port: int, lang: str) -> bool:
+                           port: int, lang: str,
+                           http_host: str = "127.0.0.1") -> bool:
     """Install a missing optional unit without replacing local tuning.
 
     Upgrade hosts may already have intentionally customized companion units.
@@ -136,7 +146,7 @@ def _install_optional_unit(template_path: Path, dest_name: str,
     if dest.exists():
         ui.ok(f"preserved existing {dest}")
         return True
-    return _install_unit(template_path, dest_name, port, lang)
+    return _install_unit(template_path, dest_name, port, lang, http_host)
 
 
 def _install_stack_ownership_dropin(unit_name: str) -> bool:
@@ -251,12 +261,16 @@ def run(args: Any) -> dict[str, Any]:
     # Look up port / language / Telegram choice from phase 4
     phase4 = state.load(4)
     port = (phase4.notes.get("http_port") if phase4 else None) or 8770
+    http_host = (
+        (phase4.notes.get("http_host") if phase4 else None) or "127.0.0.1"
+    )
     telegram_enabled = bool(phase4 and phase4.notes.get("telegram"))
     # Metnos runtime language (METNOS_LANG) — the locale the user chose during
     # install. The installer UI itself is English; this configures Metnos.
     lang = (phase4.notes.get("locale") if phase4 else None) or "it"
 
     notes["http_port"] = port
+    notes["http_host"] = http_host
     notes["lang"] = lang
     notes["telegram_unit_installed"] = telegram_enabled
 
@@ -266,15 +280,23 @@ def run(args: Any) -> dict[str, Any]:
         ui.fail(f"templates dir missing: {tmpl_dir}")
 
     # 1. Install metnos-http.service
-    ui.step(f"Installing metnos-http.service (port {port})")
-    _install_unit(tmpl_dir / "metnos-http.service.tmpl", "metnos-http.service", port, lang)
+    ui.step(f"Installing metnos-http.service ({http_host}:{port})")
+    _install_unit(
+        tmpl_dir / "metnos-http.service.tmpl",
+        "metnos-http.service",
+        port,
+        lang,
+        http_host,
+    )
 
     # 1a. Integrated owner + readiness/quarantine/watchdog units.  The target
     # remains inactive on a legacy mixed host, but the read-only/targeted
     # watchdog timer can run independently from default.target: it never
     # starts a second HTTP listener and preserves the rollback baseline.
     for template_name, unit_name in STACK_UNIT_TEMPLATES:
-        _install_unit(tmpl_dir / template_name, unit_name, port, lang)
+        _install_unit(
+            tmpl_dir / template_name, unit_name, port, lang, http_host,
+        )
     notes["stack_units_installed"] = True
 
     # 1b. Persistent virtual graphical surface for the Playwright Side browser.
@@ -284,6 +306,7 @@ def run(args: Any) -> dict[str, Any]:
     if shutil.which("Xvfb"):
         notes["side_display_unit_installed"] = _install_optional_unit(
             side_display_src, "metnos-side-display.service", port, lang,
+            http_host,
         )
     else:
         ui.warn("Xvfb not found — Side browser display unit not installed. "
@@ -297,7 +320,7 @@ def run(args: Any) -> dict[str, Any]:
             ui.step("Installing metnos-telegram-daemon.service")
             _install_optional_unit(
                 tmpl_dir / "metnos-telegram-daemon.service.tmpl",
-                "metnos-telegram-daemon.service", port, lang,
+                "metnos-telegram-daemon.service", port, lang, http_host,
             )
             telegram_module_ok = True
         else:
@@ -318,16 +341,26 @@ def run(args: Any) -> dict[str, Any]:
 
     # 4. Enable + start the integrated target — only if the runtime is
     # importable and there is no active legacy system HTTP on the same port.
-    runtime_importable = _runtime_module_importable("runtime.metnos_http_server")
+    http_runtime_importable = _runtime_module_importable(
+        "runtime.metnos_http_server")
+    i18n_runtime_importable = _runtime_module_importable(
+        "runtime.admin.i18n_cli")
+    runtime_importable = http_runtime_importable and i18n_runtime_importable
+    missing_core_modules = [
+        name for name, available in (
+            ("runtime.metnos_http_server", http_runtime_importable),
+            ("runtime.admin.i18n_cli", i18n_runtime_importable),
+        )
+        if not available
+    ]
+    if missing_core_modules:
+        ui.warn(i18n.t(
+            "p5_required_modules_missing",
+            modules=", ".join(missing_core_modules),
+        ))
     legacy_http_active = _legacy_system_http_active()
     if legacy_http_active:
-        if not runtime_importable:
-            ui.warn(
-                "runtime.metnos_http_server is not importable in the target "
-                "venv. The legacy baseline remains active; repair the venv "
-                "before running the migration pilot."
-            )
-        else:
+        if runtime_importable:
             ui.warn(
                 "active system-level metnos-http.service detected — integrated "
                 "user target installed but not started. Run the migration pilot; "
@@ -358,9 +391,6 @@ def run(args: Any) -> dict[str, Any]:
         else:
             notes["watchdog_enabled"] = False
     elif not runtime_importable:
-        ui.warn("runtime.metnos_http_server not importable in the venv. "
-                "Unit file is in place, but enable is skipped to avoid a "
-                "failing systemd loop. Re-run phase 5 once runtime/ ships.")
         notes["http_enabled"] = False
         notes["http_healthy"] = False
         notes["target_enabled"] = False
@@ -407,24 +437,14 @@ def run(args: Any) -> dict[str, Any]:
             ui.ok("telegram daemon running")
             notes["telegram_started"] = True
 
-    # 7. i18n translator timer (lazy fill of the i18n DB). Oneshot service +
-    #    5-min timer. Harmless on a complete seed (translate-pending exits in
-    #    <1s when nothing is pending); it earns its keep when the runtime adds
-    #    new MSG_*/ERR_* keys that need translating into the other locale.
-    if _runtime_module_importable("runtime.admin.i18n_cli"):
-        ui.step("Installing metnos-i18n-translator (service + 5-min timer)")
-        _install_optional_unit(
-            tmpl_dir / "metnos-i18n-translator.service.tmpl",
-            "metnos-i18n-translator.service", port, lang,
-        )
-        _install_optional_unit(
-            tmpl_dir / "metnos-i18n-translator.timer.tmpl",
-            "metnos-i18n-translator.timer", port, lang,
-        )
-        _install_stack_ownership_dropin("metnos-i18n-translator.service")
-        _install_stack_ownership_dropin("metnos-i18n-translator.timer")
-        _systemctl_user("daemon-reload")
-        r = _systemctl_user("enable", "--now", "metnos-i18n-translator.timer")
+    # 7. The i18n timer is a required dependency of the integrated target.
+    #    A legacy system-HTTP installation cannot start that target safely, so
+    #    keep the same required timer alive directly until guarded migration.
+    if notes.get("target_enabled"):
+        notes["i18n_translator_enabled"] = True
+    elif runtime_importable and legacy_http_active:
+        r = _systemctl_user(
+            "enable", "--now", "metnos-i18n-translator.timer")
         if r.returncode != 0:
             ui.warn(f"i18n translator timer failed to enable: {r.stderr.strip()}")
             notes["i18n_translator_enabled"] = False
@@ -432,7 +452,6 @@ def run(args: Any) -> dict[str, Any]:
             ui.ok("i18n translator timer enabled")
             notes["i18n_translator_enabled"] = True
     else:
-        ui.warn("runtime.admin.i18n_cli not importable — skipping i18n translator timer.")
         notes["i18n_translator_enabled"] = False
 
     # 8. Linger advisory

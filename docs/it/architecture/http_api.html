@@ -84,14 +84,41 @@ li { margin-bottom:4px; }
 </div>
 
 <p class="lead"><code>metnos_http_server</code> serve la chat web, l'API dei
-turni e l'area Settings. Il valore predefinito &egrave;
-<code>127.0.0.1:8770</code>; un'installazione pu&ograve; cambiare indirizzo e porta.
+turni e l'area Settings. Una nuova installazione guidata usa per impostazione
+predefinita <code>0.0.0.0:8770</code>, così l'interfaccia è raggiungibile dalla
+stessa LAN privata; la fase 4 può scegliere l'accesso solo loopback o una porta
+diversa. L'installer stampa e conserva gli URL esatti utilizzabili.
 Il protocollo degli executor remoti su <code>8765</code> e il servizio browser
 su <code>8771</code> sono componenti distinti, con autorit&agrave; e rotte proprie.</p>
+
+<h1 id="cap0">Collegarsi dopo l'installazione</h1>
+
+<p>Al termine della fase 6, l'installer mostra un URL amministrativo monouso
+completo per il server e, se l'accesso LAN è abilitato, uno per ogni indirizzo
+IPv4 privato rilevato. Gli stessi URL vengono salvati in
+<code>~/.local/share/metnos/install_summary.md</code>.</p>
+
+<ul>
+<li>sul server, apri l'URL completo con indirizzo <code>127.0.0.1</code>;</li>
+<li>da un altro dispositivo della stessa LAN privata fidata, apri uno degli URL LAN completi.</li>
+</ul>
+
+<p>Non occorre ricavare l'indirizzo né sostituire un segnaposto: usa esattamente
+uno degli URL stampati, che comprende schema, indirizzo, porta e token
+temporaneo. Se il token è scaduto, riesegui
+<code>./.venv/bin/python -m install --force-phase 6</code> oppure accedi da
+<code>/admin/login</code>. Non inoltrare la porta dal router e non esporre il
+listener HTTP direttamente a Internet.</p>
+
+<p>Aprire la Web UI da un altro browser è soltanto accesso all'interfaccia e non
+richiede di installare o associare un executor remoto. L'associazione serve
+soltanto quando anche il computer remoto deve eseguire operazioni sui propri
+dati locali.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
+ <li><a href="#cap0">Collegarsi dopo l'installazione</a></li>
  <li><a href="#cap1">Un esempio in linguaggio naturale</a></li>
  <li><a href="#cap2">Composizione del server</a></li>
  <li><a href="#cap3">Rotte principali</a></li>
@@ -206,16 +233,16 @@ conteggio destinato a cambiare.</p>
 <li>altrimenti il chiamante resta anonimo.</li>
 </ol>
 
-<p>Un Bearer errato non cade nel ripiego della rete locale. Gli header
-<code>CF-Connecting-IP</code> e <code>X-Forwarded-For</code> sono considerati
-soltanto quando il peer TCP appartiene a
+<p>Un Bearer errato non cade nel ripiego della rete locale. Gli header standard
+di inoltro, come <code>X-Forwarded-For</code>, sono considerati soltanto quando il peer TCP appartiene a
 <code>METNOS_TRUSTED_PROXIES</code>; un client ordinario non pu&ograve; dichiararsi
 locale tramite un header.</p>
 
 <p>La chiave amministrativa vive in <code>PATH_USER_CONFIG/admin.key</code>,
 viene creata con permessi <code>0600</code> e serve anche a derivare firme e
 chiavi di cifratura con domini separati. Il cookie amministrativo dura sette
-giorni, &egrave; <code>HttpOnly</code>, <code>Secure</code> e
+giorni, &egrave; <code>HttpOnly</code>, usa <code>Secure</code> quando la richiesta
+esterna è HTTPS e
 <code>SameSite=Strict</code>; quello utente dura novanta giorni ed &egrave;
 <code>HttpOnly</code>, <code>Secure</code> e <code>SameSite=Lax</code>.</p>
 
@@ -312,7 +339,7 @@ operativa</a>.</p>
 <h1 id="cap9">9. Confini di rete e capacit&agrave;</h1>
 
 <ul>
-<li><strong>TLS non &egrave; terminato da aiohttp.</strong> Il servizio nasce su loopback. Per un nome pubblico serve un reverse proxy o tunnel HTTPS configurato e fidato; chiavi e cookie non devono attraversare una rete non fidata in chiaro.</li>
+<li><strong>TLS non &egrave; terminato da aiohttp.</strong> Il listener gestito è destinato al server e alla sua LAN privata fidata. Usa HTTP non cifrato per impostazione predefinita: non inoltrare la porta e non esporla direttamente a Internet.</li>
 <li><strong>La fiducia LAN &egrave; esplicita e limitata.</strong> Il codice ammette loopback, <code>10.0.0.0/8</code> e <code>192.168.0.0/16</code>; non equivale a &laquo;qualsiasi rete privata&raquo; e non sostituisce l'associazione di un dispositivo.</li>
 <li><strong>Non c'&egrave; un limitatore generale per IP.</strong> Il pool limita i turni, ma asset, login e altre rotte richiedono protezione anche nel proxy se l'istanza &egrave; esposta.</li>
 <li><strong>Il processo &egrave; a istanza singola.</strong> Un lock sotto <code>PATH_USER_STATE</code> impedisce due server della stessa installazione.</li>

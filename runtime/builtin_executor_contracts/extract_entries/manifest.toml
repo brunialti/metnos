@@ -3,6 +3,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 name = "extract_entries"
 version = "1.0.0"
+intelligence = "agentic"
 author = "Metnos builtin maintainers"
 affinity = []
 platforms = ["linux"]

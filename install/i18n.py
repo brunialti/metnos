@@ -428,6 +428,26 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "port {port} looks already in use — use it anyway?",
         "it": "la porta {port} sembra gia' in uso — usarla comunque?",
     },
+    "p4_http_host_invalid": {
+        "en": "METNOS_HTTP_HOST={value!r} is not an IP address; using the private-LAN default.",
+        "it": "METNOS_HTTP_HOST={value!r} non e' un indirizzo IP; uso il valore predefinito per la LAN privata.",
+    },
+    "p4_http_host_not_private": {
+        "en": "METNOS_HTTP_HOST={value!r} is not a usable private IPv4 address; using the private-LAN default.",
+        "it": "METNOS_HTTP_HOST={value!r} non e' un indirizzo IPv4 privato utilizzabile; uso il valore predefinito per la LAN privata.",
+    },
+    "p4_http_host_head": {
+        "en": "\n  [bold]Web UI reachability[/bold]",
+        "it": "\n  [bold]Raggiungibilita' della Web UI[/bold]",
+    },
+    "p4_http_host_desc": {
+        "en": "  [dim]LAN access listens on this host's IPv4 interfaces. Use it only on a trusted private network and never forward the HTTP port from your router.[/dim]",
+        "it": "  [dim]L'accesso LAN ascolta sulle interfacce IPv4 di questo host. Usalo solo su una rete privata fidata e non inoltrare mai la porta HTTP dal router.[/dim]",
+    },
+    "p4_http_host_confirm": {
+        "en": "Allow devices on your private LAN to open the Web UI?",
+        "it": "Consentire ai dispositivi della LAN privata di aprire la Web UI?",
+    },
     "p4_telegram_head": {
         "en": "\n  [bold]Telegram channel[/bold] (optional)",
         "it": "\n  [bold]Canale Telegram[/bold] (opzionale)",
@@ -598,6 +618,14 @@ _CATALOG: dict[str, dict[str, str]] = {
               "La unit e' al suo posto, ma l'abilitazione viene saltata per evitare un "
               "ciclo di fallimenti systemd. Riesegui la fase 5 quando runtime/ sara' disponibile.",
     },
+    "p5_required_modules_missing": {
+        "en": "Required runtime modules are not importable in the installation "
+              "environment: {modules}. The integrated target will not start; "
+              "repair the environment and re-run phase 5.",
+        "it": "I moduli runtime obbligatori non sono importabili nell'ambiente "
+              "di installazione: {modules}. Il target integrato non verra' "
+              "avviato; ripara l'ambiente e riesegui la fase 5.",
+    },
     "p5_step_enable_http": {
         "en": "Enabling and starting metnos-http.service",
         "it": "Abilitazione e avvio di metnos-http.service",
@@ -720,6 +748,10 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "  [bold green]One-shot admin onboarding URL[/bold green] (valid 15 min):",
         "it": "  [bold green]URL di onboarding admin monouso[/bold green] (valido 15 min):",
     },
+    "p6_onboard_head_many": {
+        "en": "  [bold green]One-shot admin onboarding URLs[/bold green] (same token, valid 15 min; open one):",
+        "it": "  [bold green]URL di onboarding admin monouso[/bold green] (stesso token, valido 15 min; aprine uno):",
+    },
     "p6_onboard_no_key": {
         "en": "admin.key not found — was phase 4 completed?",
         "it": "admin.key non trovata — la fase 4 e' stata completata?",
@@ -732,13 +764,25 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "  [bold green]Connect to the Web UI[/bold green]:",
         "it": "  [bold green]Connettiti alla Web UI[/bold green]:",
     },
-    "p6_webui_local": {
-        "en": "    • From this machine:   http://127.0.0.1:{port}/",
-        "it": "    • Da questa macchina:   http://127.0.0.1:{port}/",
+    "p6_webui_local_url": {
+        "en": "    • On this server: {url}",
+        "it": "    • Su questo server: {url}",
     },
-    "p6_webui_remote": {
-        "en": "    • From another device: http://<this-machine-ip>:{port}/",
-        "it": "    • Da un altro dispositivo: http://<ip-di-questa-macchina>:{port}/",
+    "p6_webui_lan_url": {
+        "en": "    • On the same private LAN: {url}",
+        "it": "    • Sulla stessa LAN privata: {url}",
+    },
+    "p6_webui_lan_disabled": {
+        "en": "    • Other devices: disabled (loopback-only installation)",
+        "it": "    • Altri dispositivi: disabilitati (installazione solo loopback)",
+    },
+    "p6_webui_lan_missing": {
+        "en": "    • No private-LAN IPv4 address was detected; connect the interface and run `ip -brief address`.",
+        "it": "    • Nessun indirizzo IPv4 della LAN privata rilevato; connetti l'interfaccia ed esegui `ip -brief address`.",
+    },
+    "p6_webui_private_warning": {
+        "en": "    [yellow]Private LAN only: plain HTTP. Do not port-forward this port or expose it directly to the Internet.[/yellow]",
+        "it": "    [yellow]Solo LAN privata: HTTP non cifrato. Non inoltrare questa porta e non esporla direttamente a Internet.[/yellow]",
     },
     "p6_webui_keynote": {
         "en": "    [bold]First connect needs the admin key.[/bold] Easiest: open the\n"

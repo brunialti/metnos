@@ -6,6 +6,7 @@ executor_standard = "metnos.executor/1.0"
 
 name        = "create_images_indices"
 version     = "0.3.0"
+intelligence = "llm"
 author      = "Roberto Brunialti"
 affinity    = ["indicizza", "indicizza foto", "indicizza cartella",
                 "build index", "rebuild", "vlm", "qwen", "arcface",

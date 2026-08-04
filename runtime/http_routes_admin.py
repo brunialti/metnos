@@ -29,6 +29,8 @@ import config as _C  # §7.11
 from http_auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_TTL_S,
+    consume_admin_onboard_token,
+    external_request_scheme,
     issue_admin_cookie,
 )
 from http_render import (
@@ -157,12 +159,37 @@ async def admin_virt_reset(request: web.Request) -> web.Response:
 
 async def admin_services(request: web.Request) -> web.Response:
     """GET /admin/services — status and bounded lifecycle controls."""
-    rows = await asyncio.to_thread(services_registry.snapshots)
+    rows = await asyncio.to_thread(
+        services_registry.snapshots, timeout_s=8.0,
+    )
+    import i18n as _i18n
+    rows = services_registry.localized(rows, _i18n.current_lang())
     if not wants_html(request):
         return web.json_response({"services": rows})
     notice = request.query.get("notice", "")
+    notice_service = request.query.get("service", "")
+    notice_action = request.query.get("action", "")
+    notice_row = next(
+        (row for row in rows if row.get("key") == notice_service), None,
+    )
+    try:
+        import notify_admin
+        notifications = await asyncio.to_thread(
+            notify_admin.recent, limit=8, kind_prefix="service_",
+        )
+    except Exception:  # the status/control page must survive alert-store damage
+        log.warning("admin service notifications unavailable", exc_info=True)
+        notifications = []
     return web.Response(
-        text=render_template("services.html", services=rows, notice=notice),
+        text=render_template(
+            "services.html",
+            services=rows,
+            notice=notice,
+            notice_service=(notice_row or {}).get("label", ""),
+            notice_service_key=notice_service if notice_row else "",
+            notice_action=notice_action,
+            notifications=notifications,
+        ),
         content_type="text/html",
         headers={"Cache-Control": "no-store"},
     )
@@ -185,7 +212,13 @@ async def admin_service_action(request: web.Request) -> web.Response:
     except Exception:  # noqa: BLE001 — il controllo non deve rompere la UI
         log.exception("service action failed service=%s action=%s", name, action)
     notice = "accepted" if ok else "failed"
-    raise web.HTTPFound(f"/admin/services?notice={notice}")
+    query = urllib.parse.urlencode({
+        "notice": notice,
+        "service": name,
+        "action": action,
+    })
+    anchor = f"#service-{name}" if services_registry.get(name) else ""
+    raise web.HTTPFound(f"/admin/services?{query}{anchor}")
 
 
 # --- /admin (root) -----------------------------------------------------------
@@ -1274,9 +1307,9 @@ async def admin_user_pair_channel(request: web.Request) -> web.Response:
         return _error(500, "internal_error", str(e))
     pair_url = ""
     if channel == "http":
-        # Costruisci pair URL completo. Origin viene da X-Forwarded-Proto
-        # (Cloudflare) o request.scheme + Host header.
-        xfp = request.headers.get("X-Forwarded-Proto") or request.scheme
+        # Costruisci il pair URL usando lo scheme attestato dal collegamento
+        # diretto o da un reverse proxy fidato.
+        xfp = external_request_scheme(request)
         host = request.host
         pair_url = f"{xfp}://{host}/pair/{token}"
         instructions = (
@@ -1397,7 +1430,29 @@ async def admin_login(request: web.Request) -> web.Response:
         ADMIN_COOKIE, cookie_val,
         max_age=ADMIN_COOKIE_TTL_S,
         httponly=True,
-        secure=True,  # servito via HTTPS (Cloudflare); allinea al cookie user
+        secure=external_request_scheme(request) == "https",
+        samesite="Strict",
+        path="/",
+    )
+    raise resp
+
+
+async def admin_onboard(request: web.Request) -> web.Response:
+    """Consume the installer's short-lived token and establish admin access."""
+    admin_key = app_get(request.app, APP_ADMIN_KEY, "")
+    token = request.query.get("t", "")
+    if not admin_key or not consume_admin_onboard_token(token, admin_key):
+        raise web.HTTPFound("/admin/login")
+    cookie_val = issue_admin_cookie(admin_key)
+    resp = web.HTTPFound(
+        "/admin",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+    resp.set_cookie(
+        ADMIN_COOKIE, cookie_val,
+        max_age=ADMIN_COOKIE_TTL_S,
+        httponly=True,
+        secure=external_request_scheme(request) == "https",
         samesite="Strict",
         path="/",
     )
@@ -1647,15 +1702,15 @@ def _agent_server_url(request: web.Request) -> str:
     """URL dell'agent_server (porta 8765) visto dal device: stesso host della
     console, porta METNOS_AGENT_PORT. MVP senza TLS (overlay Headscale).
 
-    Se la richiesta e' arrivata attraverso un proxy fidato (tunnel pubblico,
-    es. Cloudflare — `request.remote` e' il tunnel locale, non il browser),
+    Se la richiesta e' arrivata attraverso un reverse proxy fidato
+    (`request.remote` e' il proxy locale, non il browser),
     l'Host header e' il dominio PUBBLICO: instrada tipicamente solo la porta
     console (8770), mai la porta device (8765, LAN/overlay-only per design,
     §6 design doc). Riusarlo per il link di join produce un URL che non
-    risponde mai (bug live 2/7: browser bloccato su chat.metnos.com:8765).
+    risponde mai (es. browser bloccato su metnos.example:8765).
     In quel caso ripiega su un IP LAN reale del server — il device che si
     appaia e' per contratto sulla stessa LAN/overlay, mai su Internet
-    pubblico (mai allargare il tunnel a esporre la 8765, §6/ADR 0007)."""
+    pubblico (mai esporre la 8765 tramite il reverse proxy, §6/ADR 0007)."""
     import os as _os
     from http_auth import _is_trusted_proxy
     port = _os.environ.get("METNOS_AGENT_PORT", "8765")
@@ -1665,7 +1720,7 @@ def _agent_server_url(request: web.Request) -> str:
             log.warning(
                 "[devices] richiesta via proxy fidato (Host=%s): uso IP LAN "
                 "%s per il link device (la porta %s non e' instradata dal "
-                "tunnel pubblico)",
+                "reverse proxy)",
                 request.headers.get("Host", "?"), lan_ip, port)
             return f"http://{lan_ip}:{port}"
         log.warning(
@@ -1993,6 +2048,7 @@ ROUTES = (
     ("POST", r"/admin/timers/{name}/{action:enable|disable|fire}", admin_timer_action),
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
+    ("GET",  "/admin/onboard",                    admin_onboard),
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/changes",                    admin_changes),
