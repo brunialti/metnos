@@ -178,3 +178,7 @@ to_delete/
 /metnos-*.json
 *-sa.json
 google_*_sa.json
+
+# Artefatti prodotti dai turni e telemetria di esercizio: non sono sorgenti.
+data/telemetry/
+Documenti/

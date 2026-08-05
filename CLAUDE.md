@@ -11,7 +11,7 @@
 
 ## 1. Cos'e' Metnos
 
-Assistente personale self-hosted. Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM locale + frontier opt-in. Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `myclaw`. Dominio: `metnos.com`. Config corrente (host, modelli, tier): parte mutabile.
+Assistente personale self-hosted. Microarchitettura a executor sintetizzati al volo via synt multistage; runtime ReAct con planner LLM locale + frontier opt-in. Canali: **Telegram** + **HTTP porta 8770** (htmx + Jinja2 + uPlot, ADR 0078). Pipeline immagini in-process (ADR 0086/0117). Lingua principale: italiano; corpus doc bilingue IT+EN. Etimologia: `mētis + noûs`. Process name: `metnos`. Dominio: `metnos.com`. Config corrente (host, modelli, tier): parte mutabile.
 
 ADR registry canonico: `decisions/` — fonte unica per "perche' abbiamo scelto cosi'". Range corrente: parte mutabile.
 
