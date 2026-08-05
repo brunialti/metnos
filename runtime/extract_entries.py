@@ -11,7 +11,7 @@ strutturato → entries strutturate» per QUALSIASI dominio:
 
 Estensione di confine §2.2 (ratificata da Roberto 3/6): `extract` non è più
 «solo archivi» ma «struttura embedded in un contenitore» (archivi + record da
-testo). Usa il workload `entries.extract` (fast.procedural).
+testo). Usa il workload `entries.extract` (→ middle).
 
 Output: `entries` = lista PIATTA dei record estratti (può essere più lunga o più
 corta della lista d'ingresso). I campi-data (`start/end/date/when/...`) sono

@@ -54,8 +54,9 @@ from platform_policy import is_system_file  # noqa: E402
 from messages import get as _msg  # noqa: E402
 from parallel_walk import parallel_map_ordered, parallel_walk  # noqa: E402
 from executor_helpers import (  # noqa: E402
+    apply_skipped_branches as _apply_skipped_branches,
     backup_file_for_undo, format_exact_integer, restore_file_from_undo_backup,
-    vector_result,
+    vector_result, walk_failure as _walk_failure,
 )
 from tabular_projection import (  # noqa: E402
     TabularProjectionError, project_entries,
@@ -220,7 +221,7 @@ def _auto_parse_file(path: str, source: dict | None = None) -> dict:
     except PermissionError:
         return {"ok": False, "path": abs_path,
                 "error_code": "ERR_PERMISSION_DENIED",
-                "error": _msg("ERR_PERMISSION_DENIED")}
+                "error": _msg("ERR_PERMISSION_DENIED", path=abs_path)}
     except OSError as exc:
         return {"ok": False, "path": abs_path, "error_code": "ERR_OP_FAILED",
                 "error": _msg("ERR_OP_FAILED", reason=str(exc))}
@@ -525,7 +526,8 @@ def read(args: dict) -> dict:
                 "error": _msg("ERR_PATH_NOT_FOUND", path=str(abs_path))}
     except PermissionError:
         return {"ok": False, "error_code": "ERR_PERMISSION_DENIED",
-                "error": _msg("ERR_PERMISSION_DENIED"), "detail": f"path outside allowed scope: {abs_path}"}
+                "error": _msg("ERR_PERMISSION_DENIED", path=str(abs_path)),
+                "detail": f"path outside allowed scope: {abs_path}"}
     except IsADirectoryError:
         return {"ok": False, "error_code": "ERR_PATH_WRONG_TYPE",
                 "error": _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="directory", path=str(abs_path))}
@@ -875,7 +877,7 @@ def _write_one(path, content, encoding, mode):
         restore_file_from_undo_backup(abs_path, prev_blob_path)
         return False, {"path": abs_path, "ok": False,
                        "error_code": "ERR_PERMISSION_DENIED",
-                       "error": _msg("ERR_PERMISSION_DENIED"),
+                       "error": _msg("ERR_PERMISSION_DENIED", path=abs_path),
                        "detail": f"path outside allowed scope: {abs_path}"}, []
     except IsADirectoryError:
         restore_file_from_undo_backup(abs_path, prev_blob_path)
@@ -1138,21 +1140,11 @@ def find(args: dict) -> dict:
     all_entries = walk.items
     entries = all_entries[:max_results]
     truncated = len(entries) < len(all_entries) or walk.truncated
-    failed = [{
-        "path": str(error.path),
-        "error_class": "permission_denied"
-        if error.reason == "permission_denied" else "io_error",
-        "error_code": "ERR_PERMISSION_DENIED"
-        if error.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
-        "error": _msg("ERR_PERMISSION_DENIED")
-        if error.reason == "permission_denied"
-        else _msg("ERR_FILE_READ_FAILED", path=str(error.path)),
-        "detail": error.reason,
-    } for error in walk.errors]
+    failed = [_walk_failure(error.path, error.reason) for error in walk.errors]
 
     matches = [e["path"] for e in entries]
     out = {
-        "ok": not failed,
+        "ok": True,
         "entries": entries,
         "matches": matches,
         "ok_count": len(entries),
@@ -1174,10 +1166,7 @@ def find(args: dict) -> dict:
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
-    if failed:
-        out["error"] = failed[0]["error"]
-        if entries:
-            out["partial"] = True
+    _apply_skipped_branches(out, failed, entries)
     if truncated:
         out["truncated"] = True
         out["truncated_what"] = "file"
@@ -1669,30 +1658,10 @@ def find_dirs(args: dict) -> dict:
                    if entry is not None]
     entries = all_entries[:max_results]
     truncated = len(entries) < len(all_entries) or walk.truncated
-    failed = [{
-        "path": str(error.path),
-        "error_class": "permission_denied"
-        if error.reason == "permission_denied" else "io_error",
-        "error_code": "ERR_PERMISSION_DENIED"
-        if error.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
-        "error": _msg("ERR_PERMISSION_DENIED")
-        if error.reason == "permission_denied"
-        else _msg("ERR_FILE_READ_FAILED", path=str(error.path)),
-        "detail": error.reason,
-    } for error in walk.errors]
+    failed = [_walk_failure(error.path, error.reason) for error in walk.errors]
     for path, (_entry, reason) in zip([base, *directory_paths], scanned):
         if reason:
-            failed.append({
-                "path": str(path),
-                "error_class": "permission_denied"
-                if reason == "permission_denied" else "io_error",
-                "error_code": "ERR_PERMISSION_DENIED"
-                if reason == "permission_denied" else "ERR_FILE_READ_FAILED",
-                "error": _msg("ERR_PERMISSION_DENIED")
-                if reason == "permission_denied"
-                else _msg("ERR_FILE_READ_FAILED", path=str(path)),
-                "detail": reason,
-            })
+            failed.append(_walk_failure(path, reason))
 
     matches = [e["path"] for e in entries]
     # Aggregati anti-confusione (turn af6447da 22/5/2026): il LLM ha letto
@@ -1707,7 +1676,7 @@ def find_dirs(args: dict) -> dict:
     file_count_total = base_file_count + sum(
         int(entry.get("file_count", 0) or 0) for entry in all_entries)
     out = {
-        "ok": not failed,
+        "ok": True,
         "entries": entries,
         "matches": matches,
         "ok_count": len(entries),
@@ -1728,10 +1697,7 @@ def find_dirs(args: dict) -> dict:
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
-    if failed:
-        out["error"] = failed[0]["error"]
-        if entries:
-            out["partial"] = True
+    _apply_skipped_branches(out, failed, entries)
     if truncated:
         out["truncated"] = True
         out["truncated_what"] = "directory"

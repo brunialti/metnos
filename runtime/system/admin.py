@@ -3,7 +3,7 @@
 The admin runs the four-act flow inside its body:
 
     [pre-1] syntactic gate (no LLM)         — reject literal shell command
-    [1+2+3] single LLM call (fast.procedural) — kind ∈ {literal_command,
+    [1+2+3] single LLM call (`admin.intent_translate` → middle) — kind ∈ {literal_command,
                                                        translated, unknown,
                                                        impossible}
     [4]    deterministic safety tools       — forbidden, blacklist, whitelist

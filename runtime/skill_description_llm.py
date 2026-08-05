@@ -12,7 +12,7 @@ ritorna boilerplate dal codegen + affinity dell'OBJECT.
 
 Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
-- Workload `skill.description` (`fast.fidelity`), una shot, max 500 token.
+- Workload `skill.description` (→ wise), una shot, max 500 token.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
 - Time budget per call: 5s (R1, 24/5/2026). Fallback boilerplate al timeout.
 

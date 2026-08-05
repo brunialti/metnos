@@ -32,7 +32,7 @@ log = logging.getLogger("metnos.jobs.i18n_translate_pending")
 
 
 # Cap throttling per fire. La GPU locale Strix Halo serve VLM + planner;
-# ~20 traduzioni col contratto fast.fidelity locale assorbono ~60s GPU/fire. Ora
+# ~20 traduzioni col contratto `translation.i18n` → wise assorbono ~60s GPU/fire. Ora
 # configurabile (era hardcoded): con cadenza every_6h, 4 fire/giorno × cap.
 # Alzalo per drenare prima il backlog (al costo di burst GPU diurni piu' lunghi).
 CAP_PER_FIRE = int(os.environ.get("METNOS_I18N_CAP_PER_FIRE", "20"))

@@ -12,7 +12,7 @@ Due fasi distinte, come da cap.11 dell'Architettura:
 
 In v1.1 il **giudice e' rule-based** (heuristiche locali, niente LLM):
 delibera in microsecondi e non costa nulla. Il giudice LLM e' rimandato
-a v1.2 (richiede fast.procedural o wise configurato + budget). La separazione
+a v1.2 (richiede middle o wise configurato + budget). La separazione
 deontologia/teleologia (binaria/graduata) evita il fenomeno chiamato
 "auto-conferma del modello" (cap.11.1 Architettura): se mescolassi le
 due in un unico punteggio, un giudice teleologico tenderebbe a
@@ -41,7 +41,7 @@ VAGLIO_LOG_DIR = _C.PATH_USER_DATA / "vaglio"
 JUDGE_THRESHOLD = float(os.environ.get("METNOS_JUDGE_THRESHOLD", "0.30"))
 
 # Backend del giudice: "rule-based-v1" (default, deterministico, costo zero) o
-# "llm-v1" (usa fast.procedural dell'LLMRouter, contesto separato dal proponente,
+# "llm-v1" (usa il workload `vaglio.judge` → middle, contesto separato dal proponente,
 # prompt sulle 4 Leggi e i telos). LLM e' opt-in via env var perche' costa.
 JUDGE_KIND = os.environ.get("METNOS_JUDGE_KIND", "rule-based-v1")
 
@@ -242,7 +242,7 @@ def judge_score(intent: str, executor_name: str, args: dict, context: dict | Non
 
 
 def _judge_score_llm(intent: str, executor_name: str, args: dict, context: dict | None = None) -> tuple[float, str]:
-    """Giudice LLM fast.procedural. Ritorna (score, reason).
+    """Giudice LLM `vaglio.judge` → middle. Ritorna (score, reason).
 
     Il prompt user contiene SOLO chiavi di args (non valori) per privacy:
     stesso principio del logging JSONL.

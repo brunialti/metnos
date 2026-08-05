@@ -27,7 +27,7 @@ en = "SCOPO: finds exact duplicates through complete SHA-256; broad file types e
 
 [code]
 files  = ["find_files_hash.py"]
-digest = "sha256:c871b02180d5424ae9afced8bda08eb03903068ce20a82046c528b6d21fa93b4"
+digest = "sha256:90565ab783aaa76296abbcd7094887feb15fb64380115fbb980c3d38c83c8bb0"
 
 [args]
 type     = "object"

@@ -508,7 +508,7 @@ class SimpleProposer:
         use_fast = intent.confidence >= threshold
 
         # §7.3 GBNF grammar — DEFAULT ON. Se attiva seleziona il workload
-        # ``planner.grammar`` (fast.fidelity), il cui profilo e' compatibile col
+        # ``planner.grammar`` (→ wise), il cui profilo e' compatibile col
         # vincolo strutturale. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
         use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "1") == "1"
         if use_grammar:

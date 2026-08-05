@@ -4,7 +4,8 @@ Gemello di `i18n_translate_pending`, lato INPUT. Pesca fino a N concept con
 `needs_translation=1` e, per ogni `(concept, target_lang)`, chiede al LLM di
 produrre le forme di superficie NATURALI nella lingua target a partire dalle
 forme sorgente (en canonico). Strict JSON in/out; la policy di generazione e'
-quella centrale del livello ``fast.fidelity`` (la singola call resta generativa).
+quella centrale del workload ``translation.detection`` → wise (la singola
+call resta generativa).
 
 Tre `kind`:
   - phrases: tradurre l'insieme di forme -> {"forms": [...]} (varianti

@@ -15,7 +15,7 @@ en = "SCOPO: Summarizes in-memory entries within declared budgets. PATTERN: natu
 
 [code]
 files = ["../../describe_entries.py"]
-digest = "sha256:b02c16810d8e9743d1e89096dca735c96b8d5f0fedf0afb0d1c81d686117154e"
+digest = "sha256:68ab06cf022afa33f6ce2881e9d5d925eba8a774c2c3cc6ab32ca6d391e99729"
 
 [args]
 type = "object"
