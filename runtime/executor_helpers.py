@@ -23,6 +23,71 @@ from __future__ import annotations
 
 from typing import Any
 
+from worker_policy import bounded_worker_count
+
+
+def backup_file_for_undo(path) -> str:
+    """Copy a file into the canonical, content-addressed undo store.
+
+    The caller must invoke this before a destructive write and abort that
+    write if the backup fails.  Keeping the layout here prevents executors
+    from drifting on history paths, hashing, or turn scoping.
+    """
+    import hashlib
+    import os
+    import re
+    import shutil
+    from pathlib import Path
+    import config as _C
+
+    source = Path(path)
+    turn_id = os.environ.get("METNOS_TURN_ID") or "no_turn"
+    if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", turn_id):
+        turn_id = "no_turn"
+    history = Path(os.environ.get("METNOS_HISTORY_DIR") or (
+        _C.PATH_USER_DATA / "_history"))
+    digest = hashlib.sha256()
+    with source.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    blob = history / turn_id / "blob" / f"{digest.hexdigest()}.bin"
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    if not blob.exists():
+        shutil.copy2(source, blob)
+    return str(blob)
+
+
+def restore_file_from_undo_backup(path, blob_path: str | None) -> bool:
+    """Best-effort immediate rollback after a failed destructive write."""
+    if not blob_path:
+        return False
+    import shutil
+    try:
+        shutil.copy2(blob_path, path)
+        return True
+    except OSError:
+        return False
+
+
+def assigned_workers(*, default: int = 1, maximum: int = 32) -> int:
+    """Worker budget assigned by the central executor scheduler.
+
+    Generated executors use this instead of deriving a pool size from
+    ``os.cpu_count()``.  Absence or corruption of the runtime-owned value is
+    fail-closed to ``default``; callers may only reduce it with ``maximum``.
+    The helper also clamps to CPUs visible in the current sandbox, so a budget
+    signed by the server cannot oversubscribe a smaller remote device.
+    """
+    import os
+
+    try:
+        visible_cpus = max(1, int(os.cpu_count() or 1))
+    except (TypeError, ValueError):
+        visible_cpus = 1
+    return bounded_worker_count(
+        os.environ.get("METNOS_EXECUTOR_ASSIGNED_WORKERS", default),
+        default=default, maximum=maximum, cpu_count=visible_cpus)
+
 
 def run_stdio(invoke, *, default=None, error_extra=None,
               allow_empty=False) -> None:
@@ -100,6 +165,77 @@ def coerce_cap(args: dict, key: str, default: int, *,
     if maximum is not None:
         n = min(n, maximum)
     return max(1, n)
+
+
+def format_exact_integer(value: Any) -> str:
+    """Render an integer exactly with language-neutral digit grouping.
+
+    Executor output can be rendered on the server or on a remote device where
+    a full locale database is not guaranteed.  A narrow no-break space is a
+    readable grouping separator across the supported languages and, unlike a
+    comma or a full stop, cannot be mistaken for a decimal separator.
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+    sign = "-" if number < 0 else ""
+    digits = str(abs(number))
+    head = len(digits) % 3 or 3
+    groups = [digits[:head]]
+    groups.extend(
+        digits[index:index + 3]
+        for index in range(head, len(digits), 3)
+    )
+    return sign + "\u202f".join(groups)
+
+
+def vector_result(entries: list, failed: list, *,
+                  entry_key: str = "entries") -> dict:
+    """Build the common envelope for independent vector operations.
+
+    A mixed outcome remains a failed call for backward compatibility, but is
+    explicitly marked partial so callers can safely consume successful items.
+    """
+    out = {
+        "ok": not failed,
+        "ok_count": len(entries),
+        "fail_count": len(failed),
+        entry_key: entries,
+        "failed": failed,
+    }
+    if entries and failed:
+        out["partial"] = True
+    return out
+
+
+def normalize_vector_result(result: dict, *,
+                            entry_key: str = "entries") -> dict:
+    """Normalize a backend vector envelope without dropping backend metadata.
+
+    Backends may add pagination, account, or provider-specific fields.  This
+    helper keeps them intact while enforcing the shared outcome semantics:
+    any failed item makes the call unsuccessful, and a mixed outcome is
+    explicitly marked ``partial``.
+    """
+    if not isinstance(result, dict):
+        return result
+    out = dict(result)
+    entries = out.get(entry_key)
+    failed = out.get("failed")
+    entries = entries if isinstance(entries, list) else []
+    failed = failed if isinstance(failed, list) else []
+    out.setdefault("ok_count", len(entries))
+    out.setdefault("fail_count", len(failed))
+    if failed:
+        out["ok"] = False
+        if entries:
+            out["partial"] = True
+        else:
+            out.pop("partial", None)
+    else:
+        out.pop("partial", None)
+    return out
 
 
 def catalog_names(catalog: Any) -> set:
