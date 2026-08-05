@@ -11,7 +11,7 @@ from logging_setup import get_logger
 from messages import get as _msg
 
 from .detect import classify
-from .models import TutorAnswer, TutorRequest
+from .models import TutorAnswer, TutorEvidence, TutorRequest
 from .render import render_card
 from .semantic import SemanticContext, SourceHit, retrieve_sources
 
@@ -20,6 +20,10 @@ log = get_logger(__name__)
 _PURPOSE_CUT = re.compile(
     r"\s+(?:PATTERN|NON|OUT|INPUT|OUTPUT):", re.IGNORECASE)
 _PURPOSE_PREFIX = re.compile(r"^[^:]{1,20}:\s*")
+
+
+class TutorContentError(ValueError):
+    """An admitted source is structurally incomplete for its contract."""
 
 
 def enabled() -> bool:
@@ -32,27 +36,6 @@ def _with_pending_note(answer: str, request: TutorRequest) -> str:
     if not request.has_pending:
         return answer
     return f"{answer.rstrip()}\n\n{_msg('MSG_TUTOR_PENDING_PRESERVED')}"
-
-
-_PREVIOUS_QUESTION_MARKER = "PREVIOUS_USER_QUESTION:"
-_PREVIOUS_ANSWER_MARKER = "PREVIOUS_TUTOR_ANSWER:"
-
-
-def _previous_question(request: TutorRequest) -> str:
-    """Estrae la sola domanda precedente dal contesto di conversazione.
-
-    Il contesto passato al composer resta l'intero scambio; la SONDA di
-    retrieval usa solo la domanda, per il motivo misurato in
-    ``tutor.conversation.recent_question``. La struttura del contesto e'
-    quella dichiarata da quel modulo: se cambia, qui non si indovina —
-    si ricade sul comportamento senza contesto.
-    """
-
-    raw = request.conversation_context or ""
-    if _PREVIOUS_QUESTION_MARKER not in raw:
-        return ""
-    question = raw.split(_PREVIOUS_QUESTION_MARKER, 1)[1]
-    return question.split(_PREVIOUS_ANSWER_MARKER, 1)[0].strip()
 
 
 def _executor_purpose(executor, lang: str) -> str:
@@ -109,7 +92,8 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
     names.sort()
     minimum = int(selector.get("expected_min") or 1)
     if len(names) < minimum:
-        raise ValueError("Tutor live catalog below the card completeness floor")
+        raise TutorContentError(
+            "Tutor live catalog below the card completeness floor")
 
     if selector.get("overview"):
         heading = str(
@@ -181,7 +165,8 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
             lines.append(
                 f"- object={obj}; actions={actions}; purposes={detail}")
         if not areas:
-            raise ValueError("Tutor overview has no admitted capability areas")
+            raise TutorContentError(
+                "Tutor overview has no admitted capability areas")
         return "\n".join(([heading] if heading else []) + lines)
 
     labels = ((selector.get("labels") or {}).get(lang) or {})
@@ -199,7 +184,8 @@ def _catalog_summary(card, lang: str, cards, audience: str) -> str:
         actions = list(dict.fromkeys(grouped[obj]))
         lines.append(f"- **{labels[obj]}:** {', '.join(actions)}")
     if not lines:
-        raise ValueError("Tutor card could not describe the admitted inventory")
+        raise TutorContentError(
+            "Tutor card could not describe the admitted inventory")
     heading = str(((selector.get("heading") or {}).get(lang)) or "").format(
         count=len(names))
     return "\n".join(([heading] if heading else []) + lines)
@@ -209,6 +195,48 @@ def _source_id(hit: SourceHit) -> str:
     if hit.card:
         return f"card:{hit.card.card_id}:{hit.lang}"
     return f"knowledge:{hit.unit.unit_id}"
+
+
+def _document_outline(units, source_ref: str) -> str:
+    """Render a bounded outline derived only from admitted catalog units."""
+
+    base = str(source_ref or "").split("#", 1)[0]
+    if not base:
+        return ""
+
+    def _ordinal(unit) -> int:
+        raw = str(unit.source_ref or "").rpartition("#")[2]
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 10**9
+
+    document_units = sorted(
+        (unit for unit in units
+         if unit.source_ref.split("#", 1)[0] == base),
+        key=_ordinal,
+    )
+    if not document_units:
+        return ""
+    headings = []
+    for unit in document_units:
+        title = " ".join(str(unit.title or "").split())[:240]
+        if title and title not in headings:
+            headings.append(title)
+        if len(headings) >= 80:
+            break
+    public_url = next(
+        (unit.public_url for unit in document_units if unit.public_url), "")
+    lines = [
+        f"[DOCUMENT_IDENTITY source_ref={base}]",
+        f"FILE_NAME: {base.rsplit('/', 1)[-1]}",
+    ]
+    if public_url:
+        lines.append(f"PUBLIC_URL: {public_url}")
+    lines.append("SECTION_OUTLINE:")
+    lines.extend(f"- {heading}" for heading in headings)
+    lines.append("[/DOCUMENT_IDENTITY]")
+    return "\n".join(lines)[:8_000]
 
 
 def _render_context(hit: SourceHit, *, cards, audience: str) -> str:
@@ -228,9 +256,12 @@ def _render_context(hit: SourceHit, *, cards, audience: str) -> str:
         authority = hit.unit.authority
         title = hit.unit.title
     source_kind = "curated_guide" if hit.card else hit.unit.source_kind
+    public_url = ""
+    if hit.unit is not None and hit.unit.public_url:
+        public_url = f" public_url={hit.unit.public_url}"
     return (
         f"[SOURCE id={_source_id(hit)} authority={authority} "
-        f"source_kind={source_kind}]\n"
+        f"source_kind={source_kind}{public_url}]\n"
         f"TITLE: {title}\n{rendered}\n[/SOURCE]"
     )
 
@@ -253,24 +284,127 @@ def _surface_key(hit: SourceHit) -> str | None:
     return reference[2] if len(reference) >= 3 else None
 
 
+def _manifest_family(hit: SourceHit) -> str:
+    unit = hit.unit
+    if unit is None or unit.authority != "admitted_manifest":
+        return ""
+    parts = str(unit.source_ref or "").split(":")
+    return parts[1] if len(parts) >= 2 and parts[0] == "manifest" else ""
+
+
+def _coherent_manifest_scope(
+        hits: tuple[SourceHit, ...], primary: SourceHit,
+) -> tuple[SourceHit, ...]:
+    """Bound operation help to one explicit manifest neighbourhood.
+
+    Executor arguments are leaf evidence, while retrieved manuals may discuss
+    a nearby but different pipeline.  When the primary is a complete admitted
+    manifest, retain its leaves, complete manifests that explicitly cross-link
+    it in their signed descriptions, the best published explanation, and one
+    additional publication that names the primary executor.  This derives the
+    neighbourhood entirely from source structure and authored cross-references;
+    it contains no query words, domains, or executor-specific table.
+    """
+
+    unit = primary.unit
+    if unit is None or unit.source_kind != "executor_manifest":
+        return hits
+    primary_family = _manifest_family(primary)
+    if not primary_family:
+        return hits
+
+    roots = [primary]
+    primary_text = str(unit.text or "").casefold()
+    for hit in hits:
+        if hit is primary or hit.unit is None:
+            continue
+        if hit.unit.source_kind != "executor_manifest":
+            continue
+        family = _manifest_family(hit)
+        if not family:
+            continue
+        linked = (
+            family.casefold() in primary_text
+            or primary_family.casefold() in str(hit.unit.text or "").casefold()
+        )
+        if linked:
+            roots.append(hit)
+        if len(roots) >= 3:
+            break
+    admitted_families = {_manifest_family(hit) for hit in roots}
+
+    first_document = next((
+        hit for hit in hits
+        if hit.unit is not None
+        and hit.unit.authority == "published_documentation"
+    ), None)
+    selected: list[SourceHit] = []
+    argument_counts: dict[str, int] = {}
+    document_count = 0
+    for hit in hits:
+        candidate = hit.unit
+        if hit in roots:
+            selected.append(hit)
+        elif candidate is None:
+            continue
+        elif candidate.source_kind == "executor_manifest_argument":
+            family = _manifest_family(hit)
+            if (family in admitted_families
+                    and argument_counts.get(family, 0) < 2):
+                selected.append(hit)
+                argument_counts[family] = argument_counts.get(family, 0) + 1
+        elif candidate.source_kind == "executor_manifest":
+            continue
+        elif candidate.authority == "published_documentation":
+            explicitly_linked = primary_family.casefold() in (
+                f"{candidate.title} {candidate.text}".casefold())
+            if (document_count < 2
+                    and (hit is first_document or explicitly_linked)):
+                selected.append(hit)
+                document_count += 1
+        # Other source shapes are separate authorities.  Once a complete
+        # manifest is primary they cannot expand its operational contract.
+        if len(selected) >= 8:
+            break
+    return tuple(selected or (primary,))
+
+
 def _ledger_scope(hits: tuple[SourceHit, ...],
                   primary: SourceHit) -> tuple[SourceHit, ...]:
-    """Restringe la checklist alla pagina PRIMARIA quando la domanda è su una
-    pagina.
+    """Restringe le voci UI della checklist alla pagina PRIMARIA.
 
     Il ledger nasce da tutte le fonti strutturate selezionate: giusto per una
-    panoramica, sbagliato quando la primaria è una superficie e nel contesto
-    ci sono anche pagine vicine. In quel caso il correttore chiede voci di
-    un'ALTRA pagina e spende l'unica ricomposizione sul buco sbagliato
-    (misurato: 15 voci richieste, tutte estranee alla domanda). Regola
-    strutturale sull'identità della superficie, nessun tema o frase.
+    panoramica, sbagliato quando una superficie entra solo come fonte
+    secondaria per vicinanza semantica. Il correttore la trasformerebbe in una
+    sezione obbligatoria anche se la domanda riguarda il documento primario
+    (turno 1ab456aa: configurazione dell'embedder completata con la console
+    delle proposte). Il corpo resta nel contesto e il compositore può usarlo
+    quando è davvero pertinente; soltanto la checklist meccanica lo ignora.
+    Regola strutturale sul primato e sull'identità della superficie, senza
+    nomi di pagina, argomenti o frasi della domanda.
     """
 
     primary_key = _surface_key(primary)
-    if primary_key is None:
-        return hits
-    return tuple(
+    primary_manifest = (
+        primary.unit is not None
+        and primary.unit.source_kind == "executor_manifest"
+    )
+    # A secondary manifest is candidate evidence, not a mandatory topic.  The
+    # completeness ledger may force only the manifest that won semantic
+    # primacy; otherwise a focused question expands into every nearby tool.
+    without_secondary_manifests = tuple(
         hit for hit in hits
+        if not (hit.unit is not None
+                and hit.unit.source_kind == "executor_manifest"
+                and (not primary_manifest or hit is not primary))
+    )
+    if primary_key is None:
+        return tuple(
+            hit for hit in without_secondary_manifests
+            if _surface_key(hit) is None
+        )
+    return tuple(
+        hit for hit in without_secondary_manifests
         if _surface_key(hit) in (None, primary_key)
     )
 
@@ -322,8 +456,8 @@ def _coverage_items(hits: tuple[SourceHit, ...]) -> dict:
                     + ", ".join(visible))
                 if controls:
                     entry += "; controls: " + ", ".join(controls)
-                stop = bool(surface.stop_conditions(unit_lang))
-                if stop:
+                stop_conditions = tuple(surface.stop_conditions(unit_lang))
+                if stop_conditions:
                     entry += "; stop conditions attested by the source"
                 if entry not in seen_surfaces:
                     seen_surfaces.add(entry)
@@ -333,7 +467,7 @@ def _coverage_items(hits: tuple[SourceHit, ...]) -> dict:
                         "route": surface.route,
                         "visible": visible,
                         "controls": controls,
-                        "stop": stop,
+                        "stop_conditions": stop_conditions,
                     })
             continue
         if hit.unit.source_kind != "capability_catalog":
@@ -402,20 +536,7 @@ _INTERNAL_MARKERS = (
     "object=", "actions=", "executor=", "source_kind=", "from_step",
     "CATALOG_AREAS", "CATALOG_PROVIDERS",
 )
-_STOP_LEADS = {"it": "Fermati se", "en": "Stop if"}
 _GAP_WORD = re.compile(r"[^\W\d_]+")
-
-
-def _noise_words() -> set[str]:
-    """Parole funzionali gia' lessicalizzate (articoli/preposizioni it+en)."""
-
-    import detection_lexicon as dl
-    return {
-        form.casefold()
-        for concept in ("sites.goal_noise",
-                        "sites.goal_noise_articulated_preposition")
-        for form in dl.forms(concept)
-    }
 
 
 def _root(word: str) -> str:
@@ -440,18 +561,17 @@ def _root_hit(word: str, text: str) -> bool:
         re.IGNORECASE) is not None
 
 
-def _content_words(label: str, noise: set[str]) -> list[str]:
+def _content_words(label: str) -> list[str]:
     return [
         word for word in _GAP_WORD.findall(label)
-        if len(word) >= 4 and word.casefold() not in noise
+        if len(word) >= 4
     ]
 
 
 _SHORT_LABEL_WORDS = 3
 
 
-def _label_covered(label: str, text: str, noise: set[str],
-                   df: dict) -> bool:
+def _label_covered(label: str, text: str, df: dict) -> bool:
     """Una voce di checklist e' rappresentata nella risposta?
 
     Etichetta CORTA (fino a tre parole): e' un nome esatto di campo o di
@@ -473,7 +593,7 @@ def _label_covered(label: str, text: str, noise: set[str],
         # coperto da «riprovare», mentre «esegui ora» non lo e' da un
         # «eseguire» isolato.
         return all(_root_hit(token, text) for token in tokens)
-    words = _content_words(label, noise)
+    words = _content_words(label)
     if not words:
         return dl.match_any([label], text, mode="word")
     distinctive = [word for word in words if df.get(_root(word), 0) <= 1]
@@ -494,15 +614,15 @@ def _find_gaps(coverage: dict, text: str, lang: str) -> list[str]:
     import detection_lexicon as dl
     gaps: list[str] = []
     low = text.casefold()
-    noise = _noise_words()
     labels: list[str] = [*coverage.get("areas", ()),
                          *coverage.get("tools", ())]
     for surface in coverage.get("surfaces", ()):
         labels.extend(surface["visible"])
         labels.extend(surface["controls"])
+        labels.extend(surface["stop_conditions"])
     df: Counter = Counter()
     for label in labels:
-        df.update({_root(word) for word in _content_words(label, noise)})
+        df.update({_root(word) for word in _content_words(label)})
     for marker in _INTERNAL_MARKERS:
         if marker.casefold() in low:
             gaps.append(f"remove the internal marker {marker!r} from the prose")
@@ -510,10 +630,10 @@ def _find_gaps(coverage: dict, text: str, lang: str) -> list[str]:
         if not dl.match_any([provider], text, mode="word"):
             gaps.append(f"mention the provider: {provider}")
     for area in coverage.get("areas", ()):
-        if not _label_covered(area, text, noise, df):
+        if not _label_covered(area, text, df):
             gaps.append(f"cover the capability area: {area}")
     for purpose in coverage.get("tools", ()):
-        if not _label_covered(purpose, text, noise, df):
+        if not _label_covered(purpose, text, df):
             gaps.append(f"state the tool purpose: {purpose}")
     for surface in coverage.get("surfaces", ()):
         if surface["route"].casefold() not in low:
@@ -521,14 +641,15 @@ def _find_gaps(coverage: dict, text: str, lang: str) -> list[str]:
                 f"state the exact navigation path {surface['route']} "
                 f"for {surface['label']}")
         for item in (*surface["visible"], *surface["controls"]):
-            if not _label_covered(item, text, noise, df):
+            if not _label_covered(item, text, df):
                 gaps.append(f"cover the {surface['label']} item: {item}")
-    if any(surface["stop"] for surface in coverage.get("surfaces", ())):
-        if not any(lead.casefold() in low for lead in _STOP_LEADS.values()):
-            lead = _STOP_LEADS.get(lang, _STOP_LEADS["en"])
-            gaps.append(
-                "report the stop conditions verbatim, introduced by "
-                f"«{lead}»")
+        for condition in surface["stop_conditions"]:
+            if not _label_covered(condition, text, df):
+                # The condition itself is localized source evidence. No fixed
+                # Italian/English lead or fallback is imposed on a new locale.
+                gaps.append(
+                    f"report the stop condition from {surface['label']}: "
+                    f"{condition}")
     return gaps
 
 
@@ -544,48 +665,326 @@ def _revision_block(gaps: list[str]) -> str:
         "mentioning this note:\n" + bullets)
 
 
+def _evidence(trace: dict, catalog_version: str,
+              primary: SourceHit | None = None, *, eligible: bool = False
+              ) -> TutorEvidence | None:
+    """Build internal F4 evidence without retaining the clear-text query."""
+
+    vector = trace.get("query_vector")
+    fingerprint = str(trace.get("embedding_fingerprint") or "")
+    if vector is None or not fingerprint or not catalog_version:
+        return None
+    try:
+        values = tuple(float(value) for value in vector)
+    except (TypeError, ValueError):
+        return None
+    if not values:
+        return None
+    source_id = _source_id(primary) if primary is not None else ""
+    content_hash = (
+        primary.unit.content_hash
+        if primary is not None and primary.unit is not None else ""
+    )
+    return TutorEvidence(
+        query_vector=values,
+        embedding_fingerprint=fingerprint,
+        catalog_version=catalog_version,
+        primary_source_id=source_id,
+        primary_content_hash=content_hash,
+        eligible_for_association=bool(
+            eligible and source_id.startswith("knowledge:") and content_hash),
+        association_contributor_hashes=tuple(sorted({
+            str(value) for value in trace.get(
+                "association_contributors", ())
+            if str(value)
+        })),
+    )
+
+
+def _answer_live_observation(
+        request: TutorRequest, *, query: str, lang: str, started: float,
+        authority_deadline_at: float,
+        request_deadline_at: float) -> TutorAnswer | None:
+    """Answer through one signed view, or leave the ordinary runtime intact.
+
+    ``OBSERVE`` is descriptive, not authority.  A request reaches a probe only
+    after a context-free closed selector chooses one complete visible view and
+    that view is found again in the verified catalog.  Every mismatch, missing
+    facet, restriction, stale observation, or selector failure falls through
+    to the planner; Tutor must never replace a richer operational executor with
+    nearby documentation.
+    """
+
+    from .deadline import TutorDeadlineExceeded, remaining
+
+    try:
+        from .catalog import load_request_snapshot
+        from .observation_views import (
+            project_capsule,
+            select_view,
+            verify_semantic_coverage,
+        )
+        snapshot = load_request_snapshot()
+        remaining(authority_deadline_at)
+        selection = select_view(
+            query=query, lang=lang, principal=request.principal,
+            deadline_at=authority_deadline_at)
+        if not selection.available or selection.view is None:
+            return None
+        view = selection.view
+        coverage_ok, coverage_reason = verify_semantic_coverage(
+            query=query,
+            lang=lang,
+            principal=request.principal,
+            selected=view,
+            snapshot=snapshot,
+            deadline_at=authority_deadline_at,
+        )
+        if not coverage_ok:
+            log.info("Tutor live observation declined reason=%s",
+                     coverage_reason)
+            return None
+
+        from .semantic import _language_order
+        requested = str(lang or "en").lower().split("-", 1)[0]
+        language_order = _language_order(lang)
+        candidates = tuple(
+            unit for unit in snapshot.units
+            if unit.observation_ref == view.view_id
+            and unit.source_kind == "live_observation"
+            and unit.visible_to(request.principal.audience)
+        )
+        unit = next(
+            (item for candidate_lang in language_order for item in candidates
+             if item.lang == candidate_lang),
+            None,
+        )
+        if unit is None:
+            return None
+        # Authority is now complete.  Probing and composing are read-only
+        # post-authority work and use the full request budget; keeping them in
+        # the short admission window would turn harmless LLM contention into a
+        # terminal Tutor response and suppress the ordinary runtime.
+        remaining(authority_deadline_at)
+
+        from .probes import (
+            capsules_are_fresh,
+            compact_for_composition,
+            execute_probe_refs,
+            render_capsules,
+        )
+        raw = execute_probe_refs(
+            (view.probe_id,),
+            principal=request.principal,
+            lang=lang,
+            injected=request.probes,
+            deadline_at=request_deadline_at,
+        )
+        if len(raw) != 1:
+            return None
+        capsule = project_capsule(view, raw[0])
+        if capsule.status not in {"ok", "partial"}:
+            return None
+        if not capsules_are_fresh((capsule,)):
+            return None
+        capsule = compact_for_composition((capsule,))[0]
+        remaining(request_deadline_at)
+
+        hit = SourceHit(
+            source_type="knowledge", source_id=unit.unit_id,
+            lang=unit.lang, score=1.0, unit=unit)
+        source_ids = (
+            _source_id(hit), f"view:{view.view_id}",
+            f"probe:{view.probe_id}",
+        )
+        rendered_context = "\n\n".join((
+            _render_context(
+                hit, cards=snapshot.cards,
+                audience=request.principal.audience),
+            render_capsules((capsule,)),
+        ))
+        from .compose import compose_answer
+        composition = compose_answer(
+            query=query,
+            context=rendered_context,
+            lang=lang,
+            source_ids=source_ids,
+            # Context may resolve language, but can never broaden a live view.
+            # The selector and composer therefore see only the current request.
+            conversation_context="",
+            delivery_channel=request.principal.channel,
+            deadline_at=request_deadline_at,
+        )
+        if composition.status != "answer" or not composition.text:
+            # A live observation is an optional, read-only acceleration.  It
+            # has performed no effect that would make ordinary runtime fallback
+            # unsafe, so composition failure must not steal the user's turn.
+            log.info("Tutor live observation declined reason=composer_%s",
+                     composition.status)
+            return None
+        gap_reason = (
+            "live_observation_incomplete"
+            if capsule.status == "partial" else
+            "weak_language"
+            if unit.lang.lower().split("-", 1)[0] != requested else ""
+        )
+        return TutorAnswer(
+            esito="fondata",
+            answer_md=_with_pending_note(composition.text, request),
+            source_ids=source_ids,
+            score_band="high",
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+            detection="semantic_live_observation",
+            probe_statuses=((view.probe_id, capsule.status),),
+            gap_reason=gap_reason,
+            # Live observations are intentionally never F4 association
+            # evidence: a future static query cannot inherit data authority.
+            evidence=None,
+        )
+    except TutorDeadlineExceeded:
+        # No side effect was performed.  Exhausting either the admission phase
+        # or the read-only delivery phase leaves the request to the ordinary
+        # runtime instead of producing a terminal Tutor error.
+        log.info("Tutor live observation declined reason=deadline")
+        return None
+    except Exception:
+        log.warning("Tutor live observation declined", exc_info=True)
+        return None
+
+
 def answer_request(request: TutorRequest) -> TutorAnswer | None:
     """Return an answer only for a high-confidence help request.
 
-    Any internal failure is handled by the channel adapter, which can emit the
-    localized unavailable message without routing the help query to the
-    planner.  Non-help returns ``None`` and leaves the existing path intact.
+    Technical failures before a semantic mode or a complete live view has
+    acquired Tutor authority return ``None`` and leave the existing runtime
+    intact. Failures after a request is positively established as help are
+    terminal and localized by the Tutor/channel boundary.
     """
 
     if not enabled():
         return None
     started = time.monotonic()
+    from .deadline import (
+        TutorDeadlineExceeded,
+        mode_budget_s,
+        new_deadline,
+        phase_deadline,
+        remaining,
+    )
+    deadline_at = request.deadline_at or new_deadline()
+    remaining(deadline_at)
     try:
         detection = classify(request.query_redacted)
     except Exception:
-        # Detection failure must not steal an operational request.
         log.warning("tutor detection unavailable", exc_info=True)
         return None
+    remaining(deadline_at)
     if detection.reason in {"sensitive_shape", "control_command"}:
         return None
     import config
     lang = (request.lang or config.DEFAULT_LANG).lower().split("-", 1)[0]
-    from .mode import classify_mode
-    mode = classify_mode(
-        request.query_redacted,
-        lang,
-        conversation_context=request.conversation_context,
-    )
+    from published_docs import resolve_reference
+    document_reference = resolve_reference(
+        request.query_redacted, lang=lang)
+    remaining(deadline_at)
+    from .mode import classify_mode_decision
+    # Mode, mixed segmentation, and live-view admission form one
+    # pre-authority transaction. Sharing a single short deadline prevents a
+    # sequence of individually bounded classifiers from consuming the whole
+    # HTTP budget before the ordinary runtime gets a chance to act.
+    authority_deadline_at = phase_deadline(deadline_at, mode_budget_s())
+    try:
+        mode_decision = classify_mode_decision(
+            request.query_redacted,
+            lang,
+            conversation_context=request.conversation_context,
+            deadline_at=authority_deadline_at,
+        )
+    except TutorDeadlineExceeded:
+        log.info("Tutor mode declined reason=authority_deadline")
+        return None
+    if not mode_decision.available:
+        log.warning(
+            "Tutor mode unavailable reason=%s", mode_decision.reason)
+        return None
+    # Reading an exact document admitted by the publication registry is
+    # static help even though the current-query classifier correctly treats
+    # arbitrary file contents as an observation.  Source identity is applied
+    # only here, after mode classification; it never enters the classifier.
+    if document_reference is not None and mode_decision.mode == "OBSERVE":
+        from dataclasses import replace
+        mode_decision = replace(mode_decision, mode="EXPLAIN")
+    mode = mode_decision.mode
+    working_query = request.query_redacted
+    handoff_query = ""
     if mode == "MIXED":
-        return TutorAnswer(
-            esito="clarification",
-            answer_md=_with_pending_note(
-                _msg("MSG_TUTOR_MIXED_CLARIFY"), request),
-            score_band="high",
-            elapsed_ms=int((time.monotonic() - started) * 1000),
-            detection="semantic_mixed",
+        if request.has_pending:
+            return TutorAnswer(
+                esito="clarification",
+                answer_md=_with_pending_note(
+                    _msg("MSG_TUTOR_MIXED_CLARIFY"), request),
+                score_band="high",
+                elapsed_ms=int((time.monotonic() - started) * 1000),
+                detection="semantic_mixed",
+                gap_reason="mode_ambiguity",
+            )
+        try:
+            from .handoff import MixedSplitUnavailable, split_mixed_query
+            split = split_mixed_query(
+                request.query_redacted,
+                lang,
+                conversation_context=request.conversation_context,
+                deadline_at=authority_deadline_at,
+            )
+        except TutorDeadlineExceeded:
+            log.info("Tutor mixed segmentation declined reason=authority_deadline")
+            return None
+        except MixedSplitUnavailable:
+            log.warning("Tutor mixed segmentation unavailable", exc_info=True)
+            return None
+        except Exception:
+            log.warning("Tutor mixed segmentation failed", exc_info=True)
+            return None
+        if split is None:
+            # A MIXED request not proven to be exactly one explanation plus
+            # one operational clause belongs to the ordinary compound
+            # planner. Tutor must not steal an OBSERVE+ACT request or force a
+            # clarification it cannot resolve.
+            return None
+        working_query = split.explanation
+        handoff_query = split.action
+        # CURRENT/FOLLOWUP belong to the exact clause being answered.  The
+        # whole-query MIXED decision may describe only the action clause and
+        # must never authorize a live probe for a static explanation.
+        mode_decision = split.explanation_decision
+        document_reference = resolve_reference(working_query, lang=lang)
+    if mode_decision.mode == "OBSERVE":
+        return _answer_live_observation(
+            request,
+            query=working_query,
+            lang=lang,
+            started=started,
+            authority_deadline_at=authority_deadline_at,
+            request_deadline_at=deadline_at,
         )
     if mode != "EXPLAIN":
-        return None
+        if mode != "MIXED":
+            return None
 
     try:
-        from .catalog import load_cards
-        cards = load_cards()
+        from .catalog import (
+            load_request_snapshot,
+        )
+        remaining(deadline_at)
+        snapshot = load_request_snapshot()
+        cards = snapshot.cards
+        bound_units = (
+            snapshot.units if document_reference is not None else None)
+        remaining(deadline_at)
+        required_source_ref = (
+            f"docs/{document_reference.relative_path}"
+            if document_reference is not None else ""
+        )
         # Le due formulazioni della domanda — quella corrente e quella LETTA
         # NEL SUO CONTESTO — entrano nella STESSA classifica, dove ogni fonte
         # prende il massimo fra i due punteggi. Una domanda indipendente
@@ -605,18 +1004,36 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
         # quasi-duplicato delle proprie fonti (vedi
         # tutor.conversation.recent_question) — e vive nel contesto del
         # composer, dove serve a risolvere il riferimento.
-        previous_question = _previous_question(request)
+        previous_question = (
+            request.previous_question.strip()
+            if mode_decision.is_followup else "")
         conversation_context_used = bool(previous_question)
+        retrieval_trace: dict = {}
         context = retrieve_sources(
-            request.query_redacted,
+            working_query,
             lang,
             request.principal.audience,
             cards=cards,
+            card_index=snapshot.card_index,
+            units=bound_units,
+            knowledge_index=snapshot.knowledge_index,
             companion_query=(
-                f"{previous_question} {request.query_redacted}".strip()
+                f"{previous_question} {working_query}".strip()
                 if previous_question else ""
             ),
+            owner_user_id=request.principal.user_id,
+            required_source_ref=required_source_ref,
+            explain=retrieval_trace,
+            deadline_at=deadline_at,
         )
+        remaining(deadline_at)
+        # Both real loaders above admit/verify the signed catalog.  Read its
+        # identity only afterwards and without starting an extra compilation;
+        # sealed unit fixtures may intentionally have no on-disk generation.
+        catalog_version = snapshot.version
+        remaining(deadline_at)
+    except TutorDeadlineExceeded:
+        raise
     except Exception:
         log.warning("tutor catalog unavailable", exc_info=True)
         return TutorAnswer(
@@ -625,8 +1042,13 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             score_band="none",
             elapsed_ms=int((time.monotonic() - started) * 1000),
             detection=detection.kind,
+            gap_reason="source_unavailable",
         )
     detection_label = (
+        "semantic_mixed_handoff"
+        if handoff_query else
+        "published_document_reference"
+        if document_reference is not None else
         "semantic_contextual_help"
         if conversation_context_used else "semantic_help"
     )
@@ -638,6 +1060,8 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             score_band="high",
             elapsed_ms=int((time.monotonic() - started) * 1000),
             detection=detection_label,
+            gap_reason="restricted_source",
+            evidence=_evidence(retrieval_trace, catalog_version),
         )
     if context is None:
         text = _with_pending_note(_msg("MSG_TUTOR_LACUNA"), request)
@@ -647,11 +1071,14 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             score_band="low",
             elapsed_ms=int((time.monotonic() - started) * 1000),
             detection=detection_label,
+            gap_reason="no_source",
+            evidence=_evidence(retrieval_trace, catalog_version),
         )
     hits = context.hits
     primary = hits[0]
     repair_pass = 0
     repair_missing: tuple[str, ...] = ()
+    repair_remaining: tuple[str, ...] = ()
     try:
         if primary.card and primary.lang in primary.card.procedure:
             # High-criticality procedures remain literal even though their
@@ -662,7 +1089,8 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                 audience=request.principal.audience,
             )
             rendered = rendered.split("\n", 2)[2].rsplit("\n[/SOURCE]", 1)[0]
-        elif primary.unit and primary.unit.source_kind == "ui_procedure":
+        elif (primary.unit
+              and primary.unit.source_kind == "ui_procedure"):
             # Typed critical procedures are already localized, reviewed and
             # complete.  Returning them literally preserves stop conditions
             # without depending on a legacy F1 card or LLM paraphrase.
@@ -692,13 +1120,23 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             )
             if not effective_hits:
                 effective_hits = (primary,)
-            rendered_context = "\n\n".join(
+            effective_hits = _coherent_manifest_scope(
+                effective_hits, primary)
+            rendered_blocks = tuple((
+                hit,
                 _render_context(
                     hit, cards=cards,
                     audience=request.principal.audience,
-                )
-                for hit in effective_hits
-            )
+                ),
+            ) for hit in effective_hits)
+            rendered_context = "\n\n".join(
+                block for _hit, block in rendered_blocks)
+            outline = ""
+            if document_reference is not None and bound_units is not None:
+                outline = _document_outline(
+                    bound_units, required_source_ref)
+                if outline:
+                    rendered_context = f"{rendered_context}\n\n{outline}"
             coverage = _coverage_items(_ledger_scope(effective_hits, primary))
             ledger = _render_ledger(coverage)
             if ledger:
@@ -706,17 +1144,20 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             if not rendered_context:
                 raise RuntimeError("Tutor context unavailable")
             from .compose import compose_answer
+            composition_source_ids = tuple(
+                _source_id(hit) for hit in effective_hits)
             composition = compose_answer(
-                query=request.query_redacted,
+                query=working_query,
                 context=rendered_context,
                 lang=lang,
-                source_ids=tuple(_source_id(hit) for hit in effective_hits),
+                source_ids=composition_source_ids,
                 conversation_context=(request.conversation_context
                                       if conversation_context_used else ""),
                 delivery_channel=request.principal.channel,
+                deadline_at=deadline_at,
             )
             if composition.status == "insufficient":
-                source_ids = tuple(_source_id(hit) for hit in effective_hits)
+                source_ids = composition_source_ids
                 card_ids = tuple(
                     hit.card.card_id for hit in effective_hits
                     if hit.card is not None)
@@ -729,12 +1170,16 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                     score_band="low",
                     elapsed_ms=int((time.monotonic() - started) * 1000),
                     detection=detection_label,
+                    gap_reason="composer_insufficient",
+                    evidence=_evidence(
+                        retrieval_trace, catalog_version, primary),
                 )
             if composition.status != "answer" or not composition.text:
                 raise RuntimeError("Tutor local composition unavailable")
             rendered = composition.text
             try:
                 gaps = _find_gaps(coverage, rendered, lang)
+                repair_remaining = tuple(gaps)
                 if gaps:
                     # Correttore di bozze: UNA sola ricomposizione con
                     # l'elenco esplicito dei buchi, poi si consegna comunque
@@ -743,16 +1188,16 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                     repair_pass = 1
                     repair_missing = tuple(gaps)
                     revision = compose_answer(
-                        query=request.query_redacted,
+                        query=working_query,
                         context=(
                             f"{rendered_context}\n\n{_revision_block(gaps)}"),
                         lang=lang,
-                        source_ids=tuple(
-                            _source_id(hit) for hit in effective_hits),
+                        source_ids=composition_source_ids,
                         conversation_context=(request.conversation_context
                                               if conversation_context_used
                                               else ""),
                         delivery_channel=request.principal.channel,
+                        deadline_at=deadline_at,
                     )
                     if revision.status == "answer" and revision.text:
                         # La revisione va RILETTA come la bozza: integrando i
@@ -764,12 +1209,30 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
                         revised_gaps = _find_gaps(coverage, revision.text, lang)
                         if len(revised_gaps) <= len(gaps):
                             rendered = revision.text
+                            repair_remaining = tuple(revised_gaps)
                         # `repair_missing` resta l'elenco CHIESTO alla bozza:
                         # e' il contratto di telemetria dichiarato (§5.7).
+            except TutorDeadlineExceeded:
+                raise
             except Exception:
                 # La rilettura e' una cintura: un suo guasto non deve mai
                 # degradare una composizione riuscita.
                 log.warning("tutor repair pass failed", exc_info=True)
+    except TutorDeadlineExceeded:
+        raise
+    except TutorContentError:
+        log.warning("Tutor source content incomplete", exc_info=True)
+        rendered = _msg("MSG_TUTOR_UNAVAILABLE")
+        return TutorAnswer(
+            esito="tutor_error",
+            answer_md=_with_pending_note(rendered, request),
+            score_band="none",
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+            detection=detection_label,
+            gap_reason="source_incomplete",
+            evidence=_evidence(
+                retrieval_trace, catalog_version, primary),
+        )
     except Exception:
         log.warning("tutor F2 render failed", exc_info=True)
         rendered = _msg("MSG_TUTOR_UNAVAILABLE")
@@ -779,19 +1242,37 @@ def answer_request(request: TutorRequest) -> TutorAnswer | None:
             score_band="none",
             elapsed_ms=int((time.monotonic() - started) * 1000),
             detection=detection_label,
+            gap_reason="composer_unavailable",
+            evidence=_evidence(retrieval_trace, catalog_version, primary),
         )
     text = _with_pending_note(rendered, request)
+    remaining(deadline_at)
     source_ids = tuple(_source_id(hit) for hit in effective_hits)
     card_ids = tuple(
         hit.card.card_id for hit in effective_hits if hit.card is not None)
+    gap_reason = (
+        "composer_incomplete" if repair_remaining else ""
+    )
+    requested_language = lang.split("-", 1)[0]
+    served_language = str(primary.lang or "").lower().split("-", 1)[0]
+    if not gap_reason and served_language != requested_language:
+        gap_reason = "weak_language"
     return TutorAnswer(
-        esito="consolidata" if primary.card else "fondata",
+        esito=("handoff" if handoff_query else
+               "consolidata" if primary.card else "fondata"),
         answer_md=text,
         source_ids=source_ids,
         card_ids=card_ids,
-        score_band="high" if context.top_score >= 0.78 else "medium",
+        score_band=("high" if document_reference is not None
+                    or context.top_score >= 0.78 else "medium"),
         elapsed_ms=int((time.monotonic() - started) * 1000),
         detection=detection_label,
         repair_pass=repair_pass,
         repair_missing=repair_missing,
+        repair_remaining=repair_remaining,
+        handoff_query=handoff_query,
+        gap_reason=gap_reason,
+        evidence=_evidence(
+            retrieval_trace, catalog_version, primary,
+            eligible=not handoff_query and not gap_reason),
     )

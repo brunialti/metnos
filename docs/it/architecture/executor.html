@@ -62,7 +62,7 @@ code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
 figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.decision { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 10px 14px; margin: 14px 0; font-size: 10pt; }.decision strong { color: #92400E; }.three-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.three-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 10pt; }.three-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }.four-cols { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin: 18px 0; }.four-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 14px; font-size: 9.5pt; }.four-cols h4 { margin: 0 0 8px 0; font-size: 11pt; color: var(--navy); }
 @media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.three-cols { grid-template-columns: 1fr 1fr 1fr; }.four-cols { grid-template-columns: 1fr 1fr; } }
@@ -72,21 +72,11 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Allineata al codice.</strong>
-Gli executor distribuiti con Metnos vivono nel catalogo di base; quelli generati
-dal Synt e quelli importati restano separati per origine e provenienza. Il
-<a href="executor_catalog.html" style="color: #14532d; text-decoration: underline;">catalogo generato</a>
-&egrave; la fonte unica per conteggi, domini e stato corrente.
-Manifesto firmato Ed25519, recinto di esecuzione costruito sul manifesto stesso, ciclo di vita gestito dal loader.
-La definizione normativa per nuovi executor e refactor incrementali &egrave; il
-<a href="https://github.com/brunialti/metnos/blob/main/EXECUTOR_STANDARD.md" style="color: #14532d; text-decoration: underline;">Metnos Executor Standard</a>.
-Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime</a>
-(ciclo pianificatore), <a href="sandbox.html" style="color: #14532d; text-decoration: underline;">sandbox</a>
-(recinto), <a href="remote_executors.html" style="color: #14532d; text-decoration: underline;">remote_executors</a>
-(placement su dispositivi) e <a href="synt.html" style="color: #14532d; text-decoration: underline;">synt</a>
-(generazione automatica).
-</div>
+<p class="lead">Un executor &egrave; un'unit&agrave; operativa con argomenti, effetti,
+capacit&agrave; e profilo di isolamento dichiarati in un manifest firmato. Il sistema
+mantiene distinta la provenienza degli executor distribuiti, generati e importati;
+il <a href="executor_catalog.html">catalogo generato</a> fornisce conteggi, domini e
+stato corrente senza duplicarli in questa pagina.</p>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/executor.html" class="active" hreflang="it" lang="it">IT</a>
@@ -97,7 +87,7 @@ Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">executor</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">executor</strong></span>
  </div>
 </div>
 
@@ -105,21 +95,26 @@ Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: 
  <h1>Metnos</h1>
  <div class="subtitle"><code>executor</code> &mdash; capire come &egrave; fatto</div>
  <div class="meta">
- Introduzione didattica<br>
- Per chi vuole capire, non per chi deve implementare.<br>
+ Guida introduttiva<br>
  </div>
 </div>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Cerca nella cartella Documenti tutti i PDF che contengono la parola
+contratto&raquo;. Metnos pu&ograve; comporre pi&ugrave; executor: uno trova i file, un altro
+ne legge il contenuto e un terzo filtra i risultati. L'utente descrive il
+risultato voluto; non deve conoscere i nomi degli executor.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Cos'&egrave; un executor (in trenta secondi)</a></li>
- <li><a href="#cap2">Anatomia: quattro file nella cartella</a></li>
+ <li><a href="#cap2">Anatomia: manifest, firma e implementazione</a></li>
  <li><a href="#cap3">Il manifesto: il biglietto da visita</a></li>
  <li><a href="#cap4">Il recinto: cosa pu&ograve; fare e cosa no</a></li>
  <li><a href="#cap5">La vita di un executor</a></li>
  <li><a href="#cap6">Le quattro origini: a mano, generato, importato, di sistema</a></li>
- <li><a href="#cap7">Tre esempi concreti</a></li>
+ <li><a href="#cap7">Quattro esempi concreti</a></li>
  <li><a href="#cap8">Per andare pi&ugrave; a fondo</a></li>
 </ol>
 </div>
@@ -128,9 +123,10 @@ Vedi anche <a href="agent_runtime.html" style="color: #14532d; text-decoration: 
 <h1 id="cap1">1. Cos'&egrave; un executor (in trenta secondi)</h1>
 
 <p class="lead">
-Un executor &egrave; una piccola utilit&agrave; specializzata che fa <strong>una cosa sola</strong>:
-legge la posta, cerca un file, scatta una foto dell'orologio, manda un messaggio.
-Vive da solo, in una sua cartella, e parla con Metnos attraverso un contratto preciso.
+Un executor &egrave; una piccola unit&agrave; operativa specializzata che fa
+<strong>una cosa sola</strong>: legge la posta, cerca un file, ottiene l'ora,
+manda un messaggio. Quelli eseguiti come sottoprocesso hanno una propria
+cartella; quelli interni al processo conservano lo stesso contratto logico.
 </p>
 
 <p>
@@ -190,19 +186,24 @@ Le tre cose che lo definiscono sono:
 <ul>
  <li><strong>fa una cosa sola</strong> &mdash; tutta la sua vita gira intorno a un compito ristretto;</li>
  <li><strong>ha un contratto</strong> &mdash; dichiara cosa accetta in entrata e cosa restituisce;</li>
- <li><strong>vive in un recinto</strong> &mdash; pu&ograve; toccare solo certe cartelle, certi indirizzi di rete, certi servizi.</li>
+ <li><strong>ha un ambito dichiarato</strong> &mdash; indica cartelle, rete e servizi di cui ha bisogno; il runtime applica i controlli disponibili.</li>
 </ul>
 
-<div class="callout tip">
-<strong>Perch&eacute; cos&igrave; piccoli?</strong> Pi&ugrave; un attrezzo fa cose, pi&ugrave; &egrave; difficile fidarsi di lui. Se un executor cancella i file e manda mail, non lo si pu&ograve; usare in un workflow automatico senza paura. Tagliando per "una cosa sola", Metnos pu&ograve; comporli a piacere senza temere effetti a sorpresa.
-</div>
+<h2>Perché gli executor sono piccoli</h2>
+<p>Più compiti riunisce uno strumento, più diventa difficile verificarne
+contratto, autorizzazioni ed effetti. Separare la cancellazione dei file
+dall'invio di posta rende ogni passaggio leggibile e controllabile. Quando
+Metnos compone più executor, il piano e ciascuna esecuzione conservano i
+propri controlli.</p>
 
 <!-- ============================================================== -->
-<h1 id="cap2">2. Anatomia: quattro file nella cartella</h1>
+<h1 id="cap2">2. Anatomia: manifest, firma e implementazione</h1>
 
 <p>
-Un executor &egrave; una cartella sul disco. Dentro ci sono al massimo quattro file,
-ognuno con un mestiere. Niente di pi&ugrave;.
+Gli executor distribuiti nel catalogo principale usano normalmente una
+cartella piatta con quattro file. Il contratto, per&ograve;, non impone il numero
+quattro: il manifest pu&ograve; elencare pi&ugrave; file di codice e gli executor interni al
+processo conservano il contratto firmato separato dall'implementazione.
 </p>
 
 <figure>
@@ -235,31 +236,33 @@ ognuno con un mestiere. Niente di pi&ugrave;.
  </g>
 
  <!-- legend -->
- <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">quattro file, niente di pi&ugrave;</text>
+ <text x="660" y="40" text-anchor="end" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748B" font-style="italic">struttura comune del catalogo distribuito</text>
 </svg>
-<figcaption>La cartella di un executor: tre file obbligatori (manifesto, firma, codice), uno facoltativo per le traduzioni, tutti piatti dentro la cartella.</figcaption>
+<figcaption>La struttura usata dagli executor distribuiti: manifest, firma,
+entry point e stato delle traduzioni. Il manifest resta la fonte autorevole
+per i file di codice firmati.</figcaption>
 </figure>
 
 <p>
-I tre file obbligatori sono il cuore. Il codice fa il lavoro. Il manifesto descrive il
-codice in modo che il pianificatore possa decidere se usarlo. La firma dimostra che
-il manifesto non &egrave; stato manomesso da quando l'autore l'ha scritto.
+Per un executor attivo eseguito come sottoprocesso, manifest, firma e codice
+formano il nucleo. Il codice fa il lavoro; il manifest permette al
+pianificatore di valutarne il contratto; la verifica crittografica rileva
+modifiche successive alla firma.
 </p>
 
 <table>
 <tr><th>File</th><th>Cosa contiene</th><th>Chi lo legge</th></tr>
-<tr><td><code>manifest.toml</code></td><td>Nome, descrizione, argomenti, esempi, schema dell'output, profilo del recinto</td><td>il pianificatore (per scegliere), il loader (per caricare)</td></tr>
-<tr><td><code>manifest.toml.sig</code></td><td>Firma Ed25519 del manifesto in byte</td><td>il loader, all'avvio del catalogo</td></tr>
-<tr><td><code>&lt;nome&gt;.py</code></td><td>Una funzione <code>invoke(args)</code> che fa il lavoro</td><td>il runtime, quando l'attrezzo viene chiamato</td></tr>
-<tr><td><code>manifest.lang_state.json</code></td><td>Hash delle descrizioni per lingua (per il sistema di traduzione)</td><td>il daemon di traduzione notturno</td></tr>
+<tr><td><code>manifest.toml</code></td><td>Nome, descrizione, argomenti, esempi, schema dell'output, capacità dichiarate e policy di esecuzione</td><td>il pianificatore (per scegliere), il loader (per caricare)</td></tr>
+<tr><td><code>manifest.toml.sig</code></td><td>Firma Ed25519 dei byte del manifest; il manifest contiene anche l'impronta dei file di codice</td><td>il loader, durante l'ammissione al catalogo</td></tr>
+<tr><td><code>&lt;entrypoint&gt;.py</code></td><td>Il punto d'ingresso del sottoprocesso; altri file possono essere dichiarati in <code>[code].files</code></td><td>il runtime, quando l'executor viene invocato</td></tr>
+<tr><td><code>manifest.lang_state.json</code></td><td>Impronte delle descrizioni per lingua</td><td>gli strumenti che mantengono allineate le traduzioni</td></tr>
 </table>
 
-<div class="callout note">
-Niente sotto-cartelle, niente pacchetti Python con import incrociati, niente requirements.txt.
-Un executor sta in una cartella piatta. La libreria che usa &egrave; quella standard di Python o
-quella gi&agrave; installata nel sistema. Pi&ugrave; isolato &egrave;, pi&ugrave; facile &egrave; firmarlo, caricarlo, eseguirlo,
-spostarlo su un'altra macchina. Vedi <a href="sandbox.html">sandbox</a> per il dettaglio.
-</div>
+<p>Il loader non deduce il contratto dalla forma della cartella: legge il
+manifest, verifica standard, firma e impronta del codice, controlla l'entry
+point e soltanto allora ammette l'executor. I contratti degli executor interni
+al processo si trovano in <code>runtime/builtin_executor_contracts/</code> e
+subiscono la stessa verifica crittografica.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap3">3. Il manifesto: il biglietto da visita</h1>
@@ -347,6 +350,30 @@ successivo) e a chi genera codice in automatico.
 </p>
 
 <p>
+Quando un dato non deve essere attenuato dalla prosa generata, l'executor può
+restituire anche una <code>authoritative_presentation</code> con un ambito
+semantico chiuso: per esempio un conteggio esatto o un insieme di duplicati
+verificati. Il runtime usa questi frammenti soltanto se coprono tutti i passi
+produttivi del turno; negli altri casi conserva il normale compositore finale.
+Il limite di visualizzazione resta così distinto dal lavoro svolto: un frammento
+può dichiarare completa una scansione solo se l'executor attesta anche la
+completezza della sorgente. Il frammento sostituisce il normale avviso di
+troncamento soltanto quando questa composizione integrale riesce per l'intero
+turno: un passo coperto non può nascondere il limite di una pipeline che, nel
+suo insieme, non è coperta.
+</p>
+
+<p>
+Gli identificativi possono inoltre richiedere un contesto di origine dichiarato
+nel manifest. Una lista può proiettare <code>entries[*].uid</code> tramite
+<code>from_entries_key</code>; proprietà scalari come account e cartella di
+origine possono dichiarare un <code>from_entries_required</code> condizionale.
+La proiezione accetta questi valori soltanto se tutte le righe concordano. Una
+chiamata diretta deve fornire esplicitamente lo stesso contesto applicabile; se
+manca, il punto unico di invocazione la rifiuta prima di qualunque effetto.
+</p>
+
+<p>
 <strong>I permessi</strong> (<code>capabilities</code>): non &egrave; il manifesto a stabilire
 cosa l'executor pu&ograve; fare. Il manifesto <em>dichiara</em> di cosa avrebbe bisogno per
 funzionare; poi il sistema decide se concedere quei permessi e con che vincoli.
@@ -365,161 +392,125 @@ lo stesso binding abilita rete, home delle credenziali in lettura-scrittura e
 collocazione sul server. Un valore arbitrario in <code>client</code> non concede nulla.
 </p>
 
-<div class="callout note">
-<strong>Perch&eacute; TOML e non JSON?</strong> Il TOML &egrave; pensato per essere letto e scritto
-a mano, anche con commenti. Un manifesto &egrave; un documento di lavoro: l'autore lo scrive,
-qualcuno lo rivede, ogni tanto va aggiornato. JSON sarebbe pi&ugrave; rigido e meno leggibile.
-</div>
+<h2>Una sola politica di esecuzione</h2>
+
+<p>
+Ogni invocazione passa da uno scheduler centrale del runtime. Se la sezione
+<code>[execution]</code> manca, &egrave; incompleta o non &egrave; valida, il loader sceglie
+sempre la modalit&agrave; seriale. Il parallelismo &egrave; quindi una propriet&agrave;
+<em>opt-in</em> del contratto firmato, ammessa soltanto dopo test ripetuti di
+equivalenza fra esecuzione seriale e concorrente.
+</p>
+
+<table>
+<thead><tr><th>Classe</th><th>Significato portabile</th><th>Comportamento</th></tr></thead>
+<tbody>
+<tr><td><code>0</code></td><td>Nessun thread</td><td>Resta sul thread del chiamante.</td></tr>
+<tr><td><code>1</code></td><td>Moderata</td><td>Usa una quota contenuta del pool centrale.</td></tr>
+<tr><td><code>2</code></td><td>Alta</td><td>Richiede pi&ugrave; concorrenza, entro i limiti della risorsa.</td></tr>
+<tr><td><code>3</code></td><td>Massima</td><td>&Egrave; comunque limitata da hardware, backend e tetti globali.</td></tr>
+</tbody>
+</table>
+
+<p>
+All'avvio il runtime osserva le CPU visibili e il limite operativo
+<code>max_workers</code>, e stabilisce un solo tetto per l'istanza. La classe
+firmata &egrave; una <strong>riduzione di quel tetto</strong>, non un numero fisso di
+thread: il singolo executor pu&ograve; soltanto ridurre l'assegnazione in base alla
+quantit&agrave; di lavoro o al profilo di I/O. Applica nello stesso punto code limitate,
+backpressure, pool per risorsa e metriche, senza cambiare argomenti, risultati,
+ordine causale, permessi o criteri di successo. Un executor non di sola lettura
+pu&ograve; dichiarare una classe positiva, ma deve anche fornire un'identit&agrave; di
+concorrenza verificabile; invocazioni sulla stessa identit&agrave; restano seriali.
+</p>
+
+<p>
+Gli executor che usano un LLM seguono la stessa regola. All'avvio, framework e
+hardware determinano il tetto della risorsa LLM: un backend a singolo slot
+degrada a classe 0, mentre un backend con batching pu&ograve; ammettere pi&ugrave; richieste.
+Non esistono pool concorrenti indipendenti nascosti nei singoli executor.
+</p>
+
+<p>
+Le ricerche ricorsive sul filesystem usano un visitor comune: le directory
+formano una coda dinamica, i worker liberi prendono il prossimo ramo e i
+risultati vengono riordinati prima di applicare un limite. Per esempio, la
+ricerca dei duplicati confronta prima dimensione e campioni, poi calcola
+SHA-256 completo sui soli candidati; il limite di visualizzazione non riduce
+l'insieme confrontato.
+</p>
+
+<h2>Perché il contratto usa TOML</h2>
+<p>Il manifest deve poter essere letto, commentato e aggiornato durante una
+revisione. TOML conserva questa leggibilità senza rinunciare a una struttura
+che il loader può convalidare in modo rigoroso.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap4">4. Il recinto: cosa pu&ograve; fare e cosa no</h1>
 
 <p>
-Un executor non gira a piede libero sul sistema. Vive dentro un recinto, costruito
-proprio sui permessi che il suo manifesto dichiara. Il recinto stabilisce: cosa pu&ograve;
-leggere sul disco, cosa pu&ograve; scrivere, con quali macchine pu&ograve; parlare in rete,
-quali file di sistema sono comunque off limits anche se l'executor li chiedesse.
-</p>
-
-<figure>
-<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anelli concentrici di permessi: codice, workspace, area di lettura, off-limits">
- <!-- forbidden ring (outermost) -->
- <circle cx="360" cy="180" r="170" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
- <text x="360" y="48" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#7f1d1d">off limits per tutti (chiavi, /etc/shadow,...)</text>
-
- <!-- read area -->
- <circle cx="360" cy="180" r="135" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
- <text x="360" y="80" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#92400e">area di sola lettura concessa dal manifesto</text>
-
- <!-- workspace -->
- <circle cx="360" cy="180" r="95" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
- <text x="360" y="115" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#166534">workspace: legge e scrive qui</text>
-
- <!-- code -->
- <circle cx="360" cy="180" r="55" fill="white" stroke="#1A477A" stroke-width="2"/>
- <text x="360" y="178" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#1A477A">codice</text>
- <text x="360" y="195" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#1A477A">invoke(args)</text>
-
- <!-- arrows / gradient labels -->
- <text x="360" y="340" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9.5" font-style="italic" fill="#64748B">pi&ugrave; ti allontani dal centro, meno cose puoi fare</text>
-</svg>
-<figcaption>Il recinto come anelli concentrici. Al centro il codice. Subito intorno la zona di lavoro (legge e scrive). Pi&ugrave; fuori, cose che pu&ograve; <em>solo</em> leggere. All'esterno, ci&ograve; che &egrave; off limits per tutti, anche per chi avesse i permessi giusti.</figcaption>
-</figure>
-
-<p>
-La regola d'oro &egrave; semplice: <strong>il recinto &egrave; sempre pi&ugrave; stretto del manifesto</strong>.
-Se un manifesto chiede di leggere <code>/home</code>, il recinto pu&ograve; comunque tagliare la
-richiesta a <code>/home/user/notes</code>. Se chiede di parlare con qualunque dominio,
-il recinto pu&ograve; limitare a <code>imap.example.com</code>. La differenza &egrave; importante:
-il manifesto &egrave; quello che l'autore <em>sperava</em>, il recinto &egrave; quello che il sistema
-<em>ha deciso</em> dopo aver visto chi lo invoca, in che contesto, con che livello di
-fiducia.
+Il manifest dichiara le capacit&agrave; massime richieste dall'executor. Prima
+dell'invocazione il runtime controlla gli argomenti concreti, risolve le sole
+risorse necessarie e applica i controlli di identit&agrave;, Vaglio e policy. La
+sandbox &egrave; un ulteriore livello di contenimento; non concede autorizzazioni e
+non sostituisce quei controlli.
 </p>
 
 <table>
-<tr><th>Cosa</th><th>Dove sta scritta</th></tr>
-<tr><td>Cosa l'executor <em>vorrebbe</em> poter fare</td><td>nel manifesto, blocco <code>capabilities</code></td></tr>
-<tr><td>Cosa <em>davvero</em> pu&ograve; fare nel turno corrente</td><td>nel recinto applicato dal sandbox al momento dell'invocazione</td></tr>
-<tr><td>Cosa nessuno pu&ograve; fare, mai</td><td>nelle "regole del nucleo", non negoziabili</td></tr>
+<tr><th>Livello</th><th>Comportamento corrente sul server</th></tr>
+<tr><td>Contratto</td><td><code>capabilities</code>, collocazione, piattaforme e politica di esecuzione provengono dal manifest firmato.</td></tr>
+<tr><td>Controlli applicativi</td><td>Gli argomenti possono restringere un ambito firmato, mai ampliarlo; identit&agrave;, consenso e destinazione vengono verificati prima del sottoprocesso.</td></tr>
+<tr><td>Bubblewrap attivo</td><td>Codice e runtime sono in sola lettura, <code>/tmp</code> &egrave; privato, le risorse dati sono montate con l'accesso necessario e la rete viene separata quando nessuna capacit&agrave; la richiede.</td></tr>
+<tr><td>Bubblewrap assente o disabilitato</td><td>Restano i controlli applicativi, ma il comando gira direttamente: non va descritto come isolamento del sistema operativo.</td></tr>
 </table>
 
-<div class="callout warning">
-<strong>Esempio pratico.</strong> Se un executor che dovrebbe leggere PDF di fatture cercasse
-di aprire <code>/etc/shadow</code> (il file delle password di sistema), succederebbe questo:
-il manifesto non chiede quel permesso, il sandbox lo intercetta e lo rifiuta, l'executor riceve
-un errore di "permesso negato". Anche se per un attimo il codice fosse compromesso, non c'&egrave;
-modo di uscire dal recinto.
-</div>
+<p>La rete &egrave; attualmente binaria: quando serve, il processo eredita la rete
+dell'host; non viene applicata una lista di domini. Alcune radici di sistema,
+fra cui <code>/etc</code>, sono visibili in sola lettura. Per montaggi, eccezioni,
+declassamenti e differenze fra Linux, Windows e macOS, vedi la guida alla
+<a href="sandbox.html">sandbox</a>.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap5">5. La vita di un executor</h1>
 
 <p>
-Un executor non nasce attivo e non rimane attivo per sempre. Attraversa una serie di
-stati che il sistema gestisce automaticamente. Capire questi stati aiuta a leggere il
-catalogo: se un attrezzo non viene scelto pi&ugrave;, magari &egrave; perch&eacute; &egrave; passato in quarantena,
-non perch&eacute; sia rotto.
+Il campo <code>lifecycle</code> separa i candidati dagli executor disponibili
+al pianificatore. Non descrive una sequenza obbligatoria per ogni origine: gli
+executor distribuiti e revisionati possono nascere direttamente come
+<code>active</code>, mentre i candidati di Synt attraversano i passaggi di
+preparazione e ammissione.
 </p>
-
-<figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Stati del ciclo di vita di un executor">
- <defs>
- <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
- <path d="M0,0 L10,5 L0,10 Z" fill="#64748B"/>
- </marker>
- </defs>
-
- <!-- proposed -->
- <ellipse cx="100" cy="80" rx="65" ry="32" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
- <text x="100" y="78" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#92400e">proposto</text>
- <text x="100" y="94" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#7c2d12">solo manifesto</text>
-
- <!-- synthesized -->
- <ellipse cx="280" cy="80" rx="75" ry="32" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
- <text x="280" y="78" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#1e40af">sintetizzato</text>
- <text x="280" y="94" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#1e40af">codice + test verdi</text>
-
- <!-- active -->
- <ellipse cx="480" cy="80" rx="65" ry="32" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
- <text x="480" y="78" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#14532d">attivo</text>
- <text x="480" y="94" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#14532d">in pool, firmato</text>
-
- <!-- deprecated -->
- <ellipse cx="480" cy="200" rx="75" ry="32" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
- <text x="480" y="198" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#92400e">in quarantena</text>
- <text x="480" y="214" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#92400e">recuperabile entro 24h</text>
-
- <!-- archived -->
- <ellipse cx="650" cy="200" rx="60" ry="32" fill="#f0f4f8" stroke="#64748B" stroke-width="1.5"/>
- <text x="650" y="198" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#334155">archiviato</text>
- <text x="650" y="214" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#334155">fuori dal pool</text>
-
- <!-- arrows -->
- <line x1="165" y1="80" x2="200" y2="80" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr2)"/>
- <line x1="358" y1="80" x2="412" y2="80" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr2)"/>
- <line x1="480" y1="115" x2="480" y2="165" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr2)"/>
- <line x1="555" y1="200" x2="585" y2="200" stroke="#64748B" stroke-width="1.5" marker-end="url(#arr2)"/>
- <!-- back arrow from quarantena to active -->
- <path d="M 425 185 Q 380 130 425 105" fill="none" stroke="#64748B" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arr2)"/>
- <text x="370" y="155" font-family="Segoe UI, sans-serif" font-size="9" font-style="italic" fill="#64748B">recupero</text>
-
- <!-- legend -->
- <text x="100" y="155" font-family="Segoe UI, sans-serif" font-size="9" font-style="italic" fill="#64748B" text-anchor="middle">solo i sintetizzati passano da qui</text>
- <text x="280" y="155" font-family="Segoe UI, sans-serif" font-size="9" font-style="italic" fill="#64748B" text-anchor="middle">passa quando il loader li approva</text>
-</svg>
-<figcaption>Il ciclo di vita di un executor. La maggior parte dei seed (scritti a mano) parte direttamente da <em>attivo</em>; quelli generati al volo dal Synt passano prima da <em>proposto</em> e <em>sintetizzato</em>. Da <em>attivo</em> si esce per quarantena (ad esempio se un altro executor lo rimpiazza); dopo 24 ore senza recupero, archiviazione definitiva.</figcaption>
-</figure>
 
 <table>
 <tr><th>Stato</th><th>Significato</th><th>&Egrave; in pool?</th></tr>
-<tr><td>proposto</td><td>esiste solo il manifesto, manca il codice</td><td>no</td></tr>
-<tr><td>sintetizzato</td><td>codice presente e test verdi, in attesa di firma</td><td>no</td></tr>
-<tr><td>attivo</td><td>firmato e visibile al pianificatore</td><td>s&igrave;</td></tr>
-<tr><td>in quarantena</td><td>rimpiazzato da un altro o sospetto, ma recuperabile</td><td>visibile in audit, escluso dalle nuove scelte</td></tr>
-<tr><td>archiviato</td><td>fuori dal sistema; resta solo per l'audit storico</td><td>no</td></tr>
+<tr><td><code>proposed</code></td><td>Metadati di triage senza file di codice; se dichiara codice, il loader lo rifiuta.</td><td>No; visibile soltanto alle superfici di lavoro e audit.</td></tr>
+<tr><td><code>synthesized</code></td><td>Candidato con codice. Quando la verifica delle firme &egrave; attiva deve gi&agrave; superare firma, impronta ed entry point, ma non &egrave; ancora ammesso al composer.</td><td>No; disponibile al percorso Synt.</td></tr>
+<tr><td><code>active</code></td><td>Contratto ammesso e visibile al pianificatore.</td><td>S&igrave;, salvo disabilitazione o dormienza per prerequisiti mancanti.</td></tr>
+<tr><td><code>deprecated</code></td><td>Escluso dalle nuove composizioni; resta indicizzato in forma compatta per diagnosi e sostituzione.</td><td>No.</td></tr>
+<tr><td><code>archived</code></td><td>Escluso dal catalogo operativo; lo stato resta nel registro di durata.</td><td>No.</td></tr>
 </table>
 
-<div class="callout note">
-<strong>Perch&eacute; la quarantena e non l'eliminazione diretta?</strong> Perch&eacute; capita che un executor
-nuovo che doveva sostituirne uno vecchio si riveli imperfetto. Tenendo il vecchio per
-ventiquattr'ore in panchina, si pu&ograve; tornare indietro senza fatica. &Egrave; un meccanismo
-di sicurezza analogo al cestino del file manager.
-</div>
+<p>L'invecchiamento automatico per inattivit&agrave; riguarda soltanto gli executor
+generati da Synt: dopo 30 giorni senza uso diventano <code>deprecated</code> e,
+dopo altri 14 giorni in quello stato, <code>archived</code>. Gli executor curati
+a mano, quelli importati come skill e i nomi protetti non vengono ritirati per
+il solo fatto di essere usati di rado. Le soglie sono configurabili e il
+ripristino richiede un'azione esplicita.</p>
 
 <!-- ============================================================== -->
 <h1 id="cap6">6. Le quattro origini: a mano, generato, importato, di sistema</h1>
 
 <p>
-Tutti gli executor hanno la stessa anatomia esterna, ma nascono in quattro
+Tutti gli executor espongono lo stesso contratto logico, ma nascono in quattro
 modi diversi. La distinzione non &egrave; cosmetica: cambia chi li scrive, dove
-vivono sul disco, e da dove provengono le idee che li abitano.
+vivono e quale provenienza viene registrata.
 </p>
 
 <div class="four-cols">
  <div>
  <h4 style="color:#A0522D;">Scritti a mano</h4>
  <p style="color:#444;">L'autore li compone con pazienza. Sono il nucleo stabile, il <em>seed</em> da cui parte tutto.</p>
- <p><strong>Cartella</strong>: <code>/opt/metnos/executors/</code></p>
+ <p><strong>Cartella</strong>: <code>executors/</code> nell'installazione.</p>
  <p><strong>Esempi</strong>: <code>get_now</code>, <code>find_files</code>, <code>read_messages</code>, <code>send_messages</code>.</p>
  <p style="color:#64748B;font-style:italic;">Stretti, robusti, rivisti pi&ugrave; volte.</p>
  </div>
@@ -527,32 +518,32 @@ vivono sul disco, e da dove provengono le idee che li abitano.
  <h4 style="color:#3b82f6;">Generati al volo</h4>
  <p style="color:#444;">Quando il catalogo non copre una richiesta, il <a href="synt.html">Synt</a> compone un nuovo executor con cinque passi (nome, contratto, prove, descrizione, codice).</p>
  <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/</code></p>
- <p><strong>Esempi</strong>: specializzazioni o generalizzazioni di seed esistenti.</p>
+ <p><strong>Esempio</strong>: un candidato ristretto preparato, su richiesta governata, quando il catalogo non copre una capacit&agrave; necessaria.</p>
  <p style="color:#64748B;font-style:italic;">Tenuti separati: non possono mai fare ombra ai seed scritti a mano.</p>
  </div>
  <div>
  <h4 style="color:#9333ea;">Importati da skill esterna</h4>
- <p style="color:#444;">Una skill pubblica (es. da <code>agentskills.io</code>) descrive in italiano l'uso di un servizio terzo. Un traduttore deterministico la converte in uno o pi&ugrave; executor Metnos.</p>
+ <p style="color:#444;">Una skill pubblica descrive l'uso di un servizio terzo. Il parser e la mappatura deterministica nel vocabolario chiuso la convertono in uno o pi&ugrave; executor Metnos.</p>
  <p><strong>Cartella</strong>: <code>~/.local/share/metnos/executors/skills/</code></p>
  <p><strong>Esempi</strong>: <code>read_events</code>, <code>set_events</code>, <code>delete_events</code> (da una skill calendario).</p>
  <p style="color:#64748B;font-style:italic;">Stessi controlli di un generato: niente trattamento di favore per il fatto di venire da fuori.</p>
  </div>
  <div>
  <h4 style="color:#16a34a;">Di sistema (builtin)</h4>
- <p style="color:#444;">Servizi interni del runtime. Non hanno cartella propria, vivono dentro Metnos.</p>
- <p><strong>Cartella</strong>: <code>runtime/system/</code></p>
- <p><strong>Esempi</strong>: <code>undo_last_turn</code>, <code>scheduler</code>, <code>admin</code>.</p>
+ <p style="color:#444;">Servizi interni eseguiti nel processo. L'implementazione vive nel runtime e il contratto firmato resta separato.</p>
+ <p><strong>Contratti</strong>: <code>runtime/builtin_executor_contracts/</code></p>
+ <p><strong>Esempi</strong>: <code>admin</code>, <code>create_tasks</code>, <code>list_skills</code>, <code>describe_images</code>.</p>
  <p style="color:#64748B;font-style:italic;">Servizi del sistema, non attrezzi normali.</p>
  </div>
 </div>
 
-<div class="callout tip">
-<strong>Una regola che salva da mille grattacapi.</strong> Un executor non scritto
-a mano &mdash; che sia generato o importato &mdash; non pu&ograve; mai prendere lo stesso
-nome di uno scritto a mano. Se ci prova, il loader lo rifiuta e lo sposta in una
-cartella di scarto. Cos&igrave; il nucleo curato a mano non viene mai inghiottito da
-una composizione automatica n&eacute; da una skill di terzi.
-</div>
+<h2>Precedenza del catalogo curato</h2>
+<p>Un executor generato o importato non può usare il nome di un executor
+scritto a mano. L'ammissione rifiuta la collisione; se questa viene rilevata
+durante il caricamento, il catalogo conserva l'executor curato e sposta la
+cartella sintetizzata in un'area temporanea recuperabile. Una generazione o
+una skill di terzi non può quindi sostituire silenziosamente il nucleo del
+catalogo.</p>
 
 <h2>Perch&eacute; l'origine importata esiste</h2>
 
@@ -571,25 +562,25 @@ Il vantaggio: ogni servizio gi&agrave; documentato come skill (calendario di Goo
 posta, drive di archiviazione,...) si pu&ograve; portare in Metnos senza riscriverlo
 da capo. Lo svantaggio: bisogna fidarsi di chi ha scritto la skill (e dei suoi
 script di supporto). Per questo l'importatore non installa nulla in
-<code>/opt/metnos/executors/</code>: gli executor importati vivono in una cartella
+<code>executors/</code>: gli executor importati vivono nella directory dati
 separata, sotto sorveglianza, e passano comunque dal <a href="vaglio.html">vaglio</a>
 prima di ogni chiamata.
 </p>
 
 <p>
-Un dettaglio operativo: gli executor importati che hanno bisogno di credenziali
-(una chiave di una API esterna, il file di sessione di un account) non se le
-inventano. La prima volta che li chiami, ti aprono una finestra di dialogo, ti
-chiedono il dato mancante, lo cifrano in una cassaforte locale, e proseguono.
-Le chiamate successive trovano la credenziale gi&agrave; al suo posto. Niente
-password nel codice, niente file di configurazione da modificare a mano.
+Un dettaglio operativo: un executor che richiede credenziali resta
+<em>dormant</em> e viene escluso dal pool finch&eacute; i prerequisiti non sono
+disponibili. Il flusso di configurazione pu&ograve; raccogliere i dati con un dialogo
+e conservarli cifrati; non &egrave; corretto promettere che qualunque prima chiamata
+possa sempre proseguire da sola. Vedi la guida allo
+<a href="skill_importer.html">skill importer</a> per i casi ammessi.
 </p>
 
 <!-- ============================================================== -->
-<h1 id="cap7">7. Tre esempi concreti</h1>
+<h1 id="cap7">7. Quattro esempi concreti</h1>
 
 <p>
-Vediamo tre executor realmente in uso, raccontati da fuori. Niente codice sorgente:
+Vediamo quattro executor realmente in uso, raccontati da fuori. Niente codice sorgente:
 solo cosa chiedi e cosa ottieni.
 </p>
 
@@ -655,7 +646,7 @@ risposta: { ok: true,
  metadata: { count_a: 4, count_b: 5, count_out: 0 } }</pre>
 
 <p>
-Le operazioni disponibili sono cinque. <code>intersect</code> tiene
+Le operazioni disponibili sono sei. <code>intersect</code> tiene
 solo le entries presenti in entrambe le liste (il confronto avviene su
 una chiave indicata, ad esempio il percorso del file).
 <code>union</code> unisce le due liste eliminando i duplicati.
@@ -664,7 +655,8 @@ una chiave indicata, ad esempio il percorso del file).
 solo in A o solo in B). <code>overlap</code> &egrave; un&rsquo;operazione
 temporale: tiene gli eventi di A che cadono in un intervallo
 sovrapposto a qualche evento di B, riconoscendo da solo i campi di
-inizio e fine.
+inizio e fine. <code>delta</code> individua invece elementi nuovi o avanzati
+rispetto a una lista di riferimento e viene usato nei monitor incrementali.
 </p>
 
 <p>
@@ -683,21 +675,24 @@ introdurre verbi nuovi.
 <h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a un familiare"</h2>
 
 <p>
-Spedisce uno o pi&ugrave; messaggi via Telegram (oggi) o via email (in arrivo). Argomento
+Spedisce uno o pi&ugrave; messaggi via Telegram o email. Argomento
 principale: una lista di messaggi, ognuno con destinatario e testo.
 </p>
 
 <pre>chiamata: send_messages(messages=[
- {to_user: "famiglia", body: "Sono uscito, torno alle 7."}
+ {to_user: "lucia", body: "Sono uscito, torno alle 7."}
  ])
 risposta: { ok: true, ok_count: 1, fail_count: 0,
- results: [{to_user: "famiglia", channel: "telegram", message_id: "abc123"}] }</pre>
+ results: [{to_user: "lucia", channel: "telegram", message_id: "abc123"}] }</pre>
 
 <p>
 Un attrezzo "trasformativo": modifica il mondo, manda davvero un messaggio. Per questo
 gli executor che cambiano qualcosa al mondo vengono trattati con pi&ugrave; cautela: il loro
-manifesto dichiara permessi pi&ugrave; ampi (<code>net:write</code>), passano da un controllo
-prima dell'esecuzione, e il loro effetto resta tracciato in modo da poterlo annullare.
+manifesto dichiara le capacit&agrave; <code>mail:send</code> e
+<code>channel:out</code>, e la destinazione viene risolta rispetto all'utente e
+al canale associati. L'invio &egrave; tracciato, ma non &egrave; annullabile: il manifest
+dichiara infatti <code>revertible=false</code>. I controlli devono quindi
+precedere la consegna.
 Vedi <a href="vaglio.html">vaglio</a> per i controlli pre-esecuzione e
 <a href="approval_ux.html">approval_ux</a> per come si chiede conferma all'utente.
 </p>
@@ -727,19 +722,10 @@ i documenti seguenti vanno letti uno alla volta.
 </table>
 
 <p>
-Per le decisioni di progetto (perch&eacute; questa scelta e non quella) &egrave; tenuto un registro
-in <code>/opt/metnos/decisions/</code>. Esempi: perch&eacute; gli executor generati stanno in una cartella diversa
-da quelli scritti a mano; come si chiede una password senza farla finire
-in chiaro nei log; come si fa l'indicizzazione di trentamila foto senza
-bloccare tutto il resto.
+Non occorre leggere queste guide in ordine. Parti dalla domanda concreta,
+segui i collegamenti pertinenti e fermati quando hai raggiunto il livello di
+dettaglio che ti serve.
 </p>
-
-<div class="callout tip">
-<strong>Il consiglio.</strong> Non leggere questi documenti in ordine. Parti dalla
-domanda concreta che ti interessa, segui i collegamenti, e fermati quando hai
-capito quello che ti serviva. Il corpus &egrave; pensato per la consultazione, non per la
-lettura lineare.
-</div>
 
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">

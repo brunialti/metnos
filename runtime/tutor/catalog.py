@@ -40,13 +40,17 @@ CATALOG_PATH = config.PATH_USER_DATA / "tutor_catalog.sqlite"
 SIGNATURE_PATH = config.PATH_USER_DATA / "tutor_catalog.sqlite.sig"
 BACKUP_PATH = config.PATH_USER_DATA / "tutor_catalog.last_good.json"
 LOCK_PATH = config.PATH_USER_STATE / "tutor_catalog.lock"
-SCHEMA_VERSION = 3
+BUILD_LOCK_PATH = config.PATH_USER_STATE / "tutor_catalog.build.lock"
+SCHEMA_VERSION = 5
 
 _PROCESS_LOCK = threading.RLock()
+_COMPILE_PROCESS_LOCK = threading.Lock()
+_VERIFY_LOCK = threading.RLock()
 _CACHE: tuple[str, tuple[Card, ...]] | None = None
 _VECTOR_CACHE: tuple[str, "VectorIndex"] | None = None
 _KNOWLEDGE_CACHE: tuple[str, tuple[KnowledgeUnit, ...]] | None = None
 _KNOWLEDGE_VECTOR_CACHE: tuple[str, "VectorIndex"] | None = None
+_VERIFY_CACHE: tuple[tuple[int, ...], bool] | None = None
 
 
 def _compiler_implementation_digest() -> str:
@@ -60,6 +64,9 @@ def _compiler_implementation_digest() -> str:
     paths = (
         Path(__file__).resolve(),
         REPO_ROOT / "runtime" / "published_docs.py",
+        REPO_ROOT / "runtime" / "tutor" / "probes.py",
+        REPO_ROOT / "runtime" / "tutor" / "probe_worker.py",
+        REPO_ROOT / "runtime" / "tutor" / "observation_views.py",
         REPO_ROOT / "runtime" / "tutor" / "sources.py",
         REPO_ROOT / "runtime" / "services_registry.py",
         REPO_ROOT / "runtime" / "ui_surfaces.py",
@@ -128,6 +135,17 @@ class VectorIndex:
     fingerprint: str
 
 
+@dataclass(frozen=True, slots=True)
+class CatalogSnapshot:
+    """One internally consistent admitted generation for a Tutor request."""
+
+    version: str
+    cards: tuple[Card, ...]
+    units: tuple[KnowledgeUnit, ...]
+    card_index: VectorIndex
+    knowledge_index: VectorIndex
+
+
 def _embedding_model_files() -> tuple[Path, ...]:
     """Resolve only the in-process text model used by ``get_local_embedder``.
 
@@ -183,7 +201,13 @@ def _source_files() -> tuple[Path, ...]:
 
 
 def input_stamp() -> str:
-    """Cheap rebuild identity: local file stats plus the admitted executor set."""
+    """Content identity for every source admitted to the Tutor compiler.
+
+    File size and mtime are deliberately insufficient here: generated docs,
+    restored files, and reproducible builds can preserve both while changing
+    the bytes.  Reading the complete source set (currently only a few MiB)
+    makes every documentation change invalidate the signed catalog.
+    """
 
     digest = hashlib.sha256()
     for path in _source_files():
@@ -191,13 +215,19 @@ def input_stamp() -> str:
         digest.update(len(encoded).to_bytes(4, "big"))
         digest.update(encoded)
         try:
-            stat = path.stat()
+            data = path.read_bytes()
         except OSError:
             digest.update(b"missing")
         else:
-            digest.update(stat.st_size.to_bytes(8, "big"))
-            digest.update(stat.st_mtime_ns.to_bytes(8, "big"))
-    for value in (embedding_fingerprint(), executor_catalog_stamp()):
+            digest.update(len(data).to_bytes(8, "big"))
+            digest.update(data)
+    # The projection code is part of the catalog input just as much as the
+    # documents and manifests are. Without this identity, a new compiler could
+    # admit an artifact produced by older projection rules merely because the
+    # authored text did not change.
+    for value in (
+            embedding_fingerprint(), executor_catalog_stamp(),
+            _compiler_implementation_digest()):
         encoded = value.encode("ascii")
         digest.update(len(encoded).to_bytes(4, "big"))
         digest.update(encoded)
@@ -235,6 +265,20 @@ def _catalog_lock(*, exclusive: bool):
         os.close(descriptor)
 
 
+@contextmanager
+def _build_lock():
+    """Serialize compilers without excluding readers of the live artifact."""
+
+    BUILD_LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(BUILD_LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
 def _signature(data: bytes) -> bytes:
     import sign
     private_path = sign.KEYS_DIR / f"{sign.DEFAULT_AUTHOR_KEY}_priv.bin"
@@ -248,21 +292,51 @@ def _signature(data: bytes) -> bytes:
 
 def _verify_bytes(data: bytes, signature: bytes) -> bool:
     import sign
-    for _name, public in sign.list_trusted_publics():
-        try:
-            public.verify(signature, data)
-            return True
-        except Exception:
-            continue
-    return False
+    try:
+        # Catalogs and executor manifests are different trust domains.  The
+        # catalog is authored only by the installation's named author key;
+        # adding an executor publisher must not authorize Tutor knowledge.
+        public = sign.load_public(sign.DEFAULT_AUTHOR_KEY)
+        public.verify(signature, data)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+    except Exception:
+        return False
+
+
+def _artifact_identity(path: Path, signature_path: Path) -> tuple[int, ...]:
+    values: list[int] = []
+    for candidate in (path, signature_path):
+        stat = candidate.stat()
+        values.extend((
+            int(stat.st_dev), int(stat.st_ino), int(stat.st_size),
+            int(stat.st_mtime_ns), int(stat.st_ctime_ns),
+        ))
+    return tuple(values)
 
 
 def verify_catalog(path: Path | None = None,
                    signature_path: Path | None = None) -> bool:
+    global _VERIFY_CACHE
     path = path or CATALOG_PATH
     signature_path = signature_path or SIGNATURE_PATH
+    live = path == CATALOG_PATH and signature_path == SIGNATURE_PATH
     try:
-        return _verify_bytes(path.read_bytes(), signature_path.read_bytes())
+        identity = _artifact_identity(path, signature_path)
+        if live:
+            with _VERIFY_LOCK:
+                if _VERIFY_CACHE is not None and _VERIFY_CACHE[0] == identity:
+                    return _VERIFY_CACHE[1]
+        valid = _verify_bytes(path.read_bytes(), signature_path.read_bytes())
+        # Do not cache a result across an in-place replacement observed while
+        # reading. Normal callers also hold the catalog's shared file lock.
+        if identity != _artifact_identity(path, signature_path):
+            return False
+        if live:
+            with _VERIFY_LOCK:
+                _VERIFY_CACHE = (identity, valid)
+        return valid
     except OSError:
         return False
 
@@ -454,6 +528,55 @@ def _embed_knowledge(units: tuple[KnowledgeUnit, ...]) -> tuple[
 def _build_candidate(path: Path, current_source_hash: str,
                      current_input_stamp: str,
                      knowledge: tuple[KnowledgeUnit, ...]) -> None:
+    from ui_surfaces import validate_surfaces
+    from .observation_views import (
+        catalog as observation_view_catalog,
+        registered_view_ids,
+        validate_views,
+    )
+
+    surface_findings = validate_surfaces()
+    if surface_findings:
+        raise ValueError(
+            "Tutor UI surface registry failed validation: "
+            + ", ".join(surface_findings))
+    view_findings = validate_views()
+    if view_findings:
+        raise ValueError(
+            "Tutor observation-view registry failed validation: "
+            + ", ".join(view_findings))
+    admitted_views = registered_view_ids()
+    unknown_views = sorted({
+        unit.observation_ref
+        for unit in knowledge
+        if unit.observation_ref and unit.observation_ref not in admitted_views
+    })
+    if unknown_views:
+        raise ValueError(
+            "Tutor knowledge references unregistered observation views: "
+            + ", ".join(unknown_views))
+    invalid_view_units = sorted(
+        unit.unit_id for unit in knowledge
+        if ((unit.observation_ref and unit.source_kind != "live_observation")
+            or (unit.source_kind == "live_observation"
+                and not unit.observation_ref))
+    )
+    if invalid_view_units:
+        raise ValueError(
+            "Tutor observation authority appears on invalid knowledge units: "
+            + ", ".join(invalid_view_units))
+    views_by_id = {view.view_id: view for view in observation_view_catalog()}
+    for view_id in admitted_views:
+        view_units = tuple(
+            unit for unit in knowledge
+            if unit.observation_ref == view_id
+            and unit.source_kind == "live_observation"
+        )
+        expected_languages = set(views_by_id[view_id].languages())
+        if (len(view_units) != len(expected_languages)
+                or {unit.lang for unit in view_units} != expected_languages):
+            raise ValueError(
+                f"Tutor observation view has incomplete signed units: {view_id}")
     cards = load_published()
     # Le schede sono fonti curate ad alta autorita', non piu' un seed set
     # F1 a cardinalita' fissa: il ritiro ratificato (RM-0003, tranche 1
@@ -518,10 +641,27 @@ def _metadata(path: Path) -> dict[str, str]:
         connection.close()
 
 
+def _remove_stale_candidates() -> int:
+    """Remove only interrupted candidates while holding the build lock."""
+    removed = 0
+    CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    for pattern in (
+            ".tutor_catalog.*.sqlite",
+            ".tutor_catalog.*.sqlite.sig"):
+        for path in CATALOG_PATH.parent.glob(pattern):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                continue
+            removed += 1
+    return removed
+
+
 def compile_catalog(*, force: bool = False) -> str:
     """Build if stale. A failed candidate leaves the admitted files intact."""
 
     global _CACHE, _VECTOR_CACHE, _KNOWLEDGE_CACHE, _KNOWLEDGE_VECTOR_CACHE
+    global _VERIFY_CACHE
     if _compiler_implementation_digest() != _LOADED_COMPILER_DIGEST:
         # Read-only stale processes may continue serving the admitted signed
         # generation, but only a process importing the current implementation
@@ -535,15 +675,37 @@ def compile_catalog(*, force: bool = False) -> str:
                 return str(metadata["source_hash"])
         raise RuntimeError("stale Tutor compiler process has no valid catalog")
     current_input_stamp = input_stamp()
-    with _PROCESS_LOCK, _catalog_lock(exclusive=True):
-        if not verify_catalog():
-            _restore_last_good()
-        if not force and verify_catalog():
+    # A dedicated compiler lock prevents duplicate builds while the catalog
+    # lock remains available to request readers.  Only recovery and the final
+    # atomic swap need to exclude readers.
+    with _COMPILE_PROCESS_LOCK, _build_lock():
+        stale_candidates = _remove_stale_candidates()
+        if stale_candidates:
+            log.info("removed %d interrupted Tutor catalog candidates",
+                     stale_candidates)
+        with _catalog_lock(exclusive=False):
+            admitted_valid = verify_catalog()
+            if admitted_valid:
+                try:
+                    admitted_metadata = _metadata(CATALOG_PATH)
+                except (OSError, sqlite3.Error):
+                    admitted_metadata = {}
+            else:
+                admitted_metadata = {}
+        if not admitted_valid:
+            with _catalog_lock(exclusive=True):
+                if not verify_catalog():
+                    _restore_last_good()
+                admitted_valid = verify_catalog()
+                admitted_metadata = (
+                    _metadata(CATALOG_PATH) if admitted_valid else {})
+        if not force and admitted_valid:
             try:
-                metadata = _metadata(CATALOG_PATH)
-                if (metadata.get("schema_version") == str(SCHEMA_VERSION)
-                        and metadata.get("input_stamp") == current_input_stamp):
-                    return str(metadata["source_hash"])
+                if (admitted_metadata.get("schema_version")
+                        == str(SCHEMA_VERSION)
+                        and admitted_metadata.get("input_stamp")
+                        == current_input_stamp):
+                    return str(admitted_metadata["source_hash"])
             except (OSError, sqlite3.Error):
                 pass
 
@@ -562,29 +724,44 @@ def compile_catalog(*, force: bool = False) -> str:
             load_published.cache_clear()
             _build_candidate(
                 candidate, current_source_hash, current_input_stamp, knowledge)
+            # Compilation is intentionally long on a fresh CPU-only install.
+            # Reject a candidate if either executable projection rules or any
+            # admitted source changed while its vectors were being produced.
+            if _compiler_implementation_digest() != _LOADED_COMPILER_DIGEST:
+                raise RuntimeError(
+                    "Tutor compiler changed during catalog build; "
+                    "candidate rejected")
+            if input_stamp() != current_input_stamp:
+                raise RuntimeError(
+                    "Tutor inputs changed during catalog build; "
+                    "candidate rejected")
             data = candidate.read_bytes()
             candidate_sig.write_bytes(_signature(data))
             os.chmod(candidate, 0o600)
             os.chmod(candidate_sig, 0o600)
             if not verify_catalog(candidate, candidate_sig):
                 raise ValueError("candidate tutor catalog signature invalid")
-            _save_last_good()
-            os.replace(candidate, CATALOG_PATH)
-            os.replace(candidate_sig, SIGNATURE_PATH)
-            directory_fd = os.open(CATALOG_PATH.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
-            # The admitted candidate has survived signature verification and
-            # atomic replacement; it is now the recovery point.  Keeping only
-            # the pre-swap generation would make the first schema-3 build fall
-            # back to an obsolete schema after corruption.
-            _save_last_good()
-            _CACHE = None
-            _VECTOR_CACHE = None
-            _KNOWLEDGE_CACHE = None
-            _KNOWLEDGE_VECTOR_CACHE = None
+            with _catalog_lock(exclusive=True):
+                _save_last_good()
+                os.replace(candidate, CATALOG_PATH)
+                os.replace(candidate_sig, SIGNATURE_PATH)
+                directory_fd = os.open(CATALOG_PATH.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+                # The admitted candidate has survived signature verification
+                # and atomic replacement; it is now the recovery point.
+                with _VERIFY_LOCK:
+                    _VERIFY_CACHE = None
+                _save_last_good()
+            with _PROCESS_LOCK:
+                _CACHE = None
+                _VECTOR_CACHE = None
+                _KNOWLEDGE_CACHE = None
+                _KNOWLEDGE_VECTOR_CACHE = None
+            with _VERIFY_LOCK:
+                _VERIFY_CACHE = None
             return current_source_hash
         finally:
             for leftover in (candidate, candidate_sig):
@@ -594,11 +771,33 @@ def compile_catalog(*, force: bool = False) -> str:
                     pass
 
 
+def admitted_catalog_version() -> str:
+    """Return the source hash of the already admitted generation.
+
+    This accessor and all request-time loaders are deliberately read-only.
+    Compilation belongs to install, deploy, and the explicit background build
+    command.  An absent or invalid catalog therefore has no usable version.
+    """
+
+    with _PROCESS_LOCK, _catalog_lock(exclusive=False):
+        if not verify_catalog():
+            return ""
+        try:
+            metadata = _metadata(CATALOG_PATH)
+        except (OSError, sqlite3.Error):
+            return ""
+    if metadata.get("schema_version") != str(SCHEMA_VERSION):
+        return ""
+    return str(metadata.get("source_hash") or "")
+
+
 def load_cards() -> tuple[Card, ...]:
     """Return only cards admitted by the signed read-only catalog."""
 
     global _CACHE
-    admitted_hash = compile_catalog()
+    admitted_hash = admitted_catalog_version()
+    if not admitted_hash:
+        raise ValueError("no signed Tutor catalog is admitted")
     with _PROCESS_LOCK:
         if _CACHE is not None and _CACHE[0] == admitted_hash:
             return _CACHE[1]
@@ -625,7 +824,9 @@ def load_knowledge_units() -> tuple[KnowledgeUnit, ...]:
     """Return only F2 units admitted by the signed read-only catalog."""
 
     global _KNOWLEDGE_CACHE
-    admitted_hash = compile_catalog()
+    admitted_hash = admitted_catalog_version()
+    if not admitted_hash:
+        raise ValueError("no signed Tutor catalog is admitted")
     with _PROCESS_LOCK:
         if (_KNOWLEDGE_CACHE is not None
                 and _KNOWLEDGE_CACHE[0] == admitted_hash):
@@ -656,7 +857,9 @@ def load_vector_index() -> VectorIndex:
     """Return the signed semantic matrix after strict shape validation."""
 
     global _VECTOR_CACHE
-    admitted_hash = compile_catalog()
+    admitted_hash = admitted_catalog_version()
+    if not admitted_hash:
+        raise ValueError("no signed Tutor catalog is admitted")
     with _PROCESS_LOCK:
         if _VECTOR_CACHE is not None and _VECTOR_CACHE[0] == admitted_hash:
             return _VECTOR_CACHE[1]
@@ -718,7 +921,9 @@ def load_knowledge_vector_index() -> VectorIndex:
     """Return the signed F2 semantic matrix after strict validation."""
 
     global _KNOWLEDGE_VECTOR_CACHE
-    admitted_hash = compile_catalog()
+    admitted_hash = admitted_catalog_version()
+    if not admitted_hash:
+        raise ValueError("no signed Tutor catalog is admitted")
     with _PROCESS_LOCK:
         if (_KNOWLEDGE_VECTOR_CACHE is not None
                 and _KNOWLEDGE_VECTOR_CACHE[0] == admitted_hash):
@@ -775,3 +980,32 @@ def load_knowledge_vector_index() -> VectorIndex:
         )
         _KNOWLEDGE_VECTOR_CACHE = (admitted_hash, index)
         return index
+
+
+def load_request_snapshot() -> CatalogSnapshot:
+    """Load all request-time views while one generation is read-locked.
+
+    The individual accessors remain useful to tools/tests, but production
+    retrieval must never combine cards/text/vectors across an atomic compile
+    swap. The process lock also prevents cache invalidation halfway through
+    the snapshot.
+    """
+
+    with _PROCESS_LOCK, _catalog_lock(exclusive=False):
+        before = admitted_catalog_version()
+        if not before:
+            raise ValueError("no signed Tutor catalog is admitted")
+        cards = load_cards()
+        units = load_knowledge_units()
+        card_index = load_vector_index()
+        knowledge_index = load_knowledge_vector_index()
+        after = admitted_catalog_version()
+        if before != after:
+            raise RuntimeError("Tutor catalog generation changed during read")
+        return CatalogSnapshot(
+            version=before,
+            cards=cards,
+            units=units,
+            card_index=card_index,
+            knowledge_index=knowledge_index,
+        )

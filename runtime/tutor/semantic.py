@@ -36,6 +36,23 @@ def _document_group(hit: "SourceHit"):
     return (hit.unit.source_ref.split("#", 1)[0], hit.unit.title)
 
 
+def _manifest_family(hit: "SourceHit") -> str:
+    """Return the canonical executor family carried by a manifest unit."""
+
+    unit = hit.unit
+    if unit is None or unit.authority != "admitted_manifest":
+        return ""
+    parts = str(unit.source_ref or "").split(":")
+    return parts[1] if len(parts) >= 2 and parts[0] == "manifest" else ""
+
+
+def _is_manifest_argument(hit: "SourceHit") -> bool:
+    return bool(
+        hit.unit is not None
+        and hit.unit.source_kind == "executor_manifest_argument"
+    )
+
+
 def _reserve_authorities(selected, visible, adjusted, threshold, top, band,
                          per_document, per_kind, limit_total,
                          pinned=()) -> None:
@@ -108,6 +125,44 @@ def _bounded_float(name: str, default: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def knowledge_band() -> float:
+    """Return the single configured relevance band used by Tutor ranking."""
+
+    return _bounded_float("METNOS_TUTOR_KNOWLEDGE_BAND", 0.06)
+
+
+def knowledge_minimum() -> float:
+    """Return the corpus-wide semantic relevance floor.
+
+    Live observation authority builds on the same calibrated scale instead of
+    introducing a second, independently tuned threshold.
+    """
+
+    return _bounded_float("METNOS_TUTOR_KNOWLEDGE_MIN", 0.70)
+
+
+def association_adjusted_score(*, base: float, natural_top: float,
+                               band: float, similarity: float,
+                               strong: bool) -> float:
+    """Apply the production association floor to one natural score.
+
+    Keeping this primitive public to the Tutor package lets the permanent F4
+    counterfactual execute the same arithmetic instead of asserting a desired
+    rank as a constant.
+    """
+
+    # Learning may choose among sources already equivalent inside the natural
+    # relevance band; it can never pull a distant source into that band. Only
+    # repeated, strong confirmations may break a tie for primary.
+    if float(base) < float(natural_top) - float(band):
+        return float(base)
+    floor = (
+        natural_top + 0.0005 + similarity / 1_000_000.0
+        if strong else natural_top - band / 2.0
+    )
+    return max(float(base), float(floor))
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticMatch:
     card: Card
@@ -132,14 +187,34 @@ class SemanticContext:
     restricted: bool = False
 
 
-def _query_vector(text: str, dimension: int, embedder=None) -> np.ndarray:
+def _checkpoint(deadline_at: float) -> None:
+    if deadline_at:
+        from .deadline import remaining
+        remaining(deadline_at)
+
+
+def _query_vector(text: str, dimension: int, embedder=None,
+                  *, deadline_at: float = 0.0) -> np.ndarray:
+    _checkpoint(deadline_at)
+    injected = embedder is not None
     if embedder is None:
         from virt import get_local_embedder
         embedder = get_local_embedder("text")
     # Lato QUERY dell'embedder: per i modelli simmetrici (BGE) coincide con
     # embed_texts, per quelli instruction-aware (Qwen) applica il prefisso
     # di istruzione. I documenti restano codificati nudi alla compilazione.
-    query_vector = np.asarray([embedder.embed_query(text)], dtype=np.float32)
+    bounded = getattr(embedder, "embed_query_bounded", None)
+    if callable(bounded):
+        from .deadline import remaining
+        vector = bounded(text, timeout_s=remaining(deadline_at))
+    elif injected:
+        # Deterministic test/embedded providers are caller-owned and execute in
+        # process; production providers must expose the bounded contract.
+        vector = embedder.embed_query(text)
+    else:
+        raise RuntimeError("Tutor embedder lacks bounded query execution")
+    query_vector = np.asarray([vector], dtype=np.float32)
+    _checkpoint(deadline_at)
     if query_vector.shape != (1, dimension):
         raise ValueError("invalid Tutor query embedding shape")
     if not np.isfinite(query_vector).all():
@@ -209,7 +284,10 @@ def retrieve_sources(
         minimum_score: float | None = None,
         top_k: int = 16,
         companion_query: str = "",
+        owner_user_id: str = "",
+        required_source_ref: str = "",
         explain: dict | None = None,
+        deadline_at: float = 0.0,
 ) -> SemanticContext | None:
     """Retrieve one bounded context across cards and the dynamic F2 corpus.
 
@@ -237,26 +315,46 @@ def retrieve_sources(
     text = str(query or "").strip()
     if not text:
         return None
+    if not deadline_at:
+        from .deadline import new_deadline
+        deadline_at = new_deadline()
+    _checkpoint(deadline_at)
     companion = str(companion_query or "").strip()
     probes = (text,) if not companion or companion == text else (text, companion)
     units = units if units is not None else load_knowledge_units()
+    _checkpoint(deadline_at)
+    source_ref = str(required_source_ref or "").split("#", 1)[0]
+    source_bound_ids = {
+        unit.unit_id for unit in units
+        if source_ref and unit.source_ref.split("#", 1)[0] == source_ref
+    }
+    if source_ref and not source_bound_ids:
+        return None
     knowledge_index = knowledge_index or load_knowledge_vector_index()
-    if cards:
+    _checkpoint(deadline_at)
+    if cards and not source_ref:
         card_index = card_index or load_vector_index()
         if card_index.dimension != knowledge_index.dimension:
             raise ValueError("Tutor semantic indexes use different dimensions")
     vectors = tuple(
-        _query_vector(probe, knowledge_index.dimension, embedder)
+        _query_vector(
+            probe, knowledge_index.dimension, embedder,
+            deadline_at=deadline_at,
+        )
         for probe in probes
     )
+    _checkpoint(deadline_at)
     card_by_id = {card.card_id: card for card in cards}
     unit_by_id = {unit.unit_id: unit for unit in units}
     candidates: list[SourceHit] = []
     dense: dict[tuple[str, str], tuple[float, ...]] = {}
 
-    for row in _preferred_rows(
-            card_index.refs if cards and card_index is not None else (),
-            lambda item_id: item_id, lang):
+    for position, row in enumerate(_preferred_rows(
+            card_index.refs
+            if cards and card_index is not None and not source_ref else (),
+            lambda item_id: item_id, lang)):
+        if position % 128 == 0:
+            _checkpoint(deadline_at)
         card_id, row_lang = card_index.refs[row]
         card = card_by_id.get(card_id)
         if card is None:
@@ -275,7 +373,18 @@ def retrieve_sources(
             raise ValueError("Tutor vector references an unknown knowledge unit")
         return unit.concept_id
 
-    for row in _preferred_rows(knowledge_index.refs, knowledge_concept, lang):
+    knowledge_rows = (
+        tuple(
+            row for row, (unit_id, _row_lang)
+            in enumerate(knowledge_index.refs)
+            if unit_id in source_bound_ids
+        )
+        if source_ref else
+        _preferred_rows(knowledge_index.refs, knowledge_concept, lang)
+    )
+    for position, row in enumerate(knowledge_rows):
+        if position % 128 == 0:
+            _checkpoint(deadline_at)
         unit_id, row_lang = knowledge_index.refs[row]
         unit = unit_by_id.get(unit_id)
         if unit is None:
@@ -289,10 +398,13 @@ def retrieve_sources(
         ))
     if not candidates:
         return None
+    _checkpoint(deadline_at)
 
     candidate_tokens: dict[tuple[str, str], set[str]] = {}
     candidate_title_tokens: dict[tuple[str, str], set[str]] = {}
-    for hit in candidates:
+    for position, hit in enumerate(candidates):
+        if position % 128 == 0:
+            _checkpoint(deadline_at)
         content = (
             " ".join((hit.card.title.get(hit.lang, ""),
                       hit.card.semantic.get(hit.lang, "")))
@@ -345,6 +457,22 @@ def retrieve_sources(
 
     bonuses = tuple(_probe_bonus(probe) for probe in probes)
 
+    threshold = (
+        # An exact identity match against the canonical publication registry
+        # is stronger than semantic similarity.  Similarity ranks sections
+        # *inside* that document but cannot reject or redirect the source.
+        float("-inf")
+        if source_ref else
+        # Calibrated on the human certification corpus after the public-doc
+        # expansion: short, unambiguous explain queries rank the correct
+        # aggregate source at 0.70+, while mode classification still excludes
+        # actions before retrieval.  This is one corpus-wide confidence floor,
+        # not a phrase, topic, or source-specific exception.
+        knowledge_minimum()
+        if minimum_score is None else float(minimum_score)
+    )
+    band = knowledge_band()
+
     # Massimo per fonte fra le formulazioni: una fonte entra se e' pertinente
     # per ALMENO una di esse, senza che la media diluisca il segnale di quella
     # corta. Misurato contro la variante che ordina sulla sola domanda corrente
@@ -353,7 +481,7 @@ def retrieve_sources(
     # conversation-mailbox-credentials#2. Resta noto il prezzo: in tre
     # follow-up che cambiano argomento il compagno prende il primario
     # (RM-0003 §9-quater).
-    def adjusted(hit: SourceHit) -> float:
+    def natural_adjusted(hit: SourceHit) -> float:
         priority = hit.card.priority if hit.card else hit.unit.priority
         key = (hit.source_type, hit.source_id)
         return max(
@@ -361,21 +489,65 @@ def retrieve_sources(
             for score, bonus in zip(dense[key], bonuses)
         ) + max(0, min(100, priority)) / 10000.0
 
+    natural_scores = {
+        (hit.source_type, hit.source_id): natural_adjusted(hit)
+        for hit in candidates
+    }
+    _checkpoint(deadline_at)
+    natural_top = max(natural_scores.values())
+    association_matches: dict[str, tuple[float, bool, str]] = {}
+    if owner_user_id:
+        try:
+            from .associations import match_with_evidence as match_associations
+            association_matches = {
+                unit_id: (similarity, strong, contributor_hash)
+                for unit_id, similarity, strong, contributor_hash
+                in match_associations(
+                    vectors[0], knowledge_index.fingerprint,
+                    {unit.unit_id: unit.content_hash for unit in units},
+                    owner_user_id=owner_user_id,
+                    audience=audience,
+                )
+            }
+            _checkpoint(deadline_at)
+        except Exception:
+            # Learned hints are a removable retrieval layer; corruption or a
+            # migration error cannot make grounded help unavailable.
+            association_matches = {}
+
+    def adjusted(hit: SourceHit) -> float:
+        base = natural_scores[(hit.source_type, hit.source_id)]
+        if hit.source_type != "knowledge":
+            return base
+        associated = association_matches.get(hit.source_id)
+        if associated is None:
+            return base
+        similarity, strong, _contributor_hash = associated
+        # A close learned neighbor enters the same relevance band; only a
+        # strong (>= configured threshold) human-confirmed neighbor may become
+        # primary.  This layer executes after EXPLAIN and is scoped per user.
+        return association_adjusted_score(
+            base=base,
+            natural_top=natural_top,
+            band=band,
+            similarity=similarity,
+            strong=strong,
+        )
+
     ranked = sorted(candidates, key=adjusted, reverse=True)
-    threshold = (
-        # Calibrated on the human certification corpus after the public-doc
-        # expansion: short, unambiguous explain queries rank the correct
-        # aggregate source at 0.70+, while mode classification still excludes
-        # actions before retrieval.  This is one corpus-wide confidence floor,
-        # not a phrase, topic, or source-specific exception.
-        _bounded_float("METNOS_TUTOR_KNOWLEDGE_MIN", 0.70)
-        if minimum_score is None else float(minimum_score)
-    )
-    band = _bounded_float("METNOS_TUTOR_KNOWLEDGE_BAND", 0.06)
+    _checkpoint(deadline_at)
     if explain is not None:
         explain["threshold"] = threshold
         explain["band"] = band
+        if source_ref:
+            explain["identity_source_ref"] = source_ref
         explain["ranked"] = tuple((hit, adjusted(hit)) for hit in ranked)
+        explain["query_vector"] = vectors[0].copy()
+        explain["embedding_fingerprint"] = knowledge_index.fingerprint
+        explain["association_matches"] = tuple(
+            (unit_id, similarity, strong)
+            for unit_id, (similarity, strong, _row_hash) in sorted(
+                association_matches.items()))
     if adjusted(ranked[0]) < threshold:
         return None
 
@@ -397,14 +569,66 @@ def retrieve_sources(
     if not visible or ranked[0] not in visible:
         return SemanticContext((), adjusted(ranked[0]), restricted=True)
 
-    top = adjusted(visible[0])
+    # An argument fragment is a leaf of an admitted manifest, not a complete
+    # operation.  Dense retrieval can rank a generic field (for example an
+    # ``email`` argument) above the executor whose reviewed semantic surface
+    # actually answers the question.  When a complete executor manifest is in
+    # the same corpus-wide relevance band, its operation becomes the semantic
+    # primary; the leaf remains eligible only as supporting evidence.
+    # Parameter-only questions still retain their leaf primary when no
+    # complete manifest clears the band.  This is a hierarchy rule over source
+    # shape, never query text.
+    ranked_top = adjusted(visible[0])
+    eligible = [
+        hit for hit in visible
+        if adjusted(hit) >= threshold and adjusted(hit) >= ranked_top - band
+    ]
+    primary = eligible[0]
+    if _is_manifest_argument(primary):
+        primary = next(
+            (hit for hit in eligible
+             if (hit.unit is not None
+                 and hit.unit.source_kind == "executor_manifest")),
+            primary,
+        )
+    top = adjusted(primary)
+    complete_manifest_families = {
+        family
+        for hit in eligible
+        if (hit.unit is not None
+            and hit.unit.source_kind == "executor_manifest"
+            and (family := _manifest_family(hit)))
+    }
     limit_total = max(1, min(16, int(top_k)))
     selected: list[SourceHit] = []
     per_document: dict[str, int] = {}
     per_kind: dict[str, int] = {}
-    for hit in visible:
-        if adjusted(hit) < threshold or adjusted(hit) < top - band:
-            break
+    primary_family = _manifest_family(primary)
+    primary_leaves = [
+        hit for hit in eligible
+        if hit is not primary
+        and primary_family
+        and _is_manifest_argument(hit)
+        and _manifest_family(hit) == primary_family
+    ]
+    # Once a complete manifest wins primacy, reserve the bounded leaf budget
+    # for its own best parameters before considering leaves from neighbouring
+    # executors.  Otherwise generic fields from earlier dense ranks can consume
+    # the global leaf cap and evict the exact destination/filter contract.
+    ordered = [
+        primary,
+        *primary_leaves,
+        *(hit for hit in eligible
+          if hit is not primary and hit not in primary_leaves),
+    ]
+    for hit in ordered:
+        if (_is_manifest_argument(hit)
+                and hit is not primary
+                and complete_manifest_families
+                and _manifest_family(hit) not in complete_manifest_families):
+            # A leaf from an executor whose complete contract did not clear the
+            # same semantic band is lexical noise, not standalone evidence.
+            continue
         # A published page is a sequence of independently authored, titled
         # sections; budgeting on the whole file would let two strong sections
         # evict a third, unrelated one.  The heading is part of the admitted
@@ -493,7 +717,8 @@ def retrieve_sources(
         while len(admitted) < 3 and neighbors:
             neighbor = neighbors.pop(0)
             if len(selected) >= maximum:
-                if not _evict_weakest_outside(selected, admitted):
+                if not _evict_weakest_outside(
+                        selected, [primary, *admitted]):
                     break
             selected.append(neighbor)
             admitted.append(neighbor)
@@ -509,7 +734,7 @@ def retrieve_sources(
     # Members of already-rejoined inventories are protected from the eviction
     # of later, weaker groups; and an anchor evicted by a previous expansion
     # no longer proves relevance, so it must not re-expand its own group.
-    protected: list[SourceHit] = []
+    protected: list[SourceHit] = [primary]
     for anchor in list(selected):
         if (anchor.unit is None
                 or anchor.unit.source_kind != "capability_catalog"
@@ -556,9 +781,25 @@ def retrieve_sources(
         _reserve_authorities(
             selected, visible, adjusted, threshold, top, band,
             per_document, per_kind, maximum, pinned=protected)
+    if primary not in selected:
+        raise RuntimeError("Tutor selection lost its semantic primary")
+    selected = [primary, *sorted(
+        (hit for hit in selected if hit is not primary),
+        key=lambda hit: (-adjusted(hit), hit.source_id),
+    )]
+    if selected[0] is not primary:
+        raise RuntimeError("Tutor semantic primary ordering invariant failed")
     if explain is not None:
         explain["final_selected"] = tuple(
             hit.source_id for hit in selected)
+        explain["association_contributors"] = tuple(sorted({
+            association_matches[hit.source_id][2]
+            for hit in selected
+            if hit.source_type == "knowledge"
+            and hit.source_id in association_matches
+            and adjusted(hit) > natural_scores[
+                (hit.source_type, hit.source_id)] + 1e-12
+        }))
     return SemanticContext(tuple(selected), top, restricted=False)
 
 

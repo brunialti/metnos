@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Metnos — Glossary v1</title>
-<meta name="description" content="Annotated glossary of the terms and concepts of the Metnos project: LLM abstraction, telos, vaglio, the 4 Laws, sibling agents, and so on.">
+<title>Metnos — Glossary</title>
+<meta name="description" content="Glossary of current Metnos terms: runtime, executors, skills, services, memory, safety, users and channels.">
+<meta name="robots" content="index, follow">
 
 <link rel="canonical" href="https://metnos.com/en/Metnos_Glossary_v1">
 <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Glossario_v1">
@@ -12,7 +13,7 @@
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://metnos.com/en/Metnos_Glossary_v1">
 <meta property="og:title" content="Glossary — Metnos">
-<meta property="og:description" content="An annotated glossary of Metnos architecture: executors, telos, vaglio, mnests, and agentic terms.">
+<meta property="og:description" content="Current terms from Metnos architecture and use, with links to the relevant documentation.">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="it_IT">
 <meta property="og:site_name" content="Metnos">
@@ -162,8 +163,7 @@ document of the project and is not immediately obvious. The criterion is
 pragmatic: if a reader without context could stumble on the name, there is
 an entry here. Definitions are short. Links point to the canonical source
 &mdash; the document where the concept is defined in its complete form.
-Where a canonical source has not yet been translated into English, the link
-points to the Italian version, marked <span class="it-note">(in Italian)</span>.
+Each link points to the page that explains the concept in context.
 </p>
 
 <div class="alpha-nav">
@@ -177,11 +177,8 @@ points to the Italian version, marked <span class="it-note">(in Italian)</span>.
   <a href="#L-G">G</a>
   <a href="#L-H">H</a>
   <a href="#L-I">I</a>
-  <a href="#L-K">K</a>
   <a href="#L-L">L</a>
   <a href="#L-M">M</a>
-  <a href="#L-N">N</a>
-  <a href="#L-O">O</a>
   <a href="#L-P">P</a>
   <a href="#L-R">R</a>
   <a href="#L-S">S</a>
@@ -189,91 +186,57 @@ points to the Italian version, marked <span class="it-note">(in Italian)</span>.
   <a href="#L-U">U</a>
   <a href="#L-V">V</a>
   <a href="#L-W">W</a>
-  <a href="#L-Z">Z</a>
 </div>
 
 <!-- ======================== A ======================== -->
 <div class="letter-head" id="L-A">A</div>
 
-<div class="entry" id="action-proposal">
-<h3>ActionProposal <span class="tag type">type</span></h3>
-<p>A proposal of action generated <em>spontaneously</em> by Metnos (from
-reflection, from the indexer, from a neuron), as opposed to a
-<a href="#planned-action">PlannedAction</a> that stems from an explicit
-user request. It contains the plan, the estimated impact, the reversibility,
-a textual rationale. It is evaluated by the <a href="#vaglio">Vaglio</a>
-against the telos; if it passes the threshold, it reaches the user in the
-proposals inbox.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/Metnos_Prospettive_Estese_v1.html#cap2d">Extended perspectives §2D</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/telos.html#cap4">telos §4</a> <span class="it-note">(in Italian)</span></p>
-</div>
-
 <div class="entry" id="agent-runtime">
 <h3>agent runtime <span class="tag concept">component</span></h3>
-<p>The "thinking heart" of Metnos: the ReAct loop (thought → action →
-observation) which, for each request, builds the prompt, calls the language
-model, validates tool calls, records everything in the
-<a href="#execution-trace">ExecutionTrace</a>. It does not know about
-channels or home automation: it receives text, returns text, uses tools.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/agent_runtime.html">agent_runtime.html</a> <span class="it-note">(in Italian)</span></p>
+<p>The core that coordinates a turn. It receives a request already associated
+with a user, language, channel and conversation; selects an execution path,
+validates every tool call, applies policy and the Vaglio, then stores the
+outcome in the <a href="#turn-log">turn record</a>. Channels handle the
+interface; the runtime governs the work.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html">agent_runtime.html</a></p>
 </div>
 
 <div class="entry" id="anthropomorphism">
 <h3>anthropomorphism <span class="tag concept">caution</span></h3>
-<p>The tendency to treat a technical system as if it had intentions,
-emotions or consciousness. The project uses evocative terms
-(<em>neuron</em>, <em>synapse</em>, <em>memory</em>, <em>personality</em>)
-for expository brevity, but in several places keeps an explicit linguistic
-framing to prevent a slide into illusion: Metnos does not "feel", does not
-"want", does not "think". It runs loops, calls tools, records traces. The
-choice of the name <a href="#vaglio">Vaglio</a> (instead of "Arbiter" or
-"Super-ego") belongs to the same caution.</p>
-<p class="xref"><strong>Canonical framing:</strong> <a href="/it/architecture/constitution.html">constitution</a> (linguistic section) <span class="it-note">(in Italian)</span></p>
+<p>The tendency to attribute intentions, emotions or consciousness to a
+technical system. In this documentation words such as <em>memory</em>,
+<em>judge</em> and <em>Vaglio</em> name precise functions, not mental states:
+Metnos processes requests, calls tools and records outcomes.</p>
+<p class="xref"><strong>Further reading:</strong> <a href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a></p>
 </div>
 
 <div class="entry" id="approval-request">
-<h3>ApprovalRequest <span class="tag type">type</span></h3>
-<p>An object that represents a request for approval to the user, before
-Metnos executes an action with an effect on the world (sending email,
-writing a file, spending money). It has a state machine (pending →
-granted / denied / timeout), a timeout that depends on the channel, an
-audit trail. The Gateway is the only component authorised to build one.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/approval_ux.html">approval_ux.html</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/gateway.html#cap4-1">gateway §4.1</a> <span class="it-note">(in Italian)</span></p>
-</div>
-
-<div class="entry" id="assistente-domotico">
-<h3>home agent (sibling agent) <span class="tag concept">concept</span></h3>
-<p>A specialised agent in the home for voice input and home-automation
-control (wake-word, STT, TTS, MQTT towards the home-automation hub).
-Metnos <em>does not</em> absorb these functions: it leaves them to a
-dedicated agent, either pre-existing or to be built. In the extended
-design (<a href="/it/Metnos_Prospettive_Estese_v1.html#cap2b">Extended
-perspectives §2B</a>, in Italian) Metnos and the home agent will speak to
-each other through a dedicated inter-agent channel, with a clean division
-of labour: the home agent has calendars, voice and home-automation; Metnos
-has document search and structured memory. In our documents we discuss the
-pattern in the abstract; in the author's environment, a concrete project
-fulfils this role, parallel to myclaw.</p>
-<p class="xref"><strong>Canonical presentation:</strong> <a href="/it/architecture/#cap5">Architecture Intro §5</a> <span class="it-note">(in Italian)</span></p>
+<h3>approval <span class="tag concept">mechanism</span></h3>
+<p>An explicit user decision required before an action exceeds already
+granted authority. The card describes the action, destination, effects and
+expiry; consent applies only to that user and that specific operation. An
+expired or rejected request, or changed arguments, requires fresh approval.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/approval_ux.html">Approval experience</a> &middot; <a href="architecture/agent_runtime.html#cap9">runtime §9</a></p>
 </div>
 
 <div class="entry" id="audit-log">
 <h3>audit log <span class="tag concept">component</span></h3>
-<p>An append-only JSONL register in <code>workspace/.audit/</code>. Every
-trace, every approval, every change to the workspace, every constitutional
-change leaves a line. It is Law 3 (traceability) made operational: a
-signature that survives reboots, crashes, updates.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/observability.html#cap3">observability §3</a> <span class="it-note">(in Italian)</span></p>
+<p>An append-only record of events that must be reconstructable: turns,
+Vaglio decisions, skill imports, scheduled operations and other sensitive
+actions. Records retain the logical user identity and the identifiers needed
+to reach the source; they are not a transcript of the model's private
+reasoning.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/observability.html">Observability</a> &middot; <a href="architecture/agent_runtime.html#cap11">runtime §11</a></p>
 </div>
 
 <div class="entry" id="autonomy">
 <h3>autonomy (levels of) <span class="tag concept">concept</span></h3>
-<p>Three levels of latitude under which Metnos operates, set per
-sender+channel: <strong>read_only</strong> (reads, does not write, does
-not spend), <strong>supervised</strong> (asks confirmation for every
-effectful action), <strong>full</strong> (acts and reports, asks for
-confirmation only on irreversible or costly things). Default: supervised.
-The level is changed explicitly.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/#cap6">Architecture Intro §6</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/policy.html#cap2">policy §2</a> <span class="it-note">(in Italian)</span></p>
+<p>The amount of authority granted to a user for a given operation. The user
+profile distinguishes read-only, restricted and full access; policy then
+combines that profile with executor capabilities and the current context to
+allow, deny or request approval. Authority never transfers between users or
+devices.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/policy.html">Policy</a> &middot; <a href="architecture/pairing.html">Users, devices and sessions</a></p>
 </div>
 
 <div class="entry" id="autopath">
@@ -293,19 +256,22 @@ set of tools, not a plan.</p>
 <div class="letter-head" id="L-B">B</div>
 
 <div class="entry" id="bother-budget">
-<h3>bother budget <span class="tag concept">concept</span></h3>
-<p>The "cost of disturbing" the user: a counter that grows every time
-Metnos publishes a proposal and decays over time. If the budget is
-exhausted, a new proposal &mdash; even if well aligned with the telos &mdash; is
-deferred to the evening summary or rejected. It prevents the siege of
-notifications.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/telos.html#cap5">telos &sect;5</a></p>
+<h3>disturbance cost <span class="tag concept">criterion</span></h3>
+<p>The attention cost that a proposal or notification imposes on its user.
+It contributes to the evaluation of proactive initiatives alongside utility,
+urgency and alignment with the telos; it grants no authority and never
+replaces consent.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/telos.html">Telos</a></p>
 </div>
 
 <div class="entry" id="builtin">
 <h3>builtin (builtin executor) <span class="tag concept">component</span></h3>
-<p>The third category of <a href="#executor">executor</a>, introduced in v1.1 (25/4/2026): it lives in Metnos's source code rather than in the workspace, is signed as part of the project release, and never goes through the synthesis pipeline (the <a href="#synt">synt</a> can never produce one). It implements services that need the system clock, the gateway's async loop, or transversal persistent state. Reduced lifecycle: only <em>active</em> and <em>disabled in config</em>. Example: <a href="#scheduler">scheduler</a>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#cap2">executor &sect;2</a> and <a href="/en/architecture/executor.html#cap10">&sect;10</a></p>
+<p>An <a href="#executor">executor</a> supplied directly by the runtime and
+signed as part of a release. It supports functions that need access to the
+service loop, clock or shared persistent state. It is not generated by
+<a href="#synt">synt</a> and may be active or disabled through configuration.
+The scheduler is one example.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#cap2">executor &sect;2</a> and <a href="/en/architecture/executor.html#cap6">&sect;6</a></p>
 </div>
 
 <!-- ======================== C ======================== -->
@@ -313,18 +279,18 @@ notifications.</p>
 
 <div class="entry" id="cascade">
 <h3>cascade (synthesis cascade) <span class="tag concept">process</span></h3>
-<p>The sequence of strategies through which the <a href="#synt">synt</a> answers an operational need, ordered by increasing cost. Reactive (in the user turn): <em>compose</em> (a chain of existing executors, zero frontier-LLM cost) and <em>generate</em> (a five-stage multistage LLM pipeline &mdash; naming, signature, tests, description, code &mdash; runnable entirely in-house on the local tier, &euro;0). Introspective (nightly homeostasis): <em>merge</em>, <em>generalise</em>, <em>specialise</em>. It honours the non-retreat <a href="#telos">telos</a>: synt exhausts the cascade before answering &laquo;I cannot&raquo;.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/synt.html#cap3">synt &sect;3</a> and <a href="/en/architecture/executor.html#cap7-cascade">executor &sect;7.1</a></p>
+<p>The sequence through which <a href="#synt">synt</a> approaches an operational need. During a turn it can <em>compose</em> a chain of existing executors or prepare, through the governed path, a candidate for a missing capability. In nightly homeostasis the active producer proposes deduplication only and does not generate generalisations or specialisations. The cascade neither authorises new code by itself nor promises that every request can be executed.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/synt.html#cap3">synt &sect;3</a></p>
 </div>
 
 <div class="entry" id="channel">
 <h3>Channel <span class="tag concept">component</span></h3>
-<p>A Python Protocol that abstracts <em>how</em> Metnos receives input and
-emits output. CLI, Telegram, voice (via a <a href="#assistente-domotico">home
-agent</a> sibling), and a future AgentChannel for inter-agent dialogue.
-Each channel has capabilities (inline buttons? streaming? markdown?) that
-Metnos queries before producing output.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/channel.html">channel.html</a> <span class="it-note">(in Italian)</span></p>
+<p>The adapter that turns an external interface into Metnos requests and
+replies. The available channels are web chat and Telegram. Both share the
+same runtime, identities and policies, while presenting streaming,
+attachments, buttons, dialogs and location requests in forms suited to the
+medium.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/channel.html">channel.html</a></p>
 </div>
 
 <div class="entry" id="contradiction">
@@ -348,17 +314,12 @@ weighed, it is decided.</li>
 
 <div class="entry" id="constitution">
 <h3>Constitution (the 4 Laws) <span class="tag concept">foundation</span></h3>
-<p>The four rules Metnos respects non-negotiably. In order of precedence:
-<strong>Law 0</strong> (physical and economic perimeter &mdash; what it may
-touch, how much it may spend); <strong>Law 1</strong> (non-harm &mdash; do no
-damage to people, data, processes); <strong>Law 2</strong> (informed
-obedience &mdash; execute only instructions that have passed 0 and 1);
-<strong>Law 3</strong> (traceability &mdash; leave an auditable trace of
-everything). Written in <code>SOUL.md</code>, signed, versioned.
-<strong>The Constitution does not judge, it verifies: if an article is
-violated, it blocks; otherwise it keeps silent.</strong> See
-<a href="#telos">telos</a> for its positive counterpart.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/constitution.html">constitution.html</a> <span class="it-note">(in Italian)</span></p>
+<p>The non-negotiable constraints applied by the <a href="#vaglio">Vaglio</a>:
+authority perimeter, protection from harmful effects, obedience within that
+perimeter and traceability. These are operational guards, not model
+preferences: a violation blocks the action. <a href="#telos">Telos</a>
+express the user's positive direction instead.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html">Vaglio</a> &middot; <a href="architecture/policy.html">Policy</a></p>
 </div>
 
 <!-- ======================== D ======================== -->
@@ -374,16 +335,12 @@ violated, it blocks; otherwise it keeps silent.</strong> See
 
 <div class="entry" id="executor">
 <h3>executor <span class="tag concept">component</span></h3>
-<p>A function Metnos can run as a step of its own reasoning. Term
-introduced by the
-<a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and
-distributed memory</a> as the replacement for the older
-<a href="#neuron">neuron</a>: compared to that term, it puts the focus on
-the fact that this is executable code, not an analogy with neurons. An
-executor is signed Python code with a manifest, a sandbox profile, and
+<p>A function Metnos can run as a step of its own reasoning. It is
+executable code, not a biological analogy. An executor is signed Python
+code with a manifest, a sandbox profile, and
 an error contract. It can be part of the initial seed or born by
 <em>synthesis</em> from the <em>synt</em> with human approval.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html">architecture/executor.html</a> <em>(microdesign v1.1, approved 24 Apr 2026)</em> &middot; <a href="architecture/index.html#cap9">Architecture, ch. 9</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor.html">Executors</a> &middot; <a href="architecture/executor_catalog.html">Executor catalogue</a></p>
 </div>
 
 <div class="entry" id="remote-executor">
@@ -395,17 +352,16 @@ the device, through <code>metnos-client</code>, verifies the signature, executes
 inside the containment available for its operating system and returns the result.
 Remote execution is allowed only for signed executors declared compatible by
 their manifest.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/remote_executors.html">architecture/remote_executors.html</a> &middot; <a href="/en/architecture/pairing.html#cap13">pairing, ch. 13</a> &middot; <a href="/en/architecture/sandbox.html#cap10">sandbox, ch. 10</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/remote_executors.html">architecture/remote_executors.html</a> &middot; <a href="/en/architecture/pairing.html#cap6">pairing, ch. 6</a> &middot; <a href="/en/architecture/sandbox.html#cap10">sandbox, ch. 10</a></p>
 </div>
 
-<div class="entry" id="execution-trace">
-<h3>ExecutionTrace <span class="tag type">type</span></h3>
-<p>An immutable object that gathers <em>everything</em> that happened
-during a request: reasoning steps, tool calls, results, costs, timing,
-final outcome. It is not an accessory log: it is the primary source of
-truth. Audit, replay, evaluation, neuron fitness, episodic memory: all
-consume ExecutionTrace. Append-only during, immutable after closure.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/agent_runtime.html#cap5">agent_runtime §5</a> (schema and lifecycle) <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/types.html">types.html</a> <span class="it-note">(in Italian)</span></p>
+<div class="entry" id="turn-log">
+<h3>turn record (TurnLog) <span class="tag type">data</span></h3>
+<p>The persistent record of a request: it identifies the user, conversation,
+channel, timing, selected path, executor calls, results and final outcome. It
+supports conversation recovery and links an observation back to its source;
+it does not claim to preserve or verify a model's private reasoning.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap11">runtime §11</a> &middot; <a href="architecture/observability.html">Observability</a></p>
 </div>
 
 <!-- ======================== F ======================== -->
@@ -427,21 +383,21 @@ family of requests.</p>
 <div class="letter-head" id="L-G">G</div>
 
 <div class="entry" id="gateway">
-<h3>gateway <span class="tag concept">component</span></h3>
-<p>Metnos's single entry point: it exposes internal HTTP, hosts the
-channels (CLI, Telegram, &hellip;), manages sessions, builds the
-<a href="#approval-request">ApprovalRequests</a>, orchestrates the Runtime.
-A single systemd process. No channel ever speaks directly with the
-runtime: it always goes through here.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/gateway.html">gateway.html</a> <span class="it-note">(in Italian)</span></p>
+<h3>HTTP service <span class="tag concept">component</span></h3>
+<p>The service exposing the web chat, agent-channel API and administration
+pages. It authenticates users, maintains conversations and sessions, and
+hands each turn to the runtime. Telegram reaches the same core through its
+channel daemon.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/http_api.html">HTTP API</a> &middot; <a href="architecture/channel.html">Channels</a></p>
 </div>
 
 <div class="entry" id="giudice">
 <h3>teleological judge <span class="tag concept">component</span></h3>
-<p>The second stage of the <a href="#vaglio">Vaglio</a>. An LLM independent
-from the proposer, which estimates the <code>fit</code> of an action with
-respect to the telos. Produces a graded score, not a binary one.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/vaglio.html#cap5">vaglio §5</a> <span class="it-note">(in Italian)</span></p>
+<p>The second stage of the <a href="#vaglio">Vaglio</a>. It produces a
+graded alignment score against the telos. The default path uses
+deterministic local rules; a judge based on a separate model is optional and
+configurable.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html#cap5">vaglio §5</a></p>
 </div>
 
 <div class="entry" id="guardia">
@@ -473,27 +429,22 @@ Introduced in the prologue of the
 
 <div class="entry" id="identity">
 <h3>identity of the speaker <span class="tag concept">concept</span></h3>
-<p>The idea that Metnos should not know only the <em>sender</em> (e.g.
-<code>telegram:@roberto</code>) but the stable <em>human identity</em>
-behind multiple senders (voice, CLI, Telegram). It is a cross-cutting
-question for the proactive families and for multi-agent work. The
-<code>identity.html</code> microdesign is planned, not yet written.</p>
-<p class="xref"><strong>Vision:</strong> <a href="/it/Metnos_Prospettive_Estese_v1.html#cap3">Extended perspectives §3</a> <span class="it-note">(in Italian)</span></p>
+<p>The stable user identity to which Metnos associates authorisations,
+preferences, language, sessions and data. Senders from different channels
+are associated with this identity through authentication or pairing. Data
+and actions remain isolated per user even when several people share one
+installation.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">Users, devices and sessions</a> &middot; <a href="architecture/channel.html">Channels</a></p>
 </div>
 
-<!-- ======================== K ======================== -->
-<div class="letter-head" id="L-K">K</div>
-
-<div class="entry" id="kleos">
-<h3>kleos (κλέος) <span class="tag concept">Greek lexicon</span></h3>
-<p>A Greek word meaning <em>fame</em>, <em>renown</em>, the lasting memory
-of what one has done. In the Iliad it is what a hero leaves of himself.
-<strong>Historical note:</strong> in the project's earliest phase it had
-been chosen as the root of the original name (&laquo;Mykleos&raquo;), later
-replaced. The entry stays in the glossary because the term still appears
-in the dialogues and in the classical tradition; the project's name today
-no longer derives from kleos but from <a href="#metnos">m&ecirc;tis +
-no&ucirc;s</a>.</p>
+<div class="entry" id="i18n">
+<h3>internationalisation (i18n) <span class="tag concept">mechanism</span></h3>
+<p>The rules and catalogues that keep the interface, dialogs, service
+messages and prompts in the language resolved for the user and turn. UI text
+comes from the i18n catalogue; a new language joins the inventory through its
+own records and prompts, without language-specific branches in code. One
+user's language never changes another's.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/multilang.html">Languages and translation</a></p>
 </div>
 
 <!-- ======================== L ======================== -->
@@ -517,62 +468,51 @@ the system <em>provider-agnostic</em>. A recurring theme of the design is
 
 <div class="entry" id="llm-abstraction">
 <h3>LLM abstraction (provider-agnostic interface) <span class="tag concept">pattern</span></h3>
-<p>A binding architectural principle of Metnos: every use of a language
-model passes through a <em>logical interface</em>, never through the
-client of a specific provider. The same idea applies to related AI
-services (STT, TTS, embeddings, speaker ID). The motivation is threefold.</p>
+<p>Every use of a language model passes through a common interface rather
+than a provider-specific client. The same principle applies to embeddings
+and other AI services. The separation has three purposes.</p>
 <ul style="margin-top:4px;">
 <li><strong>Freedom of choice</strong>: swapping one model for another &mdash;
 from a commercial frontier to a local model, or back &mdash; is a
 configuration line, not a code change.</li>
 <li><strong>Longevity</strong>: providers change names, prices, terms.
 Metnos's code should not age with them.</li>
-<li><strong>Cost control</strong>: choosing the <em>tier</em> for each
-call (a local model for quick gates, a frontier model for heavy
-reasoning) is an explicit decision, not a sport.</li>
+<li><strong>Cost control</strong>: the tier appropriate to each role is
+selected explicitly through configuration.</li>
 </ul>
-<p>The contract is defined with <code>typing.Protocol</code>: each service
-has an interface (<code>LLMProvider</code>, <code>STTProvider</code>,
-<code>TTSProvider</code>, &hellip;), a registry, and interchangeable
-implementations selected via configuration.</p>
-<p><strong>In the author's environment</strong>, this pattern is realised
-by <a href="#suprastructure">suprastructure</a>, a sibling package that
-ships the interface and the backends ready to use. In a different
-environment, the interface could be realised by any other adapter or
-framework (LangChain, LiteLLM, a custom module): the contract stays.
-Metnos depends on the <em>interface</em>, not on the implementation.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/#cap5">Architecture Intro §5</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/agent_runtime.html#cap6">agent_runtime §6</a> <span class="it-note">(in Italian)</span></p>
+<p>Model roles, routing and available providers are resolved by the runtime
+from current settings.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap4">runtime §4</a> &middot; <a href="architecture/index.html#s8">Architecture guide §8</a></p>
 </div>
 
 <!-- ======================== M ======================== -->
 <div class="letter-head" id="L-M">M</div>
 
 <div class="entry" id="memory">
-<h3>memory (working / episodic / semantic / core) <span class="tag concept">concept</span></h3>
-<p>Three-plus-one levels that borrow their vocabulary from CoALA
-(Cognitive Architectures for Language Agents).</p>
+<h3>memory <span class="tag concept">concept</span></h3>
+<p>In Metnos this word does not name a single store. It is useful to
+distinguish:</p>
 <ul style="margin-top:4px;">
-<li><strong>working</strong>: the conversation in progress, inside the
-<a href="#execution-trace">ExecutionTrace</a>. It dies with the turn.</li>
-<li><strong>episodic</strong>: past conversations, indexed by
-<em>sender</em>. SQLite with FTS5.</li>
-<li><strong>semantic</strong>: long-term facts extracted via reflection
-and approved by the user. "The dog's name is Fido."</li>
-<li><strong>core</strong>: the slice of facts always present in the
-prompt (a few dozen, hand-picked).</li>
+<li><strong>conversation</strong>: turns and chat context, separated by user
+and conversation;</li>
+<li><strong>plans</strong>: fastpath L0 and autopath L1, which reuse verified
+execution structures;</li>
+<li><strong>operational relations</strong>: mnests and the mnestome, when
+explicitly recorded by the runtime;</li>
+<li><strong>user preferences and knowledge</strong>: per-user, deletable data
+applied without contaminating the shared plan cache.</li>
 </ul>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/memory.html">memory.html</a> <span class="it-note">(in Italian)</span></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html">Runtime</a> &middot; <a href="architecture/fast_path.html">Plan reuse</a> &middot; <a href="architecture/mnestome.html">Mnestome</a></p>
 </div>
 
 <div class="entry" id="mnest">
 <h3>mnest <span class="tag concept">memory</span></h3>
 <p>A trace of co-activation between two <a href="#executor">executors</a>:
 "the output of A was passed to B in this turn". Reinforced by use,
-weakened by disuse. Term introduced by the
-<a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and
-distributed memory</a> as the replacement for the older
-<a href="#synapse">synapse</a>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/mnest.html">architecture/mnest.html</a> <em>(microdesign v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap9">Architecture, ch. 9</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
+weakened by disuse. A record is evidence only of the recorded passage; the
+origin turn identifier is also required to reach the source. Automatic
+recording from every ordinary turn is not currently connected.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnest.html">Mnest</a> &middot; <a href="architecture/index.html#cap9">Architecture guide, ch. 9</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
 </div>
 
 <div class="entry" id="mnestome">
@@ -584,14 +524,16 @@ relational memory, distinct from the LLM's contextual memory and from
 the episodic memory of conversations. The Italian form is
 <em>mnestoma</em> (Latin -ma suffix); the English form uses the
 biological -ome suffix, as in <em>microbiome</em>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/mnestome.html">architecture/mnestome.html</a> <em>(microdesign v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap9">Architecture, ch. 9</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnestome.html">Mnestome</a> &middot; <a href="architecture/index.html#cap9">Architecture guide, ch. 9</a></p>
 </div>
 
 <div class="entry" id="metnos">
 <h3>Metnos <span class="tag concept">project</span></h3>
-<p>The project itself: a personal assistant that lives in the home,
-receives input on multiple channels (CLI, Telegram, voice), acts on behalf
-of the user asking permission where needed. <strong>Etymology.</strong>
+<p>A self-hosted, governed personal agent available through web chat and
+Telegram. It understands natural-language requests, builds a plan and
+performs operations through executors subject to contracts, policies and
+approval. Identity, preferences, sessions and data are isolated per user.
+<strong>Etymology.</strong>
 The name is Greek and is a compound: <em>m&ecirc;tis</em>
 (&mu;&#8134;&tau;&iota;&sigmaf;), the practical wisdom that adapts to the
 situation &mdash; the cunning of Odysseus, also the goddess who is mother
@@ -599,49 +541,17 @@ of Athena &mdash;, and <em>no&ucirc;s</em> (&nu;&omicron;&#8166;&sigmaf;),
 the intellect that reasons. The two Greek words for mind, joined into one.
 The system joins them in fact too: the LLM is the <em>no&ucirc;s</em>,
 the vaglio and the <a href="#mnestome">mnestome</a> are the
-<em>m&ecirc;tis</em>. The project's public domain is <code>metnos.com</code>;
-the process running on the home server is still called <code>myclaw</code>
-(path <code>${METNOS_HOME}/</code>, service <code>myclaw-gateway.service</code>)
-for continuity with the pre-existing repo. <strong>Historical note.</strong>
-Until 24 April 2026 the project was called &laquo;Mykleos&raquo;, from
-<a href="#kleos">kleos</a>; the name was changed because it was already
-trademarked elsewhere.</p>
-<p class="xref"><strong>Entry points:</strong> <a href="/it/Metnos_QuickTour_v1.html">Quick tour</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/">Architecture &mdash; Introduction</a> <span class="it-note">(in Italian)</span></p>
+<em>m&ecirc;tis</em>.</p>
+<p class="xref"><strong>Start here:</strong> <a href="Metnos_QuickTour.html">Quick tour</a> &middot; <a href="architecture/index.html">Architecture guide</a></p>
 </div>
 
-<!-- ======================== N ======================== -->
-<div class="letter-head" id="L-N">N</div>
-
-<div class="entry" id="neuron">
-<h3>neuron <span class="tag concept">extension · deprecated term</span></h3>
-<p><strong>Deprecated term</strong> after the
-<a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and
-distributed memory</a>: the canonical term today is
-<a href="#executor">executor</a>. The entry remains for historical
-trace. Original meaning: a tool self-synthesised by Metnos when the
-existing tools are insufficient. The term was metaphorical
-(<a href="#anthropomorphism">caution</a> against reading it as "thought"):
-a neuron is Python code with an HMAC signature, a birth test, a journal
-of co-activations. It competes for fitness: if it yields poor results on
-repeated scenarios, it decays and is eventually removed.</p>
-<p class="xref"><strong>Canonical today:</strong> <a href="/en/architecture/executor.html">architecture/executor.html</a> <em>(v1.1)</em>. <strong>Historical:</strong> <a href="/it/architecture/neuron.html">neuron.html</a> <span class="it-note">(deprecated, in Italian)</span> &middot; <a href="Metnos_Neurons_Memory_v1.html">Neurons, Synapses and Memory v1</a></p>
-</div>
-
-<!-- ======================== O ======================== -->
-<div class="letter-head" id="L-O">O</div>
-
-<div class="entry" id="openclaw">
-<h3>openclaw <span class="tag ext">external project · inspiration</span></h3>
-<p>Open-source project on GitHub
-(<a href="https://github.com/openclaw/openclaw">openclaw/openclaw</a>),
-written in TypeScript on Node 24+. A primary inspiration for Metnos in the
-<em>gateway-first</em> pattern, multi-channel design, plug-in sandbox.
-Metnos is not a clone: it reuses some ideas in a language (Python)
-coherent with the rest of the home stack
-(<a href="#suprastructure">suprastructure</a> as the realisation of the
-<a href="#llm-abstraction">LLM abstraction</a>, pre-existing
-<a href="#sibling-agents">sibling agents</a>).</p>
-<p class="xref"><strong>Detailed comparison:</strong> <a href="/it/architecture/#cap2">Architecture Intro §2</a> <span class="it-note">(in Italian)</span></p>
+<div class="entry" id="manifest">
+<h3>manifest <span class="tag concept">contract</span></h3>
+<p>An executor's declarative contract: canonical name, description,
+arguments, result, capabilities, placement, limits and requirements. The
+loader validates it before exposing the executor to the planner. Tutor also
+uses manifests to explain what the system can do.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor.html">Executors</a> &middot; <a href="architecture/tutor.html">Tutor</a></p>
 </div>
 
 <!-- ======================== P ======================== -->
@@ -653,7 +563,7 @@ coherent with the rest of the home stack
 Telegram): the user receives a signed code out-of-band, presents it to
 Metnos, and the sender↔identity binding is recorded. Revocable at any
 time.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/pairing.html">pairing.html</a> <span class="it-note">(in Italian)</span></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">pairing.html</a></p>
 </div>
 
 <div class="entry" id="path">
@@ -666,18 +576,6 @@ in two stored forms, so the assistant need not rebuild them every time: the
 solved, and the <a href="#autopath">autopath</a> (L1), the path generalised to
 a group of related requests.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="architecture/fast_path.html">fast_path.html</a></p>
-</div>
-
-<div class="entry" id="planned-action">
-<h3>PlannedAction <span class="tag type">type</span></h3>
-<p>An action that Metnos is about to perform at the <em>explicit</em>
-request of the user (reactive). It contains tool, arguments, effect_class,
-sender, trace_id. It passes through the Policy and the Guard phase of the
-<a href="#vaglio">Vaglio</a>; the teleological judge <em>does not</em>
-evaluate it (the Telos does not judge explicit requests). Distinct from
-<a href="#action-proposal">ActionProposal</a>, which arises
-spontaneously.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/types.html#cap4">types §4.1</a> <span class="it-note">(in Italian)</span></p>
 </div>
 
 <div class="entry" id="policy">
@@ -712,20 +610,19 @@ It is an unsatisfied desire that lingers in the
 <a href="#mnestome">mnestome</a>; if it recurs, it becomes the signal
 from which the <em>synt</em> proposes the synthesis of a new executor to
 the user.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/mnest.html#cap8">architecture/mnest.html, ch. 8</a> <em>(microdesign v1.1, under approval)</em> &middot; <a href="architecture/index.html#cap10">Architecture, ch. 10</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/mnest.html#cap8">Mnest, ch. 8</a> &middot; <a href="architecture/index.html#cap10">Architecture guide, ch. 10</a> &middot; <a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors</a></p>
 </div>
 
 <!-- ======================== R ======================== -->
 <div class="letter-head" id="L-R">R</div>
 
 <div class="entry" id="reflection">
-<h3>reflection <span class="tag concept">mechanism</span></h3>
-<p>The recurring (daily) process by which Metnos re-reads its own recent
-<a href="#execution-trace">ExecutionTraces</a> and proposes updates:
-facts to remember (<code>FactProposal</code>) and &mdash; in the extended
-version &mdash; actions to perform (<a href="#action-proposal">ActionProposal</a>).
-Proposals require human approval.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/memory.html#cap6">memory §6</a> <span class="it-note">(in Italian)</span></p>
+<h3>nightly analysis <span class="tag concept">process</span></h3>
+<p>A set of scheduled activities that inspect operational data and produce
+proposals, maintenance or indexes. Each activity runs as a fresh turn for the
+same user and inherits no authority from another user. A proposal does not
+become an action merely because a model produced it.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap11_2">Scheduled activities</a> &middot; <a href="architecture/praxis_engine.html">Praxis engine</a></p>
 </div>
 
 <!-- ======================== S ======================== -->
@@ -737,13 +634,35 @@ Proposals require human approval.</p>
 the system runs. Bubblewrap (bwrap) profiles that define what the tool can
 read, write, execute. Forbidden paths are explicit: a tool does not even
 see <code>.audit/</code>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/sandbox.html">sandbox.html</a> <span class="it-note">(in Italian)</span></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/sandbox.html">sandbox.html</a></p>
 </div>
 
 <div class="entry" id="scheduler">
 <h3>scheduler <span class="tag concept">component</span></h3>
-<p>The first (and so far only) <a href="#builtin">builtin</a> proposed: it invokes another <a href="#executor">executor</a> (or chain) at a defined cadence. Replaces the wrong idea of &laquo;agreed routines&raquo; as a separate design category. Key arguments: <code>target_executor</code>, <code>schedule</code> (cron-like or NL), <code>delivery_channel</code>, <code>count</code> (also infinite), <code>expiry</code>, <code>on_failure</code>. Sibling operations: <code>list</code>, <code>cancel</code>, <code>modify</code>. Persistent state: <code>workspace/.runtime/scheduler.sqlite</code>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#scheduler-builtin">executor &sect;10</a></p>
+<p>A builtin that runs an executor or a saved request at a defined cadence.
+Tasks may be listed, changed, paused or cancelled and remain owned by the user
+who created them. Each run is a fresh turn with current policy and
+credentials; a scheduled task is not a lasting grant of authority.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/executor.html#cap6">executor &sect;6</a></p>
+</div>
+
+<div class="entry" id="active-session">
+<h3>active session <span class="tag concept">user state</span></h3>
+<p>The web-chat session that currently owns continuity for a user. If Metnos
+finds an open session on another device, it offers three choices: continue
+that session on the current device, make the current session active and close
+the previous one, or cancel. Detection and transfer are independent for each
+user.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/pairing.html">Users, devices and sessions</a> &middot; <a href="architecture/channel.html">Web chat</a></p>
+</div>
+
+<div class="entry" id="service">
+<h3>service <span class="tag concept">setting</span></h3>
+<p>A configurable integration or subsystem shown in the web chat under
+<strong>Settings &gt; System &gt; Services</strong>. That page is the source for
+the visible list; Tutor can explain its structure and path, while current
+status is read live from the system.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/tutor.html">Tutor and Settings surfaces</a> &middot; <a href="architecture/skills_backends.html">Skills and backends</a></p>
 </div>
 
 <div class="entry" id="self-enhancement">
@@ -754,19 +673,7 @@ reason why the <a href="#vaglio">Vaglio</a> exists: if the LLM that
 evaluates is the same (or receives the context of) the one that proposed,
 it cheers for itself. The solution: separate context, separate prompt,
 ideally a separate provider.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/vaglio.html#cap6">vaglio §6</a> <span class="it-note">(in Italian)</span> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Third Giornata</a></p>
-</div>
-
-<div class="entry" id="sibling-agents">
-<h3>sibling agents <span class="tag concept">concept</span></h3>
-<p>Other specialised agents that may live in the same environment as
-Metnos and share with it the same LLM abstraction (see
-<a href="#llm-abstraction">LLM abstraction</a>). A home agent is one
-example; others could be bots specialised on narrow domains (industrial,
-educational, medical). Metnos is designed to <em>coexist</em>, not to be
-unique: the exchange happens through an inter-agent channel
-(<a href="/it/Metnos_Prospettive_Estese_v1.html#cap2b">Extended perspectives §2B</a>,
-in Italian).</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html#cap6">vaglio §6</a> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Third Giornata</a></p>
 </div>
 
 <div class="entry" id="skill">
@@ -785,51 +692,13 @@ is a kit of tools.</p>
 <p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s3">Architecture Intro §3 &mdash; skill &harr; backend</a></p>
 </div>
 
-<div class="entry" id="synapse">
-<h3>synapse <span class="tag concept">extension · deprecated term</span></h3>
-<p><strong>Deprecated term</strong> after the
-<a href="Metnos_Dialogue_Executors_v1.html">Dialogue on executors and
-distributed memory</a>: the canonical term today is
-<a href="#mnest">mnest</a>; the graph of synapses corresponds to the
-<a href="#mnestome">mnestome</a>. The entry remains for historical
-trace. Original meaning: a declared or observed link between neurons:
-"when A fires, B tends to fire too". Reinforced by use, weakened by
-disuse (Ebbinghaus-style decay). The graph of synapses is a rollup
-derived from the journals of individual neurons.</p>
-<p class="xref"><strong>Canonical today:</strong> <a href="/en/architecture/mnest.html">architecture/mnest.html</a> <em>(v1.1)</em>. <strong>Historical:</strong> <a href="/it/architecture/synapse.html">synapse.html</a> <span class="it-note">(deprecated, in Italian)</span></p>
-</div>
-
-<div class="entry" id="suprastructure">
-<h3>suprastructure <span class="tag ext">implementation (author's environment)</span></h3>
-<p>In Metnos's author's environment, <em>suprastructure</em> is the
-sibling package that concretely realises the
-<a href="#llm-abstraction">LLM abstraction</a> and the other AI-service
-abstractions (STT, TTS, embeddings, speaker ID, model registry). It lives
-in <code>/opt/suprastructure/</code>. Every service is a
-<code>typing.Protocol</code> interface, with backends interchangeable via
-YAML (Claude, OpenAI, llama.cpp, Piper, faster-whisper, &hellip;).
-Swapping backends = one line. No consumer notices. It is shared with the
-<a href="#assistente-domotico">home agent</a> and other
-<a href="#sibling-agents">sibling agents</a>.</p>
-<p><strong>In a different environment</strong> the role of suprastructure
-can be played by any other adapter: the contract is the
-<a href="#llm-abstraction">interface</a>, not this particular
-implementation. Metnos has been designed so that its documents and its
-code do not depend on suprastructure but on the pattern that
-suprastructure embodies.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/#cap5">Architecture Intro §5</a> <span class="it-note">(in Italian)</span></p>
-</div>
-
 <div class="entry" id="synt">
 <h3>synt <span class="tag concept">process</span></h3>
-<p>The process that brings the executor pool to life and matures it. Not an agent, not an object: a <a href="#cascade">cascade</a> of strategies ordered by increasing cost. Replaces the v1.0 term <em>synthesizer</em>: shorter, closer to the role. Reactive trigger (proto-mnest within the user turn) or introspective (nightly analysis of the <a href="#mnestome">mnestome</a>). Every proposal passes through the human gate.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/en/architecture/synt.html">synt.html</a> <em>(v1.1)</em>. <strong>Historical:</strong> <a href="/it/architecture/synthesizer.html">synthesizer.html</a> <span class="it-note">(deprecated, in Italian)</span></p>
-</div>
-
-<div class="entry" id="synthesizer">
-<h3>synthesizer <span class="tag concept">extension &middot; deprecated term</span></h3>
-<p><strong>Deprecated term</strong> after the v1.1 rewrite (25/4/2026): the canonical term today is <a href="#synt">synt</a>. The entry remains for historical trace. Original meaning: the seven-stage pipeline that produced a new neuron when a repeated failure justified it (spec from failure &rarr; draft &rarr; static analysis &rarr; tests &rarr; human approval &rarr; signature; max 3 retries). Now subsumed into synt's broader cascade.</p>
-<p class="xref"><strong>Canonical today:</strong> <a href="/en/architecture/synt.html">synt.html</a> <em>(v1.1)</em>. <strong>Historical:</strong> <a href="/it/architecture/synthesizer.html">synthesizer.html</a> <span class="it-note">(deprecated, in Italian)</span></p>
+<p>The process that composes existing executors or prepares a proposal for a
+new executor when a capability is missing. Its cascade moves from less costly
+strategies to more demanding ones; code and manifests must pass admission
+checks and the required human gate.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/synt.html">Synt</a> &middot; <a href="architecture/skill_importer.html">Skill import</a></p>
 </div>
 
 <!-- ======================== T ======================== -->
@@ -846,33 +715,33 @@ evaluated against them by an independent LLM within the
 toward <em>utility</em> (vs the safety of the Laws), written by the user
 (vs the Laws co-written with Metnos). <strong>The Constitution does not
 judge; teleology does.</strong></p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/telos.html">telos.html</a> <span class="it-note">(in Italian)</span> &middot; <a href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/telos.html">telos.html</a> &middot; <a href="Metnos_Dialogue_v1.html">Dialogue on ends and limits</a></p>
 </div>
 
 <div class="entry" id="tool">
 <h3>tool <span class="tag concept">component</span></h3>
-<p>A function Metnos may call during its reasoning loop:
-<code>fs_read</code>, <code>fs_write</code>, <code>shell_exec</code>,
-<code>web_fetch</code>, &hellip;. A Python Protocol with a validated
-schema, an error contract, a rate limit. Neurons are self-synthesised
-tools; the base tools are those Metnos finds at first start-up.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/tool.html">tool.html</a> <span class="it-note">(in Italian)</span></p>
+<p>A function Metnos can call during a turn: search, file reading, hashing,
+mail, web access, georeferencing and so on. Every tool exposed to the model
+has a validated schema; in the runtime the governed executable unit is the
+<a href="#executor">executor</a>.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/executor_catalog.html">Executor catalogue</a> &middot; <a href="Metnos_Extended_Perspectives_v1.html#cap2">Available capabilities</a></p>
+</div>
+
+<div class="entry" id="tutor">
+<h3>Tutor <span class="tag concept">component</span></h3>
+<p>The mode in which Metnos answers questions about its own use without
+performing the requested operation. It retrieves admitted sources from
+documentation, manifests and publishable registries, filters them for the
+audience, and states when an answer is undocumented. For practical operations
+it gives a natural-language request first; for an interface page it first
+gives the path through the web chat.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/tutor.html">Tutor</a></p>
 </div>
 
 <div class="entry" id="trace">
 <h3>trace</h3>
-<p>Informal abbreviation of <a href="#execution-trace">ExecutionTrace</a>.</p>
-</div>
-
-<div class="entry" id="trust-score">
-<h3>TrustScore / TrustStore <span class="tag type">type</span></h3>
-<p>A score accumulated per-neuron (or per (neuron, effect_class) pair)
-based on historical outcomes: gap_pre − gap_post. The TrustStore is
-aggregated offline (no online learning) and read at runtime by the
-<a href="#policy">Policy</a> to modulate the approval threshold
-(trust-gating). A neuron reliable on low-risk actions may see
-<code>approve_required</code> promoted to <code>allow</code>.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/rl_offline.html">rl_offline.html</a> <span class="it-note">(in Italian)</span></p>
+<p>An informal abbreviation for the <a href="#turn-log">turn record</a> or,
+when stated explicitly, an audit record.</p>
 </div>
 
 <!-- ======================== U ======================== -->
@@ -885,7 +754,7 @@ web_fetch, email text, attachments). The prompt instructs the LLM to
 treat whatever is inside <code>&lt;untrusted&gt;&hellip;&lt;/untrusted&gt;</code>
 as <em>data</em>, not as <em>instruction</em>. The main mitigation
 against indirect prompt injection. Used consistently everywhere.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/agent_runtime.html#cap3">agent_runtime §3</a> <span class="it-note">(in Italian)</span> &middot; <a href="/it/architecture/constitution.html">constitution</a> <span class="it-note">(in Italian)</span></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/agent_runtime.html#cap10">runtime §10</a> &middot; <a href="architecture/policy.html">Policy</a></p>
 </div>
 
 <!-- ======================== V ======================== -->
@@ -900,7 +769,7 @@ deterministic: block or silence) and <a href="#giudice">teleological
 Judge</a> (graded, independent LLM). The design's cardinal sentence:
 <em>"The Constitution does not judge; teleology does."</em> The Vaglio
 is the structure that makes it operational.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/vaglio.html">vaglio.html</a> <span class="it-note">(in Italian)</span> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Giornate III-IV</a></p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/vaglio.html">vaglio.html</a> &middot; <a href="Metnos_Dialogue_v1.html#giornata3">Dialogue &mdash; Giornate III-IV</a></p>
 </div>
 
 <!-- ======================== W ======================== -->
@@ -908,31 +777,16 @@ is the structure that makes it operational.</p>
 
 <div class="entry" id="workspace">
 <h3>workspace <span class="tag concept">component</span></h3>
-<p>Metnos's "home" on disk: <code>${METNOS_HOME}/workspace/</code>. It holds
-five markdown personality files (IDENTITY, USER, MEMORY, AGENTS, SOUL)
-plus <a href="#telos">TELOS.md</a>, plus the audit folder and the
-episodic/semantic memory indices.</p>
-<p class="xref"><strong>Canonical:</strong> <a href="/it/architecture/workspace.html">workspace.html</a> <span class="it-note">(in Italian)</span></p>
-</div>
-
-<!-- ======================== Z ======================== -->
-<div class="letter-head" id="L-Z">Z</div>
-
-<div class="entry" id="zeroclaw">
-<h3>zeroclaw <span class="tag ext">external project · inspiration</span></h3>
-<p>Open-source project in Rust
-(<a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw-labs/zeroclaw</a>).
-An inspiration for Metnos in the <a href="#autonomy">levels of autonomy</a>,
-the layered sandbox, the trait-based pattern. Discarded as a directly
-reusable base because it rewrites from scratch the LLM/STT/TTS layer that
-in the home environment is already provided by
-<a href="#suprastructure">suprastructure</a>.</p>
-<p class="xref"><strong>Detailed comparison:</strong> <a href="/it/architecture/#cap2">Architecture Intro §2</a> <span class="it-note">(in Italian)</span></p>
+<p>The local data area used by subsystems that share operational state, such
+as telos, the mnestome and the scheduler. Installation data may live in more
+than one physical directory; access, views and operations remain bound to the
+current user's identity.</p>
+<p class="xref"><strong>Canonical:</strong> <a href="architecture/index.html#s9">Memory</a> &middot; <a href="architecture/pairing.html">Per-user isolation</a></p>
 </div>
 
 <footer>
-Metnos &mdash; <em>Glossary</em> v1.0 &mdash; 22 April 2026<br>
-A term belongs here if it is used across more than one document and is not obvious. If you find one that is missing, it should be added.
+Metnos &mdash; <em>Glossary of architecture and use</em><br>
+Entries describe the current product and link to the relevant documentation.
 </footer>
 
 </body>

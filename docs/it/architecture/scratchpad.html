@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; scratchpad (tested)</title>
- <meta name="description" content="Microprogettazione dello scratchpad di Metnos: il foglio di appunti dove finiscono le osservazioni troppo grandi per la conversazione col LLM, perch&eacute; il LLM possa leggerle a porzioni.">
- <meta name="keywords" content="scratchpad, observation, offload, sqlite, scratchpad_read, builtin executor, metnos">
+ <title>Metnos &mdash; scratchpad</title>
+ <meta name="description" content="Il modulo scratchpad di Metnos: API disponibile, stato dell'integrazione, archivio SQLite temporaneo, lettura a porzioni e limiti di isolamento.">
+ <meta name="keywords" content="Metnos, scratchpad, osservazioni, SQLite, scratchpad_read, contesto, isolamento utenti">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/scratchpad">
@@ -14,16 +14,17 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/scratchpad">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/scratchpad">
- <meta property="og:title" content="Metnos &mdash; scratchpad (tested)">
- <meta property="og:description" content="Lo scratchpad di Metnos: archivio temporaneo per osservazioni grandi, leggibili dal LLM a porzioni.">
+ <meta property="og:title" content="Metnos &mdash; scratchpad">
+ <meta property="og:description" content="Archivio temporaneo delle osservazioni: API, integrazione corrente e confini di sicurezza.">
  <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — scratchpad ",
- "description": "Microprogettazione dello scratchpad: scaricamento automatico delle osservazioni grandi, riassunto testa+coda, builtin scratchpad_read. Stato: collaudato.",
+ "headline": "Metnos — scratchpad",
+ "description": "API disponibile, stato dell'integrazione, archivio SQLite temporaneo, lettura a porzioni e limiti di isolamento.",
  "url": "https://metnos.com/it/architecture/scratchpad.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -31,38 +32,36 @@
 }
  </script>
  <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
 }
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
-h1:first-of-type { margin-top: 0; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
  </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/scratchpad.html" class="active" hreflang="it" lang="it">IT</a>
@@ -73,310 +72,144 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">scratchpad</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">scratchpad</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>scratchpad</code> &mdash; il foglio di appunti per quel che non sta nel discorso</div>
- <div class="meta">
- Microprogettazione<br>
- Pubblico: chi capisce come Metnos gestisce dati grandi senza saturare il contesto LLM.<br>
- </div>
+ <div class="subtitle">Scratchpad delle osservazioni</div>
+ <div class="meta">Ci&ograve; che il modulo offre e ci&ograve; che il runtime usa davvero.</div>
 </div>
-<div class="status-banner">
 
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-Cluster <code>scratchpad</code> 34/34 verde, integrato in <code>agent_runtime</code>. Il turn log include campi di scrub credenziali (<code>redacted: bool</code>, <code>n_redacted_fields: int</code>): i valori in chiaro di pwd/user sono sostituiti da <code>&lt;REDACTED:cred&gt;</code> in <code>user_query</code>, <code>step.raw_args</code> e <code>step.resolved_args</code> prima della serializzazione JSONL. Telemetria fine StepLog: cinque campi opzionali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>) nel record di passo.
-Riferimento di implementazione: <code>/opt/metnos/runtime/scratchpad.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>.</div>
-</div>
+<p class="lead"><code>runtime/scratchpad.py</code> implementa un archivio
+temporaneo per conservare un'osservazione completa e mostrarne al modello
+soltanto un riferimento o una porzione. L'API esiste, ma il motore corrente non
+collega automaticamente le grandi osservazioni a questo archivio e non espone
+<code>scratchpad_read</code> nel catalogo ordinario. La distinzione &egrave;
+essenziale: il modulo disponibile non va presentato come funzione attiva.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Il problema da risolvere</a></li>
- <li><a href="#cap2">L'idea dello scratchpad</a></li>
- <li><a href="#cap3">Quando un'osservazione va in scratchpad</a></li>
- <li><a href="#cap4">Cosa vede il LLM al posto dell'osservazione completa</a></li>
- <li><a href="#cap5">Come il LLM legge dallo scratchpad: <code>scratchpad_read</code></a></li>
- <li><a href="#cap6">Storage e ciclo di vita</a></li>
- <li><a href="#cap7">Builtin: perch&eacute; scratchpad_read &egrave; speciale</a></li>
- <li><a href="#cap8">Limiti e sviluppi futuri</a></li>
+ <li><a href="#cap1">Comportamento corrente</a></li>
+ <li><a href="#cap2">API disponibile</a></li>
+ <li><a href="#cap3">Archivio e durata</a></li>
+ <li><a href="#cap4">Rappresentazione sintetica</a></li>
+ <li><a href="#cap5">Lettura a porzioni</a></li>
+ <li><a href="#cap6">Cosa occorre per collegarlo</a></li>
+ <li><a href="#cap7">Verifiche necessarie</a></li>
+ <li><a href="#cap8">Confini di sicurezza</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Il problema da risolvere</h1>
+<h1 id="cap1">1. Comportamento corrente</h1>
 
-<p class="lead">
-Immagina che un utente chieda: <em>&laquo;leggi il file /tmp/big_log.txt e dimmi gli errori&raquo;</em>. Il file pesa 800 KB. L'executor <code>read_files</code> lo legge senza problemi. Ma adesso il contenuto deve arrivare al LLM perch&eacute; possa decidere quali siano gli errori. E qui sta il problema: 800 KB nella finestra di contesto di un LLM piccolo (8K-32K token) significano <em>esplosione del contesto</em>.
-</p>
+<p>Nel motore attivo, i risultati dei passi restano nella cronologia di
+esecuzione del turno. Un passo successivo li riusa con
+<code>from_step</code> o con un riferimento <code>&#36;{stepN.campo}</code>; il
+runtime risolve il valore effettivo senza chiedere al modello di ricopiarlo.
+La sintesi finale proietta e limita i campi testuali che presenta al modello,
+mentre i dati completi restano nel risultato del passo.</p>
 
-<p>
-Una prima risposta ingenua: tronchiamo. Teniamo solo i primi N caratteri dell'osservazione. Funziona per file piccoli. Ma se l'utente cerca "errori" e gli errori stanno alla fine del log, abbiamo perso esattamente la parte che servirebbe. Una troncatura cieca distrugge informazione utile.
-</p>
+<p>All'inizio di un turno <code>agent_runtime</code> apre il database dello
+scratchpad ed elimina le voci scadute. Nel percorso corrente, per&ograve;, non
+chiama <code>Scratchpad.put</code>. Anche il parametro storico
+<code>scratchpad_threshold</code> non governa l'esecuzione del motore. Di
+conseguenza non &egrave; corretto affermare che ogni osservazione sopra i 4 KB
+venga scaricata automaticamente nel database.</p>
 
-<p>
-Una seconda risposta: chiediamo al LLM di esprimere in anticipo cosa vuole. Se chiede "gli errori", aggiungiamo a read_files un parametro <code>filter_regex</code> e gli passiamo solo le righe che fanno match. Funziona, ma costringe l'LLM a sapere <em>prima</em> cosa cercher&agrave;, e a saperlo dire in regex. Per molti casi reali il LLM vuole esplorare: "facci vedere l'inizio per capire il formato, poi cerco gli errori, poi voglio i dettagli del primo errore".
-</p>
-
-<p>
-Lo scratchpad &egrave; la terza risposta: <em>separiamo l'archiviazione dell'osservazione dalla sua vista nel contesto</em>. L'osservazione vera, completa, va in un archivio temporaneo (lo scratchpad). Nel contesto del LLM mettiamo solo un breve riassunto e un identificatore. Quando il LLM ha bisogno di vederne porzioni, le chiede esplicitamente.
-</p>
-
-<figure style="text-align: center; margin: 24px 0;">
-<svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
-<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.h{font-size:13px;font-weight:700;fill:#1A477A}.b{font-size:10.5px;fill:#1a1a1a}.s{font-size:9.5px;fill:#64748B}.box{stroke:#1A477A;stroke-width:1.5;rx:6;ry:6;fill:#fff}.exec{fill:#dcfce7}.run{fill:#fef3c7}.db{fill:#dbeafe}.llm{fill:#fce7f3;stroke:#a21caf}.a{stroke:#64748B;stroke-width:1.5;fill:none;marker-end:url(#ar)}</style>
-<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#64748B"/></marker></defs>
-<rect class="box exec" x="20" y="40" width="160" height="50"/><text class="tt h" x="100" y="58">Executor</text><text class="tt s" x="100" y="76">es. read_files /tmp/big.log</text>
-<path class="a" d="M180,65 L240,65"/>
-<text class="tt s" x="210" y="50">obs 89KB</text>
-<rect class="box run" x="240" y="40" width="200" height="80"/><text class="tt h" x="340" y="58">Runtime</text>
-<text class="tt b" x="340" y="78">size &gt; 4KB ?</text>
-<text class="tt s" x="340" y="96">s&iacute;: scarica in scratchpad</text>
-<text class="tt s" x="340" y="110">sostituisci con synth</text>
-<path class="a" d="M340,120 L340,160"/>
-<text class="tt s" x="280" y="142">salva intero</text>
-<rect class="box db" x="240" y="160" width="200" height="60"/><text class="tt h" x="340" y="178">Scratchpad SQLite</text>
-<text class="tt s" x="340" y="196">id, turn_id, content,</text>
-<text class="tt s" x="340" y="208">summary, ttl=1h</text>
-<path class="a" d="M440,80 L520,80"/>
-<text class="tt s" x="480" y="68">obs synth</text>
-<rect class="box llm" x="520" y="40" width="220" height="100"/><text class="tt h" x="630" y="58">LLM (vede synth)</text>
-<text class="tt s" x="630" y="78">{ok:true,</text>
-<text class="tt s" x="630" y="92">scratchpad_id:"485d7b…",</text>
-<text class="tt s" x="630" y="106">summary:"INFO... ERROR"</text>
-<text class="tt s" x="630" y="122">size:89042}</text>
-<path class="a" d="M630,140 Q630,200 530,210"/>
-<text class="tt b" x="630" y="160">decide cosa serve</text>
-<rect class="box llm" x="320" y="240" width="280" height="50"/><text class="tt h" x="460" y="258">tool_call: scratchpad_read</text>
-<text class="tt s" x="460" y="276">id="485d7b…", mode="tail", n=200</text>
-<path class="a" d="M340,240 Q260,240 280,220"/>
-<rect class="box run" x="40" y="240" width="240" height="50"/><text class="tt h" x="160" y="258">Runtime: ricerca + porzione</text>
-<text class="tt s" x="160" y="276">recupera dal SQLite, ritorna porzione</text>
-<path class="a" d="M280,265 L320,265"/>
-<path class="a" d="M460,290 Q460,330 540,330"/>
-<rect class="box llm" x="540" y="310" width="200" height="40"/><text class="tt h" x="640" y="332">final_answer all'utente</text>
-</svg>
-<figcaption style="font-style:italic;color:#555;font-size:9.5pt;margin-top:8px;">Sequenza tipica: l'executor produce un'osservazione grande, il runtime la scarica nello scratchpad e mostra al LLM solo il riassunto; il LLM, se gli serve di pi&ugrave;, chiama esplicitamente <code>scratchpad_read</code> con la modalit&agrave; che vuole.</figcaption>
-</figure>
-
-<h1 id="cap2">2. L'idea dello scratchpad</h1>
-
-<p>
-Lo scratchpad &egrave; un piccolo database SQLite locale (<code>~/.local/share/metnos/scratchpad.db</code>) dove il runtime parcheggia le osservazioni grandi. Per ogni voce salva:
-</p>
-
-<ul>
- <li>un <code>scratchpad_id</code> univoco (16 caratteri esadecimali);</li>
- <li>il <code>turn_id</code> a cui appartiene (cos&iacute; possiamo isolare voci di turni diversi);</li>
- <li>il numero del passo dentro il turno;</li>
- <li>il nome dell'executor che ha prodotto l'osservazione;</li>
- <li>il <code>kind</code>: <code>text</code> oppure <code>binary</code>;</li>
- <li>il <code>content</code> completo (testo UTF-8 o byte grezzi);</li>
- <li>la <code>size_bytes</code>;</li>
- <li>un <code>summary</code> &mdash; vedi sotto;</li>
- <li>i timestamp <code>created_at</code> e <code>expires_at</code> (TTL di un'ora di default).</li>
-</ul>
-
-<p>
-La voce vive solo per la durata del turno (e un po' oltre, per sicurezza). Una funzione di <em>pulizia automatica</em> rimuove le voci scadute all'avvio del turno successivo.
-</p>
-
-<h1 id="cap3">3. Quando un'osservazione va in scratchpad</h1>
-
-<p>
-Il pianificatore, dopo che un executor ha prodotto la sua osservazione, applica una regola semplice:
-</p>
-
-<pre>se len(json.dumps(observation)) &gt; SCRATCHPAD_THRESHOLD_BYTES (default 4096):
- salva l'observation in scratchpad
- crea una versione "sintetica" da mettere nella history del LLM
-altrimenti:
- metti l'observation completa nella history (con eventuale truncation a 1500 char)</pre>
-
-<p>
-La soglia di 4 KB &egrave; calibrata sul fatto che oltre i 4 KB di JSON un'osservazione occupa ~1000 token nel contesto, che &egrave; gi&agrave; significativo per un turno multipasso di 3-5 passi. Sotto i 4 KB il costo &egrave; trascurabile e metterla in scratchpad sarebbe un'inutile cerimonia.
-</p>
-
-<p>
-La soglia &egrave; configurabile nel config; il default &egrave; sufficientemente generoso per la maggior parte degli usi.
-</p>
-
-<h1 id="cap4">4. Cosa vede il LLM al posto dell'osservazione completa</h1>
-
-<p>
-Quando un'osservazione viene messa in scratchpad, il pianificatore costruisce un'<em>osservazione sintetica</em> per la cronologia del LLM. Esempio reale dal POC:
-</p>
-
-<div class="example">
-<div class="ex-label">Caso: l'utente chiede di leggere un log da 89 KB</div>
-<p>L'executor <code>read_files</code> ha restituito un'osservazione di 89 KB. Il runtime salva gli 89 KB nello scratchpad e mette nella cronologia del LLM:</p>
-<pre>{
- "ok": true,
- "scratchpad_id": "485d7beae4e144eb",
- "size_bytes": 89042,
- "kind": "text",
- "summary": "INFO 10:00:01 evento numero 0\nINFO 10:00:02 evento numero 1\n[... 88500 caratteri omessi...]\nERROR 23:59:59 ULTIMO_EVENTO_CRITICO\n",
- "metadata": {
- "path": "/tmp/big_log.txt",
- "bytes": 89042,
- "encoding": "utf-8",...
- },
- "_note": "Observation grande salvata in scratchpad. Per leggerla per intero o parzialmente usa il tool scratchpad_read."
-}</pre>
-</div>
-
-<p>
-Il riassunto &egrave; un <em>troncamento intelligente</em>: i primi 500 caratteri, un segnaposto con il numero esatto di caratteri omessi, gli ultimi 500. L'LLM vede insieme l'inizio e la fine del contenuto: nella maggior parte dei casi basta a:
-</p>
-
-<ul>
- <li>capire il <em>formato</em> (linee, JSON, XML, CSV, ecc.);</li>
- <li>vedere se la <em>fine</em> contiene quel che serve (errori, ultimo evento, righe pi&ugrave; recenti);</li>
- <li>decidere se gli serve di pi&ugrave; e in quale modalit&agrave; (head, tail, range).</li>
-</ul>
-
-<p>
-La <code>metadata</code> originale dell'osservazione viene preservata: il LLM continua a sapere il path, la dimensione, l'encoding, ecc.
-</p>
-
-<h2>Riassunto intelligente per i binari</h2>
-
-<p>
-Per un'osservazione di tipo binario (es. un file zip letto con <code>encoding=binary</code>), il riassunto diventa una nota tecnica:
-</p>
-
-<pre>"[BINARY: 45123 bytes, sha256=abc123def456...]"</pre>
-
-<p>
-Niente anteprima testuale (sarebbe incomprensibile), ma l'LLM vede dimensione e impronta. Per leggere porzioni, deve chiamare <code>scratchpad_read</code> in modalit&agrave; binaria.
-</p>
-
-<h1 id="cap5">5. Come il LLM legge dallo scratchpad: <code>scratchpad_read</code></h1>
-
-<p>
-Il LLM, vedendo nella cronologia un'osservazione con <code>scratchpad_id</code>, sa che pu&ograve; chiamare un tool builtin chiamato <code>scratchpad_read</code> per accedere al contenuto pieno o a parti.
-</p>
-
-<p>Lo schema del tool:</p>
-
-<pre>{
- "name": "scratchpad_read",
- "description": "Legge dallo scratchpad un'osservazione precedentemente salvata...",
- "parameters": {
- "type": "object",
- "required": ["scratchpad_id"],
- "properties": {
- "scratchpad_id": {"type": "string", "description": "Id ottenuto dal campo 'scratchpad_id' di un'osservazione precedente."},
- "mode": {"type": "string", "enum": ["full", "head", "tail", "range"], "default": "head"},
- "n": {"type": "integer", "description": "Per mode head/tail: numero di caratteri da leggere. Default 2000."},
- "start": {"type": "integer", "description": "Per mode range: indice di inizio."},
- "end": {"type": "integer", "description": "Per mode range: indice di fine (esclusivo)."}
- }
- }
-}</pre>
-
-<h2>Le quattro modalit&agrave;</h2>
+<h1 id="cap2">2. API disponibile</h1>
 
 <table>
-<tr><th>Mode</th><th>Cosa restituisce</th><th>Quando usarlo</th></tr>
-<tr><td><code>full</code></td><td>Tutto il contenuto.</td><td>Solo quando &egrave; davvero piccolo (sotto la soglia o poco oltre). Sconsigliato per file grandi.</td></tr>
-<tr><td><code>head</code></td><td>Primi N caratteri (default 2000).</td><td>Quando l'utente chiede l'inizio o quando serve capire il formato.</td></tr>
-<tr><td><code>tail</code></td><td>Ultimi N caratteri (default 2000).</td><td>Quando l'utente chiede la fine, gli ultimi eventi, le ultime righe.</td></tr>
-<tr><td><code>range</code></td><td>Caratteri da <code>start</code> a <code>end</code> (esclusivo).</td><td>Quando il LLM vuole esplorare una porzione specifica gi&agrave; identificata.</td></tr>
+<tr><th>Metodo o valore</th><th>Funzione</th></tr>
+<tr><td><code>Scratchpad.open(path)</code></td><td>Apre o crea il database SQLite e il relativo schema.</td></tr>
+<tr><td><code>put(turn_id, step_num, executor_name, observation, ttl_seconds)</code></td><td>Salva l'osservazione e restituisce una rappresentazione sintetica.</td></tr>
+<tr><td><code>get(id)</code></td><td>Restituisce la riga completa corrispondente all'identificatore.</td></tr>
+<tr><td><code>read(id, mode, n, start, end)</code></td><td>Restituisce tutto il contenuto oppure una porzione iniziale, finale o compresa in un intervallo.</td></tr>
+<tr><td><code>list_for_turn(turn_id)</code></td><td>Elenca metadati e riassunti delle voci appartenenti a un turno.</td></tr>
+<tr><td><code>gc(now)</code></td><td>Elimina le righe la cui scadenza &egrave; trascorsa.</td></tr>
+<tr><td><code>stats()</code></td><td>Conta voci e byte conservati.</td></tr>
+<tr><td><code>SCRATCHPAD_READ_TOOL</code></td><td>Descrive il possibile strumento incorporato, ma la sola costante non lo rende visibile al pianificatore corrente.</td></tr>
 </table>
 
-<div class="example">
-<div class="ex-label">Esempio: pattern reale dal POC</div>
-<p>Utente: "scarica https://httpbin.org/get e salvalo in /tmp/out.txt".</p>
-<p>Step 1: <code>get_urls(url=https://httpbin.org/get)</code> ritorna 14 KB di JSON. Va in scratchpad, id <code>eae04122bd704636</code>.</p>
-<p>Passo 2: il LLM, vedendo nella cronologia l'osservazione con scratchpad_id, sa che il contenuto vero &egrave; l&agrave;. Propone:<br>
-<code>write_files(path="/tmp/out.txt", content="{{step1.content}}")</code>.</p>
-<p>Il runtime risolve <code>{{step1.content}}</code> recuperando dallo scratchpad il contenuto completo (non il riassunto), e lo passa a write_files.</p>
-<p>Risultato: file scritto correttamente, 14 KB di byte effettivi.</p>
-</div>
+<h1 id="cap3">3. Archivio e durata</h1>
 
-<p>
-La cosa interessante: il LLM ha capito da solo che doveva fare riferimento al contenuto del passo precedente, anche se nella sua cronologia vedeva il riassunto. La sintassi <code>{{stepN.field}}</code> e lo scratchpad cooperano: il riferimento si risolve ricostruendo dal database, non dal riassunto visibile.
-</p>
+<p>Il percorso predefinito &egrave;
+<code>PATH_USER_DATA/scratchpad.db</code>. La tabella conserva:</p>
 
-<h1 id="cap6">6. Storage e ciclo di vita</h1>
+<pre>id · turn_id · step_num · executor_name · content_kind
+content · size_bytes · summary · created_at · expires_at</pre>
 
-<h2>Schema SQL</h2>
+<p>Il valore predefinito di <code>put</code> &egrave; una durata di un'ora.
+L'eliminazione non &egrave; un processo autonomo: avviene soltanto quando un
+chiamante esegue <code>gc</code>. Una voce scaduta pu&ograve; quindi restare su
+disco fino alla pulizia successiva.</p>
 
-<pre>CREATE TABLE entries (
- id TEXT PRIMARY KEY,
- turn_id TEXT NOT NULL,
- step_num INTEGER,
- executor_name TEXT,
- content_kind TEXT NOT NULL, -- 'text' | 'binary'
- content BLOB NOT NULL,
- size_bytes INTEGER NOT NULL,
- summary TEXT,
- created_at REAL NOT NULL,
- expires_at REAL NOT NULL
-);</pre>
+<h1 id="cap4">4. Rappresentazione sintetica</h1>
 
-<p>
-SQLite, file unico in <code>~/.local/share/metnos/scratchpad.db</code>. Indici su <code>turn_id</code> (per recuperare entries di un turno) e <code>expires_at</code> (per il GC).
-</p>
+<p>Per un testo lungo, il modulo conserva l'intero contenuto e produce un
+riassunto formato dall'inizio e dalla fine. Per dati binari registra i byte e
+mostra dimensione e prefisso dell'impronta SHA-256. Per un risultato
+strutturato cerca campi quali <code>entries</code>, <code>matches</code> o
+<code>results</code> e comunica conteggio e schema, senza riversare gli
+elementi nel riassunto.</p>
 
-<h2>Garbage collection</h2>
+<p>La rappresentazione sintetica pu&ograve; mantenere anche scalari utili, per
+esempio conteggi, stato di troncamento, dimensione, messaggio ed errore. Il
+campo <code>ref_hint</code> spiega come riusare il risultato di un passo o
+come chiedere una porzione del contenuto.</p>
 
-<p>
-Il pianificatore chiama <code>scratchpad.gc</code> all'inizio di ogni turno, che rimuove tutte le entries con <code>expires_at &lt; now</code>. TTL di default: 1 ora dalla creazione. Configurabile via parametro <code>ttl_seconds</code> in <code>put</code>.
-</p>
-
-<p>
-Cos&iacute; uno scratchpad usato pesantemente per qualche minuto torna pulito dopo un'ora. Niente growth illimitata.
-</p>
-
-<h2>Isolation fra turni</h2>
-
-<p>
-Ogni turno ha un suo <code>turn_id</code> uuid. Il pianificatore mostra al LLM solo le entries del turno corrente (via <code>list_for_turn(turn_id)</code>). Anche se nello SQLite ci sono entries di altri turni (in attesa di GC), il LLM non le vede e non vi pu&ograve; accedere.
-</p>
-
-<h1 id="cap7">7. Builtin: perch&eacute; scratchpad_read &egrave; speciale</h1>
-
-<p>
-A differenza degli executor "normali" (read_files, get_urls, ecc.), <code>scratchpad_read</code> non vive su disco come pacchetto firmato. Esiste solo nel runtime: il pianificatore costruisce dinamicamente il suo schema (un dict Python costante) e lo aggiunge ai tools passati al LLM <em>quando ci sono entries scratchpad attive nel turno corrente</em>.
-</p>
-
-<p>
-Se non c'&egrave; nessuna osservazione in scratchpad, il LLM non vede il tool: meno rumore nel contesto. Appena la prima osservazione grande viene scaricata, lo scratchpad_read entra nel catalogo dei tools per i passi successivi.
-</p>
-
-<p>
-Il guard "duplicate read" (vedi <a href="agent_runtime.html#cap10">agent_runtime cap. 10</a>) <em>non</em> si applica a scratchpad_read, perch&eacute; chiamarlo pi&ugrave; volte sullo stesso <code>scratchpad_id</code> con modalit&agrave; o intervallo diversi &egrave; il caso d'uso normale.
-</p>
-
-<div class="callout note">
-<strong>Perch&eacute; un builtin e non un executor a tutti gli effetti?</strong> Perch&eacute; lo scratchpad &egrave; una primitiva del runtime, non una capability che un sintetizzatore (synt) potrebbe inventare o scrivere. Un executor "scratchpad_read" su disco firmato sarebbe inutilmente ricco di cerimonia per qualcosa che il runtime conosce gi&agrave; intimamente. La famiglia dei builtin (di cui scratchpad_read &egrave; il primo) include in futuro probabilmente uno <code>scheduler</code> e simili.
-</div>
-
-<h1 id="cap8">8. Limiti e sviluppi futuri</h1>
+<h1 id="cap5">5. Lettura a porzioni</h1>
 
 <table>
-<tr><th>Limite </th><th>Quando si toglie</th></tr>
-<tr><td>TTL fisso (1 ora) per tutte le voci</td><td>Quando un'osservazione deve sopravvivere oltre il turno (es. per essere recuperata in un turno futuro): TTL dichiarabile per voce.</td></tr>
-<tr><td>Riassunto unicamente "testa + coda"</td><td>Quando un riassunto semantico (generato dall'LLM) per osservazioni da 50KB-1MB diventa utile. Implica una piccola chiamata LLM al momento dello scaricamento, da bilanciare col costo.</td></tr>
-<tr><td>Range solo per indici di carattere/byte</td><td>Quando il LLM vuole "righe N..M" o "righe che corrispondono a una regex": estensione della modalit&agrave; range con sotto-modalit&agrave; <code>line</code>, <code>grep</code>.</td></tr>
-<tr><td>Niente compressione del contenuto</td><td>Quando il volume dello scratchpad cresce (per ora &egrave; trascurabile, la pulizia automatica lo tiene sgombro).</td></tr>
-<tr><td>Niente "scratchpad federato" fra turni / fra istanze remote</td><td>Quando esecuzione remota o synt distribuito richieder&agrave; condivisione (al momento ogni istanza Metnos ha il suo).</td></tr>
+<tr><th>Modalit&agrave;</th><th>Risultato</th></tr>
+<tr><td><code>full</code></td><td>Contenuto completo.</td></tr>
+<tr><td><code>head</code></td><td>Primi <code>n</code> caratteri o byte; il valore predefinito dichiarato dallo strumento &egrave; 2000.</td></tr>
+<tr><td><code>tail</code></td><td>Ultimi <code>n</code> caratteri o byte.</td></tr>
+<tr><td><code>range</code></td><td>Intervallo da <code>start</code> incluso a <code>end</code> escluso.</td></tr>
 </table>
 
-<h2>Note finali</h2>
+<p>Il testo viene restituito come UTF-8 con sostituzione dei byte non validi.
+Il contenuto binario viene codificato in Base64. I metadati indicano dimensione
+completa, dimensione restituita, tipo e modalit&agrave; di lettura.</p>
 
-<p>
-Lo scratchpad &egrave; un componente piccolo (~200 righe di Python) ma architettonicamente importante: senza di esso, il sistema sarebbe limitato a osservazioni che entrano comodamente in 1500 caratteri di contesto, cio&egrave; banalmente nulla di utile. Con lo scratchpad, la scala dell'utile cresce di tre ordini di grandezza (file dell'ordine dei MB leggibili a porzioni) senza saturare il LLM.
-</p>
+<h1 id="cap6">6. Cosa occorre per collegarlo</h1>
 
-<p>
-Senza lo scratchpad, una troncatura cieca butterebbe via la quasi totalit&agrave; del contenuto degli executor di lettura, anche quando quel contenuto sarebbe il dato chiave per la risposta utente.
-</p>
+<p>Un'integrazione corretta nel motore richiede almeno:</p>
+
+<ol>
+<li>un solo punto di decisione che confronti la dimensione dell'osservazione con una configurazione canonica;</li>
+<li>la chiamata a <code>put</code> prima di costruire il contesto visibile al modello;</li>
+<li>l'esposizione di <code>scratchpad_read</code> soltanto quando esistono voci accessibili al turno e all'utente correnti;</li>
+<li>un controllo di propriet&agrave; su ogni <code>get</code>, <code>read</code> e <code>list_for_turn</code>;</li>
+<li>limiti sulla lettura <code>full</code>, cos&igrave; una voce grande non rientra interamente nel contesto che si voleva proteggere;</li>
+<li>pulizia, osservabilit&agrave; e prove di ripresa dopo un dialogo sospeso.</li>
+</ol>
+
+<h1 id="cap7">7. Verifiche necessarie</h1>
+
+<p>Il collegamento automatico fra motore e database non &egrave; attivo. La sua
+attivazione richiede prove dedicate su testo, binari, risultati strutturati,
+intervalli, scadenza, concorrenza e ripresa del turno.</p>
+
+<p>La verifica pi&ugrave; importante &egrave; multiutente: un identificatore ottenuto
+da un utente non deve permettere di leggere una voce appartenente a un altro,
+nemmeno passando direttamente l'identificatore all'API incorporata.</p>
+
+<h1 id="cap8">8. Confini di sicurezza</h1>
+
+<ul>
+<li><strong>Lo schema corrente non contiene un proprietario.</strong> Conserva <code>turn_id</code>, ma non <code>owner_user_id</code>, attore o canale. <code>get</code> e <code>read</code> accettano soltanto l'identificatore e non applicano autorizzazione.</li>
+<li><strong>L'identificatore opaco non &egrave; una credenziale.</strong> La difficolt&agrave; di indovinarlo non sostituisce un controllo di propriet&agrave;.</li>
+<li><strong>Il database &egrave; condiviso dall'installazione.</strong> Non va descritto come isolato per utente finch&eacute; schema e chiamanti non applicano quella separazione.</li>
+<li><strong>Il contenuto non &egrave; cifrato dal modulo.</strong> La protezione a riposo dipende dai permessi del percorso dati e dall'ambiente che lo ospita.</li>
+<li><strong>La scadenza &egrave; logica.</strong> I dati vengono rimossi soltanto all'esecuzione di <code>gc</code>.</li>
+</ul>
+
+<p>Per questi motivi il modulo pu&ograve; essere studiato e collaudato come
+componente, ma non deve essere collegato a una superficie multiutente senza
+prima aggiungere propriet&agrave;, autorizzazione e prove di isolamento.</p>
 
 </body>
 </html>

@@ -58,6 +58,9 @@ class UiSurfaceSpec:
     # template's literal header row: see DRIFT GUARD in the module docstring.
     template: str = ""
     structure_sha: str = ""
+    # Signed Tutor projection: closed read-only probes admitted when this
+    # surface is selected.  IDs are validated against tutor.probes at build.
+    probe_refs: tuple[str, ...] = ()
 
     def label(self, lang: str) -> str:
         return self.label_it if lang == "it" else self.label_en
@@ -78,14 +81,14 @@ class UiSurfaceSpec:
         return self.stop_it if lang == "it" else self.stop_en
 
     def breadcrumb(self, lang: str) -> str:
-        # The current Settings shell is rendered in Italian. Navigation paths
-        # are therefore UI literals and must not be translated in an answer;
-        # summaries and explanatory labels remain localized.
+        # Navigation paths are UI literals in the language of the current
+        # user.  The Settings shell and this registry consume the same locale,
+        # so Tutor and public navigation docs quote what the person sees.
         parts = ["Settings"]
         if self.section:
-            parts.append(_SECTIONS[self.section][0])
+            parts.append(_SECTIONS[self.section][0 if lang == "it" else 1])
         if self.route != "/admin":
-            parts.append(self.label_it)
+            parts.append(self.label(lang))
         return " > ".join(parts)
 
 
@@ -99,7 +102,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
             "turni nelle ultime 24 ore, errori e latenza mediana",
             "proposte introspettive e Telos per stato",
             "executor totali, artigianali, sintetizzati e deprecati",
-            "run odierni, fallimenti e task registrati dello scheduler",
+            "esecuzioni odierne, fallimenti e attività registrate dello scheduler",
             "firme Safety per classe",
             "utenti host, guest e ultimi appaiati",
         ),
@@ -128,36 +131,38 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
     ),
     UiSurfaceSpec(
         "runs", "activity", "/admin/runs", "Scheduler", "Scheduler",
-        "Esecuzioni dei task schedulati, con esito e durata.",
+        "Esecuzioni delle attività programmate, con esito e durata.",
         "Scheduled-task runs with outcome and duration.",
-        ("identificativo run", "task", "inizio", "fine", "esito", "durata"),
+        ("identificativo dell'esecuzione", "attività", "inizio", "fine", "esito", "durata"),
         ("run identifier", "task", "start", "end", "outcome", "duration"),
-        ("collegamento a Timer, dove si configura il task",),
+        ("collegamento a Timer, dove si configura l'attività",),
         ("link to Timers, where tasks are configured",),
         structure_sha="eb12f98ec666",
+        probe_refs=("scheduler_health",),
     ),
     UiSurfaceSpec(
         "timers", "activity", "/admin/timers", "Timer", "Timers",
         "Timer di sistema, stato e controlli disponibili.",
         "System timers, state, and available controls.",
-        ("task utente e timer di sistema separati", "nome e descrizione",
+        ("attività dell'utente e timer di sistema distinti", "nome e descrizione",
          "regola temporale", "stato", "prossima esecuzione",
-         "ultima esecuzione ed esito", "conteggio run e fallimenti"),
+         "ultima esecuzione ed esito", "conteggio delle esecuzioni e dei fallimenti"),
         ("separate user tasks and system timers", "name and description",
          "schedule", "state", "next execution", "last execution and outcome",
          "run and failure counts"),
         ("abilita", "disabilita", "esegui ora"),
         ("enable", "disable", "run now"),
+        probe_refs=("scheduler_health",),
     ),
     UiSurfaceSpec(
-        "builds", "activity", "/admin/builds", "Build indici", "Index builds",
-        "Build degli indici con progresso, stato ed ETA.",
+        "builds", "activity", "/admin/builds", "Creazione indici", "Index builds",
+        "Creazione degli indici con progresso, stato e tempo stimato.",
         "Index builds with progress, state, and ETA.",
-        ("digest", "directory", "indice", "stato", "progresso", "ETA",
+        ("digest", "directory", "indice", "stato", "progresso", "tempo stimato",
          "ultimo aggiornamento", "unità attiva", "errori"),
         ("digest", "directory", "index", "state", "progress", "ETA",
          "last update", "active unit", "errors"),
-        structure_sha="7dd89193ccb1",
+        structure_sha="925affb988b2",
     ),
     UiSurfaceSpec(
         "changes", "lifecycle", "/admin/changes", "Modifiche", "Changes",
@@ -200,7 +205,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         "Executor installati, appartenenza, stato e motivi di esclusione.",
         "Installed executors, membership, state, and exclusion reasons.",
         ("nome", "versione", "ciclo di vita", "appartenenza", "origine",
-         "trasporto", "conformità allo standard", "capability", "reversibilità",
+         "trasporto", "conformità allo standard", "capacità", "reversibilità",
          "executor rifiutati con percorso e motivo"),
         ("name", "version", "lifecycle", "membership", "origin", "transport",
          "standard compliance", "capability", "reversibility",
@@ -208,6 +213,7 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         ("collegamento a statistiche e grafici",),
         ("link to statistics and charts",),
         structure_sha="8c69bd92bef0",
+        probe_refs=("admitted_executor_state",),
     ),
     UiSurfaceSpec(
         "executor-stats", "lifecycle", "/admin/executors/stats",
@@ -246,15 +252,84 @@ SURFACES: tuple[UiSurfaceSpec, ...] = (
         structure_sha="875c62bcd019",
     ),
     UiSurfaceSpec(
+        "virt", "system", "/admin/virt", "Modelli", "Models",
+        "Configurazione effettiva di LLM, embedding e VLM: LLM e VLM sono modificabili; l'embedding è solo consultabile.",
+        "Effective configuration for language, embedding, and vision models: LLM and VLM are editable; embedding is view-only.",
+        (
+            "famiglie LLM, embedding e VLM",
+            "fast micro procedural fidelity, middle, wise, creative e frontier e ruoli text, image e default",
+            "fornitore, modello, endpoint o URL di base effettivi",
+            "parametri effettivi di generazione LLM, fra cui think, temperature e reasoning_budget",
+            "file di configurazione, provenienza dei valori e sostituzioni tramite variabili d'ambiente",
+            "errori di lettura o validazione del TOML",
+            "valori sensibili oscurati",
+            "embedding consultabile ma non modificabile dalla pagina",
+        ),
+        (
+            "LLM, embedding, and VLM families",
+            "fast micro procedural fidelity, middle, wise, creative, and frontier tiers and text, image, and default roles",
+            "effective provider, model, endpoint, or base URL",
+            "effective LLM generation parameters, including think, temperature, and reasoning_budget",
+            "configuration file, value origin, and environment override",
+            "TOML read or validation errors",
+            "redacted sensitive values",
+            "embedding shown for inspection but not editable from the page",
+        ),
+        (
+            "rileggi la configurazione dal file",
+            "modifica una famiglia LLM o VLM e salva i valori visibili",
+            "annulla le modifiche non salvate",
+            "ripristina i valori iniziali di LLM o VLM della versione installata",
+        ),
+        (
+            "reload the configuration from its file",
+            "edit one LLM or VLM family and save visible values",
+            "cancel unsaved changes",
+            "restore the installed version's initial LLM or VLM values",
+        ),
+        (
+            "Nella chat web apri Settings > Sistema > Modelli.",
+            "Scegli la famiglia e controlla sia il valore sia la sua provenienza: file, valore iniziale, alias o valore di riserva dopo un errore. L'embedding è soltanto consultabile.",
+            "Per LLM e VLM premi Modifica, cambia soltanto i campi necessari e scegli Salva modifiche; Metnos valida l'intero file prima di sostituirlo e conserva una copia privata di recupero.",
+            "I parametri mostrati sono quelli effettivi del tier. Un override richiesto da una singola operazione non modifica la policy: ogni operazione sceglie solo il proprio workload e la policy di generazione resta del tier.",
+            "Le chiamate successive usano la nuova configurazione; Rileggi configurazione mostra nuovamente ciò che il runtime risolve dal file.",
+            "Per LLM o VLM, per tornare alla configurazione fornita dalla versione installata scegli Ripristina e conferma: anche in questo caso la configurazione precedente viene conservata come copia di recupero.",
+        ),
+        (
+            "In the web chat, open Settings > System > Models.",
+            "Choose the family and inspect both each value and its origin: file, default, alias, or fallback after an error. Embedding is view-only.",
+            "For LLM and VLM, press Edit, change only the necessary fields, and choose Save changes; Metnos validates the complete file before replacing it and retains a private recovery copy.",
+            "Shown parameters are the tier's effective values. A per-operation override does not change the policy: each operation selects only its workload, while generation policy remains owned by the tier.",
+            "Subsequent calls use the new configuration; Reload configuration shows what the runtime resolves from the file again.",
+            "For LLM or VLM, to return to the configuration supplied by the installed version, choose Restore defaults and confirm: the previous configuration is retained as a recovery copy in this case too.",
+        ),
+        (
+            "password, token, chiavi, credenziali e parti sensibili degli URL non sono modificabili in questa pagina",
+            "se il file cambia dopo l'apertura della pagina, Metnos non sovrascrive il cambiamento: rileggi la configurazione e riprova",
+            "se la validazione fallisce, nessuna modifica viene salvata",
+        ),
+        (
+            "passwords, tokens, keys, credentials, and sensitive URL parts cannot be edited on this page",
+            "if the file changes after the page is opened, Metnos does not overwrite that change: reload the configuration and try again",
+            "if validation fails, no change is saved",
+            "the embedding backend cannot be changed from this page: it requires a dedicated, verified migration and index reconstruction",
+        ),
+    ),
+    UiSurfaceSpec(
         "services", "system", "/admin/services", "Servizi", "Services",
         "Servizi Metnos con stato, salute, installazione, PID e controlli.",
         "Metnos services with state, health, installation, PID, and controls.",
         ("servizi raggruppati per funzione", "stato systemd e sottostato",
-         "salute applicativa", "installazione", "PID", "ambito"),
+         "salute applicativa", "installazione", "PID", "ambito",
+         "server LLM locale per fast.micro, fast.procedural, fast.fidelity, middle, wise e creative",
+         "traduttore i18n automatico con fast.fidelity"),
         ("services grouped by function", "systemd state and sub-state",
-         "application health", "installation", "PID", "scope"),
+         "application health", "installation", "PID", "scope",
+         "local LLM server for fast.micro, fast.procedural, fast.fidelity, middle, wise, and creative",
+         "automatic i18n translator with fast.fidelity"),
         ("avvia", "arresta", "riavvia", "aggiornamento automatico ogni 15 secondi"),
         ("start", "stop", "restart", "automatic refresh every 15 seconds"),
+        probe_refs=("service_health",),
     ),
     UiSurfaceSpec(
         "safety", "system", "/admin/safety", "Safety", "Safety",
@@ -375,6 +450,11 @@ def validate_surfaces() -> tuple[str, ...]:
     if len(routes) != len(set(routes)):
         findings.append("duplicate_route")
     admitted = {route for method, route, _handler in ROUTES if method == "GET"}
+    try:
+        from tutor.probes import registered_probe_ids
+        admitted_probes = registered_probe_ids()
+    except ImportError:
+        admitted_probes = frozenset()
     for surface in SURFACES:
         if surface.route not in admitted:
             findings.append(f"missing_route:{surface.key}:{surface.route}")
@@ -394,6 +474,9 @@ def validate_surfaces() -> tuple[str, ...]:
             findings.append(f"missing_summary:{surface.key}")
         if not surface.visible_it or not surface.visible_en:
             findings.append(f"missing_visible_content:{surface.key}")
+        for probe_id in surface.probe_refs:
+            if probe_id not in admitted_probes:
+                findings.append(f"unknown_probe:{surface.key}:{probe_id}")
     return tuple(findings)
 
 

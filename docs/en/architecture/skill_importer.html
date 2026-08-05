@@ -3,8 +3,8 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; skill importer (introduction)</title>
- <meta name="description" content="How Metnos imports an external skill (agentskills.io format) by turning it into signed executors. Five-stage pipeline, security, examples.">
+ <title>Metnos &mdash; importing skills</title>
+ <meta name="description" content="How Metnos acquires a skill, translates it into the canonical vocabulary, generates executors, applies admission checks, and records the outcome.">
  <meta name="keywords" content="skill, skill importer, agentskills.io, executor, manifest, sandbox, security, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -14,24 +14,24 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/skill_importer">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/skill_importer">
- <meta property="og:title" content="Metnos &mdash; skill importer (introduction)">
- <meta property="og:description" content="How Metnos imports an external skill by turning it into signed executors.">
+ <meta property="og:title" content="Metnos &mdash; importing skills">
+ <meta property="og:description" content="From a skill source to executors admitted to the Metnos catalog.">
  <meta property="og:locale" content="en_US">
  <meta property="og:locale:alternate" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; skill importer (introduction)">
+ <meta name="twitter:title" content="Metnos &mdash; importing skills">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — skill importer (introduction)",
- "description": "How Metnos imports an external skill by turning it into signed executors.",
+ "headline": "Metnos — importing skills",
+ "description": "How Metnos acquires a skill, translates it, and admits the resulting executors.",
  "url": "https://metnos.com/en/architecture/skill_importer.html",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: skill importer (didactic introduction)"
+ "about": "Skill import and admission in Metnos"
 }
  </script>
  <style>:root {
@@ -60,13 +60,9 @@ tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; }
-figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 12px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.five-cols { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 18px 0; }.five-cols > div { background: white; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-size: 9pt; }.five-cols h4 { margin: 0 0 6px 0; font-size: 10pt; color: var(--navy); }
-@media (max-width: 720px) {.five-cols { grid-template-columns: 1fr; } }
-@media (max-width: 1024px) and (min-width: 721px) {.five-cols { grid-template-columns: 1fr 1fr; } }
+li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
  </style>
 <link rel="stylesheet" href="/assets/metnos.css">
 </head>
@@ -76,344 +72,289 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <h2>Contents</h2>
 <ol>
  <li><a href="#cap1">What a skill is, in thirty seconds</a></li>
- <li><a href="#cap2">From the SKILL file to the catalog: the assembly line</a></li>
- <li><a href="#cap3">What comes in: three sources</a></li>
- <li><a href="#cap4">What comes out: a folder of signed executors</a></li>
- <li><a href="#cap5">The checks that matter</a></li>
+ <li><a href="#cap2">From the SKILL file to the catalog</a></li>
+ <li><a href="#cap3">Supported sources</a></li>
+ <li><a href="#cap4">Generated files and provenance</a></li>
+ <li><a href="#cap5">Translation and admission checks</a></li>
  <li><a href="#cap6">Credentials and dialogs with the user</a></li>
- <li><a href="#cap7">An example from start to finish</a></li>
- <li><a href="#cap8">Going deeper</a></li>
+ <li><a href="#cap7">Google Workspace: a complete example</a></li>
+ <li><a href="#cap8">Trust boundary and runtime controls</a></li>
+ <li><a href="#cap9">Going deeper</a></li>
 </ol>
 </div>
 
 <h1 id="cap1">1. What a skill is, in thirty seconds</h1>
 
 <p class="lead">
-A skill is the structured documentation of how to use a service (Google
-Calendar, a mailbox, a weather feed). It lives in a text file called
-<code>SKILL.md</code>, accompanied by a few small helper scripts. The
-public standard is called <em>agentskills.io</em>.
+A skill is a package that describes how to use a service or a family of
+functions. Its entry point is <code>SKILL.md</code>; the package may also contain
+scripts and references needed at runtime. Metnos does not execute it directly:
+it translates the package into executors with explicit names, arguments,
+capabilities, and provenance.
 </p>
-
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
- <defs><marker id="sk-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
- <rect x="10" y="60" width="160" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="90" y="84" text-anchor="middle" fill="#14532D" font-weight="700">1. fetch</text>
-<text x="90" y="102" text-anchor="middle" fill="#1F2937" font-size="9.5">download skill</text>
-<rect x="188" y="60" width="160" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="268" y="84" text-anchor="middle" fill="#14532D" font-weight="700">2. parse</text>
-<text x="268" y="102" text-anchor="middle" fill="#1F2937" font-size="9.5">read SKILL.md</text>
-<rect x="366" y="60" width="160" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="446" y="84" text-anchor="middle" fill="#14532D" font-weight="700">3. map</text>
-<text x="446" y="102" text-anchor="middle" fill="#1F2937" font-size="9.5">verbs &rarr; vocab</text>
-<rect x="544" y="60" width="160" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="624" y="84" text-anchor="middle" fill="#14532D" font-weight="700">4. wrap</text>
-<text x="624" y="102" text-anchor="middle" fill="#1F2937" font-size="9.5">build executor</text>
-<rect x="722" y="60" width="160" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="802" y="84" text-anchor="middle" fill="#14532D" font-weight="700">5. register</text>
-<text x="802" y="102" text-anchor="middle" fill="#1F2937" font-size="9.5">sign + pool</text>
-<line x1="170" y1="88" x2="186" y2="88" stroke="#1A477A" stroke-width="2" marker-end="url(#sk-arr)"/>
-<line x1="348" y1="88" x2="364" y2="88" stroke="#1A477A" stroke-width="2" marker-end="url(#sk-arr)"/>
-<line x1="526" y1="88" x2="542" y2="88" stroke="#1A477A" stroke-width="2" marker-end="url(#sk-arr)"/>
-<line x1="704" y1="88" x2="720" y2="88" stroke="#1A477A" stroke-width="2" marker-end="url(#sk-arr)"/>
-
-</svg>
-<figcaption>Figure 1 &mdash; The importer five-stage pipeline: from a third-party skill to a signed Metnos executor, with the verb boundary applied at the map stage.</figcaption>
-</figure>
-
-
 <p>
-The file has a header (name, author, version, dependencies) followed by
-sections: &laquo;what it does&raquo;, &laquo;first-time setup&raquo;,
-&laquo;invocation examples&raquo;. Nothing exotic: the format is meant
-to be read by a human first and, almost as a side effect, by an agent.
+The file contains a metadata header and a readable body for functions,
+prerequisites, commands, and examples. The parser turns that material into a
+structure that can be checked; prose is not treated as permission to expand
+the system vocabulary or its capabilities.
 </p>
 
 <p>
-Metnos can <strong>import</strong> a skill as-is: it reads the file,
-derives a set of Metnos-format executors, and registers them in the
-catalog as if they had been written by hand. Once imported, the agent
-invokes them exactly like the others, and the user sees no difference.
+Metnos can <strong>import</strong> a skill source: it reads the file, derives a
+set of executors in its own format, and submits each one to admission checks.
+Those that pass enter the same catalog as other executors and can be invoked
+in natural language, while the manifest continues to record their external
+origin.
 </p>
 
-<div class="callout tip">
-<strong>Why not use the skill as-is?</strong> Skills have no digital
-signature, no execution fence, and their helper scripts can do anything.
-Running them without filters would be reckless. Importing them into
-Metnos format means: same functional behavior, but inside the fence,
-with a signature, with a manifest that declares what they do and what
-they may not do.
-</div>
+<h2>Why Metnos does not execute the skill directly</h2>
+<p>A <code>SKILL.md</code> file does not carry the signature and contract of a
+Metnos executor. Importing generates a wrapper, declares capabilities and
+arguments in a manifest, applies admission checks, and signs the result. This
+reduces the granted authority and makes it observable, but it does not certify
+third-party code as benign: provenance and source still require judgment.</p>
 
-<h1 id="cap2">2. From the SKILL file to the catalog: the assembly line</h1>
+<h1 id="cap2">2. From the SKILL file to the catalog</h1>
 
-<p>
-Importing is a chain of five fully automatic stages. The only step that
-asks for the user is the initial <em>go</em>: &laquo;import skill X&raquo;.
-</p>
+<p>The import command starts a sequence of distinct steps. The distinction
+matters: successful translation is not yet admission to the catalog.</p>
 
-<div class="five-cols">
- <div>
- <h4 style="color:#1A477A;">1. Read</h4>
- <p>The parser reads <code>SKILL.md</code> and extracts the structure: name, author, declared capabilities, list of sub-commands with their arguments.</p>
- </div>
- <div>
- <h4 style="color:#3b82f6;">2. Translate</h4>
- <p>Each sub-command is mapped onto Metnos's closed vocabulary (verb + canonical object): <code>calendar list</code> becomes <code>read_events</code>, <code>gmail send</code> becomes <code>send_messages</code>.</p>
- </div>
- <div>
- <h4 style="color:#9333ea;">3. Generate</h4>
- <p>For each executor the generator emits the Python file and the TOML manifest using fixed templates (Jinja). Only the manifest description is polished by a language model for stylistic care.</p>
- </div>
- <div>
- <h4 style="color:#A0522D;">4. Check</h4>
- <p>Five cumulative checks: name in the vocabulary, no overlap with existing executors, description consistent with the code, declared capabilities reasonable, input and output contract valid.</p>
- </div>
- <div>
- <h4 style="color:#16a34a;">5. Sign</h4>
- <p>The manifest is signed Ed25519. The executor enters a folder kept under separate watch from the hand-written ones. The loader picks it up at restart.</p>
- </div>
-</div>
+<ol>
+ <li><strong>Acquire.</strong> Metnos resolves the path or URL, obtains the
+ source, and fingerprints <code>SKILL.md</code>.</li>
+ <li><strong>Parse.</strong> The parser extracts metadata, dependencies,
+ scripts, required credential files, and sub-commands with their arguments.</li>
+ <li><strong>Translate.</strong> Each sub-command maps to a canonical
+ <code>action_object_qualifier</code> name. The provider qualifies imported
+ executors, and collisions within the skill are rejected.</li>
+ <li><strong>Generate.</strong> Controlled templates produce the Python
+ wrapper, TOML manifest, and language state. A language model may propose
+ Italian and English descriptions and affinity terms; a deterministic
+ fallback is used when it is unavailable.</li>
+ <li><strong>Admit.</strong> The runtime checks binding uniqueness, canonical
+ naming, affinity overlap, routing, and semantic alignment between manifest
+ and code.</li>
+ <li><strong>Sign.</strong> Rejected folders are removed. Accepted executors
+ are signed with Ed25519; the loader does not expose one without a valid
+ signature.</li>
+ <li><strong>Register.</strong> The outcome enters the audit log and, for
+ mappable cases, the persistent routing battery. The executors become visible
+ on the next valid catalog load.</li>
+</ol>
 
-<p>
-Among the five, only step 3 (Generate) leans on a language model, and
-only for two specific things: the description in Italian and English,
-and the eight-to-fifteen affinity keywords that help the planner pick
-the right tool. Everything else is deterministic: same input, same
-output.
-</p>
+<p>Name and argument translation is procedural for the current source and
+vocabulary. The whole import does not promise byte-for-byte identical output:
+provenance contains the import time, descriptions may come from a model, and
+admission depends on the installed catalog and the available semantic
+verifier.</p>
 
-<div class="callout note">
-<strong>The closed vocabulary, a compass.</strong> Metnos accepts only the
-actions and objects defined in <code>runtime/vocab.py</code>. A skill that speaks of
-<em>append rows to spreadsheet</em> does not produce
-<code>append_rows</code>: it becomes <code>change_files_xlsx</code>.
-One that speaks of <em>label messages</em> does not produce
-<code>label_messages</code>: it is rejected if no consistent translation
-exists. The rigidity of the vocabulary shields the agent from invented
-names and synonyms: every task request is routed to the same tool as
-always.
-</div>
+<h2>The closed vocabulary</h2>
+<p>Metnos accepts only actions and objects defined by the runtime vocabulary.
+A skill that speaks of <em>append rows to spreadsheet</em> cannot invent
+<code>append_rows</code>; it must map to a compatible canonical name. If no
+semantically correct mapping exists, the sub-command is rejected. Synonyms
+and skill-specific phrasing therefore cannot introduce new verbs implicitly.</p>
 
-<h1 id="cap3">3. What comes in: three sources</h1>
+<h1 id="cap3">3. Supported sources</h1>
 
 <p>
 A skill can come from three places:
 </p>
 
 <ul>
- <li><strong>Local</strong>: a <code>SKILL.md</code> file already on
- disk (typically because you are developing it).</li>
+ <li><strong>Local</strong>: a <code>SKILL.md</code> file or a directory that
+ contains it. Adjacent <code>scripts/</code> and <code>references/</code> are
+ retained with the source.</li>
  <li><strong>agentskills.io</strong>: an address of the form
  <code>agentskills.io/&lt;author&gt;/&lt;skill&gt;</code>; the importer
- resolves it to the matching public repository and downloads it.</li>
- <li><strong>Direct GitHub</strong>: the full URL of a repository or
- of a raw <code>SKILL.md</code> file; in this case the importer clones
- or downloads directly.</li>
+ resolves it to the <code>SKILL.md</code> file at the expected repository
+ root.</li>
+ <li><strong>Direct GitHub</strong>: a full repository URL is cloned with its
+ support files; a raw URL downloads only the named file.</li>
 </ul>
 
-<p>
-Downloaded skills are placed in the local <em>cache</em> for seven days.
-Importing the same skill twice within that window generates no traffic:
-the cached copy is reused.
-</p>
+<p>If a skill calls its own scripts, import a complete local directory or the
+repository rather than the raw file alone. Remote sources are kept in the
+local cache for a default maximum of seven days; an operator can force a fresh
+fetch.</p>
 
-<h1 id="cap4">4. What comes out: a folder of signed executors</h1>
+<h1 id="cap4">4. Generated files and provenance</h1>
 
-<p>
-After import, one or more folders appear on disk, one per sub-command of
-the skill. Each contains the same files as a hand-written executor: the
-Python file with the <code>invoke</code> function, the TOML manifest,
-the signature, the fence profile.
-</p>
+<p>The source is retained separately from the generated executors. With the
+default paths, both trees belong to the user who performs the import:</p>
 
-<pre>~/.local/share/metnos/executors/skills/google-workspace/
- read_events/
- read_events.py
- manifest.toml
- manifest.toml.sig
- manifest.lang_state.json
- set_events/
- &hellip;
- delete_events/
- &hellip;
- &hellip; (another twenty or so, for Gmail, Drive, Sheets, Docs, Contacts)
+<pre>~/.local/share/metnos/skills/google-workspace/
+ SKILL.md
+ scripts/
+ references/
+
+~/.local/share/metnos/executors/skills/google-workspace/
+ read_events_google_workspace/
+  read_events_google_workspace.py
+  manifest.toml
+  manifest.lang_state.json
+  manifest.toml.sig
+ send_messages_google_workspace/
+  &hellip;
 </pre>
 
-<p>
-The destination is <code>skills/</code>,
-under the folder of
-synthesized executors. This visually separates what comes from outside
-from what Metnos has written on its own, and from what was hand-written.
-All three kinds end up in the same agent catalog, however, and all pass
-through the same checks at the moment of use.
-</p>
+<p>Before signing, each directory contains three generated files: wrapper,
+manifest, and language state. Signing adds <code>manifest.toml.sig</code>.
+Scripts and references remain in the source package and are called by the
+wrapper. The runtime applies sandbox constraints from the contract and
+declared capabilities, without another per-executor file.</p>
 
-<p>
-The manifest of an imported executor carries one extra section, which
-declares its origin:
-</p>
+<p>The manifest retains its link to the source:</p>
 
 <pre>[provenance]
-synthesized = true
-imported_from = "agentskills.io/googleworkspace/calendar"
-source_version = "1.1.0"
-imported_at = "2026-05-10T22:00:00Z"
-source_sha256 = "&lt;fingerprint of the source file&gt;"
+synthesized       = true
+imported_from     = "&lt;skill origin&gt;"
+source_version    = "1.1.0"
+source_section    = "&lt;section&gt;"
+source_subcommand = "calendar list"
+imported_at       = "&lt;UTC instant&gt;"
+source_sha256     = "&lt;SKILL.md fingerprint&gt;"
+importer_version  = "&lt;version&gt;"
 </pre>
 
-<p>
-This is the only thing that distinguishes it from a hand-written
-executor. Everything else &mdash; signature, fence, vocabulary,
-contract &mdash; is identical.
-</p>
+<p>Location, provenance, retained source, and audit distinguish an imported
+executor from one maintained directly in the product. Signature, contract,
+and execution policy are shared requirements: provenance replaces none of
+those controls.</p>
 
-<h1 id="cap5">5. The checks that matter</h1>
+<h1 id="cap5">5. Translation and admission checks</h1>
 
-<p>
-An imported skill is not automatically deemed trustworthy. Five
-cumulative checks decide whether it is admitted to the catalog:
-</p>
+<p>The pipeline separates translation rejections from admission rejections.
+The final audit records both categories.</p>
 
 <table>
-<tr><th>Check</th><th>What it verifies</th><th>What it rejects</th></tr>
-<tr><td><strong>Canonical name</strong></td><td>The executor name has the shape <code>verb_object</code> with verb and object from the vocabulary.</td><td>Fanciful or invented names, unrecognized synonyms.</td></tr>
-<tr><td><strong>Affinity overlap</strong></td><td>The imported executor does not share too many keywords with one already in the catalog.</td><td>Masked duplicates, executors that would steal work from an existing one.</td></tr>
-<tr><td><strong>Description-code consistency</strong></td><td>A language model checks that what the manifest promises is what the code actually does.</td><td>Misleading descriptions, semantic drift.</td></tr>
-<tr><td><strong>Credential uniqueness</strong></td><td>If the skill requires credentials (API key, token), the <em>binding name</em> is not already taken by another imported skill.</td><td>Invisible collisions that would mount one service on top of another.</td></tr>
-<tr><td><strong>Routing assertions</strong></td><td>For each accepted executor, a small battery of prototypical questions is added (&laquo;list tomorrow's appointments&raquo; must pick <code>read_events</code>).</td><td>Tools that creep into other tools' territory (routing regressions).</td></tr>
+<tr><th>Step</th><th>What it checks</th><th>Negative outcome</th></tr>
+<tr><td><strong>Verb boundary</strong></td><td>The source action has a semantically valid match in the closed vocabulary.</td><td>The sub-command produces no plan.</td></tr>
+<tr><td><strong>Name and collisions</strong></td><td>The composed name is canonical, provider-qualified, and distinct from other names in the same skill.</td><td>The translator records the rejection reason.</td></tr>
+<tr><td><strong>Binding uniqueness</strong></td><td>The skill binding is not already owned by another import.</td><td>The whole skill is rejected.</td></tr>
+<tr><td><strong>L1 — vocabulary</strong></td><td>The plan action, object, and qualifiers belong to the current vocabulary.</td><td>The individual plan is rejected.</td></tr>
+<tr><td><strong>L2 — affinity</strong></td><td>Canonical affinity does not exceed the overlap threshold against installed executors; an explicit binding uses a distinct threshold.</td><td>The individual plan is rejected as a possible duplicate.</td></tr>
+<tr><td><strong>L5 — routing</strong></td><td>When a prototype question and runner are available, the assertion must select the expected executor.</td><td>An executed failure rejects the plan; an unmapped or unavailable case is skipped.</td></tr>
+<tr><td><strong>L6 — semantic alignment</strong></td><td>The verifier compares the generated manifest and code.</td><td>Drift, an error, or verifier unavailability rejects the plan in the ordinary flow.</td></tr>
 </table>
 
-<p>
-Rejections are recorded in an audit log with their reasons. When one
-sub-command of a skill is rejected, the others in the same skill carry
-on: imports are partial, never all-or-nothing.
-</p>
+<p>Independent plans can have different outcomes: rejected directories are
+removed and the others continue. A global binding collision is the exception
+and rejects the whole import. Options that bypass L2, L5, or L6 are intended
+for development and CI; using them weakens the evidence and is not equivalent
+to production certification.</p>
 
-<div class="callout warning">
-<strong>Limitation: no static code analysis.</strong> The importer does not
-perform static analysis on the helper scripts of a skill. A malicious
-skill that declares <em>I read events</em> but actually ships a file to
-a remote server is not caught by the five current checks. Static
-analysis is planned as &laquo;check zero&raquo;, pre-import: an
-extra pass that looks for unexpected network calls, writes outside the
-folder, and other suspicious signals, and shows the user a summary card
-before asking for final authorization.
-</div>
+<p>The import report is authoritative for that particular run: it lists
+translated plans, accepted names, and rejections with reasons. An accepted
+name alone does not prove that every possible L5 assertion ran, because some
+patterns explicitly allow a skip.</p>
 
 <h1 id="cap6">6. Credentials and dialogs with the user</h1>
 
-<p>
-Most useful skills lean on services that require an <em>access key</em>:
-an API key, an OAuth token, a session file. The importer never asks for
-these things up front. The first time the agent tries to use an executor
-that requires credentials and does not find them, this happens:
-</p>
+<p>Importing does not collect credentials. If a provider reports missing
+authentication during use, the generated wrapper returns
+<code>decision = "needs_inputs"</code> and preserves the arguments needed to
+resume the operation.</p>
 
 <ol>
- <li>The executor returns <code>decision = "needs_inputs"</code> with a
- small request form.</li>
- <li>The agent shows the user that form (in chat: conversational text;
- on the web: an HTML form).</li>
- <li>The user fills in what is missing (client secret file, redirect
- URL, API key, &hellip;).</li>
- <li>The values are encrypted in a local vault
- (<code>~/.local/share/metnos/credentials/</code>).</li>
- <li>The executor is re-invoked with the same arguments and now finds
- the credentials in place.</li>
+ <li>Metnos presents the dialog declared by the manifest in the chat; web chat
+ can open the protected form, while other channels provide directions to
+ reach it.</li>
+ <li>For OAuth, the user supplies the client file and service scope, then
+ completes authorization in the browser.</li>
+ <li>The server exchanges the code and stores the token in the user's
+ encrypted credential store, under <code>~/.config/metnos/credentials/</code>
+ by default.</li>
+ <li>If a compatibility provider also requires a file at its own path, the
+ manifest can request a local copy protected with mode <code>0600</code>.</li>
+ <li>Metnos then resumes the executor with its original arguments.</li>
 </ol>
 
-<p>
-Subsequent invocations ask for nothing. If the token expires, the
-executor signals <code>error_class = "auth_required"</code> and the flow
-starts over. <strong>No tokens in configuration files, no passwords in
-the code.</strong>
-</p>
+<p>Credential bindings and values are isolated per user. The manifest declares
+only the binding name and dialog schema: secrets do not enter the manifest,
+generated code, or text sent to the planner. The canonical
+<code>find_credentials</code>, <code>set_credentials</code>, and
+<code>delete_credentials</code> executors expose metadata, protected writes,
+and deletion respectively; their planner-facing results contain no plaintext
+secret values.</p>
 
-<p>
-To inspect what is already configured without seeing the values, three
-canonical executors are available: <code>find_credentials</code> (lists
-the configured bindings, metadata only), <code>set_credentials</code>
-(registers a new credential), <code>delete_credentials</code> (removes
-a binding). The plaintext values never leave those executors: the
-planner and its models see only the binding name, the fingerprint, the
-date, and the state (&laquo;configured&raquo;, &laquo;expired&raquo;,
-&laquo;missing&raquo;).
-</p>
+<h1 id="cap7">7. Google Workspace: a complete example</h1>
 
-<h1 id="cap7">7. An example from start to finish</h1>
+<p><strong>Ask Metnos with a request like this example:</strong> “What
+appointments are on my work calendar tomorrow?” If the Google Workspace
+capability is admitted, enabled, and connected to the user's account, the
+catalog exposes the event-specific executor. Other examples are “Find unread
+messages from Anna,” “Read the contents of this Drive file,” and “Append these
+rows to the Expenses sheet.”</p>
 
-<p>
-Roberto asks: &laquo;import the Google Workspace skill&raquo;.
-</p>
+<p>Importing is a separate administrative operation. The Google Workspace
+package included with Metnos also contains the required scripts, so the
+command uses the complete directory:</p>
 
-<ol>
- <li><strong>Command</strong>: <code>metnos-skills import agentskills.io/googleworkspace/google-workspace</code></li>
- <li><strong>Download</strong>: the skill is already in the local cache (last refresh three days ago); no network traffic.</li>
- <li><strong>Read</strong>: the parser finds 24 sub-commands across Gmail, Calendar, Drive, Sheets, Docs, Contacts.</li>
- <li><strong>Translate</strong>: 21 sub-commands translate cleanly into canonical names; three are rejected (<code>gmail reply</code> collides with <code>send_messages</code>; <code>gmail labels</code> has no canonical qualifier; <code>sheets append</code> collides with its own <em>update</em>).</li>
- <li><strong>Generate</strong>: 21 executor folders, each with Python file and manifest, are written under <code>skills/google-workspace/</code>.</li>
- <li><strong>Check</strong>: all 21 pass the five gates. A routing assertion is added to the test battery for each.</li>
- <li><strong>Sign</strong>: the 21 manifests are signed Ed25519.</li>
- <li><strong>Ready</strong>: Roberto asks in chat &laquo;what appointments do I have tomorrow?&raquo;. The planner picks <code>read_events</code> (one of the 21), which replies <em>credentials needed</em> and opens the request form. Roberto provides the client secret and the redirect URL once; subsequent invocations work silently.</li>
-</ol>
+<pre>metnos-skills import &lt;install-root&gt;/executors/skills/google-workspace</pre>
 
-<p>
-Total time, excluding the one-time OAuth setup: under three minutes for
-twenty-one new tools.
-</p>
-
-<h1 id="cap8">8. Seven layers of safety net</h1>
-
-<p>
-Importing third-party code requires layers of control that handcrafted
-code does not need. An imported skill could have been tampered with,
-declare one thing and do another, impersonate an existing tool to
-hijack the chat, or exfiltrate credentials without trace. The seven
-layers reduce a different risk each, progressively. The following table
-documents every layer.
-</p>
+<p>The source declares 24 sub-commands. The current procedural verification
+proves 24 distinct canonical plans with no translation rejection. Several
+important semantic distinctions are:</p>
 
 <table>
-<tr><th>Layer</th><th>When</th><th>What it catches</th></tr>
-<tr><td><strong>L1 sign verify</strong></td><td>every boot</td><td>file tampered post-import (sha256 digest + Ed25519)</td></tr>
-<tr><td><strong>L2 affinity overlap</strong></td><td>at-import</td><td>skill squatting on an existing tool (Jaccard ≥0.5 → reject)</td></tr>
-<tr><td><strong>L3 efficacy ager</strong></td><td>daily cron</td><td>skill silently failing or never selected (deprecate 30d, archive 14d)</td></tr>
-<tr><td><strong>L5 smoke battery</strong></td><td>at-import</td><td>skill returning broken schema or crashing</td></tr>
-<tr><td><strong>L6 LLM semantic verifier</strong></td><td>at-import</td><td>mismatch between manifest description and code behavior</td></tr>
-<tr><td><strong>Runtime vaglio</strong></td><td>every invocation</td><td>current action violates policy (guard + safe-verb shortcut + LLM judge)</td></tr>
-<tr><td><strong>Skill audit JSONL</strong></td><td>every invocation</td><td>exfiltration / credentials abuse (append-only trace for forensics)</td></tr>
+<tr><th>Sub-command</th><th>Canonical executor</th><th>Distinction</th></tr>
+<tr><td><code>gmail send</code></td><td><code>send_messages_google_workspace</code></td><td>a new message</td></tr>
+<tr><td><code>gmail reply</code></td><td><code>send_messages_thread_google_workspace</code></td><td>a reply within a thread</td></tr>
+<tr><td><code>gmail labels</code></td><td><code>list_messages_labels_google_workspace</code></td><td>list labels, rather than modify messages</td></tr>
+<tr><td><code>drive get</code></td><td><code>get_files_google_workspace</code></td><td>file metadata</td></tr>
+<tr><td><code>drive download</code></td><td><code>read_files_google_workspace</code></td><td>file contents</td></tr>
+<tr><td><code>sheets update</code></td><td><code>set_files_xlsx_google_workspace</code></td><td>update existing cells</td></tr>
+<tr><td><code>sheets append</code></td><td><code>write_files_xlsx_google_workspace</code></td><td>write new rows</td></tr>
 </table>
 
-<p>
-Handcrafted executors (written by the Metnos team) do not have L2, L6
-and audit: the code is trusted by construction, manifest and behavior
-are aligned by definition, and audit of who-did-what lives in
-<code>git blame</code>.
-</p>
+<p>The 24/24 result covers translation, name uniqueness, and manifest
+generation. It does not justify declaring “24 admitted” in advance: L2
+compares the user's catalog, L5 depends on executable checks, and L6 depends
+on the semantic verifier. The report from that import states how many
+executors were accepted; only those that are signed and valid can enter the
+catalog. OAuth authorization then occurs for the individual user and is not
+part of the import count.</p>
 
-<p>
-Layers are independent: if L6 fails (LLM down) L1/L2/L3/L5 remain
-active; if L2 is too strict (Jaccard 0.5 can reject legitimately
-similar skills) the provider qualifier (<code>_google_workspace</code>)
-disambiguates.
-</p>
+<h1 id="cap8">8. Trust boundary and runtime controls</h1>
+
+<p>Importing a skill does not attest that its code is benign. The importer
+checks the wrapper and contract it generates, but it does not perform complete
+static analysis of every received script. Before import, the operator must
+verify origin and fingerprint, review the scripts, and grant only the required
+capabilities and credentials.</p>
+
+<table>
+<tr><th>Control</th><th>When</th><th>Actual assurance</th></tr>
+<tr><td><strong>Provenance and fingerprint</strong></td><td>acquisition</td><td>tie the artifact to the reviewed source; they do not prove it safe</td></tr>
+<tr><td><strong>Generated contract</strong></td><td>generation</td><td>makes arguments, output, capabilities, credentials, and provenance explicit</td></tr>
+<tr><td><strong>L1, L2, L5, L6</strong></td><td>admission</td><td>limit foreign names, overlap, routing failures, and semantic drift</td></tr>
+<tr><td><strong>Digest and Ed25519 signature</strong></td><td>catalog load</td><td>prevent missing, modified, or invalidly signed artifacts from loading</td></tr>
+<tr><td><strong>Sandbox, capabilities, policy, and vaglio</strong></td><td>invocation</td><td>limit concrete authority and apply decisions required by the action's risk</td></tr>
+<tr><td><strong>Per-user credential store</strong></td><td>authentication and use</td><td>separates bindings and keeps secrets away from the planner</td></tr>
+<tr><td><strong>Audit and efficacy statistics</strong></td><td>after invocation</td><td>record use and outcome and feed lifecycle controls</td></tr>
+</table>
+
+<p>Executors maintained directly by Metnos follow release review, tests,
+signing, and policy; imported executors add specific provenance, admission,
+and audit. Neither origin is “trusted by definition.” In the ordinary flow,
+L6 also does not approve when its verifier is unavailable: the plan is
+rejected with an explicit reason.</p>
 
 <h1 id="cap9">9. Going deeper</h1>
 
 <table>
 <tr><th>To understand&hellip;</th><th>Read</th></tr>
-<tr><td>what an executor is and how it is shaped</td><td><a href="executor.html">executor</a></td></tr>
-<tr><td>how Synt writes an executor from scratch (alternative to import)</td><td><a href="synt.html">synt</a></td></tr>
-<tr><td>the fence imported executors run inside</td><td><a href="sandbox.html">sandbox</a></td></tr>
-<tr><td>the checks before any risky action</td><td><a href="vaglio.html">vaglio</a></td></tr>
-<tr><td>the decision archive (why import instead of adopting the standard)</td><td>decisions/</td></tr>
+<tr><td>what an executor is and how it is structured</td><td><a href="executor.html">Executor</a></td></tr>
+<tr><td>how services, skills, and backends determine availability</td><td><a href="skills_backends.html">Skills, services, and backends</a></td></tr>
+<tr><td>how Synt generates a new executor</td><td><a href="synt.html">Synt</a></td></tr>
+<tr><td>the boundary in which code runs</td><td><a href="sandbox.html">Sandbox</a></td></tr>
+<tr><td>the checks before risky actions</td><td><a href="vaglio.html">Vaglio</a></td></tr>
 </table>
 
 <hr>
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>skill importer</em>, didactic introduction
+Metnos &mdash; importing skills
 </p>
 </body>
 </html>

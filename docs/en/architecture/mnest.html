@@ -3,77 +3,18 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; mnest (under approval)</title>
- <meta name="description" content="Microdesign of the mnest: the trace of co-activation between two executors. Anatomy, proto-mnest, lifecycle, decay.">
- <meta name="keywords" content="mnest, proto-mnest, co-activation, executor, decay, ager, mnestome, synapse, microdesign, metnos">
+ <title>Metnos &mdash; Mnest</title>
+ <meta name="description" content="The current mnest contract: edges between executors, persistence, reinforcement, decay, proto-mnests, and actual integrations.">
+ <meta name="keywords" content="Metnos, mnest, mnestome, executor, graph, operational memory">
  <meta name="author" content="Roberto Brunialti">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/mnest">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnest">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/en/architecture/mnest">
- <meta property="og:title" content="Metnos &mdash; mnest (under approval)">
- <meta property="og:description" content="The trace of co-activation between two executors: anatomy, lifecycle, decay, persistence.">
- <meta property="og:locale" content="en_US">
- <meta property="og:locale:alternate" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; mnest (under approval)">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — mnest ",
- "description": "Canonical microdesign of the mnest: anatomy, lifecycle, decay, persistence.",
- "url": "https://metnos.com/en/architecture/mnest.html",
- "inLanguage": "en",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: mnest (canonical)"
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
-h1:first-of-type { page-break-before: avoid; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
-figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-Canonical doc approved after the end-to-end simulation, aligned with the <a href="index.html" style="color: #14532d; text-decoration: underline;">Architecture </a> and the <a href="../Metnos_Dialogue_Executors_v1.html" style="color: #14532d; text-decoration: underline;">Dialogue on executors and distributed memory</a>. Normative reference for implementation.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/mnest.html" hreflang="it" lang="it">IT</a>
@@ -84,401 +25,208 @@ Canonical doc approved after the end-to-end simulation, aligned with the <a href
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnest</strong></span>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnest</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>mnest</code> &mdash; the trace of co-activation between two executors</div>
- <div class="meta">
- Microdesign &mdash; <br>
- Aligned with Architecture (ch. 9) and the Dialogue on executors.<br>
- <br>
- Audience: whoever implements the graph, the reinforcement, the decay.<br>
- Reading time: 14 minutes.
- </div>
+ <div class="subtitle">Mnest: an operational edge between executors</div>
+ <div class="meta">Data contract, lifecycle, and integration status.</div>
 </div>
+
+<p class="lead">A mnest represents a directed, weighted relation from a source
+executor to a destination executor. Its store, queries, and ager are implemented.
+The current runtime, however, does not automatically call
+<code>record_passing()</code> at the end of turns: a record in the store is data
+inserted by an explicit caller, not proof that the product learns every observed
+passing.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
- <li><a href="#cap1">Scope and boundaries</a></li>
- <li><a href="#cap2">What a mnest is</a></li>
- <li><a href="#cap3">Mnest vs. synapse</a></li>
- <li><a href="#cap4">Anatomy of a mnest</a></li>
- <li><a href="#cap5">Automatic generation</a></li>
+ <li><a href="#cap1">Scope and current status</a></li>
+ <li><a href="#cap2">What it represents</a></li>
+ <li><a href="#cap3">Evidence boundary</a></li>
+ <li><a href="#cap4">Fields and constraints</a></li>
+ <li><a href="#cap5">Recording</a></li>
  <li><a href="#cap6">Reinforcement and decay</a></li>
- <li><a href="#cap7">Lifecycle states</a></li>
- <li><a href="#cap8">The proto-mnest</a></li>
- <li><a href="#cap9">Who consults the mnests</a></li>
- <li><a href="#cap10">Persistence and snapshots</a></li>
- <li><a href="#cap11">Example: the invoice sequence</a></li>
- <li><a href="#cap12">Open questions</a></li>
+ <li><a href="#cap7">States</a></li>
+ <li><a href="#cap8">Proto-mnest</a></li>
+ <li><a href="#cap9">Components that read it</a></li>
+ <li><a href="#cap10">Persistence and audit</a></li>
+ <li><a href="#cap11">Example</a></li>
+ <li><a href="#cap12">Operational boundaries</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Scope and boundaries</h1>
+<h1 id="cap1">1. Scope and current status</h1>
 
-<p class="lead">
-This document defines <em>what a mnest is</em>: the trace, kept in the
-<a href="mnestome.html">mnestome</a>, of an output passing between two
-<a href="executor.html">executors</a>. It is the second of three
-canonical docs introduced by the <em>Dialogue on executors and
-distributed memory</em>. The mnest records an <em>observed data passing</em>
-between two executors, not a passive concomitance.
-</p>
+<p>The <code>Mnest</code> type and its operations live in
+<code>runtime/mnestoma.py</code>. They store and query links between executor
+names and versions; they are not personal memory and do not imply automatic
+learning.</p>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="10" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">executor A</text>
-<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">fired</text>
-<rect x="198" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">executor B</text>
-<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">fired next</text>
-<rect x="386" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
-<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">mnest</text>
-<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">co-activation trace</text>
-<rect x="574" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">mnestome</text>
-<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">emergent graph</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
+<table>
+<thead><tr><th>Part</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>SQLite schema and CRUD/query API</td><td>Implemented.</td></tr>
+<tr><td>Reinforcement, decay, and recurring-proto detection</td><td>Implemented.</td></tr>
+<tr><td>Ager in the nightly cycle</td><td>Registered with the scheduler.</td></tr>
+<tr><td>Automatic edge recording from every turn</td><td>Not wired into the ordinary runtime.</td></tr>
+<tr><td>Direct use by the planner or Vaglio</td><td>Not wired.</td></tr>
+</tbody>
+</table>
 
-</svg>
-<figcaption>Figure 1 &mdash; A mnest is born when two executors fire in sequence; the trace strengthens with repetition and flows into the graph (mnestome).</figcaption>
-</figure>
+<h1 id="cap2">2. What it represents</h1>
 
+<p>A mnest has a <code>src_executor &rarr; dst_executor</code> direction,
+versions, use count, weight, first and last update times, and state. The structure
+can represent the operational fact that a caller recorded a passing from A to B.</p>
 
-<h2>Boundaries</h2>
+<p>Direction matters: A&rarr;B and B&rarr;A are different records. A new destination
+version also creates a distinct relation. A chain A&rarr;B&rarr;C consists of two
+edges; multi-edge traversal is performed by <code>walk()</code>.</p>
 
-<p>The document covers:</p>
-<ul>
-<li>the structural contract of a mnest (fields, constraints, transitions);</li>
-<li>when and how a mnest is born, reinforced, decays;</li>
-<li>the proto-mnest: how an unsatisfied desire is represented;</li>
-<li>persistence and snapshots.</li>
-</ul>
+<h1 id="cap3">3. Evidence boundary</h1>
 
-<p>It does not cover, and defers to other docs:</p>
-<ul>
-<li>the global structure of the mnestome and its queries (see <a href="mnestome.html">mnestome.html</a>);</li>
-<li>the synthesis that uses recurring proto-mnests (see <a href="executor.html#cap7">executor.html, ch. 7</a>);</li>
-<li>Vaglio criteria (see <a href="../../it/architecture/vaglio.html">vaglio.html</a>, in Italian and pending rewrite);</li>
-<li>the phenomenology of decay (see <em>ager</em>, future doc).</li>
-</ul>
+<p>The record does not contain the transferred output and does not verify by itself
+that the transfer occurred. Provenance depends on the caller of
+<code>record_passing()</code>. An optional <code>turn_id</code> in the event can
+lead back to the originating turn, but only if that reference was supplied and the
+corresponding log still exists.</p>
 
-<h1 id="cap2">2. What a mnest is</h1>
+<p>A mnest must therefore not be presented as self-sufficient evidence, a
+biographical memory, or a user preference. It is structured telemetry about a
+relation between capabilities.</p>
 
-<p>
-A <strong>mnest</strong> is a node of the mnestome that records a
-specific fact:
-</p>
+<h1 id="cap4">4. Fields and constraints</h1>
 
-<div class="lead" style="font-size:11.5pt;">
-&laquo;In this turn, the output of executor <em>A</em> was passed as
-input to executor <em>B</em>, and <em>B</em> completed successfully.&raquo;
-</div>
+<table>
+<thead><tr><th>Field</th><th>Contract</th></tr></thead>
+<tbody>
+<tr><td><code>id</code></td><td><code>mn_</code> prefix followed by a random token.</td></tr>
+<tr><td><code>src_executor</code>, <code>src_version</code></td><td>Source and version declared by the caller.</td></tr>
+<tr><td><code>dst_executor</code>, <code>dst_version</code></td><td>Destination; the version is null for a proto.</td></tr>
+<tr><td><code>weight</code></td><td>Real number constrained from 0 to 1.</td></tr>
+<tr><td><code>uses</code></td><td>Integer counter, at least 1.</td></tr>
+<tr><td><code>ts_first</code>, <code>ts_last</code></td><td>UTC timestamps; the last is not before the first.</td></tr>
+<tr><td><code>decay_lambda</code></td><td>Decay rate.</td></tr>
+<tr><td><code>state</code></td><td><code>active</code>, <code>proto</code>,
+<code>decaying</code>, or <code>superseded</code>.</td></tr>
+<tr><td><code>tags</code></td><td>Optional JSON labels; they do not alter weight.</td></tr>
+<tr><td><code>desired_sig</code></td><td>Optional desired signature used by proto-mnests.</td></tr>
+</tbody>
+</table>
 
-<p>
-A mnest is therefore a trace of <strong>observed co-activation</strong>:
-not an a-posteriori statistical inference, not a declaration of intent,
-but a statement that an event actually happened, recorded by the
-gateway at the end of the turn.
-</p>
+<p>SQLite uniqueness includes source, versions, destination, and state. Because
+SQLite treats multiple <code>NULL</code> values as distinct, the code uses an
+explicit query to reinforce an existing proto.</p>
 
-<p>
-From this all its important properties follow:
-</p>
-<ul>
-<li>It is <em>directed</em>: <em>A &rarr; B</em> is not the same as <em>B &rarr; A</em>.</li>
-<li>It is <em>weighted</em>: the more it recurs, the more the weight grows; with disuse, it decays.</li>
-<li>It is <em>time-anchored</em>: it carries the timestamp of the first and the latest use.</li>
-<li>It is <em>distinct per version pair</em>: <em>read_files &rarr; read_files_pdf v2.0</em> is one mnest, <em>read_files &rarr; read_files_pdf v3.0</em> is another.</li>
-</ul>
+<h1 id="cap5">5. Recording</h1>
 
-<h1 id="cap3">3. Semantics of the mnest</h1>
+<p><code>record_passing()</code> opens a transaction. If it finds the same
+<code>active</code> edge, it applies accrued decay, adds reinforcement,
+increments <code>uses</code>, and records an event. Otherwise it creates a new
+edge with weight <code>0.30</code> and an initial event.</p>
 
-<p>
-The mnest records a passing of data (&laquo;A's output was B's
-input&raquo;), generated deterministically by the gateway at turn close:
-either the passing happened or it did not. A strong mnest toward an
-executor that does not exist (proto-mnest, ch. 8) is a concrete
-operational gap, not an analogy.
-</p>
-
-<p>
-The mnest <em>sees data that moved</em>, not just events that fired. A
-mnest graph is a graph of real flows.
-</p>
-
-<h1 id="cap4">4. Anatomy of a mnest</h1>
-
-<p>
-A mnest, in serialised form, contains these mandatory fields:
-</p>
-
-<pre><code>{
- "id": "mn_a1b2c3d4e5f6...", // mn_ + hex token
- "src_executor": "read_files", // canonical name of the caller
- "src_version": "1.0.0",
- "dst_executor": "read_files_pdf", // canonical name of the callee
- "dst_version": "2.0.0",
- "weight": 0.42, // [0..1], normalised
- "uses": 17, // total use counter
- "ts_first": "2026-03-12T18:04:00Z",
- "ts_last": "2026-04-23T09:21:00Z",
- "decay_lambda": 0.018, // /day, see ch. 6
- "tags": ["invoice", "pdf"], // optional
- "state": "active" // active | proto | decaying | superseded
-}
-</code></pre>
-
-<p>
-Three invariants always hold:
-</p>
-<ul>
-<li><code>(src_executor, src_version, dst_executor, dst_version)</code> is the key: at most one active mnest per tuple.</li>
-<li><code>weight</code> is always in <code>[0, 1]</code>, computed as an exponential function of recent uses (see formula in ch. 6).</li>
-<li><code>ts_last &gt;= ts_first</code>; <code>uses &gt;= 1</code>.</li>
-</ul>
-
-<h2>Tags, briefly</h2>
-
-<p>
-Tags are an optional addition that does not influence weight
-computation, but help the <em>ager</em> and the synt identify clusters
-of mnests living in the same application domain (e.g. &laquo;invoice&raquo;,
-&laquo;photo&raquo;, &laquo;work email&raquo;). Tags propagate from the
-turn context to the newborn mnest; the user can re-tag or clear them
-during review.
-</p>
-
-<h1 id="cap5">5. Automatic generation</h1>
-
-<p>
-A mnest is not declared, it is <em>observed</em>. The operational rule,
-applied by the gateway at the close of every turn:
-</p>
-
-<ol>
-<li>For every call pair <em>A &rarr; B</em> within the turn where <em>A</em>'s output was passed as <em>B</em>'s input:
- <ol type="a">
- <li>look up an active mnest with key <code>(A, ver_A, B, ver_B)</code>;</li>
- <li>if it exists, increment <code>uses</code>, update <code>ts_last</code>, recompute the weight;</li>
- <li>if not, create one with <code>uses=1</code>, initial <code>weight</code>, <code>state="active"</code>.</li>
- </ol>
-</li>
-<li>If the turn included a request to pass <em>to an executor that does not exist</em>, record a <em>proto-mnest</em> instead (ch. 8).</li>
-<li>If the turn had a long chain (<em>A &rarr; B &rarr; C</em>), record two separate mnests: <em>A&rarr;B</em> and <em>B&rarr;C</em>. The mnestome does not represent arcs longer than one.</li>
-</ol>
-
-<div class="callout note">
-<strong>Why arcs of length one.</strong> Transitivity can be
-reconstructed on the fly by walking the graph, but the elementary
-datum must remain observational. Longer mnests would be inferences,
-not observations; introducing them would muddy the distinction in
-ch. 3.
-</div>
+<p>With <code>dst_exists=False</code>, the same API creates or reinforces a
+proto-mnest. The call is atomic for the searched pair, but a
+<code>Mnestoma</code> object owns a process-local connection and does not declare
+its instance thread-safe.</p>
 
 <h1 id="cap6">6. Reinforcement and decay</h1>
 
-<p>
-The weight of a mnest is updated at every event by a formula with two
-components:
-</p>
+<p>Before each reinforcement, the previous weight is multiplied by
+<code>exp(-lambda &times; days)</code>; <code>0.15</code> is then added and the
+result is clamped to 0&ndash;1. The default lambda is <code>0.018</code> per day.</p>
 
-<pre><code>weight(t) = clamp01( weight(t-&Delta;t) * exp(-&lambda; * &Delta;t) + reinforcement(t) )</code></pre>
+<p><code>apply_ager()</code> decays <code>active</code> and <code>proto</code>
+edges. An active edge below <code>0.20</code> becomes
+<code>decaying</code>; a proto below <code>0.05</code> is deleted. A
+<code>decaying</code> edge below <code>0.05</code> and inactive for at least 90
+days is merely counted as an archive candidate: the ager does not delete it.</p>
 
-<ul>
-<li><code>&Delta;t</code> is the time (in days) since the last update.</li>
-<li><code>&lambda;</code> is the <em>decay lambda</em>, parametrisable per tag (default <code>0.018/day</code>: half-life ~38 days).</li>
-<li><code>reinforcement(t)</code> is <code>+0.15</code> per use recorded in the current turn, saturated by <code>clamp01</code>.</li>
-</ul>
-
-<p>
-The curve is inspired by the Ebbinghaus model, but the value of
-<code>&lambda;</code> is conservative: at equal use, a mnest is never
-forgotten quickly. The gradualness avoids oscillations due to holiday
-periods, illness, distraction: when the user comes back, Metnos must
-remember.
-</p>
-
-<h2>Operational thresholds</h2>
+<h1 id="cap7">7. States</h1>
 
 <table>
-<thead><tr><th style="width:22%">Threshold</th><th>Default</th><th>Effect</th></tr></thead>
+<thead><tr><th>State</th><th>Use in current code</th></tr></thead>
 <tbody>
-<tr><td><strong>min proto weight</strong></td><td><code>0.05</code></td><td>Below this, the proto-mnest is removed (anti-noise).</td></tr>
-<tr><td><strong>decay weight</strong></td><td><code>0.20</code></td><td>Below this, the mnest enters <em>decaying</em>: the <em>ager</em> flags it.</td></tr>
-<tr><td><strong>archive weight</strong></td><td><code>0.05</code></td><td>Below this (and with uses ≥ 1 but ts_last ≥ 90 days ago), proposal of archival.</td></tr>
-<tr><td><strong>bootstrap weight</strong></td><td><code>0.30</code></td><td>Initial weight of seed mnests (created at first boot).</td></tr>
+<tr><td><code>active</code></td><td>Concrete edge available for queries and reinforcement.</td></tr>
+<tr><td><code>proto</code></td><td>Desired destination without a concrete version.</td></tr>
+<tr><td><code>decaying</code></td><td>Edge that fell below the ager's threshold.</td></tr>
+<tr><td><code>superseded</code></td><td>Edge marked as replaced by an explicit caller.</td></tr>
 </tbody>
 </table>
 
-<h1 id="cap7">7. Lifecycle states</h1>
+<p><code>transition_state()</code> accepts only these values and records an event.
+A later <code>record_passing()</code> looks for an <code>active</code> edge; it
+does not automatically reactivate a <code>decaying</code> record.</p>
 
-<table>
-<thead><tr><th style="width:18%">State</th><th>Meaning</th><th>Transitions</th></tr></thead>
-<tbody>
-<tr><td><code>proto</code></td><td>The mnest records a passing toward an executor that does not exist (see ch. 8): <code>dst_executor</code> points to an unresolved name.</td><td>&rarr; <code>active</code> when the missing executor is born; &rarr; deleted if weight falls below the proto threshold.</td></tr>
-<tr><td><code>active</code></td><td>&laquo;Normal&raquo; mnest: two real executors, recent use.</td><td>&rarr; <code>decaying</code> below the decay threshold; &rarr; <code>superseded</code> after a fusion.</td></tr>
-<tr><td><code>decaying</code></td><td>Weight below threshold, flagged by the ager. Still callable, but proposed for archival.</td><td>&rarr; <code>active</code> on resumed use; &rarr; archived (removed from the active graph, kept in the monthly snapshot).</td></tr>
-<tr><td><code>superseded</code></td><td>Replaced by a more recent mnest or by a fused executor (see <a href="executor.html#cap6">executor.html ch. 6</a>).</td><td>&rarr; archived after a grace period.</td></tr>
-</tbody>
-</table>
+<h1 id="cap8">8. Proto-mnest</h1>
 
-<h1 id="cap8">8. The proto-mnest</h1>
+<p>A proto-mnest stores a concrete source and the name of a still-missing
+destination. <code>desired_sig</code> may contain the expected summary, inputs,
+outputs, and errors. By default, <code>recurring_protos()</code> selects records
+with at least three uses and a weight of at least <code>0.30</code>.</p>
 
-<p>
-The <strong>proto-mnest</strong> is a mnest in <code>proto</code>
-state: it records that, in a turn, Metnos wanted to pass the output of
-an executor to a second executor that <em>does not yet exist</em>. Its
-structure is almost identical to a normal mnest, with two differences:
-</p>
+<p><code>promote_proto_to_active()</code> sets the destination version, clears
+the desired signature, and records the transition. It does not create, test, or
+activate an executor: those responsibilities belong to <a href="synt.html">Synt</a>
+and its promotion lifecycle.</p>
+
+<h1 id="cap9">9. Components that read it</h1>
 
 <ul>
-<li><code>dst_executor</code> is a &laquo;desired name&raquo;, not a resolvable name (e.g. <code>extract_invoice_number</code>);</li>
-<li><code>dst_version</code> is <code>null</code>;</li>
-<li>a field <code>desired_signature</code> appears with the synthesis of the expected signature: what the executor should do, what output shape, what typical errors.</li>
+ <li><strong>Synt.</strong> Its composer may walk <code>active</code> edges only;
+ diagnostic commands can list recurring protos.</li>
+ <li><strong>Ager.</strong> The <code>nightly_aging</code> job calls
+ <code>apply_ager()</code> together with executor aging.</li>
+ <li><strong>Observability and CLI.</strong> They can display statistics, top
+ edges, protos, and events.</li>
+ <li><strong>Introvertiva.</strong> Its active function finds edges naming
+ executors no longer in the catalog and produces deduplication proposals.</li>
 </ul>
 
-<pre><code>{
- "id": "mn_a1b2c3d4e5f6...",
- "src_executor": "read_files",
- "src_version": "1.0.0",
- "dst_executor": "extract_invoice_number", // does not exist
- "dst_version": null,
- "desired_signature": {
- "summary": "Extract the invoice number from a PDF.",
- "inputs": ["bytes (pdf)"],
- "outputs": ["str (alphanumeric code)"],
- "errors": ["NotFound", "Unparseable"]
- },
- "weight": 0.34,
- "uses": 4,
- "state": "proto"
-}
-</code></pre>
+<p>The current planner does not use mnest weights to rank the catalog; the Vaglio
+does not read them. L0 and L1 have separate stores and signals.</p>
 
-<p>
-The difference from a &laquo;feature request&raquo; in the classical
-sense is important: the proto-mnest is not asked by the user, it is
-observed by the gateway. Roberto did not formulate the need: the need
-emerged from the fact that he would have wanted it more than once. The
-proto-mnest, when it recurs, is the trigger of synthesis (see
-<a href="executor.html#cap7">executor.html ch. 7</a>).
-</p>
+<h1 id="cap10">10. Persistence and audit</h1>
 
-<h1 id="cap9">9. Who consults the mnests</h1>
+<p>The default database is
+<code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>, configurable through
+<code>METNOS_WORKSPACE</code> or <code>MNESTOMA_DB_PATH</code>. The
+<code>mnests</code> and <code>events</code> tables hold state and events; the
+<code>v_mnestoma</code> view exposes <code>active</code> and
+<code>proto</code> edges.</p>
 
-<table>
-<thead><tr><th style="width:24%">Component</th><th>What it looks for</th></tr></thead>
-<tbody>
-<tr><td><strong>Gateway (planner)</strong></td><td>Given an input, it offers the LLM a list of candidate executors ordered by the weight of mnests reaching them from the current context.</td></tr>
-<tr><td><strong>Vaglio</strong></td><td>To judge a spontaneous proposal: a strong mnest toward an action already taken in the past is a hint of telos alignment.</td></tr>
-<tr><td><strong>Synt</strong></td><td>Looks for proto-mnests that have crossed a recurrence threshold to trigger the synthesis pipeline.</td></tr>
-<tr><td><strong>Ager</strong></td><td>Walks the graph periodically to apply decay, flag the decaying ones, propose archival of superseded ones.</td></tr>
-<tr><td><strong>Observability</strong></td><td>The user can inspect the graph (list, filter by tag, top-k by weight) to see what Metnos &laquo;thinks it knows how to do together&raquo;.</td></tr>
-</tbody>
-</table>
+<p>The same database contains <code>canonical_query_log</code>, populated by some
+turns as normalization telemetry. That table is not a mnest and does not show that
+the edge graph was updated. The module does not implement monthly snapshots or
+automatic compression.</p>
 
-<h1 id="cap10">10. Persistence and snapshots</h1>
+<h1 id="cap11">11. Example</h1>
 
-<p>
-Mnests live in <code>workspace/.mnestome/mnest.sqlite</code>:
-</p>
+<p><strong>Ask Metnos with a request like this example:</strong>
+&ldquo;Explain whether the mnestome is populated automatically by my turns and
+which components read it today.&rdquo;</p>
+
+<p>A correct answer must distinguish available code from integration: the store,
+composer, ager, and inspection tools exist; automatic edge recording from turns is
+not wired. It must not invent an already-learned personal graph.</p>
+
+<h1 id="cap12">12. Operational boundaries</h1>
 
 <ul>
-<li>a single <code>mnests</code> table with the fields from ch. 4 plus indexes on <code>(src_executor, dst_executor)</code> and <code>weight</code>;</li>
-<li>an append-only <code>events</code> table with individual reinforcements, to allow reconstruction of the weight history (useful for debugging and the ager);</li>
-<li>a <code>v_mnestome</code> view that projects the current state of the graph (active + proto), for read queries.</li>
+ <li>The default database belongs to the installation workspace, not to a user
+ scope derived automatically. It must not be treated as a personal dossier.</li>
+ <li>Tags and desired signatures are caller-supplied data; they may contain
+ heuristic prose and are not independent evidence.</li>
+ <li>Decay changes weight according to job time, but does not reconcile
+ contradictions or assess turn quality.</li>
+ <li>For repeated requests and plans, see <a href="fast_path.html">L0 and L1</a>;
+ they are not derived automatically from mnests.</li>
 </ul>
 
-<p>
-The system takes a <strong>monthly snapshot</strong> of the SQLite file
-into <code>workspace/.mnestome/snapshots/YYYY-MM.sqlite</code>. The
-snapshot serves three purposes: rollback in case of corruption of the
-live file, historical analysis of the graph, trace for whoever wants to
-understand how Metnos moved over time. Snapshots older than 12 months
-are <code>.zst</code>-compressed but not deleted.
-</p>
-
-<h2>Backup</h2>
-
-<p>
-The live SQLite file is included in the nightly workspace backup
-under the same policies as the rest of
-the workspace. Losing the mnestome is not catastrophic (the system
-restarts empty and rebuilds from use) but it is one of the most
-precious data: it carries the operational history Metnos has learned
-to recognise.
-</p>
-
-<h1 id="cap11">11. Example: the invoice sequence</h1>
-
-<p>
-To pin the concepts down, here is a typical sequence of mnests that
-forms around the &laquo;archive a PDF invoice&raquo; flow:
-</p>
-
-<pre><code>1. read_files &rarr; read_files_pdf v2.0 (weight 0.85, uses 47, "invoice")
-2. read_files_pdf v2.0 &rarr; invoice_classify (weight 0.78, uses 41, "invoice")
-3. invoice_classify &rarr; workspace_save (weight 0.81, uses 44, "invoice")
-
-# proto-mnest that recurs but is not yet an executor:
-4. read_files_pdf v2.0 &rarr; extract_invoice_number (weight 0.34, uses 4, "invoice")
-</code></pre>
-
-<p>
-The fourth, if it keeps recurring, will lift its weight above the
-synthesis threshold and the <em>synt</em> will propose to Roberto the
-synthesis of the new executor <code>extract_invoice_number</code>. Once
-approved and signed, the proto-mnest will move to <code>active</code>
-with its <code>dst_version</code> made concrete.
-</p>
-
-<h1 id="cap12">12. Open questions</h1>
-
-<ol>
-<li><strong>Garbage collection of the SQLite file.</strong> When is space for archived mnests reclaimed in the live file? Never (full history) or periodically (for size)? Open.</li>
-<li><strong>LLM-suggested tags.</strong> The gateway can have the LLM suggest tags during turn close. How much to trust those tags? Should the user ratify them? Open.</li>
-<li><strong>Cross-sender mnests.</strong> When Metnos has multiple paired senders in the future (guests), are mnests per-sender or global? Likely global with a sender-of-origin tag, but to be decided.</li>
-<li><strong>Differentiated decay by category.</strong> Is it useful to have different <code>&lambda;</code> for side-effect-free vs side-effect-full executors? Open.</li>
-</ol>
-
-<hr>
-
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
- <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The unit of code the mnest connects.</div>
- </a>
- <a href="mnestome.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">third in the triad</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnestome</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The emergent graph of all mnests.</div>
- </a>
- <a href="index.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture: executor, mnest, mnestome.</div>
- </a>
- <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
- </a>
-</div>
-
-<hr>
-<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>mnest</em> microdesign <br>
-Canonical doc.
-</p>
 </body>
 </html>

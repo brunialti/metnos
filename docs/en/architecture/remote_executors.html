@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Metnos &mdash; remote executors</title>
-<meta name="description" content="Microdesign of Metnos remote executors: device pairing, metnos-client, placement, per-OS sandboxing, UI installation and operational limits.">
+<meta name="description" content="Guide to Metnos remote executors: device pairing, placement, per-OS sandboxing, installation from the interface, and operational limits.">
 <meta name="keywords" content="Metnos, remote executors, metnos-client, devices, placement, sandbox, Windows, Linux, pairing">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -41,8 +41,6 @@ li { margin-bottom:4px; }
 .nav-inner { max-width:960px; margin:0 auto; padding:0 20px; display:flex; justify-content:space-between; gap:16px; }
 .crumb { color:var(--muted); }
 .lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:22px 0; }
-.status { margin:18px 0; border-left:5px solid #16a34a; background:#dcfce7; color:#14532d; padding:14px 20px; border-radius:0 8px 8px 0; font-size:10.5pt; }
-.note { border-left:4px solid #f59e0b; background:#fef3c7; padding:12px 18px; margin:18px 0; border-radius:0 6px 6px 0; font-size:10.5pt; }
 .toc { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 22px; margin:22px 0; }
 .toc ol { margin:4px 0 0 18px; padding:0; }
 .toc li { margin:3px 0; }
@@ -54,13 +52,13 @@ footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/remote_executors.html" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
-<a href="/en/architecture/remote_executors.html" hreflang="en" lang="en">EN</a>
+<a href="/en/architecture/remote_executors.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div class="nav">
  <div class="nav-inner">
  <a href="../index.html">&larr; Documentation index</a>
- <span class="crumb">Microdesign &rsaquo; <strong>remote_executors</strong></span>
+ <span class="crumb">Architecture guide &rsaquo; <strong>remote_executors</strong></span>
  </div>
 </div>
 
@@ -68,18 +66,16 @@ footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); 
 
 <p class="lead">
 A remote executor is a Metnos executor that is not launched on the server,
-but on a registered device in the same household: a Windows PC, a Linux laptop,
-and later other systems. The server remains the decision point: it checks whether
+but on a device registered to the same user, such as a Windows PC or Linux
+laptop. The server remains the decision point: it checks whether
 the action is allowed, signs the payload, receives the result and writes the
 audit trail.
 </p>
 
-<div class="status">
-Current status: the client supports UI join, Windows execution
-through Job Object, process-tree kill on timeout, single-instance locking and
-server-side revocation. Implementation detail remains in the internal document
-<code>internal/design/remote-executors.html</code>.
-</div>
+<p>The client supports pairing guided by the interface, contained execution on
+Linux and Windows, process-tree termination at the deadline, controlled restart
+if sandbox construction does not return, single-instance locking, and
+server-side revocation.</p>
 
 <div class="toc">
 <strong>On this page</strong>
@@ -122,7 +118,8 @@ is not "an open browser": it is a known, revocable and recognisable machine.
 </p>
 
 <p>
-The detailed flow lives in <a href="pairing.html#cap13">pairing, ch. 13</a>.
+The detailed flow is described in
+<a href="pairing.html#cap6">Identity and pairing, ch. 6</a>.
 The essential parts are: short token, one-time consume, unique device fingerprint,
 periodic heartbeat and explicit revocation from the admin panel.
 </p>
@@ -133,7 +130,7 @@ periodic heartbeat and explicit revocation from the admin panel.
 An executor does not become remote by accident. The loader reads its manifest:
 allowed platforms, capabilities, signature and optional placement section. Only
 when the contract is compatible may the runtime assign the job to a device.
-Otherwise the executor stays local or is refused with an honest error.
+Otherwise the executor stays local or is refused with an explicit error.
 </p>
 
 <table>
@@ -147,11 +144,35 @@ Otherwise the executor stays local or is refused with an honest error.
 </table>
 
 <p>
-A selected provider backend is always pinned to the server: network access,
+A selected provider backend is always bound to the server: network access,
 credential home, and placement derive from the same effective
 <code>provider:access</code> capability. A local backend of the same executor does not
 inherit that restriction and remains device-eligible when
 <code>placement.device_ok</code> allows it.
+</p>
+
+<p>
+Browser, credential, and ACL-sharing authority are separate in the canonical
+registry: <code>network:sites</code> restricts a session to approved origins,
+<code>auth.password_storage</code> restricts reads to the credential scope, and
+<code>drive:permissions</code> identifies a critical remote grant. All
+<code>*_sites</code> executors remain server-only.
+</p>
+
+<p>
+Metnos-managed resources also use separate authority:
+<code>metnos:read</code>, <code>metnos:write</code>,
+<code>metnos:create</code>, and the
+<code>metnos:credentials_metadata_only</code> constraint. The latter prevents
+vault executors from returning secrets to the planner.
+</p>
+
+<p>
+In compound flows, presentation follows the terminal operation: when a search
+ends by creating an archive, chat returns an artifact-and-folder receipt rather
+than the technical <code>compress_files</code> table. Legitimate tables stay
+inside the message bubble and scroll horizontally when a path or URL cannot be
+broken without losing information.
 </p>
 
 <h3 id="placement-chat">3.1 Chat-driven placement: the server or one of your PCs</h3>
@@ -278,7 +299,7 @@ budget.xlsx     88 KB</div>
      <span class="rx-chip rx-offline">&#128187; HOME-DESKTOP &middot; not connected</span>
      <div class="rx-bubble"><b>HOME-DESKTOP is not connected</b> (no heartbeat for over a minute).
       I will not silently run elsewhere: switch it on and try again, or tell me &ldquo;on the server&rdquo; or &ldquo;on office-laptop&rdquo;.
-      <div class="rx-mono">connectivity check before every dispatch &rarr; honest error, never a silent fallback</div>
+      <div class="rx-mono">connectivity check before every dispatch &rarr; explicit error, never a silent fallback</div>
      </div>
     </div>
 
@@ -339,15 +360,14 @@ budget.xlsx     88 KB</div>
  </div>
 </div>
 
-<div class="note">
-<b>A note on honest limits.</b> The target PC is identified by its <em>name</em>, not by
+<p><strong>How the device is recognised.</strong> The target PC is identified by its <em>name</em>, not by
 <em>where</em> the connection comes from. Identifying it from the network origin (the IP
-address) would be unreliable: through the public tunnel the server always sees
-<code>127.0.0.1</code>, and from Telegram there is no PC behind the message at all. That
-is why the anchor is the device name &mdash; matched against the real names of your paired
-PCs &mdash; and not the network fingerprint. A name dropped mid-sentence, without a
+address) would be unreliable: through a public tunnel the server may see only
+the ingress address, and a Telegram message has no originating PC behind it.
+That is why the anchor is the device name &mdash; matched against the real names of
+your paired PCs &mdash; and not the network fingerprint. A name dropped mid-sentence, without a
 locative preposition to anchor it, does not move the destination.
-</div>
+</p>
 
 <h2 id="installation">4. Installation from the UI</h2>
 
@@ -366,6 +386,20 @@ as a persistent operating-system process. The UI observes the join: token issued
 client registered, heartbeat alive, client version, last error.
 </p>
 
+<ol>
+<li>In the Metnos web chat, open <strong>Settings &gt; System &gt;
+Devices</strong> (<code>/admin/devices</code>) and select the user who
+will own the PC.</li>
+<li>Select <strong>I need to install on another PC</strong>, give the device
+a short recognizable name, and generate the link.</li>
+<li>Open the link on the target Windows PC, download the self-contained
+client, and complete the pairing shown by the client.</li>
+<li>Return to Devices and verify that the PC is paired, active, and has a
+recent heartbeat.</li>
+</ol>
+<p>The link is temporary and intended for one pairing. If the PC is already
+listed, inspect the existing device before generating another link.</p>
+
 <h2 id="sandbox">5. Per-OS Sandboxing</h2>
 
 <p>
@@ -378,15 +412,17 @@ stderr, exit code, timeout and containment metadata.
 <table>
 <thead><tr><th>System</th><th>Current containment</th><th>Note</th></tr></thead>
 <tbody>
-<tr><td>Linux</td><td>Client-side <code>bwrap</code> when available</td><td>Strong filesystem and network isolation, consistent with the server model.</td></tr>
-<tr><td>Windows</td><td>Job Object + process limits</td><td>Useful for timeout and process-tree kill; not yet full filesystem/network isolation.</td></tr>
-<tr><td>macOS</td><td>Planned backend</td><td>Enabled only once containment has been verified.</td></tr>
+<tr><td>Linux</td><td>Client-side <code>bwrap</code> when available</td><td>Mount and PID namespaces, a restricted filesystem, and a separate network when it is not requested. Custom Landlock and seccomp are not implemented.</td></tr>
+<tr><td>Windows</td><td>AppContainer inside a Job Object</td><td>Targeted ACLs for absolute paths; when a relative path cannot be anchored before spawn, the client explicitly falls back to the Job Object instead of attempting ambiguous ACLs.</td></tr>
+<tr><td>macOS</td><td>No native sandbox</td><td>The common Unix path runs without an operating-system wrapper and reports <code>sandbox:"none"</code>.</td></tr>
 </tbody>
 </table>
 
 <p>
-See <a href="sandbox.html#cap10">sandbox, ch. 10</a> for the per-OS detail
-and for why Windows AppContainer remains the next hardening step.
+See <a href="sandbox.html#cap10">sandbox, ch. 10</a> for the per-OS detail.
+Remote results always report the containment actually applied. A separate watchdog
+terminates the client, leaving restart to its supervisor, if sandbox construction
+does not return within the deadline plus a bounded grace period.
 </p>
 
 <h2 id="failure">6. Failures, Duplicates and Revocation</h2>
@@ -411,26 +447,25 @@ client will behave well: it simply stops assigning payloads to it.
 
 <h2 id="limits">7. Declared Limits</h2>
 
-<div class="note">
-Remote executors do not mean "run arbitrary code on the PC". They mean: run only
+<p>Remote executors do not mean "run arbitrary code on the PC". They mean: run only
 signed executors, compatible with the platform, admitted by policy and sufficiently
 contained by the client. The admitted mutating executors (file write and move)
 carry their own undo: reverting an operation executed on a device runs
 <em>on that same device</em>, never on the server. Remote deletion is admitted as well: the backup (blob) is written on the
 device before removal, and undo restores it <em>on that same device</em>.
-</div>
+</p>
 
 <ul>
- <li>Windows currently contains duration and process trees well; fine-grained filesystem and network isolation requires a stronger backend.</li>
+ <li>On Windows, AppContainer isolates files and network when it can be constructed; the Job Object fallback contains resources and the process tree, but does not provide the same isolation.</li>
  <li>The device must remain reachable by the server on the expected network or an equivalent private network.</li>
  <li>An executor must declare platforms and placement: absence of declaration is not remote consent.</li>
- <li>Implementation detail remains internal; this page is the stable public entry point.</li>
+ <li>macOS has no equivalent native containment today: a run at level <code>none</code> must not be described as isolated.</li>
 </ul>
 
 <footer>
-Metnos &mdash; microdesign: <code>remote_executors</code>. See also
+Metnos &mdash; guide to <code>remote executors</code>. See also
 <a href="executor.html"><code>executor</code></a>,
-<a href="pairing.html#cap13"><code>pairing</code></a>,
+<a href="pairing.html#cap6"><code>pairing</code></a>,
 <a href="sandbox.html#cap10"><code>sandbox</code></a> and
 <a href="http_api.html"><code>http_api</code></a>.
 </footer>

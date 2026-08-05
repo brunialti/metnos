@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Where is the beef (code)?</title>
-    <meta name="description" content="Il codice di Metnos e' pubblico: il sottoinsieme run-essential dell'istanza in esercizio, con installer. Ma i documenti vengono prima, e valgono di piu'. Una nota dell'autore, e l'invito a leggere prima un dialogo.">
-    <meta name="keywords" content="Metnos, codice, repository pubblico, dialoghi, microprogettazione, AI coder, documentazione, Roberto Brunialti">
+    <meta name="description" content="Che cosa contiene il repository pubblico di Metnos, come viene esportato e verificato e come si collega alla documentazione e a un'istanza installata.">
+    <meta name="keywords" content="Metnos, codice, repository pubblico, installer, documentazione, export, sicurezza">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://metnos.com/it/code">
@@ -15,12 +15,12 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/it/code">
     <meta property="og:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta property="og:description" content="Il codice e' pubblico: subset run-essential dell'istanza in esercizio, con installer. La documentazione viene comunque prima; entra dal dialogo sui fini e i limiti.">
+    <meta property="og:description" content="Contenuto, confini e verifiche del repository pubblico di Metnos.">
     <meta property="og:locale" content="it_IT">
     <meta property="og:site_name" content="Metnos">
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="Metnos &mdash; Where is the beef (code)?">
-    <meta name="twitter:description" content="Il codice e' online (github.com/brunialti/metnos): subset run-essential + installer. La documentazione viene prima, i dialoghi prima ancora.">
+    <meta name="twitter:description" content="Codice, installer e documentazione tecnica di Metnos su GitHub.">
     <style>
 :root {
     --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
@@ -44,8 +44,6 @@ nav.lang a:not(.active) { color: var(--muted); }
 .back { background: #fff; border-bottom: 1px solid var(--border); padding: 10px 0; font-size: 14px; margin-bottom: 16px; }
 .back .inner { max-width: 760px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; }
 .back a { color: var(--navy); text-decoration: none; font-weight: 500; }
-.callout { border-left: 4px solid var(--sage); background: #f0fdf4; color: #14532d; padding: 14px 20px; margin: 28px 0; border-radius: 0 8px 8px 0; font-size: 11.5pt; }
-em.author { color: var(--plum); font-style: italic; }
 footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 10.5pt; color: var(--muted); text-align: center; }
 footer a { color: inherit; text-decoration: none; }
     </style>
@@ -68,36 +66,22 @@ footer a { color: inherit; text-decoration: none; }
 
 <div class="title-page">
   <h1>Code</h1>
-  <div class="subtitle">una nota dell'autore</div>
+  <div class="subtitle">repository pubblico, confini e verifiche</div>
 </div>
 
-<div class="callout" style="border-left-color: var(--navy); background: #f0f6ff; color: #0f2f57;">
-<strong>Il codice &egrave; online.</strong> &rarr; <a href="https://github.com/brunialti/metnos" style="color: var(--navy-light); border:none;">github.com/brunialti/metnos</a> &mdash; sottoinsieme run-essential dell'istanza in esercizio, con installer e architettura. AGPL-3.0.
-</div>
+<p>Il codice &egrave; disponibile su <a href="https://github.com/brunialti/metnos">github.com/brunialti/metnos</a> con licenza AGPL-3.0. Il repository contiene il sottoinsieme necessario a installare, eseguire e studiare Metnos: runtime, executor e manifest ammessi, client per i dispositivi, programma di installazione, test di contratto e documentazione tecnica pubblica in italiano e inglese. Il README e la guida dell'installer nel repository sono invece soltanto in inglese.</p>
 
-<div class="callout">
-Se sei arrivato fin qui, sei interessato al codice. Anche io avrei fatto cos&igrave;. Ma questa volta il codice &egrave; la parte meno preziosa del progetto.
-</div>
+<h2>Rapporto con l'istanza installata</h2>
 
-<h2>Where is the beef (code)?</h2>
+<p>Il repository pubblico &egrave; un export deterministico dell'albero di lavoro, non una copia dei dati di un'istanza. Il processo di pubblicazione esclude stato privato, credenziali, log, report interni, benchmark e documentazione riservata; prima del push controlla inoltre l'albero finale alla ricerca di segreti e dati identificativi. Le chiavi, gli account, le preferenze e le cronologie di ogni utente restano nei percorsi dati e configurazione dell'installazione.</p>
 
-<p>Domanda giusta, dopo tutta questa filosofia. Il codice viene <em>dopo</em> i documenti, ed &egrave; per scelta. Ogni documento di questo sito sta <em>a monte</em> del codice: la regola interna &egrave; che un componente non si implementa prima che il suo HTML esista e sia approvato. Quando la definizione &egrave; abbastanza matura da rendere la costruzione un esercizio di fedelt&agrave; pi&ugrave; che di traduzione, il codice segue &mdash; e somiglia ai documenti, non viceversa.</p>
+<p>Il software &egrave; ancora precedente alla versione 1.0: &egrave; adatto a valutazione, sperimentazione su un'installazione propria e sviluppo, ma interfacce e valori predefiniti possono ancora cambiare. Il <a href="https://github.com/brunialti/metnos/blob/main/README.md">README pubblico</a> &egrave; in inglese e riporta requisiti, installazione e confini di sicurezza.</p>
 
-<p>C'&egrave; anche un motivo pi&ugrave; forte per fermarsi qui. Il <a href="architecture/">manuale di architettura</a> collega la visione del sistema ai contratti esatti dei componenti; i <a href="Metnos_Dialogo_v1.html">dialoghi</a> mostrano come quelle decisioni sono state guadagnate. Se leggi prima il manuale, ricevi le conclusioni senza le obiezioni, i componenti senza le alternative scartate, i nomi senza la fatica di trovarli. Se leggi prima un dialogo, arrivi alle stesse decisioni con i dubbi ancora attaccati &mdash; che &egrave; quello che, pi&ugrave; avanti, ti permetter&agrave; di distinguere se una sorpresa del sistema &egrave; un bug o una conseguenza da accettare.</p>
+<h2>Documentazione e codice</h2>
 
-<p>Se stai per tuffarti nell'architettura o nella microprogettazione, leggi prima almeno un dialogo. Il resto della documentazione ti parler&agrave; una lingua pi&ugrave; ricca.</p>
+<p>La <a href="architecture/">Guida all'architettura</a> descrive responsabilit&agrave;, autorit&agrave;, condizioni di errore e contratti dei componenti. Il <a href="domains.html">riferimento dei domini</a> e la <a href="interface.html">guida dell'interfaccia</a> derivano dai registri del runtime. A ogni pubblicazione le pagine indicizzabili entrano anche nel catalogo firmato del Tutor; una modifica documentale invalida quel catalogo e ne fa costruire un candidato completo prima del rilascio.</p>
 
-<h2>E adesso, il codice</h2>
-
-<p>Metnos &egrave; implementato, e lo uso ogni giorno. <strong>Ora il codice &egrave; pubblico</strong> &mdash; non un'estrazione grezza, ma il sottoinsieme <em>run-essential</em> dell'istanza in esercizio, con un installer che non si limita a far partire un server: <em>replica un ambiente di lavoro completo</em> da un checkout pulito. Una sola sorgente, quella viva; il repository ne &egrave; il riflesso curato, deterministico.</p>
-
-<p>Resta vero tutto ci&ograve; che hai letto sopra. I documenti vengono prima, e valgono pi&ugrave; del codice: per ogni riga ce ne sono quattro o cinque di documentazione, pi&ugrave; un livello non pubblicato di microdecisioni. Ma adesso, se vuoi, puoi anche vedere come quelle decisioni si sono fatte materia &mdash; e constatare che il codice somiglia ai documenti, non viceversa.</p>
-
-<p>Cosa ci troverai, in breve: un assistente che <strong>sintetizza i propri strumenti</strong> da un vocabolario chiuso e firmato, invece di importarli e fidarsi; un pianificatore <strong>locale e deterministico</strong> &mdash; stessa richiesta, stesso piano; executor <strong>vettoriali per costruzione</strong>, lista-dentro / lista-fuori; e un'ostinata onest&agrave;: niente fallimenti silenziosi, e un undo che &egrave; davvero un undo. Gira sul tuo hardware; il modello di frontiera &egrave; un ripiego facoltativo, non il motore.</p>
-
-<p>A partire dal corpus documentale era gi&agrave; possibile reimplementare Metnos &mdash; probabilmente meglio di me, in compagnia di un AI coder, che durante questo progetto mi &egrave; sembrato moltiplicato dalle tecniche adottate, alcune frutto di scoperte sorprendenti. Adesso hai anche l'originale a cui confrontarti.</p>
-
-<p><em class="author">Sono solo, o meglio: c'&egrave; sempre l'Altro che amplifica le mie capacit&agrave;.</em> &Egrave; una vetrina, non un prodotto levigato &mdash; costruita per una persona, su una macchina, e aperta perch&eacute; altri possano leggerla, eseguirla, costruirci sopra. Porta un po' di pazienza; e, se ti va, un'issue.</p>
+<p>Per installare Metnos, inizia dalla <a href="https://github.com/brunialti/metnos/blob/main/install/README.md">guida dell'installer</a>. Per segnalare un problema, indica richiesta, piattaforma, risultato osservabile e log con i segreti rimossi.</p>
 
 <footer>
 Metnos &middot; <a href="./">metnos.com</a> &middot; contatti: <a href="mailto:metnos@metnos.com">metnos@metnos.com</a>

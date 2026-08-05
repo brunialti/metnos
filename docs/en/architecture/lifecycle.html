@@ -4,15 +4,15 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; change lifecycle</title>
- <meta name="description" content="Unified lifecycle of system changes in Metnos: one change_intent object, one state machine (proposed→accepted→applied→observed→finalized), one UI /admin/changes.">
- <meta name="keywords" content="change_intent, lifecycle, proposals, promotions, telos, introvertiva, synt, fastpath, /admin/changes, metnos">
+ <meta name="description" content="How Metnos collects, presents, applies, observes, and rolls back changes to the system.">
+ <meta name="keywords" content="Metnos, change intent, changes, approval, application, rollback">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/lifecycle">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/lifecycle">
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
@@ -25,291 +25,146 @@
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Architecture &rsaquo; <strong style="color:#1a1a1a;">lifecycle</strong></span>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">changes</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>lifecycle</code> &mdash; one object for every change to the system</div>
- <div class="meta">
- Canonical architecture.<br>
- Modules: <code>runtime/change_intents.py</code>,
- <code>change_intent_adapters/</code>,<br>
- <code>change_applier.py</code>, <code>change_observer.py</code>,
- <code>change_rollback.py</code>.<br>
- <br>
- Audience: anyone operating the <code>/admin/changes</code> dashboard,<br>or wanting to understand where a proposal goes after accept.<br>
- Read time: 8 minutes.
- </div>
+ <div class="subtitle">Change lifecycle</div>
+ <div class="meta">One shared object for proposing, deciding, applying, and observing a change.</div>
 </div>
+
+<p class="lead">Sources that suggest an improvement do not modify Metnos directly.
+They translate the suggestion into a <code>change_intent</code>: a typed record with
+origin, target, rationale, score, and state. The <code>/admin/changes</code> page
+presents these records and keeps their progress visible.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
- <li><a href="#cap1">The unified object: <code>change_intent</code></a></li>
- <li><a href="#cap2">Lifecycle in 5 acts</a></li>
- <li><a href="#cap3">The 4 live sources as adapters</a></li>
- <li><a href="#cap4">The 3 daemons: materializer, applier, observer</a></li>
- <li><a href="#cap5">End-to-end example: <code>find_recipes</code></a></li>
- <li><a href="#cap6">Operational references</a></li>
+ <li><a href="#cap1">The shared object</a></li>
+ <li><a href="#cap2">States and transitions</a></li>
+ <li><a href="#cap3">Active sources</a></li>
+ <li><a href="#cap4">Materialization, application, and observation</a></li>
+ <li><a href="#cap5">What gets applied</a></li>
+ <li><a href="#cap6">Natural-language example</a></li>
+ <li><a href="#cap7">Guarantees and limits</a></li>
 </ol>
 </div>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
- <defs><marker id="lc-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
- <rect x="10" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="90" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">proposed</text>
-<rect x="188" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="268" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">accepted</text>
-<rect x="366" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="446" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">applied</text>
-<rect x="544" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="624" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">observed</text>
-<rect x="722" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="802" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">finalized</text>
-<line x1="170" y1="85" x2="186" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="348" y1="85" x2="364" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="526" y1="85" x2="542" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="704" y1="85" x2="720" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
+<h1 id="cap1">1. The shared object</h1>
 
- <rect x="10" y="135" width="880" height="32" rx="8" fill="#FEF3C7" stroke="#B7791F" stroke-dasharray="3 3"/>
- <text x="450" y="155" text-anchor="middle" fill="#92400E" font-size="10">side branches: staged &middot; rejected &middot; failed &middot; rolled_back</text>
-</svg>
-<figcaption>Figure 1 &mdash; Lifecycle of a change: a single state machine from proposal to finalization, with side branches (staged / rejected / failed / rolled_back).</figcaption>
-</figure>
-
-<h1 id="cap1">1. The unified object: <code>change_intent</code></h1>
-
-<p>
-All system changes converge into a single schema in <code>~/.local/state/metnos/change_intents.sqlite</code>:
-</p>
-
-<pre><code>id UUID
-fingerprint sha256[:32] # deterministic for cross-source dedup
-state PROPOSED|ACCEPTED|APPLIED|OBSERVED|FINALIZED|
- STAGED|REJECTED|FAILED|ROLLED_BACK
-origin_family telos|introvertiva|synt|user (multi_tool/canonical: historical rows only)
-origin_module scamper|dedupe|request_new_executor|L1|L2|feedback|...
-intent_kind create_executor|extend_executor|dedupe_executors|
- materialize_pipeline|cache_pattern|reject_pattern
-intent_target executor name or pattern
-intent_summary 1 user-facing sentence
-intent_body kind-specific dict (arg_name, tools_sequence,...)
-score 0&ndash;1 cross-source normalized
-confidence 0&ndash;1
-convergence # of sources proposing equivalent things
-decision_* user accept/reject/stage log
-applied_effect applied diff + rollback_blob path
-observed_metrics grace-period metrics
-</code></pre>
-
-<p>
-<strong>The fingerprint does NOT include <code>origin_family</code></strong>:
-this way two different sources proposing equivalent things (e.g.
-telos:scamper + synt on the same executor) coalesce into
-<em>a single record</em>, with <code>convergence</code> bumped.
-</p>
-
-<h1 id="cap2">2. Lifecycle in 5 acts</h1>
-
-<pre style="font-family:monospace;background:#f8f9fa;padding:1rem;border-left:4px solid #2563eb">
- +-----------+
- | PROPOSED | &larr; some source generated it
- +-----------+
- / | \
- / | \
- (user) | (user decides later)
- / | \
- v v v
-+----------+ +--------+ +---------+
-| ACCEPTED | | STAGED | |REJECTED |
-+----------+ +--------+ +---------+
- | (applier daemon)
- v
-+----------+ +----------+
-| APPLIED | ----&gt; | FAILED | (retry possible)
-+----------+ +----------+
- | (observer daemon, default 7d grace period)
- v
-+----------+ +-------------+
-| OBSERVED | ----&gt; | ROLLED_BACK | (physical, per kind)
-+----------+ +-------------+
- |
- v
-+-----------+
-| FINALIZED | &larr; consolidated, hidden from default views
-+-----------+
-</pre>
-
-<p>From ANY state you can transition to <code>ROLLED_BACK</code> (human-audit
-escape hatch). From <code>REJECTED</code> you can <em>re-propose</em>
-(transition back to <code>PROPOSED</code>).</p>
-
-<h1 id="cap3">3. The 4 live sources as adapters</h1>
-
-<p>Each source has an adapter in <code>runtime/change_intent_adapters/</code>
-that projects its records into <code>ChangeIntent</code>, with no side
-effects. Since 2026-07-02 (ADR 0180, the layer rule) the active adapters
-are <strong>four</strong>:</p>
+<p>Records are stored in
+<code>~/.local/state/metnos/change_intents.sqlite</code>. Their main fields are:</p>
 
 <table>
-<thead><tr><th>Source</th><th>Adapter</th><th>Output kind</th></tr></thead>
+<thead><tr><th>Group</th><th>Contents</th></tr></thead>
 <tbody>
-<tr><td>telos (10 lenses, cluster heads)</td><td><code>telos.py</code></td>
- <td>create_executor (new_valid) / extend_executor (parametric) /
- materialize_pipeline (existing_pipeline)</td></tr>
-<tr><td>introvertiva (dedupe only)</td><td><code>introvertiva.py</code></td>
- <td>dedupe_executors (the historical generalize/specialize shapes stay
- readable, their generators are retired)</td></tr>
-<tr><td>synt (request_new_executor)</td><td><code>synt.py</code></td>
- <td>create_executor (imported as FINALIZED if already installed)</td></tr>
-<tr><td>user turn_feedback</td><td><code>user_feedback.py</code></td>
- <td>reject_pattern (only if &ge; 2 rejections)</td></tr>
+<tr><td>Identity</td><td>An <code>id</code> and deterministic fingerprint for deduplicating equivalent proposals.</td></tr>
+<tr><td>Provenance</td><td>Source family, module, original identifier, and discovery time.</td></tr>
+<tr><td>Intent</td><td>Closed kind, target, summary, rationale, and kind-specific payload.</td></tr>
+<tr><td>Priority</td><td>Score, confidence, and number of converging sources.</td></tr>
+<tr><td>Decision</td><td>Person, action, reason, and decision time.</td></tr>
+<tr><td>Outcome</td><td>Applied effect, observed metrics, error, or rollback data.</td></tr>
 </tbody>
 </table>
 
-<p>The telos adapter projects <strong>cluster heads</strong>
-(<code>recompose_clusters</code>) rather than raw rows: roughly 27 intents
-instead of 500, score = <code>cluster_score</code> (best alignment + a
-convergence bonus across distinct lenses), and ONLY the actionable
-<code>name_status</code> values — noise (redundant proposals, invalid names)
-never reaches the view.</p>
+<p>The fingerprint excludes the source family. If two sources describe the same
+change, the upsert can merge them into one record and increase convergence without
+duplicating the action. A score is an ordering aid, not an authorization.</p>
 
-<p><strong>Retired adapters</strong> (2026-07-02, «a mechanism that serves no
-purpose serves none»): <code>canonical.py</code> (the
-<code>canonical_query_log</code> store was written by the legacy planner, now
-gated — its role is absorbed by the L0 fastpath) and <code>multi_tool.py</code>
-(the <code>multi_tool_paths</code> store no longer has a writer — real chains
-are learned by the L1 autopath from actual turns). The modules live on in git
-history; the leftover rows were rejected with an explicit reason.</p>
+<h1 id="cap2">2. States and transitions</h1>
 
-<p>Score normalization per family:</p>
-<ul>
-<li>telos: <code>cluster_score</code> (alignment + convergence), already 0&ndash;1</li>
-<li>(retired) multi_tool / canonical: <code>uses</code> via log-saturating mid=20
-(e.g. uses=20 &rarr; score 0.50, uses=100 &rarr; 0.83)</li>
-<li>introvertiva: <code>n_seen*0.05 + last_uses*0.005</code> (historical formula)</li>
-<li>synt: <code>installed</code>=0.8, <code>abandoned</code>=0.3,
-<code>rejected*</code>=0.05</li>
-<li>user reject_pattern: <code>min(0.9, 0.3 + 0.15*n_rejections)</code></li>
-</ul>
+<pre><code>proposed  --accept--&gt; accepted --apply--&gt; applied
+    |                       |                  |
+    |                       +--error--&gt; failed +--measure--&gt; observed
+    +--stage--&gt; staged                              |
+    +--reject--&gt; rejected                           +--ok--&gt; finalized
+                                                   +--problem--&gt; rolled_back</code></pre>
 
-<h1 id="cap4">4. The 3 daemons: materializer, applier, observer</h1>
+<p>A staged proposal may return for review. A failed change may be retried or
+rejected. Rollback is terminal in the registry and performs a physical reversal when
+the change kind supports one. The state machine blocks arbitrary jumps: a proposal
+cannot become <code>applied</code> before it is <code>accepted</code>.</p>
+
+<h1 id="cap3">3. Active sources</h1>
+
+<p>The materializer reads four side-effect-free adapters:</p>
 
 <table>
-<thead><tr><th>Daemon</th><th>Trigger</th><th>What it does</th></tr></thead>
+<thead><tr><th>Source</th><th>What it can produce</th></tr></thead>
 <tbody>
-<tr>
- <td><code>change_intent_materialize</code></td>
- <td>daily@01:00</td>
- <td>Concatenates the live adapters &rarr; upsert with fingerprint dedup &rarr; bump convergence.</td>
-</tr>
-<tr>
- <td><code>change_applier</code></td>
- <td>every_10m</td>
- <td>Reads ACCEPTED, applies physically per kind. Cap 20/fire.</td>
-</tr>
-<tr>
- <td><code>change_observer</code></td>
- <td>daily@03:15</td>
- <td>Reads APPLIED+OBSERVED, computes metrics, transitions to FINALIZED or ROLLED_BACK.</td>
-</tr>
+<tr><td>Telos</td><td>Executor creation or extension and a controlled pipeline trial, from actionable cluster heads.</td></tr>
+<tr><td>Introvertiva</td><td>Executor deduplication; it also preserves already-recorded states that must remain inspectable.</td></tr>
+<tr><td>Synt</td><td>Executor-creation requests and their terminal or in-progress states.</td></tr>
+<tr><td>User feedback</td><td>A proposal to reject a pattern after at least two consistent negative reports.</td></tr>
 </tbody>
 </table>
 
-<p>Applier handler per kind:</p>
-<ul>
-<li><strong>create_executor</strong>: invokes existing <code>synth_request</code>
-pipeline (~150s wall). Idempotent: short-circuits if already in catalog.</li>
-<li><strong>extend_executor</strong>: <code>change_applier_extend.py</code>.
-Appends <code>[args.properties.&lt;arg&gt;]</code> section at the end of the
-TOML manifest, backup pre-modification in
-<code>~/.local/share/metnos/rollback_blobs/&lt;sha8&gt;-&lt;name&gt;.toml</code>,
-re-sign via <code>sign.sign_executor</code>.</li>
-<li><strong>dedupe_executors</strong>: alias setup in
-<code>executor_aliases.json</code> + deprecate the duplicate in
-<code>executor_stats.db</code>.</li>
-<li><strong>materialize_pipeline</strong>: <em>runs the pipeline once</em>
-as a real turn (the proposal's <code>suggested_query</code>, inside
-<code>scheduled_turn_scope</code>: the outbound consent gate and the vaglio
-guards apply). The honest outcome lands in <code>applied_effect</code>; if
-the turn works, L0/L1 learn on their own from the real turn — no parallel
-stores (ADR 0180).</li>
-<li><strong>cache_pattern</strong>: <code>UPDATE canonical_query_log SET
-state='active'</code> (historical kind: the canonical source is retired, the
-handler remains for rows accepted in the past).</li>
-<li><strong>reject_pattern</strong>: append to
-<code>~/.local/share/metnos/rejected_patterns.jsonl</code> (agent_runtime
-reads as HARD CONSTRAINT for the planner).</li>
-</ul>
+<p>Adapters translate different storage formats into the same schema. They neither
+apply the change nor turn an automatic inference into human consent.</p>
 
-<p>Observer checks metrics post-applied_at and applies grace period (default
-7 days, env <code>METNOS_CHANGE_GRACE_DAYS</code>). Rollback triggers:</p>
-<ul>
-<li>create/extend_executor: <code>last_call_ok=False</code> with &ge;3 calls;
-deprecated by executor_ager.</li>
-<li>materialize_pipeline / cache_pattern: state drifted to
-<code>demoted</code>.</li>
-<li>dedupe_executors: alias removed from file.</li>
-<li>reject_pattern: new &#10007; feedback post-applied for the same
-(canonical_query, tools).</li>
-</ul>
-
-<p>Physical rollback delegated to <code>change_rollback.py</code> (per kind:
-archive synth dir, restore manifest from blob + re-sign, remove alias,
-demote state, remove jsonl line).</p>
-
-<h1 id="cap5">5. End-to-end example: <code>find_recipes</code></h1>
-
-<p>Telos engine SCAMPER suggests: &laquo;Extend <code>find_files</code> with
-<code>kind=recipe</code> to match <code>.md</code> files in
-<code>~/Documents/Recipes</code>.&raquo;</p>
+<h1 id="cap4">4. Materialization, application, and observation</h1>
 
 <table>
-<thead><tr><th>Act</th><th>State</th><th>Where it happens</th></tr></thead>
+<thead><tr><th>Task</th><th>Default frequency</th><th>Responsibility</th></tr></thead>
 <tbody>
-<tr><td>1. System creates ChangeIntent</td><td>PROPOSED</td>
- <td>materializer @01:00 from telos_proposals.jsonl</td></tr>
-<tr><td>2. User clicks <code>&#10003;</code></td><td>ACCEPTED</td>
- <td>POST <code>/admin/changes/{id}/accept</code></td></tr>
-<tr><td>3. Applier modifies manifest + re-sign</td><td>APPLIED</td>
- <td>change_applier @every_10m</td></tr>
-<tr><td>4. 5 calls to <code>find_files(kind=recipe)</code>, all OK</td>
- <td>OBSERVED</td><td>change_observer @03:15 when age &ge; 0</td></tr>
-<tr><td>5. After 7d trouble-free</td><td>FINALIZED</td>
- <td>change_observer on the 7th pass</td></tr>
+<tr><td><code>change_intent_materialize</code></td><td>Daily at 01:00</td><td>Reads adapters, deduplicates by fingerprint, and updates the store.</td></tr>
+<tr><td><code>change_applier</code></td><td>Every 10 minutes</td><td>Processes up to 20 accepted records and records either their effect or error.</td></tr>
+<tr><td><code>change_observer</code></td><td>Daily at 03:15</td><td>Measures up to 200 applied or observed changes and decides whether to finalize or roll them back.</td></tr>
 </tbody>
 </table>
 
-<p>If instead after apply Roberto presses <code>&#10007;</code> in chat on a
-reply using the new arg, observer sees new_rejects&ge;2 for the target
-query and transitions to <code>ROLLED_BACK</code> &mdash; physical restore
-of the manifest from blob.</p>
+<p>The default observation period is seven days and can be changed with
+<code>METNOS_CHANGE_GRACE_DAYS</code>. Criteria vary by kind: executor health, alias
+integrity, the result of the turn used to try a pipeline, or new feedback about a
+rejected pattern.</p>
 
-<h1 id="cap6">6. Operational references</h1>
+<h1 id="cap5">5. What gets applied</h1>
+
+<table>
+<thead><tr><th>Kind</th><th>Current effect</th><th>Rollback</th></tr></thead>
+<tbody>
+<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated.</td><td>Archives the synthesized executor.</td></tr>
+<tr><td><code>extend_executor</code></td><td>Extends the manifest, stores a copy, and signs the executor again.</td><td>Restores the stored manifest and re-signs it.</td></tr>
+<tr><td><code>dedupe_executors</code></td><td>Creates an alias and retires the duplicate only when provenance permits it.</td><td>Removes the alias and reactivates the duplicate.</td></tr>
+<tr><td><code>materialize_pipeline</code></td><td>Runs the proposed request once as a real turn, under normal policy and controls.</td><td>Records rollback; the turn installs no persistent pipeline artifact to remove.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Adds the approved pattern to the registry of paths to avoid.</td><td>Removes the matching registration.</td></tr>
+<tr><td><code>cache_pattern</code></td><td>Remains supported for compatible records already present in the store.</td><td>Demotes the associated registration.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap6">6. Natural-language example</h1>
+
+<p><strong>Ask Metnos with a request like this example:</strong> “Show me the system
+changes waiting for my decision and explain the first one in plain language.”</p>
+
+<p>Decisions are made in the web chat. If you are talking to Metnos through Telegram,
+open the web chat, enter the administration area, and choose
+<strong>Changes</strong>; the technical route is <code>/admin/changes</code>. The page
+can filter by state, source, and kind and offers only the transitions allowed for
+each record.</p>
+
+<h1 id="cap7">7. Guarantees and limits</h1>
 
 <ul>
-<li><strong>UI</strong>: <a href="https://metnos.com/admin/changes">/admin/changes</a>
-with 9 tabs per state. Default tab=proposed, cap 30 rows (override
-<code>?limit=100|500</code>).</li>
-<li><strong>JSON API</strong>: same endpoint with header
-<code>Accept: application/json</code> (no <code>text/html</code>).</li>
-<li><strong>Smoke test</strong>: <code>python3 -m pytest runtime/tests/test_change_*.py -v</code>
-(55 tests).</li>
-<li><strong>Materializer dry-run</strong>:
-<code>python3 -m runtime.jobs.change_intent_materialize</code> (idempotent).</li>
-<li><strong>DB inspection</strong>:
-<code>sqlite3 ~/.local/state/metnos/change_intents.sqlite</code>.</li>
-<li><strong>Audit JSONL</strong>:
-<code>~/.local/share/metnos/audit/change_{intent_materialize,applier,observer}.jsonl</code>.</li>
+ <li>Acceptance is an explicit decision attributed to the administrator; a high
+ score does not replace it.</li>
+ <li>The applier is idempotent per kind and writes a local audit. An error leads to
+ <code>failed</code>, not apparent success.</li>
+ <li>Rollback depends on the kind. A pipeline run as a real turn cannot reverse
+ external effects that have already occurred; normal consent gates still apply
+ before execution.</li>
+ <li>Text produced by automatic generators helps triage, but must be read alongside
+ provenance, payload, and recorded effects.</li>
 </ul>
 
-<hr>
-<p style="text-align:center;color:#8e8e93;font-size:11pt">
- &mdash; aligned with the code.
-</p>
+<p>Code references: <code>runtime/change_intents.py</code>,
+<code>runtime/change_intent_adapters/</code>,
+<code>runtime/jobs/change_intent_materialize.py</code>,
+<code>runtime/change_applier.py</code>, <code>runtime/change_observer.py</code>,
+<code>runtime/change_rollback.py</code>, and <code>runtime/http_routes_admin.py</code>.</p>
 
 </body>
 </html>

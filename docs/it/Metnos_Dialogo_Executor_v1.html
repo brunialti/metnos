@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Dialogo sugli executor e sulla memoria distribuita v1</title>
-    <meta name="description" content="Secondo dialogo galileiano sul design di Metnos, in quattro giornate. Memoria senza apprendimento (executor, mnest, mnestoma); organismo o specchio; la forma del tavolo (network medicine, tracce); e la verifica finale &mdash; i sei principi e la specifica come passo successivo.">
-    <meta name="keywords" content="dialogo galileiano, design AI, memoria distribuita, executor, mnest, mnestoma, memoria dell'aspirazione, Metnos, metnos, proattività, capacità capability">
+    <meta name="description" content="Secondo dialogo galileiano sull'architettura di Metnos, in quattro giornate. Memoria senza apprendimento (executor, mnest, mnestoma); organismo o specchio; la forma del tavolo (network medicine, tracce); e la verifica finale &mdash; i sei principi e la specifica come passo successivo.">
+    <meta name="keywords" content="dialogo galileiano, architettura AI, memoria distribuita, executor, mnest, mnestoma, memoria dell'aspirazione, Metnos, metnos, proattività, capacità">
     <meta name="author" content="Roberto Brunialti">
     <meta name="robots" content="index, follow">
 
@@ -16,7 +16,7 @@
     <meta property="og:type" content="article">
     <meta property="og:url" content="https://metnos.com/it/Metnos_Dialogo_Executor_v1">
     <meta property="og:title" content="Dialogo sugli executor e sulla memoria distribuita — Metnos">
-    <meta property="og:description" content="Secondo dialogo galileiano sul design di Metnos, in quattro giornate. Executor, mnest, mnestoma, tracce, ager, i sei principi.">
+    <meta property="og:description" content="Secondo dialogo galileiano sull'architettura di Metnos, in quattro giornate. Executor, mnest, mnestoma, tracce, ager, i sei principi.">
     <meta property="og:locale" content="it_IT">
     <meta property="og:site_name" content="Metnos">
     <meta property="article:author" content="Roberto Brunialti">
@@ -184,7 +184,7 @@ blockquote {
 <body>
 
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/Myclaw_Dialogo_Executor_v1.html" class="active" hreflang="it" lang="it">IT</a>
+<a href="/it/Metnos_Dialogo_Executor_v1.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/Metnos_Dialogue_Executors_v1.html" hreflang="en" lang="en">EN</a>
 </nav>
@@ -198,17 +198,17 @@ blockquote {
 
 <div class="title-page">
     <h1>Dialogo sugli executor<br>e sulla memoria distribuita</h1>
-    <div class="subtitle">tra Roberto e L'Altro &mdash; giornate prima, seconda, terza e quarta</div>
+    <div class="subtitle">tra Roberto e L'Altro &mdash; in quattro giornate</div>
     <div class="meta">
         23&ndash;24 aprile 2026<br>
-        Seconda traccia del pensiero dietro myclaw, in forma dialogica.<br>
+        Seconda traccia del pensiero che ha dato forma a Metnos, in forma dialogica.<br>
         Dialogo completo in quattro giornate.
     </div>
 </div>
 
 <div class="preface">
 <h3>Preludio</h3>
-<p>Questo discorso, come il precedente &mdash; quello <a href="Myclaw_Dialogo_v1.html">sui fini e sui limiti di Metnos</a> &mdash; è scritto più per me che per chi legge. Serve a mettere sotto pressione idee che, tenute in silenzio, rischiano di apparire più solide di quanto siano; idee che, formulate come asserzioni chiuse, suonano enfatiche o sentimentali, e che invece nella forma di dialogo trovano la loro misura.</p>
+<p>Questo discorso, come il precedente &mdash; quello <a href="Metnos_Dialogo_v1.html">sui fini e sui limiti di Metnos</a> &mdash; è scritto più per me che per chi legge. Serve a mettere sotto pressione idee che, tenute in silenzio, rischiano di apparire più solide di quanto siano; idee che, formulate come asserzioni chiuse, suonano enfatiche o sentimentali, e che invece nella forma di dialogo trovano la loro misura.</p>
 
 <p>Nella costruzione di un sistema come Metnos arriva un momento in cui gli strumenti dell'ingegneria &mdash; schemi, specifiche, prototipi &mdash; non bastano più: non perché manchino di rigore, ma perché non fanno emergere le domande. La forma dialogica obbliga a dare la parola all'obiezione, e all'obiezione non si risponde con un diagramma. Si risponde con parole, e solo le parole hanno peso sufficiente per dire se un'idea regge o se fa rumore.</p>
 
@@ -244,7 +244,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>La tua osservazione è giusta, e negli ultimi mesi è diventata per me la domanda centrale. Avevo una risposta operativa &mdash; "tengo qualche contatore, peso qualche ricorrenza, ne cavo dei pattern" &mdash; ma non una risposta filosoficamente onesta. Poi, parlando e riparlando di questa cosa, mi sono reso conto che stavo confondendo due parole che di solito teniamo insieme: <em>memoria</em> e <em>apprendimento</em>.</p>
+<p>La tua osservazione è giusta, e negli ultimi mesi è diventata per me la domanda centrale. Avevo una risposta operativa &mdash; «tengo qualche contatore, peso qualche ricorrenza, ne ricavo uno schema» &mdash; ma non una risposta filosoficamente onesta. Poi, parlando e riparlando di questa cosa, mi sono reso conto che stavo confondendo due parole che di solito teniamo insieme: <em>memoria</em> e <em>apprendimento</em>.</p>
 </div>
 
 <div class="line altro">
@@ -316,7 +316,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>Il secondo è &mdash; ed è qui che entro in quello che mi pare il nucleo nuovo &mdash; la <strong>memoria dell'aspirazione</strong>. Quando Metnos tenta di fare qualcosa e non ci riesce perché gli manca un pezzo &mdash; cioè perché nessuno dei suoi executor sa consumare un certo tipo di risultato &mdash; non si limita a fallire in silenzio. Registra <em>il tentativo</em>. C'era un executor che ha prodotto un certo output, e il sistema avrebbe voluto passarlo a un altro executor che facesse qualcosa su quell'output &mdash; ma non lo ha trovato, perché non esiste. Il sistema segna "ho voluto fare questo, non ho potuto". E conserva la segnalazione come se fosse un legame, solo con un estremo libero.</p>
+<p>Il secondo è &mdash; ed è qui che entro in quello che mi pare il nucleo nuovo &mdash; la <strong>memoria dell'aspirazione</strong>. Quando Metnos tenta di fare qualcosa e non ci riesce perché gli manca un pezzo &mdash; cioè perché nessuno dei suoi executor sa usare un certo tipo di risultato &mdash; non si limita a fallire in silenzio. Registra <em>il tentativo</em>. C'era un executor che ha prodotto un risultato, e il sistema avrebbe voluto passarlo a un altro executor capace di proseguire &mdash; ma non lo ha trovato, perché non esiste. Il sistema segna «ho voluto fare questo, non ho potuto». E conserva la segnalazione come se fosse un legame, solo con un estremo libero.</p>
 </div>
 
 <div class="line altro">
@@ -356,7 +356,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>È la critica al posto giusto. Per questo un mnest parziale registra anche <em>perché</em> il bersaglio è mancato. Se è mancato perché nessun executor con la forma giusta esisteva &mdash; è segnale pulito. Se è mancato perché un executor c'era e ha fallito &mdash; non è un mnest parziale, è un problema di qualità di quell'executor. Se è mancato perché l'utente ha cambiato idea a metà &mdash; è rumore, e pesa poco. Se il ragionamento ha dichiarato esplicitamente "mi manca un utensile per X" &mdash; è segnale molto pulito. Il sistema non ascolta ogni fallimento; ascolta una sottospecie onesta di fallimenti.</p>
+<p>È la critica al posto giusto. Per questo un mnest parziale registra anche <em>perché</em> il bersaglio è mancato. Se è mancato perché non esisteva un executor con la forma giusta, è un segnale limpido. Se è mancato perché un executor c'era e ha fallito, non è un mnest parziale: è un problema di qualità di quell'executor. Se è mancato perché l'utente ha cambiato idea a metà, è rumore e pesa poco. Se il ragionamento ha dichiarato esplicitamente «mi manca un utensile per X», il segnale è ancora più chiaro. Il sistema non ascolta ogni fallimento; ascolta soltanto quelli che dichiarano con chiarezza che cosa è mancato.</p>
 </div>
 
 <div class="line altro">
@@ -364,7 +364,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>È la loro forma geometrica. I mancati incontri per <em>assenza di bersaglio</em> sono un fatto della forma del grafo, non dell'intenzione di nessuno: c'è un nodo che produce output di tipo A, nessun nodo sa consumare A in quel contesto, il cammino si interrompe al bordo. Questa geometria del bordo è ciò che Metnos usa per sapere dove estendersi.</p>
+<p>È la loro forma geometrica. I mancati incontri per <em>assenza di bersaglio</em> sono un fatto della forma del grafo, non dell'intenzione di nessuno: c'è un nodo che produce un risultato di tipo A, nessun nodo sa usarlo in quel contesto, il cammino si interrompe al bordo. Questa geometria del bordo è ciò che Metnos usa per sapere dove estendersi.</p>
 </div>
 
 <div class="line altro">
@@ -384,7 +384,7 @@ blockquote {
 </div>
 
 <div class="line note">
-<p>Fine della Giornata I. L'esito non è ancora un componente committato &mdash; lo diventerà nella specifica tecnica, se il dialogo terrà. È però una presa di posizione: gli executor sono nodi inerti, la memoria è distribuita nei legami, il mnestoma ha due volti, e la <em>memoria dell'aspirazione</em> è il motore più onesto di crescita del sistema. La domanda aperta &mdash; organismo o specchio &mdash; è la soglia della Giornata II.</p>
+<p>Fine della Giornata I. L'esito non è ancora un componente realizzato &mdash; lo diventerà nella specifica tecnica, se il dialogo terrà. È però una presa di posizione: gli executor sono nodi inerti, la memoria è distribuita nei legami, il mnestoma ha due volti, e la <em>memoria dell'aspirazione</em> è il motore più esplicito della crescita del sistema. La domanda aperta &mdash; organismo o specchio &mdash; è la soglia della Giornata II.</p>
 </div>
 
 <div class="bookend">❦</div>
@@ -420,7 +420,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>L'ambiente. È un'altra fonte esterna, ma diversa. Non è una persona che chiede: è il mondo che succede. Il calendario scade. Una cartella cambia. Il NAS non risponde. Un agente vicino segnala un evento. Queste sono sollecitazioni che non partono da te, partono dal fatto che il sistema è incastrato in un contesto, e il contesto si muove. Non sono creatività in senso forte &mdash; non inventano nulla &mdash; ma sono eventi, accadimenti, e Metnos reagisce con comportamenti che a volte diventano ricorrenti. Da lì dentro possono nascere pattern che non sarebbero mai emersi solo dai tuoi comandi espliciti.</p>
+<p>L'ambiente. È un'altra fonte esterna, ma diversa. Non è una persona che chiede: è il mondo che accade. Il calendario scade. Una cartella cambia. Il NAS non risponde. Un agente vicino segnala un evento. Queste sollecitazioni non partono da te: nascono dal fatto che il sistema è immerso in un contesto, e il contesto si muove. Non sono creatività in senso forte &mdash; non inventano nulla &mdash; ma sono accadimenti ai quali Metnos reagisce, talvolta in modi ricorrenti. Da questo movimento possono emergere forme che i tuoi comandi espliciti, da soli, non avrebbero prodotto.</p>
 </div>
 
 <div class="line altro">
@@ -444,7 +444,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>Le due facce del mnestoma, quelle di cui ti ho parlato l'altra sera. La memoria del fatto &mdash; il grafo delle co-occorrenze riuscite, che accumula pattern di ciò che ha funzionato. E la memoria dell'aspirazione &mdash; i mnest parziali, che accumulano ciò che il sistema ha voluto e non ha potuto. Queste due sono interne, ma non sono generative come il synt: sono <em>emergenti</em>. Nessuno le scrive. Nascono dall'uso, si rinforzano nell'uso, decadono nel disuso. Sono la parte del sistema che <em>nessuno progetta in anticipo</em>.</p>
+<p>Le due facce del mnestoma, quelle di cui ti ho parlato l'altra sera. La memoria del fatto &mdash; il grafo delle co-occorrenze riuscite, che raccoglie le forme di ciò che ha funzionato. E la memoria dell'aspirazione &mdash; i mnest parziali, che raccolgono ciò che il sistema ha voluto e non ha potuto. Queste due sono interne, ma non sono generative come il synt: sono <em>emergenti</em>. Nessuno le scrive. Nascono dall'uso, si rinforzano nell'uso, decadono nel disuso. Sono la parte del sistema che <em>nessuno progetta in anticipo</em>.</p>
 </div>
 
 <div class="line altro">
@@ -452,7 +452,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>Perché uno specchio è una superficie unica. Un riflesso è un'immagine <em>di una cosa</em>. Le cinque fonti di creatività di Metnos non sono riflessi di una cosa sola. Sono spinte di nature diverse che si incontrano in un posto. La pressione dell'utente va in una direzione. La pressione dell'ambiente in un'altra. Il synt, sollecitato da mnest parziali, spinge per chiudere buchi; sollecitato da una richiesta esplicita dell'utente, inventa ex novo. Il mnestoma, a sua volta, ricombina le tracce d'uso in pattern che nessuno dei primi quattro aveva in mente. Il punto è che <em>non c'è una cosa singola di cui Metnos sia il riflesso</em>. C'è un tavolo, e attorno a quel tavolo siedono attori diversi &mdash; tu, l'ambiente, il synt &mdash; ognuno con le sue carte. Il gioco che si svolge non è né di uno né dell'altro: è del tavolo.</p>
+<p>Perché uno specchio è una superficie unica. Un riflesso è un'immagine <em>di una cosa</em>. Le cinque fonti di creatività di Metnos non sono riflessi di una cosa sola. Sono spinte di nature diverse che si incontrano in un posto. La pressione dell'utente va in una direzione. La pressione dell'ambiente in un'altra. Il synt, sollecitato da mnest parziali, spinge per chiudere buchi; sollecitato da una richiesta esplicita dell'utente, inventa ex novo. Il mnestoma, a sua volta, ricombina le tracce d'uso in forme che nessuno dei primi quattro aveva in mente. Il punto è che <em>non c'è una cosa singola di cui Metnos sia il riflesso</em>. C'è un tavolo, e attorno a quel tavolo siedono attori diversi &mdash; tu, l'ambiente, il synt &mdash; ognuno con le sue carte. Il gioco che si svolge non è né di uno né dell'altro: è del tavolo.</p>
 </div>
 
 <div class="line altro">
@@ -472,7 +472,7 @@ blockquote {
 </div>
 
 <div class="line altro">
-<p>Allora lo specchio non è solo interno. Lo specchio è che tutte le voci del tavolo, o quasi, parlano con la voce del modello linguistico sottostante. Il tavolo è polifonico in facciata e monofonico nel substrato.</p>
+<p>Allora lo specchio non è solo interno. Lo specchio è che tutte le voci del tavolo, o quasi, parlano con la voce del modello linguistico sottostante. Il tavolo è polifonico in superficie e monofonico nel substrato.</p>
 </div>
 
 <div class="line roberto">
@@ -492,11 +492,11 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>L'ambiente e l'utente, come dicevamo. Non sono riducibili a output dell'LLM. L'utente esiste prima di Metnos e al di fuori. L'ambiente cambia per ragioni sue. Due delle cinque voci del tavolo vengono da fuori, punto. Non passano per il modello.</p>
+<p>L'ambiente e l'utente, come dicevamo. Non sono riducibili a risultati dell'LLM. L'utente esiste prima di Metnos e al di fuori. L'ambiente cambia per ragioni sue. Due delle cinque voci del tavolo vengono da fuori, punto. Non passano per il modello.</p>
 </div>
 
 <div class="line altro">
-<p>Insomma. Lasciami provare a fare il punto io, vediamo se ti ci riconosci. Di cinque voci al tavolo, due stanno letteralmente fuori e non hanno niente a che fare con l'LLM. Due sono dentro, emergenti, accumulatori di pattern &mdash; anche queste senza l'LLM al centro: l'LLM le consulta, non le produce. Una sola &mdash; il synt &mdash; è direttamente alimentata dall'LLM. Ma quella uno viene filtrata da un filtro esterno (tu) prima di poter cambiare stabilmente il sistema. Quindi l'LLM c'è, è importante, ma non è mai solo. È sempre in compagnia.</p>
+<p>Insomma. Lasciami provare a fare il punto io, vediamo se ti ci riconosci. Di cinque voci al tavolo, due stanno letteralmente fuori e non hanno niente a che fare con l'LLM. Due sono dentro, emergenti, e raccolgono ricorrenze &mdash; anche queste senza l'LLM al centro: l'LLM le consulta, non le produce. Una sola &mdash; il synt &mdash; è direttamente alimentata dall'LLM. Ma quella sola passa per un filtro esterno, cioè tu, prima di poter cambiare stabilmente il sistema. Quindi l'LLM c'è, è importante, ma non è mai solo. È sempre in compagnia.</p>
 </div>
 
 <div class="line roberto">
@@ -512,7 +512,7 @@ blockquote {
 </div>
 
 <div class="line altro">
-<p>Ecologia, tavolo. Mi torna abbastanza. Ma tu hai detto una cosa, poco fa, che voglio tenere per la prossima volta. Hai parlato di pattern che emergono nel mnestoma, di tracce che si consolidano, di cluster. Metnos è un tavolo, d'accordo; un'ecologia, d'accordo. Ma tu continui a descrivere la superficie di questo tavolo come se avesse una forma. Zone più dense, zone più rade, confini, moduli. Questa forma esiste davvero, o è una tua lettura a posteriori?</p>
+<p>Ecologia, tavolo. Mi torna abbastanza. Ma tu hai detto una cosa, poco fa, che voglio tenere per la prossima volta. Hai parlato di forme che emergono nel mnestoma, di tracce che si consolidano, di gruppi. Metnos è un tavolo, d'accordo; un'ecologia, d'accordo. Ma tu continui a descrivere la superficie di questo tavolo come se avesse una forma. Zone più dense, zone più rade, confini, moduli. Questa forma esiste davvero, o è una tua lettura a posteriori?</p>
 </div>
 
 <div class="line roberto">
@@ -600,7 +600,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>In un'installazione che ho osservato &mdash; immaginaria, perché siamo ancora in fase di progetto, ma costruita su casi credibili &mdash; sono emerse tre tracce distinte dopo tre mesi di uso. Una raggruppava executor legati alla gestione delle fatture: lettura PDF, estrazione totali, archiviazione, promemoria di scadenza. Un'altra era sulle foto: lettura metadati EXIF, ordinamento per data, e &mdash; dopo qualche mese, quando il synt ha proposto executor per richieste visive ricorrenti che i primi strumenti non sapevano risolvere &mdash; riconoscimento volti e classificazione di luogo. La terza era sulla corrispondenza: lettura mail, filtraggio, bozze di risposta, archiviazione. Ciascuna di queste tre è una traccia: executor che si chiamano tra loro molto spesso, raramente chiamano executor esterni al loro gruppo. Nessuno aveva progettato queste tre famiglie. Sono emerse dall'uso.</p>
+<p>Immaginiamo, per mettere alla prova l'idea, che dopo alcuni mesi d'uso emergano tre tracce distinte. Una raggruppa gli executor legati alle fatture: lettura dei PDF, estrazione dei totali, archiviazione, promemoria di scadenza. Un'altra riguarda le fotografie: lettura dei metadati EXIF, ordinamento per data, riconoscimento dei volti e classificazione dei luoghi. La terza riguarda la corrispondenza: lettura, filtro, bozze di risposta, archiviazione. Ciascuna è una traccia: alcuni executor vengono usati spesso insieme e raramente con quelli esterni al gruppo. Nessuno ha disegnato in anticipo queste tre famiglie; sono emerse dall'uso.</p>
 </div>
 
 <div class="line altro">
@@ -692,7 +692,7 @@ blockquote {
 <div class="bookend">❦</div>
 
 <div style="background:#F5F0E5; border:1px solid #E0D5C0; border-radius:10px; padding:20px 28px; margin:22px 0 28px;">
-<p style="margin:0;"><em>Prologo alla Quarta Giornata.</em> L'ultima sera. Le giornate precedenti hanno lasciato un promemoria &mdash; l'ager, appena nominato &mdash; e una promessa implicita, fatta la prima sera: se il dialogo tiene, il design regge. Stasera si rende il conto.</p>
+<p style="margin:0;"><em>Prologo alla Quarta Giornata.</em> L'ultima sera. Le giornate precedenti hanno lasciato un promemoria &mdash; l'ager, appena nominato &mdash; e una promessa implicita, fatta la prima sera: se il dialogo tiene, il disegno regge. Stasera si rende il conto.</p>
 </div>
 
 <div class="line altro">
@@ -744,7 +744,7 @@ blockquote {
 </div>
 
 <div class="line altro">
-<p>La domanda della serata. Hai aperto il dialogo con una promessa, la prima sera: se riesci a raccontare Metnos in forma dialogica, il design regge; altrimenti torni a semplificare. Sono passate quattro sere. Regge?</p>
+<p>La domanda della serata. Hai aperto il dialogo con una promessa, la prima sera: se riesci a raccontare Metnos in forma dialogica, il disegno regge; altrimenti torni a semplificare. Sono passate quattro sere. Regge?</p>
 </div>
 
 <div class="line roberto">
@@ -764,7 +764,7 @@ blockquote {
 </div>
 
 <div class="line roberto">
-<p>Sì. Il design regge. E ti dico di più: non avevo formulato questi sei principi prima di parlare con te. Erano lì dentro, distribuiti su dodici meccanismi, e non riuscivo a vederli come unità. Parlando con te si sono condensati. Il dialogo non ha solo messo il design sotto pressione. Ha prodotto qualcosa che non c'era prima: un vocabolario che tiene le cose insieme con pochi nomi. <em>Executor. Mnest. Mnestoma. Traccia. Proto-mnest. Synt. Ager. Mnestshot. Defuse. Seme.</em> Dieci parole. Con queste si parla di Metnos per un pomeriggio senza inciampare.</p>
+<p>Sì. Il disegno regge. E ti dico di più: non avevo formulato questi sei principi prima di parlare con te. Erano lì dentro, distribuiti su dodici meccanismi, e non riuscivo a vederli come unità. Parlando con te si sono condensati. Il dialogo non ha soltanto messo il disegno alla prova. Ha prodotto qualcosa che non c'era prima: un vocabolario che tiene le cose insieme con pochi nomi. <em>Executor. Mnest. Mnestoma. Traccia. Proto-mnest. Synt. Ager. Mnestshot. Defuse. Seme.</em> Dieci parole. Con queste si parla di Metnos per un pomeriggio senza inciampare.</p>
 </div>
 
 <div class="line altro">
@@ -813,17 +813,17 @@ blockquote {
 
 <h2 style="font-style:normal;">Continua a leggere</h2>
 <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:20px 0 30px; font-family:'Segoe UI',sans-serif;">
-  <a href="Myclaw_Dialogo_v1.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+  <a href="Metnos_Dialogo_v1.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">dialogo · primo</span>
     <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">Dialogo sui fini e i limiti</div>
     <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">Quattro giornate sulla proattività, il vaglio, la guardia e il giudice. La traccia filosofica precedente.</div>
   </a>
-  <a href="Myclaw_Neuroni_Memoria_v1.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">fondamenti</span>
-    <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">Neuroni &amp; memoria v1</div>
-    <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">La versione tecnica del tema trattato qui &mdash; componenti auto-sintetizzate e grafo di co-call.</div>
+  <a href="architecture/mnestoma.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">architettura</span>
+    <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">Mnestoma e memoria operativa</div>
+    <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">La descrizione corrente delle tracce che emergono dall'uso degli executor.</div>
   </a>
-  <a href="Myclaw_Prospettive_Estese_v1.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
+  <a href="Metnos_Prospettive_Estese_v1.html" style="display:block; padding:16px 18px; border:1px solid #E0D5C0; border-radius:10px; background:#F5F0E5; color:inherit; text-decoration:none;">
     <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--bronze); color:#FFF; font-weight:500;">fondamenti</span>
     <div style="color:var(--navy); font-size:12.5pt; font-weight:700; margin:8px 0 6px 0;">Prospettive estese v1</div>
     <div style="margin:0; color:var(--muted); font-size:10.5pt; line-height:1.55;">La visione più ampia in cui si inserisce questo secondo dialogo.</div>
@@ -838,8 +838,8 @@ blockquote {
 <hr>
 
 <p style="text-align:center; color:var(--muted); font-size:10pt; margin-top:40px; font-family:'Segoe UI',sans-serif;">
-myclaw &mdash; <em>Dialogo sugli executor e sulla memoria distribuita</em> v1.0 &mdash; 23&ndash;24 aprile 2026<br>
-Giornate prima, seconda, terza e quarta. Non finzione &mdash; solo la struttura è dialogica.
+Metnos &mdash; <em>Dialogo sugli executor e sulla memoria distribuita</em> v1.0 &mdash; 23&ndash;24 aprile 2026<br>
+Dialogo in quattro giornate. Non finzione &mdash; solo la struttura è dialogica.
 </p>
 
 </body>

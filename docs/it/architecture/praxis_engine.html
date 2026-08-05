@@ -3,77 +3,20 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; Il motore cognitivo: come Metnos pianifica ed esegue</title>
- <meta name="description" content="Il motore cognitivo di Metnos a quattro strati: scorciatoie auto-apprese, autopath appresi dal feedback, controllo del piano, e proposta-esecuzione-recupero. Un solo modello locale, chiamato una volta sola, niente cloud.">
- <meta name="keywords" content="motore cognitivo, engine, fastpath, autopath, validator, proposer, recovery, planner, metnos, sqlite cache, framework, llm 1-shot">
+ <title>Metnos &mdash; motore di pianificazione e riuso</title>
+ <meta name="description" content="La cascata del motore Metnos: fast path L0, autopath L1, validator L2 e proposta, esecuzione, recupero e terminazione L3.">
+ <meta name="keywords" content="Metnos, motore, fastpath, autopath, validator, proposer, recovery, framework">
  <meta name="author" content="Roberto Brunialti">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/praxis_engine">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/praxis_engine">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/praxis_engine">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/praxis_engine">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/it/architecture/praxis_engine">
- <meta property="og:title" content="Metnos &mdash; Il motore cognitivo: come Metnos pianifica ed esegue">
- <meta property="og:description" content="Quattro strati, un solo modello locale: scorciatoie auto-apprese, autopath appresi dal feedback, un controllo del piano, e proposta-esecuzione-recupero onesto del limite. Niente cloud.">
- <meta property="og:locale" content="it_IT">
- <meta property="og:locale:alternate" content="en_US">
- <meta property="og:site_name" content="Metnos">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — Il motore cognitivo: come Metnos pianifica ed esegue",
- "description": "Architettura del motore cognitivo di Metnos: quattro strati (scorciatoie auto-apprese, autopath appresi, controllo del piano, motore proposta-esecuzione-recupero) che orchestrano un solo modello locale chiamato una volta sola.",
- "url": "https://metnos.com/it/architecture/praxis_engine.html",
- "inLanguage": "it",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: motore cognitivo a quattro strati"
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8; --olive: #6B7A2E;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
- --l0: #B45309; /* ambrato: scorciatoia auto-appresa */
- --l1: #15803D; /* verde: autopath appresi */
- --l2: #6B7A2E; /* oliva: controllo del piano */
- --l3: #1E40AF; /* blu: motore proposta-esecuzione */
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
-h1:first-of-type { page-break-before: avoid; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
-h4 { color: var(--bronze); font-size: 11.5pt; margin: 16px 0 6px 0; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 30pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 15pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.layer-card { display: grid; grid-template-columns: 200px 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; overflow: hidden; page-break-inside: avoid; }.layer-card.side { color: white; padding: 18px 16px; text-align: center; }.layer-card.side h3 { color: white; margin: 0 0 4px 0; font-size: 15pt; }.layer-card.side.lnum { font-size: 22pt; font-weight: 700; opacity: 0.9; }.layer-card.side.label { font-size: 9.5pt; opacity: 0.9; margin-top: 6px; font-style: italic; }.layer-card.body { padding: 14px 18px; font-size: 10.5pt; line-height: 1.6; }.layer-card.body p { margin: 6px 0; }.layer-card.l0.side { background: var(--l0); }.layer-card.l1.side { background: var(--l1); }.layer-card.l2.side { background: var(--l2); }.layer-card.l3.side { background: var(--l3); }.ascii { font-family: Consolas, 'Courier New', monospace; font-size: 9.5pt; background: #fdfdfd; border: 1px solid var(--border); border-radius: 6px; padding: 18px 22px; white-space: pre; overflow-x: auto; line-height: 1.45; color: #1a1a1a; }.benchtable th,.benchtable td { text-align: center; }.benchtable td:first-child,.benchtable th:first-child { text-align: left; }.bench-win { color: var(--sage); font-weight: 700; }.bench-loss { color: #a0522d; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; }.layer-card { grid-template-columns: 160px 1fr; } }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-<nav class="lang-switch" aria-label="Language">
+<nav class="lang-switch" aria-label="Lingua">
 <a href="/it/architecture/praxis_engine.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/praxis_engine.html" hreflang="en" lang="en">EN</a>
@@ -82,739 +25,257 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">Motore cognitivo</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">motore di pianificazione</strong></span>
  </div>
 </div>
 
 <div class="title-page">
- <h1>Il motore cognitivo</h1>
- <div class="subtitle">come Metnos pianifica ed esegue, senza chiamare il cloud</div>
- <div class="meta">
- Microprogettazione &mdash; architettura del motore a quattro strati.<br>
- <br>
- Pubblico: chi vuole capire come Metnos pensa,<br>perch&eacute; risponde in fretta e impara dall&rsquo;uso.
- </div>
+ <h1>Metnos</h1>
+ <div class="subtitle">Motore di pianificazione e riuso</div>
+ <div class="meta">Quattro livelli, una sequenza comune di controlli.</div>
 </div>
+
+<p class="lead">Il motore prova prima i piani riutilizzabili, poi costruisce un
+nuovo framework quando serve. La proposta del modello rimane probabilistica; firma
+della cache, validazione, guardie e semantica degli executor sono applicate dal
+codice. Non esiste quindi una promessa di &laquo;un'unica chiamata al modello&raquo; per
+ogni turno: il numero dipende dal percorso, dalla validazione e dall'eventuale
+recupero.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">In una riga: un solo modello, chiamato una volta sola</a></li>
- <li><a href="#cap3">L&rsquo;idea: proporre tutto in un colpo, e ricordare</a></li>
- <li><a href="#cap4">I quattro strati del motore</a></li>
- <li><a href="#cap5">La cascata che attraversa un turno</a></li>
- <li><a href="#cap6">Il piano: che cosa propone il motore</a></li>
- <li><a href="#cap7">Strato 0 &mdash; Fastpath: le scorciatoie auto-apprese</a></li>
- <li><a href="#cap8">Strato 1 &mdash; Autopath: gli autopath appresi dal feedback</a></li>
- <li><a href="#cap9">Strato 2 &mdash; il controllo del piano</a></li>
- <li><a href="#cap10">Strato 3 &mdash; Proposer, Executor, Recovery, Terminator</a></li>
- <li><a href="#cap11">Come impara e accelera</a></li>
- <li><a href="#cap12">Cosa cambia per l&rsquo;utente</a></li>
- <li><a href="#cap13">Perch&eacute; funziona meglio dei framework LLM-in-loop</a></li>
- <li><a href="#cap14">Numeri onesti</a></li>
- <li><a href="#cap15">Domande aperte</a></li>
+ <li><a href="#cap1">Scopo</a></li>
+ <li><a href="#cap3">Contratto del motore</a></li>
+ <li><a href="#cap4">I quattro livelli</a></li>
+ <li><a href="#cap5">La cascata di un turno</a></li>
+ <li><a href="#cap6">Il framework</a></li>
+ <li><a href="#cap7">L0: fastpath</a></li>
+ <li><a href="#cap8">L1: autopath</a></li>
+ <li><a href="#cap9">L2: validatore</a></li>
+ <li><a href="#cap10">L3: proposta, esecuzione e recupero</a></li>
+ <li><a href="#cap11">Riscontri e invecchiamento</a></li>
+ <li><a href="#cap12">Uso dalla chat</a></li>
+ <li><a href="#cap13">Confini delle garanzie</a></li>
+ <li><a href="#cap14">Console Praxis</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. In una riga: un solo modello, chiamato una volta sola</h1>
+<h1 id="cap1">1. Scopo</h1>
 
-<p class="lead">
-Quando arriva una richiesta, Metnos non chiama pi&ugrave; il pianificatore
-cinque o sei volte di seguito. Per prima cosa prova le scorciatoie che gi&agrave;
-conosce; se non bastano, chiede al modello linguistico locale di proporre
-l&rsquo;<em>intero</em> piano in una sola chiamata; poi lo esegue in modo
-deterministico, e se qualcosa va storto tenta un recupero mirato o spiega
-onestamente cosa manca. Quattro strati, un solo modello, mai il cloud.
-</p>
-
-<h1 id="cap3">2. L&rsquo;idea: proporre tutto in un colpo, e ricordare</h1>
-
-<p>
-Il motore attuale parte da due intuizioni semplici.
-</p>
-
-<p>
-<strong>Prima intuizione: una sola proposta.</strong> Invece di interrogare
-il modello a ogni passo, lo si interroga <em>una volta sola</em> e gli si
-chiede l&rsquo;intero piano in un colpo: la lista completa degli step, con i
-collegamenti fra loro e il messaggio finale. Il modello vede tutto il problema
-in una volta, costruisce coerenza interna (sa che lo step&nbsp;4 ha bisogno
-dell&rsquo;output dello step&nbsp;3) e produce un piano molto pi&ugrave;
-stabile. L&rsquo;esecuzione che segue &egrave; pura meccanica deterministica:
-niente pi&ugrave; dadi.
-</p>
-
-<p>
-<strong>Seconda intuizione: ricordare ci&ograve; che funziona.</strong> Quando
-un piano arriva in fondo bene, il sistema lo conserva, indicizzato per
-&laquo;significato&raquo; della richiesta. La volta dopo che arriva una
-richiesta dello stesso tipo, il piano &egrave; gi&agrave; pronto: parte in
-pochi millisecondi, senza disturbare il modello. Il sistema diventa il
-proprio pianificatore &mdash; <em>impara a non chiedere pi&ugrave;</em>.
-</p>
-
-<p>
-Queste due intuizioni si traducono in quattro strati, provati in cascata.
-La distinzione che conta &egrave; fra ci&ograve; che <em>ricorda</em> e
-ci&ograve; che <em>ragiona</em>: i primi due strati (L0 e L1) sono
-<strong>memoria con stato</strong> &mdash; un archivio che cresce con
-l&rsquo;uso e risponde senza disturbare il modello quando riconosce la
-richiesta. Gli altri due (L2 e L3) sono <strong>senza stato</strong>: non
-ricordano nulla da un turno all&rsquo;altro, ma ricontrollano il piano e, se
-serve, lo costruiscono daccapo. Il terzo &egrave; un <em>controllo</em>, il
-quarto &egrave; il <em>motore vero e proprio</em> che propone, esegue,
-recupera e &mdash; se non c&rsquo;&egrave; via d&rsquo;uscita &mdash; ammette
-onestamente il limite.
-</p>
-
-<h1 id="cap4">4. I quattro strati del motore</h1>
-
-<p>
-Ogni turno attraversa gli strati dall&rsquo;alto verso il basso. Appena uno
-strato risolve, il turno termina: gli strati sotto non vengono nemmeno
-toccati. I primi due (L0 e L1) sono i due strati <em>con stato</em>, la
-memoria che impara: sono velocissimi e non usano il modello linguistico. Gli
-altri due (L2 e L3) sono <em>senza stato</em> &mdash; non conservano nulla fra
-un turno e l&rsquo;altro &mdash; e solo il quarto, solo quando serve, chiama
-davvero il modello.
-</p>
-
-<figure style="text-align:center;margin:24px 0;">
-<svg viewBox="0 0 780 540" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:white;padding:8px;">
-<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.io{font-size:11px;font-weight:600;fill:#0f172a}.bt{font-size:12px;font-weight:700;fill:#fff}.bl{font-size:9.5px;fill:#fff;opacity:.92}.sub{font-size:10px;font-weight:600;fill:#1E40AF}.subc{font-size:8.5px;fill:#475569}.lab{font-size:9px;fill:#64748b;font-style:italic}.hit{font-size:9.5px;fill:#15803D;font-weight:600}.a{stroke:#334155;stroke-width:1.7;fill:none;marker-end:url(#ar)}.ah{stroke:#15803D;stroke-width:1.7;fill:none;marker-end:url(#arg)}
-</style>
-<defs>
-<marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#334155"/></marker>
-<marker id="arg" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#15803D"/></marker>
-</defs>
-<rect x="240" y="14" width="240" height="30" rx="8" fill="#fff" stroke="#1A477A" stroke-width="1.6"/><text class="tt io" x="360" y="29">Richiesta utente</text>
-<path class="a" d="M360,44 L360,60"/>
-<rect x="240" y="60" width="240" height="30" rx="8" fill="#fff" stroke="#1A477A" stroke-width="1.6"/><text class="tt io" x="360" y="75">intent_extractor &middot; verbo + oggetto</text>
-<path class="a" d="M360,90 L360,106"/>
-<rect x="240" y="106" width="240" height="46" rx="8" fill="#B45309"/><text class="tt bt" x="360" y="123">L0 &middot; Fastpath</text><text class="tt bl" x="360" y="139">scorciatoia auto-appresa (hash + coseno)</text>
-<path class="a" d="M360,152 L360,170"/><text class="lab" x="375" y="163">miss</text>
-<rect x="240" y="170" width="240" height="46" rx="8" fill="#15803D"/><text class="tt bt" x="360" y="187">L1 &middot; Autopath</text><text class="tt bl" x="360" y="203">autopath appreso (match semantico + intent)</text>
-<path class="a" d="M360,216 L360,234"/><text class="lab" x="375" y="227">miss</text>
-<rect x="240" y="234" width="240" height="40" rx="8" fill="#6B7A2E"/><text class="tt bt" x="360" y="248">L2 &middot; Validator</text><text class="tt bl" x="360" y="263">controllo del piano</text>
-<path class="a" d="M360,274 L360,292"/>
-<rect x="160" y="292" width="440" height="150" rx="8" fill="#1E40AF"/><text class="tt bt" x="360" y="312">L3 &middot; Engine</text>
-<rect class="seg" x="172" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="220" y="346">Proposer</text><text class="tt subc" x="220" y="361">1 chiamata LLM</text>
-<rect x="282" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="330" y="346">Executor</text><text class="tt subc" x="330" y="361">deterministico</text>
-<rect x="392" y="330" width="96" height="40" rx="6" fill="#fff"/><text class="tt sub" x="440" y="346">Recovery</text><text class="tt subc" x="440" y="361">4 classi errore</text>
-<rect x="502" y="330" width="86" height="40" rx="6" fill="#fff"/><text class="tt sub" x="545" y="346">Terminator</text><text class="tt subc" x="545" y="361">limite onesto</text>
-<path class="a" d="M268,350 L282,350"/><path class="a" d="M378,350 L392,350"/><path class="a" d="M488,350 L502,350"/>
-<text class="tt bl" x="360" y="392">propone &middot; esegue &middot; recupera &middot; ammette il limite</text>
-<text class="tt bl" x="360" y="412">selettore: simple | metis | frontier</text>
-<path class="a" d="M360,442 L360,476"/>
-<rect x="240" y="476" width="240" height="40" rx="8" fill="#fff" stroke="#15803D" stroke-width="1.8"/><text class="tt io" x="360" y="496">Risposta all'utente</text>
-<path class="ah" d="M480,129 L630,129 L630,496 L484,496"/>
-<path class="ah" d="M480,193 L630,193"/>
-<text class="hit" x="548" y="120">hit &rarr; risposta</text>
-<path class="ah" d="M600,367 L630,367"/>
-</svg>
-<figcaption>La cascata a quattro strati: ogni strato prova a rispondere; se non riconosce la richiesta passa al successivo. Fastpath e Autopath rispondono in pochi millisecondi senza il modello; il motore (L3) lo chiama una volta sola.</figcaption>
-</figure>
-
-<div class="layer-card l0">
- <div class="side">
- <div class="lnum">L0</div>
- <h3>Fastpath</h3>
- <div class="label">scorciatoie auto-apprese &middot; con stato</div>
- </div>
- <div class="body">
- <p><strong>File:</strong> <code>runtime/engine/fastpath.py</code> &middot; archivio <code>fastpaths.sqlite</code>.</p>
- <p><strong>Cosa fa:</strong> &egrave; il primo dei due strati con stato. Riconosce le richieste gi&agrave; risolte con successo dal piano pieno: la scorciatoia si auto-produce a ogni turno riuscito (valvole: rimozione dalla console di amministrazione e invecchiamento). Il riconoscimento avviene in due tempi: prima un confronto esatto per impronta (<em>hash</em>, sotto i 5&nbsp;ms, zero modello), poi un confronto per significato con gli embedding BGE-M3 (<em>coseno</em>, sotto i 150&nbsp;ms). Se trova un riscontro, esegue subito il piano salvato.</p>
- <p><strong>Quando vince:</strong> sempre, se c&rsquo;&egrave; un match. Una scorciatoia auto-appresa ha la precedenza su tutto il resto.</p>
- </div>
-</div>
-
-<div class="layer-card l1">
- <div class="side">
- <div class="lnum">L1</div>
- <h3>Autopath</h3>
- <div class="label">autopath appresi &middot; con stato</div>
- </div>
- <div class="body">
- <p><strong>File:</strong> <code>runtime/engine/autopath.py</code> &middot; archivio <code>autopath.sqlite</code>.</p>
- <p><strong>Cosa fa:</strong> &egrave; il secondo strato con stato, la memoria che cresce da sola. Conserva i piani che hanno funzionato, indicizzati per significato della richiesta. Cerca prima per somiglianza semantica (cluster di richieste affini) e poi per corrispondenza esatta dell&rsquo;intento. Se riconosce la richiesta, esegue il piano gi&agrave; collaudato senza chiamare il modello.</p>
- <p><strong>Quando interviene:</strong> dopo Fastpath, solo se l&rsquo;intento &egrave; completo (verbo + oggetto riconosciuti). Registra inoltre ogni turno per imparare in futuro.</p>
- </div>
-</div>
-
-<div class="layer-card l2">
- <div class="side">
- <div class="lnum">L2</div>
- <h3>Validator</h3>
- <div class="label">controllo del piano &middot; senza stato</div>
- </div>
- <div class="body">
- <p><strong>File:</strong> <code>runtime/engine/validator.py</code>.</p>
- <p><strong>Cosa fa:</strong> &egrave; un controllo deterministico del piano <em>prima</em> di eseguirlo. Non conserva nulla fra un turno e l&rsquo;altro: &egrave; il primo dei due strati senza stato. Verifica che i tool citati esistano, che gli argomenti abbiano forma valida, che i riferimenti fra step puntino a qualcosa di reale. Se trova errori, chiede al motore di riproporre il piano una volta. Cos&igrave; un errore banale viene corretto senza nemmeno avviare l&rsquo;esecuzione.</p>
- <p><strong>Quando interviene:</strong> fra la proposta e l&rsquo;esecuzione. Attivo per impostazione predefinita.</p>
- </div>
-</div>
-
-<div class="layer-card l3">
- <div class="side">
- <div class="lnum">L3</div>
- <h3>Engine</h3>
- <div class="label">proposta &middot; esecuzione &middot; recupero &middot; senza stato</div>
- </div>
- <div class="body">
- <p><strong>File:</strong> <code>runtime/engine/{proposer,executor,recovery,terminator}.py</code>.</p>
- <p><strong>Cosa fa:</strong> &egrave; il cuore del motore, quattro componenti senza stato che lavorano in sequenza. Il <strong>Proposer</strong> chiede al modello l&rsquo;intero piano in una sola chiamata. L&rsquo;<strong>Executor</strong> lo realizza passo per passo, in modo completamente deterministico. La <strong>Recovery</strong> entra in gioco se uno step fallisce: classifica l&rsquo;errore e tenta un&rsquo;alternativa. Il <strong>Terminator</strong> &egrave; l&rsquo;ultima istanza onesta: se non c&rsquo;&egrave; via d&rsquo;uscita, spiega all&rsquo;utente cosa manca.</p>
- <p><strong>Quando interviene:</strong> solo se n&eacute; Fastpath n&eacute; Autopath hanno riconosciuto la richiesta.</p>
- </div>
-</div>
-
-<div class="callout tip">
-<strong>Due strati con memoria, due senza.</strong>
-La spina dorsale del motore &egrave; questa asimmetria: solo <strong>L0
-(fastpath)</strong> e <strong>L1 (autopath)</strong> hanno uno stato che
-persiste e cresce con l&rsquo;uso &mdash; sono la memoria del sistema. Il
-fastpath riconosce la <em>stessa</em> richiesta gi&agrave; risolta; l&rsquo;autopath
-riconosce un piano generalizzato a un <em>cluster</em> di richieste affini,
-promosso dai riscontri positivi. Il Validator (L2) e il motore (L3) sono
-invece privi di stato: ricontrollano e ricostruiscono il piano da zero ogni
-volta, senza ricordare i turni passati. Imparare &egrave; compito della
-memoria; ragionare &egrave; compito del motore.
-</div>
-
-<div class="callout note">
-<strong>Un solo punto di ingresso.</strong>
-Tutto questo &egrave; orchestrato da <code>runtime/engine/dispatch.py</code>,
-che espone una sola funzione di turno e annota quale strato ha risposto
-(<code>fastpath</code>, <code>autopath</code>, <code>engine</code>,
-<code>recovery</code> o <code>terminator</code>). Il dispatcher non sa nulla
-dei domini applicativi: orchestra soltanto gli strati. Aggiungere un nuovo
-motore o una nuova strategia di recupero non richiede di toccare gli altri
-strati.
-</div>
-
-<h1 id="cap5">5. La cascata che attraversa un turno</h1>
-
-<p>
-Ecco il cammino completo, dal messaggio dell&rsquo;utente alla risposta
-finale. Si legge dall&rsquo;alto verso il basso: ogni livello si tenta solo
-se quello sopra non ha gi&agrave; risolto.
-</p>
-
-<pre class="ascii">
- UTENTE: "cerca le mail spam e mettile in cestino"
- |
- v
- +-------------------+
- | fast_path (pre) | regex su pattern banalissimi ("che ora e'", "dove sono")
- | (zero LLM) | --> match? rispondi in ~50ms e termina
- +-------------------+
- | (no match)
- v
- +-------------------+
- | intent_extractor | LLM fast tier ~370ms
- | verbo + oggetto + | --> (verbo="move", oggetto="messages",
- | parole chiave | keywords=["spam","cestino"])
- +-------------------+
- |
- v
-+--------------------------------------------------------------+
-| MOTORE (engine/dispatch.run_turn) |
-| |
-| +----------------+ |
-| | L0 Fastpath | hash (<5ms) + coseno BGE-M3 (<150ms) |
-| | lookup | --> scorciatoia auto-appresa ? esegui |
-| +----------------+ |
-| | (miss) |
-| v |
-| +----------------+ |
-| | L1 Autopath | match semantico + intent_hash |
-| | lookup | --> autopath appreso ? esegui (no LLM) |
-| +----------------+ |
-| | (miss) |
-| v |
-| +----------------+ |
-| | L3 Proposer | LLM wise 1-shot |
-| | propose | --> piano JSON {steps, fillers, |
-| | (tier wise)   | final_message} |
-| +----------------+ |
-| | |
-| v |
-| +----------------+ |
-| | L2 Validator | typecheck piano; errore? --> riproponi |
-| +----------------+ |
-| | |
-| v |
-| +----------------+ |
-| | Executor | per ogni step: |
-| | (deterministico)| - resolve from_step + FILLER + RUNTIME |
-| +----------------+ - invoke_executor + vaglio + accumula |
-| | |
-| v |
-| +----------------+ |
-| | render final | template "Trovate {N} mail, spostate" |
-| +----------------+ |
-+--------------------------------------------------------------+
- |
- v (ok? si' --> Autopath registra + risponde a utente)
- |
- | (errore? si' --> entra Recovery)
- v
- +-------------------+
- | Recovery | classifica errore: wrong_tool / wrong_args /
- | classify + retry | missing_input
- | | --> riproponi escludendo il tool fallito
- | | --> esegui di nuovo
- +-------------------+
- |
- v (ok? si' --> risposta)
- |
- | (out_of_scope o recovery fallita? --> Terminator)
- v
- +-------------------+
- | Terminator | spiega onestamente: causa + azione suggerita
- | honest dead-end | --> registra la lacuna in terminator_log.sqlite
- | | --> "Non posso risolvere: X. Per procedere: Y."
- +-------------------+
- |
- v
- UTENTE: messaggio finale (risposta o richiesta di azione)
-</pre>
-
-<div class="callout note">
-<strong>Una nota sull&rsquo;ordine.</strong>
-Il Validator &egrave; lo strato&nbsp;2 per numerazione, ma agisce <em>dopo</em>
-la proposta: il suo posto naturale &egrave; fra il Proposer e l&rsquo;Executor,
-perch&eacute; controlla proprio il piano appena proposto. La numerazione
-riflette la priorit&agrave; di progetto, non l&rsquo;ordine temporale esatto.
-</div>
-
-<h1 id="cap6">6. Il piano: che cosa propone il motore</h1>
-
-<p>
-Il Proposer non produce testo libero: produce un oggetto strutturato che
-chiamiamo <em>framework</em> (il piano). Ha tre parti:
-</p>
+<p>Il motore deve trasformare una richiesta naturale in una sequenza finita di
+capacit&agrave; ammesse. Deve conciliare due esigenze:</p>
 
 <ul>
- <li><strong>steps</strong> &mdash; la lista ordinata dei tool da chiamare, con i loro argomenti;</li>
- <li><strong>fillers</strong> &mdash; piccoli slot da riempire al volo (per esempio &laquo;qual &egrave; la cartella cestino di questo account?&raquo;);</li>
- <li><strong>final_message</strong> &mdash; il modello del messaggio finale, con segnaposti che verranno riempiti dai risultati.</li>
+ <li>evitare una nuova pianificazione costosa quando esiste gi&agrave; un piano valido;</li>
+ <li>non riutilizzare un piano quando richiesta, catalogo, schema, fornitore o
+ destinazione possono averne cambiato il significato.</li>
 </ul>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Trova i PDF modificati questa settimana in Progetti, calcola l'hash SHA-256 di
+ciascuno e crea un foglio con nome, data e hash.&raquo; La prima esecuzione pu&ograve;
+richiedere un nuovo framework; una richiesta ripetuta riusa il precedente solo se il piano resta
+cacheabile e le firme del mondo operativo coincidono.</p>
+
+<h1 id="cap3">2. Contratto del motore</h1>
+
+<p>L'ingresso contiene richiesta, intenti ordinati, catalogo visibile, lingua,
+utente, canale, destinazione e stato gi&agrave; prodotto dal turno. L'uscita contiene:</p>
+
+<ul>
+ <li>testo e tipo finale: risposta, domanda, input necessario o errore;</li>
+ <li>framework e relativa impronta;</li>
+ <li>origine della decisione: fastpath, autopath, motore, recupero o terminatore;</li>
+ <li>passi realmente eseguiti, risultati e tempi;</li>
+ <li>eventuale dialogo da riprendere dopo una scelta o un consenso.</li>
+</ul>
+
+<p>Il catalogo viene passato dal chiamante e costituisce il mondo dell'esecuzione.
+Un executor non presente o non ammesso non pu&ograve; essere reso disponibile dal testo
+del prompt.</p>
+
+<h1 id="cap4">3. I quattro livelli</h1>
+
+<table>
+<thead><tr><th>Livello</th><th>Stato</th><th>Responsabilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td>L0 &mdash; fastpath</td><td>Persistente</td><td>Associa una query a un framework gi&agrave; riuscito ed efficace.</td></tr>
+<tr><td>L1 &mdash; autopath</td><td>Persistente</td><td>Associa cluster semantici e intenti a un framework generalizzabile.</td></tr>
+<tr><td>L2 &mdash; validatore</td><td>Per turno</td><td>Controlla nomi, schemi, campi obbligatori e riferimenti prima dell'esecuzione.</td></tr>
+<tr><td>L3 &mdash; motore completo</td><td>Per turno</td><td>Propone, finalizza, esegue, classifica gli errori e conclude.</td></tr>
+</tbody>
+</table>
+
+<p>L2 non viene interrogato come livello separato: interviene fra la nuova proposta e
+l'esecuzione. Piani L0 e L1 attraversano comunque la finalizzazione corrente, che
+applica guardie, ordine, regole di presentazione e richieste di consenso.</p>
+
+<h1 id="cap5">4. La cascata di un turno</h1>
+
+<ol>
+ <li>L'instradamento costruisce l'insieme delle capacit&agrave; pertinenti.</li>
+ <li>L0 tenta prima una corrispondenza esatta e poi, soltanto per framework
+ generalizzabili, una corrispondenza semantica.</li>
+ <li>Se L0 non risponde, L1 cerca un campione attivo compatibile con intenti,
+ oggetto e cluster.</li>
+ <li>In assenza di un riuso valido, il proponente selezionato produce uno o pi&ugrave;
+ framework candidati secondo la propria configurazione.</li>
+ <li>Le guardie strutturali e il validatore controllano il candidato e, nei casi ammessi, chiedono una
+ sola nuova proposta correttiva.</li>
+ <li>L'executor condiviso esegue il framework. Se fallisce senza aver gi&agrave;
+ prodotto effetti, il recupero pu&ograve; tentare un'alternativa.</li>
+ <li>Il terminatore presenta il risultato, una richiesta di dati o un limite
+ esplicito; un turno efficace e memorizzabile alimenta L0 e le osservazioni L1.</li>
+</ol>
+
+<h1 id="cap6">5. Il framework</h1>
+
+<p>Il formato canonico &egrave; indipendente dal proponente:</p>
 
 <pre><code>{
- "steps": [
- {"tool": "find_messages",
- "args": {"folder": "INBOX", "query": "is:unread"}},
- {"tool": "classify_entries",
- "args": {"from_step": 1, "dimension": "spam"}},
- {"tool": "filter_entries",
- "args": {"from_step": 2, "where_field": "spam", "where_value": "spam"}},
- {"tool": "move_messages",
- "args": {"from_step": 3, "dst_folder": "${FILLER:cestino_folder}"}}
- ],
- "fillers": {
- "cestino_folder": {
- "prompt": "Come si chiama la cartella cestino per questo account?",
- "default": "Trash",
- "tier": "fast"
- }
- },
- "final_message": "Spostate ${step4.ok_count} mail in cestino."
-}
-</code></pre>
+  "steps": [
+    {"tool": "find_files", "args": {"base_path": "Progetti", "pattern": "*.pdf"}},
+    {"tool": "compute_signatures", "args": {"from_step": 1}},
+    {"tool": "create_files_spreadsheet", "args": {"from_step": 2}},
+    {"tool": "final_answer", "args": {}}
+  ],
+  "fillers": {},
+  "final_message": ""
+}</code></pre>
 
-<p>
-Dentro gli argomenti compaiono quattro tipi di segnaposto, che l&rsquo;Executor
-risolve in modo deterministico al momento giusto:
-</p>
+<p><code>from_step</code> e i placeholder <code>${stepN.field}</code> collegano i
+dati senza chiedere al modello di ricopiarli. Il runtime pu&ograve; inserire valori
+interni con <code>${RUNTIME:key}</code>. I campi di configurazione marcati
+<code>runtime_resolved</code>, come account o client predefinito, non vengono
+scelti dal proponente: li risolve il contesto dell'utente.</p>
 
-<table>
-<thead><tr><th style="width:26%">Segnaposto</th><th>Significato</th></tr></thead>
-<tbody>
-<tr><td><code>from_step: N</code></td><td>Prendi le <code>entries</code> prodotte dallo step N (numerazione da 1) e passale a questo step.</td></tr>
-<tr><td><code>${stepN.field}</code></td><td>Estrai un campo dal risultato dello step N (supporta percorsi annidati e proiezioni). Usato soprattutto nel messaggio finale.</td></tr>
-<tr><td><code>${FILLER:nome}</code></td><td>Slot riempito al volo da una piccola chiamata al modello <em>fast tier</em> (con cache), o dal valore di default.</td></tr>
-<tr><td><code>${RUNTIME:chiave}</code></td><td>Valore di contesto del turno: <code>actor</code> (chi sta parlando), <code>lang</code>, <code>channel</code>.</td></tr>
-</tbody>
-</table>
+<h1 id="cap7">6. L0: fastpath</h1>
 
-<div class="callout note">
-<strong>Perch&eacute; la proposta &egrave; affidabile.</strong>
-La chiamata al modello pu&ograve; essere vincolata da una grammatica
-deterministica (GBNF): il decoder rifiuta in tempo reale ogni token che
-violerebbe lo schema, quindi il piano non pu&ograve; uscire malformato.
-Inoltre il modello non vede tutti i tool del sistema, ma solo i pi&ugrave;
-pertinenti alla richiesta (una dozzina, selezionati per affinit&agrave;): il
-prompt resta corto e la proposta pi&ugrave; rapida e pi&ugrave; precisa.
-</div>
-
-<h1 id="cap7">7. Strato 0 &mdash; Fastpath: le scorciatoie auto-apprese</h1>
-
-<p>
-Il Fastpath &egrave; la corsia preferenziale. Ogni turno completato con
-successo dal piano pieno crea da solo la scorciatoia &mdash; le catene sono
-executor gi&agrave; vagliati e testati, nessuna approvazione &mdash;: da
-quel momento quella richiesta (e le sue varianti vicine) saltano tutto il
-resto e vengono servite direttamente. Le scorciatoie invecchiano da sole
-(mai riusate, stantie, tetto totale), muoiono quando un executor le
-rimpiazza o sparisce, e si rimuovono a mano dalla console admin.
-</p>
-
-<p>
-Il riconoscimento avviene in due tempi. Prima un confronto <em>esatto</em>
-per impronta della frase (deterministico, sotto i 5&nbsp;ms, senza alcun
-modello). Se non basta, un confronto <em>per significato</em>: la richiesta
-viene trasformata in un vettore con BGE-M3 e confrontata per coseno con le
-scorciatoie salvate (sotto i 150&nbsp;ms). Una scorciatoia auto-appresa vince
-sempre, anche su un autopath appreso automaticamente.
-</p>
-
-<h1 id="cap8">8. Strato 1 &mdash; Autopath: gli autopath appresi dal feedback</h1>
-
-<p>
-L&rsquo;Autopath &egrave; la memoria che cresce da sola, senza che nessuno
-scriva regole a mano. Conserva tre tabelle nel proprio archivio sqlite:
-</p>
-
-<table>
-<thead><tr><th style="width:22%">Tabella</th><th>Cosa contiene</th><th>Quando viene scritta</th></tr></thead>
-<tbody>
-<tr>
- <td><code>autopaths</code></td>
- <td>Piani che hanno funzionato, indicizzati per significato della richiesta e raggruppati per cluster semantico. Per ognuno: il piano, i contatori d&rsquo;uso, un punteggio composito, lo stato (campione/sfidante).</td>
- <td>Promossi automaticamente quando un piano si dimostra valido sullo stesso tipo di richiesta.</td>
-</tr>
-<tr>
- <td><code>anti_autopaths</code></td>
- <td>Piani che hanno fallito ripetutamente. Per ognuno: il motivo e una scadenza (circa 30 giorni).</td>
- <td>Quando un piano fallisce ripetutamente sullo stesso intento. Alla scadenza, il sistema riprova.</td>
-</tr>
-<tr>
- <td><code>observations</code></td>
- <td>Registro di ogni turno: intento, piano eseguito, latenza, vettore semantico. In sola aggiunta.</td>
- <td>Sempre, a fine turno. &Egrave; la fonte di verit&agrave; per promuovere o ritirare gli autopath.</td>
-</tr>
-</tbody>
-</table>
-
-<p>
-La ricerca procede in due tempi: prima per <em>somiglianza semantica</em>
-(la richiesta cade nel cluster di richieste affini gi&agrave; viste e si
-serve il piano &laquo;campione&raquo; di quel cluster), poi, se serve, per
-corrispondenza <em>esatta</em> dell&rsquo;intento. Quando pi&ugrave; piani
-competono per lo stesso cluster, vige un meccanismo campione/sfidante: lo
-sfidante deve dimostrarsi migliore prima di prendere il posto del campione.
-</p>
-
-<div class="callout tip">
-<strong>L&rsquo;effetto pratico.</strong>
-La prima volta che si chiede &laquo;cerca le mail spam e mettile in
-cestino&raquo;, il modello impiega qualche secondo per generare il piano.
-La seconda volta, l&rsquo;Autopath ha gi&agrave; quel piano in memoria: la
-pipeline parte in pochi millisecondi. Da quel momento, quella richiesta non
-passa pi&ugrave; per il modello linguistico.
-</div>
-
-<h1 id="cap9">9. Strato 2 &mdash; il controllo del piano</h1>
-
-<p>
-Prima di eseguire un piano appena proposto, il Validator lo passa al setaccio,
-in modo puramente deterministico e senza modello:
-</p>
+<p>L0 nasce automaticamente dopo un turno riuscito, efficace e cacheabile. Non
+richiede un pulsante di approvazione. La ricerca ha due forme:</p>
 
 <ul>
- <li>i tool citati esistono davvero nel catalogo?</li>
- <li>gli argomenti hanno la forma giusta (niente segnaposti rimasti vuoti, niente campi obbligatori mancanti)?</li>
- <li>i riferimenti fra step (<code>from_step</code>, <code>${stepN.&hellip;}</code>) puntano a step che esistono?</li>
+ <li><strong>0a, esatta.</strong> L'impronta della query pu&ograve; riusare anche un piano
+ legato ai valori specifici di quella stessa frase.</li>
+ <li><strong>0b, semantica.</strong> La somiglianza usa l'embedder configurato e pu&ograve;
+ servire soltanto framework non legati a valori specifici della query originale.</li>
 </ul>
 
-<p>
-Se trova anche un solo errore, non avvia l&rsquo;esecuzione: chiede al
-Proposer di riproporre il piano una volta, escludendo quello sbagliato.
-Cos&igrave; un refuso o un argomento storto vengono corretti a costo zero,
-senza sprecare una chiamata di recupero pi&ugrave; pesante. &Egrave; attivo
-per impostazione predefinita.
-</p>
+<p>Sono esclusi i piani dipendenti dal contesto del turno, come dialoghi, consenso,
+annullamento e sessioni web autenticate. Sono esclusi anche valori temporali
+assoluti che diventerebbero obsoleti. Prima della riesecuzione, le firme degli executor e delle famiglie
+di candidati devono coincidere; per una mutazione, i valori discriminanti devono
+essere fondati nella richiesta corrente.</p>
 
-<h1 id="cap10">10. Strato 3 &mdash; Proposer, Executor, Recovery, Terminator</h1>
+<h1 id="cap8">7. L1: autopath</h1>
 
-<h2>Proposer &mdash; la proposta in un colpo</h2>
+<p>L1 conserva osservazioni di framework memorizzabili insieme a intenti, gruppi,
+tempi e riscontri. Un riscontro positivo pu&ograve; promuovere il framework a campione
+attivo. Per sequenze lunghe e ripetute il runtime pu&ograve; creare un campione
+<em>shadow</em>: viene servito con le stesse guardie, ma resta esplicitamente
+distinto da un piano confermato dall'utente.</p>
 
-<p>
-Il Proposer &egrave; l&rsquo;unico componente che parla davvero con il modello
-linguistico. Riceve la richiesta e l&rsquo;intento estratto e produce, in una
-sola chiamata, il piano intero. Niente ragionamento passo-passo, niente
-tool-call iterativi: un solo oggetto strutturato.
-</p>
+<p>La corrispondenza semantica rispetta il confine dell'oggetto canonico e una soglia di
+pertinenza. Anche L1 rifiuta framework legati a valori specifici della query e controlla le firme del
+catalogo al momento del riuso. Riscontri negativi ripetuti possono retrocedere il
+campione e creare un'anti-autopath temporanea; un riscontro positivo successivo
+pu&ograve; rimuovere l'esclusione corrispondente.</p>
 
-<p>
-Esistono varianti selezionabili (impostazione <code>METNOS_ENGINE</code>):
-</p>
+<h1 id="cap9">8. L2: validatore</h1>
+
+<p>Il validatore &egrave; attivo per impostazione predefinita e non usa un modello.
+Controlla:</p>
 
 <ul>
- <li><strong>simple</strong> &mdash; una proposta, diretta. La pi&ugrave; veloce.</li>
- <li><strong>metis</strong> (predefinita in esercizio) &mdash; genera due-tre piani alternativi e sceglie il migliore con un punteggio deterministico che preferisce le pipeline brevi, coerenti col verbo e con poche chiamate. Costa qualche frazione di secondo in pi&ugrave;, ma copre meglio i casi ambigui. Tiene anche una piccola cache: in caso di riproposta, serve un&rsquo;alternativa gi&agrave; pronta senza richiamare il modello.</li>
- <li><strong>frontier</strong> &mdash; delega la proposta a un modello del cloud (opt-in), come ultima risorsa.</li>
+ <li>esistenza del tool nel catalogo corrente;</li>
+ <li>tipi dei campi e argomenti obbligatori;</li>
+ <li>vincoli <code>requires_one_of</code>;</li>
+ <li><code>from_step</code> rivolti soltanto a passi precedenti;</li>
+ <li>placeholder che il runtime possa risolvere.</li>
 </ul>
 
-<h2>Executor &mdash; l&rsquo;esecuzione senza dubbi</h2>
+<p>Se trova un errore, il proponente pu&ograve; essere invocato una volta con l'impronta del
+framework esclusa. Il nuovo candidato attraversa nuovamente le guardie
+deterministiche.</p>
 
-<p>
-L&rsquo;Executor &egrave; il componente pi&ugrave; rigoroso: zero modello
-linguistico nel loop principale, solo Python deterministico. Per ogni step:
-risolve i riferimenti agli step precedenti (<code>from_step</code>), riempie
-gli slot <code>${FILLER:&hellip;}</code> (una piccola chiamata <em>fast</em>
-con cache) e i valori di contesto <code>${RUNTIME:&hellip;}</code>, valida gli
-argomenti, chiama l&rsquo;executor del tool, passa il risultato al
-<a href="vaglio.html">Vaglio</a> (il giudice di sicurezza) e accumula. Alla
-fine compone il messaggio finale dal modello con i campi
-<code>${stepN.field}</code>.
-</p>
+<h1 id="cap10">9. L3: proposta, esecuzione e recupero</h1>
 
-<div class="callout tip">
-<strong>Una virt&ugrave; nascosta: la riproducibilit&agrave;.</strong>
-Lo stesso piano eseguito sulla stessa istantanea di dati produce sempre lo
-stesso esito. Questo significa che si pu&ograve; <em>rieseguire</em> un turno
-passato e che i test possono fare verifiche puntuali &mdash; cosa impossibile
-con un pianificatore stocastico.
-</div>
+<p>Il proponente &egrave; intercambiabile tramite configurazione. Le varianti supportate
+condividono lo stesso contratto <code>Proposer</code>; possono generare un solo
+candidato o pi&ugrave; alternative e ordinarle. La grammatica, quando abilitata, limita la
+forma dell'output, ma non rende deterministica la scelta semantica del modello.</p>
 
-<h2>Recovery &mdash; il recupero mirato</h2>
+<p>L'esecutore risolve riferimenti, valori di riempimento e dati del runtime, controlla le
+condizioni di ogni passo e invoca la capacit&agrave;. Passi indipendenti vengono
+eseguiti in parallelo soltanto quando il contratto e il controllo preliminare lo consentono. Gli
+effetti esterni restano variabili: rete, filesystem, fornitori e contenuti possono
+cambiare fra due esecuzioni.</p>
 
-<p>
-Se uno step fallisce, entra la Recovery. Il suo primo lavoro &egrave; capire
-<em>che tipo</em> di errore &egrave;, leggendo la classe d&rsquo;errore
-strutturata che l&rsquo;executor restituisce (niente analisi del testo
-multilingua):
-</p>
+<p>Il recupero distingue errori strutturali da errori operativi. Pu&ograve; cambiare piano
+per strumento, argomenti o input mancanti; non finge di riparare una rete assente.
+Se un passo ha gi&agrave; prodotto una modifica, non ripete l'intera sequenza e restituisce
+un esito parziale dichiarato come tale.</p>
 
-<table>
-<thead><tr><th>Classe</th><th>Quando</th><th>Strategia</th></tr></thead>
-<tbody>
-<tr>
- <td style="color:var(--l3);font-weight:600;">wrong_tool</td>
- <td>Il tool scelto non era adatto: ha fallito o &egrave; semanticamente sbagliato.</td>
- <td>Riproponi un piano diverso, escludendo quel tool.</td>
-</tr>
-<tr>
- <td style="color:var(--l3);font-weight:600;">wrong_args</td>
- <td>Il tool era giusto ma gli argomenti erano malformati: pipeline a vuoto, limite di passi raggiunto, un riferimento che punta nel nulla.</td>
- <td>Riproponi con argomenti canonici e riferimenti espliciti.</td>
-</tr>
-<tr>
- <td style="color:var(--l3);font-weight:600;">missing_input</td>
- <td>Manca un presupposto: un indice non costruito, una cartella inesistente, un filtro che produce zero risultati.</td>
- <td>Riproponi un piano alternativo; se serve l&rsquo;utente, cedi al Terminator.</td>
-</tr>
-<tr>
- <td style="color:#a0522d;font-weight:600;">out_of_scope</td>
- <td>Errore non recuperabile: serve un&rsquo;azione fisica dell&rsquo;utente (per esempio condividere la posizione) o manca del tutto una capacit&agrave;.</td>
- <td>La Recovery <em>non</em> interviene: cede subito al Terminator.</td>
-</tr>
-</tbody>
-</table>
+<h1 id="cap11">10. Riscontri e invecchiamento</h1>
 
-<p>
-La Recovery tenta <em>una sola</em> alternativa, escludendo sia il piano
-fallito sia il tool che ha causato il problema. Niente loop infiniti: se
-l&rsquo;alternativa non riesce, la parola passa al Terminator.
-</p>
+<p>Il riscontro valuta l'esito di un turno, non addestra direttamente il modello.
+L0 pu&ograve; eliminare la scorciatoia della query bocciata; L1 aggiorna osservazione,
+campione e anti-autopath. Le righe inutilizzate, retrocesse, scadute o riferite a
+executor non pi&ugrave; presenti vengono eliminate dai processi di manutenzione.</p>
 
-<h2>Terminator &mdash; il vicolo cieco onesto</h2>
+<p>Questa memoria conserva decisioni operative e osservazioni strutturate. Non &egrave;
+un profilo biografico dell'utente e non deve diventare una fonte di preferenze
+aperte inserite nel pianificatore.</p>
 
-<p>
-Il Terminator &egrave; il pezzo pi&ugrave; sottile del sistema. Non &egrave;
-un &laquo;gestore di errori&raquo;: &egrave; un riconoscimento onesto del
-limite. Quando arriva il suo turno, vuol dire che tutto il resto ha tentato
-e fallito. Il Terminator non finge un successo: spiega all&rsquo;utente la
-causa e suggerisce un&rsquo;azione concreta, e registra la lacuna in un
-archivio (<code>terminator_log.sqlite</code>) con un contatore di quante volte
-si &egrave; ripresentata.
-</p>
+<h1 id="cap12">11. Uso dalla chat</h1>
 
-<p>
-I messaggi di causa e azione non sono stringhe fisse nel codice: passano dal
-dizionario multilingua, cos&igrave; l&rsquo;utente li legge nella propria
-lingua. Il turno si chiude sempre con una risposta leggibile, mai con un
-silenzio o un errore grezzo.
-</p>
+<p>Non occorre conoscere L0, L1 o i nomi degli executor. L'utente descrive il
+risultato desiderato in linguaggio naturale. Per esempio:</p>
 
-<div class="callout tip">
-<strong>La lacuna &egrave; <em>evolutiva</em>.</strong>
-Quando l&rsquo;utente risolve la mancanza (condivide la posizione, abilita
-un autopath, costruisce un indice), la stessa richiesta torna alla cascata
-normale e tipicamente diventa un autopath appreso dopo qualche conferma. Ogni
-vicolo cieco riconosciuto &egrave; un&rsquo;occasione di crescita: il numero
-di occorrenze &egrave; visibile nel pannello di amministrazione e aiuta a
-decidere cosa colmare strutturalmente.
-</div>
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Confronta i file delle cartelle Preventivi e Contratti e mostrami quelli che
+hanno lo stesso contenuto ma un nome diverso.&raquo;</p>
 
-<h1 id="cap11">11. Come impara e accelera</h1>
+<p>Per ispezionare o svuotare le cache serve invece la chat web: apri
+<strong>Impostazioni</strong> e scegli <strong>Praxis</strong>. Se la domanda parte da
+Telegram, Metnos deve spiegare questo percorso e specificare che la console non si
+trova nel client Telegram.</p>
 
-<p>
-Sotto a ogni risposta in chat, l&rsquo;utente vede dei piccoli pulsanti di
-riscontro:
-</p>
+<h1 id="cap13">12. Confini delle garanzie</h1>
 
 <ul>
- <li><strong>&#10003; verde</strong> (&laquo;risposta giusta&raquo;): il piano si avvicina di un passo alla promozione a autopath appreso.</li>
- <li><strong>&#10007; rosso</strong> (&laquo;risposta sbagliata&raquo;): il piano si avvicina a essere messo fra gli anti-autopath ed escluso per un periodo.</li>
- <li><strong>&#8634; arancio</strong> (&laquo;riprova&raquo;): esclusione transitoria, solo per il turno successivo.</li>
+ <li>Un riuso valido della cache riprende lo stesso framework, ma non garantisce lo stesso
+ risultato di un fornitore esterno.</li>
+ <li>Una nuova proposta pu&ograve; variare anche con la stessa query. Insieme dei candidati, grammatica e
+ validatore ne delimitano la forma, non ne provano la correttezza.</li>
+ <li>I punteggi di ranking aiutano a scegliere fra candidati; non sono una prova
+ oggettiva di qualit&agrave;.</li>
+ <li>L'osservazione del turno e la sorgente originaria restano l'evidenza utile;
+ una spiegazione generata non pu&ograve; convalidare se stessa.</li>
 </ul>
 
-<p>
-Non &egrave; obbligatorio premere niente: se una pipeline arriva in fondo
-senza errori, l&rsquo;Autopath la considera comunque un&rsquo;osservazione
-positiva. Il feedback esplicito accelera e rifinisce, ma il sistema impara
-anche dal silenzio. Pi&ugrave; lo si usa, pi&ugrave; spesso le richieste
-vengono servite dalla memoria invece che dal modello &mdash; e quindi
-pi&ugrave; in fretta.
-</p>
+<h1 id="cap14">13. Console Praxis</h1>
 
-<h1 id="cap12">12. Cosa cambia per l&rsquo;utente</h1>
+<p>La pagina <code>/admin/praxis</code> mostra gli strati persistenti: fastpath L0,
+autopath L1 attive o retrocesse, osservazioni e anti-autopath. Consente di eliminare
+una riga L0 o svuotare L0, L1 o entrambe. Lo svuotamento &egrave; amministrativo e non
+annullabile: rimuove capitale operativo appreso e pu&ograve; rallentare le richieste finch&eacute;
+le cache non vengono ricostruite.</p>
 
-<h2>1. Le prime richieste sono pi&ugrave; veloci</h2>
-<p>
-Anche al primo colpo, il motore non interroga il pianificatore passo-passo
-ma fa una sola proposta. La sensazione &egrave; quella di un sistema che
-&laquo;ci pensa un attimo&raquo; invece di &laquo;si blocca per un minuto&raquo;.
-</p>
+<p>Le cache sono operative a livello dell'istanza e non contengono credenziali. Al
+riuso, account, lingua, consenso, destinazione e autorizzazioni vengono risolti di
+nuovo nel contesto dell'utente corrente.</p>
 
-<h2>2. Le richieste ripetute sono istantanee</h2>
-<p>
-Dopo qualche turno della stessa famiglia di richieste, l'autopath &egrave;
-appreso e i turni successivi partono dalla memoria. La risposta arriva in
-una frazione di secondo: &egrave; la differenza fra &laquo;assistente&raquo;
-e &laquo;reazione immediata&raquo;.
-</p>
-
-<h2>3. I fallimenti diventano informativi</h2>
-<p>
-Quando qualcosa non si pu&ograve; fare, il Terminator dice <em>esattamente</em>
-cosa serve. Niente messaggi vaghi del tipo &laquo;errore generico&raquo;,
-niente loop di tentativi inutili: una frase chiara, un suggerimento operativo
-e, se &egrave; il caso, un dialogo per risolvere la mancanza sul momento.
-</p>
-
-<h1 id="cap13">13. Perch&eacute; funziona meglio dei framework LLM-in-loop</h1>
-
-<p>
-I framework per &laquo;workflow di agenti LLM&raquo; (LangGraph e affini)
-coprono in parte lo stesso problema: ridurre la varianza del modello
-nel loop dando struttura ai task. Ma hanno limiti che questo motore non ha:
-</p>
-
-<table>
-<thead><tr><th style="width:22%">Aspetto</th><th>Framework LLM-in-loop</th><th>Motore di Metnos</th></tr></thead>
-<tbody>
-<tr>
- <td>Origine dei workflow</td>
- <td>scritti a mano, manutenzione manuale</td>
- <td>seed opzionale, ma <em>crescono da soli</em> dal feedback &#10003; &#10007; &#8634;</td>
-</tr>
-<tr>
- <td>Apprendimento</td>
- <td>no</td>
- <td>s&igrave;: memoria che si popola dai turni andati bene</td>
-</tr>
-<tr>
- <td>Anti-errore</td>
- <td>no</td>
- <td>tabella <code>anti_autopaths</code> che esclude i cammini falliti</td>
-</tr>
-<tr>
- <td>Recupero strutturato</td>
- <td>retry generici</td>
- <td>4 classi d&rsquo;errore ortogonali + riproposta mirata</td>
-</tr>
-<tr>
- <td>Vicolo cieco onesto</td>
- <td>retry infinito o crash</td>
- <td>Terminator: classifica + suggerisce un&rsquo;azione</td>
-</tr>
-<tr>
- <td>Tracciabilit&agrave;</td>
- <td>nessuna, o log testuali</td>
- <td>registro <code>observations</code> + pannello di amministrazione</td>
-</tr>
-<tr>
- <td>Coerenza dei nomi</td>
- <td>nomi liberi</td>
- <td>vocabolario chiuso (verbo + oggetto + qualificatore) garantito</td>
-</tr>
-</tbody>
-</table>
-
-<h2>L&rsquo;analogia che chiarisce tutto</h2>
-
-<p>
-I framework LLM-in-loop tradizionali sono come <em>artisti con tela
-bianca</em>: ogni turno reinventano la composizione. Bella creativit&agrave;,
-ma il rischio di sbagliare strumento &egrave; reale e ogni opera costa.
-</p>
-
-<p>
-Il motore di Metnos &egrave; come un <em>artigiano con quaderno di
-schizzi</em>: il modello schizza il piano una volta (creativit&agrave;
-concentrata e vincolata), e da quel momento l&rsquo;artigiano riapre il
-quaderno alla pagina giusta. La creativit&agrave; del modello c&rsquo;&egrave;
-ancora, ma &egrave; <em>limitata al momento dell&rsquo;invenzione</em>:
-l&rsquo;esecuzione &egrave; riproduzione fedele dello schizzo. Cos&igrave; si
-evitano le allucinazioni in esecuzione, si guadagna velocit&agrave; e si
-arriva a costo zero quando il quaderno &egrave; gi&agrave; ricco.
-</p>
-
-<h1 id="cap14">14. Numeri onesti</h1>
-
-<p>
-Su un campione di richieste reali (mail, file, web, posizione, ora, dialoghi
-multi-turno, scheduling, contatti), confrontando il pianificatore iterativo
-sul cloud con il motore locale a singola proposta:
-</p>
-
-<table class="benchtable">
-<thead><tr><th>Modalit&agrave;</th><th>Copertura</th><th>Latenza media</th><th>Modello</th><th>Costo</th></tr></thead>
-<tbody>
-<tr>
- <td>Pianificatore iterativo (cloud, passo-passo)</td>
- <td>equivalente</td>
- <td>~76 s</td>
- <td>cloud frontier</td>
- <td class="bench-loss">a pagamento</td>
-</tr>
-<tr>
- <td>Motore locale (singola proposta + memoria)</td>
- <td class="bench-win">equivalente</td>
- <td class="bench-win">~12 s a freddo, &lt;1 s da memoria</td>
- <td class="bench-win">modello locale (wise)</td>
- <td class="bench-win">0</td>
-</tr>
-</tbody>
-</table>
-
-<p>
-Diverse volte pi&ugrave; veloce, copertura equivalente, costo zero (il modello
-gira in locale su hardware a memoria unificata). E la latenza scende ancora
-man mano che la memoria si popola: le richieste ricorrenti partono dalla
-cache, sotto il secondo.
-</p>
-
-<div class="callout warning">
-<strong>Onest&agrave; sul limite.</strong>
-Alcune richieste non si possono soddisfare in nessuna modalit&agrave;: senza
-posizione condivisa non si pu&ograve; dire dove sei, senza un autopath abilitato
-non si pu&ograve; cercare in quel servizio. In questi casi il Terminator
-raccoglie il fallimento e spiega all&rsquo;utente cosa serve. <em>Nessuno
-&laquo;vince&raquo; in modo fasullo</em>: il fallimento &egrave; classificato
-e l&rsquo;utente sa cosa fare.
-</div>
-
-<h1 id="cap15">15. Domande aperte</h1>
-
+<p>Riferimenti nel codice:</p>
 <ul>
- <li><strong>Validit&agrave; degli autopath nel tempo.</strong> Quando il pool di executor cambia (uno nuovo sintetizzato, uno vecchio rimosso), gli autopath che li usavano vanno invalidati. Soluzione attuale: l&rsquo;impronta del piano cambia col catalogo, quindi un autopath obsoleto semplicemente non viene pi&ugrave; trovato.</li>
- <li><strong>Autopath per-utente o condivise.</strong> Se due utenti dello stesso host condividono lo stesso intento (&laquo;dammi l&rsquo;agenda di domani&raquo;), conviene un autopath per-utente o globale? Scelta corrente: per-utente, per riservatezza. Da rivedere se emerge un collo di bottiglia.</li>
- <li><strong>Autopath stagionali.</strong> La scadenza degli anti-autopath &egrave; empirica. Cammini molto rari potrebbero decadere mentre sarebbero ancora utili: possibile soluzione, una scadenza graduata sulla frequenza osservata.</li>
- <li><strong>Quando salire al cloud.</strong> Se la proposta locale fallisce e la recovery non salva, esiste l&rsquo;opzione di interpellare un modello frontier. Quando attivarla in automatico contro lasciarla come scelta dell&rsquo;utente? L&rsquo;interfaccia di escalation gi&agrave; copre il caso con un dialogo a pi&ugrave; scelte.</li>
+ <li><code>runtime/engine/dispatch.py</code>: cascata e sequenza comune di finalizzazione;</li>
+ <li><code>runtime/engine/fastpath.py</code>: L0;</li>
+ <li><code>runtime/engine/autopath.py</code>: L1, riscontri e anti-autopath;</li>
+ <li><code>runtime/engine/validator.py</code>: L2;</li>
+ <li><code>runtime/engine/proposer*.py</code>, <code>executor.py</code>, <code>recovery*.py</code> e <code>terminator*.py</code>: L3;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: validit&agrave; del mondo operativo;</li>
+ <li><code>runtime/http_routes_admin.py</code> e <code>runtime/templates/praxis.html</code>: console.</li>
 </ul>
 
 </body>

@@ -3,77 +3,18 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; mnestome (under approval)</title>
- <meta name="description" content="Microdesign of the mnestome: the emergent graph that holds all mnests. Data schema, operations, snapshots, pruning, relations with executor and proto-mnest.">
- <meta name="keywords" content="mnestome, mnestoma, graph, mnest, executor, ager, synt, snapshot, sqlite, microdesign, metnos">
+ <title>Metnos &mdash; Mnestome</title>
+ <meta name="description" content="The mnestome SQLite store: schema, queries, maintenance, observability, and the actual state of its Metnos integration.">
+ <meta name="keywords" content="Metnos, mnestome, mnest, SQLite, graph, ager">
  <meta name="author" content="Roberto Brunialti">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/en/architecture/mnestome">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnestoma">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnestome">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnestome">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/en/architecture/mnestome">
- <meta property="og:title" content="Metnos &mdash; mnestome (under approval)">
- <meta property="og:description" content="The emergent graph of all mnests: data schema, operations, snapshots, ager.">
- <meta property="og:locale" content="en_US">
- <meta property="og:locale:alternate" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; mnestome (under approval)">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — mnestome ",
- "description": "Canonical microdesign of the mnestome: schema, operations, snapshots, pruning.",
- "url": "https://metnos.com/en/architecture/mnestome.html",
- "inLanguage": "en",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: mnestome (canonical, new in )"
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
-h1:first-of-type { page-break-before: avoid; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
-figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microdesign &mdash; tested, aligned with the code.</strong>
-Normative reference for implementation. The nightly <em>ager</em> (<code>apply_executor_ager</code>, <code>introvertiva_propose</code>, <code>introvertiva_apply</code>) is gated by the user-interaction signal: a Metnos on holiday no longer deprecates executors for calendar inactivity. The introvertiva has deterministic quality filters: vocab validator on <code>proposed_name</code>, skip of flow args (<code>entries</code>, <code>from_step</code>, <code>results</code>) and template values <code>{{stepN.field}}</code>, <code>min_uses</code> threshold at 10. Proposal volume at 6 with high expected quality.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
 <a href="/it/architecture/mnestoma.html" hreflang="it" lang="it">IT</a>
@@ -84,1078 +25,181 @@ Normative reference for implementation. The nightly <em>ager</em> (<code>apply_e
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">mnestome</strong></span>
+ <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">Mnestome</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>mnestome</code> &mdash; the emergent graph of all mnests</div>
- <div class="meta">
- Microdesign &mdash; <br>
- Aligned with Architecture (ch. 9, Figure 6) and the Dialogue on executors.<br>
- A new concept (does not replace anything existing).<br>
- <br>
- Audience: whoever implements the data schema, the ager, the snapshots.<br>
- Reading time: 16 minutes.
- </div>
+ <div class="subtitle">Mnestome: store of operational edges</div>
+ <div class="meta">SQLite schema, queries, maintenance, and actual integrations.</div>
 </div>
 
+<p class="lead">The mnestome is the local store that can represent a graph of
+<a href="mnest.html">mnests</a> between executors. Its code implements
+persistence, traversal, decay, and inspection tools. It is not currently a graph
+that the runtime populates automatically from every turn, and it is not a personal
+memory of the user.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
- <li><a href="#cap1">Scope and boundaries</a></li>
- <li><a href="#cap2">What the mnestome is</a></li>
- <li><a href="#cap3">What the mnestome is NOT</a></li>
- <li><a href="#cap-broth">The mnestome broth &mdash; a useful metaphor</a></li>
- <li><a href="#cap4">Data schema</a></li>
- <li><a href="#cap5">Operations: insert, query, update</a></li>
- <li><a href="#cap6">The ager: how decay operates</a></li>
- <li><a href="#cap7">Pruning, snapshots, archival</a></li>
- <li><a href="#cap8">Linguistic variant: mnestome vs mnestoma</a></li>
- <li><a href="#cap9">Bootstrap: the first mnestome</a></li>
- <li><a href="#cap10">Observability and debugging</a></li>
- <li><a href="#cap11">Open questions</a></li>
+ <li><a href="#cap1">Scope and status</a></li>
+ <li><a href="#cap2">Graph model</a></li>
+ <li><a href="#cap3">What it does not contain</a></li>
+ <li><a href="#cap4">Database schema</a></li>
+ <li><a href="#cap5">Writes and queries</a></li>
+ <li><a href="#cap6">Nightly ager</a></li>
+ <li><a href="#cap7">Archiving and retention</a></li>
+ <li><a href="#cap8">Names in the two languages</a></li>
+ <li><a href="#cap9">Bootstrap and population</a></li>
+ <li><a href="#cap10">Inspection and observability</a></li>
+ <li><a href="#cap11">Operational boundaries</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Scope and boundaries</h1>
+<h1 id="cap1">1. Scope and status</h1>
 
-<p class="lead">
-This document defines the <em>mnestome</em>: the data structure that
-holds the set of all active <a href="mnest.html">mnests</a> and
-governs their lifecycle. Technically it is a weighted directed graph persisted in
-SQLite; ontologically it is <em>Metnos's relational memory</em>
-&mdash; what it remembers having done together.
-</p>
+<p><code>Mnestoma</code> opens a SQLite database with WAL and foreign keys
+enabled. Its API can record edges, change their state, traverse them, find
+recurring protos, and read statistics and events.</p>
 
-<h2>Boundaries</h2>
+<p>The turn runtime populates the separate <code>canonical_query_log</code> table
+in the same file when it receives a useful canonical query. It does not call
+<code>record_passing()</code> for edges. These two kinds of telemetry must not be
+confused.</p>
 
-<p>The document covers:</p>
-<ul>
-<li>the data schema of the graph (tables, constraints, indexes);</li>
-<li>the atomic write and read operations;</li>
-<li>how the <em>ager</em> works and the pruning policy;</li>
-<li>the snapshot and backup strategy.</li>
-</ul>
+<span id="cap-broth"></span>
+<h1 id="cap2">2. Graph model</h1>
 
-<p>It does not cover, and defers to other docs:</p>
-<ul>
-<li>the structure of a single mnest (see <a href="mnest.html">mnest.html</a>);</li>
-<li>the structure of a single executor (see <a href="executor.html">executor.html</a>);</li>
-<li>the synthesis pipeline (see <a href="executor.html#cap7">executor.html ch. 7</a> and <a href="synt.html">synt.html</a>);</li>
-<li>the LLM conversational memory (see <a href="mnestome.html">mnestome.html</a>, episodic section).</li>
-</ul>
+<p>In the logical model, nodes are executor names and versions and edges are
+directed, weighted mnests. A <code>proto</code> edge ends at a desired name with
+no version. <code>walk(start, max_depth)</code> performs breadth-first search,
+excludes protos by default, and orders paths by decreasing average weight.</p>
 
-<h1 id="cap2">2. What the mnestome is</h1>
+<p>Synt's composer can use this structure to find a chain of existing executors.
+It does not generate L0 or L1, alter the ordinary planner ranking, or replace the
+signed catalog.</p>
 
-<p>
-The <strong>mnestome</strong> is a weighted directed graph in which:
-</p>
-<ul>
-<li>the <strong>nodes</strong> are <a href="executor.html">executors</a> (loaded or quarantined);</li>
-<li>the <strong>edges</strong> are <a href="mnest.html">mnests</a> (observed output passings between pairs of executors);</li>
-<li>there is a special sub-category of edges, the <em>proto-mnests</em>, in which the destination node is an unresolved desired name.</li>
-</ul>
-
-<p>
-The mnestome <strong>emerges</strong>. No one designs it a priori: it
-is born empty at first boot and forms turn after turn, while the
-gateway observes which executors pass output to which others. The
-shapes it takes reflect how the system is used: an &laquo;invoice
-archiving&raquo; user's mnestome has different clusters than a
-&laquo;daily news roundup&raquo; user's, even when the seed of
-executors is the same.
-</p>
-
-<div class="callout note">
-<strong>Why a graph, not a list.</strong> The &laquo;graph&raquo; shape
-captures a property the list would not: <em>operational proximity</em>.
-Two executors that often appear one after the other in the same turn
-are closer than two that never meet. The graph makes it explicit; the
-list hides it. Almost every Vaglio, ager and synt decision is easier
-to formulate in graph terms.
-</div>
-
-<h1 id="cap3">3. What the mnestome is NOT</h1>
-
-<p>
-The word &laquo;memory&raquo; in an AI agent has too many meanings. It
-is worth saying clearly what the mnestome is <em>not</em>:
-</p>
+<h1 id="cap3">3. What it does not contain</h1>
 
 <table>
-<thead><tr><th style="width:32%">What the mnestome is NOT</th><th>Where that concept lives, then</th></tr></thead>
+<thead><tr><th>It is not</th><th>Reason</th></tr></thead>
 <tbody>
-<tr><td>The LLM's conversational memory (recent turns, in-token context).</td><td>In the <em>working memory</em> of the execution trace.</td></tr>
-<tr><td>The episodic memory of past conversations (what Roberto said yesterday).</td><td>In the <em>episodic memory</em>, indexed by sender. In the episodic memory store.</td></tr>
-<tr><td>The semantic memory of facts about Roberto and his world (&laquo;the dog's name is Fido&raquo;).</td><td>In the <em>semantic memory</em>, extracted via reflection and approved by the user.</td></tr>
-<tr><td>The audit log of completed actions.</td><td>In <code>workspace/.audit/</code>, append-only, JSONL.</td></tr>
-<tr><td>The user's file workspace (notes, invoices, photos).</td><td>In <code>workspace/</code>, managed separately.</td></tr>
-<tr><td>The definition of capabilities (the individual executors).</td><td>In <code>workspace/executors/</code>, file by file.</td></tr>
+<tr><td>Complete turn history</td><td>Turns have separate logs; an event may store only their identifier.</td></tr>
+<tr><td>A user profile</td><td>The schema describes executors, edges, and technical telemetry, not preferences or personal facts.</td></tr>
+<tr><td>A plan cache</td><td>L0 and L1 use their own stores, keys, and validity rules.</td></tr>
+<tr><td>Proof of effects</td><td>An edge exists because a caller wrote it.</td></tr>
+<tr><td>An automatic synthesis system</td><td>Protos are signals; Synt, tests, and the promoter have separate responsibilities.</td></tr>
 </tbody>
 </table>
 
-<p>
-The mnestome is the <em>observed relation</em> between executors: who
-worked with whom, how often, how recently. Nothing more.
-</p>
-
-<h1 id="cap-broth">3-bis. The mnestome broth &mdash; a useful metaphor</h1>
-
-<p class="lead">
-To understand what a mnestome really does, it helps to stop thinking
-of it as a SQLite table for a moment and start thinking of it as a
-<em>living environment</em>: a broth in which small particles float,
-meet, attract one another, combine. Out of that dynamic, more complex
-structures emerge through progressive aggregation &mdash; a process
-that, every so often, recalls what we see in other natural systems
-made of many elements interacting with each other.
-</p>
-
-<p>
-What follows is a metaphor, not an identity. I use it with restraint:
-it is meant to show three things the mnestome actually does &mdash;
-<em>aggregate</em> what is similar, <em>recognise</em> what is
-missing, <em>let new structures arise</em> when recognition meets the
-right material &mdash; without claiming a literal parallel that is
-not there.
-</p>
-
-<h2>The particles of the broth</h2>
-
-<p>
-At first the broth is empty. Then the particles begin to appear:
-small traces of life that the system collects while the user uses
-it. They come in a few species, each with its shape and role:
-</p>
-
-<figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>.bg-fill{fill:#eef5fb}.lbl{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}.lbl-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:9px;fill:#64748b}.mnest{fill:#1A477A;animation:drift1 8s ease-in-out infinite}.mnest2{fill:#2B6CB0;animation:drift2 9s ease-in-out infinite}.mnest3{fill:#1A477A;animation:drift3 11s ease-in-out infinite}.executor{fill:#548235;animation:drift4 10s ease-in-out infinite}.executor2{fill:#6b9b4d;animation:drift5 12s ease-in-out infinite}.fastpath{fill:#A0522D;animation:drift6 13s ease-in-out infinite}.fastpath2{fill:#c87a4d;animation:drift7 9s ease-in-out infinite}.proto{fill:none;stroke:#6B21A8;stroke-width:1.5;stroke-dasharray:3,2;animation:pulse 4s ease-in-out infinite}
-@keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(15px,-10px)}}
-@keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-12px,18px)}}
-@keyframes drift3{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,12px)}}
-@keyframes drift4{0%,100%{transform:translate(0,0)}50%{transform:translate(-18px,-8px)}}
-@keyframes drift5{0%,100%{transform:translate(0,0)}50%{transform:translate(14px,-16px)}}
-@keyframes drift6{0%,100%{transform:translate(0,0)}50%{transform:translate(-10px,14px)}}
-@keyframes drift7{0%,100%{transform:translate(0,0)}50%{transform:translate(16px,-12px)}}
-@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
-</style>
-<rect class="bg-fill" x="0" y="0" width="720" height="280"/>
-<circle class="mnest" cx="120" cy="80" r="5"/>
-<circle class="mnest2" cx="180" cy="140" r="5"/>
-<circle class="mnest3" cx="240" cy="100" r="5"/>
-<circle class="mnest" cx="300" cy="180" r="5"/>
-<circle class="mnest2" cx="380" cy="80" r="5"/>
-<circle class="mnest3" cx="450" cy="160" r="5"/>
-<circle class="mnest" cx="520" cy="100" r="5"/>
-<circle class="mnest2" cx="580" cy="180" r="5"/>
-<rect class="executor" x="150" y="200" width="14" height="14" rx="2"/>
-<rect class="executor2" x="320" y="60" width="14" height="14" rx="2"/>
-<rect class="executor" x="490" y="200" width="14" height="14" rx="2"/>
-<rect class="fastpath" x="220" y="40" width="22" height="10" rx="5"/>
-<rect class="fastpath2" x="420" y="200" width="22" height="10" rx="5"/>
-<rect class="fastpath" x="550" y="40" width="22" height="10" rx="5"/>
-<path class="proto" d="M380,140 Q395,125 410,140 L410,160 Q395,175 380,160 Z"/>
-<g transform="translate(20,220)">
- <circle cx="6" cy="6" r="5" fill="#1A477A"/><text class="lbl" x="18" y="10">mnest (passage between executors)</text>
- <rect x="220" y="0" width="14" height="14" rx="2" fill="#548235"/><text class="lbl" x="240" y="10">executor</text>
- <rect x="320" y="2" width="22" height="10" rx="5" fill="#A0522D"/><text class="lbl" x="350" y="10">fastpath / autopath</text>
- <path d="M540,2 Q555,-13 570,2 L570,22 Q555,37 540,22 Z" fill="none" stroke="#6B21A8" stroke-width="1.5" stroke-dasharray="3,2"/><text class="lbl" x="580" y="14">proto-mnest</text>
-</g>
-<text class="lbl-sm" x="360" y="260" text-anchor="middle">The particles drift (animation: hover over the illustration).</text>
-</svg>
-<figcaption>Fig. 1 &mdash; The mnestome broth at rest. Four species of particles: mnests (observed passages), executors (graph nodes), preformed paths &mdash; fastpath (L0) and autopath (L1) &mdash; and proto-mnests (desires not yet fulfilled).</figcaption>
-</figure>
-
-<p>
-Each particle has a story: a <strong>mnest</strong> is the memory
-that &ldquo;A served B&rdquo;; an <strong>executor</strong> is a
-small programme that knows how to do one specific thing; a
-<strong>preformed path</strong> is a shortcut the system has learned
-&mdash; the <em>fastpath</em> (L0) for the identical request, the
-<em>autopath</em> (L1) for the generalised form of a group of related
-requests; a <strong>proto-mnest</strong> is a mnest half-done: real
-src, dst desired but not yet existing. You can see immediately in the drawing
-that the proto-mnest has a different shape, a sort of open receptor:
-there is an empty slot waiting to be filled.
-</p>
-
-<h2>From repetition to fastpath (L0) and autopath (L1)</h2>
-
-<p>
-In the broth, nothing is truly random. Particles attract each other
-based on <em>semantic similarity</em>, measured with the BGE-M3
-multilingual model. When the user repeatedly does the same thing
-&mdash; three &ldquo;download this page&rdquo; requests that always
-turn into <code>get_urls</code> followed by
-<code>describe_entries</code> &mdash; the mnests observed across
-the three turns refer to the same pair of executors. Those mnests
-form a <em>cross-turn cluster</em>: evidence that &ldquo;this
-sequence works&rdquo;.
-</p>
-
-<p>
-The memoisation that follows comes in two forms, and it is worth
-keeping them apart because the Metnos glossary separates them with
-care. The <strong>fastpath</strong> (level <strong>L0</strong>) is
-the shortcut for the <em>same request</em>: a question already solved,
-recognised by fingerprint or by semantic proximity, is served again
-with the plan already prepared &mdash; concrete arguments included.
-The <strong>autopath</strong> (level <strong>L1</strong>) is the next
-step: when the same request shape returns for many different contents,
-the system abstracts a <em>generalised skeleton</em> from it &mdash;
-the executor sequence without the specific arguments &mdash; that holds
-for the whole family of related questions. In both cases the PLANNER no
-longer calls the language model to re-plan the sequence from scratch:
-it reads the preformed path and runs it. The figure below shows the
-four phases &mdash; observation, cluster, crystallisation, reuse
-&mdash; in sequence.
-</p>
-
-<figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img" aria-label="Birth of a fastpath: three repeated turns, mnest cluster, preformed path, planner using it directly.">
- <style>.bg2 { fill: #eef5fb; }.lab2 { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e293b; }.lab2-w { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #ffffff; font-weight: 600; }.lab2-in { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #1A477A; }.lab2-out { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #78350f; }.lab2-pill { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; fill: #ffffff; font-weight: 700; letter-spacing: 0.2px; }.lab2-cluster { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; fill: #1e3a8a; font-style: italic; }.lab2-phase { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; fill: #1e3a8a; font-weight: 600; }.lab2-planner { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; fill: #64748b; font-weight: 600; }.lab2-tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #64748b; }.box-in2 { fill: #dbeafe; stroke: #1A477A; stroke-width: 1.2; }.box-ex2 { fill: #548235; stroke: #1A477A; stroke-width: 1.2; }.box-out2 { fill: #fef3c7; stroke: #A0522D; stroke-width: 1.2; }.arrow2 { stroke: #1A477A; stroke-width: 1.4; fill: none; }.arrow-thick2 { stroke: #1A477A; stroke-width: 2.2; fill: none; }.mnest2 { fill: #1A477A; }.cluster-line2 { stroke: #2B6CB0; stroke-width: 1.5; fill: none; stroke-dasharray: 2,2; }.pill2 { fill: #A0522D; stroke: #7c2d12; stroke-width: 1.8; }.planner-box2 { fill: #cbd5e1; stroke: #94a3b8; stroke-width: 1.2; }.strike2 { stroke: #dc2626; stroke-width: 3; stroke-linecap: round; }.tl-bar2 { stroke: #cbd5e1; stroke-width: 1; }.rows2 { animation: rows-vis2 16s linear infinite; }
- @keyframes rows-vis2 {
- 0% { opacity: 1; } 48% { opacity: 1; } 58% { opacity: 0.12; }
- 72% { opacity: 0.12; } 78% { opacity: 0; } 100% { opacity: 0; }
- }.mnest-d2 { animation: mnest-pop2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
- @keyframes mnest-pop2 {
- 0% { opacity: 0; transform: scale(0.1); }
- 6% { opacity: 0; transform: scale(0.1); }
- 14% { opacity: 1; transform: scale(1); }
- 48% { opacity: 1; transform: scale(1); }
- 58% { opacity: 0; transform: scale(0.6); }
- 100% { opacity: 0; transform: scale(0.6); }
- }.cl2 { animation: cl-vis2 16s linear infinite; }
- @keyframes cl-vis2 {
- 0% { opacity: 0; } 24% { opacity: 0; } 30% { opacity: 1; }
- 48% { opacity: 1; } 55% { opacity: 0; } 100% { opacity: 0; }
- }.cl-lab2 { animation: cl-lab2 16s linear infinite; }
- @keyframes cl-lab2 {
- 0% { opacity: 0; } 27% { opacity: 0; } 33% { opacity: 1; }
- 48% { opacity: 1; } 55% { opacity: 0; } 100% { opacity: 0; }
- }.fpill2 { animation: fpill2 16s linear infinite; transform-box: fill-box; transform-origin: center; }
- @keyframes fpill2 {
- 0% { opacity: 0; transform: scale(0.3); }
- 50% { opacity: 0; transform: scale(0.3); }
- 60% { opacity: 1; transform: scale(1); }
- 100% { opacity: 1; transform: scale(1); }
- }.fpill-lab2 { animation: fpill-lab2 16s linear infinite; }
- @keyframes fpill-lab2 {
- 0% { opacity: 0; } 55% { opacity: 0; } 62% { opacity: 1; }
- 72% { opacity: 1; } 78% { opacity: 0; } 100% { opacity: 0; }
- }.ph4-2 { animation: ph4-2 16s linear infinite; }
- @keyframes ph4-2 {
- 0% { opacity: 0; } 74% { opacity: 0; } 80% { opacity: 1; }
- 100% { opacity: 1; }
- }.strike-draw2 { stroke-dasharray: 90; stroke-dashoffset: 90; animation: strike-draw2 16s linear infinite; }
- @keyframes strike-draw2 {
- 0% { stroke-dashoffset: 90; } 78% { stroke-dashoffset: 90; }
- 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; }
- }.pl1-2 { animation: pl1-2 16s linear infinite; }
- @keyframes pl1-2 { 0%,22% { opacity: 1; } 25%,100% { opacity: 0; } }.pl2-2 { animation: pl2-2 16s linear infinite; }
- @keyframes pl2-2 { 0%,24% { opacity: 0; } 27%,47% { opacity: 1; } 50%,100% { opacity: 0; } }.pl3-2 { animation: pl3-2 16s linear infinite; }
- @keyframes pl3-2 { 0%,49% { opacity: 0; } 52%,72% { opacity: 1; } 75%,100% { opacity: 0; } }.pl4-2 { animation: pl4-2 16s linear infinite; }
- @keyframes pl4-2 { 0%,74% { opacity: 0; } 77%,100% { opacity: 1; } }
- </style>
- <rect class="bg2" x="0" y="0" width="720" height="360"/>
- <g class="rows2">
- <g transform="translate(0,70)">
- <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
- <text class="lab2-in" x="97" y="3" text-anchor="middle">download X</text>
- <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
- <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
- <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
- <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
- <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
- <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
- <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
- <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
- <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
- <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
- <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
- <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
- <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
- </g>
- <g transform="translate(0,110)">
- <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
- <text class="lab2-in" x="97" y="3" text-anchor="middle">download Y</text>
- <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
- <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
- <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
- <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
- <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
- <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
- <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
- <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
- <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
- <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
- <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
- <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
- <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
- </g>
- <g transform="translate(0,150)">
- <rect class="box-in2" x="60" y="-12" width="74" height="24" rx="5"/>
- <text class="lab2-in" x="97" y="3" text-anchor="middle">download Z</text>
- <line class="arrow2" x1="134" y1="0" x2="174" y2="0"/>
- <polygon points="174,0 168,-3 168,3" fill="#1A477A"/>
- <rect class="box-ex2" x="174" y="-12" width="92" height="24" rx="5"/>
- <text class="lab2-w" x="220" y="3" text-anchor="middle">get_urls</text>
- <line class="arrow2" x1="266" y1="0" x2="316" y2="0"/>
- <polygon points="316,0 310,-3 310,3" fill="#1A477A"/>
- <circle class="mnest2 mnest-d2" cx="291" cy="0" r="5"/>
- <rect class="box-ex2" x="316" y="-12" width="128" height="24" rx="5"/>
- <text class="lab2-w" x="380" y="3" text-anchor="middle">describe_entries</text>
- <line class="arrow2" x1="444" y1="0" x2="484" y2="0"/>
- <polygon points="484,0 478,-3 478,3" fill="#1A477A"/>
- <rect class="box-out2" x="484" y="-12" width="66" height="24" rx="5"/>
- <text class="lab2-out" x="517" y="3" text-anchor="middle">output</text>
- </g>
- <text class="lab2" x="20" y="74" font-style="italic">turn 1</text>
- <text class="lab2" x="20" y="114" font-style="italic">turn 2</text>
- <text class="lab2" x="20" y="154" font-style="italic">turn 3</text>
- </g>
- <g class="cl2">
- <line class="cluster-line2" x1="291" y1="70" x2="291" y2="150"/>
- <path class="cluster-line2" d="M 273 65 C 263 110, 263 110, 273 155"/>
- <path class="cluster-line2" d="M 309 65 C 319 110, 319 110, 309 155"/>
- <line class="cluster-line2" x1="318" y1="110" x2="372" y2="110"/>
- </g>
- <g class="cl-lab2">
- <rect x="372" y="98" width="118" height="24" rx="4" fill="#ffffff" stroke="#2B6CB0" stroke-width="1"/>
- <text class="lab2-cluster" x="431" y="113" text-anchor="middle">mnest cluster</text>
- </g>
- <g class="fpill2">
- <rect class="pill2" x="180" y="190" width="360" height="40" rx="20"/>
- <text class="lab2-pill" x="360" y="215" text-anchor="middle">FASTPATH: get_urls &#8594; describe_entries</text>
- </g>
- <g class="fpill-lab2">
- <text class="lab2-cluster" x="360" y="250" text-anchor="middle">the cluster becomes a fastpath</text>
- </g>
- <g class="ph4-2">
- <rect class="box-in2" x="36" y="258" width="92" height="24" rx="5"/>
- <text class="lab2-in" x="82" y="273" text-anchor="middle">new input</text>
- <rect class="planner-box2" x="290" y="252" width="140" height="32" rx="6"/>
- <text class="lab2-planner" x="360" y="266" text-anchor="middle">PLANNER LLM</text>
- <text class="lab2-planner" x="360" y="278" text-anchor="middle" font-weight="400" font-style="italic">(not invoked)</text>
- <line class="strike2 strike-draw2" x1="298" y1="280" x2="422" y2="256"/>
- <rect class="box-out2" x="600" y="258" width="84" height="24" rx="5"/>
- <text class="lab2-out" x="642" y="273" text-anchor="middle">output</text>
- <path class="arrow-thick2" d="M 128 270 L 158 270 L 158 210 L 180 210"/>
- <polygon points="180,210 173,206 173,214" fill="#1A477A"/>
- <path class="arrow-thick2" d="M 540 210 L 562 210 L 562 270 L 600 270"/>
- <polygon points="600,270 593,266 593,274" fill="#1A477A"/>
- </g>
- <text class="lab2-phase pl1-2" x="360" y="330" text-anchor="middle">three repeated turns produce observed mnests</text>
- <text class="lab2-phase pl2-2" x="360" y="330" text-anchor="middle">mnests converge into a cross-turn cluster</text>
- <text class="lab2-phase pl3-2" x="360" y="330" text-anchor="middle">the cluster crystallises into a preformed path</text>
- <g class="pl4-2">
- <text class="lab2-phase" x="360" y="324" text-anchor="middle">the PLANNER uses the fastpath directly,</text>
- <text class="lab2-phase" x="360" y="340" text-anchor="middle">without invoking the LLM</text>
- </g>
- <line class="tl-bar2" x1="40" y1="350" x2="680" y2="350"/>
- <line class="tl-bar2" x1="40" y1="346" x2="40" y2="354"/>
- <line class="tl-bar2" x1="200" y1="346" x2="200" y2="354"/>
- <line class="tl-bar2" x1="360" y1="346" x2="360" y2="354"/>
- <line class="tl-bar2" x1="520" y1="346" x2="520" y2="354"/>
- <line class="tl-bar2" x1="680" y1="346" x2="680" y2="354"/>
- <text class="lab2-tick" x="120" y="358" text-anchor="middle">phase 1</text>
- <text class="lab2-tick" x="280" y="358" text-anchor="middle">phase 2</text>
- <text class="lab2-tick" x="440" y="358" text-anchor="middle">phase 3</text>
- <text class="lab2-tick" x="600" y="358" text-anchor="middle">phase 4</text>
-</svg>
-<figcaption>Fig. 2 &mdash; The birth of a preformed path. Three repeated turns produce mnests that converge into a cluster; the cluster crystallises into a fastpath (L0) and, when the same shape returns for different contents, into an autopath (L1). From that moment the PLANNER runs it directly, skipping the language model.</figcaption>
-</figure>
-
-<p>
-The fastpath that emerges is not an abstraction: it is precisely
-that concrete sequence, memoised, ready to use. The saving is
-tangible &mdash; the call to the LLM planner (about twelve seconds)
-is skipped entirely, and the user gets the answer in under a
-second. The cluster that produced it stays in the mnestome as a
-trace of how the fastpath was reached; the fastpath itself lives in
-its own separate registry (see <a href="fast_path.html">fast_path.html</a>).
-</p>
-
-<h2>Receptors: the proto-mnest and the desire</h2>
-
-<p>
-Sometimes, as the system works, something more peculiar happens: the
-planner would like to call an executor that <em>does not exist</em>.
-Maybe the user asked something new, and in the ideal chain the final
-step should have been a <code>compose_report</code> that has never
-been written. What gets recorded, at that moment, is a
-<strong>proto-mnest</strong>: a trace with a known <em>src</em> and
-a <em>dst</em> that is only a name, not yet a programme.
-</p>
-
-<p>
-We can see it as a <strong>receptor</strong>: a shape with an empty
-gap where the dst would fit. The gap is not a graphic detail, it
-is the desired signature &mdash; it declares <em>what</em> would be
-needed to close the shape. The receptor waits: it stays stable as
-long as no one fills it, and becomes more visible as it shows up in
-the same way, turn after turn.
-</p>
-
-<figure>
-<svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>.bg-fill3{fill:#eef5fb}.lbl3{font-family:'Segoe UI',Calibri,sans-serif;font-size:12px;fill:#1a477a}.lbl3-sm{font-family:'Segoe UI',Calibri,sans-serif;font-size:10px;fill:#64748b}.src-node{fill:#548235;stroke:#1A477A;stroke-width:1.5}.receptor-body{fill:#fef3c7;stroke:#6B21A8;stroke-width:2.5}.notch-cavity{fill:#fbfdff;stroke:#6B21A8;stroke-width:2;stroke-dasharray:5,3}.notch-tag{fill:#6B21A8;font-family:'Segoe UI',sans-serif;font-size:11px;font-weight:600}
-</style>
-<rect class="bg-fill3" x="0" y="0" width="720" height="300"/>
-<rect class="src-node" x="120" y="125" width="100" height="55" rx="6"/>
-<text class="lbl3" x="170" y="150" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:13px;">read_url</text>
-<text class="lbl3" x="170" y="170" text-anchor="middle" style="fill:#fff;font-size:10px;">(exists)</text>
-<text class="lbl3-sm" x="170" y="210" text-anchor="middle">src executor</text>
-<path d="M230,152 L370,152" stroke="#64748B" stroke-width="2" marker-end="url(#arrowend3en)" fill="none"/>
-<defs>
- <marker id="arrowend3en" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
- <path d="M0,0 L0,6 L8,3 z" fill="#64748B"/>
- </marker>
-</defs>
-<text class="lbl3-sm" x="300" y="140" text-anchor="middle">observed mnest</text>
-<text class="lbl3-sm" x="300" y="170" text-anchor="middle" style="font-style:italic;">(user turn)</text>
-<g>
- <rect class="receptor-body" x="385" y="115" width="180" height="90" rx="12"/>
- <rect class="notch-cavity" x="420" y="135" width="110" height="50" rx="6"/>
- <text class="lbl3" x="475" y="165" text-anchor="middle" style="font-size:10px;fill:#6B21A8;font-style:italic;">gap</text>
- <text class="lbl3" x="475" y="105" text-anchor="middle" style="font-weight:600;">proto-mnest</text>
- <text class="lbl3-sm" x="475" y="225" text-anchor="middle">desired dst: &laquo;compose_report&raquo;</text>
- <text class="lbl3-sm" x="475" y="240" text-anchor="middle" style="font-style:italic;">does not exist yet</text>
-</g>
-<text class="lbl3-sm" x="360" y="270" text-anchor="middle">The proto-mnest waits. The dashed gap is the missing dst.</text>
-</svg>
-<figcaption>Fig. 3 &mdash; The proto-mnest as a receptor. On the left, the src executor exists; on the right, the proto-mnest shows clearly the open gap that awaits a dst.</figcaption>
-</figure>
-
-<h2>Introspective functions: who recognises receptors</h2>
-
-<p>
-Somewhere in the broth, the <em>introspective functions</em> work:
-the silent crafts of <a href="synt.html">synt</a> in its introvertive
-mode and of the introvertiva module. They have no final function of
-their own; they exist to make other things happen. Their hallmark is
-the ability to recognise receptors: to read the open gap and
-understand which dst would close it.
-</p>
-
-<p>
-When an introspective function meets a proto-mnest that has been
-seen more than once (the threshold is three recurring observations),
-it approaches, analyses it, reads the desired signature,
-and proposes: it emits a <em>candidate</em> for synthesis. The
-proposal says: &ldquo;this receptor exists, it recurs, and here is
-a possible dst that would close it&rdquo;.
-</p>
-
-<figure>
-<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Synthesis animation: synt enters the receptor's gap, works, leaves an executor and exits.">
- <style>.bg { fill: #eef5fb; }.receptor-body { fill: #fef3c7; stroke: #6B21A8; stroke-width: 2.5; }.receptor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 13px; font-weight: 600; fill: #6B21A8; text-anchor: middle; }.receptor-sublabel { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10px; font-style: italic; fill: #6B21A8; text-anchor: middle; opacity: 0.75; }.notch { fill: #fbfdff; stroke: #6B21A8; stroke-width: 2; stroke-dasharray: 5,3; animation: notch-state 14s ease-in-out infinite; }
- @keyframes notch-state {
- 0% { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
- 70% { stroke-dasharray: 5,3; stroke: #6B21A8; stroke-width: 2; }
- 80% { stroke-dasharray: 5,3; stroke: #16a34a; stroke-width: 2.2; }
- 90% { stroke-dasharray: 0; stroke: #16a34a; stroke-width: 2.5; }
- 100% { stroke-dasharray: 0; stroke: #16a34a; stroke-width: 2.5; }
- }.synt { animation: synt-journey 14s ease-in-out infinite; }
- @keyframes synt-journey {
- 0% { transform: translateX(-360px); opacity: 0; }
- 8% { transform: translateX(-360px); opacity: 0; }
- 15% { transform: translateX(-180px); opacity: 1; }
- 28% { transform: translateX(0px); opacity: 1; }
- 55% { transform: translateX(0px); opacity: 1; }
- 70% { transform: translateX(80px); opacity: 0.5; }
- 78% { transform: translateX(220px); opacity: 0; }
- 100% { transform: translateX(220px); opacity: 0; }
- }.synt-pill { fill: #dcfce7; stroke: #16a34a; stroke-width: 2; }.synt-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 12px; font-weight: 700; fill: #166534; text-anchor: middle; }.spark { fill: #f59e0b; stroke: #b45309; stroke-width: 0.5; transform-origin: center; animation: spark-pulse 14s ease-in-out infinite; }.spark-1 { animation-delay: 0s; }.spark-2 { animation-delay: -0.6s; }.spark-3 { animation-delay: -1.2s; }.spark-4 { animation-delay: -1.8s; }
- @keyframes spark-pulse {
- 0%, 28% { opacity: 0; transform: scale(0.4); }
- 32% { opacity: 1; transform: scale(1.1); }
- 40% { opacity: 0.6; transform: scale(0.8); }
- 48% { opacity: 1; transform: scale(1.1); }
- 55% { opacity: 0; transform: scale(0.4); }
- 100% { opacity: 0; transform: scale(0.4); }
- }.work-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-style: italic; fill: #15803d; text-anchor: middle; animation: work-label-pulse 14s ease-in-out infinite; }
- @keyframes work-label-pulse {
- 0%, 28% { opacity: 0; }
- 32% { opacity: 1; }
- 40% { opacity: 0.5; }
- 48% { opacity: 1; }
- 55% { opacity: 0; }
- 100% { opacity: 0; }
- }.executor { transform-origin: 400px 130px; animation: executor-materialise 14s ease-in-out infinite; }
- @keyframes executor-materialise {
- 0%, 55% { opacity: 0; transform: scale(0.3); }
- 62% { opacity: 0.6; transform: scale(0.9); }
- 70% { opacity: 1; transform: scale(1.05); }
- 75% { opacity: 1; transform: scale(1); }
- 100% { opacity: 1; transform: scale(1); }
- }.executor-body { fill: #548235; stroke: #16a34a; stroke-width: 2; }.executor-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }.phase-label { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 14px; font-weight: 600; fill: #1e3a8a; text-anchor: middle; }.phase-1 { animation: phase1 14s ease-in-out infinite; }.phase-2 { animation: phase2 14s ease-in-out infinite; }.phase-3 { animation: phase3 14s ease-in-out infinite; }.phase-4 { animation: phase4 14s ease-in-out infinite; }
- @keyframes phase1 { 0%{opacity:1}14%{opacity:1}17%{opacity:0}100%{opacity:0} }
- @keyframes phase2 { 0%,14%{opacity:0}18%{opacity:1}54%{opacity:1}57%{opacity:0}100%{opacity:0} }
- @keyframes phase3 { 0%,54%{opacity:0}58%{opacity:1}74%{opacity:1}77%{opacity:0}100%{opacity:0} }
- @keyframes phase4 { 0%,74%{opacity:0}78%{opacity:1}100%{opacity:1} }.tick { font-family: 'Segoe UI', Calibri, sans-serif; font-size: 9px; fill: #94a3b8; text-anchor: middle; }
- </style>
- <rect class="bg" x="0" y="0" width="720" height="320" rx="8"/>
- <text x="360" y="28" class="receptor-label" style="font-size: 14px;">Synthesising an executor: from open gap to closed receptor</text>
- <text x="400" y="50" class="work-label">synt at work...</text>
- <text x="400" y="72" class="receptor-label">Receptor (proto-mnest)</text>
- <text x="400" y="82" class="receptor-sublabel">waits for a capability</text>
- <rect class="receptor-body" x="310" y="85" width="180" height="90" rx="12"/>
- <rect class="notch" x="345" y="105" width="110" height="50" rx="4"/>
- <g>
- <polygon class="spark spark-1" points="335,100 338,108 346,108 340,113 342,121 335,116 328,121 330,113 324,108 332,108" style="transform-origin: 335px 110px;"/>
- <polygon class="spark spark-2" points="470,100 473,108 481,108 475,113 477,121 470,116 463,121 465,113 459,108 467,108" style="transform-origin: 470px 110px;"/>
- <polygon class="spark spark-3" points="335,160 338,168 346,168 340,173 342,181 335,176 328,181 330,173 324,168 332,168" style="transform-origin: 335px 170px;"/>
- <polygon class="spark spark-4" points="470,160 473,168 481,168 475,173 477,181 470,176 463,181 465,173 459,168 467,168" style="transform-origin: 470px 170px;"/>
- </g>
- <g class="executor">
- <rect class="executor-body" x="350" y="110" width="100" height="40" rx="4"/>
- <text x="400" y="135" class="executor-label">compose_report</text>
- </g>
- <g class="synt">
- <rect class="synt-pill" x="375" y="115" width="50" height="30" rx="14"/>
- <text x="400" y="134" class="synt-label">synt</text>
- </g>
- <text x="360" y="255" class="phase-label phase-1">synt approaches</text>
- <text x="360" y="255" class="phase-label phase-2">synt at work inside the receptor</text>
- <text x="360" y="255" class="phase-label phase-3">executor created, synt leaves</text>
- <text x="360" y="255" class="phase-label phase-4">proto-mnest closed, new capability in the pool</text>
- <line x1="120" y1="285" x2="600" y2="285" stroke="#cbd5e1" stroke-width="1"/>
- <circle cx="120" cy="285" r="3" fill="#94a3b8"/>
- <circle cx="240" cy="285" r="3" fill="#94a3b8"/>
- <circle cx="360" cy="285" r="3" fill="#94a3b8"/>
- <circle cx="480" cy="285" r="3" fill="#94a3b8"/>
- <circle cx="600" cy="285" r="3" fill="#94a3b8"/>
- <text x="120" y="302" class="tick">0s</text>
- <text x="240" y="302" class="tick">3.5s</text>
- <text x="360" y="302" class="tick">7s</text>
- <text x="480" y="302" class="tick">10.5s</text>
- <text x="600" y="302" class="tick">14s</text>
-</svg>
-<figcaption>Fig. 4 &mdash; The synthesis dance. Synt enters the receptor's gap, works on creating a new executor, leaves it in place and exits. The proto-mnest becomes an active mnest: the new capability joins the executor pool.</figcaption>
-</figure>
-
-<h2>Aggregation: from shortcut to generalised plan</h2>
-
-<p>
-Another interesting phenomenon happens in the broth: passages that
-recur often, side by side in the same turn, end up consolidating into
-a longer, more stable path.
-</p>
-
-<p>
-Consider a typical turn: &ldquo;download me this page&rdquo; and then
-&ldquo;tell me what it says&rdquo;. The first time, it is the planner
-that composes the sequence; when the exact same request returns, a
-<strong>fastpath</strong> (L0) serves it ready-made. But if the same
-<em>shape</em> &mdash; download a page, then describe it &mdash;
-reappears for ever-different pages, the system abstracts a skeleton
-without specific arguments and promotes it to an <strong>autopath</strong>
-(L1): a generalised plan that holds for the whole family of related
-requests, not just the literal one. From that moment on &laquo;download
-+ describe&raquo; is a single recognised sequence, whatever the page.
-</p>
-
-<figure>
-<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto;border:1px solid var(--border);border-radius:6px;background:#fbfdff;">
-<style>.bg-fill5{fill:#eef5fb}.lbl5{font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;fill:#1a477a}.fp-mono{fill:#A0522D;animation:joinleft 8s ease-in-out infinite}.fp-mono2{fill:#A0522D;animation:joinright 8s ease-in-out infinite}.fp-poly{fill:#c87a4d;stroke:#A0522D;stroke-width:1.5;animation:emerge 8s ease-in-out infinite}.fp-tri{fill:#548235;stroke:#16a34a;stroke-width:1.5;animation:emerge-late 8s ease-in-out infinite}
-@keyframes joinleft{0%{transform:translate(0,0);opacity:1}40%{transform:translate(80px,0);opacity:1}50%,100%{transform:translate(80px,0);opacity:0}}
-@keyframes joinright{0%{transform:translate(0,0);opacity:1}40%{transform:translate(-80px,0);opacity:1}50%,100%{transform:translate(-80px,0);opacity:0}}
-@keyframes emerge{0%,40%{opacity:0;transform:scale(0.5)}50%,80%{opacity:1;transform:scale(1)}90%,100%{opacity:0}}
-@keyframes emerge-late{0%,75%{opacity:0;transform:scale(0.5)}85%,95%{opacity:1;transform:scale(1)}100%{opacity:0}}
-</style>
-<rect class="bg-fill5" x="0" y="0" width="720" height="280"/>
-<rect class="fp-mono" x="80" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="100" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;download&raquo;</text>
-<rect class="fp-mono2" x="260" y="60" width="40" height="14" rx="7"/>
-<text class="lbl5" x="280" y="92" text-anchor="middle" style="font-size:9px;">L0 &laquo;describe&raquo;</text>
-<rect class="fp-poly" x="320" y="150" width="90" height="14" rx="7"/>
-<text class="lbl5" x="365" y="182" text-anchor="middle" style="font-size:9px;font-weight:600;">L1 = download + describe</text>
-<rect class="fp-tri" x="520" y="120" width="140" height="60" rx="6"/>
-<text class="lbl5" x="590" y="145" text-anchor="middle" style="fill:#fff;font-weight:600;font-size:11px;">describe_urls</text>
-<text class="lbl5" x="590" y="160" text-anchor="middle" style="fill:#fff;font-size:9px;">synthesised executor</text>
-<text class="lbl5" x="590" y="200" text-anchor="middle" style="font-size:9px;color:#64748b;">if the shape matures</text>
-<path d="M170,67 Q200,40 240,67" stroke="#64748B" fill="none" stroke-width="1.5" stroke-dasharray="3,2"/>
-<text class="lbl5" x="205" y="35" text-anchor="middle" style="font-size:9px;color:#64748b;">recurs on different contents</text>
-<path d="M365,165 L520,150" stroke="#16a34a" stroke-width="1.5" stroke-dasharray="3,2" fill="none" marker-end="url(#arrow-green3en)"/>
-<defs>
- <marker id="arrow-green3en" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
- <path d="M0,0 L0,6 L7,3 z" fill="#16a34a"/>
- </marker>
-</defs>
-<text class="lbl5" x="445" y="148" text-anchor="middle" style="font-size:9px;color:#16a34a;">synthesis (via proto-mnest)</text>
-</svg>
-<figcaption>Fig. 5 &mdash; From shortcut to generalised plan. Two L0 fastpaths of the same shape are abstracted into an L1 autopath (the sequence without arguments); if that shape matures enough, synt unifies it into a single executor (via proto-mnest).</figcaption>
-</figure>
-
-<p>
-The sequence does not stop at two. A generalised shape can chain
-three passages, and so on. The system keeps the chain, measures how
-often it recurs, and when an autopath is mature enough it presents it
-to synt as a proto-mnest: &ldquo;here is a sequence worth unifying into
-a single executor&rdquo;.
-</p>
-
-<h2>From pipeline to synthesis: two paths to the same outcome</h2>
-
-<p>
-At this point it is worth pausing to observe that synt receives
-proto-mnests from <em>two different paths</em>, independent of one
-another, converging at the same point.
-</p>
-
-<p>
-<strong>The direct path</strong>: the introspective functions
-observe the mnestome and identify the receptors that recur &mdash;
-those proto-mnests that present themselves in the same way turn
-after turn. When they find one stable enough, they propose directly an
-executor that would close the gap. There is no need to go through a
-preformed path: the analysis of the single receptor is enough. This is
-the classic case, and historically the first that synt learned to
-handle.
-</p>
-
-<p>
-<strong>The indirect path</strong>: an autopath (L1) that has worked
-many times across different contents is presented to synt as a
-proto-mnest. This time the proto-mnest is not born from a failed
-request but from a sequence that has proved itself: the desired
-signature describes a unified executor that wraps the whole chain of
-calls.
-</p>
-
-<p>
-The two paths lead to the same entry point. Synt receives the
-proto-mnest, reads the signature, and translates it into a complete
-structure: it runs its five stages (naming, signature, tests,
-description, code), produces a new executor, signs it with ed25519,
-registers it in the catalog. The receptor is no longer open: the
-dst exists, the proto-mnest is promoted to an active mnest. The new
-capability is unique, reusable, and &mdash; whether it comes from
-the direct analysis of a receptor or from the aggregation of a
-pipeline &mdash; enters the executor pool like all the others.
-</p>
-
-<div class="callout tip">
-<strong>The executor always has priority over the preformed path
-(bidirectional rule).</strong>
-The rule holds in both directions of time.
-<em>From synthesis to preformed path</em>: once synthesis has produced
-the <code>describe_urls</code> executor, the autopath
-<code>[get_urls, describe_entries]</code> that originated it is
-immediately <em>demoted</em>: its shape dissolves back into the
-broth, and every new request goes directly through the monolithic
-executor.
-<em>From candidate path to non-creation</em>: symmetrically, if
-the system is about to record a new fastpath or autopath and discovers
-that the executor that would do the same thing already exists in the
-catalog, the path is not created: there is nothing to memoise if the
-unified capability is already available.
-The runtime applies the rule on the fly in the matcher (auto-demote)
-and in the recording (silent skip); the planner knows it from its
-prompt and never emits the double sequence when the unified executor
-is in the pool. The form has priority over the shortcut, both
-incoming and outgoing.
-</div>
-
-<h2>All together: a system in equilibrium</h2>
-
-<p>
-What emerges, seen from a distance, is a system in dynamic
-equilibrium: closed but alive, where every component takes part in a
-cycle. Particles are born from the observation of the turn, they
-attract by similarity, form clusters, some clusters become
-fastpaths (L0), some shapes generalise into autopaths (L1), mature
-autopaths become proto-mnests that ask for synthesis, synthesis
-produces new executors, the new executors generate further mnests
-and everything starts over.
-</p>
-
-<p>
-At the same time there is a cycle of forgetting: the nightly
-<em>ager</em> (see <a href="#cap6">chapter 6</a>) decays the unused
-particles, reduces their weight, moves them to <em>decaying</em>
-state, eventually archives them. Things that are no longer used
-disappear. The broth cleans itself.
-</p>
-
-<p>
-All of this happens inside a single SQLite file of a few MB. The
-metaphor of the broth is not a teaching trick: it describes
-faithfully enough what the code does. Understanding this level makes
-the chapters that follow &mdash; the data schema, the operations,
-the ager &mdash; obvious: they read like the technical explanation
-of a process you have already seen in motion.
-</p>
-
-<h1 id="cap4">4. Data schema</h1>
-
-<p>
-The mnestome lives in <code>workspace/.mnestoma/mnest.sqlite</code>, a
-single SQLite file. The choice of SQLite is deliberate: zero services
-to start, zero external dependencies, trivial backup (file copy),
-proven reliability.
-</p>
-
-<h2>Table <code>executors</code></h2>
-
-<p>
-A lightweight replica of the manifest, in fast-read mode for gateway
-queries. The canonical manifest always remains
-<code>workspace/executors/&lt;name&gt;/manifest.toml</code>; this table
-is an index.
-</p>
-
-<pre><code>CREATE TABLE executors (
- name TEXT NOT NULL,
- version TEXT NOT NULL,
- state TEXT NOT NULL, -- seed | active | quarantine | archived
- loaded_at TEXT NOT NULL, -- ISO 8601
- manifest_hash TEXT NOT NULL, -- blake3
- PRIMARY KEY (name, version)
-);
-CREATE INDEX idx_executors_state ON executors(state);
-</code></pre>
-
-<h2>Table <code>mnests</code></h2>
-
-<pre><code>CREATE TABLE mnests (
- id TEXT PRIMARY KEY, -- ULID
- src_executor TEXT NOT NULL,
- src_version TEXT NOT NULL,
- dst_executor TEXT NOT NULL, -- canonical name OR desired name (proto)
- dst_version TEXT, -- NULL for proto
- weight REAL NOT NULL CHECK (weight BETWEEN 0 AND 1),
- uses INTEGER NOT NULL CHECK (uses &gt;= 1),
- ts_first TEXT NOT NULL,
- ts_last TEXT NOT NULL,
- decay_lambda REAL NOT NULL DEFAULT 0.018,
- state TEXT NOT NULL, -- proto | active | decaying | superseded
- tags TEXT, -- JSON array
- desired_sig TEXT, -- JSON, only for proto
- CHECK (ts_last &gt;= ts_first),
- UNIQUE (src_executor, src_version, dst_executor, dst_version, state)
-);
-CREATE INDEX idx_mnests_dst ON mnests(dst_executor);
-CREATE INDEX idx_mnests_src ON mnests(src_executor);
-CREATE INDEX idx_mnests_weight ON mnests(weight DESC);
-CREATE INDEX idx_mnests_state ON mnests(state);
-</code></pre>
-
-<h2>Table <code>events</code></h2>
-
-<p>
-Append-only, records every reinforcement or decay applied. Allows the
-weight trajectory of a mnest to be reconstructed and to be recomputed
-later if the formula changes.
-</p>
-
-<pre><code>CREATE TABLE events (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- mnest_id TEXT NOT NULL,
- ts TEXT NOT NULL,
- kind TEXT NOT NULL, -- reinforce | decay | state_change
- delta REAL, -- weight delta (NULL for state_change)
- new_state TEXT, -- only for state_change
- reason TEXT, -- e.g. "ager nightly", "synt approved"
- FOREIGN KEY (mnest_id) REFERENCES mnests(id)
-);
-CREATE INDEX idx_events_mnest ON events(mnest_id);
-CREATE INDEX idx_events_ts ON events(ts);
-</code></pre>
-
-<h2>Table <code>canonical_query_log</code></h2>
-<p><strong>Note (2026-07-02, ADR 0180)</strong>: this log no longer has an
-active writer — it was fed by the legacy planner, now gated; its role
-(memoizing canonical queries&rarr;tool) is absorbed by the engine's L0
-fastpath. The table stays documented for its historical rows; the adapter
-towards <code>/admin/changes</code> has been retired.</p>
-
-
-<p>
-A log of user requests in lemma form (ADR 0149). Every time the
-planner decides the first executor of a turn and produces a non-empty
-canonical request, a row is inserted or reinforced here: canonical
-query (lowercase condensed form), chosen tool, observed argument
-values. Today this table is <em>telemetry only</em>: the old matcher
-that re-read it to skip the planner has been retired because it is
-redundant with the engine's L0 level. The live request cache is now the
-<strong>fastpath</strong> (L0, same request) and the
-<strong>autopath</strong> (L1, generalised shape); see
-<a href="fast_path.html">fast_path.html</a>.
-</p>
-
-<pre><code>CREATE TABLE canonical_query_log (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- canonical_query TEXT NOT NULL,
- tool_name TEXT NOT NULL,
- args_shape TEXT NOT NULL, -- placeholder template (back-compat)
- args_observed TEXT, -- ACTUAL argument values
- uses INTEGER NOT NULL DEFAULT 1,
- ok_count INTEGER NOT NULL DEFAULT 0,
- fail_count INTEGER NOT NULL DEFAULT 0,
- ts_first TEXT NOT NULL,
- ts_last TEXT NOT NULL,
- state TEXT NOT NULL DEFAULT 'candidate',
- UNIQUE(canonical_query, tool_name, args_shape)
-);
-</code></pre>
-
-<p>
-The <code>args_observed</code> column (added via idempotent migration)
-stores the concrete argument values observed on the first planner pass:
-when a related request returns, the argument extractor
-(<code>args_extractor</code>) reuses them directly, avoiding re-running
-extraction or calling an LLM. The generalised plans for request
-clusters &mdash; the autopaths (L1) &mdash; live in a separate SQLite
-store (<code>autopath.sqlite</code>, tables <code>autopaths</code> and
-<code>anti_autopaths</code>); see <a href="fast_path.html">fast_path.html</a>
-for the full picture.
-</p>
-
-<h2>View <code>v_mnestome</code></h2>
-
-<p>
-The &laquo;live&raquo; graph for read queries. Excludes
-<code>superseded</code> and shows <code>active</code> + <code>proto</code>:
-</p>
-
-<pre><code>CREATE VIEW v_mnestome AS
-SELECT id, src_executor, src_version, dst_executor, dst_version,
- weight, uses, ts_last, state, tags, desired_sig
-FROM mnests
-WHERE state IN ('active', 'proto');
-</code></pre>
-
-<h1 id="cap5">5. Operations: insert, query, update</h1>
-
-<h2>Insert / reinforcement: <code>record_passing</code></h2>
-
-<p>
-The only write operation during a turn. Atomic per pair. Pseudocode:
-</p>
-
-<pre><code>def record_passing(src, dst, turn_ctx) -&gt; mnest_id:
- with conn.transaction:
- if dst.exists:
- row = SELECT * FROM mnests
- WHERE src_executor = src.name AND src_version = src.version
- AND dst_executor = dst.name AND dst_version = dst.version
- AND state = 'active'
- if row:
- w = decay(row.weight, now - row.ts_last, row.decay_lambda) + REINFORCE_DELTA
- UPDATE mnests SET weight = clamp01(w), uses = uses + 1, ts_last = now
- INSERT INTO events (mnest_id, ts, kind, delta, reason)
- VALUES (row.id, now, 'reinforce', REINFORCE_DELTA, turn_ctx.id)
- return row.id
- else:
- id = ulid
- INSERT INTO mnests (id, src_*, dst_*, weight, uses, ts_first, ts_last, state, tags)
- VALUES (id,..., BOOTSTRAP_WEIGHT, 1, now, now, 'active', tags)
- INSERT INTO events (mnest_id, ts, kind, delta, reason)
- VALUES (id, now, 'reinforce', BOOTSTRAP_WEIGHT, turn_ctx.id)
- return id
- else:
- # proto-mnest
- id = ulid
- desired = build_desired_signature(turn_ctx)
- INSERT INTO mnests (..., dst_executor=dst.desired_name, dst_version=NULL,..., state='proto', desired_sig=desired)
- return id
-</code></pre>
-
-<h2>Main queries</h2>
+<h1 id="cap4">4. Database schema</h1>
 
 <table>
-<thead><tr><th style="width:30%">Query</th><th>Use</th></tr></thead>
+<thead><tr><th>Object</th><th>Content</th></tr></thead>
 <tbody>
-<tr><td><code>top_k_outgoing(executor, k)</code></td><td>Given an executor, returns the <em>k</em> heaviest outgoing mnests.</td></tr>
-<tr><td><code>top_k_incoming(executor, k)</code></td><td>Given an executor, returns the <em>k</em> heaviest incoming mnests.</td></tr>
-<tr><td><code>walk(start, max_depth)</code></td><td>Weighted BFS from the starting node, up to a maximum depth. Used by the gateway to build the execution context.</td></tr>
-<tr><td><code>recurring_protos(min_uses, since)</code></td><td>List of proto-mnests that have crossed a recurrence threshold. Trigger of the synt.</td></tr>
-<tr><td><code>by_tag(tag)</code></td><td>All mnests with a given tag. Used by observability and the ager for clustering.</td></tr>
-<tr><td><code>decaying</code></td><td>Mnests in decaying state. Used by the ager for archival proposals.</td></tr>
+<tr><td><code>executors</code></td><td>Name, version, state, load time, and manifest hash. The current API does not populate it automatically.</td></tr>
+<tr><td><code>mnests</code></td><td>Edges, weights, uses, timestamps, states, tags, and desired signature.</td></tr>
+<tr><td><code>events</code></td><td>Reinforcements, decays, and state changes, with an optional <code>turn_id</code>.</td></tr>
+<tr><td><code>v_mnestoma</code></td><td>View of <code>active</code> and <code>proto</code> edges.</td></tr>
+<tr><td><code>canonical_query_log</code></td><td>Canonical query, tool, observed argument shape and values, counters, and outcome. It is telemetry separate from the graph.</td></tr>
 </tbody>
 </table>
 
-<h2>State updates</h2>
+<p>On open, idempotent migrations add <code>events.turn_id</code> and
+<code>canonical_query_log.args_observed</code> to older databases.</p>
 
-<p>
-State transitions are made by specific components (ager, synt, gateway
-in case of executor quarantine). All are accompanied by an
-<code>events</code> row with <code>kind = 'state_change'</code> and a
-mandatory <code>reason</code>; this is the principle of reversibility
-(ch. 14 of the Architecture): you do not change state without a trace
-of the why.
-</p>
+<h1 id="cap5">5. Writes and queries</h1>
 
-<h1 id="cap6">6. The ager: how decay operates</h1>
-
-<p>
-The <strong>ager</strong> is the process that applies decay and signals
-the state transitions that pure time requires. It runs once a day, in a
-night window (default: 04:00 local time), in a long but low-impact
-transaction:
-</p>
-
-<ol>
-<li><strong>Decay</strong>: for every <code>active</code> mnest, compute <code>weight_new = weight_old &middot; exp(-&lambda; &middot; &Delta;t)</code> where <code>&Delta;t</code> is the time elapsed since the last event. Update the weight and write a <code>decay</code>-kind <code>events</code> row.</li>
-<li><strong>Decay state</strong>: every mnest that falls below the <code>decay weight</code> threshold moves to <code>decaying</code>; it is signalled in the <em>proposals</em> channel to the gateway.</li>
-<li><strong>Archive proposal</strong>: every <code>decaying</code> mnest below <code>archive weight</code> with <code>ts_last &gt; 90 days</code> enters the list of archival proposals shown to Roberto.</li>
-<li><strong>Proto purge</strong>: every proto-mnest that falls below <code>min proto weight</code> is deleted (anti-noise).</li>
-<li><strong>Recurring proto detection</strong>: search proto-mnests with <code>uses &gt;= SYNTH_TRIGGER_USES</code> and <code>weight &gt;= SYNTH_TRIGGER_WEIGHT</code>; signal them to the synt as candidates for synthesis.</li>
-<li><strong>Snapshot</strong>: on the first of the month, copy the SQLite file into <code>workspace/.mnestoma/snapshots/YYYY-MM.sqlite</code>.</li>
-</ol>
-
-<p>
-The ager is a pure example of a component that only does
-<em>maintenance</em>: it does not modify the structure of mnests, does
-not create executors, does not speak to the user. It proposes; the
-deciders are synt + Roberto, or the archival policy that the gateway
-applies in the next turn.
-</p>
-
-<h1 id="cap7">7. Pruning, snapshots, archival</h1>
-
-<h2>Monthly snapshot</h2>
-
-<p>
-On the first of the month (UTC), the ager produces a snapshot of the
-live file:
-</p>
-
-<pre><code>workspace/.mnestoma/snapshots/2026-04.sqlite # current month
-workspace/.mnestoma/snapshots/2026-03.sqlite.zst # older, compressed
-workspace/.mnestoma/snapshots/2026-02.sqlite.zst...
-</code></pre>
-
-<p>
-The snapshot serves three purposes: rollback in case of corruption of
-the live file, historical analysis of the graph, trace for whoever
-wants to understand how Metnos &laquo;formed&raquo; over time.
-Snapshots older than 12 months are <code>.zst</code>-compressed but
-<em>never</em> deleted: history is a first-rate datum.
-</p>
-
-<h2>Live file pruning</h2>
-
-<p>
-The live file would stay up even when full, but for performance and
-cleanliness a periodic pruning helps:
-</p>
+<p>The main public operations are:</p>
 
 <ul>
-<li><code>superseded</code> and <code>archived</code> mnests are moved to a <code>mnests_archive</code> table after 90 days (still in the same SQLite file);</li>
-<li>the <code>events</code> table is partitioned by year (tables <code>events_2026</code>, <code>events_2027</code>,...). Only the current year is in the live schema; previous years move to a second SQLite file <code>events_history.sqlite</code>;</li>
-<li>SQLite's <code>VACUUM</code> runs monthly right after the snapshot.</li>
+ <li><code>record_passing()</code>: create or reinforce a mnest or proto;</li>
+ <li><code>transition_state()</code> and
+ <code>promote_proto_to_active()</code>: change state with an event;</li>
+ <li><code>top_k_outgoing()</code>, <code>top_k_incoming()</code>,
+ <code>walk()</code>, and <code>by_tag()</code>: query the graph;</li>
+ <li><code>recurring_protos()</code>, <code>decaying()</code>, and
+ <code>top_active()</code>: select operational sets;</li>
+ <li><code>events_for()</code>, <code>audit_recent()</code>, and
+ <code>stats()</code>: support inspection and audit;</li>
+ <li><code>record_canonical_query()</code>: update separate normalized-query
+ telemetry.</li>
 </ul>
 
-<h2>Executor archival</h2>
+<h1 id="cap6">6. Nightly ager</h1>
 
-<p>
-When an executor moves to <code>archived</code>, its mnests move to
-<code>superseded</code> with <code>reason = 'executor archived'</code>;
-they remain readable, are excluded from the <code>v_mnestome</code>
-view, and after 90 days move to the archive table.
-</p>
+<p>The scheduler installs the <code>nightly_aging</code> job at 03:30. It runs
+executor aging and <code>Mnestoma.apply_ager()</code> in sequence. The latter:</p>
 
-<h1 id="cap8">8. Linguistic variant: mnestome vs mnestoma</h1>
+<ol>
+ <li>decays <code>active</code> and <code>proto</code> edges with time;</li>
+ <li>moves below-threshold <code>active</code> edges to <code>decaying</code>;</li>
+ <li>counts <code>decaying</code> archive candidates;</li>
+ <li>deletes below-threshold protos;</li>
+ <li>counts protos that reached recurrence thresholds.</li>
+</ol>
 
-<p>
-The term has two normative forms:
-</p>
+<p>The job is idempotent for the same logical instant only if it is not repeated
+with an advancing timestamp: each run updates <code>ts_last</code> and writes
+events for decayed records.</p>
+
+<h1 id="cap7">7. Archiving and retention</h1>
+
+<p>The ager does not automatically archive <code>decaying</code> edges: it returns
+a <code>proposed_archive</code> count. The module has no routine that creates
+monthly snapshots, compresses annual copies, or includes the database in a backup.
+Those operations require an explicit external policy.</p>
+
+<p>The only automatic graph deletion performed by the ager concerns proto-mnests
+with weight below <code>0.05</code>. Their associated events are also removed by
+the foreign key's <code>ON DELETE CASCADE</code>.</p>
+
+<h1 id="cap8">8. Names in the two languages</h1>
+
+<p>Italian documentation uses <em>mnestoma</em>; English documentation uses
+<em>mnestome</em>. The Python module, class, and SQLite-directory name remain
+<code>mnestoma</code> in both languages. <em>Mnest</em> is the technical name of
+one edge and is not translated.</p>
+
+<h1 id="cap9">9. Bootstrap and population</h1>
+
+<p>On first open, the database is created with an empty schema. No hidden edge
+seed is installed, and the <code>Mnest</code> class does not admit a
+<code>seed</code> state. Edges appear only through explicit API calls or data
+already present in the configured database.</p>
+
+<p>Turns may instead add records to <code>canonical_query_log</code>. This
+activity must not be shown as the birth of mnests, clusters, or L0/L1 paths.</p>
+
+<h1 id="cap10">10. Inspection and observability</h1>
+
+<p><code>python3 -m mnestoma</code> provides commands for statistics, aging,
+top incoming/outgoing edges, protos, walks, summaries, and audit. The
+<code>python3 -m observability render</code> renderer can include counts, active
+edges, protos, and recent events in static HTML.</p>
+
+<p>These tools read store contents; they do not establish that those contents are
+complete. An empty mnestome is a legitimate outcome of the current integration.</p>
+
+<h1 id="cap11">11. Operational boundaries</h1>
+
 <ul>
-<li><strong>mnestome</strong> in English (biological suffix <em>-ome</em>, as in <em>microbiome</em>, <em>connectome</em>);</li>
-<li><strong>mnestoma</strong> in Italian (Latin suffix <em>-ma</em>, as in <em>diploma</em>, <em>poema</em>);</li>
-<li>the Greek root is shared: μνήστης / mn&#234;stis (the one who remembers).</li>
+ <li>The default path is
+ <code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>: its scope is the configured
+ workspace, not a user derived from the turn.</li>
+ <li>Do not put personal facts, credentials, or document contents in tags and
+ desired signatures.</li>
+ <li>Using the graph for per-user decisions would require explicit ownership,
+ authorization, and filtering; the current schema does not represent them.</li>
+ <li>The composer can only propose recorded chains: catalog, signatures, policy,
+ arguments, and guards remain independent constraints.</li>
+ <li>The operational contract is defined by
+ <code>runtime/mnestoma.py</code>, <code>runtime/synt.py</code>,
+ <code>runtime/jobs/maintenance_tasks.py</code>, and
+ <code>runtime/observability.py</code>.</li>
 </ul>
 
-<p>
-The double form is intentional and to be preserved. Translating
-<em>mnestoma</em> into <em>mnestome</em> in English gives the English
-reader the right reflex (the biological suffix evokes an emergent
-graph, like the microbiome). Translating <em>mnestome</em> into
-<em>mnestoma</em> in Italian follows the phonetic rule that avoids
-suffixes felt as incongruous (<em>mnestome</em> in Italian would sound
-like a verbal imperative, &laquo;you, memorise!&raquo;).
-</p>
-
-<h1 id="cap9">9. Bootstrap: the first mnestome</h1>
-
-<p>
-At first boot, the mnestome is empty. The question &laquo;then where
-do we start?&raquo; has three concrete answers:
-</p>
-
-<ol>
-<li><strong>Start empty.</strong> For most instances, the mnestome is empty at first boot and forms over a month of use. It is slow but correct: the user's specificity enters the graph's shape immediately.</li>
-<li><strong>Minimal seed (recommended).</strong> A seed of 12-15 known mnests, hard-coded in the repo, wires the most common passings between seed executors (e.g. <em>read_files &rarr; read_files_pdf</em>, <em>get_urls &rarr; render_texts</em>). They have <code>state = 'seed'</code> to distinguish them and weight <code>BOOTSTRAP_WEIGHT</code> (see <a href="mnest.html#cap6">mnest.html ch. 6</a>).</li>
-<li><strong>Import from snapshot.</strong> For migrations or sharing (future), a clean snapshot can be imported. Import goes through validation: the cited executors must exist and be signed.</li>
-</ol>
-
-<h1 id="cap10">10. Observability and debugging</h1>
-
-<p>
-The user can inspect the mnestome from the CLI (via the
-<code>Metnos mnestome</code> command):
-</p>
-
-<pre><code>Metnos mnestome list # all active mnests
-Metnos mnestome list --tag invoice # filtered by tag
-Metnos mnestome top 20 # the 20 heaviest
-Metnos mnestome graph executor read_files # neighbourhood of an executor
-Metnos mnestome proto # current proto-mnests
-Metnos mnestome history mn_a1b2c3d4e5f6... # event history of a mnest
-Metnos mnestome snapshot --month 2026-03 # opens the monthly snapshot
-</code></pre>
-
-<p>
-The web dashboard has a graphical view of the same
-content, with filters and drill-down. The transparency rule: the user
-can always know what Metnos thinks it knows.
-</p>
-
-<h1 id="cap11">11. Open questions</h1>
-
-<ol>
-<li><strong>Write concurrency.</strong> The gateway is a single process, so writes are naturally serial. With <a href="remote_executors.html">remote executors</a>, the gateway stays unique but calls may arrive from multiple turns in parallel. Is SQLite WAL enough? Open.</li>
-<li><strong>Schema migration.</strong> The SQLite file lives long. How do we manage schema migrations across Metnos versions? Numbered declarative migrations, Alembic-style? Open.</li>
-<li><strong>Snapshot privacy.</strong> Monthly snapshots contain executor names and tags, but no contents. The privacy surface is low, but if one wanted to share a snapshot for debug, a tag redaction function would be useful. To be designed if needed.</li>
-<li><strong>Integration with episodic memory.</strong> The mnestome and the episodic memory of conversations are kept separate by design (ch. 3). Does it make sense to have an explicit cross-reference (a mnest citing the turn_id that generated it)? The inverse (a turn citing the mnests it reinforced) is already in the audit. Open.</li>
-</ol>
-
-<hr>
-
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
- <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">first in the triad</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The node of the mnestome.</div>
- </a>
- <a href="mnest.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">second in the triad</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnest</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The edge of the mnestome.</div>
- </a>
- <a href="index.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">level 1</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architecture, ch. 9</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">The big picture.</div>
- </a>
- <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">index</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microdesign</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">All docs.</div>
- </a>
-</div>
-
-<hr>
-<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>mnestome</em> microdesign <br>
-New canonical doc.
-</p>
 </body>
 </html>

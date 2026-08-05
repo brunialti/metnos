@@ -60,7 +60,7 @@
 
   <url>
     <loc>https://metnos.com/en/Metnos_QuickTour</loc>
-    <lastmod>2026-07-23</lastmod>
+    <lastmod>2026-07-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
@@ -68,7 +68,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/Metnos_QuickTour</loc>
-    <lastmod>2026-07-23</lastmod>
+    <lastmod>2026-07-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_QuickTour"/>
@@ -164,11 +164,11 @@
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1"/>
   </url>
 
-  <!-- Manuale di architettura e contratti dei componenti -->
+  <!-- Guida all'architettura e contratti dei componenti -->
 
   <url>
     <loc>https://metnos.com/en/architecture/</loc>
-    <lastmod>2026-07-16</lastmod>
+    <lastmod>2026-07-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -176,7 +176,7 @@
   </url>
   <url>
     <loc>https://metnos.com/it/architecture/</loc>
-    <lastmod>2026-07-16</lastmod>
+    <lastmod>2026-07-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/"/>
@@ -370,6 +370,26 @@
     <priority>0.6</priority>
     <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/virtualization"/>
     <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/virtualization"/>
+  </url>
+
+  <!-- Tutor: fonti firmate, osservazioni correnti, consegna e riscontro privato -->
+  <url>
+    <loc>https://metnos.com/en/architecture/tutor</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor"/>
+  </url>
+  <url>
+    <loc>https://metnos.com/it/architecture/tutor</loc>
+    <lastmod>2026-07-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/tutor"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/tutor"/>
   </url>
 
   <!-- Contratti dei componenti: agent_runtime, scratchpad, grammar -->

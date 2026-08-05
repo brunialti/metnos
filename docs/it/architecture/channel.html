@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; channel (tested)</title>
- <meta name="description" content="Microprogettazione del canale di Metnos: l'adattatore Channel che converte un'interfaccia esterna (CLI, Telegram, voce) in un flusso di messaggi parlato al runtime. Telegram come prima implementazione concreta, daemon, persistenza offset, systemd unit.">
- <meta name="keywords" content="channel, protocol, telegram, daemon, long-poll, send, metnos, microprogettazione">
+ <title>Metnos &mdash; channel</title>
+ <meta name="description" content="Guida tecnica ai canali di Metnos: chat web, API HTTP, adattatore Telegram, daemon, persistenza dell'offset, identità e pulsanti interattivi.">
+ <meta name="keywords" content="channel, protocol, telegram, chat web, daemon, long-poll, identità, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/channel">
@@ -14,7 +14,7 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/channel">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/channel">
- <meta property="og:title" content="Metnos &mdash; channel (tested)">
+ <meta property="og:title" content="Metnos &mdash; channel">
  <meta property="og:description" content="Adattatore canale e implementazione Telegram (send + long-poll + daemon + persistenza offset + systemd unit).">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
@@ -23,7 +23,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — channel ",
- "description": "Microprogettazione canale: Protocol, InboundMessage/OutboundMessage, TelegramChannel, ChannelDaemon, persistenza offset, systemd unit. Stato: tested.",
+ "description": "Guida tecnica ai canali: chat web e API HTTP, Channel Protocol, TelegramChannel, ChannelDaemon, persistenza dell'offset e identità per utente.",
  "url": "https://metnos.com/it/architecture/channel.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -55,7 +55,7 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
  </style>
@@ -73,7 +73,7 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">channel</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">channel</strong></span>
  </div>
 </div>
 
@@ -81,83 +81,83 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
  <h1>Metnos</h1>
  <div class="subtitle"><code>channel</code> &mdash; come Metnos riceve e risponde dal mondo</div>
  <div class="meta">
- Microprogettazione<br>
- Pubblico: chi vuole capire come si aggiunge un'interfaccia conversazionale.<br>
+ Guida ai canali conversazionali<br>
  </div>
 </div>
-<div class="status-banner">
+<p class="lead">I canali traducono browser, API HTTP e Telegram nello stesso
+contratto di messaggi del runtime. Identit&agrave;, livello di autonomia, stato del
+dialogo e destinazione della risposta restano associati all'utente e al canale
+autenticati: un messaggio non eredita il contesto di un'altra persona.</p>
 
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>channels</code> e' realizzata e testata a livello di modulo. Supporta multi-user: comando <code>/start &lt;token&gt;</code> per pairing dei guest, <code>send_to(chat_id, OutboundMessage)</code> e ripiego multi-utente sul pairing senza riga in <code>pairings.db</code>.
-Da affiancare ad <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>: <strong>Telegram resta il canale primario per il dialogo</strong>; HTTP (porta 8770) e' il canale alternativo per cruscotto host, automazioni curl/script e client Rust remoto.
-Riferimento di implementazione: <code>/opt/metnos/runtime/channels/</code>.
-</div>
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Invia a Lucia su Telegram il riepilogo dell'incontro di oggi&raquo;.
+Metnos risolve il nome attraverso i canali associati all'utente: non occorre
+conoscere o inserire il <code>chat_id</code> di Telegram. L'invio resta soggetto
+ai controlli previsti per chi lo richiede e per il destinatario.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
  <li><a href="#cap1">Cosa fa: l'adattatore canale</a></li>
  <li><a href="#cap2">Il <code>Protocol</code> e i tipi</a></li>
- <li><a href="#cap3">Telegram come prima implementazione</a></li>
+ <li><a href="#cap3">Il canale Telegram</a></li>
  <li><a href="#cap4">Long-poll e persistenza dell'offset</a></li>
  <li><a href="#cap5">Daemon: il ciclo poll &rarr; run_turn &rarr; send</a></li>
- <li><a href="#cap6">Bottoni inline e carte di approvazione</a></li>
+ <li><a href="#cap6">Pulsanti inline e azioni interattive</a></li>
  <li><a href="#cap7">Rapporto col <code>pairing</code></a></li>
  <li><a href="#cap8">Distribuzione: systemd user unit</a></li>
- <li><a href="#cap9">HTTP come canale alternativo</a></li>
- <li><a href="#cap10">Limiti e sviluppi futuri</a></li>
+ <li><a href="#cap9">Chat web e API HTTP</a></li>
+ <li><a href="#cap10">Vincoli operativi</a></li>
 </ol>
 </div>
 
 <h1 id="cap1">1. Cosa fa: l'adattatore canale</h1>
 
 <p class="lead">
-Un <em>canale</em>, in Metnos, &egrave; un adattatore: converte un'interfaccia
-esterna (CLI locale, bot Telegram, voce, in futuro Signal) in un flusso di
-messaggi parlato al runtime, e restituisce le risposte indietro. Niente di
-piu'. Tutta la logica conversazionale &mdash; pianificazione, esecuzione,
-vaglio &mdash; vive nel runtime; il canale &egrave; un tubo bidirezionale.
+Un <em>canale</em> collega un'interfaccia conversazionale al runtime. La chat
+web invoca direttamente l'API HTTP; Telegram usa un adattatore con
+<em>long polling</em>. In entrambi i casi, il trasporto consegna testo,
+allegati e metadati autenticati, mentre il runtime gestisce pianificazione,
+esecuzione, dialoghi e controlli di sicurezza.
 </p>
 
  <figure>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
 <defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
 <rect x="10" y="70" width="170" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">Telegram</text>
-<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">long-poll</text>
+<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">chat web / Telegram</text>
+<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">richiesta / long polling</text>
 <rect x="198" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">adapter canale</text>
-<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">send / poll</text>
+<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">gateway del canale</text>
+<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">identità / messaggio</text>
 <rect x="386" y="70" width="170" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
-<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">agent runtime</text>
-<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">elabora il turno</text>
+<text x="471" y="94" text-anchor="middle" fill="#fff" font-weight="700">agent runtime</text>
+<text x="471" y="112" text-anchor="middle" fill="#fff" font-size="9.5">elabora il turno</text>
 <rect x="574" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
 <text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">risposta</text>
-<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">send_to(chat_id)</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ch)"/>
+<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">stesso canale</text>
+<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
 
 </svg>
-<figcaption>Figura 1 &mdash; L'adattatore di canale: Telegram in long-poll, normalizzazione in un'interfaccia uniforme, instradamento al runtime e risposta per chat.</figcaption>
+<figcaption>Figura 1 &mdash; Web e Telegram convergono sul runtime dopo la risoluzione dell'identit&agrave;; la risposta torna al canale che ha originato il turno.</figcaption>
 </figure>
 
 
 <p>
-La scelta di trattare il canale come adattatore (e non come modulo distinto
-per ciascuna integrazione) &egrave; quella che permette di partire con due
-canali (CLI + Telegram) e aggiungerne altri senza toccare il nucleo. Vedi
-cap.&nbsp;6 dell'Architettura:
-il canale sta nello strato 1 (Gateway), insieme all'autenticazione e al
-routing.
+Il contratto separa il trasporto dalla logica dell'agente. Il canale Telegram
+normalizza gli aggiornamenti in ingresso e le risposte in uscita; il server
+HTTP espone lo stesso runtime con un modello richiesta/risposta. In entrambi i
+casi l'identit&agrave; viene risolta prima di elaborare il contenuto.
 </p>
 
 <h1 id="cap2">2. Il <code>Protocol</code> e i tipi</h1>
 
 <p>
 In <code>runtime/channels/__init__.py</code> il canale &egrave; un
-<code>typing.Protocol</code> con due metodi minimi e una proprieta' nome.
-Niente classe base, niente eredita': qualunque oggetto che esponga la
+<code>typing.Protocol</code> con due metodi minimi e una propriet&agrave; <code>name</code>.
+Non servono una classe base o l'ereditariet&agrave;: qualunque oggetto che esponga la
 forma giusta &egrave; un canale.
 </p>
 
@@ -177,12 +177,12 @@ class Channel(Protocol):
 <tr>
 <td><code>InboundMessage</code></td>
 <td><code>channel</code>, <code>sender_id</code>, <code>text</code>, <code>message_id</code>, <code>received_at</code>, <code>extra</code></td>
-<td>Normalizzato: <code>sender_id</code> &egrave; sempre stringa anche dove il canale lo gestisce come int (Telegram <code>chat_id</code>). <code>extra</code> per metadata canale-specifici (es. <code>from</code>, <code>update_id</code>).</td>
+<td>Normalizzato: <code>sender_id</code> &egrave; sempre una stringa, anche dove il trasporto usa un intero (il <code>chat_id</code> di Telegram). <code>extra</code> contiene i metadati specifici del canale, per esempio <code>from</code> e <code>update_id</code>.</td>
 </tr>
 <tr>
 <td><code>OutboundMessage</code></td>
 <td><code>text</code>, <code>reply_to</code>, <code>buttons</code></td>
-<td><code>buttons</code> &egrave; <code>list[list[dict]]</code> (righe di bottoni) per i canali che la supportano. Su CLI viene ignorata.</td>
+<td><code>buttons</code> &egrave; <code>list[list[dict]]</code> (righe di pulsanti) per i trasporti che supportano azioni interattive.</td>
 </tr>
 </tbody>
 </table>
@@ -194,7 +194,7 @@ deliberata: un messaggio arrivato &egrave; un fatto storico, non un
 blocco di appunti.
 </p>
 
-<h1 id="cap3">3. Telegram come prima implementazione</h1>
+<h1 id="cap3">3. Il canale Telegram</h1>
 
 <p>
 <code>runtime/channels/telegram.py</code> implementa il protocol via Bot
@@ -209,7 +209,8 @@ niente IP pubblico.
 <ol>
 <li>Parametri di costruzione: <code>TelegramChannel(token=, default_chat_id=, credentials_path=, state_path=)</code>.</li>
 <li>Variabili d'ambiente: <code>TELEGRAM_BOT_TOKEN</code>, <code>TELEGRAM_CHAT_ID</code>.</li>
-<li>File <code>~/.config/metnos/credentials.env</code> (chmod&nbsp;600), formato dotenv.</li>
+<li>Archivio cifrato delle credenziali, domini <code>telegram_bot_token</code> e <code>telegram_chat_id_host</code>.</li>
+<li>File precedente <code>~/.config/metnos/credentials.env</code> (permessi&nbsp;600), usato solo come ripiego compatibile.</li>
 </ol>
 
 <p>Metodi:</p>
@@ -218,176 +219,192 @@ niente IP pubblico.
 <li><code>send(recipient, message)</code> &rarr; POST <code>sendMessage</code>
 verso <code>api.telegram.org</code>. Se <code>buttons</code>, costruisce
 un <code>inline_keyboard</code>. Ritorna <code>{ok, result?, error?, status_code?}</code>.</li>
-<li><code>poll(timeout_s=25)</code> &rarr; long-poll <code>getUpdates</code>
-con offset interno; restituisce solo i <code>message</code> e
-<code>edited_message</code> con campo <code>text</code>. I
-<code>callback_query</code> (bottoni cliccati) sono gestiti dal
-dispatcher dedicato (vedi cap.&nbsp;6 e 9).</li>
+<li><code>poll(timeout_s=25)</code> &rarr; <em>long polling</em> con
+<code>getUpdates</code> e offset interno; normalizza messaggi di testo, foto,
+posizione, <code>callback_query</code> e aggiornamenti senza contenuto
+azionabile. I pulsanti premuti vengono inoltrati al dispatcher descritto nel
+cap.&nbsp;6.</li>
 </ul>
 
 <h1 id="cap4">4. Long-poll e persistenza dell'offset</h1>
 
 <p>
-<code>getUpdates</code> &egrave; chiamato in modalita' long-poll: il
+<code>getUpdates</code> &egrave; chiamato in modalit&agrave; <em>long polling</em>: il
 server Telegram tiene aperta la connessione fino a 25&nbsp;secondi se non
 ci sono updates. Niente ciclo a vuoto, niente carico inutile, latenza minima
 quando un messaggio arriva.
 </p>
 
 <p>
-L'offset (l'<code>update_id</code> dell'ultimo update visto) e'
-mantenuto in memoria. Per resistere ai riavvii (systemd restart, crash,
-rilascio di nuovo codice) viene anche scritto su disco in
-<code>~/.local/state/metnos/telegram_offset</code>. Ciclo completo
-verificato in test (<code>telegram_offset_persistito_round_trip</code>);
-file corrotto torna a "offset = none" senza crash
-(<code>telegram_offset_state_corrotto_torna_none</code>).
+L'offset, cio&egrave; l'<code>update_id</code> dell'ultimo aggiornamento
+confermato, viene mantenuto in memoria e scritto su disco in
+<code>~/.local/state/metnos/telegram_offset</code>. La scrittura &egrave;
+atomica. Se il file &egrave; illeggibile o danneggiato, il canale riparte senza
+offset invece di interrompersi.
 </p>
 
 <p>
 La persistenza &egrave; opzionale: <code>state_path=False</code> la
-disabilita (utile in test). Senza persistenza, dopo un riavvio il bot
-rivede gli ultimi messaggi pendenti su Telegram e rischia la doppia
-risposta. Con persistenza, il primo poll dopo il riavvio parte da
-<code>offset = ultimo_visto + 1</code> e Telegram non riconsegna i
-messaggi gia' confermati.
+disabilita, principalmente nei test. Il daemon conferma un aggiornamento
+tramite <code>ack()</code> soltanto dopo averlo gestito. Se la gestione o la
+scrittura dell'offset fallisce, quell'aggiornamento non viene confermato e
+pu&ograve; essere riconsegnato al ciclo successivo.
 </p>
 
 <h1 id="cap5">5. Daemon: il ciclo poll &rarr; run_turn &rarr; send</h1>
 
 <p>
 <code>runtime/channels/daemon.py</code> contiene <code>ChannelDaemon</code>:
-un singolo processo che cicla
-<em>poll &rarr; per ogni messaggio: handle &rarr; (run_turn) &rarr; send</em>.
-Niente threading. Le chiamate a <code>run_turn</code> sono sincrone.
-Latenza tipica per turno locale: 2-15&nbsp;s.
+un processo che esegue in sequenza
+<em>poll &rarr; per ogni messaggio: handle &rarr; run_turn &rarr; send</em>.
+Le chiamate a <code>run_turn</code> sono sincrone. Lo stesso processo pu&ograve;
+avviare, in un thread separato, il listener HTTP destinato agli executor
+remoti; questo non rende concorrente l'elaborazione dei messaggi Telegram.
 </p>
 
 <p>
-Il daemon non &laquo;sa&raquo; che il canale &egrave; Telegram: lavora
-sul <code>Channel</code> Protocol. Quando arriva Signal, lo stesso
-daemon parte con un'istanza diversa.
+<code>ChannelDaemon</code> lavora sul <code>Channel</code> Protocol; le parti
+specifiche di Telegram, come download degli allegati e risposta ai callback,
+restano nell'adattatore o nei relativi dispatcher.
 </p>
 
-<p>Disciplina di errore (test <code>daemon_run_turn_eccezione_non_crasha_loop</code>):</p>
+<p>Disciplina di errore:</p>
 
 <ul>
 <li><strong>Eccezione di <code>poll</code></strong>: log + sleep 5&nbsp;s
 + riprova al tick successivo. Niente crash.</li>
-<li><strong>Eccezione di <code>run_turn</code></strong>: cattura,
-risposta al mittente con <em>(errore interno:...)</em>, daemon prosegue.</li>
+<li><strong>Eccezione durante la gestione</strong>: l'errore viene registrato,
+l'aggiornamento non viene confermato e il resto del gruppo corrente non viene
+elaborato; Telegram potr&agrave; riconsegnarlo. I dettagli interni non vengono
+mostrati all'utente.</li>
 <li><strong>Eccezione di <code>send</code></strong>: catturata da
 <code>TelegramChannel._call</code>, ritorna dict <code>{ok: False, error}</code>.
-Il turno e' gia' chiuso lato runtime, l'utente deve riprovare.</li>
+Il fallimento viene registrato e il daemon applica i percorsi di consegna di
+ripiego previsti per la risposta.</li>
 </ul>
 
-<p>Modi (CLI <code>python3 -m channels.daemon</code>):</p>
+<p>Opzioni del comando <code>./.venv/bin/python -m runtime.channels.daemon</code>,
+eseguito dalla radice del repository:</p>
 
 <ul>
-<li><code>--dry-run</code>: logga le risposte ma non le invia. Utile per
-osservare il comportamento del runtime senza effetti reali.</li>
-<li><code>--no-bootstrap</code>: disabilita l'auto-pair del
-<code>default_chat_id</code> (cap.&nbsp;7). Serve per setup
-multi-utente, dove anche Roberto si pair esplicitamente con un codice.</li>
+<li><code>--channel telegram</code>: seleziona l'adattatore; Telegram &egrave;
+l'unico valore disponibile.</li>
+<li><code>--dry-run</code>: elabora il turno e registra la risposta, ma non
+invia la risposta finale sul canale. Non &egrave; una sandbox: <code>run_turn</code>
+viene comunque eseguito e gli executor possono produrre effetti.</li>
+<li><code>--no-bootstrap</code>: disabilita l'associazione automatica del
+<code>default_chat_id</code> (cap.&nbsp;7), cos&igrave; anche l'utente host deve
+completare un'associazione esplicita.</li>
+<li><code>--no-agent-server</code>: non avvia il listener HTTP per gli executor
+remoti. Senza questa opzione il listener parte in un thread separato su
+<code>127.0.0.1:8765</code>.</li>
+<li><code>--agent-host</code> e <code>--agent-port</code>: cambiano indirizzo e
+porta del listener per executor remoti.</li>
 <li><code>-v</code>: log a livello DEBUG.</li>
 </ul>
 
-<h1 id="cap6">6. Bottoni inline e carte di approvazione</h1>
+<h1 id="cap6">6. Pulsanti inline e azioni interattive</h1>
 
 <p>
-<code>OutboundMessage.buttons</code> e' una matrice <code>list[list[dict]]</code>.
+<code>OutboundMessage.buttons</code> &egrave; una matrice <code>list[list[dict]]</code>.
 Ogni dict ha <code>text</code> e <code>data</code>; <code>data</code>
-finisce nel <code>callback_data</code> del bottone Telegram.
+finisce nel <code>callback_data</code> del pulsante Telegram.
 </p>
 
 <p>
-La componente che produce le carte di approvazione e' in
-<code>runtime/channels/approval.py</code>:
-<code>render_approval_card(ApprovalRequest)</code> restituisce un
-<code>OutboundMessage</code> con la &laquo;carta a 3 righe&raquo; del
-dialog manager (vedi <a href="approval_ux.html">approval_ux</a>). Tre forme
-modulate per ricorrenza:
+Il valore di <code>callback_data</code> identifica semanticamente l'azione e
+non dipende dal testo visualizzato. Il daemon gestisce attualmente:
 </p>
 
 <ul>
-<li><strong>Full</strong> (3 righe, default per richieste rare): domanda
-imperativa + oggetto/sorgente/destinazione + classe e reversibilita'.</li>
-<li><strong>Medium</strong> (2 righe, per richieste viste 3-7 volte):
-domanda con meta inline + oggetto.</li>
-<li><strong>Short</strong> (1 riga, per richieste viste 8+ volte): forma
-compatta da bottone.</li>
+<li><code>dlg:</code> per le risposte ai passaggi di un dialogo guidato;</li>
+<li><code>cap:</code> per approvazioni amministrative o richieste da confermare;</li>
+<li><code>promoter:</code> e <code>sched:</code> per proposte e attivit&agrave; pianificate;</li>
+<li><code>loc_cancel</code> per annullare una richiesta di posizione;</li>
+<li><code>approve:</code> e <code>reject:</code> per richieste precedenti ancora
+registrate nell'archivio delle approvazioni.</li>
 </ul>
 
 <p>
-Il <em>dispatching</em> dei callback
-(cliccare "Approva" risolve il <code>token</code> in una richiesta in attesa
-e applica la decisione) e' gestito dal daemon tramite
-<code>approval_registry.resolve</code> (vedi <a href="approval_ux.html">approval_ux</a>).
+Le etichette dei pulsanti sono localizzate nella lingua dell'utente. Prima di
+applicare una decisione, il daemon verifica l'identit&agrave; associata al canale
+e la propriet&agrave; dello stato pendente; possedere o inoltrare un valore di
+callback non concede alcuna autorizzazione. Le approvazioni e i dialoghi sono
+monouso e soggetti a scadenza. Per il contratto dell'interazione vedi
+<a href="approval_ux.html">approvazioni e controllo umano</a>.
 </p>
 
 <h1 id="cap7">7. Rapporto col <code>pairing</code></h1>
 
 <p>
-Il daemon non accetta messaggi da chiunque. Per ogni
-<code>InboundMessage</code> consulta <code>pairing.get_pairing(channel, sender_id)</code>
-(vedi <a href="pairing.html">pairing</a>):
+Il daemon non accetta messaggi da chiunque. Prima di elaborare un
+<code>InboundMessage</code> risolve il legame fra canale, identificativo del
+mittente e utente Metnos. Consulta il registro di <code>pairing</code> e, per
+le associazioni multiutente, il registro degli utenti (vedi
+<a href="pairing.html">pairing</a>):
 </p>
 
 <ul>
-<li>Se il sender e' <em>pairato</em>: il daemon procede con
-<code>run_turn</code>, salvo il caso <code>autonomy_level == "ReadOnly"</code>
-in cui risponde con un messaggio cortese e non esegue azioni
-(<code>LEVEL_BLOCKS_RUN</code> in <code>daemon.py</code>).</li>
-<li>Se il sender e' <em>il default_chat_id e nessun altro pairing
-esiste su quel canale</em>: <strong>bootstrap automatico</strong> a
-<code>Full</code> (<code>_try_bootstrap</code>). Senza questo,
-all'installazione Roberto dovrebbe generarsi un codice da solo &mdash;
-passaggio inutile in dev.</li>
-<li>Altrimenti: rifiuta con &laquo;non ti riconosco; chiedi a Roberto un
-codice di pairing&raquo; (costante <code>UNPAIRED_REPLY</code>).</li>
+<li>Se il mittente &egrave; <em>associato</em>, il daemon applica la lingua e
+l'identit&agrave; dell'utente. Con <code>autonomy_level == "ReadOnly"</code> pu&ograve;
+ancora rispondere alle richieste informative riconosciute dal Tutor, ma non
+avvia un turno operativo (<code>LEVEL_BLOCKS_RUN</code> in
+<code>daemon.py</code>).</li>
+<li>Se il mittente &egrave; il <code>default_chat_id</code> e nessun altro pairing
+esiste su quel canale: <strong>bootstrap automatico</strong> a
+<code>Full</code> (<code>_try_bootstrap</code>). L'opzione
+<code>--no-bootstrap</code> disabilita questo comportamento.</li>
+<li>Altrimenti, il messaggio non viene eseguito e il canale restituisce le
+istruzioni localizzate per completare l'associazione.</li>
 </ul>
 
 <p>
-Il comando <code>/pair &lt;codice&gt;</code> sul canale e' intercettato
-<em>prima</em> del check di pairing &mdash; e' la sua ragione d'essere.
-Ogni messaggio di chi e' pairato aggiorna anche il
-<code>last_seen</code> via <code>pairing.touch_last_seen</code>, utile
-per audit e per rilevare account dormienti da revocare.
+I comandi <code>/pair &lt;codice&gt;</code> e <code>/start &lt;token&gt;</code>
+sono intercettati <em>prima</em> del controllo di associazione, cos&igrave; possono
+essere usati da un mittente non ancora riconosciuto. Il primo consuma un
+codice firmato con un livello di autonomia; il secondo consuma il token
+monouso e a scadenza emesso dalla gestione utenti. Ogni messaggio di chi
+&egrave; associato aggiorna anche <code>last_seen</code> tramite
+<code>pairing.touch_last_seen</code>.
 </p>
 
 <h1 id="cap8">8. Distribuzione: systemd user unit</h1>
 
 <p>
-Il daemon gira come <em>user unit</em>, non come servizio di sistema:
-nessun root, nessun privilegio. Il file template e' in
-<code>/opt/metnos/systemd/metnos-telegram-daemon.service</code>.
-Misure di sicurezza esplicite:
+Il daemon viene distribuito come <em>user unit</em> ed &egrave; quindi eseguito con
+l'identit&agrave; dell'utente che ha installato Metnos, non come <code>root</code>.
+La sorgente canonica &egrave;
+<code>install/units/metnos-telegram-daemon.service.tmpl</code>; l'installatore
+la rende in <code>~/.config/systemd/user/metnos-telegram-daemon.service</code>
+soltanto quando Telegram &egrave; stato configurato.
 </p>
 
 <ul>
-<li><code>NoNewPrivileges=true</code></li>
-<li><code>ProtectSystem=strict</code> + <code>ReadWritePaths</code>
-limitati a <code>~/.local/state/metnos</code> e <code>~/.local/share/metnos</code></li>
-<li><code>PrivateTmp=true</code>, <code>ProtectKernelTunables</code>,
-<code>ProtectKernelModules</code>, <code>ProtectControlGroups</code>,
-<code>RestrictNamespaces</code>, <code>RestrictRealtime</code>,
-<code>LockPersonality</code></li>
-<li>Output su journald: <code>journalctl --user -u metnos-telegram-daemon -f</code></li>
+<li><code>ExecStart</code> usa l'ambiente virtuale dell'installazione e avvia
+<code>runtime.channels.daemon</code> dalla radice del repository.</li>
+<li>Le directory di dati, configurazione e stato e la lingua scelta sono
+passate con variabili d'ambiente rese dall'installatore.</li>
+<li>La unit &egrave; parte di <code>metnos.target</code> e viene avviata dopo il
+server HTTP.</li>
+<li><code>Restart=on-failure</code>, con attesa di 10 secondi prima di un
+nuovo tentativo.</li>
+<li>L'output va nel journal dell'utente:
+<code>journalctl --user -u metnos-telegram-daemon.service -f</code>.</li>
 </ul>
 
 <p>
-<code>Restart=on-failure</code> con backoff 5s. Il <em>linger</em> del
-user e' necessario perche' il servizio resti attivo senza login
-interattivo: <code>loginctl enable-linger $USER</code> (sudo richiesto
-la prima volta). Il <code>README</code> in
-<code>/opt/metnos/systemd/README.md</code> ha la procedura completa.
+Per mantenere i servizi utente attivi dopo il logout e fra i riavvii, un
+amministratore del sistema pu&ograve; abilitare una volta il <em>linger</em> per
+l'utente del servizio: <code>sudo loginctl enable-linger "$USER"</code>.
+La gestione dell'intero gruppo di servizi &egrave; descritta in
+<code>systemd/README.md</code>.
 </p>
 
-<h1 id="cap9">9. HTTP come canale alternativo</h1>
+<h1 id="cap9">9. Chat web e API HTTP</h1>
 
 <p>
-Accanto a Telegram, Metnos espone un secondo server HTTP sulla
-porta 8770. Sul versante agente le rotte principali sono
+La chat web comunica con il server HTTP di Metnos sulla porta 8770. Sul
+versante agente le rotte principali sono
 <code>POST /agent/turn</code> (esegue <code>run_turn</code>, in SSE o JSON),
 <code>GET /agent/devices/me</code>, <code>GET /agent/health</code> e
 <code>GET /.well-known/metnos.json</code>. Per l'elenco completo vedi
@@ -395,14 +412,14 @@ porta 8770. Sul versante agente le rotte principali sono
 </p>
 
 <p>
-Il rapporto fra <code>channel</code> e <code>http_api</code> e'
+Il rapporto fra <code>channel</code> e <code>http_api</code> è
 deliberato:
 </p>
 
 <ul>
-<li><strong>Telegram</strong> &mdash; canale primario di dialogo. Long-poll, orientato al mobile, esperienza d'uso consolidata.</li>
-<li><strong>HTTP</strong> &mdash; canale alternativo per <em>(a)</em> cruscotto host nel browser, <em>(b)</em> client Rust su PC pairato, <em>(c)</em> automazioni curl/script. <code>run_turn</code> riceve <code>channel="http"</code> e passa per gli stessi gate (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) di Telegram.</li>
-<li><strong>Niente HTTPChannel formale</strong>: il modello poll-based dei <code>channels</code> e' incompatibile con request/response. <code>POST /agent/turn</code> chiama <code>run_turn</code> direttamente.</li>
+<li><strong>Telegram</strong> &mdash; interfaccia mobile basata su <em>long polling</em>, con pulsanti, posizione, foto e consegna di documenti.</li>
+<li><strong>HTTP</strong> &mdash; interfaccia per la chat nel browser, client associati e automazioni autorizzate. <code>run_turn</code> riceve <code>channel="http"</code> e passa per gli stessi controlli (<a href="vaglio.html">vaglio</a>, <a href="policy.html">policy</a>) di Telegram.</li>
+<li><strong>Nessun <code>HTTPChannel</code> formale</strong>: il modello basato su polling del <code>Channel</code> Protocol non corrisponde al modello richiesta/risposta. <code>POST /agent/turn</code> chiama quindi <code>run_turn</code> direttamente.</li>
 </ul>
 
 <p>
@@ -414,37 +431,20 @@ risolve via <code>users.resolve_recipients</code>, vaglio cross-user
 applicato per non-host.
 </p>
 
-<h1 id="cap10">10. Limiti e sviluppi futuri</h1>
+<h1 id="cap10">10. Vincoli operativi</h1>
 
 <ul>
-<li><strong>Un canale per processo</strong>: il daemon gestisce un solo
-canale alla volta. Per CLI + Telegram in parallelo servono due istanze
-(due unit systemd). Adeguato per ora; un'astrazione multi-canale piu'
-ricca arriva quando ci saranno tre o piu' canali attivi.</li>
-
-<li><strong>Callback dispatcher attivo</strong>: i bottoni inline si
-renderizzano (cap.&nbsp;6) e il dispatcher nel daemon risolve
-i clic tramite <code>approval_registry.resolve</code> (vedi
-<a href="approval_ux.html">approval_ux</a>).</li>
-
-<li><strong>Niente file, voce o foto</strong>: solo testo. <code>poll</code>
-filtra esplicitamente i messaggi che non hanno <code>text</code>. Le
-foto saranno trattate scaricando l'allegato in
-<code>workspace/inbox/</code> e passando il path al runtime; le note
-vocali con <code>whisper.cpp</code> locale (cap.&nbsp;4 Architettura,
-principio open-source first).</li>
-
-<li><strong>Niente webhook</strong>: solo long-poll. I webhook richiederebbero
-un IP pubblico o un proxy &mdash; e Metnos sceglie di non averli.</li>
-
-<li><strong>Limitazione di frequenza</strong>: nessuna. Telegram limita i bot a
-~30&nbsp;msg/s sul piano gratuito; per ora siamo largamente sotto. Se
-servisse, basta un secchiello a gettoni (token bucket) a livello <code>send</code>.</li>
-
-<li><strong>Nessun limite di frequenza per mittente</strong>: un mittente pairato puo'
-inondare il daemon. Con il vaglio attivo questo
-diventa rilevante; per ora la cardinalita' di pairing &egrave; bassa
-(uno o pochi familiari).</li>
+<li><strong>Identit&agrave; prima del contenuto.</strong> Il canale risolve utente e
+livello di autonomia dai dati autenticati del trasporto; il testo del messaggio non
+pu&ograve; dichiararsi host o cambiare destinatario.</li>
+<li><strong>Stato separato.</strong> Dialoghi pendenti, approvazioni, conversazioni e
+storico sono circoscritti per utente e canale. Il passaggio fra dispositivi web
+trasferisce una conversazione solo dopo una scelta esplicita.</li>
+<li><strong>Funzioni dipendenti dal trasporto.</strong> Testo, allegati, posizione e
+pulsanti vengono esposti soltanto quando il canale li supporta. Un contenuto non
+riconosciuto produce un esito esplicito, non viene reinterpretato come testo.</li>
+<li><strong>Consegna esplicita.</strong> Una risposta resta sul canale che ha originato
+il turno, salvo una destinazione diversa autorizzata e dichiarata.</li>
 </ul>
 
 </body>

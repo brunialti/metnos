@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Metnos — Prospettive e giudizio v1.1</title>
     <meta name="description" content="Valutazione del progetto Metnos attraverso prospettive agentiche, psicologiche, UI e AI/ML, con criteri espliciti di utilità, intelligenza e autonomia.">
+    <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
     <link rel="alternate" hreflang="it" href="https://metnos.com/it/Metnos_Prospettive_Giudizio_v1">
     <link rel="alternate" hreflang="en" href="https://metnos.com/en/Metnos_Perspectives_Judgement_v1">
@@ -52,11 +53,6 @@ pre { background: var(--code-bg); border: 1px solid var(--border); border-radius
 code { font-family: Consolas, 'Courier New', monospace; }
 p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 
-.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }
-.callout.note { background: var(--note-bg); border-color: var(--note-border); }
-.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }
-.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }
-.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }
 
 .title-page { text-align: center; padding: 120px 0 60px; page-break-after: always; }
 .title-page h1 { font-size: 36pt; border: none; margin: 0; page-break-before: avoid; }
@@ -117,9 +113,9 @@ li { margin-bottom: 4px; }
 <body>
 <!-- lang-switch -->
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/" hreflang="it" lang="it">IT</a>
+<a href="/it/Metnos_Prospettive_Giudizio_v1.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
-<a href="/en/" hreflang="en" lang="en">EN</a>
+<a href="/en/Metnos_Perspectives_Judgement_v1.html" hreflang="en" lang="en">EN</a>
 </nav>
 
 
@@ -132,13 +128,11 @@ li { margin-bottom: 4px; }
 
 <div class="title-page">
     <h1>Metnos</h1>
-    <div class="subtitle">Prospettive &amp; Giudizio</div>
+    <div class="subtitle">Prospettive e giudizio</div>
     <div class="meta">
-        Versione 1.1 &mdash; 22 aprile 2026 · <em>v1.1 aggiunge §7-bis sulla proattività come lente trasversale</em><br>
-        Il design di Metnos analizzato da <strong>quattro ottiche esperte</strong> (programmazione<br>
-        agentica, psicologia, UI, AI) e pesato contro quattro obiettivi: <strong>utile, intelligente, autonomo, proattivo</strong>.<br>
-        <br>
-        Pubblico: chi deve prendere decisioni di priorità. Chiude il ciclo di design della fase 0.
+        Criteri per valutare utilità, affidabilità, autonomia e iniziativa.<br>
+        Le decisioni operative correnti sono documentate nella
+        <a href="architecture/index.html">Guida all'architettura</a>.
     </div>
 </div>
 
@@ -146,453 +140,240 @@ li { margin-bottom: 4px; }
 <h2>Indice</h2>
 <ol>
     <li><a href="#cap1">Scopo e metodo</a></li>
-    <li><a href="#cap2">I quattro aggettivi: utile, intelligente, autonomo, proattivo</a></li>
-    <li><a href="#cap3">Quattro prospettive in sintesi</a></li>
-    <li><a href="#cap4">Giudizio consolidato: 24 critiche, cinque verdetti</a></li>
-    <li><a href="#cap5">Le sette critiche bloccanti (accettate)</a></li>
-    <li><a href="#cap6">Le tensioni insanabili</a></li>
-    <li><a href="#cap7">L'osservazione chiave: autonomia e proattività sono emergenti</a></li>
-    <li><a href="#cap7b">7-bis. La lente proattiva: come rilegge le sette bloccanti</a></li>
-    <li><a href="#cap8">Piano di lavoro aggiornato</a></li>
+    <li><a href="#cap2">Quattro qualità da non confondere</a></li>
+    <li><a href="#cap3">Le prospettive di valutazione</a></li>
+    <li><a href="#cap4">Come formulare un giudizio</a></li>
+    <li><a href="#cap5">Sette condizioni non negoziabili</a></li>
+    <li><a href="#cap6">Tensioni che non scompaiono</a></li>
+    <li><a href="#cap7">Autonomia e proattività sono proprietà del mandato</a></li>
+    <li><a href="#cap7b">La lente proattiva</a></li>
+    <li><a href="#cap8">Uso pratico del giudizio</a></li>
 </ol>
 </div>
 
-
 <h1 id="cap1">1. Scopo e metodo</h1>
 
-<p class="lead">
-Il design d'insieme di Metnos era abbastanza maturo per una revisione critica.
-L'ho sottoposto a quattro ottiche esperte (programmazione agentica, psicologia,
-UI, AI) e poi pesato ciascun punto emerso rispetto ai tre obiettivi dichiarati
-del prodotto. Questo documento consolida sia l'analisi sia il giudizio e
-chiude la fase 0 di progettazione.
-</p>
+<p class="lead">Questa pagina fornisce un metodo stabile per valutare una
+capacità di Metnos. Non racconta l'ordine in cui i componenti sono stati
+progettati e non sostituisce i loro contratti tecnici.</p>
 
-<p>
-Il metodo: generare critiche generose dalle quattro prospettive, poi applicare
-un filtro pragmatico <em>"questa critica blocca utilità/intelligenza/autonomia?
-se sì la accetto, altrimenti la soppeso"</em>. Cinque verdetti possibili:
-</p>
+<p>La domanda di partenza non è «la funzione è interessante?», ma «produce un
+risultato utile, con fonti e limiti comprensibili, nel contesto dell'utente
+corretto?». La valutazione combina comportamento osservabile, prove,
+tracciabilità e qualità dell'interazione. Una descrizione convincente o una
+risposta ben formulata non costituiscono da sole una prova.</p>
+
+<h1 id="cap2">2. Quattro qualità da non confondere</h1>
 
 <table>
-<thead><tr><th style="width:22%">Verdetto</th><th>Significato</th></tr></thead>
-<tbody>
-<tr><td><span class="verdict v-must">bloccante</span></td><td>Senza questa modifica, almeno uno dei tre obiettivi non può essere raggiunto. Va fatta.</td></tr>
-<tr><td><span class="verdict v-reinf">rinforzo</span></td><td>Non nuovo concept. Completa un pezzo del design esistente. Accettato.</td></tr>
-<tr><td><span class="verdict v-defer">rinvio</span></td><td>Utile, non bloccante. Si farà, con un gate esplicito per promuoverlo quando serve davvero.</td></tr>
-<tr><td><span class="verdict v-tension">tensione</span></td><td>Problema reale non risolvibile. Si gestisce, non si elimina. Accettazione esplicita del trade-off.</td></tr>
-<tr><td><span class="verdict v-reject">scartato</span></td><td>Valutato, costo supera il beneficio. Motivazione tracciata.</td></tr>
-</tbody>
-</table>
-
-
-<h1 id="cap2">2. I quattro aggettivi: utile, intelligente, autonomo, proattivo</h1>
-
-<p>Prima di giudicare serve definire. I quattro termini non sono interscambiabili.</p>
-
-<div class="triangle" style="grid-template-columns: 1fr 1fr 1fr 1fr;">
-  <div class="t-cell t-utile">
-    <h4>Utile</h4>
-    <p>Risolve un problema reale di Roberto al primo tentativo, senza intervento tecnico.<br><em>Misurato in: task completati / approvazioni chieste.</em></p>
-  </div>
-  <div class="t-cell t-intell">
-    <h4>Intelligente</h4>
-    <p>Capisce il contesto, sceglie lo strumento giusto, gestisce l'inatteso senza cadere in loop o risposte generiche.<br><em>Misurato in: success rate su casi non visti + qualità del "non lo so".</em></p>
-  </div>
-  <div class="t-cell t-auto">
-    <h4>Autonomo</h4>
-    <p>Agisce da solo nei casi prevedibili, chiede permesso solo quando serve.<br><em>Misurato in: azioni riuscite / approvazioni chieste.</em></p>
-  </div>
-  <div class="t-cell" style="background:#FFF7ED; border-color:#EA580C; color:#7C2D12;">
-    <h4>Proattivo</h4>
-    <p>Inizia azioni utili senza essere interpellato, quando il momento lo merita, senza disturbare.<br><em>Misurato in: proposte accettate / proposte emesse; silenzio appropriato.</em></p>
-  </div>
-</div>
-
-<div class="callout tip">
-<strong>Autonomia ≠ proattività.</strong> L'autonomia è l'<em>ampiezza di azione</em>
-senza chiedere, dentro un compito già assegnato; la proattività è l'<em>iniziativa</em>
-su un compito che nessuno ha assegnato. Un agente può essere autonomo e reattivo
-(fa molto senza chiedere, ma solo quando interpellato — Claude con tool calling).
-Può essere proattivo e supervised (inizia cose, ma chiede approvazione per
-tutto — un Metnos in modalità conservativa). Le due proprietà si combinano in
-una matrice 2×2 di posture operative distinte.
-</div>
-
-<div class="callout note">
-<strong>Perché aggiungiamo <em>proattivo</em> qui.</strong> La revisione originale
-della fase 0 trattava tre aggettivi. La famiglia F di <a href="Metnos_Prospettive_Estese_v1.html#cap2f">Prospettive estese</a>
-(<em>Telos</em>) e le famiglie A, B, D hanno reso la proattività un pilastro
-strutturale del progetto, non più un'opzione laterale. Chi rilegge P&amp;G oggi
-deve leggerlo con quattro aggettivi, non tre. Il §7-bis applica la lente
-<em>proattivo</em> alle sette critiche bloccanti originarie e individua cosa
-cambia.
-</div>
-
-
-<h1 id="cap3">3. Quattro prospettive in sintesi</h1>
-
-<div class="persp p-agentic">
-<h3>Programmazione agentica — "il reasoning loop non è specificato"</h3>
-<p>Architettura a 4 strati pulita, protocol-based, audit log come feature. Ma
-manca: la scelta del loop (ReAct? function calling? planner+executor?),
-l'ownership dello stato in caso di crash, l'idempotenza dei tool, una
-<code>ExecutionTrace</code> come oggetto first-class, la modalità dry-run,
-e qualsiasi test strategy. Senza ExecutionTrace non ricucirai mai audit + replay
-+ fitness darwiniana + eval &mdash; perché sono la stessa cosa vista da angolature diverse.</p>
-</div>
-
-<div class="persp p-psych">
-<h3>Psicologia — "la metafora biologica invita alla fiducia cieca"</h3>
-<p>La memoria a tre livelli allinea con working/episodic/semantic. La selezione
-darwiniana ha fondamento in RL/ACT-R. Le 4 Leggi sono etica deontologica
-trasparente. Ma: "neurone" evoca intenzionalità (effetto ELIZA amplificato),
-l'approval fatigue svuota il significato dei gate, l'automation bias cresce con
-la fitness. Capability creep nelle aspettative: gli utenti proietteranno "diventa
-sempre più intelligente" e saranno delusi.</p>
-</div>
-
-<div class="persp p-ui">
-<h3>UI — "il flusso di approvazione è undocumented, ed è il punto critico"</h3>
-<p>Documenti visivamente coerenti, progressive disclosure buona. Ma la superficie
-UX più delicata &mdash; il "vuoi che proceda?" in Telegram, in CLI, alla voce &mdash;
-non ha design. Status visibility durante il thinking è invisibile. Audit JSONL
-va benissimo per forensica e malissimo per "cosa ha fatto oggi il mio
-maggiordomo". Una dashboard admin minimale (anche sobria) cambia la quotidianità
-più di dieci feature nuove.</p>
-</div>
-
-<div class="persp p-ai">
-<h3>AI / ML — "nessuna eval harness, cost model implicito, synthesis prompt vuoto"</h3>
-<p>Consapevolezza esplicita dei limiti del self-judge LLM e del prompt injection
-indiretto. Vocabolario CoALA adottato. Ma: nessun modo di misurare se v0.2 è
-meglio di v0.1 (serve una mini eval, 15-20 scenari). Nessun cost model
-(ordine di grandezza: 1-3 €/giorno con Claude Sonnet su uso domestico). Model
-tiering ignorato: 60-80% di costo risparmiabile mettendo i gate su modello
-locale e le azioni serie su frontier. Il <em>synthesis prompt</em> per i neuroni
-&mdash; il pezzo che determina l'80% del success rate &mdash; non è specificato.</p>
-</div>
-
-
-<h1 id="cap4">4. Giudizio consolidato: 24 critiche, cinque verdetti</h1>
-
-<p>La tavola completa. Ogni riga è una critica specifica con il verdetto e la destinazione nel piano di lavoro.</p>
-
-<table>
-<thead><tr><th style="width:4%">#</th><th style="width:22%">Critica</th><th style="width:12%">Prospettiva</th><th style="width:14%">Verdetto</th><th>Dove / quando</th></tr></thead>
-<tbody>
-
-<tr><td>1</td><td>Reasoning loop non specificato</td><td>agentica + AI</td><td><span class="verdict v-must">bloccante</span></td><td><code>agent_runtime.html</code></td></tr>
-<tr><td>2</td><td>Tool-call validation con schema + reject loop</td><td>AI</td><td><span class="verdict v-must">bloccante</span></td><td><code>agent_runtime.html</code></td></tr>
-<tr><td>3</td><td>ExecutionTrace come oggetto first-class</td><td>agentica + AI</td><td><span class="verdict v-must">bloccante</span></td><td><code>agent_runtime.html</code></td></tr>
-<tr><td>4</td><td>Status visibility in ogni canale</td><td>UI</td><td><span class="verdict v-must">bloccante</span></td><td><code>channel.html</code> (req.)</td></tr>
-<tr><td>5</td><td>Approval UX disegnata (batching, pause, revoca)</td><td>psicologia + UI</td><td><span class="verdict v-must">bloccante</span></td><td><code>approval_ux.html</code></td></tr>
-<tr><td>6</td><td>Eval minimo (15-20 scenari YAML + harness)</td><td>AI</td><td><span class="verdict v-must">bloccante</span></td><td><code>eval.html</code></td></tr>
-<tr><td>7</td><td>Model tiering + 5ª Legge operativa</td><td>AI + agentica</td><td><span class="verdict v-must">bloccante</span></td><td><code>policy.html</code> + <code>cost_tiering</code></td></tr>
-
-<tr><td>8</td><td>Framing linguistico anti-antropomorfizzazione</td><td>psicologia</td><td><span class="verdict v-reinf">rinforzo</span></td><td><code>constitution.html</code></td></tr>
-<tr><td>9</td><td>Prompt structure esplicita + caching rules</td><td>AI</td><td><span class="verdict v-reinf">rinforzo</span></td><td><code>agent_runtime.html</code></td></tr>
-
-<tr><td>10</td><td>Admin web UI minimale (5 viste htmx)</td><td>UI</td><td><span class="verdict v-defer">rinvio</span></td><td>fase 3-bis; gate: se JSONL non è mai aperto → promuove a fase 1</td></tr>
-<tr><td>11</td><td>Retrieval strategy memoria lunga</td><td>AI</td><td><span class="verdict v-defer">rinvio</span></td><td>gate: &gt;4k token lunga → RAG</td></tr>
-<tr><td>12</td><td>MCP adoption</td><td>AI</td><td><span class="verdict v-defer">rinvio</span></td><td>gate: 3+ tool esterni MCP</td></tr>
-<tr><td>13</td><td>State persistence post-crash</td><td>agentica</td><td><span class="verdict v-defer">rinvio</span></td><td>fase 1 accetta "sessione persa"; gate: &gt;1×/settimana</td></tr>
-<tr><td>14</td><td>Neuron versioning formale (semver)</td><td>agentica</td><td><span class="verdict v-defer">rinvio</span></td><td>gate: &gt;20 neuroni in library</td></tr>
-
-<tr><td>15</td><td>Antropomorfizzazione → ELIZA</td><td>psicologia</td><td><span class="verdict v-tension">tensione</span></td><td>mitigata da #8 + tool "cosa sai di me"</td></tr>
-<tr><td>16</td><td>Automation bias con fitness alta</td><td>psicologia</td><td><span class="verdict v-tension">tensione</span></td><td>mitigata da tutor mode in <code>approval_ux.html</code></td></tr>
-<tr><td>17</td><td>Costo dell'autonomia</td><td>psicologia + AI</td><td><span class="verdict v-tension">tensione</span></td><td>Roberto deve sapere "Full mode 24h = X €"</td></tr>
-
-<tr><td>18</td><td>Pairing SLA formale come meta-doc</td><td>UI</td><td><span class="verdict v-reject">scartato</span></td><td>dettaglio di <code>pairing.html</code></td></tr>
-<tr><td>19</td><td>Mobile-first esplicito</td><td>UI</td><td><span class="verdict v-reject">scartato</span></td><td>è testing, non design</td></tr>
-<tr><td>20</td><td>Docs search</td><td>UI</td><td><span class="verdict v-reject">scartato</span></td><td>trigger: &gt;15 doc (ora 5)</td></tr>
-<tr><td>21</td><td>Deadlock sinapsi come design dedicato</td><td>agentica</td><td><span class="verdict v-reject">scartato</span></td><td>timeout globale copre il 95%</td></tr>
-<tr><td>22</td><td>Multimodal day-1</td><td>AI</td><td><span class="verdict v-reject">scartato</span></td><td>già rimandato nel Survival Kit</td></tr>
-<tr><td>23</td><td>Multi-utente famiglia day-1</td><td>UI</td><td><span class="verdict v-reject">scartato</span></td><td>prima release mono-principale; fase 3</td></tr>
-<tr><td>24</td><td>Cost model fine (TCO analysis)</td><td>AI</td><td><span class="verdict v-reject">scartato</span></td><td>ordine di grandezza basta</td></tr>
-
-</tbody>
-</table>
-
-<p><strong>Totale:</strong> 7 bloccanti · 2 rinforzi · 5 rinvii · 3 tensioni · 7 scartati.</p>
-
-
-<h1 id="cap5">5. Le sette critiche bloccanti (accettate)</h1>
-
-<p>Queste sono le uniche modifiche <em>non negoziabili</em>. Tutte le altre sono al contorno.</p>
-
-<table>
-<thead><tr><th style="width:5%">#</th><th style="width:26%">Cosa</th><th>Scelta di default + motivazione</th></tr></thead>
+<thead><tr><th style="width:20%">Qualità</th><th>Significato operativo</th><th>Non significa</th></tr></thead>
 <tbody>
 <tr>
-  <td><strong>1</strong></td>
-  <td>Reasoning loop</td>
-  <td><strong>ReAct + function calling nativo del provider</strong> per fase 1.
-  Semplice, testato, compatibile con caching. Rivedere a fase 5 valutando CodeAct.</td>
+  <td><strong>Utile</strong></td>
+  <td>Porta l'utente a un risultato pertinente con un costo proporzionato.</td>
+  <td>Fare più passi o mostrare più testo.</td>
 </tr>
 <tr>
-  <td><strong>2</strong></td>
-  <td>Tool-call validation</td>
-  <td>Ogni tool ha uno JSON Schema strict. Il dispatcher valida <em>prima</em> di eseguire.
-  Errore di validazione → risposta "tool X esiste ma l'argomento Y è di tipo Z" reiniettata al LLM, max 2 tentativi, poi abbandono con messaggio utente.</td>
+  <td><strong>Intelligente</strong></td>
+  <td>Sceglie strumenti e strategie adatti, esplicita l'incertezza e usa le fonti corrette.</td>
+  <td>Produrre prosa sicura di sé o antropomorfizzare il sistema.</td>
 </tr>
 <tr>
-  <td><strong>3</strong></td>
-  <td>ExecutionTrace first-class</td>
-  <td>Oggetto Python con: <code>id, session_id, channel, messages[], tool_calls[],
-  cost_tokens, cost_usd, wall_time_ms, outcome</code>. È la stessa struttura
-  usata da audit log, dry-run/replay, fitness darwiniana, eval. <strong>Una
-  sola fonte di verità su "cosa è successo".</strong></td>
+  <td><strong>Autonomo</strong></td>
+  <td>Completa entro un mandato dichiarato i passi che non richiedono un nuovo consenso.</td>
+  <td>Ampliare da solo scopo, privilegi o durata dell'incarico.</td>
 </tr>
 <tr>
-  <td><strong>4</strong></td>
-  <td>Status visibility</td>
-  <td>Ogni canale ha il dovere di mostrare "penso...", typing indicator, e
-  aggiornare al cambio di tool in esecuzione. Telegram: messaggio editabile;
-  CLI: spinner con tool-name; voce: prompt di cortesia a fine di ogni
-  secondo.</td>
-</tr>
-<tr>
-  <td><strong>5</strong></td>
-  <td>Approval UX</td>
-  <td><strong>Batching</strong>: "approva azioni simili per 10 minuti".
-  <strong>Pausa lettura</strong>: il pulsante "ok" si abilita dopo 3 secondi.
-  <strong>Revoca</strong>: un comando <code>/undo</code> che ferma l'esecuzione in corso.
-  <strong>Tutor mode</strong>: ogni N approvazioni consecutive, un prompt
-  obbligatorio "controlla tu questa" rompe il flusso.</td>
-</tr>
-<tr>
-  <td><strong>6</strong></td>
-  <td>Eval minimo</td>
-  <td>15-20 scenari YAML con input + oracolo (risposta attesa o criterio).
-  Harness che li gira via replay del reasoning loop. Report: success rate,
-  p95 latency, cost. Rigira <em>ad ogni commit</em> che tocca
-  <code>agent_runtime/</code> o <code>policy/</code>.</td>
-</tr>
-<tr>
-  <td><strong>7</strong></td>
-  <td>Model tiering + budget</td>
-  <td>Due tier: <em>local-fast</em> (llama.cpp locale, &lt; 500ms, gratis) per
-  gate di policy + classification; <em>frontier</em> (Claude/Opus via supra)
-  per ragionamento, sintesi, risposta utente. Budget: 2 €/giorno soft cap, 5 €
-  hard cap. Notifica quando hai consumato 80%.</td>
+  <td><strong>Proattivo</strong></td>
+  <td>Formula una proposta o avvia un incarico già autorizzato quando si verifica un criterio esplicito.</td>
+  <td>Osservare indiscriminatamente o decidere ciò che l'utente dovrebbe volere.</td>
 </tr>
 </tbody>
 </table>
 
+<p>Le quattro qualità possono divergere. Un flusso può essere autonomo ma
+inutile, intelligente ma non autorizzato, oppure utile proprio perché si
+ferma e chiede conferma.</p>
 
-<h1 id="cap6">6. Le tensioni insanabili</h1>
+<h1 id="cap3">3. Le prospettive di valutazione</h1>
 
-<div class="callout warning">
-Non tutte le critiche hanno soluzione. Alcune sono <em>trade-off strutturali</em>
-del tipo di sistema che stiamo costruendo. Dichiararle qui significa che sono
-state viste, pesate, e accettate con consapevolezza.
-</div>
+<table>
+<thead><tr><th style="width:24%">Prospettiva</th><th>Domande essenziali</th></tr></thead>
+<tbody>
+<tr>
+  <td><strong>Esito per l'utente</strong></td>
+  <td>Il risultato risponde alla richiesta? È presentato nella lingua e nel canale corretti? L'utente sa che cosa è stato fatto e che cosa resta da decidere?</td>
+</tr>
+<tr>
+  <td><strong>Correttezza e sicurezza</strong></td>
+  <td>Ingressi, risultati e permessi sono convalidati? I dati esterni restano non attendibili? Le operazioni con effetti richiedono il consenso previsto?</td>
+</tr>
+<tr>
+  <td><strong>Affidabilità operativa</strong></td>
+  <td>Errori, scadenze temporali e ripartenze hanno esiti definiti? Il lavoro può essere ripreso senza duplicare effetti? Esistono registri e strumenti di recupero?</td>
+</tr>
+<tr>
+  <td><strong>Fonti e diritti sui dati</strong></td>
+  <td>Ogni affermazione personale rimanda a una fonte originaria? Dati, credenziali e preferenze sono isolati per utente, correggibili e cancellabili?</td>
+</tr>
+</tbody>
+</table>
 
-<h3>Tensione 1 — Calore vs antropomorfizzazione</h3>
-<p>Se elimini la metafora "maggiordomo", perdi calore e familiarità; se la lasci
-libera, scivoli nell'effetto ELIZA (utenti che attribuiscono coscienza e
-responsabilità morale al sistema). <strong>Scelta:</strong> teniamo la metafora,
-accettiamo la mitigazione al 70% via framing linguistico + tool "cosa sai di me"
-+ tutor mode. Preferiamo caldo-con-monitoraggio a freddo-senza-ambiguità.</p>
+<h1 id="cap4">4. Come formulare un giudizio</h1>
 
-<h3>Tensione 2 — Affidabilità storica vs automation bias</h3>
-<p>Più la fitness di un neurone è alta, più l'utente smette di controllare
-l'output. È il paradosso della selezione per qualità: amplifica la fiducia anche
-dove non dovrebbe. <strong>Mitigazione:</strong> tutor mode (forza review
-periodica anche su neuroni "affidabili"), separazione visiva tra "ho fatto X"
-e "ho fatto X perché l'ho già fatto 40 volte". Non risolve, limita.</p>
+<p>Un giudizio utile dichiara la decisione, l'evidenza e la conseguenza. Le
+categorie seguenti servono a evitare formule vaghe come «da migliorare».</p>
 
-<h3>Tensione 3 — Autonomia richiesta vs costo cloud</h3>
-<p>Più l'utente vuole autonomia, più il sistema esplora, più spende.
-<strong>Gestione:</strong> dichiarazione esplicita del costo prima di ogni
-upgrade di autonomy (es. <code>Metnos session --level full --for 24h</code>
-mostra "stima: 3.50 €"). Budget diventa parte del consenso.</p>
+<table>
+<thead><tr><th style="width:22%">Esito</th><th>Quando usarlo</th></tr></thead>
+<tbody>
+<tr><td><span class="verdict v-must">necessario</span></td><td>Manca un requisito senza il quale la capacità non è corretta, isolata o controllabile.</td></tr>
+<tr><td><span class="verdict v-reinf">da rafforzare</span></td><td>Il contratto è valido, ma prove, messaggi o gestione degli errori non coprono ancora casi rilevanti.</td></tr>
+<tr><td><span class="verdict v-defer">condizionato</span></td><td>Il beneficio è plausibile ma dipende da un segnale misurabile, da una fonte o da un mandato che oggi manca.</td></tr>
+<tr><td><span class="verdict v-tension">tensione accettata</span></td><td>Due obiettivi legittimi restano in conflitto; sono documentati limite, scelta e mitigazione.</td></tr>
+<tr><td><span class="verdict v-reject">escluso</span></td><td>Viola un confine del prodotto oppure il costo e il rischio superano il beneficio dimostrato.</td></tr>
+</tbody>
+</table>
 
+<p>Ogni esito deve citare una prova controllabile: risultato di una verifica, voce del registro, sorgente
+originaria, stato persistito o comportamento riproducibile entro condizioni
+dichiarate. La prosa generata da un LLM non diventa evidenza solo perché è
+stata salvata.</p>
 
-<h1 id="cap7">7. L'osservazione chiave: autonomia e proattività sono emergenti</h1>
+<h1 id="cap5">5. Sette condizioni non negoziabili</h1>
 
-<p class="lead">
-Dei quattro aggettivi, <strong>utile</strong> e <strong>intelligente</strong>
-sono proprietà che l'agente può avere indipendentemente. <strong>Autonomo</strong>
-e <strong>proattivo</strong> no: emergono solo se le prime due sono tarate
-bene <em>e</em> si sovrappongono a meccanismi specifici &mdash; i gate di
-approvazione per l'autonomia, la funzione di allineamento ai <em>telos</em> per
-la proattività. Né un punto in più di utilità né un punto in più di intelligenza
-producono da soli autonomia o proattività.
-</p>
+<ol>
+    <li><strong>Identità e autorizzazione.</strong> Ogni richiesta, sessione,
+        credenziale e dato appartiene a un utente autenticato. Un guest o un
+        altro utente non può interrogare il profilo, le fonti o i servizi del
+        titolare.</li>
+    <li><strong>Contratti degli executor.</strong> Argomenti, tipi, effetti,
+        errori e reversibilità devono essere dichiarati e validati prima
+        dell'esecuzione.</li>
+    <li><strong>Separazione fra contenuto e controllo.</strong> Web, documenti,
+        risultati degli strumenti e testo dei modelli non possono modificare
+        policy, privilegi o istruzioni di sistema.</li>
+    <li><strong>Consenso comprensibile.</strong> L'approvazione mostra azione,
+        destinatario, account, dispositivo e conseguenze rilevanti; non
+        nasconde effetti dietro etichette tecniche.</li>
+    <li><strong>Tracciabilità e recupero.</strong> Piano servito, approvazioni,
+        esiti ed errori devono essere correlabili senza esporre segreti e
+        senza duplicare effetti dopo una ripartenza.</li>
+    <li><strong>Fonti personali originarie.</strong> Preferenze e osservazioni
+        citano il turno o il dato autorizzato da cui derivano. Una sintesi LLM
+        non può citare un'altra sintesi LLM come prova.</li>
+    <li><strong>Valutazione rappresentativa.</strong> Le prove coprono lingue,
+        canali, utenti, errori e capacità effettive, non soltanto il percorso
+        ideale di un singolo programmatore.</li>
+</ol>
 
-<p>
-<strong>Autonomia</strong> emerge dalla calibrazione del gap tra "fa da solo"
-e "chiede permesso".<br>
-<strong>Proattività</strong> emerge dalla calibrazione del gap tra "propone" e
-"tace", regolato dai <em>telos</em>.
-</p>
+<h1 id="cap6">6. Tensioni che non scompaiono</h1>
 
-<p>Implicazione operativa:</p>
+<h2>Personalizzazione e instradamento riproducibile</h2>
+
+<p>Un profilo può migliorare tono, esempi e forma della risposta finale, ma
+non deve essere iniettato nel pianificatore soggetto a cache condivise. Se non entra
+nella chiave della cache viene ignorato quando la cache trova una corrispondenza;
+se vi entra, trasforma una cache di piani condivisi in una cache per utente e riduce il tasso di riuso, compromettendo la
+riproducibilità. Le alternative corrette sono applicarlo alla generazione
+finale oppure riscrivere esplicitamente la richiesta prima della cache, con
+una firma coerente.</p>
+
+<h2>Autonomia e controllo</h2>
+
+<p>Ridurre le conferme rende il flusso più rapido, ma aumenta il rischio di
+effetti inattesi. La soluzione non è un livello globale di «fiducia»:
+l'autorità va delimitata per tipo di operazione, fonte, durata, account e
+utente.</p>
+
+<h2>Utilità e riservatezza</h2>
+
+<p>Più fonti possono migliorare la risposta e allo stesso tempo creare un
+dossier personale eccessivo. Le directory sensibili, i dati sanitari o
+finanziari e i segreti richiedono esclusione predefinita o consenso
+specifico; la semplice possibilità tecnica di leggerli non autorizza la
+loro trasformazione in profilo.</p>
+
+<h2>Fluidità e trasparenza</h2>
+
+<p>Una risposta naturale non deve nascondere quale servizio è stato usato,
+quale dato è stato trovato o quale operazione è fallita. La trasparenza va
+resa leggibile, non eliminata.</p>
+
+<h1 id="cap7">7. Autonomia e proattività sono proprietà del mandato</h1>
+
+<p>Metnos non è autonomo o proattivo in senso assoluto. Lo è rispetto a uno
+specifico incarico: «ogni lunedì controlla il calendario», «se arriva un
+messaggio da questo mittente avvisami», «continua finché hai trovato tre fonti
+ufficiali». Il mandato definisce:</p>
 
 <ul>
-    <li>I punti 1-4 e 6 (reasoning loop, tool validation, trace, status
-    visibility, eval) sono <em>prerequisiti di intelligenza/utilità</em>.</li>
-    <li>I punti 5 e 7 (approval UX, budget + tiering) sono gli unici che
-    toccano <em>direttamente</em> l'autonomia.</li>
-    <li>Se dovessi spendere 30 ore di design totali in un mondo vincolato,
-    sarebbero: <strong>10h <code>agent_runtime.html</code>, 10h
-    <code>approval_ux.html</code>, 10h <code>eval.html</code></strong>. Tutto
-    il resto emerge da queste tre fondamenta.</li>
+    <li>utente e canale di consegna;</li>
+    <li>evento o frequenza di attivazione;</li>
+    <li>fonti consultabili e account utilizzabili;</li>
+    <li>operazioni consentite e punti di approvazione;</li>
+    <li>limite di costo, numero di tentativi e scadenza;</li>
+    <li>modalità di revoca e comportamento in caso di errore.</li>
 </ul>
 
+<p>Fuori da questi confini Metnos deve fermarsi, chiedere un nuovo mandato o
+presentare una proposta. Non può ampliare l'incarico facendo leva su una
+preferenza presunta.</p>
 
-<h1 id="cap7b">7-bis. La lente proattiva: come rilegge le sette bloccanti</h1>
+<h1 id="cap7b">7-bis. La lente proattiva</h1>
 
-<p class="lead">
-La proattività, come aggettivo strutturale, non sostituisce le sette critiche
-bloccanti &mdash; le rilegge. Nessuna di esse va scartata; alcune si
-<em>rafforzano</em>, altre si <em>estendono</em>, una richiede l'aggiunta
-di un requisito implicito. Inoltre compare una critica che non era nel set
-originario (l'inbox proposte come superficie UX).
-</p>
+<p>Prima di introdurre una nuova condizione di avvio o una nuova proposta automatica,
+verificare in ordine:</p>
+
+<ol>
+    <li><strong>Segnale:</strong> quale evento osservabile la attiva?</li>
+    <li><strong>Pertinenza:</strong> perché il segnale riguarda proprio
+        quell'utente e quel mandato?</li>
+    <li><strong>Fonte:</strong> l'accesso alla fonte è autorizzato e
+        necessario?</li>
+    <li><strong>Azione:</strong> il sistema propone, notifica o esegue?</li>
+    <li><strong>Consenso:</strong> dove si colloca l'approvazione?</li>
+    <li><strong>Limite:</strong> quando scade o viene sospesa?</li>
+    <li><strong>Riconciliazione:</strong> come vengono gestiti dati nuovi che
+        contraddicono osservazioni precedenti?</li>
+    <li><strong>Verifica:</strong> quale evento o prova dimostra che il
+        comportamento è corretto?</li>
+</ol>
+
+<p>Se una domanda non ha risposta, la capacità non è pronta per essere
+presentata come disponibile.</p>
+
+<h1 id="cap8">8. Uso pratico del giudizio</h1>
+
+<p>Per una modifica o una nuova capacità, il risultato della revisione dovrebbe
+essere leggibile in questa forma:</p>
 
 <table>
-<thead><tr><th style="width:4%">#</th><th style="width:24%">Bloccante originaria</th><th>Cosa cambia sotto la lente proattiva</th></tr></thead>
+<thead><tr><th style="width:24%">Campo</th><th>Contenuto</th></tr></thead>
 <tbody>
-<tr>
-  <td>1</td>
-  <td>Reasoning loop</td>
-  <td>Non cambia la scelta (ReAct + function calling), ma si aggiunge un requisito: il loop deve poter partire <em>senza</em> un turno utente che lo attiva. Trigger ammissibili: cron, evento interno (indexer), soglia su metriche (budget, attività sospetta). Documentato come modalità <em>agent-initiated turn</em>.</td>
-</tr>
-<tr>
-  <td>2</td>
-  <td>Tool-call validation</td>
-  <td>Invariato. Vale identico su turni proattivi.</td>
-</tr>
-<tr>
-  <td>3</td>
-  <td>ExecutionTrace first-class</td>
-  <td>Esteso: la trace deve registrare l'<em>origine del turno</em> (<code>source: user | cron | indexer | policy | reflection</code>). Senza questa distinzione l'audit non può rispondere a "chi ha deciso di partire, stavolta?" — domanda cruciale per la proattività.</td>
-</tr>
-<tr>
-  <td>4</td>
-  <td>Status visibility</td>
-  <td>Esteso: i turni proattivi (briefing serale, proposte inbox) devono essere <em>riconoscibili</em> come tali nel canale — iconografia diversa, tag "spontaneo" esplicito. Mai camuffare proattività da risposta-a-richiesta.</td>
-</tr>
-<tr>
-  <td>5</td>
-  <td>Approval UX</td>
-  <td>Rafforzato: la proattività moltiplica le superfici di approvazione. Oltre a batching e tutor mode, serve una superficie "inbox proposte" separata dagli approval bloccanti. L'utente deve poter rifiutare <em>una classe</em> di proposte (<em>"meno di queste, grazie"</em>), non solo la singola.</td>
-</tr>
-<tr>
-  <td>6</td>
-  <td>Eval minimo</td>
-  <td>Esteso: gli scenari di eval devono coprire <em>la non-azione appropriata</em>. "Metnos decide di non proporre nulla oggi" è un output valido e va testato. Un eval harness che misura solo success rate su richieste esplicite è cieco ai silenzi giusti.</td>
-</tr>
-<tr>
-  <td>7</td>
-  <td>Model tiering + budget</td>
-  <td>Rafforzato drasticamente: la proattività consuma senza essere richiesta. Budget diventa un <em>pre-requisito</em> della proattività, non un optional. Proposta: il budget proattivo sia un capo separato dal budget reattivo (es. 30% / 70%), con hard cap indipendente.</td>
-</tr>
-<tr>
-  <td><strong>8</strong></td>
-  <td><em>(nuovo) Inbox proposte come superficie UX</em></td>
-  <td>Non era nel set originario. Diventa bloccante perché senza di essa il decadimento proattivo non ha dove accumularsi in modo non-invasivo. Si aggiunge al piano: <code>proposal_ux.html</code> (già previsto da Prospettive estese §5).</td>
-</tr>
+<tr><td>Richiesta dell'utente</td><td>Un esempio concreto in linguaggio naturale.</td></tr>
+<tr><td>Esito atteso</td><td>Ciò che l'utente vedrà, incluso il punto di conferma.</td></tr>
+<tr><td>Mandato e fonti</td><td>Utente, account, dispositivo, percorsi e servizi coinvolti.</td></tr>
+<tr><td>Riscontro</td><td>Prove, eventi e dati originari che dimostrano l'esito.</td></tr>
+<tr><td>Rischi e limiti</td><td>Effetti non reversibili, dati sensibili, costi e condizioni di errore.</td></tr>
+<tr><td>Giudizio</td><td>Necessario, da rafforzare, condizionato, tensione accettata o escluso.</td></tr>
 </tbody>
 </table>
 
-<div class="callout tip">
-<strong>Rilettura delle tensioni.</strong> Le tre tensioni (warmth/antropomorfizzazione,
-automation bias, costo dell'autonomia) si amplificano tutte nel regime proattivo:
-caldo proattivo &rarr; più ELIZA, fitness proattiva &rarr; più automation bias,
-proattività &rarr; più spesa autonoma. Le mitigazioni esistenti (framing, tutor
-mode, cost declaration) restano valide ma <em>non scalano da sole</em>. Serve
-aggiungerne una quarta, costituzionale: la <strong>clausola di silenzio
-appropriato</strong> &mdash; il telos &quot;non disturbare&quot; è non-negoziabile,
-non solo alto-priorità.
-</div>
-
-<div class="callout warning">
-<strong>Conseguenza costituzionale.</strong> La 5ª Legge &quot;omeostasi&quot;,
-attualmente in valutazione,
-diventa <em>prerequisito</em> se la proattività è strutturale. Senza un limite
-auto-imposto al consumo, un sistema proattivo diverge per costruzione. La
-legge non è più opzionale: va scritta prima del rilascio di qualunque capacità
-proattiva (fase 4-5).
-</div>
-
-
-<h1 id="cap8">8. Piano di lavoro aggiornato</h1>
-
-<p>Prima di questo giudizio, la fase 1 prevedeva 4 doc di microprogettazione classici:
-<code>gateway · channel · tool · sandbox</code>.</p>
-
-<p><strong>Dopo questo giudizio</strong>, vanno prodotti prima <strong>tre doc
-trasversali</strong>, e solo dopo i quattro classici:</p>
-
-<h3>Ordine cogente</h3>
-
-<table>
-<thead><tr><th style="width:8%">Ordine</th><th>Doc</th><th>Coprono (critiche bloccanti)</th></tr></thead>
-<tbody>
-<tr><td><strong>1</strong></td><td><code>agent_runtime.html</code></td><td>#1 reasoning loop · #2 tool validation · #3 ExecutionTrace · #9 prompt structure</td></tr>
-<tr><td><strong>2</strong></td><td><code>approval_ux.html</code></td><td>#5 approval UX · mitigazione tensioni 1 e 2</td></tr>
-<tr><td><strong>3</strong></td><td><code>eval.html</code></td><td>#6 eval harness</td></tr>
-<tr><td>4</td><td><code>gateway.html</code></td><td>(fase 1 classici) #4 status visibility in parte</td></tr>
-<tr><td>5</td><td><code>channel.html</code></td><td>#4 status visibility completo</td></tr>
-<tr><td>6</td><td><code>tool.html</code></td><td>pre-requisito per #2</td></tr>
-<tr><td>7</td><td><code>sandbox.html</code></td><td>&mdash;</td></tr>
-<tr><td>8+</td><td><code>policy.html</code> + <code>cost_tiering</code> (sotto-sezione)</td><td>#7 tiering · #17 costo autonomia</td></tr>
-</tbody>
-</table>
-
-<div class="callout note">
-<strong>Motivazione dell'ordine:</strong> i 4 classici, scritti senza i 3
-trasversali, sarebbero <em>pattern-violators</em>. Ogni loro decisione entrerebbe
-in conflitto con scelte non ancora fatte sul loop, sull'UX di approvazione,
-sull'evaluazione. Scrivendoli nell'ordine giusto, ogni doc classico può citare
-e conformarsi a decisioni già prese.
-</div>
-
-<h3>Cosa NON cambia nel piano</h3>
-
-<ul>
-    <li>Il Livello 1 (i 5 documenti di fondamenti attuali) resta invariato.</li>
-    <li>La roadmap di fasi (§11 di <a href="Metnos_Neuroni_Memoria_v1.html">Neuroni &amp; Memoria</a>) resta invariata.</li>
-    <li>L'architettura a 4 strati resta invariata.</li>
-    <li>Le 4 Leggi restano invariate (la 5ª, omeostasi, è proposta ma ancora <em>in valutazione</em>).</li>
-</ul>
-
-<hr>
-
-<h2>Continua a leggere</h2>
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:16px 0 24px;">
-  <a href="architecture/index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">fondamenti · 20 min</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura — Introduzione v1</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il sistema giudicato. I quattro strati, l'autonomy, il workspace — il contenuto su cui pesano le sette critiche bloccanti.</div>
-  </a>
-  <a href="Metnos_Neuroni_Memoria_v1.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">estensione · 30 min</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Neuroni, Sinapsi e Memoria v1.1</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'estensione critica dove si concentrano i rischi (antropomorfizzazione, automation bias, capability creep): qui la fitness darwiniana è il pressure point.</div>
-  </a>
-  <a href="architecture/" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">microprogettazione</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Indice componenti</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il piano di lavoro aggiornato: 3 trasversali (agent_runtime, approval_ux, eval) prima dei 4 classici.</div>
-  </a>
-  <a href="index.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
-    <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">home</span>
-    <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">← Indice documentazione</div>
-    <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i documenti in un colpo solo.</div>
-  </a>
-</div>
+<p>Le specifiche correnti da consultare sono
+<a href="architecture/agent_runtime.html">motore dell'agente</a>,
+<a href="architecture/executor.html">executor</a>,
+<a href="architecture/approval_ux.html">approvazioni</a>,
+<a href="architecture/observability.html">osservabilità</a>,
+<a href="architecture/pairing.html">utenti e sessioni</a>,
+<a href="architecture/telos.html">telos</a> e
+<a href="architecture/vaglio.html">vaglio</a>.</p>
 
 <hr>
 
 <p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>Prospettive &amp; Giudizio</em> v1.1 &mdash; 2026-04-22<br>
-Chiude la fase 0 di progettazione. Apre la fase 1 con un ordine nuovo.<br>
-v1.1: aggiunto il quarto aggettivo (proattivo) e la lente trasversale §7-bis.
+Metnos &mdash; <em>Prospettive e giudizio</em><br>
+Criteri correnti per valutare capacità, limiti e qualità dell'interazione.
 </p>
 
 </body>

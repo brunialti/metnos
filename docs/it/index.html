@@ -282,16 +282,6 @@ section h2::before {
   white-space: nowrap;
 }
 
-/* External references */
-.references {
-  margin-top: 60px;
-  padding-top: 30px;
-  border-top: 1px solid var(--border-warm);
-  font-size: 11pt;
-}
-.references ul { padding-left: 22px; }
-.references li { margin-bottom: 10px; color: var(--ink-dim); }
-
 /* Footer */
 footer {
   margin-top: 80px;
@@ -362,7 +352,7 @@ footer {
 </div>
 
 <p style="text-align:center; color:var(--muted); font-size:11pt; font-style:italic; margin:30px 0 10px;">
-Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota sul codice (<a href="code.html">Code</a>) risponde alla domanda <em>where is the beef?</em>
+Se, dopo il <em>perché</em>, ti interessa il <em>come</em>, hai tre porte. La nota sul codice (<a href="code.html">Code</a>) mostra dove si trova la sostanza tecnica.
 </p>
 
 <div class="secondary" style="margin:12px 0 46px;">
@@ -372,7 +362,7 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   </a>
   <a href="architecture/">
     <span class="label">Guida all'architettura</span>
-    <span class="time">tutorial visuale</span>
+    <span class="time">guida illustrata</span>
   </a>
   <a href="code.html">
     <span class="label">Code</span>
@@ -381,17 +371,12 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
 </div>
 
 <section>
-  <p class="opening">Metnos è il progetto di un'architettura per agenti governati, ospitabile in proprio. L'installazione di riferimento può funzionare come assistente personale o domestico, ma quello è un insieme di executor, non la definizione del sistema: un altro catalogo ammesso può servire manutenzione software, ricerca, sistemi remoti o un diverso dominio operativo circoscritto. Il nucleo pianifica, giudica, ricorda e registra; gli executor definiscono ciò che si può fare davvero. La parte interessante non è quindi soltanto il codice, ma la definizione che lo precede: quali poteri esistono, quali limiti rispettano e con quale vocabolario il sistema si rivolge all'umano che lo governa.</p>
-</section>
-
-<section>
-  <h2>Il rispetto</h2>
-  <p>Idee vicine le hanno già esplorate <a href="https://github.com/openclaw/openclaw">openclaw</a> e <a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw</a>. È da lì che questo progetto prende coraggio, ed è a loro che va, prima di tutto, il riconoscimento. Metnos non vuole essere un clone: è un punto di partenza per sperimentare alcune idee particolari &mdash; la distinzione fra <em>leggi</em> e <em>fini</em>, la separazione fra chi propone e chi giudica, la cura di non trasformare l'utilità in invadenza. Un terreno di prova, non una soluzione.</p>
+  <p class="opening">Metnos è un'architettura per agenti governati, installabile sui propri sistemi. L'installazione di riferimento può funzionare come assistente personale o domestico, ma quello è un insieme di executor, non la definizione del sistema: un altro catalogo ammesso può servire la manutenzione del software, la ricerca, sistemi remoti o un diverso dominio operativo circoscritto. Il nucleo pianifica, giudica, ricorda e registra; gli executor definiscono ciò che si può fare davvero. La parte interessante non è quindi soltanto il codice, ma la definizione che lo precede: quali poteri esistono, quali limiti rispettano e con quale vocabolario il sistema si rivolge all'umano che lo governa.</p>
 </section>
 
 <section>
   <h2>Cosa trovi qui</h2>
-  <p>La documentazione descrive il prodotto attuale: una guida introduttiva, la mappa dell'interfaccia, una reference dei domini con esempi in linguaggio naturale e la Guida all'architettura con i contratti dei componenti. I cataloghi tecnici e la pagina dell'interfaccia sono generati dai registri del runtime; il Tutor compila queste fonti insieme ai manifest ammessi in un catalogo firmato. Il repository pubblico contiene il codice e l'installer necessari per verificare i contratti descritti.</p>
+  <p>La documentazione descrive il prodotto attuale: una guida introduttiva, la mappa dell'interfaccia, un riferimento dei domini con esempi in linguaggio naturale e la Guida all'architettura con i contratti dei componenti. I cataloghi tecnici e la pagina dell'interfaccia sono generati dai registri del runtime; il Tutor compila queste fonti insieme ai manifest ammessi in un catalogo firmato. Il repository pubblico contiene il codice e il programma di installazione necessari per verificare i contratti descritti.</p>
 </section>
 
 <div class="toc">
@@ -402,21 +387,21 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
   <div class="toc-item">
     <div>
       <a class="t" href="Metnos_QuickTour.pdf" type="application/pdf">Quick tour &amp; Survival kit &mdash; Metnos in quindici-venti minuti</a>
-      <span class="d">Nove scene reali, incluso il dossier Atlas multidominio, e un capitolo dedicato al Tutor: come Metnos spiega capacit&agrave; e procedure senza eseguire e come gestisce le lingue. Completano la guida interfaccia, consenso, memoria, crescita, dispositivi, limiti e glossario. Disponibile anche come <a href="Metnos_QuickTour.html">versione HTML accessibile</a>.</span>
+      <span class="d">Nove scene reali, incluso il dossier Atlas multidominio, e un capitolo dedicato al Tutor: come Metnos spiega capacit&agrave; e procedure, osserva lo stato ammesso dell'istanza e consegna un'eventuale azione al motore normale soltanto dopo conferma. Completano la guida interfaccia, consenso, memoria, crescita, dispositivi, limiti e glossario. Disponibile anche come <a href="Metnos_QuickTour.html">versione HTML accessibile</a>.</span>
     </div>
     <span class="time">HTML · 20 min</span>
   </div>
   <div class="toc-item">
     <div>
-      <a class="t" href="domains.html">Reference dei domini &mdash; che cosa chiedere a Metnos</a>
-      <span class="d">Tutti i 27 domini canonici spiegati uno per uno, con confini, disponibilit&agrave; ed esempi di richieste in linguaggio naturale. Nomi e conteggi tecnici derivano dai manifest e dai contratti builtin.</span>
+      <a class="t" href="domains.html">Riferimento dei domini &mdash; che cosa chiedere a Metnos</a>
+      <span class="d">Tutti i 27 domini canonici spiegati uno per uno, con confini, disponibilit&agrave; ed esempi di richieste in linguaggio naturale. Nomi e conteggi tecnici derivano dai manifest e dai contratti integrati.</span>
     </div>
-    <span class="time">Reference · 15 min</span>
+    <span class="time">Riferimento · 15 min</span>
   </div>
   <div class="toc-item">
     <div>
-      <a class="t" href="interface.html">L&rsquo;interfaccia &mdash; una conversazione, e le pagine che la governano</a>
-      <span class="d">Come &egrave; organizzata l&rsquo;interfaccia: i due canali, le quattro sezioni di Settings e la mappa delle pagine di amministrazione con il loro percorso. La mappa deriva dal registro delle superfici del runtime.</span>
+      <a class="t" href="interface.html">L&rsquo;interfaccia &mdash; due canali, una stessa identit&agrave;</a>
+      <span class="d">Come &egrave; organizzata l&rsquo;interfaccia: le conversazioni distinte dei due canali, le quattro sezioni di Settings e la mappa delle pagine di amministrazione con il loro percorso. La mappa deriva dal registro delle superfici del runtime.</span>
     </div>
     <span class="time">Guida · 8 min</span>
   </div>
@@ -502,14 +487,6 @@ Se ti interessa il <em>come</em> dopo il <em>perché</em>, tre porte. La nota su
     <span class="time">GitHub</span>
   </div>
 </div>
-</div>
-
-<div class="references">
-<h2 style="font-style:italic; font-weight:400; font-size:13pt; color:var(--ink-dim); border:none; margin-top:0;">Riferimenti esterni</h2>
-<ul>
-  <li><a href="https://github.com/openclaw/openclaw">openclaw/openclaw</a> &mdash; ispirazione: gateway-first, multi-canale, sandbox plug-in (TypeScript).</li>
-  <li><a href="https://github.com/zeroclaw-labs/zeroclaw">zeroclaw-labs/zeroclaw</a> &mdash; ispirazione: livelli di autonomia, sandbox a strati, trait-based (Rust).</li>
-</ul>
 </div>
 
 <footer>

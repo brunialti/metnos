@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Metnos &mdash; executor remoti</title>
-<meta name="description" content="Microprogettazione degli executor remoti di Metnos: pairing dei dispositivi, metnos-client, placement, sandbox per sistema operativo, installazione dalla UI e limiti operativi.">
+<meta name="description" content="Guida agli executor remoti di Metnos: associazione dei dispositivi, collocazione, sandbox per sistema operativo, installazione dall'interfaccia e limiti operativi.">
 <meta name="keywords" content="Metnos, executor remoti, metnos-client, dispositivi, placement, sandbox, Windows, Linux, pairing">
 <meta name="author" content="Roberto Brunialti">
 <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://metnos.com/it/architecture/remote_executors">
 <meta property="og:title" content="Metnos &mdash; executor remoti">
-<meta property="og:description" content="Come Metnos esegue alcuni executor su dispositivi registrati, mantenendo policy, audit e controllo sul server.">
+<meta property="og:description" content="Come Metnos esegue alcuni executor su dispositivi registrati, mantenendo regole, tracciabilità e controllo sul server.">
 <meta property="og:locale" content="it_IT">
 <meta property="og:locale:alternate" content="en_US">
 <meta property="og:site_name" content="Metnos">
@@ -41,8 +41,6 @@ li { margin-bottom:4px; }
 .nav-inner { max-width:960px; margin:0 auto; padding:0 20px; display:flex; justify-content:space-between; gap:16px; }
 .crumb { color:var(--muted); }
 .lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:22px 0; }
-.status { margin:18px 0; border-left:5px solid #16a34a; background:#dcfce7; color:#14532d; padding:14px 20px; border-radius:0 8px 8px 0; font-size:10.5pt; }
-.note { border-left:4px solid #f59e0b; background:#fef3c7; padding:12px 18px; margin:18px 0; border-radius:0 6px 6px 0; font-size:10.5pt; }
 .toc { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px 22px; margin:22px 0; }
 .toc ol { margin:4px 0 0 18px; padding:0; }
 .toc li { margin:3px 0; }
@@ -52,7 +50,7 @@ footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); 
 </head>
 <body>
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/architecture/remote_executors.html" hreflang="it" lang="it">IT</a>
+<a href="/it/architecture/remote_executors.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/remote_executors.html" hreflang="en" lang="en">EN</a>
 </nav>
@@ -60,35 +58,32 @@ footer { margin-top:50px; padding-top:16px; border-top:1px solid var(--border); 
 <div class="nav">
  <div class="nav-inner">
  <a href="../index.html">&larr; Indice documentazione</a>
- <span class="crumb">Microprogettazione &rsaquo; <strong>remote_executors</strong></span>
+ <span class="crumb">Guida all'architettura &rsaquo; <strong>remote_executors</strong></span>
  </div>
 </div>
 
 <h1>Executor remoti</h1>
 
 <p class="lead">
-Un executor remoto e' un executor Metnos che non viene lanciato sul server,
-ma su un dispositivo registrato della stessa casa: un PC Windows, un portatile
-Linux, in futuro altri sistemi. Il server resta il centro di decisione:
-sceglie se l'azione e' ammessa, firma il payload, riceve il risultato e
-scrive l'audit.
+Un executor remoto è un executor Metnos che non viene lanciato sul server,
+ma su un dispositivo registrato dello stesso utente, per esempio un PC Windows
+o un portatile Linux. Il server resta il centro di decisione:
+sceglie se l'azione &egrave; ammessa, firma i dati della richiesta, riceve il risultato e
+ne conserva la traccia.
 </p>
 
-<div class="status">
-Stato attuale: il client supporta l'adesione dalla UI,
-l'esecuzione su Windows con Job Object, lo spegnimento dell'albero dei processi
-al timeout, il blocco dell'istanza doppia e la revoca dal server. Il dettaglio
-implementativo resta nel documento interno
-<code>internal/design/remote-executors.html</code>.
-</div>
+<p>Il client supporta l'associazione guidata dall'interfaccia, l'esecuzione
+contenuta su Linux e Windows, la terminazione dell'albero dei processi alla
+scadenza, il riavvio controllato se la sandbox non restituisce il controllo,
+il blocco delle istanze concorrenti e la revoca dal server.</p>
 
 <div class="toc">
 <strong>In questa pagina</strong>
 <ol>
  <li><a href="#idea">Idea</a></li>
- <li><a href="#identita">Identita' e pairing del dispositivo</a></li>
- <li><a href="#placement">Collocazione: quando un executor puo' uscire dal server</a></li>
- <li><a href="#installazione">Installazione dalla UI</a></li>
+ <li><a href="#identita">Identità e associazione del dispositivo</a></li>
+ <li><a href="#placement">Collocazione: quando un executor può uscire dal server</a></li>
+ <li><a href="#installazione">Installazione dall'interfaccia</a></li>
  <li><a href="#sandbox">Sandbox per sistema operativo</a></li>
  <li><a href="#guasti">Guasti, duplicati e revoca</a></li>
  <li><a href="#limiti">Limiti dichiarati</a></li>
@@ -99,75 +94,99 @@ implementativo resta nel documento interno
 
 <p>
 Metnos nasce come sistema domestico: molti dati sono sul server, ma non tutti.
-Un documento puo' stare sul portatile, una cartella di lavoro su un PC Windows,
-uno schermo o un'applicazione possono esistere solo li'. Gli executor remoti
+Un documento può stare sul portatile, una cartella di lavoro su un PC Windows,
+uno schermo o un'applicazione possono esistere solo lì. Gli executor remoti
 servono a portare una parte controllata del catalogo dove i dati vivono davvero,
 senza trasformare ogni macchina in un secondo Metnos.
 </p>
 
 <p>
-L'asimmetria e' intenzionale: il dispositivo esegue, ma non decide. Il server
-mantiene policy, Vaglio, scelta dell'executor, firma, registro dei dispositivi e audit.
+L'asimmetria è intenzionale: il dispositivo esegue, ma non decide. Il server
+mantiene regole, Vaglio, scelta dell'executor, firma, registro dei dispositivi e tracciabilit&agrave;.
 Il client remoto, <code>metnos-client</code>, interroga il server, verifica
 la firma del lavoro ricevuto, esegue nel contenimento disponibile per il suo OS e
 restituisce un risultato firmato.
 </p>
 
-<h2 id="identita">2. Identita' e pairing del dispositivo</h2>
+<h2 id="identita">2. Identità e associazione del dispositivo</h2>
 
 <p>
-Ogni dispositivo ha una propria identita' Ed25519. L'ingresso avviene con un
+Ogni dispositivo ha una propria identità Ed25519. L'ingresso avviene con un
 codice monouso generato dal server: il client lo consuma, registra la chiave
-pubblica del dispositivo e riceve la chiave pubblica del server da pinning.
-Da quel momento il dispositivo non e' "un browser aperto": e' una macchina nota,
+pubblica del dispositivo e registra in modo vincolante la chiave pubblica del server.
+Da quel momento il dispositivo non è "un browser aperto": è una macchina nota,
 revocabile e riconoscibile.
 </p>
 
 <p>
-Il flusso dettagliato vive in <a href="pairing.html#cap13">pairing, cap. 13</a>.
-La parte essenziale e': token breve, consumo una volta sola, impronta del dispositivo
-unica, heartbeat periodico, revoca esplicita dal pannello admin.
+Il flusso dettagliato &egrave; descritto nella guida
+<a href="pairing.html#cap6">Identit&agrave; e associazioni, cap. 6</a>.
+La parte essenziale è: token breve, consumo una volta sola, impronta del dispositivo
+unica, controllo periodico della connessione e revoca esplicita dal pannello di amministrazione.
 </p>
 
-<h2 id="placement">3. Collocazione: quando un executor puo' uscire dal server</h2>
+<h2 id="placement">3. Collocazione: quando un executor può uscire dal server</h2>
 
 <p>
 Un executor non diventa remoto per accidente. Il caricatore legge il manifest:
-piattaforme ammesse, capacita', firma, eventuale sezione di collocazione
-(<code>placement</code>). Solo se il contratto e' compatibile il runtime puo'
+piattaforme ammesse, capacità, firma, eventuale sezione di collocazione
+(<code>placement</code>). Solo se il contratto è compatibile il runtime può
 assegnare il lavoro a un dispositivo.
 In caso contrario l'executor resta locale o viene rifiutato con un errore
-onesto.
+esplicito.
 </p>
 
 <table>
-<thead><tr><th>Controllo</th><th>Perche' conta</th></tr></thead>
+<thead><tr><th>Controllo</th><th>Perché conta</th></tr></thead>
 <tbody>
 <tr><td><code>platforms</code></td><td>Evita di mandare a Windows un executor scritto solo per Linux, o viceversa.</td></tr>
-<tr><td>firma server</td><td>Il client esegue solo codice che corrisponde a cio' che il server ha firmato.</td></tr>
-<tr><td>capacita'</td><td>Policy e Vaglio restano sul server; il dispositivo non amplia i permessi.</td></tr>
-<tr><td>collocazione</td><td>Indica se il lavoro puo' stare sul server o richiede un dispositivo specifico.</td></tr>
+<tr><td>firma del server</td><td>Il client esegue solo codice che corrisponde a ci&ograve; che il server ha firmato.</td></tr>
+<tr><td>capacit&agrave;</td><td>Regole e Vaglio restano sul server; il dispositivo non amplia i permessi.</td></tr>
+<tr><td>collocazione</td><td>Indica se il lavoro può stare sul server o richiede un dispositivo specifico.</td></tr>
 </tbody>
 </table>
 
 <p>
-Un backend provider selezionato &egrave; sempre fissato al server: rete, home delle
-credenziali e collocazione derivano dalla stessa capability effettiva
-<code>provider:access</code>. Un backend locale dello stesso executor non eredita quel
+Un'integrazione con un fornitore selezionato &egrave; sempre legata al server: rete, directory delle
+credenziali e collocazione derivano dalla stessa capacit&agrave; effettiva
+<code>provider:access</code>. Un servizio locale dello stesso executor non eredita quel
 vincolo e resta eleggibile al dispositivo quando <code>placement.device_ok</code> lo
 consente.
+</p>
+
+<p>
+Le autorità browser, credenziali e condivisione ACL sono distinte nel registro
+canonico: <code>network:sites</code> limita la sessione alle origini autorizzate,
+<code>auth.password_storage</code> limita la lettura all'ambito delle credenziali e
+<code>drive:permissions</code> identifica una concessione remota critica. Gli
+executor <code>*_sites</code> restano collocati solo sul server.
+</p>
+
+<p>
+Le risorse amministrate da Metnos usano inoltre autorità separate:
+<code>metnos:read</code>, <code>metnos:write</code>,
+<code>metnos:create</code> e il vincolo
+<code>metnos:credentials_metadata_only</code>. Quest'ultimo impedisce agli
+executor del vault di restituire segreti al pianificatore.
+</p>
+
+<p>
+Nei flussi composti la presentazione segue l'operazione terminale: se una ricerca
+si conclude creando un archivio, la chat restituisce una ricevuta con cartella e
+artefatti, non la tabella tecnica di <code>compress_files</code>. Le tabelle
+legittime restano contenute nella bolla e scorrono orizzontalmente quando un percorso
+o un URL non può essere spezzato senza perdere informazione.
 </p>
 
 <h3 id="placement-chat">3.1 Collocazione guidata dalla chat: server o un tuo PC</h3>
 
 <p>
-La tabella qui sopra dice <em>se</em> un executor puo' uscire dal server. Resta la
-domanda pratica: <em>su quale macchina</em> finisce, allora, un comando che scrivi
-in chat? Metnos risponde senza pannelli e senza scelte manuali: lo capisce dalla
-frase. Chiamiamo <b>destinazione</b> la macchina dove verra' eseguito il prossimo
-comando &mdash; il server su cui vive Metnos oppure uno
-dei PC che hai <b>appaiato</b>, cioe' registrato una volta con la procedura di
-pairing. Ogni PC appaiato ha un <b>nome</b> scelto da te (per esempio
+La tabella qui sopra dice <em>se</em> un executor può uscire dal server. Resta la
+domanda pratica: <em>su quale macchina</em> finisce un comando che scrivi
+in chat? Metnos ricava la destinazione dalla frase, senza imporre una scelta
+manuale a ogni turno. Chiamiamo <b>destinazione</b> la macchina dove verr&agrave;
+eseguito il prossimo comando &mdash; il server su cui vive Metnos oppure uno
+dei PC che hai <b>associato</b>. Ogni PC associato ha un <b>nome</b> scelto da te (per esempio
 <code>PORTATILE-UFFICIO</code>) e appartiene a un utente: il server sa quali
 dispositivi sono tuoi.
 </p>
@@ -252,13 +271,13 @@ garanzie e uno schema del bivio server / PC.
     <div class="rx-turn rx-user"><div class="rx-bubble">Quante righe di codice ci sono nel progetto?</div></div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-server">&#128421; server</span>
-     <div class="rx-bubble">Il conteggio e' stato eseguito sul server.
+     <div class="rx-bubble">Il conteggio è stato eseguito sul server.
       <div class="rx-mono">primo turno, nessun PC nominato &rarr; destinazione iniziale = server</div>
      </div>
     </div>
 
     <div class="rx-turn rx-user"><div class="rx-bubble">Elenca la cartella Documenti sul mio <b>portatile-ufficio</b></div></div>
-    <div class="rx-route">&#128256; riconosciuto il dispositivo <b>PORTATILE-UFFICIO</b> &rarr; instrado e da ora e' la destinazione</div>
+    <div class="rx-route">&#128256; riconosciuto il dispositivo <b>PORTATILE-UFFICIO</b> &rarr; instrado e da ora è la destinazione</div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-device">&#128187; PORTATILE-UFFICIO</span>
      <div class="rx-bubble">Su <b>PORTATILE-UFFICIO</b>, in <b>Documenti</b>:
@@ -278,12 +297,12 @@ bilancio.xlsx   88 KB</div>
      <div class="rx-bubble">Fatto sul portatile: creato <b>Documenti.zip</b> (1,2 MB) accanto alla cartella.</div>
     </div>
 
-    <div class="rx-turn rx-user"><div class="rx-bubble">Quanto spazio libero c'e' sul <b>fisso-casa</b>?</div></div>
+    <div class="rx-turn rx-user"><div class="rx-bubble">Quanto spazio libero c'è sul <b>fisso-casa</b>?</div></div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-offline">&#128187; FISSO-CASA &middot; non connesso</span>
-     <div class="rx-bubble"><b>FISSO-CASA non e' connesso</b> (nessun battito da oltre un minuto).
+     <div class="rx-bubble"><b>FISSO-CASA non è connesso</b> (nessun battito da oltre un minuto).
       Non eseguo di nascosto altrove: accendilo e riprova, oppure dimmi &laquo;sul server&raquo; o &laquo;sul portatile-ufficio&raquo;.
-      <div class="rx-mono">controllo di connessione prima di ogni invio &rarr; errore onesto, mai un fallback silenzioso</div>
+      <div class="rx-mono">controllo di connessione prima di ogni invio &rarr; errore esplicito, mai un ripiego silenzioso</div>
      </div>
     </div>
 
@@ -291,7 +310,7 @@ bilancio.xlsx   88 KB</div>
     <div class="rx-route">&#128256; destinazione riportata al <b>server</b></div>
     <div class="rx-turn rx-bot">
      <span class="rx-chip rx-server">&#128421; server</span>
-     <div class="rx-bubble">Il conteggio dei processi e' stato eseguito sul server.</div>
+     <div class="rx-bubble">Il conteggio dei processi è stato eseguito sul server.</div>
     </div>
     <div class="rx-destnow">&#128205; destinazione ora: server</div>
 
@@ -301,13 +320,13 @@ bilancio.xlsx   88 KB</div>
   <aside class="rx-panel">
    <h4>Come Metnos decide <em>dove</em> eseguire</h4>
    <div class="rx-step"><div class="rx-n">1</div><div class="rx-t">
-    <b>Chi sei</b> <span>&mdash; la chat e' autenticata: Metnos conosce l'utente (l'attore) e i PC che gli appartengono.</span></div></div>
+    <b>Chi sei</b> <span>&mdash; la chat è autenticata: Metnos conosce l'utente (l'attore) e i PC che gli appartengono.</span></div></div>
    <div class="rx-step"><div class="rx-n">2</div><div class="rx-t">
-    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del dispositivo citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Se non nomini nulla, <b>resta l'ultima destinazione</b>; al primo turno e' il server.</span></div></div>
+    <b>Quale PC</b> <span>&mdash; dal <em>nome</em> del dispositivo citato nella richiesta, ancorato a una preposizione di luogo (&laquo;sul portatile-ufficio&raquo;). Se non nomini nulla, <b>resta l'ultima destinazione</b>; al primo turno è il server.</span></div></div>
    <div class="rx-step"><div class="rx-n">3</div><div class="rx-t">
-    <b>Etichetta e instrada</b> <span>&mdash; il turno e' etichettato col dispositivo risolto; la destinazione corrente e' sempre visibile in cima alla chat.</span></div></div>
+    <b>Etichetta e instrada</b> <span>&mdash; il turno è etichettato col dispositivo risolto; la destinazione corrente è sempre visibile in cima alla chat.</span></div></div>
    <div class="rx-safe">
-    <b>Il server e' la destinazione iniziale</b> e ci torni quando vuoi con &laquo;sul server&raquo; o &laquo;qui&raquo;.
+    <b>Il server è la destinazione iniziale</b> e ci torni quando vuoi con &laquo;sul server&raquo; o &laquo;qui&raquo;.
     Solo un riferimento a un tuo PC (o l'ultima destinazione, che resta appiccicosa) sposta l'esecuzione.
    </div>
    <div class="rx-safe rx-warn">
@@ -344,66 +363,84 @@ bilancio.xlsx   88 KB</div>
  </div>
 </div>
 
-<div class="note">
-<b>Nota sui limiti onesti.</b> Il PC bersaglio si riconosce dal suo <em>nome</em>, non
+<p><strong>Riconoscimento del dispositivo.</strong> Il PC bersaglio si riconosce dal suo <em>nome</em>, non
 da <em>dove</em> arriva la connessione. Riconoscerlo dall'origine di rete (l'indirizzo
-IP) sarebbe inaffidabile: attraverso il tunnel pubblico il server vede sempre
-<code>127.0.0.1</code>, e da Telegram non c'e' alcun PC dietro il messaggio. Per questo
-l'ancora e' il nome del dispositivo &mdash; confrontato con i nomi reali dei tuoi PC appaiati
-&mdash; e non l'impronta della rete. Un nome citato a meta' frase, senza una
+IP) sarebbe inaffidabile: attraverso un tunnel pubblico il server pu&ograve; vedere
+soltanto l'indirizzo del punto di ingresso, e da Telegram non c'è alcun PC
+dietro il messaggio. Per questo l'ancora è il nome del dispositivo &mdash;
+confrontato con i nomi reali dei tuoi PC associati &mdash; e non l'impronta della
+rete. Un nome citato a met&agrave; frase, senza una
 preposizione di luogo che lo ancori, non sposta la destinazione.
-</div>
+</p>
 
-<h2 id="installazione">4. Installazione dalla UI</h2>
+<h2 id="installazione">4. Installazione dall'interfaccia</h2>
 
 <p>
-Il punto operativo naturale e' <code>/admin/devices</code>: il server mostra i
-dispositivi registrati e puo' emettere un link di adesione. Se l'utente apre la UI
-direttamente sul server, non c'e' nulla da installare: gli executor locali sono
-gia' disponibili. Se invece la UI gira su un PC diverso dal server, la pagina puo'
-proporre l'installer adatto alla piattaforma e mostrare lo stato di avanzamento
+Il punto operativo naturale è <code>/admin/devices</code>: il server mostra i
+dispositivi registrati e può emettere un collegamento di adesione. Se l'utente apre l'interfaccia
+direttamente sul server, non c'è nulla da installare: gli executor locali sono
+già disponibili. Se invece l'interfaccia gira su un PC diverso dal server, la pagina può
+proporre il programma di installazione adatto alla piattaforma e mostrare lo stato di avanzamento
 della registrazione.
 </p>
 
 <p>
-Il click non concede privilegi speciali al browser: su Windows scarica
+La selezione non concede privilegi speciali al browser: su Windows scarica
 <code>MetnosClientSetup.cmd</code>, che installa e avvia <code>metnos-client</code>
-come processo persistente del sistema operativo. La UI osserva il join: token
-emesso, client registrato, heartbeat vivo, versione client, ultimo errore.
+come processo persistente del sistema operativo. L'interfaccia mostra lo stato
+dell'associazione: codice emesso, client registrato, connessione recente,
+versione del client e ultimo errore.
 </p>
+
+<ol>
+<li>Nella chat web di Metnos apri <strong>Settings &gt; Sistema &gt;
+Dispositivi</strong> (<code>/admin/devices</code>) e scegli l'utente
+proprietario del PC.</li>
+<li>Seleziona <strong>Devo installare su un altro PC</strong>, assegna un nome
+breve e riconoscibile al dispositivo e genera il collegamento.</li>
+<li>Apri il collegamento sul PC Windows interessato, scarica il client
+autosufficiente e completa l'associazione mostrata dal client.</li>
+<li>Torna a Dispositivi e verifica che il PC risulti associato, attivo e con
+controllo di connessione recente.</li>
+</ol>
+<p>Il collegamento &egrave; temporaneo e destinato a una sola associazione. Se
+il PC &egrave; gi&agrave; presente, verifica il dispositivo esistente prima di
+generarne uno nuovo.</p>
 
 <h2 id="sandbox">5. Sandbox per sistema operativo</h2>
 
 <p>
-Sul server Linux la sandbox canonica e' <code>bwrap</code>. Su un dispositivo
-remoto il contenimento e' scelto dal client in base al sistema operativo, ma
-l'interfaccia resta una sola: esegui questo payload con questi limiti e restituisci
-stdout, stderr, codice di uscita, timeout e metadati di contenimento.
+Sul server Linux la sandbox canonica è <code>bwrap</code>. Su un dispositivo
+remoto il contenimento è scelto dal client in base al sistema operativo, ma
+l'interfaccia resta una sola: esegui questi dati con i limiti indicati e restituisci
+uscita ordinaria, uscita diagnostica, codice di uscita, superamento del tempo
+massimo e metadati di contenimento.
 </p>
 
 <table>
 <thead><tr><th>Sistema</th><th>Contenimento attuale</th><th>Nota</th></tr></thead>
 <tbody>
-<tr><td>Linux</td><td><code>bwrap</code> lato client quando disponibile</td><td>Isolamento forte su filesystem e rete, coerente col modello server.</td></tr>
-<tr><td>Windows</td><td>Job Object + limiti di processo</td><td>Utile per timeout e kill dell'albero; non e' ancora isolamento completo di filesystem/rete.</td></tr>
-<tr><td>macOS</td><td>Backend previsto</td><td>Da abilitare solo quando il contenimento sara' verificato.</td></tr>
+<tr><td>Linux</td><td><code>bwrap</code> lato client quando disponibile</td><td>Spazi dei nomi dei montaggi e PID, file system ristretto e rete separata quando non richiesta. Non usa Landlock o seccomp personalizzati.</td></tr>
+<tr><td>Windows</td><td>AppContainer dentro un Job Object</td><td>ACL mirate per percorsi assoluti; se un percorso relativo non è ancorabile prima dell'avvio, declassamento dichiarato a Job Object senza tentare ACL ambigue.</td></tr>
+<tr><td>macOS</td><td>Nessuna sandbox nativa</td><td>Il percorso Unix comune esegue senza involucro del sistema operativo e dichiara <code>sandbox:"none"</code>.</td></tr>
 </tbody>
 </table>
 
 <p>
 Vedi <a href="sandbox.html#cap10">sandbox, cap. 10</a> per il dettaglio
-per-OS e per il motivo per cui Windows AppContainer resta il prossimo passo di
-irrobustimento.
+per-OS. Il risultato remoto riporta sempre il contenimento realmente applicato;
+un controllo separato termina il client, affidandone il riavvio al supervisore,
+se la sandbox non restituisce il controllo entro la scadenza pi&ugrave; un margine limitato.
 </p>
 
 <h2 id="guasti">6. Guasti, duplicati e revoca</h2>
 
 <p>
-Il canale e' costruito per una rete domestica imperfetta. Il client interroga
-periodicamente il server, quindi non richiede porte aperte sul PC. Ogni invocazione ha idempotenza e una
-deadline: se la rete cade, il server puo' distinguere fra lavoro non ancora preso,
-lavoro in corso e risultato gia' consegnato. Se un client resta appeso, il lock
-locale impedisce una seconda istanza concorrente; se un job supera il timeout, il
+Il canale è costruito per una rete domestica imperfetta. Il client interroga
+periodicamente il server, quindi non richiede porte aperte sul PC. Ogni invocazione ha un'identit&agrave; stabile e una
+scadenza: se la rete cade, il server può distinguere fra lavoro non ancora preso,
+lavoro in corso e risultato già consegnato. Se un client resta bloccato, il vincolo
+locale impedisce una seconda istanza concorrente; se un lavoro supera il tempo massimo, il
 client spegne l'albero dei processi. Il battito del client
 gira in un compito separato, quindi il dispositivo resta osservabile anche mentre
 sta preparando il proprio ambiente di esecuzione.
@@ -412,33 +449,33 @@ sta preparando il proprio ambiente di esecuzione.
 <p>
 La revoca avviene sul server: il dispositivo revocato riceve errore quando
 interroga il server o manda il battito, e smette di ricevere lavoro. Il server non deve fidarsi del fatto che
-il vecchio client "si comporti bene": smette semplicemente di assegnargli payload.
+il vecchio client "si comporti bene": smette semplicemente di assegnargli richieste.
 </p>
 
 <h2 id="limiti">7. Limiti dichiarati</h2>
 
-<div class="note">
-Gli executor remoti non significano "esegui qualunque codice sul PC". Significano:
-esegui solo executor firmati, compatibili con la piattaforma, ammessi dalla policy
+<p>Gli executor remoti non significano &laquo;esegui qualunque codice sul PC&raquo;.
+Significano:
+esegui solo executor firmati, compatibili con la piattaforma, ammessi dalle regole
 e sufficientemente contenuti dal client. Gli executor mutanti ammessi (scrittura e
-spostamento file) portano con se' l'annullamento: l'undo di un'operazione eseguita
-sul dispositivo viene rieseguito <em>sullo stesso dispositivo</em>, mai sul server.
-Anche la cancellazione remota e' ammessa: il backup (blob) viene scritto
+spostamento file) includono l'annullamento: l'operazione inversa viene eseguita
+<em>sullo stesso dispositivo</em>, mai sul server.
+Anche la cancellazione remota è ammessa: il backup (blob) viene scritto
 sul dispositivo prima della rimozione e l'annullamento lo ripristina
 <em>sullo stesso dispositivo</em>.
-</div>
+</p>
 
 <ul>
- <li>Windows oggi contiene bene durata e albero processi; l'isolamento fine di filesystem e rete richiede un backend piu' forte.</li>
+ <li>Su Windows, AppContainer isola file e rete quando pu&ograve; essere costruito; il ripiego al solo Job Object contiene risorse e albero dei processi, ma non offre lo stesso isolamento.</li>
  <li>Il dispositivo deve restare raggiungibile dal server sulla rete prevista o tramite rete privata equivalente.</li>
  <li>Un executor deve dichiarare piattaforme e collocazione: l'assenza di dichiarazione non va interpretata come consenso remoto.</li>
- <li>Il dettaglio implementativo resta interno; questa pagina e' la porta pubblica stabile.</li>
+ <li>Su macOS non &egrave; disponibile un contenimento nativo equivalente: un'esecuzione con livello <code>none</code> non va descritta come isolata.</li>
 </ul>
 
 <footer>
-Metnos &mdash; microprogettazione: <code>remote_executors</code>. Vedi anche
+Metnos &mdash; guida agli <code>executor remoti</code>. Vedi anche
 <a href="executor.html"><code>executor</code></a>,
-<a href="pairing.html#cap13"><code>pairing</code></a>,
+<a href="pairing.html#cap6"><code>pairing</code></a>,
 <a href="sandbox.html#cap10"><code>sandbox</code></a> e
 <a href="http_api.html"><code>http_api</code></a>.
 </footer>

@@ -16,7 +16,11 @@ from pathlib import Path
 import re
 import tomllib
 
-from published_docs import PUBLICATION_ROOT, catalog as published_documents
+from published_docs import (
+    PUBLICATION_ROOT,
+    catalog as published_documents,
+    require_public_material,
+)
 
 from .cards import REPO_ROOT
 
@@ -44,6 +48,14 @@ class KnowledgeUnit:
     semantic: str
     source_ref: str
     content_hash: str
+    # Present only for documents admitted by `published_docs.catalog()`.
+    # The URL is canonical, signed into the Tutor catalog, and safe to expose
+    # as a navigable citation. Internal files and runtime registries stay empty.
+    public_url: str = ""
+    # Present only on units generated from the closed observation-view
+    # registry.  A UI page, document, executor manifest, learned association,
+    # or semantic neighbour can therefore never authorize a live probe.
+    observation_ref: str = ""
 
     def visible_to(self, audience: str) -> bool:
         rank = {"user": 0, "instance_admin": 1}
@@ -146,7 +158,9 @@ def _bounded_parts(text: str) -> tuple[str, ...]:
 def _unit(*, unit_id: str, concept_id: str, lang: str, audience: str,
           source_kind: str,
           authority: str, priority: int, title: str, text: str,
-          source_ref: str, semantic: str = "") -> KnowledgeUnit:
+          source_ref: str, semantic: str = "", public_url: str = "",
+          observation_ref: str = "",
+          ) -> KnowledgeUnit:
     # The embedding text is built as ``title. semantic`` by the catalog, so
     # the default semantic body is the text alone: repeating the title would
     # dilute long sections and push their tail past the embedder token cap.
@@ -165,13 +179,16 @@ def _unit(*, unit_id: str, concept_id: str, lang: str, audience: str,
         semantic=semantic,
         source_ref=source_ref,
         content_hash=f"sha256:{digest}",
+        public_url=public_url,
+        observation_ref=str(observation_ref or ""),
     )
 
 
 def _document_units(*, source_id: str, lang: str, path: Path,
                     audience: str, source_kind: str,
                     priority: int,
-                    concept_prefix: str | None = None) -> list[KnowledgeUnit]:
+                    concept_prefix: str | None = None,
+                    public_url: str = "") -> list[KnowledgeUnit]:
     parser = _HTMLBlocks()
     parser.feed(path.read_text(encoding="utf-8"))
     units: list[KnowledgeUnit] = []
@@ -202,6 +219,7 @@ def _document_units(*, source_id: str, lang: str, path: Path,
                 title=heading,
                 text=part,
                 source_ref=f"{path.relative_to(REPO_ROOT).as_posix()}#{ordinal}",
+                public_url=public_url,
             ))
 
     for tag, text in parser.blocks:
@@ -234,11 +252,11 @@ def _resolve_language_paths(template: str, languages: tuple[str, ...], *,
         lang = str(raw_lang).lower()
         if not _LANG.fullmatch(lang):
             raise ValueError(f"invalid Tutor document language: {raw_lang!r}")
-        candidate = (repo_root / template.replace("{lang}", lang)).resolve()
-        try:
-            candidate.relative_to(root)
-        except ValueError as exc:
-            raise ValueError("Tutor source escapes repository") from exc
+        candidate = require_public_material(
+            repo_root / template.replace("{lang}", lang),
+            root=root,
+            label="Tutor source",
+        )
         if not candidate.is_file():
             raise ValueError(f"Tutor source unavailable: {candidate}")
         if lang in resolved:
@@ -281,11 +299,11 @@ def _read_registry() -> tuple[dict, ...]:
             resolved = {}
             for lang, relative in legacy_paths.items():
                 lang = str(lang).lower()
-                candidate = (REPO_ROOT / str(relative)).resolve()
-                try:
-                    candidate.relative_to(REPO_ROOT.resolve())
-                except ValueError as exc:
-                    raise ValueError("Tutor source escapes repository") from exc
+                candidate = require_public_material(
+                    REPO_ROOT / str(relative),
+                    root=REPO_ROOT,
+                    label="Tutor source",
+                )
                 if not _LANG.fullmatch(lang) or not candidate.is_file():
                     raise ValueError(f"Tutor source unavailable: {relative!r}")
                 resolved[lang] = candidate
@@ -397,6 +415,47 @@ def _manifest_descriptions(executor, manifest: dict | None = None) -> dict[str, 
     return {lang: fallback}
 
 
+def _manifest_affinity(manifest: dict | None) -> tuple[str, ...]:
+    """Return the canonical semantic vocabulary admitted by a manifest.
+
+    ``affinity`` is already the executor catalog's reviewed, multilingual
+    semantic surface.  Projecting it as the *embedding-only* body lets the
+    parent operation compete with its argument fragments without exposing
+    routing metadata in Tutor's answer or teaching query-specific aliases.
+    """
+
+    raw = manifest.get("affinity") if isinstance(manifest, dict) else None
+    if not isinstance(raw, list):
+        return ()
+    return tuple(dict.fromkeys(
+        _SPACE.sub(" ", str(value)).strip()
+        for value in raw
+        if _SPACE.sub(" ", str(value)).strip()
+    ))
+
+
+def _semantic_with_parent(parent: str, detail: str) -> str:
+    """Embed a child contract together with its parent operation.
+
+    An argument such as ``email`` is not a standalone capability: it may be a
+    recipient, an account selector, or a sharing destination.  The reviewed
+    manifest affinity provides that missing provenance.  The exact child text
+    remains intact and receives the bounded semantic budget before its parent.
+    """
+
+    child = _SPACE.sub(" ", str(detail or "")).strip()
+    context = _SPACE.sub(" ", str(parent or "")).strip()
+    if not context:
+        return child
+    available = _MAX_CHARS - len(child) - 2
+    if available <= 0:
+        return child[:_MAX_CHARS].rstrip()
+    if len(context) > available:
+        boundary = context.rfind(" ", 0, available + 1)
+        context = context[:boundary if boundary > 0 else available].rstrip()
+    return f"{context}. {child}" if context else child
+
+
 def _manifest_argument_descriptions(
         executor, manifest: dict | None = None,
 ) -> tuple[tuple[str, str, str, str], ...]:
@@ -457,6 +516,7 @@ def _executor_units() -> list[KnowledgeUnit]:
     for executor in sorted(catalog, key=lambda item: item.name):
         manifest = _manifest_document(executor)
         descriptions = _manifest_descriptions(executor, manifest)
+        affinity = _manifest_affinity(manifest)
         if not descriptions:
             continue
         membership = str(getattr(executor, "membership", "") or "unknown")
@@ -468,6 +528,10 @@ def _executor_units() -> list[KnowledgeUnit]:
         platforms = ", ".join(getattr(executor, "platforms", ()) or ())
         audience = "instance_admin" if executor.name == "admin" else "user"
         priority = 100 if membership == "builtin" else 85
+        parent_semantic = (
+            f"executor={executor.name}; affinity={', '.join(affinity)}"
+            if affinity else ""
+        )
         for lang, description in sorted(descriptions.items()):
             # Structured neutral labels reduce translation maintenance.  The
             # localized manifest description remains the substantive text.
@@ -477,6 +541,10 @@ def _executor_units() -> list[KnowledgeUnit]:
                 + (f"; platforms={platforms}" if platforms else "")
             )
             text = f"{metadata}. {description}"
+            # Keep the rendered evidence exactly equal to the signed manifest
+            # contract.  Affinity is retrieval metadata, so it belongs only to
+            # the embedding projection and cannot leak into the composed reply.
+            semantic = parent_semantic or text
             units.append(_unit(
                 unit_id=f"executor-{executor.name}-{lang}",
                 concept_id=f"executor-{executor.name}",
@@ -487,6 +555,7 @@ def _executor_units() -> list[KnowledgeUnit]:
                 priority=priority,
                 title=executor.name,
                 text=text,
+                semantic=semantic,
                 source_ref=f"manifest:{executor.name}:{lang}",
             ))
         for path, lang, schema, description in _manifest_argument_descriptions(
@@ -508,6 +577,7 @@ def _executor_units() -> list[KnowledgeUnit]:
                     priority=priority,
                     title=f"{executor.name}.{path}",
                     text=part,
+                    semantic=_semantic_with_parent(parent_semantic, part),
                     source_ref=(f"manifest:{executor.name}:arg:{path}:{lang}"
                                 f"#{part_number}"),
                 ))
@@ -862,7 +932,10 @@ def _service_registry_units() -> list[KnowledgeUnit]:
             unit_id=f"runtime-settings-services-{lang}",
             concept_id="runtime-settings-services",
             lang=lang,
-            audience="instance_admin",
+            # From the registry, like every other surface: this unit used to
+            # pin `instance_admin` on its own, which made Services the only
+            # page whose knowledge audience lived outside `ui_surfaces`.
+            audience=surface.knowledge_audience,
             source_kind="ui_surface",
             authority="runtime_registry",
             priority=100,
@@ -870,13 +943,56 @@ def _service_registry_units() -> list[KnowledgeUnit]:
             text=f"{intro} " + "; ".join(inventory),
             source_ref=f"runtime:services_registry:{lang}",
             semantic=(
-                f"Pagina UI {title}. Inventario dei servizi di Metnos "
-                "visibili in Settings, con stato, salute e controlli."
+                f"Pagina UI {title}. Inventario e stato corrente live dei "
+                "servizi Metnos: installati, attivi, in esecuzione, "
+                "arrestati o degradati; "
+                "nome, scopo, funzione, salute e controlli disponibili."
                 if lang == "it" else
-                f"Metnos UI page {title}. Inventory of Metnos services "
-                "visible in Settings, with state, health, and controls."
+                f"Metnos UI page {title}. Inventory and current live state "
+                "of Metnos services: installed, active, running, stopped, "
+                "or degraded; their "
+                "name, purpose, function, health, and available controls."
             ),
         ))
+    return units
+
+
+def _observation_view_units() -> list[KnowledgeUnit]:
+    """Project the closed live-view registry into the signed Tutor catalog.
+
+    The localized prose is retrieval/composition evidence only.  Live
+    authority is the separate ``observation_ref`` field, checked against the
+    same registry again at compile time and at request time.
+    """
+
+    from .observation_views import catalog
+
+    units: list[KnowledgeUnit] = []
+    for view in catalog():
+        slug = view.view_id.lower().replace("_", "-")
+        for lang in view.languages():
+            title = view.localized("title", lang)
+            coverage = view.localized("coverage", lang)
+            excluded = view.localized("excluded", lang)
+            # Every user-facing word comes from the localized registry.  The
+            # compiler therefore needs no language branch: adding a complete
+            # locale to one view automatically creates its signed unit.
+            text_value = f"{coverage} {excluded}"
+            semantic = f"{title}. {coverage}"
+            units.append(_unit(
+                unit_id=f"runtime-observation-{slug}-{lang}",
+                concept_id=f"runtime-observation-{slug}",
+                lang=lang,
+                audience=view.audience,
+                source_kind="live_observation",
+                authority="runtime_registry",
+                priority=100,
+                title=title,
+                text=text_value,
+                semantic=semantic,
+                source_ref=f"runtime:observation_view:{view.view_id}:{lang}",
+                observation_ref=view.view_id,
+            ))
     return units
 
 
@@ -931,6 +1047,54 @@ def _ui_surface_units() -> list[KnowledgeUnit]:
                     f"Visible content: {visible}. Controls: {controls}."
                 ),
             ))
+            # A Settings page is a structured collection of independently
+            # meaningful facts.  Embedding the whole page as one long vector
+            # dilutes a focused question (for example, one metric among ten)
+            # and lets broad prose outrank the canonical UI contract.  Give
+            # every visible row its own semantic projection while retaining
+            # the same source identity.  Retrieval can then match the row the
+            # person actually describes; coverage still resolves the source
+            # back to the complete typed surface.  This is registry-driven for
+            # every page and language, with no query phrases or page names in
+            # the selector.
+            for item_number, item in enumerate(surface.visible(lang), start=1):
+                if lang == "it":
+                    facet_text = (
+                        "Questa informazione è visibile nella pagina della "
+                        f"chat web di Metnos {title}, route {surface.route}: "
+                        f"{item}. Scopo della pagina: {surface.summary(lang)}"
+                    )
+                    facet_semantic = (
+                        "Dove vedere nella chat web di Metnos questa "
+                        f"informazione: {item}. Pagina {title}, route "
+                        f"{surface.route}. {surface.summary(lang)}"
+                    )
+                else:
+                    facet_text = (
+                        "This information is visible on the Metnos web-chat "
+                        f"page {title}, route {surface.route}: {item}. "
+                        f"Page purpose: {surface.summary(lang)}"
+                    )
+                    facet_semantic = (
+                        "Where to see this information in the Metnos web "
+                        f"chat: {item}. Page {title}, route {surface.route}. "
+                        f"{surface.summary(lang)}"
+                    )
+                units.append(_unit(
+                    unit_id=(f"runtime-ui-{surface.key}-facet-"
+                             f"{item_number:02d}-{lang}"),
+                    concept_id=(f"runtime-ui-{surface.key}-facet-"
+                                f"{item_number:02d}"),
+                    lang=lang,
+                    audience=surface.knowledge_audience,
+                    source_kind="ui_surface",
+                    authority="runtime_registry",
+                    priority=96,
+                    title=title,
+                    text=facet_text,
+                    source_ref=f"runtime:ui_surface:{surface.key}:{lang}",
+                    semantic=facet_semantic,
+                ))
             procedure = surface.procedure(lang)
             if procedure:
                 stops = surface.stop_conditions(lang)
@@ -1018,6 +1182,7 @@ def build_knowledge_units() -> tuple[KnowledgeUnit, ...]:
             source_kind="manual",
             priority=80,
             concept_prefix=f"public-doc-{document.concept_key}",
+            public_url=document.canonical_url,
         ))
     for source in _read_registry():
         for lang, path in sorted(source["paths"].items()):
@@ -1033,6 +1198,7 @@ def build_knowledge_units() -> tuple[KnowledgeUnit, ...]:
     units.extend(_capability_catalog_units())
     units.extend(_ui_surface_units())
     units.extend(_service_registry_units())
+    units.extend(_observation_view_units())
     ids = [unit.unit_id for unit in units]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate Tutor knowledge unit id")

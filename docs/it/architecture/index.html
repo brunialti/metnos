@@ -453,7 +453,7 @@ html { scroll-behavior: smooth; }
     <li><a href="#s1">Cos'&egrave; Metnos</a></li><li><a href="#s2">Le tre scommesse</a></li>
     <li><a href="#s3">I concetti chiave</a></li><li><a href="#s4">L'architettura a strati</a></li>
     <li><a href="#s5">Anatomia di un turno multitool</a></li><li><a href="#s6">Executor e autorit&agrave;</a></li>
-    <li><a href="#s7">Synt: la fabbrica</a></li><li><a href="#s8">Modelli e routing deterministico</a></li>
+    <li><a href="#s7">Synt: la fabbrica</a></li><li><a href="#s8">Modelli e instradamento deterministico</a></li>
     <li><a href="#s9">Memoria</a></li><li><a href="#s10">Pipeline immagini</a></li>
     <li><a href="#s11">Canali</a></li><li><a href="#s12">Sicurezza e reversibilit&agrave;</a></li>
     <li><a href="#component-atlas">Atlante dei componenti</a></li><li><a href="#s13">Otto principi</a></li>
@@ -598,7 +598,7 @@ collegati cambia il dominio operativo, senza cambiare l'architettura che lo gove
 <!-- local LLM -->
 <rect x="616" y="290" width="298" height="64" rx="10" fill="#dbeafe" stroke="#2B6CB0" stroke-width="1.8" filter="url(#f1-sh)"/>
 <text x="765" y="314" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">servizio LLM configurato</text>
-<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoint risolti per fast &middot; middle &middot; wise</text>
+<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoint risolti per fast &middot; middle &middot; wise &middot; creative</text>
 <text x="765" y="346" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">locale o remoto, senza cambiare il pianificatore</text>
 <path d="M 560 234 Q 590 234 606 290" fill="none" stroke="#2B6CB0" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#f1-arr)"/>
 <text x="588" y="262" text-anchor="middle" fill="#2B6CB0" font-size="9" font-style="italic">pensa qui</text>
@@ -627,7 +627,7 @@ collegati cambia il dominio operativo, senza cambiare l'architettura che lo gove
 <tbody>
 <tr><td><strong>Forma</strong></td><td>Processo Python &ge; 3.12, microarchitettura a executor e pianificazione vincolata in un singolo passaggio nel motore M&emacr;tis (cap. 5).</td></tr>
 <tr><td><strong>Strumenti</strong></td><td>Executor firmati nel catalogo, pi&ugrave; quelli <em>sintetizzati al volo</em> e quelli importati dopo il filtro di ammissione (cap. 7). Tutti vettoriali: lista in ingresso, lista in uscita. La <a href="../domains.html">guida dei domini</a> offre la vista utente; nomi e conteggio correnti sono nel <a href="executor_catalog.html">catalogo generato</a>.</td></tr>
-<tr><td><strong>Cervello</strong></td><td>Endpoint LLM compatibili, locali o remoti; quattro livelli astratti <code>fast / middle / wise / frontier</code> (cap. 8). <code>frontier</code> indica il cloud facoltativo.</td></tr>
+<tr><td><strong>Cervello</strong></td><td>Endpoint LLM compatibili, locali o remoti; cinque livelli astratti <code>fast / middle / wise / creative / frontier</code> (cap. 8). <code>frontier</code> indica il cloud facoltativo.</td></tr>
 <tr><td><strong>Canali</strong></td><td>Telegram (interrogazione in uscita, senza porte aperte) e web sulla porta 8770 (chat e pannello amministrativo), cap. 11.</td></tr>
 <tr><td><strong>Dispositivi</strong></td><td>Una parte controllata del catalogo pu&ograve; girare su PC registrati nella stessa rete tramite <code>metnos-client</code>: il server conserva regole, scelta, firma e registro; il dispositivo esegue solo executor dichiarati compatibili. Dettaglio: <a href="remote_executors.html">executor remoti</a>.</td></tr>
 <tr><td><strong>Sensi</strong></td><td>Elaborazione delle immagini nel processo: semantica, volti ed EXIF confluiscono in un indice unificato (cap. 10).</td></tr>
@@ -830,7 +830,7 @@ dalla grammatica).
   <text x="450" y="142" fill="#A0522D" font-size="11" font-weight="700">qualifier (opz.)</text>
   <text x="450" y="158" fill="#475569" font-size="9.5">4 famiglie</text>
   <text x="450" y="172" fill="#64748B" font-size="9" font-style="italic">formato &middot; modalit&agrave;</text>
-  <text x="450" y="184" fill="#64748B" font-size="9" font-style="italic">safety &middot; provider</text>
+  <text x="450" y="184" fill="#64748B" font-size="9" font-style="italic">safety &middot; fornitore</text>
 
   <text x="585" y="142" fill="#6B21A8" font-size="11" font-weight="700">descriptor (opz.)</text>
   <text x="585" y="158" fill="#475569" font-size="9.5">kebab-case, max 30</text>
@@ -874,8 +874,8 @@ dalla grammatica).
 <p class="lead">
 Metnos &egrave; una cipolla: l'esterno parla col mondo, l'interno esegue. Ogni
 strato si fida solo di quello pi&ugrave; interno e i privilegi calano scendendo
-verso il centro. Una richiesta &mdash; venga da un utente o da un task
-schedulato &mdash; li attraversa tutti, nell'ordine.
+verso il centro. Una richiesta &mdash; venga da un utente o da un'attivit&agrave;
+programmata &mdash; li attraversa tutti, nell'ordine.
 </p>
 
 <figure>
@@ -1543,7 +1543,7 @@ devono tornare nell'ordine di ingresso.
 <p>
 Il nome di un fornitore dentro un argomento &egrave; un dato, non un permesso. Per
 un executor conforme, l'accesso remoto esiste solo quando il manifest dichiara
-una capability <code>provider:access</code> effettiva. Una condizione
+una capacit&agrave; <code>provider:access</code> effettiva. Una condizione
 <code>when</code> chiusa pu&ograve; attivarla soltanto per il servizio selezionato.
 Condizioni invalide o non corrispondenti non concedono nulla.
 </p>
@@ -1551,7 +1551,7 @@ Condizioni invalide o non corrispondenti non concedono nulla.
 <div class="authority-flow" role="img" aria-label="Una dichiarazione di accesso al fornitore governa credenziali, rete e collocazione sul server">
   <div class="authority-node"><strong>Invocazione tipizzata finale</strong><code>client = "google_workspace"</code><br><small>Il pianificatore pu&ograve; scegliere un valore; non pu&ograve; creare autorit&agrave;.</small></div>
   <div class="authority-arrow" aria-hidden="true">&rarr;</div>
-  <div class="authority-node"><strong>Capability effettiva del manifest</strong><code>provider:access</code><br><code>when.client = google_workspace</code><br><small>Schema esatto, collegamento noto; in caso di dubbio l'accesso è negato.</small></div>
+  <div class="authority-node"><strong>Capacit&agrave; effettiva del manifest</strong><code>provider:access</code><br><code>when.client = google_workspace</code><br><small>Schema esatto, collegamento noto; in caso di dubbio l'accesso è negato.</small></div>
   <div class="authority-arrow" aria-hidden="true">&rarr;</div>
   <div class="authority-node"><strong>Una decisione, tre effetti</strong><small>Monta la directory del fornitore in lettura e scrittura, abilita la rete, mantiene l'esecuzione sul server.</small></div>
 </div>
@@ -1846,11 +1846,11 @@ importate da fuori: nessun pacchetto si esegue sulla fiducia.
 </figure>
 
 
-<h1 id="s8">8. Quattro livelli, un instradamento governato</h1>
+<h1 id="s8">8. Cinque livelli, un instradamento governato</h1>
 
 <p class="lead">
 I livelli sono <strong>ruoli astratti</strong>, non modelli inchiodati:
-<code>fast / middle / wise</code> sono incarichi che leghi a qualunque endpoint
+<code>fast / middle / wise / creative</code> sono incarichi che leghi a qualunque endpoint
 tu abbia, <code>frontier</code> &egrave; il cloud facoltativo. Pi&ugrave; livelli possono
 condividere un endpoint oppure essere separati: il pianificatore vede sempre il ruolo.
 </p>
@@ -1858,9 +1858,10 @@ condividere un endpoint oppure essere separati: il pianificatore vede sempre il 
 <table>
 <thead><tr><th style="width:14%">Livello</th><th style="width:34%">Ruolo</th><th>Vincolo</th></tr></thead>
 <tbody>
-<tr><td><code>fast</code></td><td>Estrazioni brevi e strutturate: intento, valori da completare, classificazioni. Ragionamento spento.</td><td>Endpoint configurato; risposta corta. Obbligatorio.</td></tr>
-<tr><td><code>middle</code></td><td>Lavoro procedurale: stadi 1-4 della sintesi, descrizioni, giudizi.</td><td>Endpoint e parametri configurati per il ruolo.</td></tr>
-<tr><td><code>wise</code></td><td>Il pianificatore: propone il piano intero; scrive il codice dello stadio 5.</td><td>Obbligatorio: <em>non degrada mai</em> a fast.</td></tr>
+<tr><td><code>fast</code></td><td>Decisioni brevi e strutturate: intento, filler e riduzioni ristrette.</td><td>Endpoint configurato; risposta corta. Obbligatorio.</td></tr>
+<tr><td><code>middle</code></td><td>Lavoro procedurale e giudizi intermedi: estrazioni, classificazioni e stadi 1-3 della sintesi.</td><td>Policy deterministica del ruolo.</td></tr>
+<tr><td><code>wise</code></td><td>Il pianificatore e la sintesi ad alta fedelt&agrave;: piano intero, codice e verifiche.</td><td>Policy deterministica del ruolo.</td></tr>
+<tr><td><code>creative</code></td><td>Proposte divergenti e testo editoriale, incluso lo stadio 4 della sintesi.</td><td>Policy separata con temperatura 0,35.</td></tr>
 <tr><td><code>frontier</code></td><td>Un consulto esterno quando richiesto esplicitamente, per esempio per analizzare una segnalazione.</td><td>API cloud facoltativa, con ripiego gestito se la chiave non c'&egrave;.</td></tr>
 </tbody>
 </table>
@@ -2221,28 +2222,37 @@ altri non tocca il nucleo.
 <p>
 Le domande esplicite su come usare Metnos vengono intercettate allo stesso
 confine HTTP/Telegram, prima del pianificatore e senza consumare un dialogo
-pendente. Un rilevatore prudente riconosce soltanto la classe di richiesta;
-la fonte pertinente non &egrave; scelta da sinonimi o frasi esatte, ma dal modello
-di rappresentazione configurato, che confronta la domanda con i vettori
-conservati nel catalogo SQLite firmato.
+pendente. Il primo passaggio distingue spiegazioni, azioni, richieste miste e
+intenzioni ancora incerte. Un nome di pagina, un percorso relativo o un URL
+canonico pu&ograve; identificare direttamente una fonte pubblicata; negli altri casi
+il modello di rappresentazione configurato confronta la domanda con le unit&agrave;
+del catalogo SQLite firmato.
 </p>
 
 <p>
-Dopo il recupero, l'identità autenticata filtra il contenuto. Le procedure
-amministrative restano deterministiche; per le guide informative il modello
-locale formula la risposta usando soltanto la scheda recuperata e l'inventario
-ammesso dell'istanza. Non riceve strumenti e usa la risorsa centrale
-<code>llm</code> in classe seriale: pu&ograve; spiegare, non agire. Catalogo non
-valido, pertinenza debole o contesto insufficiente producono un esito dichiarato,
-mai una capacit&agrave; inventata.
+Dopo il recupero, l'identit&agrave; autenticata filtra le fonti. Una fonte firmata
+pu&ograve; richiamare soltanto osservazioni di sola lettura registrate e limitate:
+executor ammessi, servizi, dispositivi posseduti e attivit&agrave; programmate
+dell'utente. Il modello locale formula la risposta esclusivamente da queste
+evidenze; non riceve strumenti e usa la risorsa centrale <code>llm</code> in
+classe seriale.
+</p>
+
+<p>
+Se una richiesta contiene anche un'azione separabile, il Tutor risponde alla
+parte informativa, conserva alla lettera la clausola operativa e chiede se
+consegnarla al normale motore di Metnos. La consegna &egrave; monouso, legata
+all'utente e alla conversazione e avviene soltanto dopo conferma. Il Tutor non
+esegue l'azione. I riscontri possono migliorare il recupero per quella sola
+persona, senza modificare il pianificatore o le cache dei piani.
 </p>
 
 <h2>Il confine del Tutor</h2>
-<p>Il codice deterministico governa rilevamento, identità, livello di accesso,
-integrità e procedure di sicurezza. Il confronto semantico e il modello locale
-intervengono soltanto dove la varietà del linguaggio renderebbe fragile una
-tabella di frasi. Il Tutor può spiegare ciò che le fonti ammesse attestano, ma
-non riceve strumenti con cui agire.</p>
+<p>Il runtime governa identit&agrave;, livello di accesso, integrit&agrave; delle fonti,
+registro delle osservazioni e consegna delle azioni. Classificazione semantica,
+recupero e composizione intervengono dove la variet&agrave; del linguaggio renderebbe
+fragile una tabella di frasi. Catalogo non valido, pertinenza debole o contesto
+insufficiente producono un esito dichiarato, mai una capacit&agrave; inventata.</p>
 
 
 <span id="cap5"></span><span id="cap11"></span><span id="cap12"></span>
@@ -2647,7 +2657,7 @@ controparte inglese in
  <td>Guida locale che precede il pianificatore: compila manifest ammessi, registri del motore, documentazione pubblicata e procedure curate in un catalogo firmato. Riconosce le fonti pubbliche anche dal nome del file, pu&ograve; aggiungere osservazioni correnti tipizzate e consegna una clausola d'azione al motore soltanto dopo conferma. Il riscontro affina il recupero per il singolo utente senza entrare nelle cache dei piani.</td>
 </tr>
 <tr>
- <td><a href="mail_accounts.html"><code>account mail</code></a></td>
+ <td><a href="mail_accounts.html"><code>account di posta</code></a></td>
  <td>Configurazione di caselle IMAP/SMTP, anche non Google: collegamenti cifrati, account multipli, compatibilit&agrave; con i file di ambiente e confine con le funzioni specifiche di Gmail.</td>
 </tr>
 <tr>
@@ -2671,7 +2681,7 @@ controparte inglese in
 </tr>
 <tr>
  <td><a href="executor_catalog.html"><code>catalogo executor</code></a></td>
- <td>Censimento generato dai manifest firmati: tutti gli executor mantenuti dal progetto, raggruppati per dominio canonico, con scopo, criticit&agrave;, piattaforme e posizione nel sorgente.</td>
+ <td>Censimento generato dai manifest firmati: tutti gli executor mantenuti dal progetto, raggruppati per dominio canonico, con scopo, criticit&agrave;, piattaforme e percorso nel codice sorgente.</td>
 </tr>
 <tr>
  <td><a href="remote_executors.html"><code>remote_executors</code></a></td>
@@ -2736,7 +2746,7 @@ controparte inglese in
 <tbody>
 <tr>
  <td><a href="channel.html"><code>channel</code></a></td>
- <td>Interfaccia comune dei canali (<code>send</code> e <code>poll</code>) e prima implementazione concreta: <code>TelegramChannel</code>, con interrogazione prolungata, avanzamento persistente, processo di servizio e unit&agrave; systemd dell'utente. Per pi&ugrave; utenti usa <code>send_to(chat_id, OutboundMessage)</code> e <code>/start &lt;token&gt;</code> per appaiare un ospite.</td>
+ <td>Interfaccia comune dei canali (<code>send</code> e <code>poll</code>) e adattatore <code>TelegramChannel</code>, con interrogazione prolungata, avanzamento persistente, processo di servizio e unit&agrave; systemd dell'utente. Per pi&ugrave; utenti usa <code>send_to(chat_id, OutboundMessage)</code> e <code>/start &lt;token&gt;</code> per appaiare un ospite.</td>
 </tr>
 <tr>
  <td><a href="http_api.html"><code>http_api</code></a></td>

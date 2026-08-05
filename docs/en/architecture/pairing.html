@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; pairing (tested)</title>
- <meta name="description" content="Microdesign of Metnos pairing: signed Ed25519 codes that bind a channel+sender to an autonomy level. Default-chat bootstrap, SQLite registry, /pair command on the Telegram daemon.">
- <meta name="keywords" content="pairing, channel, sender, autonomy, Ed25519, telegram, bootstrap, registry, sqlite, metnos">
+ <title>Metnos &mdash; pairing</title>
+ <meta name="description" content="Guide to pairing users, channels, web sessions, and remote devices in Metnos: identity, one-time tokens, revocation, and per-user isolation.">
+ <meta name="keywords" content="pairing, users, Telegram, web sessions, remote devices, Ed25519, revocation, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/en/architecture/pairing">
@@ -14,684 +14,281 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/pairing">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/pairing">
- <meta property="og:title" content="Metnos &mdash; pairing (tested)">
- <meta property="og:description" content="Metnos pairing: signed Ed25519 codes, default-chat bootstrap, /pair on the Telegram daemon, SQLite registry, ReadOnly/Supervised/Full levels.">
+ <meta property="og:title" content="Metnos &mdash; pairing">
+ <meta property="og:description" content="Identity and pairing for users, channels, web sessions, and remote devices.">
  <meta property="og:locale" content="en_US">
  <meta property="og:locale:alternate" content="it_IT">
  <meta property="og:site_name" content="Metnos">
- <meta name="twitter:card" content="summary_large_image">
- <meta name="twitter:title" content="Metnos &mdash; pairing (tested)">
- <meta name="twitter:description" content="Ed25519 codes, SQLite registry, /pair on the Telegram daemon. Status: tested.">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — pairing ",
- "description": "Microdesign of pairing: signed Ed25519 codes, default-chat bootstrap, /pair command on the daemon, SQLite registry with single-shot consumed codes. Status: tested.",
+ "headline": "Metnos — pairing",
+ "description": "Guide to pairing users, channels, web sessions, and remote devices in Metnos.",
  "url": "https://metnos.com/en/architecture/pairing.html",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"}
 }
  </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
-h1:first-of-type { margin-top: 0; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+ <style>
+:root { --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+  --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+  --code-bg:#f6f8fa; --table-alt:#f0f4f8; }
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt;
+  line-height:1.65; color:var(--text); background:var(--bg); max-width:960px;
+  margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy);
+  padding-bottom:8px; margin-top:48px; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:26px;
+  border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--navy); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px;
+  padding:12px 16px; overflow-x:auto; font-size:9.5pt; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px;
+  border-radius:3px; font-size:9.5pt; }
+ul, ol { margin:8px 0; padding-left:24px; }
+li { margin-bottom:5px; }
+.lead { font-size:12pt; color:var(--navy); margin:18px 0; }
+.title-page { text-align:center; padding:55px 0 28px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 26px; }
+.meta { color:#666; }
+.toc ol { line-height:1.9; }
+.toc a { color:var(--navy); text-decoration:none; }
  </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/architecture/pairing.html" hreflang="it" lang="it">IT</a>
-<span class="sep">&middot;</span>
-<a href="/en/architecture/pairing.html" class="active" hreflang="en" lang="en">EN</a>
+ <a href="/it/architecture/pairing.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a href="/en/architecture/pairing.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
+  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+  <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">pairing</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>pairing</code> &mdash; binding a channel and a sender to an autonomy level</div>
- <div class="meta">
- Microdesign<br>
- Audience: those who want to understand how Metnos recognises who writes from outside, and with what authority.<br>
- <br>
- Reading time: 10 minutes.
- </div>
+ <div class="subtitle"><code>pairing</code> &mdash; connecting users, channels, and devices</div>
+ <div class="meta">A guide to verified identity and instance bindings</div>
 </div>
-<div class="status-banner">
 
-<strong>&#10003; Microdesign &mdash; aligned with the code.</strong>
-<code>pairing</code> tested + daemon flow, with multi-user support: <code>users.db</code> registry under <code>~/.local/share/metnos/</code>, guest pairing via short-lived <code>/start &lt;token&gt;</code> issued from the <code>/admin/users</code> panel of <a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a>, web admin login via <code>POST /admin/login</code> with a 7-day cookie.
-Implementation reference: <code>/opt/metnos/runtime/pairing.py</code>, <code>/opt/metnos/runtime/users.py</code>.
-</div>
+<p><strong>Ask Metnos with a request like this example:</strong> “Show me how to
+connect Telegram to the user Lucia.” The Tutor gives the path in the web chat
+even when the question comes from Telegram.</p>
+
+<p class="lead">In Metnos, pairing establishes a verified identity before a
+request is processed. Identity is never inferred from message text. A logical
+user, a channel address, a chat session, and an execution device are distinct
+objects with independent registries and revocation paths.</p>
 
 <div class="toc">
 <h2>Contents</h2>
 <ol>
- <li><a href="#cap1">What pairing is</a></li>
- <li><a href="#cap2">Types and constants</a></li>
- <li><a href="#cap3">Code format</a></li>
- <li><a href="#cap4">SQLite schema</a></li>
- <li><a href="#cap5">Python API</a></li>
- <li><a href="#cap6">CLI</a></li>
- <li><a href="#cap7">Integration with the Telegram daemon</a></li>
- <li><a href="#cap8">Security</a></li>
- <li><a href="#cap9">Tests</a></li>
- <li><a href="#cap10"> limits</a></li>
- <li><a href="#cap11">Multi-user: <code>users.db</code> and <code>/start</code></a></li>
- <li><a href="#cap12">Web admin login</a></li>
- <li><a href="#cap13">Device pairing for remote executors</a></li>
+ <li><a href="#cap1">The four bindings</a></li>
+ <li><a href="#cap2">Users, roles, and isolation</a></li>
+ <li><a href="#cap3">Pairing Telegram or a browser</a></li>
+ <li><a href="#cap4">Signed channel codes</a></li>
+ <li><a href="#cap5">Active session and conversation transfer</a></li>
+ <li><a href="#cap6">Remote-executor devices</a></li>
+ <li><a href="#cap7">Revocation and lifecycle</a></li>
+ <li><a href="#cap8">Security invariants</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. What pairing is</h1>
+<h1 id="cap1">1. The four bindings</h1>
 
-<p class="lead">
-<em>Pairing</em> identifies a <em>channel+sender</em>, not a physical person. The same family member writing to Metnos via Telegram and via Signal are two distinct, independent pairings, each with its own autonomy level. This naturally enables pairing the same person at different levels depending on the channel (Telegram = Full because the phone is always with them; mail = ReadOnly because it might have been read by someone else).
-</p>
+<table>
+<thead><tr><th>Object</th><th>What it identifies</th><th>Current source</th></tr></thead>
+<tbody>
+<tr><td><strong>Logical user</strong></td><td>The person who owns a role, preferences, language, and channels.</td><td><code>users.db</code>, <code>users</code> table</td></tr>
+<tr><td><strong>Channel</strong></td><td>A verified address, such as a Telegram <code>chat_id</code> or a paired browser.</td><td><code>users.db</code>, <code>user_channels</code> table; Telegram also uses <code>pairings.db</code></td></tr>
+<tr><td><strong>Chat session</strong></td><td>The device that currently has write access to the user's web conversation.</td><td><code>users.db</code>, <code>active_sessions</code> and <code>chat_conversations</code> tables</td></tr>
+<tr><td><strong>Remote device</strong></td><td>A machine authorised to run executors for a specified owner.</td><td><code>devices.db</code>, <code>devices</code> table</td></tr>
+</tbody>
+</table>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="10" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">technical device</text>
-<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">/pair + Ed25519</text>
-<rect x="198" y="70" width="170" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">family / guest</text>
-<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">/start &lt;token&gt;</text>
-<rect x="386" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">users.db registry</text>
-<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">host + guests</text>
-<rect x="574" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
-<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">resolve_recipients</text>
-<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">routing</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<p>A paired browser is not automatically a remote device. The former provides
+chat access; the latter receives work from the server and runs it on the
+machine where the relevant data or applications live. Likewise, transferring
+a web session does not alter Telegram pairing or device ownership.</p>
 
-</svg>
-<figcaption>Figure 1 &mdash; The two pairing paths: signed Ed25519 codes for technical devices and short-lived tokens for guests; both feed the multi-user registry.</figcaption>
-</figure>
+<h1 id="cap2">2. Users, roles, and isolation</h1>
 
+<p><code>runtime/users.py</code> maintains one <code>host</code> user and any
+number of <code>guest</code> users. Each record has a technical identifier, a
+unique name, a role, an optional owner, and an autonomy level.
+<code>user_channels</code> links that same user to verified
+<code>telegram</code>, <code>mail</code>, and <code>http</code> channels.</p>
 
-<p>
-Architecture ch. 12 treats pairing as a branch of the &laquo;identity and perimeter&raquo; node: Metnos does not know <em>who</em> you are in any registry sense, it only knows that the pair <code>(channel, sender_id)</code> was associated, once, with an autonomy level, and works on that.
-</p>
+<p>Language and preferences are resolved from the authenticated binding before
+the turn and applied in a request-local context. A change for one user does not
+change another user's language or session. Conversations, pending dialogs, and
+web-chat write authority are also scoped by user and channel.</p>
 
-<div class="callout note">
-<strong>Pairing vs login.</strong> A modern login system would authenticate the person, then associate their identities across the various channels. Metnos does the opposite: every channel has its own door, its own key, its own authorisation, all independent. Simpler to implement, safer by default (a compromised channel does not compromise the others), and adequate for the operational model &laquo;me at home with my family members&raquo;.
-</div>
-
-<p>
-Three autonomy levels, one single dimension (see Architecture chapter 4 for the rationale):
-</p>
+<p>The two registries use different vocabularies and they are not
+interchangeable:</p>
 
 <ul>
- <li><code>ReadOnly</code> &mdash; the sender can write, Metnos acknowledges but <em>does not execute</em>. Designed for occasional family members or sensitive channels.</li>
- <li><code>Supervised</code> &mdash; the sender gets a complete turn, but actions with external side effects fall under control (reserved for +; today it behaves like Full as far as <code>run_turn</code> is concerned, but the level is already persisted).</li>
- <li><code>Full</code> &mdash; the sender has full authority: Metnos executes the turn and replies.</li>
+ <li><code>users.db</code>: <code>read_only</code>, <code>restricted</code>, <code>full</code>;</li>
+ <li><code>pairings.db</code>: <code>ReadOnly</code>, <code>Supervised</code>, <code>Full</code>.</li>
 </ul>
 
-<h1 id="cap2">2. Types and constants</h1>
+<p>In the Telegram daemon, <code>ReadOnly</code> prevents an operational turn
+from starting. <code>Supervised</code> and <code>Full</code> can enter the
+runtime; every executor remains subject to its manifest, safety controls, and
+required approvals. A stored level is not, by itself, proof that a particular
+action is authorised.</p>
 
-<p>
-The whole module lives in <code>/opt/metnos/runtime/pairing.py</code> (354 lines). The two public types are a dataclass and an exception:
-</p>
+<h1 id="cap3">3. Pairing Telegram or a browser</h1>
 
-<pre>@dataclass
-class Pairing:
- channel: str
- sender_id: str
- autonomy_level: str
- paired_at: str
- paired_by: str
- last_seen: str | None = None
- revoked_at: str | None = None
+<p>From the <strong>web chat</strong>, open
+<strong>Settings &gt; System &gt; Users</strong>. Create or select the user, then
+use the pairing control for the required channel. If you are reading these
+instructions in Telegram, this path is in the Metnos web chat, not in the
+Telegram application.</p>
 
-
-class PairingError(Exception):
- pass</pre>
-
-<p>
-<code>Pairing</code> is what queries return and what the caller inspects. <code>PairingError</code> wraps every error in the module (code format, signature, expiry, double consume) so that the caller can handle them with a single <code>except</code>. See the <code>PairingError</code> class in the module.
-</p>
-
-<p>Relevant constants:</p>
-
-<table>
-<tr><th>Constant</th><th>Value</th><th>Meaning</th></tr>
-<tr><td><code>VALID_LEVELS</code></td><td><code>("ReadOnly", "Supervised", "Full")</code></td><td>Tuple of the only accepted levels. Generating a code with a level outside this tuple raises <code>ValueError</code>.</td></tr>
-<tr><td><code>CODE_PREFIX</code></td><td><code>"PAIR."</code></td><td>Fixed prefix of the code: it makes the string instantly recognisable (by a human eye or a regex) as a <em>pairing</em> code, not some other kind of token.</td></tr>
-<tr><td><code>DEFAULT_TTL_S</code></td><td><code>300</code></td><td>Five minutes. Lifetime of the code between issuance and consumption. Configurable per call, but deliberately short by default.</td></tr>
-<tr><td><code>PROTOCOL_VERSION</code></td><td><code>1</code></td><td>Payload version. <em>Verify</em> rejects payloads with a different <code>v</code>. When the structure changes (likely in +) we bump here and handle the branching.</td></tr>
-<tr><td><code>DEFAULT_DB_PATH</code></td><td><code>~/.local/state/metnos/pairings.db</code></td><td>Default location of the registry. Override via env <code>METNOS_PAIRINGS_DB</code> (useful for tests).</td></tr>
-</table>
-
-<h1 id="cap3">3. Code format</h1>
-
-<p>
-The code is a printable string, copyable by hand if needed. The shape:
-</p>
-
-<pre>PAIR.&lt;base64url(payload_json)&gt;.&lt;base64url(signature)&gt;</pre>
-
-<p>
-The payload is a deterministic JSON (sorted keys, separators with no spaces) with five fields:
-</p>
-
-<pre>{
- "v": 1,
- "id": "&lt;uuid12&gt;",
- "autonomy": "&lt;ReadOnly|Supervised|Full&gt;",
- "exp": &lt;unix epoch in seconds&gt;,
- "iss": "author"
-}</pre>
-
-<p>
-The signature is Ed25519 over the bytes of the serialised JSON, produced with the <code>author</code> key in <code>~/.config/metnos/keys/</code> (see <code>sign.py:28-29, 58-60</code>). Verification scans every trusted public key in that same directory (<code>list_trusted_publics</code> in <code>sign.py:66-76</code>) and accepts the code if at least one verification passes. This way an older Metnos remains able to accept codes signed by a new key as long as the new public is added to the directory.
-</p>
-
-<div class="callout tip">
-<strong>Why a 12-hex-character id?</strong> Its sole purpose is to deduplicate consumes (an already-used code does not show up again). Twelve characters = 48 bits of space: accidental collisions are practically nil over the lifetime of an instance, and the string stays compact enough not to bloat the final base64url.
-</div>
-
-<p>
-Example of a real code (TTL 5 minutes, ReadOnly level):
-</p>
-
-<pre>PAIR.eyJhdXRvbm9teSI6IlJlYWRPbmx5IiwiZXhwIjoxNzA5OTk4ODg4LCJpZCI6IjA0YzNhYThiYjFiNCIsImlzcyI6ImF1dGhvciIsInYiOjF9.5xV3M7T...kWQ</pre>
-
-<p>
-Typical length: ~180 characters. You can copy-paste it, send it via iMessage, or read out the last eight syllables aloud.
-</p>
-
-<h1 id="cap4">4. SQLite schema</h1>
-
-<p>
-Two tables:
-</p>
-
-<pre>CREATE TABLE IF NOT EXISTS pairings (
- id INTEGER PRIMARY KEY AUTOINCREMENT,
- channel TEXT NOT NULL,
- sender_id TEXT NOT NULL,
- autonomy_level TEXT NOT NULL,
- paired_at TEXT NOT NULL,
- paired_by TEXT NOT NULL,
- last_seen TEXT,
- revoked_at TEXT,
- UNIQUE(channel, sender_id)
-);
-CREATE TABLE IF NOT EXISTS consumed_codes (
- code_id TEXT PRIMARY KEY,
- consumed_at TEXT NOT NULL,
- channel TEXT NOT NULL,
- sender_id TEXT NOT NULL
-);</pre>
-
-<table>
-<tr><th>Table</th><th>Role</th></tr>
-<tr><td><code>pairings</code></td><td>One row per <code>(channel, sender_id)</code> pair ever paired. The <code>UNIQUE</code> constraint guarantees a single active pairing per pair; consuming a new code performs an upsert and clears <code>revoked_at</code>. The <code>last_seen</code> field is optional and is updated by the daemon on every message (for audit). A non-empty <code>revoked_at</code> means the pairing is inactive.</td></tr>
-<tr><td><code>consumed_codes</code></td><td>Single-use tracking. Every consumed code leaves a row with its <code>code_id</code> (the 12 hex from the payload). Replay attempts fail inside a <code>BEGIN IMMEDIATE</code>. No cleanup: the table only grows by the number of pairings done in the lifetime of the instance, a negligible amount.</td></tr>
-</table>
-
-<p>
-The default file lives in <code>~/.local/state/metnos/pairings.db</code>; the directory is created on first access. For tests we set <code>METNOS_PAIRINGS_DB</code> to a temporary path, getting an isolated database per test case.
-</p>
-
-<h1 id="cap5">5. Python API</h1>
-
-<p>
-Every function accepts an optional keyword-only <code>db_path</code>, so the caller can point at a different registry (useful for tests and for hypothetical registry-per-tenant scenarios). Without <code>db_path</code>, <code>METNOS_PAIRINGS_DB</code> is used, or the default.
-</p>
-
-<table>
-<tr><th>Function</th><th>Signature</th><th>What it does</th></tr>
-<tr><td><code>generate_code</code></td><td><code>(autonomy_level, *, ttl_seconds=300, issued_by="author") -&gt; str</code></td><td>Builds the payload, signs with the key indicated by <code>issued_by</code>, returns the string <code>PAIR.&lt;...&gt;.&lt;...&gt;</code>. Raises <code>ValueError</code> if the level is outside <code>VALID_LEVELS</code>. </td></tr>
-<tr><td><code>consume_code</code></td><td><code>(code, channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Atomic via <code>BEGIN IMMEDIATE</code>: verifies signature and expiry, deduplicates against <code>consumed_codes</code>, upserts into <code>pairings</code>. Returns the resulting pairing or raises <code>PairingError</code> with the specific cause.</td></tr>
-<tr><td><code>get_pairing</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; Pairing | None</code></td><td>Returns the active pairing (<code>revoked_at IS NULL</code>) or <code>None</code>. </td></tr>
-<tr><td><code>is_paired</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; bool</code></td><td>Boolean wrapper around <code>get_pairing</code>. </td></tr>
-<tr><td><code>get_autonomy</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; str | None</code></td><td>Just the level, for callers who do not want the full dataclass. </td></tr>
-<tr><td><code>touch_last_seen</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; None</code></td><td>Updates <code>last_seen</code> to the current ISO timestamp. Called by the daemon on every successful turn. </td></tr>
-<tr><td><code>list_pairings</code></td><td><code>(*, include_revoked=False, db_path=None) -&gt; list[Pairing]</code></td><td>All rows, optionally including revoked ones. Order: <code>paired_at DESC</code>. </td></tr>
-<tr><td><code>revoke</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; bool</code></td><td>Sets <code>revoked_at</code> on the active pairing. Returns <code>True</code> if it changed something, <code>False</code> if the pair did not exist or was already revoked. </td></tr>
-<tr><td><code>bootstrap_default_chat_id</code></td><td><code>(channel, sender_id, *, db_path=None) -&gt; Pairing</code></td><td>Auto-pair Full the first time the <code>default_chat_id</code> writes, <em>only if</em> no other pairings exist for that channel. Raises <code>PairingError</code> otherwise. </td></tr>
-</table>
-
-<div class="callout note">
-<strong>Atomicity of <code>consume_code</code>.</strong> The important invariant is that the same code cannot be used twice, not even by two threads or two processes that receive it by coincidence at the same instant. The SQLite transaction with <code>BEGIN IMMEDIATE</code> serialises every concurrent attempt: the first one wins, the second finds the row in <code>consumed_codes</code> and fails with <code>"code already consumed"</code>.
-</div>
-
-<h1 id="cap6">6. CLI</h1>
-
-<p>
-The module is directly executable. Commands:
-</p>
-
-<pre>python3 -m pairing generate &lt;ReadOnly|Supervised|Full&gt; [ttl=5m]
-python3 -m pairing consume &lt;code&gt; &lt;channel&gt; &lt;sender_id&gt;
-python3 -m pairing list [--include-revoked]
-python3 -m pairing revoke &lt;channel&gt; &lt;sender_id&gt;</pre>
-
-<p>
-TTL accepts three suffixes : <code>60s</code>, <code>5m</code>, <code>1h</code>. Without a suffix, the value is interpreted as seconds.
-</p>
-
-<div class="example">
-<div class="ex-label">Typical session</div>
-<pre># 1. Roberto generates a 10-minute ReadOnly code
-$ python3 -m pairing generate ReadOnly 10m
-PAIR.eyJhdXRvbm9teSI6IlJlYWRPbmx5IiwiZXhwIjox...
-
-# 2. he passes it via iMessage to the family member
-
-# 3. the family member writes on Telegram: /pair PAIR.eyJ...
-# the daemon consumes it and replies "Paired as ReadOnly. Welcome."
-
-# 4. Roberto verifies
-$ python3 -m pairing list
-{"channel": "telegram", "sender_id": "12345678", "autonomy_level": "ReadOnly",...}
-{"channel": "telegram", "sender_id": "99887766", "autonomy_level": "Full",...}
-
-# 5. one week later, revoke
-$ python3 -m pairing revoke telegram 12345678
-revoked</pre>
-</div>
-
-<h1 id="cap7">7. Integration with the Telegram daemon</h1>
-
-<p>
-The daemon lives in <code>/opt/metnos/runtime/channels/daemon.py</code>. The <code>handle_message</code> function is where pairing and runtime meet. The decision sequence:
-</p>
+<h2>Telegram</h2>
 
 <ol>
- <li>If the message text starts with <code>/pair </code> (see the <code>PAIR_COMMAND</code> constant), the daemon goes into <code>_handle_pair_command</code>: consumes the code, replies "Paired as &lt;level&gt;. Welcome." on success, "Pairing failed: &lt;reason&gt;" otherwise. <em>No</em> runtime turn starts here, even if pairing succeeded: the user must send a second message to activate Metnos.</li>
- <li>Otherwise, <code>pairing.get_pairing(channel.name, sender_id)</code> is consulted. If it returns <code>None</code>, the daemon attempts the bootstrap (see below). If the bootstrap also fails, it replies with <code>UNPAIRED_REPLY</code> and ends the turn.</li>
- <li>If the pairing exists, <code>touch_last_seen</code> is called for audit.</li>
- <li>If the level is in <code>LEVEL_BLOCKS_RUN = {"ReadOnly"}</code>: polite reply (<code>LEVEL_REPLY_BLOCKED</code>), no <code>run_turn</code>.</li>
- <li>Otherwise, <code>run_turn(msg.text)</code> is called, the result is formatted, and the reply is sent on the channel.</li>
+ <li>From the user detail page, issue a token for the Telegram channel.</li>
+ <li>Transfer the token to the person through a trusted medium.</li>
+ <li>The person opens the Metnos bot and sends <code>/start &lt;token&gt;</code>.</li>
+ <li>The daemon consumes the token, binds the <code>chat_id</code> to the user, and confirms the pairing.</li>
 </ol>
 
-<h2>Default-chat bootstrap</h2>
+<p>The token is random, one-time, and valid for one hour. Consumption uses a
+SQLite transaction, so two concurrent requests cannot both use the same token.
+The <code>/start</code> command performs the pairing but does not run an
+operational request; the next message starts a new turn.</p>
 
-<p>
-The <code>_try_bootstrap</code> function handles the case &laquo;Roberto installs Metnos on his new phone and writes to himself&raquo;: with no prior pairing, the first message from <code>default_chat_id</code> (read from <code>credentials.env</code> via the TelegramChannel) is auto-paired as Full. Three conditions must all be true:
-</p>
+<h2>Browsers and other web devices</h2>
 
 <ol>
- <li>the daemon's <code>bootstrap_default_sender</code> flag is True (default; disabled with <code>--no-bootstrap</code>);</li>
- <li>the message's <code>sender_id</code> matches the <code>default_chat_id</code> declared by the channel;</li>
- <li>no pairing exists on that channel (<code>bootstrap_default_chat_id</code> refuses otherwise, ).</li>
+ <li>From the user detail page, issue the HTTP-channel link.</li>
+ <li>Open that link once in the browser to pair.</li>
+ <li>Metnos consumes the token, records the binding, and stores a signed, <code>HttpOnly</code>, <code>Secure</code> cookie.</li>
 </ol>
 
-<p>
-This way the bootstrap is safe: once a single pairing exists on the channel, further calls fail and the bootstrap loses its effect. Even Roberto, after pairing himself the first time, can no longer use the bootstrap to pair anybody else: family members must receive an explicit code.
-</p>
+<p>The user cookie lasts at most 90 days, but on every verification the server
+checks that the HTTP binding still exists. Removing the channel from the user
+detail page therefore invalidates access even if the browser retains the
+cookie.</p>
 
-<div class="callout warning">
-<strong>Bootstrap is for development.</strong> It is convenient in the &laquo;Roberto + home&raquo; operating model, where the first installation coincides with Roberto's first interaction with his own default chat. In other contexts (multi-tenant deployments, shared servers), the bootstrap should be disabled and every admin should pair via code like everyone else.
-</div>
+<h1 id="cap4">4. Signed channel codes</h1>
 
-<h2>Errors in <code>run_turn</code></h2>
+<p><code>runtime/pairing.py</code> also provides the technical
+<code>/pair PAIR.&lt;payload&gt;.&lt;signature&gt;</code> flow. The payload declares
+the version, identifier, autonomy level, expiry, and issuer; its Ed25519
+signature is checked against trusted public keys. By default, a code expires
+after five minutes and can be consumed only once.</p>
 
-<p>
-If <code>run_turn</code> raises, the daemon does not die: it catches the exception, logs the stack trace, replies to the sender with the message "(internal error: &lt;type&gt;: &lt;text&gt;)" and continues the loop with the next message. The pairing is not touched: the same user on the next message is still paired, still authorised to request more turns.
-</p>
+<pre>./.venv/bin/python -m runtime.pairing generate &lt;ReadOnly|Supervised|Full&gt; 5m
+./.venv/bin/python -m runtime.pairing list
+./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</pre>
 
-<h1 id="cap8">8. Security</h1>
+<p>This flow creates the low-level <code>(channel, sender_id)</code> record.
+To connect a person who already exists in the user registry, the
+<strong>Settings &gt; System &gt; Users</strong> flow with <code>/start</code> is
+more direct because it preserves the logical identity explicitly.</p>
 
-<p>
-Five guarantees, each existing for a concrete threat:
-</p>
+<p>When bootstrap is enabled, the first message from the
+<code>default_chat_id</code> can create a <code>Full</code> pairing only while
+the channel has no pairing records. The <code>--no-bootstrap</code> option
+instead requires an explicit pairing for the host as well.</p>
 
-<table>
-<tr><th>Guarantee</th><th>Protects against</th></tr>
-<tr><td><strong>Ed25519 signature</strong> on the payload: guarantees that the code really originates from Roberto's <code>author</code> key.</td><td>An attacker who writes to the daemon sending made-up codes. Even if a well-intentioned family member discovers the format, they cannot self-elevate: generating a code requires the private key, which lives only on Roberto's server.</td></tr>
-<tr><td><strong>Short TTL</strong> by default (5 minutes, <code>DEFAULT_TTL_S</code>).</td><td>A code that falls into the wrong hands after issuance (intercepted mail, screenshot sent by mistake). Five minutes is enough for a legitimate consume, too little for an opportunistic reuse hours or days later.</td></tr>
-<tr><td><strong>Single use</strong> via the <code>consumed_codes</code> table.</td><td>The same code being intercepted and used by multiple senders. The first one to send it &laquo;wins&raquo;: the others receive <code>"code already consumed"</code>.</td></tr>
-<tr><td><strong>Immediate revoke</strong> and <code>revoked_at IS NULL</code> check in <code>get_pairing</code>.</td><td>A lost device or a family member with whom relations have broken down. Revocation takes effect on the very next message: no persistent session has to be invalidated separately.</td></tr>
-<tr><td><strong>No code broadcast</strong>: Metnos never sends the code on the same channel as the pairing; it is up to Roberto to carry it out-of-band (iMessage, voice, slip of paper).</td><td>The channel itself, if compromised. A potential interception of the Telegram channel does not reveal the codes produced.</td></tr>
-</table>
+<h1 id="cap5">5. Active session and conversation transfer</h1>
 
-<p>
-Deliberately missing: rate-limit on failed <code>/pair</code> attempts (an attacker could spam made-up codes hoping for collisions, but with the Ed25519 signature space success is cosmologically improbable and every attempt leaves a log). See limits.
-</p>
-
-<h1 id="cap9">9. Tests</h1>
-
-<p>
-Cluster <code>pairing</code>: 9 cases, all green. They cover the nominal flows and the explicit breaks of the model.
-</p>
+<p>Metnos allows one active write session for each
+<code>(user, web channel)</code> pair. If you open the chat on one device while
+another device holds the session, the window offers three choices:</p>
 
 <table>
-<tr><th>#</th><th>Case</th><th>What it verifies</th></tr>
-<tr><td>1</td><td>generate + consume round-trip</td><td>Code created with <code>generate_code("Full", 5m)</code>, consumed with <code>consume_code(code, "telegram", "u1")</code>, returns a valid Pairing with the expected fields.</td></tr>
-<tr><td>2</td><td>expired code fails</td><td>TTL = -1 second: <code>consume_code</code> raises <code>PairingError("code expired")</code>.</td></tr>
-<tr><td>3</td><td>double consume fails</td><td>The same code consumed a second time raises <code>PairingError("code already consumed")</code>.</td></tr>
-<tr><td>4</td><td>tampered code fails</td><td>Replacing one byte in the payload (and re-base64), the signature does not verify and <code>PairingError("code signature not verified")</code> is raised.</td></tr>
-<tr><td>5</td><td>invalid format fails</td><td>Arbitrary strings (no prefix, too many dots, broken base64) raise <code>PairingError</code> with different messages.</td></tr>
-<tr><td>6</td><td>revoke makes <code>is_paired</code> false</td><td>After <code>revoke</code>, <code>is_paired</code> on the same pair returns <code>False</code>; the record persists but with <code>revoked_at</code> set.</td></tr>
-<tr><td>7</td><td>bootstrap only on empty channel</td><td>First call: Full pairing created. Second call on the same channel (even with a different sender_id): <code>PairingError("bootstrap refused")</code>.</td></tr>
-<tr><td>8</td><td><code>list_pairings</code> filters revoked</td><td>Default <code>include_revoked=False</code>: only rows with <code>revoked_at IS NULL</code>. With <code>True</code>: all of them.</td></tr>
-<tr><td>9</td><td>invalid level in generate</td><td><code>generate_code("Admin",...)</code> raises <code>ValueError</code> before signing anything.</td></tr>
+<thead><tr><th>Choice</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td><strong>Continue the previous session</strong></td><td>Revokes the old device's write authority, transfers its conversation to the current device, and displays its history.</td></tr>
+<tr><td><strong>Make the current session active</strong></td><td>Revokes the old device and keeps the current device's local conversation.</td></tr>
+<tr><td><strong>Cancel</strong></td><td>Changes no session; the current device remains without write authority.</td></tr>
+</tbody>
 </table>
 
-<p>
-<code>channels</code> module (daemon): 9/9 with a sub-cluster of 5 cases that explicitly exercises the pairing flow between daemon and module:
-</p>
+<p>Resolution is atomic and bound to the authenticated user. The resolution
+token is one-time, and a user cannot transfer someone else's conversation.
+When connected, the previous device receives the revocation event and becomes
+read-only. The conversation belongs to the user, not to the browser.</p>
+
+<h1 id="cap6">6. Remote-executor devices</h1>
+
+<p>From the web chat, open
+<strong>Settings &gt; System &gt; Devices</strong>. The page lists the name,
+owner, operating system, client version, key fingerprint, last heartbeat, and
+state. You can install the client on the current PC, generate a link for a
+different PC, or issue a manual token.</p>
+
+<p>The guided flow is:</p>
+
+<ol>
+ <li>The administrator chooses a name and owner and creates a join session.</li>
+ <li>The target PC opens the link and downloads the Windows or Linux installer.</li>
+ <li>The client generates an Ed25519 key pair locally; its private key never leaves the device.</li>
+ <li><code>POST /agent/register</code> consumes the token and records the public key, fingerprint, owner, and system characteristics.</li>
+ <li>The server returns its public key; the client pins it and uses it to verify subsequent orders.</li>
+ <li>The first heartbeat completes the observable installation flow.</li>
+</ol>
+
+<p>The guided join session uses a signed, one-time token that normally lasts
+30 minutes; the manual variant issued from the page lasts 10 minutes. A second
+consume with the same key is idempotent, while the same token presented with a
+different key is rejected. A fresh token paired with the same key is an
+explicit re-authorisation and can restore a previously revoked device.</p>
+
+<p>The remote-executor protocol uses port 8765 by default on an internal or
+private network. Polls, results, and heartbeats are signed by the device over
+the exact request bytes. The client verifies server orders and bundles with
+the key pinned at pairing time. <code>last_heartbeat</code> shows that the
+process is alive; <code>last_poll</code> separately shows that the worker is
+requesting work.</p>
+
+<h1 id="cap7">7. Revocation and lifecycle</h1>
+
+<table>
+<thead><tr><th>Object</th><th>How to revoke it</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>User channel</td><td>Remove the channel in <strong>Settings &gt; System &gt; Users</strong>.</td><td>The address no longer resolves to that user; the associated web cookie fails the binding check.</td></tr>
+<tr><td>Low-level Telegram pairing</td><td><code>./.venv/bin/python -m runtime.pairing revoke telegram &lt;sender_id&gt;</code></td><td><code>get_pairing</code> no longer returns the active record.</td></tr>
+<tr><td>Web session</td><td>Explicit sign-out or acquisition from another device.</td><td>The write token is marked revoked; the conversation remains owned by the user.</td></tr>
+<tr><td>Remote device</td><td>Use the revoke control in <strong>Settings &gt; System &gt; Devices</strong>.</td><td>Subsequent polls, results, and heartbeats are rejected; the record remains available for audit.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap8">8. Security invariants</h1>
 
 <ul>
- <li><strong>D1</strong>: default bootstrap + run_turn on the next message, Full level obtained automatically;</li>
- <li><strong>D2</strong>: unpaired sender (and not the default) receives <code>UNPAIRED_REPLY</code>, no run_turn;</li>
- <li><strong>D3</strong>: <code>/pair &lt;valid code&gt;</code> &rarr; reply "Paired as &lt;level&gt;. Welcome.", pairing written in DB, no run_turn;</li>
- <li><strong>D4</strong>: <code>/pair &lt;expired/tampered code&gt;</code> &rarr; reply "Pairing failed: &lt;cause&gt;", no pairing written;</li>
- <li><strong>D5</strong>: sender paired as ReadOnly receives the polite reply, no <code>run_turn</code>; <code>last_seen</code> is not touched (the update only fires after the level check).</li>
+ <li><strong>Identity before content.</strong> Text cannot declare a user, role, or owner.</li>
+ <li><strong>Expiring, one-time tokens.</strong> Consumption is serialised before the binding is created or changed.</li>
+ <li><strong>Verified ownership.</strong> Sessions and conversations can be read or transferred only within the same user and channel.</li>
+ <li><strong>Revocation checked on every access.</strong> A valid signature or cookie does not restore a removed binding.</li>
+ <li><strong>Local private keys.</strong> A remote device's private key is never sent to the server.</li>
+ <li><strong>Separate registries.</strong> Revoking one object does not silently mutate the others; the operator can see which identity is being changed.</li>
 </ul>
 
-<p>
-All tests run in isolation with their own <code>METNOS_PAIRINGS_DB</code> in <code>/tmp</code>, and with an ad-hoc test keypair, so neither the registry nor the author's development keys are touched.
-</p>
-
-<h1 id="cap10">10. limits</h1>
-
-<p>Five declared limits, some by deliberate design, others left for future work:</p>
-
-<table>
-<tr><th>Limit</th><th>When it lifts</th></tr>
-<tr><td><strong>Single-process SQLite registry.</strong> The file can be opened by multiple processes thanks to SQLite locks, but there is no specific tuning; the operational model assumes a single <code>metnos-server</code>.</td><td>When more than one process writes (e.g. Telegram daemon + mail daemon in parallel): WAL is explicitly enabled and lock timeouts are reconsidered.</td></tr>
-<tr><td><strong>No push notification on generated pair.</strong> Roberto generates the code via CLI; the recipient discovers the outcome only when sending <code>/pair</code>. The &laquo;pending pair&raquo; is not visible on the daemon.</td><td>When an admin UI exists (status mail, <code>/admin</code> command on the channel itself). For now, <code>list</code> via CLI is enough.</td></tr>
-<tr><td><strong>No in-place upgrade of the level.</strong> To raise a family member from ReadOnly to Full you must generate a new code and have it consumed again (the upsert replaces the level).</td><td>When a CLI <code>promote</code> command or a specific workflow demands it. Today the overhead is minimal (one extra command) and the benefit of having a single entry point (consume with a signed code) is greater.</td></tr>
-<tr><td><strong>No automatic expiry of pairings.</strong> Once the code is consumed, the pairing lives on until manually revoked.</td><td>When there is a concrete need (temporary family member, weekend guest): an <code>expires_at</code> could be added to the pairing itself (today only the code has <code>exp</code>; the pairing born from it is perpetual).</td></tr>
-<tr><td><strong>Minimal audit.</strong> <code>paired_by</code> contains the name of the key that signed the code (today always <code>"author"</code>); there is no record of who <em>generated</em> the codes, nor a structured log of <code>consume_code</code> failures (they live only in the daemon log).</td><td>When more than one trusted key exists (e.g. one key per device) and distinguishing who signs what becomes useful. <code>code_audit</code> and <code>consume_audit</code> tables will be introduced.</td></tr>
-</table>
-
-<h2>Closing notes</h2>
-
-<p>
-The module is deliberately small (354 lines in a single file, one external dependency beyond the standard library: <code>cryptography</code> via <code>sign.py</code>). There is no interchangeable &laquo;store&raquo; abstraction layer, there is no formal protocol for the code other than JSON+base64+signature. The choices are guided by the simplicity principle (see memory <em>feedback_simplicity_first</em>): complexity is added when the problem demands it, not before.
-</p>
-
-<p>
-Pairing is the first piece of the &laquo;perimeter&raquo; node that becomes executable: anything that relies on identifying the sender (rate-limit per level, scope of executors permitted per level, audit of who started what) rests on this primitive.
-</p>
-
-<h1 id="cap11">11. Multi-user: <code>users.db</code> and <code>/start</code></h1>
-
-<p>
-Alongside <code>pairings.db</code>, Metnos keeps a second registry,
-<code>users.db</code>, in
-<code>~/.local/share/metnos/</code>: two tables (<code>users</code> +
-<code>user_channels</code>) that map <em>logical users</em> (host and
-guests) to one or more channels. Responsibility split:
-</p>
-
-<ul>
-<li><code>pairing.py</code> maps <code>(channel, sender_id) &rarr; autonomy + actor_string</code> &mdash; channel-specific, low-level.</li>
-<li><code>users.py</code> maps <em>logical persons</em> &rarr; one or more channels. It knows who &laquo;Lucia&raquo; is regardless of channel, and supports <code>resolve_recipients</code> for <code>send_messages(to_user="lucia")</code>.</li>
-</ul>
-
-<p>
-Automatic bootstrap: at the first <code>users.list_users</code>
-<code>init_db</code> creates the host with <code>name=$USER</code>,
-<code>role='host'</code>, <code>autonomy_level='full'</code>. Single-host
-policy at app level: a second host is rejected.
-<code>autobind_host_telegram(default_chat_id)</code> is called by the
-Telegram daemon at the first poll that recognises the
-<code>default_chat_id</code> from config.
-</p>
-
-<h2>Pairing flow <code>/start &lt;token&gt;</code></h2>
-
-<p>
-For guests (family, visitors) the flow is friendly and bypasses Ed25519
-keys altogether:
-</p>
-
-<ol>
-<li>Roberto opens <code>/admin/users</code> in the browser and creates a user with <code>name=lucia</code>, role <code>guest</code>, autonomy <code>restricted</code>, owner Roberto.</li>
-<li>&laquo;Pair Telegram&raquo; button: the server issues a 32-character urlsafe hex token (TTL 1&nbsp;hour) stored in <code>user_channels.pairing_token</code>.</li>
-<li>Roberto sends the token to Lucia (Telegram DM, voice, any means).</li>
-<li>Lucia writes to the Metnos bot: <code>/start a1b2c3...</code>. The daemon calls <code>users.consume_pairing_token('telegram', chat_id, token)</code>: if valid, it syncs the pairing into <code>pairings.db</code> (autonomy='Supervised' for guests, actor=name) and replies &laquo;You are now paired as lucia (guest). Welcome to Metnos.&raquo;.</li>
-</ol>
-
-<p>
-From that point on
-<code>send_messages(messages=[{"to_user":"lucia",...}])</code>
-automatically resolves <code>chat_id</code> and sends. The token is
-zeroed after use; a second <code>/start</code> with the same token fails
-(<code>ValueError</code>).
-</p>
-
-<h2>PLANNER prompt &mdash; KNOWN USERS</h2>
-
-<p>
-<code>agent_runtime.py::_render_users_known_block</code> iterates
-<code>users.list_users</code> and injects a KNOWN USERS section into
-the PLANNER prompt right after PROJECT PATHS. The pattern mirrors PROJECT
-PATHS: a deterministic datum is woven into the prompt; a
-change requires a runtime restart.
-</p>
-
-<h1 id="cap12">12. Web admin login</h1>
-
-<p>
-For the <code>/admin</code> panel of <a href="http_api.html"><code>http_api</code></a>
-(port 8770) login is separate from pairing: a single admin key (file
-<code>~/.config/metnos/admin.key</code>, mode 0600, 256-bit hex generated
-at first boot). Two modes:
-</p>
-
-<ul>
-<li><strong>Browser</strong>: form on <code>POST /admin/login</code> with the admin key in clear &rarr; <em>set-cookie</em> response, HttpOnly SameSite=Strict, TTL 7&nbsp;days.</li>
-<li><strong>CLI / curl</strong>: header <code>Authorization: Bearer &lt;admin.key&gt;</code> on every call.</li>
-</ul>
-
-<p>
-The admin key is also the master for credential encryption:
-whoever holds the file can decrypt
-<code>~/.config/metnos/credentials/&lt;domain&gt;.json.age</code>.
-Offline backup recommended. Logs only show the sha256[:16] fingerprint.
-</p>
-
-<h1 id="cap13">13. Device pairing for remote executors</h1>
-
-<p class="lead">
-So far we have talked about pairing a <em>person</em> who writes to Metnos.
-Here we pair a <em>machine</em> instead: another computer that runs Metnos
-executors on its behalf, right where the data actually lives.
-</p>
-
-<p>
-An analogy. Imagine handing a trusted courier the keys to your house so they can
-pick up a parcel while you are away. You want to be sure of three things: that
-it really is them and not an impostor; that the orders reaching them really come
-from you; and that you can take the keys back at any moment. Device pairing
-solves exactly these three problems &mdash; identity, authenticity of orders,
-revocation &mdash; using cryptography in place of metal keys.
-</p>
-
-<p>
-The &laquo;courier&raquo; is a small program written in Rust (the
-<code>client-rs/</code> folder) that runs on the machine being paired &mdash; for
-now a Windows PC. The Metnos side that keeps the device registry lives in
-<code>runtime/devices.py</code>, table <code>devices</code> in the
-<code>devices.db</code> database. Design reference: ADR 0007 / 0011 / 0046.
-</p>
-
-<div class="callout note">
-<strong>Device is not channel.</strong> Channel pairing (earlier chapters) binds
-the pair <code>(channel, sender)</code> to an autonomy level: it says <em>who may
-speak</em> to Metnos. Device pairing binds a <em>machine</em> to Metnos so that
-it <em>executes</em> work where it is needed (for example a PC on the home
-network). They are two different things: two separate registries, two tables,
-two independent life cycles.
-</div>
-
-<h2>Identity first: how the device proves who it is</h2>
-
-<p>
-On the very first run, the program on the PC generates a cryptographic key pair
-by itself (using the Ed25519 algorithm): a <em>private</em> one and a
-<em>public</em> one. The private key is the secret that proves identity and it
-<em>never leaves</em> the computer. The public key, by contrast, can be shown to
-anyone: it only serves to verify signatures, not to produce them.
-</p>
-
-<p>
-From that public key comes a <em>fingerprint</em>: a short code (the sha256 of
-the key) that identifies the device uniquely. In the registry the fingerprint is
-<code>UNIQUE</code>: two devices cannot share the same identity, and showing up
-again with the same key means being recognised as the same device.
-</p>
-
-<h2>The one-shot code: an invitation valid only once</h2>
-
-<p>
-How does a brand-new PC get accepted by Metnos? With a <em>one-shot code</em>: a
-use-and-discard code, exactly like an invitation good for a single entry. As
-soon as someone uses it, the code is burned and no longer works.
-</p>
-
-<p>
-It is issued by <code>devices.generate_token</code>. It has a deliberately short
-expiry: 30 minutes in the guided flow from the panel, 10 minutes in the manual
-one-liner variant. Its consumption is <em>atomic</em> (a technical word for
-&laquo;all or nothing&raquo;): <code>devices.consume_token</code> records it
-inside a SQLite <code>UNIQUE</code> constraint, so that even if two requests
-arrived at the same instant, only one wins and the second fails with no
-duplicates.
-</p>
-
-<h2>The flow, step by step</h2>
-
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 210" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-dev" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="8" y="80" width="160" height="60" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="88" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">device</text>
-<text x="88" y="124" text-anchor="middle" fill="#475569" font-size="9.5">generates Ed25519 key</text>
-<rect x="187" y="80" width="160" height="60" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="267" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">/admin console</text>
-<text x="267" y="124" text-anchor="middle" fill="#475569" font-size="9.5">issues one-shot code</text>
-<rect x="366" y="80" width="160" height="60" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="446" y="102" text-anchor="middle" fill="#1A477A" font-weight="700">register()</text>
-<text x="446" y="120" text-anchor="middle" fill="#475569" font-size="9.5">server: device_id</text>
-<text x="446" y="133" text-anchor="middle" fill="#475569" font-size="9.5">+ public key</text>
-<rect x="545" y="80" width="160" height="60" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
-<text x="625" y="106" text-anchor="middle" fill="#1A477A" font-weight="700">the device</text>
-<text x="625" y="124" text-anchor="middle" fill="#475569" font-size="9.5">pins the server key</text>
-<rect x="724" y="80" width="160" height="60" rx="8" fill="#FEE2E2" stroke="#DC2626"/>
-<text x="804" y="106" text-anchor="middle" fill="#991B1B" font-weight="700">heartbeat / revoke</text>
-<text x="804" y="124" text-anchor="middle" fill="#475569" font-size="9.5">403 = client stops</text>
-<line x1="168" y1="110" x2="185" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
-<line x1="347" y1="110" x2="364" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
-<line x1="526" y1="110" x2="543" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
-<line x1="705" y1="110" x2="722" y2="110" stroke="#1A477A" stroke-width="2" marker-end="url(#m-dev)"/>
-<text x="450" y="40" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="12">Pairing a device</text>
-<text x="450" y="58" text-anchor="middle" fill="#64748B" font-size="10">every exchange is signed; an invalid signature is never executed</text>
-</svg>
-<figcaption>Figure 2 &mdash; The pairing cycle: the device generates its own key, the console issues a one-shot code, <code>register</code> swaps it for the server's identity and key, the device pins that key; from there on, heartbeat and revoke.</figcaption>
-</figure>
-
-<ol>
- <li>Roberto opens <code>/admin/devices</code> in the <a href="http_api.html"><code>http_api</code></a> panel and picks &laquo;Install on this PC&raquo;. A join page opens with the freshly issued one-shot code.</li>
- <li>From the same page you download <code>MetnosClientSetup.cmd</code> (Windows), which installs and starts the program on the PC.</li>
- <li>The program calls <code>register(server, code)</code>: Metnos consumes the code and replies with two things &mdash; the <code>device_id</code> (the device's internal name) and its own server public key (<code>server_public_key</code>).</li>
- <li>The device <em>pins</em> that server public key (stores it once and for all) and from then on uses it to verify that every order really comes from that server and not from an impostor.</li>
-</ol>
-
-<div class="callout tip">
-<strong>Re-pairing is a deliberate re-authorisation.</strong> Showing up again with the
-<em>same</em> key does not create a second device: it updates name, owner,
-operating system and the pairing date, and clears any previous revocation. It is
-the explicit way to re-admit a machine that had been revoked.
-</div>
-
-<h2>The heartbeat: &laquo;I am still here&raquo;</h2>
-
-<p>
-A paired device must let Metnos know it is alive and reachable. It does so with a
-<em>heartbeat</em>: every 30 seconds it sends a short signal to
-<code>/agent/heartbeat</code>. Like everything the device sends, the heartbeat is
-signed with the private key over the exact bytes of the message (in the
-<code>X-Metnos-Device-Sig</code> header). In the panel the device thus appears as
-reachable.
-</p>
-
-<div class="callout note">
-<strong>A heartbeat that does not block.</strong> The heartbeat
-runs on a separate task. That way it keeps signalling &laquo;I am here&raquo;
-even while the program, on first install, is still downloading its own runtime.
-</div>
-
-<h2>Revocation: taking the keys back</h2>
-
-<p>
-If a PC is lost, decommissioned or simply must no longer work for Metnos, you
-revoke it. A single call is enough:
-<code>POST /admin/devices/{id}/revoke</code> (behind the scenes
-<code>devices.revoke_device</code>), which stamps the revocation date. From that
-moment <em>every</em> signed message arriving from that device &mdash; a work
-request or a plain heartbeat &mdash; is rejected with an <code>HTTP 403</code>
-error, and the program stops by itself.
-</p>
-
-<p>
-Revocation stops the heartbeat and the operation is <em>idempotent</em>:
-repeating it does not change the result, and a second request simply replies
-&laquo;already revoked&raquo;.
-</p>
-
-<h2>Why it is safe</h2>
-
-<p>
-Three defences work together. The first two are cryptographic signatures in both
-directions; the third keeps the channel off the public Internet.
-</p>
-
-<table>
-<tr><th>Defence</th><th>Protects against</th></tr>
-<tr><td><strong>Signature from device to server</strong>: every request from the program is signed over the exact bytes of the message (<code>X-Metnos-Device-Sig</code> header).</td><td>A stranger pretending to be the device. Without the private key &mdash; which never leaves the PC &mdash; they cannot produce a valid signature.</td></tr>
-<tr><td><strong>Signature from server to device</strong>: every order from Metnos carries a signature (<code>server_sig</code>), verified against the pinned key <em>before</em> executing. Invalid signature = reject and log, no execution.</td><td>A fake server or an order tampered with along the way. The device only runs commands signed by the server it memorised at pairing time.</td></tr>
-<tr><td><strong>Internal channel only</strong>: the dialogue with devices uses port 8765 and is <em>never</em> exposed through the public Cloudflare tunnel. Only the console on port 8770 faces outward.</td><td>Exposure on the Internet. The ability to run work remotely stays confined to the local network (or a private overlay network).</td></tr>
-</table>
-
-<div class="callout tip">
-<strong>Status.</strong> Pairing, heartbeat, and revocation are covered by client and server tests; the distributed version is declared by the client package.
-</div>
+<p>For the general transport contract, see
+<a href="channel.html"><code>channel</code></a>; for action approvals, see
+<a href="approval_ux.html">approvals and human control</a>; for HTTP routes,
+see <a href="http_api.html"><code>http_api</code></a>.</p>
 
 </body>
 </html>

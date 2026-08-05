@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; multilang (tested)</title>
- <meta name="description" content="Metnos multilang microdesign: three layers (LLM prompts, manifest descriptions, user-facing messages), latest-wins source-of-truth, add-language workflow, METNOS_LANG process variable.">
- <meta name="keywords" content="multilang, multilingual, i18n, prompts, manifest, latest-wins, add-language, METNOS_LANG, metnos, Metnos">
+ <title>Metnos &mdash; multilingual operation</title>
+ <meta name="description" content="How Metnos handles language per user and per request: prompts, manifests, visible text, input lexicon, fallbacks, and the procedure for adding a language.">
+ <meta name="keywords" content="multilingual, i18n, user language, prompts, manifests, input lexicon, fallback, add-language, METNOS_LANG, Metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/en/architecture/multilang">
@@ -14,37 +14,30 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/multilang">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/multilang">
- <meta property="og:title" content="Metnos &mdash; multilang ">
- <meta property="og:description" content="Three multilingual layers, latest-wins source-of-truth, add-language workflow, METNOS_LANG process variable.">
+ <meta property="og:title" content="Metnos &mdash; multilingual operation">
+ <meta property="og:description" content="How Metnos selects each user's language and keeps prompts, manifests, messages, and the input lexicon aligned.">
  <meta property="og:locale" content="en_US">
- <meta property="og:locale:alternate" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; multilang ">
+ <meta name="twitter:title" content="Metnos &mdash; multilingual operation">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — multilang ",
- "description": "Canonical microdesign of Metnos multilang: three layers + latest-wins source-of-truth + add-language workflow.",
- "url": "https://metnos.com/en/architecture/multilang.html",
+ "headline": "Metnos — multilingual operation",
+ "description": "Language per user and per request, prompts, manifests, visible text, the input lexicon, and adding a language.",
+ "url": "https://metnos.com/en/architecture/multilang",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
  "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: multilang (prompts + manifests + i18n DB)"
+ "about": "Metnos multilingual architecture"
 }
  </script>
- <style>:root {
+ <style>
+:root {
  --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
+ --bg: #FAFBFC; --text: #1a1a1a; --border: #d0d7de;
+ --code-bg: #f6f8fa; --table-header: #1A477A; --table-alt: #f0f4f8;
 }
 * { box-sizing: border-box; }
 body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
@@ -59,497 +52,407 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
+li { margin-bottom: 5px; }
+.lead { font-size: 12pt; color: var(--navy); margin: 18px 0; }
+.title-page { text-align: center; padding: 70px 0 35px; page-break-after: always; }
+.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }
+.title-page .subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }
+.title-page .meta { font-size: 11pt; color: #666; }
+.toc { page-break-after: always; }
+.toc h2 { border: none; }
+.toc ol { font-size: 11pt; line-height: 2; }
+.toc a { color: var(--navy); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+@media print {
+ body { max-width: none; padding: 0; font-size: 10pt; }
+ h1 { font-size: 16pt; }
+ h2 { font-size: 12pt; }
+ .title-page { padding: 60px 0 30px; }
+ .title-page h1 { font-size: 24pt; }
+}
  </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<span style="display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px;">TESTED</span>
-<strong>Microdesign &mdash; aligned with the code.</strong> Canonical document for the
-multilingual subsystem of Metnos. Covers the
-prompt-as-data + auto-bilingual alignment pattern and the three layers live
-in code: <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code> (MiniJinja, 35 roles),
-the message database <code>i18n.sqlite</code>, and the executor TOML manifests with
-<code>[description].&lt;lang&gt;</code> table + companion file
-<code>manifest.lang_state.json</code>.
-</div>
 
 <nav class="lang-switch" aria-label="Language">
-<a href="/it/architecture/multilang.html" hreflang="it" lang="it">IT</a>
-<span class="sep">&middot;</span>
-<a href="/en/architecture/multilang.html" class="active" hreflang="en" lang="en">EN</a>
+ <a href="/it/architecture/multilang.html" hreflang="it" lang="it">IT</a>
+ <span class="sep">&middot;</span>
+ <a href="/en/architecture/multilang.html" class="active" hreflang="en" lang="en">EN</a>
 </nav>
 
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
- <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
- <span style="color:#8e8e93;">Microdesign &rsaquo; <strong style="color:#1a1a1a;">multilang</strong></span>
+  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Documentation index</a>
+  <span style="color:#8e8e93;">Architecture guide &rsaquo; <strong style="color:#1a1a1a;">multilingual operation</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>multilang</code> &mdash; three layers, latest-wins source-of-truth, add-language</div>
- <div class="meta">
- Microdesign &mdash; aligned with the code.<br>
- Covers the prompt-as-data pattern and the modules<br>
- <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>,
- <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>.<br>
- <br>
- Audience: those adding a new language to Metnos,<br>those reviewing translation candidates, those auditing cross-lang coherence.<br>
- Reading time: 14 minutes.
- </div>
+ <div class="subtitle">Language per user, prompts, and visible text</div>
+ <div class="meta">Architecture guide</div>
 </div>
+
+<p><strong>Ask Metnos with a request like this example:</strong>
+“Which language is set for my account, and where can I change it?”</p>
+
+<p>
+The instance administrator can change it in the web chat by opening
+<strong>Settings &gt; System &gt; Users &gt; user name &gt;
+Preferences</strong>, then selecting the <code>lang</code> field. A user's
+detail page is served at <code>/admin/users/&lt;user-id&gt;</code>. If the
+question is asked from Telegram, the path still belongs to the Metnos web
+chat; it is not a path inside Telegram.
+</p>
+
+<p class="lead">
+Language is a preference of each user and is applied to one request at a
+time. Two users can use different languages concurrently without changing
+the instance-wide configuration or affecting one another.
+</p>
 
 <div class="toc">
-<h2>Table of contents</h2>
-<ol>
- <li><a href="#cap1">Scope and boundaries</a></li>
- <li><a href="#cap2">The three multilingual layers</a></li>
- <li><a href="#cap3">Source-of-truth: latest-wins</a></li>
- <li><a href="#cap4">add-language workflow</a></li>
- <li><a href="#cap5">METNOS_LANG vs dynamic source-of-truth</a></li>
- <li><a href="#cap6">Edge case: manual retro-translate</a></li>
- <li><a href="#cap7">Future extensions</a></li>
- <li><a href="#cap8">CLI reference</a></li>
-</ol>
+ <h2>Contents</h2>
+ <ol>
+  <li><a href="#cap1">The multilingual contract</a></li>
+  <li><a href="#cap2">How Metnos selects a request's language</a></li>
+  <li><a href="#cap3">The four areas that must stay aligned</a></li>
+  <li><a href="#cap4">Prompt language and response language</a></li>
+  <li><a href="#cap5">Translation alignment</a></li>
+  <li><a href="#cap6">Adding a language</a></li>
+  <li><a href="#cap7">Checks and administrative tools</a></li>
+ </ol>
 </div>
 
-<h1 id="cap1">1. Scope and boundaries</h1>
-
-<p class="lead">
-This document defines <em>how Metnos speaks more than one language</em>:
-where strings live, who can edit them, how a change in one language
-propagates to the others, how a new language is added. Italian and English
-are both present; the system must accept
-a third language (French, Spanish, German) without code changes.
-</p>
-
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="60" y="70" width="240" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="180" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">LLM prompts</text>
-<text x="180" y="112" text-anchor="middle" fill="#475569" font-size="9.5">prompts/&lt;lang&gt;/*.j2</text>
-<rect x="318" y="70" width="240" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="438" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">executor descriptions</text>
-<text x="438" y="112" text-anchor="middle" fill="#475569" font-size="9.5">manifest + JSON</text>
-<rect x="576" y="70" width="240" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">user messages</text>
-<text x="696" y="112" text-anchor="middle" fill="#475569" font-size="9.5">i18n.sqlite</text>
-<line x1="300" y1="98" x2="316" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ml)"/>
-<line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ml)"/>
-
-</svg>
-<figcaption>Figure 1 &mdash; The three multilingual layers: LLM prompts, executor descriptions and user-facing messages; no canonical language, the latest editor wins.</figcaption>
-</figure>
-
-
-<p>The document covers:</p>
-<ul>
-<li>the three string layers (LLM prompts, manifest descriptions, user-facing messages);</li>
-<li>the <em>latest-wins</em> discipline: no language is canonical by construction; whoever edits last wins;</li>
-<li>the admin command <code>metnos-prompts add-language &lt;code&gt;</code> and its effects;</li>
-<li>the difference between <code>METNOS_LANG</code> (process boot resolution) and source-of-truth (latest-wins, dynamic);</li>
-<li>the edge case of a translation flowing back (retro-translate).</li>
-</ul>
-
-<p>It does not cover, deferring elsewhere:</p>
-<ul>
-<li>the opt-in frontier translation pipeline (provider-specific prompts): see <a href="synt.html#cap4">synt &sect;4.2.3</a> for the repertoire pattern;</li>
-<li>i18n DB rotation (vacuum, retention): see <code>runtime/i18n.py</code>;</li>
-<li>channel HTML template rendering (Telegram + HTTP): see <a href="channel.html">channel</a>.</li>
-</ul>
-
-<h1 id="cap2">2. The three multilingual layers</h1>
+<h1 id="cap1">1. The multilingual contract</h1>
 
 <p>
-Every string Metnos utters, or that an LLM reads as part of its instructions,
-lives in <strong>one and only one</strong> of the three layers below. The
-separation is by <em>nature of the string</em>, not by convenience: no string
-inhabits two layers.
+Metnos must keep four kinds of content aligned: model instructions, tool
+descriptions, text shown to people, and the lexicon used to understand
+requests. Translating the interface alone is insufficient: a button may be
+in French while the planner still reads English instructions, or a response
+may be correctly localized while recognition of a natural French phrase
+still fails.
+</p>
+
+<p>
+Italian and English are the languages currently registered as fully
+supported in code. The stores may contain other languages while translation
+is underway; their presence alone does not prove that the entire product is
+ready in those languages.
+</p>
+
+<p>The operational contract is:</p>
+
+<ul>
+ <li>language belongs to the authorized user, not to the device;</li>
+ <li>the same preference applies in the web chat and in channels bound to that user;</li>
+ <li>each request retains its own language context through the final response;</li>
+ <li>missing text follows a declared fallback and does not stop the service;</li>
+ <li>a language is declared supported only after translation, review, and complete testing.</li>
+</ul>
+
+<h1 id="cap2">2. How Metnos selects a request's language</h1>
+
+<p>
+In the web chat, the server identifies the authenticated user and reads that
+user's <code>lang</code> preference. Telegram resolves the same value through
+the channel-to-user binding. Recurring work performed on behalf of a person
+also applies its owner's language.
+</p>
+
+<p>
+Metnos places the value in a context local to that request. The context
+remains isolated while several turns run in parallel: setting English for
+one user changes neither another user's language nor the process-wide
+default.
 </p>
 
 <table>
-<thead>
-<tr>
-<th style="width:18%">Layer</th>
-<th>What it contains</th>
-<th style="width:24%">Storage</th>
-<th style="width:18%">Volume</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Layer 1 &mdash; LLM prompts</strong></td>
-<td>The text that instructs the planner, vaglio, describe, classify, the synt 5-stage pipeline. MiniJinja templates with variables (<code>{{ tools }}</code>, <code>{{ history }}</code>).</td>
-<td><code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code></td>
-<td>35 roles &times; N langs</td>
-</tr>
-<tr>
-<td><strong>Layer 2 &mdash; manifest description</strong></td>
-<td>Executor descriptions and affinity keywords. They are the <em>tool prompt</em> for the planner (CLAUDE.md &sect;2.5).</td>
-<td><code>[description].&lt;lang&gt;</code> table inside the TOML manifest; companion file <code>manifest.lang_state.json</code> for version_hash + source_hash per language.</td>
-<td>executor catalog &times; N languages; generated count</td>
-</tr>
-<tr>
-<td><strong>Layer 3 &mdash; user-facing messages</strong></td>
-<td>ERR_*, WARN_*, MSG_*, LOG_* (errors, warnings, confirmations, channel notifications). Executor descriptions migrate here at runtime read.</td>
-<td>SQLite <code>~/.local/share/metnos/i18n.sqlite</code>; table <code>i18n(key, lang, text, needs_translation, source_lang, version_hash)</code>.</td>
-<td>standard keys + migrated descriptions &times; N langs</td>
-</tr>
-</tbody>
+ <thead>
+  <tr><th style="width:27%">Source</th><th>Value used</th><th>Scope</th></tr>
+ </thead>
+ <tbody>
+  <tr><td><code>lang</code> preference</td><td>Language of the authenticated user or the user bound to the channel.</td><td>One request or turn.</td></tr>
+  <tr><td><code>METNOS_LANG</code></td><td>Instance fallback when the user has no valid preference.</td><td>Process; cached on first use.</td></tr>
+  <tr><td>Built-in default</td><td><code>it</code>, when <code>METNOS_LANG</code> is also absent.</td><td>Instance.</td></tr>
+ </tbody>
 </table>
 
-<h2>Layer 1 &mdash; LLM prompts</h2>
-
 <p>
-The <code>runtime/prompts/</code> directory has a sub-tree per language.
-Each role (<code>planner</code>, <code>vaglio_judge</code>,
-<code>describe_entries</code>, &hellip;) is a <code>.j2</code> file with the
-<em>same structure</em> in every language: same variables, same section
-skeleton, only localised text.
+The values offered by the <code>lang</code> field do not come from a list
+written into the page. They are derived from the languages present in
+<code>i18n.sqlite</code>. Consequently, bootstrapping a new language can make
+it selectable before every translation is complete. Fallbacks keep the
+service usable, but the administrator should not offer that language to
+users before completing the checks described below.
 </p>
 
-<pre>runtime/prompts/
- it/
- planner.j2
- vaglio_judge.j2
- describe_entries.j2
- &hellip; (32 files)
- en/
- planner.j2 # same skeleton, EN text
- &hellip;
- _pending/
- planner.j2.candidate # candidate awaiting review
- fr/ # optional, after metnos-prompts add-language fr
- &hellip;</pre>
+<h1 id="cap3">3. The four areas that must stay aligned</h1>
+
+<table>
+ <thead>
+  <tr><th style="width:21%">Area</th><th>Content</th><th>Runtime source</th><th>Fallback</th></tr>
+ </thead>
+ <tbody>
+  <tr>
+   <td><strong>Model prompts</strong></td>
+   <td>Instructions for planning, judging, describing, Tutor composition, and final-answer generation.</td>
+   <td><code>runtime/prompts/&lt;language&gt;/</code></td>
+   <td>Approved target file; target candidate; approved English file; English candidate.</td>
+  </tr>
+  <tr>
+   <td><strong>Executor manifests</strong></td>
+   <td>The executor description and argument descriptions read by the planner.</td>
+   <td>Language tables in the corresponding <code>manifest.toml</code>.</td>
+   <td>Request language; English; first available language in deterministic order.</td>
+  </tr>
+  <tr>
+   <td><strong>User-facing text</strong></td>
+   <td>Deterministic messages, errors, confirmations, labels, and notifications.</td>
+   <td><code>i18n.sqlite</code></td>
+   <td>Request language; English; Italian; finally <code>&lt;missing:KEY&gt;</code>.</td>
+  </tr>
+  <tr>
+   <td><strong>Input lexicon</strong></td>
+   <td>Natural forms and mappings used to recognize intents and parameters in a request.</td>
+   <td><code>detection.sqlite</code>, initialized from the runtime registry.</td>
+   <td>Union of the current language with Italian and English; gaps are reported and queued.</td>
+  </tr>
+ </tbody>
+</table>
+
+<h2>Model prompts</h2>
 
 <p>
-The loader <code>runtime/prompt_loader.py</code> is called by every runtime
-component as <code>prompt_loader.get(role, lang, **vars)</code>. Language
-resolved as <code>os.environ["METNOS_LANG"]</code>, fallback
-<code>config.DEFAULT_LANG</code> (currently <code>"it"</code>). Per-file
-resolution chain (&sect;K, ADR 0173):
-<strong>live &rarr; <code>_pending</code> candidate (used in-vivo) &rarr; EN</strong>.
-If the requested language lacks a file, the loader uses the daemon's candidate if
-present, otherwise falls back to <strong>EN</strong> (the meantime default) &mdash;
-never a crash. No manual promotion required.
-</p>
-
-<h2>Layer 2 &mdash; executor manifest descriptions</h2>
-
-<p>
-The TOML manifest of an executor (<code>executors/&lt;name&gt;/manifest.toml</code>)
-has the <code>[description]</code> section as a per-language table, plus a
-companion JSON <code>manifest.lang_state.json</code> in the same folder
-tracking who is source and when.
-</p>
-
-<pre># manifest.toml
-[description]
-it = """
-Cerca file su filesystem per pattern e finestra temporale.
-&hellip;
-"""
-en = """
-Find files on the filesystem by pattern and time window.
-&hellip;
-"""
-
-[affinity]
-it = ["cerca", "trova", "file", "ricerca", "&hellip;"]
-en = ["find", "search", "files", "lookup", "&hellip;"]</pre>
-
-<pre>// manifest.lang_state.json (companion file)
-{
- "lang_state": {
- "it": {
- "version_hash": "a3f9...",
- "source_hash": null, // it = current source
- "source_lang": null,
- "translated_by": null,
- "reviewed_at": "2026-04-22T10:30Z"
- },
- "en": {
- "version_hash": "7c1b...",
- "source_hash": "a3f9...", // EN derived from IT hash a3f9
- "source_lang": "it",
- "translated_by": "wise:qwen3.6-35b-a3b",
- "reviewed_at": "2026-04-22T11:05Z"
- }
- }
-}</pre>
-
-<p>
-At run time the planner reads the description in the current language
-(<code>METNOS_LANG</code>) via <code>loader.describe(name, lang)</code>; if
-the language is missing, explicit fallback to <strong>EN</strong> (&sect;K,
-ADR 0173), otherwise the first available language.
-</p>
-
-<h2>Layer 3 &mdash; user-facing messages in i18n.sqlite</h2>
-
-<p>
-The <code>runtime/i18n.py</code> module exposes
-<code>i18n.get(key, lang=None, **vars)</code> with <code>{name}</code>-style
-interpolation. Keys follow the convention <code>SCOPE_DOMAIN_DETAIL</code>:
-<code>ERR_FILE_NOT_FOUND</code>, <code>WARN_CAP_REACHED</code>,
-<code>MSG_APPROVAL_GRANTED</code>, <code>LOG_TURN_ENDED</code>.
+Every caller passes an explicit language code to the prompt loader. When an
+approved file is absent, the loader can use a candidate from
+<code>_pending</code>; when that candidate is also absent, it falls back to
+English. A candidate does not replace an approved file that already exists:
+for an existing language, the candidate must be reviewed and promoted.
 </p>
 
 <p>
-Executor descriptions are <em>all migrated</em> to the DB with prefix
-<code>EX_DESCRIPTION_&lt;name&gt;</code> and <code>EX_AFFINITY_&lt;name&gt;</code>;
-the manifest loader reads them from the DB, not the TOML. The TOML remains
-<em>authoritative for new executors</em>; the DB imports them on first load.
+The planner consists of a core, relevant sections, and a footer. If the
+requested language lacks the core, the whole planner falls back to English.
+If the core exists but one section is missing, that section can fall back to
+its English counterpart.
 </p>
 
-<h1 id="cap3">3. Source-of-truth: latest-wins</h1>
+<h2>Executor manifests</h2>
 
-<p class="lead">
-No language is canonical by construction. Whoever edits last (in any
-language) becomes <em>source</em> for the others.
+<pre><code>[description]
+it = "Cerca file per nome, percorso e intervallo temporale."
+en = "Find files by name, path, and time window."
+
+[args.properties.patterns.description]
+it = "Nomi o espressioni da cercare."
+en = "Names or patterns to find."
+
+affinity = ["cerca", "trova", "find", "search", "files"]</code></pre>
+
+<p>
+The loader reads these tables directly from the manifest. It does not import
+descriptions into the message database. <code>affinity</code> is not a table
+per language either: it is one mixed list of signals, because it supports
+semantic routing and is not displayed to the user. The
+<code>manifest.lang_state.json</code> file stores the hashes needed for
+alignment; it does not replace the manifest's content.
+</p>
+
+<h2>Visible text and the input lexicon</h2>
+
+<p>
+Deterministic text is looked up by key in the i18n database. The
+<code>needs_translation</code> field describes work still owed by the
+translator; if a row already contains non-empty text, that text remains
+usable.
 </p>
 
 <p>
-For each multilingual resource &mdash; a prompt, a description, an i18n key
-&mdash; we keep two hashes:
+The input lexicon is separate from visible text. For a new language, common
+phrases and mappings can be translated with assistance; regular expressions
+must still be authored and checked manually. When native forms are absent,
+Metnos continues to recognize Italian and English forms, while explicitly
+reporting that the target language is not fully covered.
 </p>
 
-<ul>
-<li><code>version_hash</code> &mdash; SHA-256 of the current text in its language;</li>
-<li><code>source_hash</code> &mdash; the <code>version_hash</code> of the <em>source language</em> at the time of the last alignment. <code>null</code> if the language is itself the current source.</li>
-</ul>
-
-<h2>Re-alignment trigger</h2>
+<h1 id="cap4">4. Prompt language and response language</h1>
 
 <p>
-When an editor (human or batch) changes the text of language <em>L1</em>
-of a resource, <code>version_hash</code> for L1 changes. This implicitly
-invalidates the other languages <em>L2, L3, &hellip;</em> whose
-<code>source_hash</code> equals the <em>old</em> <code>version_hash</code>
-of L1: they are no longer in sync. The nightly daemon
-<code>i18n_translator.run_loop</code> picks them up as <em>pending</em>
-and generates a new candidate in <code>_pending/</code>.
+A model tends to follow the language of its instructions, but this is not a
+guarantee. Response language must therefore not depend on prompt language
+alone.
+</p>
+
+<p>
+Metnos passes both the turn's language code and its readable name to prompt
+templates. Prompts that produce visible prose, including the final
+assembler, describers, and Tutor, explicitly request output in that
+language. An English fallback prompt can therefore still request a French
+answer. If the code has no registered readable name, the model receives the
+code itself: the turn may work, but behavior is less reliable and the
+language is not ready for release.
+</p>
+
+<p>
+If a prompt is written in the wrong language and does not state the output
+language, the model may indeed answer in the prompt's language. Checks must
+therefore cover both conditions: the correct template was selected, and the
+target response language was stated explicitly. Deterministic messages do
+not depend on model behavior; they always follow the i18n database's
+fallback chain.
+</p>
+
+<h1 id="cap5">5. Translation alignment</h1>
+
+<p>
+Prompts, manifest descriptions, and messages record a fingerprint of the
+current text and of the source version from which each translation was
+produced. When one language is edited, that version becomes the source for
+realigning the others.
 </p>
 
 <table>
-<thead>
-<tr><th style="width:34%">Edited</th><th>Immediate effect</th><th>Following night</th></tr>
-</thead>
-<tbody>
-<tr>
-<td><code>prompts/it/planner.j2</code></td>
-<td>New <code>version_hash(it)</code>. <code>source_hash(en)</code> is now stale.</td>
-<td>The translator regenerates <code>prompts/en/_pending/planner.j2.candidate</code> from the new IT. <code>metnos-prompts review planner --lang=en</code> shows the diff.</td>
-</tr>
-<tr>
-<td><code>prompts/en/planner.j2</code> (direct EN edit)</td>
-<td>New <code>version_hash(en)</code>. EN becomes <em>current source</em>: <code>source_lang=en</code> for IT.</td>
-<td>The translator now considers <em>EN as source</em>. If <code>source_hash(it)</code> is stale, it regenerates <code>prompts/it/_pending/planner.j2.candidate</code>.</td>
-</tr>
-<tr>
-<td><code>i18n.set("MSG_APPROVAL_GRANTED", "fr", "&hellip;")</code></td>
-<td>Only the <code>fr</code> row of that key changes.</td>
-<td>No trigger on other languages: the change is local to <code>fr</code>.</td>
-</tr>
-</tbody>
+ <thead>
+  <tr><th style="width:24%">Resource</th><th>How a change is detected</th><th>Result</th></tr>
+ </thead>
+ <tbody>
+  <tr><td>Prompt</td><td>Content-hash comparison; file time is used only to resolve concurrent edits.</td><td>A new candidate is written to the target language's <code>_pending</code> directory.</td></tr>
+  <tr><td>Manifest description</td><td>Hash comparison for every field and language.</td><td>The manifest table is updated and the manifest is signed again.</td></tr>
+  <tr><td>i18n message</td><td>Text version and row update time.</td><td>Other languages that are no longer aligned are queued for translation.</td></tr>
+ </tbody>
 </table>
 
-<div class="callout note">
-<strong>Why latest-wins and not IT-canonical?</strong> By discipline:
-the first draft is in Italian because Metnos was born in IT, but the
-<em>editorial quality</em> of a string can come from any language. We
-do not want a small EN refactor overwritten the next night by a stale
-IT. The source is always the latest editor, always.
-</div>
-
-<h2>Deterministic comparison (no LLM in the critical path)</h2>
-
 <p>
-The <code>version_hash</code> vs <code>source_hash</code> comparison is
-deterministic (CLAUDE.md &sect;7.9). The LLM intervenes <em>only</em> to
-generate the translation candidate; <em>when to regenerate</em> and
-<em>which is the source</em> is pure code, no prompt.
+Comparison and selection of resources are deterministic; the model is used
+only to produce candidate wording. A translation remains generated content
+that requires review, not automatic evidence of linguistic correctness.
 </p>
 
-<h1 id="cap4">4. add-language workflow</h1>
-
 <p>
-The full flow to add a new language is a single command:
+Edit one language of a resource at a time before running alignment. For
+prompts, concurrent edits are resolved by file time. In a manifest, all
+languages share one file, so a conflict is resolved alphabetically. Do not
+rely on either rule to reconcile two divergent corrections.
 </p>
 
-<pre>$ metnos-prompts add-language fr
-Lingua 'fr' bootstrap completato.
- - prompts/fr/ creata (vuota, daemon notturno generera' candidate)
- - i18n.sqlite: fr bootstrap rows pending
- - Manifest description: il daemon scansionera' al prossimo cycle
+<p>
+The input lexicon follows a separate cycle: it is queued by language and
+verified through a coverage check. It does not participate in source
+selection for the other three areas.
+</p>
 
-Per triggerare manualmente la traduzione subito:
- /opt/metnos/deploy/run_prompts_translator.sh
+<h1 id="cap6">6. Adding a language</h1>
 
-Per attivare la lingua: METNOS_LANG=fr nei systemd unit + restart</pre>
+<p>
+The following command bootstraps a language; it does not declare that
+language supported. Run it from the <code>runtime</code> directory with the
+Metnos installation's Python environment:
+</p>
 
-<p>Four effects, all idempotent:</p>
+<pre><code>cd &lt;installation-directory&gt;/runtime
+../.venv/bin/python -m admin.prompts_cli add-language fr --source-lang=it</code></pre>
+
+<p>The command performs three immediate operations:</p>
 
 <ol>
-<li><strong>Layer 1</strong>: creates an empty <code>runtime/prompts/fr/</code>. The nightly daemon will fill it with candidates from the source language (default <code>it</code>; can be overridden with <code>--source-lang en</code> if EN has become the most up-to-date language).</li>
-<li><strong>Layer 2</strong>: no immediate action. On each cycle the daemon scans TOML manifests with missing <code>[description].fr</code> table and generates candidates inside the <code>manifest.lang_state.json</code> (<code>fr</code> key) marked <code>needs_review=true</code>.</li>
-<li><strong>Layer 3</strong>: <code>i18n_cli.add-lang fr</code> populates the <code>i18n</code> table with a placeholder for every existing key, <code>needs_translation=1</code>, <code>source_lang=it</code>. The daemon translates them in batches.</li>
-<li><strong>Audit</strong>: writes an entry in <code>~/.local/share/metnos/multilang/audit.jsonl</code> with timestamp, ISO code, chosen source_lang.</li>
+ <li>creates <code>runtime/prompts/fr/</code> and its <code>_pending</code> directory;</li>
+ <li>creates pending French rows in the i18n database from the source language's keys;</li>
+ <li>records the operation in the installation's multilingual audit log when possible.</li>
 </ol>
 
 <p>
-The language stays <em>inactive</em> until <code>METNOS_LANG=fr</code> is
-set in the runtime systemd units and the daemon is restarted. Until a string is
-translated, the runtime falls back to <strong>EN</strong> (the meantime default),
-never to broken fragments.
+It does not immediately translate manifests, complete the input lexicon, add
+the code to the supported-language registries, or change the instance
+default.
 </p>
 
-<div class="callout note">
-<strong>No approval gate (&sect;K, ADR 0173).</strong> The nightly daemon writes
-<em>candidates</em> in <code>_pending/</code> and the loader uses them
-<strong>in-vivo</strong>: nobody reviews hundreds of strings by hand. Review is
-<em>opt-in</em> &mdash; <code>metnos-prompts review &lt;role&gt; --lang=fr</code>
-shows the diff, <code>metnos-prompts mark-synced &lt;role&gt; --lang=fr</code>
-<em>canonicalizes</em> the candidate to <code>&lt;role&gt;.j2</code> (re-enabling
-the prescriptive linter &sect;6.1) &mdash; but it is not a prerequisite for the
-translation to take effect.
-</div>
+<h2>Release procedure</h2>
 
-<h1 id="cap5">5. <code>METNOS_LANG</code> vs dynamic source-of-truth</h1>
+<ol>
+ <li>
+  Register the code in <code>vocab.LANGS</code> and add the language's
+  readable name to the registries used by the prompt loader and translators.
+  Check the vocabulary sections that expose their own language-specific
+  forms as well.
+ </li>
+ <li>
+  Run the alignment process for prompts, manifest descriptions, and
+  messages:
+  <pre><code>../deploy/run_prompts_translator.sh</code></pre>
+ </li>
+ <li>
+  Prepare the target language's input lexicon and translate the forms that
+  can be assisted:
+  <pre><code>../.venv/bin/python cli/detection_cli.py enqueue fr
+../.venv/bin/python cli/detection_cli.py translate</code></pre>
+  Repeat translation until the actionable queue is empty; author and verify
+  any pending regular expressions manually.
+ </li>
+ <li>
+  Inspect every prompt candidate and promote only valid wording:
+  <pre><code>../.venv/bin/python -m admin.prompts_cli sync-status
+../.venv/bin/python -m admin.prompts_cli review &lt;role&gt; --lang=fr
+../.venv/bin/python -m admin.prompts_cli mark-synced &lt;role&gt; --lang=fr</code></pre>
+ </li>
+ <li>
+  Verify syntax, symmetry, placeholders, the database, and input-lexicon
+  coverage with the commands in the next chapter.
+ </li>
+ <li>
+  Perform human language review and functional tests in the web chat,
+  dialogs, approvals, Settings, Telegram, and recurring work. Test two users
+  with different languages at the same time. A right-to-left language also
+  requires visual checks of direction, control order, and layout.
+ </li>
+ <li>
+  Only then offer the language to users. The <code>lang</code> field derives
+  its values from the i18n catalog automatically; the page has no separate
+  allow-list to edit. Setting <code>METNOS_LANG</code> is optional and changes
+  only the instance fallback, not individual preferences.
+ </li>
+</ol>
+
+<h1 id="cap7">7. Checks and administrative tools</h1>
 
 <p>
-<code>METNOS_LANG</code> is the <em>process read language</em>: which
-language the planner sees as prompts, which language appears in user
-messages. It is a static variable, resolved when the systemd units boot,
-constant for the entire process lifetime.
-</p>
-
-<p>
-The latest-wins source-of-truth (&sect;3) is a <em>per-resource dynamic
-attribute</em>: for resource A it may be IT, for B EN, for C FR &mdash; it
-depends on who edited last. The translator daemon uses the source-of-truth
-to decide what-to-translate-from-what, independently of
-<code>METNOS_LANG</code>.
+Run the following commands from
+<code>&lt;installation-directory&gt;/runtime</code> with
+<code>../.venv/bin/python</code>.
 </p>
 
 <table>
-<thead>
-<tr><th style="width:30%">Aspect</th><th><code>METNOS_LANG</code></th><th>Latest-wins source-of-truth</th></tr>
-</thead>
-<tbody>
-<tr><td>Granularity</td><td>Process-global</td><td>Per resource (prompt / description / key)</td></tr>
-<tr><td>When resolved</td><td>At systemd unit boot</td><td>On every edit, on every daemon cycle</td></tr>
-<tr><td>Effect</td><td>Language shown to user / fed to LLM</td><td>Language to regenerate candidates from</td></tr>
-<tr><td>Change</td><td>Edit unit + restart</td><td>Automatic: every edit triggers hash recalc</td></tr>
-</tbody>
-</table>
-
-<h1 id="cap6">6. Edge case: manual retro-translate</h1>
-
-<p>
-It happens that an editor prefers to write a new version of a prompt
-directly in the secondary language (e.g. EN), then wants to bring the
-change back to IT. Latest-wins does this automatically: when the EN edit
-lands, <code>version_hash(en)</code> becomes new, EN becomes the
-<em>current source</em>, and on the following night the IT candidate is
-regenerated in <code>prompts/it/_pending/&lt;role&gt;.j2.candidate</code>.
-</p>
-
-<p>
-The same review/mark-synced commands work symmetrically:
-<code>metnos-prompts review planner --lang=it</code> shows the diff,
-<code>mark-synced planner --lang=it</code> promotes. Translation direction
-is encoded in the companion JSON's <code>source_lang</code>, not in the
-command verb.
-</p>
-
-<div class="callout note">
-<strong>Retro-translate is opt-in in the sense that it requires a direct
-edit of the secondary-language file.</strong> There is no separate
-<code>retro-translate</code> command: the symmetry of the mechanism makes
-it implicit. The constraint is <em>do not edit both languages
-simultaneously</em> with divergent changes: the last save wins and the
-other loses (with log <code>multilang.simultaneous_edit_warning</code>).
-</div>
-
-<h1 id="cap7">7. Future extensions</h1>
-
-<h2>Layer 4 &mdash; chat HTML rendering templates</h2>
-
-<p>
-Today the Jinja2 templates in <code>channels/templates/</code> (approval
-card, dialog form, turn summary) are IT only. Layer 4 will replicate the
-layer 1 discipline with a sub-tree
-<code>channels/templates/&lt;lang&gt;/</code> and the same
-<em>latest-wins</em> mechanics. Estimate: 8-10 templates, 2-3 hours of
-porting once the third language arrives.
-</p>
-
-<h2>Opt-in frontier translation</h2>
-
-<p>
-The <code>--quality {wise,frontier}</code> flag of
-<code>metnos-prompts translate</code> and <code>translate-all</code> lets
-you choose the LLM tier. <code>wise</code> is the default (local model,
-free); <code>frontier</code> uses Anthropic Opus 4.8 at ~$0.015/call.
-The difference shows on long prompts and on roles (e.g.
-<code>vaglio_judge</code>) where semantic nuance is high. Documented in the
-CLI man page as <em>conscious opt-in</em>: no silent use of an external
-provider.
-</p>
-
-<h2>Non-LTR and RTL languages</h2>
-
-<p>
-Arabic, Hebrew and Persian require RTL in channel HTML rendering (layer 4
-when it lands) and care with <code>dir="rtl"</code> markup in Jinja2
-templates. Layers 1-3 are RTL-agnostic: strings are just text, the channel
-is responsible for rendering.
-</p>
-
-<h1 id="cap8">8. CLI reference</h1>
-
-<table>
-<thead>
-<tr><th style="width:40%">Command</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>metnos-prompts list</code></td><td>Prompt &times; lang table + size + last commit.</td></tr>
-<tr><td><code>metnos-prompts show &lt;role&gt; [--lang=it]</code></td><td>Final prompt render with stub vars.</td></tr>
-<tr><td><code>metnos-prompts validate</code></td><td>MiniJinja syntax lint + invariant check.</td></tr>
-<tr><td><code>metnos-prompts translate &lt;role&gt; [--to=en] [--quality=wise|frontier]</code></td><td>One-shot: translate IT &rarr; <code>--to</code>; saves candidate in <code>_pending/</code>.</td></tr>
-<tr><td><code>metnos-prompts translate-all [--to=en] [--quality=wise|frontier]</code></td><td>Batch: translate every missing.j2.</td></tr>
-<tr><td><code>metnos-prompts sync-status</code></td><td>Mtime/lag/candidate table per role.</td></tr>
-<tr><td><code>metnos-prompts review &lt;role&gt; [--lang=en]</code></td><td>Shows diff + validation of a candidate. Does not promote.</td></tr>
-<tr><td><code>metnos-prompts mark-synced &lt;role&gt; [--lang=en]</code></td><td>Promotes <code>_pending</code> to runtime if validation OK.</td></tr>
-<tr><td><code>metnos-prompts validate-cross-lang</code></td><td>Verifies placeholder + syntax + length ratio cross-lang.</td></tr>
-<tr><td><code>metnos-prompts add-language &lt;code&gt; [--source-lang=it]</code></td><td>Bootstrap a new language (layer 1+3, layer 2 on next cycle).</td></tr>
-</tbody>
+ <thead>
+  <tr><th style="width:47%">Command</th><th>What it checks</th></tr>
+ </thead>
+ <tbody>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli validate</code></td><td>Template syntax and loading invariants.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli lint --strict</code></td><td>Prompt structure, metadata, and symmetry.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.prompts_cli validate-cross-lang</code></td><td>Placeholders, syntax, and proportions across language versions.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli stats</code></td><td>Row counts and translations still pending.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli pending</code></td><td>Catalog rows that still require translation.</td></tr>
+  <tr><td><code>../.venv/bin/python -m admin.i18n_cli validate --verbose</code></td><td>Completeness for languages registered in <code>vocab.LANGS</code>.</td></tr>
+  <tr><td><code>../.venv/bin/python cli/detection_cli.py coverage fr</code></td><td>Native coverage of the input lexicon.</td></tr>
+ </tbody>
 </table>
 
 <p>
-The central install manifest (<code>install/manifest.toml</code>) does not
-list languages: they are persisted data, not capabilities. Adding FR does
-not modify systemd units nor the manifest, only
-<code>METNOS_LANG=fr</code> when activating it.
+Every visible string in the chat, dialogs, approval requests, and Settings
+pages must come from the i18n catalog. A sentence written directly in a
+template or JavaScript violates this contract even when it happens to match
+the installation's default language.
 </p>
 
-<h2>References</h2>
+<h2>Related documents</h2>
 
 <ul>
-<li><code>indices_image</code> pattern: the same instrument-object + domain-qualifier scheme applies to <code>indices_text</code> for multilingual semantic search (future).</li>
-<li><code>get_inputs</code>: dialogues require process-language LLM prompts for the <em>final_message_hint</em>.</li>
-<li>Tier 2 credentials via <code>get_inputs</code> + on_complete: same prompt loader, same languages.</li>
-<li>Prompt-as-data: motivation and full schema of layer 1.</li>
-<li>Async indexing build: progress messages flow from layer 3 (i18n.sqlite), naturally localised.</li>
-<li>Code: <code>runtime/prompt_loader.py</code>, <code>runtime/i18n.py</code>, <code>runtime/i18n_translator.py</code>, <code>runtime/admin/prompts_cli.py</code>, <code>runtime/admin/i18n_cli.py</code>.</li>
+ <li><a href="../interface.html">Interface guide</a>: web-chat navigation and Settings pages.</li>
+ <li><a href="channel.html">Channel guide</a>: identity, authorization, and rendering across channels.</li>
+ <li><a href="executor.html">Executor guide</a>: manifest structure and admission.</li>
 </ul>
 
 </body>

@@ -3,9 +3,9 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; observability (tested)</title>
- <meta name="description" content="Microprogettazione dell'osservabilita' di Metnos: un cruscotto HTML statico generato su richiesta che aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler e test framework in un singolo file leggibile in browser.">
- <meta name="keywords" content="observability, dashboard, mnestoma, pairings, vaglio, scheduler, test, metnos, microprogettazione">
+ <title>Metnos &mdash; osservabilit&agrave; operativa</title>
+ <meta name="description" content="Come osservare Metnos dalla pagina Settings della chat e con il rendiconto HTML statico: dati, aggiornamento, accesso e confini di riservatezza.">
+ <meta name="keywords" content="Metnos, osservabilit&agrave;, Settings, amministrazione, dashboard, turni, servizi, dispositivi">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
  <link rel="canonical" href="https://metnos.com/it/architecture/observability">
@@ -14,16 +14,17 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/observability">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/observability">
- <meta property="og:title" content="Metnos &mdash; observability (tested)">
- <meta property="og:description" content="Cruscotto statico HTML che aggrega tutte le sorgenti dati di Metnos in un singolo file. Niente server in tempo reale, niente WebSocket: si rigenera su richiesta.">
+ <meta property="og:title" content="Metnos &mdash; osservabilit&agrave; operativa">
+ <meta property="og:description" content="Le viste amministrative della chat e il rendiconto HTML statico, con i rispettivi confini.">
  <meta property="og:locale" content="it_IT">
+ <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — observability ",
- "description": "Microprogettazione dell'osservabilita': cruscotto HTML statico generato su richiesta. Aggrega mnestoma, pairings, turni, decisioni del vaglio, scheduler, test. Stato: tested.",
+ "headline": "Metnos — osservabilità operativa",
+ "description": "Viste amministrative della chat, rendiconto statico, dati, aggiornamento e confini di accesso.",
  "url": "https://metnos.com/it/architecture/observability.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -31,40 +32,38 @@
 }
  </script>
  <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
+ --navy:#1A477A; --navy-light:#2B6CB0; --sage:#548235;
+ --bg:#FAFBFC; --text:#1a1a1a; --border:#d0d7de;
+ --code-bg:#f6f8fa; --table-header:#1A477A; --table-alt:#f0f4f8;
 }
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
-h1:first-of-type { margin-top: 0; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Calibri,-apple-system,sans-serif; font-size:11pt; line-height:1.65; color:var(--text); background:var(--bg); max-width:960px; margin:0 auto; padding:40px 30px; }
+h1 { color:var(--navy); font-size:20pt; border-bottom:3px solid var(--navy); padding-bottom:8px; margin-top:50px; }
+h1:first-of-type { margin-top:0; }
+h2 { color:var(--navy-light); font-size:14pt; margin-top:28px; border-bottom:1px solid var(--border); padding-bottom:4px; }
+p { margin:10px 0; }
+table { width:100%; border-collapse:collapse; margin:15px 0; font-size:10pt; }
+th { background:var(--table-header); color:#fff; padding:8px 10px; text-align:left; }
+td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+tr:nth-child(even) td { background:var(--table-alt); }
+pre { background:var(--code-bg); border:1px solid var(--border); border-radius:4px; padding:12px 16px; overflow-x:auto; font-size:9.5pt; line-height:1.55; }
+code { font-family:Consolas,'Courier New',monospace; }
+p code, li code, td code { background:var(--code-bg); padding:1px 5px; border-radius:3px; font-size:9.5pt; }
+.title-page { text-align:center; padding:60px 0 30px; }
+.title-page h1 { font-size:32pt; border:0; margin:0; }
+.title-page .subtitle { font-size:16pt; color:var(--navy-light); margin:10px 0 20px; }
+.title-page .meta { color:#666; }
+.lead { font-size:12pt; color:var(--navy); border-left:4px solid var(--sage); padding-left:14px; margin:18px 0; }
+.toc h2 { border:0; }
+.toc ol { line-height:1.9; }
+ul,ol { padding-left:24px; }
+li { margin-bottom:4px; }
  </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-
-<nav class="lang-switch" aria-label="Language">
+<nav class="lang-switch" aria-label="Lingua">
 <a href="/it/architecture/observability.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/observability.html" hreflang="en" lang="en">EN</a>
@@ -73,244 +72,162 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">observability</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">osservabilit&agrave;</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>observability</code> &mdash; rendere visibile il sistema senza passare dai log</div>
- <div class="meta">
- Microprogettazione<br>
- Pubblico: chi vuole capire cosa Metnos sta facendo senza aprire un terminale.<br>
- </div>
+ <div class="subtitle">Osservabilit&agrave; operativa</div>
+ <div class="meta">Vedere lo stato del sistema senza confondere una vista con una fonte di autorit&agrave;.</div>
 </div>
-<div class="status-banner">
 
-<strong>Microprogettazione &mdash; allineata al codice.</strong>
-La componente <code>observability</code> &egrave; realizzata e testata a livello di modulo (cluster <code>observability</code> 6/6 verde), e oggi vive soprattutto nel cruscotto <code>/admin</code> dell'<a href="http_api.html" style="color:#14532d;text-decoration:underline;"><code>http_api</code></a> (htmx + Jinja2 + uPlot): <code>/admin/changes</code>, <code>/admin/executors</code>, <code>/admin/executors/stats</code>, <code>/admin/runs</code>, <code>/admin/safety</code>, <code>/admin/turns</code>, <code>/admin/users</code>. La telemetria di dettaglio dello StepLog raccoglie cinque tempi parziali (<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>, <code>exec_ms</code>, <code>rerank_ms</code>), leggibili con <code>bench_latency_breakdown.py</code>. Il generatore HTML statico originale resta come ripiego per la consultazione offline.
-Riferimento di implementazione: <code>/opt/metnos/runtime/observability.py</code>, <code>/opt/metnos/runtime/http_routes_admin.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
-</div>
+<p class="lead">Metnos offre due strumenti distinti. La pagina
+<strong>Settings</strong> della chat &egrave; l'interfaccia amministrativa
+corrente, aggiornata a ogni richiesta. <code>runtime/observability.py</code>
+produce invece un file HTML statico per una diagnosi locale. Il file non
+alimenta Settings, non si aggiorna da solo e non &egrave; una pagina servita dalla
+chat.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Cosa fa: cruscotto statico</a></li>
- <li><a href="#cap2">Le sei sorgenti dati</a></li>
- <li><a href="#cap3">Generazione: <code>render_dashboard</code></a></li>
- <li><a href="#cap4">Sezioni del file prodotto</a></li>
- <li><a href="#cap5">Privacy e HTML-escape</a></li>
- <li><a href="#cap6">Distribuzione e ciclo di vita</a></li>
- <li><a href="#cap7">CLI</a></li>
- <li><a href="#cap8">Limiti e sviluppi futuri</a></li>
+ <li><a href="#cap1">Un esempio in linguaggio naturale</a></li>
+ <li><a href="#cap2">Le due superfici</a></li>
+ <li><a href="#cap3">Settings nella chat</a></li>
+ <li><a href="#cap4">Il rendiconto HTML statico</a></li>
+ <li><a href="#cap5">Dati raccolti dal rendiconto</a></li>
+ <li><a href="#cap6">Accesso, utenti e riservatezza</a></li>
+ <li><a href="#cap7">Generazione e durata</a></li>
+ <li><a href="#cap8">Verifiche e fonti canoniche</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Cosa fa: cruscotto statico</h1>
+<h1 id="cap1">1. Un esempio in linguaggio naturale</h1>
 
-<p class="lead">
-Un sistema che si comporta come Metnos &mdash; pianificatore ReAct,
-synt che genera executor, mnestoma che cresce, vaglio che giudica,
-pairing che riconosce mittenti &mdash; produce parecchio stato. Il
-cruscotto di osservabilita' e' il modo per vedere quello stato senza
-aprire terminali, senza ispezionare SQLite a mano, senza grep sui log
-JSONL. Un singolo file HTML, una pagina che riassume tutto cio' che
-serve a un proprietario per capire dove e' arrivato il sistema.
-</p>
+<p>Chiedi a Metnos con una richiesta come quella di questo esempio:</p>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="60" y="70" width="240" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="180" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">sorgenti dati</text>
-<text x="180" y="112" text-anchor="middle" fill="#475569" font-size="9.5">mnestoma, turni, vaglio...</text>
-<rect x="318" y="70" width="240" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="438" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">aggregatore</text>
-<text x="438" y="112" text-anchor="middle" fill="#475569" font-size="9.5">sola lettura</text>
-<rect x="576" y="70" width="240" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="696" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">cruscotto HTML</text>
-<text x="696" y="112" text-anchor="middle" fill="#475569" font-size="9.5">statica, no JS</text>
-<line x1="300" y1="98" x2="316" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
-<line x1="558" y1="98" x2="574" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-ob)"/>
+<pre>Mostrami dove posso controllare gli ultimi turni e lo stato dei servizi.</pre>
 
-</svg>
-<figcaption>Figura 1 &mdash; Il cruscotto di osservabilit&agrave;: aggrega in sola lettura le sorgenti dati e genera HTML statico su richiesta, senza server vivo.</figcaption>
-</figure>
+<p>La risposta utile deve indicare anzitutto il percorso visibile nella chat:
+<strong>Settings &gt; Attivit&agrave; &gt; Turni</strong> per le richieste recenti e
+<strong>Settings &gt; Sistema &gt; Servizi</strong> per i servizi configurati. Se
+la domanda arriva da Telegram, il percorso va aperto nella chat web di Metnos:
+Telegram non incorpora le pagine amministrative.</p>
 
+<p>Solo dopo questa istruzione pratica occorre spiegare API, registri o file.
+Il rendiconto statico &egrave; adatto a una diagnosi tecnica esplicitamente richiesta,
+non &egrave; il percorso ordinario per chi usa la chat.</p>
 
-<p>
-La scelta architetturale e' deliberatamente <em>non in tempo reale</em>: niente
-server, niente WebSocket, niente JavaScript. Il file e' generato su
-richiesta da uno script Python che legge le stesse sorgenti dati
-autoritative del runtime, le trascrive in HTML, e si ferma. Aprire
-con browser locale.
-</p>
-
-<h1 id="cap2">2. Le sei sorgenti dati</h1>
+<h1 id="cap2">2. Le due superfici</h1>
 
 <table>
-<thead><tr><th style="width:24%">Sorgente</th><th>Cosa fornisce</th><th style="width:26%">Path</th></tr></thead>
-<tbody>
-<tr>
-<td><strong>Mnestoma</strong></td>
-<td>Statistiche globali (totale mnest, active, proto, decaying, eventi), primi N attivi per peso, primi N proto-mnest in attesa di sintesi, ultimi 20 eventi cronologici.</td>
-<td><code>${METNOS_INSTALL_ROOT}/workspace/.mnestoma/mnest.sqlite</code> (override <code>MNESTOMA_DB_PATH</code>)</td>
-</tr>
-<tr>
-<td><strong>Pairings</strong></td>
-<td>Pairing attivi (channel, sender_id, livello, paired_at, paired_by, last_seen) e numero di pairing revocati nello storico.</td>
-<td><code>~/.local/state/metnos/pairings.db</code></td>
-</tr>
-<tr>
-<td><strong>Turns</strong></td>
-<td>Ultimi 15 turni eseguiti dal pianificatore (timestamp, query utente, esito, numero step, prima riga della risposta).</td>
-<td><code>~/.local/share/metnos/turns/YYYY-MM-DD.jsonl</code></td>
-</tr>
-<tr>
-<td><strong>Vaglio</strong></td>
-<td>Ultime 20 decisioni del <a href="vaglio.html">Vaglio</a> (executor, score, blocked_by, motivazione abbreviata, ts).</td>
-<td><code>~/.local/share/metnos/vaglio/YYYY-MM.jsonl</code></td>
-</tr>
-<tr>
-<td><strong>Scheduler</strong></td>
-<td>Task builtin del runtime (<code>apply_ager</code>, <code>synt_suggest</code>, &hellip;), schedule, ultima esecuzione, esito.</td>
-<td><code>~/.local/state/metnos/scheduler_v2.sqlite</code></td>
-</tr>
-<tr>
-<td><strong>Test framework</strong></td>
-<td>Numero moduli, numero test case, distribuzione last_status, top moduli per case count.</td>
-<td><code>/opt/metnos/runtime/testing/tests.db</code></td>
-</tr>
-</tbody>
+<tr><th>Superficie</th><th>Aggiornamento</th><th>Accesso</th><th>Scopo</th></tr>
+<tr><td><strong>Settings</strong> (<code>/admin</code>)</td><td>I dati vengono riletti quando si apre o si aggiorna la pagina.</td><td>Richiede il ruolo amministratore applicato dal middleware HTTP.</td><td>Consultazione e controlli amministrativi dell'installazione in esercizio.</td></tr>
+<tr><td><strong>Rendiconto statico</strong> (<code>runtime.observability</code>)</td><td>Fotografia dell'istante in cui viene eseguito il comando.</td><td>File locale; la protezione dipende dai permessi del file e della macchina.</td><td>Diagnosi fuori linea di sei sorgenti storiche.</td></tr>
 </table>
 
-<p>
-Nessuna di queste sorgenti &egrave; stata creata per il cruscotto: tutte
-preesistevano come <em>fonte di verit&agrave;</em> di un componente del
-runtime. Il cruscotto &egrave; un consumatore in pi&ugrave;, non scrive nulla.
-</p>
+<p>Le due superfici non vanno sommate in una descrizione unica. Settings usa
+rotte e modelli propri; il generatore statico &egrave; richiamato soltanto dalla sua
+CLI e non ha chiamanti nel server HTTP.</p>
 
-<h1 id="cap3">3. Generazione: <code>render_dashboard</code></h1>
+<h1 id="cap3">3. Settings nella chat</h1>
 
-<p>
-La funzione esposta e' <code>observability.render_dashboard(out_path)</code>.
-Per ciascuna sorgente c'e' un piccolo helper privato
-(<code>_collect_mnestoma</code>, <code>_collect_pairings</code>,
-<code>_collect_recent_turns</code>, &hellip;) che apre la sorgente in
-sola lettura, raccoglie un <em>dict</em> serializzabile, e lo restituisce.
-Se una sorgente e' assente o solleva (es. SQLite non esiste perche'
-non hai mai avviato lo scheduler), l'helper ritorna un dict vuoto o un
-dizionario con la chiave <code>error</code>: il cruscotto mostra
-una nota informativa ma non si interrompe.
-</p>
+<p>La pagina iniziale di Settings riassume versione e tempo di attivit&agrave;,
+turni delle ultime 24 ore, proposte, executor, scheduler, firme Safety e utenti.
+Le pagine di dettaglio separano le diverse domande operative:</p>
 
-<p>
-La <em>render</em> e' un singolo passo: nessun motore di template, nessuna
-dipendenza esterna. Solo helper Python che concatenano stringhe HTML.
-Stesso CSS in linea dei doc canonici (per coerenza visiva con
-metnos.com), tabelle e schede statiche, niente JavaScript.
-</p>
+<table>
+<tr><th>Percorso nella chat</th><th>Informazioni principali</th></tr>
+<tr><td>Settings &gt; Attivit&agrave; &gt; Turni</td><td>Identificativo, orario, canale, attore, passi, esito, durata e richiesta.</td></tr>
+<tr><td>Settings &gt; Attivit&agrave; &gt; Scheduler</td><td>Esecuzioni delle attivit&agrave;, esito e durata.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Servizi</td><td>Servizi presenti nel registro canonico, stato e controlli ammessi.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Modelli</td><td>Configurazione effettiva e oscurata di LLM, embedding e VLM: LLM e VLM sono modificabili e ripristinabili; l&rsquo;embedding è consultabile.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Dispositivi</td><td>Dispositivi associati, presenza e revoca.</td></tr>
+<tr><td>Settings &gt; Sistema &gt; Utenti</td><td>Utenti, ruoli, canali e preferenze amministrabili.</td></tr>
+</table>
 
-<h1 id="cap4">4. Sezioni del file prodotto</h1>
+<p>Il registro in <code>runtime/ui_surfaces.py</code> &egrave; la descrizione
+canonica delle pagine visibili e del loro percorso. Tutor usa lo stesso
+registro: una modifica strutturale della UI richiede l'aggiornamento del
+registro, della guida di navigazione e dell'indice di Tutor.</p>
 
-<p>Il file HTML prodotto contiene, in ordine:</p>
+<h1 id="cap4">4. Il rendiconto HTML statico</h1>
 
-<ol>
-<li><strong>Test framework</strong>: schede di metriche (moduli, cases, status) + primi moduli per cardinalita'. Risponde alla domanda &laquo;la rete dei test e' verde?&raquo;.</li>
+<p><code>render_dashboard(out_path)</code> interroga le sorgenti locali e
+compone un unico documento con CSS incorporato, senza JavaScript e senza
+WebSocket. Le sezioni appaiono in questo ordine: test, Mnestoma, associazioni,
+turni recenti, decisioni del Vaglio e scheduler.</p>
 
-<li><strong>Mnestoma</strong>: schede di metriche (totale, active, proto, decaying, eventi) + tabella dei primi mnest attivi (con barra di peso visiva) + tabella proto-mnest in attesa di sintesi + tabella eventi recenti. Risponde alla domanda &laquo;cosa Metnos pensa di sapere fare?&raquo;.</li>
+<p>Ogni raccoglitore gestisce separatamente una sorgente non disponibile. La
+pagina pu&ograve; quindi essere prodotta anche quando una sezione &egrave; vuota o in
+errore. Questo comportamento rende leggibile una fotografia parziale, ma non
+trasforma l'assenza di dati in prova del buon funzionamento del componente.</p>
 
-<li><strong>Pairings</strong>: tabella pairing attivi con livello, channel, sender_id, paired_at, last_seen. Risponde alla domanda &laquo;chi puo' parlare a Metnos in questo momento?&raquo;.</li>
+<p>Il documento generato usa attualmente etichette italiane e
+<code>lang="it"</code>. Non &egrave; una superficie localizzata della chat e non va
+presentato come tale.</p>
 
-<li><strong>Turni recenti</strong>: ultimi 15 turni con esito (answer / error / cap_steps / cap_same_executor) e prima riga della risposta. Risponde alla domanda &laquo;cosa Metnos ha fatto di recente?&raquo;.</li>
+<h1 id="cap5">5. Dati raccolti dal rendiconto</h1>
 
-<li><strong>Decisioni del Vaglio</strong>: ultime 20 decisioni con score e motivazione. Pillola verde per <code>approve</code>, rossa per <code>block:guard</code> o <code>block:judge</code>. Risponde alla domanda &laquo;la guardia sta tenendo? Sto bloccando troppo o troppo poco?&raquo;.</li>
+<table>
+<tr><th>Sorgente</th><th>Proiezione mostrata</th><th>Posizione configurata</th></tr>
+<tr><td><strong>Mnestoma</strong></td><td>Conteggi, archi attivi e proto, eventi recenti.</td><td>Database di Mnestoma, normalmente sotto <code>PATH_WORKSPACE/.mnestoma</code>.</td></tr>
+<tr><td><strong>Associazioni</strong></td><td>Canale, identificativo del mittente, livello, date e autore dell'associazione; conteggio delle revoche.</td><td><code>DB_PAIRINGS</code> sotto <code>PATH_USER_STATE</code>.</td></tr>
+<tr><td><strong>Turni</strong></td><td>Ultimi quindici turni: richiesta, esito, numero di passi e inizio della risposta.</td><td><code>PATH_TURNS</code> sotto <code>PATH_USER_DATA</code>.</td></tr>
+<tr><td><strong>Vaglio</strong></td><td>Ultime venti decisioni: executor, punteggio, esito e motivazione abbreviata.</td><td><code>PATH_USER_DATA/vaglio</code>.</td></tr>
+<tr><td><strong>Scheduler</strong></td><td>Attivit&agrave; abilitate, regola temporale, ultima esecuzione ed esito.</td><td><code>PATH_USER_STATE/scheduler_v2.sqlite</code>.</td></tr>
+<tr><td><strong>Prove registrate</strong></td><td>Moduli, casi abilitati, ultimo stato e moduli pi&ugrave; numerosi.</td><td><code>PATH_RUNTIME/testing/tests.db</code>.</td></tr>
+</table>
 
-<li><strong>Scheduler</strong>: tabella task builtin con schedule, ultima esecuzione, esito. Risponde alla domanda &laquo;la manutenzione notturna sta girando?&raquo;.</li>
-</ol>
+<p>I limiti sono applicati dal generatore e non sono parametri della CLI:
+cinque file giornalieri al massimo per i turni, tre file per il Vaglio e
+limiti distinti per righe ed eventi. Per un'analisi completa occorre interrogare
+la sorgente autorizzata, non dedurre il totale dalla pagina.</p>
 
-<h1 id="cap5">5. Privacy e HTML-escape</h1>
-
-<p>
-Tutto cio' che esce da una sorgente passa per <code>html.escape</code>
-prima di essere inserito nel DOM. Il caso garantito dal test
-<code>render_html_escape_sicuro</code>: anche se un sender_id contiene
-<code>&lt;script&gt;</code>, il file prodotto mostra
-<code>&amp;lt;script&amp;gt;</code> &mdash; mai un tag attivo. Un
-cruscotto di osservabilita' non e' superficie di attacco, ma e'
-disciplina mantenerlo tale.
-</p>
-
-<div class="callout note">
-<strong>Cosa NON appare nel cruscotto.</strong> I valori sensibili che
-le sorgenti gia' filtrano restano filtrati: il <a href="vaglio.html">vaglio</a>
-registra solo <code>args_keys</code> (non i valori), il <a href="pairing.html">pairing</a>
-non registra il contenuto del codice ma solo il suo <code>code_id</code>, gli
-allegati delle mail non vengono mai materializzati nel turn log. Il
-cruscotto eredita queste scelte: se non e' nella sorgente, non e' nel
-file prodotto.
-</div>
-
-<h1 id="cap6">6. Distribuzione e ciclo di vita</h1>
-
-<p>
-Il file di default e' <code>workspace/dashboard/index.html</code>, che
-vive sotto il <code>METNOS_INSTALL_ROOT</code> e <em>non</em> viene pubblicato su
-metnos.com (e' uno strumento operativo locale). Per consultarlo:
-<code>file:///opt/metnos/workspace/dashboard/index.html</code> nel
-browser, oppure scp dal server alla macchina di Roberto se si vuole
-guardarlo da remoto.
-</p>
-
-<p>
-Il file e' di solo-output. Si rigenera ogni volta che si lancia
-<code>python3 -m observability render</code>: 100&nbsp;ms tipici. La
-prossima evoluzione (vedi cap.&nbsp;8) sara' un task dello
-<a href="agent_runtime.html#cap11_2">scheduler builtin</a> che lo
-rigenera ogni N minuti.
-</p>
-
-<h1 id="cap7">7. CLI</h1>
-
-<pre>
-python3 -m observability render # default: workspace/dashboard/index.html
-python3 -m observability render --out path.html # path custom
-</pre>
-
-<p>
-Non ci sono sotto-comandi diversi da <code>render</code>. Il
-generatore non offre estrazioni o esportazioni JSON: chi vuole i dati grezzi va
-direttamente alle sorgenti (SQLite + JSONL).
-</p>
-
-<h1 id="cap8">8. Limiti e sviluppi futuri</h1>
+<h1 id="cap6">6. Accesso, utenti e riservatezza</h1>
 
 <ul>
-<li><strong>Nessun aggiornamento in tempo reale</strong>: la pagina non si auto-aggiorna. Per
-vedere lo stato corrente serve rigenerare. Il cruscotto in tempo reale &egrave; servito dal server aiohttp (porta 8770) sotto <code>/admin</code>.</li>
+<li><strong>Settings &egrave; una vista amministrativa dell'installazione.</strong> Il middleware ammette soltanto il ruolo <code>admin</code>; i riepiloghi possono comprendere pi&ugrave; utenti. Non &egrave; una vista personale del singolo utente.</li>
+<li><strong>Il rendiconto statico &egrave; anch'esso complessivo.</strong> Pu&ograve; contenere richieste, estratti delle risposte, identificativi dei mittenti e metadati delle associazioni appartenenti a utenti diversi.</li>
+<li><strong>L'escape HTML non &egrave; un controllo di accesso.</strong> Il generatore sottopone a escape i testi dinamici prima di inserirli nel documento, ma il contenuto rimane leggibile a chi pu&ograve; aprire il file.</li>
+<li><strong>L'oscuramento a monte non &egrave; una garanzia assoluta.</strong> I registri possono rimuovere credenziali riconosciute, ma il rendiconto va comunque trattato come dato riservato.</li>
+<li><strong>Il file non imposta permessi propri.</strong> Eredita directory, proprietario e <em>umask</em> del processo che lo genera; non va collocato in una directory servita pubblicamente.</li>
+<li><strong>Una fotografia resta sul disco.</strong> Rigenerarla sovrascrive il percorso scelto, ma non elimina copie spostate, backup o file prodotti con un altro <code>--out</code>.</li>
+</ul>
 
-<li><strong>Nessuna autenticazione web</strong>: il file e' una pagina statica
-sul filesystem locale. Niente accesso, niente cookie, niente sessione. Va
-bene perche' vive solo sul <code>metnos-server</code> di Roberto.</li>
+<h1 id="cap7">7. Generazione e durata</h1>
 
-<li><strong>Nessun andamento temporale</strong>: il cruscotto mostra
-<em>l'istante</em>. Niente grafici a linee, niente andamenti di costo o
-latenza nel tempo. Quando servira' la storia, si aggiungera' una
-sezione che legge i turn-log aggregati.</li>
+<p>Dalla radice dell'installazione, usando l'ambiente Python di Metnos:</p>
 
-<li><strong>Nessun grafo del mnestoma</strong>: oggi le tabelle dei primi N.
-La visualizzazione del grafo (force-directed o a gruppi) richiede
-JavaScript: rinviata a quando ci sara' un servizio web che serve la
-pagina.</li>
+<pre>PYTHONPATH=runtime ./.venv/bin/python -m observability render
+PYTHONPATH=runtime ./.venv/bin/python -m observability render --out /percorso/scelto/dashboard.html</pre>
 
-<li><strong>Nessun filtro interattivo</strong>: per cercare un executor
-specifico nei turn log si va su SQLite. Il cruscotto e'
-&laquo;cosa-c'e-ora&raquo;, non &laquo;cerca-cosa-c-era&raquo;.</li>
+<p>Il percorso predefinito &egrave;
+<code>PATH_WORKSPACE/dashboard/index.html</code>. Il comando restituisce il
+percorso scritto e termina. Non esiste un aggiornamento periodico incorporato:
+ora di generazione e contenuto restano invariati finch&eacute; il comando non viene
+eseguito di nuovo.</p>
 
-<li><strong>Rigenerazione manuale</strong>: un task dello
-scheduler builtin (<code>render_dashboard</code>, ogni 5 minuti) la
-manterr&agrave; fresca senza intervento manuale.</li>
+<p>Il file &egrave; un prodotto derivato. Per eliminarlo si pu&ograve; rimuovere il solo
+percorso di uscita dopo aver verificato che non sia usato da altri processi;
+le sorgenti operative non vengono eliminate con esso.</p>
+
+<h1 id="cap8">8. Verifiche e fonti canoniche</h1>
+
+<p>Le prove mirate del generatore statico sono in
+<code>tests/runtime/runtime/test_observability.py</code>. Verificano, fra
+l'altro, che nomi degli executor, richieste e risposte non possano introdurre
+markup attivo nel file. Le prove HTTP ed end-to-end controllano separatamente
+le pagine amministrative: non si usa un conteggio fisso, destinato a diventare
+obsoleto.</p>
+
+<ul>
+<li><code>runtime/http_routes_admin.py</code> &mdash; dati e azioni delle pagine Settings;</li>
+<li><code>runtime/http_auth.py</code> &mdash; confine di autenticazione delle rotte <code>/admin</code>;</li>
+<li><code>runtime/ui_surfaces.py</code> &mdash; registro editoriale delle superfici visibili;</li>
+<li><code>runtime/observability.py</code> &mdash; generatore del rendiconto statico;</li>
+<li><code>runtime/config.py</code> &mdash; percorsi canonici dell'installazione.</li>
 </ul>
 
 </body>

@@ -3,80 +3,20 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; mnest (under approval)</title>
- <meta name="description" content="Microprogettazione del mnest: la traccia di co-attivazione fra due executor. Anatomia, anatomia del proto-mnest, ciclo di vita, decadimento.">
- <meta name="keywords" content="mnest, proto-mnest, co-attivazione, executor, decadimento, ager, mnestoma, sinapsi, microprogettazione, metnos">
+ <title>Metnos &mdash; Mnest</title>
+ <meta name="description" content="Il contratto corrente dei mnest: archi fra executor, persistenza, rinforzo, decadimento, proto-mnest e integrazioni effettive.">
+ <meta name="keywords" content="Metnos, mnest, mnestoma, executor, grafo, memoria operativa">
  <meta name="author" content="Roberto Brunialti">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/mnest">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/mnest">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/mnest">
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/mnest">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/it/architecture/mnest">
- <meta property="og:title" content="Metnos &mdash; mnest (under approval)">
- <meta property="og:description" content="La traccia di co-attivazione fra due executor: anatomia, ciclo di vita, decadimento, persistenza.">
- <meta property="og:locale" content="it_IT">
- <meta property="og:locale:alternate" content="en_US">
- <meta property="og:site_name" content="Metnos">
- <meta name="twitter:card" content="summary">
- <meta name="twitter:title" content="Metnos &mdash; mnest (under approval)">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — mnest ",
- "description": "Microprogettazione canonica del mnest: anatomia, ciclo di vita, decadimento, persistenza.",
- "url": "https://metnos.com/it/architecture/mnest.html",
- "inLanguage": "it",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "Roberto Brunialti"},
- "about": "Metnos component: mnest (canonical)"
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; page-break-before: always; }
-h1:first-of-type { page-break-before: avoid; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 20px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; page-break-inside: avoid; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; page-break-inside: avoid; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }
-figure { text-align: center; margin: 24px 0; page-break-inside: avoid; }
-figure svg { max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px; }
-figcaption { font-style: italic; color: #555; font-size: 9.5pt; margin-top: 8px; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; page-break-inside: avoid; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 80px 0 40px; page-break-after: always; }.title-page h1 { font-size: 32pt; border: none; margin: 0; page-break-before: avoid; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc { page-break-after: always; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 2; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }
-@media print { body { max-width: none; padding: 0; font-size: 10pt; } h1 { font-size: 16pt; } h2 { font-size: 12pt; }.title-page { padding: 60px 0 30px; }.title-page h1 { font-size: 24pt; } }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
-<div style="margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; line-height: 1.55;">
-<strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Componente realizzata e testata a livello modulo + cluster nel POC. Il dato &laquo;mnest&raquo; e i suoi due tipi (active e proto) sono persistiti dal modulo unificato <code>runtime/mnestoma.py</code>, con record/rinforzo/decay/state-transition esercitati da 20 test module + integrazione runtime. Totale sistema 67/67 verde. Allineato con l'Architettura, con <a href="mnestoma.html" style="color: #14532d; text-decoration: underline;">mnestoma.html</a> (storage e operazioni) e con <a href="agent_runtime.html" style="color: #14532d; text-decoration: underline;">agent_runtime.html</a> (hook record_passing + proto detection).
-<div style="font-size: 9.5pt; color: #2d4a32; margin-top: 8px;">Stato nella sequenza: <em>under approval</em> &rarr; <em>approved</em> &rarr; <strong>tested</strong> &rarr; <em>implemented</em>. <strong>Delta POC rispetto al doc</strong>: ID mnest con prefisso <code>mn_</code> + <code>secrets.token_hex(12)</code> al posto di ULID (semplicit&agrave;); <code>record_passing(dst_exists=False, desired_signature=...)</code> &egrave; il path che genera proto-mnest (un solo punto d'ingresso scrittura). Soglie e formula del cap. 6 implementate verbatim.</div>
-</div>
 
-<nav class="lang-switch" aria-label="Language">
+<nav class="lang-switch" aria-label="Lingua">
 <a href="/it/architecture/mnest.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/mnest.html" hreflang="en" lang="en">EN</a>
@@ -85,402 +25,215 @@ Componente realizzata e testata a livello modulo + cluster nel POC. Il dato &laq
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">mnest</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">Mnest</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>mnest</code> &mdash; la traccia di co-attivazione fra due executor</div>
- <div class="meta">
- Microprogettazione &mdash; <br>
- Allineata con Architettura (cap. 9) e Dialogo sugli executor.<br>
- <br>
- Pubblico: chi implementer&agrave; il grafo, il rinforzo, il decadimento.
- </div>
+ <div class="subtitle">Mnest: un arco operativo fra executor</div>
+ <div class="meta">Contratto dati, ciclo di vita e stato dell'integrazione.</div>
 </div>
+
+<p class="lead">Un mnest rappresenta una relazione diretta e pesata da un executor
+sorgente a uno di destinazione. Il relativo archivio, le query e l'ager sono
+implementati. Il runtime corrente, per&ograve;, non chiama automaticamente
+<code>record_passing()</code> alla fine dei turni: un record presente &egrave; quindi un
+dato inserito da un chiamante esplicito, non la prova che ogni passaggio osservato
+venga appreso dal prodotto.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Scopo e confini</a></li>
- <li><a href="#cap2">Cos'&egrave; un mnest</a></li>
- <li><a href="#cap3">Differenza fra mnest e sinapsi</a></li>
- <li><a href="#cap4">Anatomia di un mnest</a></li>
- <li><a href="#cap5">Generazione automatica</a></li>
+ <li><a href="#cap1">Scopo e stato corrente</a></li>
+ <li><a href="#cap2">Che cosa rappresenta</a></li>
+ <li><a href="#cap3">Confine dell'evidenza</a></li>
+ <li><a href="#cap4">Campi e vincoli</a></li>
+ <li><a href="#cap5">Registrazione</a></li>
  <li><a href="#cap6">Rinforzo e decadimento</a></li>
- <li><a href="#cap7">Stati di vita</a></li>
- <li><a href="#cap8">Il proto-mnest</a></li>
- <li><a href="#cap9">Chi consulta i mnest</a></li>
- <li><a href="#cap10">Persistenza e snapshot</a></li>
- <li><a href="#cap11">Esempio: la sequenza fattura</a></li>
- <li><a href="#cap12">Domande aperte</a></li>
+ <li><a href="#cap7">Stati</a></li>
+ <li><a href="#cap8">Proto-mnest</a></li>
+ <li><a href="#cap9">Componenti che lo consultano</a></li>
+ <li><a href="#cap10">Persistenza e tracciabilit&agrave;</a></li>
+ <li><a href="#cap11">Esempio</a></li>
+ <li><a href="#cap12">Confini operativi</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Scopo e confini</h1>
+<h1 id="cap1">1. Scopo e stato corrente</h1>
 
-<p class="lead">
-Questo documento definisce <em>cosa &egrave; un mnest</em>: la
-traccia, conservata nel <a href="mnestoma.html">mnestoma</a>, di un
-passaggio di output fra due <a href="executor.html">executor</a>.
-&Egrave; il secondo dei tre doc canonici introdotti dal <em>Dialogo
-sugli executor e la memoria distribuita</em>. Il mnest registra un <em>passaggio di dati</em> osservato
-fra due executor, non una semplice concomitanza passiva.
-</p>
+<p>Il tipo <code>Mnest</code> e le sue operazioni vivono in
+<code>runtime/mnestoma.py</code>. Conservano e interrogano collegamenti fra nomi
+e versioni di executor; non rappresentano una memoria personale e non implicano
+apprendimento automatico.</p>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="10" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="95" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">executor A</text>
-<text x="95" y="112" text-anchor="middle" fill="#475569" font-size="9.5">attivato</text>
-<rect x="198" y="70" width="170" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="283" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">executor B</text>
-<text x="283" y="112" text-anchor="middle" fill="#475569" font-size="9.5">attivato dopo</text>
-<rect x="386" y="70" width="170" height="56" rx="8" fill="#EDE4F7" stroke="#6B21A8"/>
-<text x="471" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">mnest</text>
-<text x="471" y="112" text-anchor="middle" fill="#475569" font-size="9.5">traccia co-attivazione</text>
-<rect x="574" y="70" width="170" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="659" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">mnestoma</text>
-<text x="659" y="112" text-anchor="middle" fill="#475569" font-size="9.5">grafo emergente</text>
-<line x1="180" y1="98" x2="196" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
-<line x1="368" y1="98" x2="384" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
-<line x1="556" y1="98" x2="572" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-mn)"/>
+<table>
+<thead><tr><th>Parte</th><th>Stato</th></tr></thead>
+<tbody>
+<tr><td>Schema SQLite e API CRUD/query</td><td>Implementati.</td></tr>
+<tr><td>Rinforzo, decadimento e rilevazione dei proto ricorrenti</td><td>Implementati.</td></tr>
+<tr><td>Ager nel ciclo notturno</td><td>Registrato nello scheduler.</td></tr>
+<tr><td>Registrazione automatica degli archi da ogni turno</td><td>Non collegata al runtime ordinario.</td></tr>
+<tr><td>Uso diretto da pianificatore o Vaglio</td><td>Non collegato.</td></tr>
+</tbody>
+</table>
 
-</svg>
-<figcaption>Figura 1 &mdash; Un mnest nasce quando due executor vengono attivati in sequenza dal pianificatore: la traccia si rinforza con la ripetizione e confluisce nel grafo (mnestoma).</figcaption>
-</figure>
+<h1 id="cap2">2. Che cosa rappresenta</h1>
 
+<p>Un mnest ha direzione <code>src_executor &rarr; dst_executor</code>, versioni,
+numero di usi, peso, istanti di primo e ultimo aggiornamento e stato. La struttura
+pu&ograve; rappresentare il fatto operativo &laquo;un chiamante ha registrato il passaggio
+da A a B&raquo;.</p>
 
-<h2>Confini</h2>
+<p>La direzione conta: A&rarr;B e B&rarr;A sono record diversi. Anche una nuova
+versione della destinazione produce una relazione distinta. Una catena A&rarr;B&rarr;C
+&egrave; composta da due archi; la navigazione di pi&ugrave; archi avviene nella query
+<code>walk()</code>.</p>
 
-<p>Il documento copre:</p>
-<ul>
-<li>il contratto strutturale di un mnest (campi, vincoli, transizioni);</li>
-<li>quando e come un mnest nasce, si rinforza, decade;</li>
-<li>il proto-mnest: come si rappresenta un desiderio non soddisfatto;</li>
-<li>la persistenza e gli snapshot.</li>
-</ul>
+<h1 id="cap3">3. Confine dell'evidenza</h1>
 
-<p>Non copre, e demanda altrove:</p>
-<ul>
-<li>la struttura globale del mnestoma e le sue interrogazioni (vedi <a href="mnestoma.html">mnestoma.html</a>);</li>
-<li>la sintesi che usa proto-mnest ricorrenti (vedi <a href="executor.html#cap7">executor.html, cap. 7</a>);</li>
-<li>i criteri del Vaglio (vedi <a href="vaglio.html">vaglio.html</a>: guardia binaria + giudice graduato, reale dal 27/4);</li>
-<li>la fenomenologia del decadimento (vedi <em>ager</em>, doc futuro).</li>
-</ul>
+<p>Il record non contiene l'output scambiato e non verifica da solo che il
+trasferimento sia avvenuto. La provenienza dipende dal chiamante di
+<code>record_passing()</code>. L'eventuale <code>turn_id</code> nell'evento permette
+di risalire al turno d'origine, ma soltanto se quel riferimento &egrave; stato fornito e
+il relativo log esiste ancora.</p>
 
-<h1 id="cap2">2. Cos'&egrave; un mnest</h1>
+<p>Per questo un mnest non deve essere presentato come prova autonoma, memoria
+biografica o preferenza dell'utente. &Egrave; telemetria strutturata su una relazione
+fra capability.</p>
 
-<p>
-Un <strong>mnest</strong> &egrave; un nodo del mnestoma che registra un
-fatto specifico:
-</p>
+<h1 id="cap4">4. Campi e vincoli</h1>
 
-<div class="lead" style="font-size:11.5pt;">
-&laquo;In questo turno, l'output dell'executor <em>A</em> &egrave; stato
-passato come input all'executor <em>B</em>, e <em>B</em> ha terminato
-con successo.&raquo;
-</div>
+<table>
+<thead><tr><th>Campo</th><th>Contratto</th></tr></thead>
+<tbody>
+<tr><td><code>id</code></td><td>Prefisso <code>mn_</code> seguito da un token casuale.</td></tr>
+<tr><td><code>src_executor</code>, <code>src_version</code></td><td>Sorgente e versione dichiarate dal chiamante.</td></tr>
+<tr><td><code>dst_executor</code>, <code>dst_version</code></td><td>Destinazione; la versione &egrave; nulla per un proto.</td></tr>
+<tr><td><code>weight</code></td><td>Numero reale vincolato fra 0 e 1.</td></tr>
+<tr><td><code>uses</code></td><td>Contatore intero, almeno 1.</td></tr>
+<tr><td><code>ts_first</code>, <code>ts_last</code></td><td>Timestamp UTC; l'ultimo non precede il primo.</td></tr>
+<tr><td><code>decay_lambda</code></td><td>Velocit&agrave; di decadimento.</td></tr>
+<tr><td><code>state</code></td><td><code>active</code>, <code>proto</code>,
+<code>decaying</code> o <code>superseded</code>.</td></tr>
+<tr><td><code>tags</code></td><td>Etichette JSON facoltative; non modificano il peso.</td></tr>
+<tr><td><code>desired_sig</code></td><td>Firma desiderata facoltativa, usata dai proto-mnest.</td></tr>
+</tbody>
+</table>
 
-<p>
-Il mnest &egrave; quindi una traccia di <strong>co-attivazione
-osservata</strong>: non un'inferenza statistica a posteriori, non una
-dichiarazione di intenti, ma una constatazione di un evento davvero
-accaduto, registrato dal runtime al termine del turno.
-</p>
+<p>L'unicit&agrave; SQLite comprende sorgente, versioni, destinazione e stato. Poich&eacute;
+SQLite considera distinti pi&ugrave; valori <code>NULL</code>, il codice esegue una query
+esplicita per rinforzare un proto esistente.</p>
 
-<p>
-Da qui derivano tutte le sue propriet&agrave; importanti:
-</p>
-<ul>
-<li>&Egrave; <em>diretto</em>: <em>A &rarr; B</em> non &egrave; lo stesso di <em>B &rarr; A</em>.</li>
-<li>&Egrave; <em>pesato</em>: pi&ugrave; volte si ripete, pi&ugrave; il peso cresce; col disuso, decade.</li>
-<li>&Egrave; <em>ancorato al tempo</em>: porta la marca temporale del primo e dell'ultimo uso.</li>
-<li>&Egrave; <em>distinto per coppia di versioni</em>: <em>read_files &rarr; read_files_pdf v2.0</em> &egrave; un mnest, <em>read_files &rarr; read_files_pdf v3.0</em> &egrave; un altro.</li>
-</ul>
+<h1 id="cap5">5. Registrazione</h1>
 
-<h1 id="cap3">3. Semantica del mnest</h1>
+<p><code>record_passing()</code> apre una transazione. Se trova lo stesso arco
+<code>active</code>, applica il decadimento maturato, aggiunge il rinforzo,
+incrementa <code>uses</code> e registra un evento. Altrimenti crea un nuovo arco
+con peso <code>0.30</code> e un primo evento.</p>
 
-<p>
-Il mnest registra un passaggio di dati (&laquo;l'output di A &egrave;
-stato l'input di B&raquo;), generato in modo deterministico dal runtime
-alla chiusura del turno: o c'&egrave; stato il passaggio o non c'&egrave;
-stato. Un mnest forte verso un executor che non esiste (proto-mnest,
-cap. 8) &egrave; un buco operativo concreto, non un'analogia.
-</p>
-
-<p>
-Il mnest <em>vede dati che si sono mossi</em>, non solo eventi che si
-sono accesi. Un grafo di mnest &egrave; un grafo di flussi reali.
-</p>
-
-<h1 id="cap4">4. Anatomia di un mnest</h1>
-
-<p>
-Un mnest, in forma serializzata, contiene questi campi obbligatori:
-</p>
-
-<pre><code>{
- "id": "mn_a1b2c3d4e5f6...", // mn_ + token esadecimale
- "src_executor": "read_files", // nome canonico del chiamante
- "src_version": "1.0.0",
- "dst_executor": "read_files_pdf", // nome canonico del chiamato
- "dst_version": "2.0.0",
- "weight": 0.42, // [0..1], normalizzato
- "uses": 17, // contatore d'uso totale
- "ts_first": "2026-03-12T18:04:00Z",
- "ts_last": "2026-04-23T09:21:00Z",
- "decay_lambda": 0.018, // /giorno, vedi cap. 6
- "tags": ["fattura", "pdf"], // facoltativi
- "state": "active" // active | proto | decaying | superseded
-}
-</code></pre>
-
-<p>
-Tre invarianti valgono sempre:
-</p>
-<ul>
-<li><code>(src_executor, src_version, dst_executor, dst_version)</code> &egrave; chiave: pu&ograve; esistere al massimo un mnest attivo per quella tupla.</li>
-<li><code>weight</code> &egrave; sempre in <code>[0, 1]</code>, calcolato come funzione esponenziale del numero di usi recenti (vedi formula al cap. 6).</li>
-<li><code>ts_last &gt;= ts_first</code>; <code>uses &gt;= 1</code>.</li>
-</ul>
-
-<h2>Tag, in breve</h2>
-
-<p>
-I tag sono un'aggiunta opzionale che non influenza il calcolo del peso,
-ma serve all'<em>ager</em> e al synt per identificare cluster di mnest
-che vivono nello stesso dominio applicativo (per esempio &laquo;fattura&raquo;,
-&laquo;foto&raquo;, &laquo;email lavoro&raquo;). I tag vengono propagati
-dal contesto del turno al mnest in nascita; l'utente li pu&ograve;
-ribattere o cancellare in fase di rilettura.
-</p>
-
-<h1 id="cap5">5. Generazione automatica</h1>
-
-<p>
-Un mnest non si dichiara, si <em>osserva</em>. La regola operativa,
-applicata dal runtime alla chiusura di ogni turno:
-</p>
-
-<ol>
-<li>Per ogni coppia di chiamate <em>A &rarr; B</em> all'interno del turno in cui l'output di <em>A</em> &egrave; stato passato come input a <em>B</em>:
- <ol type="a">
- <li>cerca nel mnestoma un mnest attivo con la chiave <code>(A, ver_A, B, ver_B)</code>;</li>
- <li>se esiste, incrementa <code>uses</code>, aggiorna <code>ts_last</code>, ricalcola il peso;</li>
- <li>se non esiste, ne crea uno nuovo con <code>uses=1</code>, <code>weight</code> iniziale, <code>state="active"</code>.</li>
- </ol>
-</li>
-<li>Se nel turno c'&egrave; stata una richiesta di passaggio <em>verso un executor che non esiste</em>, registra invece un <em>proto-mnest</em> (cap. 8).</li>
-<li>Se nel turno c'&egrave; stata una catena lunga (<em>A &rarr; B &rarr; C</em>), registra due mnest separati: <em>A&rarr;B</em> e <em>B&rarr;C</em>. Il mnestoma non rappresenta archi di lunghezza maggiore di uno.</li>
-</ol>
-
-<div class="callout note">
-<strong>Perch&eacute; archi di lunghezza uno.</strong> La transitivit&agrave;
-si pu&ograve; ricostruire al volo navigando il grafo, ma il dato
-elementare deve restare osservativo. Mnest di lunghezza maggiore
-sarebbero inferenze, non osservazioni; introdurli sporcherebbe la
-distinzione del cap. 3.
-</div>
+<p>Con <code>dst_exists=False</code> la stessa API crea o rinforza un proto-mnest.
+La chiamata &egrave; atomica per la coppia cercata, ma l'oggetto
+<code>Mnestoma</code> mantiene una connessione per processo e non dichiara la
+propria istanza thread-safe.</p>
 
 <h1 id="cap6">6. Rinforzo e decadimento</h1>
 
-<p>
-Il peso di un mnest &egrave; aggiornato a ogni evento secondo una formula
-con due componenti:
-</p>
+<p>Prima di ogni rinforzo, il peso precedente viene moltiplicato per
+<code>exp(-lambda &times; giorni)</code>; quindi viene aggiunto
+<code>0.15</code> e il risultato viene limitato all'intervallo 0&ndash;1. Il lambda
+predefinito &egrave; <code>0.018</code> al giorno.</p>
 
-<pre><code>weight(t) = clamp01( weight(t-&Delta;t) * exp(-&lambda; * &Delta;t) + reinforcement(t) )</code></pre>
+<p><code>apply_ager()</code> applica il decadimento agli archi
+<code>active</code> e <code>proto</code>. Un arco attivo sotto
+<code>0.20</code> passa a <code>decaying</code>; un proto sotto
+<code>0.05</code> viene eliminato. Un arco <code>decaying</code> sotto
+<code>0.05</code> e inattivo da almeno 90 giorni viene soltanto contato come
+candidato all'archiviazione: l'ager non lo cancella.</p>
 
-<ul>
-<li><code>&Delta;t</code> &egrave; il tempo (in giorni) trascorso dall'ultimo aggiornamento.</li>
-<li><code>&lambda;</code> &egrave; il <em>decay lambda</em>, parametrizzabile per tag (default <code>0.018/giorno</code>: dimezzamento in ~38 giorni).</li>
-<li><code>reinforcement(t)</code> &egrave; <code>+0.15</code> per ogni uso registrato nel turno corrente, saturato dal <code>clamp01</code>.</li>
-</ul>
-
-<p>
-La curva &egrave; ispirata al modello di Ebbinghaus, ma il valore di
-<code>&lambda;</code> &egrave; conservativo: a parit&agrave; d'uso, un
-mnest non si dimentica mai del tutto in tempi rapidi. La gradualit&agrave;
-serve a evitare oscillazioni dovute a periodi di vacanza, malattia,
-distrazione: l'utente vuole che, quando torna, Metnos ricordi.
-</p>
-
-<h2>Soglie operative</h2>
+<h1 id="cap7">7. Stati</h1>
 
 <table>
-<thead><tr><th style="width:22%">Soglia</th><th>Valore di default</th><th>Effetto</th></tr></thead>
+<thead><tr><th>Stato</th><th>Uso nel codice corrente</th></tr></thead>
 <tbody>
-<tr><td><strong>peso minimo proto</strong></td><td><code>0.05</code></td><td>Sotto questo valore, il proto-mnest &egrave; rimosso (anti-rumore).</td></tr>
-<tr><td><strong>peso decay</strong></td><td><code>0.20</code></td><td>Sotto questo valore, il mnest entra in stato <em>decaying</em>: l'<em>ager</em> lo segnala.</td></tr>
-<tr><td><strong>peso archive</strong></td><td><code>0.05</code></td><td>Sotto questo valore (e con uses ≥ 1 ma ts_last ≥ 90 giorni fa), proposta di archiviazione.</td></tr>
-<tr><td><strong>peso bootstrap</strong></td><td><code>0.30</code></td><td>Peso iniziale dei mnest seed (creati al primo avvio).</td></tr>
+<tr><td><code>active</code></td><td>Arco reale consultabile e rinforzabile.</td></tr>
+<tr><td><code>proto</code></td><td>Destinazione desiderata senza versione concreta.</td></tr>
+<tr><td><code>decaying</code></td><td>Arco sceso sotto la soglia dell'ager.</td></tr>
+<tr><td><code>superseded</code></td><td>Arco marcato come sostituito da un chiamante esplicito.</td></tr>
 </tbody>
 </table>
 
-<h1 id="cap7">7. Stati di vita</h1>
+<p><code>transition_state()</code> accetta soltanto questi valori e registra un
+evento. Un uso successivo di <code>record_passing()</code> cerca un arco
+<code>active</code>; non riattiva automaticamente un record
+<code>decaying</code>.</p>
 
-<table>
-<thead><tr><th style="width:18%">Stato</th><th>Significato</th><th>Transizioni</th></tr></thead>
-<tbody>
-<tr><td><code>proto</code></td><td>Il mnest registra un passaggio verso un executor che non esiste (vedi cap. 8): <code>dst_executor</code> punta a un nome non risolto.</td><td>&rarr; <code>active</code> alla nascita dell'executor mancante; &rarr; cancellato se peso scende sotto la soglia proto.</td></tr>
-<tr><td><code>active</code></td><td>Mnest &laquo;normale&raquo;: due executor reali, uso recente.</td><td>&rarr; <code>decaying</code> sotto la soglia di decadimento; &rarr; <code>superseded</code> dopo una fusione.</td></tr>
-<tr><td><code>decaying</code></td><td>Peso sotto soglia, segnalato dall'ager. Ancora invocabile, ma proposto per archiviazione.</td><td>&rarr; <code>active</code> per uso ripreso; &rarr; archiviato (rimosso dal grafo attivo, conservato nello snapshot mensile).</td></tr>
-<tr><td><code>superseded</code></td><td>Sostituito da un mnest pi&ugrave; recente o da un executor fuso (vedi <a href="executor.html#cap6">executor.html cap. 6</a>).</td><td>&rarr; archiviato dopo un periodo di grazia.</td></tr>
-</tbody>
-</table>
+<h1 id="cap8">8. Proto-mnest</h1>
 
-<h1 id="cap8">8. Il proto-mnest</h1>
+<p>Un proto-mnest conserva una sorgente reale e il nome di una destinazione ancora
+mancante. <code>desired_sig</code> pu&ograve; contenere sommario, input, output ed errori
+attesi. <code>recurring_protos()</code> seleziona per default i record con almeno
+tre usi e peso almeno <code>0.30</code>.</p>
 
-<p>
-Il <strong>proto-mnest</strong> &egrave; un mnest in stato
-<code>proto</code>: registra che, in un turno, Metnos ha desiderato
-passare l'output di un executor a un secondo executor che <em>non
-esiste ancora</em>. La struttura &egrave; quasi identica a quella di un
-mnest normale, con due differenze:
-</p>
+<p><code>promote_proto_to_active()</code> imposta la versione di destinazione,
+rimuove la firma desiderata e registra la transizione. Non crea, testa o attiva
+l'executor: queste responsabilit&agrave; appartengono a <a href="synt.html">Synt</a> e
+al suo ciclo di promozione.</p>
+
+<h1 id="cap9">9. Componenti che lo consultano</h1>
 
 <ul>
-<li><code>dst_executor</code> &egrave; un &laquo;nome desiderato&raquo;, non un nome risolvibile (per esempio: <code>extract_invoice_number</code>);</li>
-<li><code>dst_version</code> &egrave; <code>null</code>;</li>
-<li> &egrave; presente un campo <code>desired_signature</code> con la sintesi della firma attesa: che cosa l'executor dovrebbe fare, quale forma di output, quali errori tipici.</li>
+ <li><strong>Synt.</strong> Il composer pu&ograve; percorrere soltanto archi
+ <code>active</code>; i comandi diagnostici possono elencare proto ricorrenti.</li>
+ <li><strong>Ager.</strong> Il processo <code>nightly_aging</code> richiama
+ <code>apply_ager()</code> insieme all'ager degli executor.</li>
+ <li><strong>Osservabilit&agrave; e CLI.</strong> Possono mostrare statistiche, top
+ archi, proto ed eventi.</li>
+ <li><strong>Introvertiva.</strong> La funzione attiva cerca archi che nominano
+ executor non pi&ugrave; presenti e produce proposte di deduplicazione.</li>
 </ul>
 
-<pre><code>{
- "id": "mn_a1b2c3d4e5f6...",
- "src_executor": "read_files",
- "src_version": "1.0.0",
- "dst_executor": "extract_invoice_number", // non esiste
- "dst_version": null,
- "desired_signature": {
- "summary": "Estrarre il numero fattura da un PDF.",
- "inputs": ["bytes (pdf)"],
- "outputs": ["str (codice alfanumerico)"],
- "errors": ["NotFound", "Unparseable"]
- },
- "weight": 0.34,
- "uses": 4,
- "state": "proto"
-}
-</code></pre>
+<p>Il pianificatore corrente non usa il peso dei mnest per ordinare il catalogo; il
+Vaglio non li legge. L0 e L1 hanno archivi e segnali distinti.</p>
 
-<p>
-La differenza con &laquo;una richiesta di funzionalit&agrave;&raquo; nel senso
-classico &egrave; importante: il proto-mnest non &egrave; chiesto
-dall'utente, &egrave; constatato dal runtime. Roberto non ha
-formulato il bisogno: &egrave; emerso dal fatto che
-l'avrebbe voluto pi&ugrave; volte. Il proto-mnest, quando ricorre, &egrave;
-l'innesco della sintesi (vedi <a href="executor.html#cap7">executor.html
-cap. 7</a>).
-</p>
+<h1 id="cap10">10. Persistenza e tracciabilit&agrave;</h1>
 
-<h1 id="cap9">9. Chi consulta i mnest</h1>
+<p>Il database predefinito &egrave;
+<code>&lt;workspace&gt;/.mnestoma/mnest.sqlite</code>, modificabile con
+<code>METNOS_WORKSPACE</code> o <code>MNESTOMA_DB_PATH</code>. Le tabelle
+<code>mnests</code> ed <code>events</code> conservano stato ed eventi; la vista
+<code>v_mnestoma</code> espone gli archi <code>active</code> e
+<code>proto</code>.</p>
 
-<table>
-<thead><tr><th style="width:24%">Componente</th><th>Cosa cerca</th></tr></thead>
-<tbody>
-<tr><td><strong>Runtime (pianificatore)</strong></td><td>Dato un input, propone all'LLM una lista di executor candidati ordinata per peso dei mnest che li raggiungono dal contesto attuale.</td></tr>
-<tr><td><strong>Vaglio</strong></td><td>Per giudicare una proposta spontanea: un mnest forte verso un'azione gi&agrave; svolta in passato &egrave; un indizio di allineamento al telos.</td></tr>
-<tr><td><strong>Synt</strong></td><td>Cerca proto-mnest che hanno superato una soglia di ricorrenza per innescare la pipeline di sintesi.</td></tr>
-<tr><td><strong>Ager</strong></td><td>Scorre periodicamente il grafo per applicare il decadimento, segnalare i decaying, proporre archiviazione dei superseded.</td></tr>
-<tr><td><strong>Osservabilit&agrave;</strong></td><td>L'utente pu&ograve; ispezionare il grafo (lista, filtri per tag, top-k per peso) per capire cosa Metnos &laquo;pensa di sapere fare insieme&raquo;.</td></tr>
-</tbody>
-</table>
+<p>Lo stesso database ospita <code>canonical_query_log</code>, alimentato da alcuni
+turni come telemetria di normalizzazione. Quella tabella non &egrave; un mnest e non
+dimostra che il grafo degli archi sia stato aggiornato. Il modulo non implementa
+snapshot mensili o compressione automatica.</p>
 
-<h1 id="cap10">10. Persistenza e snapshot</h1>
+<h1 id="cap11">11. Esempio</h1>
 
-<p>
-I mnest vivono in <code>workspace/.mnestoma/mnest.sqlite</code>:
-</p>
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Spiegami se il mnestoma viene alimentato automaticamente dai miei turni e
+quali componenti lo consultano oggi.&raquo;</p>
+
+<p>La risposta corretta deve distinguere il codice disponibile dall'integrazione:
+l'archivio, il compositore, l'ager e gli strumenti di ispezione esistono; la registrazione
+automatica degli archi dai turni non &egrave; collegata. Non deve inventare un grafo
+personale gi&agrave; appreso.</p>
+
+<h1 id="cap12">12. Confini operativi</h1>
 
 <ul>
-<li>una sola tabella <code>mnests</code> con i campi del cap. 4 + indici su <code>(src_executor, dst_executor)</code> e <code>weight</code>;</li>
-<li>una tabella <code>events</code> append-only con i singoli rinforzi, per poter ricostruire lo storico del peso (utile per debug e per ager);</li>
-<li>una vista <code>v_mnestoma</code> che proietta lo stato corrente del grafo (active + proto), per le query di lettura.</li>
+ <li>Il database predefinito appartiene al workspace dell'installazione, non a uno
+ ambito utente derivato automaticamente. Non va trattato come dossier personale.</li>
+ <li>Tag e firma desiderata sono dati forniti dal chiamante; possono contenere
+ prosa euristica e non sono evidenza indipendente.</li>
+ <li>Il decadimento modifica il peso in base al tempo del processo, ma non riconcilia
+ contraddizioni e non valuta la qualit&agrave; di un turno.</li>
+ <li>Per la ripetizione di richieste e piani, consultare
+ <a href="fast_path.html">L0 e L1</a>; non sono derivati automaticamente dai
+ mnest.</li>
 </ul>
 
-<p>
-Il sistema fa uno <strong>snapshot mensile</strong> del file SQLite in
-<code>workspace/.mnestoma/snapshots/YYYY-MM.sqlite</code>. Lo snapshot
-serve a tre cose: ripristino in caso di danneggiamento del file vivo,
-analisi storica del grafo, traccia per chi vuole capire come si
-&egrave; mosso Metnos nel tempo. Gli snapshot pi&ugrave; vecchi di 12
-mesi sono compressi in <code>.zst</code> ma non eliminati.
-</p>
-
-<h2>Backup</h2>
-
-<p>
-Il file SQLite vivo &egrave; incluso nel backup notturno del workspace con
-le stesse politiche di tutto il resto del workspace. La perdita del
-mnestoma non &egrave; catastrofica (il sistema riparte vuoto e si
-ricostruisce dall'uso) ma &egrave; uno dei dati pi&ugrave; preziosi:
-contiene la storia operativa che Metnos ha imparato a riconoscere.
-</p>
-
-<h1 id="cap11">11. Esempio: la sequenza fattura</h1>
-
-<p>
-Per fissare i concetti, ecco una sequenza tipica di mnest che si forma
-attorno al flusso &laquo;archivia una fattura PDF&raquo;:
-</p>
-
-<pre><code>1. read_files &rarr; read_files_pdf v2.0 (peso 0.85, uses 47, "fattura")
-2. read_files_pdf v2.0 &rarr; invoice_classify (peso 0.78, uses 41, "fattura")
-3. invoice_classify &rarr; workspace_save (peso 0.81, uses 44, "fattura")
-
-# proto-mnest che ricorre ma non &egrave; ancora un executor:
-4. read_files_pdf v2.0 &rarr; extract_invoice_number (peso 0.34, uses 4, "fattura")
-</code></pre>
-
-<p>
-Il quarto, se continua a ripetersi, alzer&agrave; il peso fino alla
-soglia di sintesi e il <em>synt</em> proporr&agrave; a Roberto la
-sintesi del nuovo executor <code>extract_invoice_number</code>. Una
-volta approvato e firmato, il proto-mnest passer&agrave; ad
-<code>active</code> con il <code>dst_version</code> reso concreto.
-</p>
-
-<h1 id="cap12">12. Domande aperte</h1>
-
-<ol>
-<li><strong>Riciclo dello spazio nel file SQLite.</strong> Quando si recupera lo spazio dei mnest archiviati nel file vivo? Mai (storico completo) o periodicamente (per dimensioni)? Aperta.</li>
-<li><strong>Tag suggeriti dall'LLM.</strong> Il runtime pu&ograve; far suggerire tag dall'LLM in fase di chiusura turno. Quanto fidarsi di questi tag? L'utente li deve ratificare? Aperta.</li>
-<li><strong>Mnest cross-utente.</strong> Quando in futuro Metnos avr&agrave; pi&ugrave; sender pairati (ospiti), i mnest sono per-sender o globali? Probabilmente globali con tag di provenienza, ma da decidere.</li>
-<li><strong>Decadimento differenziato per categoria.</strong> Conviene avere <code>&lambda;</code> diverso per executor side-effect-free vs side-effect-pieni? Aperta.</li>
-</ol>
-
-<hr>
-
-<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin:28px 0 24px;">
- <a href="executor.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">primo della triade</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">executor</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">L'unit&agrave; di codice che il mnest collega.</div>
- </a>
- <a href="mnestoma.html" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">terzo della triade</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">mnestoma</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il grafo emergente di tutti i mnest.</div>
- </a>
- <a href="index.html#cap9" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">livello 1</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Architettura, cap. 9</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Il quadro d'insieme: executor, mnest, mnestoma.</div>
- </a>
- <a href="./" style="display:block; padding:14px 16px; border:1px solid var(--border); border-radius:8px; background:white; color:inherit; text-decoration:none;">
- <span style="display:inline-block; padding:2px 9px; border-radius:10px; font-size:9pt; background:var(--code-bg); color:var(--muted); font-weight:500;">indice</span>
- <div style="color:var(--navy); font-size:11.5pt; font-weight:700; margin:8px 0 6px 0;">Microprogettazione</div>
- <div style="margin:0; color:var(--muted); font-size:10pt; line-height:1.5;">Tutti i doc.</div>
- </a>
-</div>
-
-<hr>
-<p style="text-align:center; color:var(--muted); font-size:9.5pt; margin-top:40px;">
-Metnos &mdash; <em>mnest</em> microprogettazione <br>
-Doc canonico.
-</p>
 </body>
 </html>

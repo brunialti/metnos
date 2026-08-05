@@ -3,8 +3,8 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; sandbox (tested)</title>
- <meta name="description" content="Microprogettazione della sandbox di Metnos: bubblewrap avvolge gli executor, derivazione dei flag dal manifest, ripiego controllato, integrazione in agent_runtime.">
+ <title>Metnos &mdash; sandbox</title>
+ <meta name="description" content="Guida alla sandbox di Metnos: isolamento degli executor sul server e sui dispositivi, risorse derivate dal manifest, declassamenti e limiti effettivi.">
  <meta name="keywords" content="sandbox, bubblewrap, bwrap, isolamento, executor, manifest, capabilities, metnos">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -14,16 +14,16 @@
  <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/sandbox">
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/sandbox">
- <meta property="og:title" content="Metnos &mdash; sandbox (tested)">
- <meta property="og:description" content="La sandbox di Metnos: bubblewrap come guscio a livello kernel attorno agli executor, flag derivati dal manifest, ripiego controllato.">
+ <meta property="og:title" content="Metnos &mdash; sandbox">
+ <meta property="og:description" content="Come Metnos isola gli executor sul server e sui dispositivi, quali risorse rende visibili e quali limiti conserva.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:site_name" content="Metnos">
  <script type="application/ld+json">
 {
  "@context": "https://schema.org",
  "@type": "TechArticle",
- "headline": "Metnos — sandbox ",
- "description": "Microprogettazione della sandbox: bubblewrap avvolge gli executor, derivazione automatica dei flag dal manifest, ripiego controllato. Stato: tested.",
+ "headline": "Metnos — sandbox degli executor",
+ "description": "Isolamento degli executor sul server e sui dispositivi, risorse derivate dal manifest, declassamenti e limiti effettivi.",
  "url": "https://metnos.com/it/architecture/sandbox.html",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -55,7 +55,7 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: 
 tr:nth-child(even) td { background: var(--table-alt); }
 pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
 code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
+p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }
 ul, ol { margin: 8px 0; padding-left: 24px; }
 li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
  </style>
@@ -73,583 +73,224 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">sandbox</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">sandbox</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>sandbox</code> &mdash; il guscio a livello kernel attorno agli executor</div>
- <div class="meta">
- Microprogettazione<br>
- Pubblico: chi vuole capire come Metnos isola gli executor dal resto del sistema.<br>
- </div>
+ <div class="subtitle">Sandbox degli executor</div>
+ <div class="meta">Come viene contenuta un'esecuzione sul server e sui dispositivi associati.</div>
 </div>
-<div class="status-banner">
 
-<strong>Microprogettazione &mdash; allineata al codice al 1&deg;.</strong>
-Cluster <code>sandbox</code> 9/9 verde. Riferimento: <code>runtime/sandbox.py</code>.
-<div class="seq">Stato nella sequenza dei microdesign: <em>in valutazione</em> &rarr; <em>approvato</em> &rarr; <strong>testato</strong> &rarr; <em>implementato</em>.</div>
-</div>
+<p class="lead">La sandbox limita ci&ograve; che il processo di un executor pu&ograve;
+vedere e modificare. Le risorse dipendono dal manifest firmato e, quando
+necessario, dall'invocazione concreta. Questo livello si aggiunge al Vaglio,
+alla verifica dell'identit&agrave; e ai controlli applicativi: non li sostituisce e
+non concede, da solo, l'autorizzazione a compiere un'azione.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Cos'&egrave; la sandbox</a></li>
- <li><a href="#cap2">API esposte</a></li>
- <li><a href="#cap3">Derivazione dei flag dal manifest</a></li>
- <li><a href="#cap4">Ripiego controllato</a></li>
- <li><a href="#cap5">Integrazione in <code>agent_runtime</code></a></li>
- <li><a href="#cap6">Profili e livelli di autonomia</a></li>
- <li><a href="#cap7">Test</a></li>
- <li><a href="#cap8">Stato di bwrap nel sistema</a></li>
- <li><a href="#cap9">Limiti e sviluppi futuri</a></li>
- <li><a href="#cap10">Sandbox remota per-OS (executor su dispositivo)</a></li>
+ <li><a href="#cap1">Ambito</a></li>
+ <li><a href="#cap2">Interfacce del modulo</a></li>
+ <li><a href="#cap3">Risorse rese visibili sul server</a></li>
+ <li><a href="#cap4">Esecuzione senza bubblewrap</a></li>
+ <li><a href="#cap5">Integrazione nel runtime</a></li>
+ <li><a href="#cap6">Autonomia e policy</a></li>
+ <li><a href="#cap7">Verifiche</a></li>
+ <li><a href="#cap8">Diagnostica e installazione</a></li>
+ <li><a href="#cap9">Confini di sicurezza</a></li>
+ <li><a href="#cap10">Sandbox sui dispositivi associati</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Cos'&egrave; la sandbox</h1>
+<h1 id="cap1">1. Ambito</h1>
 
-<p class="lead">
-La sandbox &egrave; lo strato 3 dell'architettura di Metnos (cap. 6 dell'<a href="index.html#cap6">Architettura</a>): avvolge l'esecuzione di un executor in <code>bubblewrap</code> per isolarla dal resto del sistema. Il modulo &egrave; piccolo (~180 righe) perch&eacute; tutto quel che serve sta nel mappare il manifest dell'executor sui flag di <code>bwrap</code>; non c'&egrave; un demone n&eacute; uno stato persistente.
-</p>
+<p>Quando un executor gira sul server Linux, <code>runtime/sandbox.py</code>
+pu&ograve; anteporre <code>bwrap</code> al comando Python. Bubblewrap costruisce una
+vista separata del file system, rende privato <code>/tmp</code>, separa alcuni
+spazi dei nomi e, se l'executor non richiede la rete, aggiunge
+<code>--unshare-net</code>. Non esiste un demone separato: il profilo viene
+costruito per ogni invocazione.</p>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 150" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-<rect x="10" y="70" width="178" height="56" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="99" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">manifest</text>
-<text x="99" y="112" text-anchor="middle" fill="#475569" font-size="9.5">capability dichiarate</text>
-<rect x="206" y="70" width="178" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="295" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">profilo bwrap</text>
-<text x="295" y="112" text-anchor="middle" fill="#475569" font-size="9.5">derivato</text>
-<rect x="402" y="70" width="178" height="56" rx="8" fill="#1A477A" stroke="#0f2d4a"/>
-<text x="491" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">invoke_executor</text>
-<text x="491" y="112" text-anchor="middle" fill="#475569" font-size="9.5">sys.executable + autonomy</text>
-<rect x="598" y="70" width="178" height="56" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="687" y="94" text-anchor="middle" fill="#1A477A" font-weight="700">esecuzione confinata</text>
-<text x="687" y="112" text-anchor="middle" fill="#475569" font-size="9.5">rete isolata se possibile</text>
-<line x1="188" y1="98" x2="204" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="384" y1="98" x2="400" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
-<line x1="580" y1="98" x2="596" y2="98" stroke="#1A477A" stroke-width="2" marker-end="url(#m-d)"/>
+<p>Se il lavoro viene trasferito a un dispositivo associato, il client Rust
+applica invece il meccanismo disponibile su quel sistema operativo. Il server
+sceglie il dispositivo e verifica l'appartenenza all'utente; il client esegue
+il comando e restituisce anche il livello di contenimento realmente usato.</p>
 
-</svg>
-<figcaption>Figura 1 &mdash; Il recinto di esecuzione: dal manifest si deriva il profilo <code>bwrap</code>; l'executor viene lanciato confinato, con rete isolata quando nessuna capability la richiede.</figcaption>
-</figure>
-
-
-<p>
-La pseudo-sandbox del runtime &mdash; filtro path e host nei wrapper degli executor, in cooperazione col <a href="vaglio.html">Vaglio</a> &mdash; resta come prima linea di difesa: fa controlli prima ancora di lanciare il subprocess. <code>bwrap</code> aggiunge sopra di essa un guscio a livello kernel: anche se un executor riuscisse a evadere i controlli applicativi, troverebbe namespace separati, filesystem read-only e niente rete.
-</p>
-
-<div class="callout note">
-<strong>Una sandbox come libreria, non come servizio.</strong> Niente daemon, niente socket, niente policy file da editare a parte. Tutto deriva dal manifest dell'executor: il pianificatore chiama <code>sandbox.wrap_command(executor, cmd)</code> e riceve indietro un comando avvolto pronto per <code>subprocess.run</code>. Se <code>bwrap</code> manca, il comando passa invariato.
-</div>
-
-<h1 id="cap2">2. API esposte</h1>
-
-<p>
-Il modulo <code>runtime/sandbox.py</code> espone quattro funzioni pubbliche. Niente classi: lo stato globale &egrave; nullo a parte la cache di <code>shutil.which</code>.
-</p>
+<h1 id="cap2">2. Interfacce del modulo</h1>
 
 <table>
-<tr><th>Funzione</th><th>Cosa fa</th><th>Citazione</th></tr>
-<tr>
- <td><code>bwrap_available</code></td>
- <td>True se <code>bwrap</code> &egrave; nel <code>PATH</code>. Risultato messo in cache al primo accesso da <code>shutil.which</code>.</td>
- <td><code>runtime/sandbox.py:30-32</code></td>
-</tr>
-<tr>
- <td><code>sandbox_disabled</code></td>
- <td>True se l'utente ha disabilitato esplicitamente la sandbox via <code>METNOS_SANDBOX</code> (valori riconosciuti: <code>0|off|no|false</code>, case-insensitive).</td>
- <td><code>runtime/sandbox.py:35-40</code></td>
-</tr>
-<tr>
- <td><code>wrap_command(executor, cmd, autonomy="supervised", extra_ro=None, extra_rw=None)</code></td>
- <td>Funzione principale. Ritorna il comando avvolto in <code>bwrap</code> se disponibile e non disabilitato; altrimenti il comando invariato. <code>executor</code> deve esporre <code>code_path</code> (Path) e <code>capabilities</code> (lista, formato manifest).</td>
- <td><code>runtime/sandbox.py:178-207</code></td>
-</tr>
-<tr>
- <td><code>status</code></td>
- <td>Dict con <code>bwrap_available</code>, <code>bwrap_path</code>, <code>disabled_via_env</code>, <code>active</code>. Per cruscotti e diagnostica.</td>
- <td><code>runtime/sandbox.py:212-219</code></td>
-</tr>
+<tr><th>Funzione</th><th>Responsabilit&agrave;</th></tr>
+<tr><td><code>bwrap_available</code>, <code>sandbox_disabled</code></td><td>Rilevano la presenza di <code>bwrap</code> e l'eventuale disattivazione mediante <code>METNOS_SANDBOX</code>.</td></tr>
+<tr><td><code>wrap_command</code></td><td>Restituisce il comando avvolto da <code>bwrap</code>, oppure il comando originario quando l'involucro non &egrave; attivo.</td></tr>
+<tr><td><code>filesystem_extras</code></td><td>Risolve soltanto gli argomenti indicati da una capacit&agrave; firmata <code>fs:read</code> con forma <code>arg:&lt;nome&gt;</code>; l'argomento pu&ograve; restringere l'ambito, non ampliarlo.</td></tr>
+<tr><td><code>undo_history_extras</code></td><td>Rende scrivibile la sola cartella dei contenuti di ripristino appartenente al turno corrente, quando il manifest dichiara il modello inverso previsto.</td></tr>
+<tr><td><code>invocation_skills</code>, <code>skill_extras</code></td><td>Individuano i fornitori necessari all'invocazione, rendono visibile la sola cartella della relativa integrazione e abilitano la rete. Per gli executor conformi l'origine &egrave; <code>provider:access</code>; i manifest precedenti conservano un percorso di compatibilit&agrave;.</td></tr>
+<tr><td><code>mail_extras</code></td><td>Per <code>mail:read</code> rende visibili in sola lettura le credenziali dei soli account richiesti e abilita la rete. Non monta l'intero deposito delle credenziali.</td></tr>
+<tr><td><code>dialog_extras</code></td><td>Per <code>dialog.user_input</code> rende scrivibile la sola cartella del mittente autenticato.</td></tr>
+<tr><td><code>python_package_roots</code></td><td>Individua le radici dei pacchetti usate dall'interprete corrente, senza esporre l'intera cartella personale.</td></tr>
+<tr><td><code>status</code></td><td>Restituisce percorso, disponibilit&agrave;, disattivazione e stato effettivo di <code>bwrap</code>.</td></tr>
 </table>
 
-<p>
-Internamente, <code>wrap_command</code> delega a tre helper privati:
-</p>
+<h1 id="cap3">3. Risorse rese visibili sul server</h1>
+
+<h2>3.1 Base di esecuzione</h2>
+
+<p>Il profilo monta in sola lettura i percorsi di sistema esistenti fra
+<code>/usr</code>, <code>/bin</code>, <code>/sbin</code>, le directory delle
+librerie, <code>/etc</code>, <code>/opt</code>, <code>/var/lib/python3</code> e
+<code>/sys</code>. Aggiunge inoltre:</p>
 
 <ul>
-<li><code>_expand_hints_to_paths(hints)</code> &mdash; tronca i glob alle loro cartelle radice (<code>runtime/sandbox.py:45-69</code>);</li>
-<li><code>_capability_kind(cap)</code> e <code>_capability_mode(cap)</code> &mdash; estraggono famiglia (<code>fs</code>, <code>network</code>, <code>code</code>, &hellip;) e modalit&agrave; (<code>read</code>, <code>write</code>, <code>http</code>, &hellip;) dal nome della capability (<code>runtime/sandbox.py:72-93</code>);</li>
-<li><code>_build_bwrap_args(code_path, capabilities,...)</code> &mdash; costruisce la lista completa di flag <code>bwrap</code> a partire dal manifest (<code>runtime/sandbox.py:106-175</code>).</li>
+<li><code>/proc</code> e un <code>/dev</code> minimo;</li>
+<li>un <code>/tmp</code> privato;</li>
+<li>in sola lettura, la cartella dell'executor, il runtime Metnos e l'ambiente Python effettivamente in uso;</li>
+<li>in sola lettura, i database i18n e del lessico di riconoscimento, quando presenti.</li>
 </ul>
 
-<h1 id="cap3">3. Derivazione dei flag dal manifest</h1>
+<p>Sono sempre richiesti <code>--unshare-user</code>,
+<code>--unshare-ipc</code>, <code>--unshare-uts</code> e
+<code>--die-with-parent</code>. Il profilo del server non aggiunge attualmente
+uno spazio dei nomi PID, Landlock o un filtro seccomp personalizzato.</p>
 
-<p>
-Il cuore del modulo &egrave; la funzione <code>_build_bwrap_args</code>: prende il <code>code_path</code> dell'executor e la sua lista di capabilities, e produce la sequenza esatta di flag da passare a <code>bwrap</code>. Le regole, in ordine.
-</p>
-
-<h2>3.1 Path di sistema read-only</h2>
-
-<p>
-Bwrap parte da una root vuota: bisogna montare esplicitamente i path di sistema che servono all'interprete Python e alle librerie. Il modulo monta in read-only solo quelli che esistono davvero (altrimenti <code>bwrap</code> fallisce con errore):
-</p>
-
-<pre>_SYSTEM_RO_PATHS = (
- "/usr", "/bin", "/sbin", "/lib", "/lib64", "/lib32",
- "/etc", "/opt", "/var/lib/python3",
-)</pre>
-
-<p>
-Per ognuno, se <code>Path(p).exists</code>, viene aggiunto <code>--ro-bind p p</code>. Su sistemi minimi (es. container Alpine senza <code>/lib32</code>) i path mancanti sono saltati senza errore (<code>runtime/sandbox.py:100-124</code>).
-</p>
-
-<h2>3.2 Filesystem privati</h2>
-
-<p>
-Tre montaggi obbligatori, sempre presenti:
-</p>
-
-<ul>
-<li><code>--proc /proc</code> &mdash; un <code>/proc</code> minimale generato da <code>bwrap</code>, niente accesso a <code>/proc/&lt;pid&gt;</code> di processi esterni;</li>
-<li><code>--dev /dev</code> &mdash; un <code>/dev</code> minimale (<code>null</code>, <code>zero</code>, <code>random</code>, &hellip;), niente <code>/dev/sda</code>;</li>
-<li><code>--tmpfs /tmp</code> &mdash; <code>/tmp</code> privato dell'executor, montato in RAM, nessuna intersezione col <code>/tmp</code> dell'host.</li>
-</ul>
-
-<p>
-Citazione: <code>runtime/sandbox.py:127-129</code>.
-</p>
-
-<h2>3.3 Codice dell'executor</h2>
-
-<p>
-Il file Python dell'executor deve essere leggibile. Si monta in read-only tutta la sua directory:
-</p>
-
-<pre>code_dir = code_path.parent
-args += ["--ro-bind", str(code_dir), str(code_dir)]</pre>
-
-<p>
-Cos&igrave; l'executor pu&ograve; importare moduli accessori che vivono nello stesso pacchetto, ma non pu&ograve; modificare il proprio codice (<code>runtime/sandbox.py:131-133</code>).
-</p>
-
-<h2>3.4 Capability fs:read e fs:write</h2>
-
-<p>
-Per ogni capability del manifest, il modulo guarda <code>kind</code> (famiglia) e <code>mode</code> (modalit&agrave;):
-</p>
+<h2>3.2 Risorse derivate dalle capacit&agrave;</h2>
 
 <table>
-<tr><th>Capability</th><th>Effetto</th></tr>
-<tr><td><code>fs:read</code> con <code>hint</code></td><td>per ogni hint si calcola la cartella radice (vedi 3.5) e si aggiunge <code>--ro-bind &lt;path&gt; &lt;path&gt;</code>.</td></tr>
-<tr><td><code>fs:write</code> con <code>hint</code></td><td>come sopra, ma <code>--bind</code> (read-write).</td></tr>
-<tr><td><code>network:*</code></td><td>nessun bind aggiuntivo, ma <em>flag</em> <code>has_network = True</code> (vedi 3.6).</td></tr>
-<tr><td><code>code:exec</code></td><td>nessun bind aggiuntivo: i tool consueti vengono gi&agrave; da <code>/usr/bin</code> di 3.1.</td></tr>
-<tr><td>altre famiglie (<code>mail</code>, <code>time</code>, &hellip;)</td><td>nessun effetto sulla sandbox.</td></tr>
+<tr><th>Dichiarazione</th><th>Effetto sul profilo</th></tr>
+<tr><td><code>fs:read</code> / <code>fs:write</code></td><td>Montaggio in sola lettura o in lettura e scrittura. Gli ambiti fissi in forma glob vengono ridotti alla loro radice; gli ambiti <code>arg:</code> sono risolti sul valore concreto e soltanto se il percorso esiste.</td></tr>
+<tr><td><code>metnos:read</code>, <code>metnos:write</code>, <code>metnos:create</code></td><td>Traduzione di risorse semantiche chiuse &mdash; per esempio fogli, registro persone o proposte &mdash; nei soli percorsi canonici gestiti da Metnos.</td></tr>
+<tr><td><code>index:read</code></td><td>Accesso in sola lettura alla radice canonica dell'indice dichiarato; un nome sconosciuto non concede nulla.</td></tr>
+<tr><td><code>systemd:read</code> e <code>system:read</code></td><td>Visibilit&agrave; limitata alle risorse note necessarie alla lettura dello stato. La richiesta delle interfacce di rete mantiene disponibile la rete dell'host.</td></tr>
+<tr><td><code>provider:access</code> o <code>skill:&lt;nome&gt;</code></td><td>Cartella dell'integrazione in lettura e scrittura, necessaria anche al rinnovo OAuth, e rete dell'host.</td></tr>
+<tr><td><code>mail:read</code></td><td>Singoli file di credenziali dell'account richiesto in sola lettura e rete dell'host.</td></tr>
 </table>
 
-<p>
-Solo i path che esistono vengono effettivamente montati: un hint che punta a una cartella non ancora creata viene saltato, niente errore (<code>runtime/sandbox.py:135-155</code>).
-</p>
+<p>Le capacit&agrave; <code>network:*</code> e <code>net:*</code>, le integrazioni
+esterne e alcuni casi di lettura del sistema impediscono l'aggiunta di
+<code>--unshare-net</code>. In questo caso il processo dispone della rete
+dell'host: la limitazione a un dominio o a un fornitore resta compito dei
+controlli applicativi e delle credenziali circoscritte.</p>
 
-<h2>3.5 Espansione degli hint</h2>
+<h1 id="cap4">4. Esecuzione senza bubblewrap</h1>
 
-<p>
-Gli hint nel manifest sono in stile glob (es. <code>~/notes/**</code>, <code>/tmp/**</code>): bwrap non li capisce, monta cartelle. <code>_expand_hints_to_paths</code> tronca ogni hint al primo segmento glob, espande la <code>~</code>, deduplica:
-</p>
+<p>Se <code>bwrap</code> non &egrave; nel <code>PATH</code>, oppure se
+<code>METNOS_SANDBOX</code> vale <code>0</code>, <code>off</code>,
+<code>no</code> o <code>false</code>, <code>wrap_command</code> restituisce il
+comando invariato. Non c'&egrave; un terzo percorso che trasformi automaticamente
+un'eccezione di rilevamento in un esito negativo.</p>
 
-<pre>"~/notes/**" &rarr; "/home/user/notes"
-"/tmp/**" &rarr; "/tmp"
-"/tmp/*" &rarr; "/tmp"
-"~/Pictures" &rarr; "/home/user/Pictures"</pre>
+<p>Il controllo preventivo dell'ambito dell'invocazione continua a essere
+eseguito prima del sottoprocesso, cos&igrave; come restano operativi il Vaglio e i
+controlli propri degli executor. Ci&ograve; non equivale per&ograve; al contenimento del
+sistema operativo. Sul server locale il risultato dell'executor non porta
+automaticamente un campo che dichiari l'assenza di <code>bwrap</code>; questa
+condizione va osservata mediante <code>status()</code> o la diagnostica del
+servizio.</p>
 
-<p>
-Risultato: bwrap monta l'intera radice, non i singoli file corrispondenti. La granularit&agrave; fine resta al filtro applicativo del runtime (<code>runtime/sandbox.py:45-69</code>).
-</p>
+<h1 id="cap5">5. Integrazione nel runtime</h1>
 
-<h2>3.6 Isolamento di rete</h2>
+<p><code>invoke_executor</code> &egrave; il punto comune di esecuzione. L'ordine
+essenziale &egrave; il seguente:</p>
 
-<p>
-Se nessuna capability ha famiglia <code>network</code>, viene aggiunto <code>--unshare-net</code>: l'executor parte in un namespace di rete vuoto, nessuna interfaccia oltre il <code>lo</code> down. Se almeno una capability &egrave; <code>network:*</code>, il flag non viene aggiunto e l'executor eredita la rete dell'host (<code>runtime/sandbox.py:166-167</code>).
-</p>
+<ol>
+<li>ricava attore, canale e turno dal contesto autenticato;</li>
+<li>valuta l'eventuale collocazione remota, mostrando soltanto i dispositivi appartenenti allo stesso utente;</li>
+<li>mantiene sul server le invocazioni che dipendono da un'integrazione esterna installata sul server;</li>
+<li>verifica l'ambito firmato dei percorsi anche quando <code>bwrap</code> non &egrave; disponibile;</li>
+<li>prepara il registro di annullamento e le sole risorse aggiuntive necessarie all'invocazione;</li>
+<li>avvia <code>sys.executable</code>, cio&egrave; l'interprete dell'ambiente Metnos corrente, attraverso <code>wrap_command</code>.</li>
+</ol>
 
-<h2>3.6.1 Autorit&agrave; dei provider per invocazione</h2>
+<p>Il punto pubblico passa inoltre dallo schedulatore centrale, che applica
+limiti di concorrenza senza cambiare collocazione, argomenti o contratto del
+risultato.</p>
 
-<p>
-<code>runtime/capabilities.py</code> calcola prima le capability effettive usando
-il valore finale degli argomenti e, se assente, il default dello schema. La forma
-ammessa di <code>when</code> &egrave; chiusa: <code>{arg, values}</code>, con argomento
-dichiarato e valori stringa compatibili con l'eventuale enum. Una clausola
-malformata o non corrispondente &egrave; inattiva.
-</p>
+<h1 id="cap6">6. Autonomia e policy</h1>
 
-<p>
-Per un executor conforme <code>sandbox.invocation_skills</code> estrae binding solo
-da <code>provider:access</code> e li accetta soltanto se appartengono a
-<code>vocab.PROVIDER_SKILLS</code>. Quel singolo risultato apre la rete, monta in
-lettura-scrittura la sola home della skill (necessaria al refresh OAuth) e impedisce
-il trasferimento dell'invocazione a un dispositivo. Gli executor legacy conservano
-temporaneamente i cinque segnali storici come ripiego esplicito.
-</p>
+<p>Il parametro <code>autonomy</code> &egrave; accettato da
+<code>wrap_command</code>, ma oggi &egrave; informativo: non seleziona profili
+diversi. Il confinamento deriva dalle capacit&agrave; del manifest e dalle risorse
+risolte per l'invocazione. Le decisioni su consenso, criticit&agrave; e ammissibilit&agrave;
+appartengono alla <a href="policy.html">policy</a> e al
+<a href="vaglio.html">Vaglio</a>, non alla sandbox.</p>
 
-<h2>3.7 Isolamenti sempre attivi</h2>
+<h1 id="cap7">7. Verifiche</h1>
 
-<p>
-Indipendentemente dal manifest, ogni sandbox include:
-</p>
+<p>I test non dipendono da un numero dichiarato nella documentazione. Le
+verifiche dedicate coprono i montaggi del runtime e dell'ambiente Python, i
+database i18n, le integrazioni esterne, le credenziali di posta e i casi di
+declassamento. Le principali suite sono:</p>
 
-<pre>--unshare-user --unshare-ipc --unshare-uts --die-with-parent</pre>
+<pre>tests/runtime/safety/test_sandbox_runtime_bind.py
+tests/runtime/safety/test_sandbox_i18n_bind.py
+tests/runtime/safety/test_sandbox_skill_backed.py</pre>
 
-<ul>
-<li><code>--unshare-user</code> &mdash; user namespace separato, l'executor non vede gli UID dell'host;</li>
-<li><code>--unshare-ipc</code> &mdash; nessun semaforo o coda IPC condiviso;</li>
-<li><code>--unshare-uts</code> &mdash; hostname e domainname separati;</li>
-<li><code>--die-with-parent</code> &mdash; se il runtime muore, l'executor muore con lui, niente processi orfani.</li>
-</ul>
+<p>I moduli Rust contengono inoltre test vicini alle implementazioni comuni,
+Linux, Windows e AppContainer. Le prove che confrontano gli argomenti di
+<code>bwrap</code> possono essere eseguite anche senza avviare una sandbox
+reale; le prove di sistema verificano separatamente il meccanismo disponibile
+sulla piattaforma.</p>
 
-<p>
-Citazione: <code>runtime/sandbox.py:170-173</code>.
-</p>
+<h1 id="cap8">8. Diagnostica e installazione</h1>
 
-<h1 id="cap4">4. Ripiego controllato</h1>
+<p>Lo stato corrente si legge con <code>sandbox.status()</code>. La funzione
+controlla il <code>PATH</code> al momento della chiamata e restituisce
+<code>bwrap_available</code>, <code>bwrap_path</code>,
+<code>disabled_via_env</code> e <code>active</code>; il risultato non viene
+memorizzato dal modulo.</p>
 
-<p>
-La sandbox deve essere un beneficio, non un blocco. Tre livelli di ripiego assicurano che il sistema continui a funzionare anche quando <code>bwrap</code> non c'&egrave;:
-</p>
-
-<table>
-<tr><th>Caso</th><th>Comportamento</th><th>Citazione</th></tr>
-<tr>
- <td><strong>(a)</strong> <code>bwrap</code> non installato (<code>bwrap</code> &egrave; opzionale; la sandbox degrada in modo controllato in sua assenza)</td>
- <td><code>bwrap_available</code> ritorna False, <code>wrap_command</code> ritorna il comando invariato.</td>
- <td><code>runtime/sandbox.py:30-32, 195-196</code></td>
-</tr>
-<tr>
- <td><strong>(b)</strong> <code>METNOS_SANDBOX=0|off|no|false</code></td>
- <td><code>sandbox_disabled</code> ritorna True, <code>wrap_command</code> ritorna il comando invariato. Utile per diagnostica locale o CI senza bwrap.</td>
- <td><code>runtime/sandbox.py:35-40, 195-196</code></td>
-</tr>
-<tr>
- <td><strong>(c)</strong> eccezioni di <code>shutil.which</code></td>
- <td>L'eccezione si propaga come False di <code>bwrap_available</code>: comando invariato. Niente crash sul caso "PATH rotto".</td>
- <td><code>runtime/sandbox.py:32, 195</code></td>
-</tr>
-</table>
-
-<p>
-In tutti e tre i casi, la pseudo-sandbox del runtime (filtro path/host nei wrapper degli executor + Vaglio) resta attiva: la difesa applicativa non sparisce per l'assenza di quella a livello kernel. Si perde il guscio esterno, non il filtro interno.
-</p>
-
-<div class="callout warning">
-<strong>Niente errore esplicito quando bwrap manca.</strong> &Egrave; una scelta deliberata: forzare la presenza di bwrap renderebbe il sistema fragile su macchine di sviluppo, container minimali, ambienti CI. La policy di "sandbox obbligatoria" pu&ograve; essere imposta a livello di rilascio (controllando in <code>boot.py</code> che <code>sandbox.status["active"]</code> sia True), ma il modulo in s&eacute; non pretende.
-</div>
-
-<h1 id="cap5">5. Integrazione in <code>agent_runtime</code></h1>
-
-<p>
-Il pianificatore chiama la sandbox in un solo punto: la funzione <code>invoke_executor</code>. Vediamo il codice (<code>runtime/agent_runtime.py:194-212</code>):
-</p>
-
-<pre>def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised"):
- """Invoca un executor, opzionalmente in sandbox bubblewrap.
-
- Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
- il comando viene wrappato; altrimenti gira come subprocess Python
- diretto (la pseudo-sandbox del runtime resta attiva: filtro path/host
- + Vaglio).
- """
- import sandbox as _sandbox # lazy: evita import circolare e overhead per moduli che non lo usano
- payload = json.dumps(args)
- base_cmd = ["python3", str(executor.code_path)]
- cmd = _sandbox.wrap_command(executor, base_cmd, autonomy=autonomy)
- result = subprocess.run(
- cmd, input=payload, capture_output=True, text=True, timeout=timeout_s,
- )...</pre>
-
-<p>
-Tre dettagli del codice meritano attenzione.
-</p>
-
-<p>
-<strong>Import ritardato.</strong> Il modulo <code>sandbox</code> viene importato dentro la funzione, non in cima al file. Questo evita due problemi: cicli di import (il modulo <code>sandbox</code> non dipende da <code>agent_runtime</code>, ma l'accorgimento &egrave; difensivo) e costo aggiuntivo per i moduli che usano <code>agent_runtime</code> ma non chiamano mai <code>invoke_executor</code> (es. test che esercitano solo il loop ReAct in dry-run). La cache interna di Python rende il costo dell'import ritardato trascurabile dopo la prima chiamata.
-</p>
-
-<p>
-<strong>Comando base costante.</strong> <code>base_cmd</code> &egrave; sempre <code>["python3", &lt;code_path&gt;]</code>. La sandbox lo prefissa con <code>["bwrap", *flags, "--",...]</code>; senza sandbox resta <code>base_cmd</code> intatto. <code>subprocess.run</code> non distingue i due casi: lavora sulla lista finale.
-</p>
-
-<p>
-<strong>Parametro <code>autonomy</code> trasmesso tale e quale.</strong> Oggi <code>wrap_command</code> riceve <code>autonomy</code> ma non lo usa per differenziare i flag (vedi cap. 6). Lo accetta come parametro riservato: quando arriveranno i profili separati, basta cambiare <code>_build_bwrap_args</code> senza toccare i punti di chiamata.
-</p>
-
-<p>
-La chiamata dal ciclo ReAct &egrave; in <code>runtime/agent_runtime.py:540</code> (<code>obs = invoke_executor(executor, args)</code>): nessun parametro autonomy esplicito, default <code>"supervised"</code>.
-</p>
-
-<h1 id="cap6">6. Profili e livelli di autonomia</h1>
-
-<p>
-L'<a href="index.html#cap12">Architettura cap. 12</a> definisce tre livelli di autonomia &mdash; <em>ReadOnly</em>, <em>Supervised</em>, <em>Full</em> &mdash; con politiche diverse di accesso al sistema. La sandbox espone il parametro <code>autonomy</code> ma <em>non</em> applica profili separati: oggi tutti i wrap derivano lo stesso schema dal manifest, indipendentemente dal livello.
-</p>
-
-<p>
-&Egrave; una scelta dichiarata. Il manifest porta gi&agrave; le capability necessarie e i loro hint; introdurre un secondo asse "profilo per livello" qui produrrebbe duplicazione (ogni capability andrebbe filtrata due volte) e rimanderebbe la decisione politica nel modulo sbagliato. Il posto giusto per una tabella autonomia&times;capability &egrave; <code>policy.html</code>: il runtime, in base al livello scelto da Roberto, passer&agrave; a <code>wrap_command</code> il profilo che la policy avr&agrave; computato. Allora <code>autonomy</code> diventer&agrave; un selettore vero, non un parametro trasmesso tale e quale.
-</p>
-
-<p>
-Quando l'integrazione di <code>policy</code> sar&agrave; completa, <code>_build_bwrap_args</code> ricever&agrave; un argomento <code>profile</code> derivato e applicher&agrave; restrizioni differenziate (es. ReadOnly forza <code>--ro-bind</code> anche per capability che dichiarano <code>fs:write</code>; Full disabilita <code>--unshare-net</code> a prescindere dalle capability dichiarate).
-</p>
-
-<h1 id="cap7">7. Test</h1>
-
-<p>
-Cluster <code>sandbox</code> nel framework di test del runtime: 9/9 verde alla data. I casi sono pensati per esercitare ogni regola di derivazione e ogni livello di fallback senza richiedere <code>bwrap</code> installato.
-</p>
-
-<table>
-<tr><th>#</th><th>Caso</th><th>Cosa verifica</th></tr>
-<tr><td>1</td><td><code>status_torna_dict</code></td><td><code>status</code> ritorna un dict con le chiavi attese (<code>bwrap_available</code>, <code>bwrap_path</code>, <code>disabled_via_env</code>, <code>active</code>).</td></tr>
-<tr><td>2</td><td><code>wrap_command_no_bwrap_passa_invariato</code></td><td>Quando <code>bwrap_available</code> &egrave; False, <code>wrap_command</code> ritorna esattamente il comando di input (lista uguale).</td></tr>
-<tr><td>3</td><td><code>sandbox_disabled_rispetta_env</code></td><td><code>METNOS_SANDBOX=0</code> (e varianti) disabilita l'avvolgimento anche con bwrap presente.</td></tr>
-<tr><td>4</td><td><code>expand_hints_tronca_al_glob</code></td><td>Hint in stile glob (es. <code>/tmp/**</code>) sono troncati al primo separatore glob; <code>~</code> espansa; duplicati eliminati.</td></tr>
-<tr><td>5</td><td><code>capability_kind_e_mode_parse</code></td><td><code>_capability_kind</code> e <code>_capability_mode</code> riconoscono nomi <code>fs:read</code>, <code>network:http</code>, <code>code:exec</code>; gestiscono sia dict sia stringa.</td></tr>
-<tr><td>6</td><td><code>build_bwrap_args_isola_rete_se_no_network_cap</code></td><td>Manifest senza capability <code>network:*</code> &rarr; gli args contengono <code>--unshare-net</code>.</td></tr>
-<tr><td>7</td><td><code>build_bwrap_args_lascia_rete_se_network_cap</code></td><td>Manifest con <code>network:http</code> &rarr; gli args <em>non</em> contengono <code>--unshare-net</code>.</td></tr>
-<tr><td>8</td><td><code>build_bwrap_args_bind_rw_per_fs_write</code></td><td>Capability <code>fs:write</code> con hint produce <code>--bind</code>; <code>fs:read</code> produce <code>--ro-bind</code>.</td></tr>
-<tr><td>9</td><td><code>build_bwrap_args_include_code_dir_ro</code></td><td>Gli args includono sempre <code>--ro-bind &lt;code_dir&gt; &lt;code_dir&gt;</code> derivato da <code>executor.code_path.parent</code>.</td></tr>
-</table>
-
-<p>
-I casi 6-9 esercitano <code>_build_bwrap_args</code> senza chiamare bwrap: si verifica la lista di flag prodotta. Cos&igrave; il cluster gira verde anche su un server di sviluppo dove bwrap non &egrave; installato, mentre coprendo le regole di derivazione che sono il contratto vero del modulo.
-</p>
-
-<h1 id="cap8">8. Stato di bwrap nel sistema</h1>
-
-<p>
-Se <code>bwrap</code> non &egrave; installato, il modulo <code>sandbox</code> usa il ripiego
-descritto al cap. 4: il comando viene eseguito direttamente, senza involucro a
-livello kernel, mentre restano attivi i controlli applicativi dentro gli
-executor e Vaglio. Il risultato deve dichiarare questa condizione invece di
-nasconderla.
-</p>
-
-<p>
-L'attivazione richiede una sola operazione di sistema:
-</p>
-
-<pre># Debian/Ubuntu
+<pre># Debian e Ubuntu
 sudo apt install bubblewrap
 
-# Fedora/RHEL
+# Fedora e RHEL
 sudo dnf install bubblewrap
 
-# Arch
+# Arch Linux
 sudo pacman -S bubblewrap</pre>
 
-<p>
-Niente cambio di codice, niente riavvio del runtime. Al primo accesso successivo, <code>bwrap_available</code> ritorna True (da cache), e da quel momento ogni <code>invoke_executor</code> avvolge automaticamente il comando. <code>status</code> rifletter&agrave; <code>active: True</code>.
-</p>
+<p>Dopo l'installazione occorre verificare sia <code>status()</code> sia una
+vera invocazione nell'ambiente del servizio. Un <code>PATH</code> diverso o la
+variabile <code>METNOS_SANDBOX</code> possono produrre un esito differente da
+quello della sessione amministrativa.</p>
 
-<div class="callout tip">
-<strong>Quando attivare.</strong> Su un server Metnos stabile conviene installare
-<code>bwrap</code> prima di eseguire executor sintetizzati o codice non ancora
-molto rodato. I controlli applicativi coprono i casi normali; il guscio a
-livello kernel &egrave; la rete di sicurezza quando un executor esce dal percorso
-atteso.
-</div>
-
-<h1 id="cap9">9. Limiti e sviluppi futuri</h1>
-
-<table>
-<tr><th>Limite</th><th>Quando si toglie</th></tr>
-<tr>
- <td><strong>Niente landlock.</strong> Il filtro filesystem a grana fine via <code>landlock</code> richiede kernel &ge; 5.13 e syscall dedicate. Per ora ci affidiamo ai bind di bwrap.</td>
- <td>Quando si stabilizzer&agrave; il flusso di approvazione con un dispatcher dei callback maturo. Landlock pu&ograve; sostituire alcuni bind read-only con permessi pi&ugrave; granulari (lettura s&igrave;, exec no, ecc.).</td>
-</tr>
-<tr>
- <td><strong>Niente Docker namespace.</strong> Per casi che richiedono isolamento ancora pi&ugrave; severo (es. executor che girano LLM locali con dipendenze native pesanti), un container Docker o podman sarebbe pi&ugrave; appropriato.</td>
- <td>Quando un executor specifico render&agrave; necessario l'isolamento completo (es. CUDA, librerie native di calcolo scientifico): si introdurr&agrave; un secondo backend selezionabile dal manifest (<code>sandbox_backend = "docker"</code>).</td>
-</tr>
-<tr>
- <td><strong>Niente seccomp personalizzato.</strong> Si usa il filtro syscall di default di bwrap (gi&agrave; restrittivo: blocca <code>ptrace</code>, <code>kexec</code>, &hellip;). Niente policy su misura per famiglia di executor.</td>
- <td>Quando emergeranno minacce concrete che il default non copre. Oggi non vale la complessit&agrave; di mantenere profili seccomp per ogni capability.</td>
-</tr>
-<tr>
- <td><strong>Profili separati per autonomia.</strong> <code>autonomy</code> &egrave; trasmesso tale e quale e tutto deriva dal manifest in modo identico per ogni livello.</td>
- <td>L'integrazione della tabella autonomia&times;capability di <code>policy</code> permetter&agrave; al runtime di passare un profilo computato a <code>wrap_command</code>.</td>
-</tr>
-<tr>
- <td><strong>Niente lista bianca di rete.</strong> Una capability <code>network:*</code> oggi lascia la rete completamente aperta; non si filtra per host (es. solo <code>*.example.com</code>).</td>
- <td>Quando l'insieme di executor conterr&agrave; abbastanza chiamanti web da rendere il filtro per host un guadagno netto. Implementazione: <code>nftables</code> dentro il network namespace, oppure proxy LAN dedicato che applica le regole.</td>
-</tr>
-</table>
-
-<h2>Note finali</h2>
-
-<p>
-La sandbox &egrave; un componente piccolo (~180 righe) ma centrale nella postura di sicurezza di Metnos. La sua piccolezza &egrave; il punto: tutta la complessit&agrave; sta nel manifest dell'executor, che &egrave; il contratto leggibile. Il modulo <code>sandbox.py</code> &egrave; pura traduzione meccanica.
-</p>
-
-<p>
-Il ripiego controllato, in particolare, riflette una scelta etica oltre che pragmatica: non si vuole che la sicurezza diventi un ostacolo all'ingresso. Su un laptop di sviluppo o in un container minimale, il sistema gira lo stesso, con la pseudo-sandbox applicativa attiva. Quando si passa al server di produzione, una <code>apt install bubblewrap</code> aggiunge il guscio a livello kernel senza toccare il codice.
-</p>
-
-<h1 id="cap10">10. Sandbox remota per-OS (executor su dispositivo)</h1>
-
-<p class="lead">
-Tutti i capitoli precedenti parlano di un solo luogo: il server Metnos, dove <code>bwrap</code> avvolge gli executor sintetizzati <em>in casa</em>. Ma un executor pu&ograve; anche girare su un <strong>dispositivo remoto associato</strong> &mdash; il tuo portatile, un PC in un'altra stanza &mdash; guidato dal client scritto in Rust (<code>client-rs/</code>). L&igrave; non c'&egrave; <code>bwrap</code>. Il contenimento lo sceglie il client stesso, e cambia a seconda del sistema operativo del dispositivo.
-</p>
-
-<p>
-L'idea di fondo &egrave; semplice. Il server non sa (e non vuole sapere) come ogni dispositivo isola il codice: si fida di un <strong>contratto unico</strong>. Ogni sistema operativo ha il suo modulo &mdash; <code>sandbox_linux.rs</code>, <code>sandbox_windows.rs</code>, <code>sandbox_macos.rs</code> &mdash; ma tutti espongono la stessa identica funzione. Cambia il motore sotto il cofano; il volante &egrave; lo stesso.
-</p>
-
-<div class="callout note">
-<strong>Un contratto solo, tante implementazioni.</strong> Ogni modulo <code>sandbox_&lt;os&gt;.rs</code> espone questa firma:
-<pre>run_sandboxed(exec, python, shim, args, env, limits) -&gt; Output</pre>
-Il campo <code>limits.wall</code> &egrave; la <em>scadenza</em>: il tempo massimo concesso all'esecuzione. Chi chiama non deve sapere quale isolamento &egrave; stato usato: riceve indietro un <code>Output</code> uniforme, che dichiara in chiaro quale contenimento &egrave; stato applicato. Riferimenti: ADR 0011 / 0037 / 0046.
-</div>
-
-<h2>10.1 Un contenimento diverso per ogni sistema operativo</h2>
-
-<p>
-Ogni sistema operativo offre strumenti di isolamento diversi. Il client usa il pi&ugrave; forte disponibile su quella piattaforma. Ecco il quadro completo.
-</p>
-
-<table>
-<tr><th>Sistema</th><th>Contenimento</th><th>Robustezza</th><th>Come si compensa</th></tr>
-<tr>
- <td><strong>Linux</strong></td>
- <td><code>bubblewrap</code> + <code>landlock</code> + <code>seccomp</code> + spazio-dei-nomi di montaggio</td>
- <td>forte (pari al server Metnos)</td>
- <td>&mdash; (nessuna compensazione necessaria)</td>
-</tr>
-<tr>
- <td><strong>macOS</strong></td>
- <td><code>sandbox-exec</code> + entitlements</td>
- <td>media</td>
- <td>non ancora realizzata (livello 2)</td>
-</tr>
-<tr>
- <td><strong>Windows</strong></td>
- <td>Job Object (in futuro anche AppContainer)</td>
- <td>media; abbattimento dell'intero albero dei processi garantito</td>
- <td>firma del server verificata prima di eseguire; solo executor di sola lettura e autosufficienti; quelli che modificano dati e non sono impacchettabili vengono rifiutati</td>
-</tr>
-</table>
-
-<p>
-Su <strong>Linux</strong> il dispositivo remoto usa lo stesso identico guscio del server: <code>bwrap</code> + <code>landlock</code> + <code>seccomp</code> + spazio-dei-nomi di montaggio. Se su quel dispositivo <code>bwrap</code> non c'&egrave;, vale lo stesso ripiego onesto del cap. 4: si esegue in modo diretto, la cosa viene annotata nei registri (&sect;2.8) e il risultato lo dichiara con <code>sandbox:"none"</code>. Niente finzioni: chi legge il risultato sa che il guscio non c'era.
-</p>
-
-<h2>10.2 Windows: il Job Object come una stanza chiusa a chiave</h2>
-
-<p>
-Windows non ha un equivalente di <code>bwrap</code>. Serve un altro strumento del sistema, chiamato <strong>Job Object</strong>. &Egrave; un contenitore del cuore di Windows (il kernel NT) a cui si legano uno o pi&ugrave; processi.
-</p>
-
-<p>
-L'intuizione &egrave; questa: un Job Object &egrave; come una <strong>stanza chiusa a chiave</strong>. Ci metti dentro il processo dell'executor. Se quel processo ne genera altri (processi figli), anche loro nascono dentro la stessa stanza: nessuno pu&ograve; uscire. E quando chiudi la stanza a chiave, tutto ci&ograve; che &egrave; dentro viene spento con certezza &mdash; anche i figli, anche i nipoti. Nessun processo resta acceso di nascosto.
-</p>
-
-<p>
-Il client Windows usa questa primitiva per costruire il contenimento intorno
-all'executor. Vediamo passo per passo come il client crea la stanza, vi inserisce
-il processo e la chiude quando scade il tempo massimo.
-</p>
-
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 300" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
-<defs><marker id="m-job" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
-
-<!-- riga 1: 1 -> 2 -> 3 -> 4 -->
-<rect x="10" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="110" y="66" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">1. CreateJobObjectW</text>
-<text x="110" y="86" text-anchor="middle" fill="#475569" font-size="9.5">crea la stanza (il Job)</text>
-
-<rect x="240" y="40" width="200" height="62" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="340" y="62" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">2. SetInformationJobObject</text>
-<text x="340" y="80" text-anchor="middle" fill="#475569" font-size="9.5">KILL_ON_JOB_CLOSE</text>
-<text x="340" y="94" text-anchor="middle" fill="#475569" font-size="9.5">+ tetto memoria e processi</text>
-
-<rect x="470" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="570" y="66" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">3. CREATE_SUSPENDED</text>
-<text x="570" y="86" text-anchor="middle" fill="#475569" font-size="9.5">processo creato, ma fermo</text>
-
-<rect x="700" y="40" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="800" y="62" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">4. AssignProcessToJobObject</text>
-<text x="800" y="80" text-anchor="middle" fill="#475569" font-size="9.5">metti il processo</text>
-<text x="800" y="94" text-anchor="middle" fill="#475569" font-size="9.5">nella stanza</text>
-
-<!-- riga 2: 5 <- 6 <- 7 (snake) -->
-<rect x="700" y="200" width="200" height="62" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="800" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">5. ResumeThread</text>
-<text x="800" y="246" text-anchor="middle" fill="#475569" font-size="9.5">l'executor parte davvero</text>
-
-<rect x="470" y="200" width="200" height="62" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
-<text x="570" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">6. attesa / scadenza</text>
-<text x="570" y="246" text-anchor="middle" fill="#475569" font-size="9.5">fino a limits.wall</text>
-
-<rect x="240" y="200" width="200" height="62" rx="8" fill="#DCFCE7" stroke="#3F6212"/>
-<text x="340" y="226" text-anchor="middle" fill="#1A477A" font-weight="700" font-size="10.5">7. TerminateJobObject</text>
-<text x="340" y="246" text-anchor="middle" fill="#475569" font-size="9.5">chiudi la stanza: albero morto</text>
-
-<!-- frecce -->
-<line x1="210" y1="71" x2="238" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-<line x1="440" y1="71" x2="468" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-<line x1="670" y1="71" x2="698" y2="71" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-<line x1="800" y1="102" x2="800" y2="198" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-<line x1="700" y1="231" x2="672" y2="231" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-<line x1="470" y1="231" x2="442" y2="231" stroke="#1A477A" stroke-width="2" marker-end="url(#m-job)"/>
-
-</svg>
-<figcaption>Figura 2 &mdash; Ciclo di vita del Job Object su Windows. Il processo nasce fermo (3), entra nella stanza (4) e solo allora parte (5): cos&igrave; nulla pu&ograve; sfuggire prima che la stanza sia chiusa. Alla scadenza (6) si chiude la stanza (7) e l'intero albero dei processi viene spento.</figcaption>
-</figure>
-
-<p>
-Due dettagli rendono robusto questo schema. Primo: il processo viene creato <strong>fermo</strong> (<code>CREATE_SUSPENDED</code>) e messo nella stanza <em>prima</em> di partire. Se partisse subito, per un istante potrebbe generare figli fuori dal contenitore; nascendo fermo, quando lo si avvia &egrave; gi&agrave; dentro. Secondo: al passo 2 si imposta il segnale <code>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</code>. Vuol dire: &laquo;quando l'ultimo riferimento a questa stanza si chiude, spegni tutto&raquo;. Cos&igrave; l'<strong>abbattimento dell'intero albero dei processi</strong> &egrave; garantito anche se il client stesso va in errore e muore: chiudendosi, si porta dietro tutto. Il risultato lo dichiara con <code>sandbox:"job-object"</code>.
-</p>
-
-<div class="callout tip">
-<strong>Scadenza onesta.</strong> Quando scatta il tempo massimo (<code>limits.wall</code>), il Job Object viene chiuso: l'albero &egrave; morto. Il risultato &egrave; <code>ok:false</code>, <code>error_class:"timeout"</code>, con un contenuto <strong>vuoto</strong> &mdash; mai un risultato a met&agrave; spacciato per completo (&sect;2.8). Verificato dal vivo: appena chiusa la stanza, il dispositivo &egrave; subito pronto e sano per l'esecuzione successiva.
-</div>
-
-<h2>10.3 Perch&eacute; il Job Object basta, per ora</h2>
-
-<p>
-Onest&agrave;: il Job Object &egrave; forte nello spegnere i processi, ma non isola disco e rete come fa <code>bwrap</code> su Linux. La difesa pi&ugrave; solida su Windows &egrave; AppContainer con permessi espliciti su file e rete. Finche' quel livello non &egrave; attivo, Metnos compensa <em>prima</em> di eseguire, scegliendo con cura cosa mandare al dispositivo:
-</p>
+<h1 id="cap9">9. Confini di sicurezza</h1>
 
 <ul>
-<li>la <strong>firma del server</strong> viene fissata e ricontrollata sul dispositivo prima di eseguire: se il codice non &egrave; quello firmato dal server, non parte;</li>
-<li>vengono promossi gli executor <strong>autosufficienti</strong> (impacchettabili, senza dipendenze non risolvibili sul dispositivo), sia in <strong>sola lettura</strong> sia <strong>mutanti</strong> &mdash; scrittura, spostamento e cancellazione file: da C7 (ADR&nbsp;0183) i remote mutanti sono ammessi, non solo i read-only;</li>
-<li>ogni mutazione remota &egrave; <strong>contenuta</strong> (il Job Object spegne l'albero dei processi, i permessi sono minti per-invocazione) e resa <strong>reversibile device-aware</strong>: i reverse pattern deterministici e i backup blob sono accodati allo STESSO dispositivo per l'annullamento (&sect;2.8; con il gap noto che il restore-da-blob non &egrave; remotabile);</li>
-<li>gli executor <strong>non impacchettabili</strong> (dipendenze non risolvibili sul dispositivo) restano <strong>server-only</strong>: non arrivano mai al dispositivo.</li>
+<li><strong>Visibile non significa autorizzato.</strong> Un montaggio permette al processo di raggiungere una risorsa; l'identit&agrave;, il consenso e la finalit&agrave; dell'azione devono essere verificati prima.</li>
+<li><strong>Alcuni montaggi di base sono ampi.</strong> Sul server <code>/etc</code>, <code>/opt</code> e <code>/sys</code> sono visibili in sola lettura quando esistono. La sola lettura impedisce modifiche, ma non garantisce la riservatezza di ogni file presente in quelle radici.</li>
+<li><strong>La rete &egrave; binaria.</strong> Quando serve, viene ereditata la rete dell'host; bubblewrap non applica una lista di host ammessi.</li>
+<li><strong>Il profilo non usa Landlock o seccomp personalizzati</strong> e, sul server, non separa lo spazio dei nomi PID.</li>
+<li><strong><code>system:undo</code> &egrave; un'eccezione esplicita.</strong> L'annullamento deve ricostruire dal registro risorse note soltanto al momento dell'esecuzione; per questo <code>wrap_command</code> lascia passare direttamente il broker firmato. Il Vaglio e il vincolo di esecuzione sul server restano necessari, ma non costituiscono una sandbox del sistema operativo.</li>
+<li><strong>L'assenza di bubblewrap &egrave; un declassamento reale.</strong> I controlli applicativi che restano attivi non devono essere descritti come isolamento a livello di kernel.</li>
 </ul>
 
-<p>
-In pratica: al dispositivo si affida sia lettura sia scrittura, ma solo lavoro <em>contenuto</em> e <em>annullabile</em>; il contenimento e l'undo device-aware fanno il resto.
-</p>
+<h1 id="cap10">10. Sandbox sui dispositivi associati</h1>
 
-<h2>10.4 Come arriva Python sul dispositivo</h2>
+<p class="lead">Il client remoto usa un contratto di risultato comune, ma il
+contenimento dipende dalla piattaforma. Il campo <code>sandbox</code> descrive
+il livello realmente applicato; un eventuale
+<code>sandbox_downgrade_reason</code> spiega il passaggio a un livello meno
+forte.</p>
 
-<p>
-Un problema pratico: il dispositivo remoto potrebbe non avere affatto Python installato. Il client lo risolve da solo. Scarica <em>al momento del bisogno</em> un Python gi&agrave; pronto (<code>python-build-standalone</code>) e ne verifica l'integrit&agrave; con l'impronta <code>sha256</code> fissata dal server. Poi lo apre con <code>tar</code> + <code>flate2</code>, in puro Rust, senza dipendere da programmi esterni.
-</p>
+<table>
+<tr><th>Piattaforma</th><th>Implementazione corrente</th><th>Comportamento in caso di declassamento</th></tr>
+<tr><td><strong>Linux</strong></td><td>Bubblewrap con spazio dei nomi dei montaggi e PID, rete separata quando non richiesta, cartella temporanea privata e gruppo di processi dedicato. Landlock e seccomp personalizzati non sono implementati.</td><td>Se <code>bwrap</code> manca o &egrave; disattivato, esecuzione diretta con avviso; il risultato dichiara <code>sandbox:"none"</code>. Il gruppo di processi continua a consentire la terminazione dell'albero alla scadenza.</td></tr>
+<tr><td><strong>Windows</strong></td><td>AppContainer con concessioni derivate dalle capacit&agrave;, posto a sua volta in un Job Object. AppContainer &egrave; tentato per impostazione predefinita quando supportato.</td><td>Per sottoprocessi di sistema, percorsi non ancorabili, ambiti troppo ampi o indisponibilit&agrave; del contenitore, il client usa il Job Object e comunica il motivo. Se il manifest richiede AppContainer come livello minimo, l'invocazione non deve essere declassata silenziosamente.</td></tr>
+<tr><td><strong>macOS</strong></td><td>Non esiste oggi un modulo nativo <code>sandbox_macos.rs</code>. Il percorso Unix comune non offre un equivalente operativo di bubblewrap su macOS.</td><td>L'esecuzione non va presentata come isolata: il livello effettivo &egrave; <code>none</code>, pur restando il controllo della scadenza sul gruppo di processi.</td></tr>
+</table>
 
-<p>
-Lo scaricamento &egrave; costruito per resistere a reti instabili: procede a segmenti da 8&nbsp;MB (richieste <code>Range</code>), riprende da dove si era interrotto grazie a un file <code>.part</code>, e se l'impronta non torna riscarica e confronta due copie fino a quando concordano. &Egrave; la stessa disciplina gi&agrave; usata dal server in <code>downloads.py::robust_fetch</code>.
-</p>
+<p>Il Job Object limita la memoria del singolo processo, il numero di processi
+attivi e la durata dell'albero. Il processo nasce sospeso, viene assegnato al
+Job Object e soltanto allora viene avviato; alla scadenza l'intero Job Object
+viene terminato. AppContainer aggiunge l'isolamento di file e rete mediante
+concessioni calcolate per l'invocazione.</p>
 
-<div class="callout note">
-<strong>Stato.</strong> Su Windows il risultato dichiara <code>sandbox:"job-object"</code>.
-Linux usa lo stesso modello di <code>bwrap</code> del server quando disponibile;
-macOS (<code>sandbox-exec</code> + entitlements) resta un backend previsto ma non
-ancora abilitato.
-</div>
+<p>Prima dell'esecuzione remota, il client verifica il pacchetto firmato e usa
+un interprete Python predisposto e verificato. Queste verifiche proteggono la
+provenienza del codice; non sostituiscono il contenimento dichiarato nel
+risultato.</p>
 
 </body>
 </html>

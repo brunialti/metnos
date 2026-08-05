@@ -3,68 +3,20 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; agent_runtime: il runtime turno per turno</title>
- <meta name="description" content="Microprogettazione del runtime di Metnos: come riceve una richiesta utente, estrae l'intento, instrada al motore cognitivo, esegue e risponde.">
- <meta name="keywords" content="agent_runtime, pianificatore, ReAct, multistep, tool-use, scratchpad, data piping, mode router, vaglio, microprogettazione, metnos">
+ <title>Metnos &mdash; runtime delle richieste</title>
+ <meta name="description" content="Come Metnos trasforma una richiesta in un piano validato, esegue gli executor, gestisce consenso, continuità e risultati senza confondere la proposta probabilistica con i controlli deterministici.">
+ <meta name="keywords" content="Metnos, runtime, pianificazione, executor, fast path, autopath, consenso, continuità">
  <meta name="author" content="Roberto Brunialti">
- <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+ <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/agent_runtime">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/agent_runtime">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/agent_runtime">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/agent_runtime">
- <meta property="og:type" content="article">
- <meta property="og:url" content="https://metnos.com/it/architecture/agent_runtime">
- <meta property="og:title" content="Metnos &mdash; agent_runtime: il runtime turno per turno">
- <meta property="og:description" content="Il runtime di Metnos. Come riceve una richiesta, estrae l'intento, instrada al motore, esegue e risponde.">
- <meta property="og:locale" content="it_IT">
- <meta property="og:site_name" content="Metnos">
- <script type="application/ld+json">
-{
- "@context": "https://schema.org",
- "@type": "TechArticle",
- "headline": "Metnos — agent_runtime: il runtime turno per turno",
- "description": "Microprogettazione del runtime di Metnos: estrazione intento, motore cognitivo, tool-use nativo, data piping, scratchpad, 4 tier LLM.",
- "url": "https://metnos.com/it/architecture/agent_runtime.html",
- "inLanguage": "it",
- "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
- "author": {"@type": "Person", "name": "Roberto Brunialti"}
-}
- </script>
- <style>:root {
- --navy: #1A477A; --navy-light: #2B6CB0; --sage: #548235;
- --bronze: #A0522D; --plum: #6B21A8;
- --bg: #FAFBFC; --text: #1a1a1a;
- --border: #d0d7de; --code-bg: #f6f8fa;
- --table-header: #1A477A; --table-alt: #f0f4f8;
- --note-bg: #dbeafe; --note-border: #3b82f6;
- --tip-bg: #dcfce7; --tip-border: #16a34a;
- --warn-bg: #fef3c7; --warn-border: #f59e0b;
- --danger-bg: #fee2e2; --danger-border: #dc2626;
- --muted: #64748B;
-}
-* { box-sizing: border-box; }
-body { font-family: 'Segoe UI', Calibri, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: var(--text); background: var(--bg); max-width: 960px; margin: 0 auto; padding: 40px 30px; }
-h1 { color: var(--navy); font-size: 20pt; border-bottom: 3px solid var(--navy); padding-bottom: 8px; margin-top: 50px; }
-h1:first-of-type { margin-top: 0; }
-h2 { color: var(--navy-light); font-size: 14pt; margin-top: 28px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-h3 { color: var(--navy); font-size: 12pt; margin-top: 18px; }
-p { margin: 10px 0; }
-table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 10pt; }
-th { background: var(--table-header); color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
-td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-tr:nth-child(even) td { background: var(--table-alt); }
-pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 9.5pt; line-height: 1.55; }
-code { font-family: Consolas, 'Courier New', monospace; }
-p code, li code, td code { background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 9.5pt; }.callout { border-left: 4px solid; padding: 10px 16px; margin: 15px 0; border-radius: 0 4px 4px 0; font-size: 10pt; }.callout.note { background: var(--note-bg); border-color: var(--note-border); }.callout.tip { background: var(--tip-bg); border-color: var(--tip-border); }.callout.warning { background: var(--warn-bg); border-color: var(--warn-border); }.callout.danger { background: var(--danger-bg); border-color: var(--danger-border); }.title-page { text-align: center; padding: 60px 0 30px; }.title-page h1 { font-size: 32pt; border: none; margin: 0; }.title-page.subtitle { font-size: 16pt; color: var(--navy-light); margin: 10px 0 30px; }.title-page.meta { font-size: 11pt; color: #666; }.toc h2 { border: none; }.toc ol { font-size: 11pt; line-height: 1.9; }.toc a { color: var(--navy); text-decoration: none; }.toc a:hover { text-decoration: underline; }
-ul, ol { margin: 8px 0; padding-left: 24px; }
-li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-left: 4px solid var(--sage); padding-left: 14px; margin: 18px 0; }.example { background: #fff; border: 1px solid var(--border); border-left: 4px solid var(--bronze); border-radius: 0 4px 4px 0; padding: 12px 16px; margin: 14px 0; font-size: 10.5pt; }.example.ex-label { font-weight: 700; color: var(--bronze); font-size: 9.5pt; letter-spacing: 1px; text-transform: uppercase; }.status-banner { margin: 18px 0; border-left: 5px solid #16a34a; background: #dcfce7; color: #14532d; padding: 14px 20px; border-radius: 0 8px 8px 0; font-size: 11pt; line-height: 1.55; }.status-banner strong { color: #14532d; }.status-banner a { color: #14532d; text-decoration: underline; }.status-banner.status-chip { display: inline-block; background: #14532d; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 9.5pt; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }.status-banner.seq { font-size: 9.5pt; color: #2d4a32; margin-top: 8px; }
- </style>
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/agent_runtime">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-
-<nav class="lang-switch" aria-label="Language">
+<nav class="lang-switch" aria-label="Lingua">
 <a href="/it/architecture/agent_runtime.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/agent_runtime.html" hreflang="en" lang="en">EN</a>
@@ -73,1084 +25,314 @@ li { margin-bottom: 4px; }.lead { font-size: 12pt; color: var(--navy); border-le
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Microprogettazione &rsaquo; <strong style="color:#1a1a1a;">agent_runtime</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">runtime delle richieste</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>agent_runtime</code> &mdash; il runtime turno per turno</div>
- <div class="meta">
- Microprogettazione &mdash; il runtime dell'agente.<br>
- Pubblico: chi legge per capire come funziona Metnos dentro;<br>
- chi implementa o estende un componente del runtime.<br>
- </div>
-</div>
-<div class="status-banner">
-<strong>Come Metnos riceve una richiesta, decide cosa fare, esegue e risponde.</strong>
-Il runtime dell'agente &egrave; il cuore che orchestra ogni turno: estrae
-l'intento, instrada la richiesta al motore cognitivo, esegue gli step e
-compone la risposta, con telemetria fine per ogni sotto-fase
-(<code>intent_ms</code>, <code>prefilter_ms</code>, <code>vaglio_ms</code>,
-<code>exec_ms</code>, <code>rerank_ms</code>). Riferimento di implementazione:
-<code>runtime/agent_runtime.py</code>.
+ <div class="subtitle">Runtime delle richieste</div>
+ <div class="meta">Dalla frase in chat a un piano controllato, eseguito attraverso capacit&agrave; dichiarate.</div>
 </div>
 
+<p class="lead">Il runtime coordina un turno di Metnos. Interpreta la richiesta,
+seleziona le capacit&agrave; ammesse, costruisce o riusa un piano, ne controlla forma e
+permessi, quindi affida ogni passo all'executor competente. Il modello linguistico
+pu&ograve; proporre il piano e comporre una spiegazione; non ottiene per questo accesso
+diretto a file, posta, browser, dispositivi o credenziali.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">Cosa fa: una storia di una richiesta</a></li>
- <li><a href="#cap2">Il loop di un turno, passo per passo</a></li>
- <li><a href="#cap3">Modi: <em>local</em>, <em>online</em>, <em>hybrid</em></a></li>
- <li><a href="#cap4">I tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em> (locali) + <em>frontier</em></a></li>
- <li><a href="#cap4bis">Forma del pipeline: invariante <code>E+ (F | A)?</code></a></li>
- <li><a href="#cap4ter">Auto-remediation registry</a></li>
- <li><a href="#cap5">Il pre-filter: scegliere il sotto-catalogo</a></li>
- <li><a href="#cap6">Tool-use nativo (no JSON parsing)</a></li>
- <li><a href="#cap7">Data piping fra passi: <code>from_step</code> e <code>{{stepN.field}}</code></a></li>
- <li><a href="#cap8">Scratchpad per observation grandi</a></li>
- <li><a href="#cap9">Vaglio del piano</a></li>
- <li><a href="#cap10">Cap di sicurezza e guard runtime</a></li>
- <li><a href="#cap11">Cosa scrive nei log</a></li>
- <li><a href="#cap12">Quando le cose vanno male</a></li>
- <li><a href="#cap13">Cosa &egrave; rimandato</a></li>
+ <li><a href="#cap1">Responsabilit&agrave; e confini</a></li>
+ <li><a href="#cap2">Un turno, dall'inizio alla risposta</a></li>
+ <li><a href="#cap3">Percorsi di esecuzione</a></li>
+ <li><a href="#cap4">Ruoli dei modelli e lingua</a></li>
+ <li><a href="#cap5">Catalogo, insieme dei candidati e riuso dei piani</a></li>
+ <li><a href="#cap6">Framework ed executor</a></li>
+ <li><a href="#cap7">Passaggio dei dati fra i passi</a></li>
+ <li><a href="#cap8">Pause, riprese e stato del turno</a></li>
+ <li><a href="#cap9">Policy, Vaglio e consenso</a></li>
+ <li><a href="#cap10">Guardie operative</a></li>
+ <li><a href="#cap11">Tracce e osservabilit&agrave;</a></li>
+ <li><a href="#cap11_2">Attivit&agrave; programmate</a></li>
+ <li><a href="#cap12">Errori e recupero</a></li>
+ <li><a href="#cap13">Che cosa &egrave; deterministico</a></li>
 </ol>
 </div>
 
-<h1 id="cap1">1. Cosa fa: una storia di una richiesta</h1>
+<h1 id="cap1">1. Responsabilit&agrave; e confini</h1>
 
-<p class="lead">
-Immagina di scrivere a Metnos: <em>&laquo;leggi il file ~/notes/diario.md e dimmi le ultime tre righe&raquo;</em>. Da quel momento parte un <em>turno</em>. Il pianificatore &mdash; il modulo che descriviamo qui &mdash; riceve la frase, decide cosa fare, mette in piedi i passi, e produce la risposta.
-</p>
+<p>All'apertura del turno il runtime associa la richiesta a quattro coordinate:
+utente proprietario, attore tecnico, canale e conversazione. Preferenze, lingua,
+credenziali, dispositivi, dialoghi sospesi e cronologia vengono risolti entro questo
+contesto. Un turno di un utente non autorizza l'accesso alle risorse di un altro.</p>
 
-<p>
-Per capire cosa significa "decidere cosa fare", seguiamo un esempio concreto. La richiesta &egrave; quella sopra. Il pianificatore non ha logica codificata che dica "se l'utente dice 'leggi un file' chiama read_files"; l'idea &egrave; un'altra:
-</p>
+<table>
+<thead><tr><th>Componente</th><th>Responsabilit&agrave;</th></tr></thead>
+<tbody>
+<tr><td>Runtime</td><td>Orchestra il turno, conserva il contesto e applica l'ordine dei controlli.</td></tr>
+<tr><td>Motore degli intenti e proponente</td><td>Interpretano la frase e propongono un framework; il loro risultato &egrave; probabilistico.</td></tr>
+<tr><td>Catalogo</td><td>Espone soltanto executor ammessi, con schema, policy, piattaforme e disponibilit&agrave; correnti.</td></tr>
+<tr><td>Validatore e guardie</td><td>Controllano struttura, tipi, riferimenti, ordine, destinazione e condizioni di sicurezza.</td></tr>
+<tr><td>Executor</td><td>Esegue una capacit&agrave; circoscritta e restituisce un risultato strutturato.</td></tr>
+<tr><td>Canale</td><td>Rende risposta, allegati e richieste di conferma nella forma adatta a Web o Telegram.</td></tr>
+</tbody>
+</table>
+
+<p>Il runtime non &egrave; una shell generale. La superficie operativa coincide con le
+capacit&agrave; presenti nel catalogo attivo e ammesse dalle regole. Per conoscere la
+disponibilit&agrave; effettiva dell'istanza si pu&ograve; chiedere al Tutor oppure aprire, nella
+chat web, <strong>Impostazioni &rsaquo; Sistema &rsaquo; Servizi</strong>.</p>
+
+<h1 id="cap2">2. Un turno, dall'inizio alla risposta</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Cerca sul web le linee guida europee pi&ugrave; recenti sul passaporto digitale dei
+prodotti, leggi le tre fonti pi&ugrave; autorevoli e crea un documento di sintesi nella
+cartella Rapporti.&raquo;</p>
 
 <ol>
- <li>Il pianificatore guarda il <em>catalogo degli executor</em> disponibili (programmi piccoli e firmati che sanno fare una cosa sola: leggere un file, scriverlo, fare una chiamata HTTP, leggere l'orologio, ecc.).</li>
- <li>Sceglie un sotto-insieme rilevante per la richiesta (qui i candidati saranno read_files, write_files, get_urls).</li>
- <li>Passa quei candidati a un LLM (un modello di linguaggio) come "tools" che pu&ograve; usare.</li>
- <li>L'LLM legge la richiesta e propone il prossimo passo: "chiama read_files con paths=["~/notes/diario.md"] (leggendo le ultime righe)".</li>
- <li>Il pianificatore valida la proposta (sandbox, args, vaglio costituzionale), invoca l'executor, raccoglie l'output.</li>
- <li>Passa di nuovo all'LLM con: la richiesta originale + l'output del passo precedente.</li>
- <li>L'LLM dice: "ho tutto, la risposta &egrave;: ecco le ultime tre righe del tuo diario".</li>
- <li>Il pianificatore consegna quella risposta all'utente, scrive il log, finisce il turno.</li>
+ <li>Il canale identifica utente, conversazione, lingua, allegati e dispositivo
+ eventualmente nominato.</li>
+ <li>L'estrattore ricava gli intenti ordinati: cercare URL, leggere le fonti e
+ creare un documento.</li>
+ <li>L'instradamento ricava dal catalogo un insieme pertinente. Un proponente formula
+ un framework con i soli executor disponibili.</li>
+ <li>Il validatore e le guardie verificano nomi, argomenti, dipendenze, ordine e regole.
+ Se il salvataggio richiede una scelta mancante, Metnos presenta un modulo
+ localizzato invece di inventarla.</li>
+ <li>Gli executor cercano, leggono e scrivono. Il risultato di ogni passo alimenta
+ il successivo attraverso riferimenti strutturali.</li>
+ <li>Il terminale compone una risposta basata sugli esiti effettivi, registra la
+ traccia del turno ed espone l'eventuale documento come allegato o collegamento.</li>
 </ol>
 
-<p>
-La cosa importante: <em>il comportamento utile emerge dalla composizione</em>, non da regole codificate. Se domani l'utente chieder&agrave; "scarica una pagina, salvala in un file, e dimmi quanti byte hai scritto", il pianificatore comporr&agrave; get_urls + write_files + final_answer senza bisogno di alcun caso particolare. La stessa pipeline, una richiesta diversa, una sequenza di passi diversa.
-</p>
+<p>La stessa frase si pu&ograve; inviare da Telegram. Se una regolazione &egrave; disponibile
+soltanto nella chat web, Metnos deve indicare esplicitamente quel canale e il
+percorso di navigazione, non limitarsi a citare il nome tecnico della pagina.</p>
 
-<div class="callout note">
-<strong>Cosa non fa il pianificatore.</strong> Non risolve mai direttamente le richieste degli utenti. Non legge file, non chiama URL, non scrive nulla. Tutto questo lo fanno gli <em>executor</em> (programmi specializzati). Il pianificatore decide solo <em>chi chiamare e con quali argomenti</em>, poi raccoglie i risultati.
-</p>
-</div>
+<h1 id="cap3">3. Percorsi di esecuzione</h1>
 
-<div class="callout note">
-<strong><a href="intelligent_executors.html">Executor intelligenti drop-in</a>.</strong> Il contratto pubblico non cambia:
-il pianificatore passa gli stessi argomenti e riceve lo stesso risultato. Un
-executor specializzato pu&ograve; per&ograve; risolvere internamente stati intermedi entro
-un budget chiuso. Per esempio <code>login_sites</code> osserva la pagina,
-gestisce consenso privacy, target fuori viewport, modulo completo e passaggio
-username-prima/continua/password-dopo, quindi verifica l'esito. Dopo il login,
-<code>act_sites</code> puo' mantenere un goal e attraversare menu con
-riosservazione bounded. Il modello pu&ograve; scegliere solo
-fra elementi enumerati dal broker; origine e campi credenziale restano
-deterministici e non sono visibili al pianificatore.
-</div>
-
-<div class="callout tip">
-<strong>Mandati persistenti delle credenziali.</strong> Le nuove
-credenziali web presentano un form privo di segreti: <code>interactive</code>
-oppure <code>sites.read</code>. Il secondo scope permette login e lettura
-automatizzata, ma non modifiche, invii, pagamenti, download o POST applicativi.
-Questo mandato si applica come default a tutte le query interattive; una query
-puo' restringerlo, mentre un'azione piu' ampia richiede il normale consenso
-one-shot e non modifica il mandato. Un task temporizzato aggiunge inoltre un
-envelope legato ad actor, hash della query, host esatti gia' verificati e
-operazioni ammesse. Un nuovo host o un effetto fuori dall'intersezione fa
-fallire il task con <code>mandate_scope_exceeded</code>, senza lasciarlo sospeso
-su un dialogo.
-</div>
-
-<div class="callout tip">
-<strong>Spesso il pianificatore non viene nemmeno scomodato.</strong>
-Prima di chiamare il modello, il runtime consulta i suoi
-<a href="fast_path.html">due livelli di memoria con stato</a>: il
-<em>fastpath</em> (L0), che riconosce una richiesta identica gi&agrave;
-vista e ne riesegue la sequenza in pochi millisecondi, e l'<em>autopath</em>
-(L1), che riconosce una richiesta dello stesso genere di altre passate e
-ne riusa il piano generalizzato. Solo quando entrambi i livelli non
-trovano corrispondenza il pianificatore &mdash; il modello locale
-nel tier <em>wise</em> &mdash; entra nel turno. La struttura descritta
-qui sotto si applica per intero a quel caso; la via veloce &egrave;
-trattata nella pagina dedicata.
-</div>
-
-<h1 id="cap2">2. Il loop di un turno, passo per passo</h1>
-
-<p>
-Ora vediamo lo stesso percorso in modo pi&ugrave; preciso. Un turno ha sempre questa struttura:
-</p>
-
-<figure style="text-align: center; margin: 24px 0;">
-<svg viewBox="0 0 760 360" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
-<style>.b{fill:#fff;stroke:#1A477A;stroke-width:1.8;rx:6;ry:6}.bl{fill:#dbeafe;stroke:#1d4ed8;stroke-width:1.8}.bs{fill:#fef3c7;stroke:#b45309;stroke-width:1.8}.bg{fill:#dcfce7;stroke:#15803d;stroke-width:1.8}.br{fill:#fee2e2;stroke:#b91c1c;stroke-width:1.8}.t{font-family:'Segoe UI',sans-serif;font-size:11.5px;fill:#0f172a;text-anchor:middle;dominant-baseline:middle;font-weight:600}.tL{font-size:10.5px;fill:#1e293b;font-weight:500}.a{stroke:#334155;stroke-width:1.8;fill:none;marker-end:url(#ar)}</style>
-<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#334155"/></marker></defs>
-<rect class="b bl" x="20" y="20" width="120" height="40" /><text class="t" x="80" y="40">User query</text>
-<rect class="b" x="180" y="20" width="120" height="40" /><text class="t" x="240" y="40">Loader → Catalog</text>
-<rect class="b" x="340" y="20" width="120" height="40" /><text class="t" x="400" y="40">Mode + Tier</text>
-<rect class="b" x="500" y="20" width="120" height="40" /><text class="t" x="560" y="40">Pre-filter top-K</text>
-<path class="a" d="M140,40 L180,40"/><path class="a" d="M300,40 L340,40"/><path class="a" d="M460,40 L500,40"/>
-<rect class="b bs" x="640" y="100" width="100" height="50" /><text class="t" x="690" y="118">LLM</text><text class="t tL" x="690" y="135">tool-use nativo</text>
-<path class="a" d="M620,40 Q700,40 690,100"/>
-<rect class="b" x="490" y="170" width="180" height="50" /><text class="t" x="580" y="188">resolve refs + validate</text><text class="t tL" x="580" y="204">sandbox + vaglio + guard</text>
-<path class="a" d="M690,150 Q690,170 670,190"/>
-<rect class="b bg" x="320" y="170" width="140" height="50" /><text class="t" x="390" y="188">execute (subprocess)</text>
-<path class="a" d="M490,195 L460,195"/>
-<rect class="b" x="160" y="170" width="140" height="50" /><text class="t" x="230" y="188">observation</text><text class="t tL" x="230" y="204">→ scratchpad se &gt;4KB</text>
-<path class="a" d="M320,195 L300,195"/>
-<rect class="b" x="20" y="170" width="120" height="50" /><text class="t" x="80" y="188">history update</text>
-<path class="a" d="M160,195 L140,195"/>
-<path class="a" d="M80,170 Q40,150 40,40 L80,40 L80,20" />
-<text class="t tL" x="115" y="100">cicla fino a final_answer</text>
-<rect class="b bg" x="20" y="280" width="160" height="50" /><text class="t" x="100" y="298">final_answer</text><text class="t tL" x="100" y="314">testo per l'utente</text>
-<path class="a" d="M690,150 Q740,300 180,310"/>
-<rect class="b br" x="220" y="280" width="200" height="50" /><text class="t" x="320" y="298">cap raggiunto / errore</text><text class="t tL" x="320" y="314">final_kind = error / cap_*</text>
-<rect class="b" x="460" y="280" width="280" height="50" /><text class="t" x="600" y="298">JSONL log del turno</text><text class="t tL" x="600" y="314">~/.local/share/metnos/turns/YYYY-MM-DD.jsonl</text>
-</svg>
-<figcaption style="font-style:italic;color:#334155;font-size:10pt;margin-top:8px;">Flusso di un turno: dalla query utente al log finale, con il ciclo multistep al centro.</figcaption>
-</figure>
-
-<div class="callout note">
-<strong>Il loop &egrave; l'ultimo strato, non il primo.</strong>
-Prima di arrivare al ciclo descritto qui, la richiesta attraversa la cascata
-del <a href="praxis_engine.html">motore cognitivo</a>. I primi due strati hanno
-<em>memoria</em>: il <em>fastpath</em> (L0) ripropone la sequenza di una
-richiesta identica gi&agrave; vista; l'<em>autopath</em> (L1) riusa il piano
-generalizzato di un gruppo di richieste simili. Entrambi possono rispondere in
-pochi millisecondi, senza alcuna chiamata al modello. Il ciclo passo-passo
-descritto in questa sezione &egrave; lo strato pi&ugrave; profondo, l'<em>engine</em>,
-preceduto da un <em>validatore</em> senza stato che pu&ograve; correggere il
-piano una volta prima dell'esecuzione: si attiva solo quando n&eacute; la
-memoria n&eacute; le scorciatoie riconoscono la richiesta. In quel caso il
-motore propone l'intero piano in una sola chiamata e l'esecuzione che segue
-&egrave; quella deterministica descritta qui sotto.
-</div>
-
-<h3>Fase 0 &mdash; preparazione</h3>
-<ul>
- <li>Si ottiene il <em>catalogo</em> di executor &mdash; gi&agrave; in memoria dal boot. Al primo caricamento (<em>cold</em>) il loader scopre tutti gli executor da disco (cartelle in <code>executors/</code>), per ognuno verifica che il manifest sia firmato dalla chiave dell'autore e che il digest del codice corrisponda. Quelli che falliscono la verifica vengono scartati con un motivo. Al boot successivo e ad ogni turno (<em>hot</em>), un check leggero sulla firma di modifica (mtime dei <code>manifest.toml</code>, <code>.py</code>, <code>.sig</code> + DB lifecycle) ritorna il catalogo cached in O(1). Una qualunque modifica (synth-on-the-fly, re-sign manuale, invecchiamento con demote/archive) invalida la cache automaticamente al turno successivo.</li>
- <li>Si sceglie il <em>mode</em> (local/online/hybrid &mdash; vedi cap. 3) e il <em>tier</em> di LLM (fast/middle/wise &mdash; vedi cap. 4).</li>
- <li>Si genera un <code>turn_id</code> univoco per identificare questo turno nei log.</li>
-</ul>
-
-<h3>Fase 1 &mdash; pre-filter</h3>
-<p>
-Il <em>pre-filter</em> ranka il catalogo per pertinenza alla query utente e ne seleziona un sotto-insieme: i top-K. Senza pre-filter, dovremmo passare all'LLM tutti gli executor (potenzialmente decine o centinaia), e la qualit&agrave; della scelta degraderebbe insieme alla latenza. Il pre-filter risolve questo problema in modo banale ma efficace (vedi cap. 5).
-</p>
-
-<h3>Fase 2 &mdash; ciclo dei passi</h3>
-<p>
-A questo punto il turno entra in un ciclo. Per ogni passo:
-</p>
-<ol>
- <li>Si chiama l'LLM passando: la query utente, il sotto-catalogo (come "tools" nativi), e la storia delle observation dei passi precedenti.</li>
- <li>L'LLM risponde in uno di due modi:
- <ul>
- <li><strong>tool_call</strong>: vuole invocare un executor. Restituisce in modo strutturato il nome e gli argomenti.</li>
- <li><strong>testo</strong>: ha tutto quello che gli serve, produce la risposta finale e basta.</li>
- </ul>
- </li>
- <li>Se &egrave; un tool_call, il pianificatore ne fa una serie di controlli:
- <ol>
- <li><em>Resolve from_step</em>: se gli args contengono <code>from_step: N</code> (riferimento a una lista prodotta da uno step precedente), il runtime recupera la lista dallo scratchpad e la inietta come <code>entries</code> (vedi cap. 7).</li>
- <li><em>Resolve references</em>: se gli args contengono <code>{{stepN.field}}</code> (per arg non-lista, es. <code>content</code>, <code>dst_template</code>), li sostituisce col valore reale (vedi cap. 7).</li>
- <li><em>Validate</em>: gli args rispettano il JSON Schema dichiarato nel manifest dell'executor?</li>
- <li><em>Sandbox check</em>: il path/host richiesto &egrave; dentro lo scope dichiarato nell'hint dell'executor?</li>
- <li><em>Vaglio</em>: il valutatore costituzionale d&agrave; il via libera <strong>sull'uso specifico</strong> dell'executor? Le firme degli executor sono gi&agrave; state verificate al load (fase 0); il vaglio non ri-verifica componenti, controlla la singola chiamata: questa <code>delete_files(paths=...)</code>, con questi args, in questo contesto, &egrave; ammessa? Due fasi: <em>guardia</em> binaria (tocca path forbidden? Viola una delle 4 Leggi?) e <em>giudice</em> graduato (allineamento ai telos). Vedi <a href="vaglio.html"><code>vaglio.html</code></a>.</li>
- <li><em>Guard duplicate read</em>: stiamo rileggendo lo stesso path/url di un passo precedente? Se s&iacute;, intercetta e suggerisci all'LLM di formulare la final_answer.</li>
- </ol>
- </li>
- <li>Se tutti i controlli passano, l'executor viene eseguito come <em>subprocess</em>. L'observation (un JSON con <code>{ok, content?, metadata?, error?}</code>) torna al pianificatore.</li>
- <li>Se l'observation &egrave; pi&ugrave; grande di una soglia (4 KB di JSON), viene salvata in <em>scratchpad</em> e nella history dell'LLM ci va una versione sintetica con id + summary (vedi cap. 8).</li>
- <li>La history del turno cresce di un passo. Il ciclo riprende dal punto 1.</li>
-</ol>
-
-<h3>Fase 3 &mdash; chiusura del turno</h3>
-<p>
-Il turno termina in uno dei seguenti modi:
-</p>
-<ul>
- <li><code>final_kind = "answer"</code> &mdash; l'LLM ha prodotto la risposta finale.</li>
- <li><code>final_kind = "ask"</code> &mdash; serve una scelta o un chiarimento all'utente prima di proseguire.</li>
- <li><code>final_kind = "awaiting"</code> &mdash; il turno attende un'azione esterna (per esempio la posizione condivisa) prima di completarsi.</li>
- <li><code>final_kind = "needs_inputs"</code> &mdash; manca un dato richiesto (per esempio una credenziale): si apre un dialogo per raccoglierlo.</li>
- <li><code>final_kind = "cap_steps"</code> &mdash; superato il limite di passi (default 30).</li>
- <li><code>final_kind = "cap_same_executor"</code> &mdash; lo stesso executor &egrave; stato chiamato troppe volte (default 10; 2 per gli executor vettoriali).</li>
- <li><code>final_kind = "loop_break"</code> &mdash; rilevato un ciclo (stesso passo ripetuto senza progresso): il turno si interrompe.</li>
- <li><code>final_kind = "error"</code> &mdash; un componente esterno irraggiungibile (es. il llama-server locale gi&ugrave;), oppure il catalogo &egrave; vuoto, ecc.</li>
-</ul>
-
-<p>
-In ogni caso, il pianificatore scrive un record JSONL completo del turno (vedi cap. 11) e restituisce <code>(log, final_message)</code>.
-</p>
-
-<div class="example">
-<div class="ex-label">Esempio reale</div>
-<p>Query: <em>&laquo;scarica https://httpbin.org/uuid e dimmi solo l'UUID&raquo;</em>.</p>
-<p>Step 1 &mdash; LLM propone <code>get_urls(urls=["https://httpbin.org/uuid"])</code>. Esecuzione: ritorna JSON <code>{"uuid":"7c089d54-..."}</code>.</p>
-<p>Step 2 &mdash; LLM legge la storia, capisce che ha quel che serve, produce final_answer: <code>"7c089d54-..."</code>.</p>
-<p>Nessuna pre-codifica per "estrai uuid": il LLM locale ragiona sul JSON ed estrae il campo da solo.</p>
-</div>
-
-<h1 id="cap3">3. Modi: <em>local</em>, <em>online</em>, <em>hybrid</em></h1>
-
-<p>
-Il pianificatore lavora in tre modi, scelti via configurazione. La differenza principale fra i tre &egrave; <em>quanti viaggi all'LLM</em> servono per completare un turno e <em>dove gira l'LLM</em>.
-</p>
-
-<table>
-<tr><th>Mode</th><th>Loop</th><th>LLM tipico</th><th>Quando ha senso</th></tr>
-<tr><td><code>local</code></td><td>multistep ReAct (un viaggio per passo)</td><td>locale (llama-server)</td><td>Default. Privacy massima, costo zero, latenza decente.</td></tr>
-<tr><td><code>online</code></td><td>single-shot (un viaggio per piano completo)</td><td>frontier (Anthropic, OpenAI)</td><td>Task complessi che valgono i soldi spesi. Frontier riesce in una chiamata sola dove il locale ne avrebbe richieste cinque.</td></tr>
-<tr><td><code>hybrid</code></td><td>local di default; escalation a online per task critici</td><td>misto</td><td>Equilibrio fra costo e qualit&agrave;. Per Metnos casalinga.</td></tr>
-</table>
-
-<p>
-Il principio: <em>la forma del loop segue dal costo per chiamata</em>. Un LLM locale gratuito si pu&ograve; permettere di iterare; un LLM frontier costoso comprime tutto in una chiamata. Stesso pianificatore, comportamento adattato al costo.
-</p>
-
-<p>
-Il mode predefinito &egrave; <code>local</code>: tutto gira sul modello locale, a
-costo zero e con privacy massima. Il mode <code>online</code> e
-<code>hybrid</code> instradano i task pi&ugrave; complessi verso un modello
-frontier; richiedono di configurare un provider online e le regole di routing
-in <code>[runtime.hybrid]</code>.
-</p>
-
-<h1 id="cap4">4. I tier di LLM: <em>fast</em>, <em>middle</em>, <em>wise</em> (locali) + <em>frontier</em></h1>
-
-<p>
-Indipendentemente dal mode (che dice <em>dove</em> gira l'LLM), il runtime espone quattro <em>tier</em>. I tre tier locali puntano tutti allo <em>stesso</em> modello locale (su <code>llama-server:8080</code>, con MTP self-speculative): la differenza non &egrave; il modello ma i <em>parametri per chiamata</em> (ragionamento attivo o no, budget di token). Il quarto tier, <em>frontier</em>, &egrave; un modello del cloud, opt-in.
-</p>
-
-<table>
-<tr><th>Tier</th><th>Caratteristica</th><th>Modello</th></tr>
-<tr><td><strong>fast</strong></td><td>Risposte dirette, ragionamento disattivato, budget di token basso.</td><td>modello locale, <code>think=false</code></td></tr>
-<tr><td><strong>middle</strong></td><td>Ragionamento intermedio. &Egrave; il tier dell'intent extractor e del vaglio.</td><td>modello locale</td></tr>
-<tr><td><strong>wise</strong></td><td>Massima riflessione locale, ragionamento attivo, budget di token alto. &Egrave; il tier che propone i piani.</td><td>modello locale, <code>think=true</code></td></tr>
-<tr><td><strong>frontier</strong></td><td>Modello del cloud, opt-in, per i casi che lo valgono. Accetta latenza e costo.</td><td>Anthropic Opus 4.8 (online)</td></tr>
-</table>
-
-<p>
-Il proposer del motore usa <em>wise</em>. L'intent extractor e il vaglio usano <em>middle</em>. I riempitivi al volo (<code>${FILLER}</code>) usano <em>fast</em>. Il <em>frontier</em> si invoca solo esplicitamente, come ultima risorsa. La verit&agrave; canonica dei tier &egrave; in <code>runtime/llm_router.py</code>.
-</p>
-
-<figure style="text-align: center; margin: 24px 0;">
-<svg viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" style="max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 6px; background: white; padding: 8px;">
-<style>.tt{font-family:'Segoe UI',sans-serif;text-anchor:middle;dominant-baseline:middle}.h{font-size:13.5px;font-weight:700;fill:#1A477A}.b{font-size:11.5px;fill:#0f172a;font-weight:600}.s{font-size:10.5px;fill:#1e293b;font-weight:500}.box{stroke:#1A477A;stroke-width:1.8;rx:8;ry:8}.fast{fill:#dcfce7}.mid{fill:#fef3c7}.wise{fill:#dbeafe}</style>
-<text class="tt h" x="380" y="22">I tier, lo stesso runtime</text>
-<rect class="box fast" x="40" y="50" width="220" height="180"/>
-<text class="tt h" x="150" y="76">fast &amp; furious</text>
-<text class="tt s" x="150" y="96">modello locale · think=false</text>
-<text class="tt b" x="150" y="125">~700ms/chiamata</text>
-<text class="tt s" x="150" y="145">sempre LOCALE</text>
-<text class="tt s" x="150" y="160">sempre disponibile</text>
-<text class="tt b" x="150" y="195">usa: pianificatore</text>
-<text class="tt s" x="150" y="212">summarizer scratchpad</text>
-<rect class="box mid" x="280" y="50" width="220" height="180"/>
-<text class="tt h" x="390" y="76">middle &amp; trustable</text>
-<text class="tt s" x="390" y="96">modello locale</text>
-<text class="tt b" x="390" y="125">~2-5s/chiamata</text>
-<text class="tt s" x="390" y="145">locale o online</text>
-<text class="tt s" x="390" y="160">ragionamento intermedio</text>
-<text class="tt b" x="390" y="195">usa: vaglio reale</text>
-<text class="tt s" x="390" y="212">synt.compose</text>
-<rect class="box wise" x="520" y="50" width="220" height="180"/>
-<text class="tt h" x="630" y="76">slow &amp; wise</text>
-<text class="tt s" x="630" y="96">modello locale · think=true</text>
-<text class="tt b" x="630" y="125">5-30s/chiamata</text>
-<text class="tt s" x="630" y="145">accetta latenza/$</text>
-<text class="tt s" x="630" y="160">riflessione profonda</text>
-<text class="tt b" x="630" y="195">usa: synt.generate</text>
-<text class="tt s" x="630" y="212">decisioni delicate</text>
-<text class="tt s" x="380" y="265">Quando un tier non e' configurato, aliasa al tier inferiore (wise→middle→fast). Caso peggiore: tutti puntano a fast.</text>
-</svg>
-<figcaption style="font-style:italic;color:#334155;font-size:10pt;margin-top:8px;">I tre tier coesistono nel runtime; ogni componente sceglie quello che gli serve.</figcaption>
-</figure>
-
-<div class="callout tip">
-<strong>Specializzazione per ruolo.</strong> I tier locali possono condividere un
-endpoint oppure usare backend distinti. Modello, ragionamento e budget di token
-sono configurazione del ruolo; il chiamante non dipende da queste scelte.
-</div>
-
-<p>
-Schema config minimale:
-</p>
-<pre>[runtime.llm.fast]
-provider = "llamacpp"
-model = "&lt;fast-model-id&gt;"
-think = false
-
-[runtime.llm.middle]
-provider = "llamacpp"
-model = "&lt;middle-model-id&gt;"
-
-[runtime.llm.wise]
-provider = "llamacpp"
-model = "&lt;wise-model-id&gt;"
-think = true
-
-[runtime.llm.frontier]
-provider = "&lt;frontier-provider&gt;"
-model = "&lt;frontier-model-id&gt;"
-</pre>
-
-<p>
-I tier dichiarano ruoli, non una topologia: possono condividere lo stesso modello
-oppure no. La differenziazione comprende endpoint, parametri per chiamata e
-<em>system prompt</em>. Il tier <em>frontier</em> &egrave; opt-in e pu&ograve; uscire dalla
-macchina solo quando viene invocato esplicitamente.
-</p>
-
-<h1 id="cap4bis">4-bis. Forma del pipeline: invariante <code>E+ (F | A)?</code></h1>
-
-<p>
-Il pianificatore puo' emettere step in ordine illegale rispetto al data-flow. Per evitare fallimenti silenziosi (un consumer senza dati upstream, un'azione senza target, uno step dopo un terminatore), il runtime impone una <strong>regola di forma universale</strong>, deterministica, derivata dal vocabolario chiuso §2.2. Ogni turno deve matchare la regex:
-</p>
-
-<pre>E+ (F | A)? seguita opzionalmente da final_answer (sempre lecito)</pre>
-
-<p>Tre categorie, classificate dal verb prefix (mai dal nome dell'executor):</p>
-
-<table>
-<thead><tr><th style="width:8%">Cat</th><th style="width:22%">Verbi</th><th>Ruolo</th></tr></thead>
-<tbody>
-<tr><td><strong>E</strong></td><td><code>read, find, list, get, filter, sort, group, classify, compute, compare, extract</code></td><td>Emette entries riusabili a valle (producer-out).</td></tr>
-<tr><td><strong>F</strong></td><td><code>describe, render</code></td><td>Presentazione user-facing. <em>Chiude</em> il pipeline.</td></tr>
-<tr><td><strong>A</strong></td><td><code>move, delete, send, share, write, set, create, change, order, compress</code></td><td>Mutazione di stato, output = metadata di esito. <em>Chiude</em> il pipeline.</td></tr>
-</tbody>
-</table>
-
-<p>I cinque system pseudo-verbi (<code>final_answer</code>, <code>undo_last_turn</code>, <code>request_new_executor</code>, <code>admin</code>, <code>request_disambiguation_from_user</code>) bypassano la FSM: sono meta-operazioni del runtime, fuori dal data-flow.</p>
-
-<p>FSM deterministico a tre stati implementato in <code>runtime/pipeline_shape.py</code>:</p>
-
-<pre> E E F | A
-START ─────► CHAIN ─────► CHAIN ─────► TERMINAL
- │ │ │
- │ F | A │ │ *
- ▼ ▼ ▼
-ERROR VALID ERROR
-(no source) (post-F|A) (post-terminator)</pre>
-
-<p>API minimale: <code>compute_state(history) &rarr; str</code> ricostruisce lo stato accumulato; <code>next_state(state, name, args) &rarr; (new_state, error_class)</code> simula la prossima transizione. La funzione <code>has_literal_source(args)</code> riconosce <code>from_step</code> o qualunque list-arg non vuoto come producer implicito, per cui <code>delete_files(paths=[&quot;/x&quot;])</code> e' una pipeline valida 1-step (literal e' E implicito).</p>
-
-<p>Tre transizioni illegali, tre <code>error_class</code> canonici:</p>
-
-<table>
-<thead><tr><th>Errore</th><th>Causa</th><th>Strategia</th></tr></thead>
-<tbody>
-<tr><td><code>needs_data_source</code></td><td>F o consumer-E senza sorgente upstream</td><td>auto-recoverable: cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS &rarr; find_urls</code></td></tr>
-<tr><td><code>needs_action_target</code></td><td>A senza target (no <code>from_step</code>, no literal)</td><td>fail-fast: dialog <code>get_inputs</code>, MAI cascade esterna (un target di mutazione non si inventa)</td></tr>
-<tr><td><code>pipeline_already_closed</code></td><td>step dopo terminatore F/A</td><td>force <code>final_answer</code> immediato, log warning</td></tr>
-</tbody>
-</table>
-
-<p>Il check vive in un solo punto in <code>agent_runtime.py</code>, subito dopo che il planner ha emesso <code>chosen_name</code>. La FSM e' safety net: il prompt del planner (regola <code>0-PRE</code> in <code>_core.j2</code>) insegna gia' il pattern upstream, cosi' la remediation runtime resta raramente attivata.</p>
-
-
-<h1 id="cap4ter">4-ter. Auto-remediation registry</h1>
-
-<p>
-La FSM segnala violazioni con <code>error_class</code> canonici; un registry centralizzato in <code>runtime/auto_remediation.py</code> li mappa a piani di rimedio. Stesso pattern di install_on_demand per binari mancanti, generalizzato a qualunque prerequisito sintetizzabile al volo.
-</p>
-
-<pre>@dataclass(frozen=True)
-class RemediationPlan:
- prereq_tool: Any # str | Callable[[obs], str] ← dinamico
- hint_field: Optional[str] # None = passa intera obs
- arg_builder: Callable[[Any], dict]
- merge_field: str = "entries"
- merge_source: str = "entries"
- skip_retry: bool = False # fail-fast (dialog get_inputs)</pre>
-
-<p>Registry attuale, append-only:</p>
-
-<table>
-<thead><tr><th>error_class</th><th>Prereq</th><th>Hint / Strategy</th></tr></thead>
-<tbody>
-<tr><td><code>needs_content_fetch</code></td><td><code>read_urls_html</code></td><td>fetch top-5 URL da hint <code>needs_urls_html</code>, retry executor originale con entries arricchite</td></tr>
-<tr><td><code>needs_data_source</code></td><td>chooser dinamico</td><td>cascade <code>intent.object &rarr; OBJECT_PRIMARY_TOOLS[obj][0] &rarr; find_urls</code>; retry con entries</td></tr>
-<tr><td><code>needs_action_target</code></td><td><code>get_inputs</code></td><td>dialog free_text con <code>verb + object</code>; <code>skip_retry=True</code>, turno termina via <code>needs_inputs</code> orchestrator</td></tr>
-</tbody>
-</table>
-
-<p>Estendere il pattern e' una riga in <code>REMEDIATIONS</code>. Esempi futuri possibili: <code>needs_ocr</code> &rarr; <code>change_files_ocr</code>; <code>needs_embedding</code> &rarr; <code>create_&lt;dom&gt;_indices</code>; <code>needs_voicemail</code> &rarr; <code>read_messages_voice</code>.</p>
-
-<h1 id="cap5">5. Il pre-filter: scegliere il sotto-catalogo</h1>
-
-<p>
-Con un catalogo di 30+ executor, passare tutti come "tools" all'LLM esplode il prompt e dilava l'attenzione. Il pre-filter ranka per pertinenza e ne passa al LLM solo i pi&ugrave; promettenti.
-</p>
-
-<h2>Come ranka</h2>
-<p>
-Il ranking &egrave; <em>bag-of-words</em>: tokenizza la query utente, tokenizza l'<code>affinity</code> dichiarato in ogni manifest, somma i match (i match sull'affinity pesano 4&times; quelli sulla descrizione, con cap a 3 per la descrizione). Estrarre i token significa: minuscolo, parole alfanumeriche, niente accenti.
-</p>
-
-<div class="example">
-<div class="ex-label">Esempio</div>
-<p>Query: <em>&laquo;scarica https://httpbin.org/get&raquo;</em>. Token: <code>{scarica, httpbin, org, get, https}</code>.</p>
-<p>Match con affinity di <code>get_urls</code>: <code>web</code>, <code>http</code>, <code>url</code>, <code>fetch</code>, <code>scarica</code>, <code>leggi</code>, <code>pagina</code>, <code>api</code>, <code>rest</code>. Match: <code>scarica</code>. Score: 2.</p>
-<p>Match con affinity di <code>read_files</code>: <code>read</code>, <code>leggi</code>, <code>lettura</code>, <code>file</code>,... Nessun match. Score: 0.</p>
-<p>get_urls vince con confidenza alta.</p>
-</div>
-
-<h2>K adattivo</h2>
-<p>
-K (numero di executor da passare al LLM) non &egrave; fisso: dipende dalla <em>confidenza</em> con cui il pre-filter distingue il top-1 dagli altri.
-</p>
-<ul>
- <li>Confidenza alta (top-1 nettamente sopra) &rarr; K piccolo (default <code>k_min=5</code>). Inutile passare candidati a score zero.</li>
- <li>Confidenza bassa (score ravvicinati o tutti zero) &rarr; K grande. Lascia che sia l'LLM a decidere.</li>
- <li>K viene comunque limitato al numero di executor con score &ge; 1 (no riempimento).</li>
-</ul>
-
-<p>
-In produzione il pool ha dimensione fissa configurabile via <code>METNOS_ENGINE_POOL_SIZE</code> (default 12). Il pre-filter sub-millisecondo fino a 300+ executor.
-</p>
-
-<h2>Cross-object recall</h2>
-<p>
-Un secondo meccanismo, <code>affinity_phrase_recall</code>, inietta nel pool tool il cui tag affinity multi-parola (&ge; 2 token distintivi, escluse stopword e verbi generici) corrisponde interamente alla query, anche se verbo o oggetto dell'intent differiscono. Questo sblocca il recall cross-object: ad esempio &laquo;quali account mail hai&raquo; attiva <code>find_credentials</code> e <code>read_persons</code> anche se l'intent punta a <code>object=messages</code>. Il meccanismo &egrave; deterministico e limitato a 3 tool aggiuntivi per query.
-</p>
-
-<h1 id="cap6">6. Tool-use nativo (no JSON parsing)</h1>
-
-<p>
-Gli LLM moderni (Anthropic, OpenAI da sempre; llama-server e altri server compatibili OpenAI per modelli locali come Qwen 3, Llama 3.1+, Mistral) supportano un protocollo <em>nativo</em> di tool-calling. Il runtime dichiara i tools disponibili nella API, ognuno con il suo JSON Schema preso dal manifest. Quando l'LLM decide di chiamare un tool, restituisce un campo strutturato:
-</p>
-
-<pre>{
- "tool_calls": [
- {
- "id": "call_abc123",
- "function": {
- "name": "read_files",
- "arguments": {"paths": ["/tmp/note.txt"]}
- }
- }
- ]
-}</pre>
-
-<p>
-&Egrave; <em>gi&agrave; un dict Python</em>, parsato dal protocollo HTTP. Niente regex sul testo, niente blocchi markdown da estrarre, niente edge case di "l'LLM ha scordato di chiudere le parentesi". Quando l'LLM &egrave; pronto per la risposta finale, semplicemente non chiama nessun tool e produce solo testo: il pianificatore riconosce questo come final_answer.
-</p>
-
-<div class="callout note">
-<strong>Conseguenza per i manifest.</strong> Il manifest di un executor dichiara gli args in JSON Schema (sezione <code>[args]</code>) e quel JSON Schema viene passato direttamente al provider come <code>parameters</code> del tool. Una sola fonte di verit&agrave; sulla forma degli argomenti, zero traduzione. Vedi <a href="executor.html"><code>executor.html</code></a> per i dettagli del manifest.
-</div>
-
-<h1 id="cap7">7. Data piping fra passi: <code>from_step</code> e <code>{{stepN.field}}</code></h1>
-
-<p>
-In multistep, l'LLM al passo N+1 ha bisogno di riferirsi all'output del passo N. Due meccanismi distinti, scelti in base al tipo di dato.
-</p>
-
-<h2>7.1 Liste: <code>from_step: N</code></h2>
-
-<p>
-Per gli arg che ricevono una <em>lista di entries</em> (mail, file, web_results, ecc.) prodotta da uno step precedente, il runtime espone un arg dedicato <code>from_step: integer</code>. L'LLM passa il numero dello step che ha prodotto la lista; il runtime recupera dallo scratchpad e inietta automaticamente <code>entries</code> nei kwargs prima di invocare l'executor.
-</p>
-
-<div class="example">
-<div class="ex-label">Esempio: pipeline classify+filter+describe</div>
-<pre>// Passo 1
-{ "tool": "read_messages", "args": { "account": "knowcastle", "time_window": "today" } }
-// observation handle: {ok: true, scratchpad_id, count: 12, list_field: "entries", schema: [...]}
-
-// Passo 2 (proposto dal LLM)
-{ "tool": "classify_entries", "args": {
- "from_step": 1,
- "dimension": "relevance",
- "pre_filter": true
-} }
-
-// Il runtime recupera entries da scratchpad[step1] e invoca:
-classify_entries(entries=[12 mail], dimension="relevance", pre_filter=true)</pre>
-</div>
-
-<p>
-Lo schema dei tool che ricevono liste dichiara <strong>solo</strong> <code>from_step: integer required</code>. <code>entries: array</code> non &egrave; pi&ugrave; esposto al LLM: il decoder schema-guidato emette un intero, non un array di dict, e il problema dell'<em>invenzione di dati inline</em> (LLM che fabricca dict plausibili invece di consultare lo scratchpad) sparisce per costruzione.
-</p>
-
-<h2>7.2 Valori singoli: <code>{{stepN.field}}</code></h2>
-
-<p>
-Per gli arg di tipo NON-lista (stringhe, content, path), la sintassi rimane il placeholder template:
-</p>
-<ul>
- <li><code>N</code> &egrave; il numero del passo (1-indexed: <code>step1</code> &egrave; il primo).</li>
- <li><code>field</code> &egrave; la chiave dentro l'observation di quel passo. Pu&ograve; essere annidata: <code>{{step1.metadata.path}}</code>, <code>{{step2.content}}</code>.</li>
-</ul>
-
-<div class="example">
-<div class="ex-label">Esempio: scarica e salva</div>
-<pre>// Passo 1
-{ "tool": "get_urls", "args": { "urls": ["https://httpbin.org/get"] } }
-// observation: {ok: true, content: "<JSON di httpbin>", metadata: {...}}
-
-// Passo 2 (proposto dal LLM)
-{ "tool": "write_files", "args": {
- "path": "/tmp/out.txt",
- "content": "{{step1.content}}"
-} }
-
-// Il runtime sostituisce e invoca:
-write_files(path="/tmp/out.txt", content="<JSON di httpbin>")</pre>
-</div>
-
-<div class="callout warning">
-<strong>La sintassi vale SOLO negli args.</strong> Nel testo della final_answer scrivere i valori reali (es. "Ho scritto 173 byte"); MAI <code>{{step1.bytes_written}}</code>. Il prompt del pianificatore istruisce esplicitamente l'LLM su questo limite. Una violazione di questa regola causa il fallimento silenzioso del placeholder nel testo finale.
-</div>
-
-<p>
-Il riferimento dev'essere il <em>solo valore</em> dell'arg, non interpolato in stringhe pi&ugrave; lunghe (limite).
-</p>
-
-<h1 id="cap8">8. Scratchpad per observation grandi</h1>
-
-<p>
-Quando un executor restituisce molto contenuto (un file di 100 KB, una pagina HTML lunga, un body API verboso), passarlo per intero nella history dell'LLM esplode il context. Tagliare a 1500 caratteri perde informazione utile.
-</p>
-
-<p>
-La soluzione: lo <em>scratchpad</em>. Quando un'observation supera la soglia (4 KB di JSON serializzato), il runtime la salva in uno SQLite locale (<code>~/.local/share/metnos/scratchpad.db</code>) e mette nella history un'observation <em>sintetica</em>:
-</p>
-
-<pre>{
- "ok": true,
- "scratchpad_id": "eae04122bd704636",
- "size_bytes": 14144,
- "kind": "text",
- "summary": "ciao questa &egrave; una nota di test\n\n[... 13900 caratteri omessi...]\n\nINFO 2026-04-26 23:59:59 ULTIMO_EVENTO_CRITICO\n",
- "metadata": {"path": "/tmp/big_log.txt", "bytes": 14144,...}
-}</pre>
-
-<p>
-Il riassunto &egrave; un <em>troncamento intelligente</em>: i primi 500 caratteri, un segnaposto con il numero di caratteri omessi, gli ultimi 500. Cos&iacute; l'LLM vede inizio e fine del contenuto.
-</p>
-
-<p>
-L'LLM al passo successivo, vedendo il summary, decide:
-</p>
-<ul>
- <li>Se il summary basta, formula la final_answer.</li>
- <li>Se gli serve di pi&ugrave;, chiama l'executor builtin <code>scratchpad_read</code> con mode:
- <ul>
- <li><code>full</code>: il contenuto intero (sconsigliato se &egrave; molto grande).</li>
- <li><code>head</code>: i primi N caratteri (default 2000).</li>
- <li><code>tail</code>: gli ultimi N caratteri.</li>
- <li><code>range</code>: un intervallo <code>[start, end)</code>.</li>
- </ul>
- </li>
-</ul>
-
-<p>
-<code>scratchpad_read</code> &egrave; un builtin: vive nel runtime, non ha manifest su disco, viene aggiunto al catalogo dei tool dinamicamente quando ci sono entries scratchpad attive nel turno corrente.
-</p>
-
-<p>
-Dettagli completi nel doc dedicato: <a href="scratchpad.html"><code>scratchpad.html</code></a>.
-</p>
-
-<h1 id="cap9">9. Vaglio del piano</h1>
-
-<p>
-Il vaglio &egrave; il valutatore costituzionale: prima che un <code>tool_call</code>
-diventi azione, decide se &egrave; lecita. In multistep gira fra uno step e
-l'altro; in single-shot gira post-hoc sull'intero piano. Il vaglio e'
-<em>attivo</em> e funziona in due fasi distinte.
-</p>
-
-<h3>9.1 Guardia (binaria)</h3>
-<p>
-Blocca le violazioni delle 4 Leggi. Le regole codificate sono:
-</p>
-<ul>
- <li><strong>Forbidden paths</strong>: <code>~/.ssh</code>,
- <code>/etc/passwd|shadow|sudoers</code>, <code>/root</code>,
- <code>/boot</code>, <code>/sys</code>, <code>/proc</code>,
- <code>/dev/sd*|nvme*</code>, <code>~/.aws/credentials</code>,
- <code>~/.config/*/credentials.env</code>, <code>~/.gnupg</code>.
- Se anche solo MENZIONATI in un argomento di tool, l'azione e' negata.</li>
- <li><strong>Comandi shell quasi-irrecuperabili</strong> (Legge 1: niente
- stato irrecuperabile): <code>rm&nbsp;-rf /</code>, <code>rm&nbsp;-rf ~</code>,
- <code>mkfs</code>, <code>dd&nbsp;of=/dev/...</code>, fork bomb, chmod 7XX
- ricorsivo sulla radice. Match solo per executor con <code>capability:
- code:exec</code>.</li>
-</ul>
-<p>
-La lista non si rilassa per livello di autonomia: e' il "nucleo non
-negoziabile" del cap.&nbsp;5. Se la guardia ferma, niente score: il
-verdetto e' <code>blocked_by="guard"</code>.
-</p>
-
-<h3>9.2 Giudice (graduato)</h3>
-<p>
-Se la guardia lascia passare, il giudice misura l'allineamento dell'azione
-ai telos dell'utente in [0,&nbsp;1]. Sotto la soglia
-<code>METNOS_JUDGE_THRESHOLD</code> (default 0.30, configurabile via env)
-l'azione e' negata con <code>blocked_by="judge"</code>. Sopra, e'
-approvata.
-</p>
-<p>
-Oggi il giudice e' <strong>basato su regole</strong>: euristiche locali,
-microsecondi, costo zero. Score base 0.7, bonus se l'<em>intent</em> menziona
-il nome dell'executor (segnale di intento esplicito), penalita' per
-<code>..</code> in path (possibile path traversal), penalita' per chiavi
-<code>args</code> con caratteri non alfanumerici (anomalia). Il <strong>giudice
-LLM</strong> (tier middle, contesto separato dal proponente per evitare
-auto-conferma) e' rimandato: richiede tier middle configurato +
-budget esplicito. La separazione deontologia/teleologia e' gia' al posto
-giusto, l'implementazione del giudice puo' evolvere senza toccare la
-guardia.
-</p>
-
-<p>
-Il <code>Verdict</code> esposto dal modulo <code>vaglio</code> contiene
-<code>{approved, reason, score, blocked_by, judge_kind, ts}</code>. La log
-JSONL su <code>~/.local/share/metnos/vaglio/YYYY-MM.jsonl</code> riporta
-solo le chiavi di <code>args</code> (non i valori), per privacy.
-</p>
-
-<h1 id="cap10">10. Cap di sicurezza e guard runtime</h1>
-
-<p>
-Il pianificatore ha tre meccanismi di safety contro loop e azioni mal poste, basati su comportamenti reali osservati del LLM.
-</p>
-
-<table>
-<tr><th>Meccanismo</th><th>Cosa fa</th><th>Default</th></tr>
-<tr><td><code>cap_steps</code></td><td>Limite massimo di passi per turno.</td><td>30</td></tr>
-<tr><td><code>cap_same_executor</code></td><td>Limite di chiamate dello stesso executor nel turno.</td><td>10 (2 per gli executor vettoriali)</td></tr>
-<tr><td><strong>guard duplicate read</strong></td><td>Se l'LLM richiama <code>read_files</code>/<code>write_files</code>/<code>get_urls</code> con lo stesso path/url di un passo precedente, il runtime non ri-esegue: restituisce un'observation che dice "hai gi&agrave; questo dato al passo X, formula la final_answer".</td><td>attivo</td></tr>
-</table>
-
-<p>
-Il guard duplicate read evita uno spreco comune: senza, l'LLM tende a rileggere lo stesso file con args leggermente diversi sperando in un risultato migliore, finendo nel cap_same. Il guard intercetta prima e sblocca la formulazione.
-</p>
-
-<p>
-Eccezione: <code>scratchpad_read</code> non &egrave; soggetto al guard, perch&eacute; chiamarlo pi&ugrave; volte con mode/range diversi sullo stesso <code>scratchpad_id</code> &egrave; il caso d'uso normale.
-</p>
-
-<h1 id="cap11">11. Cosa scrive nei log</h1>
-
-<p>
-Per ogni turno il pianificatore scrive una riga JSONL in <code>~/.local/share/metnos/turns/YYYY-MM-DD.jsonl</code> con:
-</p>
-
-<ul>
- <li><code>turn_id</code> &mdash; uuid del turno.</li>
- <li><code>ts_start</code>, <code>ts_end</code> &mdash; timestamp Unix.</li>
- <li><code>user_query</code> &mdash; testo originale dell'utente.</li>
- <li><code>mode</code> &mdash; mode scelto (local/online/hybrid).</li>
- <li><code>candidates</code> &mdash; nomi degli executor passati al LLM dopo pre-filter.</li>
- <li><code>steps</code> &mdash; lista di step con: numero, llm in/out tokens, latenza, tool chiamato, args raw e risolti, esito di validation/sandbox/vaglio, result.</li>
- <li><code>final_message</code> &mdash; testo finale all'utente.</li>
- <li><code>final_kind</code> &mdash; uno di <code>answer | ask | awaiting | needs_inputs | cap_steps | cap_same_executor | loop_break | error</code>.</li>
-</ul>
-
-<p>
-JSONL append-only, un file per giorno. Nessuna rotazione automatica (con uso normale ~3 MB/mese, trascurabile).
-</p>
-
-<h2>11.1 Scrittura nel mnestoma</h2>
-
-<p>
-In parallelo al log JSONL, il pianificatore aggiorna il <a href="mnestoma.html">mnestoma</a>
-(SQLite singolo file). Due hook semplici, attivati solo quando esiste piping
-osservato fra step:
-</p>
-
-<ul>
- <li><strong>mnest active</strong> &mdash; al termine di uno step con <code>obs.ok = true</code>,
- se i <code>raw_args</code> contenevano almeno un riferimento <code>{{stepM.field}}</code>
- risolto e l'executor M era reale (non un proto, non scratchpad), invoca
- <code>Mnestoma.record_passing(src=executor_M, dst=executor_corrente, dst_exists=True)</code>.
- Il mnest cresce o nasce con peso bootstrap; ogni passaggio futuro lo rinforza.</li>
- <li><strong>proto-mnest</strong> &mdash; quando il LLM chiama un nome di tool che il
- catalogo non contiene (<code>executor_inesistente</code>) e i <code>raw_args</code>
- avevano riferimenti a step precedenti, invoca
- <code>record_passing(src=executor_M, dst=nome_desiderato, dst_exists=False,
- desired_signature=...)</code>. La firma desiderata &egrave; inferita
- in modo conservativo da nome del tool richiesto, args e contesto del turno
- (<code>build_desired_signature</code>).</li>
-</ul>
-
-<p>
-Senza piping niente mnest: la chiamata isolata di un singolo executor non rappresenta
-un &laquo;passaggio fra A e B&raquo; nel senso del cap. 2 di <a href="mnest.html">mnest</a>.
-La scrittura e' fail-safe: un errore sul mnestoma viene loggato (in modo verbose) ma
-non interrompe il turno.
-</p>
-
-<h3 id="cap11_1_1">11.1.1 Synt-on-the-fly: suggerimento immediato al pianificatore</h3>
-
-<p>
-Quando un proto-mnest viene appena registrato (caso di sopra: tool inesistente
-con piping da step precedente), il pianificatore prova subito una sintesi
-reattiva <strong>compose-only</strong> chiamando
-<code>Synt.react(req)</code> con <code>router=None</code> (il modo
-<em>generate</em> resta riservato allo scheduler notturno e ai cicli
-introvertivi del cap. 11.2). L'esito di questa chiamata, se positivo,
-viene aggiunto all'observation come campo <code>synt</code>:
-</p>
-
-<ul>
- <li>se <code>state == "composed"</code>: il composer ha trovato una catena
- di executor firmati che chiude il proto-mnest. L'observation porta
- <code>{strategy: "compose", state: "composed", chain: [...], first_hop: "X",
- suggestion: "Riprova invocando 'X' come prossimo passo"}</code>.
- Il pianificatore non rilancia automaticamente il primo hop: lascia che
- sia il LLM a decidere se seguire il suggerimento allo step successivo
- (mantiene la disciplina ReAct &mdash; il LLM resta padrone della
- sequenza).</li>
- <li>se <code>state == "abandoned"</code> o <code>"rejected"</code>:
- l'observation porta <code>{state: "abandoned",
- suggestion: "Non c'e' executor disponibile per questa esigenza,
- cerca un'altra via"}</code>. Telos di non-rinuncia: il pianificatore
- non si arrende sul primo errore, comunica al LLM che la strada e'
- chiusa cosi' che possa cercarne un'altra.</li>
-</ul>
-
-<p>
-Costo: una chiamata a <code>Composer.find_chain</code> (BFS sul mnestoma,
-millisecondi) e un'eventuale lock-check. Niente LLM, niente budget.
-La chiamata e' fail-safe: qualunque eccezione di <code>synt</code> non
-propaga e l'observation rimane quella di default
-(<em>"executor inesistente: X"</em>). Vedi
-<code>runtime/agent_runtime.py:_try_synt_compose</code>.
-</p>
-
-<h2 id="cap11_2">11.2 Scheduler builtin</h2>
-
-<p>
-Lo <strong>scheduler</strong> e' un <em>builtin</em> del runtime, non un executor:
-non ha capability, non e' firmato, non ha sandbox. E' un loop cron-style che esegue
-task ricorrenti del sistema senza input utente. Tre supporti di schedule:
-</p>
-
-<ul>
- <li><code>daily@HH:MM</code> &mdash; ogni giorno all'ora HH:MM (UTC), una sola volta.</li>
- <li><code>every_N_minutes</code> &mdash; ogni N minuti dall'ultima esecuzione (o subito se mai).</li>
- <li><code>manual</code> &mdash; solo via <code>scheduler run-now &lt;task&gt;</code>.</li>
-</ul>
-
-<p>Stato persistito in <code>workspace/.scheduler/state.sqlite</code> (tabella
-<code>tasks</code> con last_run_at + last_status, tabella <code>runs</code>
-append-only). Il check di due-time e' idempotente: due tick nello stesso slot
-non eseguono il task due volte.</p>
-
-<p><strong>Task built-in registrati di default</strong> (definiti in
-<code>runtime/scheduler_v2/builtin_callbacks.py::_BUILTIN_JOBS</code>,
-auto-installati al primo boot del daemon HTTP via
-<code>install_default_jobs(scheduler)</code>):</p>
-
-<table>
-<thead><tr><th style="width:24%">Nome</th><th style="width:15%">Schedule</th><th>Cosa fa</th></tr></thead>
-<tbody>
-<tr><td><code>i18n_translate_pending</code></td><td><code>daily@02:00</code></td><td>Traduce 20 chiavi <code>i18n.sqlite</code> con <code>needs_translation=1</code> (cap throttling GPU). Tier wise default. Vedi <a href="multilang.html">multilang</a>.</td></tr>
-<tr><td><code>images_index_refresh</code></td><td><code>daily@03:00</code></td><td>Refresh incrementale indice immagini unificato: walk + stat ~11s, pipeline EXIF + ArcFace + VLM + BGE su nuove/modificate.</td></tr>
-<tr><td><code>apply_executor_ager</code></td><td><code>daily@03:30</code></td><td>Decay degli executor inattivi: <em>active</em> &rarr; <em>deprecated</em> dopo 30g di inattivita'; <em>deprecated</em> &rarr; <em>archived</em> dopo altri 14g.</td></tr>
-<tr><td><code>apply_ager</code></td><td><code>daily@04:00</code></td><td>Chiama <a href="mnestoma.html#cap6"><code>Mnestoma.apply_ager</code></a>: decay + demote + proto purge sul mnestoma.</td></tr>
-<tr><td><code>synt_suggest</code></td><td><code>daily@04:30</code></td><td>Per ciascun proto-mnest ricorrente (<code>uses&ge;3</code>, <code>weight&ge;0.30</code>) chiama <a href="synt.html"><code>Synt.react</code></a> in compose-only e logga l'esito.</td></tr>
-<tr><td><code>multi_tool_maintenance</code></td><td><code>daily@04:30</code></td><td>Housekeeping <a href="fast_path.html">fast-path L2</a>: expire stale (TTL N giorni di attivita' effettiva, default 30) + promote pipelines mature (<code>uses&ge;K_synth</code>, default 50) a proto-mnest in mnestoma per <code>synth_request</code>.</td></tr>
-<tr><td><code>proposals_eta_aggregate</code></td><td><code>daily@04:30</code></td><td>Aggregator latenze per <code>path_shape</code>: scansiona turn JSONL ultimi 7g, calcola p50/p95 in <code>proposals_eta.sqlite</code>.</td></tr>
-<tr><td><code>promoter</code></td><td><code>daily@04:45</code></td><td>Promoter daemon: valuta + promuove synth proposals via <code>proposal_evaluator</code> (6 killer + 7 signal &rarr; verdict).</td></tr>
-<tr><td><code>introvertiva_propose</code></td><td><code>daily@05:00</code></td><td>Introvertiva: produce proposte <em>dedupe</em> (mnest orfani/duplicati) e le proietta in proposals_state (nessuna applicazione automatica, audit JSONL). I generatori <em>generalize</em> e <em>specialize</em> sono stati ritirati il 2/7/2026 (ADR 0180: regola dei livelli).</td></tr>
-<tr><td><code>proposals_cleanup</code></td><td><code>daily@06:00</code></td><td>Manutenzione lifecycle backlog: archive aged synt_proposals, dedupe candidates, auto-decay legacy_orphan. <strong>NIENTE delete</strong>: solo move + UPDATE.</td></tr>
-<tr><td><code>lifecycle_summary</code></td><td><code>daily@06:30</code></td><td>Aggregatore READ-ONLY dei 4 ager: produce un sunto giornaliero del lifecycle del mnestoma.</td></tr>
-<tr><td><code>skill_sandbox_watchdog</code></td><td><code>daily@06:35</code></td><td>Controlla soglia di attivazione per sandbox per-skill (&ge; 5 skill third-party OR &ge; 1 guest paired); notifica admin via Telegram.</td></tr>
-<tr><td><code>promoter_digest</code></td><td><code>daily@07:00</code></td><td>Digest Telegram delle proposte in <em>promoted_grace</em> non ancora approvate dall'utente.</td></tr>
-<tr><td><em>manutenzione GitHub</em></td><td><code>run_user_query</code></td><td>La manutenzione GitHub gira tramite gli executor canonici (<code>find/read/write_issues</code>) guidati da comandi utente schedulati; non c'&egrave; un watcher sempre-attivo.</td></tr>
-</tbody>
-</table>
-
-<div class="callout note">
-<strong>Lifecycle delle schedule entries.</strong> Le righe vivono in
-<code>~/.local/state/metnos/scheduler_v2.sqlite</code> (tabella
-<code>schedule_entries</code>). Tre garanzie:
-<ul>
-<li><em>Boot fresh install</em>: <code>install_default_jobs</code> e' chiamato
-al primo avvio del daemon HTTP (<code>metnos_http_server.py:131</code>) e
-inserisce con INSERT-OR-IGNORE i job di <code>_BUILTIN_JOBS</code> &mdash;
-righe esistenti preservate (mantiene <code>last_run_at</code>,
-<code>total_runs</code>...).</li>
-<li><em>Boot ricorrente</em>: lo scheduler legge le entries persistenti,
-calcola <code>next_fire_at</code>, fa partire il loop. Eventi mancati durante
-il downtime vengono ignorati (next valid window): niente catch-up
-caotico.</li>
-<li><em>Shutdown</em>: <code>scheduler.stop(timeout=5s)</code> imposta
-<code>shutdown_evt</code>, attende che il task corrente termini, poi
-<code>pool.shutdown(cancel_futures=True)</code>. Job in-flight oltre il
-timeout vengono cancellati graziosamente.</li>
-</ul>
-</div>
-
-<p>
-Il loop daemon (<code>scheduler daemon</code>) e' un singolo processo che fa
-<code>tick</code> ogni 60s e va in idle. Niente concorrenza, niente locking
-fra processi: lo scheduler in e' un singleton sul <code>metnos-server</code>.
-La policy di errore e' <em>"non far cadere il loop"</em>: ogni eccezione del
-task viene catturata, segnata in <code>last_status='error'</code> con
-traceback in <code>last_output</code>, e il tick continua sui task successivi.
-</p>
-
-<p>
-Il design dello scheduler come builtin e' coerente con la decisione del
-<a href="index.html">Dialogo sugli executor</a>: la
-manutenzione del sistema (decadimento, sintesi notturna) e' parte del runtime,
-non un executor che il sistema "decide di chiamare". Vedi anche la memoria
-<em>builtin executors proposals</em> per la triade builtin futura
-(scheduler, ager, snapshot).
-</p>
-
-<h2 id="cap11_2_1">11.2.1 Recurring tasks utente</h2>
-
-<p>
-Sopra lo scheduler builtin gira <code>runtime/recurring_tasks.py</code>: il
-registro dei task ricorrenti definiti dall'utente via canale conversazionale
-(<em>&laquo;ogni cinque minuti verifica le mail importanti&raquo;</em>). Sette
-tool builtin sono callable dal PLANNER: <code>schedule_recurring</code>,
-<code>cancel_recurring</code>, <code>list_recurring</code>,
-<code>show_recurring</code>, <code>toggle_recurring</code>,
-<code>history_recurring</code>, <code>run_now_recurring</code>.
-</p>
-
-<p>
-La risoluzione del callback &egrave; per <em>chiave string</em>:
-il task persiste il nome simbolico del callback, il dispatcher lo risolve a
-runtime contro un registro centralizzato. Niente serializzazione di
-<code>callable</code>, niente stale references al riavvio del daemon.
-</p>
-
-<p>
-Il ritorno del callback puo' essere un <code>CallbackOutcome</code> strutturato:
-<code>success</code>, <code>partial</code> o <code>error</code>, con output ed
-errore separati. Per <code>run_user_query</code> lo stato deriva dagli effetti
-e dai fallimenti reali della pipeline. La consegna del messaggio al canale non
-trasforma quindi un turno fallito in successo; gli errori annidati in
-<code>failed[]</code> alimentano <code>last_error</code> e il circuit-breaker.
-</p>
-
-<p>
-<strong>Semantica fine</strong>: <code>times</code> regola il ciclo di vita
-del task (1 = one-shot, N = max esecuzioni, NULL = forever) con auto-cancel
-al raggiungimento; <code>grace_window_minutes</code> abilita il recover-missed
-con <code>created_at</code> come discriminante (un task creato dopo l'orario
-schedulato non scatta retroattivamente); <code>is_due</code> applica la logica
-&laquo;<em>done=false &amp;&amp; time&gt;scheduled &amp;&amp; !new_post_target</em>&raquo;.
-Il loop daemon ha re-entrancy lock + timeout cooperativo + try/except per task,
-ed e' supervisionato da <code>metnos-scheduler.service</code> (systemd user,
-<code>Restart=always</code>). Predisposizione async-ready (refactor locale
-non globale): <code>_run_with_timeout</code> standalone,
-<code>_acquire_lock</code>/<code>_release_lock</code> astratti,
-<code>dispatch_callback</code> con detection coroutine + bridge sync&rarr;async.
-</p>
-
-<h2 id="cap11_2_2">11.2.2 Location request UX (&sect;2-quater PLANNER)</h2>
-
-<p>
-Quando <code>get_location</code> torna <code>ok:false</code> in risposta a una
-query location-relative (es. &laquo;la farmacia pi&ugrave; vicina&raquo;), il
-PLANNER attiva il tool builtin <code>request_location_from_user</code>: un
-dialog atomico che chiede la posizione all'utente sul canale e riprende il
-piano alla ricezione. Il pattern &egrave; analogo a &sect;2-ter (undo
-atomico): un tool che ferma e riprende il turno senza step intermedi che
-inquinino la storia. &Egrave; la stessa famiglia di pattern
-&laquo;dialogo atomico&raquo; dell'undo: un tool che sospende e riprende il
-turno senza lasciare passi intermedi nello scratchpad.
-</p>
-
-<h2 id="cap11_2_3">11.2.3 Geo provider hybrid</h2>
-
-<p>
-<code>runtime/geo_provider.py</code> introduce la strategia ibrida
-<em>Google Places primary + Photon fallback</em>: la copertura POI di Google
-&egrave; superiore a OSM nei casi reali osservati (caso live: una farmacia
-non indicizzata in OSM, presente in Google), ma Photon resta per i casi in
-cui Google non risponde o la chiave non &egrave; configurata. La policy
-&laquo;OSS-first&raquo; resta invariata per le altre capacit&agrave;: per
-i POI il vantaggio di copertura giustifica l'eccezione.
-</p>
-
-<h2 id="cap11_2_4">11.2.4 Multi-user step 1: actor resolver</h2>
-
-<p>
-<code>runtime/actor_resolver.py</code> implementa lo step 1 di 
-(host + guest model): ogni pairing espone un campo <code>actor</code>;
-nuovi pairing ricevono auto-assign <code>host</code> (al primo) o
-<code>guest_&lt;id6&gt;</code> (ai successivi). L'<code>actor</code> &egrave;
-propagato end-to-end nel turno (log, scratchpad, vaglio, scheduler) ed
-&egrave; il discriminante delle decisioni per-utente (telos, autonomy,
-quote di scheduler). Il router di approvazione resta single-channel
-nello step 1; la separazione canale-per-utente entrer&agrave; nello step 2.
-</p>
-
-<h2 id="cap11_2_5">11.2.5 i18n DB centralizzato</h2>
-
-<p>
-<code>runtime/i18n.py</code> + il daemon timer
-<code>runtime/i18n_translator.py</code> centralizzano i testi user-facing e
-i prompt LLM-targeted in un unico DB SQLite
-(<code>~/.local/share/metnos/i18n.sqlite</code>). Auto-invalidation per
-<code>source_hash</code>: un testo cambia &rarr; tutte le traduzioni vengono
-rigenerate. Due template di prompt: uno per testi user-facing (tier middle,
-batch), uno per prompt LLM-targeted (tier wise, 1-per-call per qualit&agrave;).
-CLI admin in <code>runtime/admin/i18n_cli.py</code>. Tutti i moduli runtime
-caricano le stringhe via <code>i18n.t(code, lang, **kwargs)</code>; sostituisce
-le tabelle locali in <code>runtime/messages.py</code> (che resta per i
-template interni non user-facing).
-</p>
-
-<h2 id="cap11_2_7">11.2.7 Multilinguismo (tre livelli, vince l'ultimo)</h2>
-
-<p>
-Il sottosistema multilingua di Metnos vive su <strong>tre livelli</strong>
-distinti: (1) prompt LLM in <code>runtime/prompts/&lt;lang&gt;/&lt;role&gt;.j2</code>
-(MiniJinja, 26 ruoli); (2) description executor nei manifest
-TOML (tabella <code>[description].&lt;lang&gt;</code> + companion
-<code>manifest.lang_state.json</code>); (3) messaggi rivolti all'utente in
-<code>i18n.sqlite</code> (118 chiavi standard + 79 description migrate).
-La regola di allineamento &egrave; semplice: vince l'ultimo. Nessuna lingua
-&egrave; canonica per costruzione, prevale quella modificata pi&ugrave; di recente
-(<code>version_hash</code> + <code>source_hash</code> per risorsa). Il
-daemon notturno <code>i18n_translator.run_loop</code> rigenera candidati
-in <code>_pending/</code>; <code>metnos-prompts review</code> mostra il
-diff, <code>mark-synced</code> promuove. Aggiungere una nuova lingua &egrave;
-un comando: <code>metnos-prompts add-language fr</code>. Vedi documento
-canonico <a href="multilang.html">multilang</a>.
-</p>
-
-<h2 id="cap11_2_6">11.2.6 config.py + logging_setup centralizzati</h2>
-
-<p>
-<code>runtime/config.py</code> espone 24 costanti tunable e 11 path con
-override via env (<code>METNOS_INSTALL_ROOT</code>, <code>METNOS_USER_DATA</code>,
-<code>METNOS_LOG_LEVEL</code>, ecc.). <code>runtime/logging_setup.py</code>
-configura un logger root <code>metnos.*</code> con stdout + file rotating.
-Bonifica accompagnata: 54 occorrenze di <code>except: pass</code> sostituite
-da <code>log.warning + pass</code> in 17 moduli. Resta nel TODO la migrazione
-dei 19 path legacy e 9 costanti residue verso <code>config.C</code>.
-</p>
-
-<h1 id="cap12">12. Quando le cose vanno male</h1>
-
-<p>
-Cinque modi tipici di rottura, tutti coperti da test permanenti nel framework di test.
-</p>
-
-<table>
-<tr><th>Cosa si rompe</th><th>Cosa succede</th></tr>
-<tr><td>llama-server non raggiungibile</td><td>Il provider solleva <code>ProviderError</code>; il pianificatore conclude il turno con <code>final_kind=error</code> e messaggio chiaro.</td></tr>
-<tr><td>Executor crasha (eccezione Python non catturata)</td><td>Il subprocess esce con stderr, il runtime restituisce <code>{ok: false, error: "non-JSON output: …; stderr: …"}</code>.</td></tr>
-<tr><td>Codice executor modificato dopo la firma</td><td>Il loader rifiuta in fase di caricamento (digest mismatch). L'executor non entra mai nel catalogo.</td></tr>
-<tr><td>Executor restituisce stdout non-JSON</td><td>Il runtime rileva e restituisce <code>{ok: false, error: "non-JSON output"}</code>.</td></tr>
-<tr><td>Catalog vuoto</td><td>Il turno termina pulito con <code>final_kind=error</code>, message <code>"(catalogo vuoto)"</code>.</td></tr>
-</table>
-
-<p>
-Il principio: <em>non far cadere il sistema; restituire sempre una risposta strutturata</em>, anche quando &egrave; un errore. L'utente capisce, l'LLM nel passo successivo (in multistep) pu&ograve; correggere, gli executor a valle non vedono input strani.
-</p>
-
-<h1 id="cap13">13. Cosa &egrave; rimandato</h1>
-
-<table>
-<tr><th>Funzionalit&agrave;</th><th>Quando entra</th></tr>
-<tr><td>Mode <code>online</code> reale</td><td>Quando si configura un provider Anthropic con API key.</td></tr>
-<tr><td>Mode <code>hybrid</code> con regole di escalation reali</td><td>Quando si decide il vocabolario delle <code>critical_capabilities</code> e si vuole l'auto-routing.</td></tr>
-<tr><td>Vaglio probabilistico (LLM-judge)</td><td>Quando la <code>constitution</code> esiste come riferimento.</td></tr>
-<tr><td>Auto-escalation di tier (fast &rarr; middle &rarr; wise se i passi falliscono)</td><td>Quando esistono almeno due tier diversi configurati e si ha un caso d'uso che lo motiva.</td></tr>
-<tr><td>Differenziazione del prompt per tier (fast/middle/wise) anche con stesso modello</td><td>Quando il caso d'uso richiede pi&ugrave; punti di vista sulla stessa situazione.</td></tr>
-<tr><td>Parallel-tool-call intra-turno</td><td>Quando un caso reale dimostra latency win significativo. <strong>Vincolo binding</strong>.</td></tr>
-<tr><td>Async approval (esecuzione differita con grant per_target durevoli)</td><td>Quando channel + scheduler richiedono interazione asincrona.</td></tr>
-<tr><td>Mnestoma history-driven nel pre-filter (boost dalla storia)</td><td>Quando il mnestoma operativo esiste.</td></tr>
-<tr><td>Embedding (MiniLM locale) nel pre-filter</td><td>Quando il bag-of-words mostra limiti pratici (non ancora osservati in produzione).</td></tr>
-<tr><td>Replay automatico turni orfani da crash</td><td>Quando gli executor saranno garantiti idempotenti.</td></tr>
-<tr><td>Rotazione automatica JSONL</td><td>Quando il volume diventa rilevante.</td></tr>
-</table>
-
-<h2>Note finali</h2>
-
-<p>
-Questo documento descrive cosa il pianificatore fa <em>oggi</em>, validato da test. Le sezioni &laquo;rimandato a&raquo; descrivono cosa ci aspettiamo, non promesse. Quando un'estensione passa, questo doc verr&agrave; aggiornato: piuttosto che speculare su come sar&agrave;, scriviamo cosa funziona.
-</p>
-
-<div style="margin:22px 0;padding:20px;background:#fff;border:1px solid var(--border);border-radius:8px;overflow-x:auto;">
- <svg viewBox="0 0 860 300" role="img" aria-label="Diagramma a cascata del motore: i quattro strati di run_turn">
- <defs>
- <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
- <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/>
- </marker>
- </defs>
- <text x="430" y="22" text-anchor="middle" font-family="Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#1A477A">run_turn &mdash; cascata a quattro strati</text>
- <g font-family="Segoe UI,sans-serif" font-size="12.5">
- <rect x="40" y="45" width="150" height="48" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
- <text x="115" y="68" text-anchor="middle" fill="#1A477A" font-weight="600">L0 fast-path</text>
- <text x="115" y="84" text-anchor="middle" fill="#475569" font-size="10.5">hash + coseno</text>
- <rect x="40" y="115" width="150" height="48" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
- <text x="115" y="138" text-anchor="middle" fill="#14532d" font-weight="600">L1 autopath</text>
- <text x="115" y="154" text-anchor="middle" fill="#475569" font-size="10.5">cluster semantico</text>
- <rect x="40" y="185" width="150" height="48" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
- <text x="115" y="208" text-anchor="middle" fill="#713f12" font-weight="600">L2 validator</text>
- <text x="115" y="224" text-anchor="middle" fill="#475569" font-size="10.5">ri-proposta 1&times;</text>
- <rect x="40" y="255" width="150" height="48" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
- <text x="115" y="278" text-anchor="middle" fill="#4c1d95" font-weight="600">L3 engine</text>
- <text x="115" y="294" text-anchor="middle" fill="#475569" font-size="10.5">proponi+esegui+recupera</text>
- <line x1="115" y1="93" x2="115" y2="113" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
- <line x1="115" y1="163" x2="115" y2="183" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
- <line x1="115" y1="233" x2="115" y2="253" stroke="#64748B" stroke-width="1.5" marker-end="url(#ar)"/>
- </g>
- <g font-family="Segoe UI,sans-serif" font-size="11">
- <text x="210" y="72" fill="#475569">&lt; 5 ms</text>
- <text x="210" y="142" fill="#475569">match cluster</text>
- <text x="210" y="212" fill="#475569">guardia pre-engine</text>
- <text x="210" y="282" fill="#475569">loop ReAct completo</text>
- </g>
- <g font-family="Segoe UI,sans-serif" font-size="11.5">
- <rect x="430" y="60" width="180" height="180" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
- <text x="520" y="80" text-anchor="middle" fill="#1A477A" font-weight="700">risolvi e fermati</text>
- <text x="520" y="104" text-anchor="middle" fill="#475569">il primo strato che</text>
- <text x="520" y="120" text-anchor="middle" fill="#475569">risolve vince</text>
- <line x1="190" y1="69" x2="428" y2="69" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
- <line x1="190" y1="139" x2="428" y2="120" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
- <line x1="190" y1="209" x2="428" y2="160" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
- <line x1="190" y1="279" x2="428" y2="200" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="3,3" marker-end="url(#ar)"/>
- </g>
- </svg>
-</div>
-
-<p>
-Gli strati, dall'alto. I primi due hanno <strong>stato</strong> (imparano dai
-turni passati); gli ultimi due sono <strong>senza stato</strong> (decidono
-sul turno corrente):
-</p>
+<p>Non ogni richiesta richiede una nuova proposta del modello. Il runtime prova in
+ordine percorsi con responsabilit&agrave; diverse:</p>
 
 <ol>
-<li><strong>L0 &mdash; fast-path</strong>: corrispondenza esatta su hash pi&ugrave; una ricerca per coseno tramite l'embedder configurato. Approvato dalla chat col bottone &laquo;approva fast-path&raquo;; vince sull'autopath.</li>
-<li><strong>L1 &mdash; autopath</strong>: corrispondenza semantica di cluster tramite l'embedder configurato, indicizzata sull'hash dell'intento, con punteggio campione/sfidante e TTL sugli anti-autopath.</li>
-<li><strong>L2 &mdash; validator</strong>: una guardia che puo' ri-proporre una volta prima che giri l'engine (attiva di default).</li>
-<li><strong>L3 &mdash; engine</strong>: il loop ReAct completo &mdash; proposer, executor, recovery, terminator. Il selettore <code>METNOS_ENGINE</code> sceglie <code>simple|metis|frontier</code>.</li>
+ <li><strong>Rotte deterministiche ristrette.</strong> Gestiscono casi chiusi come
+ annullamento dell'ultimo turno, alcune risposte di servizio, caricamenti senza
+ testo e ricorrenze riconosciute dalla grammatica dello scheduler.</li>
+ <li><strong>L0, fast path.</strong> Riusa il framework di una richiesta cacheabile
+ gi&agrave; conclusa con esito efficace.</li>
+ <li><strong>L1, autopath.</strong> Riusa un framework generalizzato per un cluster
+ semantico. Un riscontro positivo pu&ograve; confermare un campione; esecuzioni lunghe e
+ ripetute possono creare un campione <em>shadow</em>, distinto da un'approvazione
+ dell'utente.</li>
+ <li><strong>Motore completo.</strong> Estrae o completa l'intento, riduce il
+ catalogo, chiede al proponente un framework, lo valida, lo esegue e, quando &egrave;
+ sicuro, tenta un solo percorso di recupero.</li>
 </ol>
 
+<p>Le foto allegate e le continuazioni di un dialogo portano stato specifico del
+turno e quindi non usano come se nulla fosse un piano cache generico. La
+destinazione remota viene risolta prima dell'instradamento: se il dispositivo nominato &egrave;
+ambiguo o irraggiungibile, il turno si ferma o propone un differimento esplicito.</p>
 
+<h1 id="cap4">4. Ruoli dei modelli e lingua</h1>
+
+<p>I nomi <code>fast</code>, <code>middle</code>, <code>wise</code>,
+<code>creative</code> e <code>frontier</code> indicano ruoli configurabili, non prodotti fissi:</p>
+
+<ul>
+ <li><code>fast</code> serve compiti brevi come estrazione dell'intento, filler e
+ alcune sintesi;</li>
+ <li><code>middle</code> svolge trasformazioni e giudizi intermedi deterministici;</li>
+ <li><code>wise</code> propone framework e affronta le composizioni pi&ugrave; complesse;</li>
+ <li><code>creative</code> formula proposte e testi divergenti con una policy distinta;</li>
+ <li><code>frontier</code> &egrave; facoltativo e viene usato soltanto da percorsi che lo
+ richiedono esplicitamente.</li>
+</ul>
+
+<p>La lingua viene risolta per utente e propagata all'intero turno. Prompt,
+messaggi del runtime, moduli di conferma e risposta finale devono usare quella
+lingua. Il testo di un prompt non deve imporre incidentalmente una lingua diversa:
+ogni famiglia di prompt ha una variante localizzata e, per una nuova lingua, una
+risorsa mancante deve essere rilevata in compilazione o produrre un ripiego
+esplicito, non un miscuglio silenzioso.</p>
+
+<h1 id="cap5">5. Catalogo, insieme dei candidati e riuso dei piani</h1>
+
+<p>Il catalogo unisce executor distribuiti con manifest firmato, capacit&agrave; interne
+e operazioni aggiunte da skill ammesse. Prima della proposta, l'instradamento crea un
+insieme pi&ugrave; piccolo usando intenti, oggetti canonici, fornitori nominati, relazioni fra
+produttori e consumatori e stato di disponibilit&agrave;. Se il segnale &egrave; insufficiente,
+il sistema pu&ograve; lasciare al proponente un catalogo pi&ugrave; ampio.</p>
+
+<p>Un piano L0 o L1 non &egrave; valido per sempre. Alla registrazione conserva due firme:
+quella degli executor usati e quella delle famiglie di candidati pertinenti. A ogni
+riuso il runtime le confronta con il catalogo corrente. Un executor modificato o
+rimosso, una nuova alternativa rilevante o un cambio dell'epoca di instradamento rende il
+piano un miss e forza una nuova decisione.</p>
+
+<p>Il riuso riguarda il framework operativo, non una scheda personale inserita nel
+pianificatore. Preferenze chiuse e contesto dell'utente vengono applicati nei punti
+previsti dal runtime e nella generazione finale; non contaminano una chiave cache
+condivisa con prosa biografica.</p>
+
+<h1 id="cap6">6. Framework ed executor</h1>
+
+<p>Il proponente restituisce un <code>Framework</code>: una lista finita di passi,
+eventuali filler e un terminale. Ogni passo indica un nome presente nel catalogo e
+argomenti conformi allo schema dell'executor. Il framework non contiene codice
+arbitrario da eseguire.</p>
+
+<pre><code>{
+  "steps": [
+    {"tool": "find_urls", "args": {"query": "..."}},
+    {"tool": "read_urls_html", "args": {"from_step": 1}},
+    {"tool": "create_files_doc", "args": {"from_step": 2, "path": "Rapporti/..."}},
+    {"tool": "final_answer", "args": {}}
+  ]
+}</code></pre>
+
+<p>Prima dell'esecuzione il validatore controlla executor, tipi, campi obbligatori,
+alternative <code>requires_one_of</code>, riferimenti a passi precedenti e
+placeholder. Le guardie strutturali riallineano l'ordine e possono richiedere una
+nuova proposta se manca un'azione esplicitamente richiesta. L'executor condiviso
+risolve poi gli argomenti e applica la stessa sequenza a piani freschi e piani
+riusati.</p>
+
+<h1 id="cap7">7. Passaggio dei dati fra i passi</h1>
+
+<p>I dati non vengono copiati nel prompt come testo libero quando esiste un
+riferimento strutturale:</p>
+
+<ul>
+ <li><code>from_step: N</code> passa la raccolta prodotta dal passo N al consumer;</li>
+ <li><code>${stepN.field}</code> passa un singolo campo;</li>
+ <li><code>${RUNTIME:key}</code> inserisce un valore controllato dal runtime, come
+ l'identificatore del turno;</li>
+ <li><code>${FILLER:name}</code> risolve un breve valore mancante entro lo schema
+ dichiarato.</li>
+</ul>
+
+<p>Una destinazione esplicita scritta dall'utente prevale su un riferimento generico a un
+passo precedente. Il runtime conserva inoltre l'autorit&agrave; dei dati: un percorso
+prodotto su un dispositivo remoto non diventa un percorso locale soltanto perch&eacute;
+un filtro intermedio &egrave; stato calcolato sul server.</p>
+
+<h1 id="cap8">8. Pause, riprese e stato del turno</h1>
+
+<p>Un turno pu&ograve; fermarsi con <code>ask</code> o <code>needs_inputs</code> quando manca
+una scelta, una credenziale, una posizione o un consenso. Il dialogo persistito
+contiene il proprietario, il canale, la conversazione e il callback ammesso. Alla
+risposta, il runtime ricostruisce i passi gi&agrave; completati come stato
+<code>done</code> e pianifica soltanto il seguito; non riesegue automaticamente le
+mutazioni precedenti.</p>
+
+<p>Le osservazioni necessarie ai passi successivi restano nello stato strutturato del
+turno. Il sottosistema <a href="scratchpad.html">scratchpad</a> offre inoltre una
+lettura controllata dei risultati persistiti o voluminosi. Un allegato caricato
+entra come input virtuale consumabile, non come azione gi&agrave; eseguita.</p>
+
+<h1 id="cap9">9. Policy, Vaglio e consenso</h1>
+
+<p>La sicurezza non dipende dalla buona volont&agrave; del proponente. Il catalogo limita ci&ograve;
+che pu&ograve; essere nominato; schema e sandbox limitano gli argomenti e l'ambiente; la
+policy classifica l'azione; il <a href="vaglio.html">Vaglio</a> applica guardia e
+giudizio; la richiesta di consenso sospende la sequenza prima della mutazione quando
+necessario.</p>
+
+<p>L'approvazione &egrave; legata a utente, turno, azione, argomenti e destinazione. Il
+testo &egrave; localizzato e il canale usa il proprio controllo nativo: modulo nella chat
+web, pulsanti o scelta compatibile in Telegram. Frequenza, formulazione della
+richiesta e silenzio non creano da soli un permesso persistente.</p>
+
+<h1 id="cap10">10. Guardie operative</h1>
+
+<ul>
+ <li>un tetto limita il numero dei passi proposti; soltanto normalizzatori interni
+ validati possono dichiarare una sequenza canonica pi&ugrave; lunga;</li>
+ <li>passi indipendenti possono essere eseguiti in parallelo solo se il contratto
+ dell'executor li dichiara idonei e il preflight conserva le stesse guardie;</li>
+ <li>una mutazione che riceve una raccolta vuota non viene presentata come successo;</li>
+ <li>un piano cache con argomenti mutanti non fondati nella richiesta corrente
+ viene scartato;</li>
+ <li>dopo un effetto gi&agrave; commesso, un errore non attiva una ripetizione automatica
+ che potrebbe duplicarlo;</li>
+ <li>annullamento, destinazione remota, input di massa e output finale attraversano
+ guardie dedicate prima della consegna.</li>
+</ul>
+
+<h1 id="cap11">11. Tracce e osservabilit&agrave;</h1>
+
+<p>Il <code>TurnLog</code> registra identificatori del turno e della conversazione,
+utente, canale, lingua, intenti, origine del piano, passi, tempi, esiti, effetti
+contabili, destinazione reale e stato finale. Credenziali riconosciute vengono
+oscurate prima della persistenza; gli allegati sono esposti al client tramite URL
+firmati o trasferimento del canale, non come percorsi grezzi.</p>
+
+<p>La traccia consente di ricostruire quali executor siano stati invocati e quali
+controlli abbiano deciso. Non trasforma per&ograve; una spiegazione generata dal modello in
+prova: per verificare un fatto servono l'osservazione strutturata e, quando
+applicabile, la sorgente originaria. La pagina
+<a href="observability.html">osservabilit&agrave;</a> descrive viste, metriche e limiti di
+retention.</p>
+
+<h2 id="cap11_2">11.1 Attivit&agrave; programmate</h2>
+
+<p>Lo scheduler builtin esegue lavori di manutenzione registrati e alimenta i cicli
+di osservazione e proposta previsti dal prodotto. Le attivit&agrave; create dall'utente
+sono invece richieste persistenti con proprietario, pianificazione, comando,
+canale di consegna e cronologia degli esiti. Al momento dello scatto il corpo viene
+eseguito come un nuovo turno dello stesso utente: non eredita privilegi da un altro
+canale o da un altro account.</p>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Ogni luned&igrave; alle 8 cerca le mail non lette dell'account lavoro e mandami un
+riepilogo su Telegram.&raquo; Se la ricorrenza &egrave; riconosciuta in modo univoco, Metnos
+registra l'attivit&agrave;; altrimenti chiede i dati mancanti invece di eseguire subito il
+corpo della richiesta.</p>
+
+<h1 id="cap12">12. Errori e recupero</h1>
+
+<p>Gli errori strutturali sono classificati come strumento errato, argomenti errati,
+input mancante o fuori ambito. Quando non ci sono effetti gi&agrave; prodotti, il recupero
+pu&ograve; proporre una sola alternativa e la sottopone alla stessa finalizzazione del
+piano originale. Un errore operativo, come rete assente, rate limit o servizio non
+disponibile, non viene mascherato cambiando arbitrariamente executor.</p>
+
+<p>Se l'executor restituisce opzioni strutturate che l'utente pu&ograve; decidere, il
+runtime le trasforma in un modulo. Se il recupero non &egrave; sicuro, la risposta dichiara
+il limite e conserva gli eventuali risultati parziali. Non deve affermare che una
+scrittura, un invio o una cancellazione siano riusciti quando i contatori degli
+effetti dicono il contrario.</p>
+
+<h1 id="cap13">13. Che cosa &egrave; deterministico</h1>
+
+<table>
+<thead><tr><th>Parte</th><th>Garanzia corretta</th></tr></thead>
+<tbody>
+<tr><td>Catalogo, firme e cache validity</td><td>Controlli deterministici rispetto allo stato osservato.</td></tr>
+<tr><td>Validatore, guardie, passaggio dei dati ed esecuzione</td><td>Regole di codice ripetibili; gli esiti esterni possono cambiare.</td></tr>
+<tr><td>Riuso valido della cache</td><td>Riprende lo stesso framework, dopo averlo sottoposto ai controlli correnti.</td></tr>
+<tr><td>Intent e nuova proposta</td><td>Uscita probabilistica del modello, circoscritta da vocabolario, insieme dei candidati, grammatica quando abilitata e validazione successiva.</td></tr>
+<tr><td>Sintesi finale</td><td>Pu&ograve; variare nella forma; deve restare fondata sugli esiti registrati.</td></tr>
+</tbody>
+</table>
+
+<p>Metnos rende quindi governabili i confini fra proposta ed esecuzione. Non promette
+che una nuova pianificazione linguistica sia identica a ogni invocazione, n&eacute; che un
+servizio esterno restituisca sempre gli stessi dati.</p>
+
+<p>Riferimenti nel codice:</p>
+<ul>
+ <li><code>runtime/agent_runtime.py</code>: contesto del turno, canali, dialoghi e bridge verso il motore;</li>
+ <li><code>runtime/engine/dispatch.py</code>: cascata L0/L1, proponente, validatore, guardie, recupero e terminatore;</li>
+ <li><code>runtime/engine/types.py</code> e <code>runtime/engine/executor.py</code>: framework, riferimenti e semantica di esecuzione;</li>
+ <li><code>runtime/engine/cache_validity.py</code>: firme dei piani cache;</li>
+ <li><code>runtime/recurring_tasks.py</code> e <code>runtime/scheduler_v2/</code>: attivit&agrave; utente e lavori builtin;</li>
+ <li><code>runtime/turn_events.py</code>: persistenza e lettura delle tracce.</li>
+</ul>
 
 </body>
 </html>

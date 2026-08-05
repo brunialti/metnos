@@ -3,20 +3,20 @@
 <head>
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
- <title>Metnos &mdash; lifecycle dei cambiamenti</title>
- <meta name="description" content="Lifecycle unificato dei cambiamenti al sistema Metnos: un solo oggetto change_intent, un solo state machine (proposed→accepted→applied→observed→finalized), una sola UI /admin/changes.">
- <meta name="keywords" content="change_intent, lifecycle, proposals, promotions, telos, introvertiva, synt, fastpath, /admin/changes, metnos">
+ <title>Metnos &mdash; ciclo di vita delle modifiche</title>
+ <meta name="description" content="Come Metnos raccoglie, sottopone a decisione, applica, osserva e annulla le modifiche al sistema.">
+ <meta name="keywords" content="Metnos, change intent, modifiche, approvazione, applicazione, rollback">
  <meta name="author" content="Roberto Brunialti">
  <meta name="robots" content="index, follow, max-snippet:-1">
  <link rel="canonical" href="https://metnos.com/it/architecture/lifecycle">
  <link rel="alternate" hreflang="it" href="https://metnos.com/it/architecture/lifecycle">
  <link rel="alternate" hreflang="en" href="https://metnos.com/en/architecture/lifecycle">
- <link rel="alternate" hreflang="x-default" href="https://metnos.com/it/architecture/lifecycle">
-<link rel="stylesheet" href="/assets/metnos.css">
+ <link rel="alternate" hreflang="x-default" href="https://metnos.com/en/architecture/lifecycle">
+ <link rel="stylesheet" href="/assets/metnos.css">
 </head>
 <body>
 
-<nav class="lang-switch" aria-label="Language">
+<nav class="lang-switch" aria-label="Lingua">
 <a href="/it/architecture/lifecycle.html" class="active" hreflang="it" lang="it">IT</a>
 <span class="sep">&middot;</span>
 <a href="/en/architecture/lifecycle.html" hreflang="en" lang="en">EN</a>
@@ -25,297 +25,149 @@
 <div style="background:#fff;border-bottom:1px solid #d0d7de;padding:10px 0;font-size:14px;position:sticky;top:0;z-index:10;margin-bottom:20px;">
  <div style="max-width:960px;margin:0 auto;padding:0 20px;display:flex;justify-content:space-between;">
  <a href="../index.html" style="color:#1a477a;text-decoration:none;font-weight:500;">&larr; Indice documentazione</a>
- <span style="color:#8e8e93;">Architettura &rsaquo; <strong style="color:#1a1a1a;">lifecycle</strong></span>
+ <span style="color:#8e8e93;">Guida all'architettura &rsaquo; <strong style="color:#1a1a1a;">modifiche</strong></span>
  </div>
 </div>
 
 <div class="title-page">
  <h1>Metnos</h1>
- <div class="subtitle"><code>lifecycle</code> &mdash; un solo oggetto per ogni cambiamento al sistema</div>
- <div class="meta">
- Architettura canonica.<br>
- Moduli: <code>runtime/change_intents.py</code>,
- <code>change_intent_adapters/</code>,<br>
- <code>change_applier.py</code>, <code>change_observer.py</code>,
- <code>change_rollback.py</code>.<br>
- <br>
- Pubblico: chi opera il cruscotto <code>/admin/changes</code>,<br>chi vuole capire dove va una proposta dopo l'accettazione.
- </div>
+ <div class="subtitle">Ciclo di vita delle modifiche</div>
+ <div class="meta">Un oggetto comune per proporre, decidere, applicare e osservare un cambiamento.</div>
 </div>
+
+<p class="lead">Le sorgenti che suggeriscono un miglioramento non modificano
+direttamente Metnos. Traducono il suggerimento in un <code>change_intent</code>, cio&egrave;
+un record tipizzato con origine, obiettivo, motivazione, punteggio e stato. La pagina
+<code>/admin/changes</code> presenta questi record e mantiene visibile il loro percorso.</p>
 
 <div class="toc">
 <h2>Indice</h2>
 <ol>
- <li><a href="#cap1">L'oggetto unico: <code>change_intent</code></a></li>
- <li><a href="#cap2">Il ciclo di vita in 5 atti</a></li>
- <li><a href="#cap3">Le 6 sorgenti come adapter</a></li>
- <li><a href="#cap4">I 3 daemon: materializer, applier, observer</a></li>
- <li><a href="#cap5">Esempio dall'inizio alla fine: <code>find_recipes</code></a></li>
- <li><a href="#cap6">Riferimenti operativi</a></li>
+ <li><a href="#cap1">L'oggetto comune</a></li>
+ <li><a href="#cap2">Stati e transizioni</a></li>
+ <li><a href="#cap3">Sorgenti attive</a></li>
+ <li><a href="#cap4">Materializzazione, applicazione e osservazione</a></li>
+ <li><a href="#cap5">Cosa viene applicato</a></li>
+ <li><a href="#cap6">Esempio in linguaggio naturale</a></li>
+ <li><a href="#cap7">Garanzie e limiti</a></li>
 </ol>
 </div>
 
- <figure>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 180" width="100%" preserveAspectRatio="xMidYMid meet" style="font-family:'Segoe UI',Calibri,sans-serif;font-size:11px;">
- <defs><marker id="lc-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#1A477A"/></marker></defs>
- <rect x="10" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="90" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">proposto</text>
-<rect x="188" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="268" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">accettato</text>
-<rect x="366" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="446" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">applicato</text>
-<rect x="544" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="624" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">osservato</text>
-<rect x="722" y="60" width="160" height="50" rx="8" fill="#D9E4F0" stroke="#1A477A"/>
-<text x="802" y="90" text-anchor="middle" fill="#1A477A" font-weight="700">finalizzato</text>
-<line x1="170" y1="85" x2="186" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="348" y1="85" x2="364" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="526" y1="85" x2="542" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
-<line x1="704" y1="85" x2="720" y2="85" stroke="#1A477A" stroke-width="2" marker-end="url(#lc-arr)"/>
+<h1 id="cap1">1. L'oggetto comune</h1>
 
- <rect x="10" y="135" width="880" height="32" rx="8" fill="#FEF3C7" stroke="#B7791F" stroke-dasharray="3 3"/>
- <text x="450" y="155" text-anchor="middle" fill="#92400E" font-size="10">rami laterali: staged &middot; rejected &middot; failed &middot; rolled_back</text>
-</svg>
-<figcaption>Figura 1 &mdash; Ciclo di vita di un cambiamento: una sola macchina a stati, dalla proposta alla finalizzazione, con rami laterali (in stage / respinto / fallito / annullato).</figcaption>
-</figure>
-
-<h1 id="cap1">1. L'oggetto unico: <code>change_intent</code></h1>
-
-<p>
-Tutti i cambiamenti al sistema convergono in un singolo schema in <code>~/.local/state/metnos/change_intents.sqlite</code>:
-</p>
-
-<pre><code>id UUID
-fingerprint sha256[:32] # deterministico per dedup fra sorgenti
-state PROPOSED|ACCEPTED|APPLIED|OBSERVED|FINALIZED|
- STAGED|REJECTED|FAILED|ROLLED_BACK
-origin_family telos|introvertiva|synt|user
-origin_module scamper|dedupe|request_new_executor|feedback|...
-intent_kind create_executor|extend_executor|dedupe_executors|
- reject_pattern
-intent_target nome executor o pattern
-intent_summary 1 frase rivolta all'utente
-intent_body dict kind-specific (arg_name, tools_sequence,...)
-score 0&ndash;1 normalizzato fra sorgenti
-confidence 0&ndash;1
-convergence N. sorgenti che propongono cose equivalenti
-decision_* registro accept/reject/stage utente
-applied_effect diff applicato + rollback_blob path
-observed_metrics metriche periodo di grazia
-</code></pre>
-
-<p>
-<strong>Il fingerprint NON include <code>origin_family</code></strong>: cos&iacute;
-due sorgenti diverse che propongono cose equivalenti (es. telos:scamper +
-synt sullo stesso executor) confluiscono in <em>un solo record</em>, con
-<code>convergence</code> incrementato.
-</p>
-
-<h1 id="cap2">2. Il ciclo di vita in 5 atti</h1>
-
-<pre style="font-family:monospace;background:#f8f9fa;padding:1rem;border-left:4px solid #2563eb">
- +-----------+
- | PROPOSED | &larr; qualche sorgente l'ha generata
- +-----------+
- / | \
- / | \
- (utente) | (utente decide piu' tardi)
- / | \
- v v v
-+----------+ +--------+ +---------+
-| ACCEPTED | | STAGED | |REJECTED |
-+----------+ +--------+ +---------+
- | (daemon applier)
- v
-+----------+ +----------+
-| APPLIED | ----&gt; | FAILED | (nuovo tentativo possibile)
-+----------+ +----------+
- | (daemon observer, periodo di grazia 7gg di default)
- v
-+----------+ +-------------+
-| OBSERVED | ----&gt; | ROLLED_BACK | (fisico, per kind)
-+----------+ +-------------+
- |
- v
-+-----------+
-| FINALIZED | &larr; consolidato, rimosso dalle viste default
-+-----------+
-</pre>
-
-<p>Da QUALSIASI stato si pu&ograve; transitare a <code>ROLLED_BACK</code>
-(via di fuga per la revisione umana). Da <code>REJECTED</code> &egrave; possibile
-<em>riproporre</em> (transizione a <code>PROPOSED</code>).</p>
-
-<h1 id="cap3">3. Le 4 sorgenti vive come adapter</h1>
-
-<p>Ogni sorgente ha un adapter in <code>runtime/change_intent_adapters/</code>
-che proietta i propri record in <code>ChangeIntent</code>, senza effetti
-collaterali. Dal 2/7/2026 (ADR 0180, regola dei livelli) gli adapter attivi
-sono <strong>quattro</strong>:</p>
+<p>I record sono conservati in
+<code>~/.local/state/metnos/change_intents.sqlite</code>. I campi principali sono:</p>
 
 <table>
-<thead><tr><th>Sorgente</th><th>Adapter</th><th>Kind output</th></tr></thead>
+<thead><tr><th>Gruppo</th><th>Contenuto</th></tr></thead>
 <tbody>
-<tr><td>telos (10 lenti, teste di cluster)</td><td><code>telos.py</code></td>
- <td>create_executor (new_valid) / extend_executor (parametric) /
- materialize_pipeline (existing_pipeline)</td></tr>
-<tr><td>introvertiva (solo dedupe)</td><td><code>introvertiva.py</code></td>
- <td>dedupe_executors (le shape storiche generalize/specialize restano
- leggibili, i generatori sono ritirati)</td></tr>
-<tr><td>synt (request_new_executor)</td><td><code>synt.py</code></td>
- <td>create_executor (importato come FINALIZED se gi&agrave; installato)</td></tr>
-<tr><td>turn_feedback utente</td><td><code>user_feedback.py</code></td>
- <td>reject_pattern (solo se &ge; 2 rifiuti)</td></tr>
+<tr><td>Identit&agrave;</td><td><code>id</code> e impronta deterministica per deduplicare proposte equivalenti.</td></tr>
+<tr><td>Provenienza</td><td>Famiglia, modulo sorgente, identificatore originario e data di scoperta.</td></tr>
+<tr><td>Intento</td><td>Tipo chiuso, obiettivo, sintesi, motivazione e payload specifico.</td></tr>
+<tr><td>Priorit&agrave;</td><td>Punteggio, confidenza e numero di sorgenti convergenti.</td></tr>
+<tr><td>Decisione</td><td>Persona, azione, motivazione e istante della decisione.</td></tr>
+<tr><td>Esito</td><td>Effetto applicato, metriche osservate, errore o dati di ripristino.</td></tr>
 </tbody>
 </table>
 
-<p>L'adapter telos proietta le <strong>teste di cluster</strong>
-(<code>recompose_clusters</code>) e non le righe grezze: circa 27 intenti al
-posto di 500, punteggio = <code>cluster_score</code> (allineamento massimo +
-bonus di convergenza fra lenti distinte), e SOLO i <code>name_status</code>
-azionabili — il rumore (proposte ridondanti o con nome invalido) non arriva
-alla vista.</p>
+<p>L'impronta non contiene la famiglia d'origine. Se due sorgenti descrivono la
+stessa modifica, l'upsert pu&ograve; riunirle in un record e aumentare la convergenza senza
+duplicare l'azione. Il punteggio resta un criterio di ordinamento, non
+un'autorizzazione.</p>
 
-<p><strong>Adapter ritirati</strong> (2/7/2026, «se un meccanismo non serve
-non serve»): <code>canonical.py</code> (lo store <code>canonical_query_log</code>
-era scritto dal planner storico, disattivato — il suo ruolo &egrave; assorbito
-dal fastpath L0) e <code>multi_tool.py</code> (lo store
-<code>multi_tool_paths</code> non ha pi&ugrave; uno scrittore — le catene reali
-le impara L1 autopath dai turni). I moduli restano nella storia di git; le
-righe residue sono state respinte con ragione esplicita.</p>
+<h1 id="cap2">2. Stati e transizioni</h1>
 
-<p>Raccolta unificata delle proposte (<code>runtime/proposals_unified.py</code>):
-<code>SUPPORTED_SOURCES = ("telos", "introvertiva")</code> &mdash; le altre
-sorgenti scrivono direttamente senza passare per il centro di raccolta.</p>
+<pre><code>proposed  --accetta--&gt; accepted --applica--&gt; applied
+    |                         |                    |
+    |                         +--errore--&gt; failed  +--misura--&gt; observed
+    +--rimanda--&gt; staged                              |
+    +--rifiuta--&gt; rejected                            +--ok--&gt; finalized
+                                                     +--problema--&gt; rolled_back</code></pre>
 
-<p>Normalizzazione del punteggio per famiglia:</p>
-<ul>
-<li>telos: <code>cluster_score</code> (allineamento + convergenza), gi&agrave; 0&ndash;1</li>
-<li>introvertiva: <code>n_seen*0.05 + last_uses*0.005</code> (formula storica)</li>
-<li>synt: <code>installed</code>=0.8, <code>abandoned</code>=0.3,
-<code>rejected*</code>=0.05</li>
-<li>user reject_pattern: <code>min(0.9, 0.3 + 0.15*n_rejections)</code></li>
-</ul>
+<p>Una proposta rimandata pu&ograve; tornare in valutazione. Un errore pu&ograve; essere
+riprovato oppure rifiutato. Il ripristino &egrave; terminale nel registro e viene eseguito
+fisicamente quando il tipo di modifica lo consente. La macchina a stati impedisce
+passaggi arbitrari: una proposta non pu&ograve; diventare <code>applied</code> senza essere
+prima <code>accepted</code>.</p>
 
-<p><strong>Promozione fastpath</strong>: i cluster fastpath possono essere
-promossi a proposte executor tramite <code>task_fastpath_promotion</code>.
-Le proposte risultanti sono visibili in <code>/admin/changes</code>.</p>
+<h1 id="cap3">3. Sorgenti attive</h1>
 
-<h1 id="cap4">4. I 3 daemon: materializer, applier, observer</h1>
+<p>Il materializzatore interroga quattro adapter senza effetti collaterali:</p>
 
 <table>
-<thead><tr><th>Daemon</th><th>Trigger</th><th>Cosa fa</th></tr></thead>
+<thead><tr><th>Sorgente</th><th>Che cosa pu&ograve; produrre</th></tr></thead>
 <tbody>
-<tr>
- <td><code>change_intent_materialize</code></td>
- <td>daily@01:00</td>
- <td>Concatena gli adapter vivi &rarr; upsert con dedup via fingerprint &rarr; bump convergence.</td>
-</tr>
-<tr>
- <td><code>change_applier</code></td>
- <td>every_10m</td>
- <td>Legge ACCEPTED, applica fisicamente per kind. Cap 20/fire.</td>
-</tr>
-<tr>
- <td><code>change_observer</code></td>
- <td>daily@03:15</td>
- <td>Legge APPLIED+OBSERVED, calcola metriche, transition a FINALIZED o ROLLED_BACK.</td>
-</tr>
+<tr><td>Telos</td><td>Creazione o estensione di executor e prova controllata di una sequenza, a partire dalle teste di gruppi azionabili.</td></tr>
+<tr><td>Introvertiva</td><td>Deduplica di executor; conserva inoltre gli stati gi&agrave; registrati che devono restare consultabili.</td></tr>
+<tr><td>Synt</td><td>Richieste di creazione di executor e relativi stati terminali o ancora in corso.</td></tr>
+<tr><td>Riscontri dell'utente</td><td>Proposta di rifiutare uno schema ricorrente dopo almeno due riscontri negativi coerenti.</td></tr>
 </tbody>
 </table>
 
-<p>Applier handler per kind:</p>
-<ul>
-<li><strong>create_executor</strong>: invoca la pipeline <code>synth_request</code>
-esistente (~150s a cronometro). Idempotente: scorciatoia se gi&agrave; nel catalogo.</li>
-<li><strong>extend_executor</strong>: <code>change_applier_extend.py</code>.
-Append della sezione <code>[args.properties.&lt;arg&gt;]</code> in fondo al
-manifest TOML, backup pre-modifica in
-<code>~/.local/share/metnos/rollback_blobs/&lt;sha8&gt;-&lt;name&gt;.toml</code>,
-re-sign via <code>sign.sign_executor</code>.</li>
-<li><strong>dedupe_executors</strong>: alias setup in
-<code>executor_aliases.json</code> + deprecate del duplicato in
-<code>executor_stats.db</code>.</li>
-<li><strong>materialize_pipeline</strong>: <em>esegue la pipeline una
-volta</em> come turno reale (la <code>suggested_query</code> della proposta,
-dentro <code>scheduled_turn_scope</code>: valgono il gate di consenso per
-l'invio e le guardie del vaglio). L'esito onesto finisce in
-<code>applied_effect</code>; se il turno funziona, L0/L1 imparano da soli dal
-turno vero — niente depositi paralleli (ADR 0180).</li>
-<li><strong>cache_pattern</strong>: <code>UPDATE canonical_query_log SET
-state='active'</code> (kind storico: la sorgente canonical &egrave; ritirata,
-l'handler resta per le righe accettate in passato).</li>
-<li><strong>reject_pattern</strong>: append in
-<code>~/.local/share/metnos/rejected_patterns.jsonl</code> (agent_runtime
-lo legge come HARD CONSTRAINT del planner).</li>
-</ul>
+<p>Gli adapter traducono strutture diverse nello stesso schema. Non applicano la
+modifica e non trasformano una deduzione automatica in consenso umano.</p>
 
-<p>L'observer verifica le metriche dopo <code>applied_at</code> e applica un periodo di grazia (default
-7 giorni, env <code>METNOS_CHANGE_GRACE_DAYS</code>). Inneschi del ripristino:</p>
-<ul>
-<li>create/extend_executor: <code>last_call_ok=False</code> con &ge;3 chiamate;
-deprecato dall'executor_ager.</li>
-<li>materialize_pipeline: il turno eseguito &egrave; giudicato come ogni
-altra applicazione (finale in errore &rarr; FAILED gi&agrave; all'apply);
-cache_pattern (storico): stato derivato a <code>demoted</code>.</li>
-<li>dedupe_executors: alias rimosso dal file.</li>
-<li>reject_pattern: nuovi riscontri &#10007; dopo l'applicazione per la stessa
-(canonical_query, tools).</li>
-</ul>
-
-<p>Il ripristino fisico &egrave; delegato a <code>change_rollback.py</code> (per kind:
-archivia la dir synth, ripristina il manifest dal blob + re-sign, rimuovi l'alias,
-declassa lo stato, rimuovi la riga jsonl).</p>
-
-<h1 id="cap5">5. Esempio dall'inizio alla fine: <code>find_recipes</code></h1>
-
-<p>Il motore SCAMPER di telos suggerisce: &laquo;Estendi <code>find_files</code> con
-<code>kind=recipe</code> per far corrispondere i file <code>.md</code> in
-<code>~/Documents/Recipes</code>.&raquo;</p>
+<h1 id="cap4">4. Materializzazione, applicazione e osservazione</h1>
 
 <table>
-<thead><tr><th>Atto</th><th>Stato</th><th>Dove succede</th></tr></thead>
+<thead><tr><th>Attivit&agrave;</th><th>Frequenza predefinita</th><th>Responsabilit&agrave;</th></tr></thead>
 <tbody>
-<tr><td>1. Sistema crea ChangeIntent</td><td>PROPOSED</td>
- <td>materializer @01:00 da telos_proposals.jsonl</td></tr>
-<tr><td>2. Utente clicca <code>&#10003;</code></td><td>ACCEPTED</td>
- <td>POST <code>/admin/changes/{id}/accept</code></td></tr>
-<tr><td>3. Applier modifica manifest + re-sign</td><td>APPLIED</td>
- <td>change_applier @every_10m</td></tr>
-<tr><td>4. 5 chiamate <code>find_files(kind=recipe)</code>, tutte OK</td>
- <td>OBSERVED</td><td>change_observer @03:15 quando age &ge; 0</td></tr>
-<tr><td>5. Dopo 7gg senza problemi</td><td>FINALIZED</td>
- <td>change_observer al settimo passaggio</td></tr>
+<tr><td><code>change_intent_materialize</code></td><td>Ogni giorno alle 01:00</td><td>Legge gli adattatori, elimina i duplicati in base all'impronta e aggiorna l'archivio.</td></tr>
+<tr><td><code>change_applier</code></td><td>Ogni 10 minuti</td><td>Elabora fino a 20 record accettati e registra l'effetto o l'errore.</td></tr>
+<tr><td><code>change_observer</code></td><td>Ogni giorno alle 03:15</td><td>Misura fino a 200 modifiche applicate o in osservazione e decide se finalizzarle o ripristinarle.</td></tr>
 </tbody>
 </table>
 
-<p>Se invece dopo l'applicazione l'utente preme <code>&#10007;</code> in chat su una
-risposta che usa il nuovo arg, l'observer vede new_rejects&ge;2 per la query
-interessata e transita a <code>ROLLED_BACK</code> &mdash; ripristino fisico
-del manifest dal blob.</p>
+<p>Il periodo di osservazione predefinito &egrave; di sette giorni ed &egrave;
+configurabile con <code>METNOS_CHANGE_GRACE_DAYS</code>. I criteri dipendono dal tipo:
+salute dell'executor, integrit&agrave; di un alias, risultato del turno usato per provare una
+sequenza o un nuovo riscontro sullo schema rifiutato.</p>
 
-<h1 id="cap6">6. Riferimenti operativi</h1>
+<h1 id="cap5">5. Cosa viene applicato</h1>
+
+<table>
+<thead><tr><th>Tipo</th><th>Effetto corrente</th><th>Ripristino</th></tr></thead>
+<tbody>
+<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica.</td><td>Archivia l'executor sintetizzato.</td></tr>
+<tr><td><code>extend_executor</code></td><td>Estende il manifest, conserva una copia e firma di nuovo l'executor.</td><td>Ripristina il manifest conservato e lo firma di nuovo.</td></tr>
+<tr><td><code>dedupe_executors</code></td><td>Crea un alias e ritira il duplicato solo se la provenienza consente l'operazione.</td><td>Rimuove l'alias e riattiva il duplicato.</td></tr>
+<tr><td><code>materialize_pipeline</code></td><td>Esegue una volta la richiesta proposta come turno reale, con policy e controlli normali.</td><td>Registra il ripristino; il turno non installa un artefatto persistente da rimuovere.</td></tr>
+<tr><td><code>reject_pattern</code></td><td>Aggiunge lo schema approvato al registro dei percorsi da evitare.</td><td>Rimuove la registrazione corrispondente.</td></tr>
+<tr><td><code>cache_pattern</code></td><td>Resta supportato per record compatibili gi&agrave; presenti nell'archivio.</td><td>Retrocede la registrazione associata.</td></tr>
+</tbody>
+</table>
+
+<h1 id="cap6">6. Esempio in linguaggio naturale</h1>
+
+<p><strong>Chiedi a Metnos con una richiesta come quella di questo esempio:</strong>
+&laquo;Mostrami le modifiche al sistema che aspettano una mia decisione e spiegami la
+prima in parole semplici&raquo;.</p>
+
+<p>Le decisioni si prendono nella chat web. Se stai parlando con Metnos da Telegram,
+apri la chat web, entra nell'area di amministrazione e scegli
+<strong>Modifiche</strong>; il percorso tecnico &egrave; <code>/admin/changes</code>. La pagina
+permette di filtrare per stato, sorgente e tipo e offre soltanto le transizioni ammesse
+per ciascun record.</p>
+
+<h1 id="cap7">7. Garanzie e limiti</h1>
 
 <ul>
-<li><strong>UI</strong>: <a href="https://metnos.com/admin/changes">/admin/changes</a>
-con 9 schede per stato. Scheda di default=proposed, cap 30 righe (sovrascrivibile con
-<code>?limit=100|500</code>).</li>
-<li><strong>API JSON</strong>: stesso endpoint con header
-<code>Accept: application/json</code> (no <code>text/html</code>).</li>
-<li><strong>Smoke test</strong>: <code>python3 -m pytest runtime/tests/test_change_*.py -v</code>
-(55 test).</li>
-<li><strong>Materializer dry-run</strong>:
-<code>python3 -m runtime.jobs.change_intent_materialize</code> (idempotente).</li>
-<li><strong>Inspezione DB</strong>:
-<code>sqlite3 ~/.local/state/metnos/change_intents.sqlite</code>.</li>
-<li><strong>Audit JSONL</strong>:
-<code>~/.local/share/metnos/audit/change_{intent_materialize,applier,observer}.jsonl</code>.</li>
+ <li>L'accettazione &egrave; una decisione esplicita attribuita all'utente amministratore;
+ un punteggio alto non la sostituisce.</li>
+ <li>L'applicatore &egrave; idempotente per tipo e conserva una traccia locale; un errore porta
+ a <code>failed</code>, non a un successo apparente.</li>
+ <li>Il ripristino dipende dal tipo. Per una sequenza eseguita come turno reale non &egrave;
+ possibile annullare effetti esterni gi&agrave; avvenuti; restano validi i normali gate di
+ consenso prima dell'esecuzione.</li>
+ <li>I testi provenienti da generatori automatici aiutano il triage, ma devono essere
+ letti insieme a origine, payload ed effetti registrati.</li>
 </ul>
 
-<hr>
-<p style="text-align:center;color:#8e8e93;font-size:11pt">
- &mdash; allineato con il codice.
-</p>
+<p>Riferimenti nel codice: <code>runtime/change_intents.py</code>,
+<code>runtime/change_intent_adapters/</code>,
+<code>runtime/jobs/change_intent_materialize.py</code>,
+<code>runtime/change_applier.py</code>, <code>runtime/change_observer.py</code>,
+<code>runtime/change_rollback.py</code> e <code>runtime/http_routes_admin.py</code>.</p>
 
 </body>
 </html>

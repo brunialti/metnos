@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Serve myclaw docs on port 8810 (LAN-wide).
+"""Serve Metnos documentation on port 8810 (LAN-wide).
 
 Convenzione porte:
 - suprastructure docs → 8800
-- myclaw docs         → 8810
+- Metnos documentation → 8810
 """
 import http.server
 import os
@@ -12,7 +12,7 @@ PORT = 8810
 DIR = os.path.dirname(os.path.abspath(__file__))
 
 os.chdir(DIR)
-print(f"myclaw docs: http://0.0.0.0:{PORT}/  (serving {DIR})")
+print(f"Metnos docs: http://0.0.0.0:{PORT}/  (serving {DIR})")
 http.server.HTTPServer(
     ("0.0.0.0", PORT),
     http.server.SimpleHTTPRequestHandler,
