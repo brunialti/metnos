@@ -6,7 +6,9 @@ prompt, dentro chiama un LLM, ritorna testo. Per non duplicare logica
 di routing in ogni nuovo executor, esponiamo qui la funzione minima:
 
     from llm_helpers import call_llm
-    text, meta = call_llm(query, prompt, tier='middle', max_tokens=600)
+    from llm_workloads import tier_for
+    text, meta = call_llm(
+        query, prompt, tier=tier_for("entries.extract"), max_tokens=600)
 
 `query` puo' essere stringa, dict, lista (verra' serializzata in JSON
 compatto) o gia' una stringa formattata.
@@ -14,10 +16,10 @@ compatto) o gia' una stringa formattata.
 `prompt` e' il system prompt: il mestiere semantico del chiamante (es.
 "sintetizza per importanza", "traduci in inglese", "estrai entita'").
 
-`tier` è VIRTUALE: 'fast' / 'middle' / 'wise'. Default 'middle' per
-sintesi/classificazione/scrittura breve. Il modello FISICO dietro ogni
-tier (datato) vive solo in `llm_router.py::DEFAULT_TIERS`; qui si parla
-solo di tier.
+`tier` è VIRTUALE e appartiene al vocabolario chiuso di `llm_router`.
+I consumer di produzione lo ricavano normalmente da `llm_workloads`; il
+default `fast` resta solo per compatibilita' dell'helper generico. Il modello
+FISICO dietro ogni tier vive solo nella configurazione centrale.
 
 Capability implicita: `llm:call` (l'executor che usa questo helper
 deve dichiararla nel manifest, quando il loader le fara' rispettare).
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -40,7 +43,6 @@ from llm_provider import LlamaCppProvider, make_provider_from_spec
 from llm_router import resolved_tier_spec, tier_endpoint as _tier_endpoint
 
 
-_UNSET = object()
 _OUTPUT_POLICIES = frozenset({"raw", "public"})
 _PUBLIC_FORBIDDEN_MARKERS = (
     "<think", "</think", "<|channel", "<channel|>", "INLINE_FORM:",
@@ -69,7 +71,13 @@ def _serialize_query(q: Any, max_chars: int = 12000) -> str:
     txt = json.dumps(q, ensure_ascii=False)
     if len(txt) <= max_chars:
         return txt
-    return txt[:max_chars] + "\n... [truncated]"
+    # An arbitrary cut turns structured input into invalid JSON and can
+    # silently remove trailing provenance while leaving a plausible prefix.
+    # Structured consumers must budget complete fields before this boundary.
+    raise ValueError(
+        "structured LLM payload exceeds max_query_chars "
+        f"({len(txt)} > {max_chars})"
+    )
 
 
 # --- Generazione DETERMINISTICA per costruzione (12/6/2026) ------------------
@@ -93,6 +101,16 @@ _PROC_TIMEOUT_S = int(os.environ.get("METNOS_LLM_PROC_TIMEOUT_S", "240"))
 _END_OF_TEXT_RE = re.compile(r"\s*\[end of text\]\s*$")
 
 
+def _remaining_budget(deadline_at: float | None, cap: float | None = None
+                      ) -> float | None:
+    if deadline_at is None:
+        return cap
+    remaining = deadline_at - time.monotonic()
+    if not math.isfinite(remaining) or remaining <= 0:
+        raise TimeoutError("LLM request deadline exhausted")
+    return remaining if cap is None else min(remaining, cap)
+
+
 def _completion_bin() -> str | None:
     """Risolve il binario llama-completion: env esplicito > PATH > layout
     convenzionale build llama.cpp sotto $HOME (§7.11: niente path assoluti
@@ -107,17 +125,21 @@ def _completion_bin() -> str | None:
     return str(cand) if cand.is_file() else None
 
 
-def _server_model_path(endpoint: str) -> str | None:
+def _server_model_path(endpoint: str, *, deadline_at: float | None = None
+                       ) -> str | None:
     """GGUF servito dal llama-server (GET /props). SoT del modello: la
     generazione deterministica usa LO STESSO modello dei tier §11."""
     try:
-        with urllib.request.urlopen(f"{endpoint}/props", timeout=10) as r:
+        with urllib.request.urlopen(
+                f"{endpoint}/props",
+                timeout=_remaining_budget(deadline_at, 10)) as r:
             return json.loads(r.read().decode("utf-8")).get("model_path") or None
     except Exception:
         return None
 
 
-def _render_chat_prompt(endpoint: str, system: str, user: str) -> str | None:
+def _render_chat_prompt(endpoint: str, system: str, user: str, *,
+                        deadline_at: float | None = None) -> str | None:
     """Prompt renderizzato dal chat template del server (POST
     /apply-template, enable_thinking=false): identico al path HTTP,
     nessun template hardcodato lato Metnos (§7.3)."""
@@ -134,7 +156,8 @@ def _render_chat_prompt(endpoint: str, system: str, user: str) -> str | None:
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json"}, method="POST",
         )
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(
+                req, timeout=_remaining_budget(deadline_at, 15)) as r:
             return json.loads(r.read().decode("utf-8")).get("prompt") or None
     except Exception:
         return None
@@ -142,7 +165,8 @@ def _render_chat_prompt(endpoint: str, system: str, user: str) -> str | None:
 
 def _call_llm_proc(system: str, user: str, *, max_tokens: int,
                    seed: int, endpoint: str | None = None,
-                   meta_out: dict | None = None) -> str | None:
+                   meta_out: dict | None = None,
+                   deadline_at: float | None = None) -> str | None:
     """Generazione byte-deterministica via processo llama-completion
     monouso. Ritorna il testo, o None se il path non e' disponibile
     (il chiamante ricade sul provider HTTP). `endpoint` = llama-server
@@ -154,11 +178,12 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
     binary = _completion_bin()
     if not binary:
         return None
-    endpoint = endpoint or _tier_endpoint("middle")
-    model = _server_model_path(endpoint)
+    endpoint = endpoint or _tier_endpoint("fast")
+    model = _server_model_path(endpoint, deadline_at=deadline_at)
     if not model:
         return None
-    rendered = _render_chat_prompt(endpoint, system, user)
+    rendered = _render_chat_prompt(
+        endpoint, system, user, deadline_at=deadline_at)
     if not rendered:
         return None
     if meta_out is not None:
@@ -181,8 +206,9 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
             "-no-cnv", "-f", tmp_path, "-n", str(max_tokens),
             "--no-display-prompt", "--simple-io",
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=_PROC_TIMEOUT_S, env=env)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True,
+            timeout=_remaining_budget(deadline_at, _PROC_TIMEOUT_S), env=env)
         if proc.returncode != 0:
             return None
         text = _END_OF_TEXT_RE.sub("", proc.stdout or "").strip()
@@ -201,21 +227,18 @@ def call_llm(
     query: Any,
     prompt: str,
     *,
-    tier: str = "middle",
+    tier: str = "fast",
     max_tokens: int = 600,
-    temperature: float | object = _UNSET,
-    think: bool | None | object = _UNSET,
     deterministic: bool = False,
     max_query_chars: int = 12000,
     output_policy: str = "raw",
+    timeout_s: float | None = None,
 ) -> tuple[str, dict]:
     """Chiama il LLM del tier indicato. Ritorna (text, meta).
 
-    Se `temperature` e `think` non sono specificati, vengono risolti dalla
-    policy centrale del tier in `llm_router.resolved_tier_spec`. I chiamanti
-    normali scelgono quindi un livello logico, non parametri del modello.
-    Override espliciti restano riservati a contratti strutturali che li
-    richiedono (per esempio una grammatica chiusa).
+    Temperature, thinking, and reasoning budget are resolved only from the
+    central tier policy. Callers select a logical role; they cannot retain a
+    second decoding profile.
 
     `deterministic=True`: generazione byte-riproducibile via processo
     llama-completion monouso (vedi blocco DETERMINISTICA sopra). Richiede
@@ -226,19 +249,22 @@ def call_llm(
 
     `max_query_chars`: budget di serializzazione del payload (default
     12000). I chiamanti con budget proprio piu' alto (describe_entries,
-    §2.7) DEVONO passarlo, altrimenti il bundle viene troncato qui in
-    silenzio a meta' JSON.
+    §2.7) DEVONO passarlo. Un payload strutturato eccedente viene
+    rifiutato: non viene mai troncato a meta' JSON.
 
     Solleva eccezione se il provider non e' raggiungibile o l'LLM
     risponde vuoto. L'executor chiamante deve gestirla e tradurla in
     una observation `{ok: false, error_code: ERR_EXT_SVC_UNAVAILABLE}`.
     """
+    deadline_at = None
+    if timeout_s is not None:
+        parsed_timeout = float(timeout_s)
+        if not math.isfinite(parsed_timeout) or parsed_timeout <= 0:
+            raise TimeoutError("LLM request deadline exhausted")
+        deadline_at = time.monotonic() + parsed_timeout
     spec = resolved_tier_spec(tier)
-    resolved_temperature = (
-        float(spec.get("temperature", 0.0))
-        if temperature is _UNSET else float(temperature)
-    )
-    resolved_think = spec.get("think") if think is _UNSET else think
+    resolved_temperature = float(spec.get("temperature", 0.0))
+    resolved_think = spec.get("think")
     reasoning_budget = int(spec.get("reasoning_budget") or 0)
     provider_name = str(spec.get("provider") or "")
     endpoint = _tier_endpoint(tier)
@@ -252,7 +278,8 @@ def call_llm(
             _proc_meta: dict = {}
             text = _call_llm_proc(prompt, user_payload,
                                   max_tokens=max_tokens, seed=_seed,
-                                  endpoint=endpoint, meta_out=_proc_meta)
+                                  endpoint=endpoint, meta_out=_proc_meta,
+                                  deadline_at=deadline_at)
             if text is not None:
                 # Il contratto d'uscita vale per QUALUNQUE trasporto: senza
                 # questa normalizzazione un consumer che chiede insieme
@@ -291,8 +318,13 @@ def call_llm(
     }
     if provider_name == "llamacpp" and resolved_think is True:
         call_kwargs["reasoning_budget"] = max(1, reasoning_budget)
+    if deadline_at is not None:
+        call_kwargs["request_timeout_s"] = _remaining_budget(deadline_at)
+    from llm_telemetry import tier_context
+
     t0 = time.time()
-    r = provider.chat(prompt, user_payload, **call_kwargs)
+    with tier_context(tier):
+        r = provider.chat(prompt, user_payload, **call_kwargs)
     latency_ms = int((time.time() - t0) * 1000)
     # Single response-normalization and policy point.  Future
     # provider-neutral post-processing belongs here, not in every consumer.

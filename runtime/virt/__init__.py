@@ -4,11 +4,12 @@ Tre facciate config-driven, stile `llm_router` (factory, NIENTE registry/DI):
 
     from virt import get_embedder, get_llm, get_vlm
     get_embedder("text").embed_texts([...])   # BGE-M3 (o SigLIP "image", o http)
-    get_llm("middle").chat(system, user).text  # delega a llm_router
+    get_llm("fast", level="procedural").chat(system, user).text
     get_vlm()                                  # spec config del VLM :8081
 
-Cambiare modello = editare `~/.config/metnos/{embedding,vlm}_tiers.toml` (il LLM
-ha già `llm_tiers.toml`). Mai il codice. I default uguagliano la realtà attuale.
+LLM e VLM si configurano dalla pagina Modelli; il backend di embedding non si
+cambia dalla UI: richiede una migrazione verificata e la ricostruzione degli
+indici. I default uguagliano la realtà attuale.
 """
 from __future__ import annotations
 
@@ -34,6 +35,13 @@ DEFAULT_VLM = {
         "provider": "llamacpp", "model": "qwen3vl-2b",
         "base_url": "http://127.0.0.1:8081",
         "timeout_s": 60, "max_edge": 1024, "max_tokens": 512,
+        # Synchronous VLM work is deliberately bounded independently from
+        # the number of entries produced by an upstream filesystem step.
+        # This prevents a directory listing from turning into hundreds of
+        # serial model calls while still allowing an operator to tune the
+        # policy from the Virt administration surface.
+        "max_images_per_request": 8,
+        "request_budget_s": 45,
     },
 }
 
@@ -104,17 +112,24 @@ def get_local_embedder(role: str = "text"):
     return obj
 
 
-def get_llm(role: str = "middle"):
-    """LLMProvider per tier ("fast"/"middle"/"wise"/"frontier"). Delega a
-    `llm_router` — che È già la factory config-driven da `llm_tiers.toml`."""
+def get_llm(role: str = "fast", *, level: str | None = None):
+    """LLMProvider for a canonical tier and optional ``fast`` level.
+
+    The closed vocabulary and concrete config-driven binding are owned by
+    :mod:`llm_router`; callers normally select it through ``llm_workloads``.
+    """
     from llm_router import LLMRouter
-    return LLMRouter().provider(role)
+    return LLMRouter().provider(role, level=level)
 
 
 def get_vlm(role: str = "default") -> dict:
-    """Spec config del VLM (provider, model, base_url, timeout_s, max_edge,
-    max_tokens) da `vlm_tiers.toml`. Il calcolo immagine vive nell'executor
-    immagini; qui si virtualizza la CONFIG (swap modello/endpoint senza codice)."""
+    """Spec config del VLM da ``vlm_tiers.toml``.
+
+    Oltre al binding e ai parametri del modello, la spec contiene i limiti del
+    lavoro sincrono (``max_images_per_request`` e ``request_budget_s``). Il
+    calcolo immagine vive nei consumatori; qui si virtualizza soltanto la
+    configurazione, così modello, endpoint e limiti cambiano senza codice.
+    """
     return tiers.spec("vlm", role, DEFAULT_VLM)
 
 
@@ -124,7 +139,8 @@ def get_vlm(role: str = "default") -> dict:
 _vlm_started: dict = {}
 
 
-def ensure_vlm_up(role: str = "default", *, wait_s: int = 35) -> bool:
+def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
+                  deadline_at: float | None = None) -> bool:
     """Avvia il server VLM via `scripts/vlm_server.sh` se non gia' in piedi e
     non gia' tentato in questo processo. Ritorna True se l'endpoint risponde
     /health entro `wait_s`, False altrimenti (il chiamante decide il fallback).
@@ -132,7 +148,9 @@ def ensure_vlm_up(role: str = "default", *, wait_s: int = 35) -> bool:
     Idempotente per (processo, role): un solo tentativo di start; le chiamate
     successive ritornano lo stato dell'health corrente. Endpoint e path-script
     sono config-driven: base_url da `get_vlm(role)`, override script via env
-    `METNOS_VLM_SERVER_SH`. Deterministico, no LLM."""
+    `METNOS_VLM_SERVER_SH`. Se ``deadline_at`` è fornito, start, health check
+    e attesa condividono quel deadline monotono: il lazy start non può quindi
+    oltrepassare il budget del chiamante. Deterministico, no LLM."""
     import os
     import time
     import urllib.error as _ue
@@ -143,9 +161,18 @@ def ensure_vlm_up(role: str = "default", *, wait_s: int = 35) -> bool:
     base_url = (spec.get("base_url") or "http://127.0.0.1:8081").rstrip("/")
     health_url = base_url + "/health"
 
+    def _remaining(cap_s: float) -> float:
+        cap = max(0.0, float(cap_s))
+        if deadline_at is None:
+            return cap
+        return max(0.0, min(cap, float(deadline_at) - time.monotonic()))
+
     def _health_ok(timeout: float = 2.0) -> bool:
+        bounded_timeout = _remaining(timeout)
+        if bounded_timeout <= 0:
+            return False
         try:
-            with _u.urlopen(health_url, timeout=timeout) as h:
+            with _u.urlopen(health_url, timeout=bounded_timeout) as h:
                 return h.status == 200
         except (_ue.URLError, _ue.HTTPError, OSError, TimeoutError):
             return False
@@ -163,16 +190,24 @@ def ensure_vlm_up(role: str = "default", *, wait_s: int = 35) -> bool:
     if not os.path.exists(helper):
         return False
     import subprocess
+    start_timeout = _remaining(45)
+    if start_timeout <= 0:
+        return False
     try:
         r = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
-                           timeout=45, capture_output=True, text=True)
+                           timeout=start_timeout,
+                           capture_output=True, text=True)
         if r.returncode != 0:
             return False
     except (subprocess.TimeoutExpired, OSError):
         return False
-    deadline = wait_s
-    for _ in range(deadline):
+    wait_deadline = time.monotonic() + max(0.0, float(wait_s))
+    if deadline_at is not None:
+        wait_deadline = min(wait_deadline, float(deadline_at))
+    while time.monotonic() < wait_deadline:
         if _health_ok():
             return True
-        time.sleep(1)
+        sleep_s = min(1.0, wait_deadline - time.monotonic())
+        if sleep_s > 0:
+            time.sleep(sleep_s)
     return False

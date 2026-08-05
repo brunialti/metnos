@@ -26,16 +26,22 @@ class HttpEmbedder:
         self._model = model
         self._timeout = timeout_s
 
-    def embed_texts(self, texts: list[str]) -> "np.ndarray":
+    def embed_texts(self, texts: list[str], *,
+                    timeout_s: float | None = None) -> "np.ndarray":
         import httpx
         import numpy as np
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
+        timeout = self._timeout if timeout_s is None else min(
+            float(self._timeout), float(timeout_s))
         r = httpx.post(self._url, json={"model": self._model, "input": list(texts)},
-                       timeout=self._timeout)
+                       timeout=timeout)
         r.raise_for_status()
         rows = [d["embedding"] for d in r.json().get("data", [])]
         return np.asarray(rows, dtype=np.float32)
 
     def embed_query(self, text: str) -> "np.ndarray":
         return self.embed_texts([text])[0]
+
+    def embed_query_bounded(self, text: str, *, timeout_s: float) -> "np.ndarray":
+        return self.embed_texts([text], timeout_s=timeout_s)[0]

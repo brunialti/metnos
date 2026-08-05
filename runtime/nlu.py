@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""nlu — centralized phrase->structured-JSON extraction (schema-constrained LLM).
+"""nlu — centralized phrase->structured-JSON extraction (grammar-constrained LLM).
 
-One spec, all languages: a single JSON-schema FRAME constrains the OUTPUT; the
+One spec, all languages: a single JSON grammar constrains the OUTPUT; the
 input in ANY language is parsed by the multilingual model. Drop-in replacement
 for the pre-wired detection regex (ordering / time-window / recurrence /
-count / visualize). Deterministic (§7.9: temp 0 + fixed seed); the JSON is
-valid by construction (constrained decoding).
+count / visualize). The central router supplies the generation policy; the
+JSON is valid by construction (constrained decoding).
 
 INERT BY DEFAULT. The gate `METNOS_NLU` makes rollout first-class and
 regression-proof — nothing changes behavior until explicitly enabled:
@@ -14,7 +14,7 @@ regression-proof — nothing changes behavior until explicitly enabled:
                         behavior stays the fallback (collect agreement, live, 0 risk).
     llm              -> adapters return the frame; fallback only if the model is down.
 
-Adding a slot = one schema field + one 2-line adapter (see bottom). The prompt
+Adding a slot = one grammar field + one 2-line adapter (see bottom). The prompt
 is English (language-independent function), imperative, pattern-oriented
 (placeholders, never copy-able literals).
 """
@@ -22,17 +22,15 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.request
 from collections import OrderedDict
 from typing import Callable, Optional
 
 import i18n as _i18n
-from llm_router import tier_endpoint
+from virt import get_llm
 from logging_setup import get_logger
 
 log = get_logger("metnos.nlu")
 
-_SEED = int(os.environ.get("METNOS_LLM_SEED", "42"))
 _CACHE_CAP = 256
 _cache: "OrderedDict[tuple, Optional[dict]]" = OrderedDict()
 
@@ -42,28 +40,19 @@ def _gate() -> str:
 
 
 # ── one spec: the semantic frame (language-independent OUTPUT) ───────────────
-SCHEMA = {
-    "type": "object", "additionalProperties": False,
-    "properties": {
-        "ordering": {
-            "type": "object", "additionalProperties": False,
-            "properties": {
-                "mode": {"type": "string", "enum": ["none", "sort", "group"]},
-                "key": {"type": "string"},
-                "desc": {"type": "boolean"}},
-            "required": ["mode", "key", "desc"]},
-        "time_window": {"type": "string"},
-        "recurrence": {
-            "type": "object", "additionalProperties": False,
-            "properties": {"every": {"type": "string"},
-                           "at": {"type": "string"}},
-            "required": ["every", "at"]},
-        "count_intent": {"type": "boolean"},
-        "visualize_intent": {"type": "boolean"},
-    },
-    "required": ["ordering", "time_window", "recurrence",
-                 "count_intent", "visualize_intent"],
-}
+# The response constraint belongs to this extraction operation; model,
+# endpoint, seed and decoding policy remain wholly owned by the LLM router.
+# The fixed field order makes this compact and keeps the JSON shape strict.
+NLU_GRAMMAR = r'''
+root ::= ws "{" ws "\"ordering\"" ws ":" ws ordering ws "," ws "\"time_window\"" ws ":" ws string ws "," ws "\"recurrence\"" ws ":" ws recurrence ws "," ws "\"count_intent\"" ws ":" ws boolean ws "," ws "\"visualize_intent\"" ws ":" ws boolean ws "}" ws
+ordering ::= "{" ws "\"mode\"" ws ":" ws mode ws "," ws "\"key\"" ws ":" ws string ws "," ws "\"desc\"" ws ":" ws boolean ws "}"
+recurrence ::= "{" ws "\"every\"" ws ":" ws string ws "," ws "\"at\"" ws ":" ws string ws "}"
+mode ::= "\"none\"" | "\"sort\"" | "\"group\""
+boolean ::= "true" | "false"
+string ::= "\"" chars "\""
+chars ::= ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))*
+ws ::= [ \t\n\r]*
+'''
 
 INSTRUCTION = (
     "Extract NLU slots from a user phrase in ANY language. Explicit slots only; "
@@ -86,29 +75,19 @@ INSTRUCTION = (
 
 
 def _extract(q: str) -> Optional[dict]:
-    """One constrained, deterministic round-trip. None on any failure."""
-    payload = {
-        "model": "local", "temperature": 0, "seed": _SEED, "max_tokens": 200,
-        "chat_template_kwargs": {"enable_thinking": False},
-        "response_format": {"type": "json_schema",
-                            "json_schema": {"name": "nlu", "schema": SCHEMA,
-                                            "strict": True}},
-        "messages": [{"role": "system", "content": INSTRUCTION},
-                     {"role": "user", "content": q}],
-    }
-    url = tier_endpoint("fast").rstrip("/") + "/v1/chat/completions"
-    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json"})
+    """One constrained router round-trip. None on any failure."""
     try:
-        resp = json.load(urllib.request.urlopen(req, timeout=30))
-        return json.loads(resp["choices"][0]["message"]["content"])
+        result = get_llm("fast", level="procedural").chat(
+            INSTRUCTION, q, max_tokens=200, grammar=NLU_GRAMMAR,
+        )
+        return json.loads(result.text)
     except Exception as ex:  # model down / invalid JSON -> caller falls back
         log.warning("nlu: extraction failed (%s); falling back", type(ex).__name__)
         return None
 
 
 def frame(query: str) -> Optional[dict]:
-    """Schema-constrained frame, memoized per (query, lang). None if gate is
+    """Grammar-constrained frame, memoized per (query, lang). None if gate is
     off/regex or the model is unavailable. One call shared by all adapters."""
     q = (query or "").strip()
     if not q or _gate() in ("off", "regex"):

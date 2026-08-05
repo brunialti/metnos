@@ -10,6 +10,7 @@ related:
   - 0106  # fast tier bench PROMOTE_FAIL (verdict empirico)
   - 0142  # consult_frontier tier-map (Haiku/Sonnet/Opus — unchanged)
   - 0144  # supranet consolidation .33
+  - 0207  # fast-level logical vocabulary; binding centralization retained
 supersedes:
   - 0044
 ---
@@ -175,7 +176,7 @@ Non toccati:
   valido. Non si supersede; si interpreta in chiave 0146.
 - ADR 0142 (consult_frontier): la mappa Haiku/Sonnet/Opus è distinta
   e non tocca i tier dell'agente.
-- Bench JSONL storici sotto `decisions/synt_stress/`: data records,
+- Bench JSONL storici sotto `tests/stress/synt/`: data records,
   immutabili.
 
 ## Consequences

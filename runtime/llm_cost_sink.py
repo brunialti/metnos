@@ -70,10 +70,14 @@ def _sink(rec: dict) -> None:
         log.info("LLM_USAGE %s", json.dumps(row, ensure_ascii=False, sort_keys=True))
     except Exception:  # noqa: BLE001
         pass
-    # 2) JSONL append-only durabile (riusa la primitiva §7.2).
+    # 2) JSONL generazionale durabile e bounded (primitiva §7.2).
     try:
-        from audit_jsonl import append_jsonl
-        append_jsonl(_default_path(), row)
+        from audit_jsonl import append_bounded_jsonl
+        max_mb = int(os.environ.get("METNOS_LLM_COST_LOG_MAX_MB", "16"))
+        backups = int(os.environ.get("METNOS_LLM_COST_LOG_BACKUPS", "12"))
+        append_bounded_jsonl(
+            _default_path(), row, max_bytes=max_mb * 1024 * 1024,
+            backup_count=backups)
     except Exception:  # noqa: BLE001 — metering best-effort
         pass
 

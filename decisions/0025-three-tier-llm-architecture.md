@@ -2,13 +2,17 @@
 id: 0025
 title: Three-tier LLM architecture (fast / middle / wise)
 date: 2026-04-26
-status: accepted
+status: superseded
 area: runtime
 related:
   - 0026
   - 0027
   - 0044
+  - 0207
 ---
+
+> Superseded by ADR 0207. This record remains the historical origin of tier
+> virtualization; the current vocabulary has six workload contracts.
 
 ## Context
 

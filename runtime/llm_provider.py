@@ -21,6 +21,7 @@ Decisioni post-probe (26/4/2026 ciclo finale POC):
     - LlamaCppProvider striiba i marker <|channel>thought ... <channel|> del modello locale
 """
 import json
+import math
 import os
 import re
 import time
@@ -86,6 +87,20 @@ class ProviderError(Exception):
     pass
 
 
+def _request_timeout(value, default: float) -> float:
+    """Normalize an optional caller budget without changing legacy defaults."""
+
+    if value is None:
+        return float(default)
+    try:
+        timeout = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ProviderError("request timeout budget exhausted")
+    return timeout
+
+
 class OllamaProvider:
     """Provider Ollama HTTP API (deprecato post-ADR 0146).
 
@@ -112,7 +127,8 @@ class OllamaProvider:
         self.endpoint = endpoint
         self.think = think
 
-    def chat(self, system, user, *, max_tokens=512, temperature=0, think=None):
+    def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
+             request_timeout_s=None):
         payload = {
             "model": self.model,
             "stream": False,
@@ -123,13 +139,16 @@ class OllamaProvider:
             ],
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        res = self._call_chat(payload, expect_tools=False)
+        res = self._call_chat(
+            payload, expect_tools=False,
+            request_timeout_s=request_timeout_s)
         _telemetry.record(provider="ollama", model=self.model,
                           system=system, user=user, result=res, kind="chat")
         return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
-                        max_tokens=512, temperature=0, think=None):
+                        max_tokens=512, temperature=0, think=None,
+                        request_timeout_s=None):
         """
         tools: list[dict] in formato OpenAI/Ollama function-calling
             {"type": "function", "function": {"name", "description", "parameters"}}
@@ -147,12 +166,14 @@ class OllamaProvider:
             "tools": tools,
             "options": {"num_predict": max_tokens, "temperature": temperature},
         }
-        res = self._call_chat(payload, expect_tools=True)
+        res = self._call_chat(
+            payload, expect_tools=True,
+            request_timeout_s=request_timeout_s)
         _telemetry.record(provider="ollama", model=self.model,
                           system=system, user=user, result=res, kind="tools")
         return res
 
-    def _call_chat(self, payload, expect_tools):
+    def _call_chat(self, payload, expect_tools, *, request_timeout_s=None):
         # ADR 0121: sanitize surrogates pre-serialization (vedi LlamaCppProvider).
         body = _encode_payload(payload)
         req = urllib.request.Request(
@@ -161,7 +182,8 @@ class OllamaProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=_request_timeout(request_timeout_s, 300)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.URLError as e:
             raise ProviderError(f"ollama unreachable: {e}") from e
@@ -341,7 +363,7 @@ class LlamaCppProvider:
 
     def chat(self, system, user, *, max_tokens=512, temperature=0, think=None,
              reasoning_budget=1024, grammar: str | None = None,
-             seed: int | None = None):
+             seed: int | None = None, request_timeout_s=None):
         """think semantics (allineato a suprastructure/openai_compat):
             False  → enable_thinking=False, niente reasoning budget. Risposta
                      immediata. Ideale per stage procedurali (lookup, schema).
@@ -383,11 +405,13 @@ class LlamaCppProvider:
         if grammar is not None:
             payload["grammar"] = grammar
         return self._call(payload, expect_tools=False,
-                          grammar_mode=grammar is not None)
+                          grammar_mode=grammar is not None,
+                          request_timeout_s=request_timeout_s)
 
     def chat_with_tools(self, system, user, tools, history=None, *,
                         max_tokens=2048, temperature=0, think=None,
-                        reasoning_budget=512, grammar: str | None = None):
+                        reasoning_budget=512, grammar: str | None = None,
+                        request_timeout_s=None):
         """Chat con tool-use. Due modalita':
 
         1. **Native tool_call protocol** (default, `grammar=None`):
@@ -452,7 +476,8 @@ class LlamaCppProvider:
                 "grammar": grammar,
             }
             return self._call(payload, expect_tools=True,
-                              grammar_mode=True)
+                              grammar_mode=True,
+                              request_timeout_s=request_timeout_s)
         enable_thinking = bool(think)
         payload = {
             "model": self.model,
@@ -465,9 +490,12 @@ class LlamaCppProvider:
         }
         if enable_thinking:
             payload["reasoning_budget"] = reasoning_budget
-        return self._call(payload, expect_tools=True)
+        return self._call(
+            payload, expect_tools=True,
+            request_timeout_s=request_timeout_s)
 
-    def _call(self, payload, expect_tools, *, grammar_mode: bool = False):
+    def _call(self, payload, expect_tools, *, grammar_mode: bool = False,
+              request_timeout_s=None):
         # ADR 0120: inject id_slot per slot affinity. llama-server passa
         # la richiesta direttamente allo slot N bypassando LCP-similarity.
         if self.id_slot is not None and "id_slot" not in payload:
@@ -487,7 +515,8 @@ class LlamaCppProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.URLError as e:
             raise ProviderError(f"llama-server unreachable at {self.endpoint}: {e}") from e
@@ -572,23 +601,8 @@ class LlamaCppProvider:
 
 def _read_env_var_from_files(var_name, candidate_paths):
     """Cerca VAR=value in una lista di file env-style, prima riga vince."""
-    for raw_path in candidate_paths:
-        p = os.path.expanduser(raw_path)
-        if not os.path.exists(p):
-            continue
-        try:
-            with open(p, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith("#"):
-                        continue
-                    if line.startswith(f"{var_name}="):
-                        v = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        if v:
-                            return v
-        except Exception:
-            continue
-    return None
+    from env_file import read_first
+    return read_first(var_name, candidate_paths)
 
 
 def _read_api_key_from_store(domain: str) -> str | None:
@@ -685,7 +699,8 @@ class AnthropicProvider:
                 "~/.config/metnos/anthropic.env (chmod 600)."
             )
 
-    def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None):
+    def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None,
+             request_timeout_s=None):
         self._require_key()
         payload = {
             "model": self.model,
@@ -698,7 +713,8 @@ class AnthropicProvider:
         # modelli noti incompatibili; resta valido per i modelli precedenti.
         if not _temperature_deprecated(self.model):
             payload["temperature"] = temperature
-        data, latency = self._post(payload)
+        data, latency = self._post(
+            payload, request_timeout_s=request_timeout_s)
         text = self._extract_text(data)
         in_toks, out_toks = self._extract_usage(data)
         res = ChatResult(
@@ -710,7 +726,8 @@ class AnthropicProvider:
         return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
-                        max_tokens=2048, temperature=0, think=None):
+                        max_tokens=2048, temperature=0, think=None,
+                        request_timeout_s=None):
         self._require_key()
         anthropic_tools = self._convert_tools(tools)
         messages = []
@@ -726,7 +743,8 @@ class AnthropicProvider:
         }
         if not _temperature_deprecated(self.model):
             payload["temperature"] = temperature
-        data, latency = self._post(payload)
+        data, latency = self._post(
+            payload, request_timeout_s=request_timeout_s)
         text = self._extract_text(data)
         tcs = self._extract_tool_calls(data)
         in_toks, out_toks = self._extract_usage(data)
@@ -812,7 +830,7 @@ class AnthropicProvider:
         _flush_tool_results()
         return out
 
-    def _post(self, payload):
+    def _post(self, payload, *, request_timeout_s=None):
         # ADR 0121: sanitize surrogates pre-serialization. Critico per
         # AnthropicProvider perche' l'API Claude rifiuta esplicitamente
         # JSON con code point U+D800..U+DFFF (RFC 8259).
@@ -829,7 +847,8 @@ class AnthropicProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             raise ProviderError(
@@ -918,7 +937,8 @@ class OpenAIProvider:
         m = self.model.lower()
         return not m.startswith(("gpt-5", "o1", "o3", "o4"))
 
-    def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None):
+    def chat(self, system, user, *, max_tokens=1024, temperature=0, think=None,
+             request_timeout_s=None):
         self._require_key()
         payload = {
             "model": self.model,
@@ -930,13 +950,16 @@ class OpenAIProvider:
         }
         if self._temp_supported():
             payload["temperature"] = temperature
-        res = self._call(payload, expect_tools=False)
+        res = self._call(
+            payload, expect_tools=False,
+            request_timeout_s=request_timeout_s)
         _telemetry.record(provider="openai", model=self.model,
                           system=system, user=user, result=res, kind="chat")
         return res
 
     def chat_with_tools(self, system, user, tools, history=None, *,
-                        max_tokens=2048, temperature=0, think=None):
+                        max_tokens=2048, temperature=0, think=None,
+                        request_timeout_s=None):
         self._require_key()
         messages = [{"role": "system", "content": system}]
         if history:
@@ -951,9 +974,11 @@ class OpenAIProvider:
         }
         if self._temp_supported():
             payload["temperature"] = temperature
-        return self._call(payload, expect_tools=True)
+        return self._call(
+            payload, expect_tools=True,
+            request_timeout_s=request_timeout_s)
 
-    def _call(self, payload, expect_tools):
+    def _call(self, payload, expect_tools, *, request_timeout_s=None):
         # ADR 0121: sanitize surrogates pre-serialization (OpenAIProvider).
         body = _encode_payload(payload)
         req = urllib.request.Request(
@@ -967,7 +992,8 @@ class OpenAIProvider:
         )
         t0 = time.time()
         try:
-            with urllib.request.urlopen(req, timeout=600) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=_request_timeout(request_timeout_s, 600)) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             raise ProviderError(
@@ -1089,8 +1115,13 @@ def make_provider_from_spec(spec):
             endpoint=endpoint or "http://127.0.0.1:8080",
         )
     elif p == "anthropic":
+        model = spec.get("model")
+        if not model:
+            raise ValueError(
+                "anthropic provider requires an explicit model; resolve it "
+                "through llm_router tier configuration")
         return AnthropicProvider(
-            model=spec.get("model", "claude-sonnet-4-6"),
+            model=model,
             api_key=spec.get("api_key"),
         )
     elif p == "openai":
