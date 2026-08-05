@@ -1,6 +1,8 @@
 [Unit]
 Description=Metnos Photon offline geocoder (local, self-hosted)
 After=network.target
+Before=metnos-stack-ready.service
+PartOf=metnos.target
 
 [Service]
 Type=simple
@@ -11,4 +13,4 @@ RestartSec=10
 Environment=PHOTON_DATA_DIR=@PHOTON_DATA@
 
 [Install]
-WantedBy=default.target
+WantedBy=metnos.target

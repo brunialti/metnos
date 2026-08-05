@@ -1,11 +1,12 @@
 [Unit]
 Description=Metnos Telegram channel daemon
 After=metnos-http.service
-PartOf=metnos-http.service
+Before=metnos-stack-ready.service
+PartOf=metnos.target
 
 [Service]
 Type=simple
-ExecStart=@VENV@/bin/python -m runtime.telegram_daemon
+ExecStart=@VENV@/bin/python -m runtime.channels.daemon
 WorkingDirectory=@REPO_DIR@
 Restart=on-failure
 RestartSec=10
@@ -18,4 +19,4 @@ Environment=METNOS_USER_STATE=@STATE_DIR@
 Environment=METNOS_LANG=@LANG@
 
 [Install]
-WantedBy=default.target
+WantedBy=metnos.target

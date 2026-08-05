@@ -36,58 +36,69 @@ TEXT = {
     "it": {
         "title": "L'interfaccia di Metnos",
         "description": (
-            "Come è fatta l'interfaccia di Metnos: una conversazione, due "
-            "canali e le pagine di amministrazione dentro Settings."),
+            "Com'è fatta l'interfaccia di Metnos: due canali di conversazione "
+            "e le pagine di amministrazione dentro Settings."),
         "nav_home": "Metnos",
-        "nav_manual": "Manuale di architettura",
-        "nav_domains": "Reference dei domini",
+        "nav_manual": "Guida all'architettura",
+        "nav_domains": "Riferimento dei domini",
         "nav_tutor": "Come funziona il Tutor",
         "eyebrow": "Guida introduttiva · mappa derivata dal registro delle superfici",
-        "lead": "Una conversazione, e le pagine che la governano",
+        "lead": "Due canali, una sola istanza e le pagine che la governano",
         "intro": (
             "Metnos si usa parlandogli. L'interfaccia esiste per due cose che "
             "la conversazione da sola non fa bene: mostrarti lo stato del "
             "sistema e farti intervenire su ciò che lo governa. Questa pagina "
-            "ti dice come è organizzata, così non devi cercarla a tentoni."),
+            "ti dice com'è organizzata, così non devi cercarla a tentoni."),
         "count_pages": "pagine di amministrazione",
         "count_sections": "sezioni di Settings",
         "contract": (
             "La prosa di questa pagina è curata; l'elenco delle pagine, i loro "
-            "percorsi e le route derivano dal registro delle superfici del "
-            "runtime, quindi non possono invecchiare separatamente dal "
+            "percorsi e gli indirizzi derivano dal registro delle superfici "
+            "del runtime, quindi restano allineati al "
             "prodotto. Qui trovi la mappa, non l'inventario: i campi visibili, "
             "i comandi e le procedure di ogni pagina vivono una volta sola nel "
-            "registro, e te li racconta il Tutor se glieli chiedi."),
-        "jump_channels": "Una conversazione, due canali",
-        "jump_settings": "Come è organizzato Settings",
+            "registro; il Tutor li descrive su richiesta."),
+        "jump_channels": "Due canali, una stessa identità",
+        "jump_settings": "Com'è organizzato Settings",
         "jump_access": "Chi può vedere che cosa",
         "jump_ask": "Se non trovi una pagina",
-        "channels_title": "Una conversazione, due canali",
+        "channels_title": "Due canali, una stessa identità",
         "channels_body": (
             "Puoi parlare con Metnos dalla chat web dell'istanza o da "
-            "Telegram. È la stessa conversazione e la stessa autorità: cambia "
-            "solo come ti raggiunge. La differenza che conta per te è una "
-            "sola: le pagine di amministrazione esistono soltanto nella chat "
+            "Telegram. Ritrovi lo stesso sistema, la stessa identità e le "
+            "stesse autorizzazioni, ma ciascun canale conserva la propria "
+            "conversazione e la propria cronologia. Le pagine di "
+            "amministrazione esistono soltanto nella chat "
             "web. Se stai scrivendo da Telegram e una risposta ti indica un "
             "percorso di Settings, quel percorso va aperto nella chat web, non "
-            "dentro Telegram."),
-        "settings_title": "Come è organizzato Settings",
+            "dentro Telegram. Nel canale web, se apri la chat da un secondo "
+            "dispositivo mentre il primo è attivo, Metnos offre tre scelte: "
+            "«Annulla» non cambia nulla e lascia il nuovo browser in sola "
+            "lettura; «Rendi attiva questa sessione» usa la conversazione già "
+            "presente nel nuovo browser; «Continua la sessione precedente» "
+            "trasferisce al nuovo browser la conversazione del primo "
+            "dispositivo. Le due cronologie non vengono fuse e il browser "
+            "revocato diventa di sola lettura. Queste sessioni e le relative "
+            "cronologie sono indipendenti per ciascun utente: un conflitto "
+            "nella sessione del proprietario non coinvolge un ospite, e "
+            "viceversa."),
+        "settings_title": "Com'è organizzato Settings",
         "settings_body": (
             "Settings è la parte amministrativa della chat web. Si apre su una "
             "panoramica dello stato e si dirama in quattro sezioni. Ogni pagina "
             "si raggiunge come «Settings &gt; Sezione &gt; Pagina» e risponde a "
-            "un indirizzo che comincia per <code>/admin</code>. Il percorso che "
-            "vedi è un'etichetta dell'interfaccia, non un testo tradotto: "
-            "l'ossatura di Settings è resa in italiano anche quando il resto "
-            "della conversazione è in un'altra lingua, quindi il percorso "
-            "resta identico a come lo leggi qui."),
+            "un indirizzo che comincia per <code>/admin</code>. Le etichette "
+            "sono disponibili in italiano e inglese; in una lingua non ancora "
+            "tradotta l'interfaccia mostra la versione inglese. Il Tutor cita "
+            "il percorso nella stessa "
+            "forma in cui compare nell'interfaccia."),
         "root_label": "Panoramica",
         "map_title": "Mappa dell'interfaccia di Metnos",
         "map_desc": (
             "Dai due canali di conversazione a Settings, e da Settings alle "
             "quattro sezioni con le pagine di amministrazione, ognuna con il "
             "proprio indirizzo."),
-        "map_conversation": "la stessa conversazione",
+        "map_conversation": "stessa identità · cronologie separate",
         "map_chip_web": "chat web",
         "map_chip_telegram": "Telegram",
         "map_only_web": "Settings si apre solo qui",
@@ -95,7 +106,7 @@ TEXT = {
         "map_caption": (
             "Mappa di riferimento: percorsi e indirizzi sono quelli del "
             "registro delle superfici. Che cosa mostra ogni pagina, e che cosa "
-            "puoi farci, lo racconta il Tutor sull'istanza che hai davanti."),
+            "puoi farci, lo descrive il Tutor usando l'istanza che hai davanti."),
         "access_title": "Chi può vedere che cosa",
         "access_body": (
             "Le pagine sotto <code>/admin</code> richiedono il ruolo di "
@@ -106,28 +117,34 @@ TEXT = {
             "l'accesso resta riservato all'amministratore."),
         "ask_title": "Se non trovi una pagina",
         "ask_body": (
-            "Non serve memorizzare questa mappa. Chiedi al Tutor dove si "
-            "trova ciò che ti interessa, o che cosa contiene una pagina: "
+            "Non serve memorizzare questa mappa. Chiedi a Metnos con una "
+            "richiesta come quella di questo esempio: «Mostrami quale "
+            "embedder è configurato in Settings &gt; Sistema &gt; Modelli e "
+            "guidami per raggiungere la pagina dalla chat web». Il Tutor "
+            "risponde sia dalla chat "
+            "web sia da Telegram, ma il percorso indicato si apre sempre "
+            "nella chat web. Quando chiedi dove si trova qualcosa, o che "
+            "cosa contiene una pagina, "
             "risponde con il percorso, l'indirizzo e i contenuti attestati "
             "dall'istanza che hai davanti, non da una documentazione generica. "
             "Se la pagina non esiste nella tua installazione te lo dice, "
             "invece di inventarla."),
         "footer": (
             "Pagina generata da <code>scripts/generate_ui_reference.py</code> "
-            "sul registro delle superfici del runtime. Il dettaglio vivo di "
-            "ogni pagina appartiene all'istanza: chiedilo al Tutor."),
+            "a partire dal registro delle superfici del runtime. I dettagli "
+            "correnti di ogni pagina appartengono all'istanza: chiedili al Tutor."),
     },
     "en": {
         "title": "The Metnos interface",
         "description": (
-            "How the Metnos interface is arranged: one conversation, two "
+            "How the Metnos interface is arranged: two conversation "
             "channels, and the administration pages inside Settings."),
         "nav_home": "Metnos",
-        "nav_manual": "Architecture manual",
+        "nav_manual": "Architecture guide",
         "nav_domains": "Domain reference",
         "nav_tutor": "How the Tutor works",
         "eyebrow": "Introductory guide · map derived from the surfaces registry",
-        "lead": "One conversation, and the pages that govern it",
+        "lead": "Two channels, one instance, and the pages that govern it",
         "intro": (
             "You use Metnos by talking to it. The interface exists for the two "
             "things a conversation alone does poorly: showing you the state of "
@@ -142,34 +159,44 @@ TEXT = {
             "product. This is the map, not the inventory: the visible fields, "
             "controls, and procedures of each page live once in the registry, "
             "and the Tutor recounts them if you ask."),
-        "jump_channels": "One conversation, two channels",
+        "jump_channels": "Two channels, one identity",
         "jump_settings": "How Settings is arranged",
         "jump_access": "Who may see what",
         "jump_ask": "When you cannot find a page",
-        "channels_title": "One conversation, two channels",
+        "channels_title": "Two channels, one identity",
         "channels_body": (
             "You can talk to Metnos from the instance's web chat or from "
-            "Telegram. It is the same conversation and the same authority; "
-            "only the delivery changes. One difference matters to you: the "
-            "administration pages exist in the web chat only. If you are "
+            "Telegram. You reach the same system with the same identity and "
+            "authority, but each channel retains its own conversation and "
+            "history. Administration pages exist in the web chat only. If you are "
             "writing from Telegram and an answer points you to a Settings "
-            "path, open that path in the web chat, not inside Telegram."),
+            "path, open that path in the web chat, not inside Telegram. On "
+            "the web channel, if you open the chat on a second device while "
+            "the first one is active, Metnos offers three choices: Cancel "
+            "changes nothing and leaves the new browser read-only; Make this "
+            "session active uses the conversation already present in the new "
+            "browser; Continue the previous session transfers the first "
+            "device's conversation to the new browser. The two histories are "
+            "not merged, and the revoked browser becomes read-only. These "
+            "sessions and their histories are independent for each user: an "
+            "owner session conflict does not involve a guest, and vice versa."),
         "settings_title": "How Settings is arranged",
         "settings_body": (
             "Settings is the administrative part of the web chat. It opens on "
             "a status overview and branches into four sections. Every page is "
             "reached as “Settings &gt; Section &gt; Page” and answers at an "
-            "address starting with <code>/admin</code>. The path you see is an "
-            "interface label, not translated text: the Settings shell is "
-            "rendered in Italian even when the rest of the conversation is in "
-            "another language, so the path stays exactly as you read it here."),
+            "address starting with <code>/admin</code>. Labels are available "
+            "in Italian and English; in a language not yet translated, the "
+            "interface shows the English version. The Tutor quotes the path "
+            "exactly as it appears in the "
+            "interface."),
         "root_label": "Overview",
         "map_title": "Map of the Metnos interface",
         "map_desc": (
             "From the two conversation channels to Settings, and from Settings "
             "to the four sections with their administration pages, each with "
             "its own address."),
-        "map_conversation": "the same conversation",
+        "map_conversation": "same identity · separate histories",
         "map_chip_web": "web chat",
         "map_chip_telegram": "Telegram",
         "map_only_web": "Settings opens here only",
@@ -188,8 +215,13 @@ TEXT = {
             "access stays reserved to the administrator."),
         "ask_title": "When you cannot find a page",
         "ask_body": (
-            "You do not need to memorize this map. Ask the Tutor where "
-            "something is, or what a page contains: it answers with the path, "
+            "You do not need to memorize this map. Ask Metnos with a request "
+            "like this example: “Show me which embedder is configured under "
+            "Settings &gt; System &gt; Models and guide me there from the web "
+            "chat.” The Tutor "
+            "answers in both the web chat and Telegram, but the path it gives "
+            "you always opens in the web chat. When you ask where something "
+            "is or what a page contains, it answers with the path, "
             "the address, and the contents attested by the instance in front "
             "of you, not by generic documentation. If the page does not exist "
             "in your installation it says so, instead of inventing it."),
@@ -342,7 +374,7 @@ def _map_svg(lang: str) -> str:
         f'<desc id="map-desc">{html.escape(text["map_desc"])}</desc>',
     ]
 
-    # Banda dei canali: la stessa conversazione, due modi di raggiungerla.
+    # Banda dei canali: la stessa identità, con cronologie distinte.
     chip_y = _PAD + 30
     left_x = centre - _CHIP_W - _CHIP_GAP // 2
     right_x = centre + _CHIP_GAP // 2

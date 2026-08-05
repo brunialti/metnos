@@ -18,7 +18,13 @@
 #   scripts/publish-public.sh --incremental -m "…"  # con storia pubblica
 #   scripts/publish-public.sh --check               # solo gate, niente push
 set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+PYTHON="${METNOS_VENV:-${REPO_ROOT}/.venv}/bin/python"
+if [ ! -x "$PYTHON" ]; then
+  echo "ABORT: ambiente Python di Metnos non trovato: $PYTHON" >&2
+  exit 1
+fi
 
 REPO="${METNOS_PUBLIC_REPO:-brunialti/metnos}"
 DEST="dist/metnos-public"
@@ -42,21 +48,25 @@ echo "   file: $(find "$DEST" -type f -not -path '*/.git/*' | wc -l)"
 echo "== 2. CANCELLO DURO anti-PII/secret =="
 fail=0
 # PII reale
-if grep -rlE 'roberto\.brunialti@|mykleos@|@knowcastle\.com|@migadu\.com|/home/roberto/|587627005' "$DEST" 2>/dev/null \
+if grep -rIlE 'roberto\.brunialti@|mykleos@|@knowcastle\.com|@migadu\.com|/home/roberto/|587627005' "$DEST" 2>/dev/null \
    | grep -v 'scrub-scan.sh\|export-public.sh\|publish-public.sh'; then
   echo "   !! PII trovata ^"; fail=1
 fi
 # secret pattern
-if grep -rlE 'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|sk-(ant|proj)?-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' "$DEST" 2>/dev/null; then
+if grep -rIlE 'ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|sk-(ant|proj)?-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----' "$DEST" 2>/dev/null; then
   echo "   !! secret pattern trovato ^"; fail=1
 fi
 # file sensibili per estensione
 if find "$DEST" -type f \( -name '*.env' -o -name '*.age' -o -name '*.key' -o -name '*.pem' -o -name 'google_token.json' -o -name '*client_secret*' \) 2>/dev/null | grep .; then
   echo "   !! file sensibile presente ^"; fail=1
 fi
+# Configurazione del tunnel personale: non fa parte del prodotto pubblico.
+if grep -rIliE 'cloudflared|chat\.metnos\.com|cloudflare.{0,80}tunnel|tunnel.{0,80}cloudflare' "$DEST" 2>/dev/null; then
+  echo "   !! riferimento al tunnel privato trovato ^"; fail=1
+fi
 # il PAT stesso nell'albero
-TOK=$(python3 -c "import sys; sys.path.insert(0,'runtime'); import credentials; d=credentials.load('github'); print((d or {}).get('password',''))" 2>/dev/null || true)
-if [ -n "$TOK" ] && grep -rlF "$TOK" "$DEST" 2>/dev/null | grep .; then
+TOK=$("$PYTHON" -c "import sys; sys.path.insert(0,'runtime'); import credentials; d=credentials.load('github'); print((d or {}).get('password',''))" 2>/dev/null || true)
+if [ -n "$TOK" ] && grep -rIlF "$TOK" "$DEST" 2>/dev/null | grep .; then
   echo "   !! IL TOKEN GITHUB È NELL'ALBERO ^^^"; fail=1
 fi
 if [ "$fail" != 0 ]; then
@@ -112,6 +122,17 @@ else
   write_pub_gitignore "$WC"
   git -C "$WC" add -A
   if git -C "$WC" diff --cached --quiet; then
+    # Un tentativo precedente può avere creato il commit locale ma fallito il
+    # push (per esempio per un'interruzione di rete). In quel caso l'export è
+    # invariato, ma il branch locale è ancora avanti rispetto al tracking ref:
+    # riprendi la pubblicazione invece di dichiararla conclusa.
+    if [ "$(git -C "$WC" rev-list --count origin/main..HEAD)" -gt 0 ]; then
+      echo "   export invariato, riprendo il push del commit locale pendente"
+      git -C "$WC" "${GIT_AUTH[@]}" push -q origin main
+      echo "   ✓ pubblicato su $REPO"
+      echo "   commit: $(git -C "$WC" rev-parse --short HEAD)  ($MODE)"
+      exit 0
+    fi
     echo "   nessuna differenza dal pubblico — niente da pushare"; exit 0
   fi
   git -C "$WC" commit -q -m "$MSG"

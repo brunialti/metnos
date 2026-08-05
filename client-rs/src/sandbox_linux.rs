@@ -19,7 +19,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 #[cfg(unix)]
-use crate::executors::{Capability, CachedExecutor};
+use crate::executors::CachedExecutor;
 
 pub struct Limits {
     pub wall: Duration,
@@ -77,7 +77,7 @@ pub async fn run_sandboxed(
 
     let mut cmd = if use_bwrap {
         let mut c = Command::new("bwrap");
-        for a in bwrap_args(exec, python, shim_dir) {
+        for a in bwrap_args(exec, python, shim_dir, args_json, extra_env) {
             c.arg(a);
         }
         c.arg(python);
@@ -165,7 +165,13 @@ pub async fn run_sandboxed(
 }
 
 #[cfg(unix)]
-fn bwrap_args(exec: &CachedExecutor, python: &Path, shim_dir: &Path) -> Vec<String> {
+fn bwrap_args(
+    exec: &CachedExecutor,
+    python: &Path,
+    shim_dir: &Path,
+    args_json: &str,
+    extra_env: &[(String, String)],
+) -> Vec<String> {
     let mut a: Vec<String> = vec![
         "--die-with-parent".into(),
         "--unshare-pid".into(),
@@ -192,45 +198,35 @@ fn bwrap_args(exec: &CachedExecutor, python: &Path, shim_dir: &Path) -> Vec<Stri
     ro_bind_dir(&mut a, &exec.dir);
     ro_bind_dir(&mut a, shim_dir);
 
+    // Parita' col percorso Windows: config.py e i blob undo vivono nella
+    // radice client-owned annunciata dal runner. Senza questo bind, il client
+    // Linux vedeva METNOS_USER_DATA nell'env ma non nel namespace bwrap.
+    if let Some((_, value)) = extra_env.iter().find(|(key, _)| key == "METNOS_USER_DATA") {
+        let root = PathBuf::from(value);
+        if root.is_dir() {
+            a.push("--bind".into());
+            a.push(root.display().to_string());
+            a.push(root.display().to_string());
+        }
+    }
+
     // Capabilities → bind. fs:read → ro-bind; fs:write → bind (rw); network
     // → --share-net (default e' unshare). code:exec hint ["*"] = nessun bind
     // extra (l'executor usa PATH gia' montato read-only).
-    let mut share_net = false;
-    for cap in &exec.capabilities {
-        apply_capability(&mut a, cap, &mut share_net);
+    let (grants, share_net) = crate::sandbox_common::invocation_grants(
+        &exec.capabilities, args_json);
+    for grant in grants {
+        if !grant.root.exists() {
+            continue;
+        }
+        a.push(if grant.write { "--bind".into() } else { "--ro-bind".into() });
+        a.push(grant.root.display().to_string());
+        a.push(grant.root.display().to_string());
     }
     if !share_net {
         a.push("--unshare-net".into());
     }
     a
-}
-
-#[cfg(unix)]
-fn apply_capability(a: &mut Vec<String>, cap: &Capability, share_net: &mut bool) {
-    let kind = cap.name.split(':').next().unwrap_or("");
-    let mode = cap.name.split(':').nth(1).unwrap_or("");
-    match kind {
-        "network" => *share_net = true,
-        "fs" => {
-            for hint in &cap.hint {
-                // Derivazione hint→radice CONDIVISA con il path Windows (W4.2):
-                // stessa funzione, un solo comportamento (§9.3 mapping bilingue).
-                if let Some(root) = crate::sandbox_common::glob_root(hint) {
-                    if root.exists() {
-                        if mode == "write" {
-                            a.push("--bind".into());
-                        } else {
-                            a.push("--ro-bind".into());
-                        }
-                        a.push(root.display().to_string());
-                        a.push(root.display().to_string());
-                    }
-                }
-            }
-        }
-        // code:exec, mem, ...: nessun bind extra (gia' coperto da SYSTEM_RO).
-        _ => {}
-    }
 }
 
 #[cfg(unix)]
@@ -296,6 +292,30 @@ mod tests {
     use crate::executors::CachedExecutor;
     use std::time::Duration;
 
+    #[test]
+    fn bwrap_binds_client_owned_user_data_rw() {
+        let root = std::env::temp_dir().join(format!(
+            "metnos-shimdata-bind-test-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let exec = CachedExecutor {
+            name: "bind_test".into(),
+            dir: root.clone(),
+            entry: root.join("executor.py"),
+            capabilities: vec![],
+            min_sandbox: "job-object".into(),
+        };
+        let extra = vec![(
+            "METNOS_USER_DATA".to_string(), root.display().to_string())];
+
+        let args = bwrap_args(
+            &exec, Path::new("/usr/bin/python3"), &root, "{}", &extra);
+        let expected = root.display().to_string();
+        assert!(args.windows(3).any(|values| {
+            values == ["--bind", expected.as_str(), expected.as_str()]
+        }));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// §12: al timeout il processo executor DEVE morire davvero (SIGKILL al
     /// process group), non restare appeso. Percorso degradato (bwrap OFF =
     /// il caso rischioso): uno script che scrive un heartbeat su file ogni
@@ -324,6 +344,7 @@ mod tests {
             dir: dir.clone(),
             entry: script.clone(),
             capabilities: vec![],
+            min_sandbox: "job-object".into(),
         };
         let out = run_sandboxed(
             &exec, &python, &dir, "{}", &[],

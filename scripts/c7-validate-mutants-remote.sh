@@ -156,7 +156,7 @@ import agent_runtime
 from loader import load_catalog
 ex = next(e for e in load_catalog() if e.name=='delete_dirs')
 obs = agent_runtime.invoke_executor(
-    ex, {'paths':[sys.argv[1]+'/vuota'], 'if_empty_only': True, 'client':'local'},
+    ex, {'paths':[sys.argv[1]+'/vuota'], 'client':'local'},
     timeout_s=40, turn_id='turn-c7m-del2', actor='host', channel='e2e',
     target_device='c7m-laptop')
 print(json.dumps({'dev': obs.get('_ran_on_device')}))

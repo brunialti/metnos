@@ -3,6 +3,10 @@ Description=Metnos Playwright sidecar (JS-rendering for SPA URLs, ADR 0125)
 Documentation=file:///opt/metnos/decisions/0125-playwright-sidecar.md
 After=network-online.target
 Wants=network-online.target
+Requires=metnos-side-display.service
+After=metnos-side-display.service
+Before=metnos-stack-ready.service
+PartOf=metnos.target
 StartLimitIntervalSec=300
 StartLimitBurst=10
 
@@ -10,8 +14,8 @@ StartLimitBurst=10
 Type=notify
 NotifyAccess=main
 WorkingDirectory=/opt/metnos/runtime
-ExecStartPre=%h/.local/share/metnos/.venv/bin/python -c "import aiohttp, playwright"
-ExecStart=%h/.local/share/metnos/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
+ExecStartPre=/opt/metnos/.venv/bin/python -c "import aiohttp, playwright"
+ExecStart=/opt/metnos/.venv/bin/python -m playwright_sidecar.server --host 127.0.0.1 --port 8771
 Restart=always
 RestartSec=5s
 TimeoutStartSec=90s
@@ -19,6 +23,7 @@ TimeoutStopSec=20s
 WatchdogSec=45s
 KillMode=mixed
 Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:99
 Environment=PYTHONPATH=/opt/metnos:/opt/metnos/runtime
 Environment=METNOS_INSTALL_ROOT=/opt/metnos
 Environment=METNOS_USER_DATA=%h/.local/share/metnos
@@ -50,4 +55,4 @@ StandardError=journal
 SyslogIdentifier=metnos-playwright
 
 [Install]
-WantedBy=default.target
+WantedBy=metnos.target

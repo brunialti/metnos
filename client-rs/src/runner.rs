@@ -14,6 +14,7 @@
 //! side-effect su un mutante). Consegna avvenuta = file rimosso.
 
 use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
@@ -44,7 +45,9 @@ const BACKOFF_MAX: Duration = Duration::from_secs(60);
 // B.1 (fase 7): tetto del set dedup locale. Il dedup PRIMARIO e' server-side
 // (idempotenza per invocation_id): dimenticare gli id piu' vecchi non
 // rischia un doppio side-effect, evita solo un giro di rete.
-const EXECUTED_CAP: usize = 4096;
+const EXECUTED_CAP: usize = 100_000;
+const INVOCATION_MAX_AGE: Duration = Duration::from_secs(48 * 3600);
+const INVOCATION_MAX_FUTURE: Duration = Duration::from_secs(5 * 60);
 
 /// Set con ordine di inserimento e capienza fissa (B.1): prima era un
 /// HashSet illimitato — un daemon che vive settimane cresceva senza tetto.
@@ -110,13 +113,35 @@ impl Runner {
             "server_public_key assente in state: ri-esegui `register` \
              (il server deve fornirla per verificare le invocazioni)",
         )?;
+        #[cfg(windows)]
+        {
+            // Nessun executor e' ancora attivo (il process lock e' gia'
+            // detenuto): revoca fail-closed di eventuali ACL lasciati da un
+            // crash precedente prima di riusare il SID AppContainer stabile.
+            let cleanup = crate::appcontainer::cleanup_all_grants()
+                .context("pulizia ACL AppContainer al boot")?;
+            if cleanup.failed > 0 {
+                bail!("{} ACL AppContainer stale non revocabili", cleanup.failed);
+            }
+        }
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(POLL_BLOCK_MS / 1000 + 15))
             .build()?;
+        // Ledger persistente: chiude il replay di una risposta poll firmata
+        // catturata prima del restart. L'invocation_id incorpora inoltre il
+        // timestamp server e ha una finestra assoluta verificata in handle().
+        let mut executed = BoundedSet::new(EXECUTED_CAP);
+        for id in load_executed_ledger(&paths)? {
+            executed.insert(id);
+        }
         // I result non ancora consegnati (crash precedente) contano come
         // "già eseguiti": non ri-eseguire, solo ri-consegnare.
-        let mut executed = BoundedSet::new(EXECUTED_CAP);
         for id in pending_result_ids(&paths) {
+            executed.insert(id);
+        }
+        // Recupera il confine write-ahead prima di accettare nuovo lavoro.
+        // I mutanti rimasti STARTED non vengono mai rieseguiti alla cieca.
+        for id in recover_started(&paths, &device_id) {
             executed.insert(id);
         }
         Ok(Self {
@@ -293,8 +318,39 @@ impl Runner {
             tracing::error!(invocation = %inv.invocation_id, "server_sig NON verificata: RIFIUTO (attacco/replay)");
             return Ok(());
         }
+        if let Err(e) = validate_invocation_freshness(&inv.invocation_id) {
+            tracing::error!(invocation = %inv.invocation_id,
+                            "invocazione firmata ma stale/malformata: RIFIUTO ({e:#})");
+            return Ok(());
+        }
+
+        // Persistito e sincronizzato PRIMA di entrare nel sandbox: un crash
+        // successivo non può far apparire ineseguita una possibile mutazione.
+        write_started(&self.paths, &inv)?;
 
         let start = Instant::now();
+        // Ultima rete del worker: il timeout primario vive nel sandbox e
+        // termina l'albero dell'executor. Le API Win32 usate per costruire un
+        // AppContainer e drenare le pipe sono pero' bloccanti; se una di esse
+        // non ritorna, il future resta appeso, il client continua a mandare
+        // heartbeat ma non torna piu' a /agent/poll. Fail-stop dopo un piccolo
+        // margine oltre la deadline: l'uscita del processo chiude il Job Object
+        // (kill-on-close) e il launcher Windows lo riavvia in ~2 s. Non
+        // continuiamo nello stesso processo perche' una task spawn_blocking non
+        // e' cancellabile in sicurezza, soprattutto per executor mutanti.
+        const WATCHDOG_GRACE: Duration = Duration::from_secs(10);
+        let watchdog_wait = Duration::from_millis(inv.deadline_ms.max(1000))
+            .saturating_add(WATCHDOG_GRACE);
+        let watchdog_inv = inv.invocation_id.clone();
+        let watchdog = tokio::spawn(async move {
+            tokio::time::sleep(watchdog_wait).await;
+            tracing::error!(
+                invocation = %watchdog_inv,
+                deadline_ms = watchdog_wait.as_millis(),
+                "watchdog executor: sandbox non rientrato; fail-stop del client"
+            );
+            std::process::exit(124);
+        });
         let result = match self.execute(&inv).await {
             Ok(r) => r,
             Err(e) => InvocationResult {
@@ -311,12 +367,15 @@ impl Runner {
                 payload: json!({}),
             },
         };
+        watchdog.abort();
 
         // 2. Persisti il result PRIMA di segnare eseguito e PRIMA della consegna
         //    (§12): se il server e' giu', il file resta e verra' ri-consegnato,
         //    MAI ri-eseguito (niente doppio side-effect su un mutante).
         let body = serde_json::to_vec(&result.body_value())?;
         write_pending_result(&self.paths, &inv.invocation_id, &body)?;
+        record_executed(&self.paths, &inv.invocation_id)?;
+        remove_started(&self.paths, &inv.invocation_id);
         self.executed.insert(inv.invocation_id.clone());
 
         // 3. Prova la consegna (idempotente lato server); l'esito è gestito da
@@ -359,7 +418,8 @@ impl Runner {
             self.shim_sha = if sha.is_empty() { None } else { Some(sha) };
         }
         if self.python.is_none() {
-            let env = pyenv::resolve(&self.server, &self.paths.cache_dir).await?;
+            let env = pyenv::resolve(
+                &self.server, &self.server_pubkey, &self.paths.cache_dir).await?;
             tracing::info!(python = %env.python.display(), source = %env.source, "interprete risolto (cache)");
             self.python = Some(env.python);
         }
@@ -482,11 +542,17 @@ impl Runner {
                     tracing::info!(invocation = %inv_id, "result consegnato");
                 }
                 Ok(resp) => {
-                    tracing::warn!(invocation = %inv_id, "result rifiutato: HTTP {}", resp.status());
-                    // 4xx (es. invocazione sconosciuta/dispositivo revocato):
-                    // ritentare all'infinito è inutile. Scarta solo su 4xx.
-                    if resp.status().is_client_error() {
-                        let _ = std::fs::remove_file(&path);
+                    let status = resp.status();
+                    tracing::warn!(invocation = %inv_id, "result rifiutato: HTTP {}", status);
+                    // 408/423/425/429 sono temporanei. Gli altri 4xx sono
+                    // terminali ma restano in dead-letter: mai perdita muta.
+                    if status.is_client_error() && !retryable_result_status(status) {
+                        if let Err(e) = move_to_dead_letter(
+                            &self.paths, &path, &inv_id, status.as_u16())
+                        {
+                            tracing::warn!(invocation = %inv_id,
+                                "dead-letter fallita, mantengo nello spool: {e:#}");
+                        }
                     }
                 }
                 Err(e) => {
@@ -628,6 +694,227 @@ fn results_dir(paths: &Paths) -> PathBuf {
     paths.spool_dir.join("results")
 }
 
+fn started_dir(paths: &Paths) -> PathBuf {
+    paths.spool_dir.join("started")
+}
+
+fn dead_results_dir(paths: &Paths) -> PathBuf {
+    paths.spool_dir.join("dead-results")
+}
+
+fn executed_ledger_path(paths: &Paths) -> PathBuf {
+    paths.spool_dir.join("executed.log")
+}
+
+fn safe_invocation_id(id: &str) -> Result<()> {
+    if id.is_empty() || id.len() > 128
+        || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        bail!("invocation_id non sicuro per spool: {:?}", id);
+    }
+    Ok(())
+}
+
+fn invocation_epoch(id: &str) -> Result<std::time::SystemTime> {
+    safe_invocation_id(id)?;
+    if id.len() != 28 || !id.starts_with("inv-") {
+        bail!("formato invocation_id inatteso");
+    }
+    let nanos = u64::from_str_radix(&id[4..20], 16)
+        .context("timestamp invocation_id non valido")?;
+    Ok(std::time::UNIX_EPOCH + Duration::from_nanos(nanos))
+}
+
+fn validate_invocation_freshness(id: &str) -> Result<()> {
+    let issued = invocation_epoch(id)?;
+    let now = std::time::SystemTime::now();
+    if now.duration_since(issued).is_ok_and(|age| age > INVOCATION_MAX_AGE) {
+        bail!("invocazione oltre la finestra di 48 ore");
+    }
+    if issued.duration_since(now).is_ok_and(|lead| lead > INVOCATION_MAX_FUTURE) {
+        bail!("invocazione troppo nel futuro");
+    }
+    Ok(())
+}
+
+fn load_executed_ledger(paths: &Paths) -> Result<Vec<String>> {
+    let path = executed_ledger_path(paths);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(Vec::new());
+    };
+    let mut ids = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let id = raw.trim();
+        if id.is_empty() {
+            continue;
+        }
+        invocation_epoch(id).with_context(
+            || format!("ledger replay corrotto alla riga {}", index + 1))?;
+        if !ids.iter().any(|known| known == id) {
+            ids.push(id.to_string());
+        }
+    }
+    if ids.len() > EXECUTED_CAP {
+        ids.drain(..ids.len() - EXECUTED_CAP);
+    }
+    Ok(ids)
+}
+
+fn record_executed(paths: &Paths, id: &str) -> Result<()> {
+    invocation_epoch(id)?;
+    std::fs::create_dir_all(&paths.spool_dir)?;
+    use std::io::Write as _;
+    let path = executed_ledger_path(paths);
+    let mut file = std::fs::OpenOptions::new()
+        .create(true).append(true).open(&path)?;
+    writeln!(file, "{id}")?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct StartedRecord {
+    invocation_id: String,
+    reversibility: String,
+    started_epoch_ms: u128,
+}
+
+fn sync_parent(path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+}
+
+fn atomic_write(path: &std::path::Path, body: &[u8]) -> Result<()> {
+    let parent = path.parent().context("path atomico senza parent")?;
+    std::fs::create_dir_all(parent)?;
+    let tmp = path.with_extension("tmp");
+    let mut file = std::fs::File::create(&tmp)
+        .with_context(|| format!("creazione {}", tmp.display()))?;
+    use std::io::Write as _;
+    file.write_all(body)?;
+    file.sync_all()?;
+    drop(file);
+    std::fs::rename(&tmp, path)
+        .with_context(|| format!("rename atomico {}", path.display()))?;
+    sync_parent(path);
+    Ok(())
+}
+
+fn write_started(paths: &Paths, inv: &Invocation) -> Result<()> {
+    safe_invocation_id(&inv.invocation_id)?;
+    let record = StartedRecord {
+        invocation_id: inv.invocation_id.clone(),
+        reversibility: inv.reversibility.clone(),
+        started_epoch_ms: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis(),
+    };
+    let path = started_dir(paths).join(format!("{}.json", inv.invocation_id));
+    atomic_write(&path, &serde_json::to_vec(&record)?)
+}
+
+fn remove_started(paths: &Paths, invocation_id: &str) {
+    if safe_invocation_id(invocation_id).is_err() {
+        return;
+    }
+    let path = started_dir(paths).join(format!("{invocation_id}.json"));
+    if std::fs::remove_file(&path).is_ok() {
+        sync_parent(&path);
+    }
+}
+
+/// Recupera marker lasciati da un crash. I read-only possono essere
+/// riconsegnati; per ogni altra classe accoda un esito incerto e deduplica.
+fn recover_started(paths: &Paths, device_id: &str) -> Vec<String> {
+    let mut recovered = Vec::new();
+    let Ok(entries) = std::fs::read_dir(started_dir(paths)) else {
+        return recovered;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let fallback_id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let parsed = std::fs::read(&path).ok()
+            .and_then(|b| serde_json::from_slice::<StartedRecord>(&b).ok());
+        let id = parsed.as_ref().map(|r| r.invocation_id.as_str())
+            .unwrap_or(fallback_id);
+        if safe_invocation_id(id).is_err() {
+            tracing::error!(file = %path.display(),
+                "marker STARTED corrotto/non sicuro: preservato");
+            continue;
+        }
+        if results_dir(paths).join(format!("{id}.json")).is_file() {
+            remove_started(paths, id);
+            recovered.push(id.to_string());
+            continue;
+        }
+        let read_only = parsed.as_ref()
+            .map(|r| r.reversibility == "read_only")
+            .unwrap_or(false);
+        if read_only {
+            tracing::warn!(invocation = %id,
+                "STARTED read-only dopo crash: riconsegna sicura abilitata");
+            remove_started(paths, id);
+            continue;
+        }
+
+        let result = InvocationResult {
+            invocation_id: id.to_string(),
+            device_id: device_id.to_string(),
+            ok: false,
+            entries: json!([]),
+            n_processed: 0,
+            elapsed_ms: 0,
+            sandbox: "unknown_after_restart".into(),
+            sandbox_downgrade_reason: None,
+            error: Some("client riavviato dopo STARTED: effetto non rieseguito".into()),
+            error_class: Some("execution_outcome_unknown".into()),
+            payload: json!({
+                "effect_status": "unknown",
+                "recovery": "write_ahead_no_reexecution"
+            }),
+        };
+        let write_result = serde_json::to_vec(&result.body_value())
+            .map_err(anyhow::Error::from)
+            .and_then(|body| write_pending_result(paths, id, &body));
+        match write_result {
+            Ok(()) => {
+                tracing::error!(invocation = %id,
+                    "STARTED mutante dopo crash: esito incerto accodato, nessuna riesecuzione");
+                remove_started(paths, id);
+                recovered.push(id.to_string());
+            }
+            Err(e) => tracing::error!(invocation = %id,
+                "recupero STARTED fallito, marker preservato: {e:#}"),
+        }
+    }
+    recovered
+}
+
+fn retryable_result_status(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 408 | 423 | 425 | 429)
+}
+
+fn move_to_dead_letter(paths: &Paths, source: &std::path::Path,
+                       invocation_id: &str, status: u16) -> Result<()> {
+    safe_invocation_id(invocation_id)?;
+    let dir = dead_results_dir(paths);
+    std::fs::create_dir_all(&dir)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default().as_nanos();
+    let dest = dir.join(format!("{invocation_id}.http-{status}.{stamp}.json"));
+    std::fs::rename(source, &dest).context("spostamento result in dead-letter")?;
+    sync_parent(&dest);
+    Ok(())
+}
+
 /// invocation_id dei result presenti nello spool (crash-safe: sopravvivono al
 /// riavvio del client → contano come "già eseguiti").
 fn pending_result_ids(paths: &Paths) -> HashSet<String> {
@@ -708,13 +995,9 @@ fn prune_stale_spool(paths: &Paths) -> usize {
 
 /// Scrive il body del result nello spool in modo atomico (tmp + rename).
 fn write_pending_result(paths: &Paths, invocation_id: &str, body: &[u8]) -> Result<()> {
-    let dir = results_dir(paths);
-    std::fs::create_dir_all(&dir)?;
-    let final_path = dir.join(format!("{invocation_id}.json"));
-    let tmp = dir.join(format!("{invocation_id}.json.tmp"));
-    std::fs::write(&tmp, body)?;
-    std::fs::rename(&tmp, &final_path).context("rename result spool")?;
-    Ok(())
+    safe_invocation_id(invocation_id)?;
+    let final_path = results_dir(paths).join(format!("{invocation_id}.json"));
+    atomic_write(&final_path, body)
 }
 
 #[cfg(test)]
@@ -754,5 +1037,38 @@ mod tests {
             assert!(j >= base.mul_f64(0.75) && j < base.mul_f64(1.25),
                     "jitter fuori banda [0.75,1.25): {j:?}");
         }
+    }
+
+    #[test]
+    fn transient_result_4xx_are_retried() {
+        for code in [408, 423, 425, 429] {
+            assert!(retryable_result_status(reqwest::StatusCode::from_u16(code).unwrap()));
+        }
+        for code in [400, 401, 403, 404, 409, 410, 422] {
+            assert!(!retryable_result_status(reqwest::StatusCode::from_u16(code).unwrap()));
+        }
+    }
+
+    #[test]
+    fn spool_ids_reject_path_syntax() {
+        assert!(safe_invocation_id("inv-123_ABC").is_ok());
+        for bad in ["", "../x", "a/b", "a.b", "x\\y"] {
+            assert!(safe_invocation_id(bad).is_err(), "accepted {bad:?}");
+        }
+    }
+
+    #[test]
+    fn invocation_ids_have_an_absolute_freshness_window() {
+        fn id_at(time: std::time::SystemTime) -> String {
+            let nanos = time.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+            format!("inv-{nanos:016x}deadbeef")
+        }
+        let now = std::time::SystemTime::now();
+        assert!(validate_invocation_freshness(&id_at(now)).is_ok());
+        assert!(validate_invocation_freshness(
+            &id_at(now - Duration::from_secs(49 * 3600))).is_err());
+        assert!(validate_invocation_freshness(
+            &id_at(now + Duration::from_secs(10 * 60))).is_err());
+        assert!(validate_invocation_freshness("inv-x").is_err());
     }
 }

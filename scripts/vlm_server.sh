@@ -30,9 +30,18 @@ CTX="${METNOS_VLM_CTX:-16384}"
 NPAR="${METNOS_VLM_SLOTS:-4}"
 LOG_DIR="$HOME/.local/share/metnos/logs"
 LOG_FILE="$LOG_DIR/vlm_server.log"
+LOG_ARCHIVE_DIR="$LOG_DIR/archive/vlm"
+LOG_MAX_MB="${METNOS_VLM_LOG_MAX_MB:-32}"
+LOG_ARCHIVES="${METNOS_VLM_LOG_ARCHIVES:-6}"
+LOG_VERBOSITY="${METNOS_VLM_LOG_VERBOSITY:-2}"
 WD_LOG_FILE="$LOG_DIR/vlm_watchdog.log"
+WD_LOG_ARCHIVE_DIR="$LOG_DIR/archive/vlm-watchdog"
+WD_LOG_MAX_MB="${METNOS_VLM_WATCHDOG_LOG_MAX_MB:-4}"
+WD_LOG_ARCHIVES="${METNOS_VLM_WATCHDOG_LOG_ARCHIVES:-4}"
 PID_FILE="$HOME/.local/state/metnos/vlm_server.pid"
 WD_PID_FILE="$HOME/.local/state/metnos/vlm_watchdog.pid"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="${METNOS_RUNTIME_DIR:-$(dirname "$SCRIPT_DIR")/runtime}"
 
 mkdir -p "$LOG_DIR" "$(dirname "$PID_FILE")"
 
@@ -57,7 +66,22 @@ _find_watchdog_pid() {
       return
     fi
   fi
-  pgrep -f "vlm_server.sh watchdog" 2>/dev/null | head -1
+  # Nessun watchdog e' uno stato ordinario (cold start, avvio senza timeout,
+  # oppure watchdog gia' terminato).  Con ``set -euo pipefail`` il codice 1 di
+  # pgrep non deve abortire status/stop ne' trasformare in errore un avvio VLM
+  # riuscito proprio mentre stiamo per creare il watchdog.
+  pgrep -f "vlm_server.sh watchdog" 2>/dev/null | head -1 || true
+}
+
+_rotate_inactive_log() {
+  local path="$1" archive_dir="$2" max_mb="$3" keep="$4"
+  local max_bytes=$((max_mb * 1024 * 1024))
+  if [ -f "$RUNTIME_DIR/log_lifecycle.py" ]; then
+    python3 "$RUNTIME_DIR/log_lifecycle.py" rotate \
+      --path "$path" --archive-dir "$archive_dir" \
+      --max-bytes "$max_bytes" --keep "$keep" \
+      || echo "WARNING: rotazione log fallita ($path); continuo" >&2
+  fi
 }
 
 cmd_status() {
@@ -71,7 +95,7 @@ cmd_status() {
   rss=$(ps -p "$pid" -o rss= 2>/dev/null | awk '{printf "%.1fGB", $1/1024/1024}')
   conns=$(ss -tn state established "( sport = :$PORT )" 2>/dev/null | tail -n +2 | wc -l)
   local hh="N/A"
-  if curl -s -m 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+  if curl -fsS -m 2 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
     hh="OK"
   fi
   wd_pid="$(_find_watchdog_pid)"
@@ -102,6 +126,11 @@ cmd_start() {
     fi
     return 0
   fi
+  # Il file e' certamente inattivo qui. La rotazione e' verificata byte-per-
+  # byte prima di rimuovere il log live; un errore di housekeeping non rende
+  # indisponibile il VLM e resta visibile su stderr.
+  _rotate_inactive_log "$LOG_FILE" "$LOG_ARCHIVE_DIR" \
+    "$LOG_MAX_MB" "$LOG_ARCHIVES"
   echo "avvio llama-server VLM su :$PORT ..."
   nohup "$LLAMA_BIN" \
     -m "$MODEL" \
@@ -110,12 +139,13 @@ cmd_start() {
     --host 127.0.0.1 --port "$PORT" \
     -c "$CTX" --parallel "$NPAR" --cont-batching --jinja \
     -fa on --batch-size 2048 --ubatch-size 512 \
+    --log-verbosity "$LOG_VERBOSITY" \
     >> "$LOG_FILE" 2>&1 &
   pid=$!
   echo "$pid" > "$PID_FILE"
   echo "pid=$pid avviato. attendo health..."
   for i in $(seq 1 30); do
-    if curl -s -m 1 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+    if curl -fsS -m 1 "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
       echo "ready in ${i}s"
       if [ "$auto_stop_idle" -gt 0 ]; then
         _spawn_watchdog "$auto_stop_idle"
@@ -130,6 +160,14 @@ cmd_start() {
 
 _spawn_watchdog() {
   local idle_secs="$1"
+  local current_wd
+  current_wd="$(_find_watchdog_pid)"
+  if _pid_alive "$current_wd"; then
+    echo "watchdog gia avviato (pid=$current_wd)."
+    return 0
+  fi
+  _rotate_inactive_log "$WD_LOG_FILE" "$WD_LOG_ARCHIVE_DIR" \
+    "$WD_LOG_MAX_MB" "$WD_LOG_ARCHIVES"
   echo "spawn watchdog auto-stop idle=${idle_secs}s..."
   nohup "$0" watchdog "$idle_secs" >> "$WD_LOG_FILE" 2>&1 &
   echo "$!" > "$WD_PID_FILE"

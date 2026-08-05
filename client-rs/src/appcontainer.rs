@@ -34,7 +34,7 @@ use anyhow::{bail, Context, Result};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, LocalFree, SetHandleInformation, BOOL, HANDLE, HLOCAL,
-    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_TIMEOUT, WIN32_ERROR,
+    HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WIN32_ERROR,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSidToSidW, GetNamedSecurityInfoW, SetEntriesInAclW,
@@ -52,7 +52,8 @@ use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, Terminate
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
-    ResumeThread, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
+    ResumeThread, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+    CREATE_NO_WINDOW,
     CREATE_SUSPENDED, EXTENDED_STARTUPINFO_PRESENT, INFINITE, LPPROC_THREAD_ATTRIBUTE_LIST,
     PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES,
     STARTUPINFOEXW, STARTUPINFOW,
@@ -224,30 +225,26 @@ impl Drop for AttrList {
 /// (idempotente) e l'unpair revoca un ACE gia' assente come no-op.
 struct GrantGuard {
     sid: PSID,
+    sid_str: String,
     paths: Vec<PathBuf>,
-    armed: bool,
 }
 
 impl GrantGuard {
-    fn new(sid: PSID) -> Self {
-        Self { sid, paths: Vec::new(), armed: true }
+    fn new(sid: PSID, sid_str: String) -> Self {
+        Self { sid, sid_str, paths: Vec::new() }
     }
     fn track(&mut self, root: &Path) {
         self.paths.push(root.to_path_buf());
-    }
-    fn disarm(&mut self) {
-        self.armed = false;
     }
 }
 
 impl Drop for GrantGuard {
     fn drop(&mut self) {
-        if !self.armed {
-            return;
-        }
         for root in &self.paths {
-            if let Err(e) = apply_acl(self.sid, root, 0, REVOKE_ACCESS) {
-                tracing::warn!(path = %root.display(), "rollback ACE (container non avviato) fallito: {e:#}");
+            match apply_acl(self.sid, root, 0, REVOKE_ACCESS) {
+                Ok(()) => forget_grant(root, &self.sid_str),
+                Err(e) => tracing::warn!(path = %root.display(),
+                    "revoca ACE per-invocazione fallita; registro preservato: {e:#}"),
             }
         }
     }
@@ -496,6 +493,19 @@ fn grant_dir(sid: PSID, sid_str: &str, root: &Path, mask: u32) -> Result<()> {
     let mut guard = reg
         .lock()
         .map_err(|_| anyhow::anyhow!("registro ACL avvelenato (lock)"))?;
+    // Write-ahead: registra e sincronizza PRIMA dell'ACE. Un crash non puo'
+    // lasciare una concessione effettiva che la ripartenza non sappia revocare.
+    let added = guard.record(AclGrantRecord {
+        path: path_str.clone(),
+        sid: sid_str.to_string(),
+        access_mask: mask,
+        granted_at: common::now_epoch_secs(),
+    });
+    if added {
+        let rp = registry_path()?;
+        guard.save(&rp).context("persistenza write-ahead registro ACL")?;
+    }
+
     // Applica SEMPRE l'ACE: il registro NON e' una cache di "gia' fatto". Una
     // dir gia' concessa puo' essere stata RICREATA fra due invocazioni (es.
     // `ensure_shim` rigenera lo shim con remove_dir_all + rename → l'ACE
@@ -506,28 +516,24 @@ fn grant_dir(sid: PSID, sid_str: &str, root: &Path, mask: u32) -> Result<()> {
     // serve SOLO a sapere cosa REVOCARE all'unpair. Sotto lock: serializza i
     // grant concorrenti nello stesso processo.
     apply_acl(sid, root, mask, GRANT_ACCESS)?;
-    // Persisti solo su voce NUOVA (record idempotente su (path,sid)): evita una
-    // scrittura del registro a ogni invocazione per grant gia' noti.
-    let added = guard.record(AclGrantRecord {
-        path: path_str,
-        sid: sid_str.to_string(),
-        access_mask: mask,
-        granted_at: common::now_epoch_secs(),
-    });
-    if added {
-        match registry_path() {
-            Ok(rp) => {
-                if let Err(e) = guard.save(&rp) {
-                    tracing::warn!(
-                        "registro ACL non salvato ({e}): la rimozione all'unpair \
-                         potrebbe perdere questa voce"
-                    );
-                }
-            }
-            Err(e) => tracing::warn!("path registro ACL non risolto ({e:#}): voce non persistita"),
-        }
-    }
     Ok(())
+}
+
+fn forget_grant(root: &Path, sid_str: &str) {
+    let Ok(mut guard) = registry().lock() else {
+        tracing::warn!("registro ACL avvelenato durante la revoca");
+        return;
+    };
+    let path_str = root.display().to_string();
+    if !guard.forget(&path_str, sid_str) {
+        return;
+    }
+    let Ok(path) = registry_path() else { return };
+    if guard.grants.is_empty() {
+        let _ = std::fs::remove_file(path);
+    } else if let Err(e) = guard.save(&path) {
+        tracing::warn!("registro ACL post-revoca non salvato: {e}");
+    }
 }
 
 /// Applica una EXPLICIT_ACCESS al SID sulla directory: `GRANT_ACCESS` (con
@@ -626,7 +632,7 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
     });
 
     // Rollback degli ACE se il container non parte oltre questo punto.
-    let mut grant_guard = GrantGuard::new(sid.psid);
+    let mut grant_guard = GrantGuard::new(sid.psid, sid_str.clone());
 
     // 2. concessioni IMPLICITE (indispensabili: senza, il container e'
     //    inutilizzabile → e' un caso di degrado onesto, non un container zoppo).
@@ -772,9 +778,6 @@ fn try_run(p: ContainerParams) -> Result<Outcome> {
         )
     };
     check_bool("CreateProcessW (appcontainer)", ok)?;
-    // Processo avviato: i grant servono ORA al figlio → niente rollback.
-    grant_guard.disarm();
-
     // --- oltre questa linea: processo AVVIATO nel container → sempre Ran ---
     // Chiudi gli estremi-figlio nel padre (necessario per l'EOF ai lettori).
     drop(stdin_rd);
@@ -808,11 +811,34 @@ fn run_child(
     deadline_ms: u64,
 ) -> (String, String, bool) {
     // Assegna PRIMA del resume: il figlio non gira mai fuori dal job.
-    if unsafe { AssignProcessToJobObject(job, pi.hProcess) } == 0 {
-        tracing::warn!("AssignProcessToJobObject fallita (GetLastError={}): risorse non contenute", last_error());
+    // Fail-closed: se l'assegnazione fallisce NON risvegliamo il processo. La
+    // vecchia sequenza lo avviava comunque fuori dal job; al timeout
+    // TerminateJobObject non lo raggiungeva e i reader delle pipe restavano in
+    // join per sempre. TerminateProcess sul figlio ancora sospeso garantisce
+    // EOF e il ritorno del worker.
+    let assigned = unsafe { AssignProcessToJobObject(job, pi.hProcess) } != 0;
+    let resumed = if assigned {
+        (unsafe { ResumeThread(pi.hThread) }) != u32::MAX
+    } else {
+        false
+    };
+    let startup_failed = !assigned || !resumed;
+    if !assigned {
+        tracing::warn!(
+            "AssignProcessToJobObject fallita (GetLastError={}): processo sospeso terminato",
+            last_error()
+        );
+    } else if !resumed {
+        tracing::warn!(
+            "ResumeThread fallita (GetLastError={}): job e processo terminati",
+            last_error()
+        );
     }
-    if unsafe { ResumeThread(pi.hThread) } == u32::MAX {
-        tracing::warn!("ResumeThread fallita (GetLastError={}): il figlio potrebbe restare sospeso", last_error());
+    if startup_failed {
+        unsafe {
+            TerminateJobObject(job, 126);
+            TerminateProcess(pi.hProcess, 126);
+        }
     }
 
     // stdin: scrivi gli args e chiudi (il File chiude l'handle alla Drop).
@@ -828,17 +854,27 @@ fn run_child(
     let err_h = SendHandle(stderr_rd);
     let t_err = std::thread::spawn(move || read_all(err_h.take()));
 
-    let wait_ms = if deadline_ms == 0 {
+    let wait_ms = if startup_failed {
+        5_000
+    } else if deadline_ms == 0 {
         INFINITE
     } else {
         deadline_ms.min(u32::MAX as u64) as u32
     };
     let waited = unsafe { WaitForSingleObject(pi.hProcess, wait_ms) };
-    let timed_out = waited == WAIT_TIMEOUT;
+    // Solo WAIT_OBJECT_0 significa processo concluso. WAIT_FAILED e qualunque
+    // esito inatteso non devono cadere nel join delle pipe con il figlio vivo.
+    let timed_out = startup_failed || waited != WAIT_OBJECT_0;
     if timed_out {
         // Gemello del SIGKILL-al-gruppo: uccide l'albero; gli estremi-scrittura
         // del figlio si chiudono → i lettori ricevono EOF e i thread terminano.
-        unsafe { TerminateJobObject(job, 137) };
+        unsafe {
+            TerminateJobObject(job, 137);
+            // Rete diretta se il job non contiene il processo o la sua
+            // terminazione fallisce. Sul processo gia' morto e' un no-op.
+            TerminateProcess(pi.hProcess, 137);
+            WaitForSingleObject(pi.hProcess, 5_000);
+        }
     }
 
     let stdout = t_out.join().unwrap_or_default();

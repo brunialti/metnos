@@ -374,13 +374,13 @@ step_python_packages() {
     local req="${METNOS_REPO_DIR:-$(dirname "$MANIFEST")/..}/requirements.txt"
     if [ -f "$req" ]; then
         log "  Le dipendenze runtime sono dichiarate in requirements.txt."
-        log "  Per un venv stand-alone (consigliato per l'install ex-novo):"
-        log "    python3 -m venv ~/.venvs/metnos"
-        log "    ~/.venvs/metnos/bin/pip install -r $req"
+        log "  Per il venv autonomo dell'installazione:"
+        log "    python3 -m venv ${METNOS_INSTALL_ROOT:-/opt/metnos}/.venv"
+        log "    ${METNOS_INSTALL_ROOT:-/opt/metnos}/.venv/bin/pip install -r $req"
         log "  Opzionali (skill): aggiungi -r requirements-optional.txt"
     else
         log "  ATTENZIONE: requirements.txt non trovato — il runtime potrebbe non avviarsi."
-        log "    python3 -m venv ~/.venvs/metnos && pip install -r requirements.txt"
+        log "    python3 -m venv ${METNOS_INSTALL_ROOT:-/opt/metnos}/.venv && ${METNOS_INSTALL_ROOT:-/opt/metnos}/.venv/bin/pip install -r requirements.txt"
     fi
 }
 

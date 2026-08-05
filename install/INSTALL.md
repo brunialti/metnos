@@ -1,271 +1,248 @@
-# Metnos — Installazione
+# Installare Metnos
 
-Questo documento descrive come installare Metnos su un nodo nuovo a partire
-dal repository in `/opt/metnos`. La fonte unica di verita' delle componenti
-(pacchetti Python, pacchetti di sistema, modelli ML, servizi systemd,
-directory, template di config, secret) e' `install/manifest.toml`.
+Questa guida descrive il percorso supportato per installare Metnos su una
+macchina Linux con systemd. L’installazione del programma e l’ambiente Python
+sono condivisi dalla macchina; configurazione, credenziali, sessioni e dati
+restano separati per ciascun utente.
 
-## Scopo del manifest centrale
+## Requisiti
 
-`install/manifest.toml` codifica, in formato TOML leggibile dall'umano e
-parsabile da uno script, ogni componente che serve a far girare Metnos su
-un nodo nuovo. Aggiungere o cambiare una dipendenza significa: aggiornare
-il manifest. Niente componenti nascoste nel codice — se un modulo importa
-una libreria nuova, la libreria entra nel manifest prima del merge.
+Servono:
 
-I consumer del manifest sono:
+- Python 3.12 o successivo;
+- Git e accesso a Internet durante il primo avvio;
+- almeno 8 GB liberi, oltre allo spazio richiesto dai modelli scelti;
+- una sessione utente systemd;
+- `libstdc++` 11 o successiva e `libgomp` per i modelli ONNX.
 
-- **`install/setup.sh`**: scaffold di installazione end-to-end.
-- **`install/download_models.sh`**: scaricamento + verifica sha256 dei
-  modelli ML.
-- **Audit manuale**: chi si chiede "che cosa serve a Metnos?" apre questo
-  file e ottiene la risposta.
+Alcune capacità richiedono programmi di sistema aggiuntivi. Per esempio,
+Tesseract e Poppler servono per l’OCR; Xvfb serve per il browser grafico Side.
+Il manifest d’installazione contiene l’inventario completo per Debian e Ubuntu.
 
-## Workflow di installazione su nodo nuovo
+Una GPU non è obbligatoria. I livelli LLM possono usare un motore locale su CPU,
+un endpoint compatibile su un’altra macchina oppure un servizio frontier. La
+qualità e la latenza dipendono dai modelli assegnati ai livelli.
 
-Tre passi obbligatori + uno opzionale.
+## Procedura supportata
 
-### 1. Clonare il repository
-
-```bash
-sudo mkdir -p /opt/metnos
-sudo chown $USER:$USER /opt/metnos
-git clone <repo-url> /opt/metnos
-cd /opt/metnos
-git checkout <ramo-stable>      # o main / un tag
-```
-
-### 2. Eseguire `install/setup.sh`
+Il solo punto d’ingresso supportato è `install/bootstrap.sh`:
 
 ```bash
-./install/setup.sh
+git clone https://github.com/brunialti/metnos.git
+cd metnos
+bash install/bootstrap.sh
 ```
 
-Lo script:
+Lo script individua Python, crea l’ambiente virtuale nella directory
+`<installazione>/.venv`, installa le dipendenze e avvia l’installatore in sei
+fasi. L’ambiente virtuale appartiene all’installazione: non viene creato nella
+directory dati di un utente e non dipende dal suo nome.
 
-1. verifica Python >= 3.12;
-2. installa via apt i pacchetti di `system_packages.debian` (richiede sudo);
-3. crea le directory dichiarate in `directories`;
-4. genera i secret rigenerabili (`admin.key`, chiavi Ed25519 per firmare
-   gli executor sintetizzati);
-5. *non* copia automaticamente i file unit di systemd — stampa l'elenco
-   delle unit da copiare e i comandi `systemctl enable`. Questa scelta
-   e' deliberata (sicurezza: vietato installare service in modo
-   automatizzato senza review umana del file unit).
-
-Modi:
-
-- `--dry-run` stampa cosa farebbe senza eseguire.
-- `--no-sudo` salta i passi che richiedono sudo (apt + systemd). Utile
-  per setup parziali o per nodi in cui i pacchetti di sistema sono gia'
-  installati.
-- `--skip-models` salta il download dei modelli (passo 3).
-
-### 3. Scaricare i modelli ML
+Per controllare prima i requisiti:
 
 ```bash
-./install/download_models.sh
+bash install/bootstrap.sh --check
 ```
 
-Scarica e verifica sha256 di:
-
-- **SigLIP-base-patch16-224** (Xenova ONNX quantizzato int8) → ricerca
-  scene-concept e similarita' immagini. ~210MB su disco.
-- **InsightFace buffalo_l** (RetinaFace `det_10g.onnx` + ArcFace
-  `w600k_r50.onnx`) → face detection + face embedding. ~280MB su disco
-  (190MB estratti utili).
-
-Il modello text-embedding **MiniLM-L12-v2** e' condiviso con
-`giorgio2/suprastructure` e si presume gia' presente in
-`/opt/giorgio2/models/onnx/`. NON viene riscaricato.
-
-### 4. Configurazione manuale residua
-
-- Editare `~/.config/metnos/owned_domains.json` con i propri domini.
-- Editare `~/.config/metnos/trusted_origins.json` con le origini HTTP
-  trusted per `/agent` endpoint.
-- Editare `~/.config/metnos/mail/mail.env` con IMAP/SMTP credentials.
-- (Opzionale) Configurare Photon (geocoder OSM) e Ollama (LLM tier).
-- Pairare Telegram (`/pair-channel`) se si vuole il canale primario
-  Telegram.
-
-### 5. Avviare i servizi
-
-I servizi sono **user unit** (nessun `sudo`): `python -m install` (fase 5) li
-genera dai template in `install/units/*.tmpl`, sostituendo i percorsi, e li
-abilita. Le unit installate: `metnos-http.service`, `metnos-telegram-daemon.service`
-(se pairato) e `metnos-i18n-translator.timer` (riempimento traduzioni i18n a
-ciclo). Per rifarle a mano:
+Con questa forma il bootstrap può creare o aggiornare `.venv` prima del
+controllo; non avvia però le fasi applicative e non crea configurazioni,
+credenziali o dati di Metnos. Se `.venv` esiste già, il controllo diretto è:
 
 ```bash
-python -m install --force-phase 5      # rigenera + abilita tutte le user unit
-
-# Stato / log
-systemctl --user status metnos-http
-systemctl --user list-timers metnos-i18n-translator.timer
-journalctl --user -u metnos-http -f
-
-# Per sopravvivere al logout
-sudo loginctl enable-linger $USER
+./.venv/bin/python -m install --check
 ```
 
-I sidecar opzionali (ricerca web SearXNG, ecc.) si aggiungono dopo con
-`python -m install.sidecar <nome>` (vedi `install/README.md`).
+## Le sei fasi
 
-### 6. Indicizzazione foto (ADR 0117)
+| Fase | Operazione | Risultato principale |
+|---:|---|---|
+| 1 | Preparazione | controlli preliminari, dipendenze Python e directory utente |
+| 2 | Infrastruttura AI | embedder BGE-M3, collegamenti dei livelli LLM e sidecar scelti |
+| 3 | Codice e cataloghi | verifica del sorgente, database iniziali, catalogo i18n, firma locale degli executor e catalogo Tutor verificato |
+| 4 | Dati sensibili | chiave amministrativa e credenziali cifrate |
+| 5 | Servizi | unità systemd dell’utente, target integrato e controllo di salute HTTP |
+| 6 | Primo accesso | scelta delle capacità, collegamento amministrativo temporaneo e riepilogo |
 
-L'indicizzazione automatica delle foto e' parte del setup di base, ma con
-**due vincoli operativi importanti**.
-
-**Dove vanno messe le foto.** L'indicizzatore opera SOLO su directory
-contenute in:
-
-```
-~/.local/share/metnos/Immagini/
-```
-
-Questa e' la radice canonica del corpus immagini. Qualunque altra
-posizione filesystem viene **ignorata** dal task ricorrente. Per usare
-foto residenti su un disco esterno o NAS:
-
-- (Suggerito) **mount** del disco/share dentro la radice canonica:
-  ```bash
-  # Esempio: NAS via CIFS
-  sudo mount -t cifs //nas/Foto ~/.local/share/metnos/Immagini/NAS \
-              -o user=USER,uid=$(id -u),gid=$(id -g)
-  ```
-  Mount persistente via fstab/systemd-mount per sopravvivere ai reboot.
-
-- (Alternativa) **symlink** dentro la radice canonica:
-  ```bash
-  ln -s /mnt/foto-archivio ~/.local/share/metnos/Immagini/Archivio
-  ```
-  L'indicizzatore segue i symlink ricorsivamente.
-
-**Quando viene aggiornato l'indice.** Il task `images_index_refresh` e'
-registrato come builtin nello scheduler v2 al primo boot del server HTTP
-(`install_default_jobs` in `runtime/scheduler_v2/builtin_callbacks.py`).
-Trigger: `daily@03:00`. Comportamento:
-
-- **Walk + stat ~11s** su tutto il corpus (fino a 50000 foto, default).
-- Per ogni foto, signature `(mtime, size)` confrontata con l'entry
-  precedente nell'indice unificato:
-  - Invariata → skip (riusa description/keywords/embedding/faces).
-  - Nuova o modificata → pipeline completa EXIF + ArcFace + VLM
-    (Qwen3-VL-2B su `:8081`) + BGE-M3 (~3-4 s/foto su 7900X warm).
-  - Cancellata → sparisce al rewrite atomic dell'indice.
-
-**Verifica installazione del task** (post primo boot HTTP):
+Ogni fase conclusa scrive un marcatore in
+`~/.local/state/metnos/install/`. Un’esecuzione successiva riprende dal primo
+punto incompleto. Per ripetere una fase:
 
 ```bash
-curl -s http://127.0.0.1:8770/admin/scheduler --header "X-Admin-Key: $(cat ~/.config/metnos/admin.key)" \
-  | jq '.jobs[] | select(.name=="images_index_refresh")'
+./.venv/bin/python -m install --force-phase 4
 ```
 
-**Re-enrichment globale post upgrade VLM**: NON automatico. La sostituzione
-del modello VLM (cambiando `~/.config/metnos/vlm_tiers.toml`) richiede un
-trigger manuale:
+La prima compilazione del Tutor trasforma la documentazione pubblica e i
+manifest correnti in un catalogo semantico firmato; su una macchina che usa la
+CPU può richiedere alcuni minuti. Avviene nella fase 3, prima dell’avvio del
+servizio, così il controllo di prontezza non può interromperla. Alle esecuzioni
+successive il compilatore confronta il contenuto delle fonti e riutilizza i
+vettori invariati; una modifica documentale invalida invece il catalogo e ne
+provoca l’aggiornamento.
+
+Le opzioni principali sono:
+
+```text
+--check               controlla i prerequisiti senza eseguire le fasi
+--force               prosegue oltre gli avvisi non bloccanti
+--force-phase N       ripete la fase N
+--only-phase N        esegue soltanto la fase N
+--yes, -y             accetta le scelte non sensibili in modo non interattivo
+--enable COMPONENT    installa un componente opzionale indicato
+--skip COMPONENT      non installa un componente opzionale indicato
+```
+
+L’accettazione iniziale e l’inserimento delle credenziali restano interattivi:
+`--yes` non sostituisce un consenso necessario.
+
+## Modelli e livelli
+
+Metnos distingue `fast` (livelli `micro`, `procedural`, `fidelity`), `wise`,
+`creative` e `frontier`; non impone un modello unico. La configurazione
+effettiva è in:
+
+```text
+~/.config/metnos/llm_tiers.toml
+~/.config/metnos/embedding_tiers.toml
+~/.config/metnos/vlm_tiers.toml
+```
+
+Il modello di embedding testuale BGE-M3 è installato dentro Metnos e viene
+eseguito nello stesso processo. Non dipende dall’ambiente Python o dai modelli
+di altri progetti.
+
+Se un endpoint compatibile risponde già all’indirizzo configurato, la fase 2 lo
+collega ai livelli locali senza scaricare un altro LLM. In alternativa può
+predisporre un motore locale gestito oppure usare il livello frontier, se sono
+state fornite le relative credenziali.
+
+Dopo l’installazione, la configurazione effettiva dei modelli si consulta e si
+modifica nella chat web seguendo **Impostazioni → Sistema → Modelli**. La pagina
+mostra anche provenienza dei valori, parametri di generazione e configurazioni
+implicite. Il comando **Ripristina** ricrea i valori forniti dalla versione
+installata; non recupera una configurazione personale precedente.
+
+## Servizi opzionali
+
+I componenti opzionali si possono scegliere durante la fase 2 oppure aggiungere
+in seguito:
 
 ```bash
-systemd-run --user --unit=metnos-vlm-enrich-rebuild \
-  --setenv=PYTHONPATH=/opt/metnos/runtime:/opt/suprastructure/src \
-  --setenv=METNOS_VLM_URL=http://127.0.0.1:8081 \
-  --setenv=METNOS_PROGRESS_FILE=$HOME/.local/share/metnos/index/image/<sha8>/_progress.json \
-  /opt/suprastructure/.venv/bin/python -c "
-import sys; sys.path.insert(0, '/opt/metnos/runtime')
-sys.path.insert(0, '/opt/metnos/executors/create_images_indices')
-import create_images_indices as m
-print(m.invoke({'base_path': '$HOME/.local/share/metnos/Immagini', 'force': True, 'recursive': True}))
-"
+./.venv/bin/python -m install.sidecar --list
+./.venv/bin/python -m install.sidecar searxng
+./.venv/bin/python -m install.sidecar photon
+./.venv/bin/python -m install.sidecar vlm
+./.venv/bin/python -m install.sidecar playwright
 ```
 
-`force=True` ignora la cache (mtime,size) e re-invoca VLM per ogni foto
-(~3 ore su 30k foto).
+| Componente | Capacità servita | Comportamento |
+|---|---|---|
+| SearXNG | ricerca web | servizio locale dell’utente |
+| Photon | ricerca e georeferenziazione dei luoghi | servizio locale dell’utente |
+| VLM | descrizione e arricchimento delle immagini | avvio su richiesta, arresto dopo inattività |
+| Playwright | pagine JavaScript e sessioni grafiche sui siti | servizio locale con Chromium; il browser Side usa Xvfb |
 
-**Monitoraggio avanzamento di un one-shot**. Tre strumenti complementari:
+Photon conserva l’archivio del Paese mentre costruisce l’indice locale. Se
+l’espansione dell’archivio o l’importazione viene interrotta, all’esecuzione
+successiva scarta l’output parziale non verificato e riprende dall’ultimo
+artefatto certificato. Verifica inoltre che l’archivio compresso sia un frame
+zstd completo. I marcatori persistenti vengono scritti soltanto dopo la corretta
+conclusione dell’espansione e del processo Java: la sola presenza di un file
+JSONL o della directory `photon_data/` non è mai considerata una prova di
+successo.
 
-1. **Progress file JSON** (env var `METNOS_PROGRESS_FILE` impostato al
-   lancio): viene aggiornato atomicamente ogni 25 foto e a fine task.
-   ```bash
-   watch -n 5 cat ~/.local/share/metnos/index/image/<sha8>/_progress.json
-   ```
-   Schema:
-   - `phase`: `"running"` durante, `"done"` al termine.
-   - `n_total`, `n_processed`, `ok`, `fail`, `pct`.
-   - `last_path`: la foto correntemente in lavorazione.
-   - A fine task aggiunge `n_entries_total`, `index_path`, `model_text`,
-     `model_vlm`, `model_face`.
+Se un componente manca, Metnos non inventa il risultato: la capacità resta
+inattiva oppure restituisce una degradazione esplicita. Le altre capacità
+continuano a funzionare.
 
-2. **Stato unit systemd**:
-   ```bash
-   systemctl --user status metnos-vlm-enrich-rebuild --no-pager
-   systemctl --user is-active metnos-vlm-enrich-rebuild
-   ```
-   `Memory:`, `CPU:`, `Tasks:` mostrano impronta corrente.
+## Credenziali e utenti
 
-3. **Journal live** (errori per-foto, modelli caricati, fallimenti VLM):
-   ```bash
-   journalctl --user -u metnos-vlm-enrich-rebuild -f
-   ```
-   Le righe `build entry failed <path>` indicano foto saltate (corrotte
-   / formati non standard); il batch prosegue.
+La fase 4 può raccogliere credenziali per Telegram, posta, provider frontier e
+GitHub. Le salva nel deposito cifrato di Metnos; non crea file temporanei in
+chiaro. Google Workspace si collega in seguito con il proprio flusso OAuth,
+senza condividere le credenziali dell’account con l’installatore.
 
-Per i task **ricorrenti** (es. `images_index_refresh` daily) lo stato
-runs e' visibile in `/admin/runs` (richiede admin key) + `/admin/scheduler`
-con cronologia ultimi N esecuzioni, errori e durate.
+Le directory canoniche sono:
 
-## Componenti del manifest (mappa ad alto livello)
+```text
+METNOS_INSTALL_ROOT   codice e ambiente virtuale condivisi
+METNOS_USER_DATA      dati applicativi dell’utente
+METNOS_USER_STATE     stato operativo e marcatori dell’utente
+METNOS_USER_CONFIG    configurazione e credenziali dell’utente
+```
 
-| Sezione | Cosa contiene |
-|---|---|
-| `[meta]` | Nome, versione, maintainer, dominio, schema_version. |
-| `[runtime]` | Path standard (working/data/config/state/log dirs), Python min. |
-| `[runtime.python_packages]` | Pip required + optional + dev. |
-| `[system_packages]` | Pacchetti apt required + optional. |
-| `[[models.entry]]` | Modelli ML: nome, source URL, file con sha256, dim, executor che li usano. |
-| `[[services.entry]]` | Unit systemd con path src/dst, enabled_at_install, needs_sudo. |
-| `[[directories.entry]]` | Path + mode delle directory create al setup. |
-| `[[config_templates.entry]]` | Template iniziali di config (owned_domains, trusted_origins, mail.env, ...). |
-| `[[secrets.entry]]` | Secret rigenerabili (admin.key, signing key). Generator dichiarato. |
-| `[[external_services.entry]]` | Servizi esterni (ollama, photon, ...) con stato `optional`. |
-| `[multi_node]` | Note sul setup multi-nodo (vedi sotto). |
+I valori predefiniti delle ultime tre directory seguono le convenzioni XDG:
+`~/.local/share/metnos`, `~/.local/state/metnos` e `~/.config/metnos`. Ogni
+account di sistema dispone quindi di configurazione, sessioni e dati propri.
 
-## Multi-nodo (sync fra macchine personali)
+## Avvio e verifica
 
-Il maintainer ha vari server personali in piu' location (LAN domestica,
-laptop, nodi remoti). Il manifest e' pensato per essere replicabile su
-qualsiasi nodo: l'esecuzione di `setup.sh` + `download_models.sh` su un
-nodo nuovo deve produrre lo stesso ambiente sintatticamente.
+Su una macchina nuova, la fase 5 installa un unico `metnos.target` a livello
+utente. Il target coordina il server HTTP e gli eventuali componenti integrati.
+Per mantenerlo attivo anche senza una sessione aperta:
 
-Quel che NON e' (oggi) automatico:
+```bash
+sudo loginctl enable-linger "$USER"
+```
 
-- Sync delle credenziali (`~/.config/metnos/credentials`,
-  `~/.config/metnos/cookies`): per-nodo.
-- Sync della history (`~/.local/share/metnos/_history`): per-nodo.
-- Sync dell'indice volti / indice immagini: replicabile fra nodi del
-  maintainer ma il meccanismo di sync e' topic futuro.
+Controlli essenziali:
 
-Quel che E' replicabile per costruzione:
+```bash
+systemctl --user status metnos.target
+./.venv/bin/python runtime/stack_reconcile.py check
+curl http://127.0.0.1:8770/agent/health
+```
 
-- I modelli ML (blob deterministici, sha256 verificabile).
-- La configurazione `owned_domains.json` e `trusted_origins.json` (file
-  testuali, posso copiare manualmente).
-- Lo schema dei DB sqlite (i file vivono in `~/.local/state/metnos`,
-  ricreati al primo avvio del relativo modulo).
+Al termine, la fase 6 stampa l’URL locale e gli URL esatti rilevati per le
+interfacce IPv4 della LAN privata. Sul server si apre l’URL con
+`127.0.0.1`; da un altro dispositivo sulla stessa rete fidata si apre uno degli
+URL LAN stampati. L’installazione guidata propone l’accesso LAN come scelta
+predefinita; è possibile scegliere l’ascolto solo locale. Anche `--yes` abilita
+la LAN.
 
-Il manifest dichiara in `[multi_node]` quali path sono `shareable_paths`
-(replicabili senza problemi) e `per_node_paths` (devono restare
-per-nodo). Niente paletti che impediscano il sync nel futuro.
+Il listener predefinito usa HTTP non cifrato: non inoltrare la porta dal router
+e non esporla direttamente a Internet. Il collegamento di onboarding è valido
+15 minuti e si usa una sola volta. Se scade, eseguire
+`./.venv/bin/python -m install --force-phase 6`, oppure accedere a
+`/admin/login` con la chiave in `~/.config/metnos/admin.key`. Gli stessi URL
+restano nel file `~/.local/share/metnos/install_summary.md`.
 
-## Aggiornare il manifest
+La fase 5 verifica l’avvio e l’endpoint di salute. Non certifica da sola la
+qualità del modello né esegue un turno applicativo completo. Dopo il primo
+accesso alla chat, inviare una richiesta innocua, per esempio:
 
-Quando si introduce una nuova dipendenza (libreria, modello, servizio):
+> Chiedi a Metnos con una richiesta come quella di questo esempio: “Che ora è e
+> quale fuso orario stai usando?”
 
-1. Aggiungere la entry corrispondente in `manifest.toml`.
-2. Aggiornare `download_models.sh` se e' un modello ML.
-3. Aggiornare `INSTALL.md` se cambia il workflow visibile all'utente.
-4. (Per modelli) commit dei file (manifest e script), MAI dei blob
-   binari grandi (i blob sono fuori dal repo, scaricati on-demand).
+L’installazione è operativamente completa solo se la chat restituisce una
+risposta e i servizi selezionati superano i rispettivi controlli.
 
-Il manifest non e' un file di configurazione runtime — e' un'ontologia
-delle componenti. Cambia in PR a `main` con review.
+## Aggiornamento di un’installazione esistente
+
+Se è già attivo un vecchio `metnos-http.service` a livello di sistema, la fase 5
+installa le unità dell’utente ma non avvia un secondo listener e non disabilita
+il servizio esistente. Il passaggio al target integrato richiede il controllo
+guidato descritto in [`../systemd/README.md`](../systemd/README.md), con due cicli
+di prova e ripristino verificato.
+
+Lo stato dei componenti è visibile nella chat web seguendo **Impostazioni →
+Sistema → Servizi**. La pagina propone **Avvia** per un servizio arrestato e
+**Arresta** o **Riavvia** per un servizio attivo, sempre entro il catalogo
+chiuso dei componenti gestibili. Le operazioni di deploy coordinato continuano
+a passare dal riconciliatore dello stack.
+
+## Ruolo del manifest
+
+[`manifest.toml`](manifest.toml) è l’inventario leggibile dalla macchina dei
+componenti correnti: requisiti di sistema, modelli incorporati o opzionali,
+unità, directory e configurazioni. Il comportamento eseguibile resta definito
+dalle sorgenti che lo applicano:
+
+- `requirements.txt` e `requirements-optional.txt` per i pacchetti Python;
+- `install/phases/` per le sei fasi;
+- `install/sidecar.py` per i servizi opzionali;
+- `install/units/*.tmpl` per le unità systemd;
+- `runtime/virt/` e `runtime/llm_router.py` per la configurazione dei modelli.
+
+Una modifica a uno di questi contratti deve aggiornare nello stesso cambiamento
+anche il manifest e questa guida. Il manifest descrive lo stato installabile
+corrente: non ospita un diario dello sviluppo.

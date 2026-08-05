@@ -41,11 +41,16 @@ _RUNTIME_DEPS = [
     "anthropic>=0.34",       # optional, but kept core
     "openai>=1.40",          # optional, frontier fallback
     "prompt_toolkit>=3.0",   # dialog form
+    "google-api-python-client==2.196.0",  # first-party Workspace executors
+    "google-auth-oauthlib==1.4.0",
+    "google-auth",
 ]
 
 
 def _venv_pip() -> str:
-    venv = os.environ.get("METNOS_VENV", str(Path.home() / ".local" / "share" / "metnos" / ".venv"))
+    root = Path(os.environ.get(
+        "METNOS_INSTALL_ROOT", Path(__file__).resolve().parents[2]))
+    venv = os.environ.get("METNOS_VENV", str(root / ".venv"))
     return str(Path(venv) / "bin" / "pip")
 
 
@@ -117,13 +122,14 @@ def run(args: Any) -> dict[str, Any]:
     # 2. Create runtime directories
     ui.step("Creating runtime directory layout")
     for d in _runtime_dirs():
-        d.mkdir(parents=True, exist_ok=True)
-        # 0o700 on credentials/state, 0o755 on the rest
-        if d.name in {"credentials", "install"} or d.parent.name in {"credentials", "install"}:
-            try:
-                d.chmod(0o700)
-            except PermissionError:
-                pass
+        d.mkdir(mode=0o700, parents=True, exist_ok=True)
+        # Every XDG root belongs to one Metnos account.  Public artifacts are
+        # exported explicitly; runtime data, indexes and models are not shared
+        # by making the storage tree world-readable.
+        try:
+            d.chmod(0o700)
+        except OSError:
+            pass
     ui.ok(f"{len(_runtime_dirs())} directories ready")
     notes["dirs_created"] = len(_runtime_dirs())
 

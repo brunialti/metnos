@@ -62,8 +62,8 @@ cmd_post() {
     # Smoke battery (read-only subset)
     echo
     echo "  smoke battery (read-only subset):"
-    PYTHONPATH="$INSTALL_ROOT:/opt/suprastructure/src" \
-        /opt/suprastructure/.venv/bin/python -m runtime.smoke 2>&1 | tail -20 || \
+    PYTHONPATH="$INSTALL_ROOT" \
+        "${METNOS_VENV:-$INSTALL_ROOT/.venv}/bin/python" -m runtime.smoke 2>&1 | tail -20 || \
         echo "  ⚠ smoke battery non eseguibile (script missing); manuale"
 
     echo

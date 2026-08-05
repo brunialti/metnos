@@ -4,10 +4,11 @@
 #     ln -s /opt/metnos/scripts/pre-commit-prompts.sh /opt/metnos/.git/hooks/pre-commit
 # (oppure copiare il file).
 set -e
-cd /opt/metnos
+INSTALL_ROOT="${METNOS_INSTALL_ROOT:-/opt/metnos}"
+cd "$INSTALL_ROOT"
 files=$(git diff --cached --name-only --diff-filter=ACM | grep '^runtime/prompts/.*\.j2$' || true)
 if [ -z "$files" ]; then exit 0; fi
-/opt/suprastructure/.venv/bin/python - "$files" <<'PYEOF'
+"${METNOS_VENV:-$INSTALL_ROOT/.venv}/bin/python" - "$files" <<'PYEOF'
 import sys
 import minijinja
 env = minijinja.Environment()

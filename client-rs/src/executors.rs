@@ -45,6 +45,10 @@ pub struct CachedExecutor {
     /// (AppContainer, W4: `sandbox_common::hint_grants` → `appcontainer.rs`).
     /// La traduzione capability→permessi e' ora reale su ENTRAMBE le piattaforme.
     pub capabilities: Vec<Capability>,
+    /// Livello minimo firmato dal manifest per Windows. `appcontainer`
+    /// impedisce il fallback a un mero Job Object (nessun isolamento FS).
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub min_sandbox: String,
 }
 
 #[derive(Debug, Clone)]
@@ -62,26 +66,86 @@ pub async fn ensure_executor(
     code_sha256: &str,
     cache_root: &Path,
 ) -> Result<CachedExecutor> {
+    validate_cache_key(name, manifest_sha256, code_sha256)?;
     // Cache key = manifest_sha: manifest immutabile => dir immutabile.
     let dir = cache_root.join(format!("{}-{}", name, &manifest_sha256[..16.min(manifest_sha256.len())]));
     let manifest_path = dir.join("manifest.toml");
 
-    if !manifest_path.is_file() {
-        let bundle = fetch_executor(server, name).await?;
-        materialize(&bundle, server_pubkey, manifest_sha256, code_sha256, &dir)?;
+    if manifest_path.is_file() {
+        match verify_cached(&dir, server_pubkey, manifest_sha256, code_sha256) {
+            Ok((manifest, entry)) => {
+                let capabilities = parse_capabilities(&manifest);
+                let min_sandbox = parse_min_sandbox(&manifest)?;
+                return Ok(CachedExecutor {
+                    name: name.to_string(), dir, entry, capabilities, min_sandbox });
+            }
+            Err(e) => {
+                tracing::warn!(executor = name, "cache executor non integra, refetch firmato: {e:#}");
+                std::fs::remove_dir_all(&dir).context("rimozione cache executor corrotta")?;
+            }
+        }
     }
 
-    let manifest_bytes = std::fs::read(&manifest_path)?;
-    // Ri-verifica difensiva: digest manifest = quello atteso dall'invocazione.
-    let got = hex_sha256(&manifest_bytes);
-    if got != manifest_sha256 {
-        bail!("manifest cache corrotto per {}: {} != {}", name, got, manifest_sha256);
+    let bundle = fetch_executor(server, name).await?;
+    if bundle.name != name {
+        bail!("bundle executor inatteso: {} != {}", bundle.name, name);
     }
+    materialize(&bundle, server_pubkey, manifest_sha256, code_sha256, &dir)?;
+    let (manifest, entry) = verify_cached(
+        &dir, server_pubkey, manifest_sha256, code_sha256)?;
+    let capabilities = parse_capabilities(&manifest);
+    let min_sandbox = parse_min_sandbox(&manifest)?;
+    Ok(CachedExecutor { name: name.to_string(), dir, entry, capabilities, min_sandbox })
+}
+
+fn validate_cache_key(name: &str, manifest_sha256: &str,
+                      code_sha256: &str) -> Result<()> {
+    let valid_name = name.len() >= 2 && name.len() <= 65
+        && name.bytes().enumerate().all(|(i, b)| {
+            if i == 0 { b.is_ascii_lowercase() }
+            else { b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-' }
+        });
+    let valid_hash = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
+    if !valid_name || !valid_hash(manifest_sha256) || !valid_hash(code_sha256) {
+        bail!("chiave cache executor non valida");
+    }
+    Ok(())
+}
+
+fn verify_cached(dir: &Path, server_pubkey: &str, manifest_sha256: &str,
+                 code_sha256: &str) -> Result<(toml::Value, PathBuf)> {
+    let manifest_bytes = std::fs::read(dir.join("manifest.toml"))?;
+    let got_manifest = hex_sha256(&manifest_bytes);
+    if !got_manifest.eq_ignore_ascii_case(manifest_sha256) {
+        bail!("manifest cache corrotto: {} != {}", got_manifest, manifest_sha256);
+    }
+
+    // La firma viene verificata anche sui cache hit: il digest portato
+    // dall'invocazione da solo non sostituisce l'origine autenticata.
+    let sig_bytes = std::fs::read(dir.join("manifest.toml.sig"))?;
+    let sig_b64u = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sig_bytes);
+    identity::verify_b64(server_pubkey, &sig_b64u, &manifest_bytes)
+        .context("firma manifest cache non verificata")?;
+
     let manifest: toml::Value = toml::from_str(&String::from_utf8_lossy(&manifest_bytes))
         .context("parse manifest cache")?;
-    let entry = first_code_file(&manifest, &dir)?;
-    let capabilities = parse_capabilities(&manifest);
-    Ok(CachedExecutor { name: name.to_string(), dir, entry, capabilities })
+    let declared = code_file_names(&manifest);
+    if declared.is_empty() {
+        bail!("manifest senza [code].files");
+    }
+    let mut hasher = Sha256::new();
+    for fname in &declared {
+        let rel = code_rel_path(fname)?;
+        let data = std::fs::read(dir.join(rel))
+            .with_context(|| format!("lettura codice cache {}", fname))?;
+        hasher.update(data);
+    }
+    let got_code = format!("{:x}", hasher.finalize());
+    if !got_code.eq_ignore_ascii_case(code_sha256) {
+        bail!("code cache corrotto: {} != {}", got_code, code_sha256);
+    }
+    let entry = dir.join(code_rel_path(&declared[0])?);
+    Ok((manifest, entry))
 }
 
 async fn fetch_executor(server: &str, name: &str) -> Result<ExecutorBundle> {
@@ -120,9 +184,13 @@ fn materialize(
     // 3. digest del codice = concatenazione dei file in ordine dichiarato.
     let manifest: toml::Value = toml::from_str(&String::from_utf8_lossy(&manifest_bytes))?;
     let declared_files = code_file_names(&manifest);
+    if declared_files.is_empty() {
+        bail!("manifest senza [code].files");
+    }
     let mut hasher = Sha256::new();
     let mut decoded: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for fname in &declared_files {
+        code_rel_path(fname)?;
         let b64 = bundle
             .files
             .get(fname)
@@ -143,7 +211,11 @@ fn materialize(
     std::fs::write(tmp.join("manifest.toml"), &manifest_bytes)?;
     std::fs::write(tmp.join("manifest.toml.sig"), &sig_bytes)?;
     for (fname, data) in &decoded {
-        std::fs::write(tmp.join(fname), data)?;
+        let dest = tmp.join(code_rel_path(fname)?);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(dest, data)?;
     }
     let _ = std::fs::remove_dir_all(dir);
     std::fs::rename(&tmp, dir).context("rename executor cache dir")?;
@@ -216,7 +288,7 @@ fn shim_rel_path(fname: &str) -> Result<std::path::PathBuf> {
 
 #[cfg(test)]
 mod shim_tests {
-    use super::shim_rel_path;
+    use super::{code_rel_path, shim_rel_path, validate_cache_key};
 
     #[test]
     fn flat_and_tree_ok() {
@@ -232,6 +304,18 @@ mod shim_tests {
             assert!(shim_rel_path(bad).is_err(), "accettato: {}", bad);
         }
     }
+
+    #[test]
+    fn code_paths_and_cache_keys_are_closed() {
+        assert!(code_rel_path("pkg/main.py").is_ok());
+        for bad in ["../x.py", "a/../x.py", "/x.py", "a\\x.py", "x:y"] {
+            assert!(code_rel_path(bad).is_err(), "accepted {bad}");
+        }
+        let hash = "a".repeat(64);
+        assert!(validate_cache_key("read_files", &hash, &hash).is_ok());
+        assert!(validate_cache_key("../read", &hash, &hash).is_err());
+        assert!(validate_cache_key("read", "abc", &hash).is_err());
+    }
 }
 
 fn code_file_names(manifest: &toml::Value) -> Vec<String> {
@@ -243,10 +327,19 @@ fn code_file_names(manifest: &toml::Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn first_code_file(manifest: &toml::Value, dir: &Path) -> Result<PathBuf> {
-    let names = code_file_names(manifest);
-    let first = names.first().ok_or_else(|| anyhow!("manifest senza [code].files"))?;
-    Ok(dir.join(first))
+fn code_rel_path(fname: &str) -> Result<PathBuf> {
+    if fname.is_empty() || fname.contains('\\') || fname.contains(':')
+        || fname.starts_with('/') || fname.ends_with('/') {
+        bail!("nome file codice non sicuro: {}", fname);
+    }
+    let mut rel = PathBuf::new();
+    for segment in fname.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            bail!("segmento codice non sicuro in {}", fname);
+        }
+        rel.push(segment);
+    }
+    Ok(rel)
 }
 
 fn parse_capabilities(manifest: &toml::Value) -> Vec<Capability> {
@@ -265,6 +358,17 @@ fn parse_capabilities(manifest: &toml::Value) -> Vec<Capability> {
         }
     }
     out
+}
+
+fn parse_min_sandbox(manifest: &toml::Value) -> Result<String> {
+    let value = manifest.get("placement")
+        .and_then(|p| p.get("min_sandbox"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("job-object");
+    if !matches!(value, "job-object" | "appcontainer") {
+        bail!("placement.min_sandbox non supportato: {}", value);
+    }
+    Ok(value.to_string())
 }
 
 fn hex_sha256(data: &[u8]) -> String {

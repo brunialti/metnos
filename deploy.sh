@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Deploy docs/ di Mykleos a Cloudflare Pages.
-# Token letto da ~/.config/mykleos/deploy.env (chmod 600), non da ambiente interattivo né da memoria.
+# Pubblica la documentazione di Metnos su Cloudflare Pages.
+# Le credenziali sono lette da /etc/metnos/deploy.env (chmod 600 o 400),
+# fuori dal repository e indipendentemente dall'utente che lo ha clonato.
 #
 # Preparazione una tantum:
-#   mkdir -p ~/.config/mykleos
-#   chmod 700 ~/.config/mykleos
-#   cat > ~/.config/mykleos/deploy.env <<'EOF'
+#   sudo install -d -m 755 /etc/metnos
+#   sudo editor /etc/metnos/deploy.env
+# Il file deve contenere:
+#
 #   CLOUDFLARE_API_TOKEN=cfut_xxx...
-#   CLOUDFLARE_ACCOUNT_ID=cfd806df1fda3110b9bc0a2d2d0eb3b0
-#   EOF
-#   chmod 600 ~/.config/mykleos/deploy.env
+#   CLOUDFLARE_ACCOUNT_ID=...
+#   CLOUDFLARE_PAGES_PROJECT=...
+#
+#   sudo chown "$(id -un):$(id -gn)" /etc/metnos/deploy.env
+#   chmod 600 /etc/metnos/deploy.env
 set -euo pipefail
 
-ENV_FILE="${HOME}/.config/mykleos/deploy.env"
 REPO="/opt/metnos"
+ENV_FILE="${METNOS_DEPLOY_ENV:-/etc/metnos/deploy.env}"
+PYTHON="${METNOS_VENV:-${REPO}/.venv}/bin/python"
 
 if [ ! -f "$ENV_FILE" ]; then
     echo "ERROR: $ENV_FILE non esiste." >&2
@@ -36,14 +41,21 @@ set +a
 
 : "${CLOUDFLARE_API_TOKEN:?manca CLOUDFLARE_API_TOKEN in $ENV_FILE}"
 : "${CLOUDFLARE_ACCOUNT_ID:?manca CLOUDFLARE_ACCOUNT_ID in $ENV_FILE}"
+: "${CLOUDFLARE_PAGES_PROJECT:?manca CLOUDFLARE_PAGES_PROJECT in $ENV_FILE}"
+
+if [ ! -x "$PYTHON" ]; then
+    echo "ERROR: ambiente Python di Metnos non trovato: $PYTHON" >&2
+    exit 1
+fi
 
 cd "$REPO"
-python3 scripts/generate_executor_catalog.py
-python3 scripts/generate_domain_reference.py
-python3 scripts/generate_ui_reference.py
-python3 runtime/published_docs.py validate
+"$PYTHON" scripts/generate_executor_catalog.py
+"$PYTHON" scripts/generate_domain_reference.py
+"$PYTHON" scripts/generate_ui_reference.py
+"$PYTHON" runtime/published_docs.py validate
+"$PYTHON" scripts/compile_tutor_catalog.py --force
 exec node_modules/.bin/wrangler pages deploy docs \
-    --project-name=mykleos \
+    --project-name="$CLOUDFLARE_PAGES_PROJECT" \
     --commit-dirty=true \
     --branch=main \
     "$@"

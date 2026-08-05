@@ -4,11 +4,11 @@
 Invoked by ``install/bootstrap.sh`` after the venv is ready, OR directly
 as ``python -m install`` from a clone when the venv is already populated.
 
-Six phases per ADR 0145::
+The supported flow has six resumable phases::
 
   1 bootstrap   pre-flight + python deps + runtime dirs
   2 infra       BGE-M3 model + optional services (llama.cpp, VLM, photon, …)
-  3 code        Metnos source skeleton + i18n.sqlite import
+  3 code        source verification + initial stores + executor signing
   4 secrets     interactive dialog for admin / Telegram / IMAP / API keys
   5 systemd     user units + reachability tests
   6 firstboot   admin onboarding link + optional sample index

@@ -27,6 +27,7 @@
 #   - node_modules/             (deploy.sh deps Cloudflare, ricreato da npm)
 #   - __pycache__/, *.pyc       (build Python)
 #   - .venv*/                   (virtualenv, ricreati da pip install)
+#   - tests/e2e/tmp/            (artefatti test; possono contenere link al NAS)
 #   - Immagini/                 (CIFS MOUNT al NAS stesso — escludere è CRITICO,
 #                                altrimenti rsync entra in loop ricorsivo NAS→NAS
 #                                e riempie il filesystem)
@@ -51,10 +52,14 @@ METNOS_DIR="/opt/metnos"
 USER_HOME="/home/roberto"
 NAS_MOUNT="/mnt/nas"
 BACKUP_BASE="$NAS_MOUNT/backup/BEELINK/metnos"
+EXPECTED_BACKUP_BASE="/mnt/nas/backup/BEELINK/metnos"
 MAX_BACKUPS=20
 LOG_FILE="/opt/metnos/data/backup_nas.log"
 DATE_TAG=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="$BACKUP_BASE/metnos_$DATE_TAG"
+FINAL_BACKUP_DIR="$BACKUP_BASE/metnos_$DATE_TAG"
+# Il prefisso nascosto impedisce di scambiare un trasferimento interrotto per
+# un backup valido. La directory viene rinominata solo a copia completata.
+BACKUP_DIR="$BACKUP_BASE/.metnos_$DATE_TAG.partial"
 
 # --- Logging ---
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -77,6 +82,23 @@ else
     log "NAS gia' montato"
 fi
 
+# Safety invariant: questo job deve scrivere esclusivamente nell'home NAS
+# dell'utente `backup`, mai sotto `admin/` o su un mount locale di ripiego.
+NAS_SOURCE=$(findmnt -rn -T "$NAS_MOUNT" -o SOURCE 2>/dev/null || true)
+case "$NAS_SOURCE" in
+    *"/User Homes"|*'/User\x20Homes') ;;
+    *)
+        log "ERRORE: $NAS_MOUNT non e' il mount NAS 'User Homes'. Backup annullato."
+        exit 1
+        ;;
+esac
+
+RESOLVED_BACKUP_BASE=$(readlink -m -- "$BACKUP_BASE")
+if [ "$RESOLVED_BACKUP_BASE" != "$EXPECTED_BACKUP_BASE" ]; then
+    log "ERRORE: destinazione backup non autorizzata. Attesa: $EXPECTED_BACKUP_BASE"
+    exit 1
+fi
+
 # --- Crea directory backup ---
 mkdir -p "$BACKUP_DIR/myclaw"
 mkdir -p "$BACKUP_DIR/dotlocal"
@@ -90,6 +112,9 @@ rsync -aL \
     --exclude='node_modules/' \
     --exclude='.venv/' \
     --exclude='.venv-image-poc/' \
+    --exclude='tests/e2e/tmp/' \
+    --exclude='Immagini/' \
+    --exclude='Immagini' \
     --exclude='__pycache__/' \
     --exclude='*.pyc' \
     --exclude='data/backup_nas.log' \
@@ -156,7 +181,7 @@ cp /etc/fstab "$BACKUP_DIR/systemd/fstab" 2>/dev/null || true
 
 # --- Crea manifest ---
 log "Creazione manifest..."
-EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbcache/, _history/blob/, cap_pending/, location_pending/, get_inputs/, *.lock, /home/user/models/*.gguf (~57GB ridownloadabili)"
+EXCLUDED_NOTE="venv*/, node_modules/, tests/e2e/tmp/ (puo' contenere link al NAS), __pycache__/, Immagini/ (CIFS NAS), thumbcache/, _history/blob/, cap_pending/, location_pending/, get_inputs/, *.lock, /home/user/models/*.gguf (~57GB ridownloadabili)"
 {
     echo "Metnos Backup"
     echo "==============="
@@ -164,7 +189,7 @@ EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbc
     echo "Hostname: $(hostname)"
     echo "IP: $(hostname -I | awk '{print $1}')"
     echo "Python: $(python3 --version 2>&1)"
-    echo "OS: $(grep PRETTY_NAME /etc/os-release | cut -d'\"' -f2)"
+    echo "OS: $(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2)"
     echo "Uptime: $(uptime -p)"
     echo
     echo "Sezioni backup:"
@@ -199,6 +224,67 @@ EXCLUDED_NOTE="venv*/, node_modules/, __pycache__/, Immagini/ (CIFS NAS), thumbc
     echo "  cp systemd/*.service systemd/*.timer /etc/systemd/system/  &&  systemctl daemon-reload"
 } > "$BACKUP_DIR/manifest.txt"
 
+# Verifica le copie dei database runtime prima di pubblicare il backup. I DB
+# vuoti legacy sono ignorati; ogni DB con dati deve superare integrity_check.
+log "Verifica integrita' database nel backup..."
+if ! command -v sqlite3 >/dev/null 2>&1; then
+    log "ERRORE: sqlite3 non disponibile; impossibile validare il backup."
+    exit 1
+fi
+
+DB_TOTAL=0
+DB_BAD=0
+while IFS= read -r -d '' DB_FILE; do
+    DB_TOTAL=$((DB_TOTAL + 1))
+    if ! DB_RESULT=$(sqlite3 -readonly "$DB_FILE" 'PRAGMA integrity_check;' 2>&1); then
+        DB_BAD=$((DB_BAD + 1))
+        log "ERRORE: database non leggibile: ${DB_FILE#"$BACKUP_DIR/"}"
+    elif [ "$DB_RESULT" != "ok" ]; then
+        DB_BAD=$((DB_BAD + 1))
+        log "ERRORE: database non integro: ${DB_FILE#"$BACKUP_DIR/"}"
+    fi
+done < <(
+    find "$BACKUP_DIR/dotlocal" \
+         "$BACKUP_DIR/dotlocal_state" \
+         "$BACKUP_DIR/dotconfig" \
+         -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) \
+         -size +0c -print0 2>/dev/null
+)
+
+if [ "$DB_BAD" -ne 0 ]; then
+    log "ERRORE: $DB_BAD/$DB_TOTAL database non hanno superato la verifica."
+    exit 1
+fi
+log "Database verificati: $DB_TOTAL/$DB_TOTAL integri"
+
+# Pubblicazione atomica: solo una copia completa assume il nome metnos_* ed
+# entra quindi nello storico/rotazione dei 20 backup validi.
+if [ -e "$FINAL_BACKUP_DIR" ]; then
+    log "ERRORE: destinazione finale gia' esistente: $FINAL_BACKUP_DIR"
+    exit 1
+fi
+
+# CIFS puo' trattenere per alcuni secondi gli handle chiusi da rsync. In quel
+# caso la prima rename della directory non vuota riceve EACCES: riprova senza
+# ricopiare i dati e senza pubblicare una copia parziale.
+BACKUP_PUBLISHED=false
+for RENAME_ATTEMPT in 1 2 3 4 5 6; do
+    if mv -- "$BACKUP_DIR" "$FINAL_BACKUP_DIR"; then
+        BACKUP_PUBLISHED=true
+        break
+    fi
+    if [ "$RENAME_ATTEMPT" -lt 6 ]; then
+        log "WARN: NAS occupato durante la pubblicazione (tentativo $RENAME_ATTEMPT/6); riprovo tra 10 s..."
+        sleep 10
+    fi
+done
+
+if [ "$BACKUP_PUBLISHED" != true ]; then
+    log "ERRORE: impossibile pubblicare il backup dopo 6 tentativi."
+    exit 1
+fi
+
+BACKUP_DIR="$FINAL_BACKUP_DIR"
 log "Backup completato: $BACKUP_DIR"
 
 # --- Rotazione: mantieni solo ultimi MAX_BACKUPS ---

@@ -1,56 +1,82 @@
 # metnos-client
 
-Client Rust per l'esecuzione remota di executor Metnos su un dispositivo appaiato
-(PC di casa/ufficio). Bootstrap lazy del runtime Python via mirror server, sandbox
-per piattaforma, **HTTP firmato Ed25519** (device + server) — NON mTLS.
+`metnos-client` executes signed Metnos invocations on a registered Windows or
+Linux device. It has no planning authority: it polls the server, verifies an
+invocation, runs the selected executor inside the strongest available local
+sandbox, and returns a signed result.
 
-Versione corrente: **0.2.9** (Cargo.toml + mirror `latest`). Su Windows
-l'esecuzione usa Job Object per limitare risorse e spegnere l'intero albero dei
-processi al timeout.
+## Trust boundary
 
-## Autenticazione e trasporto (stato reale)
-- Trasporto attuale: **HTTP** dentro la LAN o una rete privata equivalente.
-  TLS/mTLS e' un irrobustimento futuro del canale, non un requisito del client
-  corrente.
-- Ogni richiesta client→server è **firmata Ed25519** sui bytes esatti del body
-  (header `X-Metnos-Device-Sig`); ogni invocazione server→client porta una
-  `server_sig` verificata dal client contro la **pubkey server pinnata** prima
-  dell'esecuzione (firma non valida → rifiuto, nessuna esecuzione).
-- Cache executor content-addressed (manifest sha256 + code sha256), shim firmato.
+- The client creates its own Ed25519 device key on first start.
+- Pairing uses a one-time token and binds the device identity to a Metnos user.
+- Client requests are signed over canonical JSON bytes.
+- Server invocations carry a signature verified against the pinned server key.
+- Executor code and manifests are cached by digest and verified before use.
+- A delivery spool retries results without executing the invocation again.
+- The client never sends an unsolicited action to the server.
+
+The current transport is HTTP and is intended for a trusted LAN or private
+overlay network. Message signatures authenticate invocations and results; they
+do not provide transport confidentiality. Do not expose the client/server
+channel directly to an untrusted network.
+
+## Runtime and sandbox
+
+The client downloads a signed Python runtime and executor bundle from the Metnos
+server when required. It does not depend on a system Python installation.
+
+On Linux, executor processes run through Bubblewrap when available, with an
+explicitly reported weaker fallback when it is not. Process groups ensure that
+timeouts terminate the complete child tree.
+
+On Windows, the client combines Job Objects with AppContainer isolation where
+the executor profile permits it. Resource limits and kill-on-close remain active
+for paths that cannot use AppContainer. The result reports the sandbox actually
+applied rather than claiming stronger isolation.
+
+Read and mutation executors use the same signed invocation path. Device-aware
+undo is dispatched back to the device that performed the original action.
+
+## Commands
+
+```text
+metnos-client register   pair this device with a one-time token
+metnos-client run        start the poll, execute, and delivery loop
+metnos-client whoami     show the local pairing identity
+```
+
+The long-running client enforces a single-instance lock. Automatic self-update
+downloads a signed binary, switches through the launcher loop, and keeps the
+stored device identity and spool.
 
 ## Build
+
+```bash
+cargo build --release --target x86_64-unknown-linux-musl
+cargo build --release --target x86_64-pc-windows-gnu
 ```
-cargo build --release --target x86_64-unknown-linux-musl    # Linux (static musl)
-cargo build --release --target x86_64-pc-windows-gnu         # Windows (mingw-w64)
+
+Release artifacts are produced and signed with:
+
+```bash
+scripts/build-client.sh <version>
 ```
-Distribuzione firmata + mirror: `scripts/build-client.sh <versione>` (firma
-Ed25519 con la chiave server + pubblica nel mirror). macOS = tier-2 (build manuale).
 
-## Layout (moduli reali)
-- `src/main.rs` — entry + CLI (`whoami` / `register` / `run`).
-- `src/config.rs` — path locali (XDG-style cross-platform), file di stato.
-- `src/identity.rs` — chiave Ed25519 del device (gen al primo avvio, persistita).
-- `src/pairing.rs` — flow `register`: token monouso + pubkey → device_id.
-- `src/runner.rs` — loop `run`: flush spool → poll → verify server_sig → pull
-  executor (cache-miss) → sandbox → spool result → consegna; heartbeat su task
-  separato (0.2.7).
-- `src/wire.rs` — tipi wire + canonical JSON (contratto cross-lang col server).
-- `src/executors.rs` — pull + verifica firma di executor e shim.
-- `src/pyenv.rs` — runtime python-build-standalone (download robusto a chunk,
-  estrazione pure-Rust); Windows senza fallback al python di sistema.
-- `src/sandbox_linux.rs` — bubblewrap se presente, altrimenti fallback diretto
-  loggato (§2.8); kill d'albero via process-group.
-- `src/sandbox_windows.rs` — **Job Object** (KILL_ON_JOB_CLOSE + cap mem/proc,
-  spawn CREATE_SUSPENDED → assign → resume → wait/timeout → TerminateJobObject).
-- `src/proclock.rs` — lock single-instance cross-platform (`fs2`).
-- `src/state.rs` — stato appaiamento persistito.
+## Source map
 
-## Stato
-Stato operativo: Linux e Windows sono supportati per gli executor remoti di sola
-lettura e autosufficienti. Restano fuori dal percorso ordinario gli executor che
-modificano dati, richiedono dipendenze non impacchettate o pretendono isolamento
-filesystem/rete piu' forte di quello disponibile oggi su Windows.
+| Module | Responsibility |
+|---|---|
+| `main.rs` | CLI and process entry point |
+| `config.rs`, `state.rs` | platform paths and persistent pairing state |
+| `identity.rs`, `pairing.rs` | device key and registration flow |
+| `wire.rs` | cross-language message types and canonical JSON |
+| `runner.rs` | poll, verify, execute, spool, deliver, and heartbeat loop |
+| `executors.rs`, `pyenv.rs` | signed executor cache and managed Python runtime |
+| `sandbox_common.rs` | shared sandbox result contract |
+| `sandbox_linux.rs` | Bubblewrap and process-group enforcement |
+| `sandbox_windows.rs`, `appcontainer.rs` | Job Object and AppContainer enforcement |
+| `proclock.rs` | cross-platform single-instance lock |
+| `selfupdate.rs`, `update_state.rs` | signed client update and launcher state |
 
-Prossimi irrobustimenti: AppContainer/ACL su Windows, aggiornamento automatico
-del binario, TLS/mTLS del canale e gestione esplicita di piu' dispositivi per
-utente. Vedi `internal/design/remote-executors.html`.
+Installation and pairing are normally initiated from the Metnos web interface;
+manual builds are intended for development and release preparation.

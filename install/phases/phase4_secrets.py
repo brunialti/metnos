@@ -2,16 +2,17 @@
 """Phase 4 — Sensitive data dialog.
 
 The only phase that asks for credentials. Every answer is stored
-encrypted via Fernet+HKDF (ADR 0131 single credentials store);
+encrypted via the runtime's Fernet+HKDF credential store;
 nothing plaintext lands on disk.
 
 Bootstrap secret: the admin HMAC key (``~/.config/metnos/admin.key``)
 is generated automatically — 256 bits from ``os.urandom`` — so the
 user never has to type it.
 
-For each optional integration (Telegram, IMAP, Anthropic, OpenAI,
-Google Workspace, GitHub) the dialog asks once and stores the credential
-under a stable domain key the runtime reads later.
+For each optional integration offered here (Telegram, IMAP/SMTP, Anthropic,
+OpenAI, GitHub) the dialog asks once and stores the credential under a stable
+domain key the runtime reads later. Google Workspace uses its own OAuth flow
+after installation; the installer never asks for the Google account password.
 
 All prompts honour ``--yes`` (non-interactive): in that mode optional
 integrations are skipped, and the user can add them after install via
@@ -20,12 +21,14 @@ integrations are skipped, and the user can add them after install via
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import secrets
+import sys
 from pathlib import Path
 from typing import Any
 
-from .. import ui
+from .. import i18n, ui
 
 
 def _config_dir() -> Path:
@@ -47,30 +50,33 @@ def _generate_admin_key() -> bool:
     return True
 
 
-def _store_credential(domain: str, secret: str, *, description: str = "") -> bool:
-    """Persist a credential via runtime.credentials if available.
-
-    During early scaffold (no runtime/ in the public repo yet), we
-    fall back to writing into ``~/.config/metnos/credentials_pending/``
-    so the user knows what was collected and can migrate manually once
-    the runtime ships.
-    """
+def _store_credential(domain: str, payload: dict[str, Any], *,
+                      description: str = "") -> bool:
+    """Persist one canonical payload through the encrypted credential store."""
+    if not isinstance(payload, dict) or not payload:
+        ui.warn(f"failed to store credential {domain}: empty payload")
+        return False
+    # ``python -m install`` starts with the repository root on sys.path,
+    # whereas runtime modules use flat imports (``import config``).  Admit the
+    # canonical runtime directory explicitly instead of falling back to a
+    # second, plaintext credential format.
+    install_root = Path(os.environ.get(
+        "METNOS_INSTALL_ROOT", Path(__file__).resolve().parents[2]))
+    runtime_dir = str(install_root / "runtime")
+    if runtime_dir not in sys.path:
+        sys.path.insert(0, runtime_dir)
     try:
-        # Late import: runtime may not be on path yet during early scaffold
-        from runtime.credentials import store  # type: ignore
-    except ImportError:
-        # Fallback: write into a pending directory with sensible perms
-        pending = _config_dir() / "credentials_pending"
-        pending.mkdir(mode=0o700, exist_ok=True)
-        f = pending / f"{domain}.txt"
-        f.write_text(secret + "\n")
-        f.chmod(0o600)
-        ui.info(f"runtime/credentials not yet available; secret stashed at {f} (mode 0600)")
-        return True
+        from credentials import store  # type: ignore
+    except ImportError as exc:
+        ui.warn(f"encrypted credential store unavailable for {domain}: {exc}")
+        return False
 
     try:
-        store(domain=domain, secret=secret, description=description)
-        ui.ok(f"credential stored: domain={domain}")
+        stored = dict(payload)
+        if description:
+            stored["_description"] = description
+        store(domain, stored)
+        ui.ok(f"credential stored encrypted: domain={domain}")
         return True
     except Exception as e:  # pragma: no cover — runtime in flux
         ui.warn(f"failed to store credential {domain}: {e}")
@@ -121,6 +127,39 @@ def _ask_http_port(args: Any) -> int:
         return port
 
 
+def _ask_http_host(args: Any) -> str:
+    """Choose loopback-only or private-LAN reachability for the Web UI."""
+    configured = os.environ.get("METNOS_HTTP_HOST", "").strip()
+    if configured:
+        try:
+            address = ipaddress.ip_address(configured)
+        except ValueError:
+            ui.warn(i18n.t("p4_http_host_invalid", value=configured))
+        else:
+            if address.version == 4 and str(address) == "0.0.0.0":
+                return "0.0.0.0"
+            if address.version == 4 and address.is_loopback:
+                return "127.0.0.1"
+            if (
+                address.version == 4
+                and address.is_private
+                and not address.is_link_local
+                and not address.is_multicast
+            ):
+                return str(address)
+            ui.warn(i18n.t("p4_http_host_not_private", value=configured))
+    if args.yes:
+        return "0.0.0.0"
+    ui.console().print(i18n.t("p4_http_host_head"))
+    ui.console().print(i18n.t("p4_http_host_desc"))
+    if ui.confirm(
+        i18n.t("p4_http_host_confirm"),
+        default=True,
+    ):
+        return "0.0.0.0"
+    return "127.0.0.1"
+
+
 def _ask_telegram(args: Any) -> bool:
     if args.yes:
         return False
@@ -133,34 +172,63 @@ def _ask_telegram(args: Any) -> bool:
     if not token:
         ui.warn("empty token, skipping Telegram setup")
         return False
-    _store_credential("telegram_bot_token", token, description="Telegram BotFather token")
-    return True
+    return _store_credential(
+        "telegram_bot_token", {"value": token},
+        description="Telegram BotFather token")
+
+
+def _ask_mail_port(question: str, *, default: int) -> int:
+    """Ask for a network port using the full IANA port range."""
+    while True:
+        raw = ui.ask(question, default=str(default))
+        try:
+            port = int(raw)
+        except (TypeError, ValueError):
+            port = 0
+        if 1 <= port <= 65535:
+            return port
+        ui.warn(f"'{raw}' is not a valid port (1-65535) — try again.")
 
 
 def _ask_imap(args: Any) -> int:
     if args.yes:
         return 0
-    ui.console().print("\n  [bold]IMAP mail accounts[/bold] (optional)")
+    ui.console().print("\n  [bold]IMAP/SMTP mail accounts[/bold] (optional)")
     if not ui.confirm("Add a mail account?", default=False):
         return 0
     n = 0
     while True:
         label = ui.ask("Account label (e.g. 'personal', 'work')")
-        host = ui.ask("IMAP server hostname")
+        imap_host = ui.ask("IMAP server hostname")
+        imap_port = _ask_mail_port("IMAP server port", default=993)
         user = ui.ask("IMAP username")
         password = ui.ask("IMAP password", password=True)
-        _store_credential(
-            f"imap_{label}",
-            f"host={host}\nuser={user}\npassword={password}\n",
+        smtp_host = ""
+        smtp_port = 465
+        if ui.confirm("Configure SMTP sending for this account?", default=True):
+            smtp_host = ui.ask("SMTP server hostname")
+            smtp_port = _ask_mail_port("SMTP server port", default=465)
+        stored = _store_credential(
+            f"smtp_{label}",
+            {
+                "user": user,
+                "password": password,
+                "imap_host": imap_host,
+                "imap_port": imap_port,
+                "smtp_host": smtp_host,
+                "smtp_port": smtp_port,
+                "verify_tls": True,
+            },
             description=f"IMAP account: {label}",
         )
-        n += 1
+        if stored:
+            n += 1
         if not ui.confirm("Add another account?", default=False):
             break
     return n
 
 
-def _ask_apikey(args: Any, provider: str, env_hint: str) -> bool:
+def _ask_apikey(args: Any, provider: str, env_hint: str, domain: str) -> bool:
     if args.yes:
         return False
     ui.console().print(f"\n  [bold]{provider} API key[/bold] (optional)")
@@ -171,8 +239,8 @@ def _ask_apikey(args: Any, provider: str, env_hint: str) -> bool:
     key = ui.ask(f"{provider} API key", password=True)
     if not key:
         return False
-    _store_credential(f"{provider.lower()}_api_key", key, description=f"{provider} API key")
-    return True
+    return _store_credential(
+        domain, {"value": key}, description=f"{provider} API key")
 
 
 def _ask_workspace_paths(args: Any) -> dict[str, str]:
@@ -219,17 +287,23 @@ def run(args: Any) -> dict[str, Any]:
     # 3. HTTP port
     notes["http_port"] = _ask_http_port(args)
 
-    # 4. Locale
+    # 4. Web UI reachability
+    notes["http_host"] = _ask_http_host(args)
+
+    # 5. Locale
     notes["locale"] = _write_locale(args)
 
-    # 5. Optional credentials
+    # 6. Optional credentials
     notes["telegram"] = _ask_telegram(args)
     notes["imap_accounts"] = _ask_imap(args)
-    notes["anthropic"]  = _ask_apikey(args, "Anthropic", "ANTHROPIC_API_KEY")
-    notes["openai"]     = _ask_apikey(args, "OpenAI",    "OPENAI_API_KEY")
-    notes["github_pat"] = _ask_apikey(args, "GitHub",    "GITHUB_PAT")
+    notes["anthropic"] = _ask_apikey(
+        args, "Anthropic", "ANTHROPIC_API_KEY", "anthropic_api_key")
+    notes["openai"] = _ask_apikey(
+        args, "OpenAI", "OPENAI_API_KEY", "openai_api_key")
+    notes["github_pat"] = _ask_apikey(
+        args, "GitHub", "GITHUB_PAT", "github")
 
-    # 6. Workspace paths
+    # 7. Workspace paths
     paths = _ask_workspace_paths(args)
     if paths:
         notes["workspace"] = paths

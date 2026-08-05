@@ -21,14 +21,32 @@
 //! dipendenze non-stdlib: quel ramo e' marcato TODO W5 e fallisce ONESTO.
 
 use anyhow::{anyhow, bail, Context, Result};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+use crate::identity;
 
 pub struct PyEnv {
     pub python: PathBuf,
     pub source: String,
 }
 
-pub async fn resolve(server: &str, cache_root: &Path) -> Result<PyEnv> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeDescriptor {
+    version: u32,
+    filename: String,
+    archive_sha256: String,
+    archive_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeEnvelope {
+    descriptor: RuntimeDescriptor,
+    sig: String,
+}
+
+pub async fn resolve(server: &str, server_pubkey: &str,
+                     cache_root: &Path) -> Result<PyEnv> {
     // 1. override esplicito.
     if let Ok(p) = std::env::var("METNOS_PYTHON") {
         let path = PathBuf::from(p);
@@ -40,12 +58,9 @@ pub async fn resolve(server: &str, cache_root: &Path) -> Result<PyEnv> {
 
     let runtime_dir = cache_root.join("runtime");
 
-    // 2. runtime gia' scaricato.
-    if let Some(py) = find_cached_python(&runtime_dir) {
-        return Ok(PyEnv { python: py, source: "cache:python-build-standalone".into() });
-    }
-
-    // 3. download lazy da mirror, se il pin e' configurato. Env per-OS
+    // 2. Runtime da mirror: il nome configurato non e' una radice di fiducia.
+    //    Il server restituisce un descrittore Ed25519 con hash+dimensione;
+    //    il client lo verifica con la stessa pubkey pinnata delle invocazioni.
     //    (§16.2 W3.1): il pin e' specifico del target
     //    (cpython-*-x86_64-pc-windows-msvc-install_only.tar.gz su windows),
     //    quindi variabile dedicata invece di far indovinare il tarball giusto
@@ -53,21 +68,29 @@ pub async fn resolve(server: &str, cache_root: &Path) -> Result<PyEnv> {
     //    eterogenei.
     let pin_var = if cfg!(windows) { "METNOS_PYTHON_RUNTIME_WIN" } else { "METNOS_PYTHON_RUNTIME" };
     if let Ok(tarball) = std::env::var(pin_var) {
-        // sha256 opzionale (baked accanto al pin, come per il binario client):
-        // abilita la verifica end-to-end + escalation a consenso su rete che
-        // corrompe. Assente = solo gzip/tar CRC come rete di sicurezza.
-        let sha_var = format!("{}_SHA256", pin_var);
-        let sha256 = std::env::var(&sha_var).ok().filter(|s| !s.is_empty());
-        download_runtime(server, &tarball, sha256.as_deref(), &runtime_dir)
-            .await
-            .with_context(|| format!("download runtime {}", tarball))?;
-        if let Some(py) = find_cached_python(&runtime_dir) {
-            return Ok(PyEnv { python: py, source: "mirror:python-build-standalone".into() });
-        }
-        bail!("runtime scaricato ma nessun interprete trovato in {}", runtime_dir.display());
+        validate_tarball_name(&tarball)?;
+        let envelope = fetch_or_cached_descriptor(
+            server, server_pubkey, &tarball, &runtime_dir).await?;
+        let python = ensure_verified_runtime(
+            server, &envelope.descriptor, &runtime_dir).await?;
+        return Ok(PyEnv {
+            python,
+            source: "signed-mirror:python-build-standalone".into(),
+        });
     }
 
-    // 4. fallback di sistema — SOLO unix. Su Windows un python di sistema
+    // Compatibilita' offline: un runtime gia' ammesso resta utilizzabile solo
+    // se il suo descrittore cached e' firmato e l'archivio conserva lo hash.
+    if let Ok(envelope) = load_cached_descriptor(server_pubkey, &runtime_dir, None) {
+        let python = ensure_verified_runtime(
+            server, &envelope.descriptor, &runtime_dir).await?;
+        return Ok(PyEnv {
+            python,
+            source: "signed-cache:python-build-standalone".into(),
+        });
+    }
+
+    // 3. fallback di sistema — SOLO unix. Su Windows un python di sistema
     //    non e' verificato ne' garantito compatibile (§16.2 W3.1): niente
     //    fallback silenzioso, errore onesto (runner.rs lo traduce in
     //    error_class:"python_runtime_missing" verso il server).
@@ -86,6 +109,83 @@ pub async fn resolve(server: &str, cache_root: &Path) -> Result<PyEnv> {
          (nessun fallback al python di sistema su questa piattaforma)",
         pin_var
     )
+}
+
+fn validate_tarball_name(tarball: &str) -> Result<()> {
+    if tarball.is_empty() || tarball.len() > 240 || tarball.contains('/')
+        || tarball.contains('\\') || tarball.contains("..")
+        || !tarball.bytes().all(|b| b.is_ascii_alphanumeric()
+            || matches!(b, b'.' | b'_' | b'-' | b'+'))
+    {
+        bail!("nome tarball non sicuro: {}", tarball);
+    }
+    if !tarball.ends_with(".tar.gz") {
+        bail!("formato tarball non supportato (solo .tar.gz): {}", tarball);
+    }
+    Ok(())
+}
+
+fn descriptor_path(runtime_dir: &Path) -> PathBuf {
+    runtime_dir.join("runtime-descriptor.json")
+}
+
+fn verify_descriptor(server_pubkey: &str, envelope: &RuntimeEnvelope,
+                     expected_filename: Option<&str>) -> Result<()> {
+    let descriptor = &envelope.descriptor;
+    validate_tarball_name(&descriptor.filename)?;
+    if descriptor.version != 1 || descriptor.archive_size == 0
+        || descriptor.archive_sha256.len() != 64
+        || !descriptor.archive_sha256.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        bail!("descrittore runtime malformato");
+    }
+    if expected_filename.is_some_and(|name| name != descriptor.filename) {
+        bail!("descrittore runtime riferito a un artefatto differente");
+    }
+    let value = serde_json::to_value(descriptor)?;
+    let canonical = crate::wire::canonical_bytes(&value)?;
+    identity::verify_b64(server_pubkey, &envelope.sig, &canonical)
+        .context("firma descrittore runtime non verificata")
+}
+
+fn load_cached_descriptor(server_pubkey: &str, runtime_dir: &Path,
+                          expected_filename: Option<&str>) -> Result<RuntimeEnvelope> {
+    let body = std::fs::read(descriptor_path(runtime_dir))
+        .context("descrittore runtime cached assente")?;
+    let envelope: RuntimeEnvelope = serde_json::from_slice(&body)
+        .context("descrittore runtime cached malformato")?;
+    verify_descriptor(server_pubkey, &envelope, expected_filename)?;
+    Ok(envelope)
+}
+
+async fn fetch_or_cached_descriptor(server: &str, server_pubkey: &str,
+                                    tarball: &str,
+                                    runtime_dir: &Path) -> Result<RuntimeEnvelope> {
+    let url = format!("{}/agent/runtime/descriptor/{}",
+                      server.trim_end_matches('/'), tarball);
+    let fetched = async {
+        let response = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30)).build()?
+            .get(&url).send().await.context("download descrittore runtime")?
+            .error_for_status().context("status descrittore runtime")?;
+        let envelope: RuntimeEnvelope = response.json().await
+            .context("parse descrittore runtime")?;
+        verify_descriptor(server_pubkey, &envelope, Some(tarball))?;
+        std::fs::create_dir_all(runtime_dir)?;
+        let path = descriptor_path(runtime_dir);
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, serde_json::to_vec(&envelope)?)?;
+        std::fs::rename(&tmp, &path)?;
+        Ok::<RuntimeEnvelope, anyhow::Error>(envelope)
+    }.await;
+    match fetched {
+        Ok(envelope) => Ok(envelope),
+        Err(network_error) => {
+            tracing::warn!("descrittore runtime remoto non disponibile: {network_error:#}; provo cache firmata");
+            load_cached_descriptor(server_pubkey, runtime_dir, Some(tarball))
+                .context("nessun descrittore runtime firmato utilizzabile")
+        }
+    }
 }
 
 fn find_cached_python(runtime_dir: &Path) -> Option<PathBuf> {
@@ -117,18 +217,42 @@ fn find_cached_python(runtime_dir: &Path) -> Option<PathBuf> {
 const RUNTIME_CHUNK: u64 = 8_000_000;
 const RUNTIME_CHUNK_ATTEMPTS: u32 = 10;
 
-async fn download_runtime(
-    server: &str,
-    tarball: &str,
-    sha256: Option<&str>,
-    runtime_dir: &Path,
-) -> Result<()> {
-    if tarball.contains('/') || tarball.contains("..") {
-        bail!("nome tarball non sicuro: {}", tarball);
+fn verified_archive_path(runtime_dir: &Path, filename: &str) -> PathBuf {
+    runtime_dir.join(format!("{filename}.verified"))
+}
+
+async fn ensure_verified_runtime(server: &str, descriptor: &RuntimeDescriptor,
+                                 runtime_dir: &Path) -> Result<PathBuf> {
+    let archive = verified_archive_path(runtime_dir, &descriptor.filename);
+    let valid_cache = std::fs::metadata(&archive).ok()
+        .is_some_and(|m| m.len() == descriptor.archive_size)
+        && sha256_file(&archive).ok().as_deref()
+            .is_some_and(|got| got.eq_ignore_ascii_case(&descriptor.archive_sha256));
+    if !valid_cache {
+        if archive.exists() {
+            tracing::warn!(file = %archive.display(),
+                           "archivio runtime cached non integro: riscarico");
+            std::fs::remove_file(&archive).context("rimozione runtime cache corrotta")?;
+        }
+        download_runtime(server, descriptor, runtime_dir).await?;
     }
-    if !tarball.ends_with(".tar.gz") {
-        bail!("formato tarball non supportato (solo .tar.gz): {}", tarball);
-    }
+
+    // Ogni avvio ricostruisce l'albero eseguibile dall'archivio il cui hash e'
+    // firmato. Cosi' una modifica offline a python/stdlib non sopravvive al
+    // restart del client, senza dover firmare migliaia di file separatamente.
+    let archive_for_extract = archive.clone();
+    let dest = runtime_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || install_verified_archive(
+        &archive_for_extract, &dest))
+        .await.context("task installazione runtime")??;
+    find_cached_python(runtime_dir)
+        .context("runtime firmato installato senza interprete")
+}
+
+async fn download_runtime(server: &str, descriptor: &RuntimeDescriptor,
+                          runtime_dir: &Path) -> Result<()> {
+    let tarball = &descriptor.filename;
+    validate_tarball_name(tarball)?;
     let url = format!("{}/agent/runtime/{}", server.trim_end_matches('/'), tarball);
     std::fs::create_dir_all(runtime_dir)?;
     let tmp = runtime_dir.join(format!("{}.part", tarball));
@@ -142,60 +266,68 @@ async fn download_runtime(
     // Adaptive integrity (identico a downstream.py): primo giro fetch singolo
     // (rete pulita = 1x banda), se lo sha finale non torna secondo giro con
     // consenso per chunk. 2 passate al massimo.
-    let want_sha = sha256.map(|s| s.to_ascii_lowercase());
+    let want_sha = descriptor.archive_sha256.to_ascii_lowercase();
     let mut verified = false;
     for attempt in 0..2u32 {
         let consensus = attempt == 1;
         fetch_robust(&client, &url, &tmp, consensus)
             .await
             .with_context(|| format!("download {}", tarball))?;
-        match &want_sha {
-            None => {
-                verified = true; // niente sha: gzip/tar CRC resta la rete
-                break;           // di sicurezza a valle
-            }
-            Some(want) => {
-                let got = sha256_file(&tmp)?;
-                if &got == want {
-                    verified = true;
-                    break;
-                }
-                let _ = std::fs::remove_file(&tmp); // parziale corrotto: via
-                if consensus {
-                    bail!(
-                        "sha256 runtime NON combacia dopo consenso (atteso {}…, \
-                         ottenuto {}…): la rete corrompe il contenuto",
-                        &want[..16.min(want.len())], &got[..16]
-                    );
-                }
-                tracing::warn!(
-                    "sha256 runtime non combacia: la rete corrompe il \
-                     contenuto — ritento con consenso per chunk"
-                );
-            }
+        let got = sha256_file(&tmp)?;
+        let size_ok = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0)
+            == descriptor.archive_size;
+        if got.eq_ignore_ascii_case(&want_sha) && size_ok {
+            verified = true;
+            break;
         }
+        let _ = std::fs::remove_file(&tmp); // parziale corrotto: via
+        if consensus {
+            bail!(
+                "runtime NON combacia col descrittore firmato (atteso {}…, \
+                 ottenuto {}…)", &want_sha[..16], &got[..16]
+            );
+        }
+        tracing::warn!("runtime non combacia col descrittore: ritento con consenso per chunk");
     }
     if !verified {
         bail!("download runtime non verificato");
     }
 
-    // Estrazione da disco (BufReader): niente 46 MB in RAM. Blocking task per
-    // non bloccare il reactor. Se l'estrazione fallisce (gzip/tar CRC su un
-    // .part che l'hash non ha intercettato) scarta il .part per un nuovo
-    // tentativo pulito al prossimo giro.
-    let tmp_extract = tmp.clone();
-    let dest = runtime_dir.to_path_buf();
-    let res = tokio::task::spawn_blocking(move || extract_tar_gz_file(&tmp_extract, &dest))
-        .await
-        .context("task di estrazione tarball")?;
-    match res {
+    let archive = verified_archive_path(runtime_dir, tarball);
+    if archive.exists() {
+        std::fs::remove_file(&archive)?;
+    }
+    std::fs::rename(&tmp, &archive).context("promozione archivio runtime verificato")?;
+    Ok(())
+}
+
+fn install_verified_archive(archive: &Path, runtime_dir: &Path) -> Result<()> {
+    let staging = runtime_dir.join(".runtime-installing");
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging)?;
+    }
+    std::fs::create_dir_all(&staging)?;
+    if let Err(e) = extract_tar_gz_file(archive, &staging) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e).context("estrazione archivio runtime verificato");
+    }
+    let staged_python = staging.join("python");
+    if find_cached_python(&staging).is_none() || !staged_python.is_dir() {
+        let _ = std::fs::remove_dir_all(&staging);
+        bail!("archivio runtime firmato privo dell'albero python atteso");
+    }
+    let live_python = runtime_dir.join("python");
+    if live_python.exists() {
+        std::fs::remove_dir_all(&live_python)?;
+    }
+    match std::fs::rename(&staged_python, &live_python) {
         Ok(()) => {
-            let _ = std::fs::remove_file(&tmp);
+            let _ = std::fs::remove_dir_all(&staging);
             Ok(())
         }
         Err(e) => {
-            let _ = std::fs::remove_file(&tmp);
-            Err(e).context("estrazione fallita; .part scartato per un nuovo tentativo")
+            let _ = std::fs::remove_dir_all(&staging);
+            Err(e).context("promozione albero runtime verificato")
         }
     }
 }
@@ -432,4 +564,47 @@ pub fn assert_stdlib_only(manifest_dir: &Path) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod descriptor_tests {
+    use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    use ed25519_dalek::{Signer, SigningKey};
+    use rand::rngs::OsRng;
+
+    fn signed_envelope() -> (String, RuntimeEnvelope) {
+        let signing = SigningKey::generate(&mut OsRng);
+        let descriptor = RuntimeDescriptor {
+            version: 1,
+            filename: "cpython-test-install_only.tar.gz".into(),
+            archive_sha256: "a".repeat(64),
+            archive_size: 123,
+        };
+        let canonical = crate::wire::canonical_bytes(
+            &serde_json::to_value(&descriptor).unwrap()).unwrap();
+        let sig = URL_SAFE_NO_PAD.encode(signing.sign(&canonical).to_bytes());
+        let public = URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes());
+        (public, RuntimeEnvelope { descriptor, sig })
+    }
+
+    #[test]
+    fn runtime_descriptor_is_pinned_and_tamper_evident() {
+        let (public, mut envelope) = signed_envelope();
+        assert!(verify_descriptor(&public, &envelope,
+                                  Some("cpython-test-install_only.tar.gz")).is_ok());
+        envelope.descriptor.archive_size += 1;
+        assert!(verify_descriptor(&public, &envelope,
+                                  Some("cpython-test-install_only.tar.gz")).is_err());
+    }
+
+    #[test]
+    fn runtime_descriptor_rejects_filename_substitution() {
+        let (public, envelope) = signed_envelope();
+        assert!(verify_descriptor(&public, &envelope,
+                                  Some("different.tar.gz")).is_err());
+        for bad in ["../x.tar.gz", "a/b.tar.gz", "x.zip", ""] {
+            assert!(validate_tarball_name(bad).is_err(), "accepted {bad:?}");
+        }
+    }
 }

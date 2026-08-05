@@ -113,6 +113,7 @@ $loop = @'
 $ErrorActionPreference = "Continue"
 $dest = Join-Path $env:LOCALAPPDATA "Metnos\metnos-client.exe"
 $server = "__SERVER__"
+$firstPass = $true
 while ($true) {
   # crash-safe: exe mancante (swap interrotto) -> ripristina il known-good
   if (-not (Test-Path $dest) -and (Test-Path "$dest.old")) {
@@ -121,7 +122,12 @@ while ($true) {
   # redondanza (9/7): se un client gira gia' (lock tenuto da un altro
   # supervisore/finestra), QUESTO launcher e' di troppo -> esci, mai loop
   # stretto di "gia' attivo". La Scheduled Task lo rilancia se serve.
-  if (Get-Process metnos-client -ErrorAction SilentlyContinue) { break }
+  # La guardia anti-supervisore duplicato vale SOLO prima di avere avviato il
+  # nostro figlio. Dopo un self-update `& $dest run` ritorna quando il vecchio
+  # exe e' appena uscito: Get-Process puo' ancora vederlo per pochi ms e il
+  # launcher storico terminava invece di avviare la nuova versione.
+  if ($firstPass -and (Get-Process metnos-client -ErrorAction SilentlyContinue)) { break }
+  $firstPass = $false
   $rc = 0
   if (Test-Path $dest) { & $dest run --server $server; $rc = $LASTEXITCODE }
   # exit 3 = lock gia' tenuto (client onesto, >=0.2.23): supervisore

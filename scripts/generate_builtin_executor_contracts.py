@@ -311,6 +311,12 @@ _EXECUTION = {
     },
 }
 
+# Internal reasoning is an orthogonal catalog fact.  LLM-only builtins are
+# inferred from their llm:* capability; agentic behavior must be explicit.
+_INTELLIGENCE = {
+    "extract_entries": "agentic",
+}
+
 
 def _q(value) -> str:
     return json.dumps(value, ensure_ascii=False)
@@ -361,6 +367,8 @@ def _render(name: str, tool_spec: dict, module_path: Path) -> str:
         'executor_standard = "metnos.executor/1.0"',
         f'name = {_q(name)}',
         'version = "1.0.0"',
+        *([f'intelligence = {_q(_INTELLIGENCE[name])}']
+          if name in _INTELLIGENCE else []),
         'author = "Metnos builtin maintainers"',
         f'affinity = {_q(affinities)}',
         'platforms = ["linux"]',

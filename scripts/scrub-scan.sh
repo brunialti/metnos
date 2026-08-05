@@ -85,7 +85,7 @@ if [ -n "$BAD" ]; then
 fi
 
 SECTION "L4.2 — Path/dir non distribuibili gia' nel index"
-BAD2=$(git ls-files | grep -E '^(workspace/|_history/|\.claude/|decisions/synt_stress/|decisions/executor_requests\.jsonl|decisions/executor_diary\.md|claude_persistent\.sh|\.review_status\.md|x\.png|deploy\.sh)' || true)
+BAD2=$(git ls-files | grep -E '^(workspace/|_history/|\.claude/|tests/stress/synt/|decisions/executor_requests\.jsonl|decisions/executor_diary\.md|claude_persistent\.sh|\.review_status\.md|x\.png|deploy\.sh)' || true)
 if [ -n "$BAD2" ]; then
   echo "VIOLAZIONI: $(echo "$BAD2" | wc -l) file tracciati"
   echo "$BAD2" | head -20

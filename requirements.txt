@@ -28,3 +28,9 @@ onnxruntime==1.24.4
 tokenizers==0.22.2
 Pillow==12.2.0
 stopwordsiso==0.7.0
+
+# First-party Google Workspace backend. These stay in the Metnos runtime venv:
+# imported executors run with the same interpreter under bubblewrap.
+google-api-python-client==2.196.0
+google-auth-oauthlib==1.4.0
+google-auth

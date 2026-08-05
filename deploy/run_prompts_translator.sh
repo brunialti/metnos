@@ -14,8 +14,9 @@
 # che fa hash content compare (deterministico, robusto).
 
 set -e
-PYTHON=/opt/suprastructure/.venv/bin/python
-RUNTIME=/opt/metnos/runtime
+INSTALL_ROOT="${METNOS_INSTALL_ROOT:-/opt/metnos}"
+PYTHON="${METNOS_VENV:-$INSTALL_ROOT/.venv}/bin/python"
+RUNTIME="$INSTALL_ROOT/runtime"
 PROMPTS=$RUNTIME/prompts
 LOG=/var/log/metnos/prompts-translator.log
 mkdir -p "$(dirname "$LOG")" || LOG=/tmp/metnos-prompts-translator.log
@@ -27,7 +28,7 @@ log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG"; }
 #   1. METNOS_TRANSLATOR_QUALITY env var (set in systemd unit o shell)
 #   2. ~/.config/metnos/translator_tier.toml `[translator] tier`
 #      (scritto da `metnos-prompts audit-quality --apply`)
-#   3. default 'wise' (Gemma 4 26B locale, gratis)
+#   3. default 'fidelity' (contratto locale ad alta fedelta')
 # ============================================================================
 TIER="${METNOS_TRANSLATOR_QUALITY:-}"
 if [ -z "$TIER" ]; then
@@ -46,7 +47,7 @@ except Exception:
     fi
 fi
 if [ -z "$TIER" ]; then
-    TIER="wise"
+    TIER="fidelity"
 fi
 
 log "translator job start (tier=$TIER)"

@@ -158,8 +158,8 @@ for manifest in $(find "$NEW/executors" -name 'manifest.toml' 2>/dev/null); do
             echo "  [dry] re-sign $exec_dir"
         else
             sudo -u "$INVOKING_USER" \
-                PYTHONPATH="$NEW/runtime:/opt/suprastructure/src" \
-                /opt/suprastructure/.venv/bin/python "$NEW/runtime/sign.py" sign "$exec_dir" 2>/dev/null \
+                PYTHONPATH="$NEW/runtime" \
+                "${METNOS_VENV:-$NEW/.venv}/bin/python" "$NEW/runtime/sign.py" sign "$exec_dir" 2>/dev/null \
                 && SIGNED=$((SIGNED + 1))
         fi
     fi
@@ -236,8 +236,8 @@ fi
 
 # Verify PATH_ROOT auto-resolves correctly
 ROOT_RESOLVED=$(sudo -u "$INVOKING_USER" \
-    PYTHONPATH="$NEW/runtime:/opt/suprastructure/src" \
-    /opt/suprastructure/.venv/bin/python -c \
+    PYTHONPATH="$NEW/runtime" \
+    "${METNOS_VENV:-$NEW/.venv}/bin/python" -c \
     'from runtime import config as C; print(C.PATH_ROOT)' 2>/dev/null || echo "FAIL")
 echo "  PATH_ROOT auto-resolved: $ROOT_RESOLVED"
 if [ "$ROOT_RESOLVED" = "$NEW" ]; then

@@ -23,7 +23,7 @@
 set -euo pipefail
 
 # ─────── Config ───────────────────────────────────────────────────
-# Canonical env contract — matches runtime/config.py (ADR 0148):
+# Canonical environment contract — matches runtime/config.py:
 #   METNOS_INSTALL_ROOT  source/code tree (PATH_ROOT)
 #   METNOS_USER_DATA     ~/.local/share/metnos   (models, dbs, turns)
 #   METNOS_USER_STATE    ~/.local/state/metnos   (sentinels, pairings)
@@ -31,7 +31,6 @@ set -euo pipefail
 METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
 METNOS_USER_STATE="${METNOS_USER_STATE:-$HOME/.local/state/metnos}"
 METNOS_USER_CONFIG="${METNOS_USER_CONFIG:-$HOME/.config/metnos}"
-METNOS_VENV="$METNOS_USER_DATA/.venv"
 METNOS_REPO_URL="${METNOS_REPO_URL:-https://github.com/brunialti/metnos.git}"
 PYTHON_MIN_MAJOR=3
 PYTHON_MIN_MINOR=12
@@ -53,7 +52,7 @@ info()   { printf "    %s%s%s\n" "$DIM" "$1" "$RESET"; }
 
 # ─────── 0. Welcome ───────────────────────────────────────────────
 banner "Metnos installer · bootstrap"
-printf "  %sA personal assistant that runs on your hardware.%s\n" "$DIM" "$RESET"
+printf "  %sA self-hosted architecture shaped by its installed executors.%s\n" "$DIM" "$RESET"
 printf "  %sAGPL-3.0 · metnos.com%s\n\n" "$DIM" "$RESET"
 
 # ─────── 1. Find a suitable python ────────────────────────────────
@@ -95,6 +94,11 @@ else
   fi
   ok "Source tree ready at $REPO_DIR"
 fi
+
+# The runtime environment belongs to the installation, not to an application
+# user or to that user's data tree.  An explicit METNOS_VENV remains available
+# for packaging, but the canonical default follows the resolved source root.
+METNOS_VENV="${METNOS_VENV:-$REPO_DIR/.venv}"
 
 # ─────── 3. Create / verify venv ──────────────────────────────────
 step "Setting up Python virtual environment"

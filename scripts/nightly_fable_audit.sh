@@ -105,11 +105,11 @@ PROCEDURA:
 3. GATE DI VERIFICA (TUTTI verdi, altrimenti NIENTE produzione). Aspetta che ogni comando
    STAMPI il risultato, non dedurlo:
    a. python3 -m py_compile <file toccati>
-   b. python3 -m pytest runtime/tests/ -q -p no:cacheprovider   → ZERO fallimenti nuovi
+   b. python3 -m pytest tests/runtime/ -q -p no:cacheprovider   → ZERO fallimenti nuovi
       (preesistente noto e accettato: nessuno al 9/6/2026; se ne trovi, è una regressione).
    c. METNOS_ENGINE=metis METNOS_PROPOSER_GRAMMAR=1 METNOS_PROPOSER_VERB_FILTER=1 \\
       METNOS_PREFILTER_RULES=1 METNOS_ENGINE_POOL_SIZE=12 \\
-      python3 bench/routing_subset_bench.py --runs 1 --baseline bench/routing_baseline.json
+      python3 tests/benchmarks/routing_subset_bench.py --runs 1 --baseline tests/benchmarks/routing_baseline.json
       → tutti i casi OK, "no regression" (oggi 26/26).
    d. se esiste /tmp/proposer_trap_probe.py: python3 /tmp/proposer_trap_probe.py → ACCURACY
       non inferiore all'ultimo valore noto (oggi 18/18).

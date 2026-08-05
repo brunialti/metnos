@@ -16,12 +16,12 @@ User=roberto
 WorkingDirectory=/opt/metnos
 Environment=PYTHONPATH=/opt/metnos/runtime
 # Tier LLM per la traduzione. Override via env nel systemd unit:
-#   "wise"     = Gemma 4 26B locale (default, gratuito).
-#   "frontier" = Anthropic Opus 4.7 (~$0.015/call, opt-in).
+#   "fidelity" = contratto locale ad alta fedelta' (default).
+#   "frontier" = Anthropic Opus 4.8 (~$0.015/call, opt-in).
 # Il wrapper `run_prompts_translator.sh` legge anche
 # `~/.config/metnos/translator_tier.toml` (scritto da
 # `metnos-prompts audit-quality --apply`) come fallback se la env var
 # non e' settata.
-Environment=METNOS_TRANSLATOR_QUALITY=wise
+Environment=METNOS_TRANSLATOR_QUALITY=fidelity
 # Nota: il timer associato lancia questa unit ogni notte alle 04:30
 # (55 min dopo metnos-backup per evitare contesa CPU/IO con backup).

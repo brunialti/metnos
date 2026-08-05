@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Genera docs/assets/architecture-flow.png (diagramma flusso richiesta,
-referenziato dal README pubblico via https://metnos.com/assets/).
-
-SORGENTE del diagramma (2/7/2026): il PNG originale era senza sorgente —
-rigenerato qui in PIL per (a) fissare il glossario §11 («learned plan», non
-«learned skill»: skill = bundle di executor, MAI il piano L1) e (b) rendere
-il diagramma editabile in futuro. Palette campionata dall'originale.
-
-Uso: python3 scripts/gen_architecture_flow.py   (scrive il PNG e basta)
-"""
+"""Generate the public request-flow diagram used by README.md."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,16 +8,20 @@ from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).resolve().parents[1] / "docs/assets/architecture-flow.png"
 
-W, H = 870, 626
-BG = (255, 255, 255)
-SLATE = (51, 65, 85)          # frecce + bordi neutri
-INK = (15, 23, 42)            # bordo box bianchi
-GREEN_EDGE = (36, 130, 67)    # ritorni hit → answer
-L0 = (180, 83, 9)
-L1 = (21, 128, 61)
-L2 = (107, 122, 46)
-L3 = (30, 64, 175)
-MUTED = (148, 163, 184)
+W, H = 1000, 650
+BG = (250, 251, 252)
+WHITE = (255, 255, 255)
+INK = (24, 50, 74)
+MUTED = (93, 109, 125)
+LINE = (113, 132, 150)
+BLUE = (26, 71, 122)
+BLUE_LIGHT = (220, 236, 247)
+GREEN = (65, 107, 75)
+GREEN_LIGHT = (228, 241, 231)
+AMBER = (154, 100, 24)
+AMBER_LIGHT = (255, 243, 215)
+RED = (151, 62, 50)
+RED_LIGHT = (250, 231, 227)
 
 _DEJA = "/usr/share/fonts/truetype/dejavu/DejaVuSans{}.ttf"
 
@@ -35,110 +30,100 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(_DEJA.format("-Bold" if bold else ""), size)
 
 
-def _rounded(d: ImageDraw.ImageDraw, box, fill=None, outline=None, width=2,
-             radius=10):
-    d.rounded_rectangle(box, radius=radius, fill=fill, outline=outline,
-                        width=width)
+def _box(draw: ImageDraw.ImageDraw, bounds, fill, outline, title, detail,
+         title_color=INK) -> None:
+    draw.rounded_rectangle(bounds, radius=13, fill=fill, outline=outline, width=2)
+    x0, y0, x1, y1 = bounds
+    cx = (x0 + x1) // 2
+    draw.text((cx, y0 + 20), title, font=_font(14, True), fill=title_color,
+              anchor="mm")
+    draw.text((cx, y0 + 43), detail, font=_font(11), fill=MUTED,
+              anchor="mm")
 
 
-def _ctext(d: ImageDraw.ImageDraw, cx, cy, text, font, fill):
-    d.text((cx, cy), text, font=font, fill=fill, anchor="mm")
+def _arrow(draw: ImageDraw.ImageDraw, points, color=LINE, width=2) -> None:
+    draw.line(points, fill=color, width=width, joint="curve")
+    x0, y0 = points[-2]
+    x1, y1 = points[-1]
+    if abs(x1 - x0) >= abs(y1 - y0):
+        direction = 1 if x1 > x0 else -1
+        head = [(x1, y1), (x1 - 8 * direction, y1 - 5),
+                (x1 - 8 * direction, y1 + 5)]
+    else:
+        direction = 1 if y1 > y0 else -1
+        head = [(x1, y1), (x1 - 5, y1 - 8 * direction),
+                (x1 + 5, y1 - 8 * direction)]
+    draw.polygon(head, fill=color)
 
 
-def _arrow_down(d: ImageDraw.ImageDraw, x, y0, y1, color=SLATE, width=2):
-    d.line([(x, y0), (x, y1 - 7)], fill=color, width=width)
-    d.polygon([(x - 5, y1 - 8), (x + 5, y1 - 8), (x, y1)], fill=color)
-
-
-def _arrow_right(d: ImageDraw.ImageDraw, y, x0, x1, color=GREEN_EDGE, width=2):
-    d.line([(x0, y), (x1 - 7, y)], fill=color, width=width)
-    d.polygon([(x1 - 8, y - 5), (x1 - 8, y + 5), (x1, y)], fill=color)
-
-
-def _arrow_left(d: ImageDraw.ImageDraw, y, x0, x1, color=GREEN_EDGE, width=2):
-    d.line([(x0, y), (x1 + 7, y)], fill=color, width=width)
-    d.polygon([(x1 + 8, y - 5), (x1 + 8, y + 5), (x1, y)], fill=color)
+def _label(draw: ImageDraw.ImageDraw, xy, text, color=MUTED) -> None:
+    draw.text(xy, text, font=_font(10), fill=color, anchor="mm")
 
 
 def main() -> None:
-    im = Image.new("RGB", (W, H), BG)
-    d = ImageDraw.Draw(im)
-    f11 = _font(11)
-    f11i = ImageFont.truetype(
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf", 11)
-    f12 = _font(12)
-    f12b = _font(12, bold=True)
-    f13b = _font(13, bold=True)
+    image = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(image)
 
-    CX = 396                      # asse verticale del flusso
-    RX = 700                      # binario dei ritorni hit → answer
+    draw.text((500, 24), "How a Metnos request is executed",
+              font=_font(19, True), fill=INK, anchor="mm")
 
-    # ── User request ──
-    _rounded(d, (260, 27, 532, 59), outline=INK, width=2)
-    _ctext(d, CX, 43, "User request", f12b, INK)
-    _arrow_down(d, CX, 59, 79)
+    _box(draw, (350, 48, 650, 105), WHITE, INK,
+         "Natural-language request", "channel, user, and mandate")
+    _arrow(draw, [(500, 105), (500, 130)])
+    _box(draw, (320, 130, 680, 190), BLUE_LIGHT, BLUE,
+         "Intent and routing pool", "canonical verb/object + relevant executors",
+         BLUE)
 
-    # ── intent_extractor ──
-    _rounded(d, (260, 79, 532, 111), outline=INK, width=2)
-    _ctext(d, CX, 95, "intent_extractor · verb + object", f12, INK)
-    _arrow_down(d, CX, 111, 131)
+    _arrow(draw, [(500, 190), (205, 190), (205, 220)])
+    _box(draw, (70, 220, 340, 280), AMBER_LIGHT, AMBER,
+         "L0 · Fastpath", "same request, validated cached plan", AMBER)
+    _arrow(draw, [(205, 280), (205, 315)])
+    _label(draw, (226, 298), "miss")
+    _box(draw, (70, 315, 340, 375), GREEN_LIGHT, GREEN,
+         "L1 · Autopath", "learned plan for a request family", GREEN)
 
-    # ── L0 ──
-    _rounded(d, (260, 131, 532, 181), fill=L0)
-    _ctext(d, CX, 147, "L0 · Fastpath", f13b, BG)
-    _ctext(d, CX, 166, "self-learned shortcut (hash + cosine)", f11, BG)
-    _ctext(d, CX + 15, 190, "miss", f11i, MUTED)
-    _arrow_down(d, CX, 181, 203)
+    _arrow(draw, [(340, 250), (390, 250), (390, 430)])
+    _label(draw, (365, 238), "hit")
+    _arrow(draw, [(340, 355), (410, 355), (410, 430)])
+    _label(draw, (376, 367), "hit")
 
-    # ── L1 (§11: autopath = learned PLAN; «skill» = bundle, mai il piano) ──
-    _rounded(d, (260, 203, 532, 253), fill=L1)
-    _ctext(d, CX, 219, "L1 · Autopath", f13b, BG)
-    _ctext(d, CX, 238, "learned plan (semantic + intent match)", f11, BG)
-    _ctext(d, CX + 15, 262, "miss", f11i, MUTED)
-    _arrow_down(d, CX, 253, 275)
+    _arrow(draw, [(340, 330), (365, 330), (365, 205),
+                  (535, 205), (535, 220)])
+    _label(draw, (352, 316), "miss")
+    _box(draw, (400, 220, 670, 280), BLUE_LIGHT, BLUE,
+         "Proposer", "local LLM drafts a typed plan", BLUE)
+    _arrow(draw, [(535, 280), (535, 315)])
+    _box(draw, (400, 315, 670, 375), WHITE, BLUE,
+         "Guards + Validator", "schema, authority, consistency, consent", BLUE)
+    _arrow(draw, [(535, 375), (535, 410)])
 
-    # ── L2 ──
-    _rounded(d, (260, 275, 532, 318), fill=L2)
-    _ctext(d, CX, 289, "L2 · Validator", f13b, BG)
-    _ctext(d, CX, 306, "plan check", f11, BG)
-    _arrow_down(d, CX, 318, 340)
+    _box(draw, (330, 410, 700, 485), GREEN_LIGHT, GREEN,
+         "Executor boundary", "direct or intelligent · same contract · verified outcome",
+         GREEN)
+    _arrow(draw, [(515, 485), (515, 545)])
+    _label(draw, (548, 510), "success")
 
-    # ── L3 Engine ──
-    _rounded(d, (172, 340, 668, 510), fill=L3)
-    _ctext(d, 420, 361, "L3 · Engine", f13b, BG)
-    inner = [
-        ("Proposer", "1 LLM call", 184),
-        ("Executor", "deterministic", 307),
-        ("Recovery", "4 error classes", 430),
-        ("Terminator", "honest limit", 553),
-    ]
-    for title, sub, x0 in inner:
-        _rounded(d, (x0, 383, x0 + 108, 428), fill=BG, radius=6)
-        _ctext(d, x0 + 54, 399, title, f12b, L3)
-        _ctext(d, x0 + 54, 415, sub, f11, SLATE)
-    for i in range(3):
-        x = 292 + i * 123
-        d.line([(x + 2, 405), (x + 21, 405)], fill=BG, width=2)
-        d.polygon([(x + 15, 401), (x + 15, 409), (x + 21, 405)], fill=BG)
-    _ctext(d, 420, 452, "propose · execute · recover · admit the limit",
-           f11, BG)
-    _ctext(d, 420, 475, "selector: simple | metis | frontier", f11, BG)
-    _arrow_down(d, CX, 510, 550)
+    _arrow(draw, [(700, 448), (770, 448)])
+    _label(draw, (735, 436), "failure", RED)
+    _box(draw, (770, 410, 955, 475), RED_LIGHT, RED,
+         "Recovery", "classify and retry safely", RED)
+    _arrow(draw, [(862, 410), (862, 250), (670, 250)], RED)
+    _label(draw, (823, 238), "recoverable", RED)
+    _arrow(draw, [(862, 475), (862, 515)], RED)
+    _box(draw, (770, 515, 955, 580), WHITE, RED,
+         "Terminator", "state the limit honestly", RED)
+    _arrow(draw, [(770, 548), (700, 548)], RED)
 
-    # ── Answer ──
-    _rounded(d, (260, 550, 532, 592), outline=GREEN_EDGE, width=2)
-    _ctext(d, CX, 571, "Answer to the user", f12b, INK)
+    _box(draw, (330, 545, 700, 615), WHITE, GREEN,
+         "Answer to the user", "result, evidence, partial status, or explicit failure",
+         GREEN)
 
-    # ── Ritorni hit → answer (binario destro) ──
-    _ctext(d, 640, 142, "hit → answer", f11, GREEN_EDGE)
-    _arrow_right(d, 156, 532, RX - 1)          # da L0
-    _arrow_right(d, 228, 532, RX - 1)          # da L1
-    _arrow_right(d, 425, 668, RX - 1)          # da L3
-    d.line([(RX, 156), (RX, 571)], fill=GREEN_EDGE, width=2)
-    _arrow_left(d, 571, RX, 532)               # verso Answer
+    draw.text((70, 620),
+              "Transport, provider, and internal intelligence stay behind the executor contract.",
+              font=_font(10), fill=MUTED)
 
-    im.save(OUT)
-    print(f"scritto {OUT} ({W}x{H})")
+    image.save(OUT)
+    print(f"wrote {OUT} ({W}x{H})")
 
 
 if __name__ == "__main__":

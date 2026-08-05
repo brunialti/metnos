@@ -2,6 +2,10 @@
 Description=Metnos Playwright JS-render sidecar (local, no external provider)
 After=network-online.target
 Wants=network-online.target
+Requires=metnos-side-display.service
+After=metnos-side-display.service
+Before=metnos-stack-ready.service
+PartOf=metnos.target
 StartLimitIntervalSec=300
 StartLimitBurst=10
 
@@ -18,6 +22,7 @@ TimeoutStopSec=20
 WatchdogSec=45
 KillMode=mixed
 Environment=PYTHONUNBUFFERED=1
+Environment=DISPLAY=:99
 Environment=PYTHONPATH=@REPO_DIR@:@REPO_DIR@/runtime
 Environment=METNOS_INSTALL_ROOT=@REPO_DIR@
 Environment=METNOS_USER_DATA=@DATA_DIR@
@@ -40,4 +45,4 @@ MemoryDenyWriteExecute=false
 SystemCallArchitectures=native
 
 [Install]
-WantedBy=default.target
+WantedBy=metnos.target

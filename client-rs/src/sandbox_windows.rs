@@ -43,7 +43,7 @@ use windows_sys::Win32::System::Threading::{
 };
 
 use crate::appcontainer;
-use crate::executors::{CachedExecutor, Capability};
+use crate::executors::CachedExecutor;
 use crate::sandbox_common::HintGrant;
 // Tipi condivisi col modulo linux (§16.2: "minimo diff" = ri-esportati, non
 // duplicati). sandbox_linux.rs compila su entrambe le piattaforme.
@@ -197,6 +197,9 @@ pub fn sandbox_level() -> &'static str {
 ///   moduli shim crashavano — «scrivi in ~/x sul PC» era rotto.
 /// - `SystemRoot/windir/ComSpec/...` (0.2.14): senza, i tool nativi che toccano
 ///   WMI fallivano «Impossibile trovare il modulo specificato» (tasklist rc=1).
+/// - `METNOS_LIBREHARDWAREMONITOR_DLL`: override locale e facoltativo per i
+///   sensori termici. Il server non puo' scegliere questo path e il client non
+///   cerca né scarica DLL durante un'invocazione.
 /// - `LOCALAPPDATA/APPDATA/USERNAME/ALLUSERSPROFILE` (W4): l'AppContainer monta
 ///   lo storage redirette sotto `%LOCALAPPDATA%\Packages\<nome>` durante
 ///   CreateProcessW; senza `LOCALAPPDATA` nel blocco env fallisce con
@@ -226,8 +229,14 @@ fn build_env(
         }
     }
     for var in [
-        "SystemRoot", "windir", "ComSpec", "SystemDrive", "ProgramFiles",
-        "ProgramData", "NUMBER_OF_PROCESSORS",
+        "SystemRoot",
+        "windir",
+        "ComSpec",
+        "SystemDrive",
+        "ProgramFiles",
+        "ProgramData",
+        "NUMBER_OF_PROCESSORS",
+        "METNOS_LIBREHARDWAREMONITOR_DLL",
     ] {
         if let Ok(v) = std::env::var(var) {
             env.push((var.to_string(), v));
@@ -248,54 +257,6 @@ fn build_env(
         env.push((k.clone(), v.clone()));
     }
     env
-}
-
-/// Directory ESISTENTE piu' profonda che copre `cand`: se `cand` e' una dir
-/// esistente la ritorna, se e' un file (o un target ancora da creare) risale
-/// ai genitori fino alla prima dir reale. `~` espanso alla home del device.
-/// `None` se nessun antenato esiste (radice irraggiungibile → grant inutile).
-fn deepest_existing_dir(cand: &str) -> Option<PathBuf> {
-    let expanded = if let Some(rest) =
-        cand.strip_prefix("~/").or_else(|| cand.strip_prefix("~\\"))
-    {
-        dirs::home_dir()?.join(rest)
-    } else if cand == "~" {
-        dirs::home_dir()?
-    } else {
-        PathBuf::from(cand)
-    };
-    let mut p: &Path = &expanded;
-    loop {
-        if p.is_dir() {
-            return Some(p.to_path_buf());
-        }
-        match p.parent() {
-            Some(par) if !par.as_os_str().is_empty() => p = par,
-            _ => return None,
-        }
-    }
-}
-
-/// Grant ACL derivati dai path-target CONCRETI dell'invocazione (§W4: la
-/// sandbox forte concede esattamente le directory che il comando tocca, non
-/// gli hint illustrativi del manifest). Accesso = write se l'executor dichiara
-/// `fs:write`, altrimenti read; un executor senza capability fs non riceve
-/// grant (`caps_fs_access` → None). Ogni target e' risolto alla sua dir
-/// esistente piu' profonda (creabile un file dentro, leggibile una dir).
-fn arg_target_grants(args_json: &str, caps: &[Capability]) -> Vec<HintGrant> {
-    let write = match crate::sandbox_common::caps_fs_access(caps) {
-        Some(w) => w,
-        None => return Vec::new(),
-    };
-    let mut out: Vec<HintGrant> = Vec::new();
-    for cand in crate::sandbox_common::extract_path_args(args_json) {
-        if let Some(root) = deepest_existing_dir(&cand) {
-            if !out.iter().any(|g| g.root == root) {
-                out.push(HintGrant { root, write });
-            }
-        }
-    }
-    out
 }
 
 pub async fn run_sandboxed(
@@ -327,6 +288,9 @@ pub async fn run_sandboxed(
     // Regola capability-driven (§7.3, `needs_system_exec`), non lista di
     // executor. Il Job Object sotto li contiene comunque (albero/memoria/conteggio).
     let system_exec = crate::sandbox_common::needs_system_exec(&exec.capabilities);
+    let unanchored_fs_path =
+        crate::sandbox_common::caps_fs_access(&exec.capabilities).is_some()
+        && crate::sandbox_common::has_unanchored_path_args(args_json);
     let want_appcontainer = !disabled && appcontainer::gate_on();
     if want_appcontainer && system_exec {
         // Declassamento ONESTO (§2.8): il gate e' ON ma questo executor non e'
@@ -337,16 +301,24 @@ pub async fn run_sandboxed(
                 .into(),
         );
     }
+    if want_appcontainer && !system_exec && unanchored_fs_path {
+        // Il significato di un path relativo appartiene all'executor/shim e
+        // puo' essere il workspace Metnos, una user-dir localizzata o un alias.
+        // Prima dello spawn il client non possiede quella risoluzione: non puo'
+        // costruire un ACL stretto e non deve tentare scope illustrativi ampi.
+        downgrade = Some(
+            "percorso filesystem relativo non ancorabile prima dello spawn; \
+             declassato a job-object"
+                .into(),
+        );
+    }
 
     // --- Percorso AppContainer (W4): isolamento fs/rete DENTRO il job. Gate
     // METNOS_SANDBOX_APPCONTAINER default ON su Windows (7/7/2026): opt-OUT con
     // =0 salta questo blocco e il percorso job-object sotto resta byte-identico a W3.3.
-    if want_appcontainer && !system_exec {
-        let (mut grants, want_net) = crate::sandbox_common::hint_grants(&exec.capabilities);
-        // Grant sui path-target CONCRETI dell'invocazione (Documents, Downloads,
-        // …): senza, la sandbox forte concederebbe solo gli scope-esempio del
-        // manifest e un comando su una dir utente reale fallirebbe Access Denied.
-        grants.extend(arg_target_grants(args_json, &exec.capabilities));
+    if want_appcontainer && !system_exec && !unanchored_fs_path {
+        let (mut grants, want_net) = crate::sandbox_common::invocation_grants(
+            &exec.capabilities, args_json);
         // Dir dati dello shim (METNOS_USER_DATA, iniettata dal runner): config.py
         // ci crea l'albero user a import + ci finiscono i blob undo. Isolata e
         // client-owned → il container puo' scriverla senza aprire ~/.local/share.
@@ -356,48 +328,70 @@ pub async fn run_sandboxed(
                 grants.push(HintGrant { root, write: true });
             }
         }
-        let params = appcontainer::ContainerParams {
-            python: python.to_path_buf(),
-            entry: exec.entry.clone(),
-            shim_dir: shim_dir.to_path_buf(),
-            exec_dir: exec.dir.clone(),
-            scratch_dir: scratch.path.clone(),
-            env_pairs: env_pairs.clone(),
-            args_json: args_json.to_string(),
-            deadline_ms: limits.wall.as_millis().min(u128::from(u64::MAX)) as u64,
-            grants,
-            want_net,
-        };
-        // FFI bloccante (job + pipe + CreateProcessW): fuori dai worker async.
-        match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await {
-            Ok(appcontainer::Outcome::Ran { stdout, stderr, timed_out }) => {
-                if timed_out {
-                    tracing::warn!(
-                        executor = %exec.name, wall_s = limits.wall.as_secs(),
-                        "deadline superata (appcontainer): albero terminato via job"
-                    );
+        let home = dirs::home_dir();
+        let broad_grant = grants.iter().any(|grant| {
+            crate::sandbox_common::is_broad_acl_root(
+                &grant.root, home.as_deref())
+        });
+        if broad_grant {
+            // SetNamedSecurityInfoW puo' propagare un ACE ereditabile su tutta
+            // la home/volume PRIMA dello spawn: la deadline del processo non
+            // sarebbe ancora attiva e il poller resterebbe bloccato. Il Job
+            // Object conserva contenimento risorse e kill d'albero; il motivo
+            // viaggia nel result senza esporre il path utente.
+            let reason = "scope filesystem home/volume troppo ampio per un ACL AppContainer; declassato a job-object".to_string();
+            tracing::warn!(executor = %exec.name, "{reason}");
+            downgrade = Some(reason);
+        } else {
+            let params = appcontainer::ContainerParams {
+                python: python.to_path_buf(),
+                entry: exec.entry.clone(),
+                shim_dir: shim_dir.to_path_buf(),
+                exec_dir: exec.dir.clone(),
+                scratch_dir: scratch.path.clone(),
+                env_pairs: env_pairs.clone(),
+                args_json: args_json.to_string(),
+                deadline_ms: limits.wall.as_millis().min(u128::from(u64::MAX)) as u64,
+                grants,
+                want_net,
+            };
+            // FFI bloccante (job + pipe + CreateProcessW): fuori dai worker async.
+            match tokio::task::spawn_blocking(move || appcontainer::run_in_container(params)).await {
+                Ok(appcontainer::Outcome::Ran { stdout, stderr, timed_out }) => {
+                    if timed_out {
+                        tracing::warn!(
+                            executor = %exec.name, wall_s = limits.wall.as_secs(),
+                            "deadline superata (appcontainer): albero terminato via job"
+                        );
+                    }
+                    return Ok(SandboxOutput {
+                        stdout,
+                        stderr,
+                        timed_out,
+                        sandbox: "appcontainer".into(),
+                        downgrade_reason: None,
+                    });
                 }
-                return Ok(SandboxOutput {
-                    stdout,
-                    stderr,
-                    timed_out,
-                    sandbox: "appcontainer".into(),
-                    downgrade_reason: None,
-                });
-            }
-            Ok(appcontainer::Outcome::Unsupported(reason)) => {
-                tracing::warn!(
-                    executor = %exec.name,
-                    "AppContainer non costruito: degrado ONESTO a job-object ({reason})"
-                );
-                downgrade = Some(reason);
-            }
-            Err(join_err) => {
-                let reason = format!("task appcontainer interrotto: {join_err}");
-                tracing::warn!("{reason}");
-                downgrade = Some(reason);
+                Ok(appcontainer::Outcome::Unsupported(reason)) => {
+                    tracing::warn!(
+                        executor = %exec.name,
+                        "AppContainer non costruito: degrado ONESTO a job-object ({reason})"
+                    );
+                    downgrade = Some(reason);
+                }
+                Err(join_err) => {
+                    let reason = format!("task appcontainer interrotto: {join_err}");
+                    tracing::warn!("{reason}");
+                    downgrade = Some(reason);
+                }
             }
         }
+    }
+
+    if want_appcontainer && exec.min_sandbox == "appcontainer" {
+        let reason = downgrade.as_deref().unwrap_or(
+            "AppContainer richiesto dal manifest ma non disponibile");
+        bail!("sandbox minima appcontainer non soddisfatta: {reason}");
     }
 
     // --- Percorso job-object (W3.3, INVARIATO): default e fallback onesto.
@@ -515,14 +509,17 @@ struct ScratchDir {
 
 impl ScratchDir {
     fn create() -> Result<Self> {
-        let path = std::env::temp_dir().join(format!(
-            "metnos-exec-{}-{}",
-            std::process::id(),
-            unique_suffix()
-        ));
-        std::fs::create_dir_all(&path)
-            .with_context(|| format!("creazione scratch dir {}", path.display()))?;
-        Ok(Self { path })
+        for _ in 0..16 {
+            let path = std::env::temp_dir().join(format!(
+                "metnos-exec-{}-{}", std::process::id(), unique_suffix()));
+            match std::fs::create_dir(&path) {
+                Ok(()) => return Ok(Self { path }),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e).with_context(
+                    || format!("creazione scratch dir {}", path.display())),
+            }
+        }
+        bail!("impossibile allocare scratch univoco dopo 16 tentativi")
     }
 }
 
@@ -532,10 +529,10 @@ impl Drop for ScratchDir {
     }
 }
 
-/// Suffisso univoco senza dipendere da `rand`/orologio ad-hoc: indirizzo di
-/// una allocazione stack, sufficiente a evitare collisioni fra invocazioni
-/// concorrenti nello stesso processo (il PID gia' distingue fra processi).
-fn unique_suffix() -> usize {
-    let x = 0u8;
-    &x as *const u8 as usize
+/// 128 bit da CSPRNG; `create_dir` aggiunge esclusione atomica cross-processo.
+fn unique_suffix() -> String {
+    use rand::RngCore as _;
+    let mut bytes = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

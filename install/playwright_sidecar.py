@@ -50,12 +50,9 @@ except ImportError:  # standalone senza package context
 
 def _venv_python() -> str:
     """Python owned by Metnos, never inherited from the caller's project."""
-    venv = Path(os.environ.get(
-        "METNOS_VENV",
-        str(Path(os.environ.get(
-            "METNOS_USER_DATA",
-            str(Path.home() / ".local" / "share" / "metnos"))) / ".venv"),
-    ))
+    root = Path(os.environ.get(
+        "METNOS_INSTALL_ROOT", Path(__file__).resolve().parents[1]))
+    venv = Path(os.environ.get("METNOS_VENV", str(root / ".venv")))
     return str(venv / "bin" / "python")
 
 
@@ -292,8 +289,18 @@ def _install_unit() -> bool:
             .replace("@BROWSERS_DIR@", str(_browsers_base())))
     dest_dir = Path.home() / ".config" / "systemd" / "user"
     dest_dir.mkdir(parents=True, exist_ok=True)
+    display_unit = repo / "systemd" / "metnos-side-display.service"
+    if shutil.which("Xvfb") and display_unit.exists():
+        (dest_dir / "metnos-side-display.service").write_text(display_unit.read_text())
+    else:
+        ui.warn("Xvfb non disponibile: il Side browser restera' non disponibile "
+                "finche' non viene installato il pacchetto xvfb")
     (dest_dir / "metnos-playwright.service").write_text(body)
     subprocess.run(["systemctl", "--user", "daemon-reload"])
+    if shutil.which("Xvfb") and display_unit.exists():
+        subprocess.run(["systemctl", "--user", "enable", "--now",
+                        "metnos-side-display.service"], capture_output=True,
+                       text=True)
     r = subprocess.run(["systemctl", "--user", "enable", "--now",
                         "metnos-playwright.service"], capture_output=True, text=True)
     if r.returncode != 0:

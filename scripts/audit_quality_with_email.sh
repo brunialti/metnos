@@ -27,7 +27,8 @@
 
 set -euo pipefail
 
-VENV_PY=/opt/suprastructure/.venv/bin/python
+INSTALL_ROOT="${METNOS_INSTALL_ROOT:-/opt/metnos}"
+VENV_PY="${METNOS_VENV:-$INSTALL_ROOT/.venv}/bin/python"
 TARGET_LANG="${AUDIT_TARGET_LANG:-en}"
 SAMPLE="${AUDIT_SAMPLE:-all}"
 APPLY="${AUDIT_APPLY:-1}"

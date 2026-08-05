@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Phase 3 — Metnos code & workspace skeleton.
+"""Phase 3 — Metnos source and initial stores.
 
-By the time this runs, ``$METNOS_REPO_DIR`` is set (by bootstrap.sh)
-and points at a checked-out Metnos source tree. Phase 3:
+By the time this runs, ``$METNOS_INSTALL_ROOT`` points at a checked-out
+Metnos source tree. Phase 3:
 
 - verifies the source tree has what we need (sentinel files)
 - creates the empty sqlite databases the runtime expects
-- copies a baseline ``i18n.sqlite`` with the MSG_* keys (placeholder
-  here; the release pipeline will bundle the actual one).
+- copies the bundled, complete ``i18n.sqlite`` seed
+- signs the shipped executors with a key trusted by this installation.
+- compiles and verifies the Tutor catalog from the public documentation and
+  current runtime manifests before the HTTP service is allowed to start.
 
 No personal data is involved — this phase is fully replayable.
 """
@@ -15,8 +17,10 @@ No personal data is involved — this phase is fully replayable.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +29,12 @@ from .. import ui
 
 _EXPECTED_SOURCE_DIRS = (
     "install",
-    # Future commits will land 'runtime/' and 'executors/'. While they
-    # are absent (early stub state), we don't fail — we just warn so
-    # the user knows phase 6 first-boot will be a no-op until the
-    # actual runtime code lands in the repo.
+    "runtime",
+    "executors",
+    "docs",
 )
+
+_TUTOR_COMPILE_TIMEOUT_S = 1800
 
 _SQLITE_FILES = (
     # filename, schema-init SQL (minimal — runtime migrations bring up to date)
@@ -76,7 +81,10 @@ def _init_i18n(data: Path) -> bool:
     import shutil
     p = data / "i18n.sqlite"
     if p.exists():
-        ui.info("i18n.sqlite: exists, leaving in place")
+        ui.info(
+            "i18n.sqlite: exists; preserving it (the runtime adds only "
+            "missing bundled key/language rows)"
+        )
         return False
     repo = os.environ.get("METNOS_INSTALL_ROOT", "")
     seed = Path(repo) / "install" / "data" / "i18n_seed.sqlite" if repo else None
@@ -155,6 +163,72 @@ def _sign_executors() -> dict[str, Any]:
     return {"signed": True, "report": line}
 
 
+def _compile_tutor_catalog() -> dict[str, Any]:
+    """Build the signed Tutor catalog before service readiness is evaluated.
+
+    A fresh F2 catalog embeds several thousand public-document units and can
+    legitimately take minutes on CPU. Doing that work in phase 3 gives the
+    installer one durable, resumable build boundary; leaving it to HTTP startup
+    would make the 120-second stack-readiness circuit kill the compiler and
+    repeat the same cold build forever.
+    """
+    repo = os.environ.get("METNOS_INSTALL_ROOT")
+    venv = os.environ.get("METNOS_VENV")
+    if not repo or not venv:
+        return {
+            "compiled": False,
+            "error": "METNOS_INSTALL_ROOT/METNOS_VENV not configured",
+        }
+    py = Path(venv) / "bin" / "python"
+    if not py.is_file():
+        return {"compiled": False, "error": f"missing interpreter: {py}"}
+
+    env = dict(os.environ)
+    pythonpath = f"{repo}:{repo}/runtime"
+    env["PYTHONPATH"] = (
+        pythonpath + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    )
+    code = (
+        "from tutor.catalog import compile_catalog, verify_catalog; "
+        "digest=compile_catalog(); "
+        "assert verify_catalog(), 'Tutor catalog verification failed'; "
+        "print(digest)"
+    )
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            [str(py), "-c", code],
+            cwd=repo,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=_TUTOR_COMPILE_TIMEOUT_S,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "compiled": False,
+            "error": f"{type(exc).__name__}: {exc}",
+            "elapsed_seconds": round(time.monotonic() - started, 1),
+        }
+    elapsed = round(time.monotonic() - started, 1)
+    output = (result.stdout or "").strip().splitlines()
+    digest = output[-1] if output else ""
+    if result.returncode != 0 or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        detail = (result.stderr or result.stdout or "no diagnostic output").strip()
+        return {
+            "compiled": False,
+            "error": detail[-600:],
+            "returncode": result.returncode,
+            "elapsed_seconds": elapsed,
+        }
+    ui.ok(f"Tutor catalog compiled and verified in {elapsed:.1f}s")
+    return {
+        "compiled": True,
+        "digest": digest,
+        "elapsed_seconds": elapsed,
+    }
+
+
 def run(args: Any) -> dict[str, Any]:
     notes: dict[str, Any] = {}
     ui.banner("Phase 3 — Metnos code & workspace", "Verify source, prepare empty databases")
@@ -180,5 +254,15 @@ def run(args: Any) -> dict[str, Any]:
     # 4. Firma degli executor (chiave locale) — senza questo il catalogo e' vuoto
     ui.step("Signing executors with a local key (sign-all)")
     notes["sign"] = _sign_executors()
+
+    # 5. Tutor F2 catalog. Documentation and runtime manifests are compiler
+    # inputs, so this step automatically rebuilds only when their content stamp
+    # changes; unchanged vectors are reused by the catalog compiler.
+    ui.step("Compiling the Tutor catalog from public documentation "
+            "(the first build can take several minutes)")
+    notes["tutor_catalog"] = _compile_tutor_catalog()
+    if not notes["tutor_catalog"].get("compiled"):
+        ui.fail("Tutor catalog compilation failed: "
+                f"{notes['tutor_catalog'].get('error', 'unknown error')}")
 
     return notes

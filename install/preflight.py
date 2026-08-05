@@ -45,19 +45,25 @@ def check_python() -> CheckResult:
 def check_disk(min_free_gb: int = 8) -> CheckResult:
     """Check free space on the partition holding $METNOS_USER_DATA."""
     home = Path(os.environ.get("METNOS_USER_DATA") or (Path.home() / ".local" / "share" / "metnos"))
-    home.mkdir(parents=True, exist_ok=True)
-    free_bytes = shutil.disk_usage(home).free
+    # ``python -m install --check`` promises a read-only pre-flight.  The
+    # configured data directory may not exist yet on a fresh host, so inspect
+    # the nearest existing parent instead of creating the directory merely to
+    # call ``disk_usage``.
+    probe = home
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    free_bytes = shutil.disk_usage(probe).free
     free_gb = free_bytes // (1024 ** 3)
     if free_gb >= min_free_gb:
         return CheckResult(
             "Disk space",
             True,
-            f"{free_gb} GB free at {home} (need ≥ {min_free_gb} GB minimum)",
+            f"{free_gb} GB free for {home} (need ≥ {min_free_gb} GB minimum)",
         )
     return CheckResult(
         "Disk space",
         False,
-        f"only {free_gb} GB free at {home} — need ≥ {min_free_gb} GB",
+        f"only {free_gb} GB free for {home} — need ≥ {min_free_gb} GB",
     )
 
 

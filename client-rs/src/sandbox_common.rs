@@ -85,6 +85,16 @@ impl HintGrant {
     }
 }
 
+/// Un ACL ereditabile sulla home intera o sulla radice di un volume e' troppo
+/// ampio sia come autorita' sia come costo: Windows puo' propagare l'ACE su un
+/// albero enorme prima ancora dello spawn (quindi fuori dalla deadline del
+/// processo executor). Il chiamante Windows usa questo segnale per degradare
+/// onestamente al Job Object; directory figlie specifiche restano idonee
+/// all'AppContainer.
+pub fn is_broad_acl_root(root: &Path, home: Option<&Path>) -> bool {
+    home.is_some_and(|value| root == value) || root.parent().is_none()
+}
+
 /// Prima parola-chiave di un nome capability, con separatore `:` O `.` (il
 /// vocabolario reale li mescola: `fs:read`, `network.read`, `net:read`,
 /// `network:http`). Serve a classificare la famiglia senza una lista chiusa
@@ -139,6 +149,49 @@ pub fn hint_grants(caps: &[Capability]) -> (Vec<HintGrant>, bool) {
                     grants.push(HintGrant { root, write });
                 }
             }
+        }
+    }
+    (grants, want_net)
+}
+
+fn deepest_existing_dir(candidate: &str) -> Option<PathBuf> {
+    let expanded = if let Some(rest) = candidate
+        .strip_prefix("~/").or_else(|| candidate.strip_prefix("~\\"))
+    {
+        dirs::home_dir()?.join(rest)
+    } else if candidate == "~" {
+        dirs::home_dir()?
+    } else {
+        PathBuf::from(candidate)
+    };
+    let mut path: &Path = &expanded;
+    loop {
+        if path.is_dir() {
+            return Some(path.to_path_buf());
+        }
+        match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => path = parent,
+            _ => return None,
+        }
+    }
+}
+
+/// Unica derivazione di autorita' filesystem per Linux e Windows: hint del
+/// manifest + target concreti firmati nell'invocazione, mai oltre la massima
+/// modalita' fs dichiarata dall'executor.
+pub fn invocation_grants(caps: &[Capability], args_json: &str)
+    -> (Vec<HintGrant>, bool)
+{
+    let (mut grants, want_net) = hint_grants(caps);
+    let Some(write) = caps_fs_access(caps) else {
+        return (grants, want_net);
+    };
+    for candidate in extract_path_args(args_json) {
+        let Some(root) = deepest_existing_dir(&candidate) else { continue };
+        if let Some(existing) = grants.iter_mut().find(|grant| grant.root == root) {
+            existing.write |= write;
+        } else {
+            grants.push(HintGrant { root, write });
         }
     }
     (grants, want_net)
@@ -224,6 +277,51 @@ pub fn extract_path_args(args_json: &str) -> Vec<String> {
     }
     walk(&parsed, &mut out);
     out
+}
+
+/// True quando un argomento semanticamente di percorso e' relativo e quindi il
+/// client non puo' ancorarlo PRIMA di avviare l'executor. La risoluzione reale
+/// puo' dipendere dallo shim (`Documenti/...` -> workspace Metnos): concedere
+/// un ACL basandosi sugli hint illustrativi del manifest sarebbe ambiguo e puo'
+/// propagare su una directory utente molto ampia. Il chiamante Windows degrada
+/// onestamente al Job Object, che mantiene contenimento di processo/risorse.
+pub fn has_unanchored_path_args(args_json: &str) -> bool {
+    let parsed: serde_json::Value = match serde_json::from_str(args_json) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+
+    fn path_key(key: &str) -> bool {
+        let key = key.to_ascii_lowercase().replace('-', "_");
+        matches!(key.as_str(),
+                 "path" | "paths" | "base_path" | "root" | "dir" |
+                 "dirs" | "directory" | "directories" | "src" | "dst")
+            || key.ends_with("_path")
+            || key.ends_with("_paths")
+            || key.ends_with("_dir")
+            || key.ends_with("_directory")
+    }
+
+    fn walk(value: &serde_json::Value, is_path_value: bool) -> bool {
+        match value {
+            serde_json::Value::String(raw) if is_path_value => {
+                let candidate = raw.split('{').next().unwrap_or(raw).trim();
+                !candidate.is_empty()
+                    && !candidate.contains("://")
+                    && !is_abs_pathish(candidate)
+            }
+            serde_json::Value::Array(values) =>
+                values.iter().any(|value| walk(value, is_path_value)),
+            // Su un oggetto annidato il nome della chiave figlia e'
+            // autoritativo: `files:[{path,content}]` non trasforma `content`
+            // in un path soltanto perche' vive dentro la collezione `files`.
+            serde_json::Value::Object(values) => values.iter().any(
+                |(key, value)| walk(value, path_key(key))),
+            _ => false,
+        }
+    }
+
+    walk(&parsed, false)
 }
 
 /// Quoting di un argomento per la command line Win32 (`CreateProcessW` riceve
@@ -344,10 +442,20 @@ impl AclRegistry {
             std::fs::create_dir_all(parent)?;
         }
         let bytes = serde_json::to_vec_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(std::io::Error::other)?;
         let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, bytes)?;
-        std::fs::rename(&tmp, path)
+        use std::io::Write as _;
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp, path)?;
+        if let Some(parent) = path.parent() {
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+        Ok(())
     }
 
     /// True se esiste gia' una concessione per (path, sid).
@@ -368,6 +476,12 @@ impl AclRegistry {
     /// Estrae tutte le concessioni svuotando il registro (per la pulizia).
     pub fn take_all(&mut self) -> Vec<AclGrantRecord> {
         std::mem::take(&mut self.grants)
+    }
+
+    pub fn forget(&mut self, path: &str, sid: &str) -> bool {
+        let before = self.grants.len();
+        self.grants.retain(|g| g.path != path || g.sid != sid);
+        self.grants.len() != before
     }
 }
 
@@ -472,6 +586,27 @@ mod tests {
     fn hint_grants_no_net_when_absent() {
         let (_g, want_net) = hint_grants(&[cap("fs:read", &["~/x/**"])]);
         assert!(!want_net);
+    }
+
+    #[test]
+    fn relative_path_args_are_unanchored_but_content_is_not() {
+        assert!(has_unanchored_path_args(
+            r#"{"base_path":"Documenti/Progetto Atlas","patterns":["*.pdf"]}"#));
+        assert!(has_unanchored_path_args(
+            r#"{"files":[{"path":"report.xlsx","content":"hello"}]}"#));
+        assert!(!has_unanchored_path_args(
+            r#"{"files":[{"path":"C:\\Atlas\\report.xlsx","content":"relative/text"}]}"#));
+        assert!(!has_unanchored_path_args(
+            r#"{"path":"C:\\Atlas","file_type":"pdf","source_name":"a.pdf"}"#));
+    }
+
+    #[test]
+    fn broad_acl_root_rejects_home_and_volume_not_children() {
+        let home = PathBuf::from("/home/roberto");
+        assert!(is_broad_acl_root(&home, Some(&home)));
+        assert!(is_broad_acl_root(Path::new("/"), Some(&home)));
+        assert!(!is_broad_acl_root(
+            Path::new("/home/roberto/Documents/Atlas"), Some(&home)));
     }
 
     #[test]

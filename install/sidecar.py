@@ -28,12 +28,14 @@ users); a single-user self-hosted instance does not need that ceremony.
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -313,6 +315,7 @@ def install_searxng(*, yes: bool = False, port: int | None = None) -> dict:
 # drop-in; the base install's llama-server binary is reused.
 
 _VLM_REPO = "Qwen/Qwen3-VL-2B-Instruct-GGUF"   # official Qwen GGUFs
+_VLM_REVISION = "52d6c8ffea26cc873ac5ad116f8631268d7eb503"
 _VLM_MODEL = "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
 _VLM_MMPROJ = "mmproj-Qwen3VL-2B-Instruct-F16.gguf"
 
@@ -340,7 +343,10 @@ def install_vlm(*, yes: bool = False) -> dict:
     model, mmproj = dest / _VLM_MODEL, dest / _VLM_MMPROJ
     for f in (_VLM_MODEL, _VLM_MMPROJ):
         ui.step(f"Downloading {f}")
-        if not _retry(f, lambda f=f: llm_manager.download_model(_VLM_REPO, f, dest / f)):
+        if not _retry(
+                f,
+                lambda f=f: llm_manager.download_model(
+                    _VLM_REPO, f, dest / f, revision=_VLM_REVISION)):
             ui.warn(f"{f}: download failed (network or upstream)")
             return {"vlm": "download_failed"}
     ui.ok(f"VLM model + mmproj present in {dest}")
@@ -348,10 +354,7 @@ def install_vlm(*, yes: bool = False) -> dict:
     # Reuse the base install's llama-server (the VLM runs a local llama-server
     # on :8081). Absent → wired to an external LLM endpoint with no local
     # binary: be honest, the models are useless without it.
-    try:
-        llama = llm_manager._find_llama_bin(llm_manager._llama_dir(), "llama-server")
-    except Exception:
-        llama = None
+    llama = _resolve_vlm_llama(llm_manager)
     if not llama:
         ui.warn("no managed llama-server found — VLM captions need a LOCAL "
                 "llama-server. Models are downloaded; install/run the local LLM "
@@ -361,6 +364,31 @@ def install_vlm(*, yes: bool = False) -> dict:
     ui.info("VLM is lazy: the first image-index run starts it on :8081 "
             "(auto-stops after 10min idle).")
     return {"vlm": "models_ready" if llama else "models_ready_no_llama"}
+
+
+def _resolve_vlm_llama(llm_manager) -> Path | None:
+    """Resolve or acquire the local binary required by the lazy VLM.
+
+    A base install may intentionally use an already-running external LLM
+    endpoint. In that case there is no managed llama.cpp tree yet, but the VLM
+    still needs a local executable for its own model on port 8081.
+    """
+    override = os.environ.get("METNOS_VLM_LLAMA_BIN", "").strip()
+    if override and Path(override).is_file():
+        return Path(override)
+    try:
+        managed = llm_manager._find_llama_bin(
+            llm_manager._llama_dir(), "llama-server")
+        if managed:
+            return managed
+        system_bin = shutil.which("llama-server")
+        if system_bin:
+            return Path(system_bin)
+        plan = llm_manager.recommend(llm_manager.detect_hardware())
+        return llm_manager.acquire_llama(plan.backend, llm_manager._llama_dir())
+    except Exception as exc:
+        ui.warn(f"llama-server acquisition failed: {type(exc).__name__}: {exc}")
+        return None
 
 
 # ─── Photon (offline geocoder) ───────────────────────────────────────
@@ -376,6 +404,10 @@ _PHOTON_JAR_URL = ("https://github.com/komoot/photon/releases/download/"
                    f"{_PHOTON_VERSION}/photon-{_PHOTON_VERSION}.jar")
 _PHOTON_JAR_SHA256 = "592e304500bf77f46d4307c43748a0d86c20c24df1dd4771c5ad64803906d989"
 _KOMOOT_BASE = "https://download1.graphhopper.com/public"
+_PHOTON_INDEX_SCHEMA = 1
+_PHOTON_INDEX_COMPLETE = ".metnos-index-complete.json"
+_PHOTON_INDEX_BUILDING = ".metnos-index-building.json"
+_PHOTON_JSONL_SCHEMA = 1
 
 # country code → GraphHopper-hosted komoot dump (replicates the production
 # photon-switch-country catalog; a closed catalog like the runtime vocab).
@@ -411,6 +443,104 @@ def _photon_dump_url(country: str) -> str:
     return f"{_KOMOOT_BASE}/{path}-1.0-latest.jsonl.zst"
 
 
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    """Write installer state without ever exposing a half-written marker."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+    tmp.replace(path)
+
+
+def _photon_index_has_commit(index_dir: Path) -> bool:
+    """Return whether the OpenSearch/Lucene tree contains a committed segment.
+
+    Directory existence is not evidence of a completed import: Photon creates
+    ``photon_data`` before consuming the dump, so a killed importer leaves a
+    plausible-looking but incomplete tree behind. A Lucene ``segments_*`` file
+    is a useful structural check; the completion marker below remains the
+    authoritative proof that the Java importer exited successfully.
+    """
+    if not index_dir.is_dir():
+        return False
+    return any(path.is_file() for path in index_dir.rglob("segments_*"))
+
+
+def _photon_index_complete(country_dir: Path, country: str, dump_url: str) -> bool:
+    """Validate the durable receipt written only after a successful import."""
+    marker = country_dir / _PHOTON_INDEX_COMPLETE
+    try:
+        receipt = json.loads(marker.read_text())
+    except (OSError, ValueError, TypeError):
+        return False
+    expected = {
+        "schema": _PHOTON_INDEX_SCHEMA,
+        "country": country,
+        "photon_version": _PHOTON_VERSION,
+        "dump_url": dump_url,
+    }
+    return (
+        all(receipt.get(key) == value for key, value in expected.items())
+        and isinstance(receipt.get("source_bytes"), int)
+        and receipt["source_bytes"] > 0
+        and _photon_index_has_commit(country_dir / "photon_data")
+    )
+
+
+def _photon_import_receipt(country: str, dump_url: str, jsonl: Path) -> dict:
+    """Build the durable receipt before the transient JSONL is reclaimed."""
+    return {
+        "schema": _PHOTON_INDEX_SCHEMA,
+        "country": country,
+        "photon_version": _PHOTON_VERSION,
+        "dump_url": dump_url,
+        "source_bytes": jsonl.stat().st_size,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _photon_jsonl_marker(dumps: Path, country: str) -> Path:
+    return dumps / f".photon-dump-{country}.jsonl-complete.json"
+
+
+def _photon_jsonl_receipt(dump_url: str, dump: Path, jsonl: Path) -> dict:
+    """Describe one completely expanded dump for safe resume."""
+    return {
+        "schema": _PHOTON_JSONL_SCHEMA,
+        "dump_url": dump_url,
+        "dump_bytes": dump.stat().st_size,
+        "jsonl_bytes": jsonl.stat().st_size,
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _photon_jsonl_complete(marker: Path, dump_url: str,
+                           dump: Path, jsonl: Path) -> bool:
+    """Prove that decompression, not just output-file creation, completed."""
+    try:
+        receipt = json.loads(marker.read_text())
+    except (OSError, ValueError, TypeError):
+        return False
+    return (
+        receipt.get("schema") == _PHOTON_JSONL_SCHEMA
+        and receipt.get("dump_url") == dump_url
+        and dump.is_file()
+        and jsonl.is_file()
+        and receipt.get("dump_bytes") == dump.stat().st_size > 0
+        and receipt.get("jsonl_bytes") == jsonl.stat().st_size > 0
+    )
+
+
+def _photon_dump_valid(dump: Path) -> bool:
+    """Validate the whole zstd frame before importing its contents."""
+    if not dump.is_file() or dump.stat().st_size <= 0:
+        return False
+    try:
+        result = _run(["unzstd", "-t", str(dump)], timeout=900)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def install_photon(*, yes: bool = False, country: str | None = None,
                    port: int | None = None) -> dict:
     """Real Photon install: komoot jar + per-country dump + import + user unit."""
@@ -442,35 +572,97 @@ def install_photon(*, yes: bool = False, country: str | None = None,
             return {"photon": "jar_failed"}
         ui.ok("photon.jar downloaded (sha verified)")
 
-    # 2. per-country index (download dump → decompress → java import)
-    if index_dir.is_dir():
+    # 2. per-country index (download dump → decompress → java import). A
+    #    success receipt, not directory existence, is the idempotency gate:
+    #    Photon creates photon_data/ before the import is complete.
+    url = _photon_dump_url(country)
+    complete_marker = country_dir / _PHOTON_INDEX_COMPLETE
+    building_marker = country_dir / _PHOTON_INDEX_BUILDING
+    dump = dumps / f"photon-dump-{country}.jsonl.zst"
+    jsonl = dumps / f"photon-dump-{country}.jsonl"
+    jsonl_marker = _photon_jsonl_marker(dumps, country)
+    if _photon_index_complete(country_dir, country, url):
+        # A crash can happen after the completion receipt is committed but
+        # before transient cleanup. The receipt makes this cleanup safe.
+        building_marker.unlink(missing_ok=True)
+        jsonl.unlink(missing_ok=True)
+        jsonl_marker.unlink(missing_ok=True)
         ui.ok(f"Photon index present for '{country}'")
     else:
-        url = _photon_dump_url(country)
-        dump = dumps / f"photon-dump-{country}.jsonl.zst"
-        jsonl = dumps / f"photon-dump-{country}.jsonl"
-        if not jsonl.exists():
-            ui.step(f"Downloading komoot dump '{country}' (large)")
-            ui.info(url)
-            # mobile "latest" dump → no published sha (honest, like a main-ref GGUF)
-            if not _retry(dump.name,
-                          lambda: downloads.robust_fetch(url, dump, label=dump.name)):
-                ui.warn("dump download failed")
-                return {"photon": "dump_failed"}
+        if index_dir.exists():
+            ui.warn("Photon index has no valid completion receipt; "
+                    "discarding the incomplete/unverified managed index")
+            shutil.rmtree(index_dir)
+        complete_marker.unlink(missing_ok=True)
+        if not _photon_jsonl_complete(jsonl_marker, url, dump, jsonl):
+            jsonl.unlink(missing_ok=True)
+            jsonl_marker.unlink(missing_ok=True)
+            if not _photon_dump_valid(dump):
+                if dump.exists():
+                    ui.warn("existing Photon archive is incomplete or invalid; "
+                            "downloading it again")
+                    dump.unlink()
+                ui.step(f"Downloading komoot dump '{country}' (large)")
+                ui.info(url)
+                # The mobile "latest" dump has no published sha. robust_fetch
+                # proves transfer length; unzstd -t below proves the full frame.
+                if not _retry(
+                        dump.name,
+                        lambda: downloads.robust_fetch(
+                            url, dump, label=dump.name)):
+                    ui.warn("dump download failed")
+                    return {"photon": "dump_failed"}
+                if not _photon_dump_valid(dump):
+                    ui.warn("downloaded Photon archive failed zstd validation")
+                    dump.unlink(missing_ok=True)
+                    return {"photon": "dump_invalid"}
+            else:
+                ui.ok(f"validated retained Photon archive for '{country}'")
+
             ui.step("Decompressing dump (zstd; ~14 GB for a large country)")
-            r = _run(["unzstd", "-f", str(dump), "-o", str(jsonl)], timeout=3600)
-            if r.returncode != 0 or not jsonl.exists():
-                ui.warn(f"unzstd failed: {r.stderr.strip()[-200:]}")
+            jsonl_part = jsonl.with_name(jsonl.name + ".part")
+            jsonl_part.unlink(missing_ok=True)
+            try:
+                r = _run(["unzstd", "-f", str(dump),
+                          "-o", str(jsonl_part)], timeout=3600)
+            except (OSError, subprocess.SubprocessError) as exc:
+                jsonl_part.unlink(missing_ok=True)
+                ui.warn(f"unzstd failed: {type(exc).__name__}: {exc}")
                 return {"photon": "decompress_failed"}
+            if (r.returncode != 0 or not jsonl_part.is_file()
+                    or jsonl_part.stat().st_size <= 0):
+                jsonl_part.unlink(missing_ok=True)
+                ui.warn(f"unzstd failed: {(r.stderr or '').strip()[-200:]}")
+                return {"photon": "decompress_failed"}
+            jsonl_part.replace(jsonl)
+            _write_json_atomic(
+                jsonl_marker, _photon_jsonl_receipt(url, dump, jsonl))
         ui.step("Importing into the Photon index (java, 15-30 min)")
         country_dir.mkdir(parents=True, exist_ok=True)
-        r = _run(["java", "-Xmx4G", "-jar", str(jar), "import",
-                  "-import-file", str(jsonl), "-data-dir", str(country_dir),
-                  "-j", "4"], timeout=7200)
-        if not index_dir.is_dir():
-            ui.warn(f"import failed: {r.stderr.strip()[-300:]}")
+        _write_json_atomic(building_marker, {
+            "schema": _PHOTON_INDEX_SCHEMA,
+            "country": country,
+            "photon_version": _PHOTON_VERSION,
+            "dump_url": url,
+            "source_bytes": jsonl.stat().st_size,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        })
+        try:
+            r = _run(["java", "-Xmx4G", "-jar", str(jar), "import",
+                      "-import-file", str(jsonl), "-data-dir", str(country_dir),
+                      "-j", "4"], timeout=7200)
+        except (OSError, subprocess.SubprocessError) as exc:
+            ui.warn(f"import failed: {type(exc).__name__}: {exc}")
             return {"photon": "import_failed"}
+        if r.returncode != 0 or not _photon_index_has_commit(index_dir):
+            detail = (r.stderr or r.stdout or "no diagnostic output").strip()[-300:]
+            ui.warn(f"import failed (exit {r.returncode}): {detail}")
+            return {"photon": "import_failed"}
+        _write_json_atomic(
+            complete_marker, _photon_import_receipt(country, url, jsonl))
+        building_marker.unlink(missing_ok=True)
         jsonl.unlink(missing_ok=True)  # reclaim the ~14 GB transient
+        jsonl_marker.unlink(missing_ok=True)
         ui.ok(f"index built for '{country}'")
 
     # 3. symlink data/current → <country> (the dir CONTAINING photon_data/;
@@ -514,6 +706,11 @@ def _photon_dropin(port: int) -> None:
 
 # ─── registry (single source of truth for the optional list) ─────────
 
+def install_playwright(*, yes: bool = False) -> dict:
+    """Install the browser sidecar through the common sidecar contract."""
+    from . import playwright_sidecar
+    return playwright_sidecar.install(yes=yes)
+
 SIDECARS: dict[str, dict] = {
     "searxng": {
         "label": "SearXNG search aggregator",
@@ -534,6 +731,13 @@ SIDECARS: dict[str, dict] = {
         "size": "~1.9 GB",
         "desc": "Image enrichment — captions for find_images_indices (lazy :8081, no service).",
         "install": install_vlm,
+        "ready": True,
+    },
+    "playwright": {
+        "label": "Playwright browser sidecar",
+        "size": "~700 MB",
+        "desc": "Local JS rendering and graphical Side browser for sites.",
+        "install": install_playwright,
         "ready": True,
     },
 }

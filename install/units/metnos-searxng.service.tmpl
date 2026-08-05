@@ -1,6 +1,8 @@
 [Unit]
 Description=Metnos SearXNG search sidecar (local, self-hosted web search)
 After=network.target
+Before=metnos-stack-ready.service
+PartOf=metnos.target
 
 [Service]
 Type=simple
@@ -20,4 +22,4 @@ Environment=TMPDIR=@SEARXNG_CACHE@
 Environment=SEARXNG_SETTINGS_PATH=@SEARXNG_SETTINGS@
 
 [Install]
-WantedBy=default.target
+WantedBy=metnos.target
