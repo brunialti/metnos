@@ -12,7 +12,8 @@ related:
 ---
 
 > Superseded by ADR 0207. This record remains the historical origin of tier
-> virtualization; the current vocabulary has six workload contracts.
+> virtualization; the current vocabulary has five tiers (`fast`, `middle`,
+> `wise`, `creative`, `frontier`) and three centrally configured `fast` levels.
 
 ## Context
 

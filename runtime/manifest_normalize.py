@@ -5,7 +5,8 @@ Trasforma GENERALE, non ad-hoc: una description legacy verbosa -> SOLA TESTA a 4
 capitoli (SCOPO/PATTERN/NON/OUT), IT+EN, riusando la macchina synt (stage-4
 family). Il prompt `synt_description_normalize.j2` codifica la regola §2.5; il
 driver fornisce SOLO contesto deterministico per-manifest (verbo, oggetto, args,
-fratelli, shape §2.6) e lascia a fast.procedural la compressione creativa. Niente
+fratelli, shape §2.6) e lascia al workload `manifest.normalize` → middle
+la compressione creativa. Niente
 testo hardcoded per-manifest (§7.3/§8.3: si itera il prompt, non l'output).
 
 Flusso per famiglia (routing-critical, §2.5):
@@ -269,7 +270,7 @@ def length_warn(s: str) -> str | None:
 
 
 # -------------------------------------------------------------------------
-# LLM (fast.procedural, come synt stage-4)
+# LLM (`manifest.normalize` → middle)
 # -------------------------------------------------------------------------
 def _make_llm():
     from llm_router import LLMRouter

@@ -3,7 +3,7 @@
 
 Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md` punto 15):
 - Sweep DB i18n per entries con needs_translation=1
-- Batch LLM call (livello locale fast.fidelity, ~5-10s per batch 50 entries)
+- Batch LLM call (workload `translation.i18n` → wise, ~5-10s per batch 50 entries)
 - UPDATE entries con text + needs_translation=0
 - Self-healing: retry su fallimento
 - Throttle: 30s al boot → 5min steady state
@@ -181,7 +181,7 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
     """Batch translate. Ritorna {key: translated_text}. Pipeline:
     - Separa entries in due classi: user-facing (prompt corto) vs LLM-targeted
       (prompt grande, fedelta' massima richiesta). Le ultime usano prompt
-      template piu' rigoroso e livello `fast.fidelity` per maggiore fedelta'.
+      template piu' rigoroso e workload `translation.i18n` → wise per fedelta'.
     - Per ogni classe, raggruppa per (source_lang, target_lang) e invoca LLM.
     """
     if not entries:
@@ -1502,7 +1502,7 @@ def _resolve_tier_arg(argv: list[str]) -> str:
     """Resolve `--quality {fidelity,frontier}`. Default `fidelity`.
 
     Accetta anche la forma `--quality=fidelity`. Restituisce una richiesta
-    logica (`fast.fidelity` o `frontier`).
+    logica (`translation.i18n` → wise, oppure `frontier`).
     """
     for i, a in enumerate(argv):
         if a == "--quality" and i + 1 < len(argv):

@@ -363,7 +363,7 @@ def _dependency_failure(exc: Exception) -> bool:
 
 def _auto_tier(n_items: int) -> str:
     """Per classificare un set chiuso di label, fast basta nei piccoli
-    batch. Per batch grandi usa fast.procedural per mantenere la coerenza
+    batch. Per batch grandi usa `entries.classify` → middle per la coerenza
     dell'output strutturato."""
     if n_items <= 30:
         return tier_for("entries.classify.small")

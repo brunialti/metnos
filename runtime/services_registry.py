@@ -128,13 +128,13 @@ SERVICES: tuple[ServiceSpec, ...] = (
     ),
     ServiceSpec(
         "i18n", "Traduttore i18n",
-        "Completa automaticamente le traduzioni differite con fast.fidelity.",
+        "Completa automaticamente le traduzioni differite con il ruolo wise.",
         "Nucleo", (_target("metnos-i18n-translator.timer"),),
         required=True, integrated=True,
         label_en="i18n translator",
         description_en=(
-            "Automatically completes deferred translations with "
-            "fast.fidelity."
+            "Automatically completes deferred translations with the "
+            "wise role."
         ),
         group_en="Core",
     ),

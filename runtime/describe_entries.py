@@ -64,7 +64,7 @@ _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 #   MAP   — una passata `fast` PER ELEMENTO: resume breve + punteggio di
 #           salienza (0-100). Una entry alla volta non sfora MAI il budget
 #           (elimina il problema alla radice — Roberto), output corto, N volte.
-#   REDUCE— una `fast.procedural` sintetizza i digest (piccoli → stanno nel budget),
+#   REDUCE— una chiamata `middle` sintetizza i digest (piccoli → stanno nel budget),
 #           ordinati per salienza; se i digest stessi sforano (N enorme),
 #           ricorsione GERARCHICA (riassunto-di-riassunti) fino a convergenza.
 # Copre tutte le entries FINO al cap anti-runaway (sotto). Scatta SOLO
@@ -324,7 +324,8 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
     digests.sort(key=lambda x: x.get("_salience", 0), reverse=True)
     # REDUCE: describe normale sui digest (piccoli → singola chiamata; se
     # sforano ancora, ricorre map-reduce a mr_depth+1 = gerarchico). tier
-    # `fast.procedural`, non deterministico (path efficiente).
+    # workload `entries.describe.medium` → middle, non deterministico
+    # (path efficiente).
     res = handle_describe_entries({
         "entries": digests, "style": style, "context": context,
         "data_kind": data_kind, "format": fmt, "group_by": group_by,
@@ -384,7 +385,7 @@ def _format_directive(fmt: str) -> str:
 def _auto_tier(entries: list) -> str:
     """Sceglie il tier in base alla dimensione del bundle serializzato.
     Heuristica conservativa: testi corti reggono col tier fast,
-    contenuti medi usano fast.procedural, bundle grossi fast.fidelity."""
+    contenuti medi usano middle, bundle grossi wise."""
     try:
         size = len(json.dumps(entries, ensure_ascii=False))
     except Exception:

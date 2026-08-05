@@ -15,7 +15,7 @@ en = "SCOPO: Runs one privileged system shell command only through the approval 
 
 [code]
 files = ["../../system/admin.py"]
-digest = "sha256:53eb1c0bc4da18d905333d1c6bece34446788b5bd39d6db12370b632c3318a05"
+digest = "sha256:b0aa6db701df3c492021be9708c329437e16d51fd4b9a1447691bbd18676d3ba"
 
 [args]
 type = "object"

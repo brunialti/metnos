@@ -34,7 +34,10 @@ def test_catalog_keys_and_targets_are_closed_and_unique():
     assert "issues" not in {service.key for service in services}
     assert registry.get("i18n").required is True
     assert "fast.micro" in registry.get("llm").description
-    assert "fast.fidelity" in registry.get("i18n").description
+    # Il traduttore usa il workload `translation.i18n`, che il registro
+    # risolve su `wise`: la descrizione citava un livello fast che non ha
+    # alcun carico (ADR 0207, emendamento al censimento).
+    assert "wise" in registry.get("i18n").description
     assert registry.get("llm").endpoint_env == "METNOS_LLM_URL"
     for service in services:
         assert service.targets
