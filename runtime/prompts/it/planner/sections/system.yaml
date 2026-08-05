@@ -1,6 +1,6 @@
 # Frontmatter equivalente a `{# --- ... --- #}` Jinja (CLAUDE.md §6.1).
 role: planner
-tier: middle
+tier: fast
 lang: it
 style: prescriptive
 version: 1

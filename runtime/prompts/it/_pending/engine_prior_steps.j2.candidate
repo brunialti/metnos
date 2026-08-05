@@ -1,0 +1,13 @@
+{# ---
+role: engine_prior_steps
+tier: wise
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+FATTO FINORA (turno precedente): non riemettere questi passaggi; usa `from_step=N` per fare riferimento ai loro risultati e pianifica solo i passaggi rimanenti.
+{% for step in steps %}  {{ step.idx }}) {{ step.tool }} → {% if step.has_count %}{{ step.count }} risultati{% else %}ok{% endif %}
+{% endfor %}

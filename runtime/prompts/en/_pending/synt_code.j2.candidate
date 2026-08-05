@@ -3,15 +3,16 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 1
+version: 4
 owner: roberto
-updated: 2026-05-11
-sha_prev: 3c68afc4
+updated: 2026-07-20
+sha_prev: 80c944ae
 --- #}
 You are phase 5 (CODE) of synt-multistage.
-Your ONLY task: write the Python file `{{ name }}.py` that implements the executor.
+Your ONLY task: write the Python file `{{ name }}.py` that implements
+the executor.
 
-Skeleton manifest already decided (DO NOT change it):
+Manifest schema already decided (DO NOT change it):
   name: {{ name }}
   args required: {{ args_required }}
   args properties: {{ args_properties }}
@@ -22,19 +23,25 @@ Skeleton manifest already decided (DO NOT change it):
 STRUCTURAL PRINCIPLES (valid for any verb):
 
 MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.
-MUST NOT: import pip libraries other than PIL/Pillow and openpyxl.
+MUST NOT: import pip libraries beyond PIL/Pillow and openpyxl.
 OK: `import hashlib`, `import imaplib`, `import tarfile`, `import os`.
 ERROR: `import requests`, `import boto3`, `import paramiko`. THIS IS AN ERROR.
 
-REAL RUNTIME API MODULES (complete signature — DO NOT invent missing functions, DO NOT change signatures):
+REAL SIGNATURES OF RUNTIME MODULES (complete signatures — DO NOT invent
+functions that are absent, DO NOT change the signatures):
 
   `messages` (Python module):
-    `messages.get(code: str) -> str` — A single argument (the code).
-    Returns the template; if the code does not exist, returns a string starting with "[unknown msg".
+    `messages.get(code: str) -> str` — ONE single argument (the code).
+    Returns the model; if the code does not exist returns a string that
+    starts with "[unknown msg".
     MUST: `from messages import get as messages_get` (explicit alias) or
     `import messages` then `messages.get(code)`.
-    MUST NOT: `from messages import messages` (auto-reference, module does not contain a name `messages`).
-    MUST NOT: wrap runtime module imports in try/except that silences ImportError. If runtime is not reachable, the executor MUST fail EXPLICITLY on the first invoke, do not mask the problem with stubs that return fake errors.
+    MUST NOT: `from messages import messages` (self-reference, the module
+    does not contain a name `messages`).
+    MUST NOT: wrap runtime module imports in try/except that
+    silences ImportError. If the runtime is not reachable the executor
+    must fail EXPLICITLY at the first invocation, do not mask the
+    problem with stubs that return fake errors.
     OK: `import messages` then `messages.get("ERR_X")`.
     ERROR: `try: from messages import messages\nexcept ImportError:\n    def open_imap(): raise ImportError(...)`. THIS IS AN ERROR.
 
@@ -56,12 +63,14 @@ REAL RUNTIME API MODULES (complete signature — DO NOT invent missing functions
     set_location(loc: dict) -> None
 
 RUNTIME CONTRACT FOR `from_step`:
-If in the stage 2 manifest you have `from_step: integer required`, the runtime automatically expands the list in the scratchpad and injects it into the field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
-YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT search in
+If in stage 2 of the manifest you have `from_step: integer required`, the runtime
+automatically expands the list in the scratchpad and injects it into
+the field `entries` BEFORE invoking the subprocess. Inside `invoke(args)`
+YOU ALWAYS FIND `args["entries"]` (list of dicts). DO NOT look in
 `args["messages"]`, `args["paths"]`, `args["mails"]` or other names:
 the runtime ALWAYS uses `entries` as the standard target.
 
-DICT FIELDS OF THE ENTRIES (expected input at invoke when arriving from from_step):
+FIELDS OF THE ENTRIES DICTS (expected input at invocation when coming from from_step):
 - read_messages: `e["uid"]`, `e["account"]`, `e["folder"]`, `e["from"]`,
   `e["subject"]`, `e["date"]`, `e["message_id"]`, `e["body_preview"]`,
   `e["category_hints"]`, `e["has_attachment"]`.
@@ -70,74 +79,97 @@ DICT FIELDS OF THE ENTRIES (expected input at invoke when arriving from from_ste
 
 DATA INTEGRITY PRINCIPLE (for destructive verbs: move/delete/write/extract):
 
-MUST: for move/transfer execute COPY-then-CHECK-then-DELETE. Explicitly verify
-  that the COPY (or equivalent: atomic write, append) succeeded BEFORE removing/deleting the source.
+MUST: for move/transfer execute COPY-then-CHECK-then-DELETE. Verify
+  explicitly that the copy (or equivalent: atomic write, append)
+  succeeded BEFORE removing/deleting the source.
 MUST NOT: execute DELETE/unlink/EXPUNGE/drop without first having
-  confirmed the copy/append to the destination.
+  confirmed the copy/addition in the destination.
 OK: `if copy_status == "OK": delete_source()`.
-ERROR: `copy_source_to_dst(); delete_source()` without a check between the two.
+ERROR: `copy_source_to_dst(); delete_source()` without a check in between.
   If the copy fails silently, the source is destroyed.
 
 MUST: include in the `results[]` ALL fields necessary for the `reverse_pattern`
-  declared in the manifest. E.g., `swap_src_dst` needs {src, dst} pairs
-  + a stable object ID (path, message_id, etc.).
-MUST NOT: return empty or partial results hoping that undo magically
-  reconstructs the state.
+  declared in the manifest. E.g. `swap_src_dst` needs {src, dst} pairs
+  + a stable ID of the object (path, message_id, etc.).
+MUST NOT: return empty or partial results hoping that the undo will
+  magically reconstruct the state.
 OK: `results.append({"src": s, "dst": d, "id": stable_id})`.
-ERROR: `results.append({"ok": True})` without the info for the reverse.
+ERROR: `results.append({"ok": True})` without the information for the reverse.
 
-MUST: deduce object identity (account, folder, path) from the
-  ENTRIES, not from global args with defaults. The entries come from
-  different sources; a single call can cover multiple accounts/sources.
+MUST: deduce the identity of the object (account, folder, path) from the
+  ENTRIES, not from global arguments with defaults. The entries come from
+  different sources, a single call can cover multiple accounts/sources.
 MUST NOT: read `args.get("account", "default")` as the sole
-  determination of account.
+  determination of the account.
 OK: `for e in entries: by_account.setdefault(e["account"], []).append(e)`.
 ERROR: `account = args.get("account", "metnos_system")`. THIS IS AN ERROR.
 
-BEST-EFFORT PRINCIPLE (for all vector verbs):
+BEST-PRACTICE PRINCIPLE (for all vector verbs):
 
 MUST: handle each entry independently. A failed entry adds
-  a dict to `failed[]`, it does not block the others.
-MUST NOT: raise an exception that terminates the loop on the entire batch
+  a dict to `failed[]`, does not block the others.
+MUST NOT: raise an exception that terminates the loop on the entire block
   as soon as one entry fails.
 OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
 ERROR: `for e in entries: process(e)  # senza try/except`. The first
   exception blocks all others. THIS IS AN ERROR.
-- Vectorized by default: every executor accepts lists, even with a single element or empty.
-- Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
-  No None, no single dict: the planner always receives a list
-  and treats it as a completed task — it must not "explore more" if the list
-  is short or empty.
-- Output follows standard form {ok, ok_count, fail_count, results|entries, failed}.
-- INTERNAL LOOP WITHIN THE EXECUTOR. When the operation operates on a variable
-  or unknown volume (e.g., emails in a time window, files in a recursive
-  directory, paginated fetch), implement the iteration loop (batch /
-  pagination / stream) INSIDE the invoke() function. DO NOT leave the
-  planner with the task of iterating: external loops cost ReAct steps and
-  do not scale. Example: an executor that returns emails from "today" must
-  accept time_window as a parameter and perform the IMAP fetch loop
-  internally, returning the entire list in a single observation.
-  Add an explicit cap (max_total, max_pages, max_bytes) to avoid
-  output blow-up.
-- Best-effort: a failed entry does not block the others.
-- If critical (modifies fs/network/external state): use
-  `platform_policy.is_protected_path(path)` for hard block +
-  `is_system_file(name)` for safety net (override via {{var}}).
-- Uniform errors: use `messages.get('ERR_EXT_SVC_LIMIT')` etc. instead of inline strings.
-- If revertible=true: the reverse_pattern is applied automatically by the runtime;
-  it is enough that the exposed `results` respect the expected schema of the pattern (e.g.,
-  `swap_src_dst` requires `results: list[{src, dst}]`).
 
+CENTRAL PARALLELISM ENGINE:
+
+MUST: if you process independent entries in parallel, use `executor_helpers.assigned_workers()` as the only worker count.
+MUST NOT: derive workers from `os.cpu_count()`, create global pools or ignore the budget assigned by the runtime.
+OK: `ThreadPoolExecutor(max_workers=assigned_workers())` inside `invoke`, with results reordered as the input.
+ERROR: `ThreadPoolExecutor(max_workers=os.cpu_count() * 4)`. THIS IS AN ERROR.
+
+- Vector by construction: every executor accepts lists, even of a single element or empty.
+- Output ALWAYS a list (entries / results), even degenerate (0 or 1 element).
+  No None, no single dict: the planner always receives a list
+  and treats it as a done fact — it must not "explore further" if the list
+  is short or empty.
+- Output in the standard form {ok, ok_count, fail_count, results|entries, failed}.
+- INTERNAL LOOP WITHIN THE EXECUTOR. When the operation works on a volume
+  that is variable or unknown (e.g. mail in a time window, files in a
+  recursive directory, paginated retrieval), implement the iteration loop
+  (in blocks / pagination / stream) INSIDE the invoke() function.
+  DO NOT leave the planner the task of iterating: external loops
+  cost ReAct steps and do not scale. Example: an executor that returns mail
+  of "today" must accept time_window as a parameter and perform the IMAP
+  retrieval loop internally, returning the entire list in a single
+  observation. Add an explicit cap (max_total, max_pages, max_bytes)
+  to avoid output explosion.
+- Best-practice: a failed entry does not block the others.
+- If critical (fs/network/external state modification): use
+  `platform_policy.is_protected_path(path)` for hard lock +
+  `is_system_file(name)` for safety net (forcible with `allow_system=true`).
+- Uniform errors: use `messages.get('ERR_*')` for errors, `messages.get('MSG_*')` for info shown to the user. DO NOT invent creative names: ALWAYS choose from the list below if it matches semantically; invent new ones (UPPER_CASE_SHORT) ONLY if none cover. The runtime auto-registers new keys as stubs `<auto-synth: KEY>` for review.
+{% if available_i18n_keys %}
+AVAILABLE i18n KEYS (reuse them instead of inventing):
+{% for fam, keys in available_i18n_keys.items() %}{% if keys %}
+  {{ fam }}: {{ keys | join(', ') }}
+{% endif %}{% endfor %}
+{% endif %}
+- If revertible=true: the reverse_pattern is applied automatically by the runtime;
+  it is sufficient that the `results` exposed respect the expected schema of the pattern (e.g.
+  `swap_src_dst` requires `results: list[{src, dst}]`).
+{% if scope == "device" %}
+MULTIPLATFORM PORTABILITY (this executor runs on remote devices, not only on .33):
+
+MUST: use `pathlib.Path` for every path and `tempfile` for the working temporary space.
+MUST NOT: invoke POSIX shell commands (`subprocess` with `tar`/`sh`/`grep`/...) nor hardcode separators or roots (`/tmp`, `/`, `:`).
+OK: `Path(base) / "sub" / name`, `tempfile.mkdtemp()`.
+ERROR: `base + "/" + name`, `subprocess.run(["tar", "-xf", ...])`, `"/tmp/x"`. THIS IS AN ERROR.
+{% endif %}
 I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
 - args arrives via STDIN as A SINGLE JSON object. DO NOT use sys.argv.
 - output goes to STDOUT as A SINGLE JSON object.
-- Fixed pattern of `main()`, copy literally:
+- Fixed pattern of `main()`, copy literally — use the shared helper
+  `run_stdio` (reads stdin, calls invoke, writes stdout, and handles stdin
+  empty + invalid JSON uniformly §2.8):
+
+    from executor_helpers import run_stdio
 
     def main():
-        import sys, json
-        args = json.loads(sys.stdin.read())
-        out = invoke(args)
-        print(json.dumps(out, ensure_ascii=False))
+        run_stdio(invoke)
 
     if __name__ == "__main__":
         main()
@@ -145,6 +177,6 @@ I/O CONTRACT (MANDATORY — the runtime invokes via subprocess):
 Original user request: {{ user_request }}
 
 Respond ONLY with the complete Python code of the file `{{ name }}.py`,
-including shebang, docstring, imports, def invoke(args), def main() with the fixed pattern
-above, and if __name__. NO markdown fences, NO external prose:
+including shebang, docstring, imports, def invoke(args), def main() with the
+fixed pattern above, and if __name__. NO markdown fences, NO external prose:
 ONLY executable code.

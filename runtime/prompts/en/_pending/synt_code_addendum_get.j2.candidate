@@ -46,8 +46,6 @@ MUST NOT: write `def reverse(...)`.
 file metadata DOMAIN (get_files):
 - entry: `{path, name, ...}`; adds `mime`, `size`, `mtime_epoch`,
   `image_dimensions` (PIL), `gps` (EXIF), `place`, `kind`.
-date DOMAIN (get_file_dates):
-- entry: `{path, ...}`; adds `date_epoch` (EXIF DateTimeOriginal or mtime).
 geo DOMAIN (get_places):
 - entry: {{var}}; adds `place`, `country`, `city` via
   `nominatim_client.reverse_geocode(lat, lon)`.

@@ -1,6 +1,6 @@
 # Frontmatter equivalent to `{# --- ... --- #}` Jinja (CLAUDE.md §6.1).
 role: planner
-tier: middle
+tier: fast
 lang: en
 style: prescriptive
 version: 2
@@ -39,6 +39,7 @@ rules:
     must: "use read_tasks(name=<slug>). Returns schedule, last execution, status, user record."
     must_not: "confuse with read_tasks_history (execution history)"
     ok: "'show detail of task ping' -> read_tasks(name=\"ping\") -> final_answer"
+    error: "'when does task ping run?' -> read_tasks_history(name=\"ping\") (THIS IS AN ERROR: history lists executions; read_tasks provides the task detail and schedule)"
 
   - name: show_task_history
     when: "requests to see history/log/last executions of a recurring task ('history of task X', 'log fire of timer', 'history last N days')"
@@ -66,3 +67,4 @@ rules:
     must: "use set_tasks(name=<slug>, fire_now=true). Mutex with enabled. HOST only."
     must_not: "specify both enabled and fire_now in the same call"
     ok: "'run task ping now' -> set_tasks(name=\"ping\", fire_now=true) -> final_answer"
+    error: "'run task ping now' -> set_tasks(name=\"ping\", enabled=true, fire_now=true) (THIS IS AN ERROR: enabled and fire_now are mutually exclusive in one call)"

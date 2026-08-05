@@ -1,0 +1,2 @@
+STRUTTURA SUGGERITA (decomposizione dell'intento, non vincolante: adattare o scartare se inadatta; scegliere gli strumenti, il provider e gli argomenti; coprire ogni clausola): {{ steps }}{% if omitted %}
+DEVI: includere un passaggio per ogni clausola. La proposta precedente ha omesso: {{ omitted }}. Aggiungili con gli argomenti corretti.{% endif %}

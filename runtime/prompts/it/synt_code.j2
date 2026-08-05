@@ -3,9 +3,9 @@ role: synt_code
 tier: wise
 lang: it
 style: definitional
-version: 3
+version: 4
 owner: roberto
-updated: 2026-07-04
+updated: 2026-07-20
 sha_prev: 80c944ae
 --- #}
 Sei la fase 5 (CODE) di synt-multistage.
@@ -19,6 +19,18 @@ Schema del manifest gia' deciso (NON cambiarlo):
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
+
+CONTRATTO DI PRESENTAZIONE DEL MANIFEST:
+La vista per l'utente e' dichiarativa, non appartiene al codice dell'executor.
+Se l'output dichiara `entries`, il manifest del producer DEVE dichiarare
+`[presentation] default_view="list"`;
+`[presentation.list]` definisce colonne, fonti, fallback e limiti. Il runtime
+renderizza quella proiezione in modo generico. `$entry` e' ammesso solo come
+ultimo fallback per record opachi o scalari. DEVI restituire dati strutturati
+nei campi dichiarati; NON DEVI generare Markdown/UI o ramificare per tipo di
+oggetto (mail, file, eventi, ecc.).
+Per date usa il tipo chiuso `date` (resa utente `gg/mm/aa`); per data e ora
+usa `datetime`. Restituisci sempre il valore grezzo, non una cella formattata.
 
 PRINCIPI STRUTTURALI (validi per qualunque verbo):
 
@@ -113,6 +125,14 @@ NON DEVI: sollevare un'eccezione che termina il ciclo sull'intero blocco
 OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
 ERRORE: `for e in entries: process(e)  # senza try/except`. La prima
   eccezione blocca tutte le altre. E' UN ERRORE.
+
+MOTORE CENTRALE DEL PARALLELISMO:
+
+DEVI: se elabori entry indipendenti in parallelo, usa `executor_helpers.assigned_workers()` come unico numero di worker.
+NON DEVI: derivare worker da `os.cpu_count()`, creare pool globali o ignorare il budget assegnato dal runtime.
+OK: `ThreadPoolExecutor(max_workers=assigned_workers())` dentro `invoke`, con risultati riordinati come l'input.
+ERRORE: `ThreadPoolExecutor(max_workers=os.cpu_count() * 4)`. E' UN ERRORE.
+
 - Vettoriale per costruzione: ogni executor accetta liste, anche di un solo elemento o vuota.
 - Output SEMPRE una lista (entries / results), anche degenere (0 o 1 elemento).
   Niente None, niente dict singolo: il pianificatore riceve sempre una lista

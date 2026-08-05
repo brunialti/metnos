@@ -1,0 +1,15 @@
+{# ---
+role: engine_excluded_signal
+tier: wise
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+{% if not has_excluded %}(nessuno){% else %}{{ shapes_block }}{% if unresolved %}
+- {{ unresolved }} altri piani già rifiutati (forma non disponibile){% endif %}
+DEVI: proporre un piano diverso da quelli sopra{% if first_tools %}: usa un primo tool diverso da {{ first_tools }}, oppure cambia la sequenza o gli argomenti{% endif %}.
+NON DEVI: riemettere un piano elencato sopra.{% if example_shape %}
+ERRORE: ripetere identico «{{ example_shape }}».{% endif %}{% endif %}

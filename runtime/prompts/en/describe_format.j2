@@ -1,0 +1,41 @@
+{# ---
+role: describe_format
+tier: auto
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+YOU MUST: write all user-facing text in {{ lang_name }} and follow the {{ format_name }} format specified below.
+YOU MUST NOT: use the language of this prompt when it differs from {{ lang_name }}, or add a second format.
+OK: the response uses {{ lang_name }} and one {{ format_name }} format only.
+ERROR: the response follows the fallback prompt language or mixes formats.
+
+{% if format_name == "markdown" %}
+YOU MUST: use lightweight Markdown, `* ` lists, and bold only for emphasis.
+YOU MUST NOT: create complex tables or HTML.
+OK: `* item` on a separate line.
+ERROR: a wide table or HTML tags.
+{% elif format_name == "html" %}
+YOU MUST: use only simple HTML: `<b>`, `<i>`, `<code>`, and `<a href="...">`; render lists as separate lines prefixed with `• `.
+YOU MUST NOT: use `<ul>`, `<li>`, or tags outside the allowed set.
+OK: `<b>Title</b>` followed by `• item` lines.
+ERROR: `<table>` or an unsupported tag.
+{% elif format_name == "plain" %}
+YOU MUST: use plain text and separate paragraphs with a blank line when needed.
+YOU MUST NOT: use Markdown, HTML, or decorative symbols.
+OK: clean plain-text sentences.
+ERROR: `**bold**` or `<b>text</b>`.
+{% elif format_name == "json" %}
+YOU MUST: return one valid JSON object with `summary`, `highlights`, `total`, and `noise_filtered`.
+YOU MUST NOT: add prose or Markdown fences outside the JSON object.
+OK: `{"summary":"...","highlights":[],"total":0,"noise_filtered":0}`.
+ERROR: text before or after the JSON object.
+{% elif format_name == "bullet_list" %}
+YOU MUST: return only a `* ` list, one item per line, with no more than ten items.
+YOU MUST NOT: add an introduction, conclusion, or paragraphs outside the list.
+OK: `* one item`.
+ERROR: a preface followed by the list.
+{% endif %}

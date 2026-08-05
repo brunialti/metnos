@@ -3,36 +3,66 @@ role: tutor_mode
 tier: fast
 lang: en
 style: prescriptive
-version: 3
+version: 13
 owner: roberto
-updated: 2026-07-25
-sha_prev: 5ce222aa
+updated: 2026-07-30
+sha_prev: 0e4ae4ef
 --- #}
-Classify only the communicative intent of `user_query`.
+Classify what the `user_query` field in the input JSON asks for.
 
-YOU MUST: return EXACTLY one word among EXPLAIN, ACT, MIXED, UNKNOWN.
-YOU MUST NOT: answer the question, add punctuation or explanations.
+YOU MUST: return EXACTLY one word among `EXPLAIN`, `OBSERVE`, `ACT`, `MIXED`, `UNKNOWN`.
+YOU MUST NOT: answer the request or add punctuation or explanations.
 
-What the four words mean:
-- EXPLAIN: asks for information, capabilities, reasons, or instructions, without asking to execute now.
-- ACT: asks to perform an operation or to obtain real data now.
-- MIXED: contains an informational part AND an explicit request to perform a concrete operation now.
-- UNKNOWN: the two intents cannot be told apart safely.
+- `EXPLAIN`: asks for stable knowledge: what is possible, how something works, why it happens, how to configure it, where a page is, or how to follow a procedure. No real data must be acquired to answer.
+- `OBSERVE`: asks to acquire or read real facts without changing them: current state, user content, operational results, lists, counts, searches, or measurements from a runtime, device, file, account, website, or other source.
+- `ACT`: asks for an effect on the world or data: creating, changing, deleting, moving, sending, starting, stopping, or performing an operation that changes state.
+- `MIXED`: contains independent clauses with different intents that cannot be satisfied by the same explanation or observation; in particular, it combines an `ACT` effect with `EXPLAIN` or `OBSERVE`.
+- `UNKNOWN`: the intent cannot be distinguished safely enough.
 
-Placeholders in `<>` are categories to recognize, not text to look for.
+Priority rule for the main communicative act:
+YOU MUST: classify the result the person asks to receive, not facts mentioned
+inside a subordinate clause. “Where can I see/check/find out whether
+<REAL_CONDITION>?” asks for a route or method and is therefore `EXPLAIN`, even
+when the condition concerns the present. “Tell/show me whether
+<REAL_CONDITION>” asks for the observed value and is instead `OBSERVE`.
+A page, screen, or interface section is a designed object: asking what it
+contains, which fields it shows, or how it is organized is `EXPLAIN`. It
+becomes `OBSERVE` only when the requested result is the current real values
+displayed on that page.
 
-Target rule:
-YOU MUST: classify `<VISUALIZATION_VERB> <TARGET>` by its TARGET — `<INTERFACE_ELEMENT>` or `<CAPABILITY>` = EXPLAIN, `<REAL_USER_DATA>` = ACT.
-YOU MUST NOT: infer ACT from the imperative form alone.
-OK: "<VISUALIZATION_VERB> <INTERFACE_ELEMENT>" → EXPLAIN.
-ERROR: "<VISUALIZATION_VERB> <INTERFACE_ELEMENT>" → ACT.
+Placeholders in `<>` denote semantic categories, not words to match.
 
-Coordinated operations rule:
-YOU MUST: keep EXPLAIN a question about HOW something is done, even when it coordinates several `<OPERATION>` in one sentence.
-YOU MUST NOT: use MIXED when both parts are informational.
-OK: "how do I <OPERATION_1> and <OPERATION_2>?" → EXPLAIN.
-ERROR: "how do I <OPERATION_1> and <OPERATION_2>?" → MIXED.
+Observation rule:
+YOU MUST: classify `<GET_OR_SHOW> <REAL_FACT>` as `OBSERVE`, even when the operation is read-only.
+YOU MUST: classify a question about HOW to obtain that fact, the available capability, or the reason it is absent as `EXPLAIN`.
+OK: "show me <UI_PAGE>" → EXPLAIN.
+OK: "what does <UI_PAGE> contain?" → EXPLAIN.
+OK: "which fields does <UI_SCREEN> show?" → EXPLAIN.
+OK: "show me <CURRENT_REAL_STATE>" → OBSERVE.
+OK: "how can I obtain <REAL_DATA>?" → EXPLAIN.
+OK: "obtain <REAL_DATA>" → OBSERVE.
+YOU MUST: distinguish a question about WHERE or IN WHICH SCREEN to inspect a
+fact from a request for that fact's real value.
+OK: "where can I inspect <REAL_STATE>?" → EXPLAIN.
+OK: "which page shows <OPERATIONAL_RESULT>?" → EXPLAIN.
+OK: "what is <REAL_STATE> right now?" → OBSERVE.
+
+Effect rule:
+YOU MUST: classify by the requested effect, not by grammatical form.
+YOU MUST NOT: infer `ACT` from imperative wording alone.
+OK: "explain how to <PERFORM_OPERATION>" → EXPLAIN.
+OK: "<PERFORM_OPERATION> now" → ACT.
+
+Clause rule:
+YOU MUST: use `MIXED` only when the message truly contains different intents.
+YOU MUST NOT: use `MIXED` for several operations that are all explanatory, all observational, or all active.
+YOU MUST: use `MIXED` when one clause asks HOW something works and another
+clause asks to PERFORM that same thing, even when their object and operation
+are identical. A shared topic does not merge two different requested outcomes:
+an explanation and an effect.
+OK: "<HOW_DOES_OPERATION_WORK>? <PERFORM_OPERATION> <TARGET>" → MIXED.
+YOU MUST: keep a request `OBSERVE` when it asks for current real items and, about those same items, observable attributes such as name, description, state, outcome, or diagnostic cause.
 
 Context rule:
-YOU MUST: use `conversation_context` ONLY to resolve what the current question refers to.
-YOU MUST NOT: turn the previous turn's intent into the current intent.
+YOU MUST: classify only `user_query`.
+YOU MUST NOT: use documents, inventories, selected sources, or previous conversation to change the current intent or authorize access.

@@ -1,0 +1,18 @@
+{# ---
+role: describe_entries_compact
+tier: auto
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev: f1af8bef
+--- #}
+Hai {{ n }} entries di tipo '{{ kind }}'. Presenta TUTTE le entries in formato compatto (una riga per entry) e preserva ogni campo non vuoto. Se >30, raggruppa per categoria senza eliminare record. Citare sempre il totale. Nessuna troncamento silenzioso. Inglese.
+
+ESEMPIO di output (per 4 entries):
+* WSJ — Today's Print Edition (newsletter)
+* La Redoute — Garden party promo
+* Pinterest — daily suggestions
+* Simply Wall St — Marvell weekly picks
+Total: 4 entries.

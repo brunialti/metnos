@@ -54,8 +54,6 @@ body: |
   DOMINIO file metadata (get_files):
   - entry: `{path, name, ...}`; aggiunge `mime`, `size`, `mtime_epoch`,
     `image_dimensions` (PIL), `gps` (EXIF), `place`, `kind`.
-  DOMINIO date (get_file_dates):
-  - entry: `{path, ...}`; aggiunge `date_epoch` (EXIF DateTimeOriginal o mtime).
   DOMINIO geo (get_places):
   - entry: `{lat, lon, ...}`; aggiunge `place`, `country`, `city` via
     `nominatim_client.reverse_geocode(lat, lon)`.

@@ -1,0 +1,28 @@
+{# ---
+role: rejected_pipelines
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+═════════════════════════════════════════════════════════════════════
+{% if hard %}RUNTIME CONSTRAINT — THE USER REJECTED THE ATTEMPTED PIPELINES ({{ consec_errors }} consecutive errors){% else %}PIPELINES ALREADY REJECTED BY THE USER FOR THIS REQUEST{% endif %}
+════════════════════════════════════════════════════════════════════
+
+{{ pipelines }}
+{% if hard %}
+
+YOU MUST: try a structurally different approach by choosing another executor family, request_new_executor for a genuine gap, consult_frontier when appropriate, or an honest final answer.
+YOU MUST NOT: produce a minor variation of the rejected pipelines.
+OK: if no viable alternative exists, explain that a suitable capability is missing and that Metnos can evaluate synthesizing one.
+ERROR: silently running a similar pipeline again.
+{% else %}
+
+YOU MUST: choose a pipeline different from those listed.
+YOU MUST NOT: rebuild the same sequence.
+OK: use an alternative executor, read metadata directly, or change the step structure.
+ERROR: repeat a pipeline the user has already rejected.
+{% endif %}

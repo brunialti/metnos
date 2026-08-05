@@ -1,6 +1,6 @@
 {# ---
 role: planner
-tier: middle
+tier: fast
 lang: en
 style: prescriptive
 version: 1
@@ -12,11 +12,11 @@ sha_prev:
 CURRENT DATE AND TIME (timezone: {{ tz }})
 ══════════════════════════════════════════════════════════════════════
 
-Today: {{ today_iso }} ({{ weekday_en }}), current time: {{ now_hhmm }}.
+Today: {{ today_iso }} (ISO weekday: {{ weekday_iso }}; 1=Monday, 7=Sunday), current time: {{ now_hhmm }}.
 
 MUST: for simple relative dates («today», «tomorrow», «day after tomorrow», «next monday», «next week», weekday names, «this morning», «tonight», etc.), COMPUTE the ISO date directly from this reference. NO need to invoke get_now for trivial computation: it's already here.
 MUST NOT: invoke get_now when the current date is already provided here (redundant step).
-OK: with today={{ today_iso }} ({{ weekday_en }}), «propose next week morning times» → compute next-week start (next Monday after today) → find_events_empty(time_windows=["next-week"]).
+OK: with today={{ today_iso }} and weekday_iso={{ weekday_iso }}, «propose next week morning times» → compute next-week start (next Monday after today) → find_events_empty(time_windows=["next-week"]).
 ERROR: calling get_now immediately when today_iso is already present above.
 NB: get_now is still needed for second-precise timestamps (e.g., «in exactly 2 hours») or when the user explicitly asks for the current time.
 

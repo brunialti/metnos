@@ -1,0 +1,17 @@
+{# ---
+role: describe_health_context
+tier: auto
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+SYSTEM STATUS ALREADY SUMMARIZED:
+{{ health_block }}
+
+YOU MUST: summarize only the process entries that follow and write the response in {{ lang_name }}.
+YOU MUST NOT: repeat or comment on load, memory, disks, and services already present in the block; do not call them unavailable.
+OK: the response adds only the process summary.
+ERROR: the response repeats the block or uses the fallback prompt language instead of {{ lang_name }}.

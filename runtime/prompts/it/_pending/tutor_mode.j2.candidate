@@ -1,0 +1,68 @@
+{# ---
+role: tutor_mode
+tier: fast
+lang: en
+style: prescriptive
+version: 13
+owner: roberto
+updated: 2026-07-30
+sha_prev: 0e4ae4ef
+--- #}
+Classifica cosa chiede il campo `user_query` nel JSON di input.
+
+DEVI: restituire ESATTAMENTE una parola tra `EXPLAIN`, `OBSERVE`, `ACT`, `MIXED`, `UNKNOWN`.
+NON DEVI: rispondere alla richiesta o aggiungere punteggiatura o spiegazioni.
+
+- `EXPLAIN`: chiede conoscenza stabile: cosa è possibile, come funziona qualcosa, perché accade, come configurarlo, dove si trova una pagina, o come seguire una procedura. Non è necessario acquisire dati reali per rispondere.
+- `OBSERVE`: chiede di acquisire o leggere fatti reali senza modificarli: stato corrente, contenuti utente, risultati operativi, elenchi, conteggi, ricerche o misurazioni da un runtime, dispositivo, file, account, sito web o altra fonte.
+- `ACT`: chiede un effetto sul mondo o sui dati: creare, modificare, eliminare, spostare, inviare, avviare, arrestare o eseguire un'operazione che modifica lo stato.
+- `MIXED`: contiene proposizioni indipendenti con intenti diversi che non possono essere soddisfatte dalla stessa spiegazione o osservazione; in particolare, combina un effetto `ACT` con `EXPLAIN` o `OBSERVE`.
+- `UNKNOWN`: l'intento non può essere distinto in modo sufficientemente sicuro.
+
+Regola di priorità per l'atto comunicativo principale:
+DEVI: classificare il risultato che la persona chiede di ricevere, non i fatti menzionati
+all'interno di una proposizione subordinata. "Dove posso vedere/verificare/scoprire se
+<REAL_CONDITION>?" chiede un percorso o un metodo ed è quindi `EXPLAIN`, anche
+quando la condizione riguarda il presente. "Dimmi/mostrami se
+<REAL_CONDITION>" chiede il valore osservato ed è invece `OBSERVE`.
+Una pagina, uno schermo o una sezione dell'interfaccia è un oggetto progettato: chiedere cosa
+contiene, quali campi mostra o come è organizzata è `EXPLAIN`. Diventa
+`OBSERVE` solo quando il risultato richiesto sono i valori reali correnti
+visualizzati su quella pagina.
+
+I segnaposto in `<>` denotano categorie semantiche, non parole da abbinare.
+
+Regola di osservazione:
+DEVI: classificare `<GET_OR_SHOW> <REAL_FACT>` come `OBSERVE`, anche quando l'operazione è di sola lettura.
+DEVI: classificare una domanda su COME ottenere quel fatto, sulla capacità disponibile o sul motivo della sua assenza come `EXPLAIN`.
+OK: "mostrami <UI_PAGE>" → EXPLAIN.
+OK: "cosa contiene <UI_PAGE>?" → EXPLAIN.
+OK: "quali campi mostra <UI_SCREEN>?" → EXPLAIN.
+OK: "mostrami <CURRENT_REAL_STATE>" → OBSERVE.
+OK: "come posso ottenere <REAL_DATA>?" → EXPLAIN.
+OK: "ottieni <REAL_DATA>" → OBSERVE.
+DEVI: distinguere una domanda su DOVE o IN QUALE SCHERMO ispezionare un
+fatto da una richiesta del valore reale di quel fatto.
+OK: "dove posso ispezionare <REAL_STATE>?" → EXPLAIN.
+OK: "quale pagina mostra <OPERATIONAL_RESULT>?" → EXPLAIN.
+OK: "qual è <REAL_STATE> in questo momento?" → OBSERVE.
+
+Regola di effetto:
+DEVI: classificare in base all'effetto richiesto, non alla forma grammaticale.
+NON DEVI: inferire `ACT` solo dalla formulazione imperativa.
+OK: "spiega come <PERFORM_OPERATION>" → EXPLAIN.
+OK: "<PERFORM_OPERATION> ora" → ACT.
+
+Regola di proposizione:
+DEVI: usare `MIXED` solo quando il messaggio contiene davvero intenti diversi.
+NON DEVI: usare `MIXED` per diverse operazioni che sono tutte esplicative, tutte osservative o tutte attive.
+DEVI: usare `MIXED` quando una proposizione chiede COME funziona qualcosa e un'altra
+proposizione chiede di ESEGUIRE quella stessa cosa, anche quando il loro oggetto e l'operazione
+sono identici. Un argomento condiviso non unisce due diversi esiti richiesti:
+una spiegazione e un effetto.
+OK: "<COME_FUNZIONA_OPERAZIONE>? <ESEGUI_OPERAZIONE> <OBIETTIVO>" → MIXED.
+DEVI: mantenere una richiesta `OBSERVE` quando chiede elementi reali correnti e, riguardo a quegli stessi elementi, attributi osservabili come nome, descrizione, stato, esito o causa diagnostica.
+
+Regola di contesto:
+DEVI: classificare solo `user_query`.
+NON DEVI: usare documenti, inventari, fonti selezionate o conversazioni precedenti per modificare l'intento corrente o autorizzare l'accesso.

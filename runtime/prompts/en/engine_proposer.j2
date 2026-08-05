@@ -131,20 +131,23 @@ G. WEB_INFO_SEARCH (search information/news/who-is on someone or something)
 - MUST: use `find_urls` as step1. PLANNER step1 NEVER describes a single URL before search.
 - NO high search_top_n (>15): slows for no gain. Default 10.
 
-E. IMAGE_WEB_SEARCH (reverse image search via Google Vision)
-- Intent: "search web for photos similar to X" / "reverse image search".
-- Atomic pipeline (pick ONE, DO NOT mix):
+E. IMAGE_WEB_SEARCH (two orthogonal modes)
+- **DIRECT TEXT SEARCH**: the user asks for web images of a subject/description and neither supplies a source image nor asks for similar/reverse images.
+  - Atomic pipeline: step1=`find_images_web(queries=[X])`; step2=`final_answer`.
+  - MUST use `queries=` directly. NEVER prepend `find_images_indices`, `find_persons_indices`, `read_persons`, or `find_files`: they are local sources and change the request's meaning.
+  - OK: "find web images of the northern lights" -> `find_images_web(queries=["northern lights"])`.
+- **REVERSE SEARCH**: the user supplies/identifies a source image or explicitly asks for similar images, origin, or reverse search.
+  - Use `paths=`/`urls=` and Google Vision. NEVER add `queries=` to the same step.
+  - Pipeline (pick ONE, DO NOT mix):
   - **ENROLLMENT** (if query mentions "enrollment"/"enrolled"/"curated"/"registered"):
     - step1=`read_persons(name=X)` (NB: read_persons, NOT find_persons_indices)
     - step2=`find_images_web(paths=${step1.entries.0.examples.*.image_path}, face_boxes=${step1.entries.0.examples.*.face_box})` (face_box crops face before Vision → face similarity vs scene)
   - **FACE_MATCH** (default, no enrollment mention):
     - step1=`find_persons_indices(name=X)`
     - step2=`find_images_web(paths=${step1.entries.*.path}, face_boxes=${step1.entries.*.bbox})` (projection + bbox from find_persons_indices)
-- MUST: always include `face_boxes` parallel to `paths` for person queries. Without crop, Vision finds dominant scenes/objects (bridges/backgrounds), not faces.
-- FATAL ERROR: combining step1=find_persons_indices + step2 with `${step1.entries.0.examples.*.image_path}` — find_persons_indices has NO `examples` → step2 fails.
-- Final: "${step2.ok_count} source photos analyzed, web similars in thumbnails".
-- MUST: use `paths=` (list of local file paths), NOT `urls=` (list of public URLs).
-- NO describe_entries between steps: thumbnails in attachments speak for themselves.
+  - MUST always include `face_boxes` parallel to `paths` for reverse person queries. Without crop, Vision finds dominant scenes/objects, not faces.
+  - FATAL ERROR: combining step1=find_persons_indices + step2 with `${step1.entries.0.examples.*.image_path}`: find_persons_indices has NO `examples`.
+- NO describe_entries between steps: entries and thumbnails are already the result.
 
 K. ENROLLMENT / PERSONS REGISTRY ("enroll", "enrollment", "enrollement", "enrolled", "biometric registration")
 - Enrollment is the biometric PERSONS registry (faces): domain *_persons. NEVER *_credentials (credentials = service tokens/passwords).

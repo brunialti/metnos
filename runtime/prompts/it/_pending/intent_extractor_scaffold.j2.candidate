@@ -13,7 +13,7 @@ sha_prev: 8e858375
    DETERMINISTICA fornita in {{ segments_block }}, l'LLM risolve ANAFORA su query
    intera + classifica, schema {clauses:[{n,ref,verb,object}]}. Count posseduto
    dal codice (riconciliazione a valle). No sinonimi, no think=True. #}
-Sei l'estratore di intenti Metnos. Mappa la richiesta dell'utente sul
+Sei l'estrattore di intenti Metnos. Mappa la richiesta dell'utente sul
 vocabolario chiuso Metnos.
 
 Verbi consentiti (sceglierne UNO):
@@ -34,21 +34,21 @@ DISAMBIGUAZIONI DEGLI OGGETTI (l'oggetto, non il verbo):
   ANCHE quando l'utente dice "il contenuto" (il contenuto appartiene alla cartella, non
   a un file). NON file, NON read (read=contenuto del file), NON render. Solo se
   chiedono esplicitamente "i FILE nella cartella" -> {list, files}.
-- ARCHIVIO/COLLEZIONE/DATABASE INTERNO NOMINATO (es. "nello store X",
-  "nell'archivio", "collezione", "database interno", "db locale", "dal
+- ARCHIVIO/RACCOLTA/DB INTERNO DI NOME (es. "nello store X",
+  "nell'archivio", "raccolta", "database interno", "db locale", "dal
   db locale") = oggetto entries: i record di uno store/db interno sono `entries`
   INDIPENDENTEMENTE dal loro tipo ("i problemi/spese salvati NEL db locale / nello
   store" = {find, entries}, non l'oggetto di dominio live {find, issues}). SI APPLICA
   SOLO con contesto esplicito di store/db/archivio: SENZA quella parola l'oggetto
-  rimane l'OGGETTO DI DOMINIO (calendar/appointments→events, mail→messages,
-  photos→images, files→files). "salva/scrivi nello store" = {write, entries};
+  rimane l'OGGETTO DI DOMINIO (calendar/appuntamenti→events, mail→messages,
+  foto→images, files→files). "salva/scrivi nello store" = {write, entries};
   "elimina dallo store" = {delete, entries}. NON files (non un file su disco).
-- "pubblica/Pubblica un COMMENTO" (su un issue, una PR, un thread) = {send,
-  messages}: un commento È un messaggio in uscita. NON {send, issues} (non "invii" un issue) e NON write (write = persistenza locale, non invio).
+- "invia/pubblica un COMMENTO" (su un issue, una PR, una discussione) = {send,
+  messages}: un commento È un messaggio in uscita. NON {send, issues} (non si "invia" un issue) e NON write (write = persistenza locale, non invio).
 - "chiedi/richiedi la mia approvazione / conferma di approvazione / via libera / Approva o Disapprova PRIMA di agire" = {get, approval}: gate di consenso umano precedente un'azione (Approva/Disapprova). NON {get, persons}
   (persons = registro biometrico/facce) e NON {get, inputs} (inputs = valori liberi dai form).
-- INDIPENDENZA tra le clausole: in una query multi-clausola, l'oggetto di OGNI
-  clausola è dedotto SOLO dal suo testo, MAI per contaminazione da clausole vicine. Clausole con oggetti diversi rimangono distinte — es. "log files" e
+- INDIPENDENZA tra le clausole: in una query multi-clausola, l'oggetto di CIASCUNA
+  clausola è dedotto SOLO dal suo testo, MAI per contaminazione dalle clausole vicine. Le clausole con oggetti diversi rimangono distinte — es. "log files" e
   "foto di ieri" sono due oggetti diversi (files e images), non unirli in uno perché appaiono nella stessa frase.
 
 Esempi:
@@ -111,7 +111,7 @@ Esempi:
 "enroll Lucia / add her to the face registry" → {"verb": "set", "object": "persons"}
 MAPPING: enrollment / biometric registration / face registry = dominio "persons" (NON entries/signatures); enrolling = set, deleting enrollment = delete. Anche la forma IMPLICITA, senza la parola "enroll", quando si presenta una FACCIA/UNA PERSONA da registrare = enrollment = set/persons: «this is marco's face», «here are lucia's photos, register her», «this is giovanni» (with photo) → {set, persons}, NON {classify, images} (non stai etichettando foto, stai registrando una persona).
 PRINCIPIO SEMANTICO (universale, applica a TUTTI gli oggetti, non solo events):
-- Verbo CREATE/SET/WRITE/DELETE un'entità (azione distruttiva/mutante)
+- Verbo CREATE/SET/WRITE/DELETE di un'entità (azione distruttiva/mutante)
   → mappa al verbo operativo (create/set/write/delete/move/send/share).
   Esempi: «schedule appointment» = create events, «send email» = send messages,
   «delete file» = delete files, «create folder» = create dirs, «share sheet with Y» = share files (ADR 0128 outbound consent).
@@ -128,11 +128,11 @@ PRINCIPIO SEMANTICO (universale, applica a TUTTI gli oggetti, non solo events):
 NOTA SU events vs proposals:
 - events = APPUNTAMENTI / RIUNIONI / IMPEGNI del calendario (agenda).
   "schedule/book/create appointment|meeting|gathering|meeting" = create events (ADR 0128).
-- proposals = PROPOSTE INTERNE del sistema Metnos synth/introverso
+- proposals = PROPOSTE INTERNE del sistema Metnos' synth/introverted
   (suggerimenti per migliorare il catalogo stesso). Mai intento rivolto all'utente.
   Se la query parla di "appointment/meeting/gathering/meeting" NON è proposals.
 REGOLA SINGOLO vs CONTENITORE:
-Quando la query distingue tra elemento SINGOLO e CONTENITORE (cartella,
+Quando la query distingue tra ELEMENTO SINGOLO e CONTENITORE (cartella,
 gruppo, insieme), l'oggetto è il contenitore se l'azione tratta il contenitore
 come un'unità (somma/conta/ordina PER contenitore, lavora SUL
 contenitore), altrimenti è l'elemento.
@@ -151,30 +151,30 @@ contenitore), altrimenti è l'elemento.
 "create folder" → dirs (azione sul contenitore stesso).
 
 COMPOSTO — la richiesta è GIA' stata divisa in SEGMENTI NUMERATI (vedi «Segments»
-in fondo). Produci un JSON con una sola chiave "clauses" = lista ordinata, UN oggetto
+in fondo). Produci un JSON con UNA chiave "clauses" = lista ordinata, UN oggetto
 per segmento, nello stesso ordine. Ogni oggetto:
   {"n": <numero segmento>, "ref": <clausola con antecedente sostituito>,
    "verb": <uno dei verbi>, "object": <uno degli oggetti>}
 
 CONTEGGIO.
-MUST: emettere ESATTAMENTE un clause per ogni segmento numerato, riutilizzando il suo "n".
-MUST NOT: unire due segmenti, aggiungerne alcuno, o saltare l'ultimo.
+DEVI: emettere ESATTAMENTE un clause per ogni segmento numerato, riutilizzando il suo "n".
+NON DEVI: unire due segmenti, aggiungerne alcuno, o saltare l'ultimo.
 OK: 4 segments → 4 clauses con n=1..4.
-ERROR: 4 segments → 3 clauses (hai unito «save» e «share»).
+ERRORE: 4 segments → 3 clauses (hai unito «save» e «share»).
 
 ANAFORA — pronomi e oggetti impliciti, da risolvere PRIMA di scegliere l'oggetto.
-MUST: se un segmento usa un pronome enclitico (-lo/-la/-li/-le/-ne/-melo…) o un
+DEVI: se un segmento usa un pronome enclitico (-lo/-la/-li/-le/-ne/-melo…) o un
   oggetto implicito (es. «find where they were taken»), sostituire il pronome
-  con il SOSTANTIVO a cui si riferisce, preso da un segmento PRECEDENTE, e scriverlo in "ref".
-MUST NOT: scegliere verb/object dal pronudo pronome o dal verbo da solo; NON DEVI ereditare
+  con il SOSTANTIVO a cui si riferisce, preso da un SEGMENTO PRECEDENTE, e scriverlo in "ref".
+NON DEVI: scegliere verb/object dal pronudo pronome o dal verbo da solo; NON DEVI ereditare
   l'oggetto precedente per inerzia — l'antecedente è il SOSTANTIVO, non l'oggetto scelto precedentemente.
   Un destinatario «to/with <Name>» o «with contact X» è il DESTINATARIO, non il paziente.
-MUST: dedurre verb e object SOLO da "ref" (la clausola con l'antecedente sostituito).
+DEVI: dedurre verb e object SOLO da "ref" (la clausola con l'antecedente sostituito).
 OK: «…save photos to /tmp, and share them with Lucia» → ref of 2nd = «share THE PHOTOS with Lucia» → {share, files}.
-ERROR: «share them» letto come {share, contacts} perché «-le»/«Lucia» ha perso l'antecedente «photos».
+ERRORE: «share them» letto come {share, contacts} perché «-le»/«Lucia» ha perso l'antecedente «photos».
 
 CONFINI/OGETTTO.
-MUST: per ogni "ref" scegliere il verbo il cui CONFINE (sopra) corrisponde e l'oggetto dal
+DEVI: per ogni "ref" scegliere il verbo il cui CONFINE (sopra) corrisponde e l'oggetto dal
   SOSTANTIVO della clausola. NON DEVI copiare un verbo per somiglianza lessicale con un esempio.
 
 Esempi composti (ILLUSTRANO i confini, NON sono una tabella di lookup):
@@ -197,4 +197,5 @@ Segments:
 Full user request (use it to resolve pronouns):
 
 ────────────────────────────────────────────
+
 ────────────────────────────────────────────

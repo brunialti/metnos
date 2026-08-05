@@ -1,12 +1,12 @@
 {# ---
 role: intent_extractor
-tier: middle
+tier: fast
 lang: it
 style: definitional
-version: 7
+version: 8
 owner: roberto
-updated: 2026-07-02
-sha_prev: 53626f33
+updated: 2026-07-22
+sha_prev: d3ab3552
 --- #}
 {# v4 (pilota, gate METNOS_INTENT_BOUNDARIES): i CONFINI DEI VERBI arrivano
    verbatim da vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -116,6 +116,9 @@ Se la richiesta contiene PIÙ azioni in sequenza ("fai X e poi Y", "trova
 UNO per azione, NELL'ORDINE di esecuzione. Ogni clausola porta il SUO
 object reale, MAI un unico object globale ripetuto. Azione singola → un
 solo oggetto JSON, non un array.
+Creare un artefatto già popolato è UNA sola azione: colonne, righe e
+contenuto iniziale sono argomenti del create, non un secondo write. Emetti
+write separato solo per un altro imperativo o un altro artefatto.
 METODO (applica SEMPRE su query lunghe): PRIMA segmenta la frase ai
 connettivi (virgola, "e", "poi", "quindi") e CONTA i verbi/imperativi; POI
 emetti ESATTAMENTE un oggetto JSON per segmento, nessuno in meno. Ogni

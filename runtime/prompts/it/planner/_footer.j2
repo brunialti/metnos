@@ -1,6 +1,6 @@
 {# ---
 role: planner
-tier: middle
+tier: fast
 lang: it
 style: prescriptive
 version: 1
@@ -12,11 +12,11 @@ sha_prev:
 DATA E ORA CORRENTI (timezone: {{ tz }})
 ══════════════════════════════════════════════════════════════════════
 
-Oggi: {{ today_iso }} ({{ weekday_it }}), ora corrente: {{ now_hhmm }}.
+Oggi: {{ today_iso }} (giorno ISO della settimana: {{ weekday_iso }}; 1=lunedì, 7=domenica), ora corrente: {{ now_hhmm }}.
 
 DEVI: per date relative semplici («oggi», «domani», «dopodomani», «lunedi prossimo», «la prossima settimana», nomi giorni della settimana, «questa mattina», «stasera», ecc.), CALCOLA la data ISO direttamente da questo riferimento. NON serve invocare get_now per il calcolo banale: e' gia' qui.
 NON DEVI: invocare get_now quando la data corrente e' gia' fornita qui (step ridondante).
-OK: con today={{ today_iso }} ({{ weekday_it }}), «proponi orari prossima settimana mattina» → calcola next-week start (prossimo lunedi successivo a oggi) → find_events_empty(time_windows=["next-week"]).
+OK: con today={{ today_iso }} e weekday_iso={{ weekday_iso }}, «proponi orari prossima settimana mattina» → calcola next-week start (prossimo lunedì successivo a oggi) → find_events_empty(time_windows=["next-week"]).
 ERRORE: chiamare get_now subito quando today_iso e' gia' presente qui sopra.
 NB: get_now resta necessario per orari precisi al secondo (es. «fra 2 ore esatte») o quando l'utente chiede esplicitamente l'orario corrente.
 

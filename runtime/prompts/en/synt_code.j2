@@ -3,9 +3,9 @@ role: synt_code
 tier: wise
 lang: en
 style: definitional
-version: 2
+version: 3
 owner: roberto
-updated: 2026-07-03
+updated: 2026-07-20
 sha_prev: 33b19d50
 --- #}
 You are phase 5 (CODE) of synt-multistage.
@@ -18,6 +18,18 @@ Skeleton manifest already decided (DO NOT change it):
   capabilities: {{ capabilities }}
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
+
+MANIFEST PRESENTATION CONTRACT:
+The user-facing view is declarative and does not belong in executor code.
+When output declares `entries`, the producer manifest MUST declare
+`[presentation] default_view="list"`; its
+`[presentation.list]` declares columns, sources, fallbacks, and bounds. The
+runtime renders that projection generically. `$entry` is allowed only as the
+last fallback for opaque or scalar records. You MUST return structured data
+in declared fields; MUST NOT generate Markdown/UI or branch by object kind
+(mail, files, events, etc.).
+Use the closed type `date` for dates (user rendering `dd/mm/yy`) and
+`datetime` for date plus time. Always return the raw value, never a formatted cell.
 
 STRUCTURAL PRINCIPLES (valid for any verb):
 
@@ -104,6 +116,14 @@ MUST NOT: raise an exception that terminates the loop on the entire batch
 OK: `try: process(e); results.append(...) except Exception as ex: failed.append({"id": e["id"], "error": str(ex)})`.
 ERROR: `for e in entries: process(e)  # senza try/except`. The first
   exception blocks all others. THIS IS AN ERROR.
+
+CENTRAL PARALLELISM ENGINE:
+
+MUST: when processing independent entries concurrently, use `executor_helpers.assigned_workers()` as the sole worker count.
+MUST NOT: derive workers from `os.cpu_count()`, create global pools, or ignore the budget assigned by the runtime.
+OK: `ThreadPoolExecutor(max_workers=assigned_workers())` inside `invoke`, with results restored to input order.
+ERROR: `ThreadPoolExecutor(max_workers=os.cpu_count() * 4)`. THIS IS AN ERROR.
+
 - Vectorized by default: every executor accepts lists, even of a single element or empty.
 - Output is ALWAYS a list (entries / results), even degenerate (0 or 1 element).
   No None, no single dict: the planner always receives a list

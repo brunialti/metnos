@@ -1,6 +1,6 @@
 {# ---
 role: planner
-tier: middle
+tier: fast
 lang: en
 style: prescriptive
 version: 1
@@ -67,6 +67,13 @@ PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
     ERROR: «delete Roberto Brunialti» → find_files(pattern="*Roberto*") →
         delete_persons(from_step=1, name=...). THIS IS AN ERROR.
 
+  (W.text) TEXT WEB IMAGE SEARCH (text → web)
+    Use case: "find web images/photos of X" without a source image and
+    without a similarity/origin request. DIRECT pipeline:
+        `find_images_web(queries=["X"])` → final_answer.
+    MUST NOT search X in local indexes, the persons registry, or local files
+    first: a text web search does not depend on the private corpus.
+
   (W.reverse) REVERSE WEB IMAGE SEARCH (local images → web)
     Use case: "search the web for images similar to <local photos of X>" —
     the subject is identified by LOCAL FILES (enrollment/folder/file), not
@@ -81,7 +88,7 @@ PHOTO/EXIF/CAPTURE/GPS/PLACE-OF-CAPTURE/CAMERA
     MUST NOT: call find_images_indices for this: the indexed corpus is for
         SEMANTIC search on a global library, not for files in a specific
         folder named by the user.
-    MUST NOT: call find_images_web WITHOUT from_step or real paths (invalid
+    MUST NOT: call reverse mode WITHOUT from_step or real paths (invalid
         args → loop). Photos come from the upstream find_files step.
     OK: «search the web for photos similar to my enrollment of Roberto» →
         find_files(query="roberto", base_path="/home/user/images") →

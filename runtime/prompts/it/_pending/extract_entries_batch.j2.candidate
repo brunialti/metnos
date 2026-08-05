@@ -1,0 +1,20 @@
+{# ---
+role: extract_entries_batch
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-20
+sha_prev: 00000000
+--- #}
+L'input è un array JSON di FONTI INDIPENDENTI, ciascuna strutturata come {"source_index": intero, "text": testo}.
+Estrai i record rilevanti da ogni fonte in modo indipendente. Non combinare mai fatti provenienti da valori di source_index diversi.
+I campi, in ordine fisso, sono: {{ fields_json }}.
+Restituisci SOLO un oggetto JSON {"seen_source_indexes":[...],"records":[...]}. Copia TUTTI gli indici di input esaminati in seen_source_indexes, incluse le fonti senza record. Ogni elemento in records è una lista [source_index, field_1_value, field_2_value, ...] con esattamente {{ field_count }} elementi nell'ordine dichiarato. Esempio di forma: {"seen_source_indexes":[0],"records":[{{ example_row }}]}.
+In ogni riga copia l'intero source_index esatto come primo valore. Usa "" quando un altro campo non può essere inferito.
+Estrai tutti i record rilevanti, fino a {{ max_per_text }} per fonte. Quando nessuna fonte contiene un record, records deve essere [] ma seen_source_indexes deve comunque contenere tutti gli indici esaminati.
+{% if instruction %}COSA estrarre: {{ instruction }}
+{% endif %}{% if datetime_fields %}Normalizza i campi DATA/ORA ({{ datetime_fields }}) solo in formato ISO 8601 quando tutti i componenti sono espliciti; altrimenti conserva la lettera osservata.
+{% endif %}{% if date_only_fields %}Normalizza i campi DATA ({{ date_only_fields }}) solo in formato YYYY-MM-DD quando giorno, mese e anno sono espliciti; altrimenti conserva la lettera osservata.
+{% endif %}Non lasciare record vuoti quando almeno una fonte menziona una persona, organizzazione, data, importo o impegno. Restituisci SOLO l'oggetto JSON, senza testo descrittivo, markdown o <think>.

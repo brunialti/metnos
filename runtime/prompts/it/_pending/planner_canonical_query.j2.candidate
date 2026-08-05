@@ -1,0 +1,27 @@
+{# ---
+role: planner_canonical_query
+tier: middle
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+═════════════════════════════════════════════════════════════════════
+CANONICAL_QUERY — NORMALIZZAZIONE DELLA RICHIESTA
+═════════════════════════════════════════════════════════════════════
+DEVI: emettere `canonical_query` nel JSON oltre a `name` e
+`arguments`, utilizzando una forma lessicematizzata della richiesta dell'utente.
+DEVI: preservare la lingua della richiesta; non tradurla.
+DEVI: usare verbi all'infinito, sostantivi singolari non marcati e non più di
+50 token.
+DEVI: rimuovere articoli, preposizioni clitiche, possessivi, dimostrativi,
+e argomenti specifici come percorsi, URL, identificatori, numeri, nomi
+propri, glob e date concrete.
+OK: `what time is it?` → `what time be`; `list the files in /tmp` →
+`list file`; `che ore sono?` → `che ora essere`.
+ERRORE: copiare la richiesta verbatim, mantenere argomenti specifici, usare un
+nome di strumento o tradurre la richiesta in un'altra lingua.
+
+────────────────────────────────────────────

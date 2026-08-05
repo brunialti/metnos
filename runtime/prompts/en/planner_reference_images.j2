@@ -1,0 +1,20 @@
+{# ---
+role: planner_reference_images
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+═════════════════════════════════════════════════════════════════════
+ATTACHED REFERENCE IMAGES: {{ image_count }}
+════════════════════════════════════════════════════════════════════
+The images are already in the scratchpad as the virtual `@uploaded` step,
+with `entries=[{path, reference_image, ...}]`.
+YOU MUST: use `find_images_indices(from_step=1, idx="scene")` to find
+similar images; use `idx="persons"` for faces and `idx="gps"` for geographic
+proximity.
+YOU MUST NOT: ask the user for more images.
+Example available path: {{ sample_path }}

@@ -145,21 +145,23 @@ G. WEB_INFO_SEARCH (cerca informazioni/notizie/chi-è su qualcuno o qualcosa)
 - DEVI: usare `find_urls` come step1, non altre azioni. Il PLANNER step1 mai descrive un singolo URL prima della ricerca.
 - NIENTE search_top_n alto (>15): rallenta inutilmente. Default 10 va bene.
 
-E. IMAGE_WEB_SEARCH (ricerca immagine inversa via Google Vision)
-- Intent: query MENZIONA esplicitamente «web»/«internet»/«online»/«google»/«vision» (es. «cerca foto sul web simili a X»).
-- DEVI: usare SOLO `find_images_web`. MAI `find_images_indices` (locale) come fallback — se Vision fallisce, lascia che l'errore arrivi all'utente onestamente §2.8.
-- Pipeline atomica (scegli UNA, NON mischiare):
+E. IMAGE_WEB_SEARCH (due modalita ortogonali)
+- **RICERCA TESTUALE DIRETTA**: l'utente chiede immagini sul web di un soggetto/descrizione e NON fornisce una foto sorgente ne chiede immagini simili/inverse.
+  - Pipeline atomica: step1=`find_images_web(queries=[X])`; step2=`final_answer`.
+  - DEVI usare la query testuale `queries=`. MAI anteporre `find_images_indices`, `find_persons_indices`, `read_persons` o `find_files`: sono sorgenti locali e cambiano il significato della richiesta.
+  - OK: «cerca sul web immagini dell'aurora boreale» -> `find_images_web(queries=["aurora boreale"])`.
+- **RICERCA INVERSA**: l'utente fornisce/indica una foto sorgente oppure chiede esplicitamente immagini simili, origine o ricerca inversa.
+  - Usa `paths=`/`urls=` e Google Vision. MAI aggiungere `queries=` nello stesso step.
+  - Pipeline (scegli UNA, NON mischiare):
   - **ENROLLMENT** (se query menziona «enrollement»/«enrollment»/«registrate»/«enrolled»):
     - step1=`read_persons(name=X)` (NB: read_persons, NON find_persons_indices)
     - step2=`find_images_web(paths=${step1.entries.0.examples.*.image_path}, face_boxes=${step1.entries.0.examples.*.face_box})` (face_box ritaglia volto prima di Vision → face similarity vs scene)
   - **FACE_MATCH** (default, no enrollment mention):
     - step1=`find_persons_indices(name=X)`
     - step2=`find_images_web(paths=${step1.entries.*.path}, face_boxes=${step1.entries.*.bbox})` (proiezione + bbox da find_persons_indices)
-- DEVI: includere SEMPRE `face_boxes` parallela a `paths` per query su persone. Senza crop, Vision cerca scene/oggetti dominanti (ponti/sfondi), non volti.
-- ERRORE FATALE: combinare step1=find_persons_indices + step2 con `${step1.entries.0.examples.*.image_path}` — find_persons_indices NON ha `examples` → step2 fallisce.
-- Final: "${step2.ok_count} foto sorgente analizzate, simili web nelle miniature".
-- DEVI: usare `paths=` (lista path locali), NON `urls=` (lista URL pubblici).
-- NIENTE describe_entries intermedio: le miniature negli allegati parlano da sole.
+  - DEVI includere SEMPRE `face_boxes` parallela a `paths` per query inverse su persone. Senza crop, Vision cerca scene/oggetti dominanti, non volti.
+  - ERRORE FATALE: combinare step1=find_persons_indices + step2 con `${step1.entries.0.examples.*.image_path}`: find_persons_indices NON ha `examples`.
+- NIENTE describe_entries intermedio: le entries e le miniature sono gia il risultato.
 
 K. ENROLLMENT / REGISTRO PERSONE («enroll», «enrollment», «enrollement», «enrollato/a», «iscrizione biometrica»)
 - L'enrollment e' il registro biometrico delle PERSONE (volti): dominio *_persons. MAI *_credentials (credenziali = token/password di servizi).

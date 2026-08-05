@@ -1,6 +1,6 @@
 # Frontmatter equivalente a `{# --- ... --- #}` Jinja (CLAUDE.md §6.1).
 role: planner
-tier: middle
+tier: fast
 lang: it
 style: prescriptive
 version: 2
@@ -39,6 +39,7 @@ rules:
     must: "usa read_tasks(name=<slug>). Ritorna schedule, ultima esecuzione, esito, record utente."
     must_not: "confondere con read_tasks_history (storico esecuzioni)"
     ok: "«mostra dettaglio task ping» -> read_tasks(name=\"ping\") -> final_answer"
+    error: "«quando gira il task ping?» -> read_tasks_history(name=\"ping\") (E' UN ERRORE: lo storico elenca le esecuzioni; il dettaglio del task e della sua cadenza viene da read_tasks)"
 
   - name: show_task_history
     when: "richieste di vedere storico/cronologia/ultime esecuzioni di un task ricorrente («storico esecuzioni task X», «cronologia del task ricorrente», «log fire del timer», «storico ultimi N giorni»)"
@@ -66,3 +67,4 @@ rules:
     must: "usa set_tasks(name=<slug>, fire_now=true). Mutex con enabled. Solo HOST (admin)."
     must_not: "specificare sia enabled che fire_now nella stessa chiamata"
     ok: "«esegui subito il task ping» -> set_tasks(name=\"ping\", fire_now=true) -> final_answer"
+    error: "«esegui subito il task ping» -> set_tasks(name=\"ping\", enabled=true, fire_now=true) (E' UN ERRORE: enabled e fire_now sono alternativi nella stessa chiamata)"

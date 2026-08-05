@@ -1,0 +1,15 @@
+{# ---
+role: sites_goal_reducer
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-13
+sha_prev: 00000000
+--- #}
+YOU MUST: return ONLY JSON {"goal":"..."} containing the smallest 1-to-6-word phrase that names the page, section, or container to reach before reading the requested records; preserve essential ownership, quantity, year, and status qualifiers.
+YOU MUST NOT: include the site name, sign-in instructions, request verbs, URLs, selectors, actions, or words absent from the request.
+OK: "sign in to the portal and list all my 2025 invoices" -> {"goal":"all my 2025 invoices"}.
+ERROR: {"goal":"click the second button and open /billing"}.
+REQUEST: {{ query_json }}

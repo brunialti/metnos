@@ -1,0 +1,28 @@
+{# ---
+role: rejected_pipelines
+tier: fast
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev:
+--- #}
+═════════════════════════════════════════════════════════════════════
+{% if hard %}VINCOLO RUNTIME — L'UTENTE HA RIFIUTATO LE PIPELINE TENTATE ({{ consec_errors }} errori consecutivi){% else %}PIPELINE GIÀ RIFIUTATE DALL'UTENTE PER QUESTA RICHIESTA{% endif %}
+════════════════════════════════════════════════════════════════════
+
+{{ pipelines }}
+{% if hard %}
+
+DEVI: provare un approccio strutturalmente diverso, scegliendo un'altra famiglia di executor, request_new_executor per una lacuna reale, consult_frontier quando appropriato, oppure una risposta finale onesta.
+NON DEVI: produrre una variante minore delle pipeline rifiutate.
+OK: se non esiste un'alternativa praticabile, spiega che manca una capability adatta e che Metnos può valutarne la sintesi.
+ERRORE: rilanciare silenziosamente una pipeline simile.
+{% else %}
+
+DEVI: scegliere una pipeline diversa da quelle elencate.
+NON DEVI: ricostruire la stessa sequenza.
+OK: usare un executor alternativo, leggere direttamente i metadati o cambiare la struttura dei passi.
+ERRORE: ripetere una pipeline già rifiutata.
+{% endif %}

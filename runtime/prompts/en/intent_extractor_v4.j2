@@ -1,12 +1,12 @@
 {# ---
 role: intent_extractor
-tier: middle
+tier: fast
 lang: en
 style: definitional
-version: 7
+version: 8
 owner: roberto
-updated: 2026-07-02
-sha_prev: 50f06940
+updated: 2026-07-22
+sha_prev: 6962e421
 --- #}
 {# v4 (pilot, gate METNOS_INTENT_BOUNDARIES): VERB BOUNDARIES come verbatim
    from vocab.ACTION_MAPPING.boundary (SoT) via {{ boundaries_block }}.
@@ -119,6 +119,9 @@ If the request contains MULTIPLE actions in sequence ("do X then Y",
 objects, ONE per action, IN EXECUTION ORDER. Each clause carries ITS own
 real object, NEVER a single global object repeated. Single action → a
 single JSON object, not an array.
+Creating an already-populated artifact is ONE action: initial columns,
+rows, and content are create arguments, not a second write. Emit a
+separate write only for another imperative or another artifact.
 METHOD (ALWAYS apply on long queries): FIRST segment the sentence at the
 connectives (comma, "and", "then") and COUNT the verbs/imperatives; THEN
 emit EXACTLY one JSON object per segment, none fewer. Every imperative is

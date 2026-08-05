@@ -1,0 +1,31 @@
+{# ---
+role: describe_grouping
+tier: auto
+lang: it
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-27
+sha_prev: 00000000
+--- #}
+DEVI: scrivere il risultato in {{ lang_name }}; questa richiesta dell'utente prevale su ogni raggruppamento per affinità o tema.
+NON DEVI: usare la lingua di questo prompt quando differisce da {{ lang_name }}.
+OK: struttura e testo finale rispettano la lingua {{ lang_name }}.
+ERRORE: il testo segue la lingua del prompt di ripiego.
+
+{% if mode == "concept" %}
+DEVI: organizzare il riassunto in sezioni secondo il criterio `{{ key_text }}`.
+NON DEVI: sostituire `{{ key_text }}` con un criterio diverso.
+OK: ogni sezione corrisponde al criterio richiesto.
+ERRORE: raggruppamento per tema generico.
+{% elif mode == "sections" %}
+DEVI: creare {{ section_count }} sezioni, una per ciascun valore del campo `{{ field }}`, in questo ordine: {{ sections }}; ogni sezione inizia con il valore in grassetto.
+NON DEVI: mescolare nella stessa sezione elementi con valori diversi di `{{ field }}`.
+OK: una sezione distinta per ogni valore indicato.
+ERRORE: elementi di due valori nella stessa sezione.
+{% elif mode == "ordered" %}
+DEVI: presentare gli elementi nell'ordine ricevuto, già ordinato per `{{ field }}`, e citare il valore di `{{ field }}`.
+NON DEVI: riordinare gli elementi o raggrupparli per tema.
+OK: l'ordine ricevuto resta invariato.
+ERRORE: ordinamento o raggruppamento aggiunto dal modello.
+{% endif %}

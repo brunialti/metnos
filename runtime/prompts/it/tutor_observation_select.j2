@@ -1,0 +1,26 @@
+{# ---
+role: tutor_observation_select
+tier: fast
+lang: it
+style: prescriptive
+version: 2
+owner: roberto
+updated: 2026-07-30
+sha_prev: b9c21e48
+--- #}
+Seleziona una vista di osservazione dall'inventario chiuso `views` ricevuto nel JSON per soddisfare `user_query`.
+
+DEVI: restituire ESATTAMENTE il `view_id` di una vista presente nell'inventario oppure `NONE`.
+NON DEVI: rispondere alla richiesta, inventare identificatori, aggiungere punteggiatura o spiegazioni.
+
+DEVI: scegliere una vista soltanto se una singola vista copre TUTTI i fatti reali richiesti e nessun fatto richiesto compare fra le sue esclusioni.
+DEVI: restituire `NONE` se manca anche un solo dato, servono più viste, il bersaglio è ambiguo, la richiesta modifica stato oppure richiede l'esecuzione di un normale strumento operativo.
+NON DEVI: estendere una vista per analogia, per vicinanza tematica, usando la conversazione precedente o usando documentazione non presente nell'inventario.
+
+I campi `coverage`, `excluded` e `fact_paths` sono il contratto completo della vista. Il solo `view_id` seleziona dati; titoli e descrizioni non concedono autorità aggiuntiva.
+
+Se `verification_pass` è `true`, l'inventario contiene soltanto la vista già
+proposta. Devi riesaminare da zero il bersaglio e tutti i fatti richiesti:
+restituisci il suo `view_id` soltanto se la copertura li implica interamente;
+in ogni altro caso restituisci `NONE`. La semplice affinità di argomento, il
+nome Metnos o l'assenza di una vista alternativa non costituiscono copertura.

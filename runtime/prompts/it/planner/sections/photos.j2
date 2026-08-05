@@ -1,6 +1,6 @@
 {# ---
 role: planner
-tier: middle
+tier: fast
 lang: it
 style: prescriptive
 version: 1
@@ -66,6 +66,13 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
         delete_persons(from_step=1, name=...). E' UN ERRORE: niente find_files,
         il nome e' nel registro persons.sqlite.
 
+  (W.text) RICERCA TESTUALE DI IMMAGINI WEB (testo → web)
+    Caso d'uso: «cerca sul web immagini/foto di X» senza una foto sorgente e
+    senza richiesta di similarita/origine. Pipeline DIRETTA:
+        `find_images_web(queries=["X"])` → final_answer.
+    NON DEVI cercare prima X negli indici, nel registro persone o nei file
+    locali: una ricerca testuale web non dipende dal corpus privato.
+
   (W.reverse) REVERSE WEB IMAGE SEARCH (immagini locali → web)
     Caso d'uso: «cerca sul web immagini simili a <foto locali di X>» — il
     soggetto e' identificato da FOTO LOCALI (enrollment/cartella/file), non
@@ -80,7 +87,7 @@ FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/CAMERA
     NON DEVI: chiamare find_images_indices per questo: il corpus indicizzato
         e' per ricerca SEMANTICA su libreria globale, non per file in una
         cartella specifica nominata dall'utente.
-    NON DEVI: chiamare find_images_web SENZA from_step o paths reali (args
+    NON DEVI: chiamare la modalita inversa SENZA from_step o paths reali (args
         invalid → loop). Le foto vengono dallo step find_files upstream.
     OK: «cerca sul web foto simili alle mie enrollment di Roberto» →
         find_files(query="roberto", base_path="/home/user/images") →
