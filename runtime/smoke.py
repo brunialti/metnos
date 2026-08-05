@@ -35,6 +35,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+# La batteria certifica il motore che gira in ESERCIZIO. Senza questa riga
+# `engine.get_engine_name()` cadeva sul default `simple`, mentre la produzione
+# imposta METNOS_ENGINE=v3 da drop-in systemd: la batteria misurava un percorso
+# che nessuno esegue, e un caso poteva restare rosso qui pur essendo verde in
+# prod (misurato 5/8/2026 su «dove sono?»). Un chiamante che vuole confrontare
+# un altro motore esporta la variabile e la vede stampata nell'intestazione.
+os.environ.setdefault("METNOS_ENGINE", "v3")
+
 from agent_runtime import run_turn  # noqa: E402
 from loader import load_catalog  # noqa: E402
 from prefilter import rank_with_intent, _PRODUCER_VERBS  # noqa: E402
@@ -567,7 +575,10 @@ def main():
     if args.invariants_only:
         sys.exit(0 if inv_ok else 1)
 
-    print(f"=== BATTERY ({args.lang.upper()}) ===")
+    # Dichiarare il motore misurato e' parte del verdetto: una batteria che
+    # non lo dice puo' certificare un percorso diverso da quello in esercizio.
+    print(f"=== BATTERY ({args.lang.upper()}) "
+          f"engine={os.environ.get('METNOS_ENGINE')} ===")
     results = []
     for i, case in enumerate(battery, 1):
         results.append(run_one(case, i, len(battery)))
