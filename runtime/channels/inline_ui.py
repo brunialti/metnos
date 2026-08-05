@@ -205,14 +205,16 @@ def sender_state_candidates(channel_name: str, chat_id: str, *,
 
 
 def load_pending_state(dialog_id: str,
-                       sender_candidates: list[str]) -> tuple[dict | None, str | None]:
+                       sender_candidates: list[str], *,
+                       owner_user_id: str) -> tuple[dict | None, str | None]:
     """Carica lo stato dialog_pending provando i candidati in ordine.
     Ritorna (state, chiave_che_ha_risolto) oppure (None, None)."""
     if not dialog_id:
         return None, None
     import dialog_pending as _dp
     for cand in sender_candidates:
-        st = _dp.load_pending(cand, dialog_id)
+        st = _dp.load_pending(
+            cand, dialog_id, owner_user_id=owner_user_id)
         if st is not None:
             return st, cand
     # Fallback GLOBALE (20/6): il `dialog_id` (uuid) e' unico → se nessun
@@ -220,13 +222,15 @@ def load_pending_state(dialog_id: str,
     # che il tap non ricostruisce dal chat_id, e i bridge a TTL sono scaduti),
     # scandisci tutte le sender-dir. Evita il falso «dialogo scaduto» quando il
     # dialogo e' ancora valido. Determinismo §7.9.
-    st, sender = _dp.find_by_dialog_id(dialog_id)
+    st, sender = _dp.find_by_dialog_id(
+        dialog_id, owner_user_id=owner_user_id)
     if st is not None:
         return st, sender
     return None, None
 
 
 def keyboard_for_proposal(p0: dict, *, sender_candidates: list[str],
+                          owner_user_id: str,
                           turn_id: str | None = None,
                           ) -> tuple[list[list[dict]] | None, dict | None]:
     """Keyboard per la PRIMA proposta pendente di un turno.
@@ -245,7 +249,8 @@ def keyboard_for_proposal(p0: dict, *, sender_candidates: list[str],
     kind = p0.get("kind")
     if kind == "get_inputs_response" and p0.get("fmt") == "telegram_inline":
         dialog_id = p0.get("dialog_id") or ""
-        state, _key = load_pending_state(dialog_id, sender_candidates)
+        state, _key = load_pending_state(
+            dialog_id, sender_candidates, owner_user_id=owner_user_id)
         if not state or not state.get("dialog"):
             return None, None
         dialog = state["dialog"]

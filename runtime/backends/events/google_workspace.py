@@ -30,9 +30,8 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from messages import get as _msg  # noqa: E402  §11 i18n
-from skill_wrapper import (  # noqa: E402
-    _skill_home, _needs_inputs_oauth_setup,
-    _get_oauth_provider_for_skill,
+from backends._google_auth_common import (  # noqa: E402
+    auth_needs_inputs as _common_auth_needs_inputs,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from backends.events import local_ics as _li  # noqa: E402
@@ -78,11 +77,6 @@ def _resolve_calendar_id(cal_id: str | None) -> str:
     return _CALENDAR_ID_ALIASES.get(norm, cal_id.strip())
 
 
-def _has_creds() -> bool:
-    """True se il token OAuth Google e' presente sul filesystem."""
-    return (_skill_home(SKILL_NAME) / "google_token.json").is_file()
-
-
 def _err(msg: str, error_class: str, *, with_entries=False,
          with_results=False) -> dict:
     out = {"ok": False, "error": msg, "error_class": error_class}
@@ -101,24 +95,8 @@ def _auth_needs_inputs(args_base: dict, *, executor: str) -> dict:
     `_get_skill_oauth_config(__file__)` che cercava il manifest del
     backend (inesistente) → choices vuote nel form OAuth.
     """
-    try:
-        payload = _needs_inputs_oauth_setup(
-            skill_name=SKILL_NAME, executor=executor,
-            args_base=args_base,
-            **_get_oauth_provider_for_skill(SKILL_NAME),
-        )
-    except Exception as ex:
-        return {"ok": False, "error_class": "auth_required",
-                "error": f"OAuth setup payload fallito: {ex}",
-                "entries": [], "used": 0}
-    return {
-        "ok": True,
-        "decision": "needs_inputs",
-        "needs_inputs": payload,
-        "entries": [], "used": 0,
-        "error_class": "auth_required",
-        "final_message_hint": payload.get("title", ""),
-    }
+    return _common_auth_needs_inputs(
+        args_base, executor=executor, result_kind="entries")
 
 
 def _run_calendar(argv: list[str], *, executor: str,

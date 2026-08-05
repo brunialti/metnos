@@ -16,21 +16,49 @@ import socket
 import urllib.error
 import urllib.request
 
+from playwright_sidecar import contract as _contract
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771
 DEFAULT_TIMEOUT_S = 90.0
 LOGIN_TIMEOUT_S = 150.0
 
 
+def _local_contract_failure() -> dict | None:
+    status = _contract.source_status()
+    if status["contract_aligned"]:
+        return None
+    return _contract.failure("client_source_stale", process="session_client")
+
+
+def _response_contract_failure(headers) -> dict | None:
+    received = headers.get(_contract.HEADER_NAME) if headers is not None else None
+    if _contract.same_fingerprint(received, _contract.LOADED_FINGERPRINT):
+        return None
+    return _contract.failure(
+        "client_sidecar_contract_mismatch",
+        peer_fingerprint=received or "missing",
+        process="session_client")
+
+
 def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
           port: int = DEFAULT_PORT, timeout_s: float = DEFAULT_TIMEOUT_S) -> dict:
+    local_failure = _local_contract_failure()
+    if local_failure is not None:
+        return local_failure
     url = f"http://{host}:{port}{endpoint}"
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, method="POST",
-        headers={"Content-Type": "application/json"})
+        headers={
+            "Content-Type": "application/json",
+            _contract.HEADER_NAME: _contract.LOADED_FINGERPRINT,
+        })
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            contract_failure = _response_contract_failure(resp.headers)
+            if contract_failure is not None:
+                return contract_failure
             raw = resp.read()
             try:
                 obj = json.loads(raw.decode("utf-8", errors="replace"))
@@ -43,6 +71,11 @@ def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
         try:
             obj = json.loads(e.read().decode("utf-8", errors="replace"))
             if isinstance(obj, dict):
+                contract_failure = _response_contract_failure(e.headers)
+                if contract_failure is not None:
+                    if obj.get("error_class") == _contract.ERROR_CLASS:
+                        return obj
+                    return contract_failure
                 return obj
         except Exception:
             pass
@@ -62,17 +95,26 @@ def _post(endpoint: str, payload: dict, *, host: str = DEFAULT_HOST,
 def session_open(*, owner: str, url: str, allowlist=None,
                  session_label: str = "", approval_token: str | None = None,
                  task_name: str | None = None,
+                 owner_user_id: str | None = None,
+                 task_owner_user_id: str | None = None,
                  credential_mode: str = "default",
                  stealth: bool = False,
+                 stealth_techniques: list[str] | None = None,
+                 browser_mode: str = "headless",
                  lang: str | None = None,
                  **kw) -> dict:
     return _post("/session/open", {"owner": owner, "url": url,
+                                   "owner_user_id": owner_user_id,
                                    "allowlist": allowlist,
                                    "session_label": session_label,
                                    "approval_token": approval_token,
                                    "task_name": task_name,
+                                   "task_owner_user_id": task_owner_user_id,
                                    "credential_mode": credential_mode,
                                    "stealth": bool(stealth),
+                                   "stealth_techniques": (
+                                       list(stealth_techniques or [])),
+                                   "browser_mode": browser_mode,
                                    "lang": lang}, **kw)
 
 

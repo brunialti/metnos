@@ -7,9 +7,7 @@ Google via la skill `google-workspace` (Drive/Sheets/Docs e ora Photos). Un
 solo posto (§7.2 regola-del-3, §7.9 deterministico), usato da ENTRAMBI i moduli
 `files/google_workspace` e `images/google_photos`.
 
-NB: contacts/events/messages hanno ancora una loro copia locale di
-`_auth_needs_inputs` (duplicazione PRE-esistente, fuori dallo scope di questa
-spec): candidati alla stessa unificazione in un secondo momento.
+Contacts, events, messages, files e images riusano tutti questo boundary.
 """
 from __future__ import annotations
 
@@ -50,6 +48,9 @@ def ensure_fresh_token() -> bool:
     if not tok.is_file():
         return False
     try:
+        # The token contains a refresh token: repair permissions even when no
+        # refresh is needed, because older writers inherited a permissive umask.
+        os.chmod(tok, 0o600)
         import json as _json
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
@@ -66,7 +67,9 @@ def ensure_fresh_token() -> bool:
                     out[k] = info[k]
             tmp = tok.parent / (tok.name + ".tmp")
             tmp.write_text(_json.dumps(out, indent=2), encoding="utf-8")
+            os.chmod(tmp, 0o600)
             os.replace(tmp, tok)  # atomico
+            os.chmod(tok, 0o600)
             log.info("google OAuth token rinnovato (scadenza %s)", out.get("expiry"))
             return True
         return False  # scaduto senza refresh_token

@@ -12,7 +12,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 METNOS_USER_DATA="${METNOS_USER_DATA:-$HOME/.local/share/metnos}"
-METNOS_VENV="${METNOS_VENV:-$METNOS_USER_DATA/.venv}"
+METNOS_VENV="${METNOS_VENV:-$ROOT/.venv}"
 PYTHON="$METNOS_VENV/bin/python"
 export PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-$METNOS_USER_DATA/playwright-browsers}"
 

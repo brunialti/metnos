@@ -215,6 +215,11 @@ def _should_cache_plan(framework, query) -> bool:
             # generico riusabile, esente per valore.
             if any(("/" in x or "\\" in x)
                    and (not any(c in x for c in "*?"))
+                   # Destinazione create-only unica per esecuzione: non è un
+                   # path materializzato da un result precedente. Il token
+                   # viene risolto JIT dal runtime corrente, quindi il replay
+                   # exact-match non può sovrascrivere il run precedente.
+                   and "${RUNTIME:turn_id}" not in x
                    and x.lower() not in _q for x in v):
                 return False
     return True
@@ -237,7 +242,7 @@ def _leg_committed_mutations(run) -> list[str]:
                 and any((s.tool or "").startswith(p) for p in prefixes)]
 
 
-def _mutating_args_grounded(framework, query) -> bool:
+def _ungrounded_mutating_args(framework, query) -> list[tuple[str, str, str]]:
     """INVARIANTE serve-time L0/L1 (GARANZIA, Roberto 15/6). Un piano servito da
     cache (L0) o generalizzato (L1) che contiene uno step MUTANTE è eseguibile
     SOLO se ogni valore DISCRIMINANTE dei suoi arg (numero/id, slug owner/name)
@@ -252,6 +257,10 @@ def _mutating_args_grounded(framework, query) -> bool:
         MUTATING_TOOL_PREFIXES = ("delete_", "move_", "send_", "write_",
                                   "set_", "create_", "change_", "share_")
     qn = (query or "").lower()
+    ungrounded: list[tuple[str, str, str]] = []
+    path_keys = frozenset({
+        "path", "paths", "dest", "destination", "output_path",
+    })
     for s in (getattr(framework, "steps", []) or []):
         tool = getattr(s, "tool", "") or ""
         if not any(tool.startswith(p) for p in MUTATING_TOOL_PREFIXES):
@@ -260,6 +269,17 @@ def _mutating_args_grounded(framework, query) -> bool:
             if k in ("from_step", "from_steps"):
                 continue
             vs = str(v)
+            # Cartella create-only per-turno: il segmento che contiene il
+            # turn_id è generato dal runtime e garantisce un target nuovo. Va
+            # ignorato come discriminante, mentre la BASE letterale resta nel
+            # controllo sottostante (Documenti/A vs Documenti/B). Scope
+            # deliberatamente stretto: solo create_* e soli arg path-like;
+            # delete/move/send/update non ricevono alcuna esenzione.
+            if (tool.startswith("create_") and k in path_keys
+                    and "${RUNTIME:turn_id}" in vs):
+                vs = re.sub(
+                    r"[^/\\\s]*\$\{RUNTIME:turn_id\}[^/\\\s]*",
+                    " ", vs)
             # I PLACEHOLDER non sono valori baked dalla query: `${stepN.field}`
             # (pipe da uno step a monte), `${RUNTIME:...}`, `${FILLER:...}` sono
             # risolti a RUNTIME col dato corrente — non discriminano la query.
@@ -273,8 +293,17 @@ def _mutating_args_grounded(framework, query) -> bool:
                 vs = re.sub(r"\$\{[^}]*\}", " ", vs)
             for tok in re.findall(r"\d+|[a-z0-9._-]+/[a-z0-9._-]+", vs.lower()):
                 if tok not in qn:
-                    return False
-    return True
+                    ungrounded.append((tool, str(k), tok))
+    return ungrounded
+
+
+def _mutating_args_grounded(framework, query) -> bool:
+    """True se tutti i discriminanti di ogni step mutante sono nella query.
+
+    La policy fail-closed è implementata da ``_ungrounded_mutating_args``;
+    questa forma booleana preserva l'API usata dai test e dai chiamanti.
+    """
+    return not _ungrounded_mutating_args(framework, query)
 
 
 def _run_is_cacheworthy(run: RunResult) -> bool:
@@ -502,9 +531,10 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
     slittano +1). Scatta se l'intent ha {extract,*}.
 
     DUE casi (bug live 22/6 «missing 'fields'»): (1) extract_entries ASSENTE →
-    INSERISCE con `fields` derivati dalla clausola «estrai X e Y»; (2) PRESENTE
-    ma SENZA `fields` (il proposer lo emette spesso incompleto) → RIEMPIE `fields`
-    deterministicamente. `fields` e' un arg REQUIRED. v3-gated, mai eccezioni."""
+    INSERISCE con `fields` derivati dalla clausola «estrai X e Y» quando
+    disponibili; (2) PRESENTE ma SENZA `fields` → li RIEMPIE quando derivabili.
+    In assenza di schema esplicito l'executor usa la propria inferenza bounded.
+    v3-gated, mai eccezioni."""
     try:
         from . import is_v3
         if not is_v3():
@@ -514,7 +544,8 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             return framework
         import naming_grammar as _ng
         from compound_decomposer import (PRODUCER_VERBS as _PV,
-                                         derive_extract_fields)
+                                         derive_extract_fields,
+                                         derive_sink_fields)
 
         def _verb(s):
             nc = _ng.parse_name(getattr(s, "tool", "") or "")
@@ -534,6 +565,7 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                             "read_files_html", "read_messages", "read_urls",
                             "read_urls_html", "get_urls", "read_sites"}
         _derived_fields = derive_extract_fields(query)
+        _sink_fields = derive_sink_fields(query)
         _spreadsheet_sinks = [
             s for s in steps
             if _verb(s) in ("create", "write")
@@ -542,11 +574,11 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # Uno spreadsheet dichiara il proprio schema attraverso `columns`.
         # Se il planner ha preservato la richiesta naturale ma non l'argomento,
         # usa gli stessi campi che guideranno l'extract intermedio.
-        if _derived_fields:
+        if _sink_fields or _derived_fields:
             for _sink in _spreadsheet_sinks:
                 _sa = dict(getattr(_sink, "args", None) or {})
                 if not _sa.get("columns"):
-                    _sa["columns"] = list(_derived_fields)
+                    _sa["columns"] = list(_sink_fields or _derived_fields)
                     _sink.args = _sa
         _need_by_structure = False
         if not _has_intent_extract:
@@ -563,7 +595,8 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             return framework
         from .types import StepSpec
         # extract_entries GIA' presente: il proposer a volte lo emette SENZA
-        # l'arg required `fields` (bug live 22/6 → executor «missing 'fields'»).
+        # `fields`. Preferisci la derivazione deterministica quando possibile;
+        # altrimenti l'executor applica la propria inferenza bounded.
         # Riempi `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y». Non
         # ne inseriamo un secondo. Se la query e' opaca → lascia com'e' (errore-
         # guida onesto a valle).
@@ -572,6 +605,41 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         _bulk_sink = any(_verb(s) in ("create", "write")
                          and (getattr(s, "args", None) or {}).get("columns")
                          for s in steps)
+
+        def _producer_tool(extract_args: dict) -> str:
+            pos = extract_args.get("from_step")
+            if isinstance(pos, str) and pos.isdigit():
+                pos = int(pos)
+            if isinstance(pos, int) and 1 <= pos <= len(steps):
+                return (getattr(steps[pos - 1], "tool", "") or "")
+            return ""
+
+        def _apply_bulk_limits(extract_args: dict, producer: str) -> None:
+            """Collection readers are N texts, not one 500-record document.
+
+            The old bulk rule assigned ``max_per_text=500`` to every email.
+            Besides wasting prompt/output budget, that left the independent
+            source loop in its slowest mode.  Keep the historical document
+            limit, but use bounded per-source extraction and structured
+            batching for mail/calendar collections.  Link traversal remains
+            opt-in because it has different semantics and cannot be batched.
+            """
+            if not _bulk_sink:
+                return
+            if producer not in {"read_messages", "read_events"}:
+                extract_args.setdefault("max_per_text", _BULK_EXTRACT_CAP)
+                return
+            extract_args.setdefault("max_per_text", 20)
+            extract_args.setdefault("max_total", _BULK_EXTRACT_CAP)
+            extract_args.setdefault("max_sources", _BULK_EXTRACT_CAP)
+            requests_links = bool(re.search(
+                r"\b(?:apri|segui|visita|open|follow|visit)\w*"
+                r"(?:\W+\w+){0,3}\W+(?:link|collegament\w*|url)\b",
+                query or "", re.IGNORECASE))
+            if not requests_links:
+                extract_args.setdefault("drill_down", False)
+                extract_args.setdefault("batch_size", 8)
+
         existing = next((s for s in steps
                          if (getattr(s, "tool", "") or "") == "extract_entries"),
                         None)
@@ -585,10 +653,12 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                              "esistente: %s", _ef)
             if not ea.get("instruction") and query:
                 ea["instruction"] = query
-            if _bulk_sink and not ea.get("max_per_text"):
-                ea["max_per_text"] = _BULK_EXTRACT_CAP
-                log.info("[ensure_extract] max_per_text=%d (sink bulk) su extract "
-                         "esistente", _BULK_EXTRACT_CAP)
+            if _bulk_sink:
+                _apply_bulk_limits(ea, _producer_tool(ea))
+                log.info("[ensure_extract] policy bulk su extract esistente: "
+                         "producer=%s per_text=%s sources=%s batch=%s",
+                         _producer_tool(ea), ea.get("max_per_text"),
+                         ea.get("max_sources"), ea.get("batch_size"))
             existing.args = ea
             return framework
 
@@ -619,10 +689,9 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                     s.args["from_step"] = k
                 elif fs >= k:
                     s.args["from_step"] = fs + 1
-        # `fields` e' REQUIRED da extract_entries: derivalo DETERMINISTICAMENTE
-        # dalla clausola «estrai X e Y» (bug live 22/6: senza, l'executor falliva
-        # «missing 'fields'»). Se la query non espone i campi → niente fields:
-        # l'executor dara' l'errore-guida onesto, ma il caso comune e' coperto.
+        # Deriva `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y»
+        # quando sono espliciti. Se la query non li espone, l'executor inferisce
+        # internamente un piccolo schema: il guard non conosce il dominio.
         ins_args = {"from_step": prod_1b}
         _fields = _derived_fields
         if _fields:
@@ -630,7 +699,7 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         if query:
             ins_args["instruction"] = query
         if _bulk_sink:
-            ins_args["max_per_text"] = _BULK_EXTRACT_CAP
+            _apply_bulk_limits(ins_args, getattr(steps[pi], "tool", "") or "")
         steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
         framework.steps = steps
         log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
@@ -856,9 +925,6 @@ def _ensure_health_arg(framework: Framework, query: str,
     il focus per-sezione seleziona poi la parte pertinente. Best-effort."""
     try:
         steps = getattr(framework, "steps", None) or []
-        if not any((getattr(s, "tool", "") or "") == "get_processes"
-                   for s in steps):
-            return framework
         if not query:
             return framework
         hw = _dl_match("system.status_query", query)
@@ -870,7 +936,41 @@ def _ensure_health_arg(framework: Framework, query: str,
                 hw = any(_dl.match_any(f, ql) for f in fmap.values())
             except Exception:  # noqa: BLE001
                 hw = False
-        if not hw:
+        # Compound file+health (turn ddd828a6, 20/7): l'align per oggetto può
+        # trasformare il corretto `get_processes(include_health=true)` in
+        # `get_files(include_health=true)` perché l'intent primario è files.
+        # `include_health` NON appartiene al contratto get_files: è quindi una
+        # prova strutturale, non un'euristica. Ripristina il producer health e
+        # scarta gli args file-specific ormai incoerenti. Copre anche il caso
+        # get_files vuoto quando un find_files separato soddisfa già i file.
+        names = catalog_names(catalog)
+        has_file_producer = any(
+            (getattr(s, "tool", "") or "") in {"find_files", "list_dirs"}
+            for s in steps)
+        for s in steps:
+            tool = (getattr(s, "tool", "") or "")
+            a = getattr(s, "args", None)
+            a = a if isinstance(a, dict) else {}
+            wrong_health_contract = tool != "get_processes" and bool(
+                a.get("include_health"))
+            empty_get_files = (bool(hw) and tool == "get_files"
+                               and has_file_producer
+                               and not any(a.get(k) for k in
+                                           ("entries", "paths", "from_step")))
+            if (wrong_health_contract or empty_get_files) \
+                    and "get_processes" in names:
+                runtime_args = {k: v for k, v in a.items()
+                                if str(k).startswith("_")}
+                runtime_args["include_health"] = True
+                runtime_args["top"] = 1
+                s.tool = "get_processes"
+                s.args = runtime_args
+                log.info("[health_arg §7.9] %s incompatibile → "
+                         "get_processes(include_health=true)", tool)
+        if not hw and not any(
+                (getattr(s, "tool", "") or "") == "get_processes"
+                and bool((getattr(s, "args", None) or {}).get("include_health"))
+                for s in steps):
             return framework
         for s in steps:
             if (getattr(s, "tool", "") or "") == "get_processes":
@@ -885,6 +985,60 @@ def _ensure_health_arg(framework: Framework, query: str,
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort
         log.warning("ensure_health_arg noop (best-effort): %r", ex)
+        return framework
+
+
+def _normalize_result_folder_exclusion(framework: Framework, query: str,
+                                       catalog: Optional[list]) -> Framework:
+    """Rende effettiva l'esclusione degli output `Risultati_Metnos_*`.
+
+    Il proposer può applicare il predicato a `name` (che contiene solo il nome
+    file) oppure alterare il token in `Risultati_Menos_*`: entrambi lasciano
+    rientrare gli XLSX dei run precedenti. Quando la query NOMINA quella famiglia
+    e usa una forma negativa, il solo predicato corretto è sul `path` completo.
+    Il regex è lo stesso del workflow documentale canonico ed è idempotente.
+    """
+    try:
+        import unicodedata
+
+        folded = unicodedata.normalize("NFKD", query or "").casefold()
+        folded = "".join(ch for ch in folded
+                         if not unicodedata.combining(ch))
+        mentions_results = bool(re.search(
+            r"risultati[_\s-]*metnos(?:[_\s-]*\*)?", folded))
+        excludes = any(token in folded for token in (
+            "esclud", "senza includ", "non includ", "exclude", "excluding",
+            "without includ"))
+        if not (mentions_results and excludes):
+            return framework
+        steps = getattr(framework, "steps", None) or []
+        canonical = r"^(?!.*[\\/]Risultati_Metnos_[^\\/]+(?:[\\/]|$)).*$"
+        last_file_producer = None
+        changed = False
+        for idx, step in enumerate(steps, 1):
+            tool = (getattr(step, "tool", "") or "")
+            if tool in {"find_files", "list_dirs"}:
+                last_file_producer = idx
+                continue
+            if tool != "filter_entries" or last_file_producer is None:
+                continue
+            args = getattr(step, "args", None)
+            args = args if isinstance(args, dict) else {}
+            if args.get("where_field") != "path" \
+                    or args.get("where_regex") != canonical \
+                    or "name_regex" in args:
+                args.pop("name_regex", None)
+                args["where_field"] = "path"
+                args["where_regex"] = canonical
+                args["from_step"] = last_file_producer
+                step.args = args
+                changed = True
+        if changed:
+            log.info("[result_scope §7.9] esclusione Risultati_Metnos_* "
+                     "normalizzata sul path completo")
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best effort
+        log.warning("normalize_result_folder_exclusion noop: %r", ex)
         return framework
 
 
@@ -1031,6 +1185,15 @@ def _align_framework_objects(framework: Framework, intent,
             if not nc:
                 continue
             intent_objs = by_verb.get(nc.verb)
+            # `get_now` is the canonical producer for a date/time scalar.  In
+            # a compound file+health query the intent extractor also emits
+            # `get processes`; treating `now` as a foreign object would then
+            # rewrite the explicit get_now step to get_processes.  Preserve
+            # this distinct scalar producer so normalization remains
+            # composable across domains.
+            if (nc.verb == "get" and nc.obj == "now"
+                    and "numbers" in (intent_objs or [])):
+                continue
             if not intent_objs or nc.obj in intent_objs \
                     or _fs_equivalent(nc.obj, intent_objs):
                 continue  # verbo non decomposto, o oggetto gia' corretto/equivalente
@@ -1080,6 +1243,11 @@ def _align_framework_objects(framework: Framework, intent,
                 for st in steps:
                     tool = getattr(st, "tool", None)
                     nc = _ng.parse_name(tool) if tool else None
+                    if (tool == "get_now" and "numbers" in all_objs):
+                        # get_now is a valid scalar producer for the numbers
+                        # clause; it is not a foreign filesystem/health
+                        # producer to be replaced by get_processes.
+                        continue
                     if (not nc or nc.verb not in _PRODV
                             or nc.obj in all_objs):
                         continue  # non-produttore o oggetto gia' richiesto
@@ -1108,6 +1276,290 @@ def _align_framework_objects(framework: Framework, intent,
         return framework
     except Exception as ex:
         log.warning("align_objects noop (best-effort): %r", ex)
+        return framework
+
+
+def _entry_schema(entry) -> dict:
+    """Return an executor args schema for object or mapping catalog entries."""
+    if isinstance(entry, dict):
+        schema = entry.get("args_schema") or entry.get("args")
+    else:
+        schema = getattr(entry, "args_schema", None)
+    return schema if isinstance(schema, dict) else {}
+
+
+def _entry_name(entry) -> str:
+    return ((entry.get("name") if isinstance(entry, dict)
+             else getattr(entry, "name", None)) or "")
+
+
+def _entry_can_produce_object(entry, requested_obj: str) -> bool:
+    """Prove object compatibility from naming grammar and typed schema.
+
+    A same-object producer is directly compatible.  ``files`` and ``dirs``
+    remain interchangeable only inside their filesystem sibling class.  A
+    generic filesystem producer may satisfy a content-kind object (images,
+    audio, documents, ...) only when its manifest declares a ``file_globs``
+    argument: that typed selector is the evidence that the output can actually
+    be restricted to the requested kind.
+    """
+    import naming_grammar as _ng
+    nc = _ng.parse_name(_entry_name(entry))
+    if not nc or not nc.obj or not requested_obj:
+        return False
+    if nc.obj == requested_obj:
+        return True
+    if nc.obj in _FS_SIBLING_OBJECTS and requested_obj in _FS_SIBLING_OBJECTS:
+        return True
+    try:
+        from file_kinds import (FILE_KIND_EXTENSIONS,
+                                canonical_objects_for_kinds)
+        kind_objects = canonical_objects_for_kinds(FILE_KIND_EXTENSIONS)
+    except Exception:
+        kind_objects = set()
+    if nc.obj not in _FS_SIBLING_OBJECTS or requested_obj not in kind_objects:
+        return False
+    props = (_entry_schema(entry).get("properties") or {})
+    return any(isinstance(spec, dict)
+               and spec.get("semantic_type") == "file_globs"
+               for spec in props.values())
+
+
+def _affinity_chunks(query: str, verb: str, obj: str) -> list[str]:
+    """Return clause chunks semantically aligned with one requested action."""
+    try:
+        from compound_decomposer import split_query_chunks, detect_chunk_action
+        chunks = split_query_chunks(query)
+    except Exception:
+        chunks = []
+        detect_chunk_action = None
+    aligned: list[str] = []
+    for chunk in chunks:
+        try:
+            action = detect_chunk_action(chunk) if detect_chunk_action else None
+        except Exception:
+            action = None
+        if not action or action[0] != verb:
+            continue
+        chunk_obj = action[1]
+        if chunk_obj == obj or _fs_equivalent(chunk_obj, [obj]) \
+                or _fs_equivalent(obj, [chunk_obj]):
+            aligned.append(chunk)
+    # A single opaque clause is still a valid scope.  The >=2 distinctive-token
+    # affinity threshold remains the precision gate.
+    if aligned:
+        return aligned
+    # Whole-query fallback is safe only for one opaque clause. In a real
+    # compound it would let affinity evidence from clause B rewrite the
+    # producer assigned to clause A.
+    return [query] if query and len(chunks) <= 1 else []
+
+
+def _strong_affinity_candidate(query: str, catalog: Optional[list],
+                               verb: str, obj: str, *,
+                               current_name: str = ""):
+    """Select one strictly stronger manifest-affinity producer, or ``None``.
+
+    The candidate must have the exact requested producer verb, prove object
+    compatibility, match at least two distinctive terms in the same clause and
+    win uniquely.  Equal evidence is deliberately left to the planner.
+    """
+    try:
+        import naming_grammar as _ng
+        from compound_decomposer import PRODUCER_VERBS
+        from prefilter import affinity_phrase_score
+        if verb not in PRODUCER_VERBS:
+            return None
+        chunks = _affinity_chunks(query, verb, obj)
+        entries = list(catalog or [])
+        by_name = {_entry_name(entry): entry for entry in entries}
+
+        def _score(entry) -> int:
+            return max((affinity_phrase_score(chunk, entry)
+                        for chunk in chunks), default=0)
+
+        current_score = _score(by_name[current_name]) \
+            if current_name in by_name else 0
+        hits = []
+        for entry in entries:
+            name = _entry_name(entry)
+            nc = _ng.parse_name(name) if name else None
+            if (not nc or nc.verb != verb
+                    or not _entry_can_produce_object(entry, obj)):
+                continue
+            score = _score(entry)
+            if score >= 2:
+                hits.append((score, name, entry, chunks))
+        hits.sort(key=lambda item: (-item[0], item[1]))
+        if not hits:
+            return None
+        if len(hits) > 1 and hits[1][0] == hits[0][0]:
+            return None
+        # The current producer may itself be the unique affinity winner.  It
+        # still needs its typed selector derived before object-level coverage
+        # is evaluated (e.g. a file producer gains image globs).  Returning it
+        # lets the caller complete args without rewriting the tool.
+        if hits[0][1] == current_name:
+            return hits[0][2], hits[0][3]
+        if hits[0][0] <= current_score:
+            return None
+        return hits[0][2], hits[0][3]
+    except Exception as ex:
+        log.warning("strong_affinity_candidate noop: %r", ex)
+        return None
+
+
+def _candidate_args(entry, old_args: dict, framework: Framework,
+                    query: str, chunks: list[str], *, exclude_step=None) -> dict:
+    """Conform and deterministically fill args for an affinity-selected tool."""
+    schema = _entry_schema(entry)
+    props = (schema.get("properties") or {}) if schema else {}
+    args = {key: value for key, value in (old_args or {}).items()
+            if key in props or key.startswith("_")}
+    try:
+        from args_extractor import regex_extract, _PATH_NAMES
+        for scope in [*chunks, query]:
+            for key, value in regex_extract(scope, schema).items():
+                if key not in args or args[key] in (None, "", [], {}):
+                    args[key] = value
+
+        # Compound clauses often name one shared container only once.  If the
+        # candidate requires a path and exactly one other read producer already
+        # carries it, inherit that logical path.  Ambiguous multi-path plans are
+        # untouched; placement resolves the logical alias on the chosen host.
+        required = set(schema.get("required") or [])
+        missing_paths = [name for name in required
+                         if name in _PATH_NAMES and not args.get(name)]
+        if missing_paths:
+            import naming_grammar as _ng
+            from compound_decomposer import PRODUCER_VERBS
+            values: set[str] = set()
+            for step in (getattr(framework, "steps", None) or []):
+                if step is exclude_step:
+                    continue
+                nc = _ng.parse_name(getattr(step, "tool", "") or "")
+                if not nc or nc.verb not in PRODUCER_VERBS:
+                    continue
+                for key, value in (getattr(step, "args", None) or {}).items():
+                    if (key in _PATH_NAMES and isinstance(value, str)
+                            and value.strip() and "${" not in value):
+                        values.add(value.strip())
+            if len(values) == 1:
+                shared = next(iter(values))
+                for name in missing_paths:
+                    args[name] = shared
+    except Exception as ex:
+        log.debug("candidate args derivation noop: %r", ex)
+    return args
+
+
+def _drop_step(framework: Framework, target) -> None:
+    """Drop one unconsumed step and remap all remaining references."""
+    steps = list(getattr(framework, "steps", None) or [])
+    kept = [step for step in steps if step is not target]
+    old_pos = {id(step): idx + 1 for idx, step in enumerate(steps)}
+    new_pos = {id(step): idx + 1 for idx, step in enumerate(kept)}
+    idx_map = {old_pos[id(step)]: new_pos[id(step)] for step in kept}
+    for step in kept:
+        step.args = _remap_step_refs(getattr(step, "args", None) or {}, idx_map)
+    framework.final_message = _remap_step_refs(
+        getattr(framework, "final_message", "") or "", idx_map)
+    framework.steps = kept
+
+
+def _align_strong_affinity_producers(framework: Framework, intent,
+                                     query: str,
+                                     catalog: Optional[list]) -> Framework:
+    """Correct a producer only when manifest evidence is uniquely stronger.
+
+    This is a semantic backstop for planner/cache variants: it does not know
+    tool names or natural-language phrases.  Affinity, naming grammar and typed
+    schemas are the only routing evidence.
+    """
+    try:
+        from compound_decomposer import PRODUCER_VERBS
+        import naming_grammar as _ng
+        actions = [action for action in
+                   (getattr(intent, "actions", None) or [])
+                   if isinstance(action, dict)]
+        if not actions:
+            verb = (getattr(intent, "verb", "") or "").lower()
+            obj = (getattr(intent, "object", "") or "").lower()
+            if verb and obj:
+                actions = [{"verb": verb, "object": obj}]
+        used_steps: set[int] = set()
+        changed = False
+        for action in actions:
+            verb = (action.get("verb") or "").lower()
+            obj = (action.get("object") or "").lower()
+            if verb not in PRODUCER_VERBS or not obj:
+                continue
+            steps = [step for step in
+                     (getattr(framework, "steps", None) or [])
+                     if (getattr(step, "tool", "") or "") != "final_answer"]
+            exact = []
+            compatible = []
+            for step in steps:
+                if id(step) in used_steps:
+                    continue
+                nc = _ng.parse_name(getattr(step, "tool", "") or "")
+                if not nc or nc.verb != verb:
+                    continue
+                entry = next((item for item in (catalog or [])
+                              if _entry_name(item) == step.tool), None)
+                if nc.obj == obj:
+                    exact.append(step)
+                elif entry and _entry_can_produce_object(entry, obj):
+                    compatible.append(step)
+            current = (exact or compatible or [None])[0]
+            if current is None:
+                continue
+            selected = _strong_affinity_candidate(
+                query, catalog, verb, obj, current_name=current.tool)
+            if not selected:
+                used_steps.add(id(current))
+                continue
+            candidate, chunks = selected
+            candidate_name = _entry_name(candidate)
+            if candidate_name == current.tool:
+                completed = _candidate_args(
+                    candidate, current.args, framework, query, chunks,
+                    exclude_step=current)
+                if completed != (current.args or {}):
+                    current.args = completed
+                    changed = True
+                used_steps.add(id(current))
+                continue
+            existing = next((step for step in steps
+                             if step is not current
+                             and step.tool == candidate_name), None)
+            if existing is not None:
+                existing.args = _candidate_args(
+                    candidate, existing.args, framework, query, chunks,
+                    exclude_step=existing)
+                pos = (getattr(framework, "steps", None) or []).index(current) + 1
+                if not _step_is_consumed(
+                        framework.steps, pos, framework.final_message):
+                    _drop_step(framework, current)
+                    changed = True
+                # Both producers have now been assigned to this action. Mark
+                # them even when the current step is consumed and cannot be
+                # dropped, otherwise another same-verb action may reuse it.
+                used_steps.add(id(current))
+                used_steps.add(id(existing))
+                continue
+            current.tool = candidate_name
+            current.args = _candidate_args(
+                candidate, current.args, framework, query, chunks,
+                exclude_step=current)
+            used_steps.add(id(current))
+            changed = True
+        if changed:
+            log.info("[strong_affinity] produttori riallineati: %s",
+                     [step.tool for step in framework.steps])
+        return framework
+    except Exception as ex:
+        log.warning("align_strong_affinity_producers noop: %r", ex)
         return framework
 
 
@@ -1172,8 +1624,10 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
     # turno a errore). create_<obj> e write_<obj> dello STESSO object sono lo
     # STESSO sink: un create copre una clausola write e viceversa. NON
     # object-blind (create_events != write_files): confronto per-object dei
-    # CONTEGGI, cosi' «crea un doc E scrivi un csv» (2 clausole files) resta
-    # scoperto se il piano ne realizza 1. §7.9 deterministico.
+    # CONTEGGI. Due azioni con lo stesso verbo conservano la cardinalità; una
+    # coppia create+write si fonde soltanto se il create porta già il payload
+    # iniziale, cioè prova strutturalmente di aver popolato lo stesso sink.
+    # §7.9 deterministico.
     # §5 mail: «cancellare mail» = move_messages(Trash) — il rewrite di
     # `_route_mail_delete_to_trash` SODDISFA la clausola delete. Senza questo,
     # al giro DOPO (hit cache, ADR 0174) enforce ri-appendeva un delete
@@ -1194,10 +1648,44 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None) -> se
                  if isinstance(a, dict) and (a.get("verb") or "") in _WRITERS]
         need: "_Counter" = _Counter((a.get("object") or "") for a in _acts)
         have: "_Counter" = _Counter()
+        populated_creates: "_Counter" = _Counter()
         for s in framework.steps:
             nc = _ng.parse_name(s.tool or "") if (s.tool or "") != "final_answer" else None
             if nc and nc.verb in _WRITERS:
                 have[nc.obj] += 1
+                # Un create che riceve già il payload iniziale realizza in una
+                # sola transazione entrambe le facce del lifecycle: crea E
+                # popola lo stesso artefatto. L'intent LLM può descrivere
+                # erroneamente la popolazione come una seconda action `write`
+                # (colonne/righe/contenuto non sono un secondo artefatto).
+                # Richiediamo evidenza strutturale nel piano: senza payload il
+                # create vuoto NON copre write e l'enforcement resta attivo.
+                if nc.verb == "create":
+                    sa = getattr(s, "args", None) or {}
+                    payload = any(
+                        key in sa and sa.get(key) not in (None, "", [], {})
+                        for key in ("values", "entries", "content", "text",
+                                    "items", "events", "from_step")
+                    )
+                    if payload:
+                        populated_creates[nc.obj] += 1
+
+        # Pairing lifecycle sullo STESSO object: N create popolati possono
+        # soddisfare fino a N clausole write omonime, senza sommare create+write
+        # come artefatti distinti. Ripetizioni dello STESSO verbo conservano
+        # invece la cardinalità (create+write+write richiede comunque 2 sink).
+        if "write" in dropped:
+            by_verb_obj = _Counter(
+                ((a.get("verb") or ""), (a.get("object") or ""))
+                for a in _acts)
+            write_objs = {(a.get("object") or "") for a in _acts
+                          if (a.get("verb") or "") == "write"}
+            if write_objs and all(
+                    populated_creates[obj] > 0
+                    and have[obj] >= max(by_verb_obj[("create", obj)],
+                                         by_verb_obj[("write", obj)])
+                    for obj in write_objs):
+                dropped.discard("write")
         for wv in list(_WRITERS & dropped):
             objs = {(a.get("object") or "") for a in _acts if (a.get("verb") or "") == wv}
             if objs and all(have[o] >= need[o] for o in objs):
@@ -1415,11 +1903,13 @@ def _contains_stepref(obj, pos: int) -> bool:
     return False
 
 
-def _step_is_consumed(steps, pos: int) -> bool:
+def _step_is_consumed(steps, pos: int, final_message: str = "") -> bool:
     """True se un ALTRO step consuma l'output dello step in posizione `pos`
     (1-based): via `from_step`/`from_steps` o un riferimento ${stepN.field}.
     Serve a non DROPpare un produttore-fantasma che qualcuno consuma (romperebbe
     la pipe). §7.9 deterministico."""
+    if _contains_stepref(final_message or "", pos):
+        return True
     for i, s in enumerate(steps, 1):
         if i == pos:
             continue
@@ -1488,7 +1978,8 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
                 changed = True
         else:
             pos = steps.index(st) + 1
-            if not _step_is_consumed(steps, pos):
+            if not _step_is_consumed(
+                    steps, pos, getattr(framework, "final_message", "") or ""):
                 to_drop.add(id(st))
                 changed = True
     if to_drop:
@@ -1652,10 +2143,40 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
         names.discard(None)
         steps = list(getattr(framework, "steps", None) or [])
         produced = set()
+        cat_by_name = {
+            (entry.get("name") if isinstance(entry, dict)
+             else getattr(entry, "name", None)): entry
+            for entry in (catalog or [])
+        }
         for s in steps:
             nc = _ng.parse_name(s.tool or "")
             if nc and nc.verb in PRODUCER_VERBS and nc.obj:
                 produced.add(nc.obj)
+            # A generic filesystem producer can expose a more specific
+            # canonical object through manifest-typed file globs.  Example:
+            # find_files_hash(patterns=[*.jpg, ...]) already produces images;
+            # appending find_images_indices would be a second, unrelated
+            # search.  The projection is entirely schema+registry driven.
+            entry = cat_by_name.get(s.tool)
+            schema = ((entry.get("args_schema") if isinstance(entry, dict)
+                       else getattr(entry, "args_schema", None))
+                      if entry else None)
+            props = (schema.get("properties") or {}) \
+                if isinstance(schema, dict) else {}
+            for arg_name, arg_spec in props.items():
+                if (not isinstance(arg_spec, dict)
+                        or arg_spec.get("semantic_type") != "file_globs"):
+                    continue
+                raw_globs = (s.args or {}).get(arg_name)
+                if isinstance(raw_globs, str):
+                    raw_globs = [part.strip() for part in
+                                 re.split(r"[,|]", raw_globs) if part.strip()]
+                if not isinstance(raw_globs, list):
+                    continue
+                from file_kinds import (canonical_objects_for_kinds,
+                                        kinds_for_globs)
+                produced.update(canonical_objects_for_kinds(
+                    kinds_for_globs(raw_globs)))
         # Oggetti che RICHIEDONO un producer: clausole PRODUCER (col loro verbo) +
         # TRANSFORM (filter/sort/group/classify su O → §2.2 «TRANSFORMER RICHIEDE
         # PRODUCER»: produci O prima). Senza, un intent come «trova le spese sopra
@@ -1670,7 +2191,13 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                 continue
             if v in PRODUCER_VERBS:
                 need.append((v, o)); seen_need.add(o)
-            elif v in TRANSFORM_VERBS:
+            elif v in TRANSFORM_VERBS and o != "entries":
+                # `entries` e' il carrier in-memory universale dei transformer,
+                # non uno store esterno. Un extract/sort/filter su entries
+                # consuma il produttore di dominio gia' presente; sintetizzare
+                # `find_entries` richiederebbe uno `store` inesistente e tronca
+                # la pipeline (turn live 845a773f). Gli intent che chiedono
+                # davvero find/read entries restano coperti dal ramo PRODUCER.
                 need.append(("find", o)); seen_need.add(o)
         new_steps: list = []
         added = set()
@@ -1682,7 +2209,11 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                 # COPRE l'oggetto-produttore `files` — senza, qui si appendeva
                 # un find_files SPURIO dopo il piano corretto (hit id=246).
                 continue
-            tool = derive_tool_name(v, o, names, query=query)
+            affinity_selected = _strong_affinity_candidate(
+                query, catalog, v, o)
+            tool = (_entry_name(affinity_selected[0])
+                    if affinity_selected else
+                    derive_tool_name(v, o, names, query=query))
             if not tool:   # fallback: qualunque producer dell'object
                 for pv in ("find", "read", "get", "list"):
                     if pv == v:
@@ -1692,7 +2223,10 @@ def _enforce_missing_objects(framework: Framework, intent, query: str,
                         break
             if not tool:
                 continue
-            new_steps.append(StepSpec(tool=tool, args={}))
+            args = (_candidate_args(affinity_selected[0], {}, framework,
+                                    query, affinity_selected[1])
+                    if affinity_selected else {})
+            new_steps.append(StepSpec(tool=tool, args=args))
             added.add(o)
         if not new_steps:
             return framework
@@ -2178,7 +2712,7 @@ def _route_mail_delete_to_trash(framework: Framework,
             if prod_idx is not None:
                 new_args["from_step"] = prod_idx + 1
                 acct = steps[prod_idx].args.get("account")
-                if acct:
+                if acct and acct != "all":
                     new_args["account"] = acct
             s.tool = "move_messages"
             s.args = new_args
@@ -2361,6 +2895,95 @@ def _dl_match(concept: str, text: str) -> bool:
         return False
 
 
+def _route_text_web_image_search(framework: Framework, intent, query: str,
+                                 _catalog=None) -> Framework:
+    """Separa deterministicamente text-search e reverse image search.
+
+    Una richiesta image-only che nomina il web ma non una sorgente/similarita'
+    e' ``testo -> web``. Un piano che la trasforma in ``corpus locale ->
+    Vision`` cambia scope e puo' inviare file privati a un provider remoto.
+    In tal caso collassa i produttori locali e la ricerca inversa in un solo
+    ``find_images_web(queries=[query])``. Le superfici linguistiche arrivano
+    esclusivamente dal detection lexicon.
+    """
+    if not _dl_match("images.web_search_scope", query) \
+            or _dl_match("images.reverse_search_intent", query):
+        return framework
+    objects = {
+        str(getattr(intent, "object", "") or "").lower(),
+        *{
+            str(action.get("object") or "").lower()
+            for action in (getattr(intent, "actions", None) or [])
+            if isinstance(action, dict)
+        },
+    }
+    objects.discard("")
+    if objects and objects != {"images"}:
+        return framework
+
+    steps = list(getattr(framework, "steps", []) or [])
+    source_tools = {
+        "find_images_indices", "find_persons_indices", "read_persons",
+        "find_files",
+    }
+    relevant = [
+        pos for pos, step in enumerate(steps, start=1)
+        if (getattr(step, "tool", "") or "") in source_tools
+        or (getattr(step, "tool", "") or "") == "find_images_web"
+    ]
+    if not relevant:
+        return framework
+    web_steps = [
+        step for step in steps
+        if (getattr(step, "tool", "") or "") == "find_images_web"
+    ]
+    if len(relevant) == 1 and web_steps:
+        args = dict(getattr(web_steps[0], "args", {}) or {})
+        if args.get("queries") and not any(
+                args.get(key) for key in ("paths", "urls", "from_step")):
+            return framework
+
+    insertion = min(relevant)
+    inherited_max = next((
+        (getattr(step, "args", {}) or {}).get("max_results")
+        for step in web_steps
+        if (getattr(step, "args", {}) or {}).get("max_results") is not None
+    ), None)
+    idx_map: dict[int, int] = {}
+    new_steps: list[StepSpec] = []
+    inserted_pos = 0
+    for old_pos, step in enumerate(steps, start=1):
+        tool = (getattr(step, "tool", "") or "")
+        if old_pos == insertion:
+            prior_args = dict(getattr(step, "args", {}) or {})
+            direct_args = {"queries": [query]}
+            max_results = prior_args.get("max_results", inherited_max)
+            if max_results is not None:
+                direct_args["max_results"] = max_results
+            new_steps.append(StepSpec(tool="find_images_web", args=direct_args))
+            inserted_pos = len(new_steps)
+        if tool in source_tools or tool == "find_images_web":
+            idx_map[old_pos] = inserted_pos
+            continue
+        new_steps.append(StepSpec(
+            tool=tool,
+            args=dict(getattr(step, "args", {}) or {}),
+            if_prev_entries_nonempty=step.if_prev_entries_nonempty,
+        ))
+        idx_map[old_pos] = len(new_steps)
+
+    for step in new_steps:
+        step.args = _remap_step_refs(step.args, idx_map)
+    log.info("[image_web_mode] ricerca testuale diretta; rimossi %d step locali",
+             len(relevant) - 1)
+    return Framework(
+        steps=new_steps,
+        fillers=getattr(framework, "fillers", {}) or {},
+        final_message=_remap_step_refs(
+            getattr(framework, "final_message", ""), idx_map),
+    )
+
+
 # Campi-DIMENSIONE che un compute somma per pesare (find_files espone `size`;
 # `total_bytes` è il campo per-directory di find_dirs — il proposer lo cita a
 # volte anche sul ramo file). Chiuso: NON include `size_min/size_max/file_count`
@@ -2480,7 +3103,6 @@ def _route_folder_size(framework: Framework, query: str,
                             new_pa[k] = v
                     prod.args = new_pa
                     # inserisce compute(sum,size) subito dopo il produttore
-                    from .types import StepSpec
                     comp = StepSpec(tool="compute_entries",
                                     args={"from_step": idx, "op": "sum",
                                           "key": "size"})
@@ -2581,6 +3203,7 @@ _SINK_VERBS = frozenset({"create", "write", "set", "order"})
 # token (8192) resta il limite reale (~80-100 record/chiamata) e flagga la
 # troncatura oltre; per sorgenti enormi serve il chunking (follow-up).
 _BULK_EXTRACT_CAP = 500
+_SITES_COLLECTION_EXTRACT_CAP = 100
 
 
 def _scope_sink_provider_to_clause(framework: Framework, query: str,
@@ -2725,13 +3348,12 @@ def _align_provider_client(framework: Framework, query: str,
                 # torna spazzatura. OVERWRITE clause-scoped quando il valore e'
                 # un fantasma-provider (o assente); i valori legittimi restano.
                 _cur = None
-                _cur_key = None
                 for _k in ("query", "pattern", "patterns", "paths"):
                     _v = s.args.get(_k)
                     if isinstance(_v, list):
                         _v = _v[0] if _v else None
                     if isinstance(_v, str) and _v.strip():
-                        _cur, _cur_key = _v.strip(), _k
+                        _cur = _v.strip()
                         break
                 _phantom = (_cur or "").lower().strip("/") in _GW_PHANTOM_PATHS
                 if _cur is None or _phantom:
@@ -2840,11 +3462,20 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         for x in acts if isinstance(x, dict)
     }
     root_object = str(getattr(intent, "object", "") or "").lower()
-    strong_login_intent = _dl_match("sites.login_intent", query)
+    strong_login_intent = (
+        _dl_match("sites.login_intent", query)
+        or _dl_match("sites.session_entry_intent", query))
+    structured_record_request = (
+        _dl_match("sites.structured_record_request", query)
+        or _dl_match("sites.collection_search_request", query)
+        or (_dl_match("sites.search_action_verb", query)
+            and _dl_match("sites.goal_scope_quantifier", query)))
     has_site_context = ("open_sites" in tools_present
                         or root_object == "sites"
                         or "sites" in action_objects)
-    if not consumers and not (strong_login_intent and has_site_context):
+    if not consumers and not (
+            (strong_login_intent or structured_record_request)
+            and has_site_context):
         return framework  # nessun consumer sites → non ci riguarda
 
     # Deriva l'URL della sessione: da un open_sites già presente, poi dalla
@@ -2917,7 +3548,8 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
                   or "login" in verbs or "login_sites" in tools_present)
     want_read = (root_verb in ("read", "describe")
                  or "read" in verbs or "describe" in verbs
-                 or "read_sites" in tools_present)
+                 or "read_sites" in tools_present
+                 or structured_record_request)
     want_act = (root_verb == "act" or "act" in verbs
                 or "act_sites" in tools_present)
     if not (want_login or want_read or want_act):
@@ -2999,11 +3631,22 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             want_read = True
             absorbed_site_search = True
 
+    # Per leggere record da una sezione non basta aprire la sessione: prima
+    # bisogna attestare di avere raggiunto il contenitore richiesto. Se il
+    # planner non ha emesso una navigazione, recluta act_sites in modalita'
+    # fine semantico. La query resta linguaggio naturale; la riduzione bounded
+    # avviene dentro l'executor intelligente e il planner non vede nuovi tipi.
+    if structured_record_request and not post_login_acts:
+        post_login_acts.append(StepSpec(tool="act_sites", args={
+            "action": query, "_goal_mode": True,
+        }))
+        want_act = True
+
     def _append_acts(source_steps) -> None:
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
             act_args = {"from_step": len(new_steps)}
-            for key in ("action", "value_ref"):
+            for key in ("action", "value_ref", "_goal_mode"):
                 if original_args.get(key) is not None:
                     act_args[key] = original_args[key]
             new_steps.append(StepSpec(tool="act_sites", args=act_args))
@@ -3026,9 +3669,10 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         new_steps.append(StepSpec(tool="login_sites", args=login_args))
 
     # Dopo il login esegui le azioni richieste (ricerca, navigazione, ecc.) e
-    # leggi infine lo stato risultante. Senza login preserviamo il contratto
-    # precedente read→act, usato per i turni pubblici open/read/act.
-    if want_login:
+    # leggi infine lo stato risultante. La stessa sequenza e' necessaria per
+    # una richiesta strutturata pubblica: extract deve ricevere il testo DOPO
+    # l'azione. I turni pubblici non strutturati preservano il vecchio read→act.
+    if want_login or structured_record_request:
         _append_acts(post_login_acts)
     if want_read:
         original_read = next((s for s in steps
@@ -3043,8 +3687,58 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         read_args.setdefault("include_screenshot", False)
         read_args["from_step"] = len(new_steps)
         new_steps.append(StepSpec(tool="read_sites", args=read_args))
-    if not want_login:
+    if not want_login and not structured_record_request:
         _append_acts(post_login_acts)
+
+    # Una richiesta enumerativa sulla pagina richiede un confine strutturato:
+    # read_sites produce il blob testuale, extract_entries scopre internamente
+    # il piccolo schema (nessun campo/domain nel router), describe_entries lo
+    # presenta. `drill_down=False` confina l'estrazione alla pagina autenticata:
+    # i link osservati non diventano fetch stateless fuori sessione.
+    existing_extract = next((
+        step for step in steps
+        if (getattr(step, "tool", "") or "") == "extract_entries"
+    ), None)
+    original_describes = [
+        (pos, step) for pos, step in enumerate(steps, start=1)
+        if (getattr(step, "tool", "") or "") == "describe_entries"
+    ]
+    auto_extract = bool(
+        structured_record_request and want_read and existing_extract is None)
+    site_output_pos = len(new_steps)
+    inferred_extract_pos = 0
+    canonical_describe_pos = 0
+    absorbed_describe_positions: set[int] = set()
+    if auto_extract:
+        inferred_extract_pos = len(new_steps) + 1
+        new_steps.append(StepSpec(tool="extract_entries", args={
+            "from_step": site_output_pos,
+            "instruction": query,
+            "drill_down": False,
+            "max_per_text": _SITES_COLLECTION_EXTRACT_CAP,
+            "max_total": _SITES_COLLECTION_EXTRACT_CAP,
+        }))
+        original_describe = original_describes[0][1] \
+            if original_describes else None
+        describe_args = dict(
+            getattr(original_describe, "args", {}) or {})
+        describe_args.pop("entries", None)
+        describe_args["from_step"] = inferred_extract_pos
+        # Una richiesta di collezione vuole i record, non una sintesi lossy.
+        # `compact` su data_kind=entries usa il renderer deterministico di
+        # describe_entries: una riga per record e tutti i campi non vuoti.
+        describe_args["style"] = "compact"
+        describe_args.setdefault("context", query)
+        describe_args["data_kind"] = "entries"
+        canonical_describe_pos = len(new_steps) + 1
+        new_steps.append(StepSpec(
+            tool="describe_entries", args=describe_args,
+            # Deve produrre anche la risposta onesta a zero record; saltarlo
+            # lascerebbe il final_message senza uno step risolvibile.
+            if_prev_entries_nonempty=False,
+        ))
+        absorbed_describe_positions = {
+            pos for pos, _step in original_describes}
 
     # La catena Sites e' un PRODUTTORE, non un terminale obbligatorio. Conserva
     # trasformazioni e sink successivi (extract, spreadsheet, send, ...),
@@ -3062,8 +3756,14 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         tool = (getattr(step, "tool", "") or "")
         if tool == "final_answer":
             finals.append((old_pos, step))
+        elif old_pos in absorbed_describe_positions:
+            idx_map[old_pos] = canonical_describe_pos
         elif tool in site_tools or tool in absorbed_web_tools:
-            idx_map[old_pos] = canonical_pos
+            # Nell'inserzione automatica i consumer a valle devono vedere i
+            # record, non il blob di read_sites. L'extract stesso e' gia' stato
+            # costruito manualmente sul producer raw e non passa da idx_map.
+            idx_map[old_pos] = (inferred_extract_pos
+                                if auto_extract else site_output_pos)
         else:
             preserved.append((old_pos, step))
     for offset, (old_pos, _step) in enumerate(preserved, start=1):
@@ -3085,12 +3785,1486 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             args=_remap_step_refs(dict(getattr(step, "args", {}) or {}), idx_map),
             if_prev_entries_nonempty=step.if_prev_entries_nonempty,
         ))
+    final_message = _remap_step_refs(
+        getattr(framework, "final_message", ""), idx_map)
+    if auto_extract:
+        # Funziona anche con output_policy disabilitata: la risposta terminale
+        # e' sempre la presentazione dei record appena estratti.
+        final_message = f"${{step{canonical_describe_pos}.summary}}"
     return Framework(
         steps=new_steps,
         fillers=getattr(framework, "fillers", {}) or {},
-        final_message=_remap_step_refs(
-            getattr(framework, "final_message", ""), idx_map),
+        final_message=final_message,
     )
+
+
+def _normalize_document_report_pipeline(framework: Framework, intent,
+                                        query: str,
+                                        catalog: Optional[list]) -> Framework:
+    """Normalizza un workflow documentale compound in una sola dataflow.
+
+    Trigger strutturale stretto: sorgente file + estrazione + sink tabellare
+    con colonne dichiarate + archivio. In questa classe i piani LLM lunghi
+    tendevano a ramificare su producer indipendenti e a perdere il carrier
+    ``entries``. La forma canonica mantiene una sola provenienza e applica
+    create-only a ogni mutazione. Nessun delete/move e quindi nessun consenso
+    preventivo e' necessario; una collisione fallisce chiusa.
+    """
+    try:
+        from compound_decomposer import derive_extract_fields, derive_sink_fields
+        observed_tools = {
+            (getattr(step, "tool", "") or "")
+            for step in (getattr(framework, "steps", None) or [])
+        }
+        # This normalizer owns document-only workflows.  Absorbing a mixed
+        # source plan here would silently discard mail/calendar/contact
+        # producers before the multi-source normalizer can reconcile them.
+        if observed_tools & {"read_messages", "read_events", "find_contacts"}:
+            return framework
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        verbs = {(a.get("verb") or "").lower() for a in actions}
+        objects = {(a.get("object") or "").lower() for a in actions}
+        sink_fields = derive_sink_fields(query)
+        # Chat/UI clients may preserve pasted text as a Markdown blockquote.
+        # Quote markers are presentation syntax, not semantic tokens: remove
+        # only line-leading markers and collapse whitespace before closed
+        # clause detection.  Keep the original query for report context.
+        semantic_query = re.sub(r"(?m)^\s*>\s?", "", query or "")
+        semantic_query = re.sub(r"\s+", " ", semantic_query).strip()
+        ql = semantic_query.casefold()
+        logical_dedup = bool(
+            re.search(r"\bdeduplic\w*\b", ql)
+            or (re.search(r"\bduplicat\w*\b", ql)
+                and (re.search(r"\blogic\w*\b", ql)
+                     or re.search(r"\bsenza\s+cancell\w*\b", ql)
+                     or re.search(r"\bwithout\s+delet\w*\b", ql))))
+        if not ({"extract", "compress"} <= verbs
+                and verbs & {"create", "write"}
+                and "files" in objects
+                and len(sink_fields) >= 2
+                and "move" not in verbs
+                and ("delete" not in verbs or logical_dedup)):
+            return framework
+        names = catalog_names(catalog)
+        required = {
+            "find_files", "filter_entries", "read_files", "sort_entries",
+            "describe_entries", "create_dirs", "write_files",
+            "create_files_spreadsheet", "compress_files",
+        }
+        if not required <= names:
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        finder = next((step for step in steps
+                       if (step.tool or "") == "find_files"
+                       and (step.args or {}).get("base_path")), None)
+        if finder is None:
+            return framework
+
+        # Sorgente: conserva solo selettori filesystem/provider reali del
+        # primo finder, mai entries/materializzazioni di un ramo parallelo.
+        allowed_find = {
+            "base_path", "pattern", "patterns", "recursive", "max_results",
+            "max_depth", "case_sensitive", "client",
+        }
+        find_args = {key: value for key, value in dict(finder.args or {}).items()
+                     if key in allowed_find}
+        find_args.setdefault("recursive", True)
+
+        old_filter = next((step for step in steps
+                           if (step.tool or "") == "filter_entries"), None)
+        filter_args = dict(getattr(old_filter, "args", None) or {})
+        filter_args.pop("entries", None)
+        # ``find_files`` espone due tassonomie distinte: ``type`` descrive
+        # l'oggetto filesystem (file/dir/symlink), mentre ``kind`` descrive il
+        # contenuto (document/text/binary/...).  Un proposer puo' confonderle
+        # e produrre kind="file": il filtro e' sintatticamente valido ma
+        # elimina ogni PDF/DOCX/XLSX.  In questo workflow il finder ha gia'
+        # ristretto le estensioni; l'unico vincolo strutturale utile e' quindi
+        # type="file".
+        if filter_args.get("kind") == "file":
+            filter_args.pop("kind", None)
+            filter_args["type"] = "file"
+        # I risultati sono volutamente creati sotto la cartella sorgente. Un
+        # secondo run non deve reingerire il proprio XLSX (o quelli dei run
+        # precedenti), altrimenti il report cresce ricorsivamente e il dedup
+        # misura anche artefatti Metnos. Il filtro temporale resta sui campi
+        # dedicati mtime_*; usiamo il predicato generico solo quando era vuoto
+        # o conteneva il placeholder temporale ormai sostituito dal resolver.
+        temporal_aliases = {
+            "modified_time", "modification_time", "mtime", "modified",
+            "last_modified", "data_modifica", "ultima_modifica",
+        }
+        where_field = str(filter_args.get("where_field") or "").casefold()
+        if not where_field or where_field in temporal_aliases:
+            for key in (
+                    "where_value", "where_in", "where_not_in",
+                    "where_starts_with", "where_contains", "where_glob"):
+                filter_args.pop(key, None)
+            filter_args.update({
+                "where_field": "path",
+                "where_regex": (
+                    r"^(?!.*[\\/]Risultati_Metnos_[^\\/]+(?:[\\/]|$)).*$"
+                ),
+            })
+        filter_args["from_step"] = 1
+
+        old_reader = next((step for step in steps
+                           if (step.tool or "") == "read_files"), None)
+        read_args = {key: value for key, value in
+                     dict(getattr(old_reader, "args", None) or {}).items()
+                     if key in {"client", "max_files"}}
+        read_args.update({"from_step": 2, "parse": "auto",
+                          "deduplicate_content": logical_dedup})
+
+        semantic_fields = derive_extract_fields(query)
+        # A request to audit contradictions needs comparison dimensions that
+        # may not be named in the requested output columns.  Keep them as
+        # internal extraction fields (the spreadsheet sink remains strictly
+        # clause-scoped below) so document variants can be compared on common
+        # business facts, not only on amount/date.
+        contradiction_audit_fields = []
+        if re.search(r"contradditt|contradict|inconsisten|conflict", ql):
+            contradiction_audit_fields = ["fornitore", "stato"]
+        extract_fields: list[str] = []
+        all_extract_fields = (
+            list(semantic_fields) + list(sink_fields)
+            + ["content_hash", "file_type", "readable"]
+        )
+        for field in all_extract_fields:
+            if field and field not in extract_fields:
+                extract_fields.append(field)
+        extract_args = {
+            "from_step": 3,
+            "fields": extract_fields,
+            "instruction": query,
+            "max_per_text": 20,
+            "drill_down": False,
+        }
+        if contradiction_audit_fields:
+            extract_args["audit_fields"] = contradiction_audit_fields
+
+        old_sort = next((step for step in steps
+                         if (step.tool or "") == "sort_entries"), None)
+        proposed_sort = dict(getattr(old_sort, "args", None) or {}).get("by")
+        sort_by = (proposed_sort if proposed_sort in extract_fields else
+                   (semantic_fields[0] if semantic_fields else sink_fields[0]))
+        result_dir = "${step1.metadata.base_path}/Risultati_Metnos_${RUNTIME:turn_id}"
+        canonical = [
+            StepSpec(tool="find_files", args=find_args),
+            StepSpec(tool="filter_entries", args=filter_args),
+            StepSpec(tool="read_files", args=read_args),
+            StepSpec(tool="extract_entries", args=extract_args),
+            StepSpec(tool="sort_entries", args={
+                "from_step": 4, "by": sort_by, "desc": False}),
+            StepSpec(tool="describe_entries", args={
+                "from_step": 5, "style": "by_relevance", "context": query,
+                "data_kind": "entries", "format": "markdown",
+                "max_tokens": 1200}),
+            StepSpec(tool="create_dirs", args={
+                "paths": [result_dir], "parents": True, "exist_ok": False}),
+            StepSpec(tool="write_files", args={
+                "path": "${step7.results.0.path}/riepilogo.md",
+                "content": "${step6.summary}", "mode": "fail_if_exists",
+                "client": "local"}),
+            StepSpec(tool="create_files_spreadsheet", args={
+                "from_step": 5, "columns": list(sink_fields),
+                "path": "${step7.results.0.path}/dati_estratti.xlsx",
+                "title": "dati_estratti", "client": "local"}),
+            StepSpec(tool="find_files", args={
+                "base_path": "${step7.results.0.path}",
+                "patterns": ["riepilogo.md", "dati_estratti.xlsx"],
+                "recursive": False, "client": "local"}),
+            StepSpec(tool="compress_files", args={
+                "from_step": 10,
+                "dest": "${step7.results.0.path}/risultati.zip",
+                "format": "zip"}),
+            StepSpec(tool="final_answer", args={}),
+        ]
+        from messages import get as _msg
+        normalized = Framework(
+            steps=canonical, fillers=dict(getattr(framework, "fillers", {}) or {}),
+            final_message=_msg(
+                "MSG_DOCUMENT_REPORT_RECEIPT",
+                directory="${step7.results.0.path}",
+                rows="${step9.results.0.rows}",
+                archive="${step11.results.0.path}",
+            ),
+        )
+        if normalized.to_dict() != framework.to_dict():
+            log.info("[document_report] pipeline canonicale applicata: %s",
+                     [step.tool for step in canonical])
+        return normalized
+    except Exception as ex:
+        log.warning("normalize_document_report_pipeline noop: %r", ex)
+        return framework
+
+
+def _normalize_multisource_entity_report_pipeline(
+        framework: Framework, intent, query: str,
+        catalog: Optional[list]) -> Framework:
+    """Canonical reconciliation for three-or-more heterogeneous sources.
+
+    Supported source families are deliberately capability-based rather than
+    query-specific: local/remote files, messages, calendar events and address
+    book contacts.  Every observed source is transformed independently into a
+    shared record schema before merge.  All durable outputs consume the same
+    sorted carrier, use a per-turn create-only directory, and the archive is
+    built only from the report and spreadsheet just created.
+    """
+    try:
+        from compound_decomposer import derive_sink_fields
+        from ordering_clause import detect as detect_ordering
+        from .types import StepSpec
+
+        steps = list(getattr(framework, "steps", None) or [])
+        tools = {(getattr(step, "tool", "") or "") for step in steps}
+        finder = next((step for step in steps
+                       if (step.tool or "") == "find_files"
+                       and (step.args or {}).get("base_path")), None)
+        reader = next((step for step in steps
+                       if (step.tool or "") == "read_files"), None)
+        mail = next((step for step in steps
+                     if (step.tool or "") == "read_messages"), None)
+        events = next((step for step in steps
+                       if (step.tool or "") == "read_events"), None)
+        contacts = next((step for step in steps
+                         if (step.tool or "") == "find_contacts"), None)
+        source_count = sum((
+            finder is not None and reader is not None,
+            mail is not None,
+            events is not None,
+            contacts is not None,
+        ))
+        if source_count < 3:
+            return framework
+        if not ("compress_files" in tools
+                and ("create_files_spreadsheet" in tools
+                     or re.search(r"\b(?:foglio|spreadsheet|workbook|xlsx)\b",
+                                  query or "", re.IGNORECASE))):
+            return framework
+        forbidden = {
+            tool for tool in tools
+            if (tool.startswith(("send_", "delete_", "move_", "update_", "set_"))
+                or tool in {"create_events", "write_events", "create_contacts",
+                            "write_contacts"})
+        }
+        if forbidden:
+            return framework
+        # Chat/UI clients may preserve pasted text as a Markdown blockquote.
+        # Presentation markers must not split a semantic clause across lines.
+        semantic_query = re.sub(r"(?m)^\s*>\s?", "", query or "")
+        semantic_query = re.sub(r"\s+", " ", semantic_query).strip()
+        ql = semantic_query.casefold()
+        if not re.search(
+                r"\b(?:analizz\w*|incroci\w*|riconcili\w*|extract\w*|"
+                r"estrai\w*|individua\w*|normalizz\w*|conflitt\w*|"
+                r"conflict\w*|deduplic\w*)\b", ql):
+            return framework
+
+        names = catalog_names(catalog)
+        required = {
+            "extract_entries", "group_entries", "sort_entries",
+            "describe_entries", "create_dirs", "write_files",
+            "create_files_spreadsheet", "find_files", "compress_files",
+        }
+        for producer in (reader, mail, events, contacts):
+            if producer is not None:
+                required.add(producer.tool)
+        if not required <= names:
+            return framework
+
+        sink_fields = derive_sink_fields(query)
+        default_sheet_fields = [
+            "entità", "tipo", "valore normalizzato", "valore originale",
+            "dominio", "origine", "responsabile", "confidenza", "conflitto",
+        ]
+        sheet_fields = list(dict.fromkeys(
+            field for field in (sink_fields or default_sheet_fields) if field))
+        if len(sheet_fields) < 2:
+            sheet_fields = default_sheet_fields
+        # User-facing spreadsheet headers may legitimately be plural because
+        # reconciliation preserves several source domains/origins.  Extraction
+        # and merge, however, own one canonical singular field for each
+        # concept.  Do not ask the LLM for parallel plural fields: they become
+        # empty competitors of the populated canonical values at the sink.
+        record_field_aliases = {
+            "domini": "dominio", "domains": "dominio",
+            "origini": "origine", "origins": "origine",
+        }
+        record_sink_fields = [
+            record_field_aliases.get(field.casefold(), field)
+            for field in sheet_fields
+        ]
+        common_fields = list(dict.fromkeys([
+            "entità", "tipo", "valore normalizzato", "valore originale",
+            "progetto", "organizzazione", "ruolo", "email", "telefono",
+            "importo", "scadenza", "decisione", "stato", "origine",
+            "responsabile", "confidenza", "dominio", "leggibile",
+            "duplicati", "diagnostica",
+            *[field for field in record_sink_fields if field != "conflitto"],
+        ]))
+        extract_instruction = (
+            "Per ciascuna sorgente estrai record separati per persone, "
+            "organizzazioni, progetti, ruoli, recapiti, importi, scadenze, "
+            "decisioni e impegni realmente citati. Normalizza nomi, email, "
+            "telefoni, date, valute e stati. Il campo entità identifica il "
+            "soggetto o fatto specifico, mai una label generica. Quando "
+            "importo, scadenza, decisione, stato o responsabile sono "
+            "associati esplicitamente a un progetto o impegno, mantienili "
+            "nello stesso record del soggetto: non trasformarli in entità "
+            "autonome. Usa la stessa entità e lo stesso tipo per lo stesso "
+            "soggetto citato in sorgenti diverse. Non confrontare sorgenti "
+            "e non creare output."
+        )
+        extraction_base = {
+            "fields": common_fields,
+            "instruction": extract_instruction,
+            "max_per_text": 12,
+            "max_total": 5000,
+            "max_sources": 1000,
+            "batch_size": 16,
+            "drill_down": False,
+        }
+
+        canonical: list[StepSpec] = []
+        source_positions: list[tuple[str, int]] = []
+        scope_relevance_terms: list[str] = []
+
+        def append_step(tool: str, args: dict) -> int:
+            canonical.append(StepSpec(tool=tool, args=args))
+            return len(canonical)
+
+        if finder is not None and reader is not None:
+            allowed_find = {
+                "base_path", "pattern", "patterns", "recursive",
+                "max_results", "max_depth", "case_sensitive", "client",
+            }
+            find_args = {
+                key: value for key, value in dict(finder.args or {}).items()
+                if key in allowed_find
+            }
+            find_args.setdefault("recursive", True)
+            scope_path = str(find_args.get("base_path") or "")
+            scope_leaf = re.split(r"[/\\]+", scope_path.rstrip("/\\"))[-1]
+            scope_tokens = re.findall(r"[\wÀ-ÿ@.+-]+", scope_leaf)
+            generic_scope_tokens = {
+                "documenti", "documents", "document", "progetto", "project",
+                "cartella", "folder", "files", "file",
+            }
+            scope_relevance_terms = list(dict.fromkeys([
+                scope_leaf,
+                *[token for token in scope_tokens
+                  if len(token) >= 4
+                  and token.casefold() not in generic_scope_tokens],
+            ]))
+            file_find_pos = append_step("find_files", find_args)
+            read_args = {
+                key: value for key, value in dict(reader.args or {}).items()
+                if key in {"client", "max_files"}
+            }
+            read_args.update({
+                "from_step": file_find_pos,
+                "parse": "auto",
+                "deduplicate_content": True,
+            })
+            source_positions.append(("files", append_step("read_files", read_args)))
+
+        if mail is not None:
+            mail_allowed = {
+                "account", "folder", "max_results", "unseen_only",
+                "time_window", "since", "before", "from_contains",
+                "subject_contains", "body_contains", "max_total",
+                "page_size", "via_channel", "client",
+            }
+            mail_args = {
+                key: value for key, value in dict(mail.args or {}).items()
+                if key in mail_allowed
+            }
+            mail_args.setdefault("account", "all")
+            mail_args.setdefault("max_total", 500)
+            mail_args.setdefault("page_size", 100)
+            source_positions.append((
+                "email", append_step("read_messages", mail_args)))
+
+        if events is not None:
+            event_allowed = {
+                "time_window", "start", "end", "top_k", "calendar_id",
+                "client",
+            }
+            event_args = {
+                key: value for key, value in dict(events.args or {}).items()
+                if key in event_allowed
+            }
+            event_args.setdefault("top_k", 500)
+            source_positions.append((
+                "calendar", append_step("read_events", event_args)))
+
+        if contacts is not None:
+            contact_args = {
+                key: value for key, value in dict(contacts.args or {}).items()
+                if key in {"query", "max_results", "client"}
+            }
+            contact_args.setdefault("query", "")
+            # In this pipeline the address book is a reference registry.  The
+            # provider contract documents the empty query as "all contacts";
+            # a planner-emitted universal wildcard is a literal substring for
+            # find_contacts and otherwise returns only names containing '*'.
+            if str(contact_args.get("query") or "").strip() in {"*", "**"}:
+                contact_args["query"] = ""
+            contact_args.setdefault("max_results", 1000)
+            source_positions.append((
+                "contacts", append_step("find_contacts", contact_args)))
+
+        extracted_positions: list[int] = []
+        file_extract_position: int | None = None
+        for domain, producer_position in source_positions:
+            if domain == "contacts":
+                contact_fields = list(common_fields)
+                args = {
+                    "from_step": producer_position,
+                    "fields": contact_fields,
+                    "max_sources": 1000,
+                    "max_total": 1000,
+                    "drill_down": False,
+                    "structured_map": {
+                        "entità": ["name", "id"],
+                        "valore normalizzato": ["name", "id"],
+                        "valore originale": ["name", "id"],
+                        "email": "emails",
+                        "telefono": "phones",
+                    },
+                    "structured_defaults": {"tipo": "contatto"},
+                }
+            else:
+                args = {**extraction_base, "from_step": producer_position}
+                if domain != "files" and file_extract_position is not None:
+                    # Il corpus file è la sorgente-ancora circoscritta dalla
+                    # query. I producer voluminosi vengono prefiltrati sulle
+                    # entità già osservate prima di spendere chiamate LLM.
+                    args.update({
+                        "relevance_entries": (
+                            f"${{step{file_extract_position}.entries}}"),
+                        "relevance_fields": [
+                            "entità", "progetto", "organizzazione",
+                            "email", "telefono",
+                        ],
+                        "relevance_terms": scope_relevance_terms,
+                    })
+            extract_position = append_step("extract_entries", args)
+            extracted_positions.append(extract_position)
+            if domain == "files":
+                file_extract_position = extract_position
+
+        merge_position = append_step("group_entries", {
+            "entries_lists": [
+                f"${{step{position}.entries}}"
+                for position in extracted_positions
+            ],
+            "dedup_key": ["entità", "tipo", "valore normalizzato"],
+            "cross_domain_key": "entità",
+            "domain_field": "dominio",
+            "cross_match_fields": [
+                "tipo", "valore normalizzato", "email", "telefono",
+                "scadenza", "importo",
+            ],
+            "merge_fields": ["origine", "dominio", "duplicati"],
+            "conflict_fields": [
+                "organizzazione", "ruolo", "email", "telefono", "importo",
+                "scadenza", "decisione", "stato", "responsabile",
+            ],
+            "conflict_field": "conflitto",
+            "reconcile_within_domains": ["files"],
+            "drop_unmatched_domains": ["contacts"],
+            # A small model may atomize source-level amount/deadline/state
+            # facts even when the text associates all of them with one
+            # project.  Coalesce only when that source has exactly one
+            # declared subject; ambiguous multi-subject sources stay intact.
+            "coalesce_source_facts": True,
+            "source_field": "origine",
+            "type_field": "tipo",
+            "subject_types": ["progetto", "project", "impegno", "commitment"],
+            "coalesce_fields": [
+                "organizzazione", "importo", "scadenza", "decisione",
+                "stato", "responsabile",
+            ],
+        })
+        deadline_position = append_step("sort_entries", {
+            "from_step": merge_position,
+            "by": "scadenza",
+            "desc": False,
+            "value_type": "date",
+        })
+        ordering = detect_ordering(semantic_query) or {}
+        conflict_severity_requested = bool(re.search(
+            r"(?:\bgravit[aà]\s+(?:(?:del|della|dei|delle|di)\s+)?"
+            r"conflitt\w*\b|\bconflict\s+severity\b|"
+            r"\bseverity\s+(?:of\s+)?conflicts?\b)",
+            ql,
+        ))
+        primary = ("_conflict_count" if conflict_severity_requested else
+                   str(ordering.get("key_text") or "organizzazione"))
+        primary_aliases = {
+            "organization": "organizzazione",
+            "organizzazioni": "organizzazione",
+            "project": "progetto",
+            "projects": "progetto",
+            "progetti": "progetto",
+            "deadline": "scadenza",
+            "date": "scadenza",
+        }
+        primary = primary_aliases.get(primary.casefold(), primary)
+        if primary != "_conflict_count" and primary not in common_fields:
+            primary = "organizzazione"
+        if primary == "scadenza":
+            sorted_position = deadline_position
+        else:
+            sorted_position = append_step("sort_entries", {
+                "from_step": deadline_position,
+                "by": primary,
+                "desc": (True if primary == "_conflict_count" else
+                         bool(ordering.get("desc", False))),
+                "value_type": "auto",
+            })
+        report_position = append_step("describe_entries", {
+            "from_step": sorted_position,
+            "style": "compact",
+            "context": query,
+            "data_kind": "entries",
+            "format": "markdown",
+            # Severity is a ranking criterion, not a user-visible grouping
+            # dimension.  The technical key remains hidden from the report.
+            "group_by": "" if primary == "_conflict_count" else primary,
+        })
+
+        old_directory = next((step for step in steps
+                              if (step.tool or "") == "create_dirs"), None)
+        old_paths = ((old_directory.args or {}).get("paths")
+                     if old_directory is not None else None)
+        base_directory = (old_paths[0] if isinstance(old_paths, list)
+                          and old_paths and isinstance(old_paths[0], str)
+                          else "Documenti/Verifica Metnos")
+        base_directory = base_directory.rstrip("/\\")
+        if "${RUNTIME:turn_id}" in base_directory:
+            result_dir = base_directory
+        else:
+            result_dir = base_directory + "/Run_${RUNTIME:turn_id}"
+        sink_client = ((old_directory.args or {}).get("client")
+                       if old_directory is not None else None) or "local"
+        directory_position = append_step("create_dirs", {
+            "paths": [result_dir], "parents": True, "exist_ok": False,
+            "client": sink_client,
+        })
+        report_name = "rapporto_riconciliazione.md"
+        sheet_name = "entita_riconciliate.xlsx"
+        archive_name = "risultati_riconciliazione.zip"
+        is_italian = bool(re.search(
+            r"\b(?:incrocia|esamina|ultimi|estrai|crea|cartella|foglio|non)\b",
+            ql))
+        coverage_lines = []
+        for (domain, producer_position), extract_position in zip(
+                source_positions, extracted_positions):
+            if domain == "contacts":
+                if is_italian:
+                    coverage_lines.append(
+                        f"- {domain}: "
+                        f"${{step{producer_position}.used}}/"
+                        f"${{step{producer_position}.available_total}} "
+                        "record di riferimento letti; "
+                        f"${{step{extract_position}.used}} "
+                        "record normalizzati"
+                    )
+                else:
+                    coverage_lines.append(
+                        f"- {domain}: "
+                        f"${{step{producer_position}.used}}/"
+                        f"${{step{producer_position}.available_total}} "
+                        "reference records read; "
+                        f"${{step{extract_position}.used}} "
+                        "records normalized"
+                    )
+                continue
+            coverage_lines.append(
+                f"- {domain}: "
+                f"${{step{extract_position}.selected_source_total}}/"
+                f"${{step{extract_position}.input_source_total}} "
+                + ("sorgenti pertinenti; " if is_italian
+                   else "relevant sources; ")
+                + f"${{step{extract_position}.used}} "
+                + ("record prodotti" if is_italian else "records produced")
+            )
+        if is_italian:
+            report_content = (
+                "# Rapporto di riconciliazione\n\n## Copertura e controlli\n"
+                + "\n".join(coverage_lines)
+                + f"\n- conflitti rilevati: ${{step{merge_position}.conflicts}}"
+                + "\n- record di riferimento non associati esclusi: "
+                + f"${{step{merge_position}.dropped_unmatched}}\n\n"
+                + f"${{step{report_position}.summary}}"
+            )
+        else:
+            report_content = (
+                "# Reconciliation report\n\n## Coverage and checks\n"
+                + "\n".join(coverage_lines)
+                + f"\n- conflicts found: ${{step{merge_position}.conflicts}}"
+                + "\n- unmatched reference records excluded: "
+                + f"${{step{merge_position}.dropped_unmatched}}\n\n"
+                + f"${{step{report_position}.summary}}"
+            )
+        append_step("write_files", {
+            "path": f"${{step{directory_position}.results.0.path}}/{report_name}",
+            "content": report_content,
+            "mode": "fail_if_exists",
+            "client": sink_client,
+        })
+        append_step("create_files_spreadsheet", {
+            "from_step": sorted_position,
+            "columns": sheet_fields,
+            "path": f"${{step{directory_position}.results.0.path}}/{sheet_name}",
+            "title": "entita_riconciliate",
+            "client": sink_client,
+        })
+        outputs_position = append_step("find_files", {
+            "base_path": f"${{step{directory_position}.results.0.path}}",
+            "patterns": [report_name, sheet_name],
+            "recursive": False,
+            "client": sink_client,
+        })
+        archive_position = append_step("compress_files", {
+            "from_step": outputs_position,
+            "dest": f"${{step{directory_position}.results.0.path}}/{archive_name}",
+            "format": "zip",
+        })
+        append_step("final_answer", {})
+
+        if is_italian:
+            final_message = (
+                f"Completato. Risultati salvati in "
+                f"`${{step{directory_position}.results.0.path}}`:\n\n"
+                f"- rapporto: `{report_name}`\n"
+                f"- foglio dati: `{sheet_name}` "
+                f"(${{step{sorted_position}.count}} righe di dati)\n"
+                f"- archivio: `${{step{archive_position}.results.0.path}}`"
+            )
+        else:
+            final_message = (
+                f"Completed. Results saved in "
+                f"`${{step{directory_position}.results.0.path}}`:\n\n"
+                f"- report: `{report_name}`\n"
+                f"- data spreadsheet: `{sheet_name}` "
+                f"(${{step{sorted_position}.count}} data rows)\n"
+                f"- archive: `${{step{archive_position}.results.0.path}}`"
+            )
+        normalized = Framework(
+            steps=canonical,
+            fillers=dict(getattr(framework, "fillers", {}) or {}),
+            final_message=final_message,
+            runtime_step_cap=len(canonical),
+        )
+        if normalized.to_dict() != framework.to_dict():
+            log.info("[multisource_entity_report] canonical pipeline applied: %s",
+                     [step.tool for step in canonical])
+        return normalized
+    except Exception as ex:
+        log.warning("normalize_multisource_entity_report_pipeline noop: %r", ex)
+        return framework
+
+
+def _semantic_query_text(query: str) -> str:
+    """Remove Markdown quote presentation without changing comparisons.
+
+    HTTP clients can preserve a quoted multi-line prompt or flatten it before
+    deterministic guards run.  Once a query is known to be a Markdown quote,
+    standalone ``>`` tokens are presentation, including the flattened ones.
+    An ordinary query such as ``importo > 100`` is left untouched.
+    """
+    raw = str(query or "")
+    markdown_quote = bool(re.search(r"(?m)^\s*>", raw))
+    if markdown_quote:
+        raw = re.sub(r"(?<!\S)>(?=\s|$)\s*", "", raw)
+    return re.sub(r"\s+", " ", raw).strip()
+
+
+def _message_event_focus_terms(query: str) -> list[str]:
+    """Extract an explicit bounded subject list from a reconciliation clause.
+
+    This is intentionally narrower than generic keyword extraction.  A broad
+    mail/calendar report ("all commitments in both domains") must keep full
+    recall, while "commitments related to A, B or C" declares a real source
+    scope that can be applied before any LLM call.  The returned phrases stay
+    intact; ``extract_entries`` owns Unicode normalization and word-boundary
+    matching.
+    """
+    semantic_query = _semantic_query_text(query)
+    if not semantic_query:
+        return []
+    focus_pattern = re.compile(
+        r"\b(?:relativ[ei]?\s+a|riguardant[ei]?|concernent[ei]?|"
+        r"related\s+to|concerning|regarding)\s+(.{1,500}?)(?=[.;]|$)",
+        re.IGNORECASE,
+    )
+    match = focus_pattern.search(semantic_query)
+    if not match:
+        return []
+    clause = (match.group(1) or "").strip(" :,-")
+    parts = re.split(
+        r"\s*,\s*|\s+(?:o|od|oppure|e|ed|or|and)\s+", clause,
+        flags=re.IGNORECASE,
+    )
+    articles = re.compile(
+        r"^(?:(?:il|lo|la|i|gli|le|un|uno|una|the|a|an)\s+)+",
+        re.IGNORECASE,
+    )
+    generic = {
+        "email", "mail", "messaggi", "messages", "eventi", "events",
+        "appuntamenti", "appointments", "impegni", "commitments",
+    }
+    terms: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        term = articles.sub("", part).strip(" :,-")
+        folded = term.casefold()
+        if (not term or len(term) > 100 or folded in generic
+                or folded in seen):
+            continue
+        seen.add(folded)
+        terms.append(term)
+    return terms[:32]
+
+
+def _normalize_message_event_report_pipeline(framework: Framework, intent,
+                                              query: str,
+                                              catalog: Optional[list]) -> Framework:
+    """Canonical cross-domain mail/calendar analysis with durable outputs.
+
+    This deliberately triggers from both the requested shape and the observed
+    producers.  It cannot turn a single-domain request into a cross-domain one,
+    and it never introduces an outbound or calendar mutation.  The common
+    schema is owned here so extraction, merge, report and spreadsheet cannot
+    silently drift to incompatible fields.
+    """
+    try:
+        from compound_decomposer import derive_sink_fields
+        from .types import StepSpec
+
+        steps = list(getattr(framework, "steps", None) or [])
+        tools = {(getattr(step, "tool", "") or "") for step in steps}
+        if tools & {"read_files", "find_contacts"}:
+            return framework
+        if not {"read_messages", "read_events"} <= tools:
+            return framework
+        if not ("create_files_spreadsheet" in tools
+                or re.search(r"\b(?:foglio|spreadsheet|workbook|xlsx)\b",
+                             query or "", re.IGNORECASE)):
+            return framework
+        # A report normalizer must never absorb a genuinely mutating request.
+        # Negative clauses such as "non inviare" do not create such a tool, so
+        # checking the executable plan is both narrower and negation-safe.
+        forbidden = {
+            tool for tool in tools
+            if (tool.startswith(("send_", "delete_", "move_", "update_"))
+                or tool in {"create_events", "write_events", "set_events"})
+        }
+        if forbidden:
+            return framework
+
+        semantic_query = _semantic_query_text(query)
+        ql = semantic_query.casefold()
+        if not re.search(
+                r"\b(?:analizz\w*|extract\w*|estrai\w*|individua\w*|"
+                r"normalizz\w*|conflitt\w*|conflict\w*|deduplic\w*)\b",
+                ql):
+            return framework
+
+        focus_terms = _message_event_focus_terms(query)
+        wants_archive = bool(re.search(
+            r"\b(?:zip|archivio\s+compress\w*|compressed\s+archive)\b",
+            ql, re.IGNORECASE))
+        focused_reconciliation = bool(focus_terms) or bool(re.search(
+            r"\b(?:corrispondenz\w*\s+(?:esatt\w*|probabil\w*)|"
+            r"exact\s+match|probable\s+match|solo\s+(?:email|calendario)|"
+            r"only\s+(?:email|calendar)|cancellazion\w*\s+priv\w*)\b",
+            ql, re.IGNORECASE))
+
+        names = catalog_names(catalog)
+        required = {
+            "read_messages", "read_events", "extract_entries",
+            "group_entries", "sort_entries", "describe_entries",
+            "create_dirs", "write_files", "create_files_spreadsheet",
+        }
+        if wants_archive:
+            required.update({"find_files", "compress_files"})
+        if not required <= names:
+            return framework
+
+        old_mail = next(step for step in steps
+                        if (step.tool or "") == "read_messages")
+        old_events = next(step for step in steps
+                          if (step.tool or "") == "read_events")
+        mail_allowed = {
+            "account", "folder", "max_results", "unseen_only", "time_window",
+            "since", "before", "from_contains", "subject_contains",
+            "body_contains", "max_total", "page_size", "via_channel", "client",
+        }
+        event_allowed = {
+            "time_window", "start", "end", "top_k", "calendar_id", "client",
+        }
+        mail_args = {
+            key: value for key, value in dict(old_mail.args or {}).items()
+            if key in mail_allowed
+        }
+        event_args = {
+            key: value for key, value in dict(old_events.args or {}).items()
+            if key in event_allowed
+        }
+        mail_args.setdefault("account", "all")
+        mail_args.setdefault("max_total", 500)
+        mail_args.setdefault("page_size", 100)
+        event_args.setdefault("top_k", 500)
+
+        default_sheet_fields = [
+            "entità", "valore normalizzato", "valore originale", "origine",
+            "responsabile", "confidenza", "conflitto",
+        ]
+        requested_sheet_fields = derive_sink_fields(query)
+        sheet_columns = list(dict.fromkeys(
+            field for field in (requested_sheet_fields or default_sheet_fields)
+            if field))
+        field_aliases = {
+            "domini": "dominio", "domains": "dominio",
+            "origini": "origine", "origins": "origine",
+        }
+        record_sheet_fields = [
+            field_aliases.get(field.casefold(), field)
+            for field in sheet_columns
+        ]
+
+        if focused_reconciliation:
+            common_fields = list(dict.fromkeys([
+                "entità", "tipo impegno", "persona", "organizzazione",
+                "data normalizzata", "ora normalizzata", "fuso orario",
+                "luogo", "valore originale", "stato", "responsabile",
+                "origine", "confidenza", "dominio",
+                *[field for field in record_sheet_fields
+                  if field not in {"conflitto", "corrispondenza"}],
+            ]))
+            focus_text = "; ".join(focus_terms)
+            extract_instruction = (
+                "Estrai soltanto gli impegni pertinenti al focus esplicito"
+                + (f" ({focus_text}). " if focus_text else ". ")
+                + "Produci un record per ogni impegno distinto, non record "
+                "separati per persona o organizzazione. Usa entità come "
+                "soggetto normalizzato e stabile dell'impegno e tipo impegno "
+                "come categoria normalizzata della prestazione o attività, "
+                "così lo stesso impegno mantiene gli stessi valori in email "
+                "e calendario. Normalizza data in ISO YYYY-MM-DD, ora in "
+                "HH:MM, fuso orario, nomi e stati; conserva il testo osservato "
+                "in valore originale. Se ora, luogo o altro dato non sono "
+                "presenti, lascia il campo vuoto: non inventare. Non fondere "
+                "impegni distinti e non confrontare sorgenti."
+            )
+            merge_args = {
+                "entries_lists": ["${step3.entries}", "${step4.entries}"],
+                "dedup_key": [
+                    "entità", "tipo impegno", "data normalizzata",
+                    "ora normalizzata",
+                ],
+                "cross_domain_key": [
+                    "entità", "tipo impegno", "data normalizzata",
+                ],
+                "domain_field": "dominio",
+                "cross_match_fields": [
+                    "ora normalizzata", "organizzazione", "persona", "luogo",
+                ],
+                "merge_fields": ["origine", "dominio"],
+                "conflict_fields": [
+                    "ora normalizzata", "luogo", "stato", "organizzazione",
+                ],
+                "missing_conflict_fields": ["ora normalizzata"],
+                "missing_value_label": "mancante",
+                "required_fields_by_domain": {
+                    "calendar": ["ora normalizzata"],
+                },
+                "unmatched_conflict_key": ["entità", "tipo impegno"],
+                "unmatched_conflict_fields": ["data normalizzata"],
+                "conflict_field": "conflitto",
+                "match_field": "corrispondenza",
+                "match_labels": {
+                    "exact": "corrispondenza esatta",
+                    "probable": "corrispondenza probabile",
+                    "email_only": "solo email",
+                    "calendar_only": "solo calendario",
+                    "cancelled": "cancellazione senza evento",
+                    "unmatched": "non riconciliato",
+                },
+                "match_state_field": "stato",
+                "cancellation_states": [
+                    "annullato", "annullata", "cancellato", "cancellata",
+                    "cancelled", "canceled",
+                ],
+                # Model-normalized identity can drift between a person and
+                # the appointment label.  These private runtime facts allow
+                # a conservative second-stage join: same date + shared
+                # observed focus anchor + one unique best evidence score.
+                "anchor_field": "_relevance_anchors",
+                "anchor_equal_fields": ["data normalizzata"],
+                "anchor_match_fields": [
+                    "_source_time_mentions", "organizzazione",
+                    "tipo impegno", "persona", "entità",
+                ],
+                "anchor_within_domains": ["email"],
+            }
+            date_field = "data normalizzata"
+            report_name = "rapporto_riconciliazione.md"
+            sheet_name = "impegni_riconciliati.xlsx"
+            sheet_title = "impegni_riconciliati"
+        else:
+            common_fields = list(dict.fromkeys([
+                "entità", "tipo", "valore normalizzato",
+                "valore originale", "origine", "responsabile", "confidenza",
+                "scadenza", "stato", "dominio",
+                *[field for field in record_sheet_fields
+                  if field != "conflitto"],
+            ]))
+            extract_instruction = (
+                "Per ciascuna sorgente estrai separatamente ogni persona, "
+                "organizzazione, scadenza, importo e impegno citato. "
+                "Normalizza nomi, indirizzi email, date, valute e stati. "
+                "Il campo entità deve identificare il soggetto o fatto "
+                "specifico, mai una label generica. Non confrontare sorgenti "
+                "e non creare output."
+            )
+            merge_args = {
+                "entries_lists": ["${step3.entries}", "${step4.entries}"],
+                "dedup_key": ["entità", "valore normalizzato"],
+                "cross_domain_key": "entità",
+                "domain_field": "dominio",
+                "cross_match_fields": [
+                    "valore normalizzato", "scadenza", "valore originale",
+                ],
+                "merge_fields": ["origine", "dominio"],
+                "conflict_fields": [
+                    "valore normalizzato", "valore originale", "scadenza",
+                    "stato", "responsabile",
+                ],
+                "conflict_field": "conflitto",
+            }
+            date_field = "scadenza"
+            report_name = "rapporto_scadenze.md"
+            sheet_name = "entita_valori.xlsx"
+            sheet_title = "entita_valori"
+
+        extract_base = {
+            "fields": common_fields,
+            "instruction": extract_instruction,
+            "max_per_text": 8,
+            "max_total": 2000,
+            "max_sources": 500,
+            "batch_size": 16,
+            "drill_down": False,
+        }
+        if focus_terms:
+            extract_base["relevance_terms"] = focus_terms
+        if focused_reconciliation:
+            extract_base["state_markers"] = {
+                "annullato": [
+                    "annullamento prenotazione", "e stato annullato",
+                    "e stata annullata", "appuntamento annullato",
+                    "appuntamento annullata", "cancellazione prenotazione",
+                    "cancelled", "canceled",
+                ],
+            }
+
+        result_root = "Documenti/Verifica Metnos"
+        old_directory = next((
+            step for step in steps if (step.tool or "") == "create_dirs"
+        ), None)
+        old_paths = dict(getattr(old_directory, "args", None) or {}).get("paths")
+        if (isinstance(old_paths, list) and old_paths
+                and isinstance(old_paths[0], str) and old_paths[0].strip()):
+            result_root = old_paths[0].rstrip("/\\")
+        result_dir = result_root
+        if "${RUNTIME:turn_id}" not in result_dir:
+            result_dir += "/Run_${RUNTIME:turn_id}"
+
+        canonical: list[StepSpec] = []
+
+        def append_step(tool: str, args: dict) -> int:
+            canonical.append(StepSpec(tool=tool, args=args))
+            return len(canonical)
+
+        mail_pos = append_step("read_messages", mail_args)
+        events_pos = append_step("read_events", event_args)
+        mail_extract_pos = append_step("extract_entries", {
+            **extract_base, "from_step": mail_pos})
+        event_extract_pos = append_step("extract_entries", {
+            **extract_base, "from_step": events_pos})
+        merge_args["entries_lists"] = [
+            f"${{step{mail_extract_pos}.entries}}",
+            f"${{step{event_extract_pos}.entries}}",
+        ]
+        merge_pos = append_step("group_entries", merge_args)
+        date_sort_pos = append_step("sort_entries", {
+            "from_step": merge_pos, "by": date_field, "desc": False,
+            "value_type": "date",
+        })
+        carrier_pos = date_sort_pos
+        if focused_reconciliation:
+            carrier_pos = append_step("sort_entries", {
+                "from_step": date_sort_pos, "by": "_conflict_count",
+                "desc": True, "value_type": "auto",
+            })
+        describe_args = {
+            "from_step": carrier_pos, "style": "compact", "context": query,
+            "data_kind": "entries", "format": "markdown",
+        }
+        if not focused_reconciliation:
+            describe_args["group_by"] = "scadenza"
+        describe_pos = append_step("describe_entries", describe_args)
+        directory_pos = append_step("create_dirs", {
+            "paths": [result_dir], "parents": True, "exist_ok": False,
+            "client": "local",
+        })
+        append_step("write_files", {
+            "path": f"${{step{directory_pos}.results.0.path}}/{report_name}",
+            "content": f"${{step{describe_pos}.summary}}",
+            "mode": "fail_if_exists", "client": "local",
+        })
+        append_step("create_files_spreadsheet", {
+            "from_step": carrier_pos, "columns": sheet_columns,
+            "path": f"${{step{directory_pos}.results.0.path}}/{sheet_name}",
+            "title": sheet_title, "client": "local",
+        })
+        archive_pos = 0
+        if wants_archive:
+            artifacts_pos = append_step("find_files", {
+                "base_path": f"${{step{directory_pos}.results.0.path}}",
+                "patterns": [report_name, sheet_name], "recursive": False,
+                "client": "local",
+            })
+            archive_pos = append_step("compress_files", {
+                "from_step": artifacts_pos,
+                "dest": (f"${{step{directory_pos}.results.0.path}}/"
+                         "risultati_riconciliazione.zip"),
+                "format": "zip",
+            })
+        append_step("final_answer", {})
+        is_italian = bool(re.search(
+            r"\b(?:analizza|ultimi|individua|crea|cartella|foglio|non)\b",
+            ql))
+        if is_italian:
+            final_message = (
+                f"Completato. Risultati salvati in "
+                f"`${{step{directory_pos}.results.0.path}}`:\n\n"
+                f"- rapporto: `{report_name}`\n"
+                f"- foglio dati: `{sheet_name}` "
+                f"(${{step{carrier_pos}.count}} righe di dati)"
+            )
+            if archive_pos:
+                final_message += (
+                    f"\n- archivio: `${{step{archive_pos}.results.0.path}}`")
+        else:
+            final_message = (
+                f"Completed. Results saved in "
+                f"`${{step{directory_pos}.results.0.path}}`:\n\n"
+                f"- report: `{report_name}`\n"
+                f"- data spreadsheet: `{sheet_name}` "
+                f"(${{step{carrier_pos}.count}} data rows)"
+            )
+            if archive_pos:
+                final_message += (
+                    f"\n- archive: `${{step{archive_pos}.results.0.path}}`")
+        normalized = Framework(
+            steps=canonical,
+            fillers=dict(getattr(framework, "fillers", {}) or {}),
+            final_message=final_message,
+            runtime_step_cap=len(canonical),
+        )
+        if normalized.to_dict() != framework.to_dict():
+            log.info("[message_event_report] canonical pipeline applied: %s",
+                     [step.tool for step in canonical])
+        return normalized
+    except Exception as ex:
+        log.warning("normalize_message_event_report_pipeline noop: %r", ex)
+        return framework
+
+
+_FILTER_OPERATION_MARKERS = frozenset({
+    "dedup", "deduplicate", "deduplication", "logical_dedup",
+    "remove_duplicates", "unique", "distinct", "unico", "unica",
+    "unici", "uniche",
+})
+
+
+def _normalize_filter_operation_values(framework: Framework) -> Framework:
+    """Keep operations out of predicate slots.
+
+    ``filter_entries.kind`` describes an observed entry category; it is not an
+    operation selector.  Small planners occasionally emit ``kind='dedup'``
+    and then correctly add ``group_entries`` as the next transform.  Applying
+    that literal predicate erases the entire carrier before the real dedup.
+
+    This is a plan-algebra rule, independent of domain/query: when the
+    immediately following data transform is ``group_entries``, remove only
+    reserved operation markers from the predicate.  Legitimate categories and
+    every other filter criterion remain untouched.
+    """
+    steps = list(getattr(framework, "steps", None) or [])
+    changed = False
+    for index, step in enumerate(steps[:-1]):
+        if (step.tool or "") != "filter_entries" \
+                or (steps[index + 1].tool or "") != "group_entries":
+            continue
+        args = dict(step.args or {})
+        step_changed = False
+        raw = args.get("kind")
+        values = raw if isinstance(raw, list) else [raw]
+        kept = [value for value in values
+                if not (isinstance(value, str)
+                        and value.strip().casefold().replace("-", "_")
+                        in _FILTER_OPERATION_MARKERS)]
+        if len(kept) != len(values):
+            if not kept:
+                args.pop("kind", None)
+            else:
+                args["kind"] = kept if isinstance(raw, list) else kept[0]
+            step_changed = True
+        # The generic predicate form is another common encoding of the same
+        # planner error: ``where_field='url', where_value='unique'`` does not
+        # select unique URLs; it selects rows whose literal URL is "unique".
+        # Immediately before group_entries, remove that complete predicate
+        # pair while preserving every unrelated where_* criterion.
+        where_value = args.get("where_value")
+        if (isinstance(where_value, str)
+                and where_value.strip().casefold().replace("-", "_")
+                in _FILTER_OPERATION_MARKERS):
+            args.pop("where_value", None)
+            if not any(key in args for key in (
+                    "where_in", "where_not_in", "where_starts_with",
+                    "where_contains", "where_glob", "where_regex")):
+                args.pop("where_field", None)
+            step_changed = True
+        if not step_changed:
+            continue
+        step.args = args
+        changed = True
+    if changed:
+        log.info("[filter-operation] removed operation marker from "
+                 "filter_entries before group_entries")
+    return framework
+
+
+_CREATE_ONLY_REQUEST_RE = re.compile(
+    r"(?:\bnuov[aoe]\s+cartell\w*\b|\bnew\s+folder\b|"
+    r"\bnon\s+sovrascriv\w*\b|\bsenza\s+sovrascriv\w*\b|"
+    r"\bdo\s+not\s+overwrite\b|\bdon'?t\s+overwrite\b|"
+    r"\bwithout\s+overwrit\w*\b)",
+    re.IGNORECASE,
+)
+_ARTIFACT_SINK_TOOLS = frozenset({
+    "write_files", "write_files_doc", "write_files_spreadsheet",
+    "create_files_doc", "create_files_spreadsheet",
+})
+_PATH_ARG_KEYS = frozenset({
+    "path", "paths", "dest", "destination", "output_path",
+    "spreadsheet_id", "path_template",
+})
+
+
+def _enforce_create_only_artifact_policy(
+        framework: Framework, query: str, catalog: Optional[list]) -> Framework:
+    """Compile a user-level no-overwrite constraint into every file sink.
+
+    The rule is structural and domain-neutral: a framework containing a
+    directory plus durable file sinks gets one per-turn directory, collision
+    refusal and create-only spreadsheet semantics.  It never runs unless the
+    query explicitly asks for a new folder or forbids overwrite.
+    """
+    if not _CREATE_ONLY_REQUEST_RE.search(query or ""):
+        return framework
+    steps = list(getattr(framework, "steps", None) or [])
+    directory_positions = [i for i, step in enumerate(steps)
+                           if (step.tool or "") == "create_dirs"]
+    if not directory_positions or not any(
+            (step.tool or "") in _ARTIFACT_SINK_TOOLS for step in steps):
+        return framework
+    names = catalog_names(catalog)
+    root_rewrites: list[tuple[str, str]] = []
+    primary_directory_pos = directory_positions[0] + 1
+    for index in directory_positions:
+        step = steps[index]
+        args = dict(step.args or {})
+        paths = args.get("paths")
+        if not isinstance(paths, list) or not paths:
+            continue
+        new_paths = []
+        for value in paths:
+            if (not isinstance(value, str) or not value.strip()
+                    or "${RUNTIME:turn_id}" in value):
+                new_paths.append(value)
+                continue
+            old = value.rstrip("/\\")
+            new = old + "/Run_${RUNTIME:turn_id}"
+            root_rewrites.append((old, new))
+            new_paths.append(new)
+        args["paths"] = new_paths
+        args["exist_ok"] = False
+        args.setdefault("parents", True)
+        step.args = args
+
+    def _rewrite_path(value):
+        if not isinstance(value, str):
+            return value
+        for old, new in root_rewrites:
+            if value == old:
+                return new
+            if value.startswith(old + "/") or value.startswith(old + "\\"):
+                return new + value[len(old):]
+        return value
+
+    for step in steps:
+        tool = step.tool or ""
+        if tool not in _ARTIFACT_SINK_TOOLS:
+            continue
+        args = dict(step.args or {})
+        for key in _PATH_ARG_KEYS:
+            if key in args:
+                if isinstance(args[key], list):
+                    args[key] = [_rewrite_path(value) for value in args[key]]
+                else:
+                    args[key] = _rewrite_path(args[key])
+        if tool in {"write_files", "write_files_doc"}:
+            args["mode"] = "fail_if_exists"
+        elif (tool == "write_files_spreadsheet"
+              and "create_files_spreadsheet" in names):
+            step.tool = "create_files_spreadsheet"
+            if args.get("spreadsheet_id") and not args.get("path"):
+                args["path"] = args.pop("spreadsheet_id")
+            args.pop("mode", None)
+            args.pop("range", None)
+        if (step.tool == "create_files_spreadsheet"
+                and (args.get("client") or "local") == "local"
+                and not args.get("path")):
+            # A local create-only sheet without an explicit filename belongs
+            # to the declared output directory, not the process-wide default
+            # spreadsheet folder.  The stable generic basename is safe because
+            # the parent is unique per turn and collision-refusing.
+            args["path"] = (
+                f"${{step{primary_directory_pos}.results.0.path}}/dati.xlsx")
+            args.setdefault("title", "dati")
+        step.args = args
+    log.info("[create-only] per-turn directory and collision policy applied")
+    return framework
+
+
+_ENTRY_CARRIER_TRANSFORMS = frozenset({
+    "filter_entries", "sort_entries", "group_entries", "classify_entries",
+    "compute_entries", "compare_entries",
+})
+_TABULAR_SINKS = frozenset({
+    "create_files_spreadsheet", "write_files_spreadsheet",
+})
+
+
+def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
+    """Backward-propagate spreadsheet columns to their extract producer.
+
+    A pipeline is one typed dataflow: columns required by a durable sink are
+    part of the upstream extraction contract.  Letting each step invent its
+    own field list caused silent gaps (the live sheet requested origin/final
+    URL/confidence while extract emitted none).  This pass follows explicit or
+    adjacent entry carriers and unions sink columns into ``extract.fields``.
+    It is independent of domain and never removes planner fields.
+    """
+    steps = list(getattr(framework, "steps", None) or [])
+    changed = False
+    for extract_index, extract in enumerate(steps):
+        if (extract.tool or "") != "extract_entries":
+            continue
+        lineage = {extract_index + 1}
+        last_carrier = extract_index + 1
+        required: list[str] = []
+        for index in range(extract_index + 1, len(steps)):
+            step = steps[index]
+            tool = step.tool or ""
+            args = dict(step.args or {})
+            source = args.get("from_step")
+            consumes_lineage = (
+                isinstance(source, int) and source in lineage
+            ) or (source is None and last_carrier in lineage)
+            if tool in _ENTRY_CARRIER_TRANSFORMS and consumes_lineage:
+                lineage.add(index + 1)
+                last_carrier = index + 1
+                continue
+            if tool in _TABULAR_SINKS and consumes_lineage:
+                columns = args.get("columns")
+                if isinstance(columns, list):
+                    for column in columns:
+                        if isinstance(column, str) and column.strip() \
+                                and column not in required:
+                            required.append(column)
+        if not required:
+            continue
+        args = dict(extract.args or {})
+        fields = list(args.get("fields") or [])
+        merged = fields + [field for field in required if field not in fields]
+        if merged != fields:
+            args["fields"] = merged
+            extract.args = args
+            changed = True
+    if changed:
+        log.info("[sink-schema] propagated tabular columns to extract_entries")
+    return framework
+
+
+def _enforce_complete_sink_cardinality(
+        framework: Framework, catalog: Optional[list]) -> Framework:
+    """Lift presentation-only caps along a complete consumer dataflow.
+
+    The contract is entirely declarative:
+
+    * a consumer payload property declares ``source_cardinality="complete"``;
+    * an upstream producer argument declares
+      ``pipeline_role="presentation_limit"`` and ``complete_value``.
+
+    If the planner did not explicitly set that producer argument, this guard
+    applies its complete value.  Explicit user/planner limits always win.  The
+    lineage is followed through ordinary ``from_step``/``from_steps`` links,
+    so neither executor names nor query wording are encoded here.  Running the
+    guard on L0/L1 cache hits is safe and idempotent: it changes only the
+    per-run framework copy, after cache selection.
+    """
+    steps = list(getattr(framework, "steps", None) or [])
+    schema_by_name: dict[str, dict] = {}
+    for item in catalog or []:
+        if isinstance(item, dict):
+            name = item.get("name")
+            schema = item.get("args_schema") or item.get("args")
+        else:
+            name = getattr(item, "name", None)
+            schema = getattr(item, "args_schema", None)
+        if isinstance(name, str) and isinstance(schema, dict):
+            schema_by_name[name] = schema
+
+    changed: list[tuple[str, str]] = []
+
+    def _sources(args: dict) -> list[int]:
+        out: list[int] = []
+        one = args.get("from_step")
+        if isinstance(one, int) and not isinstance(one, bool):
+            out.append(one)
+        many = args.get("from_steps")
+        if isinstance(many, list):
+            out.extend(value for value in many
+                       if isinstance(value, int) and not isinstance(value, bool))
+        return list(dict.fromkeys(out))
+
+    for sink in steps:
+        sink_schema = schema_by_name.get(sink.tool or "") or {}
+        sink_props = sink_schema.get("properties") or {}
+        if not isinstance(sink_props, dict):
+            continue
+        requires_complete_source = any(
+            isinstance(spec, dict)
+            and spec.get("source_cardinality") == "complete"
+            for spec in sink_props.values()
+        )
+        if not requires_complete_source:
+            continue
+
+        pending = _sources(dict(sink.args or {}))
+        visited: set[int] = set()
+        while pending:
+            position = pending.pop()
+            if position in visited or not 1 <= position <= len(steps):
+                continue
+            visited.add(position)
+            producer = steps[position - 1]
+            producer_schema = schema_by_name.get(producer.tool or "") or {}
+            producer_props = producer_schema.get("properties") or {}
+            if isinstance(producer_props, dict):
+                args = dict(producer.args or {})
+                for arg_name, spec in producer_props.items():
+                    if (not isinstance(spec, dict)
+                            or spec.get("pipeline_role") != "presentation_limit"
+                            or "complete_value" not in spec
+                            or arg_name in args):
+                        continue
+                    args[arg_name] = spec["complete_value"]
+                    changed.append((producer.tool or "", arg_name))
+                producer.args = args
+            pending.extend(_sources(dict(producer.args or {})))
+
+    if changed:
+        log.info("[complete-cardinality] lifted presentation caps: %s",
+                 ", ".join(f"{tool}.{arg}" for tool, arg in changed))
+    return framework
+
+
+def _normalize_grouped_artifact_templates(
+        framework: Framework, query: str) -> Framework:
+    """Resolve planner-level virtual group placeholders before execution.
+
+    ``group_entries`` is merge/dedup, while the presentation clause
+    ``group by X`` is represented by ordering metadata.  A planner may still
+    emit a report sink with the virtual ``group_key`` and the compact wildcard
+    ``${entries.*.field}``.  Resolve the former only when the closed ordering
+    parser finds a group clause and an upstream structured schema contains an
+    exact/declared alias for that field.  This is domain-neutral, idempotent,
+    and refuses to guess when the schema does not prove the key.
+    """
+    try:
+        from ordering_clause import detect, resolve_field
+
+        clause = detect(query or "")
+        if not clause or clause.get("mode") != "group":
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        declared_fields: list[str] = []
+        for step in steps:
+            if (getattr(step, "tool", "") or "") != "extract_entries":
+                continue
+            fields = (getattr(step, "args", None) or {}).get("fields") or []
+            for field in fields:
+                if isinstance(field, str) and field not in declared_fields:
+                    declared_fields.append(field)
+        if not declared_fields:
+            return framework
+        group_field = resolve_field(
+            clause.get("key_text") or "",
+            [{field: None for field in declared_fields}],
+        )
+        if not group_field:
+            return framework
+
+        changed = False
+        for step in steps:
+            if (getattr(step, "tool", "") or "") != "write_files":
+                continue
+            args = dict(getattr(step, "args", None) or {})
+            for key in ("path_template", "content_template"):
+                value = args.get(key)
+                if not isinstance(value, str):
+                    continue
+                normalized = value
+                normalized = re.sub(
+                    r"\$\{\s*entries\.\*\.(\w+)\s*\}",
+                    r"${entry.entries.*.\1}", normalized)
+                normalized = re.sub(
+                    r"\$\{\s*(?:entry\.)?group_key\s*\}",
+                    "${entry." + group_field + "}", normalized)
+                normalized = normalized.replace(
+                    "{group_key}", "{" + group_field + "}")
+                if normalized != value:
+                    args[key] = normalized
+                    changed = True
+            step.args = args
+        if changed:
+            log.info("[grouped-artifact] group_key risolto su %s", group_field)
+        return framework
+    except Exception as ex:  # noqa: BLE001 — conservative no-op
+        log.warning("normalize_grouped_artifact_templates noop: %r", ex)
+        return framework
 
 
 @dataclass(frozen=True)
@@ -3118,6 +5292,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"catalog"}),
           rationale="FASE 3.1 provenienza: backstop unico sul confine LLM→pipeline — drop chiavi fuori-schema e leak runtime_resolved, enum case-normalize o drop (mai snap). PRIMO per costruzione: tocca solo l'output grezzo del proposer, i guard a valle scrivono dopo",
           adr="0177"),
+    Guard("normalize_filter_operation_values",
+          lambda fw, i, q, c: _normalize_filter_operation_values(fw),
+          scope="structure", writes=frozenset({"args.kind"}),
+          reads=frozenset({"step.tool", "args.kind"}),
+          rationale="un valore-operazione (dedup) non è una categoria di filter_entries; prima del group dedup viene rimosso senza toccare altri predicati",
+          adr="0177"),
     Guard("overwrite_phantom_install_args",
           lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q),
           scope="structure", writes=frozenset({"args.base_path", "args.path"}),
@@ -3130,11 +5310,24 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"intent", "catalog"}),
           rationale="allinea l'oggetto degli step all'intent (files↔dirs equivalence)",
           adr="0177"),
+    Guard("route_text_web_image_search",
+          _route_text_web_image_search,
+          scope="routing", writes=frozenset({"step", "args.queries"}),
+          reads=frozenset({"intent", "query", "step.tool"}),
+          rationale="separa text→web da image→Vision: una richiesta web image-only senza sorgente/reverse non puo usare il corpus locale",
+          adr="image-web-modes"),
     Guard("enforce_missing_clauses",
           lambda fw, i, q, c: _enforce_missing_clauses(fw, i, q, c),
           scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "catalog", "query"}),
           rationale="appende il produttore per un verbo RICHIESTO scoperto (usa _align_foreign_producers_v3 come helper interno)",
+          adr="0177"),
+    Guard("align_strong_affinity_producers",
+          _align_strong_affinity_producers,
+          v3_only=True, scope="routing",
+          writes=frozenset({"step", "step.tool", "args.*"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="riallinea un produttore solo su affinity composta univoca, verbo compatibile e output provato da naming grammar/schema tipizzato; prima dell'enforce object-level per evitare produttori ridondanti",
           adr="0177"),
     Guard("enforce_missing_objects",
           lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c),
@@ -3190,6 +5383,14 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"clause", "catalog"}),
           rationale="riempie gli args deducibili dal chunk della clausola (pattern/date/store); NON sovrascrive l'LLM. È LO STAGE clause-derive (esito PROV.3 6/7: già ben costruito, count-cap nidificati; non sussumere)",
           adr="0177"),
+    Guard("normalize_result_folder_exclusion",
+          lambda fw, i, q, c: _normalize_result_folder_exclusion(fw, q, c),
+          scope="per-clause",
+          writes=frozenset({"args.name_regex", "args.where_field",
+                            "args.where_regex", "args.from_step"}),
+          reads=frozenset({"query", "step.tool"}),
+          rationale="esclusione esplicita Risultati_Metnos_*: il predicato deve operare sul path completo, mai sul solo nome file; ripara anche alterazioni ortografiche del token",
+          adr="0177"),
     Guard("resolve_store_field_refs",
           lambda fw, i, q, c: _resolve_store_field_refs(fw),
           v3_only=True, scope="structure", writes=frozenset({"args.*"}),
@@ -3237,6 +5438,53 @@ GUARD_PIPELINE: tuple = (
           scope="routing", writes=frozenset({"step.tool", "args.*"}),
           reads=frozenset({"query", "catalog"}),
           rationale="find_files(base_path) senza selettore → list_dirs (tool-choice, non args)",
+          adr="0177"),
+    Guard("normalize_document_report_pipeline",
+          _normalize_document_report_pipeline,
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="workflow documentale find/extract/spreadsheet/archive -> una dataflow create-only con dedup, audit e output sul target",
+          adr="0177"),
+    Guard("normalize_multisource_entity_report_pipeline",
+          _normalize_multisource_entity_report_pipeline,
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="workflow con almeno tre sorgenti fra file/mail/calendario/contatti -> estrazioni indipendenti, schema comune, riconciliazione e sink create-only alimentati dallo stesso carrier",
+          adr="0177"),
+    Guard("normalize_message_event_report_pipeline",
+          _normalize_message_event_report_pipeline,
+          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="workflow email+calendario -> schema comune, batching bounded, dedup/conflitti e due output create-only",
+          adr="0177"),
+    Guard("propagate_sink_schema_to_extract",
+          lambda fw, i, q, c: _propagate_sink_schema_to_extract(fw),
+          scope="cross-clause", writes=frozenset({"args.fields"}),
+          reads=frozenset({"step.tool", "args.from_step", "args.columns"}),
+          rationale="schema dataflow: le colonne richieste dal sink tabellare fanno parte del contratto extract a monte, attraverso trasformazioni entries pure",
+          adr="0177"),
+    Guard("enforce_complete_sink_cardinality",
+          lambda fw, i, q, c: _enforce_complete_sink_cardinality(fw, c),
+          scope="cross-clause",
+          writes=frozenset({"args.@presentation_limit"}),
+          reads=frozenset({"catalog", "step.tool", "args.from_step",
+                           "args.from_steps"}),
+          rationale="contratto dataflow dichiarativo: un sink completo disattiva soltanto i cap di presentazione impliciti lungo la propria lineage; i limiti espliciti restano intatti",
+          adr="0177"),
+    Guard("normalize_grouped_artifact_templates",
+          lambda fw, i, q, c: _normalize_grouped_artifact_templates(fw, q),
+          scope="cross-clause",
+          writes=frozenset({"args.path_template", "args.content_template"}),
+          reads=frozenset({"query", "args.fields"}),
+          rationale="risolve il placeholder virtuale group_key dalla clausola group-by e dallo schema strutturato, senza inferenze di dominio",
+          adr="0177"),
+    Guard("enforce_create_only_artifact_policy",
+          lambda fw, i, q, c: _enforce_create_only_artifact_policy(fw, q, c),
+          scope="cross-clause",
+          writes=frozenset({"step.tool", "args.path", "args.paths",
+                            "args.mode", "args.exist_ok"}),
+          reads=frozenset({"query", "catalog", "step.tool"}),
+          rationale="vincolo no-overwrite uniforme: cartella per-turno, collision refusal e sink spreadsheet create-only per ogni dominio",
           adr="0177"),
 )
 
@@ -3310,7 +5558,8 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     if is_output_policy_enabled():
         try:
             from output_policy import normalize_terminal
-            framework, _op_info = normalize_terminal(framework, intent, query)
+            framework, _op_info = normalize_terminal(
+                framework, intent, query, catalog=catalog)
             if _op_info.get("action") not in ("", "noop"):
                 log.info("[output_policy] mode=%s action=%s producer-kind=%s",
                          _op_info.get("mode"), _op_info.get("action"),
@@ -3323,6 +5572,10 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     # consent-gate (20/6): turno schedulato + pipeline outbound (send_*) →
     # get_approval prima del send. Dopo l'ordinamento, prima dell'esecuzione.
     framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
+    # Data-egress gate: un capability manifest puo' dichiarare quali argomenti
+    # vengono inviati a un servizio esterno. Se valorizzati, consenso JIT.
+    framework = _insert_outbound_data_gate(
+        framework, query, runtime_ctx, catalog)
     # mass-mutation gate (6/7): delete/move di massa → conferma umana.
     framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
     return framework
@@ -3412,6 +5665,89 @@ def _insert_consent_gate_if_scheduled(framework, query: str, runtime_ctx):
         return framework
 
 
+def _insert_outbound_data_gate(framework, query: str, runtime_ctx, catalog):
+    """Inserisce consenso JIT per dati locali dichiarati come outbound.
+
+    Il contratto e' nel manifest, sulla capability effettiva:
+    ``outbound_args=["local_context", ...]``. Il runtime non interpreta il
+    payload e non conosce executor specifici; verifica solo che almeno un
+    carrier dichiarato sia valorizzato. La ripresa usa il gate-resume comune.
+    Executor legacy/non annotati restano invariati.
+    """
+    saw_outbound_contract = False
+    try:
+        if (runtime_ctx or {}).get("_gate_approved"):
+            return framework
+        steps = list(getattr(framework, "steps", None) or [])
+        cat_by_name = {getattr(item, "name", None): item
+                       for item in (catalog or [])}
+        target_idx = None
+        target_tool = ""
+        outbound_args: list[str] = []
+        for idx, step in enumerate(steps):
+            executor = cat_by_name.get(step.tool or "")
+            if executor is None:
+                continue
+            schema = getattr(executor, "args_schema", None) or {}
+            args = step.args if isinstance(step.args, dict) else {}
+            raw_capabilities = getattr(executor, "capabilities", None) or []
+            if any(isinstance(capability, dict)
+                   and bool(capability.get("outbound_args"))
+                   for capability in raw_capabilities):
+                saw_outbound_contract = True
+            try:
+                from capabilities import effective_capabilities
+                capabilities = effective_capabilities(
+                    raw_capabilities, schema, args)
+            except Exception:
+                capabilities = raw_capabilities
+            declared = []
+            for capability in capabilities:
+                if not isinstance(capability, dict):
+                    continue
+                for arg_name in capability.get("outbound_args") or []:
+                    if (isinstance(arg_name, str) and arg_name in args
+                            and bool(args.get(arg_name))
+                            and arg_name not in declared):
+                        declared.append(arg_name)
+            if declared:
+                target_idx, target_tool, outbound_args = idx, step.tool, declared
+                break
+        if target_idx is None:
+            return framework
+        # Un gate gia' posto PRIMA del trasferimento copre la stessa ripresa.
+        if any((step.tool or "") == "get_approval"
+               for step in steps[:target_idx]):
+            return framework
+        from messages import get as _msg_get
+        from .types import StepSpec
+        rc = runtime_ctx or {}
+        gate = StepSpec(tool="get_approval", args={
+            "prompt": _msg_get(
+                "MSG_CONSENT_GATE_EXTERNAL_CONTEXT", tool=target_tool),
+            "on_approve": {"tool": "final_answer", "args": {}},
+            "timeout_s": 3600,
+            "channel": rc.get("channel") or "",
+            "actor": rc.get("actor") or "",
+        })
+        framework.steps = steps[:target_idx] + [gate] + steps[target_idx:]
+        log.info(
+            "[outbound_data_gate] consenso inserito prima di %s per args=%s",
+            target_tool, outbound_args,
+        )
+        return framework
+    except Exception as ex:  # noqa: BLE001 — fail-safe below
+        # Un'annotazione outbound non deve degradare fail-open o diventare un
+        # framework vuoto presentato come successo. Per i contratti annotati
+        # fermiamo il turno PRIMA dell'invio; i legacy restano invariati.
+        if saw_outbound_contract:
+            raise RuntimeError(
+                "outbound data gate preflight failed; external call blocked"
+            ) from ex
+        log.warning("[outbound_data_gate] legacy noop: %r", ex)
+        return framework
+
+
 # Verbi fs DISTRUTTIVI/RILOCANTI (rimuovono o spostano dati esistenti): una
 # operazione di massa su questi merita conferma umana. write/create sono
 # additivi → fuori (primo taglio, bug live 1ba8e2c4 6/7 era una delete).
@@ -3493,7 +5829,7 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
         from messages import get as _msg_get
         from .types import StepSpec
         rc = runtime_ctx or {}
-        where = rc.get("target_device") or _msg_get("MSG_LOCAL_HERE")
+        target_device = rc.get("target_device")
         for idx, s in enumerate(steps):
             verb = (s.tool or "").split("_", 1)[0]
             if verb not in _MASS_MUTATION_VERBS:
@@ -3536,8 +5872,17 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
                         continue  # non contabile, o sotto soglia
                     guard_count, n_display = n_inline, n_inline
             action = _msg_get(_MASS_ACTION_KEY.get(verb, "MSG_ACTION_DELETE"))
-            prompt = _msg_get("MSG_CONSENT_GATE_MASS_MUTATION",
-                              action=action, n=n_display, where=where)
+            if target_device:
+                prompt = _msg_get(
+                    "MSG_CONSENT_GATE_MASS_MUTATION",
+                    action=action, n=n_display, where=target_device)
+            else:
+                # Nessuna collocazione inventata: gli elementi possono vivere
+                # in una mailbox, in un servizio remoto o sul server. Il
+                # template senza luogo è universale e resta interamente i18n.
+                prompt = _msg_get(
+                    "MSG_CONSENT_GATE_MASS_MUTATION_GENERIC",
+                    action=action, n=n_display)
             gate = StepSpec(tool="get_approval", args={
                 "prompt": prompt,
                 "on_approve": {"tool": "final_answer", "args": {}},
@@ -3638,7 +5983,8 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
     sender = f"{channel}:{actor}" if channel else actor
     try:
         import dialog_pending as _dp
-        st = _dp.load_pending(sender, did)
+        st = _dp.load_pending(
+            sender, did, owner_user_id=str(rc.get("owner_user_id") or ""))
         if not st:
             return
         oc = st.get("on_complete") or {}
@@ -3680,6 +6026,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                 })
             st["on_complete"] = {
                 "type": "resume_executor_gate_tail",
+                "owner_user_id": st.get("owner_user_id"),
                 "gate_approve_value": oc.get("approve_value", "approve"),
                 "gate_on_approve": oc.get("on_approve"),
                 "gate_on_reject": oc.get("on_reject"),
@@ -3696,6 +6043,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
 
         st["on_complete"] = {
             "type": "resume_engine_gate",
+            "owner_user_id": st.get("owner_user_id"),
             # Query RAW dell'utente (CON la destinazione «su pc-X»): la query
             # di dispatch è già strippata dell'adjunct — rilanciarla farebbe
             # dipendere l'host di esecuzione dallo sticky target (bug live
@@ -3784,6 +6132,8 @@ def _recompose_faceless_upload(run: RunResult) -> None:
 
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
+              submit_executor_cb: Optional[Callable] = None,
+              can_parallelize_cb: Optional[Callable] = None,
               llm_call_wise: Optional[Callable] = None,
               llm_call_fast: Optional[Callable] = None,
               vaglio_judge: Optional[Callable] = None,
@@ -3839,7 +6189,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # con prompt 5-10× più piccolo → -30-40% latency Mētis.
     # La costruzione e' ESTRATTA in routing_pool.build_routing_pool (fix B3,
     # 9/6/2026): funzione PURA condivisa col guard anti-regressione
-    # bench/routing_subset_bench.py, cosi' il bench esercita ESATTAMENTE il
+    # tests/benchmarks/routing_subset_bench.py, cosi' il bench esercita ESATTAMENTE il
     # pool di produzione (k da env, compound per-clausola, universal-helpers,
     # companions) e non una copia semplificata che diverge in silenzio.
     pool_names = build_routing_pool(query, intent, catalog)
@@ -3856,6 +6206,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
 
     executor = Executor(
         invoke_executor=invoke_executor_cb,
+        submit_executor=submit_executor_cb,
+        can_parallelize=can_parallelize_cb,
         llm_call_fast=llm_call_fast,
         vaglio_judge=vaglio_judge,
         vaglio_guard=vaglio_guard,
@@ -3970,38 +6322,24 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 fp_hit = None
         # GARANZIA (Roberto 15/6): mai eseguire un piano L0 con step mutante i
         # cui valori-arg discriminanti non sono nella query corrente (re-plan).
-        if fp_hit is not None and not _mutating_args_grounded(fp_hit.framework, query):
+        _fp_ungrounded = (_ungrounded_mutating_args(fp_hit.framework, query)
+                          if fp_hit is not None else [])
+        if fp_hit is not None and _fp_ungrounded:
             log.info("[L0 fastpath] REJECT mis-serve: step mutante con valore "
-                     "non presente nella query → fall-through/re-plan")
+                     "non presente nella query → fall-through/re-plan "
+                     "evidence=%s", _fp_ungrounded[:5])
             fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
                           fp_hit.match_kind, fp_hit.similarity,
                           fp_hit.canonical_text)
-            # Clausola «ordina/raggruppa per X» della query CORRENTE: il
-            # piano cachato è un template — la clausola si ri-applica a
-            # ogni esecuzione (T39 12/6/2026: il piano memoizzato ignorava
-            # «ordinate per mailbox»; self-healing senza invalidare la riga).
-            fp_hit.framework = _apply_ordering_clause(
-                fp_hit.framework, query, catalog)
-            # D3-B (18/6): i guard deterministici (align/enforce) girano anche
-            # sugli HIT cache — un piano L0 compound stale/read-only (clausola
-            # write droppata) verrebbe altrimenti eseguito BYPASSANDO i correttori
-            # (finora path L3-only). Idempotente + no-op su mono. No LLM (il
-            # re-propose dei dropped resta L3). Self-healing: _maybe_record_fastpath
-            # registra il piano corretto.
-            fp_hit.framework = _apply_deterministic_structure_guards(
-                fp_hit.framework, intent, query, catalog)
-            # consent-gate (20/6): un piano cachato (gate-less, anche post
-            # approvazione) NON deve postare in un turno SCHEDULATO senza
-            # consenso → reinserisci il gate anche sull'hit L0. Stessa difesa
-            # D3-B (guard deterministici sugli hit cache). No-op se non
-            # schedulato / nessun send_*.
-            fp_hit.framework = _insert_consent_gate_if_scheduled(
-                fp_hit.framework, query, runtime_ctx)
-            fp_hit.framework = _insert_mass_mutation_gate(
-                fp_hit.framework, query, runtime_ctx)
+            # L0 usa la STESSA finalizzazione di L3/recovery: guard, policy di
+            # output, ordinamento e gate. La vecchia sequenza duplicata non
+            # applicava output_policy, quindi un framework cached con
+            # `get_now -> @count` continuava a rispondere “Totale: 0”.
+            fp_hit.framework = _finalize_framework_for_run(
+                fp_hit.framework, intent, query, catalog, runtime_ctx)
             run = executor.run(fp_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -4078,30 +6416,20 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # GARANZIA (Roberto 15/6): stessa invariante di L0 — un piano L1 con step
         # mutante i cui valori-arg non sono nella query corrente NON va eseguito
         # (un autopath con valore baked servirebbe il target sbagliato).
-        if ap_hit is not None and not _mutating_args_grounded(ap_hit.framework, query):
+        _ap_ungrounded = (_ungrounded_mutating_args(ap_hit.framework, query)
+                          if ap_hit is not None else [])
+        if ap_hit is not None and _ap_ungrounded:
             log.info("[L1 autopath] REJECT mis-serve: step mutante con valore "
-                     "non presente nella query → fall-through a L3 (re-plan)")
+                     "non presente nella query → fall-through a L3 (re-plan) "
+                     "evidence=%s", _ap_ungrounded[:5])
             ap_hit = None
         if ap_hit is not None:
             if verbose:
                 log.info("[L1 autopath] hit autopath=%s uses=%d", ap_hit.autopath_id, ap_hit.uses)
-            # Clausola di ordinamento della query corrente (vedi sopra):
-            # la skill di cluster è un template, la clausola NON vi è
-            # incorporata (causa-radice T39: l'hit L1 della famiglia
-            # read|messages ignorava «ordinate per mailbox»).
-            ap_hit.framework = _apply_ordering_clause(
-                ap_hit.framework, query, catalog)
-            # D3-B (18/6): stessa difesa di L0 — i guard deterministici girano
-            # anche sull'hit L1 (autopath generalizzato) prima dell'execute.
-            ap_hit.framework = _apply_deterministic_structure_guards(
-                ap_hit.framework, intent, query, catalog)
-            # consent-gate (20/6): stessa difesa di L0 — reinserisci il gate
-            # anche sull'hit L1 (autopath generalizzato) per i turni schedulati
-            # outbound. No-op se non schedulato / nessun send_*.
-            ap_hit.framework = _insert_consent_gate_if_scheduled(
-                ap_hit.framework, query, runtime_ctx)
-            ap_hit.framework = _insert_mass_mutation_gate(
-                ap_hit.framework, query, runtime_ctx)
+            # L1, come L0, passa dall'unica pipeline pre-esecuzione. Evita
+            # drift fra piani cached e piani freschi su presentazione e gate.
+            ap_hit.framework = _finalize_framework_for_run(
+                ap_hit.framework, intent, query, catalog, runtime_ctx)
             run = executor.run(ap_hit.framework, query=query,
                                 runtime_ctx=runtime_ctx,
                                 remediate_args_cb=remediate_args_cb,
@@ -4419,6 +6747,24 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 break
         if _pm:
             from messages import get as _pmsg
+            if str(run.aborted_reason or "").startswith("cap_steps"):
+                # Il cap dopo una mutazione create-only non è un
+                # completamento. Il vecchio ramo partial_mutation occultava
+                # gli artefatti a valle mai eseguiti.
+                _collected = 0
+                for _s in reversed(run.steps or []):
+                    _r = _s.result if isinstance(_s.result, dict) else {}
+                    if isinstance(_r.get("entries"), list):
+                        _collected = len(_r["entries"])
+                        break
+                return DispatchResult(
+                    final_text=_pmsg(
+                        "MSG_SEARCH_PARTIAL_OR_INTERRUPTED", n=_collected),
+                    final_kind="answer",
+                    match_source="partial_interrupted",
+                    framework_hash=run.framework_hash,
+                    elapsed_ms=int((time.time() - t_start) * 1000),
+                    run=run, framework=framework, error_class=err_class)
             return DispatchResult(
                 final_text=_pmsg("MSG_DEGENERATE_FINAL_MUTATIONS", n=_pm),
                 final_kind="answer", match_source="partial_mutation",

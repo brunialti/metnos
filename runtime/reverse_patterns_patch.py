@@ -41,6 +41,7 @@ from __future__ import annotations
 # Estensibile: ogni nuova famiglia (es. files_remote, tasks, contacts)
 # aggiunge una riga qui invece di un nuovo pattern.
 _OBJECT_REGISTRY = {
+    "calendars": {"singular": "calendar", "scope": None},
     "events":   {"singular": "event",   "scope": "calendar_id"},
     "messages": {"singular": "message", "scope": "folder"},
     "contacts": {"singular": "contact", "scope": "address_book_id"},
@@ -133,6 +134,12 @@ def build_undo_calls(pattern_name, results):
         ids = list(undo_meta["ids"])
         # Nessuno scope-grouping disponibile da _undo.ids: tutto in un gruppo.
         args = {ids_field: ids}
+        scope = undo_meta.get("scope")
+        if isinstance(scope, dict):
+            # Scope JIT emesso dal backend firmato (es. provider/client). Non
+            # viene ricostruito in seguito e non proviene dal planner.
+            args.update({key: value for key, value in scope.items()
+                         if isinstance(key, str) and not key.startswith("_")})
         return [{"executor": executor, "args": args}], None
 
     rows, err = _validate_undo_blob_with_fallback(results, id_field, scope_field)

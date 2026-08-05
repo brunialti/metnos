@@ -1,5 +1,5 @@
 {% extends "base_bare.html" %}
-{% block title %}{{ title|e }} — Metnos dialog{% endblock %}
+{% block title %}{{ msg("MSG_CHAT_DIALOG_PAGE_TITLE", title=title) }}{% endblock %}
 {% block body %}
 <div class="section">
   <h2>{{ title|e }}</h2>
@@ -7,11 +7,11 @@
   <p class="muted">{{ description|e }}</p>
   {% endif %}
   <p class="muted" style="font-size:.78rem;overflow-wrap:anywhere;">
-    {% if origin_turn_id %}turn_id: <code>{{ origin_turn_id|e }}</code> · {% endif %}
-    dialog_id: <code>{{ dialog_id|e }}</code>
+    {% if origin_turn_id %}{{ msg("MSG_CHAT_DIALOG_TURN_ID_LABEL") }} <code>{{ origin_turn_id|e }}</code> · {% endif %}
+    {{ msg("MSG_CHAT_DIALOG_ID_LABEL") }} <code>{{ dialog_id|e }}</code>
   </p>
 
-  <form method="post" action="/agent/dialog/{{ dialog_id }}/submit"
+  <form method="post" action="/agent/dialog/{{ dialog_id }}/submit{{ dialog_cap_query|e }}"
         data-dialog-id="{{ dialog_id|e }}" data-turn-id="{{ origin_turn_id|e }}"
         autocomplete="off" style="display:flex;flex-direction:column;gap:.8rem;">
     {% for step in dialog %}
@@ -19,7 +19,7 @@
       {% set kind = step.schema.kind %}
       <label for="{{ var_id }}" style="display:flex;flex-direction:column;gap:.2rem;">
         <span><strong>{{ step.prompt|linkify }}</strong>
-          {% if step.optional %}<span class="muted">(opzionale)</span>{% endif %}
+          {% if step.optional %}<span class="muted">{{ msg("MSG_CHAT_DIALOG_OPTIONAL") }}</span>{% endif %}
         </span>
 
         {% if kind == "text" or kind == "file_path" %}
@@ -37,9 +37,9 @@
         {% elif kind == "yes_no" %}
           <span>
             <label><input type="radio" name="{{ step.var }}" value="yes"
-                          {% if step.default in (true, "yes", "si", "sì") %}checked{% endif %}> Sì</label>
+                          {% if step.default in (true, "yes", "si", "sì") %}checked{% endif %}> {{ msg("MSG_BTN_YES") }}</label>
             <label style="margin-left:1rem;"><input type="radio" name="{{ step.var }}" value="no"
-                          {% if step.default in (false, "no") %}checked{% endif %}> No</label>
+                          {% if step.default in (false, "no") %}checked{% endif %}> {{ msg("MSG_BTN_NO") }}</label>
           </span>
 
         {% elif kind == "choice" %}
@@ -65,7 +65,7 @@
           {% else %}
             <select id="{{ var_id }}" name="{{ step.var }}"
                     {% if not step.optional %}required{% endif %}>
-              {% if step.optional %}<option value="">— scegli —</option>{% endif %}
+              {% if step.optional %}<option value="">{{ msg("MSG_CHAT_DIALOG_CHOOSE") }}</option>{% endif %}
               {% for c in step.schema.choices %}
                 {% set cval = c.value if c is mapping else c %}
                 {% set clab = (c.label or c.value) if c is mapping else c %}
@@ -78,8 +78,8 @@
         {% elif kind == "choice_with_preview" %}
           {% if step.schema.context_image_path %}
             <span style="display:block;margin:0 0 .6rem 0;">
-              <img src="/agent/dialog/{{ dialog_id }}/context/{{ loop.index0 }}"
-                   alt="foto"
+              <img src="/agent/dialog/{{ dialog_id }}/context/{{ loop.index0 }}{{ dialog_cap_query|e }}"
+                   alt="{{ msg('MSG_CHAT_DIALOG_CONTEXT_IMAGE_ALT') }}"
                    style="max-height:240px;max-width:100%;object-fit:contain;
                           border:1px solid var(--border);border-radius:4px;
                           background:#222;display:block;"
@@ -98,7 +98,7 @@
                        value="{{ opt.value|e }}"
                        {% if not step.optional %}required{% endif %}
                        {% if step.default == opt.value %}checked{% endif %}>
-                <img src="/agent/dialog/{{ dialog_id }}/preview/{{ step_idx }}/{{ loop.index0 }}"
+                <img src="/agent/dialog/{{ dialog_id }}/preview/{{ step_idx }}/{{ loop.index0 }}{{ dialog_cap_query|e }}"
                      alt="{{ opt.label|e }}"
                      style="max-height:120px;max-width:120px;object-fit:cover;
                             border-radius:3px;background:#222;"
@@ -132,9 +132,9 @@
         {% elif kind == "location" %}
           <span style="display:flex;gap:.5rem;">
             <input name="{{ step.var }}__lat" type="number" step="any"
-                   placeholder="latitudine" {% if not step.optional %}required{% endif %}>
+                   placeholder="{{ msg('MSG_CHAT_DIALOG_LATITUDE') }}" {% if not step.optional %}required{% endif %}>
             <input name="{{ step.var }}__lon" type="number" step="any"
-                   placeholder="longitudine" {% if not step.optional %}required{% endif %}>
+                   placeholder="{{ msg('MSG_CHAT_DIALOG_LONGITUDE') }}" {% if not step.optional %}required{% endif %}>
           </span>
 
         {% else %}
@@ -145,9 +145,10 @@
     {% endfor %}
 
     <div style="display:flex;gap:.5rem;margin-top:.5rem;">
-      <button type="submit" class="btn primary">Invia</button>
-      <a class="btn" href="/agent/dialog/{{ dialog_id }}/cancel"
-         onclick="return confirm('Annullare il dialogo?');">Annulla</a>
+      <button type="submit" class="btn primary">{{ msg("MSG_CHAT_SEND") }}</button>
+      <a class="btn" href="/agent/dialog/{{ dialog_id }}/cancel{{ dialog_cap_query|e }}"
+         data-confirm-message="{{ msg('MSG_CHAT_DIALOG_CANCEL_CONFIRM') }}"
+         onclick="return confirm(this.dataset.confirmMessage);">{{ msg("MSG_BTN_CANCEL") }}</a>
     </div>
   </form>
 </div>
@@ -156,6 +157,21 @@
 // intercetta submit/cancel, fa fetch e notifica il parent via postMessage.
 // Standalone (no iframe) il form fa il submit nativo.
 (function(){
+  const DIALOG_I18N = {
+    processing: {{ msg("MSG_CHAT_DIALOG_PROCESSING")|tojson }},
+    submitError: {{ msg("MSG_CHAT_DIALOG_SUBMIT_ERROR")|tojson }},
+    networkError: {{ msg("MSG_CHAT_DIALOG_NETWORK_ERROR")|tojson }},
+    httpError: {{ msg("MSG_CHAT_HTTP_ERROR")|tojson }},
+    turnIdLabel: {{ msg("MSG_CHAT_DIALOG_TURN_ID_LABEL")|tojson }},
+    dialogIdLabel: {{ msg("MSG_CHAT_DIALOG_ID_LABEL")|tojson }},
+  };
+  function dialogText(name, values){
+    let out = String(DIALOG_I18N[name] || '');
+    Object.entries(values || {}).forEach(([key, value]) => {
+      out = out.replaceAll('{' + key + '}', String(value == null ? '' : value));
+    });
+    return out;
+  }
   const inIframe = (window.parent !== window);
   if(!inIframe) return;
   // Notifica altezza al parent (cosi' il bubble cresce/decresce con il
@@ -185,11 +201,15 @@
         _prog.style.cssText = 'margin:.6rem 0;padding:.45rem .6rem;'
           + 'border-radius:6px;background:rgba(120,120,120,.12);'
           + 'font-size:.92em;display:flex;align-items:center;gap:.5rem;';
-        _prog.innerHTML = '<span style="display:inline-block;width:1em;height:1em;'
+        const _spinner = document.createElement('span');
+        _spinner.style.cssText = 'display:inline-block;width:1em;height:1em;'
           + 'border:2px solid currentColor;border-top-color:transparent;'
-          + 'border-radius:50%;animation:mspin .8s linear infinite;"></span>'
-          + '<span>Elaboro la risposta&hellip;</span>'
-          + '<style>@keyframes mspin{to{transform:rotate(360deg)}}</style>';
+          + 'border-radius:50%;animation:mspin .8s linear infinite;';
+        const _progressText = document.createElement('span');
+        _progressText.textContent = DIALOG_I18N.processing;
+        const _spinStyle = document.createElement('style');
+        _spinStyle.textContent = '@keyframes mspin{to{transform:rotate(360deg)}}';
+        _prog.append(_spinner, _progressText, _spinStyle);
         form.parentNode.insertBefore(_prog, form.nextSibling);
         postHeight();
       }
@@ -255,14 +275,14 @@
             detail = {{ expired_message|tojson }};
           }
           const refs = [
-            form.dataset.turnId ? 'turn_id: ' + form.dataset.turnId : '',
-            'dialog_id: ' + (form.dataset.dialogId || '?'),
+            form.dataset.turnId ? DIALOG_I18N.turnIdLabel + ' ' + form.dataset.turnId : '',
+            DIALOG_I18N.dialogIdLabel + ' ' + (form.dataset.dialogId || '?'),
           ].filter(Boolean).join(' · ');
-          err.textContent = '⚠ Errore submit: ' + detail + '\n' + refs;
+          err.textContent = dialogText('submitError', {detail, refs});
         }
       } catch(ex) {
         _reenable();
-        alert('Errore di rete: ' + ex);
+        alert(dialogText('networkError', {message: ex}));
       }
     });
   }
@@ -270,7 +290,7 @@
   if(cancelLink){
     cancelLink.addEventListener('click', async (e) => {
       e.preventDefault();
-      if(!confirm('Annullare il dialogo?')) return;
+      if(!confirm(cancelLink.dataset.confirmMessage || '')) return;
       try {
         const r = await fetch(cancelLink.href, {cache:'no-store'});
         if(r.ok){
@@ -288,9 +308,9 @@
              dialog_id:form ? (form.dataset.dialogId || '') : ''}, '*');
           return;
         }
-        alert('Errore HTTP ' + r.status);
+        alert(dialogText('httpError', {status: r.status}));
       } catch(ex){
-        alert('Errore di rete: ' + ex);
+        alert(dialogText('networkError', {message: ex}));
       }
     });
   }

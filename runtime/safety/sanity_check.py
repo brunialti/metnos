@@ -5,7 +5,8 @@ invoked by `sudoer` at fire time, AFTER the deterministic guards have
 cleared the command. It can never authorise what they have blocked: its
 authority is purely additive.
 
-The model used is the `fast` tier (qwen3:8b, think=false, ~400 tokens).
+The model is selected through the logical `fast` tier; its concrete binding
+and generation policy are centrally configured.
 The prompt is fixed and the output is JSON-schema-guided. Three kinds:
   - "ok"             — proceed
   - "suspicious"     — proceed but log a warning to audit

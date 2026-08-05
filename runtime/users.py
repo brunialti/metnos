@@ -37,6 +37,9 @@ from typing import Any
 
 import config as _C  # §7.11
 from playwright_sidecar import stealth as _sites_stealth
+from logging_setup import get_logger
+
+log = get_logger(__name__)
 
 DEFAULT_DB_PATH = _C.PATH_USER_DATA / "users.db"
 
@@ -54,7 +57,8 @@ CREATE TABLE IF NOT EXISTS users (
     autonomy_level TEXT NOT NULL,
     created_at TEXT NOT NULL,
     notes TEXT,
-    email TEXT
+    email TEXT,
+    deleting_at TEXT
 );
 CREATE TABLE IF NOT EXISTS user_channels (
     user_id TEXT NOT NULL,
@@ -66,6 +70,10 @@ CREATE TABLE IF NOT EXISTS user_channels (
     PRIMARY KEY (user_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_channels_recipient ON user_channels(channel, recipient_id);
+CREATE TABLE IF NOT EXISTS deleted_user_tombstones (
+    user_id TEXT PRIMARY KEY,
+    deleted_at TEXT NOT NULL
+);
 """
 
 
@@ -84,7 +92,51 @@ def _open_db() -> sqlite3.Connection:
     conn = sqlite3.connect(str(p), isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _ensure_unique_verified_recipients(conn)
     return conn
+
+
+def _ensure_unique_verified_recipients(conn: sqlite3.Connection) -> None:
+    """Make a verified channel recipient identify at most one live owner.
+
+    Historical duplicates are revoked as a set: selecting either row would be
+    an identity guess.  The users remain intact and can be paired again with
+    an explicit one-shot token.
+    """
+
+    index_name = "uq_user_channels_verified_recipient"
+    if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+            (index_name,)).fetchone() is not None:
+        return
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        duplicates = conn.execute(
+            "SELECT channel,recipient_id,COUNT(*) AS n "
+            "FROM user_channels WHERE verified_at IS NOT NULL "
+            "AND recipient_id<>'' GROUP BY channel,recipient_id "
+            "HAVING COUNT(*)>1"
+        ).fetchall()
+        for row in duplicates:
+            conn.execute(
+                "UPDATE user_channels SET verified_at=NULL "
+                "WHERE channel=? AND recipient_id=?",
+                (row["channel"], row["recipient_id"]),
+            )
+            log.error(
+                "revoked ambiguous channel binding channel=%s recipient=%s "
+                "rows=%s",
+                row["channel"], row["recipient_id"], row["n"],
+            )
+        conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+            "ON user_channels(channel,recipient_id) "
+            "WHERE verified_at IS NOT NULL AND recipient_id<>''"
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def _normalize_name(name: str) -> str:
@@ -126,6 +178,8 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         if "email" not in cols:
             conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if "deleting_at" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN deleting_at TEXT")
         n = conn.execute("SELECT COUNT(*) c FROM users").fetchone()["c"]
         if n > 0:
             return
@@ -238,7 +292,8 @@ def get_user(user_id_or_name: str) -> dict | None:
     conn = _open_db()
     try:
         row = conn.execute(
-            "SELECT * FROM users WHERE id=? OR name=?",
+            "SELECT * FROM users WHERE (id=? OR name=?) "
+            "AND deleting_at IS NULL",
             (user_id_or_name, user_id_or_name.lower()),
         ).fetchone()
         return _row_to_user(row)
@@ -251,7 +306,7 @@ def list_users(*, role: str | None = None, owner: str | None = None) -> list[dic
     init_db()
     conn = _open_db()
     try:
-        sql = "SELECT * FROM users WHERE 1=1"
+        sql = "SELECT * FROM users WHERE deleting_at IS NULL"
         params: list[Any] = []
         if role:
             sql += " AND role=?"
@@ -266,17 +321,170 @@ def list_users(*, role: str | None = None, owner: str | None = None) -> list[dic
         conn.close()
 
 
-def delete_user(user_id: str) -> bool:
-    """Elimina user + cascade su user_channels. True se cancellato."""
+def owner_deletion_started(user_id: str) -> bool:
+    """Durable cross-process revocation check for an owner lease."""
+
     if not user_id:
-        return False
+        return True
+    init_db()
     conn = _open_db()
     try:
-        conn.execute("DELETE FROM user_channels WHERE user_id=?", (user_id,))
-        cur = conn.execute("DELETE FROM users WHERE id=?", (user_id,))
-        return cur.rowcount > 0
+        tombstone = conn.execute(
+            "SELECT 1 FROM deleted_user_tombstones WHERE user_id=?",
+            (user_id,),
+        ).fetchone()
+        if tombstone is not None:
+            return True
+        deleting = conn.execute(
+            "SELECT deleting_at FROM users WHERE id=?", (user_id,),
+        ).fetchone()
+        return deleting is not None and bool(deleting[0])
     finally:
         conn.close()
+
+
+def delete_user(user_id: str) -> bool:
+    """Delete one user and every owner-scoped runtime state.
+
+    External privacy stores are purged first and idempotently. If one purge
+    fails, the authoritative user remains present and deletion can be retried;
+    no orphaned Tutor authority is created. The final users.db changes are
+    committed in one immediate transaction.
+    """
+    if not user_id:
+        return False
+    from user_lifecycle import owner_deletion
+
+    with owner_deletion(user_id):
+        init_db()
+        mark = _open_db()
+        try:
+            mark.execute("BEGIN IMMEDIATE")
+            row = mark.execute(
+                "SELECT id,name FROM users WHERE id=?", (user_id,),
+            ).fetchone()
+            if row is None:
+                mark.rollback()
+                return False
+            channels = mark.execute(
+                "SELECT channel,recipient_id FROM user_channels "
+                "WHERE user_id=?", (user_id,),
+            ).fetchall()
+            mark.execute(
+                "UPDATE users SET deleting_at=? WHERE id=?",
+                (_now_iso(), user_id),
+            )
+            tables = {
+                item[0] for item in mark.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            if "active_sessions" in tables:
+                mark.execute(
+                    "UPDATE active_sessions SET revoked_at=?,"
+                    "revoke_reason='user_deleted' "
+                    "WHERE user_id=? AND revoked_at IS NULL",
+                    (_now_iso(), user_id),
+                )
+            mark.commit()
+        except Exception:
+            mark.rollback()
+            raise
+        finally:
+            mark.close()
+
+        try:
+            # Revoke every independent authentication surface before data
+            # removal. A deleted user must not retain Telegram or HTTP access.
+            import pairing as _pairing
+            for channel_row in channels:
+                _pairing.revoke(
+                    str(channel_row["channel"]),
+                    str(channel_row["recipient_id"]),
+                )
+            import devices as _devices
+            _devices.purge_owner(user_id)
+
+            from tutor import conversation as _tutor_conversation
+            from tutor import gaps as _tutor_gaps
+            from tutor import probes as _tutor_probes
+            from channels import daemon as _channel_daemon
+            import recurring_tasks as _recurring_tasks
+            import dialog_pending as _dialog_pending
+            import deferred_turns as _deferred_turns
+            import location_request as _location_request
+            import location_store as _location_store
+            import oauth_pending as _oauth_pending
+            import user_notices as _user_notices
+
+            _tutor_gaps.purge_owner(owner_user_id=user_id)
+            _dialog_pending.purge_owner(user_id)
+            _channel_daemon.purge_cap_pending_owner(user_id)
+            _recurring_tasks.purge_owner(user_id)
+            _deferred_turns.purge_owner(user_id)
+            _location_request.purge_owner(user_id)
+            _location_store.purge_owner(user_id)
+            _oauth_pending.purge_owner(user_id)
+            _user_notices.purge_owner(user_id)
+            _tutor_conversation.purge_owner(user_id)
+            _tutor_probes.purge_owner(user_id)
+
+            conn = _open_db()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                tables = {
+                    item[0] for item in conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                }
+                if "active_sessions" in tables:
+                    conn.execute(
+                        "DELETE FROM active_sessions WHERE user_id=?",
+                        (user_id,),
+                    )
+                if "chat_conversations" in tables:
+                    conn.execute(
+                        "DELETE FROM chat_conversations WHERE user_id=?",
+                        (user_id,),
+                    )
+                if "user_prefs" in tables:
+                    conn.execute(
+                        "DELETE FROM user_prefs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    "DELETE FROM user_channels WHERE user_id=?", (user_id,))
+                conn.execute(
+                    "INSERT OR REPLACE INTO deleted_user_tombstones "
+                    "(user_id,deleted_at) VALUES (?,?)",
+                    (user_id, _now_iso()),
+                )
+                cur = conn.execute(
+                    "DELETE FROM users WHERE id=?", (user_id,))
+                deleted = cur.rowcount > 0
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+        except Exception:
+            # A handled failure leaves the user revocable/retriable instead of
+            # permanently wedged in a half-deleted state. Already purged data
+            # remains gone, which is the privacy-safe direction.
+            repair = _open_db()
+            try:
+                repair.execute(
+                    "UPDATE users SET deleting_at=NULL WHERE id=?", (user_id,))
+            finally:
+                repair.close()
+            raise
+
+        if deleted:
+            try:
+                import active_sessions as _active_sessions
+                _active_sessions.purge_user_memory(user_id)
+            except Exception:
+                pass
+        return deleted
 
 
 def set_autonomy(user_id: str, level: str) -> bool:
@@ -356,7 +564,18 @@ def add_channel(
         raise ValueError(f"user {user_id!r} not found")
     conn = _open_db()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         verified_at = _now_iso() if verified else None
+        if verified:
+            conflict = conn.execute(
+                "SELECT user_id FROM user_channels WHERE channel=? "
+                "AND recipient_id=? AND verified_at IS NOT NULL "
+                "AND user_id<>? LIMIT 1",
+                (channel, str(recipient_id), user["id"]),
+            ).fetchone()
+            if conflict is not None:
+                conn.rollback()
+                raise ValueError("recipient_id already paired")
         conn.execute(
             "INSERT INTO user_channels (user_id, channel, recipient_id, verified_at, "
             "pairing_token, pairing_expires_at) VALUES (?,?,?,?,NULL,NULL) "
@@ -369,8 +588,15 @@ def add_channel(
             "SELECT * FROM user_channels WHERE user_id=? AND channel=?",
             (user["id"], channel),
         ).fetchone()
+        conn.commit()
         return dict(row)
+    except sqlite3.IntegrityError as exc:
+        if conn.in_transaction:
+            conn.rollback()
+        raise ValueError("recipient_id already paired") from exc
     finally:
+        if conn.in_transaction:
+            conn.rollback()
         conn.close()
 
 
@@ -479,6 +705,15 @@ def consume_pairing_token(channel: str, recipient_id: str, token: str) -> dict:
                 )
                 conn.commit()
                 raise ValueError("token expired")
+        conflict = conn.execute(
+            "SELECT user_id FROM user_channels WHERE channel=? "
+            "AND recipient_id=? AND verified_at IS NOT NULL "
+            "AND user_id<>? LIMIT 1",
+            (channel, str(recipient_id), row["user_id"]),
+        ).fetchone()
+        if conflict is not None:
+            conn.rollback()
+            raise ValueError("recipient_id already paired")
         cur = conn.execute(
             "UPDATE user_channels SET recipient_id=?, verified_at=?, "
             "pairing_token=NULL, pairing_expires_at=NULL "
@@ -489,7 +724,8 @@ def consume_pairing_token(channel: str, recipient_id: str, token: str) -> dict:
             conn.rollback()
             raise ValueError("token unknown or already consumed")
         u = conn.execute(
-            "SELECT * FROM users WHERE id=?", (row["user_id"],)
+            "SELECT * FROM users WHERE id=? AND deleting_at IS NULL",
+            (row["user_id"],)
         ).fetchone()
         conn.commit()
         return dict(u) if u else {}
@@ -511,8 +747,9 @@ def is_device_bound(channel: str, recipient_id: str) -> bool:
     conn = _open_db()
     try:
         row = conn.execute(
-            "SELECT 1 FROM user_channels WHERE channel=? AND recipient_id=? "
-            "AND verified_at IS NOT NULL LIMIT 1",
+            "SELECT 1 FROM user_channels c JOIN users u ON u.id=c.user_id "
+            "WHERE c.channel=? AND c.recipient_id=? "
+            "AND c.verified_at IS NOT NULL AND u.deleting_at IS NULL LIMIT 1",
             (channel, str(recipient_id)),
         ).fetchone()
         return row is not None
@@ -527,12 +764,20 @@ def find_user_by_recipient(channel: str, recipient_id: str) -> dict | None:
     init_db()
     conn = _open_db()
     try:
-        row = conn.execute(
+        rows = conn.execute(
             "SELECT u.* FROM users u JOIN user_channels c ON c.user_id=u.id "
-            "WHERE c.channel=? AND c.recipient_id=? AND c.verified_at IS NOT NULL",
+            "WHERE c.channel=? AND c.recipient_id=? "
+            "AND c.verified_at IS NOT NULL AND u.deleting_at IS NULL "
+            "LIMIT 2",
             (channel, str(recipient_id)),
-        ).fetchone()
-        return dict(row) if row else None
+        ).fetchall()
+        if len(rows) != 1:
+            if len(rows) > 1:
+                log.error(
+                    "ambiguous channel identity rejected channel=%s "
+                    "recipient=%s", channel, recipient_id)
+            return None
+        return dict(rows[0])
     finally:
         conn.close()
 

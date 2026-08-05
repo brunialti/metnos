@@ -1,6 +1,6 @@
 """executor_typing — minimal lookup for executor IO typing in production.
 
-Porting selettivo da e2e/simulator/registry.py. Espone SOLO le funzionalita'
+Porting selettivo da tests/simulator/registry.py. Espone SOLO le funzionalita'
 necessarie alla prefilter rules: lookup per nome → dict con:
   - inputs: { name: {required, role, semantic_type, ...} }
   - output: { type, schema: { field_name: type } }
@@ -8,7 +8,7 @@ necessarie alla prefilter rules: lookup per nome → dict con:
 
 §7.11 rename-resilient: il default dir si auto-deriva via __file__. Cache
 mtime-based: se il file source viene aggiornato, ricarica. Senza override
-env, legge da `<PATH_ROOT>/e2e/simulator/typing_cache/` (read-only, gia'
+env, legge da `<PATH_ROOT>/tests/simulator/typing_cache/` (read-only, gia'
 estratti 84 typing JSON), poi fallback `<PATH_USER_DATA>/executor_typing/`
 se l'utente vuole estensioni custom.
 
@@ -41,7 +41,7 @@ def _candidate_dirs() -> list[Path]:
 
     Override env `METNOS_TYPING_DIR` (path:path) altrimenti default:
       1. <PATH_USER_DATA>/executor_typing/  (user custom, se esiste)
-      2. <PATH_ROOT>/e2e/simulator/typing_cache/  (built-in, gia' estratti)
+      2. <PATH_ROOT>/tests/simulator/typing_cache/  (built-in, gia' estratti)
 
     §7.11: nessun path hardcoded; deriva da config.PATH_*.
     """
@@ -67,13 +67,14 @@ def _candidate_dirs() -> list[Path]:
             user_dir = _C.PATH_USER_DATA / "executor_typing"
             if user_dir.is_dir():
                 dirs.append(user_dir)
-            builtin = _C.PATH_ROOT / "e2e" / "simulator" / "typing_cache"
+            builtin = (_C.PATH_ROOT / "tools" / "research" / "simulator"
+                       / "typing_cache")
             if builtin.is_dir():
                 dirs.append(builtin)
     if not dirs:
         # Last-resort: derive root via __file__ (parents[1] = repo root).
         root = Path(__file__).resolve().parents[1]
-        builtin = root / "e2e" / "simulator" / "typing_cache"
+        builtin = root / "tools" / "research" / "simulator" / "typing_cache"
         if builtin.is_dir():
             dirs.append(builtin)
     _DIRS_CACHE = dirs

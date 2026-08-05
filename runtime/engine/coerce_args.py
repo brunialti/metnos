@@ -17,7 +17,9 @@ guard legittimi scrivano), quindi tocca SOLO l'output grezzo del proposer:
      dell'executor). MAI snap "al più vicino": indovinare è peggio del default.
 
 Whitelist SEMPRE conservata: `from_step`/`entries` (piping §4.1, dominio del
-runtime anche dove marcati) e le chiavi `_*` (iniettate dal runtime).
+runtime anche dove marcati). Le chiavi `_*` sono invece rimosse a questo
+confine: l'input qui appartiene al proposer, mentre i metadati interni vengono
+iniettati soltanto dopo dai resolver/runtime autenticati.
 
 Proprietà (invariante PROV.3 per costruzione): lo stage scrive solo
 provenienza `runtime` (marcati, drop) e `clause` (enum, normalize/drop) —
@@ -58,14 +60,22 @@ def coerce_step_args(args: dict, schema,
     l'idempotenza della catena (coerce droppa → guard riscrive → oscillazione
     alla ri-applicazione). Il costo onesto: un leak LLM su un arg guard-owned
     passa il coerce — lo arbitra il proprietario a valle (guard/resolver)."""
-    props = _typed_props(schema)
-    if props is None or not isinstance(args, dict) or not args:
+    if not isinstance(args, dict) or not args:
         return args, False
-    out = {}
-    changed = False
-    for key, val in args.items():
-        if key in _UNIVERSAL_KEYS or key.startswith("_") or key in guard_owned:
-            out[key] = val
+    # Confine di autorita': nessun metadato interno puo' provenire dal modello,
+    # da un piano cachato o da un replay.  I valori legittimi (`_actor`,
+    # `_confirmed`, `_pre_approved`, ...) sono iniettati piu' tardi da runtime,
+    # engine o callback di resume e non attraversano questo guard.
+    out = {key: val for key, val in args.items()
+           if not (isinstance(key, str) and key.startswith("_"))}
+    changed = len(out) != len(args)
+    props = _typed_props(schema)
+    if props is None:
+        return out, changed
+    coerced = {}
+    for key, val in out.items():
+        if key in _UNIVERSAL_KEYS or key in guard_owned:
+            coerced[key] = val
             continue
         decl = props.get(key)
         if decl is None:                      # 1. fuori-schema → drop
@@ -79,17 +89,17 @@ def coerce_step_args(args: dict, schema,
                 and all(isinstance(v, str) for v in enum)
                 and isinstance(val, str)):
             if val in enum:                   # 3. enum: valido → intatto
-                out[key] = val
+                coerced[key] = val
                 continue
             folded = [v for v in enum if v.lower() == val.lower()]
             if len(folded) == 1:              # case-insensitive unico → canonico
-                out[key] = folded[0]
+                coerced[key] = folded[0]
                 changed = True
                 continue
             changed = True                    # fuori dominio → drop
             continue
-        out[key] = val
-    return out, changed
+        coerced[key] = val
+    return coerced, changed
 
 
 def coerce_framework_to_schema(framework, catalog,

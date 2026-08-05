@@ -21,6 +21,7 @@ DB is a no-op (we skip names already present in v2).
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 import time
@@ -90,9 +91,30 @@ def _migrate_user_tasks(
     now = time.time()
     for row in rows:
         rec = {k: row[k] for k in row.keys()}
-        v2_name = f"user_{rec['name']}"
-        if dst.get_by_name(v2_name) is not None:
-            skipped += 1
+        legacy_name = f"user_{rec['name']}"
+        owner_user_id = str(rec.get("owner_user_id") or "").strip()
+        v2_name = str(rec.get("scheduler_name") or "").strip()
+        # Actor/recipient are reusable labels, never identity evidence.  The
+        # current recurring registry must already carry both immutable owner
+        # UUID and canonical globally unique scheduler key.
+        if not owner_user_id or not v2_name:
+            if not dry_run:
+                dst.purge_names((legacy_name,))
+            errors += 1
+            continue
+        try:
+            import users
+            live_owner = users.get_user(owner_user_id)
+        except Exception:
+            # Technical identity-store failure must abort migration, not be
+            # reinterpreted as proof that every owner was deleted.
+            raise
+        if (live_owner is None
+                or str(live_owner.get("id") or "") != owner_user_id):
+            if not dry_run:
+                dst.purge_names(tuple(dict.fromkeys(
+                    (legacy_name, v2_name))))
+            errors += 1
             continue
         try:
             trigger = rec["schedule"]
@@ -115,6 +137,8 @@ def _migrate_user_tasks(
                 errors += 1
                 continue
             payload = {
+                "owner_user_id": owner_user_id,
+                "scheduler_name": v2_name,
                 "query": rec.get("query"),
                 "channel": rec.get("channel"),
                 "actor": rec.get("actor"),
@@ -148,6 +172,41 @@ def _migrate_user_tasks(
             if dry_run:
                 print(f"[dry-run] +user {v2_name} trigger={trigger} actor={rec.get('actor')}")
             else:
+                # Remove the historical ownerless duplicate and its output
+                # history.  Never leave a second executable projection.
+                if legacy_name != v2_name:
+                    dst.purge_names((legacy_name,))
+                existing = dst.get_by_name(v2_name)
+                if existing is not None:
+                    # The registry is authoritative for configuration and
+                    # enabled state; the scheduler owns execution history.
+                    # Reconcile the former without erasing the latter.  If
+                    # the trigger did not change, preserve the exact next
+                    # fire chosen by the scheduler instead of moving it at
+                    # every daemon restart.
+                    if existing.trigger == entry.trigger:
+                        entry.next_fire_at = existing.next_fire_at
+                    entry.created_at = existing.created_at or entry.created_at
+                    entry.last_run_at = existing.last_run_at
+                    entry.last_status = existing.last_status
+                    entry.last_duration_ms = existing.last_duration_ms
+                    entry.last_error = existing.last_error
+                    entry.total_runs = existing.total_runs
+                    entry.total_failures = existing.total_failures
+                    entry.consecutive_failures = existing.consecutive_failures
+                    comparable = (
+                        "trigger", "next_fire_at", "recurring", "callback_key",
+                        "payload", "weekdays", "expires_at", "remaining_runs",
+                        "enabled", "timeout_s", "is_async", "max_concurrent",
+                        "grace_window_s", "origin", "label", "source_command",
+                        "created_at", "last_run_at", "last_status",
+                        "last_duration_ms", "last_error", "total_runs",
+                        "total_failures", "consecutive_failures", "description",
+                    )
+                    if all(getattr(existing, field) == getattr(entry, field)
+                           for field in comparable):
+                        skipped += 1
+                        continue
                 dst.upsert(entry)
             migrated += 1
         except Exception as exc:  # noqa: BLE001

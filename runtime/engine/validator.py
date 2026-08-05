@@ -1,4 +1,4 @@
-"""engine/validator.py — Layer 2: typecheck framework pre-execute (opt-in).
+"""engine/validator.py — Layer 2: typecheck framework pre-execute.
 
 Cattura errori prima dell'esecuzione:
   - tool inesistente nel catalog
@@ -7,19 +7,22 @@ Cattura errori prima dell'esecuzione:
   - from_step out-of-range
   - placeholder ${stepN.field} non risolvibile
 
-Riusa `validate_args` esistente + catalog lookup. Senza Validator
-attivo (default OFF), errori vengono catturati dall'Executor a runtime
-con costo LLM call sprecato.
+Riusa `validate_args` esistente + catalog lookup. Il Validator è attivo per
+default; se viene disabilitato esplicitamente, gli errori vengono catturati
+dall'Executor a runtime con il costo di una chiamata LLM sprecata.
 
 §7.9 deterministic: zero LLM. Lookup catalog + schema check.
 
-Toggle: METNOS_VALIDATOR=1
+Toggle: METNOS_VALIDATOR=1 (default); 0 lo disabilita.
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+from from_step_projection import required_source_context_fields
+from messages import get as _msg
 
 from .types import Framework
 
@@ -129,6 +132,13 @@ class Validator:
                 break
             if not provided:
                 return f"requires_one_of {group} violato"
+        missing_context = required_source_context_fields(
+            args, schema, allow_deferred_from_step=True)
+        if missing_context:
+            return _msg(
+                "ERR_SOURCE_CONTEXT_REQUIRED",
+                fields=", ".join(missing_context),
+            )
         # Type check (basic)
         for k, v in args.items():
             if k.startswith("_") or k in ("from_step", "entries"):
@@ -136,14 +146,34 @@ class Validator:
             decl = props.get(k)
             if not decl:
                 continue  # unknown arg, lascia passare (executor tollerante)
-            expected = decl.get("type")
-            if expected == "array" and not isinstance(v, list):
-                return f"arg '{k}' atteso array, ricevuto {type(v).__name__}"
-            if expected == "object" and not isinstance(v, dict):
-                return f"arg '{k}' atteso object, ricevuto {type(v).__name__}"
-            if expected == "string" and not isinstance(v, (str, int, float)):
-                # int/float tollerati come string-coercible
-                return f"arg '{k}' atteso string, ricevuto {type(v).__name__}"
-            if expected == "boolean" and not isinstance(v, (bool, str, int)):
-                return f"arg '{k}' atteso boolean, ricevuto {type(v).__name__}"
+            declared = decl.get("type")
+            expected = (
+                declared if isinstance(declared, list)
+                else [declared] if isinstance(declared, str)
+                else []
+            )
+
+            def _matches(kind):
+                if kind == "array":
+                    return isinstance(v, list)
+                if kind == "object":
+                    return isinstance(v, dict)
+                if kind == "string":
+                    # int/float tollerati come string-coercible (legacy).
+                    return isinstance(v, (str, int, float)) and not isinstance(v, bool)
+                if kind == "boolean":
+                    return isinstance(v, (bool, str, int))
+                if kind == "integer":
+                    return isinstance(v, int) and not isinstance(v, bool)
+                if kind == "number":
+                    return isinstance(v, (int, float)) and not isinstance(v, bool)
+                if kind == "null":
+                    return v is None
+                return True
+
+            if expected and not any(_matches(kind) for kind in expected):
+                return (
+                    f"arg '{k}' atteso {' | '.join(expected)}, "
+                    f"ricevuto {type(v).__name__}"
+                )
         return None

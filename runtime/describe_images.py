@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
@@ -67,6 +68,11 @@ DESCRIBE_IMAGES_TOOL = {
 # from_step=1; il piano upload-default lo usa come primo step.
 IS_ENTRIES_CONSUMER = True
 
+_DEFAULT_MAX_IMAGES = 8
+_DEFAULT_REQUEST_BUDGET_S = 45.0
+_MAX_IMAGES_SAFETY_CEILING = 32
+_MAX_REQUEST_BUDGET_SAFETY_CEILING = 90.0
+
 
 def _collect_paths(args: dict) -> list[str]:
     out: list[str] = []
@@ -84,18 +90,61 @@ def _collect_paths(args: dict) -> list[str]:
     return [p for p in out if not (p in seen or seen.add(p))]
 
 
+def _bounded_policy(value, *, default: float, minimum: float,
+                    maximum: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _work_policy() -> tuple[int, float]:
+    """Resolve the synchronous VLM policy from the canonical Virt spec."""
+
+    try:
+        from virt import get_vlm
+        spec = get_vlm()
+    except Exception:
+        spec = {}
+    max_images = _bounded_policy(
+        os.environ.get("METNOS_VLM_MAX_IMAGES_PER_REQUEST")
+        or spec.get("max_images_per_request"),
+        default=_DEFAULT_MAX_IMAGES, minimum=1,
+        maximum=_MAX_IMAGES_SAFETY_CEILING,
+    )
+    budget_s = _bounded_policy(
+        os.environ.get("METNOS_VLM_REQUEST_BUDGET_S")
+        or spec.get("request_budget_s"),
+        default=_DEFAULT_REQUEST_BUDGET_S, minimum=1,
+        maximum=_MAX_REQUEST_BUDGET_SAFETY_CEILING,
+    )
+    return int(max_images), float(budget_s)
+
+
 def handle_describe_images(args, *, verbose: bool = False) -> dict:
     """Builtin in-process: descrive le immagini col VLM. §2.8 mai solleva."""
     import vlm_client
-    paths = _collect_paths(args if isinstance(args, dict) else {})
+    payload = args if isinstance(args, dict) else {}
+    paths = _collect_paths(payload)
     if not paths:
         return {"ok": False,
                 "error": _msg("ERR_ARG_MISSING", arg="reference_images"),
                 "error_class": "invalid_args", "entries": [], "query_text": ""}
+    max_images, budget_s = _work_policy()
+    selected_paths = paths[:max_images]
+    deadline_at = time.monotonic() + budget_s
     entries: list[dict] = []
     descriptions: list[str] = []
-    for p in paths:
-        d = vlm_client.describe_image(p)
+    budget_exhausted = False
+    for p in selected_paths:
+        if time.monotonic() >= deadline_at:
+            budget_exhausted = True
+            break
+        d = vlm_client.describe_image(
+            p, lang=payload.get("_lang"), deadline_at=deadline_at)
         desc = d.get("description", "")
         entry = {"path": p, "description": desc,
                  "keywords": d.get("keywords", [])}
@@ -104,14 +153,42 @@ def handle_describe_images(args, *, verbose: bool = False) -> dict:
         entries.append(entry)
         if desc:
             descriptions.append(desc)
+        if time.monotonic() >= deadline_at:
+            budget_exhausted = True
+            break
     query_text = " ".join(descriptions).strip()
-    return {
+    attempted = len(entries)
+    available_total = len(paths)
+    truncated = attempted < available_total
+    fail_count = attempted - len(descriptions)
+    out = {
         "ok": bool(descriptions),
         "entries": entries,
         "query_text": query_text,
         "ok_count": len(descriptions),
-        "fail_count": len(paths) - len(descriptions),
+        "fail_count": fail_count,
+        "partial": bool(descriptions) and (
+            truncated or fail_count > 0),
+        "used": attempted,
+        "available_total": available_total,
     }
+    if truncated:
+        deadline_limited = budget_exhausted or attempted < len(selected_paths)
+        out.update({
+            "truncated": True,
+            "truncated_what": _msg("MSG_OBJECT_IMAGE_FILES"),
+            "cap_field": (
+                "request_budget_s" if deadline_limited
+                else "max_images_per_request"),
+            "cap_value": (
+                int(round(budget_s)) if deadline_limited else max_images),
+            # This is an execution-policy ceiling, not a missing user count.
+            # The generic cap-expansion UI must not turn it into an argument
+            # that can bypass the synchronous safety budget.
+            "cap_expandable": False,
+            "budget_exhausted": deadline_limited,
+        })
+    return out
 
 
 BUILTIN_INPROC_SPECS = [

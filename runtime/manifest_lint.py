@@ -2,7 +2,7 @@
 
 Il manifest e' la "scheda istruzioni" che l'LLM-medio (modello locale) legge per scegliere
 e chiamare un tool (§2.5). Questo linter e' un correttore automatico di quelle
-schede: deterministico (§7.9, zero LLM), beccca gli errori di FORMA che fanno
+schede: deterministico (§7.9, zero LLM), rileva gli errori di FORMA che fanno
 sbagliare l'LLM prima che la scheda vada in uso.
 
 COME EVITA LA TRAPPOLA SEMANTICA SENZA "capire" la semantica
@@ -48,10 +48,9 @@ except Exception:  # pragma: no cover - fallback se vocab non importabile
     DESTRUCTIVE_VERBS = frozenset(
         {"move", "delete", "send", "write", "extract", "create", "share"})
 
-# Il Proposer (engine/proposer.py::_render_tool_pool) mostra all'LLM la
-# description fino a "OUT:", troncata a questo numero di caratteri. Tutto cio'
-# che sta oltre e' INVISIBILE all'LLM. SINGLE-SOURCE: importato dal proposer
-# (fallback 260 se l'import e' indisponibile, es. CLI senza engine).
+# Il Proposer usa questo come budget MEDIO per tool; il pool redistribuisce lo
+# spazio inutilizzato entro un hard cap. Il check per-manifest resta volutamente
+# conservativo: oltre la media la visibilita' dipende dalla composizione pool.
 # SoT delle regole/dimensioni manifest: `manifest_rules` (il "DNA"). Stesso
 # modulo importato da proposer (render) e synt (generazione) → numeri allineati,
 # zero drift. Fallback ai default §2.5 se non importabile (CLI senza runtime).
@@ -59,7 +58,7 @@ try:
     from manifest_rules import (RENDER_BUDGET as PROPOSER_DESC_BUDGET,
                                 HEAD_MAX, DESC_MAX, ARG_DESC_MAX)
 except Exception:  # pragma: no cover
-    PROPOSER_DESC_BUDGET, HEAD_MAX, DESC_MAX, ARG_DESC_MAX = 260, 240, 280, 160
+    PROPOSER_DESC_BUDGET, HEAD_MAX, DESC_MAX, ARG_DESC_MAX = 260, 240, 320, 180
 
 # Arg "universali" di piping/runtime ammessi nel PATTERN anche se non sono
 # nelle properties dichiarate (il runtime li gestisce: §4.1).
@@ -125,14 +124,59 @@ def _chapter_span(desc: str, name: str) -> str:
     return desc[start:end].strip()
 
 
+def _output_schema_text(manifest: dict) -> str:
+    """Return the declared output schema in a representation-neutral form."""
+    output = manifest.get("output") or {}
+    if not isinstance(output, dict):
+        return ""
+    schema = output.get("schema_inline") or output.get("schema") or ""
+    return str(schema).lower()
+
+
 def _pattern_call_args(desc: str, name: str) -> list[str]:
     """Nomi degli argomenti usati nelle CHIAMATE `name(...)` del capitolo PATTERN.
     Estrae SOLO dalle chiamate reali del tool (non dalla prosa 'ARGS: ...default=':
-    falso positivo se si prende `\\w+=` da tutto il capitolo)."""
+    falso positivo se si prende `\\w+=` da tutto il capitolo). Le assegnazioni
+    dentro dict/list annidati non sono argomenti top-level della chiamata."""
     pat = _chapter_span(desc, "PATTERN:")
     args: list[str] = []
-    for m in re.finditer(rf"{re.escape(name)}\s*\(([^)]*)\)", pat):
-        args += re.findall(r"(?:^|[(,\s])([a-zA-Z_]\w*)\s*=(?!=)", m.group(1))
+    call_re = re.compile(rf"{re.escape(name)}\s*\(")
+    for match in call_re.finditer(pat):
+        start = match.end()
+        stack = [")"]
+        quote: str | None = None
+        escaped = False
+        segment_start = start
+        segments: list[str] = []
+        cursor = start
+        while cursor < len(pat) and stack:
+            char = pat[cursor]
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                cursor += 1
+                continue
+            if char in ("'", '"'):
+                quote = char
+            elif char in "([{":
+                stack.append({"(": ")", "[": "]", "{": "}"}[char])
+            elif char in ")]}" and char == stack[-1]:
+                stack.pop()
+                if not stack:
+                    segments.append(pat[segment_start:cursor])
+                    break
+            elif char == "," and len(stack) == 1:
+                segments.append(pat[segment_start:cursor])
+                segment_start = cursor + 1
+            cursor += 1
+        for segment in segments:
+            arg_match = re.match(r"\s*([a-zA-Z_]\w*)\s*=(?!=)", segment)
+            if arg_match:
+                args.append(arg_match.group(1))
     return args
 
 
@@ -167,21 +211,21 @@ def lint_manifest(manifest: dict, *, catalog_names=None,
             out.append(Finding("chapters", "warn",
                                "capitoli fuori ordine (atteso SCOPO -> PATTERN -> NON -> OUT)"))
 
-    # C_BUDGET — il Proposer mostra solo i primi 260 char (prima di OUT:). Tutto
-    # WARN, non ERROR: l'evidenza 2/6 mostra che un SCOPO ricco + la lista-args
-    # compensano un PATTERN/NON troncato (le query funzionavano lo stesso). E'
-    # uno SMELL, non un difetto fatale — il linter lo segnala, non blocca synt.
+    # C_BUDGET — oltre il budget medio il pool elastico puo' recuperare spazio,
+    # ma la visibilita' non e' garantita in un pool composto da molte teste
+    # lunghe. WARN, non ERROR: e' uno smell di authoring, non un difetto fatale.
     pos_pattern = desc.find("PATTERN:")
     pos_non = desc.find("NON:")
     out_cut = desc.find("OUT:") if desc.find("OUT:") > 0 else len(desc)
     if 0 <= pos_pattern and pos_pattern >= PROPOSER_DESC_BUDGET:
         out.append(Finding("budget", "warn",
-                           f"PATTERN: inizia al char {pos_pattern} > {PROPOSER_DESC_BUDGET}: l'LLM "
-                           f"vede a malapena la forma di chiamata. Accorcia lo SCOPO."))
+                           f"PATTERN: inizia al char {pos_pattern} > budget medio "
+                           f"{PROPOSER_DESC_BUDGET}: dipende dal residuo del pool. Accorcia lo SCOPO."))
     elif 0 <= pos_non < out_cut and pos_non >= PROPOSER_DESC_BUDGET:
         out.append(Finding("budget", "warn",
-                           f"il capitolo NON: (char {pos_non}) e' oltre {PROPOSER_DESC_BUDGET} → "
-                           f"troncato per l'LLM. OK solo se la disambiguazione e' gia' nello SCOPO."))
+                           f"il capitolo NON: (char {pos_non}) supera il budget medio "
+                           f"{PROPOSER_DESC_BUDGET}; il pool elastico puo' recuperarlo, ma non e' "
+                           f"garantito. Tieni il boundary essenziale."))
 
     # C_LENGTH — regole FISICHE §2.5: description = SOLO testa, niente coda.
     head = desc[:out_cut]
@@ -231,16 +275,29 @@ def lint_manifest(manifest: dict, *, catalog_names=None,
                                        f"d'uso, non di omissione) nel testo visibile all'LLM → l'LLM "
                                        f"lo chiedera' (get_inputs). Toglilo o di' «OMETTI {pname}»."))
 
-    # C_OUTPUT_SHAPE — output coerente col verbo (§2.6).
+    # C_OUTPUT_SHAPE — output coerente col verbo (§3.3).
+    # `entries`/`results` sono convenzioni SHOULD, non requisiti MUST: lo
+    # standard permette esplicitamente output scalari/dialogo con campi
+    # purpose-specific, purche' dichiarati nello schema. Il check resta utile
+    # quando OUT e schema non dichiarano ne' la convenzione ne' un'alternativa.
     out_chap = _chapter_span(desc, "OUT:")
     if out_chap:
         low = out_chap.lower()
-        if verb in PRODUCER_VERBS and "entries" not in low:
+        schema = _output_schema_text(manifest)
+        declared_shape = any(token in schema for token in ("entries", "results"))
+        purpose_specific = bool(schema and schema.strip() not in ("{}", "{ ok: bool }"))
+        if (verb in PRODUCER_VERBS and "entries" not in low
+                and "results" not in low and not declared_shape
+                and not purpose_specific):
             out.append(Finding("output_shape", "warn",
-                               f"verbo producer '{verb}' ma OUT non menziona 'entries' (§2.6)"))
-        elif verb in (DESTRUCTIVE_VERBS - {"send"}) and "results" not in low:
+                               f"verbo producer '{verb}' senza 'entries' ne' uno schema "
+                               f"purpose-specific dichiarato (§3.3)"))
+        elif (verb in (DESTRUCTIVE_VERBS - {"send"})
+              and "results" not in low and not declared_shape
+              and not purpose_specific):
             out.append(Finding("output_shape", "warn",
-                               f"verbo trasformativo '{verb}' ma OUT non menziona 'results' (§2.6)"))
+                               f"verbo trasformativo '{verb}' senza 'results' ne' uno schema "
+                               f"purpose-specific dichiarato (§3.3)"))
 
     # C_NON_REFS — i tool citati nel capitolo NON: esistono nel catalog.
     if catalog_names is not None:
@@ -288,11 +345,31 @@ def _load_all_affinities() -> dict:
     out = {}
     for mt in base.glob("*/manifest.toml"):
         try:
-            m = tomllib.load(open(mt, "rb"))
+            with mt.open("rb") as handle:
+                m = tomllib.load(handle)
             out[m.get("name", mt.parent.name)] = {a.lower() for a in (m.get("affinity") or [])}
         except Exception:
             continue
     return out
+
+
+def _load_catalog_names(affinities: dict | None = None) -> set[str]:
+    """Load every live executor name, including runtime builtin contracts.
+
+    Builtins do not take part in external affinity comparisons, but references
+    to them in a NON chapter are valid and must not be reported as dead.
+    """
+    import tomllib
+    names = set((affinities or {}).keys())
+    contracts = _RUNTIME / "builtin_executor_contracts"
+    for mt in contracts.glob("*/manifest.toml"):
+        try:
+            with mt.open("rb") as handle:
+                manifest = tomllib.load(handle)
+            names.add(manifest.get("name", mt.parent.name))
+        except Exception:
+            continue
+    return names
 
 
 def main(argv=None):
@@ -303,7 +380,7 @@ def main(argv=None):
     argv = [a for a in argv if a != "--strict"]
     base = _RUNTIME.parent / "executors"
     affinities = _load_all_affinities()
-    names = set(affinities.keys())
+    names = _load_catalog_names(affinities)
     if argv and argv[0] not in ("--all", "-a"):
         targets = [Path(argv[0])]
     else:

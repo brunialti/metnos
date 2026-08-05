@@ -34,7 +34,7 @@ FIRST_PARTY_SKILLS: list[dict] = [
      "requires": "one or more IMAP/SMTP accounts",
      "desc": "Email: leggi/cerca/invia/sposta/rispondi via IMAP/SMTP.",
      "auto_enable": True},
-    {"name": "web", "match": r"(find_urls|get_urls|read_urls_|login_session)",
+    {"name": "web", "match": r"(find_urls|get_urls|read_urls_|login_urls)",
      "requires": "a SearXNG instance (web search) + outbound HTTP",
      "desc": "Web search & lettura pagine (SearXNG + crawler).", "auto_enable": True},
     {"name": "geo", "match": r"(find_places|get_places|get_location)",

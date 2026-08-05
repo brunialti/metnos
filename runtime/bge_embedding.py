@@ -6,7 +6,7 @@ API simmetrica a `suprastructure.embedding.onnx_embedding.EmbeddingService`:
   mat = emb.embed_texts(["a", "b"])    # (N, 1024)
 
 Note implementative:
-- Modello: Xenova/bge-m3 onnx/sentence_transformers_fp16.onnx
+- Modello: Xenova/bge-m3 onnx/sentence_transformers_int8.onnx
 - Tokenizer: HF Rust tokenizers (tokenizer.json)
 - Output: ultimo hidden state → mean pooling masked → L2 normalize
 - Max length: 8192 token (padding/truncation a sliding window inferiore
@@ -18,6 +18,7 @@ per ottenere il vettore dense L2 normalizzato che e' il format standard).
 from __future__ import annotations
 
 from pathlib import Path
+import threading
 
 import numpy as np
 import onnxruntime as ort
@@ -25,7 +26,7 @@ from tokenizers import Tokenizer
 
 
 class BGEEmbeddingService:
-    """bge-m3 dense embeddings via ONNX (fp16 default)."""
+    """BGE-M3 dense embeddings via ONNX (int8 default)."""
 
     def __init__(self, model_dir: str | None = None,
                  model_file: str = "onnx/sentence_transformers_int8.onnx",
@@ -58,7 +59,8 @@ class BGEEmbeddingService:
         self._input_names = [i.name for i in self._sess.get_inputs()]
         self._output_names = [o.name for o in self._sess.get_outputs()]
 
-    def embed_texts(self, texts: list[str]) -> np.ndarray:
+    def embed_texts(self, texts: list[str], *,
+                    timeout_s: float | None = None) -> np.ndarray:
         """Ritorna (N, 1024) L2-normalized."""
         if not texts:
             return np.zeros((0, 1024), dtype=np.float32)
@@ -69,7 +71,27 @@ class BGEEmbeddingService:
         # Alcune varianti del modello richiedono token_type_ids; fornisci se serve.
         if "token_type_ids" in self._input_names:
             feed["token_type_ids"] = np.zeros_like(ids)
-        out = self._sess.run(None, feed)
+        run_options = None
+        timer = None
+        if timeout_s is not None:
+            if float(timeout_s) <= 0:
+                raise TimeoutError("embedding deadline exhausted")
+            run_options = ort.RunOptions()
+            timer = threading.Timer(
+                float(timeout_s),
+                lambda: setattr(run_options, "terminate", True),
+            )
+            timer.daemon = True
+            timer.start()
+        try:
+            out = self._sess.run(None, feed, run_options=run_options)
+        except Exception as exc:
+            if run_options is not None and run_options.terminate:
+                raise TimeoutError("embedding deadline exhausted") from exc
+            raise
+        finally:
+            if timer is not None:
+                timer.cancel()
         # Output: per sentence_transformers.onnx in genere e' GIA' il vettore
         # dense L2-normalizzato (1024,). Verifichiamo la shape.
         first = out[0]
@@ -88,6 +110,11 @@ class BGEEmbeddingService:
 
     def embed_query(self, text: str) -> np.ndarray:
         return self.embed_texts([text])[0]
+
+    def embed_query_bounded(self, text: str, *, timeout_s: float) -> np.ndarray:
+        """Run ORT with a real termination signal at the shared deadline."""
+
+        return self.embed_texts([text], timeout_s=timeout_s)[0]
 
 
 if __name__ == "__main__":

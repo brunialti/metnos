@@ -22,7 +22,7 @@ show                Render finale del prompt con vars stub (variabili non
 validate            Lint sintassi MiniJinja per ogni .j2 + boot
                     validate_invariant().
 translate           One-shot: traduce un ruolo da IT a `--to=<lang>` via LLM
-                    tier=wise; salva il candidato in `prompts/<lang>/_pending/`.
+                    tier=fidelity; salva il candidato in `prompts/<lang>/_pending/`.
 translate-all       Batch: traduce ogni `.j2` di `prompts/it/` non gia'
                     presente in `prompts/<lang>/`.
 sync-status         Tabella ruolo, mtime IT vs EN, lag, presenza candidato.
@@ -38,8 +38,8 @@ add-language        Bootstrap di una nuova lingua: crea `prompts/<code>/`,
                     placeholder, e stampa istruzioni per attivazione e
                     triggering manuale del translator notturno. Idempotente.
 
-Quality flag (translate / translate-all): default `wise` = modello locale
-(gratuito); `frontier` = Anthropic Opus 4.7 (~$0.015/call). Doc:
+Quality flag (translate / translate-all): default `fidelity` = contratto locale
+ad alta fedelta'; `frontier` = Anthropic Opus 4.8 (~$0.015/call). Doc:
 docs/it/architecture/multilang.html cap. 7.
 """
 import argparse
@@ -74,7 +74,25 @@ def _git_last_commit(file_path: Path) -> str:
 def _list_languages() -> list[str]:
     if not PROMPTS_BASE.is_dir():
         return []
-    return sorted(p.name for p in PROMPTS_BASE.iterdir() if p.is_dir())
+    return sorted(
+        p.name for p in PROMPTS_BASE.iterdir()
+        if p.is_dir() and not p.name.startswith("_")
+    )
+
+
+def _live_prompt_roles(lang_dir: Path) -> list[str]:
+    """Return every live ``.j2`` role below one language directory.
+
+    Roles use POSIX relative paths without the suffix, so top-level prompts
+    and nested planner fragments share one representation.
+    """
+    if not lang_dir.is_dir():
+        return []
+    return sorted(
+        p.relative_to(lang_dir).with_suffix("").as_posix()
+        for p in lang_dir.rglob("*.j2")
+        if "_pending" not in p.parts
+    )
 
 
 def cmd_list(_args) -> int:
@@ -86,20 +104,19 @@ def cmd_list(_args) -> int:
     if "it" not in langs:
         print("manca runtime/prompts/it/ (canonical reference)", file=sys.stderr)
         return 1
-    canonical_files = sorted(p.name for p in (PROMPTS_BASE / "it").glob("*.j2"))
-    if not canonical_files:
+    canonical_roles = _live_prompt_roles(PROMPTS_BASE / "it")
+    if not canonical_roles:
         print(f"(nessun prompt in {PROMPTS_BASE / 'it'}/)")
         return 0
 
     print(f"{'role':<24} {'size_it':>8}  {'languages':<20}  last_commit")
     print("-" * 72)
-    for fname in canonical_files:
-        role = fname[:-3] if fname.endswith(".j2") else fname
-        it_path = PROMPTS_BASE / "it" / fname
+    for role in canonical_roles:
+        it_path = PROMPTS_BASE / "it" / f"{role}.j2"
         size = it_path.stat().st_size if it_path.is_file() else 0
         present = []
         for lang in langs:
-            if (PROMPTS_BASE / lang / fname).is_file():
+            if (PROMPTS_BASE / lang / f"{role}.j2").is_file():
                 present.append(lang)
         last = _git_last_commit(it_path)
         print(f"{role:<24} {size:>8}  {','.join(present):<20}  {last}")
@@ -181,15 +198,13 @@ def _file_mtime(p: Path) -> float:
 
 def _resolve_tier_from_quality(args) -> str:
     """Resolve quality flag → LLM tier. `frontier` -> tier 'frontier'
-    (Anthropic Opus 4.7, ~$0.015/call); `wise` (default) -> tier 'wise'
-    (modello locale o equivalente). Compat: --tier override esplicito.
+    (Anthropic Opus 4.8, ~$0.015/call); `fidelity` (default) resolves the
+    translation workload. The generation policy remains owned by the central
+    router: this command only selects a logical quality intent.
     """
-    if getattr(args, "tier", None):
-        return args.tier
-    quality = getattr(args, "quality", None) or "wise"
-    if quality == "frontier":
-        return "frontier"
-    return "wise"
+    quality = getattr(args, "quality", None) or "fidelity"
+    from i18n_translator import translation_tier_for_quality
+    return translation_tier_for_quality(quality)
 
 
 def cmd_translate(args) -> int:
@@ -266,7 +281,7 @@ def cmd_sync_status(_args) -> int:
     if not PROMPTS_BASE.is_dir():
         print(f"prompts dir non esiste: {PROMPTS_BASE}", file=sys.stderr)
         return 1
-    canonical = sorted(p.name for p in (PROMPTS_BASE / "it").glob("*.j2"))
+    canonical = _live_prompt_roles(PROMPTS_BASE / "it")
     if not canonical:
         print("(nessun prompt in prompts/it/)")
         return 0
@@ -284,8 +299,8 @@ def cmd_sync_status(_args) -> int:
     print(header)
     print("-" * len(header))
     n_lag = 0
-    for fname in canonical:
-        role = fname[:-3]
+    for role in canonical:
+        fname = f"{role}.j2"
         it_p = PROMPTS_BASE / "it" / fname
         it_mt = _file_mtime(it_p)
         row = f"{role:<32} {_fmt_mtime(it_mt):<19}"
@@ -331,6 +346,24 @@ def _detect_git_root() -> Path | None:
     return None
 
 
+def _candidate_source_lang(role: str, target_lang: str) -> str:
+    """Resolve the source recorded when a candidate was generated.
+
+    Automatic latest-wins alignment stores ``source_lang`` in the target
+    language state. Manually generated candidates retain the CLI's documented
+    Italian source as the fallback.
+    """
+    try:
+        state = prompt_loader.load_lang_state(target_lang)
+        source = str((state.get(role) or {}).get("source_lang") or "").strip()
+        if (source and source != target_lang
+                and (PROMPTS_BASE / source / f"{role}.j2").is_file()):
+            return source
+    except Exception:
+        pass
+    return "it"
+
+
 def cmd_review(args) -> int:
     """Mostra diff strutturale del candidato `_pending/<role>.j2.candidate` vs IT
     (preview) e validation report. NON promuove.
@@ -338,14 +371,15 @@ def cmd_review(args) -> int:
     role = args.role
     lang = args.lang or "en"
     cand = PROMPTS_BASE / lang / "_pending" / f"{role}.j2.candidate"
-    src = PROMPTS_BASE / "it" / f"{role}.j2"
+    source_lang = _candidate_source_lang(role, lang)
+    src = PROMPTS_BASE / source_lang / f"{role}.j2"
     if not cand.is_file():
         print(f"candidato non esiste: {cand}", file=sys.stderr)
         print(f"esegui prima: metnos-prompts translate {role} --to={lang}",
               file=sys.stderr)
         return 1
     if not src.is_file():
-        print(f"sorgente IT non esiste: {src}", file=sys.stderr)
+        print(f"sorgente {source_lang} non esiste: {src}", file=sys.stderr)
         return 1
     src_text = src.read_text(encoding="utf-8")
     cand_text = cand.read_text(encoding="utf-8")
@@ -366,7 +400,7 @@ def cmd_review(args) -> int:
     src_lines = src_text.splitlines(keepends=False)
     cand_lines = cand_text.splitlines(keepends=False)
     diff = list(difflib.unified_diff(src_lines, cand_lines,
-                                       fromfile=f"it/{role}.j2",
+                                       fromfile=f"{source_lang}/{role}.j2",
                                        tofile=f"{lang}/_pending/{role}.j2.candidate",
                                        lineterm=""))
     if not diff:
@@ -391,13 +425,14 @@ def cmd_mark_synced(args) -> int:
     role = args.role
     lang = args.lang or "en"
     cand = PROMPTS_BASE / lang / "_pending" / f"{role}.j2.candidate"
-    src = PROMPTS_BASE / "it" / f"{role}.j2"
+    source_lang = _candidate_source_lang(role, lang)
+    src = PROMPTS_BASE / source_lang / f"{role}.j2"
     target = PROMPTS_BASE / lang / f"{role}.j2"
     if not cand.is_file():
         print(f"candidato non esiste: {cand}", file=sys.stderr)
         return 1
     if not src.is_file():
-        print(f"sorgente IT non esiste: {src}", file=sys.stderr)
+        print(f"sorgente {source_lang} non esiste: {src}", file=sys.stderr)
         return 1
     src_text = src.read_text(encoding="utf-8")
     cand_text = cand.read_text(encoding="utf-8")
@@ -412,6 +447,18 @@ def cmd_mark_synced(args) -> int:
         return 1
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(cand_text, encoding="utf-8")
+    # Promotion is not a new human edit in the target language. Record the
+    # candidate and its source hashes atomically in the language state so the
+    # next latest-wins cycle does not translate the freshly promoted text back
+    # into its source language.
+    import prompt_loader as _prompt_loader
+    from hashutil import sha256_prefixed as _sha256_prefixed
+    state = _prompt_loader.load_lang_state(lang)
+    entry = state.setdefault(role, {})
+    entry["version_hash"] = _sha256_prefixed(cand_text)
+    entry["source_lang"] = source_lang
+    entry["source_hash"] = _sha256_prefixed(src_text)
+    _prompt_loader.save_lang_state(lang, state)
     print(f"promoted: {cand} -> {target}")
     return 0
 
@@ -434,8 +481,8 @@ def cmd_validate_cross_lang(_args) -> int:
 
     n_total, n_fail = 0, 0
     print(f"validate-cross-lang: secondary langs={langs or '(none)'}")
-    for fname in sorted(p.name for p in canonical_dir.glob("*.j2")):
-        role = fname[:-3]
+    for role in _live_prompt_roles(canonical_dir):
+        fname = f"{role}.j2"
         src_text = (canonical_dir / fname).read_text(encoding="utf-8")
         for lang in langs:
             tgt = PROMPTS_BASE / lang / fname
@@ -535,7 +582,7 @@ def cmd_add_language(args) -> int:
     print(f"Lingua '{code}' bootstrap completato.")
     print(f"  - prompts/{code}/ creata (vuota, daemon notturno generera' candidate)")
     print(f"  - i18n.sqlite: {code} bootstrap rows pending")
-    print(f"  - Manifest description: il daemon scansionera' al prossimo cycle")
+    print("  - Manifest description: il daemon scansionera' al prossimo cycle")
     print()
     print("Per triggerare manualmente la traduzione subito:")
     print("  <install_root>/deploy/run_prompts_translator.sh")
@@ -572,7 +619,7 @@ def _audit_pick_prompts(sample: str) -> list[str]:
 
 
 def _audit_one(role: str, target_lang: str, *, dry_run: bool) -> dict:
-    """Esegue audit per UN ruolo: traduce con wise + frontier, calcola score
+    """Esegue audit per UN ruolo: traduce con fidelity + frontier, calcola score
     di entrambi.
 
     `dry_run`: niente call LLM, scores fittizi deterministici (seed=hash(role)).
@@ -586,15 +633,15 @@ def _audit_one(role: str, target_lang: str, *, dry_run: bool) -> dict:
         # Score simulati deterministici (per test della logica di
         # threshold senza chiamare LLM).
         h = abs(hash(role)) % 1000
-        score_wise = 0.80 + (h % 17) / 100  # [0.80, 0.96]
-        score_frontier = score_wise + 0.02 + (h % 7) / 100  # +[0.02, 0.08]
+        score_fidelity = 0.80 + (h % 17) / 100  # [0.80, 0.96]
+        score_frontier = score_fidelity + 0.02 + (h % 7) / 100  # +[0.02, 0.08]
         return {
             "role": role,
             "ok": True,
-            "wise": {
-                "score": round(score_wise, 4),
-                "cosine_sim": round(score_wise - 0.05, 4),
-                "roundtrip_sim": round(score_wise + 0.02, 4),
+            "fidelity": {
+                "score": round(score_fidelity, 4),
+                "cosine_sim": round(score_fidelity - 0.05, 4),
+                "roundtrip_sim": round(score_fidelity + 0.02, 4),
                 "placeholder_integrity": True,
             },
             "frontier": {
@@ -611,24 +658,26 @@ def _audit_one(role: str, target_lang: str, *, dry_run: bool) -> dict:
     from translator_quality import score_translation  # type: ignore
 
     out: dict = {"role": role, "ok": True}
-    for tier in ("wise", "frontier"):
+    from i18n_translator import translation_tier_for_quality
+    for quality in ("fidelity", "frontier"):
+        tier = translation_tier_for_quality(quality)
         try:
             res = translate_prompt_file(role, target_lang=target_lang,
                                           source_lang="it", tier=tier)
         except Exception as exc:
-            out[tier] = {"score": 0.0, "error": f"translate failed: {exc}"}
+            out[quality] = {"score": 0.0, "error": f"translate failed: {exc}"}
             out["ok"] = False
             continue
         cand = res.get("candidate_path")
         if not cand or not Path(cand).is_file():
-            out[tier] = {"score": 0.0,
-                          "error": res.get("error") or "no candidate emitted"}
+            out[quality] = {"score": 0.0,
+                            "error": res.get("error") or "no candidate emitted"}
             out["ok"] = False
             continue
         translated = Path(cand).read_text(encoding="utf-8")
         sc = score_translation(src_text, translated, "it", target_lang,
                                  tier_used=tier)
-        out[tier] = {
+        out[quality] = {
             "score": sc["score"],
             "cosine_sim": sc["cosine_sim"],
             "roundtrip_sim": sc["roundtrip_sim"],
@@ -642,32 +691,32 @@ def _audit_decide(per_prompt: list[dict], *,
     """Aggrega risultati per-prompt e decide tier raccomandato.
 
     Logica:
-      - per ogni prompt con score_wise e score_frontier validi:
-          individual_above = score_wise >= individual_pct * score_frontier
-      - se (count_above / total_valid) >= threshold_pct → tier 'wise'
+      - per ogni prompt con score_fidelity e score_frontier validi:
+          individual_above = score_fidelity >= individual_pct * score_frontier
+      - se (count_above / total_valid) >= threshold_pct → tier 'fidelity'
         (modello locale sufficiente per la maggioranza)
       - altrimenti → tier 'frontier'.
     """
     valid = [p for p in per_prompt if p.get("ok")
-              and "score" in (p.get("wise") or {})
+              and "score" in (p.get("fidelity") or {})
               and "score" in (p.get("frontier") or {})]
     if not valid:
         return {
-            "recommended_tier": "wise",
+            "recommended_tier": "fidelity",
             "n_total": 0, "n_valid": 0,
             "n_individual_above": 0,
             "individual_above_pct": 0.0,
-            "mean_wise": 0.0, "mean_frontier": 0.0,
+            "mean_fidelity": 0.0, "mean_frontier": 0.0,
             "delta": 0.0,
             "lagging_prompts": [],
             "threshold_satisfied": False,
         }
-    mean_wise = sum(p["wise"]["score"] for p in valid) / len(valid)
+    mean_fidelity = sum(p["fidelity"]["score"] for p in valid) / len(valid)
     mean_frontier = sum(p["frontier"]["score"] for p in valid) / len(valid)
     above: list[dict] = []
     lagging: list[dict] = []
     for p in valid:
-        sw = p["wise"]["score"]
+        sw = p["fidelity"]["score"]
         sf = p["frontier"]["score"]
         if sf <= 0 or sw >= individual_pct * sf:
             above.append(p)
@@ -675,16 +724,16 @@ def _audit_decide(per_prompt: list[dict], *,
             lagging.append(p)
     pct_above = len(above) / len(valid)
     threshold_satisfied = pct_above >= threshold_pct
-    recommended = "wise" if threshold_satisfied else "frontier"
+    recommended = "fidelity" if threshold_satisfied else "frontier"
     return {
         "recommended_tier": recommended,
         "n_total": len(per_prompt),
         "n_valid": len(valid),
         "n_individual_above": len(above),
         "individual_above_pct": round(pct_above, 4),
-        "mean_wise": round(mean_wise, 4),
+        "mean_fidelity": round(mean_fidelity, 4),
         "mean_frontier": round(mean_frontier, 4),
-        "delta": round(mean_frontier - mean_wise, 4),
+        "delta": round(mean_frontier - mean_fidelity, 4),
         "lagging_prompts": [p["role"] for p in lagging],
         "threshold_satisfied": threshold_satisfied,
     }
@@ -709,7 +758,7 @@ def _audit_apply_config(decision: dict, *,
         "[translator]\n"
         f"tier = \"{decision['recommended_tier']}\"\n"
         f"audit_date = \"{now}\"\n"
-        f"audit_score_wise = {decision['mean_wise']}\n"
+        f"audit_score_fidelity = {decision['mean_fidelity']}\n"
         f"audit_score_frontier = {decision['mean_frontier']}\n"
         f"audit_n_prompts = {decision['n_valid']}\n"
         f"audit_n_individual_above = {decision['n_individual_above']}\n"
@@ -726,7 +775,7 @@ def _audit_apply_config(decision: dict, *,
 
 
 def cmd_audit_quality(args) -> int:
-    """Audit qualita' traduzione: confronta tier `wise` vs `frontier` su un
+    """Audit qualita' traduzione: confronta tier `fidelity` vs `frontier` su un
     sample di prompt. Calcola statistiche aggregate, raccomanda tier per il
     daemon, opzionalmente persiste config (`--apply`).
 
@@ -755,30 +804,30 @@ def cmd_audit_quality(args) -> int:
         res = _audit_one(role, target, dry_run=dry_run)
         per_prompt.append(res)
         if res.get("ok"):
-            sw = (res.get("wise") or {}).get("score", 0.0)
+            sw = (res.get("fidelity") or {}).get("score", 0.0)
             sf = (res.get("frontier") or {}).get("score", 0.0)
-            print(f" wise={sw:.3f}  frontier={sf:.3f}")
+            print(f" fidelity={sw:.3f}  frontier={sf:.3f}")
         else:
-            err_w = (res.get("wise") or {}).get("error", "?")
+            err_w = (res.get("fidelity") or {}).get("error", "?")
             err_f = (res.get("frontier") or {}).get("error", "?")
-            print(f" FAIL wise={err_w[:30]} frontier={err_f[:30]}")
+            print(f" FAIL fidelity={err_w[:30]} frontier={err_f[:30]}")
 
     decision = _audit_decide(per_prompt,
                               individual_pct=individual_pct,
                               threshold_pct=threshold_pct)
 
     print()
-    print(f"                         wise (locale)   frontier (Opus 4.7)")
-    print(f"mean score:              {decision['mean_wise']:<15} "
+    print("                      fidelity (locale)   frontier (Opus 4.8)")
+    print(f"mean score:              {decision['mean_fidelity']:<15} "
           f"{decision['mean_frontier']:<15}")
     print(f"Δ mean:                  {decision['delta']:+.4f} "
           f"({100 * decision['delta'] / max(1e-9, decision['mean_frontier']):.1f}%)")
     print()
-    print(f"Per-prompt analysis:")
-    print(f"  prompts where wise >= {individual_pct:.2f} * frontier: "
+    print("Per-prompt analysis:")
+    print(f"  prompts where fidelity >= {individual_pct:.2f} * frontier: "
           f"{decision['n_individual_above']}/{decision['n_valid']} "
           f"({decision['individual_above_pct'] * 100:.1f}%)")
-    print(f"  prompts where wise lags significantly: "
+    print(f"  prompts where fidelity lags significantly: "
           f"{len(decision['lagging_prompts'])} "
           f"({', '.join(decision['lagging_prompts'][:5])}"
           f"{'...' if len(decision['lagging_prompts']) > 5 else ''})")
@@ -792,8 +841,8 @@ def cmd_audit_quality(args) -> int:
     print()
     print(f"RACCOMANDAZIONE: tier='{decision['recommended_tier']}'"
           + (" (modello locale, $0/call)"
-             if decision['recommended_tier'] == "wise"
-             else " (Anthropic Opus 4.7, ~$0.015/call)"))
+             if decision['recommended_tier'] == "fidelity"
+             else " (Anthropic Opus 4.8, ~$0.015/call)"))
     if decision["lagging_prompts"]:
         print(f"  - {len(decision['lagging_prompts'])} prompt lagging: "
               "futuro override per-role possibile")
@@ -819,8 +868,8 @@ def cmd_audit_quality(args) -> int:
         print(f"Report dettagliato in {rep_path}")
 
     if not dry_run:
-        # Stima costi: 2 call (wise + frontier) per ruolo + 2 back-translate.
-        # Wise locale = $0; frontier ~$0.015/call * 2 = $0.030/ruolo.
+        # Stima costi: 2 call (fidelity + frontier) per ruolo + 2 back-translate.
+        # Precise locale = $0; frontier ~$0.015/call * 2 = $0.030/ruolo.
         n_valid = decision["n_valid"]
         cost = round(n_valid * 0.030, 2)
         print(f"\nCosto audit stimato: ~{n_valid * 2} call frontier = ${cost} "
@@ -972,7 +1021,7 @@ def cmd_bench(args) -> int:
     print(f"  total bytes      : {bytes_total:,}")
     print(f"  avg bytes/render : {bytes_total // max(1, len(valid)):,}")
     print()
-    print(f"Cache stats:")
+    print("Cache stats:")
     print(f"  hits             : {stats['hits']}")
     print(f"  misses           : {stats['misses']}")
     print(f"  no_cache         : {stats['no_cache']}")
@@ -1062,18 +1111,14 @@ def main() -> int:
     p_tr = sub.add_parser("translate", help="Traduce un ruolo IT → target")
     p_tr.add_argument("role", help="Nome ruolo (es. 'planner')")
     p_tr.add_argument("--to", default="en", help="Lingua target (default: en)")
-    p_tr.add_argument("--quality", choices=["wise", "frontier"], default="wise",
-                       help="wise=modello locale (default, gratis); "
-                            "frontier=Anthropic Opus 4.7 (~$0.015/call)")
-    p_tr.add_argument("--tier", default=None,
-                       help="(advanced) Override tier LLM diretto. Sovrascrive --quality.")
+    p_tr.add_argument("--quality", choices=["fidelity", "frontier"], default="fidelity",
+                       help="fidelity=alta fedelta' locale (default); "
+                            "frontier=Anthropic Opus 4.8 (~$0.015/call)")
 
     p_tra = sub.add_parser("translate-all", help="Batch traduzione di tutti i .j2 di prompts/it/")
     p_tra.add_argument("--to", default="en", help="Lingua target (default: en)")
-    p_tra.add_argument("--quality", choices=["wise", "frontier"], default="wise",
-                        help="wise (default, gratis) o frontier (~$0.015/call)")
-    p_tra.add_argument("--tier", default=None,
-                        help="(advanced) Override tier LLM diretto.")
+    p_tra.add_argument("--quality", choices=["fidelity", "frontier"], default="fidelity",
+                        help="fidelity (default, locale) o frontier (~$0.015/call)")
     p_tra.add_argument("--force", action="store_true",
                         help="Ritraduci anche se gia' presente in target dir")
 
@@ -1110,7 +1155,7 @@ def main() -> int:
                          help="Lingua specifica (default: tutte). 'all' = tutte.")
 
     p_audit = sub.add_parser("audit-quality",
-                               help="Audit qualita' traduzione wise vs frontier "
+                               help="Audit qualita' traduzione fidelity vs frontier "
                                     "+ raccomandazione tier per il daemon")
     p_audit.add_argument("--to", default="en",
                           help="Lingua target (default: en)")
@@ -1126,7 +1171,7 @@ def main() -> int:
     p_audit.add_argument("--threshold-pct", type=float, default=0.80,
                           help="Soglia %% prompt above-individual (default 0.80)")
     p_audit.add_argument("--individual-pct", type=float, default=0.95,
-                          help="Soglia individuale wise vs frontier "
+                          help="Soglia individuale fidelity vs frontier "
                                "(default 0.95)")
 
     p_bench = sub.add_parser("bench",

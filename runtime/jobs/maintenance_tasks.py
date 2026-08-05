@@ -50,7 +50,7 @@ def task_apply_ager() -> dict:
 
 
 def task_introvertiva_propose() -> dict:
-    """Genera candidati introvertiva (dedupe/generalize) SENZA applicarli:
+    """Genera candidati introvertiva di deduplicazione SENZA applicarli:
     `run_all` scrive audit JSONL e i candidati sono proiettati in
     proposals_state (`touch_or_insert` → lifecycle pending/dormant e vista
     /admin/changes). Nessuna mutazione del catalog. (specialize RITIRATA
@@ -148,7 +148,6 @@ def task_learning_loop_review() -> dict:
       aperte) per la dashboard/log. Idempotente, additivo, mai LLM.
     """
     import os
-    import sqlite3
     import time
     report: dict = {"shadow_active": 0, "shadow_pruned": 0,
                     "proposals_open": 0}
@@ -208,7 +207,7 @@ def task_state_reaper() -> dict:
             log.warning("state_reaper[%s] fallito: %r", name, ex)
 
     undo_days = int(os.environ.get("METNOS_UNDO_RETENTION_DAYS", "30"))
-    turn_days = int(os.environ.get("METNOS_TURN_LOG_RETENTION_DAYS", "90"))
+    turn_days = int(os.environ.get("METNOS_TURN_LOG_RETENTION_DAYS", "60"))
     skill_days = int(os.environ.get("METNOS_SKILL_CACHE_RETENTION_DAYS", "30"))
     now = time.time()
 
@@ -299,20 +298,59 @@ def task_state_reaper() -> dict:
     _run("device_join_sessions", _join_sessions)
 
     def _turn_logs():
+        from log_lifecycle import archive_daily_logs
         tdir = _C.PATH_USER_DATA / "turns"
-        if not tdir.exists():
-            return {"removed_files": 0}
-        cutoff = now - turn_days * 86400
-        removed = 0
-        for f in tdir.glob("*.jsonl"):
-            try:
-                if f.stat().st_mtime < cutoff:
-                    f.unlink()
-                    removed += 1
-            except OSError:
-                pass
-        return {"removed_files": removed, "retention_days": turn_days}
+        archive = Path(os.environ.get("METNOS_TURN_LOG_ARCHIVE_DIR")
+                       or (_C.PATH_USER_DATA / "turns_archive"))
+        archive_days = int(os.environ.get(
+            "METNOS_TURN_LOG_ARCHIVE_RETENTION_DAYS", "365"))
+        backup_live_days = int(os.environ.get(
+            "METNOS_TURN_LOG_BACKUP_LIVE_DAYS", "7"))
+        archive_max_mb = int(os.environ.get(
+            "METNOS_TURN_LOG_ARCHIVE_MAX_MB", "2048"))
+        return archive_daily_logs(
+            tdir, archive,
+            live_days=turn_days,
+            backup_live_days=backup_live_days,
+            archive_days=archive_days,
+            max_archive_bytes=archive_max_mb * 1024 * 1024,
+            now=now,
+        )
     _run("turn_logs", _turn_logs)
+
+    def _periodic_logs():
+        # Audit periodici che non sono stato operativo: un anno resta live
+        # per dashboard/analisi, poi passa all'archivio verificato e compresso.
+        # Ogni store ha un cap proprio, così anche l'archivio è finito.
+        from log_lifecycle import archive_daily_logs
+        live_days = int(os.environ.get(
+            "METNOS_PERIODIC_LOG_LIVE_DAYS", "365"))
+        archive_days = int(os.environ.get(
+            "METNOS_PERIODIC_LOG_ARCHIVE_RETENTION_DAYS", "1095"))
+        max_mb = int(os.environ.get(
+            "METNOS_PERIODIC_LOG_ARCHIVE_MAX_MB_PER_STORE", "128"))
+        archive_root = Path(os.environ.get(
+            "METNOS_PERIODIC_LOG_ARCHIVE_DIR")
+            or (_C.PATH_USER_DATA / "logs_archive" / "periodic"))
+        stores = {
+            "vaglio": _C.PATH_USER_DATA / "vaglio",
+            "cost": _C.PATH_USER_DATA / "cost",
+            "skill_audit": _C.PATH_USER_DATA / "skill_audit",
+            "i18n_audit": _C.PATH_USER_DATA / "i18n_audit",
+            "detection_audit": _C.PATH_USER_DATA / "detection_audit",
+            "aging": _C.PATH_USER_DATA / "aging",
+            "lifecycle": _C.PATH_USER_DATA / "lifecycle",
+        }
+        return {
+            name: archive_daily_logs(
+                directory, archive_root / name,
+                live_days=live_days, backup_live_days=7,
+                archive_days=archive_days,
+                max_archive_bytes=max_mb * 1024 * 1024,
+            )
+            for name, directory in stores.items()
+        }
+    _run("periodic_logs", _periodic_logs)
 
     def _invocations():
         # F5 (review 2026-07-04): la tabella `invocations` (executor remoti) era

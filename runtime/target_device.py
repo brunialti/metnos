@@ -132,6 +132,17 @@ def _find_named_device(qn: str, devices):
         m = re.search(pat_n, qn)
         if m:
             matches.append((d, m.group(0), name, True))
+            continue
+        # Nome tecnico nudo («temperatura pc-roberto»): i nomi con struttura
+        # distintiva (trattino, underscore o cifra) sono sufficientemente
+        # specifici da costituire da soli un riferimento esplicito.
+        # Le locuzioni comuni restano escluse per evitare falsi positivi.
+        if re.search(r"[-_\d]", name):
+            pat_bare = (r"(?<![a-z0-9])" + re.escape(name)
+                        + r"(?![a-z0-9])")
+            m = re.search(pat_bare, qn)
+            if m:
+                matches.append((d, m.group(0), name, False))
     if not matches:
         return None
     maxlen = max(len(n) for _d, _s, n, _nom in matches)

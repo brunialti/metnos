@@ -66,6 +66,12 @@ def is_intent_bearing_config(tool_name: str, arg_name: str, arg_schema) -> bool:
     NB: events multi-provider NON è esente (owner completo = backend_resolver
     whole-query, famiglia marcata read/delete/create_events)."""
     spec = arg_schema if isinstance(arg_schema, dict) else {}
+    # Il marker esplicito e' una decisione di contratto, non un indizio:
+    # prevale sulle euristiche basate su enum/nome. In particolare un client
+    # multi-provider puo' essere interamente risolto dal runtime (mail/events)
+    # e non deve tornare visibile al planner solo perche' l'enum e' completo.
+    if spec.get("runtime_resolved"):
+        return False
     name = (arg_name or "").lower()
     tool = (tool_name or "").lower()
     enum = spec.get("enum") if isinstance(spec.get("enum"), list) else []

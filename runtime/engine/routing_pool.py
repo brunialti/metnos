@@ -1,7 +1,7 @@
 """engine/routing_pool.py — costruzione del pool di routing (funzione PURA).
 
 Estratta da `dispatch.run_turn` (fix B3, 9/6/2026): prima il guard
-anti-regressione `bench/routing_subset_bench.py` RE-implementava una versione
+anti-regressione `tests/benchmarks/routing_subset_bench.py` RE-implementava una versione
 semplificata del pool (k=10 fisso, niente compound per-clausola, niente
 universal-helpers, niente companions) e poteva restare verde mentre la
 produzione regrediva su quei layer. Ora dispatch e bench chiamano la STESSA
@@ -23,13 +23,6 @@ import logging
 import os
 
 log = logging.getLogger(__name__)
-
-
-# Producer → consumer naturale da iniettare sempre nel pool (§7.3 companion).
-# Un producer il cui output non è azionabile senza il consumer.
-_POOL_COMPANIONS = {
-    "find_urls": ["read_urls_html", "read_urls_pdf"],
-}
 
 
 def _tool_object_of(nm: str) -> str:
@@ -110,14 +103,50 @@ def _provider_recruit_and_gate(names: list[str], query: str, intent,
         return names
     _VOBJ, _PROD = set(_VOBJ_SET), set(_PROD_SET)
 
-    # Marker provider ASSENTE: niente recruit/web-steal (riguardano un provider
-    # ATTIVO), ma il GATE va applicato comunque — col marker assente esclude le
-    # varianti `*_<provider>` dal pool (context-binding: un tool github non entra
-    # senza «github» nella query). Senza questo, l'LLM sceglie find_files_github
-    # per «trova pagine web su rust» (il prefilter lo porta per il verbo «find»).
-    # Bug live: query web pura → find_files_github. Simmetrico al recruit.
+    # Marker provider ASSENTE: in produzione niente recruit/web-steal. Nei test
+    # d'integrazione, però, METNOS_HIDE_EXECUTORS può rimuovere deliberatamente
+    # il canonical per verificare un provider importato. In quel solo caso
+    # reclutiamo il sibling univoco compatibile con verb/object: il test resta
+    # una query naturale senza cambiare la semantica di produzione.
     if not suffixes:
         try:
+            hidden = {
+                item.strip()
+                for item in os.environ.get("METNOS_HIDE_EXECUTORS", "").split(",")
+                if item.strip()
+            }
+            intent_obj = getattr(intent, "object", None) or ""
+            intent_verb = getattr(intent, "verb", None) or ""
+            if hidden and intent_obj:
+                provider_suffixes = tuple(
+                    __import__("detection_lexicon").mapping(
+                        "provider.markers").keys())
+                producer_verbs = set(_PROD)
+                candidates = []
+                for e in catalog:
+                    nm = (e.get("name") if isinstance(e, dict)
+                          else getattr(e, "name", "")) or ""
+                    dormant = (e.get("dormant") if isinstance(e, dict)
+                               else getattr(e, "dormant", False))
+                    if dormant:
+                        continue
+                    for canonical in hidden:
+                        suffix = nm[len(canonical):] if nm.startswith(canonical) else ""
+                        if not suffix or suffix not in provider_suffixes:
+                            continue
+                        parts = canonical.split("_")
+                        verb = parts[0] if parts else ""
+                        obj = next((part for part in parts[1:] if part in _VOBJ), "")
+                        if obj == intent_obj:
+                            candidates.append((nm, verb))
+                exact = [nm for nm, verb in candidates if verb == intent_verb]
+                compatible = exact
+                if not compatible and intent_verb in producer_verbs:
+                    compatible = [nm for nm, verb in candidates
+                                  if verb in producer_verbs]
+                unique = sorted(set(compatible))
+                if len(unique) == 1 and unique[0] not in names:
+                    names.append(unique[0])
             kept, excluded = provider_gate_names(names, query)
             if kept:
                 names = kept
@@ -418,22 +447,39 @@ def build_routing_pool(query: str, intent, catalog: list, *,
                     if nm in _UNIVERSAL_HELPERS and nm not in present:
                         pool_for_propose = pool_for_propose + [ex_obj]
                         present.add(nm)
-                # §7.3 COMPANION injection (universale): un producer il cui
-                # output è inutile senza un CONSUMER naturale porta sempre il
-                # consumer nel pool, anche se il verbo del consumer non è nella
-                # query. find_urls produce URL → senza read_urls_html/pdf la
-                # catena web→contenuto è monca (il proposer non può chiuderla,
-                # bug ROCm 3/6). Mappa estendibile a ogni coppia simile.
-                for _prod, _comps in _POOL_COMPANIONS.items():
-                    if _prod in present:
-                        for _c in _comps:
-                            if _c in present:
-                                continue
-                            _co = next((e for e in catalog
-                                        if getattr(e, "name", None) == _c), None)
-                            if _co is not None:
-                                pool_for_propose = pool_for_propose + [_co]
-                                present.add(_c)
+                # §7.3 companion injection, manifest-driven. Un producer può
+                # dichiarare consumer naturali in ``[planning].companions``.
+                # Il motore non conosce domini o nomi speciali: amplia il pool
+                # con relazioni firmate, mentre il proposer decide se usarle.
+                # Il punto fisso supporta catene dichiarative senza cicli.
+                by_name = {
+                    getattr(ex_obj, "name", None): ex_obj
+                    for ex_obj in catalog
+                    if getattr(ex_obj, "name", None)
+                }
+                pending = list(present)
+                expanded = set()
+                while pending:
+                    producer_name = pending.pop(0)
+                    if producer_name in expanded:
+                        continue
+                    expanded.add(producer_name)
+                    producer = by_name.get(producer_name)
+                    for companion_name in (
+                            getattr(producer, "planning_companions", None)
+                            or []):
+                        if companion_name in present:
+                            continue
+                        companion = by_name.get(companion_name)
+                        if companion is None:
+                            log.warning(
+                                "routing_pool: companion %r dichiarato da %r "
+                                "ma assente dal catalogo",
+                                companion_name, producer_name)
+                            continue
+                        pool_for_propose = pool_for_propose + [companion]
+                        present.add(companion_name)
+                        pending.append(companion_name)
             except Exception as ex:
                 # §2.8: traccia l'injection helper/companion fallita (il pool
                 # prefiltrato resta valido; flusso invariato).

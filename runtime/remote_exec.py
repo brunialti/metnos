@@ -13,6 +13,7 @@ Errori onesti §2.8 (mai silenzio):
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -54,7 +55,7 @@ def _scaled_timeout_s(timeout_s: int, args: dict | None,
 
 # §7.13: le 5 chiavi ERR_DEVICE_* vivono nel catalogo seed
 # (install/data/i18n_seed.sqlite, IT+EN) e si risolvono via _msg() puro.
-# Guard di presenza: runtime/tests/test_seed_i18n_gate_keys.py.
+# Guard di presenza: tests/runtime/i18n/test_seed_i18n_gate_keys.py.
 
 
 def invoke_remote(executor, args: dict, device_id: str, *,
@@ -93,6 +94,7 @@ def invoke_remote(executor, args: dict, device_id: str, *,
         env.setdefault("METNOS_LANG", _i18n.current_lang())
     except Exception:
         pass
+    wait_started = time.monotonic()
     invocation_id = invocations.enqueue_invocation(
         device_id,
         executor.name,
@@ -108,6 +110,7 @@ def invoke_remote(executor, args: dict, device_id: str, *,
 
     wait_s = timeout_s + WAIT_MARGIN_S
     result = invocations.wait_result(invocation_id, wait_s)
+    observed_ms = round((time.monotonic() - wait_started) * 1000)
     if result is None:
         log.warning("invocation %s senza result entro %ds (device %s)",
                     invocation_id, wait_s, device_id[:12])
@@ -136,12 +139,37 @@ def invoke_remote(executor, args: dict, device_id: str, *,
     if isinstance(payload, dict) and payload:
         merged = dict(payload)
         merged.setdefault("ok", bool(result.get("ok")))
-        merged["_remote"] = {
+        remote_meta = {
             "device_id": device_id,
             "invocation_id": invocation_id,
             "sandbox": result.get("sandbox"),
             "elapsed_ms": result.get("elapsed_ms"),
+            "server_observed_ms": observed_ms,
         }
+        # Telemetria calcolata lato server: non cambia il wire firmato. Le
+        # colonne epoch sono additive e restano null sui record storici.
+        try:
+            info = invocations.get_invocation(invocation_id) or {}
+            created = info.get("created_epoch")
+            delivered = info.get("delivered_epoch")
+            completed = info.get("completed_epoch")
+            device_elapsed = result.get("elapsed_ms")
+            if isinstance(created, (int, float)) and isinstance(delivered, (int, float)):
+                remote_meta["queue_ms"] = max(
+                    0, round((delivered - created) * 1000))
+            if isinstance(delivered, (int, float)) and isinstance(completed, (int, float)):
+                delivered_to_completed = max(
+                    0, round((completed - delivered) * 1000))
+                remote_meta["delivered_to_completed_ms"] = delivered_to_completed
+                if isinstance(device_elapsed, (int, float)):
+                    remote_meta["non_executor_ms"] = max(
+                        0, delivered_to_completed - round(device_elapsed))
+            if isinstance(created, (int, float)) and isinstance(completed, (int, float)):
+                remote_meta["roundtrip_ms"] = max(
+                    0, round((completed - created) * 1000))
+        except Exception as exc:  # best-effort: mai rompere un result valido
+            log.debug("remote timing telemetry unavailable: %r", exc)
+        merged["_remote"] = remote_meta
         return merged
     # Client pre-payload (0.2.5 e precedenti, non ancora reinstallato): thin
     # body coi soli campi §6.3. Fallback trasparente durante il rollout.

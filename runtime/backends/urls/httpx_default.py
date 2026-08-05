@@ -35,7 +35,7 @@ Funzioni:
 - `login(args) -> dict`
 
 Contratto: vedi le rispettive `invoke()` originali negli executor
-`read_urls_html`/`read_urls_pdf`/`find_urls`/`login_session`.
+`read_urls_html`/`read_urls_pdf`/`find_urls`/`login_urls`.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ from pathlib import Path
 
 # Path dei 4 executor (siblings nella cartella `executors/`).
 _EXECUTORS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "executors"
-for _sub in ("read_urls_html", "read_urls_pdf", "find_urls", "login_session"):
+for _sub in ("read_urls_html", "read_urls_pdf", "find_urls", "login_urls"):
     _p = str(_EXECUTORS_DIR / _sub)
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -56,7 +56,7 @@ for _sub in ("read_urls_html", "read_urls_pdf", "find_urls", "login_session"):
 import read_urls_html as _ru_html  # noqa: E402
 import read_urls_pdf as _ru_pdf  # noqa: E402
 import find_urls as _f_urls  # noqa: E402
-import login_session as _login  # noqa: E402
+import login_urls as _login  # noqa: E402
 
 
 def read_html(args: dict) -> dict:

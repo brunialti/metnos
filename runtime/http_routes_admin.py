@@ -16,20 +16,208 @@ from pathlib import Path
 
 from aiohttp import web
 
+from http_app_state import (
+    ADMIN_KEY as APP_ADMIN_KEY, CATALOG_PROVIDER, STARTED_AT, app_get,
+)
+
 import executor_aging
 import proposals_state
 import telos_proposals_store
 import users
+import services_registry
 import config as _C  # §7.11
 from http_auth import (
     ADMIN_COOKIE,
     ADMIN_COOKIE_TTL_S,
+    consume_admin_onboard_token,
+    external_request_scheme,
     issue_admin_cookie,
 )
-from http_render import _error, negotiate_collection, render_template, serve_with_etag
+from http_render import (
+    _error,
+    negotiate_collection,
+    render_template,
+    serve_with_etag,
+    wants_html,
+)
 from logging_setup import get_logger
 
 log = get_logger(__name__)
+
+
+async def admin_virt(request: web.Request) -> web.Response:
+    """GET /admin/virt — effective, redacted model configuration."""
+
+    from virt.configuration import UI_EDITABLE_FAMILIES, snapshot
+
+    html = wants_html(request)
+    edit_family = request.query.get("edit", "") if html else ""
+    if edit_family not in UI_EDITABLE_FAMILIES:
+        edit_family = ""
+    payload = await asyncio.to_thread(snapshot, edit_family=edit_family)
+    headers = {"Cache-Control": "no-store"}
+    if not html:
+        return web.json_response(payload, headers=headers)
+    return web.Response(
+        text=render_template(
+            "virt.html", snapshot=payload, edit_family=edit_family,
+            notice=request.query.get("notice", ""),
+            notice_family=request.query.get("family", ""),
+            edit_error_key="",
+        ),
+        content_type="text/html",
+        headers=headers,
+    )
+
+
+_VIRT_EDIT_ERROR_KEYS = {
+    "revision_conflict": "UI_VIRT_EDIT_ERROR_CONFLICT",
+    "unknown_family": "UI_VIRT_EDIT_ERROR_INVALID",
+    "toml_unavailable": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_document": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_field": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_field_set": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_value": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_url": "UI_VIRT_EDIT_ERROR_INVALID",
+    "invalid_configuration": "UI_VIRT_EDIT_ERROR_INVALID",
+    "value_too_long": "UI_VIRT_EDIT_ERROR_INVALID",
+    "too_many_fields": "UI_VIRT_EDIT_ERROR_INVALID",
+}
+
+
+async def _admin_virt_mutation(
+        request: web.Request, *, reset: bool,
+) -> web.Response:
+    """Shared POST boundary for save/reset; values never enter logs."""
+
+    from virt import config_editor
+    from virt.configuration import snapshot
+
+    family = request.match_info["family"]
+    data = await request.post()
+    expected_revision = str(data.get("revision") or "")
+    try:
+        if reset:
+            result = await asyncio.to_thread(
+                config_editor.reset, family,
+                expected_revision=expected_revision,
+            )
+        else:
+            result = await asyncio.to_thread(
+                config_editor.save, family, data,
+                expected_revision=expected_revision,
+            )
+    except config_editor.ConfigEditError as exc:
+        status = 409 if exc.code == "revision_conflict" else 400
+        if not wants_html(request):
+            return _error(status, exc.code, "configuration was not changed")
+        payload = await asyncio.to_thread(snapshot, edit_family=family)
+        return web.Response(
+            text=render_template(
+                "virt.html", snapshot=payload, edit_family=family,
+                notice="", notice_family=family,
+                edit_error_key=_VIRT_EDIT_ERROR_KEYS.get(
+                    exc.code, "UI_VIRT_EDIT_ERROR_WRITE"),
+            ),
+            status=status,
+            content_type="text/html",
+            headers={"Cache-Control": "no-store"},
+        )
+    except Exception:
+        log.exception("virt configuration mutation failed family=%s", family)
+        if not wants_html(request):
+            return _error(500, "write_failed", "configuration was not changed")
+        payload = await asyncio.to_thread(snapshot, edit_family=family)
+        return web.Response(
+            text=render_template(
+                "virt.html", snapshot=payload, edit_family=family,
+                notice="", notice_family=family,
+                edit_error_key="UI_VIRT_EDIT_ERROR_WRITE",
+            ),
+            status=500,
+            content_type="text/html",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    if not wants_html(request):
+        return web.json_response(asdict(result), headers={"Cache-Control": "no-store"})
+    notice = "reset" if reset else "saved"
+    location = "/admin/virt?" + urllib.parse.urlencode({
+        "notice": notice, "family": family,
+    }) + f"#virt-{family}"
+    raise web.HTTPFound(location)
+
+
+async def admin_virt_save(request: web.Request) -> web.Response:
+    return await _admin_virt_mutation(request, reset=False)
+
+
+async def admin_virt_reset(request: web.Request) -> web.Response:
+    return await _admin_virt_mutation(request, reset=True)
+
+
+async def admin_services(request: web.Request) -> web.Response:
+    """GET /admin/services — status and bounded lifecycle controls."""
+    rows = await asyncio.to_thread(
+        services_registry.snapshots, timeout_s=8.0,
+    )
+    import i18n as _i18n
+    rows = services_registry.localized(rows, _i18n.current_lang())
+    if not wants_html(request):
+        return web.json_response({"services": rows})
+    notice = request.query.get("notice", "")
+    notice_service = request.query.get("service", "")
+    notice_action = request.query.get("action", "")
+    notice_row = next(
+        (row for row in rows if row.get("key") == notice_service), None,
+    )
+    try:
+        import notify_admin
+        notifications = await asyncio.to_thread(
+            notify_admin.recent, limit=8, kind_prefix="service_",
+        )
+    except Exception:  # the status/control page must survive alert-store damage
+        log.warning("admin service notifications unavailable", exc_info=True)
+        notifications = []
+    return web.Response(
+        text=render_template(
+            "services.html",
+            services=rows,
+            notice=notice,
+            notice_service=(notice_row or {}).get("label", ""),
+            notice_service_key=notice_service if notice_row else "",
+            notice_action=notice_action,
+            notifications=notifications,
+        ),
+        content_type="text/html",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+async def admin_service_action(request: web.Request) -> web.Response:
+    """POST /admin/services/{name}/{action}; only catalog entries are allowed."""
+    name = request.match_info["name"]
+    action = request.match_info["action"]
+    ok = False
+    try:
+        ok, detail = await asyncio.to_thread(
+            services_registry.control, name, action,
+        )
+        if not ok:
+            log.warning(
+                "service action failed service=%s action=%s: %s",
+                name, action, detail,
+            )
+    except Exception:  # noqa: BLE001 — il controllo non deve rompere la UI
+        log.exception("service action failed service=%s action=%s", name, action)
+    notice = "accepted" if ok else "failed"
+    query = urllib.parse.urlencode({
+        "notice": notice,
+        "service": name,
+        "action": action,
+    })
+    anchor = f"#service-{name}" if services_registry.get(name) else ""
+    raise web.HTTPFound(f"/admin/services?{query}{anchor}")
 
 
 # --- /admin (root) -----------------------------------------------------------
@@ -172,19 +360,22 @@ def _summary_safety() -> dict:
 
 async def admin_home(request: web.Request) -> web.Response:
     """GET /admin — dashboard root."""
-    started = request.app.get("started_at", time.time())
-    catalog = request.app.get("catalog_provider", lambda: [])()
-    ctx = {
-        "version": "1.1",
-        "uptime_s": time.time() - started,
-        "turn_summary": _summary_turns(),
-        "proposals_summary": _summary_proposals(),
-        "telos_proposals_summary": telos_proposals_store.stats(),
-        "executors_summary": _summary_executors(catalog),
-        "runs_summary": _summary_runs(),
-        "safety_summary": _summary_safety(),
-        "users_summary": _summary_users(),
-    }
+    started = app_get(request.app, STARTED_AT, time.time())
+    def _load_dashboard():
+        catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
+        return {
+            "version": "1.1",
+            "uptime_s": time.time() - started,
+            "turn_summary": _summary_turns(),
+            "proposals_summary": _summary_proposals(),
+            "telos_proposals_summary": telos_proposals_store.stats(),
+            "executors_summary": _summary_executors(catalog),
+            "runs_summary": _summary_runs(),
+            "safety_summary": _summary_safety(),
+            "users_summary": _summary_users(),
+        }
+
+    ctx = await asyncio.to_thread(_load_dashboard)
     body = render_template("dashboard.html", **ctx).encode("utf-8")
     return web.Response(body=body, content_type="text/html")
 
@@ -390,17 +581,25 @@ async def admin_change_action(request: web.Request) -> web.Response:
 # --- /admin/executors --------------------------------------------------------
 
 def _executors_rows(catalog) -> list[dict]:
-    """Mappa il catalog in righe serializzabili. `source` derivato dal path."""
-    from loader import SYNTHESIZED_EXECUTORS_DIR
+    """Map canonical catalog metadata to serializable admin rows."""
     out = []
-    synth_root = str(SYNTHESIZED_EXECUTORS_DIR)
     for ex in sorted(catalog, key=lambda e: e.name):
-        src = "synth" if synth_root in str(ex.manifest_path) else "handcrafted"
         out.append({
             "name": ex.name,
             "version": ex.version,
             "lifecycle": ex.lifecycle,
-            "source": src,
+            "membership": getattr(ex, "membership", "builtin"),
+            "source": getattr(ex, "source", "handcrafted"),
+            "transport": getattr(ex, "transport", "local-subprocess"),
+            "executor_standard": getattr(ex, "executor_standard", ""),
+            "standard_state": getattr(ex, "standard_state", "legacy"),
+            "execution_policy": getattr(ex, "execution_policy", {
+                "effect": "unknown",
+                "parallelism_class": 0,
+                "resource_class": "default",
+                "concurrency_key": "none",
+                "equivalence_gate": "unverified",
+            }),
             "capabilities": [c.get("name", "") for c in (ex.capabilities or [])],
             "revertible": bool(ex.revertible),
             "deprecated_at": ex.deprecated_at,
@@ -565,13 +764,19 @@ async def admin_praxis_config(request: web.Request) -> web.Response:
 
 async def admin_executors(request: web.Request) -> web.Response:
     """GET /admin/executors"""
-    catalog = request.app.get("catalog_provider", lambda: [])()
+    catalog = app_get(request.app, CATALOG_PROVIDER, lambda: [])()
     rows = _executors_rows(catalog)
+    rejected = [
+        {"path": path, "name": Path(path).name, "reason": reason}
+        for path, reason in (getattr(catalog, "rejected", None) or [])
+    ]
     return negotiate_collection(
         request,
-        json_payload={"rows": rows, "total": len(rows)},
+        json_payload={"rows": rows, "total": len(rows),
+                      "rejected": rejected,
+                      "rejected_total": len(rejected)},
         template="executors.html",
-        template_ctx={"rows": rows},
+        template_ctx={"rows": rows, "rejected": rejected},
     )
 
 
@@ -613,6 +818,40 @@ async def admin_executors_stats(request: web.Request) -> web.Response:
     return serve_with_etag(request, body, content_type="application/json")
 
 
+# --- /admin/jobs/{key} (scheduler callback introspection) --------------------
+
+def _scheduler_callback_registry():
+    """Build the same callback registry used by manual scheduler actions."""
+    from scheduler_v2 import builtin_callbacks
+    from scheduler_v2.callbacks import CallbackRegistry
+
+    class _StubScheduler:
+        def __init__(self):
+            self.callbacks = CallbackRegistry()
+
+    stub = _StubScheduler()
+    builtin_callbacks.install_default_callbacks(stub)
+    return stub.callbacks
+
+
+async def admin_job_info(request: web.Request) -> web.Response:
+    """GET /admin/jobs/{key} - inspect registration without firing it."""
+    key = request.match_info["key"]
+    try:
+        info = _scheduler_callback_registry().get(key)
+    except Exception as exc:
+        log.exception("job_info setup failed")
+        return _error(500, "INTERNAL", str(exc))
+    if info is None:
+        return _error(404, "UNKNOWN_CALLBACK", f"callback `{key}` non registrato")
+    return web.json_response({
+        "ok": True,
+        "callback": key,
+        "is_async": bool(info.is_async),
+        "description": info.description,
+    })
+
+
 # --- /admin/jobs/{key}/fire (manual trigger scheduler callbacks) -------------
 
 async def admin_job_fire(request: web.Request) -> web.Response:
@@ -631,15 +870,7 @@ async def admin_job_fire(request: web.Request) -> web.Response:
         body = {}
     payload = body if isinstance(body, dict) else {}
     try:
-        from scheduler_v2 import builtin_callbacks
-        # Lazy-build callback registry sub-instance (no scheduler running).
-        from scheduler_v2.callbacks import CallbackRegistry
-        # Construct fake scheduler-like object exposing only .callbacks.
-        class _StubScheduler:
-            callbacks = CallbackRegistry()
-        stub = _StubScheduler()
-        builtin_callbacks.install_default_callbacks(stub)
-        info = stub.callbacks.get(key)
+        info = _scheduler_callback_registry().get(key)
         if info is None:
             return _error(404, "UNKNOWN_CALLBACK",
                             f"callback `{key}` non registrato")
@@ -923,10 +1154,21 @@ async def admin_user_detail(request: web.Request) -> web.Response:
         "prefs": users.list_prefs(u["id"]),
     }
     if "text/html" in request.headers.get("Accept", ""):
+        stealth_options = users.sites_stealth_preference_specs()
+        web_pref_keys = {
+            "sites_browser_mode", "sites_stealth",
+            *(item["preference_key"] for item in stealth_options),
+        }
         html = render_template("user_detail.html", user=payload,
                                channels=chans, devices=dev_rows,
                                prefs=payload["prefs"],
-                               pref_allowed=users.PREF_ALLOWED,
+                               pref_allowed={
+                                   key: allowed
+                                   for key, allowed
+                                   in users.preference_allowed_map().items()
+                                   if key not in web_pref_keys
+                               },
+                               stealth_options=stealth_options,
                                flash=request.query.get("flash", ""))
         return web.Response(text=html, content_type="text/html")
     return web.json_response(payload)
@@ -935,11 +1177,31 @@ async def admin_user_detail(request: web.Request) -> web.Response:
 async def admin_user_prefs(request: web.Request) -> web.Response:
     """POST /admin/users/{id}/prefs — imposta/azzera le preferenze (W2 v1).
 
-    Form fields = chiavi PREF_ALLOWED; valore vuoto = delete della pref."""
+    I campi generali vuoti eliminano la pref. Il gruppo stealth invia un marker:
+    checkbox assente = off, presente = on, cosi' ogni tecnica e' indipendente."""
     user_id = request.match_info["id"]
     data = await request.post()
     results = []
-    for key in users.PREF_ALLOWED:
+    stealth_specs = users.sites_stealth_preference_specs()
+    stealth_keys = (
+        "sites_stealth",
+        *(item["preference_key"] for item in stealth_specs),
+    )
+    web_keys = ("sites_browser_mode", *stealth_keys)
+    if data.get("_sites_web_browsing_group") == "1":
+        browser_mode = str(data.get("sites_browser_mode") or "headless")
+        r = users.set_pref(user_id, "sites_browser_mode", browser_mode)
+        results.append(
+            f"sites_browser_mode={browser_mode}" if r.get("ok")
+            else f"sites_browser_mode: {r.get('error')}")
+        for key in stealth_keys:
+            val = "on" if data.get(key) == "on" else "off"
+            r = users.set_pref(user_id, key, val)
+            results.append(f"{key}={val}" if r.get("ok")
+                           else f"{key}: {r.get('error')}")
+    for key in users.PREF_KEYS:
+        if key in web_keys:
+            continue
         if key not in data:
             continue
         val = str(data.get(key) or "").strip()
@@ -950,16 +1212,28 @@ async def admin_user_prefs(request: web.Request) -> web.Response:
             r = users.set_pref(user_id, key, val)
             results.append(f"{key}={val}" if r.get("ok")
                            else f"{key}: {r.get('error')}")
-    from urllib.parse import quote
-    raise web.HTTPFound(f"/admin/users/{user_id}?flash=" +
-                        quote("prefs: " + ", ".join(results or ["nessuna"])))
+    raise web.HTTPFound(f"/admin/users/{user_id}")
 
 
 async def admin_user_delete(request: web.Request) -> web.Response:
     """POST /admin/users/{id}/delete."""
     user_id = request.match_info["id"]
+    current_owner = str(request.get("authenticated_user_id") or "")
     try:
-        ok = users.delete_user(user_id)
+        target = users.get_user(user_id)
+        if target is None:
+            return _error(404, "not_found", f"user {user_id!r} not found")
+        if str(target.get("id") or "") == current_owner:
+            return _error(
+                409, "active_principal",
+                "the active administrator identity cannot delete itself",
+            )
+        if target.get("role") == "host" and len(
+                users.list_users(role="host")) <= 1:
+            return _error(
+                409, "last_host", "the only host identity cannot be deleted")
+        import asyncio
+        ok = await asyncio.to_thread(users.delete_user, user_id)
     except Exception as e:
         log.exception("user delete failed")
         return _error(500, "internal_error", str(e))
@@ -1032,9 +1306,9 @@ async def admin_user_pair_channel(request: web.Request) -> web.Response:
         return _error(500, "internal_error", str(e))
     pair_url = ""
     if channel == "http":
-        # Costruisci pair URL completo. Origin viene da X-Forwarded-Proto
-        # (Cloudflare) o request.scheme + Host header.
-        xfp = request.headers.get("X-Forwarded-Proto") or request.scheme
+        # Costruisci il pair URL usando lo scheme attestato dal collegamento
+        # diretto o da un reverse proxy fidato.
+        xfp = external_request_scheme(request)
         host = request.host
         pair_url = f"{xfp}://{host}/pair/{token}"
         instructions = (
@@ -1125,7 +1399,7 @@ __ERR__
 
 async def admin_login(request: web.Request) -> web.Response:
     """GET /admin/login — form HTML; POST /admin/login — verifica + cookie."""
-    admin_key = request.app.get("admin_key", "")
+    admin_key = app_get(request.app, APP_ADMIN_KEY, "")
     if request.method == "GET":
         already = request.cookies.get(ADMIN_COOKIE, "")
         if already:
@@ -1155,7 +1429,29 @@ async def admin_login(request: web.Request) -> web.Response:
         ADMIN_COOKIE, cookie_val,
         max_age=ADMIN_COOKIE_TTL_S,
         httponly=True,
-        secure=True,  # servito via HTTPS (Cloudflare); allinea al cookie user
+        secure=external_request_scheme(request) == "https",
+        samesite="Strict",
+        path="/",
+    )
+    raise resp
+
+
+async def admin_onboard(request: web.Request) -> web.Response:
+    """Consume the installer's short-lived token and establish admin access."""
+    admin_key = app_get(request.app, APP_ADMIN_KEY, "")
+    token = request.query.get("t", "")
+    if not admin_key or not consume_admin_onboard_token(token, admin_key):
+        raise web.HTTPFound("/admin/login")
+    cookie_val = issue_admin_cookie(admin_key)
+    resp = web.HTTPFound(
+        "/admin",
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+    resp.set_cookie(
+        ADMIN_COOKIE, cookie_val,
+        max_age=ADMIN_COOKIE_TTL_S,
+        httponly=True,
+        secure=external_request_scheme(request) == "https",
         samesite="Strict",
         path="/",
     )
@@ -1405,15 +1701,15 @@ def _agent_server_url(request: web.Request) -> str:
     """URL dell'agent_server (porta 8765) visto dal device: stesso host della
     console, porta METNOS_AGENT_PORT. MVP senza TLS (overlay Headscale).
 
-    Se la richiesta e' arrivata attraverso un proxy fidato (tunnel pubblico,
-    es. Cloudflare — `request.remote` e' il tunnel locale, non il browser),
+    Se la richiesta e' arrivata attraverso un reverse proxy fidato
+    (`request.remote` e' il proxy locale, non il browser),
     l'Host header e' il dominio PUBBLICO: instrada tipicamente solo la porta
     console (8770), mai la porta device (8765, LAN/overlay-only per design,
     §6 design doc). Riusarlo per il link di join produce un URL che non
-    risponde mai (bug live 2/7: browser bloccato su chat.metnos.com:8765).
+    risponde mai (es. browser bloccato su metnos.example:8765).
     In quel caso ripiega su un IP LAN reale del server — il device che si
     appaia e' per contratto sulla stessa LAN/overlay, mai su Internet
-    pubblico (mai allargare il tunnel a esporre la 8765, §6/ADR 0007)."""
+    pubblico (mai esporre la 8765 tramite il reverse proxy, §6/ADR 0007)."""
     import os as _os
     from http_auth import _is_trusted_proxy
     port = _os.environ.get("METNOS_AGENT_PORT", "8765")
@@ -1423,7 +1719,7 @@ def _agent_server_url(request: web.Request) -> str:
             log.warning(
                 "[devices] richiesta via proxy fidato (Host=%s): uso IP LAN "
                 "%s per il link device (la porta %s non e' instradata dal "
-                "tunnel pubblico)",
+                "reverse proxy)",
                 request.headers.get("Host", "?"), lan_ip, port)
             return f"http://{lan_ip}:{port}"
         log.warning(
@@ -1741,11 +2037,17 @@ async def admin_device_test_invoke(request: web.Request) -> web.Response:
 
 
 ROUTES = (
+    ("GET",  "/admin/virt",                      admin_virt),
+    ("POST", r"/admin/virt/{family:llm|vlm}/save", admin_virt_save),
+    ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),
+    ("GET",  "/admin/services",                  admin_services),
+    ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).
     ("GET",  "/admin/timers",                     admin_timers),
     ("POST", r"/admin/timers/{name}/{action:enable|disable|fire}", admin_timer_action),
     ("GET",  "/admin/login",                      admin_login),
     ("POST", "/admin/login",                      admin_login),
+    ("GET",  "/admin/onboard",                    admin_onboard),
     ("POST", "/admin/logout",                     admin_logout),
     ("GET",  "/admin",                            admin_home),
     ("GET",  "/admin/changes",                    admin_changes),
@@ -1766,6 +2068,7 @@ ROUTES = (
     # (Bonifica 28/5). Feature ritirata, nessun rimpiazzo.
     ("GET",  "/admin/executors",                  admin_executors),
     ("GET",  "/admin/executors/stats",            admin_executors_stats),
+    ("GET",  r"/admin/jobs/{key}",                admin_job_info),
     ("POST", r"/admin/jobs/{key}/fire",           admin_job_fire),
     ("GET",  "/admin/runs",                       admin_runs),
     ("GET",  "/admin/builds",                     admin_builds),

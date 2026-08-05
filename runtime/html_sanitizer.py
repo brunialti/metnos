@@ -96,9 +96,14 @@ def _strip_latex(s: str) -> str:
 
 _MD_TABLE_BLOCK_RE = re.compile(
     r"(?ms)^(\s*\|[^\n]+\|\s*\n"
-    r"\s*\|\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|\s*\n"
+    r"\s*\|\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|\s*\n"
     r"(?:\s*\|[^\n]+\|\s*\n?)+)"
 )
+# Private-use sentinels emitted by engine.executor for a manifest-declared
+# nowrap table cell. They are never interpreted as user HTML and are removed
+# by both browser and Telegram table renderers.
+_TABLE_NOWRAP_OPEN = "\ue000"
+_TABLE_NOWRAP_CLOSE = "\ue001"
 
 
 def _md_tables_to_pre(s: str) -> str:
@@ -122,7 +127,8 @@ def _md_tables_to_pre(s: str) -> str:
                 r = r[1:]
             if r.endswith("|"):
                 r = r[:-1]
-            return [c.strip() for c in r.split("|")]
+            return [c.strip().replace(_TABLE_NOWRAP_OPEN, "").replace(
+                _TABLE_NOWRAP_CLOSE, "") for c in r.split("|")]
         header = _split_row(rows_raw[0])
         sep = _split_row(rows_raw[1])
         body = [_split_row(r) for r in rows_raw[2:]]
@@ -269,6 +275,13 @@ def _md_tables_to_html(s: str) -> str:
             if r.endswith("|"):
                 r = r[:-1]
             return [c.strip() for c in r.split("|")]
+
+        def _unwrap_nowrap(cell: str) -> tuple[str, str]:
+            nowrap = (cell.startswith(_TABLE_NOWRAP_OPEN)
+                      and cell.endswith(_TABLE_NOWRAP_CLOSE))
+            clean = cell.replace(_TABLE_NOWRAP_OPEN, "").replace(
+                _TABLE_NOWRAP_CLOSE, "")
+            return clean, ' class="cell-nowrap"' if nowrap else ""
         header = _split_row(rows_raw[0])
         sep = _split_row(rows_raw[1])
         body = [_split_row(r) for r in rows_raw[2:]]
@@ -290,7 +303,8 @@ def _md_tables_to_html(s: str) -> str:
         out = ["<table>", "<thead>", "<tr>"]
         for i in range(n):
             cell = header[i] if i < len(header) else ""
-            out.append(f"<th{_attr(i)}>{cell}</th>")
+            cell, nowrap_attr = _unwrap_nowrap(cell)
+            out.append(f"<th{_attr(i)}{nowrap_attr}>{cell}</th>")
         out.append("</tr>")
         out.append("</thead>")
         out.append("<tbody>")
@@ -298,7 +312,8 @@ def _md_tables_to_html(s: str) -> str:
             out.append("<tr>")
             for i in range(n):
                 cell = row[i] if i < len(row) else ""
-                out.append(f"<td{_attr(i)}>{cell}</td>")
+                cell, nowrap_attr = _unwrap_nowrap(cell)
+                out.append(f"<td{_attr(i)}{nowrap_attr}>{cell}</td>")
             out.append("</tr>")
         out.append("</tbody>")
         out.append("</table>")

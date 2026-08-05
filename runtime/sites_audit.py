@@ -10,14 +10,14 @@ valore), ogni azione `act` (F2), ogni modifica di allowlist.
 Invarianti di sicurezza (spec §10.6, §4.1):
     - MAI un valore di credenziale nel log: si accetta solo il `fingerprint`.
     - Ogni `url` passa da `sites_url_scrub.scrub_url` prima di essere scritto.
-    - File 0600, dir 0700. Append-only (mai riscritto/troncato dal runtime).
+    - File 0600, dir 0700. Generazioni append-only: nessuna riscrittura o
+      troncamento; rotazione bounded 16 MB x 12 backup (override via env).
 
 Deterministico §7.9. Fail-safe §2.8: un errore di scrittura audit NON deve far
 fallire l'operazione utente (best-effort), ma viene loggato su stderr.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 import time
@@ -86,13 +86,11 @@ def record(event: str, *, owner: str = "", session_id: str = "",
         entry.update(_sanitize(fields))
         AUDIT_PATH.parent.mkdir(parents=True, exist_ok=True)
         os.chmod(AUDIT_PATH.parent, 0o700)
-        line = json.dumps(entry, ensure_ascii=False)
-        # Append atomico: open in append mode, il chmod 0600 avviene una volta
-        # (se il file nasce ora). O_APPEND garantisce scritture non-interlacciate.
-        new_file = not AUDIT_PATH.exists()
-        with open(AUDIT_PATH, "a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-        if new_file:
-            os.chmod(AUDIT_PATH, 0o600)
+        from audit_jsonl import append_bounded_jsonl
+        max_mb = int(os.environ.get("METNOS_SITES_AUDIT_MAX_MB", "16"))
+        backups = int(os.environ.get("METNOS_SITES_AUDIT_BACKUPS", "12"))
+        append_bounded_jsonl(
+            AUDIT_PATH, entry, max_bytes=max_mb * 1024 * 1024,
+            backup_count=backups, mode=0o600)
     except Exception as e:  # noqa: BLE001 — best-effort, non deve mai propagare
         print(f"sites_audit: write failed: {e!r}", file=sys.stderr)

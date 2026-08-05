@@ -22,7 +22,9 @@ Limiti v1.1:
 from __future__ import annotations
 
 import os
+import re
 import shutil
+import sys
 from pathlib import Path
 
 # --- detection -------------------------------------------------------------
@@ -70,12 +72,13 @@ def _expand_hints_to_paths(hints: list[str]) -> list[Path]:
 
 
 def _capability_kind(cap: dict | str) -> str:
-    """Estrae la 'famiglia' della capability: fs:read, fs:write, network:http, code:exec, ..."""
+    """Estrae la famiglia da entrambe le notazioni storiche ``.`` e ``:``."""
     if isinstance(cap, dict):
         name = cap.get("name", "")
     else:
         name = cap or ""
-    return name.split(":")[0] if ":" in name else name
+    positions = [pos for pos in (name.find(":"), name.find(".")) if pos >= 0]
+    return name[:min(positions)] if positions else name
 
 
 def _capability_mode(cap: dict | str) -> str:
@@ -90,7 +93,8 @@ def _capability_mode(cap: dict | str) -> str:
         name = cap.get("name", "")
     else:
         name = cap or ""
-    return name.split(":", 1)[1] if ":" in name else ""
+    positions = [pos for pos in (name.find(":"), name.find(".")) if pos >= 0]
+    return name[min(positions) + 1:] if positions else ""
 
 
 def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[Path]:
@@ -102,8 +106,26 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
     """
     try:
         import config as _C
+        # Each semantic resource expands to an explicit closed set of paths.
+        # The profile view intentionally groups two read-only SQLite stores;
+        # it never grants the surrounding data directory or a credential vault.
         resources = {
-            "spreadsheet": _C.PATH_USER_DATA / "spreadsheets",
+            "spreadsheet": ((Path(_C.PATH_USER_DATA) / "spreadsheets",), True),
+            "persons_registry": ((Path(_C.PATH_USER_DATA) / "persons.sqlite",), True),
+            "identity_profile": ((
+                Path(_C.PATH_USER_DATA) / "persons.sqlite",
+                Path(_C.PATH_USER_DATA) / "users.db",
+            ), False),
+            "introvertiva_proposals": ((
+                Path(_C.PATH_AUDIT),
+                Path(_C.PATH_USER_STATE) / "proposals_state.db",
+            ), False),
+            # Cache tecnica: un sottoalbero dedicato, mai l'intera cache
+            # dell'account di servizio. La correttezza dell'executor non deve
+            # dipenderne e ogni corpus/utente resta separato nel DB applicativo.
+            "file_hash_cache": ((
+                Path(_C.PATH_USER_CACHE) / "file_hashes",
+            ), True),
         }
     except Exception:
         return []
@@ -111,17 +133,245 @@ def _managed_local_resource_paths(hints: list[str], *, writable: bool) -> list[P
     for hint in hints or []:
         if not isinstance(hint, str) or not hint.endswith(":local"):
             continue
-        path = resources.get(hint.split(":", 1)[0])
-        if path is None:
+        resource = hint.split(":", 1)[0]
+        spec = resources.get(resource)
+        if spec is None:
             continue
-        if writable:
-            try:
-                path.mkdir(parents=True, exist_ok=True, mode=0o700)
-            except OSError:
-                continue
-        if path.exists() and path not in out:
+        paths, allows_write = spec
+        if writable and not allows_write:
+            continue
+        candidates: list[Path] = []
+        for path in paths:
+            if writable:
+                try:
+                    target_dir = path.parent if path.suffix else path
+                    target_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+                except OSError:
+                    continue
+            candidates.append(path)
+            # A read-only SQLite connection may need already-existing WAL/SHM
+            # sidecars. Bind exact files, never PATH_USER_DATA itself.
+            if not writable and path.suffix in {".db", ".sqlite"}:
+                candidates.extend([
+                    path.with_name(path.name + "-wal"),
+                    path.with_name(path.name + "-shm"),
+                ])
+        for candidate in candidates:
+            if candidate.exists() and candidate not in out:
+                out.append(candidate)
+    return out
+
+
+def _index_resource_paths(hints: list[str]) -> list[Path]:
+    """Resolve a closed semantic index hint to its canonical storage.
+
+    An index capability is not a free-form filesystem path.  In particular,
+    ``image`` exposes only the image-index subtree and honours
+    ``METNOS_INDEX_ROOT`` through ``config.PATH_INDEX_IMAGE``; an unknown or
+    historical path-like hint grants nothing.
+    """
+    try:
+        import config as _C
+    except Exception:
+        return []
+    resources = {
+        "image": Path(_C.PATH_INDEX_IMAGE),
+    }
+    out: list[Path] = []
+    for hint in hints or []:
+        if not isinstance(hint, str):
+            continue
+        path = resources.get(hint)
+        if path is not None and path.exists() and path not in out:
             out.append(path)
     return out
+
+
+def filesystem_extras(executor, args) -> list[Path]:
+    """Resolve signed ``fs:read`` hints of the form ``arg:<name>``.
+
+    The manifest chooses which typed argument may carry filesystem authority;
+    the invocation can only narrow that declaration to one concrete existing
+    path. If the literal path is absent, the same central bilingual user-dir
+    resolver used by the file backends may translate it before the sandbox is
+    built. Only its closed alias vocabulary is considered, and only the exact
+    resolved target is mounted. Other arguments and unknown hints never create
+    a bind. Traditional absolute/glob hints remain handled by
+    ``_build_bwrap_args`` for migrated executors with fixed filesystem scope.
+    """
+    from capabilities import effective_capabilities
+
+    invocation = args if isinstance(args, dict) else {}
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {},
+        invocation,
+    )
+    selected: list[Path] = []
+    seen: set[str] = set()
+    for capability in effective:
+        if capability.get("name") != "fs:read":
+            continue
+        for hint in capability.get("hint", []) or []:
+            if not isinstance(hint, str) or not hint.startswith("arg:"):
+                continue
+            arg_name = hint[4:]
+            if not arg_name or ":" in arg_name:
+                continue
+            raw = invocation.get(arg_name)
+            values = raw if isinstance(raw, list) else [raw]
+            for value in values:
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                path = Path(os.path.expanduser(value))
+                if not path.is_absolute():
+                    path = (Path.cwd() / path).resolve()
+                if not path.exists():
+                    try:
+                        from path_alias import resolve_path_with_alias
+                        resolved, _note = resolve_path_with_alias(value)
+                    except (ImportError, OSError, RuntimeError, ValueError):
+                        continue
+                    if not resolved.exists():
+                        continue
+                    path = resolved
+                key = str(path)
+                if key in seen:
+                    continue
+                seen.add(key)
+                selected.append(path)
+    return selected
+
+
+def resolve_filesystem_read_args(executor, args) -> dict:
+    """Resolve signed local read-path arguments before sandbox execution.
+
+    Plans deliberately retain the user's logical path (for example
+    ``Immagini``), so cached plans stay independent from the machine on which
+    they run.  Once placement has selected this server, however, the executor
+    and its bubblewrap grant must refer to the *same* concrete path.  Resolving
+    only while building the grant left the raw logical value in the child;
+    this broke executors whose sandbox did not also expose the alias roots.
+
+    The transformation is capability-driven: only arguments named by a signed
+    ``fs:read`` hint of the form ``arg:<name>`` are considered.  Unknown,
+    missing, globbed, or non-existing values are left unchanged so the
+    executor can report its normal, precise error.  Existing logical symlinks
+    are preserved so equivalent requests share the same executor cache; the
+    exact logical object is also the one mounted read-only.
+    """
+    from capabilities import effective_capabilities
+
+    if not isinstance(args, dict):
+        return args
+    out = dict(args)
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {},
+        out,
+    )
+    for capability in effective:
+        if capability.get("name") != "fs:read":
+            continue
+        for hint in capability.get("hint", []) or []:
+            if not isinstance(hint, str) or not hint.startswith("arg:"):
+                continue
+            arg_name = hint[4:]
+            if not arg_name or ":" in arg_name or arg_name not in out:
+                continue
+            raw = out[arg_name]
+            values = raw if isinstance(raw, list) else [raw]
+            resolved_values = []
+            changed = False
+            for value in values:
+                if (not isinstance(value, str) or not value.strip()
+                        or any(char in value for char in "*?[]")
+                        or "${" in value or "{{" in value):
+                    resolved_values.append(value)
+                    continue
+                try:
+                    from path_alias import resolve_path_with_alias
+                    # Preserve the workspace's logical spelling when it
+                    # already exists (including an intentional symlink to a
+                    # mounted archive). Equivalent aliases then share caches
+                    # whose keys include the lexical path.
+                    candidate = Path(os.path.expanduser(value))
+                    if not candidate.is_absolute():
+                        from path_alias import workspace_default
+                        candidate = workspace_default() / candidate
+                    if candidate.exists():
+                        resolved = candidate.absolute()
+                    else:
+                        resolved, _note = resolve_path_with_alias(value)
+                    if resolved.exists():
+                        concrete = str(resolved)
+                        resolved_values.append(concrete)
+                        changed = changed or concrete != value
+                        continue
+                except (ImportError, OSError, RuntimeError, ValueError):
+                    pass
+                resolved_values.append(value)
+            if changed:
+                out[arg_name] = (resolved_values if isinstance(raw, list)
+                                 else resolved_values[0])
+    return out
+
+
+def undo_history_extras(executor, *, turn_id=None) -> list[Path]:
+    """Expose only the invocation's managed undo-blob directory as RW.
+
+    The authority comes from the signed ``restore_blob_backup`` reverse
+    pattern, while ``turn_id`` narrows it to one runtime-owned directory.  A
+    manifest cannot request another history path and an invocation argument
+    cannot widen this bind.
+    """
+    patterns = getattr(executor, "reverse_pattern", None)
+    if isinstance(patterns, str):
+        patterns = [patterns]
+    if (not isinstance(patterns, list)
+            or "restore_blob_backup" not in patterns):
+        return []
+
+    key = str(turn_id) if turn_id is not None else "no_turn"
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", key):
+        return []
+    try:
+        import config as _C
+        history_root = Path(os.environ.get("METNOS_HISTORY_DIR") or (
+            Path(_C.PATH_USER_DATA) / "_history"))
+        blob_dir = history_root.expanduser() / key / "blob"
+        blob_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        return [blob_dir]
+    except OSError:
+        # The executor will report the backup failure and will not delete.
+        return []
+
+
+_SYSTEM_READ_HINTS = frozenset({
+    "processes", "health", "network_interfaces", "service_status",
+    "executables",
+})
+
+
+def _system_read_resources(hints: list[str]) -> tuple[bool, list[Path]]:
+    """Resolve read-only system-introspection hints.
+
+    The return value is ``(needs_host_network, read_only_paths)``. Unknown
+    hints grant nothing, so extending an executor cannot widen the sandbox by
+    inventing a resource name.
+    """
+    requested = {
+        hint for hint in (hints or [])
+        if isinstance(hint, str) and hint in _SYSTEM_READ_HINTS
+    }
+    paths: list[Path] = []
+    if "service_status" in requested:
+        candidates = [
+            Path("/run/systemd"), Path("/run/dbus"),
+            Path(f"/run/user/{os.getuid()}"),
+        ]
+        paths = [path for path in candidates if path.exists()]
+    return "network_interfaces" in requested, paths
 
 
 # --- core ------------------------------------------------------------------
@@ -136,6 +386,31 @@ _SYSTEM_RO_PATHS = (
     # in RO non si scrive nulla; standard nelle sandbox info-gathering.
     "/sys",
 )
+
+
+def python_package_roots() -> tuple[Path, ...]:
+    """Exact third-party package roots visible to the running interpreter.
+
+    ``sys.path`` is the stable source after process startup; unlike
+    ``site.getusersitepackages()``, it does not change when HOME is redirected.
+    """
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for raw_path in sys.path:
+        if not raw_path:
+            continue
+        package_root = Path(raw_path)
+        if package_root.name not in {"site-packages", "dist-packages"}:
+            continue
+        try:
+            package_root = package_root.resolve()
+        except (OSError, RuntimeError):
+            continue
+        if not package_root.exists() or package_root in seen:
+            continue
+        roots.append(package_root)
+        seen.add(package_root)
+    return tuple(roots)
 
 
 def _build_bwrap_args(
@@ -167,6 +442,57 @@ def _build_bwrap_args(
     # Codice dell'executor: deve essere leggibile (read-only)
     code_dir = code_path.parent
     args += ["--ro-bind", str(code_dir), str(code_dir)]
+
+    # Gli executor importano gli helper condivisi (`messages`,
+    # `executor_helpers`, client di dominio) dalla runtime canonica del daemon.
+    # `/opt` e' gia' visibile tra i path di sistema, ma una installazione
+    # relocabile puo' vivere in qualunque directory (per esempio sotto HOME):
+    # il bind esplicito mantiene identico il confine della sandbox senza
+    # esporre l'intera radice dell'installazione.
+    runtime_dir = Path(__file__).resolve().parent
+    if runtime_dir.exists():
+        args += ["--ro-bind", str(runtime_dir), str(runtime_dir)]
+
+    # Gli executor devono vedere lo stesso ambiente Python del core. In una
+    # installazione standard ``sys.executable`` vive nella .venv Metnos e i
+    # pacchetti non sono presenti nel Python di sistema.
+    runtime_prefix = Path(sys.prefix)
+    if sys.prefix != sys.base_prefix and runtime_prefix.exists():
+        args += ["--ro-bind", str(runtime_prefix), str(runtime_prefix)]
+    else:
+        # Developer/system-Python runs may resolve required wheels from the
+        # standard per-user site directory (for example numpy). Bind that
+        # package root read-only, never the surrounding HOME tree.
+        try:
+            import site
+            user_site = Path(site.getusersitepackages())
+            if user_site.exists():
+                args += ["--ro-bind", str(user_site), str(user_site)]
+        except (AttributeError, OSError):
+            pass
+
+    # ``site.getusersitepackages()`` follows the current HOME.  Test sessions
+    # and hardened services may deliberately replace HOME after interpreter
+    # startup, while ``sys.path`` still points at the dependency roots used to
+    # import the running core.  Mount those exact package roots read-only too;
+    # this neither exposes the surrounding home nor broadens Python imports.
+    bound_ro = {
+        Path(args[index + 1]).resolve()
+        for index, token in enumerate(args[:-1])
+        if token == "--ro-bind"
+    }
+    for package_root in python_package_roots():
+        try:
+            already_visible = any(
+                package_root == root or package_root.is_relative_to(root)
+                for root in bound_ro
+            )
+        except (OSError, RuntimeError):
+            continue
+        if already_visible:
+            continue
+        args += ["--ro-bind", str(package_root), str(package_root)]
+        bound_ro.add(package_root)
 
     # §7.13: i DB i18n + detection_lexicon read-only, così gli executor
     # risolvono le stringhe user-facing (messages.get / lessici) invece di
@@ -219,16 +545,34 @@ def _build_bwrap_args(
                     args += ["--ro-bind", str(p), str(p)]
                 else:  # write o altro
                     args += ["--bind", str(p), str(p)]
-        elif kind == "metnos" and mode in {"read", "write", "create"}:
-            writable = mode in {"write", "create"}
+        elif kind == "metnos" and mode in {
+                "read", "write", "create", "cache"}:
+            writable = mode in {"write", "create", "cache"}
             for p in _managed_local_resource_paths(hints, writable=writable):
                 args += ["--bind" if writable else "--ro-bind",
                          str(p), str(p)]
+        elif kind == "index" and mode == "read":
+            for p in _index_resource_paths(hints):
+                args += ["--ro-bind", str(p), str(p)]
         elif kind in ("network", "net"):
             # Entrambe le grafie esistono nei manifest (`network:http`,
             # `net:read`): tolleranza al confine §2.4 — il kind `net` ignorato
             # lasciava --unshare-net a executor che dichiaravano rete.
             has_network = True
+        elif kind == "systemd" and mode == "read":
+            # Capability informativa: rende visibili solo socket e cataloghi
+            # necessari a interrogare systemd. Il controllo lifecycle rimane
+            # nel core HTTP e non viene mai delegato a un executor.
+            candidates = [Path("/run/systemd"), Path("/run/dbus")]
+            candidates.append(Path(f"/run/user/{os.getuid()}"))
+            for path in candidates:
+                if path.exists():
+                    args += ["--ro-bind", str(path), str(path)]
+        elif kind == "system" and mode == "read":
+            needs_network, paths = _system_read_resources(hints)
+            has_network = has_network or needs_network
+            for path in paths:
+                args += ["--ro-bind", str(path), str(path)]
         elif kind == "skill":
             # Famiglia DICHIARATIVA `skill:<binding>` (10/7): l'executor dipende
             # da una skill con credenziali → home skill RW (il refresh OAuth
@@ -283,6 +627,22 @@ def wrap_command(
     'python3', 'read_files.py']) oppure il comando invariato se bwrap manca o
     `METNOS_SANDBOX=0` e' settato.
     """
+    # ``system:undo`` e' una capability di broker, non una normale authority
+    # su un path statico. L'executor firmato deve leggere il journal runtime e
+    # applicare il reverse sugli stessi path/provider del turno precedente,
+    # che sono noti solo just-in-time dal journal. Una sandbox costruita dal
+    # solo manifest non puo' rappresentare questo insieme dinamico: finiva per
+    # vedere un journal vuoto e dichiarare un falso no-op. Il Vaglio governa
+    # l'ammissione della capability critica e lo standard la limita al server;
+    # il subprocess resta separato, ma opera come broker con l'autorita' del
+    # runtime. Non generalizzare questo bypass alle capability di dominio.
+    capability_names = {
+        cap.get("name") if isinstance(cap, dict) else str(cap or "")
+        for cap in (getattr(executor, "capabilities", None) or [])
+    }
+    if "system:undo" in capability_names:
+        return list(command)
+
     if sandbox_disabled() or not bwrap_available():
         return list(command)
 
@@ -321,7 +681,9 @@ def _skill_home_path(binding: str):
 def invocation_skills(executor, args) -> list[str]:
     """Skill (binding) di cui QUESTA invocazione ha bisogno. Deterministico §7.9.
 
-    Segnali, uniti (un executor è provider-backed se ALMENO uno vale):
+    Gli executor conformi derivano l'autorita' esclusivamente dalle capability
+    ``provider:access`` effettive. Solo gli executor legacy conservano i cinque
+    segnali storici come ripiego compatibile:
       1. `provenance.skill_id` — tool importati da skill (ADR 0123);
       2. suffisso provider del nome (`vocab.PROVIDER_SUFFIXES`→`PROVIDER_SKILLS`,
          es. `write_images_google_photos`);
@@ -332,8 +694,28 @@ def invocation_skills(executor, args) -> list[str]:
          viaggia nel piano — il default lo applica l'executor);
       5. capability famiglia `skill:<binding>` nel manifest.
     Ritorna la lista dei binding skill (dedup, ordine stabile)."""
+    from capabilities import effective_capabilities
     from vocab import PROVIDER_SKILLS, PROVIDER_SUFFIXES
     skills: dict[str, None] = {}   # dict = set ordinato
+
+    known_bindings = set(PROVIDER_SKILLS.values())
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {},
+        args,
+    )
+    for capability in effective:
+        if capability.get("name") != "provider:access":
+            continue
+        for binding in capability.get("hint", []) or []:
+            if isinstance(binding, str) and binding in known_bindings:
+                skills[binding] = None
+
+    standard_state = getattr(executor, "standard_state", "legacy") or "legacy"
+    if standard_state == "declared":
+        return list(skills)
+    if standard_state != "legacy":
+        return list(skills)
 
     prov = getattr(executor, "provenance", None) or {}
     skill_id = prov.get("skill_id") if isinstance(prov, dict) else None
@@ -341,7 +723,7 @@ def invocation_skills(executor, args) -> list[str]:
         skills[skill_id.strip()] = None
 
     name = getattr(executor, "name", "") or ""
-    for suffix in PROVIDER_SUFFIXES:
+    for suffix in sorted(PROVIDER_SUFFIXES):
         if name.endswith("_" + suffix) and suffix in PROVIDER_SKILLS:
             skills[PROVIDER_SKILLS[suffix]] = None
 
@@ -358,7 +740,7 @@ def invocation_skills(executor, args) -> list[str]:
         for e in enum:
             skills[PROVIDER_SKILLS[e]] = None
 
-    for cap in getattr(executor, "capabilities", None) or []:
+    for cap in effective:
         if _capability_kind(cap) == "skill":
             binding = _capability_mode(cap)
             if binding:
@@ -379,6 +761,120 @@ def skill_extras(skills) -> tuple[list, bool]:
         if home is not None and Path(home).exists():
             paths.append(Path(home))
     return paths, bool(skills)
+
+
+def _safe_mail_accounts(raw) -> tuple[list[str], bool]:
+    """Return safe account names and whether ``all`` was requested.
+
+    Account values are used only to derive canonical credential filenames.
+    Reject path syntax rather than sanitising it: an invocation argument may
+    narrow declared authority, never redirect a bind outside the mail stores.
+    """
+    if raw is None:
+        values = ["metnos_system"]
+    elif isinstance(raw, str):
+        values = [raw]
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        return [], False
+
+    out: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        account = value.strip()
+        if not account:
+            continue
+        if account.casefold() == "all":
+            return [], True
+        if (account.startswith(".") or ".." in account
+                or any(char in account for char in ("/", "\\", "\x00"))):
+            continue
+        if account not in out:
+            out.append(account)
+    return out, False
+
+
+def mail_extras(executor, args) -> tuple[list[Path], bool]:
+    """Read-only credential binds and network authority for local IMAP.
+
+    The grant exists only when the signed manifest declares an effective
+    ``mail:read`` or ``mail:write`` capability. Invocation arguments can then
+    *narrow* it to the selected channel/backend/account; they can never create
+    it. Google mail is governed by ``provider:access`` and Telegram inquiry has
+    no synchronous mailbox, so neither receives the local IMAP vault surface.
+
+    The encrypted credential directory is shared with web logins. Therefore
+    this resolver binds individual ``smtp_<account>.json.age`` files, never
+    the whole vault. ``account='all'`` expands only the ``smtp_*`` subset and
+    configured mail env files.
+    """
+    from capabilities import effective_capabilities
+
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {},
+        args,
+    )
+    if not any(cap.get("name") in {"mail:read", "mail:write"}
+               for cap in effective):
+        return [], False
+
+    invocation = args if isinstance(args, dict) else {}
+    channel = str(invocation.get("via_channel") or "email").casefold()
+    client = str(invocation.get("client") or "metnos").casefold()
+    if channel not in {"email", "mail"} or client != "metnos":
+        return [], False
+
+    accounts, all_accounts = _safe_mail_accounts(invocation.get("account"))
+    try:
+        import config as _config
+        import credentials as _credentials
+    except ImportError:
+        # Keep the network decision capability-derived. The executor will
+        # report missing credentials honestly if canonical paths cannot resolve.
+        return [], True
+
+    config_root = Path(_config.PATH_USER_CONFIG)
+    vault_root = Path(_credentials.CRED_DIR)
+    candidates: list[Path] = []
+
+    admin_key = Path(_credentials.ADMIN_KEY_PATH)
+    candidates.append(admin_key)
+
+    if all_accounts:
+        if vault_root.is_dir():
+            candidates.extend(sorted(vault_root.glob("smtp_*.json.age")))
+        mail_dir = config_root / "mail"
+        if mail_dir.is_dir():
+            candidates.extend(sorted(mail_dir.glob("*.env")))
+        candidates.append(config_root / "mail.env")
+        candidates.append(Path.home() / ".config" / "mykleos" / "mail.env")
+    else:
+        for account in accounts:
+            candidates.append(vault_root / f"smtp_{account}.json.age")
+            if account in {"metnos", "metnos_system", "metnos_roberto"}:
+                candidates.append(config_root / "mail.env")
+            elif account == "mykleos":
+                candidates.append(
+                    Path.home() / ".config" / "mykleos" / "mail.env"
+                )
+            else:
+                candidates.append(config_root / "mail" / f"{account}.env")
+
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        try:
+            key = str(path.resolve())
+        except OSError:
+            key = str(path)
+        if key in seen or not path.is_file():
+            continue
+        seen.add(key)
+        paths.append(path)
+    return paths, True
 
 
 def dialog_extras(executor, *, actor: str | None,

@@ -25,6 +25,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import build_orchestrator
+from http_app_state import (
+    BUILD_DISPATCHER_TASK, BUILD_HEALTHCHECK_TASK, BUILD_SWEEPER_TASK,
+    DIALOG_SWEEPER_TASK, app_get,
+)
 from logging_setup import get_logger
 import config as _C  # §7.11
 
@@ -313,23 +317,23 @@ async def dialog_sweeper_task(app) -> None:
 def register_async_tasks(app) -> None:
     """Aggancia i task on_startup. Cancellati on_shutdown."""
     async def _start_tasks(app):
-        app["build_healthcheck_task"] = asyncio.create_task(
+        app[BUILD_HEALTHCHECK_TASK] = asyncio.create_task(
             progress_healthcheck_task(app)
         )
-        app["build_dispatcher_task"] = asyncio.create_task(
+        app[BUILD_DISPATCHER_TASK] = asyncio.create_task(
             notification_dispatcher_task(app)
         )
-        app["build_sweeper_task"] = asyncio.create_task(
+        app[BUILD_SWEEPER_TASK] = asyncio.create_task(
             tmpcache_sweeper_task(app)
         )
-        app["dialog_sweeper_task"] = asyncio.create_task(
+        app[DIALOG_SWEEPER_TASK] = asyncio.create_task(
             dialog_sweeper_task(app)
         )
 
     async def _stop_tasks(app):
-        for key in ("build_healthcheck_task", "build_dispatcher_task",
-                     "build_sweeper_task", "dialog_sweeper_task"):
-            t = app.get(key)
+        for key in (BUILD_HEALTHCHECK_TASK, BUILD_DISPATCHER_TASK,
+                    BUILD_SWEEPER_TASK, DIALOG_SWEEPER_TASK):
+            t = app_get(app, key)
             if t is not None:
                 t.cancel()
                 try:

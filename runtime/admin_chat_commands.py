@@ -46,7 +46,7 @@ def dispatch(query: str, *,
     Args:
       query: testo completo della query utente.
       actor: 'host' per accedere ai comandi /admin. /help disponibile a tutti.
-      origin: prefisso URL (es. 'https://chat.metnos.com') per costruire
+      origin: prefisso URL (es. 'https://metnos.example') per costruire
               pair URL. Se vuoto, fallback su 'http://localhost:8770'.
 
     Ritorna stringa finale per la chat. None se la query non matcha.

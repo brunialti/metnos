@@ -59,6 +59,12 @@ class Framework:
     steps: list[StepSpec] = field(default_factory=list)
     fillers: dict[str, FillerSpec] = field(default_factory=dict)
     final_message: str = ""  # template con placeholder ${stepN.field}
+    # Budget elevato esclusivamente da normalizzatori deterministici interni.
+    # Non viene deserializzato dall'output LLM né serializzato nelle cache: un
+    # piano proposto resta quindi soggetto al cap ordinario dell'Executor,
+    # mentre una pipeline canonica può dichiarare il proprio numero finito di
+    # passi dopo essere stata ricostruita e validata dal runtime.
+    runtime_step_cap: int = field(default=0, repr=False, compare=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Framework":
@@ -134,6 +140,12 @@ class StepRun:
     # restare sul server (i suoi entries/path sono dati locali). Derivato da
     # `result["_ran_on_device"]` (settato al choke-point invoke_executor).
     host: str = "server"
+    # Autorita' dei DATI prodotti. Di norma coincide con `host`, ma un
+    # trasformatore puro eseguito sul server (es. filter_entries) conserva i
+    # path del producer Windows: quei path devono continuare a essere letti
+    # sul device. Separare i due concetti evita di interpretare C:\\... come un
+    # path locale solo perche' il filtro e' computato su .33.
+    data_host: str | None = None
 
 
 @dataclass
@@ -165,6 +177,8 @@ RECOVERABLE = frozenset({"wrong_tool", "wrong_args", "missing_input"})
 OPERATIONAL_ERROR_CLASSES = frozenset({
     "network", "timeout", "server_error", "rate_limited", "sidecar_down",
     "provider_unavailable", "service_unavailable", "exception",
+    "browser_unavailable", "side_browser_unavailable", "navigation_failed",
+    "index_missing", "schema_too_old",
 })
 
 

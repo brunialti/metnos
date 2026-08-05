@@ -8,6 +8,7 @@ All DB I/O is funnelled here. Daemon code never touches sqlite directly.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -163,6 +164,89 @@ class SchedulerStorage:
             )
             return cur.rowcount > 0
 
+    def purge_names(self, names: tuple[str, ...]) -> dict[str, int]:
+        """Delete owner-scoped jobs and their potentially personal history."""
+
+        normalized = tuple(dict.fromkeys(
+            str(name) for name in names if str(name)))
+        if not normalized:
+            return {"entries": 0, "runs": 0}
+        placeholders = ",".join("?" for _ in normalized)
+        with self._lock, self._conn:
+            runs = self._conn.execute(
+                f"DELETE FROM runs WHERE entry_name IN ({placeholders})",
+                normalized,
+            ).rowcount
+            entries = self._conn.execute(
+                f"DELETE FROM schedule_entries "
+                f"WHERE name IN ({placeholders})",
+                normalized,
+            ).rowcount
+        return {"entries": entries, "runs": runs}
+
+    def purge_owner(self, owner_user_id: str, *, name_prefix: str,
+                    hinted_names: tuple[str, ...] = ()) -> dict[str, int]:
+        """Purge every scheduler artifact attributable to one owner UUID."""
+
+        owner = str(owner_user_id or "").strip()
+        if not owner or not name_prefix:
+            return {"entries": 0, "runs": 0}
+        names = {str(name) for name in hinted_names if str(name)}
+        with self._lock, self._conn:
+            for row in self._conn.execute(
+                    "SELECT name,payload FROM schedule_entries "
+                    "WHERE origin='user'").fetchall():
+                try:
+                    payload = json.loads(row["payload"] or "{}")
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    payload = {}
+                if (str(row["name"]).startswith(name_prefix)
+                        or str(payload.get("owner_user_id") or "") == owner):
+                    names.add(str(row["name"]))
+            for row in self._conn.execute(
+                    "SELECT DISTINCT entry_name FROM runs "
+                    "WHERE entry_name LIKE ?", (name_prefix + "%",)
+                    ).fetchall():
+                names.add(str(row["entry_name"]))
+            if not names:
+                return {"entries": 0, "runs": 0}
+            placeholders = ",".join("?" for _ in names)
+            params = tuple(sorted(names))
+            runs = self._conn.execute(
+                f"DELETE FROM runs WHERE entry_name IN ({placeholders})",
+                params,
+            ).rowcount
+            entries = self._conn.execute(
+                f"DELETE FROM schedule_entries "
+                f"WHERE name IN ({placeholders})",
+                params,
+            ).rowcount
+        return {"entries": entries, "runs": runs}
+
+    def migrate_owner_name(self, old_name: str, new_name: str,
+                           payload_json: str) -> bool:
+        """Rename one admitted legacy job while preserving counters/history."""
+
+        if not old_name or not new_name:
+            return False
+        with self._lock, self._conn:
+            row = self._conn.execute(
+                "SELECT id FROM schedule_entries WHERE name=?",
+                (old_name,),
+            ).fetchone()
+            if row is None:
+                return False
+            self._conn.execute(
+                "UPDATE schedule_entries SET name=?,payload=?,updated_at=? "
+                "WHERE id=?",
+                (new_name, payload_json, _utc_iso(), row["id"]),
+            )
+            self._conn.execute(
+                "UPDATE runs SET entry_name=? WHERE entry_name=?",
+                (new_name, old_name),
+            )
+        return True
+
     def get_by_name(self, name: str) -> ScheduleEntry | None:
         with self._lock:
             cur = self._conn.execute(
@@ -212,6 +296,18 @@ class SchedulerStorage:
                 "UPDATE schedule_entries SET next_fire_at=?, updated_at=? WHERE id=?",
                 (next_fire_at, _utc_iso(), entry_id),
             )
+
+    def initialize_remaining_runs(self, entry_id: int, value: int) -> bool:
+        """Allinea JIT solo entry finite legacy ancora marcate unlimited."""
+        if value <= 0:
+            return False
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE schedule_entries SET remaining_runs=?, updated_at=? "
+                "WHERE id=? AND remaining_runs=0",
+                (value, _utc_iso(), entry_id),
+            )
+            return cur.rowcount > 0
 
     def disable(self, entry_id: int) -> None:
         with self._lock:
@@ -272,10 +368,15 @@ class SchedulerStorage:
             "updated_at=?",
         ]
         params: list = [_utc_iso(), status, duration_ms, error, _utc_iso()]
-        if status != "success":
+        if status in {"error", "timeout"}:
             sets.append("total_failures=total_failures+1")
             # Streak consecutiva: incrementa su error/timeout.
             sets.append("consecutive_failures=consecutive_failures+1")
+        elif status == "partial":
+            # Il risultato resta contabilizzato come incompleto, ma non è un
+            # hard failure e non deve alimentare il circuit-breaker.
+            sets.append("total_failures=total_failures+1")
+            sets.append("consecutive_failures=0")
         else:
             # Un solo success azzera la streak (LWW).
             sets.append("consecutive_failures=0")
@@ -328,21 +429,30 @@ class SchedulerStorage:
             return cur.rowcount
 
     def list_runs(self, limit: int = 100,
-                  entry_name: str | None = None) -> list[Run]:
+                  entry_name: str | None = None, *,
+                  started_from: str | None = None,
+                  started_to: str | None = None) -> list[Run]:
         """Ultimi N run, opz. filtrati per entry_name lato SQL (con indice):
         evita il fetch-then-filter di 500 righe + il cap silenzioso quando il
         chiamante chiede limit>500 per un nome (§2.7)."""
         with self._lock:
+            where = []
+            params: list[object] = []
             if entry_name is not None:
-                cur = self._conn.execute(
-                    "SELECT * FROM runs WHERE entry_name=? "
-                    "ORDER BY started_at DESC LIMIT ?", (entry_name, limit),
-                )
-            else:
-                cur = self._conn.execute(
-                    "SELECT * FROM runs ORDER BY started_at DESC LIMIT ?",
-                    (limit,),
-                )
+                where.append("entry_name=?")
+                params.append(entry_name)
+            if started_from is not None:
+                where.append("julianday(started_at)>=julianday(?)")
+                params.append(started_from)
+            if started_to is not None:
+                where.append("julianday(started_at)<=julianday(?)")
+                params.append(started_to)
+            sql = "SELECT * FROM runs"
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY started_at DESC LIMIT ?"
+            params.append(limit)
+            cur = self._conn.execute(sql, tuple(params))
             rows = cur.fetchall()
         return [Run.from_row(r) for r in rows]
 

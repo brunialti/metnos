@@ -3,8 +3,9 @@
 GBNF che vincola l'output del Proposer alla forma Framework:
 `{"steps": [...], "fillers": {...}?, "final_message": "..."?}`.
 
-Quando attivo (env METNOS_PROPOSER_GRAMMAR=1) garantisce parse rate 100%
-forzando think=False (ADR 0133: grammar + think collidono su max_tokens).
+Quando attivo (env METNOS_PROPOSER_GRAMMAR=1) garantisce parse rate 100%.
+Il proposer seleziona il contratto esatto ``planner.grammar``; la grammar resta
+un vincolo strutturale e non modifica la policy del tier.
 
 Relocato da _legacy/praxis_propose.py durante la bonifica del flusso
 decisionale duplicato (Engine v2 unico vivo). §7.11: niente path assoluti

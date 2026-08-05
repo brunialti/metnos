@@ -23,7 +23,7 @@ model_pattern = "claude-*"
 use_case      = "code_gen"
 text          = "\n\nVincoli: codice fedele alla spec. Regex semplice. Niente lookbehind/lookahead."
 
-# --- Qwen 3.x via llama.cpp (tier locale fast/middle/wise, DEFAULT_TIERS).
+# --- Qwen 3.x via llama.cpp (binding locale dei tier, DEFAULT_TIERS).
 #     Qwen-family: tende a lasciare python_code vuoto / output troncato.
 #     Backend llama.cpp: over-escape di raw string e triple-quote docstring.
 #     fnmatch e' case-sensitive su POSIX: [Qq]wen* matcha sia 'Qwen3.6-...gguf'

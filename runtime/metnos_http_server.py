@@ -24,15 +24,47 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+# The daemon is the central execution-policy startup point. Operators can
+# still lower or disable the pool explicitly; absent overrides, only signed
+# and equivalence-verified executor classes are eligible.
+os.environ.setdefault("METNOS_EXECUTOR_PARALLEL", "1")
+os.environ.setdefault("METNOS_EXECUTOR_MAX_CLASS", "3")
+# Conservative cross-step waves are independently switchable.  Admission is
+# still read-only + signed class > 0 + verified equivalence, and any explicit
+# deployment value (notably ``0`` for rollback) wins over this default.
+os.environ.setdefault("METNOS_ENGINE_PARALLEL_STEPS", "1")
+
+# Resolve once before importing routes/runtime workers. Child executors inherit
+# the same capability profile and never need to inspect GPUs or LLM frameworks.
+from llm_concurrency import initialize_environment as _init_llm_concurrency
+_LLM_CONCURRENCY = _init_llm_concurrency()
+
 from aiohttp import web
 
 import http_async_tasks
 import http_routes_admin
 import http_routes_agent
+import http_routes_stack
 from http_auth import auth_middleware, get_or_create_admin_key
+from http_app_state import (
+    ADMIN_KEY, CATALOG_PROVIDER, SCHEDULER_V2, SSE_RESPONSES, STARTED_AT,
+    TURN_POOL, TUTOR_BOOTSTRAP_TASK, app_get,
+)
+from http_turn_pool import HttpTurnPool
 from logging_setup import get_logger
+from process_lock import ProcessLock
 
 log = get_logger(__name__)
+log.info(
+    "llm_concurrency framework=%s gpu_count=%d batching=%s "
+    "parallelism_class=%d max_in_flight=%d executor_parallel=%s "
+    "engine_parallel_steps=%s",
+    _LLM_CONCURRENCY.framework, _LLM_CONCURRENCY.gpu_count,
+    _LLM_CONCURRENCY.batching, _LLM_CONCURRENCY.parallelism_class,
+    _LLM_CONCURRENCY.max_in_flight,
+    os.environ.get("METNOS_EXECUTOR_PARALLEL", "0"),
+    os.environ.get("METNOS_ENGINE_PARALLEL_STEPS", "0"),
+)
 
 DEFAULT_HOST = os.environ.get("METNOS_HTTP_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("METNOS_HTTP_PORT", "8770"))
@@ -43,6 +75,28 @@ LOCKFILE = Path(os.environ.get(
     "METNOS_HTTP_LOCKFILE",
     str(_C.PATH_USER_STATE / "http_server.lock"),
 ))
+
+
+@web.middleware
+async def user_language_middleware(request: web.Request, handler):
+    """Applica la preferenza lingua del principal alla singola richiesta.
+
+    Il middleware di autenticazione viene eseguito prima di questo. La lingua
+    vive in un ``ContextVar`` e viene propagata anche al pool dei turni: due
+    utenti concorrenti possono quindi ricevere UI, Tutor, prompt e messaggi in
+    lingue diverse senza mutare ``METNOS_LANG`` né uno stato globale.
+    """
+    preferred = None
+    if request.get("role", "anonymous") != "anonymous":
+        try:
+            import users as _users
+            user_id = await http_routes_agent._resolve_session_user_id(request)
+            preferred = _users.get_pref(user_id, "lang", None)
+        except Exception as ex:
+            log.debug("user language lookup unavailable: %s", ex)
+    import i18n as _i18n
+    with _i18n.language_context(preferred):
+        return await handler(request)
 
 
 def _build_catalog_provider():
@@ -61,10 +115,7 @@ def _build_catalog_provider():
             except Exception as e:
                 log.warning("catalog load failed: %s", e)
                 cache["catalog"] = []
-        cat = cache["catalog"]
-        if hasattr(cat, "executors"):
-            return list(cat.executors.values())
-        return list(cat)
+        return cache["catalog"]
     return get
 
 
@@ -81,20 +132,78 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
     # multipart di foto reference (drag&drop ADR 0092). Foto JPEG/HEIC/PNG
     # tipiche 2-15 MB ognuna, max 10 file = ~100-150 MB worst case; 50 MB
     # copre il caso comune (≤ 5 foto media risoluzione).
-    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[auth_middleware])
-    app["started_at"] = time.time()
-    app["admin_key"] = admin_key if admin_key is not None else get_or_create_admin_key()
-    app["catalog_provider"] = _build_catalog_provider()
+    app = web.Application(
+        client_max_size=50 * 1024 * 1024,
+        middlewares=[auth_middleware, user_language_middleware],
+    )
+    app[STARTED_AT] = time.time()
+    app[ADMIN_KEY] = (
+        admin_key if admin_key is not None else get_or_create_admin_key())
+    app[CATALOG_PROVIDER] = _build_catalog_provider()
+    turn_pool = HttpTurnPool()
+    app[TURN_POOL] = turn_pool
+
+    async def _close_turn_pool(_app):
+        # Running Python calls cannot be killed safely. shutdown(wait=False)
+        # rejects/cancels queued work while allowing already-running calls to
+        # finish; process shutdown remains bounded by the service manager.
+        turn_pool.close()
+        log.info("http turn pool stopped: %s", turn_pool.stats())
+
+    app.on_cleanup.append(_close_turn_pool)
+    log.info("http turn pool ready: %s", turn_pool.stats())
 
     for method, path, handler in (
-        list(http_routes_agent.ROUTES) + list(http_routes_admin.ROUTES)
+        list(http_routes_agent.ROUTES)
+        + list(http_routes_admin.ROUTES)
+        + list(http_routes_stack.ROUTES)
     ):
         app.router.add_route(method, path, handler)
 
     # Set di SSE pending: usato da _turn_sse per registrarsi e da
     # close_active_sse per chiudere pulitamente al shutdown del server.
-    app["sse_responses"] = set()
+    app[SSE_RESPONSES] = set()
     app.on_shutdown.append(http_routes_agent.close_active_sse)
+
+    # RM-0003: documentazione pubblicata, fonti supplementari selezionate,
+    # manifest ammessi e registri runtime formano un solo artefatto firmato.
+    # Il fallimento è fail-soft rispetto al motore: i turni operativi restano
+    # disponibili e il boundary Tutor rende MSG_TUTOR_UNAVAILABLE sulle sole
+    # domande di aiuto.
+    # La compilazione e' un compito di SFONDO, mai un prerequisito dell'ascolto:
+    # a catalogo freddo (prima installazione, ambiente di test) impiega minuti e
+    # dentro `on_startup` terrebbe il server irraggiungibile per tutto quel
+    # tempo, contraddicendo il fail-soft dichiarato qui sopra.
+    async def _compile_tutor_catalog():
+        try:
+            from tutor.catalog import compile_catalog
+            digest = await asyncio.get_running_loop().run_in_executor(
+                None, compile_catalog)
+            log.info("tutor F2 knowledge catalog ready: %s", digest)
+        except asyncio.CancelledError:
+            raise
+        except Exception as ex:
+            log.error("tutor F2 bootstrap unavailable: %s", ex)
+
+    async def _bootstrap_tutor(app):
+        if os.environ.get("METNOS_TUTOR", "1").strip().lower() in {
+                "0", "false", "no", "off"}:
+            log.info("tutor disabled by METNOS_TUTOR")
+            return
+        app[TUTOR_BOOTSTRAP_TASK] = asyncio.create_task(
+            _compile_tutor_catalog())
+
+    async def _stop_tutor_bootstrap(app):
+        task = app_get(app, TUTOR_BOOTSTRAP_TASK)
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    app.on_startup.append(_bootstrap_tutor)
+    app.on_shutdown.append(_stop_tutor_bootstrap)
 
     # TurnEventLog: bind del loop asyncio per le notifiche cross-thread
     # (run_turn gira in executor, scrive eventi via call_soon_threadsafe).
@@ -146,7 +255,7 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
             _bcb.install_default_jobs(sched)
         except Exception as ex:
             log.warning("scheduler_v2 install_default_jobs: %s", ex)
-        app["scheduler_v2"] = sched
+        app[SCHEDULER_V2] = sched
 
         async def _start_sched(_app):
             await sched.start()
@@ -215,40 +324,6 @@ def make_app(*, admin_key: str | None = None) -> web.Application:
 #   TimeoutStopSec=5
 # poi `sudo systemctl daemon-reload`. Combinato con on_shutdown handler sopra,
 # il restart dara' 5s alle SSE attive per chiudersi prima di SIGKILL.
-
-
-# --- single-instance lock ----------------------------------------------------
-
-class ProcessLock:
-    """Lockfile flock POSIX (single-instance gate)."""
-
-    def __init__(self, path: Path, owner: str = "metnos_http_server"):
-        self.path = path
-        self.owner = owner
-        self._fh = None
-
-    def acquire(self) -> None:
-        import fcntl
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self.path, "a+")
-        try:
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as e:
-            self._fh.close()
-            self._fh = None
-            raise RuntimeError(
-                f"{self.owner} gia' in esecuzione (lockfile {self.path})"
-            ) from e
-        self._fh.seek(0); self._fh.truncate()
-        self._fh.write(str(os.getpid())); self._fh.flush()
-
-    def release(self) -> None:
-        if self._fh is not None:
-            try:
-                self._fh.close()
-            except Exception as e:
-                log.warning("lock release: %s", e)
-            self._fh = None
 
 
 # --- runners -----------------------------------------------------------------

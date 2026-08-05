@@ -9,7 +9,7 @@ Niente subprocess. Niente I/O di rete.
 
 Riferimenti CLAUDE.md:
 - §2.1 vettoriale (singolare -> anche plurale).
-- §2.2 vocabolario chiuso (22 verbs / 15 objects).
+- §2.2 vocabolario chiuso (derivato da vocab.ACTIONS / vocab.OBJECTS).
 - §2.3 reverse pattern (4 + `delete_<object>_by_id` come 5° pattern).
 - §2.6 entries (read/find/get) vs results (set/delete/...).
 - §2.8 no silent failure.
@@ -65,6 +65,7 @@ class ArgSpec:
     required: bool = False
     items_type: str | None = None  # se type=="array"
     format: str | None = None      # es. "date-time" per ISO
+    positional: bool = False       # valore CLI senza prefisso --flag
 
 
 @dataclass
@@ -356,6 +357,8 @@ def build_args(sc, *, has_entries_output: bool) -> list:
                     name="query",
                     type="string",
                     description=_describe_query_for(sc.domain, sc.action),
+                    required=True,
+                    positional=True,
                 ))
             continue
         sing = pos.lower()  # EVENT_ID -> event_id
@@ -366,6 +369,7 @@ def build_args(sc, *, has_entries_output: bool) -> list:
                 name=sing,
                 type="string",
                 description=f"Identificatore singolo {sing} (forma scalare).",
+                positional=True,
             ))
         if plur not in existing:
             out.append(ArgSpec(
@@ -597,8 +601,8 @@ def resolve_reverse_pattern(verb: str, obj: str) -> tuple:
 def derive_capabilities(parsed_skill, sub_command) -> list:
     """Deduce `[[capabilities]]` da:
     1. frontmatter `allowed-tools` se presente (formato Anthropic puro).
-    2. presenza di `scripts/` -> sempre `metnos:net` (skill remota di default
-       quando wrappa una CLI di terze parti).
+    2. presenza di `scripts/` -> `provider:access` per binding provider noto,
+       altrimenti `network:http` (skill remota che wrappa una CLI terza).
     3. `required_credential_files` -> `metnos:read`/`metnos:write` sul path
        (re-mappato sotto `~/.local/share/metnos/credentials/`).
     """
@@ -608,11 +612,18 @@ def derive_capabilities(parsed_skill, sub_command) -> list:
     for at in parsed_skill.allowed_tools:
         out.append(CapabilitySpec(name=at.lower(), hint=[]))
 
-    # 2. Network egress se scripts/ non vuoto (Google API, ecc.).
+    # 2. Network egress se scripts/ non vuoto (Google API, GitHub, ecc.).
     if parsed_skill.scripts:
-        if not any(c.name == "metnos:net" for c in out):
+        from vocab import PROVIDER_SKILLS
+        binding = _normalize_binding(parsed_skill.name)
+        provider = PROVIDER_SKILLS.get(binding)
+        if provider:
+            if not any(c.name == "provider:access" for c in out):
+                out.append(CapabilitySpec(
+                    name="provider:access", hint=[provider]))
+        elif not any(c.name == "network:http" for c in out):
             host_hint = _hosts_for_domain(sub_command.domain)
-            out.append(CapabilitySpec(name="metnos:net", hint=host_hint))
+            out.append(CapabilitySpec(name="network:http", hint=host_hint))
 
     # 3. Credenziali.
     for rcf in parsed_skill.required_credential_files:

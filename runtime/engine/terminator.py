@@ -125,6 +125,14 @@ _CAUSE_KEYS = {
     "out_of_scope": ("MSG_TERM_OUT_OF_SCOPE_CAUSE", "MSG_TERM_OUT_OF_SCOPE_ACTION"),
 }
 
+# Azioni specifiche per codici executor strutturati. La classe di recovery
+# (es. ``wrong_args``) e' volutamente piu' larga del problema concreto: quando
+# l'executor conosce la causa, non chiedere di nuovo dettagli che l'utente ha
+# gia' fornito.
+_ERROR_ACTION_KEYS = {
+    "ERR_PATH_NOT_FOUND": "MSG_TERM_PATH_NOT_FOUND_ACTION",
+}
+
 
 def _first_step_failure(failed_run: Optional[RunResult]) -> tuple[str, str]:
     """Errore CONCRETO del primo step fallito (§2.8). Il template generico
@@ -153,6 +161,29 @@ def _first_step_error(failed_run: Optional[RunResult]) -> str:
     return _first_step_failure(failed_run)[0]
 
 
+def _first_step_error_code(failed_run: Optional[RunResult]) -> str:
+    """Primo ``error_code`` strutturato, top-level o per-item.
+
+    Separato dal testo localizzato: le decisioni di protocollo non devono
+    dipendere dal wording del backend o dalla lingua dell'istanza.
+    """
+    if not failed_run or not getattr(failed_run, "steps", None):
+        return ""
+    for step in failed_run.steps:
+        result = getattr(step, "result", None)
+        if not isinstance(result, dict) or result.get("ok") is not False:
+            continue
+        candidates = [result]
+        failed = result.get("failed")
+        if isinstance(failed, list):
+            candidates.extend(item for item in failed if isinstance(item, dict))
+        for item in candidates:
+            code = item.get("error_code")
+            if isinstance(code, str) and code.strip():
+                return code.strip()
+    return ""
+
+
 class SimpleTerminator:
     """Default: errore concreto dello step fallito (§2.8), altrimenti template
     fisso per classe errore + record lacuna."""
@@ -166,7 +197,17 @@ class SimpleTerminator:
         # §2.8: se uno step ha fallito con un errore concreto/azionabile, mostra
         # QUELLO come causa invece del generico per-classe (che lo mascherava).
         step_err, step_error_class = _first_step_failure(failed_run)
-        if step_error_class in OPERATIONAL_ERROR_CLASSES:
+        step_error_code = _first_step_error_code(failed_run)
+        # Backend traces are diagnostics, not localized user-facing text.
+        # A missing remote capability already has a structured class, so use
+        # the existing localized out-of-scope wording instead of exposing the
+        # provider traceback (or coupling behavior to its prose).
+        if step_error_class == "capability_missing":
+            step_err = ""
+        action_key = _ERROR_ACTION_KEYS.get(step_error_code)
+        if action_key:
+            action = _msg(action_key)
+        elif step_error_class in OPERATIONAL_ERROR_CLASSES:
             action = _msg("MSG_CHAT_FB_RETRY")
         cause = step_err if step_err else _msg(ck)
         text = _msg("MSG_TERM_WRAPPER", cause=cause, action=action)

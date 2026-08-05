@@ -34,9 +34,12 @@ dichiara nel risultato.
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from llm_helpers import call_llm
+from llm_workloads import tier_for
+from messages import get as _msg
 
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -44,30 +47,79 @@ log = get_logger(__name__)
 # Default classes per dimensione conosciuta.
 DEFAULT_CLASSES = {
     "relevance": ["junk", "low", "medium", "high"],
+    "importance": ["important", "normal", "low"],
     "urgency": ["none", "later", "soon", "now"],
     "sentiment": ["negative", "neutral", "positive"],
     "topic": [],  # caller deve fornire le classi
 }
 
-# Default criterion per dimensione (italiano, prescrittivo).
+# Default criteria per language and dimension.  Unsupported languages use the
+# same English fallback as prompt_loader, never a mixed-language prompt.
 DEFAULT_CRITERIA = {
-    "relevance": (
+    "it": {
+      "relevance": (
         "rilevanza per l'utente: high = richiede azione o e' personale/da "
         "persone reali; medium = informativa o di servizio (conferme, "
         "transazioni, alert utili); low = newsletter, aggiornamenti, "
         "promozioni di servizi che l'utente segue; junk = spam evidente, "
         "promozionale aggressiva, mailing-list non desiderate."
     ),
-    "urgency": (
+      "urgency": (
         "urgenza temporale: now = richiede risposta entro poche ore; "
         "soon = entro qualche giorno; later = senza scadenze pressanti; "
         "none = informativa, nessuna azione richiesta."
     ),
-    "sentiment": (
+      "sentiment": (
         "tono complessivo del messaggio: positive (entusiasta, "
         "ringraziamento, conferma positiva), neutral (informativo, "
         "transazionale), negative (lamentela, errore, rifiuto)."
-    ),
+      ),
+    },
+    "en": {
+      "relevance": (
+        "relevance to the user: high = requires action or is personal/from "
+        "a real person; medium = useful service or informational message "
+        "(confirmations, transactions, alerts); low = newsletters, updates, "
+        "and promotions from services the user follows; junk = obvious spam, "
+        "aggressive promotions, or unwanted mailing lists."
+      ),
+      "urgency": (
+        "time urgency: now = requires a response within hours; soon = within "
+        "a few days; later = no pressing deadline; none = informational and "
+        "requires no action."
+      ),
+      "sentiment": (
+        "overall message tone: positive (enthusiasm, thanks, positive "
+        "confirmation), neutral (informational or transactional), negative "
+        "(complaint, error, or refusal)."
+      ),
+    },
+}
+
+# Criteria whose semantics depend on the object kind.  A dimension-only
+# criterion cannot define both an important email and an important file
+# without leaking assumptions from one domain into the other.
+DEFAULT_KIND_CRITERIA = {
+    "it": {("email", "importance"): (
+        "importanza operativa per l'utente: important = avvisi di sicurezza "
+        "o movimenti finanziari da verificare, scadenze/prenotazioni, fatture "
+        "o documenti e messaggi personali che richiedono attenzione o azione; "
+        "normal = conferme e informazioni di servizio utili ma senza azione "
+        "immediata; low = newsletter, marketing, suggerimenti automatici, "
+        "annunci di prodotto e contenuti promozionali, anche se provengono da "
+        "un servizio noto. Non considerare importante una mail soltanto per "
+        "il nome o la notorieta' del mittente."
+    )},
+    "en": {("email", "importance"): (
+        "operational importance to the user: important = security alerts or "
+        "financial transactions to verify, deadlines/bookings, invoices, "
+        "documents, or personal messages that require attention or action; "
+        "normal = useful service confirmations and information without an "
+        "immediate action; low = newsletters, marketing, automated "
+        "recommendations, product announcements, and promotional content, "
+        "even from a well-known service. Do not mark an email important only "
+        "because its sender is famous or familiar."
+    )},
 }
 
 # Pre-filter regole tassonomiche per email (data_kind='email').
@@ -80,12 +132,39 @@ _EMAIL_RELEVANCE_RULES = [
     (frozenset({"bulk", "noreply"}), "low"),
 ]
 
+# For importance, mailing-list/bulk metadata is a sufficiently strong signal
+# to remove obvious newsletters before asking the model.  Security alerts,
+# invoices, bookings and personal mail normally do not carry List-* headers;
+# a mere ``noreply`` marker is deliberately not enough to demote them.
+_EMAIL_IMPORTANCE_RULES = [
+    (frozenset({"list"}), "low"),
+    (frozenset({"bulk"}), "low"),
+]
+
 # Campi default per data_kind, ottimizzati per non saturare il context.
 DEFAULT_FIELDS = {
     "email": ["from", "subject", "body_preview", "category_hints"],
     "web_result": ["title", "url", "snippet"],
     "file": ["name", "kind", "size"],
 }
+
+# ``llm_helpers`` refuses to truncate structured JSON.  Keep the same hard
+# boundary here and pack batches below it, so a perfectly valid list of short
+# messages cannot fail merely because the count-based batch happens to cross
+# 12K characters.
+CLASSIFY_QUERY_MAX_CHARS = 12_000
+CLASSIFY_BATCH_PACK_CHARS = 11_500
+
+
+def _bounded_timeout(name: str, default: float) -> float:
+    try:
+        return max(5.0, min(300.0, float(os.environ.get(name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+CLASSIFY_LLM_TIMEOUT_S = _bounded_timeout(
+    "METNOS_CLASSIFY_LLM_TIMEOUT_S", 60.0)
 
 
 def _detect_kind(entries: list, hint: str | None) -> str:
@@ -117,7 +196,11 @@ def _project_entry(e: dict, fields: list[str] | None) -> dict:
 def _pre_filter_email(entries: list[dict], dimension: str) -> tuple[list[int], dict]:
     """Applica regole tassonomiche conservative su email (solo dimension
     'relevance' per ora). Ritorna (indici_pre_filtrati, mappa_indice→classe)."""
-    if dimension != "relevance":
+    rules = {
+        "relevance": _EMAIL_RELEVANCE_RULES,
+        "importance": _EMAIL_IMPORTANCE_RULES,
+    }.get(dimension)
+    if not rules:
         return [], {}
     pre = {}
     for i, e in enumerate(entries):
@@ -126,18 +209,51 @@ def _pre_filter_email(entries: list[dict], dimension: str) -> tuple[list[int], d
         hints = set(e.get("category_hints") or [])
         if not hints:
             continue
-        for needed, label in _EMAIL_RELEVANCE_RULES:
+        for needed, label in rules:
             if needed.issubset(hints):
                 pre[i] = label
                 break
     return list(pre.keys()), pre
 
 
-def _build_prompt(dimension: str, classes: list[str], criterion: str, kind: str, n: int) -> str:
+def _prompt_language(args: dict | None = None) -> str:
+    requested = str((args or {}).get("_lang") or "").strip().lower()
+    if not requested:
+        try:
+            from i18n import current_lang
+            requested = current_lang().lower()
+        except Exception:
+            from config import DEFAULT_LANG
+            requested = DEFAULT_LANG.lower()
+    return requested or "en"
+
+
+def _criterion_language(prompt_lang: str) -> str:
+    base = prompt_lang.replace("_", "-").split("-", 1)[0]
+    return base if base in DEFAULT_CRITERIA else "en"
+
+
+def _generic_criterion(lang: str, dimension: str, classes: list[str]) -> str:
+    if lang == "it":
+        return (
+            f"Classifica ogni elemento in base alla dimensione «{dimension}», "
+            f"assegnando esattamente UNA fra le classi: {', '.join(classes)}. "
+            f"Usa il significato comune di «{dimension}» e il contenuto "
+            f"dell'elemento per decidere."
+        )
+    return (
+        f"Classify each item by the dimension '{dimension}', assigning "
+        f"exactly ONE of these classes: {', '.join(classes)}. Use the common "
+        f"meaning of '{dimension}' and the item's content to decide."
+    )
+
+
+def _build_prompt(dimension: str, classes: list[str], criterion: str,
+                  kind: str, n: int, *, lang: str | None = None) -> str:
     """Compone il prompt LLM per il classifier. Prompt persistito in
     `runtime/prompts/<lang>/classify_entries.j2` (ADR 0092 Phase 2)."""
     import prompt_loader
-    from config import DEFAULT_LANG
+    prompt_lang = lang or _prompt_language()
     classes_str = ", ".join(repr(c) for c in classes)
     # Esempio dimensionato su n: emette n etichette plausibili scelte fra
     # le classi ammesse, in modo che il modello veda subito un output di
@@ -149,7 +265,7 @@ def _build_prompt(dimension: str, classes: list[str], criterion: str, kind: str,
     example_str = json.dumps(example_labels[:3] if n <= 3 else example_labels[:3] + ["..."])
     return prompt_loader.get(
         "classify_entries",
-        DEFAULT_LANG,
+        prompt_lang,
         n=n, kind=kind, dimension=dimension,
         classes_str=classes_str, criterion=criterion,
         example_n=min(n, 3), example_str=example_str,
@@ -193,24 +309,65 @@ def _parse_labels(text: str, classes: list[str], n: int) -> list[str] | None:
 
 def _classify_batch(items: list[dict], dimension: str, classes: list[str],
                     criterion: str, kind: str, tier: str,
-                    fields: list[str] | None) -> tuple[list[str] | None, dict]:
+                    fields: list[str] | None, *,
+                    lang: str | None = None) -> tuple[list[str] | None, dict]:
     projected = [_project_entry(e, fields) for e in items]
-    prompt = _build_prompt(dimension, classes, criterion, kind, len(items))
+    prompt = _build_prompt(
+        dimension, classes, criterion, kind, len(items), lang=lang)
     # Output corto: ~5 token per label * n + boilerplate JSON
     max_tok = max(64, 12 * len(items))
-    text, meta = call_llm(projected, prompt, tier=tier,
-                          max_tokens=max_tok, temperature=0.0)
+    text, meta = call_llm(
+        projected, prompt, tier=tier, max_tokens=max_tok,
+        max_query_chars=CLASSIFY_QUERY_MAX_CHARS,
+        timeout_s=CLASSIFY_LLM_TIMEOUT_S,
+    )
     labels = _parse_labels(text, classes, len(items))
     return labels, meta
 
 
-def _auto_tier(n_items: int, fields: list[str] | None) -> str:
+def _packed_batch_indices(entries: list, indices: list[int], *,
+                          batch_size: int, fields: list[str] | None):
+    """Yield count- and character-bounded batches without truncating JSON."""
+    current: list[int] = []
+    for index in indices:
+        candidate = [*current, index]
+        projected = [
+            _project_entry(entries[item], fields)
+            if isinstance(entries[item], dict) else entries[item]
+            for item in candidate
+        ]
+        payload_chars = len(json.dumps(projected, ensure_ascii=False))
+        if current and (
+                len(candidate) > batch_size
+                or payload_chars > CLASSIFY_BATCH_PACK_CHARS):
+            yield current
+            current = [index]
+        else:
+            current = candidate
+    if current:
+        yield current
+
+
+def _dependency_failure(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    return (
+        isinstance(exc, (TimeoutError, ConnectionError))
+        or any(token in name for token in ("timeout", "urlerror", "providererror"))
+        or any(token in text for token in (
+            "timed out", "unreachable", "connection refused",
+            "request deadline exhausted",
+        ))
+    )
+
+
+def _auto_tier(n_items: int) -> str:
     """Per classificare un set chiuso di label, fast basta nei piccoli
-    batch. Per batch grandi diamo middle che ha piu' margine sulla
-    coerenza dell'output strutturato."""
+    batch. Per batch grandi usa fast.procedural per mantenere la coerenza
+    dell'output strutturato."""
     if n_items <= 30:
-        return "fast"
-    return "middle"
+        return tier_for("entries.classify.small")
+    return tier_for("entries.classify")
 
 
 CLASSIFY_ENTRIES_TOOL = {
@@ -305,15 +462,6 @@ CLASSIFY_ENTRIES_TOOL = {
                                    "piu' rischio di output mal-formato.",
                     "default": 30,
                 },
-                "tier": {
-                    "type": "string",
-                    "description": "Tier LLM. 'auto' (default) sceglie fast "
-                                   "per batch piccoli, middle per piu' "
-                                   "grossi. Per task soggettivi o domini "
-                                   "tecnici considera middle/wise.",
-                    "enum": ["auto", "fast", "middle", "wise"],
-                    "default": "auto",
-                },
                 "fields": {
                     "type": "array",
                     "description": "Quali campi della entry mostrare al "
@@ -401,7 +549,15 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     if not isinstance(classes, list) or not all(isinstance(c, str) for c in classes):
         return {"ok": False, "error": "'classes' must be list[str]"}
 
-    criterion = (args or {}).get("criterion") or DEFAULT_CRITERIA.get(dimension)
+    data_kind = (args or {}).get("data_kind") or "auto"
+    kind = _detect_kind(entries, data_kind)
+    prompt_lang = _prompt_language(args)
+    criterion_lang = _criterion_language(prompt_lang)
+    criterion = (
+        (args or {}).get("criterion")
+        or DEFAULT_KIND_CRITERIA.get(criterion_lang, {}).get((kind, dimension))
+        or DEFAULT_CRITERIA.get(criterion_lang, {}).get(dimension)
+    )
     if not criterion:
         # §2.8/§7.9: nessun criterion esplicito né default per questa dimensione
         # → sintetizza un criterion GENERICO da dimension+classes invece di
@@ -409,19 +565,20 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
         # importanti' → dimension='importance' senza criterion → terminator).
         # L'LLM classifica con la guida generica. Universale, ZERO hardcoding
         # per-dimensione (vale per importance/urgency/priority/topic/...).
-        criterion = (
-            f"Classifica ogni elemento in base alla dimensione «{dimension}», "
-            f"assegnando esattamente UNA fra le classi: {', '.join(classes)}. "
-            f"Usa il significato comune di «{dimension}» e il contenuto "
-            f"dell'elemento (es. mittente, oggetto, testo) per decidere.")
+        criterion = _generic_criterion(criterion_lang, dimension, classes)
 
-    data_kind = (args or {}).get("data_kind") or "auto"
-    kind = _detect_kind(entries, data_kind)
-    pre_filter = bool((args or {}).get("pre_filter", False))
+    # Importance has a conservative deterministic first pass by default.  It
+    # prevents a model from promoting a newsletter merely because its sender
+    # is a famous company.  Other dimensions preserve the explicit opt-in
+    # contract.
+    pre_filter = (
+        bool((args or {}).get("pre_filter", False))
+        or (kind == "email" and dimension == "importance")
+    )
     batch_size = int((args or {}).get("batch_size", 30))
     if batch_size <= 0 or batch_size > 200:
         return {"ok": False, "error": "batch_size must be in 1..200"}
-    tier = (args or {}).get("tier") or "auto"
+    tier = "auto"
     fields = (args or {}).get("fields") or DEFAULT_FIELDS.get(kind)
 
     if not entries:
@@ -447,36 +604,33 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
 
     # 4. Batch LLM su llm_indices.
     if tier == "auto":
-        tier = _auto_tier(len(llm_indices), fields)
+        tier = _auto_tier(len(llm_indices))
     in_tok = out_tok = lat = 0
     model_used = ""
     failed_batches = 0
-    # Catchall: classe usata per entries con label fuori-set o batch fallito.
-    # Preferisce 'altro'/'other'/'misc'/'unknown' se presente, sennoSize l'ultima classe.
-    classes_set = set(classes)
-    catchall = None
-    for cand in ("altro", "other", "misc", "unknown"):
-        if cand in classes_set:
-            catchall = cand; break
-    if catchall is None:
-        catchall = classes[-1]
+    dependency_failed_batches = 0
+    classified_indices = set(pre_labels)
+    failed_indices: list[int] = []
 
     if llm_indices:
-        for batch_start in range(0, len(llm_indices), batch_size):
-            chunk_idx = llm_indices[batch_start:batch_start + batch_size]
+        for chunk_idx in _packed_batch_indices(
+                result_entries, llm_indices,
+                batch_size=batch_size, fields=fields):
             chunk = [result_entries[i] for i in chunk_idx]
             try:
                 labels, meta = _classify_batch(chunk, dimension, classes,
-                                               criterion, kind, tier, fields)
+                                               criterion, kind, tier, fields,
+                                               lang=prompt_lang)
             except Exception as e:
                 failed_batches += 1
+                dependency_failed_batches += int(_dependency_failure(e))
+                failed_indices.extend(chunk_idx)
+                log.warning(
+                    "classify batch failed kind=%s items=%d error=%s",
+                    kind, len(chunk), type(e).__name__,
+                )
                 if verbose:
                     print(f"[classify] batch failed: {e}")
-                # Chiudi il conto: marca tutto il chunk come catchall
-                # (CLAUDE.md 2.8: nessun silent loss di entries).
-                for target in chunk_idx:
-                    if isinstance(result_entries[target], dict):
-                        result_entries[target][dimension] = catchall
                 continue
             in_tok += meta.get("in_tokens", 0) or 0
             out_tok += meta.get("out_tokens", 0) or 0
@@ -484,31 +638,28 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
             model_used = meta.get("model", model_used)
             if labels is None:
                 failed_batches += 1
+                failed_indices.extend(chunk_idx)
                 if verbose:
                     print(f"[classify] batch produced unparsable output (size={len(chunk)})")
-                for target in chunk_idx:
-                    if isinstance(result_entries[target], dict):
-                        result_entries[target][dimension] = catchall
                 continue
-            # labels list disponibile: usa label LLM, fallback catchall se fuori set.
+            # _parse_labels accetta soltanto un batch completo di label nel set
+            # chiuso. Un errore non viene trasformato in una classe plausibile:
+            # le entry restano osservabili ma non classificate e l'esito e'
+            # dichiarato parziale, cosi' i mutatori downstream non agiscono su
+            # un'etichetta inventata.
             for j, lbl in enumerate(labels):
                 target = chunk_idx[j]
                 if isinstance(result_entries[target], dict):
-                    if lbl not in classes_set:
-                        lbl = catchall
                     result_entries[target][dimension] = lbl
-            # Se labels < chunk_idx (LLM ha emesso meno etichette di quante
-            # entries), riempi il resto con catchall.
-            if len(labels) < len(chunk_idx):
-                for j in range(len(labels), len(chunk_idx)):
-                    target = chunk_idx[j]
-                    if isinstance(result_entries[target], dict):
-                        result_entries[target][dimension] = catchall
+                    classified_indices.add(target)
 
     # 5. Counts (solo entries effettivamente classificate).
     counts: dict[str, int] = {c: 0 for c in classes}
     unclassified = 0
-    for e in result_entries:
+    for index, e in enumerate(result_entries):
+        if index not in classified_indices:
+            unclassified += 1
+            continue
         if not isinstance(e, dict):
             unclassified += 1
             continue
@@ -519,19 +670,17 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
             unclassified += 1
 
     out = {
-        "ok": True,
+        "ok": failed_batches == 0,
         "entries": result_entries,
         "counts": counts,
         "pre_filtered": len(pre_labels),
         # §2.8: conteggio DERIVATO dai risultati reali (entries inviate al LLM
         # che hanno ottenuto una classe valida) — non `len - failed*batch_size`
         # che poteva andare NEGATIVO su batch parziali/falliti.
-        "llm_classified": sum(
-            1 for i in llm_indices
-            if isinstance(result_entries[i], dict)
-            and result_entries[i].get(dimension) in counts),
+        "llm_classified": len(classified_indices - set(pre_labels)),
         "unclassified": unclassified,
         "failed_batches": failed_batches,
+        "dependency_failed_batches": dependency_failed_batches,
         "dimension": dimension,
         "classes": classes,
         "kind": kind,
@@ -541,6 +690,24 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
         "out_tokens": out_tok,
         "latency_ms": lat,
     }
+    if failed_batches:
+        dependency_failed = dependency_failed_batches > 0
+        out.update({
+            "error": (_msg("ERR_LLM_UNAVAILABLE_ACTION")
+                      if dependency_failed else
+                      "classification incomplete: one or more LLM batches failed"),
+            "error_class": (
+                "provider_unavailable" if dependency_failed
+                else "classification_incomplete"
+            ),
+            "failed_entries": sorted(set(failed_indices)),
+            "coverage": len(classified_indices) / max(1, len(entries)),
+            "status": "partial" if classified_indices else "error",
+        })
+        if dependency_failed:
+            out["error_code"] = "ERR_LLM_UNAVAILABLE"
+        if classified_indices:
+            out["partial"] = True
     return out
 
 
@@ -562,3 +729,9 @@ def classify(items, *, dimension: str = "relevance", classes: list | None = None
     if not res.get("ok"):
         raise RuntimeError(res.get("error", "classify failed"))
     return res["entries"]
+
+
+BUILTIN_INPROC_SPECS = [{
+    "name": "classify_entries", "tool_spec": CLASSIFY_ENTRIES_TOOL,
+    "affinity": ["classifica", "categorizza", "classify", "categorize", "entries"],
+}]

@@ -50,6 +50,34 @@ _PROVIDER_MARKERS_EN = {
 def register_all() -> None:
     R = _dl.register
 
+    # ── FILESYSTEM: classi semantiche dei file ─────────────────────────
+    # Le chiavi canoniche sono tecniche e risolte da file_kinds; qui vivono
+    # soltanto le forme naturali traducibili. Il classifier degli argomenti
+    # ignora una forma usata come nome di cartella (es. «cartella Immagini»),
+    # quindi il nome del contenitore non diventa da solo un filtro sui file.
+    R("files.kind", "mapping", match_mode="word",
+      it={
+          "image": ["immagine", "immagini", "foto", "fotografia",
+                    "fotografie", "fotografico", "fotografici"],
+          "video": ["video", "filmato", "filmati"],
+          "audio": ["audio", "musica", "brano", "brani", "registrazione",
+                    "registrazioni"],
+          "document": ["documento", "documenti", "testo", "testi"],
+          "archive": ["archivio", "archivi", "compresso", "compressi"],
+      },
+      en={
+          "image": ["image", "images", "picture", "pictures", "photo",
+                    "photos", "photograph", "photographs"],
+          "video": ["video", "videos", "movie", "movies", "clip", "clips"],
+          "audio": ["audio", "music", "song", "songs", "recording",
+                    "recordings"],
+          "document": ["document", "documents", "text", "texts"],
+          "archive": ["archive", "archives", "compressed"],
+      })
+    R("files.container_marker", "phrases", match_mode="word",
+      it=["cartella", "directory"],
+      en=["folder", "directory"])
+
     # ── UNDO ───────────────────────────────────────────────────────────
     # tool_grammar._UNDO_MARKERS (word-boundary, query_has_undo_marker)
     R("undo.grammar_marker", "phrases", match_mode="word",
@@ -291,6 +319,27 @@ def register_all() -> None:
           "password": ["password", "passwd", "passphrase", "pwd", "pass"]})
     R("credentials.pair_connector", "phrases", match_mode="word",
       it=["e", "con"], en=["and", "with"])
+    # Superficie canonica usata da TUTTI i boundary prima di Tutor/planner e
+    # dallo scrub dei log. E' separata dal riconoscimento delle coppie perché
+    # deve coprire anche un singolo OTP/token/secret. Una nuova lingua viene
+    # popolata dallo stesso daemon degli altri lessici di input.
+    R("credentials.redaction_label", "phrases", match_mode="word",
+      it=["password", "passwd", "passphrase", "pwd", "psw", "pass",
+          "username", "user", "utente", "nome utente", "usr", "uname",
+          "otp", "2fa", "codice otp", "codice 2fa", "codice di verifica",
+          "secret", "segreto", "token", "api key", "api-key", "chiave api"],
+      en=["password", "passwd", "passphrase", "pwd", "pass",
+          "username", "user", "user id", "userid", "usr", "uname",
+          "otp", "2fa", "one-time code", "verification code",
+          "secret", "token", "api key", "api-key"])
+    # Prefisso chiuso per una coppia senza ':'/'='. Deve coincidere con
+    # l'intero testo prima della coppia: parole generiche come
+    # "autenticazione" in una domanda non attestano mai un segreto.
+    # Equality is enforced by credential_intake._has_intake_prefix after the
+    # localized forms are loaded; the lexicon supports only substring/word.
+    R("credentials.intake_prefix", "phrases", match_mode="substring",
+      it=["credenziali", "dati di accesso"],
+      en=["credentials", "access credentials"])
 
     # ── SITES: azioni browser in linguaggio naturale ──────────────────
     # Chiavi tecniche chiuse; le superfici sono traducibili e non vivono nel

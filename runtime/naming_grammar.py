@@ -22,8 +22,8 @@ Convenzione (Naming Authority v2, 21/5/2026):
         <verb>_<object>[_<qualifier>[_<descriptor>]]
 
     Livelli:
-      1. verb       (CHIUSO §2.2, 23 azioni)
-      2. object     (CHIUSO §2.2, 23 oggetti)
+      1. verb       (CHIUSO §2.2, da vocab.ACTIONS)
+      2. object     (CHIUSO §2.2, da vocab.OBJECTS)
       3. qualifier  (CHIUSO §2.2, 4 famiglie) — OPZIONALE
       4. descriptor (APERTO, kebab-case interno `[a-z0-9-]+`) — RICHIEDE qualifier
 
@@ -48,7 +48,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from vocab import (ACTIONS, OBJECTS, PROVIDER_SUFFIXES, QUALIFIERS,
-                   qualifier_compatible, qualifiers_for_object)
+                   SINGULAR_EXECUTOR_NAMES, SYSTEM_EXECUTOR_NAMES,
+                   SYSTEM_VERBS, qualifier_compatible,
+                   qualifiers_for_object)
 
 # ── Separatori e regex ─────────────────────────────────────────────────
 #
@@ -83,7 +85,9 @@ _DESCRIPTOR_MAX_LEN = 30
 _ENTRIES_FORBIDDEN_VERBS = frozenset({"find", "read", "get"})
 
 # System verbs riservati (§2.2): non possono comparire come prefisso
-_SYSTEM_PSEUDO_VERBS = frozenset({"undo", "admin", "audit"})
+_SYSTEM_PSEUDO_VERBS = SYSTEM_VERBS | frozenset({"audit"})
+_LISTS_ALLOWED_VERBS = frozenset({"filter", "compute"})
+_RATIFIED_EXACT_NAMES = frozenset({"admin", "find_entries"})
 
 
 @dataclass(frozen=True)
@@ -93,6 +97,11 @@ class NameComponents:
     obj: str
     qualifier: Optional[str]
     descriptor: Optional[str]
+    # Provider è un asse ortogonale opzionale. Rimane ``None`` per i nomi
+    # storici a solo provider, dove ``qualifier`` conserva il provider per
+    # compatibilità; è valorizzato quando coesistono modalità + provider
+    # (es. read_files_xlsx_google_workspace).
+    provider: Optional[str] = None
 
     @property
     def canonical(self) -> str:
@@ -103,9 +112,9 @@ class NameComponents:
 
     @property
     def full(self) -> str:
-        if self.descriptor:
-            return f"{self.canonical}_{self.descriptor}"
-        return self.canonical
+        value = (f"{self.canonical}_{self.descriptor}"
+                 if self.descriptor else self.canonical)
+        return f"{value}_{self.provider}" if self.provider else value
 
 
 @dataclass(frozen=True)
@@ -120,8 +129,8 @@ class ValidationResult:
 def parse_name(name: str) -> Optional[NameComponents]:
     """Decompone un nome posizionale in (verb, object, qualifier?, descriptor?).
 
-    Schema: verb_object[_qualifier[_descriptor]]
-    Split by `_` produce 2/3/4 parti. Parte 4 (descriptor) e' kebab-case
+    Schema: verb_object[_qualifier[_descriptor]][_provider]
+    Split by `_` produce 2/3/4 parti prima dell'eventuale provider. Parte 4 (descriptor) e' kebab-case
     (puo' contenere `-` ma non `_`). Parte 3 (qualifier) e' single token
     senza separatori.
 
@@ -144,7 +153,13 @@ def parse_name(name: str) -> Optional[NameComponents]:
             if len(hp) == 2:                      # verb_object_<provider>
                 return NameComponents(verb=hp[0], obj=hp[1],
                                       qualifier=prov, descriptor=None)
-            # head non e' verb_object pulito → cade al parsing standard sotto
+            if len(hp) in {3, 4}:                 # +modalità [+descriptor] +provider
+                return NameComponents(
+                    verb=hp[0], obj=hp[1], qualifier=hp[2],
+                    descriptor=hp[3] if len(hp) == 4 else None,
+                    provider=prov,
+                )
+            # head non è una forma canonica → cade al parsing standard sotto
             break
     parts = name.split("_")
     n = len(parts)
@@ -177,16 +192,45 @@ def validate_name(name: str,
     - descriptor con canonical 3-livello non-vivo (regola "uno alla volta")
     - descriptor sintassi (regex kebab-case)
     """
+    # Eccezioni chiuse già pubbliche prima dello standard: ``admin`` e' il
+    # verb-unique system builtin; ``find_entries`` interroga uno store
+    # dichiarato, non una lista in-memory. Nessun prefisso viene aperto alla
+    # generazione di nuovi nomi.
+    if name in _RATIFIED_EXACT_NAMES:
+        nc = parse_name(name)
+        if nc is None and name == "admin":
+            nc = NameComponents("admin", "system", None, None)
+        return ValidationResult(True, None, nc)
     nc = parse_name(name)
     if nc is None:
         return ValidationResult(False,
-            "syntax invalid (expected verb_object[_qualifier[_descriptor]], 2-4 parts split by _)")
+            "syntax invalid (expected verb_object[_qualifier[_descriptor]][_provider])")
+    # Eccezioni di architettura chiuse sul nome completo. Devono precedere il
+    # rifiuto dei system verb e degli oggetti singolari, ma non aprono alcun
+    # prefisso/suffisso alla generazione del synt.
+    if name in SYSTEM_EXECUTOR_NAMES or name in SINGULAR_EXECUTOR_NAMES:
+        return ValidationResult(True, None, nc)
     if nc.verb in _SYSTEM_PSEUDO_VERBS:
         return ValidationResult(False, f"verb '{nc.verb}' is reserved system pseudo-verb")
     if nc.verb not in ACTIONS:
-        return ValidationResult(False, f"verb '{nc.verb}' not in vocab §2.2 (23 actions)", nc)
+        return ValidationResult(
+            False,
+            f"verb '{nc.verb}' not in vocab §2.2 ({len(ACTIONS)} actions)",
+            nc,
+        )
     if nc.obj not in OBJECTS:
-        return ValidationResult(False, f"object '{nc.obj}' not in vocab §2.2 (23 objects)", nc)
+        return ValidationResult(
+            False,
+            f"object '{nc.obj}' not in vocab §2.2 ({len(OBJECTS)} objects)",
+            nc,
+        )
+    if nc.obj == "lists" and nc.verb not in _LISTS_ALLOWED_VERBS:
+        return ValidationResult(
+            False,
+            f"object 'lists' is processor-only; allowed verbs are "
+            f"{sorted(_LISTS_ALLOWED_VERBS)}",
+            nc,
+        )
     # Regola posizionale: descriptor (4°) richiede qualifier (3°).
     if nc.descriptor and not nc.qualifier:
         return ValidationResult(False,
@@ -203,6 +247,16 @@ def validate_name(name: str,
             f"'{nc.obj}' (R4 qualifier-object compatibility). Allowed objects "
             f"per qualifier in vocab.QUALIFIER_OBJECT_COMPAT.",
             nc)
+    if nc.provider:
+        if nc.provider not in PROVIDER_SUFFIXES:
+            return ValidationResult(False, f"provider '{nc.provider}' not in vocab §2.2", nc)
+        if not qualifier_compatible(nc.provider, nc.obj):
+            return ValidationResult(
+                False,
+                f"provider '{nc.provider}' not semantically valid for object "
+                f"'{nc.obj}' (R4 qualifier-object compatibility).",
+                nc,
+            )
     # Regola "uno alla volta": 4° livello richiede canonical 3-livello
     # gia' vivo nel catalog. Una proposta non puo' introdurre 3° + 4° insieme.
     if nc.descriptor and live_canonicals is not None:

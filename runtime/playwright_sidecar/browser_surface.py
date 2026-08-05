@@ -1,4 +1,4 @@
-"""BrowserSurface — seam del due-browser (P0) e della fase extension (ADR 0191).
+"""BrowserSurface — seam delle superfici browser e fase extension (ADR 0191).
 
 Direzione dipendenze UNICA (B1): `session_broker.op_*` -> `BrowserProvider` /
 `PlaywrightSurface` -> Playwright. La surface NON richiama mai il broker; il
@@ -13,14 +13,15 @@ from __future__ import annotations
 
 from typing import Awaitable, Callable
 
-# Un provider riceve `stealth: bool` e ritorna il Browser (honest o, lazy, lo
-# stealth). Il provider POSSIEDE i browser e vive in `server.py` (unico owner di
-# Playwright). Tipizzato `object` per non importare Playwright nel broker.
-BrowserProvider = Callable[[bool], Awaitable[object]]
+# Il provider riceve `(browser_mode, launch_stealth)`. `browser_mode` seleziona
+# la superficie headless o il browser grafico pilotato; il secondo argomento e'
+# true solo se la selezione include una tecnica LAUNCH. Vive in `server.py`,
+# unico owner di Playwright/browser.
+BrowserProvider = Callable[[str, bool], Awaitable[object]]
 
 
 class PlaywrightSurface:
-    """Possiede ESATTAMENTE un `context` + `page` di sessione.
+    """Possiede un `context`+`page` e la selezione stealth della sessione.
 
     In P0 e' un handle passivo: il broker continua a leggere `surface.page` /
     `surface.context` (o le copie in `session[sid]`). Il ciclo di vita del
@@ -28,12 +29,16 @@ class PlaywrightSurface:
     idempotente e usato solo dalla fase extension.
     """
 
-    __slots__ = ("context", "page", "stealth")
+    __slots__ = (
+        "context", "page", "browser_mode", "stealth", "stealth_techniques")
 
-    def __init__(self, context, page, *, stealth: bool = False) -> None:
+    def __init__(self, context, page, *, browser_mode: str = "headless",
+                 stealth_techniques=()) -> None:
         self.context = context
         self.page = page
-        self.stealth = bool(stealth)
+        self.browser_mode = browser_mode
+        self.stealth_techniques = tuple(stealth_techniques)
+        self.stealth = bool(self.stealth_techniques)
 
     async def close(self) -> None:
         ctx = self.context

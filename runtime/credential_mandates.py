@@ -121,12 +121,15 @@ def _read_sites_audit(path: Path | None = None) -> list[dict]:
     return out
 
 
-def verified_site_topology(owner: str, *,
+def verified_site_topology(owner_user_id: str, *,
                            audit_path: Path | None = None) -> dict:
-    """Reconstruct exact hosts from completed, approved broker operations."""
+    """Reconstruct exact hosts for one immutable logical owner UUID."""
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return {}
     sessions: dict[str, dict] = {}
     for event in _read_sites_audit(audit_path):
-        if event.get("owner") != owner:
+        if event.get("owner_user_id") != owner:
             continue
         sid = str(event.get("session_id") or "")
         domain = canonical_site_host(str(event.get("domain") or ""))

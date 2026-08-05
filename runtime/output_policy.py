@@ -131,12 +131,41 @@ def presentation_mode(intent_cls: str, data_kind: str) -> str:
     return table.get("_", _DEFAULT.get(intent_cls, L))
 
 
-def resolve(intent_verb: str, producer_name: str, query: str = "") -> dict:
+def _declared_mode(presentation: dict | None, intent_cls: str) -> str:
+    """Map a producer-declared default view to a renderer primitive.
+
+    Counts, mutations and packaging retain their semantic presentation even
+    when a producer also declares a list view.  The declaration owns ordinary
+    read/enumerate/transform output; the legacy matrix is only their fallback.
+    """
+    if not isinstance(presentation, dict):
+        return ""
+    if presentation.get("default_view") != "list":
+        return ""
+    if intent_cls in {READ, ENUMERATE, TRANSFORM}:
+        return L
+    return ""
+
+
+def resolve(intent_verb: str, producer_name: str, query: str = "",
+            presentation: dict | None = None) -> dict:
     """Risolutore completo. Ritorna {intent_class, data_kind, mode}."""
-    ic = intent_class(intent_verb, query)
+    # Nei workflow compound il verbo primario descrive spesso la sorgente
+    # (es. ``find``), mentre l'ultimo produttore e' un'operazione di packaging
+    # (``compress``/``extract``). La presentazione deve allora essere una
+    # ricevuta di consegna, non la tabella tecnica del payload dell'ultimo
+    # executor. Il package terminale prevale per costruzione; i marker
+    # COUNT/VISUALIZE della query non possono nascondere l'artefatto appena
+    # creato. Gli altri producer, inclusi i fogli creati direttamente da una
+    # pagina web, mantengono la matrice esistente (tabella + fonte).
+    producer_verb = (producer_name or "").lower().split("_", 1)[0]
+    terminal_package = producer_verb in _PACKAGE_VERBS
+    effective_verb = producer_verb if terminal_package else intent_verb
+    ic = intent_class(effective_verb, "" if terminal_package else query)
     dk = data_kind_of(producer_name)
-    return {"intent_class": ic, "data_kind": dk,
-            "mode": presentation_mode(ic, dk)}
+    mode = _declared_mode(presentation, ic) or presentation_mode(ic, dk)
+    return {"intent_class": ic, "data_kind": dk, "mode": mode,
+            "manifest_declared": bool(_declared_mode(presentation, ic))}
 
 
 # ── Modi a ranking (no notify-then-ask "allargo?") ───────────────────────────
@@ -228,7 +257,23 @@ def _producer_pos(steps) -> int:
     return pos
 
 
-def normalize_terminal(framework, intent, query: str = ""):
+def _terminal_entries_pos(steps, producer_pos: int) -> int:
+    """Ultimo trasformatore di entries a valle del producer.
+
+    Il data-kind resta quello del producer, ma la presentazione deve usare il
+    sottoinsieme/ordine finale. Prima puntava sempre al producer e poteva
+    mostrare righe eliminate da filter_entries (turn live 67d22e8c).
+    `describe_entries` è prosa e viene gestito/droppato separatamente.
+    """
+    pos = producer_pos
+    for i, step in enumerate(steps[producer_pos:], start=producer_pos + 1):
+        tool = getattr(step, "tool", "") or ""
+        if tool in _ENTRIES_HELPERS and tool != "describe_entries":
+            pos = i
+    return pos
+
+
+def normalize_terminal(framework, intent, query: str = "", catalog=None):
     """Riscrive il TERMINALE di presentazione del framework secondo la matrice
     deterministica (resolve). Puro §7.9: zero LLM, zero I/O di stato; l'input
     NON è mutato. Ritorna (framework, info) — framework nuovo solo se cambia.
@@ -259,7 +304,14 @@ def normalize_terminal(framework, intent, query: str = ""):
     verb = getattr(intent, "verb", None)
     if verb is None:
         verb = intent if isinstance(intent, str) else ""
-    r = resolve(verb, producer, query)
+    declared_presentation = {}
+    for executor in (catalog or []):
+        if getattr(executor, "name", "") == producer:
+            value = getattr(executor, "presentation", None)
+            if isinstance(value, dict):
+                declared_presentation = value
+            break
+    r = resolve(verb, producer, query, declared_presentation)
     info.update(r)
 
     from engine.types import StepSpec, Framework  # lazy: evita import circolari
@@ -298,7 +350,8 @@ def normalize_terminal(framework, intent, query: str = ""):
         # declassare) — altrimenti si impone il conteggio deterministico.
         # i18n DB (§11 messages).
         from messages import get as _msg
-        k = mapping[ppos]
+        terminal_pos = _terminal_entries_pos(steps, ppos)
+        k = mapping.get(terminal_pos, mapping[ppos])
         if mode == G:
             # `@gallery_fallback` = bullet dei campi salienti quando le entries
             # sono REMOTE (niente path → niente gallery, turn 4fa8d6bd);
@@ -309,21 +362,64 @@ def normalize_terminal(framework, intent, query: str = ""):
                      + f"${{step{k}.@note}}")
             info["action"] = "drop_describe+final" if drop else "final_only"
         elif mode == L:
-            # Lista/tabella deterministica (matrice §3): la tabella dell'ultimo
-            # producer sostituisce la prosa LLM. @table = tutte le righe (§2.7).
-            final = f"${{step{k}.@table}}"
+            # A compound create-only workflow may deliberately expose a
+            # receipt for two or more durable files (for example report +
+            # spreadsheet).  Replacing that receipt with the technical table
+            # of the last sink hides the other artifacts.  Preserve only this
+            # structurally attested case; ordinary single-file/list producers
+            # keep the deterministic table policy.
+            durable_file_sinks = [
+                i + 1 for i, step in enumerate(steps)
+                if ((step.tool or "") == "write_files"
+                    or (step.tool or "").startswith("create_files_"))
+            ]
+            base_fm = framework.final_message or ""
+            multi_file_receipt = bool(
+                r["data_kind"] == "files"
+                and len(durable_file_sinks) >= 2
+                and base_fm.strip()
+                and not (_refs_in(base_fm) & drop)
+            )
+            if multi_file_receipt:
+                final = _remap_value(base_fm, mapping)
+                info["action"] = "drop_describe" if drop else "noop"
+            else:
+                # Lista/tabella deterministica (matrice §3): la tabella
+                # dell'ultimo producer sostituisce la prosa LLM. @table =
+                # tutte le righe (§2.7).
+                final = f"${{step{k}.@table}}"
             # Se il terminale materializza un file da una sessione web, conserva
             # anche il link alla sorgente autenticata. Il file e il link hanno
             # funzioni diverse; lo screenshot ridondante resta disattivato.
-            if r["data_kind"] == "files":
+            if r["data_kind"] == "files" and not multi_file_receipt:
                 source_pos = next((i + 1 for i in range(ppos - 1, -1, -1)
                                    if steps[i].tool == "read_sites"), 0)
                 if source_pos and source_pos in mapping:
                     final += f"\n\n${{step{mapping[source_pos]}.@links}}"
-            info["action"] = "drop_describe+final" if drop else "final_only"
+            if not multi_file_receipt:
+                info["action"] = (
+                    "drop_describe+final" if drop else "final_only")
         else:  # S (scalar/count)
             base_fm = framework.final_message or ""
-            if (("@count" in base_fm or "@shown" in base_fm)
+            # `S` means a scalar presentation, not necessarily a collection
+            # count.  `get_now` is a scalar VALUE: rewriting its natural
+            # `${stepN.time}`/`${stepN.date}` terminal to `@count` rendered
+            # the truthful executor result as “Totale: 0”.  Preserve a
+            # producer-field terminal, otherwise use the stable time field.
+            if r["data_kind"] == "time":
+                scalar_ref = (
+                    ppos in _refs_in(base_fm)
+                    and "@count" not in base_fm
+                    and "@shown" not in base_fm
+                )
+                if scalar_ref and not (_refs_in(base_fm) & drop):
+                    final = _remap_value(base_fm, mapping)
+                    info["action"] = "drop_describe" if drop else "noop"
+                else:
+                    final = f"${{step{k}.time}}"
+                    info["action"] = (
+                        "drop_describe+final" if drop else "final_only")
+            elif (("@count" in base_fm or "@shown" in base_fm)
                     and not (_refs_in(base_fm) & drop)):
                 # Il messaggio base è già «solo il numero» (matrice S): preserva.
                 final = _remap_value(base_fm, mapping)
@@ -335,8 +431,13 @@ def normalize_terminal(framework, intent, query: str = ""):
         if info["action"] == "noop":
             # Niente da droppare e conteggio già esposto: framework invariato.
             return framework, info
-        return (Framework(steps=new_steps, fillers=framework.fillers,
-                          final_message=final), info)
+        return (Framework(
+            steps=new_steps,
+            fillers=framework.fillers,
+            final_message=final,
+            runtime_step_cap=int(
+                getattr(framework, "runtime_step_cap", 0) or 0),
+        ), info)
 
     if mode == T and producer == "read_sites":
         describe_pos = next((i + 1 for i, step in enumerate(steps)
@@ -352,7 +453,9 @@ def normalize_terminal(framework, intent, query: str = ""):
                                  if_prev_entries_nonempty=
                                  step.if_prev_entries_nonempty)
                         for step in steps],
-                    fillers=framework.fillers, final_message=final), info)
+                    fillers=framework.fillers, final_message=final,
+                    runtime_step_cap=int(
+                        getattr(framework, "runtime_step_cap", 0) or 0)), info)
 
         mapping = {i: (i if i <= ppos else i + 1)
                    for i in range(1, len(steps) + 1)}
@@ -368,8 +471,13 @@ def normalize_terminal(framework, intent, query: str = ""):
             "context": query, "data_kind": "sites",
         }))
         info["action"] = "insert_describe_entries"
-        return (Framework(steps=new_steps, fillers=framework.fillers,
-                          final_message=f"${{step{describe_pos}.summary}}"), info)
+        return (Framework(
+            steps=new_steps,
+            fillers=framework.fillers,
+            final_message=f"${{step{describe_pos}.summary}}",
+            runtime_step_cap=int(
+                getattr(framework, "runtime_step_cap", 0) or 0),
+        ), info)
 
     if mode == T and producer == "find_urls":
         # Già presente un reader di contenuto a valle? Allora niente insert.
@@ -393,8 +501,13 @@ def normalize_terminal(framework, intent, query: str = ""):
         new_steps.insert(ppos, StepSpec(tool="read_urls_html",
                                         args={"from_step": ppos}))
         info["action"] = "insert_read_urls_html"
-        return (Framework(steps=new_steps, fillers=framework.fillers,
-                          final_message=_remap_value(
-                              framework.final_message or "", mapping)), info)
+        return (Framework(
+            steps=new_steps,
+            fillers=framework.fillers,
+            final_message=_remap_value(
+                framework.final_message or "", mapping),
+            runtime_step_cap=int(
+                getattr(framework, "runtime_step_cap", 0) or 0),
+        ), info)
 
     return framework, info

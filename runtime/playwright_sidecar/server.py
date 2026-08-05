@@ -46,14 +46,53 @@ import time
 
 from aiohttp import web
 
+from playwright_sidecar import contract as _contract
+
 logger = logging.getLogger("playwright_sidecar")
 
+
+def _contract_json_response(payload: dict, *, status: int) -> web.Response:
+    """Return a contract-labelled response, including mismatch failures."""
+    return web.json_response(
+        payload, status=status,
+        headers={_contract.HEADER_NAME: _contract.LOADED_FINGERPRINT})
+
+
+def _protected_contract_path(path: str) -> bool:
+    return path == "/render" or path.startswith("/session/")
+
+
+@web.middleware
+async def _contract_middleware(request: web.Request, handler):
+    """Fail closed before browser work when client/server sources diverge."""
+    if _protected_contract_path(request.path):
+        status = _contract.source_status()
+        if not status["contract_aligned"]:
+            return _contract_json_response(
+                _contract.failure("sidecar_source_stale", process="sidecar"),
+                status=503)
+        received = request.headers.get(_contract.HEADER_NAME)
+        if not _contract.same_fingerprint(
+                received, _contract.LOADED_FINGERPRINT):
+            return _contract_json_response(
+                _contract.failure(
+                    "client_sidecar_contract_mismatch",
+                    peer_fingerprint=received or "missing",
+                    process="sidecar"),
+                status=409)
+
+    response = await handler(request)
+    response.headers[_contract.HEADER_NAME] = _contract.LOADED_FINGERPRINT
+    return response
+
 # Stato globale browser. HONEST = `_browser` (default onesto, sempre pronto).
-# STEALTH = `_browser_stealth` (ADR 0191 P1): secondo browser, lanciato lazy solo
-# alla prima sessione stealth. Owner ESCLUSIVO di Playwright/browser = questo
-# modulo (B1): il broker riceve un provider (`_get_browser`) e non lancia mai.
+# Le varianti non-default sono lazy: headless+LAUNCH, side, side+LAUNCH.
+# Owner ESCLUSIVO di Playwright/browser = questo modulo (B1): il broker riceve
+# un provider (`_get_browser`) e non lancia mai.
 _browser = None
 _browser_stealth = None
+_browser_side = None
+_browser_side_stealth = None
 _stealth_launch_lock = None   # asyncio.Lock(), creato in _on_startup
 _playwright = None
 _browser_version = ""
@@ -102,38 +141,68 @@ def _browser_connected() -> bool:
     return _is_connected(_browser)
 
 
-async def _get_browser(stealth: bool):
-    """BrowserProvider (ADR 0191 B1): honest sempre pronto; stealth lazy sotto
-    lock con doppio controllo `is_connected`. Owner esclusivo di Playwright.
-    Se lo stealth e' richiesto e il lancio fallisce -> `browser_unavailable`,
-    MAI fallback silenzioso sul browser honest."""
-    global _browser_stealth
-    if not stealth:
+def _side_browser_available() -> bool:
+    if not sys.platform.startswith("linux"):
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+async def _get_browser(browser_mode: str, launch_stealth: bool):
+    """Ritorna la variante esatta richiesta, lanciandola lazy.
+
+    `headless` usa il browser base o la variante LAUNCH stealth. `side` usa il
+    Chromium completo grafico, pilotato da Playwright, con una variante distinta
+    quando e' selezionato WebDriver. Nessun fallback fra superfici.
+    """
+    global _browser_stealth, _browser_side, _browser_side_stealth
+    if browser_mode not in {"headless", "side"}:
+        raise RuntimeError("invalid_browser_mode")
+    if browser_mode == "headless" and not launch_stealth:
         if not _browser_connected():
             raise RuntimeError("browser_unavailable")
         return _browser
-    if _is_connected(_browser_stealth):
-        return _browser_stealth
+    if browser_mode == "side" and not _side_browser_available():
+        raise RuntimeError("side_browser_display_unavailable")
+
+    current = (_browser_stealth if browser_mode == "headless"
+               else _browser_side_stealth if launch_stealth
+               else _browser_side)
+    if _is_connected(current):
+        return current
     lock = _stealth_launch_lock
     if lock is None or _playwright is None:
         raise RuntimeError("browser_unavailable")
     async with lock:
-        if _is_connected(_browser_stealth):
-            return _browser_stealth
+        current = (_browser_stealth if browser_mode == "headless"
+                   else _browser_side_stealth if launch_stealth
+                   else _browser_side)
+        if _is_connected(current):
+            return current
         from playwright_sidecar import stealth as _stealth_mod
         args = list(_HONEST_LAUNCH_ARGS)
-        _stealth_mod.apply_launch_args(args, stealth=True)
+        if launch_stealth:
+            _stealth_mod.apply_launch_args(
+                args, techniques=("webdriver_launch_arg",))
         try:
             browser = await _playwright.chromium.launch(
-                headless=True, args=args)
+                headless=(browser_mode == "headless"), args=args)
         except Exception as exc:  # noqa: BLE001
-            logger.error("stealth chromium launch failed: %s", exc)
-            raise RuntimeError("browser_unavailable") from exc
+            logger.error("%s chromium launch failed (launch_stealth=%s): %s",
+                         browser_mode, launch_stealth, exc)
+            error = ("side_browser_unavailable" if browser_mode == "side"
+                     else "browser_unavailable")
+            raise RuntimeError(error) from exc
         if hasattr(browser, "on"):
             browser.on("disconnected", _browser_disconnected)
-        _browser_stealth = browser
-        logger.info("stealth chromium launched (lazy)")
-        return _browser_stealth
+        if browser_mode == "headless":
+            _browser_stealth = browser
+        elif launch_stealth:
+            _browser_side_stealth = browser
+        else:
+            _browser_side = browser
+        logger.info("%s chromium launched (lazy, launch_stealth=%s)",
+                    browser_mode, launch_stealth)
+        return browser
 
 
 def _broker_health_snapshot() -> dict:
@@ -238,10 +307,15 @@ def _classify_playwright_error(exc: BaseException) -> str:
 
 async def handle_health(request: web.Request) -> web.Response:
     """Probe per `client.is_up()`. Ritorna 200 se browser e' pronto."""
+    contract_status = _contract.source_status()
+    if not contract_status["contract_aligned"]:
+        return web.json_response({
+            **_contract.failure("sidecar_source_stale", process="sidecar"),
+        }, status=503)
     if not _browser_connected():
         return web.json_response(
             {"ok": False, "error": "browser not connected",
-             "error_class": "sidecar_down"},
+             "error_class": "sidecar_down", **contract_status},
             status=503,
         )
     out = {
@@ -250,12 +324,22 @@ async def handle_health(request: web.Request) -> web.Response:
         "version": _browser_version,
         "generation": _browser_generation,
         "uptime_s": max(0, int(time.monotonic() - _browser_ready_since)),
-        # ADR 0191 P1: stato separato dei due browser.
+        # ADR 0191 P1/C3: stato separato delle varianti browser.
         "browser_honest_connected": _browser_connected(),
         "browser_stealth_state": (
             "not_started" if _browser_stealth is None
             else "connected" if _is_connected(_browser_stealth)
             else "disconnected"),
+        "browser_side_state": (
+            "not_started" if _browser_side is None
+            else "connected" if _is_connected(_browser_side)
+            else "disconnected"),
+        "browser_side_stealth_state": (
+            "not_started" if _browser_side_stealth is None
+            else "connected" if _is_connected(_browser_side_stealth)
+            else "disconnected"),
+        "side_browser_available": _side_browser_available(),
+        **contract_status,
     }
     out["broker"] = _broker_health_snapshot()
     if not out["broker"].get("reaper_running"):
@@ -424,13 +508,17 @@ async def handle_session_open(request):
     async def _op(sb, b):
         return await sb.op_open(
             owner=b.get("owner"), url=b.get("url", ""),
+            owner_user_id=b.get("owner_user_id"),
             allowlist_arg=b.get("allowlist"), session_label=b.get("session_label", ""),
             approval_token=b.get("approval_token"),
             task_name=b.get("task_name"),
+            task_owner_user_id=b.get("task_owner_user_id"),
             credential_mode=b.get("credential_mode", "default"),
             # Fix adversarial #8: solo bool VERO attiva lo stealth (bool("false")
             # sarebbe True). Un JSON malformato/ambiguo → honest.
             stealth=(b.get("stealth") is True),
+            stealth_techniques=b.get("stealth_techniques"),
+            browser_mode=b.get("browser_mode", "headless"),
             lang=b.get("lang"))
     return await _broker_call(request, _op)
 
@@ -511,6 +599,9 @@ async def _on_startup(app: web.Application) -> None:
     global _browser, _playwright, _browser_version, _browser_ready_since
     global _browser_generation, _watchdog_task, _stopping, _stealth_launch_lock
     _stopping = False
+    if not _contract.source_status()["contract_aligned"]:
+        logger.critical("Playwright source changed during sidecar startup")
+        raise SystemExit(1)
     try:
         from playwright.async_api import async_playwright
     except ImportError as e:
@@ -522,10 +613,9 @@ async def _on_startup(app: web.Application) -> None:
     _playwright = await async_playwright().start()
     _stealth_launch_lock = asyncio.Lock()
     # Browser HONEST (default onesto, ADR 0191): nessun flag anti-rilevamento.
-    # `navigator.webdriver` resta nativo. Lo stealth e' un SECONDO browser,
-    # lanciato lazy da `_get_browser(stealth=True)` con le tecniche LAUNCH di
-    # `stealth.py`, solo alla prima sessione stealth — attivabile per-turno da
-    # UI (pref `sites_stealth`) senza restart.
+    # `navigator.webdriver` resta nativo. Le altre combinazioni superficie/layer
+    # LAUNCH sono lazy in `_get_browser` e cambiano per-sessione dalla UI Website
+    # browsing senza restart.
     launch_args = list(_HONEST_LAUNCH_ARGS)
     last_error = None
     for attempt in range(1, 4):
@@ -580,8 +670,9 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _on_shutdown(app: web.Application) -> None:
-    """Chiusura pulita di entrambi i browser."""
-    global _browser, _browser_stealth, _playwright, _watchdog_task, _stopping
+    """Chiusura pulita di tutte le varianti browser avviate."""
+    global _browser, _browser_stealth, _browser_side, _browser_side_stealth
+    global _playwright, _watchdog_task, _stopping
     _stopping = True
     _sd_notify("STOPPING=1\nSTATUS=Stopping Playwright sidecar")
     task = _watchdog_task
@@ -609,6 +700,18 @@ async def _on_shutdown(app: web.Application) -> None:
         except Exception:
             pass
         _browser_stealth = None
+    if _browser_side is not None:
+        try:
+            await _browser_side.close()
+        except Exception:
+            pass
+        _browser_side = None
+    if _browser_side_stealth is not None:
+        try:
+            await _browser_side_stealth.close()
+        except Exception:
+            pass
+        _browser_side_stealth = None
     if _playwright is not None:
         try:
             await _playwright.stop()
@@ -620,7 +723,7 @@ async def _on_shutdown(app: web.Application) -> None:
 def make_app() -> web.Application:
     """Costruisce l'aiohttp app. Esposto come funzione cosi' i test possono
     sostituire il browser con un mock prima dello startup."""
-    app = web.Application()
+    app = web.Application(middlewares=[_contract_middleware])
     app.router.add_get("/health", handle_health)
     app.router.add_post("/render", handle_render)
     # Session-broker (dominio sites §3.1)

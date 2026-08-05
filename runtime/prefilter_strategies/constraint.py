@@ -38,7 +38,7 @@ def _extract_constraints(query: str, llm_call=None,
         from prefilter import detect_canonical_verb, detect_canonical_object, tokenize
         qtokens = tokenize(query)
         if not verb:
-            verb = detect_canonical_verb(qtokens)
+            verb = detect_canonical_verb(qtokens, query)
         if not obj:
             obj = detect_canonical_object(qtokens, query)
     # Provider qualifier: check marker

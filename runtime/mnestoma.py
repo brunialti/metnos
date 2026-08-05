@@ -716,11 +716,13 @@ class Mnestoma:
         now = now_iso or _now_iso()
         stats = {
             "decayed": 0, "demoted_to_decaying": 0, "proposed_archive": 0,
-            "purged_protos": 0, "recurring_protos": 0,
+            "decayed_protos": 0, "purged_protos": 0,
+            "recurring_protos": 0,
         }
         # 1+2: decay + demote
         rows = self.conn.execute(
-            "SELECT id, weight, ts_last, decay_lambda FROM mnests WHERE state = 'active'",
+            "SELECT id, weight, ts_last, decay_lambda, state FROM mnests "
+            "WHERE state IN ('active', 'proto')",
         ).fetchall()
         with self.conn:
             self.conn.execute("BEGIN")
@@ -740,7 +742,9 @@ class Mnestoma:
                     (r["id"], now, delta),
                 )
                 stats["decayed"] += 1
-                if w_new < DECAY_THRESHOLD:
+                if r["state"] == "proto":
+                    stats["decayed_protos"] += 1
+                if r["state"] == "active" and w_new < DECAY_THRESHOLD:
                     self.conn.execute(
                         "UPDATE mnests SET state = 'decaying' WHERE id = ?", (r["id"],),
                     )

@@ -209,15 +209,68 @@ def resolve_time_window(tool: str, args: dict, query: str,
     `time_window` (senza schema → noop conservativo)."""
     if not isinstance(args, dict) or not query or not tool:
         return args
-    if tool.split("_", 1)[0] not in _SAFE_VERB_HEADS:
-        return args
     props = (args_schema or {}).get("properties") \
         if isinstance(args_schema, dict) else None
-    if not isinstance(props, dict) or "time_window" not in props:
+    if not isinstance(props, dict):
+        return args
+    spec = parse_query_time_window(query)
+
+    # `filter_entries` non dichiara `time_window`: il suo contratto esprime
+    # la stessa semantica tramite bound ISO `mtime_after`/`mtime_before`.
+    # Colmare qui il bridge evita che un piano L0/L1 stantio perda «ultimi
+    # N giorni» (turn live 1e998f93). Il gate sui DATI materializzati è
+    # deliberato: `filter_entries` è cross-domain; iniettiamo mtime solo se
+    # sta davvero consumando record filesystem con `mtime|mtime_epoch`, mai
+    # su mail/eventi/task. Al record del piano gli entries possono non essere
+    # ancora materializzati: l'Executor riapplica comunque questo resolver
+    # dopo l'auto-wire, immediatamente prima dell'invoke.
+    if (tool == "filter_entries"
+            and "mtime_after" in props and "mtime_before" in props
+            and spec):
+        entries = args.get("entries")
+        file_entries = (isinstance(entries, list) and bool(entries)
+                        and all(isinstance(item, dict)
+                                and (item.get("mtime") is not None
+                                     or item.get("mtime_epoch") is not None)
+                                for item in entries))
+        if file_entries:
+            try:
+                from time_window_parser import parse_time_window
+                start_iso, end_iso = parse_time_window(spec)
+            except (ImportError, TypeError, ValueError):
+                return args
+            out = dict(args)
+            out["mtime_after"] = start_iso
+            out["mtime_before"] = end_iso
+            # Un piano LLM/cachato puo' aver espresso la stessa finestra con
+            # il filtro generico, usando un alias che i record filesystem non
+            # espongono (es. modified_time=now_minus_60d). Tenere ENTRAMBE le
+            # forme applica un AND e azzera correttamente i bound appena
+            # risolti. Quando il campo generico e' un alias del tempo di
+            # modifica, la finestra canonica mtime_* lo sussume: elimina solo
+            # quel predicato e conserva qualunque filtro generico non
+            # temporale (status, owner, ...).
+            temporal_aliases = {
+                "mtime", "modified_time", "modification_time",
+                "modified_at", "last_modified", "last_modified_time",
+            }
+            where_field = str(out.get("where_field") or "").strip().casefold()
+            if where_field in temporal_aliases:
+                for key in (
+                    "where_field", "where_value", "where_in", "where_not_in",
+                    "where_starts_with", "where_contains", "where_glob",
+                    "where_regex",
+                ):
+                    out.pop(key, None)
+            return out if out != args else args
+        return args
+
+    if tool.split("_", 1)[0] not in _SAFE_VERB_HEADS:
+        return args
+    if "time_window" not in props:
         return args
     if args.get("since") or args.get("before"):
         return args  # bound assoluti espliciti: vincono per contratto
-    spec = parse_query_time_window(query)
     if not spec:
         # Nessuna finestra ROLLING: prova l'anno di calendario assoluto (fix
         # 3/7). Valorizza since/before TOP-LEVEL (arg dedicati del manifest,

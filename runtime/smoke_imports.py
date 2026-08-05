@@ -178,7 +178,6 @@ def add_case(*, query: str, expected_first_tool: str,
 def remove_cases_for(expected_first_tool: str) -> int:
     """Rimuove tutti i case per un dato executor (es. dopo uninstall).
     Ritorna numero rimossi."""
-    global BATTERY_IMPORTS
     before = len(BATTERY_IMPORTS)
     BATTERY_IMPORTS[:] = [
         c for c in BATTERY_IMPORTS
@@ -197,6 +196,5 @@ def list_cases() -> list:
 
 def reset() -> None:
     """Cancella tutti i case (usato da test). Atomic rewrite."""
-    global BATTERY_IMPORTS
     BATTERY_IMPORTS.clear()
     _save_store([])

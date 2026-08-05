@@ -45,6 +45,7 @@ che chiama admin la prima volta; il resume e' una chiamata diretta al verb.
 from __future__ import annotations
 
 import json
+import hmac
 import sys
 import uuid
 from pathlib import Path
@@ -141,6 +142,7 @@ def invoke_get_inputs_internal(*,
                                 fmt: str = "auto",
                                 on_complete: Optional[dict] = None,
                                 actor: str = "host",
+                                owner_user_id: str,
                                 channel: Optional[str] = None,
                                 timeout_s: Optional[int] = None,
                                 origin_turn_id: str = "") -> dict:
@@ -175,6 +177,10 @@ def invoke_get_inputs_internal(*,
         return {"ok": False, "error": _msg("MSG_ORCH_TITLE_MISSING")}
     if not isinstance(dialog, list) or not dialog:
         return {"ok": False, "error": _msg("MSG_ORCH_DIALOG_EMPTY")}
+    owner_user_id = str(owner_user_id or "").strip()
+    if not owner_user_id:
+        return {"ok": False, "error": _msg(
+            "MSG_ORCH_SAVE_PENDING_FAILED", detail="owner unavailable")}
 
     n_steps = len(dialog)
     # Risolvi fmt='auto' lato runtime. Su HTTP:
@@ -227,6 +233,9 @@ def invoke_get_inputs_internal(*,
         timeout_s = dialog_pending.default_timeout_for(dialog, on_complete)
 
     dialog_id = uuid.uuid4().hex[:16]
+    callback = dict(on_complete) if isinstance(on_complete, dict) else on_complete
+    if isinstance(callback, dict):
+        callback["owner_user_id"] = owner_user_id
     state = {
         "dialog_id": dialog_id,
         "title": title,
@@ -238,6 +247,7 @@ def invoke_get_inputs_internal(*,
         "step_index": 0,
         "started_at": _utc_now_iso(),
         "actor": actor,
+        "owner_user_id": owner_user_id,
         "channel": channel or "",
         "timeout_s": int(timeout_s),
         "completed": False,
@@ -245,7 +255,7 @@ def invoke_get_inputs_internal(*,
         # ADR 0091: callback dichiarativo. Persiste insieme allo stato
         # cosi' il completamento (sequenziale o form) puo' processarlo
         # senza rebuild lato runtime.
-        "on_complete": on_complete,
+        "on_complete": callback,
         # Comodita' per l'orchestratore: tieni traccia del sender per il
         # cap-pending registry, cosi' il daemon trova lo state al posto
         # giusto senza dover ricalcolarlo.
@@ -370,6 +380,36 @@ class CompletionResult:
     path: list = _dcfield(default_factory=list)
 
 
+def _completion_receipt(result: CompletionResult) -> dict:
+    """JSON-safe terminal outbox payload for a one-shot handoff."""
+
+    return {
+        "text": str(result.text or ""),
+        "attachments": list(result.attachments or []),
+        "turn_id": str(result.turn_id or ""),
+        "total_ms": int(result.total_ms or 0),
+        "target_device": str(result.target_device or ""),
+        "gallery_url": str(result.gallery_url or ""),
+        "n_total_matches": int(result.n_total_matches or 0),
+        "path": list(result.path or []),
+    }
+
+
+def _completion_from_receipt(receipt: dict) -> CompletionResult:
+    """Rehydrate the exact result previously committed to the dialog outbox."""
+
+    return CompletionResult(
+        text=str(receipt.get("text") or ""),
+        attachments=list(receipt.get("attachments") or []),
+        turn_id=str(receipt.get("turn_id") or ""),
+        total_ms=max(0, int(receipt.get("total_ms") or 0)),
+        target_device=str(receipt.get("target_device") or ""),
+        gallery_url=str(receipt.get("gallery_url") or ""),
+        n_total_matches=max(0, int(receipt.get("n_total_matches") or 0)),
+        path=list(receipt.get("path") or []),
+    )
+
+
 def _completion_from_turnlog(new_log) -> CompletionResult:
     """CompletionResult da un TurnLog di run_turn (resume full-turn)."""
     try:
@@ -402,6 +442,7 @@ def _completion_from_turnlog(new_log) -> CompletionResult:
 
 def process_completion_callback(sender_id: str, dialog_id: str,
                                   *, actor: str = "host",
+                                  owner_user_id: str,
                                   channel: Optional[str] = None,
                                   host_override: Optional[str] = None
                                   ) -> "CompletionResult":
@@ -409,6 +450,7 @@ def process_completion_callback(sender_id: str, dialog_id: str,
     (i dispatch legacy ritornano str; quelli full-turn CompletionResult)."""
     out = _dispatch_completion(
         sender_id, dialog_id, actor=actor, channel=channel,
+        owner_user_id=owner_user_id,
         host_override=host_override)
     if isinstance(out, CompletionResult):
         return out
@@ -417,6 +459,7 @@ def process_completion_callback(sender_id: str, dialog_id: str,
 
 def _dispatch_completion(sender_id: str, dialog_id: str,
                                   *, actor: str = "host",
+                                  owner_user_id: str,
                                   channel: Optional[str] = None,
                                   host_override: Optional[str] = None):
     """Esegue il callback dichiarativo `on_complete` di un dialogo completato.
@@ -447,8 +490,14 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
       ri-esegue un turno completo (resume/disambiguazione). I dispatch
       legacy che ritornano str vengono normalizzati qui.
     """
-    state = dialog_pending.load_pending(sender_id, dialog_id)
+    state = dialog_pending.load_pending(
+        sender_id, dialog_id, owner_user_id=owner_user_id)
     if state is None:
+        return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
+    state_owner = str(state.get("owner_user_id") or "").strip()
+    requested_owner = str(owner_user_id or "").strip()
+    if (not state_owner or not requested_owner
+            or not hmac.compare_digest(state_owner, requested_owner)):
         return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
     if not state.get("completed"):
         return _msg("MSG_ORCH_DIALOG_INCOMPLETE")
@@ -456,9 +505,19 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
     if not isinstance(on_complete, dict):
         # Niente callback dichiarato: solo conferma generica.
         return _msg("MSG_ORCH_DIALOG_DONE")
+    callback_owner = str(on_complete.get("owner_user_id") or "").strip()
+    if (not callback_owner
+            or not hmac.compare_digest(state_owner, callback_owner)):
+        return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
 
     callback_type = on_complete.get("type")
     values = state.get("values_collected") or {}
+
+    if callback_type == "tutor_handoff":
+        return _process_tutor_handoff(
+            on_complete, values, state=state, sender_id=sender_id,
+            dialog_id=dialog_id,
+        )
 
     if callback_type == "save_credentials_and_resume":
         return _process_save_credentials_and_resume(
@@ -489,6 +548,7 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         return _process_start_oauth_redirect_flow(
             on_complete, values, sender_id=sender_id,
             dialog_id=dialog_id, channel=channel, actor=actor,
+            owner_user_id=owner_user_id,
             host_override=host_override,
         )
 
@@ -532,12 +592,16 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         decision = next(iter((values or {}).values()), None) if values else None
         if decision != "approve":
             return _msg("MSG_GATE_NO_ACTION")
+        owner_user_id = str(state.get("owner_user_id") or "").strip()
+        if not owner_user_id:
+            return _msg("MSG_ORCH_DIALOG_NOT_FOUND", dialog_id=dialog_id)
         import deferred_turns as _dt
         rid = _dt.add(
             device_id=on_complete.get("device_id") or "",
             device_name=on_complete.get("device_name") or "?",
             query=on_complete.get("original_query") or "",
             actor=actor or "host", channel=channel or "",
+            owner_user_id=owner_user_id,
             conversation_id=on_complete.get("conversation_id") or "")
         log.info("A.1 defer_turn accodato %s per device %s", rid,
                  (on_complete.get("device_name") or "?"))
@@ -551,6 +615,126 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
 
     log.warning("on_complete type sconosciuto: %s", callback_type)
     return _msg("MSG_ORCH_CALLBACK_UNKNOWN", callback_type=callback_type)
+
+
+def _process_tutor_handoff(on_complete: dict, values: dict, *, state: dict,
+                           sender_id: str, dialog_id: str):
+    """Pass the exact user-authored action clause to the normal engine once."""
+
+    import hashlib
+    import hmac
+
+    if values.get("decision") != "execute":
+        return _msg("MSG_TUTOR_HANDOFF_CANCELLED")
+    literal = str(on_complete.get("literal_query") or "")
+    expected_hash = str(on_complete.get("query_hash") or "")
+    actual_hash = hashlib.sha256(literal.encode("utf-8")).hexdigest()
+    owner_matches = (
+        str(state.get("owner_user_id") or "")
+        == str(on_complete.get("owner_user_id") or ""))
+    conversation_matches = (
+        str(state.get("conversation_id") or "")
+        == str(on_complete.get("conversation_id") or ""))
+    if (not literal or not expected_hash
+            or not hmac.compare_digest(actual_hash, expected_hash)
+            or not owner_matches or not conversation_matches):
+        return _msg("MSG_TUTOR_HANDOFF_INVALID")
+
+    try:
+        from tutor.catalog import admitted_catalog_version
+        current_catalog = admitted_catalog_version()
+    except Exception:
+        log.warning("Tutor handoff catalog validation unavailable",
+                    exc_info=True)
+        return _msg("MSG_TUTOR_HANDOFF_STALE")
+    if not hmac.compare_digest(
+            str(current_catalog), str(on_complete.get("catalog_version") or "")):
+        return _msg("MSG_TUTOR_HANDOFF_STALE")
+
+    # Re-read autonomy at consent time.  The pending may outlive a role
+    # change, and callback dispatch occurs outside the ordinary inbound-turn
+    # gate on button-driven channels.  Restricted/supervised users retain the
+    # normal engine path; read-only users must not gain execution authority
+    # merely by accepting a Tutor handoff.
+    account_autonomy = ""
+    owner_user_id = str(state.get("owner_user_id") or "")
+    try:
+        import users
+        owner = users.get_user(owner_user_id) if owner_user_id else None
+        account_autonomy = str(
+            (owner or {}).get("autonomy_level") or "").lower()
+    except Exception:
+        owner = None
+    # A deleted/unknown principal has no residual authority.  In particular,
+    # an old consent file must never outlive the user record that granted its
+    # actor and autonomy scope.
+    if owner is None:
+        return _msg("MSG_TUTOR_HANDOFF_INVALID")
+    if account_autonomy in {"read_only", "readonly"}:
+        return _msg("MSG_LEVEL_BLOCKED", level=account_autonomy)
+    if str(state.get("channel") or "") == "telegram":
+        try:
+            import pairing
+            import users
+            binding = users.get_channel(owner_user_id, "telegram")
+            recipient = str((binding or {}).get("recipient_id") or "")
+            bound_owner = users.find_user_by_recipient(
+                "telegram", sender_id)
+            channel_pairing = pairing.get_pairing("telegram", sender_id)
+            paired_level = str(
+                getattr(channel_pairing, "autonomy_level", "") or "")
+            if (not binding or not binding.get("verified_at")
+                    or recipient != sender_id
+                    or bound_owner is None
+                    or str(bound_owner.get("id") or "") != owner_user_id
+                    or channel_pairing is None or not paired_level):
+                return _msg("MSG_TUTOR_HANDOFF_INVALID")
+        except Exception:
+            return _msg("MSG_TUTOR_HANDOFF_INVALID")
+        if paired_level.lower() in {"read_only", "readonly"}:
+            return _msg("MSG_LEVEL_BLOCKED", level=paired_level)
+
+    nonce = str(on_complete.get("nonce") or "")
+    claim = dialog_pending.begin_callback_once(
+        sender_id, dialog_id, nonce, owner_user_id=owner_user_id)
+    if claim.get("status") == "completed":
+        return _completion_from_receipt(claim.get("receipt") or {})
+    if claim.get("status") != "claimed":
+        return _msg("MSG_TUTOR_HANDOFF_REPLAYED")
+
+    try:
+        import agent_runtime
+        new_log = agent_runtime.run_turn(
+            literal,
+            actor=str(owner.get("name") or "host"),
+            channel=str(state.get("channel") or ""),
+            conversation_id=str(state.get("conversation_id") or ""),
+            owner_user_id=owner_user_id,
+        )
+    except Exception as exc:  # the operation stays in the ordinary fail path
+        log.exception("Tutor handoff run failed")
+        result = CompletionResult(text=_msg(
+            "MSG_TUTOR_HANDOFF_FAILED", error=f"{type(exc).__name__}: {exc}",
+        ))
+        dialog_pending.complete_callback_once(
+            sender_id, dialog_id, nonce, _completion_receipt(result),
+            owner_user_id=owner_user_id)
+        return result
+    if new_log is None:
+        result = CompletionResult(text=_msg(
+            "MSG_TUTOR_HANDOFF_FAILED", error="empty_result",
+        ))
+        dialog_pending.complete_callback_once(
+            sender_id, dialog_id, nonce, _completion_receipt(result),
+            owner_user_id=owner_user_id)
+        return result
+    result = _completion_from_turnlog(new_log)
+    if not dialog_pending.complete_callback_once(
+            sender_id, dialog_id, nonce, _completion_receipt(result),
+            owner_user_id=owner_user_id):
+        log.error("Tutor handoff result outbox commit failed dialog=%s",
+                  dialog_id)
+    return result
 
 
 def _process_save_credentials_and_resume(on_complete: dict, values: dict,
@@ -648,6 +832,7 @@ def _process_set_credential_mandates_and_resume(
         new_log = agent_runtime.run_turn(
             resume_query, actor=actor or "host", channel=channel or "",
             conversation_id=str(on_complete.get("conversation_id") or ""),
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
             allow_disambig_synth=False,
         )
     except (ImportError, RuntimeError, TypeError) as ex:
@@ -714,13 +899,14 @@ def _process_expand_cap_and_resume(on_complete: dict, values: dict,
         res = agent_runtime.invoke_executor(
             ex, args, timeout_s=getattr(ex, "timeout_s", 30),
             actor=actor, channel=channel,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: expand_cap invoke fallito")
         return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     if not isinstance(res, dict) or not res.get("ok"):
-        err = (res or {}).get("error", _msg("MSG_ORCH_UNKNOWN_ERROR")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
+        err = (res or {}).get("error", _msg("MSG_ERR_UNKNOWN")) if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT")
         return _msg("MSG_CAP_EXPAND_FAILED",
                     field=cap_field, value=cap_suggested, err=err)
 
@@ -795,6 +981,7 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
             actor=actor, channel=channel,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: gate_dispatch fallito")
@@ -812,7 +999,8 @@ def _process_gate_dispatch(on_complete: dict, values: dict,
 
 
 def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
-                               channel: str | None):
+                               channel: str | None,
+                               owner_user_id: str):
     """Esegue un branch dichiarativo e conserva il result strutturato."""
     if not isinstance(branch, dict):
         return {"ok": False, "error": _msg("MSG_GATE_NO_ACTION")}
@@ -830,7 +1018,8 @@ def _invoke_gate_branch_result(branch: dict | None, *, actor: str,
         import agent_runtime
         return agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
-            actor=actor, channel=channel)
+            actor=actor, channel=channel,
+            owner_user_id=owner_user_id)
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: executor gate branch fallito")
         return {"ok": False, "error": _msg(
@@ -856,7 +1045,9 @@ def _carry_executor_tail_to_nested_gate(
     if not isinstance(raw_tail, list) or not raw_tail:
         return False
     sender = f"{channel}:{actor}" if channel else actor
-    state = dialog_pending.load_pending(sender, dialog_id)
+    state = dialog_pending.load_pending(
+        sender, dialog_id,
+        owner_user_id=str(parent_callback.get("owner_user_id") or ""))
     if not isinstance(state, dict):
         return False
     nested = state.get("on_complete") or {}
@@ -871,6 +1062,7 @@ def _carry_executor_tail_to_nested_gate(
 
     state["on_complete"] = {
         "type": "resume_executor_gate_tail",
+        "owner_user_id": state.get("owner_user_id"),
         "gate_approve_value": nested.get("approve_value", "approve"),
         "gate_on_approve": approve_branch,
         "gate_on_reject": nested.get("on_reject"),
@@ -900,11 +1092,13 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
     decision = next(iter((values or {}).values()), None) if values else None
     if decision != approve:
         rejected = _invoke_gate_branch_result(
-            on_complete.get("gate_on_reject"), actor=actor, channel=channel)
+            on_complete.get("gate_on_reject"), actor=actor, channel=channel,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""))
         return _shape_result_for_chat(rejected)
 
     branch_result = _invoke_gate_branch_result(
-        on_complete.get("gate_on_approve"), actor=actor, channel=channel)
+        on_complete.get("gate_on_approve"), actor=actor, channel=channel,
+        owner_user_id=str(on_complete.get("owner_user_id") or ""))
     if not isinstance(branch_result, dict) or not branch_result.get("ok"):
         return _shape_result_for_chat(branch_result)
 
@@ -917,6 +1111,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                     "resume_executor_with_values"):
             nested_callback.update({
                 "type": "resume_executor_values_tail",
+                "owner_user_id": on_complete.get("owner_user_id"),
                 "tail_steps": raw_tail,
                 "tail_final_message": (
                     on_complete.get("tail_final_message") or ""),
@@ -930,7 +1125,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             sender = f"{sender}:{conversation_id}"
         dialog = orchestrate_needs_inputs(
             branch_result, sender_id=sender,
-            actor=actor or "host", channel=channel or "http")
+            actor=actor or "host", channel=channel or "http",
+            owner_user_id=str(on_complete.get("owner_user_id") or ""))
         if not isinstance(dialog, dict) or not dialog.get("ok"):
             return _shape_result_for_chat(dialog)
         return CompletionResult(
@@ -995,7 +1191,8 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             # percorso del loop principale, cosi' un helper universale nella
             # coda non e' mai un falso `tool_unknown` (§7.3).
             return agent_runtime.invoke_tool_by_name(
-                tool_name, args, catalog=catalog, actor=actor, channel=channel)
+                tool_name, args, catalog=catalog, actor=actor, channel=channel,
+                owner_user_id=str(on_complete.get("owner_user_id") or ""))
 
         seed = StepRun(
             step_idx=1, tool="@approved_executor_gate", args={},
@@ -1005,6 +1202,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 framework, query=on_complete.get("original_query") or "",
                 runtime_ctx={
                     "actor": actor or "host", "channel": channel or "",
+                    "owner_user_id": on_complete.get("owner_user_id") or "",
                     "user_query_raw": on_complete.get("original_query") or "",
                     "conversation_id": on_complete.get("conversation_id") or "",
                 })
@@ -1013,6 +1211,7 @@ def _process_resume_executor_gate_tail(on_complete: dict, values: dict, *,
             _inject_gate_resume_if_paused(
                 run, on_complete.get("original_query") or "",
                 {"actor": actor or "host", "channel": channel or "",
+                 "owner_user_id": on_complete.get("owner_user_id") or "",
                  "user_query_raw": on_complete.get("original_query") or "",
                  "conversation_id": on_complete.get("conversation_id") or ""},
                 framework=framework)
@@ -1075,6 +1274,7 @@ def _process_resume_engine_gate(on_complete: dict, values: dict, *,
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
             pre_approved_gate=True,
         )
     except (RuntimeError, TypeError, ImportError) as ex:
@@ -1137,6 +1337,7 @@ def _process_resume_executor_with_values(on_complete: dict, values: dict,
         res = agent_runtime.invoke_executor(
             ex, args_base, timeout_s=getattr(ex, "timeout_s", 30),
             actor=actor, channel=channel,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
         )
     except (PermissionError, KeyError, RuntimeError, TypeError) as ex:
         log.exception("orchestration: resume_executor_with_values fallito")
@@ -1177,6 +1378,7 @@ def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
     else:
         args.update(values or {})
     callback = {
+        "owner_user_id": on_complete.get("owner_user_id"),
         "gate_approve_value": "approve",
         "gate_on_approve": {"tool": executor, "args": args},
         "gate_on_reject": None,
@@ -1197,7 +1399,9 @@ def _process_strato3_choice_dispatch(
     """Dispatcher strato 3 (task #30, 24/5/2026): la scelta utente fra 4
     azioni viene mappata in una nuova query e si rilancia il turno.
 
-    `values["chosen_action"]` puo' essere index 0-3 oppure prefix string.
+    `values["chosen_action"]` e' normalmente uno dei cinque identificatori
+    semantici stabili. Indici e vecchie label IT/EN restano accettati soltanto
+    per completare dialoghi persistiti prima della migrazione i18n.
     """
     raw = (values or {}).get("chosen_action") or ""
     original_query = on_complete.get("original_query") or ""
@@ -1206,8 +1410,8 @@ def _process_strato3_choice_dispatch(
     # Normalizza scelta. Accetta:
     #  - 1-indexed integer "1".."5" (user-facing label)
     #  - 0-indexed integer "0".."4" (programmatic)
-    #  - prefix string ("retry"/"synth"/"frontier"/"reformulate"/"abandon")
-    #  - IT prefix ("ritent"/"sintetiz"/"riformul"/"abbandon")
+    #  - identificatore ("retry"/"synth"/"frontier"/"reformulate"/"abandon")
+    #  - vecchia label IT/EN, per dialoghi gia' persistiti
     txt = str(raw).strip().lower().rstrip(".")
     # Map ordinato: index 0-based corrisponde a action_key
     ACTIONS_ORDER = ["retry", "synth", "frontier", "reformulate", "abandon"]
@@ -1226,8 +1430,10 @@ def _process_strato3_choice_dispatch(
             action_key = ACTIONS_ORDER[n - 1]  # user-facing 1-indexed
         elif 0 <= n < len(ACTIONS_ORDER):
             action_key = ACTIONS_ORDER[n]
+    elif txt in ACTIONS_ORDER:
+        action_key = txt
     else:
-        # Prefix match
+        # Compatibilita' con label persistite dal formato precedente.
         for prefix, key in PREFIX_MAP.items():
             if txt.startswith(prefix):
                 action_key = key
@@ -1250,6 +1456,7 @@ def _process_strato3_choice_dispatch(
                 actor=actor or "host",
                 channel=channel or "",
                 conversation_id=conversation_id,
+                owner_user_id=str(on_complete.get("owner_user_id") or ""),
                 allow_disambig_synth=False,
                 bypass_rejected_pipelines=True,
             )
@@ -1267,17 +1474,15 @@ def _process_strato3_choice_dispatch(
             log.exception("strato3 retry failed")
             return _msg("MSG_ORCH_RETRY_FAILED", detail=f"{type(ex).__name__}: {ex}")
     if action_key == "synth":
-        new_query = (
-            f"request_new_executor per: {original_query}"
-            if lang != "en"
-            else f"request_new_executor for: {original_query}"
-        )
+        import i18n as _i18n
+        with _i18n.language_context(lang):
+            new_query = _msg(
+                "PROMPT_STRATO3_SYNTH_QUERY", query=original_query)
     elif action_key == "frontier":
-        new_query = (
-            f"consult_frontier su: {original_query}"
-            if lang != "en"
-            else f"consult_frontier on: {original_query}"
-        )
+        import i18n as _i18n
+        with _i18n.language_context(lang):
+            new_query = _msg(
+                "PROMPT_STRATO3_FRONTIER_QUERY", query=original_query)
     else:
         return _msg("MSG_ORCH_CHOICE_UNKNOWN")
     try:
@@ -1287,6 +1492,7 @@ def _process_strato3_choice_dispatch(
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
             allow_disambig_synth=False,
         )
     except (RuntimeError, TypeError, ImportError) as ex:
@@ -1332,6 +1538,7 @@ def _process_restart_turn_with_chosen_query(
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
             allow_disambig_synth=False,
         )
     except (RuntimeError, TypeError, ImportError) as ex:
@@ -1373,6 +1580,7 @@ def _process_rerun_query_disambiguated(
             new_log = agent_runtime.run_turn(
                 query.strip(), actor=actor or "host", channel=channel or "",
                 conversation_id=conversation_id,
+                owner_user_id=str(on_complete.get("owner_user_id") or ""),
                 forced_args={inject_arg: str(chosen)})
         except (RuntimeError, TypeError, ImportError) as ex:
             log.exception("orchestration: rerun inject_arg fallito")
@@ -1388,7 +1596,9 @@ def _process_rerun_query_disambiguated(
         import agent_runtime
         new_log = agent_runtime.run_turn(
             query.strip(), actor=actor or "host", channel=channel or "",
-            conversation_id=conversation_id, forced_object=str(chosen_obj))
+            conversation_id=conversation_id,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
+            forced_object=str(chosen_obj))
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: rerun_query_disambiguated fallito")
         return _msg("MSG_ORCH_CONTINUATION_FAILED",
@@ -1505,6 +1715,7 @@ def _process_resume_planner_with_dialog_values(
             actor=actor or "host",
             channel=channel or "",
             conversation_id=conversation_id,
+            owner_user_id=str(on_complete.get("owner_user_id") or ""),
             resume_with_scratchpad=prior_steps,
         )
     except (RuntimeError, TypeError, ImportError) as ex:
@@ -1680,8 +1891,27 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
             v = thermal.get(label_key)
             if v is not None:
                 therm_strs.append(f"{kind} {v}°C")
+        # Le zone ACPI Windows non attestano il componente fisico. Mostrale
+        # come ACPI (sigla internazionale), senza trasformarle in una falsa
+        # temperatura CPU. Limite compatto e valori unici, deterministici.
+        if not therm_strs and thermal.get("source") == "windows_acpi":
+            values = sorted({
+                row.get("value_c")
+                for row in (thermal.get("sensors") or [])
+                if isinstance(row, dict) and row.get("value_c") is not None
+            })
+            if values:
+                therm_strs.append(
+                    "ACPI " + "/".join(f"{value}°C" for value in values[:4]))
         if therm_strs:
             out.append(_msg("MSG_HEALTH_THERMAL", body=" · ".join(therm_strs)))
+        else:
+            out.append(_msg("MSG_HEALTH_THERMAL_UNAVAILABLE"))
+    elif (_keep is None or "thermal" in _keep):
+        # Il device può essere raggiungibile ma non esporre sensori termici
+        # (caso comune su Windows senza API/driver HW disponibili). Non
+        # lasciare una risposta apparentemente vuota.
+        out.append(_msg("MSG_HEALTH_THERMAL_UNAVAILABLE"))
     power = h.get("power") or {}
     if (_keep is None or "power" in _keep) and (
             power.get("available_cpu") or power.get("available_gpu")):
@@ -1820,6 +2050,7 @@ def _process_start_oauth_redirect_flow(on_complete: dict, values: dict, *,
                                         dialog_id: str = "",
                                         channel: Optional[str] = None,
                                         actor: str = "host",
+                                        owner_user_id: str,
                                         host_override: Optional[str] = None) -> str:
     """Avvia un flow OAuth 2.0 (Authorization Code) generico con redirect
     HTTP callback. Niente conoscenza di provider specifici: tutti i
@@ -1880,6 +2111,8 @@ def _process_start_oauth_redirect_flow(on_complete: dict, values: dict, *,
         return _msg("MSG_ORCH_OAUTH_START_FAILED", detail=f"{type(ex).__name__}: {ex}")
 
     state_token = oauth_pending.put({
+        "owner_user_id": owner_user_id,
+        "actor": actor,
         "flow_state": flow_state,
         "executor": executor,
         "args_base": args_base,
@@ -1926,10 +2159,10 @@ def _resolve_oauth_redirect_uri(host_override: Optional[str] = None) -> str:
     derivato da http_port localhost.
 
     `host_override` puo' essere:
-      - URL prefix completo (`https://chat.metnos.com`) → usato as-is.
+      - URL prefix completo (`https://metnos.example`) → usato as-is.
       - Solo host (`192.168.1.33:8770`) → prefisso `http://` (LAN).
 
-    Necessario per reverse proxy / tunnel HTTPS (Cloudflare, nginx, ecc.):
+    Necessario per reverse proxy HTTPS:
     Metnos riceve HTTP plain ma il client originale ha usato HTTPS. Il
     chiamante (`dialog_submit`) legge `X-Forwarded-Proto` per costruire
     l'origin corretto."""
@@ -1974,6 +2207,7 @@ def _inject_state_param(url: str, state: str) -> str:
 def orchestrate_needs_inputs(obs: dict, *,
                               sender_id: str,
                               actor: str = "host",
+                              owner_user_id: str,
                               channel: Optional[str] = None,
                               origin_turn_id: str = "") -> dict:
     """Helper di alto livello: dato l'observation di un tool che ha emesso
@@ -2007,6 +2241,7 @@ def orchestrate_needs_inputs(obs: dict, *,
         fmt=fmt,
         on_complete=on_complete,
         actor=actor,
+        owner_user_id=owner_user_id,
         channel=channel,
         timeout_s=timeout_s,
         origin_turn_id=origin_turn_id,

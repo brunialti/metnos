@@ -33,6 +33,7 @@ log = get_logger(__name__)
 
 KEYS_DIR = _C.PATH_USER_CONFIG / "keys"
 DEFAULT_AUTHOR_KEY = "author"
+BUILTIN_CONTRACTS_DIR = Path(__file__).resolve().parent / "builtin_executor_contracts"
 
 
 def ensure_keys_dir():
@@ -80,6 +81,16 @@ def list_trusted_publics():
         except Exception as _e:  # silent swallow (auto-fixed)
             log.warning("silent exception in %s: %s", __name__, _e)
     return out
+
+
+def installation_manifest_paths():
+    """Return every executor contract that a fresh install must trust.
+
+    In-process builtins use the same signed admission boundary as subprocess
+    executors, although their manifests live beside the runtime modules.
+    """
+    roots = (_C.PATH_EXECUTORS, BUILTIN_CONTRACTS_DIR)
+    return sorted({path for root in roots for path in root.glob("**/manifest.toml")})
 
 
 def compute_code_digest(manifest_dir, code_files):
@@ -179,7 +190,13 @@ def _ensure_lang_state_companion(manifest: dict, manifest_dir: Path) -> None:
 
 
 def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
-    """Aggiorna digest, firma il manifest aggiornato, scrive manifest.toml.sig."""
+    """Aggiorna digest e firma un manifest ammesso dal suo contratto.
+
+    I manifest legacy restano firmabili durante la migrazione. Chi dichiara
+    l'Executor Standard, invece, deve superare il profilo deterministico legato
+    al lifecycle prima che venga emessa una firma. In questo modo generatori e
+    importatori non possono usare la firma come scorciatoia di attivazione.
+    """
     manifest_dir = Path(manifest_dir)
     manifest_path = manifest_dir / "manifest.toml"
     sig_path = manifest_dir / "manifest.toml.sig"
@@ -200,6 +217,18 @@ def sign_executor(manifest_dir, key_name=DEFAULT_AUTHOR_KEY):
     new_text = update_digest_in_text(text, digest)
     if new_text != text:
         manifest_path.write_text(new_text)
+
+    # Il digest finale fa parte del contratto active, quindi la validazione va
+    # eseguita dopo il suo aggiornamento e prima della firma dei bytes.
+    manifest = tomllib.loads(manifest_path.read_text())
+    if manifest.get("executor_standard") is not None:
+        from executor_standard import validate_for_lifecycle
+        findings = validate_for_lifecycle(manifest, require_declaration=True)
+        if findings:
+            summary = "; ".join(
+                f"{finding.code}:{finding.message}" for finding in findings[:8]
+            )
+            raise ValueError(f"executor standard admission failed: {summary}")
 
     # Firma i bytes finali del manifest
     manifest_bytes = manifest_path.read_bytes()
@@ -295,7 +324,7 @@ def main():
             generate_keypair(key_name)
             print(f"keypair '{key_name}' generato in {KEYS_DIR}")
         ex_root = _C.PATH_EXECUTORS
-        manifests = sorted(ex_root.glob("**/manifest.toml"))
+        manifests = installation_manifest_paths()
         ok_n = 0
         failed = []
         for m in manifests:
@@ -304,8 +333,8 @@ def main():
                 ok_n += 1
             except Exception as e:  # noqa: BLE001
                 failed.append((str(m.parent), str(e)))
-        print(f"sign-all: {ok_n} executor firmati, {len(failed)} errori "
-              f"(executors dir: {ex_root})")
+        print(f"sign-all: {ok_n} contratti executor firmati, {len(failed)} errori "
+              f"(executors dir: {ex_root}; builtin in-process inclusi)")
         for d, e in failed:
             print(f"  FAIL {d}: {e}")
         sys.exit(1 if failed else 0)

@@ -3,7 +3,7 @@
 
 Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md` punto 15):
 - Sweep DB i18n per entries con needs_translation=1
-- Batch LLM call (modello locale middle tier, ~5-10s per batch 50 entries)
+- Batch LLM call (livello locale fast.fidelity, ~5-10s per batch 50 entries)
 - UPDATE entries con text + needs_translation=0
 - Self-healing: retry su fallimento
 - Throttle: 30s al boot → 5min steady state
@@ -29,6 +29,8 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 import i18n  # noqa: E402
+from llm_workloads import tier_for  # noqa: E402
+from vocab import ACTIONS, OBJECTS, QUALIFIERS  # noqa: E402
 
 log = logging.getLogger("metnos.i18n_translator")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -36,6 +38,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 BATCH_SIZE = 25  # entries per LLM call (compromesso latenza/throughput)
 INTERVAL_BOOT_S = 30
 INTERVAL_STEADY_S = 300
+_TRANSLATION_TIER = tier_for("translation.i18n")
+
+
+def translation_tier_for_quality(quality: str):
+    """Map the two public translation qualities to logical LLM requests.
+
+    This is the sole bridge from the human-facing quality vocabulary to the
+    router vocabulary.  ``fidelity`` preserves the central workload
+    contract selected by the router.
+    """
+    normalized = (quality or "fidelity").strip().lower()
+    if normalized == "fidelity":
+        return _TRANSLATION_TIER
+    if normalized == "frontier":
+        return "frontier"
+    raise ValueError(
+        f"unknown translation quality {quality!r}; use fidelity or frontier")
 
 # Mapping codice → nome lingua per il prompt LLM
 _LANG_NAMES = {
@@ -44,6 +63,12 @@ _LANG_NAMES = {
     "fr": "French",
     "de": "German",
     "es": "Spanish",
+}
+
+_VOCAB_PROMPT_ARGS = {
+    "canonical_actions": "/".join(ACTIONS),
+    "canonical_objects": "/".join(OBJECTS),
+    "canonical_qualifiers": "/".join(QUALIFIERS),
 }
 
 _PROMPT_TEMPLATE_USER_FACING = """You are translating user-facing UI strings for Metnos, a personal AI assistant.
@@ -78,11 +103,11 @@ CRITICAL PRESERVATION RULES (DO NOT VIOLATE):
 
 1. PLACEHOLDERS — preserve EXACTLY: {{name}}, {{step}}, {{path}}, __VOCAB_ACTIONS__, __VOCAB_OBJECTS__, __VOCAB_QUALIFIERS__, etc. Never translate or alter placeholder names.
 
-2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool names (find_places, get_location, request_new_executor, request_location_from_user, scratchpad_read, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, get_now, get_places, find_files, find_dirs, find_packages, list_processes, read_messages, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, get_files, get_urls, filter_texts_lines, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, compute_files, describe_dirs, extract_files_zip, list_dirs, find_files, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/fetch/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/lines/numbers/images), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
+2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool names (find_places, get_location, request_new_executor, request_location_from_user, scratchpad_read, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, get_now, get_places, find_files, find_dirs, find_packages, get_processes, read_messages, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, get_files, get_urls, filter_texts_lines, undo_last_turn, compress_files, compute_signatures, list_dirs, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, ...), action verbs ({canonical_actions}), object nouns ({canonical_objects}), modifiers ({canonical_qualifiers}). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
 
 3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers (═══ separators, ## headings), numbered rules (1., 2., 2-bis, 2-ter, 2-quater), DEVI/NON DEVI/OK/ERRORE pattern (translate to YOU MUST/YOU MUST NOT/CORRECT/WRONG keeping uppercase emphasis), bullet lists, indentation, code blocks, JSON examples (translate text fields BUT keep keys/identifiers/values that are technical literally).
 
-4. FEW-SHOT EXAMPLES — translate the user's natural-language query but PRESERVE the structured output exactly. E.g., translate "User: 'comprimi /tmp/log.txt con gzip'" to "User: 'compress /tmp/log.txt with gzip'", but keep `{{"name": "compress_files_gz", ...}}` IDENTICAL.
+4. FEW-SHOT EXAMPLES — translate the user's natural-language query but PRESERVE the structured output exactly. E.g., translate "User: 'comprimi /tmp/log.txt con gzip'" to "User: 'compress /tmp/log.txt with gzip'", but keep `{{"name": "compress_files", ...}}` IDENTICAL.
 
 5. PRESCRIPTIVE TONE — Metnos prompts use strong imperative ("DEVI"=YOU MUST, "NON DEVI"=YOU MUST NOT). Keep the imperative force and ALL CAPS for emphasis. Do NOT soften ("you should").
 
@@ -113,10 +138,9 @@ def _is_llm_targeted_key(key: str) -> bool:
     return False
 
 
-def _llm_call(prompt: str, max_tokens: int = 4000, tier: str = "middle") -> str | None:
-    """LLM call via LLMRouter. Tier: middle (modello locale) per testi
-    user-facing brevi; wise (stesso o frontier) per prompt LLM-targeted
-    grandi che richiedono massima fedelta' semantica."""
+def _llm_call(prompt: str, max_tokens: int = 4000,
+              tier: str = _TRANSLATION_TIER) -> str | None:
+    """LLM call via the configured high-fidelity tier."""
     try:
         from llm_router import LLMRouter
     except ImportError as e:
@@ -124,9 +148,9 @@ def _llm_call(prompt: str, max_tokens: int = 4000, tier: str = "middle") -> str 
         return None
     try:
         r = LLMRouter()
-        provider = r.provider(tier)
-        res = provider.chat("", prompt, max_tokens=max_tokens, temperature=0,
-                              think=False)
+        provider = r.provider(translation_tier_for_quality(tier)
+                            if tier in ("fidelity", "frontier") else tier)
+        res = provider.chat("", prompt, max_tokens=max_tokens)
         return res.text or ""
     except Exception as e:
         log.warning("LLM call failed (tier=%s): %s", tier, e)
@@ -157,7 +181,7 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
     """Batch translate. Ritorna {key: translated_text}. Pipeline:
     - Separa entries in due classi: user-facing (prompt corto) vs LLM-targeted
       (prompt grande, fedelta' massima richiesta). Le ultime usano prompt
-      template piu' rigoroso e tier `wise` per maggior capacita'.
+      template piu' rigoroso e livello `fast.fidelity` per maggiore fedelta'.
     - Per ogni classe, raggruppa per (source_lang, target_lang) e invoca LLM.
     """
     if not entries:
@@ -174,8 +198,10 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
 
     out: dict[str, str] = {}
     for cls_name, cls_entries, template, tier, max_tok in [
-        ("user-facing", user_facing, _PROMPT_TEMPLATE_USER_FACING, "middle", 4000),
-        ("llm-targeted", llm_targeted, _PROMPT_TEMPLATE_LLM_TARGETED, "wise", 24000),
+        ("user-facing", user_facing, _PROMPT_TEMPLATE_USER_FACING,
+         _TRANSLATION_TIER, 4000),
+        ("llm-targeted", llm_targeted, _PROMPT_TEMPLATE_LLM_TARGETED,
+         _TRANSLATION_TIER, 24000),
     ]:
         if not cls_entries:
             continue
@@ -197,6 +223,7 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
                 prompt = template.format(
                     source_name=src_name, target_name=tgt_name,
                     json_strings=json_strings,
+                    **_VOCAB_PROMPT_ARGS,
                 )
                 log.info("Translating [%s] %d entries %s → %s (tier=%s)",
                           cls_name, len(sub), src, tgt, tier)
@@ -213,18 +240,12 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
 
 
 def run_one_cycle() -> tuple[int, int]:
-    """Esegue UN ciclo: prende pending, traduce, UPDATE. Ritorna (n_processed, n_remaining)."""
-    pending = i18n.list_pending(limit=BATCH_SIZE)
-    if not pending:
-        return 0, 0
-    translated = translate_batch(pending)
-    n_ok = 0
-    for e in pending:
-        marker = e["key"] + "::" + e["target_lang"]
-        if marker in translated:
-            i18n.set_translated(e["key"], e["target_lang"], translated[marker])
-            n_ok += 1
-    remaining = len(i18n.list_pending(limit=1))  # check se altri rimangono
+    """Adapter legacy sul motore unico, con lock/audit/idempotenza condivisi."""
+    from jobs.i18n_translate_pending import task_i18n_translate_pending
+
+    result = task_i18n_translate_pending(payload={"origin": "legacy_daemon"})
+    n_ok = int(result.get("ok_count") or 0)
+    remaining = i18n.count_pending(actionable_only=True)
     return n_ok, remaining
 
 
@@ -259,8 +280,7 @@ def run_loop(boot_interval: float = INTERVAL_BOOT_S,
 # Flusso:
 #   1. translate_prompt_file(role) legge `prompts/it/<role>.j2`
 #   2. pre-pass: maschera placeholder Jinja2 + code-fences con sentinel UUID
-#   3. UNA call LLM tier='wise' (frontier locale: modello locale, oppure online
-#      via config tiers — Sonnet/GPT-5)
+#   3. UNA call LLM col contratto `translation.i18n` (tier `wise`)
 #   4. post-pass: restore sentinel; canonical map DEVI/NON DEVI/OK/ERRORE→
 #      MUST/MUST NOT/OK/ERROR; "E' UN ERRORE"→"THIS IS AN ERROR"
 #   5. validation: sintassi MiniJinja, set placeholder identico, len ratio
@@ -464,13 +484,13 @@ CRITICAL PRESERVATION RULES:
    - Do NOT drop a sentinel from your output. If you see N sentinels in the source, you MUST emit AT LEAST N sentinels in the output (one for each).
    - Sentinels are idempotent: surrounding text can be translated freely, but the sentinel itself is opaque.
 
-2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool/executor names (find_files, read_messages, get_now, request_new_executor, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, compute_files, get_files, get_urls, get_location, get_places, find_packages, list_processes, find_processes, list_dirs, find_dirs, find_urls, login_session, group_entries, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, undo_last_turn, change_images, compress_dirs_gz, compress_files_gz, describe_dirs, extract_files_zip, filter_texts_lines, get_inputs, admin, sudoer, scratchpad_read, request_location_from_user, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, time_window, account, subject_contains, ...), action verbs (read/write/move/delete/create/find/list/filter/sort/group/classify/get/set/send/describe/render/extract/compress/compute/compare/change/order), object nouns (files/dirs/packages/messages/events/contacts/places/processes/urls/numbers/images/signatures/texts/proposals/indices/inputs), modifiers (csv/xlsx/ocr/zip/pdf/xml/html/json/text/gz/tar/video/audio/image/hash/size/format/similar/loc/lines/paragraphs/sentences/pages/segments/scene/persons/gps). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
+2. CANONICAL IDENTIFIERS — keep as-is in both languages (vocabulary closed, EN-only): tool/executor names (find_files, read_messages, get_now, request_new_executor, classify_entries, describe_entries, sort_entries, filter_entries, compute_entries, compute_signatures, get_files, get_urls, get_location, get_places, find_packages, get_processes, list_dirs, find_dirs, find_urls, login_sites, group_entries, send_messages, move_messages, read_files, write_files, delete_files, move_files, create_dirs, delete_dirs, undo_last_turn, compress_files, filter_texts_lines, get_inputs, admin, sudoer, scratchpad_read, request_location_from_user, ...), arg names (from_step, near, radius_km, bounded, queries, max_results, entries, paths, content, dst_template, time_window, account, subject_contains, ...), action verbs ({canonical_actions}), object nouns ({canonical_objects}), modifiers ({canonical_qualifiers}). Metnos DOMAIN NOUNS — keep in ENGLISH in ALL target languages, do NOT translate them (e.g. NOT "esecutore"/"manifesto"): executor, executors, manifest, manifests, runtime, planner, synt, fastpath, autopath, scratchpad.
 
 3. STRUCTURAL FORMATTING — preserve LITERALLY: section headers (═══ separators, ## headings), numbered rules (1., 2., 2-bis, 2-ter, 2-quater), bullet lists, indentation, JSON examples (translate human-readable text fields BUT keep keys/identifiers/values that are technical literally).
 
 4. PRESCRIPTIVE TONE — Metnos prompts use strong imperative. Translate "DEVI:" to "MUST:", "NON DEVI:" to "MUST NOT:", "OK:" stays "OK:", "ERRORE:" to "ERROR:". Translate "E' UN ERRORE" to "THIS IS AN ERROR". Keep ALL CAPS for emphasis. Do NOT soften ("you should").
 
-5. FEW-SHOT EXAMPLES — translate the user's natural-language query but PRESERVE the structured output exactly. E.g., translate `User: 'comprimi /tmp/log.txt con gzip'` to `User: 'compress /tmp/log.txt with gzip'`, but keep `Output: {{"name": "compress_files_gz", ...}}` IDENTICAL.
+5. FEW-SHOT EXAMPLES — translate the user's natural-language query but PRESERVE the structured output exactly. E.g., translate `User: 'comprimi /tmp/log.txt con gzip'` to `User: 'compress /tmp/log.txt with gzip'`, but keep `Output: {{"name": "compress_files", ...}}` IDENTICAL.
 
 6. NEVER OMIT, NEVER ADD content. Same number of rules, same number of examples, same structure. The translated text must have the same instructional weight as the original.
 
@@ -486,15 +506,12 @@ Output the translated prompt now (no fences, no prose):"""
 
 
 def _llm_call_for_prompt(prompt: str, max_tokens: int = 32000,
-                          tier: str = "wise") -> str | None:
+                          tier: str = _TRANSLATION_TIER) -> str | None:
     """LLM call dedicato per traduzione prompt lunghi.
 
-    Tier `wise` = frontier locale (modello locale) o online (Anthropic/OpenAI/
-    Google/Mistral) come configurato in `~/.config/metnos/llm_tiers.toml`.
-
-    `frontier` non e' un tier separato in Metnos: il quality floor del
-    `wise` (vedi llm_router.WISE_QUALITY_WHITELIST_*) impone di per se'
-    il modello locale o superiore.
+    Il default e' il contratto ``translation.i18n`` (tier ``wise``).
+    ``frontier`` resta un'escalation esplicita del comando di manutenzione;
+    provider e modello sono risolti da ``llm_tiers.toml``.
     """
     try:
         from llm_router import LLMRouter
@@ -503,11 +520,11 @@ def _llm_call_for_prompt(prompt: str, max_tokens: int = 32000,
         return None
     try:
         r = LLMRouter()
-        provider = r.provider(tier)
+        provider = r.provider(translation_tier_for_quality(tier)
+                            if tier in ("fidelity", "frontier") else tier)
         # max_tokens generoso: alcuni prompt arrivano a 27 KB; con ratio
         # 1.4 max servono ~38 KB. 32000 token ≈ 100-130 KB testo, sufficiente.
-        res = provider.chat("", prompt, max_tokens=max_tokens, temperature=0,
-                              think=False)
+        res = provider.chat("", prompt, max_tokens=max_tokens)
         return res.text or ""
     except Exception as exc:
         log.warning("LLM call failed (tier=%s): %s", tier, exc)
@@ -538,7 +555,7 @@ def _scrub_unknown_sentinels(text: str, known: set[str]) -> tuple[str, int]:
 
 def translate_prompt_file(role: str, target_lang: str = "en",
                            source_lang: str = "it",
-                           tier: str = "wise",
+                           tier: str = _TRANSLATION_TIER,
                            max_retries: int = 1) -> dict:
     """Traduce un singolo prompt file da `prompts/<source_lang>/<role>.j2`
     a `prompts/<target_lang>/_pending/<role>.j2.candidate`.
@@ -579,6 +596,7 @@ def translate_prompt_file(role: str, target_lang: str = "en",
         tgt_name = _LANG_NAMES.get(target_lang, target_lang)
         full_prompt = _PROMPT_FILE_TEMPLATE.format(
             source_name=src_name, target_name=tgt_name, source_text=masked,
+            **_VOCAB_PROMPT_ARGS,
         )
 
         log.info("translate_prompt_file role=%s %s→%s tier=%s src_len=%d "
@@ -620,7 +638,10 @@ def translate_prompt_file(role: str, target_lang: str = "en",
         if not retryable or attempt >= max_retries:
             break
 
-    pending_dir.mkdir(parents=True, exist_ok=True)
+    # ``role`` may be nested (for example ``planner/sections/web/search``).
+    # Create the candidate's actual parent, not only the top-level
+    # ``_pending`` directory.
+    candidate_path.parent.mkdir(parents=True, exist_ok=True)
     candidate_path.write_text(last_final, encoding="utf-8")
 
     return {
@@ -637,7 +658,7 @@ def translate_prompt_file(role: str, target_lang: str = "en",
 
 
 def translate_all_prompts(target_lang: str = "en", source_lang: str = "it",
-                           tier: str = "wise",
+                           tier: str = _TRANSLATION_TIER,
                            skip_existing_synced: bool = True) -> list[dict]:
     """Traduce tutti i `.j2` di `prompts/<source_lang>/` verso `<target_lang>`.
 
@@ -651,8 +672,10 @@ def translate_all_prompts(target_lang: str = "en", source_lang: str = "it",
         log.error("source dir non esiste: %s", src_dir)
         return []
     results: list[dict] = []
-    for j2 in sorted(src_dir.glob("*.j2")):
-        role = j2.stem
+    for j2 in sorted(src_dir.rglob("*.j2")):
+        if "_pending" in j2.parts:
+            continue
+        role = j2.relative_to(src_dir).with_suffix("").as_posix()
         if skip_existing_synced and (tgt_dir / f"{role}.j2").is_file():
             results.append({
                 "ok": True, "role": role, "skipped": True,
@@ -681,9 +704,6 @@ def translate_all_prompts(target_lang: str = "en", source_lang: str = "it",
 # Daemon notturno integration: chiamata da `deploy/run_prompts_translator.sh`
 # dopo `align_prompts()` (esistente).
 # ===========================================================================
-import hashlib as _hashlib
-
-
 def _sha256_text(text: str) -> str:
     """SHA-256 hex prefix-encoded (`sha256:<hex>`). Wrapper deterministico."""
     from hashutil import sha256_prefixed
@@ -691,7 +711,7 @@ def _sha256_text(text: str) -> str:
 
 
 def _translate_short_text(source_text: str, *, source_lang: str,
-                           target_lang: str, tier: str = "wise",
+                           target_lang: str, tier: str = _TRANSLATION_TIER,
                            max_retries: int = 1) -> tuple[str | None, list[str]]:
     """Traduce una stringa breve (description manifest, 100-1500 char) usando
     il pattern di `translate_prompt_file` (mask Jinja2 placeholder, prescriptive
@@ -710,6 +730,7 @@ def _translate_short_text(source_text: str, *, source_lang: str,
         masked, mapping = _mask_invariant_spans(source_text)
         prompt = _PROMPT_FILE_TEMPLATE.format(
             source_name=src_name, target_name=tgt_name, source_text=masked,
+            **_VOCAB_PROMPT_ARGS,
         )
         log.info("translate_short_text %s→%s tier=%s len=%d attempt=%d/%d",
                   source_lang, target_lang, tier,
@@ -818,7 +839,7 @@ def _decide_edit_source(state: dict, resource_key: str,
 
 def align_manifest_descriptions(executor_dirs: list[Path] | None = None,
                                   *, target_langs: list[str] | None = None,
-                                  tier: str = "wise",
+                                  tier: str = _TRANSLATION_TIER,
                                   resign: bool = True,
                                   dry_run: bool = False) -> list[dict]:
     """Sweep dei manifest e auto-allineamento delle description multilingua.
@@ -1143,7 +1164,7 @@ def _file_mtime_safe(p: Path) -> float:
 
 
 def align_prompts(*, target_langs: list[str] | None = None,
-                    tier: str = "wise",
+                    tier: str = _TRANSLATION_TIER,
                     dry_run: bool = False) -> list[dict]:
     """Sweep dei `runtime/prompts/<lang>/<role>.j2` e auto-allineamento
     multilingua via pattern latest-wins simmetrico (estensione ADR 0092).
@@ -1186,11 +1207,16 @@ def align_prompts(*, target_langs: list[str] | None = None,
         # Default: tutte le lingue presenti (latest-wins simmetrico).
         target_langs = all_langs[:]
     # Always ensure target_langs are subset of existing (or "to-be-created").
-    # Roles: union dei .j2 presenti in qualunque lang sub-dir.
+    # Roles: union ricorsiva dei .j2 presenti in qualunque lang sub-dir.
+    # Il planner contiene frammenti annidati; trattarli come normali role
+    # mantiene traduzione, stato e validazione sullo stesso insieme di file.
     roles: set[str] = set()
     for lang in all_langs:
-        for j2 in (prompts_dir / lang).glob("*.j2"):
-            roles.add(j2.stem)
+        lang_dir = prompts_dir / lang
+        for j2 in lang_dir.rglob("*.j2"):
+            if "_pending" in j2.parts:
+                continue
+            roles.add(j2.relative_to(lang_dir).with_suffix("").as_posix())
     if not roles:
         return []
 
@@ -1380,7 +1406,7 @@ def align_prompts(*, target_langs: list[str] | None = None,
 
 
 def align_messages(*, target_langs: list[str] | None = None,
-                     tier: str = "wise",
+                     tier: str = _TRANSLATION_TIER,
                      dry_run: bool = False) -> list[dict]:
     """Sweep DB i18n.sqlite e auto-allineamento via pattern latest-wins
     simmetrico (estensione ADR 0092 al Layer 3, 6/5/2026).
@@ -1450,12 +1476,12 @@ def align_messages(*, target_langs: list[str] | None = None,
                 continue
             if src_hash != edit_src_vhash:
                 needing.append(lang)
+                n_marked += 1
                 if not dry_run:
                     conn.execute(
                         "UPDATE i18n SET needs_translation=1 "
                         "WHERE key=? AND lang=?", (key, lang),
                     )
-                    n_marked += 1
         results.append({
             "key": key,
             "edit_source": edit_src_lang,
@@ -1465,27 +1491,29 @@ def align_messages(*, target_langs: list[str] | None = None,
 
     if not dry_run:
         conn.commit()
-    log.info("align_messages: %d keys, %d rows marked for retranslate",
-              len(results), n_marked)
+    log.info(
+        "align_messages: %d keys, %d rows %s for retranslate",
+        len(results), n_marked, "would be marked" if dry_run else "marked",
+    )
     return results
 
 
 def _resolve_tier_arg(argv: list[str]) -> str:
-    """Resolve `--quality {wise,frontier}` da argv. Default `wise`.
+    """Resolve `--quality {fidelity,frontier}`. Default `fidelity`.
 
-    Permette anche `--quality=wise` (= sintassi). Restituisce nome tier
-    canonico in `DEFAULT_TIERS` (`wise` o `frontier`).
+    Accetta anche la forma `--quality=fidelity`. Restituisce una richiesta
+    logica (`fast.fidelity` o `frontier`).
     """
     for i, a in enumerate(argv):
         if a == "--quality" and i + 1 < len(argv):
             v = argv[i + 1]
-            if v in ("wise", "frontier"):
-                return v
+            if v in ("frontier", "fidelity"):
+                return translation_tier_for_quality(v)
         if a.startswith("--quality="):
             v = a.split("=", 1)[1]
-            if v in ("wise", "frontier"):
-                return v
-    return "wise"
+            if v in ("frontier", "fidelity"):
+                return translation_tier_for_quality(v)
+    return _TRANSLATION_TIER
 
 
 if __name__ == "__main__":

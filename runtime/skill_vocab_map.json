@@ -10,7 +10,7 @@
     "create":        {"verb": "create"},
     "create-folder": {"verb": "create", "object_override": "dirs"},
     "send":          {"verb": "send"},
-    "reply":         {"verb": "send"},
+    "reply":         {"verb": "send", "qualifier": "thread"},
     "update":        {"verb": "set"},
     "modify":        {"verb": "set"},
     "delete":        {"verb": "delete"},
@@ -18,7 +18,7 @@
     "upload":        {"verb": "write"},
     "download":      {"verb": "read"},
     "append":        {"verb": "write", "qualifier": ""},
-    "labels":        {"exclude_reason": "Gmail labels: funzionalita' troppo specifica. _labels non e' qualifier canonico (vocab.QUALIFIERS); aggiungere un nuovo qualifier richiede approvazione esplicita (CLAUDE.md §2.2)."}
+    "labels":        {"verb": "list", "qualifier": "labels"}
   },
 
   "domains": {
@@ -55,12 +55,13 @@
     "gmail:get":       {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
     "gmail:search":    {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "find"},
     "gmail:send":      {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send"},
-    "gmail:reply":     {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send"},
+    "gmail:reply":     {"target_kind": "create_only",   "side_effect": "resource_create",   "verb": "send", "qualifier": "thread"},
+    "gmail:labels":    {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "list", "qualifier": "labels"},
     "gmail:modify":    {"target_kind": "state_labels",  "side_effect": "state_update",      "verb": "set"},
     "gmail:delete":    {"target_kind": "create_only",   "side_effect": "resource_delete",   "verb": "delete"},
 
     "drive:list":      {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
-    "drive:get":       {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "read"},
+    "drive:get":       {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "get"},
     "drive:search":    {"target_kind": "metadata",      "side_effect": "fetch_metadata",    "verb": "find"},
     "drive:download":  {"target_kind": "content",       "side_effect": "fetch_content",     "verb": "read"},
     "drive:upload":    {"target_kind": "body",          "side_effect": "body_modify",       "verb": "write"},

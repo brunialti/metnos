@@ -1,7 +1,7 @@
 """Generatore deterministico dell'esempio pratico per ogni promote.
 
 §7.9 (deterministico) per il blocco principale e per la stima risparmio.
-Estensione 11/5/2026 (Roberto): aggiunto UN paragrafo LLM tier middle
+Estensione 11/5/2026 (Roberto): aggiunto UN paragrafo LLM creative
 come narrativa interpretabile (NON come decisione). E' l'UNICO uso di
 LLM nel daemon — il fallback su timeout/down e' deterministico.
 
@@ -20,7 +20,7 @@ Output `render_practical_example()` ha 3 sezioni:
 
     <!-- llm_commentary -->
     ## Commento
-    <paragrafo modello locale tier middle, 3-5 frasi>
+    <paragrafo modello locale creative, 3-5 frasi>
 
 Sorgenti dati:
 - `sig_key` del proposal (lista JSON-parseable, ADR 0077).
@@ -47,6 +47,9 @@ from typing import Any
 
 _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
+import i18n as _i18n
+from messages import get as _msg
+from llm_workloads import tier_for
 
 # Stima conservativa della core size del prompt PLANNER (Fase C, 11/5/2026
 # section-aware ~5-8KB): assumiamo 6KB per la versione single-section.
@@ -64,6 +67,12 @@ _LLM_COMMENTARY_MAX_TOKENS = 300
 
 _DEFAULT_TURNS_DIR = _C.PATH_USER_DATA / "turns"
 _DEFAULT_ETA_DB = _C.PATH_USER_DATA / "proposals_eta.sqlite"
+
+
+def _t(lang: str, key: str, **values) -> str:
+    """Lookup i18n esplicito: un job non eredita la lingua di un altro turno."""
+    with _i18n.language_context(lang):
+        return _msg(key, **values)
 
 
 def _turns_dir() -> Path:
@@ -133,42 +142,6 @@ def _lookup_eta(path_hash: str) -> dict | None:
         return None
 
 
-def _format_args_from_sig_key(sig_key: Any) -> str:
-    """Formatta gli args dal sig_key (lista JSON ADR 0077).
-
-    Tre forme attese:
-    - `["dedupe", reason, a, b]`
-    - `["generalize", [exec1, exec2, ...]]`
-    - `["specialize", exec, arg, val_json]`
-
-    Per le proposte synth (non-introvertiva) il sig_key e' spesso il
-    nome stesso + args inferred. Fallback: stringa raw troncata.
-    """
-    if sig_key is None:
-        return "args sconosciuti"
-    parsed: Any
-    if isinstance(sig_key, str):
-        try:
-            parsed = json.loads(sig_key)
-        except (TypeError, ValueError):
-            return sig_key[:80] if sig_key else "args sconosciuti"
-    else:
-        parsed = sig_key
-    if not isinstance(parsed, list) or not parsed:
-        return str(parsed)[:80] if parsed else "args sconosciuti"
-    head = parsed[0]
-    if head == "dedupe" and len(parsed) >= 4:
-        return f"dedupe({parsed[2]} -> {parsed[3]}, reason={parsed[1]})"
-    if head == "generalize" and len(parsed) >= 2:
-        seq = parsed[1]
-        if isinstance(seq, list):
-            return f"generalize({' -> '.join(str(s) for s in seq)})"
-        return f"generalize({seq})"
-    if head == "specialize" and len(parsed) >= 4:
-        return f"specialize({parsed[1]}, arg={parsed[2]}, val={parsed[3]})"
-    return str(parsed)[:80]
-
-
 def _describe_new_executor(name: str, args_schema: dict) -> str:
     """Descrive il nuovo executor in forma `name(arg1, arg2, ...)`.
 
@@ -188,20 +161,21 @@ def _describe_new_executor(name: str, args_schema: dict) -> str:
 
 
 def _format_call_freq_pct(call_freq_60d: int | None,
-                            n_total_60d: int | None) -> str:
+                            n_total_60d: int | None, *, lang: str) -> str:
     """Formatta la % di chiamate sostituite vs totale corpus 60g."""
     if not call_freq_60d or not n_total_60d or n_total_60d <= 0:
         if call_freq_60d:
-            return f"{call_freq_60d} chiamate negli ultimi 60g"
-        return "dati insufficienti"
+            return _t(lang, "MSG_PROMOTER_EXAMPLE_CALLS_60D",
+                      count=call_freq_60d)
+        return _t(lang, "MSG_PROMOTER_INSUFFICIENT_DATA")
     pct = (call_freq_60d / n_total_60d) * 100.0
-    return (
-        f"{pct:.1f}% delle chiamate ({call_freq_60d}/{n_total_60d} "
-        f"negli ultimi 60g)"
+    return _t(
+        lang, "MSG_PROMOTER_EXAMPLE_REPLACEMENT_SHARE",
+        percent=f"{pct:.1f}", count=call_freq_60d, total=n_total_60d,
     )
 
 
-def _complement_description(verb: str, obj: str) -> str:
+def _complement_description(verb: str, obj: str, *, lang: str) -> str:
     """Descrive deterministicamente cosa il nuovo executor NON sostituisce.
 
     Heuristic: per verbi produttori (find/get/read/list/filter) il nuovo
@@ -209,21 +183,15 @@ def _complement_description(verb: str, obj: str) -> str:
     Per verbi trasformativi, dice che la versione read del dominio resta.
     """
     if not verb or not obj:
-        return "azioni su oggetti diversi e altri verbi del catalogo"
+        return _t(lang, "MSG_PROMOTER_EXAMPLE_SCOPE_OTHER")
     producers = {"find", "get", "read", "list", "filter"}
     transformers = {"move", "delete", "send", "write", "create", "extract",
                     "compress", "change", "set", "order"}
     if verb in producers:
-        return (
-            f"azioni trasformative su {obj} "
-            f"(write/delete/move/send/create) ne' altri oggetti del catalogo"
-        )
+        return _t(lang, "MSG_PROMOTER_EXAMPLE_SCOPE_MUTATIONS", object=obj)
     if verb in transformers:
-        return (
-            f"lettura/discovery su {obj} "
-            f"(find/get/read/list) ne' altri oggetti del catalogo"
-        )
-    return "azioni su oggetti diversi e altri verbi del catalogo"
+        return _t(lang, "MSG_PROMOTER_EXAMPLE_SCOPE_READS", object=obj)
+    return _t(lang, "MSG_PROMOTER_EXAMPLE_SCOPE_OTHER")
 
 
 def _aggregate_token_in_for_path_hash(path_hash: str) -> tuple[int, int]:
@@ -373,61 +341,42 @@ def _compute_perf_savings(
 
 def _format_perf_savings_block(savings: dict, *, lang: str = "it") -> str:
     """Render markdown della sezione `## Stima risparmio`. §7.9."""
-    # Localizzazione minimale via toggle (i18n.sqlite e' overkill per 3 righe;
-    # se servira' una terza lingua passeremo a `messages.get`).
-    if lang == "en":
-        title = "## Performance savings"
-        time_label = "Time"
-        tokens_label = "Tokens in"
-        freq_label = "Frequency"
-        per_turn = "/turn"
-        per_60d = "calls/60d"
-        sample_n = "N=%d turns analyzed"
-    else:
-        title = "## Stima risparmio"
-        time_label = "Tempo"
-        tokens_label = "Token in"
-        freq_label = "Frequenza"
-        per_turn = "/turno"
-        per_60d = "chiamate/60g"
-        sample_n = "N=%d turni analizzati"
+    title = _t(lang, "MSG_PROMOTER_PERF_TITLE")
 
     # Time row.
     if savings.get("time_fallback"):
-        time_row = f"- {time_label}: {savings['time_fallback']}"
+        time_row = _t(lang, "MSG_PROMOTER_PERF_TIME_MISSING")
     else:
-        pct = savings.get("time_savings_pct")
-        old_ms = savings.get("time_old_ms")
-        new_ms = savings.get("time_new_ms")
-        time_row = (
-            f"- {time_label}: {pct}% "
-            f"(p50 OGGI {old_ms}ms → NUOVA {new_ms}ms)"
+        time_row = _t(
+            lang, "MSG_PROMOTER_PERF_TIME_VALUE",
+            percent=savings.get("time_savings_pct"),
+            current_ms=savings.get("time_old_ms"),
+            new_ms=savings.get("time_new_ms"),
         )
 
     # Tokens row.
     if savings.get("tokens_fallback"):
-        tok_row = f"- {tokens_label}: {savings['tokens_fallback']}"
+        tok_row = _t(lang, "MSG_PROMOTER_PERF_TOKENS_MISSING")
     else:
-        old_t = savings.get("tokens_in_old_mean") or 0
-        pct = savings.get("tokens_savings_pct")
-        n = savings.get("tokens_sample_count") or 0
-        tok_row = (
-            f"- {tokens_label}: ~{old_t}{per_turn} (-{pct}%) "
-            f"[{sample_n % n}]"
+        tok_row = _t(
+            lang, "MSG_PROMOTER_PERF_TOKENS_VALUE",
+            tokens=savings.get("tokens_in_old_mean") or 0,
+            percent=savings.get("tokens_savings_pct"),
+            samples=savings.get("tokens_sample_count") or 0,
         )
 
     # Frequency row.
     cf = savings.get("call_freq_60d")
     if cf is None:
-        freq_row = f"- {freq_label}: dati insufficienti"
+        freq_row = _t(lang, "MSG_PROMOTER_PERF_FREQUENCY_MISSING")
     else:
-        freq_row = f"- {freq_label}: {cf} {per_60d}"
+        freq_row = _t(lang, "MSG_PROMOTER_PERF_FREQUENCY_VALUE", count=cf)
 
     return "\n".join([title, time_row, tok_row, freq_row])
 
 
 def _render_llm_commentary(deterministic_data: dict, *, lang: str = "it") -> str:
-    """Genera UN paragrafo LLM tier middle che spiega la promozione.
+    """Genera UN paragrafo LLM creative che spiega la promozione.
 
     Input `deterministic_data` shape:
         {
@@ -500,26 +449,16 @@ def _render_llm_commentary(deterministic_data: dict, *, lang: str = "it") -> str
 
     try:
         from llm_helpers import call_llm
-        # call_llm gestisce internamente il provider. Non c'e' un timeout
-        # parametrico nativo: facciamo il guard con `concurrent.futures` cosi'
-        # il cap di 5s e' onesto §2.8 anche se il provider si pianta.
-        import concurrent.futures as _cf
-        with _cf.ThreadPoolExecutor(max_workers=1) as ex:
-            future = ex.submit(
-                call_llm,
-                user_payload,
-                system_prompt,
-                tier="middle",
-                max_tokens=_LLM_COMMENTARY_MAX_TOKENS,
-                temperature=0.2,
-                think=False,
-            )
-            try:
-                text, _meta = future.result(
-                    timeout=_LLM_COMMENTARY_TIMEOUT_S
-                )
-            except _cf.TimeoutError:
-                return _msg_commentary_unavailable(lang)
+        # The budget reaches the provider transport. A wrapper future would
+        # only stop waiting while its context manager still waited for the
+        # worker during shutdown.
+        text, _meta = call_llm(
+            user_payload,
+            system_prompt,
+            tier=tier_for("promotion.commentary"),
+            max_tokens=_LLM_COMMENTARY_MAX_TOKENS,
+            timeout_s=_LLM_COMMENTARY_TIMEOUT_S,
+        )
     except Exception:
         # Qualsiasi crash del provider (ConnectionError, RuntimeError, ...)
         # → fallback deterministico.
@@ -540,9 +479,7 @@ def _render_llm_commentary(deterministic_data: dict, *, lang: str = "it") -> str
 
 def _msg_commentary_unavailable(lang: str) -> str:
     """Messaggio fallback quando LLM non e' disponibile."""
-    if lang == "en":
-        return "(commentary unavailable)"
-    return "(commento non disponibile)"
+    return _t(lang, "MSG_PROMOTER_COMMENTARY_UNAVAILABLE")
 
 
 def _build_deterministic_data_for_commentary(
@@ -595,7 +532,7 @@ def render_practical_example(
 
     Sezione 1 — analisi deterministica §7.9.
     Sezione 2 — stima risparmio %, deterministica §7.9.
-    Sezione 3 — UN paragrafo LLM (modello locale tier middle) con
+    Sezione 3 — UN paragrafo LLM (modello locale creative) con
         fallback "(commento non disponibile)" se LLM down/timeout.
 
     `skip_llm=True`: salta la sezione 3 (usato dai test che non vogliono
@@ -618,8 +555,9 @@ def render_practical_example(
     if real_q is None:
         real_q = (proposal.get("user_query") or "").strip()
     if not real_q:
-        real_q = f"[sintetico] esegui {verb} {obj}".strip()
-    query_line = f"**Query**: {real_q}"
+        real_q = _t(lang, "MSG_PROMOTER_EXAMPLE_SYNTHETIC_QUERY",
+                    verb=verb, object=obj).strip()
+    query_line = _t(lang, "MSG_PROMOTER_EXAMPLE_QUERY", query=real_q)
 
     # 2) Pipeline OGGI (path_steps + ETA).
     path_steps: list[str] = list(proposal.get("path_steps") or [])
@@ -638,8 +576,9 @@ def render_practical_example(
         if eta_p50_ms:
             oggi_str = f"{oggi_str} (p50 {eta_p50_ms}ms)"
     else:
-        oggi_str = "da definire"
-    pipeline_oggi_line = f"**Pipeline OGGI**: {oggi_str}"
+        oggi_str = _t(lang, "MSG_PROMOTER_EXAMPLE_UNDEFINED")
+    pipeline_oggi_line = _t(
+        lang, "MSG_PROMOTER_EXAMPLE_CURRENT_PIPELINE", pipeline=oggi_str)
 
     # 3) Pipeline NUOVA.
     s2 = (proposal.get("stages") or [])
@@ -655,18 +594,23 @@ def render_practical_example(
                 req = out.get("args_required") or []
                 args_schema = {"properties": props, "required": req}
     nuova_desc = _describe_new_executor(name, args_schema)
-    pipeline_nuova_line = f"**Pipeline NUOVA**: {nuova_desc}"
+    pipeline_nuova_line = _t(
+        lang, "MSG_PROMOTER_EXAMPLE_NEW_PIPELINE", pipeline=nuova_desc)
 
     # 4) Sostituisce: pct from signals.call_freq_60d.
     signals = evaluator_verdict.get("signals") or {}
     cf = signals.get("call_freq_60d")
     cf_total = signals.get("n_calls_60d_total") or signals.get("call_freq_total_60d")
-    sostituisce_line = (
-        f"**Sostituisce**: {_format_call_freq_pct(cf, cf_total)}"
+    sostituisce_line = _t(
+        lang, "MSG_PROMOTER_EXAMPLE_REPLACES",
+        scope=_format_call_freq_pct(cf, cf_total, lang=lang),
     )
 
     # 5) NON sostituisce.
-    non_line = f"**NON sostituisce**: {_complement_description(verb, obj)}"
+    non_line = _t(
+        lang, "MSG_PROMOTER_EXAMPLE_DOES_NOT_REPLACE",
+        scope=_complement_description(verb, obj, lang=lang),
+    )
 
     # Sezione 1 — blocco deterministico (esistente).
     section_1 = "\n".join([
@@ -696,7 +640,7 @@ def render_practical_example(
             top_query=real_q,
         )
         commentary = _render_llm_commentary(det_data, lang=lang)
-        commentary_title = "## Commentary" if lang == "en" else "## Commento"
+        commentary_title = _t(lang, "MSG_PROMOTER_COMMENTARY_TITLE")
         section_3 = "\n".join([
             _LLM_MARKER,
             commentary_title,

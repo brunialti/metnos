@@ -32,10 +32,7 @@ Riferimenti:
 from __future__ import annotations
 
 import json
-import os
 import time
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import sys

@@ -4,9 +4,9 @@ Modello semplice (v1.1 MVP): un solo processo, un solo canale per istanza,
 nessun threading. Long-poll del canale (Telegram = ~25s di attesa naturale)
 + chiamata sincrona a run_turn + risposta.
 
-Uso:
-    python3 -m channels.daemon              # default: TelegramChannel
-    python3 -m channels.daemon --dry-run    # logga ma non risponde
+Uso dalla radice del repository:
+    python3 -m runtime.channels.daemon              # default: TelegramChannel
+    python3 -m runtime.channels.daemon --dry-run    # esegue ma non invia la risposta
 
 Sicurezza:
 - I sender devono essere riconosciuti dal modulo `pairing`. Il primo
@@ -20,12 +20,14 @@ Sicurezza:
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import logging
 import os
 import re
 import signal
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,6 +42,12 @@ from .telegram import TelegramChannel  # noqa: E402
 import config as _C  # noqa: E402  §7.11
 import detection_lexicon as _dl  # noqa: E402  lessici NL traducibili
 from messages import get as _msg  # noqa: E402  §11 i18n (fonte unica)
+from credential_intake import scrub_sensitive_text  # noqa: E402
+from tutor_boundary import (  # noqa: E402
+    answer as _tutor_boundary_answer,
+    telegram_principal as _tutor_telegram_principal,
+    unavailable_answer as _tutor_unavailable_answer,
+)
 
 log = logging.getLogger("metnos.daemon")
 
@@ -70,24 +78,70 @@ def _cap_pending_path(sender_id: str) -> Path:
     return CAP_PENDING_DIR / f"{safe}.json"
 
 
-def _cap_pending_save(sender_id, original_query, proposal, turn_id):
+def _cap_pending_save(sender_id, original_query, proposal, turn_id, *,
+                      owner_user_id: str):
+    """Persist one approval/dialog proposal in its logical-owner scope.
+
+    ``sender_id`` is only a delivery address and may later be rebound to a
+    different Metnos user.  The durable owner is therefore mandatory and is
+    checked again by every reader before any clear-text query or proposal is
+    returned.
+    """
+    owner_user_id = str(owner_user_id or "").strip()
+    if not owner_user_id:
+        raise ValueError("cap-pending owner_user_id is required")
     CAP_PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(CAP_PENDING_DIR, 0o700)
+    except OSError:
+        pass
     p = _cap_pending_path(sender_id)
-    p.write_text(json.dumps({
+    payload = json.dumps({
         "ts": time.time(),
+        "owner_user_id": owner_user_id,
         "turn_id": turn_id,
         "original_query": original_query,
         "proposal": proposal,
-    }, ensure_ascii=False))
+    }, ensure_ascii=False)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{p.name}.", suffix=".tmp", dir=str(CAP_PENDING_DIR))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            fp.write(payload)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, p)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
-def _cap_pending_load(sender_id):
+def _cap_pending_load(sender_id, *, owner_user_id: str):
+    """Load a proposal only for its authenticated logical owner.
+
+    Pre-owner records and rows left behind after a channel is rebound are
+    deliberately unusable and removed.  This is a fail-closed migration: a
+    pending approval must never cross user boundaries merely because the two
+    users shared the same Telegram chat/device address at different times.
+    """
+    owner_user_id = str(owner_user_id or "").strip()
+    if not owner_user_id:
+        return None
     p = _cap_pending_path(sender_id)
     if not p.exists():
         return None
     try:
-        d = json.loads(p.read_text())
+        d = json.loads(p.read_text(encoding="utf-8"))
     except Exception:
+        return None
+    if str(d.get("owner_user_id") or "") != owner_user_id:
+        try:
+            p.unlink()
+        except OSError:
+            pass
         return None
     if time.time() - float(d.get("ts", 0)) > CAP_PENDING_TTL_S:
         try: p.unlink()
@@ -100,6 +154,33 @@ def _cap_pending_clear(sender_id):
     p = _cap_pending_path(sender_id)
     try: p.unlink()
     except FileNotFoundError: pass
+
+
+def purge_cap_pending_owner(owner_user_id: str) -> int:
+    """Remove every cap-pending row owned by ``owner_user_id``.
+
+    Legacy rows without an owner are unusable by definition and are swept as
+    well.  Corrupt rows are also removed because they cannot be attributed or
+    consumed safely.
+    """
+    expected = str(owner_user_id or "").strip()
+    if not expected or not CAP_PENDING_DIR.is_dir():
+        return 0
+    removed = 0
+    for path in CAP_PENDING_DIR.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            stored = str(payload.get("owner_user_id") or "")
+        except (OSError, json.JSONDecodeError, TypeError):
+            stored = ""
+        if stored not in ("", expected):
+            continue
+        try:
+            path.unlink()
+            removed += 1
+        except FileNotFoundError:
+            pass
+    return removed
 
 
 def _media_group_path(sender_id: str, group_id: str) -> Path:
@@ -121,8 +202,8 @@ def _media_group_load(sender_id: str, group_id: str) -> dict | None:
 def _media_group_save(sender_id: str, group_id: str, data: dict) -> None:
     p = _media_group_path(sender_id, group_id)
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        _C.write_private_text(
+            p, json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
 
@@ -324,7 +405,7 @@ def parse_step_value(raw: str, schema: dict) -> tuple[bool, object, str]:
                     token=tok, choices=", ".join(str(c) for c in choices))
             picked.append(match)
         return True, picked, ""
-    return False, None, f"kind {kind!r} non supportato dal parser."
+    return False, None, _msg("ERR_DIALOG_PARSE_KIND", kind=kind)
 
 
 class ChannelDaemon:
@@ -387,6 +468,192 @@ class ChannelDaemon:
             message=OutboundMessage(text=text, reply_to=reply_to),
         )
 
+    def _consume_tutor_handoff_reply(
+            self, msg: InboundMessage, principal: dict | None, *,
+            admit_only_valid: bool = False) -> dict | None:
+        """Consume a typed fallback for the declarative Tutor consent gate.
+
+        Inline buttons use the universal ``dlg:`` callback path.  This twin
+        path preserves the channel-independent contract advertised in the
+        answer (the user may also type an index or localized label).  It
+        recognizes the callback type from persisted state; no wording or
+        intent phrase is matched here.
+        """
+
+        if not isinstance(principal, dict):
+            return None
+        principal_owner = str(principal.get("user_id") or "")
+        try:
+            import dialog_pending as _dp
+            pending = _dp.list_pending(
+                msg.sender_id, owner_user_id=principal_owner)
+        except Exception:
+            return None
+        state = next((item for item in reversed(pending)
+                      if (item.get("on_complete") or {}).get("type")
+                      == "tutor_handoff"), None)
+        if state is None:
+            return None
+        owner = str(state.get("owner_user_id") or "")
+        if not owner or owner != str(principal.get("user_id") or ""):
+            return {"ok": False, "reason": "dialog_owner_mismatch"}
+        dialog = state.get("dialog") or []
+        index = int(state.get("step_index") or 0)
+        if index >= len(dialog):
+            return {"ok": False, "reason": "dialog_inconsistent"}
+        step = dialog[index]
+        valid, parsed_value, parse_error = parse_step_value(
+            msg.text, step.get("schema") or {})
+        if not valid and admit_only_valid:
+            return None
+        if not valid:
+            self._send_text(
+                msg.sender_id,
+                _msg(
+                    "MSG_DIALOG_STEP_REPROMPT",
+                    err=parse_error or "invalid_value",
+                    n=index + 1,
+                    total=len(dialog),
+                    prompt=step.get("prompt") or "",
+                ),
+                reply_to=msg.message_id,
+            )
+            return {"ok": False, "reason": "dialog_invalid_choice"}
+        result = _dp.consume_pending_step(
+            msg.sender_id,
+            str(state.get("dialog_id") or ""),
+            str(step.get("var") or ""),
+            parsed_value,
+            owner_user_id=principal_owner,
+        )
+        if not result.get("ok"):
+            self._send_text(
+                msg.sender_id,
+                _msg(
+                    "MSG_DIALOG_STEP_REPROMPT",
+                    err=result.get("error") or "invalid_value",
+                    n=index + 1,
+                    total=len(dialog),
+                    prompt=step.get("prompt") or "",
+                ),
+                reply_to=msg.message_id,
+            )
+            return {"ok": False, "reason": "dialog_invalid_choice"}
+        if not result.get("completed"):
+            return {"ok": True, "tutor_handoff_pending": True}
+        completed = result.get("state") or state
+        callback_text = self._on_get_inputs_completed(
+            completed,
+            actor=str(principal.get("actor") or "host"),
+        )
+        if callback_text:
+            self._send_text(
+                msg.sender_id, callback_text, reply_to=msg.message_id)
+        return {"ok": True, "tutor_handoff_completed": True}
+
+    def _consume_closed_cap_reply(
+            self, msg: InboundMessage, principal: dict,
+            *, actor: str) -> dict | None:
+        """Consume only an unambiguous closed pending reply.
+
+        This path is safe while Tutor is technically unavailable: arbitrary
+        prose never reaches a location/text/credentials consumer and never
+        clears its state.
+        """
+
+        owner_user_id = str(principal.get("user_id") or "").strip()
+        pending = _cap_pending_load(
+            msg.sender_id, owner_user_id=owner_user_id)
+        if not pending:
+            return None
+        proposal = pending.get("proposal") or {}
+        kind = proposal.get("kind")
+        if kind in {"admin_approval", "approval_required"}:
+            answer = _classify_yes_no(msg.text)
+            if answer is None:
+                return None
+            _cap_pending_clear(msg.sender_id)
+            if answer == "no":
+                sent = self._send_text(
+                    msg.sender_id, _msg("MSG_CAP_PROPOSAL_DECLINED"),
+                    reply_to=msg.message_id,
+                )
+                return {"ok": bool(sent.get("ok")),
+                        f"{kind}_no": True}
+            response = (
+                self._consume_admin_approval(
+                    proposal, actor=actor,
+                    owner_user_id=owner_user_id)
+                if kind == "admin_approval"
+                else self._consume_approval_required(
+                    proposal, actor=actor,
+                    owner_user_id=owner_user_id)
+            )
+            if response:
+                self._send_text(
+                    msg.sender_id, response, reply_to=msg.message_id)
+            return {"ok": True, f"{kind}_yes": True}
+        if kind != "get_inputs_response":
+            return None
+        try:
+            from .inline_ui import sender_state_candidates, load_pending_state
+            candidates = sender_state_candidates(
+                self.channel.name, msg.sender_id, actor=actor,
+                sender_for_state=proposal.get("sender_for_state"),
+            )
+            state, _ = load_pending_state(
+                str(proposal.get("dialog_id") or ""), candidates,
+                owner_user_id=owner_user_id)
+            if (state is None
+                    or str(state.get("owner_user_id") or "") != owner_user_id):
+                return None
+            dialog = state.get("dialog") or []
+            index = int(state.get("step_index") or 0)
+            if index >= len(dialog):
+                return None
+            schema = dialog[index].get("schema") or {}
+            schema_kind = str(schema.get("kind") or "text")
+            cancel = (msg.text or "").strip().lower() in {
+                "annulla", "cancel", "abort", "stop",
+            }
+            if schema_kind in {
+                    "text", "credentials", "file_path", "location"} and not cancel:
+                return None
+            valid, _, _ = parse_step_value(msg.text, schema)
+            if not valid and not cancel:
+                return None
+        except Exception:
+            log.warning("closed cap validation failed", exc_info=True)
+            return None
+        reply, completed, summary = self._consume_get_inputs_response(
+            proposal, msg.text, actor=actor, sender_id=msg.sender_id,
+            owner_user_id=owner_user_id)
+        if reply is not None:
+            self._send_text(msg.sender_id, reply, reply_to=msg.message_id)
+        if cancel:
+            _cap_pending_clear(msg.sender_id)
+            return {"ok": True, "get_inputs_cancelled": True}
+        if completed:
+            try:
+                import dialog_pending as _dp
+                completed_state = _dp.load_pending(
+                    proposal.get("sender_for_state") or msg.sender_id,
+                    proposal.get("dialog_id") or "",
+                    owner_user_id=owner_user_id,
+                ) or state
+            except Exception:
+                completed_state = state
+            callback_msg = self._on_get_inputs_completed(
+                completed_state, actor=actor)
+            if summary:
+                self._send_text(msg.sender_id, summary, reply_to=msg.message_id)
+            if callback_msg:
+                self._send_text(
+                    msg.sender_id, callback_msg, reply_to=msg.message_id)
+            _cap_pending_clear(msg.sender_id)
+            return {"ok": True, "get_inputs_completed": True}
+        return {"ok": True, "get_inputs_pending": True, "completed": False}
+
     def _push_pending_notices(self) -> int:
         """A.2 push (fase 7): consegna SUBITO gli avvisi «prossima-visita» ai
         destinatari di questo canale, senza aspettare che scrivano.
@@ -403,27 +670,42 @@ class ChannelDaemon:
         try:
             import pairing
             import user_notices
-            from actor_resolver import resolve_actor
+            import users
+            from user_lifecycle import OwnerUnavailable, owner_session
             seen: set[str] = set()
             for p in pairing.list_pairings():
                 if p.channel != self.channel.name or not p.sender_id:
                     continue
-                actor = resolve_actor(p.channel, p.sender_id)
-                if actor in seen:
+                owner = users.find_user_by_recipient(p.channel, p.sender_id)
+                owner_user_id = str((owner or {}).get("id") or "")
+                if not owner_user_id or owner_user_id in seen:
                     continue
-                seen.add(actor)
-                for text in user_notices.drain(p.channel, actor):
-                    try:
-                        self._send_text(p.sender_id, text)
-                        sent += 1
-                    except Exception:
-                        log.exception("push notice ad %s fallito", p.sender_id)
+                seen.add(owner_user_id)
+                try:
+                    with owner_session(owner_user_id):
+                        live = users.find_user_by_recipient(
+                            p.channel, p.sender_id)
+                        if (live is None or str(live.get("id") or "")
+                                != owner_user_id):
+                            continue
+                        actor = str(live.get("name") or "")
+                        notices = user_notices.drain(
+                            p.channel, actor,
+                            owner_user_id=owner_user_id)
+                        for text in notices:
+                            self._send_text(p.sender_id, text)
+                            sent += 1
+                except OwnerUnavailable:
+                    continue
+                except Exception:
+                    log.exception("push notice ad %s fallito", p.sender_id)
         except Exception:
             log.exception("_push_pending_notices fallita (non blocca il loop)")
         return sent
 
     def _consume_admin_approval(self, proposal: dict, *,
-                                 actor: str = "host") -> str:
+                                 actor: str = "host",
+                                 owner_user_id: str = "") -> str:
         """Esegui un admin pending dopo conferma utente (ADR 0088).
 
         Riprende argomenti originali + actor_consent_token dalla proposal,
@@ -440,16 +722,18 @@ class ChannelDaemon:
                 credentials_domain=args.get("credentials_domain"),
                 actor_consent_token=args.get("actor_consent_token"),
                 actor=actor,
+                owner_user_id=owner_user_id,
             )
         except (PermissionError, KeyError, RuntimeError) as e:
             log.exception("admin approval consume failed")
-            return f"(esecuzione fallita: {type(e).__name__}: {e})"
+            return _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")
         if isinstance(res, dict):
             return res.get("summary") or json.dumps(res, ensure_ascii=False)[:600]
         return str(res)
 
     def _consume_approval_required(self, proposal: dict, *,
-                                     actor: str = "host") -> str:
+                                     actor: str = "host",
+                                     owner_user_id: str = "") -> str:
         """Esegui un approval pending (find_images_indices build) dopo
         conferma utente. Direct invoke senza PLANNER (mirror del path HTTP
         in `http_routes_agent._apply_cap_pending`)."""
@@ -460,18 +744,23 @@ class ChannelDaemon:
             cat = load_catalog(verify=True, include_synth=True)
             ex = cat.executors.get(executor_name)
             if ex is None:
-                return f"(executor {executor_name} non in catalog)"
+                return _msg(
+                    "ERR_CHAT_EXECUTOR_NOT_IN_CATALOG",
+                    executor=executor_name,
+                )
             import agent_runtime as _ar
             res = _ar.invoke_executor(
                 ex, args, timeout_s=getattr(ex, "timeout_s", 30),
                 actor=actor, channel="telegram",
+                owner_user_id=owner_user_id,
             )
         except (PermissionError, KeyError, RuntimeError, TypeError) as e:
             log.exception("approval_required consume failed")
-            return f"(esecuzione fallita: {type(e).__name__}: {e})"
+            return _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")
         if not isinstance(res, dict) or not res.get("ok"):
-            err = (res or {}).get("error", "errore sconosciuto") if isinstance(res, dict) else "no result"
-            return f"Rilancio fallito: {err}"
+            err = ((res or {}).get("error") or _msg("MSG_ERR_UNKNOWN")
+                   if isinstance(res, dict) else _msg("MSG_ORCH_NO_RESULT"))
+            return _msg("MSG_ORCH_RELAUNCH_FAILED", detail=err)
         return res.get("summary") or json.dumps(res, ensure_ascii=False)[:600]
 
     def _parse_step_value(self, raw: str, schema: dict) -> tuple[bool, object, str]:
@@ -480,7 +769,8 @@ class ChannelDaemon:
 
     def _consume_get_inputs_response(self, proposal: dict, msg_text: str,
                                       *, actor: str = "host",
-                                      sender_id: str = "") -> tuple[str | None, bool, str | None]:
+                                      sender_id: str = "",
+                                      owner_user_id: str) -> tuple[str | None, bool, str | None]:
         """Consuma una risposta utente per un dialogo `get_inputs` pendente
         (ADR 0090). Ritorna `(reply_text, retry_original, completion_summary)`:
 
@@ -515,12 +805,14 @@ class ChannelDaemon:
             channel_name, sender_id, actor=actor,
             sender_for_state=proposal.get("sender_for_state"),
         )
-        state, hit_key = load_pending_state(dialog_id, candidates)
+        state, hit_key = load_pending_state(
+            dialog_id, candidates, owner_user_id=owner_user_id)
 
         if text_norm in ("annulla", "cancel", "abort", "stop"):
             if state is not None:
                 _dp.cancel_pending(state.get("sender_id") or hit_key,
-                                    dialog_id)
+                                   dialog_id,
+                                   owner_user_id=owner_user_id)
                 return (_msg("MSG_DIALOG_CANCELLED"), False, None)
             return (_msg("MSG_DIALOG_EXPIRED"), False, None)
 
@@ -545,7 +837,9 @@ class ChannelDaemon:
             # come turno nuovo. Senza questo l'utente resta bloccato.
             text_len = len((msg_text or "").strip())
             if schema_kind == "yes_no" and text_len > 10:
-                _dp.cancel_pending(sender_for_state, dialog_id)
+                _dp.cancel_pending(
+                    sender_for_state, dialog_id,
+                    owner_user_id=owner_user_id)
                 # Marker speciale (None, None, None): il caller deve
                 # leggere come "passthrough" e processare il messaggio
                 # come query nuova.
@@ -555,7 +849,9 @@ class ChannelDaemon:
                          total=len(dialog), prompt=cur_step.get('prompt')),
                     False, None)
         # Avanza lo stato
-        cres = _dp.consume_pending_step(sender_for_state, dialog_id, var, value)
+        cres = _dp.consume_pending_step(
+            sender_for_state, dialog_id, var, value,
+            owner_user_id=owner_user_id)
         if not cres.get("ok"):
             return (_msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
                     False, None)
@@ -592,7 +888,10 @@ class ChannelDaemon:
             n_total = len(atts)
             for i in range(0, n_total, CHUNK):
                 chunk = atts[i:i + CHUNK]
-                caption = f"Foto {i + 1}-{i + len(chunk)} di {n_total} per la tua query"
+                caption = _msg(
+                    "MSG_TELEGRAM_PHOTO_BATCH_CAPTION",
+                    start=i + 1, end=i + len(chunk), total=n_total,
+                )
                 try:
                     mg = self.channel.send_media_group(
                         chat_id=sender_id, attachments=chunk,
@@ -633,6 +932,7 @@ class ChannelDaemon:
                 cr = process_completion_callback(
                     sender_id, dialog_id,
                     actor=actor or state.get("actor") or "host",
+                    owner_user_id=str(state.get("owner_user_id") or ""),
                     channel=state.get("channel") or None,
                 )
                 # Resume full-turn con FOTO (follow-up zip-line, 5/7):
@@ -642,7 +942,10 @@ class ChannelDaemon:
                 return cr.text
             except (ImportError, RuntimeError) as ex:
                 log.exception("process_completion_callback fallito")
-                return f"(Callback fallito: {type(ex).__name__}: {ex})"
+                return _msg(
+                    "ERR_CHAT_DIALOG_CALLBACK_FAILED",
+                    error=f"{type(ex).__name__}: {ex}",
+                )
         # Path legacy (state senza on_complete; i dialog state vecchi non
         # hanno il campo, finche' la migrazione non e' su tutti i nodi).
         values = state.get("values_collected") or {}
@@ -865,7 +1168,11 @@ class ChannelDaemon:
         # dal chat_id (<chat_id>→host). Il bridge e' nel cap → primo candidato.
         _sfs_dlg = None
         try:
-            _cp = _cap_pending_load(msg.sender_id)
+            principal = (msg.extra or {}).get("_principal") or {}
+            _cp = _cap_pending_load(
+                msg.sender_id,
+                owner_user_id=str(principal.get("user_id") or ""),
+            )
             if isinstance(_cp, dict):
                 _sfs_dlg = (_cp.get("proposal") or {}).get("sender_for_state")
         except Exception:
@@ -874,17 +1181,28 @@ class ChannelDaemon:
         candidates = sender_state_candidates(
             self.channel.name, msg.sender_id, actor=_actor_dlg,
             sender_for_state=_sfs_dlg)
-        state, hit_key = load_pending_state(dialog_id, candidates)
+        principal = (msg.extra or {}).get("_principal") or {}
+        principal_user_id = str(principal.get("user_id") or "")
+        state, hit_key = load_pending_state(
+            dialog_id, candidates, owner_user_id=principal_user_id)
         if state is None:
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_EXPIRED"),
                              reply_to=msg.message_id)
             return {"ok": False, "reason": "dialog_expired"}
+        owner_user_id = str(state.get("owner_user_id") or "")
+        if (not owner_user_id or not principal_user_id
+                or not hmac.compare_digest(owner_user_id, principal_user_id)):
+            self._send_text(msg.sender_id, _msg("MSG_DIALOG_EXPIRED"),
+                            reply_to=msg.message_id)
+            return {"ok": False, "reason": "dialog_owner_mismatch"}
         # Risolvi sender_for_state effettivo dal load (per consume coerente):
         # priorita' al campo persistito, poi alla chiave che ha risolto.
         sender_eff = state.get("sender_id") or hit_key
         if parts[2] == "cancel":
-            _dp.cancel_pending(sender_eff, dialog_id)
+            _dp.cancel_pending(
+                sender_eff, dialog_id,
+                owner_user_id=principal_user_id)
             _cap_pending_clear(msg.sender_id)
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_CANCELLED"),
@@ -939,7 +1257,8 @@ class ChannelDaemon:
             return {"ok": False, "reason": f"unsupported_kind:{kind}"}
 
         cres = _dp.consume_pending_step(sender_eff, dialog_id,
-                                          cur_step.get("var"), value)
+                                        cur_step.get("var"), value,
+                                        owner_user_id=principal_user_id)
         if not cres.get("ok"):
             self._send_text(msg.sender_id,
                              _msg("MSG_DIALOG_STEP_ERROR", error=cres.get('error')),
@@ -947,18 +1266,11 @@ class ChannelDaemon:
             return {"ok": False, "reason": "consume_failed"}
         if cres.get("completed"):
             new_state = cres["state"]
-            # Summary (replica di _consume_get_inputs_response).
-            lines = [_msg("MSG_DIALOG_COMPLETED", title=state.get('title', '?'))]
-            for s in dialog:
-                v = s.get("var")
-                k = (s.get("schema") or {}).get("kind")
-                val = new_state["values_collected"].get(v)
-                if k == "credentials" or (s.get("schema") or {}).get("secret"):
-                    lines.append(f"  {v}: ********")
-                else:
-                    lines.append(f"  {v}: {val}")
-            self._send_text(msg.sender_id, "\n".join(lines),
-                             reply_to=msg.message_id)
+            if not state.get("suppress_completion_summary"):
+                summary = _format_dialog_completion(
+                    dialog, new_state, state.get("title", "?"))
+                self._send_text(msg.sender_id, summary,
+                                reply_to=msg.message_id)
             from actor_resolver import resolve_actor as _ra
             actor_for = _ra(self.channel.name, msg.sender_id)
             callback_msg = self._on_get_inputs_completed(
@@ -1016,7 +1328,11 @@ class ChannelDaemon:
         if len(parts) != 3 or parts[2] not in ("yes", "no"):
             return {"ok": False, "reason": "bad_callback_data", "data": data}
         _, cb_turn_id, action = parts
-        pending = _cap_pending_load(msg.sender_id)
+        principal = (msg.extra or {}).get("_principal") or {}
+        pending = _cap_pending_load(
+            msg.sender_id,
+            owner_user_id=str(principal.get("user_id") or ""),
+        )
         if not pending or str(pending.get("turn_id") or "") != cb_turn_id:
             self._send_text(msg.sender_id,
                             _msg("MSG_CAP_PROPOSAL_EXPIRED"),
@@ -1045,9 +1361,13 @@ class ChannelDaemon:
         except Exception:
             actor_for = "host"
         if kind == "admin_approval":
-            answer = self._consume_admin_approval(p, actor=actor_for)
+            answer = self._consume_admin_approval(
+                p, actor=actor_for,
+                owner_user_id=str(principal.get("user_id") or ""))
         else:
-            answer = self._consume_approval_required(p, actor=actor_for)
+            answer = self._consume_approval_required(
+                p, actor=actor_for,
+                owner_user_id=str(principal.get("user_id") or ""))
         if answer:
             self._send_text(msg.sender_id, answer, reply_to=msg.message_id)
         return {"ok": True, "callback": "cap_yes", "kind": kind}
@@ -1074,7 +1394,7 @@ class ChannelDaemon:
                 base = _os.environ.get(
                     "METNOS_HTTP_BASE_URL", "http://127.0.0.1:8770",
                 )
-                url = f"{base}/admin/promotions/review"
+                url = f"{base}/admin/changes?state=proposed"
                 self._send_text(
                     msg.sender_id,
                     _msg("MSG_OPEN_FORM_REVIEW", url=url),
@@ -1133,7 +1453,7 @@ class ChannelDaemon:
                 self._send_text(
                     msg.sender_id,
                     _msg("ERR_ROLLBACK_FAILED",
-                         error=result.get("error") or _msg("MSG_UNKNOWN_ERROR")),
+                         error=result.get("error") or _msg("MSG_ERR_UNKNOWN")),
                     reply_to=msg.message_id,
                 )
             return {"ok": bool(result.get("ok")),
@@ -1146,21 +1466,27 @@ class ChannelDaemon:
                                     data: str) -> dict:
         """Gestisce i bottoni della notifica circuit-breaker dello scheduler
         (recurring_tasks._notify_circuit_break). Formato
-        `sched:<azione>:<entry_name>` con azione cont|susp|canc.
+        `sched:<azione>:<task_id>` con azione cont|susp|canc.
 
         - cont  → resume_job: riabilita + azzera streak + ricalcola next_fire.
         - susp  → resta disabilitato (toggle off idempotente). Ripristinabile.
         - canc  → cancella la schedulazione (scheduler entry + record utente).
 
-        entry_name e' il nome scheduler (`user_<task>`); per la pulizia del
-        record utente si rimuove il prefisso `user_`. Determinismo §7.9: niente
+        task_id e' il riferimento numerico breve della registry utente; il
+        nome scheduler non attraversa Telegram. Determinismo §7.9: niente
         LLM, parsing strict, errori esposti come reply (mai stacktrace). Testo
         user-facing via i18n DB (§11): chiavi MSG_SCHED_*."""
         from messages import get as _msg
         parts = data.split(":", 2)
         if len(parts) != 3 or not parts[2]:
             return {"ok": False, "reason": "bad_callback_data", "data": data}
-        _, action, entry_name = parts
+        _, action, task_id = parts
+        try:
+            task_id_int = int(task_id)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
+        if task_id_int < 1:
+            return {"ok": False, "reason": "bad_callback_data", "data": data}
         try:
             from scheduler_v2 import client as sched_client
         except Exception as ex:  # noqa: BLE001
@@ -1169,23 +1495,63 @@ class ChannelDaemon:
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "scheduler_unreachable", "error": str(ex)}
 
+        principal = (msg.extra or {}).get("_principal") or {}
+        owner_user_id = str(principal.get("user_id") or "").strip()
+        try:
+            from recurring_tasks import get_user_task_by_id
+            owned = get_user_task_by_id(owner_user_id, task_id_int)
+            entry_name = str((owned or {}).get("scheduler_name") or "")
+            scheduled_rows = sched_client.list_jobs_readonly(
+                (entry_name,) if entry_name else ())
+            scheduled = scheduled_rows[0] if len(scheduled_rows) == 1 else None
+            scheduled_payload = ((scheduled or {}).get("payload") or {})
+            authorized = bool(
+                owner_user_id
+                and owned is not None
+                and scheduled is not None
+                and scheduled.get("origin") == "user"
+                and str(scheduled_payload.get("owner_user_id") or "")
+                == owner_user_id
+                and str(scheduled_payload.get("scheduler_name") or "")
+                == entry_name
+            )
+        except Exception as ex:  # noqa: BLE001
+            log.warning("scheduler callback ownership check failed: %s", ex)
+            authorized = False
+        if not authorized:
+            self._send_text(
+                msg.sender_id, _msg("MSG_SCHED_NOT_FOUND"),
+                reply_to=msg.message_id,
+            )
+            return {"ok": False, "reason": "scheduler_not_owned"}
+
         if action == "cont":
-            ok = sched_client.resume_job(entry_name)
+            from recurring_tasks import set_user_scheduler_enabled
+            ok = set_user_scheduler_enabled(
+                entry_name, True, owner_user_id=owner_user_id,
+                resume=True)
             reply = _msg("MSG_SCHED_RESUMED" if ok else "MSG_SCHED_NOT_FOUND")
             return self._sched_cb_reply(msg, ok, reply, "resume", entry_name)
         if action == "susp":
-            ok = sched_client.toggle_job(entry_name, False)
+            from recurring_tasks import set_user_scheduler_enabled
+            ok = set_user_scheduler_enabled(
+                entry_name, False, owner_user_id=owner_user_id)
             reply = _msg("MSG_SCHED_SUSPENDED" if ok else "MSG_SCHED_NOT_FOUND")
             return self._sched_cb_reply(msg, ok, reply, "suspend", entry_name)
         if action == "canc":
-            ok = sched_client.cancel_job(entry_name)
-            # Pulisci anche il record recurring_tasks (chiave senza `user_`).
-            rec_name = entry_name[len("user_"):] if entry_name.startswith("user_") else entry_name
             try:
                 from recurring_tasks import cancel_user_task
-                cancel_user_task(rec_name)
+                registry_removed = cancel_user_task(
+                    task_id_int,
+                    owner_user_id=owner_user_id,
+                )
             except Exception as ex:  # noqa: BLE001
-                log.warning("cancel_user_task('%s') fallita: %s", rec_name, ex)
+                log.warning("cancel_user_task('%s') fallita: %s",
+                            entry_name, ex)
+                registry_removed = False
+            purged = (sched_client.purge_jobs((entry_name,))
+                      if registry_removed else {"entries": 0})
+            ok = bool(registry_removed and purged.get("entries"))
             reply = _msg("MSG_SCHED_CANCELLED" if ok else "MSG_SCHED_NOT_FOUND")
             return self._sched_cb_reply(msg, ok, reply, "cancel", entry_name)
         return {"ok": False, "reason": "unknown_action", "action": action}
@@ -1195,6 +1561,45 @@ class ChannelDaemon:
         self._send_text(msg.sender_id, reply, reply_to=msg.message_id)
         return {"ok": bool(ok), "callback": f"sched_{action}",
                 "entry_name": entry_name}
+
+    def _callback_principal(self, msg: InboundMessage) -> dict | None:
+        """Risoluzione JIT del principal prima di qualunque callback mutante."""
+        existing = pairing.get_pairing(self.channel.name, msg.sender_id)
+        user = None
+        registered_channel = False
+        try:
+            import users as _users
+            registered_channel = self.channel.name in _users.CHANNELS
+            user = _users.find_user_by_recipient(
+                self.channel.name, msg.sender_id)
+            if (not registered_channel and user is None
+                    and existing is not None and existing.actor):
+                user = _users.get_user(existing.actor)
+                if user is None and existing.actor == "host":
+                    hosts = _users.list_users(role="host")
+                    user = hosts[0] if len(hosts) == 1 else None
+        except Exception as ex:
+            log.debug("callback principal users lookup failed: %s", ex)
+            if registered_channel:
+                return None
+        # On a registered channel the logical user binding is the revocation
+        # authority.  A historical pairings.db row cannot stand in for it.
+        if registered_channel and user is None:
+            return None
+        if existing is None and user is None:
+            return None
+        actor = ((user or {}).get("name")
+                 or getattr(existing, "actor", None) or "")
+        role = ((user or {}).get("role")
+                or ("host" if actor == "host" else "guest"))
+        return {
+            "channel": self.channel.name,
+            "sender_id": msg.sender_id,
+            "user_id": (user or {}).get("id"),
+            "actor": actor,
+            "role": role,
+            "autonomy": getattr(existing, "autonomy_level", None),
+        }
 
     def _handle_callback(self, msg: InboundMessage) -> dict:
         """Risolve un callback_query 'approve:<token>' / 'reject:<token>' /
@@ -1215,12 +1620,20 @@ class ChannelDaemon:
             try:
                 # runtime/ già su sys.path (channels VIVE in runtime/).
                 import location_request as _locreq
-                from actor_resolver import resolve_actor as _ra
                 from messages import get as _msg
-                actor_for = _ra(self.channel.name, msg.sender_id)
-                pending = _locreq.get_pending_for(actor_for, self.channel.name)
+                principal = ((msg.extra or {}).get("_principal")
+                             or self._callback_principal(msg))
+                owner_user_id = str(
+                    (principal or {}).get("user_id") or "")
+                if not owner_user_id:
+                    return {"ok": False,
+                            "reason": "logical_user_unavailable"}
+                pending = _locreq.get_pending_for(
+                    owner_user_id, self.channel.name)
                 if pending:
-                    _locreq.cancel(pending["pending_id"])
+                    _locreq.cancel(
+                        pending["pending_id"],
+                        owner_user_id=owner_user_id)
                 self._send_text(msg.sender_id, _msg("MSG_LOCATION_REFUSED"),
                                  reply_to=msg.message_id)
             except Exception as ex:
@@ -1229,11 +1642,11 @@ class ChannelDaemon:
         if data.startswith("approve:"):
             decision = "approved"
             token = data[len("approve:"):]
-            user_label = "Approvato"
+            result_key = "MSG_APPROVAL_ACCEPTED"
         elif data.startswith("reject:"):
             decision = "rejected"
             token = data[len("reject:"):]
-            user_label = "Rifiutato"
+            result_key = "MSG_APPROVAL_REJECTED"
         else:
             log.warning("callback_data non riconosciuto: %r", data)
             return {"ok": False, "reason": "unknown_callback", "data": data}
@@ -1251,49 +1664,78 @@ class ChannelDaemon:
             return {"ok": False, "reason": "approval_failed", "error": str(e)}
         log.info("approval risolto: token=%s decision=%s sender=%s",
                  token, decision, msg.sender_id)
-        self._send_text(msg.sender_id,
-                        f"{user_label}: {rec.action_verb} {rec.target_summary}",
-                        reply_to=msg.message_id)
+        self._send_text(
+            msg.sender_id,
+            _msg(result_key, action=rec.action_verb,
+                 target=rec.target_summary),
+            reply_to=msg.message_id,
+        )
         return {"ok": True, "decision": decision, "token": token,
                 "capability_class": rec.capability_class}
 
     def handle_message(self, msg: InboundMessage) -> dict:
-        """Gestisce un singolo messaggio. Ritorna dict di esito (per log/test)."""
-        # Callback dei bottoni inline (approve:<tok> / reject:<tok>).
-        # Vengono prima del check pairing perche' il sender che clicca e'
-        # gia' chi ha generato la richiesta (verificato in approval_registry.resolve).
+        """Gestisce un messaggio nella lingua del relativo utente.
+
+        La preferenza è risolta dal binding canale→utente e applicata con un
+        contesto locale al turno. Non cambia la lingua dell'istanza e non può
+        contaminare richieste concorrenti su altri canali.
+        """
+        principal = ((msg.extra or {}).get("_principal")
+                     or self._callback_principal(msg))
+        preferred = None
+        if principal is not None:
+            try:
+                import users as _users
+                owner = (principal.get("user_id")
+                         or principal.get("actor") or "")
+                preferred = _users.get_pref(owner, "lang", None)
+            except Exception as ex:
+                log.debug("channel user language lookup unavailable: %s", ex)
+        import i18n as _i18n
+
+        def _dispatch():
+            if principal is not None:
+                if msg.extra is None:
+                    msg.extra = {}
+                msg.extra["_principal"] = principal
+            with _i18n.language_context(preferred):
+                return self._handle_message_scoped(msg)
+
+        owner_user_id = str((principal or {}).get("user_id") or "")
+        if not owner_user_id:
+            return _dispatch()
+        try:
+            from user_lifecycle import OwnerUnavailable, owner_session
+            with owner_session(owner_user_id):
+                return _dispatch()
+        except OwnerUnavailable:
+            self._send_text(
+                msg.sender_id, _msg("MSG_UNPAIRED"),
+                reply_to=msg.message_id,
+            )
+            return {"ok": False, "reason": "logical_user_unavailable"}
+
+    def _handle_message_scoped(self, msg: InboundMessage) -> dict:
+        """Implementazione del turno; chiamare tramite ``handle_message``."""
+        # Callback: risolvi PRIMA il principal. Il possesso di callback_data
+        # non sostituisce pairing/ownership (un ID Telegram inoltrato o
+        # indovinato non deve poter mutare scheduler/promozioni/dialoghi).
         if (msg.extra or {}).get("kind") == "callback":
+            principal = ((msg.extra or {}).get("_principal")
+                         or self._callback_principal(msg))
+            if principal is None:
+                self._send_text(msg.sender_id, _msg("MSG_UNPAIRED"),
+                                reply_to=msg.message_id)
+                return {"ok": False, "reason": "sender_not_paired",
+                        "sender": msg.sender_id}
+            data = (msg.text or "").strip()
+            if data.startswith("promoter:") \
+                    and principal.get("role") != "host":
+                return {"ok": False, "reason": "host_callback_required"}
+            msg.extra["_principal"] = principal
+            pairing.touch_last_seen(self.channel.name, msg.sender_id)
             return self._handle_callback(msg)
 
-        # ── Multi-foto burst aggregation (ADR 0092, 5/5/2026) ──────
-        # Telegram invia album come messaggi separati con stesso
-        # `media_group_id`. Accumuliamo i path nel buffer; il primo messaggio
-        # con caption "porta" la query, gli altri arrivano dopo (di solito).
-        # Strategia semplice: appendi al buffer, processa subito SOLO se TTL
-        # gia' scaduto su un altro gruppo (sweep), altrimenti lascia in
-        # buffer. La sweep avviene a ogni iterazione di run_forever.
-        extra = msg.extra or {}
-        group_id = extra.get("media_group_id")
-        if group_id and extra.get("attached_images"):
-            buf = _media_group_load(msg.sender_id, group_id) or {
-                "paths": [], "caption": "", "first_msg_id": None,
-                "last_seen": 0.0,
-            }
-            for p in extra.get("attached_images") or []:
-                if p and p not in buf["paths"]:
-                    buf["paths"].append(p)
-            # Caption: prendi la prima non-vuota (di solito sul primo del gruppo).
-            if msg.text and not buf.get("caption"):
-                buf["caption"] = msg.text
-            if buf.get("first_msg_id") is None:
-                buf["first_msg_id"] = msg.message_id
-            buf["last_seen"] = time.time()
-            buf["sender_id"] = msg.sender_id
-            _media_group_save(msg.sender_id, group_id, buf)
-            log.debug("media_group %s/%s: %d foto buffered",
-                      msg.sender_id, group_id, len(buf["paths"]))
-            return {"ok": True, "media_group_buffered": group_id,
-                    "n_paths": len(buf["paths"])}
         # Comandi di pairing accettati anche da non-pairati: sono la loro ragione d'essere.
         if msg.text.startswith(PAIR_COMMAND):
             return self._handle_pair_command(msg)
@@ -1375,15 +1817,231 @@ class ChannelDaemon:
                     existing = pairing.get_pairing(self.channel.name, msg.sender_id)
                 except Exception as ex:
                     log.warning("on-the-fly pair from users.db failed: %s", ex)
-        from messages import get as _msg  # §11 i18n
         if existing is None:
             log.warning("sender non pairato: %s/%s", self.channel.name, msg.sender_id)
             self._send_text(msg.sender_id, _msg("MSG_UNPAIRED"),
                             reply_to=msg.message_id)
             return {"ok": False, "reason": "sender_not_paired", "sender": msg.sender_id}
 
+        # pairings.db stores channel admission, not a self-sufficient user.
+        # A deleted logical owner must invalidate an old pairing immediately;
+        # otherwise its historical autonomy would survive user deletion.
+        try:
+            import users as _live_users
+            if self.channel.name in _live_users.CHANNELS:
+                live_owner = _live_users.find_user_by_recipient(
+                    self.channel.name, msg.sender_id)
+                if live_owner is None:
+                    pairing.revoke(self.channel.name, msg.sender_id)
+                    self._send_text(
+                        msg.sender_id, _msg("MSG_UNPAIRED"),
+                        reply_to=msg.message_id,
+                    )
+                    return {
+                        "ok": False,
+                        "reason": "logical_user_unavailable",
+                        "sender": msg.sender_id,
+                    }
+        except Exception:
+            log.warning("logical user verification unavailable", exc_info=True)
+            self._send_text(
+                msg.sender_id, _msg("MSG_TUTOR_UNAVAILABLE"),
+                reply_to=msg.message_id,
+            )
+            return {"ok": False, "reason": "identity_store_unavailable"}
+
         # Touch last_seen per audit/observability
         pairing.touch_last_seen(self.channel.name, msg.sender_id)
+
+        # Allegati Telegram: materializza file e aggrega album solo dopo che
+        # pairing, binding utente e revoca sono stati verificati. Il transport
+        # passa un file_id opaco e non effettua I/O di rete o disco pre-auth.
+        extra = msg.extra or {}
+        photo_file_id = extra.pop("photo_file_id", None)
+        if photo_file_id:
+            downloader = getattr(self.channel, "_download_photo", None)
+            local_path = None
+            if callable(downloader):
+                local_path = downloader(
+                    str(photo_file_id), chat_id=msg.sender_id,
+                    msg_id=msg.message_id,
+                    idx=int(extra.pop("photo_index", 0) or 0),
+                )
+            extra["attached_images"] = [local_path] if local_path else []
+            extra["attached_failed"] = not bool(local_path)
+
+        # Telegram invia gli album come messaggi separati con lo stesso
+        # media_group_id. Anche il buffer è quindi successivo all'ammissione.
+        group_id = extra.get("media_group_id")
+        if group_id and extra.get("attached_images"):
+            buf = _media_group_load(msg.sender_id, group_id) or {
+                "paths": [], "caption": "", "first_msg_id": None,
+                "last_seen": 0.0,
+            }
+            for path in extra.get("attached_images") or []:
+                if path and path not in buf["paths"]:
+                    buf["paths"].append(path)
+            if msg.text and not buf.get("caption"):
+                buf["caption"] = msg.text
+            if buf.get("first_msg_id") is None:
+                buf["first_msg_id"] = msg.message_id
+            buf["last_seen"] = time.time()
+            buf["sender_id"] = msg.sender_id
+            _media_group_save(msg.sender_id, group_id, buf)
+            log.debug("media_group %s/%s: %d foto buffered",
+                      msg.sender_id, group_id, len(buf["paths"]))
+            return {"ok": True, "media_group_buffered": group_id,
+                    "n_paths": len(buf["paths"])}
+
+        # Tutor F2: dopo autenticazione/pairing ma prima di qualunque consumer
+        # location/dialog/cap. Allegati e callback hanno gia' preso il loro
+        # percorso. Un pure-help non consuma lo stato pending; sì/no e input
+        # operativi non superano il gate ad alta precisione del detector.
+        trusted_principal = ((msg.extra or {}).get("_principal")
+                             or self._callback_principal(msg))
+        safe_incoming_text, sensitive_fields = scrub_sensitive_text(msg.text)
+        # A valid answer to the closed Tutor consent schema is deterministic
+        # and must work independently of mode-provider health.
+        closed_handoff = self._consume_tutor_handoff_reply(
+            msg, trusted_principal, admit_only_valid=True)
+        if closed_handoff is not None:
+            return closed_handoff
+        _has_pending = False
+        _tutor_result = None
+        _pending_tutor_error = None
+        try:
+            if trusted_principal is None:
+                raise RuntimeError("authenticated Tutor principal unavailable")
+            if not sensitive_fields:
+                _has_pending = bool(_cap_pending_load(
+                    msg.sender_id,
+                    owner_user_id=str(
+                        trusted_principal.get("user_id") or ""),
+                ))
+                try:
+                    import dialog_pending as _tutor_dp
+                    _has_pending = _has_pending or bool(
+                        _tutor_dp.list_pending(
+                            msg.sender_id,
+                            owner_user_id=str(
+                                trusted_principal.get("user_id") or "")))
+                except Exception:
+                    pass
+                try:
+                    import location_request as _tutor_loc
+                    _has_pending = _has_pending or bool(
+                        _tutor_loc.get_pending_for(
+                            str(trusted_principal.get("user_id") or ""),
+                            self.channel.name)
+                    )
+                except Exception:
+                    pass
+                _tutor_principal_value = _tutor_telegram_principal(
+                    trusted_principal,
+                    conversation_id=msg.sender_id,
+                )
+                _tutor_result = _tutor_boundary_answer(
+                    msg.text,
+                    _tutor_principal_value,
+                    has_pending=_has_pending,
+                    # Read-only principals may receive grounded help, but a
+                    # mixed request must not persist an executable consent
+                    # handoff before the autonomy gate below.
+                    pending_sender_id=(
+                        "" if existing.autonomy_level in LEVEL_BLOCKS_RUN
+                        else msg.sender_id),
+                )
+                if (_tutor_result is not None
+                        and _tutor_result.esito == "tutor_error"
+                        and _has_pending):
+                    log.warning(
+                        "Tutor unavailable; deterministic pending keeps precedence")
+                    _pending_tutor_error = _tutor_result
+                    _tutor_result = None
+                if _tutor_result is not None:
+                    buttons = None
+                    if _tutor_result.pending_dialog_id:
+                        try:
+                            import dialog_pending as _tutor_dp
+                            _state = _tutor_dp.load_pending(
+                                msg.sender_id,
+                                _tutor_result.pending_dialog_id,
+                                owner_user_id=str(
+                                    trusted_principal.get("user_id") or ""),
+                            ) or {}
+                            _steps = _state.get("dialog") or []
+                            if (_steps and
+                                    (_state.get("on_complete") or {}).get(
+                                        "type") == "tutor_handoff"):
+                                buttons = self._build_dialog_keyboard(
+                                    _tutor_result.pending_dialog_id, 0,
+                                    _steps[0],
+                                )
+                        except Exception:
+                            log.warning(
+                                "Tutor handoff keyboard unavailable",
+                                exc_info=True,
+                            )
+                    if buttons:
+                        sent = self.channel.send(
+                            recipient=msg.sender_id,
+                            message=OutboundMessage(
+                                text=_tutor_result.answer_md,
+                                reply_to=msg.message_id,
+                                buttons=buttons,
+                            ),
+                        )
+                    else:
+                        sent = self._send_text(
+                            msg.sender_id, _tutor_result.answer_md,
+                            reply_to=msg.message_id,
+                        )
+                    return {
+                        "ok": bool(sent.get("ok")),
+                        "tutor": _tutor_result.esito,
+                        "card_ids": list(_tutor_result.card_ids),
+                    }
+        except Exception:
+            log.warning("Telegram tutor boundary failed", exc_info=True)
+            if not _has_pending:
+                _tutor_result = _tutor_unavailable_answer(
+                    has_pending=False)
+                sent = self._send_text(
+                    msg.sender_id, _tutor_result.answer_md,
+                    reply_to=msg.message_id,
+                )
+                return {
+                    "ok": bool(sent.get("ok")),
+                    "tutor": _tutor_result.esito,
+                    "card_ids": [],
+                }
+            _pending_tutor_error = _tutor_unavailable_answer(
+                has_pending=True)
+
+        if _pending_tutor_error is not None:
+            closed_pending = self._consume_closed_cap_reply(
+                msg, trusted_principal,
+                actor=str(trusted_principal.get("actor") or "host"),
+            )
+            if closed_pending is not None:
+                return closed_pending
+            sent = self._send_text(
+                msg.sender_id, _pending_tutor_error.answer_md,
+                reply_to=msg.message_id,
+            )
+            return {
+                "ok": bool(sent.get("ok")),
+                "tutor": _pending_tutor_error.esito,
+                "card_ids": [],
+            }
+
+        # A mixed Tutor answer creates an ordinary declarative dialog.  Help
+        # questions have already had a chance to pass through Tutor above;
+        # any remaining typed response is now consumed by that exact schema.
+        handoff_reply = self._consume_tutor_handoff_reply(
+            msg, trusted_principal)
+        if handoff_reply is not None:
+            return handoff_reply
 
         # Livello ReadOnly: nessuna azione, risposta cortese
         if existing.autonomy_level in LEVEL_BLOCKS_RUN:
@@ -1394,7 +2052,8 @@ class ChannelDaemon:
                     "level": existing.autonomy_level}
 
         log.info("turno: sender=%s level=%s text=%r",
-                 msg.sender_id, existing.autonomy_level, msg.text[:80])
+                 msg.sender_id, existing.autonomy_level,
+                 safe_incoming_text[:80])
         # Costruisci progress channel-specifico per UX su operazioni lunghe
         # (synt multistage, ~150 s). Su Telegram: bar Unicode con editMessageText
         # + sendChatAction("typing") in loop. Altri canali: NullProgress finche'
@@ -1416,15 +2075,12 @@ class ChannelDaemon:
         # Multilingue: keyword cancel da messages.py (IT+EN). Forward geocode
         # via nominatim_client (gia' usato da find_places).
         text_for_run = msg.text
-        # Multi-user (1/5/2026): risolvi actor logico dal pairing.
-        # Default "host" (MVP single-user, fallback in actor_resolver).
-        try:
-            # runtime/ già su sys.path (channels VIVE in runtime/).
-            from actor_resolver import resolve_actor as _resolve_actor
-            actor_for_pending = _resolve_actor(self.channel.name, msg.sender_id)
-        except Exception as ex:
-            log.warning("actor_resolver fallito, fallback host: %s", ex)
-            actor_for_pending = "host"
+        # L'actor è una sola etichetta; l'UUID del principal autenticato è la
+        # chiave di isolamento per ogni pending o posizione persistente.
+        actor_for_pending = str(
+            trusted_principal.get("actor") or "host")
+        location_owner_user_id = str(
+            trusted_principal.get("user_id") or "")
         # Channel key: stesso formato che l'handler di request_location_from_user
         # usa quando salva il pending (channel=run_turn.channel param, oggi
         # passato come self.channel.name dal daemon). NON includere sender_id:
@@ -1433,8 +2089,8 @@ class ChannelDaemon:
         try:
             # runtime/ già su sys.path (channels VIVE in runtime/).
             import location_request as _locreq
-            from messages import get as _msg
-            _loc_pending = _locreq.get_pending_for(actor_for_pending, loc_channel_key)
+            _loc_pending = _locreq.get_pending_for(
+                location_owner_user_id, loc_channel_key)
         except Exception as ex:
             log.warning("location_request lookup failed: %s", ex)
             _loc_pending = None
@@ -1445,6 +2101,7 @@ class ChannelDaemon:
                 resolved = _locreq.resolve(
                     _loc_pending["pending_id"],
                     lat=extra["lat"], lon=extra["lon"],
+                    owner_user_id=location_owner_user_id,
                     source="telegram_share", accuracy=extra.get("accuracy"),
                 )
                 if resolved.get("status") == "resolved":
@@ -1463,7 +2120,9 @@ class ChannelDaemon:
                 txt = (msg.text or "").strip()
                 cancel_kws = set(_msg("MSG_LOCATION_CANCEL_KEYWORDS").split("|"))
                 if txt.lower() in cancel_kws:
-                    _locreq.cancel(_loc_pending["pending_id"])
+                    _locreq.cancel(
+                        _loc_pending["pending_id"],
+                        owner_user_id=location_owner_user_id)
                     if self.channel.name == "telegram":
                         try:
                             self.channel.clear_keyboard(
@@ -1479,6 +2138,7 @@ class ChannelDaemon:
                     resolved = _locreq.resolve(
                         _loc_pending["pending_id"],
                         lat=geo["lat"], lon=geo["lon"],
+                        owner_user_id=location_owner_user_id,
                         source=geo["source"],
                     )
                     if resolved.get("status") == "resolved":
@@ -1500,8 +2160,24 @@ class ChannelDaemon:
                                      reply_to=msg.message_id)
                     return {"ok": False, "reason": "geocode_failed", "text": txt[:80]}
         elif (msg.extra or {}).get("kind") == "location_share":
-            # location share senza pending dialog: solo aggiornamento background
-            # (gia' registrato in poll() via record_location). Niente turno.
+            # Location spontanea: persistenza soltanto qui, dopo autenticazione
+            # e sotto owner_session. Il transport non associa mai un sender
+            # non pairato all'host.
+            try:
+                from location_store import record_location
+                extra = msg.extra or {}
+                record_location(
+                    owner_user_id=location_owner_user_id,
+                    actor=actor_for_pending,
+                    channel=self.channel.name,
+                    lat=extra["lat"], lon=extra["lon"],
+                    accuracy=extra.get("accuracy"),
+                    source="telegram_share")
+            except Exception:
+                log.warning("authenticated location persistence failed",
+                            exc_info=True)
+                return {"ok": False,
+                        "reason": "location_persistence_failed"}
             return {"ok": True, "location_share": "background_update"}
 
         # CAP EXPAND fase 2 (CLAUDE.md 2.11): se nel turno precedente abbiamo
@@ -1509,7 +2185,10 @@ class ChannelDaemon:
         # risponde "sì"/"yes" → ricostruisci la query originale forzando il
         # nuovo cap e rilancia. "No" / qualunque altro → cancella stato e
         # procedi normale con la nuova query.
-        pending = _cap_pending_load(msg.sender_id)
+        pending = _cap_pending_load(
+            msg.sender_id,
+            owner_user_id=str(trusted_principal.get("user_id") or ""),
+        )
         if pending:
             p = pending["proposal"]
             # Caso speciale get_inputs (ADR 0090): dialogo strutturato
@@ -1521,6 +2200,8 @@ class ChannelDaemon:
                 reply, retry_original, summary = self._consume_get_inputs_response(
                     p, msg.text, actor=actor_for_pending,
                     sender_id=msg.sender_id,
+                    owner_user_id=str(
+                        trusted_principal.get("user_id") or ""),
                 )
                 if reply is not None:
                     self._send_text(msg.sender_id, reply,
@@ -1538,6 +2219,8 @@ class ChannelDaemon:
                         _state = _dp.load_pending(
                             p.get("sender_for_state") or msg.sender_id,
                             p.get("dialog_id") or "",
+                            owner_user_id=str(
+                                trusted_principal.get("user_id") or ""),
                         ) or {}
                     except Exception as ex:
                         log.warning("dialog_pending lookup failed: %s", ex)
@@ -1586,13 +2269,22 @@ class ChannelDaemon:
                     # admin con il consent_token firmato, sudoer esegue,
                     # restituisci summary all'utente.
                     _cap_pending_clear(msg.sender_id)
-                    answer = self._consume_admin_approval(p, actor=actor_for_pending)
+                    answer = self._consume_admin_approval(
+                        p, actor=actor_for_pending,
+                        owner_user_id=str(
+                            trusted_principal.get("user_id") or ""))
                     self._send_text(msg.sender_id, answer,
                                      reply_to=getattr(msg, "message_id", None))
                     return {"ok": True, "admin_approval_yes": True}
-                _cap_pending_clear(msg.sender_id)
                 if ans == "no":
+                    _cap_pending_clear(msg.sender_id)
                     log.info("cap_pending: admin_approval no -> stato pulito")
+                    sent = self._send_text(
+                        msg.sender_id, _msg("MSG_CAP_PROPOSAL_DECLINED"),
+                        reply_to=getattr(msg, "message_id", None),
+                    )
+                    return {"ok": bool(sent.get("ok")),
+                            "admin_approval_no": True}
             elif p.get("kind") == "approval_required":
                 # find_images_indices build approval: pattern bespoke
                 # superstite (non migrato a get_inputs in questo sprint).
@@ -1600,14 +2292,23 @@ class ChannelDaemon:
                 ans = _classify_yes_no(msg.text)
                 if ans == "yes":
                     _cap_pending_clear(msg.sender_id)
-                    answer = self._consume_approval_required(p, actor=actor_for_pending)
+                    answer = self._consume_approval_required(
+                        p, actor=actor_for_pending,
+                        owner_user_id=str(
+                            trusted_principal.get("user_id") or ""))
                     if answer:
                         self._send_text(msg.sender_id, answer,
                                          reply_to=getattr(msg, "message_id", None))
                     return {"ok": True, "approval_required_yes": True}
-                _cap_pending_clear(msg.sender_id)
                 if ans == "no":
+                    _cap_pending_clear(msg.sender_id)
                     log.info("cap_pending: approval_required no -> stato pulito")
+                    sent = self._send_text(
+                        msg.sender_id, _msg("MSG_CAP_PROPOSAL_DECLINED"),
+                        reply_to=getattr(msg, "message_id", None),
+                    )
+                    return {"ok": bool(sent.get("ok")),
+                            "approval_required_no": True}
             else:
                 # Kind sconosciuto: scarta lo stato e procedi normalmente.
                 log.warning("cap_pending: kind sconosciuto %r -> scarto",
@@ -1615,6 +2316,13 @@ class ChannelDaemon:
                 _cap_pending_clear(msg.sender_id)
         try:
             run_turn = self._resolve_run_turn()
+            # All trusted pending consumers have run. From this line onward,
+            # neither planner nor logs receive a raw credential value.
+            import agent_runtime as _credential_runtime
+            text_for_run, credential_meta, prepared_fields = (
+                _credential_runtime.prepare_credentials_for_routing(
+                    text_for_run)
+            )
             # Reference images ADR 0092: foto allegate al turno (caption +
             # photo Telegram). Passa al run_turn per inietto step 0 virtuale.
             ref_imgs = list((msg.extra or {}).get("attached_images") or [])
@@ -1630,12 +2338,23 @@ class ChannelDaemon:
             turn = run_turn(text_for_run, progress=progress,
                              actor=actor_for_pending,
                              channel=self.channel.name,
+                             owner_user_id=str(
+                                 trusted_principal.get("user_id") or
+                                 actor_for_pending),
+                             conversation_id=msg.sender_id,
+                             credential_meta=credential_meta,
+                             credentials_prepared=True,
+                             redacted_fields=prepared_fields,
                              reference_images=ref_imgs or None)
             answer = _format_turn_result(turn)
             # Salva pending se il turno ha proposto cap expand.
             if getattr(turn, "expandable_caps", None):
-                _cap_pending_save(msg.sender_id, msg.text, turn.expandable_caps[0],
-                                  turn.turn_id)
+                _cap_pending_save(msg.sender_id, text_for_run,
+                                  turn.expandable_caps[0],
+                                  turn.turn_id,
+                                  owner_user_id=str(
+                                      trusted_principal.get("user_id") or
+                                      actor_for_pending))
         except Exception as e:
             log.exception("run_turn fallito")
             answer = _msg("ERR_TURN_INTERNAL", detail=f"{type(e).__name__}: {e}")
@@ -1689,7 +2408,10 @@ class ChannelDaemon:
             for i in range(0, n_total, CHUNK):
                 chunk = atts[i:i+CHUNK]
                 start, end = i + 1, i + len(chunk)
-                caption = f"Foto {start}-{end} di {n_total} per la tua query"
+                caption = _msg(
+                    "MSG_TELEGRAM_PHOTO_BATCH_CAPTION",
+                    start=start, end=end, total=n_total,
+                )
                 try:
                     mg = self.channel.send_media_group(
                         chat_id=msg.sender_id,
@@ -1712,7 +2434,8 @@ class ChannelDaemon:
                 gallery_url = f"http://{host}:{port}/agent/gallery/{turn.turn_id}"
                 # Append link in coda al final answer testuale
                 answer = (answer or "").rstrip()
-                answer += f"\n\n📷 Gallery completa: {gallery_url}"
+                answer += "\n\n" + _msg(
+                    "MSG_TELEGRAM_GALLERY_LINK", url=gallery_url)
             except Exception as ex:
                 log.debug("gallery url append failed: %s", ex)
         # Catena di consegna del final answer all'utente, ROBUSTA per costruzione:
@@ -1748,6 +2471,8 @@ class ChannelDaemon:
                 )
                 first_step_buttons, preview_step = keyboard_for_proposal(
                     p0, sender_candidates=candidates,
+                    owner_user_id=str(
+                        trusted_principal.get("user_id") or ""),
                     turn_id=getattr(turn, "turn_id", None),
                 )
                 # PR5: choice_with_preview → manda album thumb prima del
@@ -1820,7 +2545,28 @@ class ChannelDaemon:
                 time.sleep(5)
                 continue
             for m in messages:
-                self.handle_message(m)
+                # Alcuni update Telegram non hanno contenuto azionabile, ma
+                # devono comunque avanzare l'offset senza entrare nel planner.
+                transport_noop = (m.extra or {}).get("kind") == "transport_noop"
+                try:
+                    if not transport_noop:
+                        self.handle_message(m)
+                except Exception:
+                    # Non confermare questo update né quelli successivi del
+                    # batch: il prossimo poll riparte dall'ultimo ack durabile.
+                    log.exception("handle_message fallito; update non confermato")
+                    time.sleep(1)
+                    break
+                ack = getattr(self.channel, "ack", None)
+                if callable(ack):
+                    try:
+                        acknowledged = bool(ack(m))
+                    except Exception:
+                        acknowledged = False
+                        log.exception("ack canale fallito")
+                    if not acknowledged:
+                        log.error("ack canale rifiutato; fermo il batch")
+                        break
             # Sweep media_group buffer: gruppi con last_seen + TTL < now sono
             # pronti per il run_turn. Il "carrier" della query e' il primo
             # messaggio (caption / first_msg_id), gli attached_images

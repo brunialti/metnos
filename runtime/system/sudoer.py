@@ -376,7 +376,7 @@ def _spawn(
         # before consume), ensure the buffer is released.
         if secret is not None and not secret.is_consumed:
             try:
-                with secret.consume() as _pwd:
+                with secret.consume():
                     pass  # immediate zeroing
             except Exception:
                 pass

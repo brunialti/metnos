@@ -77,20 +77,44 @@ NON_CACHEABLE_TOOLS = frozenset({"undo_last_turn", "get_inputs",
 _ABS_TEMPORAL_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 
 
+def _absolute_temporal_literals(
+        framework: Framework) -> list[tuple[str, str, str]]:
+    """Ritorna ``(tool, arg_path, data)`` per i literal temporali assoluti.
+
+    Conserva la stessa policy fail-closed di ``_has_absolute_temporal_literal``
+    ma rende osservabile *quale* argomento ha impedito il record. Non include
+    il valore completo (può contenere dati utente), soltanto tool, percorso
+    strutturale e match ISO.
+    """
+    found: list[tuple[str, str, str]] = []
+
+    def _scan(v, tool: str, path: str) -> None:
+        if isinstance(v, str):
+            if "${" not in v:
+                found.extend((tool, path, match.group(0))
+                             for match in _ABS_TEMPORAL_RE.finditer(v))
+            return
+        if isinstance(v, list):
+            for index, item in enumerate(v):
+                _scan(item, tool, f"{path}[{index}]")
+            return
+        if isinstance(v, dict):
+            for key, item in v.items():
+                child = f"{path}.{key}" if path else str(key)
+                _scan(item, tool, child)
+
+    for step in framework.steps:
+        if step.args:
+            _scan(step.args, step.tool or "", "args")
+    return found
+
+
 def _has_absolute_temporal_literal(framework: Framework) -> bool:
     """True se un arg LITERAL (non placeholder ${...}) di uno step contiene
     una data ISO assoluta. Scansione ricorsiva di str/list/dict (§7.9,
     nessun LLM). Il final_message non è scandito: i template usano
     ${stepN.x} e si risolvono a runtime."""
-    def _scan(v) -> bool:
-        if isinstance(v, str):
-            return "${" not in v and bool(_ABS_TEMPORAL_RE.search(v))
-        if isinstance(v, list):
-            return any(_scan(x) for x in v)
-        if isinstance(v, dict):
-            return any(_scan(x) for x in v.values())
-        return False
-    return any(_scan(s.args) for s in framework.steps if s.args)
+    return bool(_absolute_temporal_literals(framework))
 
 
 from timefmt import now_iso_z as _now_iso
@@ -296,9 +320,11 @@ def record_success(query: str, framework: Framework, *,
         return 0
     if NON_CACHEABLE_TOOLS.intersection(exec_steps):
         return 0
-    if _has_absolute_temporal_literal(framework):
+    absolute_literals = _absolute_temporal_literals(framework)
+    if absolute_literals:
         log.info("fastpath: skip record (literal temporale assoluto nel "
-                 "piano: il replay sarebbe stantio)")
+                 "piano: il replay sarebbe stantio) evidence=%s",
+                 absolute_literals[:5])
         return 0
     canonical = _cluster.normalize_query(query)
     h = _cluster.normalize_hash(query)
@@ -543,7 +569,7 @@ def _prefilter_supersedes(canonical_text: str, iverb: str, iobj: str,
     Esegue il prefilter di routing (prefilter.rank_with_intent — §7.9
     deterministico, NESSUN LLM) sulla query canonica del fastpath: se ORA
     mette in cima un SINGOLO executor che implementa l'intent verb_object
-    (verbo esatto o sibling _VERB_ALSO_CANONICAL, object nei name-parts)
+    (`prefilter.implements_intent_verb`, object nei name-parts)
     mentre il piano del fastpath è multi-step e NON usa quella famiglia →
     il fastpath è SUPERATO. Chiude i falsi-negativi del match name-based:
     un equivalente con NOME DIVERSO (es. create_files_spreadsheet per
@@ -566,8 +592,7 @@ def _prefilter_supersedes(canonical_text: str, iverb: str, iobj: str,
         return ""
     top = getattr(ranked[0], "name", "") or ""
     parts = top.split("_")
-    siblings = getattr(_pf, "_VERB_ALSO_CANONICAL", {}).get(iverb, ())
-    if not parts or (parts[0] != iverb and parts[0] not in siblings):
+    if not parts or not _pf.implements_intent_verb(parts[0], iverb):
         return ""  # top-1 da injection (precursor/admin/get_now): non
         #            implementa l'intent → nessuna morte
     if iobj not in parts:

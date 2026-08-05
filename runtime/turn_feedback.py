@@ -22,6 +22,7 @@ Determinismo §7.9. Storage append-only JSONL.
 from __future__ import annotations
 
 import json
+import functools
 import time
 from typing import Optional
 
@@ -95,6 +96,20 @@ def _was_fast_path_hit(turn: dict) -> bool:
     )
 
 
+def _owner_scoped_feedback(function):
+    @functools.wraps(function)
+    def guarded(turn_id: str, *args, **kwargs):
+        turn = _load_turn(turn_id)
+        owner = str((turn or {}).get("owner_user_id") or "")
+        if not owner:
+            return function(turn_id, *args, **kwargs)
+        from user_lifecycle import owner_session
+        with owner_session(owner):
+            return function(turn_id, *args, **kwargs)
+    return guarded
+
+
+@_owner_scoped_feedback
 def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
     """Applica il feedback. Persistente in FEEDBACK_PATH e propaga gli
     effetti (E12 demote executor, verdict a engine.autopath).
@@ -203,6 +218,35 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
                 effects.append({"type": "praxis_feedback", **_out})
     except Exception as ex:
         log.warning("turn_feedback: autopath hook failed: %r", ex)
+
+    # ── Tutor F4 feedback ─────────────────────────────────────────────
+    # The hook receives the already access-controlled turn and never the raw
+    # query: it promotes/removes only per-user source associations retained by
+    # the Tutor's short-lived evidence ledger.
+    try:
+        if turn.get("mode") == "tutor":
+            from tutor.gaps import apply_feedback as _tutor_feedback
+            tutor_effects = tuple(_tutor_feedback(turn, action))
+            effects.extend(tutor_effects)
+            statuses = {
+                str(effect.get("status") or "")
+                for effect in tutor_effects if isinstance(effect, dict)
+            }
+            record["tutor_feedback_status"] = (
+                "already_applied" if "already_applied" in statuses
+                else "applied" if "applied" in statuses
+                else "not_applicable"
+            )
+    except Exception as ex:
+        log.warning("turn_feedback: Tutor F4 hook failed: %r", ex)
+        # The generic feedback audit can still be retained, but callers must
+        # never infer that the Tutor learning mutation succeeded.
+        record["tutor_feedback_status"] = "failed"
+        effects.append({
+            "type": "tutor_feedback",
+            "status": "failed",
+            "error": "learning_store_unavailable",
+        })
 
     _append_feedback(record)
     return record
@@ -367,5 +411,3 @@ def reset_rejected_for_query(user_query: str) -> int:
         _append_feedback(rec)
         count += 1
     return count
-
-

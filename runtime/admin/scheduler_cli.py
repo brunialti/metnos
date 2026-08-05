@@ -43,7 +43,7 @@ def _fmt_ts(ts: str | None) -> str:
 
 def cmd_list(args):
     rows = sched_client.list_jobs()
-    user_recs = {f"user_{r['name']}": r for r in list_user_tasks()}
+    user_recs = {r["scheduler_name"]: r for r in list_user_tasks()}
     print(f"  {'NAME':22s} {'TRIGGER':14s} {'EN':2s} {'LAST_FIRE':12s} {'STATUS':8s} {'KIND':5s}")
     print(f"  {'-'*22} {'-'*14} {'-'*2} {'-'*12} {'-'*8} {'-'*5}")
     n = 0
@@ -84,12 +84,12 @@ def cmd_show(args):
     print(f"last_error:   {(r.get('last_error') or '')[:300]}")
     print(f"total_runs:   {r.get('total_runs')}  failures: {r.get('total_failures')}")
     if args.name.startswith("user_"):
-        user_name = args.name[len("user_"):]
-        urs = [u for u in list_user_tasks() if u["name"] == user_name]
+        urs = [u for u in list_user_tasks()
+               if u["scheduler_name"] == args.name]
         if urs:
             ur = urs[0]
             print()
-            print(f"--- recurring user record ---")
+            print("--- recurring user record ---")
             for k in ("label", "query", "actor", "channel", "chat_id", "callback_key", "created_at"):
                 print(f"  {k}: {ur.get(k)}")
 
@@ -108,7 +108,19 @@ def cmd_history(args):
 
 
 def cmd_enable(args):
-    ok = sched_client.toggle_job(args.name, True)
+    from recurring_tasks import (
+        get_user_task_by_scheduler_name_admin,
+        set_user_scheduler_enabled,
+    )
+    record = get_user_task_by_scheduler_name_admin(args.name)
+    if record is not None:
+        ok = set_user_scheduler_enabled(
+            args.name, True,
+            owner_user_id=str(record.get("owner_user_id") or ""),
+            resume=True,
+        )
+    else:
+        ok = sched_client.toggle_job(args.name, True)
     if not ok:
         print(f"task '{args.name}' non trovato", file=sys.stderr)
         sys.exit(1)
@@ -116,7 +128,18 @@ def cmd_enable(args):
 
 
 def cmd_disable(args):
-    ok = sched_client.toggle_job(args.name, False)
+    from recurring_tasks import (
+        get_user_task_by_scheduler_name_admin,
+        set_user_scheduler_enabled,
+    )
+    record = get_user_task_by_scheduler_name_admin(args.name)
+    if record is not None:
+        ok = set_user_scheduler_enabled(
+            args.name, False,
+            owner_user_id=str(record.get("owner_user_id") or ""),
+        )
+    else:
+        ok = sched_client.toggle_job(args.name, False)
     if not ok:
         print(f"task '{args.name}' non trovato", file=sys.stderr)
         sys.exit(1)
@@ -125,15 +148,29 @@ def cmd_disable(args):
 
 def cmd_cancel(args):
     if not args.name.startswith("user_"):
-        print(f"ERR: cancel funziona solo su recurring user tasks (prefisso 'user_'). "
-              f"Per disabilitare task di sistema usa `disable`.", file=sys.stderr)
+        print("ERR: cancel funziona solo su recurring user tasks (prefisso 'user_'). "
+              "Per disabilitare task di sistema usa `disable`.", file=sys.stderr)
         sys.exit(2)
-    user_name = args.name[len("user_"):]
-    ok_db = cancel_user_task(user_name)  # admin cancel: no actor restrict
-    if not ok_db:
+    from recurring_tasks import get_user_task_by_scheduler_name_admin
+    record = get_user_task_by_scheduler_name_admin(args.name)
+    if record is None:
         print(f"task '{args.name}' non trovato in DB user", file=sys.stderr)
         sys.exit(1)
-    sched_client.cancel_job(args.name)
+    ok_db = cancel_user_task(
+        args.name, owner_user_id=str(record.get("owner_user_id") or ""))
+    if not ok_db:
+        print("cleanup registry fallito; scheduler lasciato invariato",
+              file=sys.stderr)
+        sys.exit(1)
+    try:
+        purged = sched_client.purge_jobs((args.name,))
+    except Exception as exc:
+        print(f"registry rimosso; scheduler purge failed: {exc}",
+              file=sys.stderr)
+        sys.exit(1)
+    if not purged.get("entries"):
+        print("registry rimosso; scheduler entry non trovata", file=sys.stderr)
+        sys.exit(1)
     print(f"cancelled: {args.name}")
 
 

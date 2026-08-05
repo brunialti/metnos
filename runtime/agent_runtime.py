@@ -41,6 +41,11 @@ from synt import Synt, make_request as synt_make_request
 import prompt_loader  # ADR 0092: prompt LLM in runtime/prompts/<lang>/
 import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
 from config import DEFAULT_TIMEZONE
+from credential_intake import (
+    credential_pair_matches,
+    is_password_label,
+    scrub_sensitive_text as _scrub_credentials,
+)
 
 # Executor che PRODUCONO un file deliverable (consegna su ogni canale §7.3).
 _FILE_PRODUCER_PREFIXES = ("create_", "write_", "render_", "compress_")
@@ -126,148 +131,6 @@ DEFAULT_CAP_SAME_EXECUTOR = 10
 # (cyclic-call, duplicate, vaglio).
 DEFAULT_CAP_MAX_PER_TURN = int(os.environ.get("METNOS_CAP_MAX_PER_TURN", "3") or "3")
 SCRATCHPAD_THRESHOLD_BYTES = 4096  # observation oltre questa dimensione vanno in scratchpad
-
-
-# Scrubbing credenziali nel turn log (ADR 0082, 4/5/2026).
-# I pattern si applicano DOPO che il PLANNER ha gia' processato la query
-# (le credenziali restano in RAM per il turn). Output jsonl pulito.
-# Separatore OBBLIGATORIO ([:=] o spazio) fra chiave e valore: con [:=]?
-# opzionale, "C:\\Users\\rober\\..." matchava «User»+«s\\rober\\...» → i path
-# Windows nei turn record diventavano `C:\\User<REDACTED:cred>` (falso
-# positivo, 6/7). Una coppia user/password REALE ha sempre un separatore.
-_CRED_RE = re.compile(
-    r"(\bp(?:wd|assword|sw|ass)\s*(?:[:=]\s*|\s+))(\S+)", re.IGNORECASE
-)
-_USER_RE = re.compile(
-    r"(\bu(?:sername|ser|name|tente)\s*(?:[:=]\s*|\s+))(\S+)", re.IGNORECASE
-)
-_OTP_RE = re.compile(
-    r"(\b(?:otp|2fa|one[- ]time code|verification code|"
-    r"codice(?: otp| 2fa| di verifica)?)\s*(?:[:=]\s*|\s+))(\S+)",
-    re.IGNORECASE,
-)
-
-
-# --- Think budget modulation per planner step (19/5/2026) ------------------
-# Pattern A+B (manifest [planning] complexity + verb-of-name fallback).
-# Bench del modello locale 19/5/2026 + euristica Roberto:
-#  - Exec deterministico: think=False, budget=0.
-#  - Binary contestuale: think=True, budget=64-128.
-#  - Tool calling pool ≤5: think=True, budget=256.
-#  - Tool calling pool 6-15: think=True, budget=512.
-#  - Tool calling pool >15: think=True, budget=768.
-#  - Code generation (synt stage 5): think=True, budget=1024+.
-# NOTA: skip think (False) NON e' implementabile per tool-calling: bench
-# 19/5 ha dimostrato che il planner sceglie tool sbagliato senza reasoning
-# → loop_break. Quindi la modulazione e' SOLO sul budget.
-# Vedi [[feedback_thinking_budget_heuristic]] e
-# [[metnos_todo_high_think_per_model]] (validazione cross-model pendente).
-
-# Verbi a bassa complessita' decisionale: tool-calling diretto.
-# Le 3 categorie (low/medium/high) derivano dal verbo del name se il
-# manifest non dichiara [planning] complexity (Pattern B).
-_VERB_COMPLEXITY = {
-    # Low: producer/snapshot deterministici, scelta tool ovvia se prefilter ok.
-    "get": "low", "read": "low", "list": "low", "find": "low",
-    # Medium: filtri/computi/comparazioni (richiedono valutazione predicato).
-    "filter": "medium", "sort": "medium", "group": "medium",
-    "classify": "medium", "describe": "medium", "compare": "medium",
-    "compute": "medium", "order": "medium",
-    # High: mutating + extract + creare = rischio + creativita'.
-    "write": "high", "move": "high", "delete": "high", "create": "high",
-    "send": "high", "change": "high", "extract": "high", "share": "high",
-    "set": "high",
-}
-
-# Budget tokens per (complexity, pool_size_bucket).
-# Euristica Roberto 19/5: tool-call (pattern matching NL→template) ha bisogno
-# di thinking ma non troppo. Il budget cresce un po' (ma non troppo) col
-# pool size. Scaling moderato — bench 19/5 ha mostrato che budget aggressivi
-# bassi causano scelta tool sbagliato (request_new_executor invece di
-# write_files allo step 3).
-_BUDGET_TABLE = {
-    # (complexity, pool_bucket): budget
-    ("low",    "small"):  256,   # pool ≤5
-    ("low",    "medium"): 320,   # pool 6-15 (+25%)
-    ("low",    "large"):  384,   # pool >15 (+50% vs small)
-    ("medium", "small"):  320,
-    ("medium", "medium"): 384,
-    ("medium", "large"):  512,
-    ("high",   "small"):  384,
-    ("high",   "medium"): 512,
-    ("high",   "large"):  640,
-}
-
-
-def _infer_complexity_from_name(name: str) -> str:
-    """Pattern B: fallback automatico dal verbo del name. Producer
-    (get/read/find/list) → low; filtri/compute → medium; mutating → high.
-    """
-    verb = name.split("_", 1)[0]
-    return _VERB_COMPLEXITY.get(verb, "medium")
-
-
-def _pool_size_bucket(n: int) -> str:
-    if n <= 5:
-        return "small"
-    if n <= 15:
-        return "medium"
-    return "large"
-
-
-def _decide_reasoning_budget(candidates, tools_for_step, step_num, loop_start_step):
-    """Determina il reasoning_budget per questo planner call basato su:
-    (1) step_num: step 1 forza complexity=medium (cascata multi-step composto
-        non e' nota dal prefilter; budget basato solo su top-1 sottostima);
-    (2) step 2+: complexity dal prefilter top-1 (manifest [planning] o
-        inferred via verb);
-    (3) dimensione del pool tools_for_step (small/medium/large).
-
-    Ritorna l'int reasoning_budget per LlamaCppProvider.
-
-    Bench 19/5: step 1 con complexity=low (inferred da producer top-1)
-    causava planner cascade sbagliata su query multi-step "scarica e salva"
-    (sceglieva read_urls_html invece della pipeline corretta). Step 1 ottiene
-    sempre medium + 50% boost. Sostituisce formula dyn legacy step1=768/step2+=256.
-    """
-    pool_bucket = _pool_size_bucket(len(tools_for_step or []))
-
-    is_step1 = (step_num == loop_start_step)
-    if is_step1:
-        # Step 1: complexity forzata medium (decisione di cascata multi-step).
-        complexity = "medium"
-    elif not candidates:
-        complexity = "medium"
-    else:
-        top1 = candidates[0]
-        complexity = getattr(top1, "complexity", "") or _infer_complexity_from_name(top1.name)
-
-    base = _BUDGET_TABLE.get((complexity, pool_bucket), 384)
-
-    # Step 1 boost: pool grande, history vuota, decisione di cascata.
-    if is_step1:
-        base = int(base * 1.5)
-
-    return base
-
-
-def _scrub_credentials(text: str) -> tuple[str, int]:
-    """Sostituisce match di password/username inline con `<REDACTED:cred>`.
-
-    Ritorna (testo_pulito, n_match). Idempotente: re-applicare e' no-op
-    perche' `<REDACTED:cred>` non matcha gli stessi pattern.
-    """
-    if not isinstance(text, str) or not text:
-        return text, 0
-    n_matches = 0
-    def _r(m):
-        nonlocal n_matches
-        n_matches += 1
-        return m.group(1) + "<REDACTED:cred>"
-    cleaned = _CRED_RE.sub(_r, text)
-    cleaned = _USER_RE.sub(_r, cleaned)
-    cleaned = _OTP_RE.sub(_r, cleaned)
-    return cleaned, n_matches
 
 
 # Anti thinking-leak (ADR 0102, 7/5/2026). Il modello locale con think=true a volte
@@ -647,51 +510,6 @@ def _scrub_args_recursive(node, total: list[int]) -> object:
 # Usiamo finditer per ricavare gli offset esatti (per scrubbing offsets).
 # Le keyword sono ordinate per lunghezza (LONGEST FIRST) per evitare match
 # parziali tipo "user" che taglia "username" ⇒ value="name:carlo".
-_CREDENTIAL_LABEL_FALLBACK = {
-    "username": ["username", "user id", "userid", "utente", "nome utente",
-                 "user", "usr", "email", "e-mail", "login"],
-    "password": ["password", "passwd", "passphrase", "pwd", "psw", "pass"],
-}
-_CREDENTIAL_CONNECTOR_FALLBACK = ["e", "con", "and", "with"]
-_CREDENTIAL_VALUE = r'(?:"[^"\r\n]+"|\'[^\'\r\n]+\'|[^\s,;]+)'
-
-
-def _forms_pattern(forms: list[str]) -> str:
-    """Alternativa regex senza capture, longest-first e whitespace flessibile."""
-    escaped = []
-    for form in sorted(set(forms), key=len, reverse=True):
-        escaped.append(re.escape(form).replace(r"\ ", r"\s+"))
-    return r"(?<!\w)(?:" + "|".join(escaped) + r")(?!\w)"
-
-
-@functools.lru_cache(maxsize=8)
-def _credential_pair_patterns(lang: str) -> tuple[re.Pattern, re.Pattern]:
-    labels = _detlex.mapping("credentials.field_label")
-    users = labels.get("username") or _CREDENTIAL_LABEL_FALLBACK["username"]
-    passwords = labels.get("password") or _CREDENTIAL_LABEL_FALLBACK["password"]
-    connectors = (_detlex.forms("credentials.pair_connector")
-                  or _CREDENTIAL_CONNECTOR_FALLBACK)
-    user_pattern = _forms_pattern(users)
-    password_pattern = _forms_pattern(passwords)
-    connector_pattern = _forms_pattern(connectors)
-    separator = (
-        rf"(?:\s*[,;/|]\s*|\s+{connector_pattern}\s+|\s+)"
-    )
-    user_then_password = re.compile(
-        rf"({user_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})"
-        rf"(?:{separator})*"
-        rf"({password_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})",
-        re.IGNORECASE,
-    )
-    password_then_user = re.compile(
-        rf"({password_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})"
-        rf"(?:{separator})*"
-        rf"({user_pattern})\s*[:=]?\s*({_CREDENTIAL_VALUE})",
-        re.IGNORECASE,
-    )
-    return user_then_password, password_then_user
-
-
 def _clean_credential_value(value: str) -> str:
     value = value.strip()
     if (len(value) >= 2 and value[0] == value[-1]
@@ -796,11 +614,8 @@ def extract_credentials(query: str) -> list[dict]:
     """
     if not isinstance(query, str) or not query.strip():
         return []
-    user_then_password, password_then_user = _credential_pair_patterns(
-        _detlex.current_lang())
-    user_matches = list(user_then_password.finditer(query))
-    password_matches = list(password_then_user.finditer(query))
-    if not user_matches and not password_matches:
+    pair_matches = credential_pair_matches(query, for_storage=True)
+    if not pair_matches:
         return []
 
     binding = detect_binding(query)
@@ -840,16 +655,15 @@ def extract_credentials(query: str) -> list[dict]:
             "scrub_spans": list(spans),
         })
 
-    for m in user_matches:
-        # group 2 = user value, group 4 = pwd value
-        user_val = _clean_credential_value(m.group(2))
-        pwd_val = _clean_credential_value(m.group(4))
-        # Scrub spans: solo i VALUE, non le keyword (per leggibilita').
-        spans = [(m.start(2), m.end(2)), (m.start(4), m.end(4))]
-        _add(user_val, pwd_val, spans)
-    for m in password_matches:
-        pwd_val = _clean_credential_value(m.group(2))
-        user_val = _clean_credential_value(m.group(4))
+    for m in pair_matches:
+        first_label = m.group(1).casefold()
+        first_is_password = is_password_label(first_label)
+        if first_is_password:
+            pwd_val = _clean_credential_value(m.group(2))
+            user_val = _clean_credential_value(m.group(4))
+        else:
+            user_val = _clean_credential_value(m.group(2))
+            pwd_val = _clean_credential_value(m.group(4))
         spans = [(m.start(2), m.end(2)), (m.start(4), m.end(4))]
         _add(user_val, pwd_val, spans)
 
@@ -873,7 +687,8 @@ def _redact_spans(text: str, spans: list[tuple[int, int]], domain: str) -> str:
     return out
 
 
-def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
+def prepare_credentials_for_routing(
+        query: str) -> tuple[str, list[dict], int]:
     """Strato 1 del flow UX credenziali (ADR 0089).
 
     1. Estrae credenziali dalla query con `extract_credentials`.
@@ -883,48 +698,56 @@ def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
        contiene solo domain + context (NON username/password) ed e'
        sicura da iniettare nel context del PLANNER.
     """
-    creds = extract_credentials(query or "")
-    if not creds:
-        return query, []
+    original = query or ""
+    creds = extract_credentials(original)
+    redacted = original
+    safe_meta: list[dict] = []
+    all_spans: list[tuple[int, int]] = [
+        tuple(span)
+        for credential in creds
+        for span in (credential.get("scrub_spans") or [])
+    ]
+    if all_spans:
+        # Redaction is independent from storage availability: a missing
+        # keyring can make the operation unavailable, never expose the value.
+        redacted = _redact_spans(
+            original, all_spans, creds[0]["domain"])
     try:
         import credentials  # type: ignore
     except ImportError:
-        return query, []
-    redacted = query
-    safe_meta: list[dict] = []
-    # Aggrega tutti gli scrub span (l'estrazione produce piu' record
-    # con stesso domain — gli span vanno comunque rimpiazzati tutti).
-    all_spans: list[tuple[int, int]] = []
-    for c in creds:
-        for s in c.get("scrub_spans") or []:
-            all_spans.append(tuple(s))
-        try:
-            credentials.store(
-                c["domain"],
-                {
-                    "username": c["username"],
-                    "password": c["password"],
-                    # Authority is selected in a secret-free form before the
-                    # binding can be used unattended.
-                    "scopes": [],
-                    **{k: v for k, v in (c.get("context") or {}).items()
-                       if k in ("binding", "host", "share", "workgroup", "port")},
-                },
-            )
-        except (ValueError, OSError, FileNotFoundError):
-            # Storage fallito: log lo stato ma scrubbamo lo stesso il testo
-            # (priorita': non leakare la pwd anche se non riusciamo a salvarla).
-            continue
-        safe_meta.append({
-            "domain": c["domain"],
-            "context": dict(c.get("context") or {}),
-            "mandate_pending": True,
-        })
-    if all_spans:
-        # Per il redact uso il primo dominio come tag, ma ogni run cattura
-        # un solo dominio per query nella pratica (un solo host).
-        primary_domain = creds[0]["domain"]
-        redacted = _redact_spans(query, all_spans, primary_domain)
+        credentials = None
+    if credentials is not None:
+        for c in creds:
+            try:
+                credentials.store(
+                    c["domain"],
+                    {
+                        "username": c["username"],
+                        "password": c["password"],
+                        # Authority is selected in a secret-free form before
+                        # the binding can be used unattended.
+                        "scopes": [],
+                        **{k: v for k, v in (c.get("context") or {}).items()
+                           if k in ("binding", "host", "share", "workgroup",
+                                    "port")},
+                    },
+                )
+            except (ValueError, OSError, FileNotFoundError):
+                # Storage failure cannot weaken redaction.
+                continue
+            safe_meta.append({
+                "domain": c["domain"],
+                "context": dict(c.get("context") or {}),
+                "mandate_pending": True,
+            })
+    redacted, residual_count = _scrub_credentials(redacted)
+    return redacted, safe_meta, len(all_spans) + residual_count
+
+
+def apply_credentials_extraction(query: str) -> tuple[str, list[dict]]:
+    """Compatibility surface returning the canonical prepared query/meta."""
+
+    redacted, safe_meta, _count = prepare_credentials_for_routing(query)
     return redacted, safe_meta
 
 
@@ -1468,6 +1291,14 @@ def validate_args(args, schema):
             failures.append(
                 f"requires one of {group} (none provided non-empty)"
             )
+    from from_step_projection import required_source_context_fields
+    _missing_context = required_source_context_fields(
+        args, schema, allow_deferred_from_step=True)
+    if _missing_context:
+        failures.append(msg(
+            "ERR_SOURCE_CONTEXT_REQUIRED",
+            fields=", ".join(_missing_context),
+        ))
     # Placeholder value detection §7.3 (25/5/2026): property con
     # `forbid_placeholder_values: true` rifiuta valori sintetici tipo
     # "msg_1", "mail_2", "id_3" emessi dal PLANNER LLM quando inventa
@@ -2652,83 +2483,11 @@ def _lookup_field(obj, dotted):
     return cur, None
 
 
-def _consumer_match_arg(consumer_schema: dict | None, prev_entries: list) -> str | None:
-    """Layer 4 (5/5/2026): rileva l'arg consumer naturale per una lista
-    di entries, basandosi sulla convenzione I/O Metnos (plurale↔singolare).
-
-    Esempio: find_urls produce entries=[{url, title, ...}], read_urls_html
-    consuma `urls`. Match: arg `urls` → singolare `url` → presente in
-    entries[0] → estrai entries[*].url.
-
-    Caso degenere `prev_entries=[]`: non possiamo ispezionare entries[0],
-    quindi prendiamo come consumer arg il primo array required dello schema
-    (esclusi entries/from_step). Il caller iniettera' lista vuota — l'executor
-    decide se ok_count=0 o errore di dominio.
-
-    Ritorna il nome dell'arg consumer (string) o None se nessun match.
-    Esclude `entries` stesso (target di fallback gestito dal caller).
-    """
-    if not isinstance(consumer_schema, dict) or not isinstance(prev_entries, list):
-        return None
-    props = consumer_schema.get("properties") or {}
-    if not isinstance(props, dict):
-        return None
-    required = consumer_schema.get("required") or []
-    if not isinstance(required, list):
-        required = []
-
-    # Caso degenere: lista vuota. Prendi il primo array required, escludendo
-    # `entries`/`from_step`. Senza required, ritorna None → fallback `entries`.
-    if not prev_entries:
-        for arg_name in required:
-            if arg_name in ("entries", "from_step"):
-                continue
-            spec = props.get(arg_name)
-            if isinstance(spec, dict):
-                t = spec.get("type")
-                if t and t != "array":
-                    continue
-            return arg_name
-        return None
-
-    if not isinstance(prev_entries[0], dict):
-        return None
-    sample_keys = set(prev_entries[0].keys())
-    # Ranking: prima l'arg required (semantica piu' forte), poi alfabetico stabile.
-    candidates = []
-    for arg_name, spec in props.items():
-        if arg_name == "entries":
-            continue  # gestito dal fallback
-        if arg_name == "from_step":
-            continue
-        # Solo arg di tipo array: l'auto-espansione consegna una lista.
-        if isinstance(spec, dict):
-            t = spec.get("type")
-            if t and t != "array":
-                continue
-        # `from_entries_key` (25/5/2026) §7.3: dichiarazione esplicita di
-        # quale campo delle entries usare quando from_step espande in
-        # quest'arg. Risolve l'ambiguita' quando il singular naïve di
-        # arg_name punta a un campo non utile (es. move_messages.message_ids
-        # → singular "message_id" matcha RFC822 header invece dello UID
-        # IMAP usato dal backend). Manifest property opt-in.
-        from_key = (spec.get("from_entries_key")
-                    if isinstance(spec, dict) else None)
-        if isinstance(from_key, str) and from_key in sample_keys:
-            priority = 0 if arg_name in required else 1
-            # boost priorita' per dichiarazione esplicita
-            candidates.append((priority - 1, arg_name, from_key))
-            continue
-        # Singolare = arg.rstrip('s'). Match esatto contro un campo di entries[0].
-        singular = arg_name[:-1] if arg_name.endswith("s") and len(arg_name) > 1 else arg_name
-        if singular in sample_keys:
-            priority = 0 if arg_name in required else 1
-            candidates.append((priority, arg_name, singular))
-    if not candidates:
-        return None
-    # Sort: prima i required (priority=0), tie-break alfabetico.
-    candidates.sort(key=lambda t: (t[0], t[1]))
-    return candidates[0][1]  # nome arg consumer
+from from_step_projection import (  # noqa: E402
+    CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
+    consumer_match_arg as _consumer_match_arg,
+    project_from_entries as _project_from_entries,
+)
 
 
 def _expand_nested_from_step(args: dict, history: list) -> tuple[dict, list]:
@@ -2901,34 +2660,20 @@ def resolve_from_step(args, history, consumer_schema=None):
     prev_list = step_obs[list_field]
     new_args = dict(args)
     new_args.pop("from_step", None)
-    # Layer 4 (5/5/2026): consumer-arg auto-espansione. Se lo schema consumer
-    # ha un arg matchabile sul singolare di un campo di entries[0] e l'arg
-    # consumer non e' gia' presente in args, estrae i valori scalari.
-    consumer_arg = _consumer_match_arg(consumer_schema, prev_list)
-    if consumer_arg and consumer_arg not in new_args:
-        # Match key: prima `from_entries_key` (dichiarazione esplicita),
-        # fallback singular naïve.
-        match_key = None
-        if isinstance(consumer_schema, dict):
-            _spec = (consumer_schema.get("properties") or {}).get(consumer_arg)
-            if isinstance(_spec, dict):
-                fek = _spec.get("from_entries_key")
-                if isinstance(fek, str) and fek:
-                    match_key = fek
-        if not match_key:
-            match_key = (consumer_arg[:-1]
-                         if consumer_arg.endswith("s") and len(consumer_arg) > 1
-                         else consumer_arg)
-        values = []
-        for e in prev_list:
-            if isinstance(e, dict) and match_key in e:
-                v = e[match_key]
-                if v is not None:
-                    values.append(v)
-        new_args[consumer_arg] = values
+    # Proiezione condivisa col motore v3: payload vettoriale e contesto scalare
+    # omogeneo sono entrambi dichiarati nel manifest del consumer.
+    new_args, consumer_arg = _project_from_entries(
+        new_args, prev_list, consumer_schema)
+    context_errors = new_args.pop(_FROM_STEP_CONTEXT_ERRORS_KEY, None)
+    if isinstance(context_errors, list) and context_errors:
+        fields = ", ".join(sorted({
+            str(item.get("arg"))
+            for item in context_errors
+            if isinstance(item, dict) and item.get("arg")
+        })) or "?"
+        errors.append(msg("ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields))
+    if consumer_arg:
         return new_args, errors
-    # Fallback storico: inietta sotto `entries` (target standard universale).
-    new_args["entries"] = prev_list
     # Injection metadata upstream per executor che possono usare available_total
     # senza materializzare l'intera lista (es. compute_entries op=count su
     # find_files truncated: usa available_total invece di len(entries) capped).
@@ -3435,7 +3180,7 @@ def _detect_unbacked_artifact_claim(
 
 
 def _offer_defer_dialog(*, query, device_id, device_name, actor, channel,
-                        conversation_id, sender_id):
+                        conversation_id, sender_id, owner_user_id):
     """Fase 7 A.1: dialog yes_no «eseguo appena {device} torna online?».
 
     Riusa l'infrastruttura dialog_pending/gate: form web (INLINE_FORM),
@@ -3462,6 +3207,7 @@ def _offer_defer_dialog(*, query, device_id, device_name, actor, channel,
             "fmt_arg": "auto", "values_collected": {}, "step_index": 0,
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "actor": actor, "channel": channel,
+            "owner_user_id": owner_user_id,
             "timeout_s": 3600, "completed": False, "cancelled": False,
             "on_complete": {
                 "type": "defer_turn", "original_query": query,
@@ -3574,12 +3320,20 @@ _RUNTIME_ARG_SOURCES = {
     # ADR 0199 (rev. 24/7 sera): form credenziale dichiarati dai domini,
     # collezionati server-side e iniettati in `set_credentials`.
     "credential_forms": lambda: _import_credentials().credential_form_kinds(),
+    # The scheduler is co-hosted by the HTTP process.  Only that process can
+    # attest whether its asyncio task is alive and, when it is not, why.
+    "scheduler_health": lambda: _import_scheduler_health().snapshot(),
 }
 
 
 def _import_credentials():
     import credentials
     return credentials
+
+
+def _import_scheduler_health():
+    from scheduler_v2 import health
+    return health
 
 
 def _fill_runtime_sourced_args(executor, args: dict) -> dict:
@@ -3613,7 +3367,7 @@ def _fill_runtime_sourced_args(executor, args: dict) -> dict:
 
 def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised",
                           turn_id=None, actor=None, channel=None,
-                          target_device=None):
+                          target_device=None, owner_user_id=None):
     """Invoca un executor, opzionalmente in sandbox bubblewrap.
 
     Se `bwrap` e' installato e `METNOS_SANDBOX` non e' disabilitato,
@@ -3640,7 +3394,26 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         args["_channel"] = channel or ""
     if turn_id is not None or "_turn_id" in args:
         args["_turn_id"] = turn_id or ""
-    args = _fill_runtime_sourced_args(executor, args)
+
+    # Source-scoped identifiers (for example IMAP UIDs) are meaningless and
+    # potentially dangerous without the scalar context declared by the
+    # manifest.  Enforce that contract at the invocation choke-point so it
+    # also covers fast paths, resumes, async submission and validator-off
+    # deployments.  No executor name or provider is hardcoded here.
+    from from_step_projection import required_source_context_fields
+    _missing_source_context = required_source_context_fields(
+        args, getattr(executor, "args_schema", None),
+        allow_deferred_from_step=False,
+    )
+    if _missing_source_context:
+        _fields = ", ".join(_missing_source_context)
+        return {
+            "ok": False,
+            "error_class": "missing_source_context",
+            "error_code": "ERR_SOURCE_CONTEXT_REQUIRED",
+            "error": msg("ERR_SOURCE_CONTEXT_REQUIRED", fields=_fields),
+            "context_fields": _missing_source_context,
+        }
 
     # Il journal di undo e' runtime-owned. Un path proposto/replayato non deve
     # poter trasformare il broker in un interprete di journal arbitrari; il
@@ -3728,6 +3501,17 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
             _undo_done(_undo_op, _obs)
             return _obs
 
+    # Runtime-resolved values are server-owned observations or registries.
+    # Inject them only after placement has selected the server: otherwise a
+    # device-capable executor would carry server state to the remote machine
+    # and could report it as if it belonged to that device.
+    args = _fill_runtime_sourced_args(executor, args)
+
+    # Resolve manifest-declared local read paths only after placement chose
+    # this server.  Cached plans keep logical/user paths; the concrete path is
+    # per-host execution state and must match the exact bubblewrap grant.
+    args = _sandbox.resolve_filesystem_read_args(executor, args)
+
     # Signed opt-in path preflight: this remains effective when bubblewrap is
     # unavailable/disabled and runs before journaling or any subprocess side
     # effect.  Legacy executors without annotations keep historical semantics.
@@ -3804,6 +3588,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         env["METNOS_ACTOR"] = actor
     if channel:
         env["METNOS_CHANNEL"] = channel
+    if owner_user_id:
+        env["METNOS_OWNER_USER_ID"] = str(owner_user_id)
     # Unattended authority is task-scoped.  Propagate only the opaque task
     # identity; each domain reloads and validates its own persisted envelope.
     env.pop("METNOS_TASK_NAME", None)
@@ -3848,7 +3634,8 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
 
 
 def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
-                    turn_id=None, actor=None, channel=None, target_device=None):
+                    turn_id=None, actor=None, channel=None, target_device=None,
+                    owner_user_id=None):
     """Universal scheduled choke-point for local and remote executors.
 
     The scheduler is synchronous and serial-first by default, so this wrapper
@@ -3862,7 +3649,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         lambda: _invoke_executor_impl(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
-            target_device=target_device,
+            target_device=target_device, owner_user_id=owner_user_id,
         ),
         concurrency_identity=concurrency_identity_for(
             executor, args, target_device=target_device),
@@ -3871,7 +3658,7 @@ def invoke_executor(executor, args, timeout_s=30, *, autonomy="supervised",
 
 def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
                     turn_id=None, actor=None, channel=None,
-                    target_device=None):
+                    target_device=None, owner_user_id=None):
     """Submit one admitted executor call to the single central pool.
 
     This is deliberately the asynchronous twin of :func:`invoke_executor`:
@@ -3886,7 +3673,7 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
         lambda: _invoke_executor_impl(
             executor, args, timeout_s=timeout_s, autonomy=autonomy,
             turn_id=turn_id, actor=actor, channel=channel,
-            target_device=target_device,
+            target_device=target_device, owner_user_id=owner_user_id,
         ),
         concurrency_identity=concurrency_identity_for(
             executor, args, target_device=target_device),
@@ -3949,6 +3736,94 @@ def _is_count_intent(intent_verb: str, user_query: str) -> bool:
         return True
     q = f" {(user_query or '').lower()} "
     return _detlex.match("count.quantifier", q)
+
+
+def _presentation_scope_applies(presentation: dict, *, intent_verb: str,
+                                user_query: str) -> bool:
+    """Evaluate a closed semantic presentation scope.
+
+    Executors declare the scope in structured output; the runtime owns the
+    language-aware intent decision.  This keeps presentation independent from
+    executor names, paths and particular phrasings.
+    """
+    scope = presentation.get("scope") if isinstance(presentation, dict) else None
+    if scope == "always":
+        return True
+    if scope == "count":
+        return _is_count_intent(intent_verb, user_query)
+    return False
+
+
+def _authoritative_turn_presentation(steps: list, *, intent_verb: str,
+                                     user_query: str,
+                                     effect_counts: dict | None = None) -> str:
+    """Compose executor-owned factual fragments when they cover the turn.
+
+    Replacement is intentionally all-or-nothing: every productive successful
+    step must expose an applicable authoritative fragment.  A mixed plan with
+    an unrelated result therefore stays with the normal finalizer instead of
+    silently losing one part of the answer.
+    """
+    if (effect_counts or {}).get("mutating_attempted"):
+        return ""
+    texts: list[str] = []
+    productive = 0
+    for step in steps or []:
+        tool = str(getattr(step, "chosen_tool", "") or "")
+        result = getattr(step, "result", None)
+        if tool == "final_answer" or not isinstance(result, dict):
+            continue
+        # A skipped processor is an execution detail, not an uncovered user
+        # request. Input pseudo-steps remain productive and prevent an
+        # incomplete replacement when their content is not represented.
+        if result.get("skipped"):
+            continue
+        productive += 1
+        if result.get("ok") is False:
+            return ""
+        presentation = result.get("authoritative_presentation")
+        if not isinstance(presentation, dict):
+            return ""
+        if not _presentation_scope_applies(
+                presentation, intent_verb=intent_verb,
+                user_query=user_query):
+            return ""
+        text = presentation.get("text")
+        if (not isinstance(text, str) or not text.strip()
+                or "<missing:" in text or len(text) > 20_000):
+            return ""
+        clean = text.strip()
+        if clean not in texts:
+            texts.append(clean)
+    return "\n\n".join(texts) if productive and texts else ""
+
+
+_I18N_PAYLOAD_KEY_RE = re.compile(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+")
+
+
+def _resolve_i18n_payload_value(value):
+    """Resolve key-shaped executor payload labels through the server catalog."""
+    if (isinstance(value, str)
+            and _I18N_PAYLOAD_KEY_RE.fullmatch(value)):
+        try:
+            resolved = msg(value)
+        except Exception:
+            resolved = ""
+        if (isinstance(resolved, str) and resolved
+                and not resolved.startswith("<missing:")):
+            return resolved
+        return msg("MSG_TRUNCATED_DEFAULT_WHAT")
+    return value
+
+
+def _turn_has_authoritative_presentation(turn) -> bool:
+    """Whether executor fragments cover the whole turn, not just one step."""
+    return bool(_authoritative_turn_presentation(
+        getattr(turn, "steps", []) or [],
+        intent_verb=getattr(turn, "intent_verb", ""),
+        user_query=getattr(turn, "user_query", ""),
+        effect_counts=getattr(turn, "effect_counts", None),
+    ))
 
 
 @dataclass
@@ -4322,10 +4197,15 @@ class TurnLog:
         """
         proposals = []
         seen = set()
+        _turn_authoritative = _turn_has_authoritative_presentation(self)
         # Pentade ADR 0161 ext: skip cap-expand per query count.
-        # Query con quantificatore → utente vuole il numero, dialog e' rumore.
+        # Query con quantificatore e presentazione strutturata COMPLETA → il
+        # numero e l'eventuale limite di visualizzazione sono gia' coperti.
+        # Se la composizione all-or-nothing non si applica, non sopprimere qui
+        # i segnali strutturati di uno step isolato.
         if _is_count_intent(getattr(self, "intent_verb", ""),
-                             getattr(self, "user_query", "")):
+                             getattr(self, "user_query", "")) \
+                and _turn_authoritative:
             return proposals
         # ── Pass 1: propaga expandable_caps custom (ADR 0090) ──
         for s in self.steps:
@@ -4370,6 +4250,21 @@ class TurnLog:
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
+                continue
+            _presentation = res.get("authoritative_presentation")
+            if (_turn_authoritative
+                    and isinstance(_presentation, dict)
+                    and _presentation.get("covers_truncation") is True
+                    and _presentation_scope_applies(
+                        _presentation,
+                        intent_verb=getattr(self, "intent_verb", ""),
+                        user_query=getattr(self, "user_query", ""))):
+                continue
+            # Some caps are execution-policy ceilings rather than user-tunable
+            # result limits (for example a synchronous model-work budget).
+            # Their producer still reports honest truncation metadata, but a
+            # rerun form must not reinterpret the policy name as a tool arg.
+            if res.get("cap_expandable") is False:
                 continue
             # Skip explicit user-set cap (truncated_intentional, ADR 0062).
             if res.get("truncated_intentional"):
@@ -4468,7 +4363,7 @@ class TurnLog:
                 res = s.result if isinstance(s.result, dict) else {}
                 tw = res.get("truncated_what")
                 if isinstance(tw, str) and tw:
-                    preview_label = tw
+                    preview_label = _resolve_i18n_payload_value(tw)
                 break
 
         prompt = msg("MSG_CAP_EXPAND_ASK", used=used, label=preview_label,
@@ -4504,6 +4399,7 @@ class TurnLog:
                 fmt="auto",
                 on_complete=on_complete,
                 actor=self.actor or "host",
+                owner_user_id=self.owner_user_id,
                 channel=self.channel or None,
                 timeout_s=600,
             )
@@ -4531,53 +4427,6 @@ class TurnLog:
                 new_caps.append(enriched)
         if new_caps:
             self.expandable_caps = new_caps
-
-    def _append_images_results_if_any(self) -> None:
-        """Se in history c'e' uno step find_images_indices/find_persons_indices
-        ok con entries, accoda al final_message la lista path reali (max 15).
-        Previene hallucination LLM (PLANNER inventa path "IMG_001.jpg..."
-        invece di leggere entries reali): l'append deterministico ancorato
-        ai path effettivi sostituisce/integra il messaggio LLM."""
-        import os
-        seen_paths: set = set()
-        all_entries: list = []
-        for s in self.steps:
-            if s.chosen_tool not in ("find_images_indices", "find_persons_indices"):
-                continue
-            res = s.result if isinstance(s.result, dict) else {}
-            if not res.get("ok"):
-                continue
-            for e in res.get("entries") or []:
-                if not isinstance(e, dict):
-                    continue
-                p = e.get("path")
-                if not p or p in seen_paths:
-                    continue
-                seen_paths.add(p)
-                all_entries.append(e)
-        if not all_entries:
-            return
-        max_show = 15
-        n_total = len(all_entries)
-        sample = all_entries[:max_show]
-        # Se il LLM ha gia' incluso path corretti, non duplicare (idempotente).
-        existing = self.final_message or ""
-        already_in_msg = sum(
-            1 for e in sample
-            if os.path.basename(e.get("path", "")) in existing
-        )
-        if already_in_msg >= len(sample) // 2 and already_in_msg > 0:
-            return  # gia' presente in modo significativo, skip
-        # Solo basename nel testo: caption VLM visibile in gallery viewer
-        # (hover tooltip + overlay HTML), NON duplicata nel final testuale
-        # (Roberto 15/5/2026: troppo verbose).
-        lines = ["", "", "**Risultati:**"]
-        for e in sample:
-            basename = os.path.basename(e.get("path", ""))
-            lines.append(f"- `{basename}`")
-        if n_total > max_show:
-            lines.append(f"_... e altre {n_total - max_show} foto._")
-        self.final_message = (existing.rstrip() + "\n".join(lines))
 
     def _append_search_results_if_any(self) -> None:
         """Se in history esistono step `find_urls` ok con entries,
@@ -4921,20 +4770,33 @@ class TurnLog:
         (nome leggibile della unita': 'email', 'file', 'risultati', ...).
         Vedi feedback_truncation_visibility.
 
-        Pentade ADR 0161 ext: skip notice se intent.verb=compute o query
-        contiene marker count (pattern §7.3 universale, no per-tool).
-        Per query count l'utente vuole SOLO il numero, notice e' rumore.
+        Per un intent di conteggio il notice è omesso soltanto se una
+        presentazione strutturata copre l'intero turno, compreso il rapporto
+        fra lavoro completo e limite di visualizzazione.
         """
         notices = []
         seen = set()
-        # Skip per query count (verb=compute o pattern testuale)
+        _turn_authoritative = _turn_has_authoritative_presentation(self)
+        # Skip per query count soltanto quando la presentazione strutturata
+        # copre l'intero turno. Una fragment per-step non deve nascondere il
+        # limite se un altro step fa decadere la composizione all-or-nothing.
         if _is_count_intent(getattr(self, "intent_verb", ""),
-                             getattr(self, "user_query", "")):
+                             getattr(self, "user_query", "")) \
+                and _turn_authoritative:
             return notices
         from vocab import PROCESSOR_VERBS as _PROC_VERBS
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
             if not res.get("truncated"):
+                continue
+            _presentation = res.get("authoritative_presentation")
+            if (_turn_authoritative
+                    and isinstance(_presentation, dict)
+                    and _presentation.get("covers_truncation") is True
+                    and _presentation_scope_applies(
+                        _presentation,
+                        intent_verb=getattr(self, "intent_verb", ""),
+                        user_query=getattr(self, "user_query", ""))):
                 continue
             # Qualifier `_empty` (ADR 0127): l'executor ritorna ESATTAMENTE
             # quanto chiesto dall'utente (es. find_events_empty max_results=3).
@@ -4975,8 +4837,7 @@ class TurnLog:
             # shim SENZA DB i18n → i campi payload a forma di chiave (es.
             # truncated_what='MSG_OBJECT_PROCESSES') arrivano CRUDI. Il server
             # ha il DB: risolvi qui ogni valore chiave-forma, per costruzione.
-            if isinstance(what, str) and re.fullmatch(r"(?:MSG|ERR|WARN)_[A-Z0-9_]+", what):
-                what = msg(what)
+            what = _resolve_i18n_payload_value(what)
             if what == "input_sources":
                 # extract_entries ha capato le SORGENTI in INPUT (non l'output):
                 # i campi corretti sono available_INPUT_total + cap_value (50),
@@ -5030,6 +4891,20 @@ class TurnLog:
         # final_kind cosi' i consumer (notice falso-successo qui sotto,
         # gate push schedulato in recurring_tasks) leggono lo stesso dato.
         self.effect_counts = pipeline_effect_counts(self.steps)
+        # Calcola la composizione strutturata anche quando il finalizer non ha
+        # prodotto testo. In caso contrario un turno interamente coperto
+        # potrebbe sopprimere correttamente i notice ma perdere proprio i
+        # frammenti che giustificano quella soppressione.
+        _authoritative = ""
+        if self.final_kind == "answer":
+            _authoritative = _authoritative_turn_presentation(
+                self.steps,
+                intent_verb=getattr(self, "intent_verb", ""),
+                user_query=getattr(self, "user_query", ""),
+                effect_counts=self.effect_counts,
+            )
+            if _authoritative and not self.final_message:
+                self.final_message = _authoritative
         # Anti thinking-leak (ADR 0102, 7/5/2026): rimuovi righe di
         # reasoning interno emesse erroneamente dal PLANNER nel canale
         # text. Applicato PRIMA di qualsiasi prepend (truncation/health/
@@ -5049,6 +4924,12 @@ class TurnLog:
             # _compose_final_message_from_obs branch).
             if _has_runtime_internal_leak(self.final_message):
                 self.final_message = _compose_honest_from_last_error(self)
+            # Complete structured presentations outrank prose synthesized
+            # from capped observations. The closed protocol is executor-name,
+            # query-phrase and path independent; mixed uncovered plans keep
+            # the normal finalizer rather than dropping part of the answer.
+            if _authoritative:
+                self.final_message = _authoritative
             # §4.3 mutating intent honesty: se la user_query contiene un
             # verbo mutating (move/delete/send/write/create/share) ma
             # nessuno step ok=True ha quel verbo → l'azione non e' stata
@@ -5092,16 +4973,11 @@ class TurnLog:
         # non vedeva NIENTE dei link gia' trovati.
         if self.final_kind in ("answer", "loop_break", "error"):
             self._append_search_results_if_any()
-            # _append_images_results_if_any rimosso 15/5/2026: lista basename
-            # nel testo era ridondante con gallery_url. L'utente vede thumb
-            # + caption hover nella gallery, niente serve nel testo.
         # Prepend di eventuali notice di truncation prima della final answer.
         # Una sola volta, idempotente: se la stringa e' gia' presente non duplica.
-        # Skip quando l'ultimo step e' `final_answer` synthetic (ADR 0133 ext):
-        # il LLM ha ricevuto la describe_entries (con info `truncated`) e ha
-        # gia' formulato un final consapevole — prependere ridonda e copre il
-        # messaggio utile (bug live 15/5/2026 mail run 1: prepend mascherava
-        # la sintesi LLM del riassunto mail).
+        # Il finalizer LLM non costituisce prova di aver riportato il limite:
+        # i notice strutturati restano l'autorita' sui cap. Sono soppressi solo
+        # quando una presentazione executor-owned copre l'intero turno.
         if self.final_kind == "answer":
             # §2.8: un final mutating non puo' claimare un esito non avvenuto.
             self._enforce_mutating_honesty()
@@ -5110,13 +4986,11 @@ class TurnLog:
                 if _fn and _fn not in (self.final_message or ""):
                     self.final_message = ((self.final_message or "").rstrip()
                                           + "\n\n" + _fn).strip()
-            _llm_synth_final = bool(
-                self.steps and self.steps[-1].chosen_tool == "final_answer"
-            )
-            if not _llm_synth_final:
-                for notice in self._collect_truncation_notices():
-                    if notice and notice not in (self.final_message or ""):
-                        self.final_message = (notice + "\n\n" + (self.final_message or "")).strip()
+            for notice in self._collect_truncation_notices():
+                if notice and notice not in (self.final_message or ""):
+                    self.final_message = (
+                        notice + "\n\n" + (self.final_message or "")
+                    ).strip()
             # Bug C estensione (6/5/2026): se uno step ha prodotto una sezione
             # `health` (get_processes(include_health=true)), prepend il blocco
             # salute al final_message. describe_entries non sa leggere health
@@ -5269,7 +5143,9 @@ class TurnLog:
         # ASSEGNANO final_message: prima, la notice andava persa). Best-effort.
         try:
             import user_notices as _un
-            for _nt in _un.drain(self.channel or "", self.actor or "host"):
+            for _nt in _un.drain(
+                    self.channel or "", self.actor or "host",
+                    owner_user_id=self.owner_user_id):
                 if _nt not in (self.final_message or ""):
                     self.final_message = (
                         _nt + "\n\n" + (self.final_message or "")).strip()
@@ -5513,7 +5389,7 @@ class TurnLog:
                     pass
             self._canonical_recorded = True
 
-        TURN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        _C.ensure_private_dir(TURN_LOG_DIR)
         path = TURN_LOG_DIR / f"{time.strftime('%Y-%m-%d')}.jsonl"
         # Scrubbing credenziali prima della serializzazione (ADR 0082):
         # passiamo da asdict (snapshot) e ri-iniettiamo le entry pulite.
@@ -5533,8 +5409,11 @@ class TurnLog:
         if n_redacted_total[0] > 0:
             record["redacted"] = True
             record["n_redacted_fields"] = n_redacted_total[0]
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        _C.append_private_bytes(
+            path,
+            (json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            .encode("utf-8"),
+        )
 
 
 # --- Hook synt-on-the-fly --------------------------------------------------
@@ -5749,7 +5628,8 @@ def _engine_v2_catalog_with_builtins(catalog: list) -> list:
 def _invoke_builtin_handler(tool_name: str, args: dict, *,
                               actor: str | None = None,
                               channel: str | None = None,
-                              turn_id: str | None = None) -> dict:
+                              turn_id: str | None = None,
+                              owner_user_id: str | None = None) -> dict:
     """Universal §7.9 wrapper: invoca handler builtin passando solo i kwargs
     che la signature accetta (introspection). Risolve crash su
     list_tasks/create_tasks/delete_tasks (kwarg actor/channel required).
@@ -5779,6 +5659,8 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
         kwargs["channel"] = channel or ""
     if "turn_id" in accepts:
         kwargs["turn_id"] = turn_id or ""
+    if "owner_user_id" in accepts:
+        kwargs["owner_user_id"] = owner_user_id or ""
     # Se signature ha **_ catch-all, possiamo passare safe.
     def _call_handler() -> dict:
         return annotate_skipped_known(handler(args, **kwargs), _treated_info)
@@ -5817,7 +5699,8 @@ def _invoke_builtin_handler(tool_name: str, args: dict, *,
 
 def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
                         actor: str | None = None,
-                        channel: str | None = None) -> dict:
+                        channel: str | None = None,
+                        owner_user_id: str | None = None) -> dict:
     """Dispatch canonico di UN tool per nome, condiviso dal loop principale e
     dai percorsi di ripresa (post-gate/post-input, orchestration).
 
@@ -5829,15 +5712,21 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     """
     if tool_name in _BUILTIN_TOOL_HANDLERS:
         return _invoke_builtin_handler(
-            tool_name, args, actor=actor, channel=channel)
+            tool_name, args, actor=actor, channel=channel,
+            owner_user_id=owner_user_id)
     exec_obj = next((e for e in (catalog or [])
                      if getattr(e, "name", None) == tool_name), None)
     if exec_obj is None:
         return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                 "error_class": "tool_unknown"}
-    return invoke_executor(
+    result = invoke_executor(
         exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
-        actor=actor, channel=channel)
+        actor=actor, channel=channel, owner_user_id=owner_user_id)
+    contract = getattr(exec_obj, "presentation", None)
+    if isinstance(result, dict) and contract:
+        result = dict(result)
+        result["_presentation_contract"] = contract
+    return result
 
 
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
@@ -5955,6 +5844,45 @@ def _maybe_remediate_obs(
 
 # --- L3 Engine v2 dispatcher (ADR 0164) ----------------------------------
 
+def _bounded_engine_llm_timeout(env_name: str, default: float) -> float:
+    try:
+        return max(5.0, min(300.0, float(os.environ.get(env_name, default))))
+    except (TypeError, ValueError):
+        return default
+
+
+# Planner calls used to inherit the provider's 600-second socket timeout.  A
+# suspended llama-server therefore consumed multiple full waits before the
+# user saw an unrelated planner error.  These are per-call bounds;
+# normal local inference is substantially faster.
+ENGINE_FAST_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
+    "METNOS_ENGINE_FAST_LLM_TIMEOUT_S", 30.0)
+ENGINE_WISE_LLM_TIMEOUT_S = _bounded_engine_llm_timeout(
+    "METNOS_ENGINE_WISE_LLM_TIMEOUT_S", 90.0)
+
+
+def _llm_dependency_failure(exc: Exception) -> bool:
+    """Recognise transport/provider outages, including wrapped timeouts."""
+    current = exc
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        name = type(current).__name__.lower()
+        text = str(current).lower()
+        if (
+            isinstance(current, (TimeoutError, ConnectionError))
+            or any(token in name for token in (
+                "timeout", "urlerror", "providererror"))
+            or any(token in text for token in (
+                "timed out", "unreachable", "connection refused",
+                "request deadline exhausted",
+            ))
+        ):
+            return True
+        current = getattr(current, "__cause__", None)
+    return False
+
+
 def _run_engine(
     query: str,
     catalog: list,
@@ -5962,6 +5890,7 @@ def _run_engine(
     turn_id: str,
     actor: str | None,
     channel: str | None,
+    owner_user_id: str,
     lang: str = "it",
     verbose: bool = False,
     progress=None,
@@ -5997,50 +5926,101 @@ def _run_engine(
         log.warning("engine v2 import failed: %r", ex)
         return None
 
+    _llm_state = {"unavailable": False, "reported": False}
+
+    def _report_llm_unavailable() -> str:
+        message = msg("ERR_LLM_UNAVAILABLE_ACTION")
+        _llm_state["unavailable"] = True
+        if progress is not None and not _llm_state["reported"]:
+            try:
+                progress.update_free(message)
+            except Exception as ex:  # progress is best-effort
+                log.debug("LLM outage progress update failed: %r", ex)
+        _llm_state["reported"] = True
+        return message
+
+    def _unavailable_result():
+        return {
+            "steps": [],
+            "final_text": _report_llm_unavailable(),
+            "final_kind": "error",
+            "framework_hash": "",
+            "verb": "",
+            "object": "",
+            "keywords": [],
+            "match_source": "llm_unavailable",
+            "elapsed_ms": 0,
+            "error_class": "provider_unavailable",
+            "needs_inputs_obs": None,
+            "gate_obs": None,
+        }
+
     # Provider LLM fast (per filler resolve)
-    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
+    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, **kw):
         # Robustezza + osservabilità (ADR 0181-ext): la fast-call era un
         # `except: return ""` MUTO — un hiccup di connessione LLM (reset/rifiuto)
         # spariva senza traccia e faceva declinare il turno (causa-radice del
         # declino intermittente → legacy). Ora: log + UN retry su errore
         # transitorio; su fallimento persistente ritorna "" e il chiamante
         # procede con intent VUOTO (non declina — vedi sotto).
+        if _llm_state["unavailable"]:
+            return ""
         for _attempt in (1, 2):
             try:
                 from llm_router import LLMRouter
-                ck = {"max_tokens": max_tokens, "think": think}
+                from llm_workloads import tier_for
+                ck = {
+                    "max_tokens": max_tokens,
+                    "request_timeout_s": ENGINE_FAST_LLM_TIMEOUT_S,
+                }
                 if kw.get("grammar") is not None:
                     ck["grammar"] = kw["grammar"]
-                res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+                res = LLMRouter().provider(
+                    tier_for("intent.extract")).chat(sys_msg, user_msg, **ck)
                 return (getattr(res, "text", res) or "").strip()
             except Exception as _e:  # noqa: BLE001
                 log.warning("engine v2 _llm_call_fast tentativo %d fallito: %r",
                             _attempt, _e)
+                # A full timeout or a known provider outage is not transient
+                # within this turn.  Retrying used to multiply an outage into
+                # 40 minutes of silence; surface it once and stop immediately.
+                if _llm_dependency_failure(_e):
+                    _report_llm_unavailable()
+                    break
         return ""
 
     # Provider LLM wise (per Proposer)
-    def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+    def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
+        if _llm_state["unavailable"]:
+            return ""
         try:
             from llm_router import LLMRouter
-            tier = kw.get("tier_override") or "wise"
-            # Inoltra `grammar` (GBNF) e `reasoning_budget` al provider: senza
-            # questo il Proposer girava SEMPRE non vincolato anche con
+            from llm_workloads import tier_for
+            tier = kw.get("tier_override") or tier_for("planner.deliberate")
+            # Inoltra la GBNF al provider: è un vincolo di output, non una
+            # policy di generazione. Thinking e sampling appartengono al tier.
+            # Senza la grammar il Proposer girerebbe non vincolato anche con
             # METNOS_PROPOSER_GRAMMAR=1 → nomi tool allucinati (es. get_issues)
             # fuori dal pool (bug 2/6/2026). chat() supporta grammar →
             # payload['grammar'] a llama-server.
-            ck = {"max_tokens": max_tokens, "think": think}
+            ck = {
+                "max_tokens": max_tokens,
+                "request_timeout_s": ENGINE_WISE_LLM_TIMEOUT_S,
+            }
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            if kw.get("reasoning_budget") is not None:
-                ck["reasoning_budget"] = kw["reasoning_budget"]
             res = LLMRouter().provider(tier).chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
             log.warning("engine v2 _llm_call_wise: %r", ex)
+            if _llm_dependency_failure(ex):
+                _report_llm_unavailable()
             return ""
 
     # Intent extraction
     intent_raw = extract_intent(query, _llm_call_fast)
+    if _llm_state["unavailable"]:
+        return _unavailable_result()
     if not intent_raw:
         # ROBUSTEZZA (ADR 0181-ext, causa-radice del declino intermittente):
         # intent VUOTO NON è fatale. `extract_intent`→None sia su query davvero
@@ -6142,11 +6122,11 @@ def _run_engine(
             "error_class": "", "needs_inputs_obs": None, "gate_obs": None,
         }
 
-    # §2.11 — DISAMBIGUAZIONE ROUTING deterministica (no LLM). Su query AMBIGUA
-    # sull'oggetto (≥2 oggetti-produttori in gara, intent ne ha scartato uno;
-    # NON un compound) chiedi con un form invece di indovinare. Sulla RIPRESA
-    # (forced_object = scelta utente) pinna l'oggetto del produttore e non
-    # richiedere. No-op per ogni query non-ambigua (gate stretto).
+    # §2.11 — DISAMBIGUAZIONE ROUTING semanticamente vincolata. Il lessico
+    # produce soltanto candidati chiusi; un classificatore separato stabilisce
+    # la relazione fra gli oggetti e apre il form solo per AMBIGUOUS. Compound,
+    # argomenti nominali e guasti del classificatore restano al planner. Sulla
+    # RIPRESA (forced_object = scelta utente) pinna l'oggetto del produttore.
     try:
         import route_disambiguation as _rdis
         if forced_object:
@@ -6161,7 +6141,8 @@ def _run_engine(
                 except Exception:  # noqa: BLE001 — intent best-effort
                     pass
         else:
-            _amb = _rdis.detect_object_ambiguity(query, intent)
+            _amb = _rdis.detect_object_ambiguity(
+                query, intent, llm_call=_llm_call_fast, lang=lang)
             if _amb:
                 return {
                     "steps": [], "final_text": "", "final_kind": "needs_inputs",
@@ -6170,7 +6151,13 @@ def _run_engine(
                     "match_source": "route_disambiguation", "elapsed_ms": 0,
                     "error_class": None, "gate_obs": None,
                     "needs_inputs_obs": _rdis.build_disambiguation_form(
-                        query, _amb)}
+                        query, _amb,
+                        # Il detector lavora sulla query ripulita dagli
+                        # adjunct di placement; il callback deve invece
+                        # riprendere il testo integrale, così il vincolo già
+                        # risolto viene ricalcolato e non cade sul target
+                        # appiccicoso di una sessione precedente.
+                        replay_query=user_query_raw)}
     except Exception as _de:  # noqa: BLE001 — disambiguazione best-effort
         log.debug("route_disambiguation noop: %r", _de)
 
@@ -6213,6 +6200,22 @@ def _run_engine(
         e.name: e for e in catalog if getattr(e, "name", None)
     }
 
+    def _attach_presentation_contract(tool_name: str, result: object) -> object:
+        """Carry producer-owned rendering metadata into the shared engine.
+
+        The normal chat path invokes executors through this local callback,
+        rather than through ``invoke_tool_by_name``.  Keep the two paths
+        equivalent: otherwise a manifest contract exists in the catalog but
+        ``${stepN.@table}`` silently falls back to the legacy projection.
+        """
+        executor = _catalog_by_name.get(tool_name)
+        contract = getattr(executor, "presentation", None) if executor else None
+        if isinstance(result, dict) and contract:
+            enriched = dict(result)
+            enriched["_presentation_contract"] = contract
+            return enriched
+        return result
+
     def _effective_executor_args(tool_name: str, args: dict) -> dict:
         """Apply the same planner-invisible arguments on sync and async paths."""
         effective_args = args
@@ -6236,17 +6239,20 @@ def _run_engine(
     def _invoke(tool_name: str, args: dict) -> dict:
         if tool_name in _BUILTIN_TOOL_HANDLERS:
             return _invoke_builtin_handler(
-                tool_name, args, actor=actor or "host", channel=channel or "")
+                tool_name, args, actor=actor or "host", channel=channel or "",
+                owner_user_id=owner_user_id)
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None:
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
         try:
-            return invoke_executor(
+            result = invoke_executor(
                 exec_obj, _effective_executor_args(tool_name, args),
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
-                actor=actor, channel=channel, target_device=_target_name)
+                actor=actor, channel=channel, target_device=_target_name,
+                owner_user_id=owner_user_id)
+            return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
                      "error_class": "exception"}
@@ -6256,11 +6262,23 @@ def _run_engine(
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
             raise ValueError(f"tool '{tool_name}' is not async-admissible")
-        return submit_executor(
+        future = submit_executor(
             exec_obj, _effective_executor_args(tool_name, args),
             timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
             autonomy="supervised", turn_id=turn_id,
-            actor=actor, channel=channel, target_device=_target_name)
+            actor=actor, channel=channel, target_device=_target_name,
+            owner_user_id=owner_user_id)
+        contract = getattr(exec_obj, "presentation", None)
+        if contract and hasattr(future, "add_done_callback"):
+            def _attach_when_done(done_future) -> None:
+                try:
+                    result = done_future.result()
+                    if isinstance(result, dict):
+                        result.setdefault("_presentation_contract", contract)
+                except Exception:
+                    pass
+            future.add_done_callback(_attach_when_done)
+        return future
 
     def _can_parallelize(tool_name: str) -> bool:
         exec_obj = _catalog_by_name.get(tool_name)
@@ -6421,17 +6439,26 @@ def _run_engine(
     # `_ran_on_device`), in _finalize_engine_result — così un'operazione non
     # impacchettabile, girata in locale nonostante la destinazione, non viene
     # etichettata come remota.
+    # A provider outage after intent extraction (usually the first proposer
+    # call) must not be rewritten as "query not understood".  Preserve any
+    # real tool observations, but when no step ran, make the dependency and
+    # user action visible.
+    _outage_without_steps = _llm_state["unavailable"] and not steps_out
     return {
         "steps": steps_out,
-        "final_text": result.final_text,
-        "final_kind": result.final_kind,
+        "final_text": (msg("ERR_LLM_UNAVAILABLE_ACTION")
+                       if _outage_without_steps
+                       else result.final_text),
+        "final_kind": ("error" if _outage_without_steps
+                       else result.final_kind),
         "framework_hash": result.framework_hash,
         "verb": intent.verb,
         "object": intent.object,
         "keywords": intent.keywords,
         "match_source": result.match_source,
         "elapsed_ms": result.elapsed_ms,
-        "error_class": result.error_class,
+        "error_class": ("provider_unavailable" if _outage_without_steps
+                        else result.error_class),
         "needs_inputs_obs": needs_inputs_obs,
         "gate_obs": gate_obs,
     }
@@ -6457,6 +6484,7 @@ def _finalize_engine_result(log, _engine_v2_res, *, actor, channel,
             _dlg = orchestrate_needs_inputs(
                 _ni, sender_id=_sender_id,
                 actor=actor or "host", channel=channel or "http",
+                owner_user_id=log.owner_user_id,
                 origin_turn_id=turn_id or log.turn_id or "",
             )
             if isinstance(_dlg, dict) and _dlg.get("ok"):
@@ -6539,7 +6567,7 @@ def _apply_device_tag(log) -> None:
 
 def _orchestrate_strato3_escalation(
     *, user_query: str, lang: str, actor: str, channel: str,
-    conversation_id: str, consec_errors: int,
+    conversation_id: str, consec_errors: int, owner_user_id: str,
 ) -> dict | None:
     """Apre un dialog `get_inputs` con 4 azioni quando l'utente ha
     rifiutato ≥3 pipeline consecutive per la stessa query.
@@ -6599,6 +6627,7 @@ def _orchestrate_strato3_escalation(
         fmt="auto",
         on_complete=on_complete,
         actor=actor,
+        owner_user_id=owner_user_id,
         channel=channel,
     )
 
@@ -6641,22 +6670,24 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
         from engine.routing_pool import build_routing_pool
         from engine.proposer import get_proposer
 
-        def _fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
+        def _fast(sys_msg, user_msg, *, max_tokens=80, **kw):
             from llm_router import LLMRouter
-            ck = {"max_tokens": max_tokens, "think": think}
+            from llm_workloads import tier_for
+            ck = {"max_tokens": max_tokens}
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+            res = LLMRouter().provider(
+                tier_for("intent.extract")).chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
 
-        def _wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+        def _wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
             from llm_router import LLMRouter
-            ck = {"max_tokens": max_tokens, "think": think}
+            from llm_workloads import tier_for
+            ck = {"max_tokens": max_tokens}
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            if kw.get("reasoning_budget") is not None:
-                ck["reasoning_budget"] = kw["reasoning_budget"]
-            res = LLMRouter().provider(kw.get("tier_override") or "wise").chat(
+            res = LLMRouter().provider(
+                kw.get("tier_override") or tier_for("planner.deliberate")).chat(
                 sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
 
@@ -6699,7 +6730,21 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
 
 # --- Loop pianificatore (multistep con tool-use nativo) -------------------
 
-def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
+def _owner_scoped_turn(function):
+    """Hold a cross-process owner lease for the complete mutable turn."""
+
+    @functools.wraps(function)
+    def guarded(user_query, *args, **kwargs):
+        owner = str(
+            kwargs.get("owner_user_id") or kwargs.get("actor") or "host")
+        from user_lifecycle import owner_session
+        with owner_session(owner):
+            return function(user_query, *args, **kwargs)
+    return guarded
+
+
+@_owner_scoped_turn
+def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
              cap_steps=DEFAULT_CAP_STEPS, cap_same=DEFAULT_CAP_SAME_EXECUTOR,
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
              actor="host", channel="", conversation_id="", owner_user_id="",
@@ -6709,6 +6754,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
              allow_disambig_synth=True,
              bypass_rejected_pipelines=False,
              forced_object="",
+             credential_meta=None,
+             credentials_prepared=False,
+             redacted_fields=0,
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
@@ -6747,12 +6795,18 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
     # domain+context, NO password) viene iniettata nel system prompt come
     # blocco prescrittivo cosi' il PLANNER puo' settare credentials_domain
     # nei tool che lo accettano (admin per CIFS, login_urls per HTTP web).
-    redacted_query, extracted_meta = apply_credentials_extraction(user_query)
+    if credentials_prepared:
+        redacted_query = str(user_query or "")
+        extracted_meta = list(credential_meta or [])
+        prepared_count = max(0, int(redacted_fields or 0))
+    else:
+        redacted_query, extracted_meta, prepared_count = (
+            prepare_credentials_for_routing(user_query))
     user_query_for_run = redacted_query
-    if extracted_meta:
+    if prepared_count or redacted_query != user_query:
         log.user_query = redacted_query  # niente plaintext nel log
         log.redacted = True
-        log.n_redacted_fields = max(log.n_redacted_fields, len(extracted_meta))
+        log.n_redacted_fields = max(log.n_redacted_fields, prepared_count)
 
     # Admin chat commands shortcut (11/5/2026): `/admin user <action>` per
     # gestire utenti e pair URL via chat o Telegram. Determinismo §7.9:
@@ -6806,6 +6860,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                 channel=channel,
                 conversation_id=conversation_id or "",
                 consec_errors=_consec,
+                owner_user_id=owner_user_id,
             )
             if _ask_result is not None:
                 log.turn_id = uuid.uuid4().hex[:16]
@@ -6909,6 +6964,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _eng_rs_res = _run_engine(
                 user_query_for_run, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
+                owner_user_id=owner_user_id,
                 lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
@@ -6978,7 +7034,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                         device_name=_tr.unreachable_name or "?",
                         actor=actor or "host", channel=channel or "",
                         conversation_id=conversation_id or "",
-                        sender_id=_sid)
+                        sender_id=_sid,
+                        owner_user_id=owner_user_id)
                     if _dfr:
                         log.final_kind = "ask"
                         log.final_message = _dfr["final_message"]
@@ -7043,6 +7100,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                         timeout_s=getattr(_fp_exec, "timeout_s", None) or 10,
                         autonomy="supervised", turn_id=turn_id,
                         actor=actor, channel=channel,
+                        owner_user_id=owner_user_id,
                         target_device=_placement_target,  # chat-driven placement (ADR 0034)
                     )
                 except Exception as ex:
@@ -7101,7 +7159,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
         if _rec_parsed:
             _rt_obs = _invoke_builtin_handler(
                 "create_tasks", dict(_rec_parsed),
-                actor=actor, channel=channel, turn_id=turn_id)
+                actor=actor, channel=channel, turn_id=turn_id,
+                owner_user_id=owner_user_id or actor or "host")
             if verbose:
                 print(f"[scheduling] recurrence parse when={_rec_parsed['when']!r} "
                       f"query={_rec_parsed['query']!r} → create_tasks "
@@ -7156,6 +7215,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
                 _engine_v2_res = _run_engine(
                     _query_for_planning, catalog,
                     turn_id=turn_id, actor=actor, channel=channel,
+                    owner_user_id=owner_user_id,
                     lang=_turn_lang, verbose=verbose, progress=progress,
                     pre_approved_gate=pre_approved_gate,
                     conversation_id=conversation_id,
@@ -7204,6 +7264,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, pr
             _eng_up_res = _run_engine(
                 _query_for_planning, catalog,
                 turn_id=turn_id, actor=actor, channel=channel,
+                owner_user_id=owner_user_id,
                 lang=_turn_lang, verbose=verbose, progress=progress,
                 pre_approved_gate=pre_approved_gate,
                 conversation_id=conversation_id,
@@ -7264,7 +7325,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("query", nargs="+")
     ap.add_argument("--model", default=None)
-    ap.add_argument("--think", action="store_true", help="Abilita thinking del LLM (qwen3, deepseek)")
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--cap-steps", type=int, default=DEFAULT_CAP_STEPS)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -7272,7 +7332,7 @@ if __name__ == "__main__":
 
     query = " ".join(args.query)
     log = run_turn(query, model=args.model, k=args.k,
-                   cap_steps=args.cap_steps, think=args.think, verbose=args.verbose)
+                   cap_steps=args.cap_steps, verbose=args.verbose)
     print(f"\n>>> {log.final_message}\n")
     if args.verbose:
         total_in = sum(s.llm_in_tokens for s in log.steps)

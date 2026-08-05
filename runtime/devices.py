@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS devices (
     os_arch TEXT,
     paired_at TEXT NOT NULL,
     last_heartbeat TEXT,
+    last_poll TEXT,
     revoked_at TEXT,
     profile_json TEXT
 );
@@ -117,6 +118,9 @@ class Device:
     last_heartbeat: str | None
     revoked_at: str | None
     profile_json: str | None = None
+    # Separato dal heartbeat dedicato: un processo puo' essere vivo mentre il
+    # worker sequenziale e' bloccato in un executor e non accetta nuovo lavoro.
+    last_poll: str | None = None
 
 
 # --- helpers --------------------------------------------------------------
@@ -149,6 +153,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(devices)")}
     if "profile_json" not in cols:
         conn.execute("ALTER TABLE devices ADD COLUMN profile_json TEXT")
+    if "last_poll" not in cols:
+        conn.execute("ALTER TABLE devices ADD COLUMN last_poll TEXT")
     _migrate_owner_to_users_id(conn)
 
 
@@ -257,6 +263,102 @@ def list_by_owner(owner_user_id: str, *, include_revoked: bool = False,
             if d.owner_user_id == owner_user_id
             or (d.owner_user_id == "host" and owner_user_id == hid)
             or (hid and d.owner_user_id == hid and owner_user_id == "host")]
+
+
+def list_by_owner_readonly(owner_user_id: str, *,
+                           db_path: Path | None = None) -> list["Device"]:
+    """Read an exact UUID owner scope without lazy schema mutations."""
+
+    owner = str(owner_user_id or "").strip()
+    path = Path(db_path or os.environ.get("METNOS_DEVICES_DB")
+                or DEFAULT_DB_PATH)
+    if not owner or owner == "host" or not path.is_file():
+        return []
+    conn = sqlite3.connect(
+        f"file:{path}?mode=ro", uri=True, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    try:
+        columns = {
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(devices)").fetchall()
+        }
+        if not {"owner_user_id", "profile_json", "last_poll"}.issubset(
+                columns):
+            raise RuntimeError("device owner schema not initialized")
+        rows = conn.execute(
+            "SELECT * FROM devices WHERE owner_user_id=? "
+            "AND revoked_at IS NULL ORDER BY paired_at", (owner,),
+        ).fetchall()
+        return [_row_to_device(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def purge_owner(owner_user_id: str, *, db_path: Path | None = None) -> dict:
+    """Physically remove one deleted user's devices and pairing tokens."""
+
+    owner = str(owner_user_id or "")
+    if not owner:
+        return {"devices": 0, "tokens": 0, "join_sessions": 0,
+                "invocations": 0}
+    conn = _open_db(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        token_rows = conn.execute(
+            "SELECT token_id FROM device_tokens WHERE owner_user_id=?",
+            (owner,),
+        ).fetchall()
+        token_ids = [str(row["token_id"]) for row in token_rows]
+        device_ids = [str(row["id"]) for row in conn.execute(
+            "SELECT id FROM devices WHERE owner_user_id=?", (owner,),
+        ).fetchall()]
+        join_deleted = 0
+        if token_ids:
+            placeholders = ",".join("?" for _ in token_ids)
+            cursor = conn.execute(
+                f"DELETE FROM device_join_sessions WHERE token_id IN "
+                f"({placeholders})", token_ids,
+            )
+            join_deleted = cursor.rowcount
+        tokens = conn.execute(
+            "DELETE FROM device_tokens WHERE owner_user_id=?", (owner,),
+        ).rowcount
+        invocations_deleted = 0
+        tables = {
+            str(row[0]) for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if "invocations" in tables:
+            invocation_cols = {
+                str(row[1]) for row in conn.execute(
+                    "PRAGMA table_info(invocations)").fetchall()
+            }
+            if "owner_user_id" in invocation_cols:
+                invocations_deleted += conn.execute(
+                    "DELETE FROM invocations WHERE owner_user_id=?", (owner,),
+                ).rowcount
+            if device_ids:
+                placeholders = ",".join("?" for _ in device_ids)
+                invocations_deleted += conn.execute(
+                    f"DELETE FROM invocations WHERE device_id IN "
+                    f"({placeholders})", device_ids,
+                ).rowcount
+        devices_deleted = conn.execute(
+            "DELETE FROM devices WHERE owner_user_id=?", (owner,),
+        ).rowcount
+        conn.commit()
+        return {
+            "devices": devices_deleted,
+            "tokens": tokens,
+            "join_sessions": join_deleted,
+            "invocations": invocations_deleted,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def fingerprint_of(public_key_b64: str) -> str:
@@ -657,6 +759,26 @@ def heartbeat(device_id: str, *, profile: dict | None = None,
         conn.close()
 
 
+def poll_seen(device_id: str, *, db_path: Path | None = None) -> None:
+    """Registra che il loop executor sta realmente chiedendo lavoro.
+
+    Aggiorna anche la liveness per compatibilita' con i client che non hanno
+    un heartbeat dedicato. Il reciproco non vale: il task heartbeat puo'
+    continuare mentre il worker e' bloccato, quindi ``heartbeat()`` non deve
+    mai avanzare ``last_poll``.
+    """
+    now = _now_iso()
+    conn = _open_db(db_path)
+    try:
+        conn.execute(
+            "UPDATE devices SET last_poll = ?, last_heartbeat = ? "
+            "WHERE id = ? AND revoked_at IS NULL",
+            (now, now, device_id),
+        )
+    finally:
+        conn.close()
+
+
 def _row_to_device(row) -> Device:
     return Device(
         id=row["id"],
@@ -670,6 +792,7 @@ def _row_to_device(row) -> Device:
         last_heartbeat=row["last_heartbeat"],
         revoked_at=row["revoked_at"],
         profile_json=row["profile_json"] if "profile_json" in row.keys() else None,
+        last_poll=row["last_poll"] if "last_poll" in row.keys() else None,
     )
 
 

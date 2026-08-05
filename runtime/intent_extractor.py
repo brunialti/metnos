@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """intent_extractor.py — estrae verbo+oggetto canonici da una richiesta utente.
 
-Approccio: una chiamata LLM (modello locale fast/middle tier, think=False, ~500ms)
+Approccio: una chiamata LLM al tier fast (~500ms)
 con prompt minimo che chiede al modello di mappare la richiesta sul vocabolario
 chiuso di Metnos (20 verbi × 11 oggetti).
 
@@ -11,10 +11,10 @@ Pipeline:
 
 Vantaggi rispetto al lexicon match:
 - Robusto a variazioni di linguaggio (IT/EN, conjugazioni, sinonimi, idiomi).
-- Cross-language (il modello locale e' multilingue).
+- Cross-language (il tier configurato deve supportare le lingue richieste).
 - Non richiede manutenzione di un dizionario manuale.
 
-Latenza: ~500-800ms con il modello locale think=False, num_predict=80.
+Latenza dipende dal provider configurato per il tier fast.
 
 Failure mode:
 - LLM down → ritorna None, caller deve fall-back al lexicon.
@@ -40,7 +40,6 @@ log = get_logger(__name__)
 
 import prompt_loader
 import detection_lexicon as _dl
-from config import DEFAULT_LANG
 
 # Budget token dell'estrazione intent. 80 bastava per il mono (JSON corto) ma
 # TRONCAVA la decomposizione COMPOUND (array multi-clausola) → JSON malformato
@@ -152,6 +151,10 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # un'azione (verbo canonico rilevabile). Sotto 2 → path mono (v4), dove le
     # iniezioni text-driven a query-intera (get_now, EXIF) restano intatte.
     # §7.9 deterministico, language-agnostic (usa il detector verbi del vocab).
+    # La lingua è quella del turno corrente. Per una lingua appena aggiunta il
+    # prompt loader usa il candidato tradotto o il fallback inglese, mantenendo
+    # però il codice lingua target nei placeholder del template.
+    lang = _dl.current_lang()
     if _scaffold and len(_segments) >= 2:
         try:
             from prefilter import tokenize as _tk, detect_canonical_verbs_all as _vb
@@ -164,28 +167,22 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
         segments_block = "\n".join(f"{i}. {s}" for i, s in enumerate(_segments, 1))
         prompt = prompt_loader.get(
             "intent_extractor_scaffold",
-            DEFAULT_LANG,
+            lang,
             verbs_inline=_vocab_verbs_inline(),
             objects_inline=_vocab_objects_inline(),
-            boundaries_block=_vocab_boundaries(DEFAULT_LANG),
+            boundaries_block=_vocab_boundaries(lang),
             segments_block=segments_block,
         )
     else:
         prompt = prompt_loader.get(
             "intent_extractor_v4",
-            DEFAULT_LANG,
+            lang,
             verbs_inline=_vocab_verbs_inline(),
             objects_inline=_vocab_objects_inline(),
-            boundaries_block=_vocab_boundaries(DEFAULT_LANG),
+            boundaries_block=_vocab_boundaries(lang),
         )
     try:
-        res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS, think=False)
-    except TypeError:
-        # llm_call non supporta think kwarg; tenta senza
-        try:
-            res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS)
-        except Exception:
-            return None
+        res = llm_call(prompt, query, max_tokens=_INTENT_MAX_TOKENS)
     except Exception:
         return None
     # Duck-type: accetta dict {"text": ...} (legacy) o ChatResult dataclass

@@ -28,11 +28,30 @@ import socket
 import urllib.error
 import urllib.request
 
+from playwright_sidecar import contract as _contract
+
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8771
 PROBE_TIMEOUT_S = 1.0
 DEFAULT_RENDER_TIMEOUT_S = 30.0
+
+
+def _local_contract_failure() -> dict | None:
+    status = _contract.source_status()
+    if status["contract_aligned"]:
+        return None
+    return _contract.failure("client_source_stale", process="render_client")
+
+
+def _response_contract_failure(headers) -> dict | None:
+    received = headers.get(_contract.HEADER_NAME) if headers is not None else None
+    if _contract.same_fingerprint(received, _contract.LOADED_FINGERPRINT):
+        return None
+    return _contract.failure(
+        "client_sidecar_contract_mismatch",
+        peer_fingerprint=received or "missing",
+        process="render_client")
 
 
 def is_up(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
@@ -43,11 +62,15 @@ def is_up(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT,
     Tutto il resto (connection refused, timeout, 5xx, json malformato,
     `ok=False`) ritorna False.
     """
+    if _local_contract_failure() is not None:
+        return False
     url = f"http://{host}:{port}/health"
     try:
         req = urllib.request.Request(url, method="GET")
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             if resp.status != 200:
+                return False
+            if _response_contract_failure(resp.headers) is not None:
                 return False
             data = resp.read(4096)
             try:
@@ -75,6 +98,9 @@ def render(url: str, *,
     if not isinstance(url, str) or not url:
         return {"ok": False, "error": "url required (str)",
                 "error_class": "unknown"}
+    local_failure = _local_contract_failure()
+    if local_failure is not None:
+        return local_failure
     payload: dict = {"url": url, "wait_ms": int(wait_ms)}
     if viewport is not None:
         payload["viewport"] = viewport
@@ -82,10 +108,16 @@ def render(url: str, *,
     endpoint = f"http://{host}:{port}/render"
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            _contract.HEADER_NAME: _contract.LOADED_FINGERPRINT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            contract_failure = _response_contract_failure(resp.headers)
+            if contract_failure is not None:
+                return contract_failure
             raw = resp.read()
             try:
                 obj = json.loads(raw.decode("utf-8", errors="replace"))
@@ -109,6 +141,11 @@ def render(url: str, *,
             err_body = e.read().decode("utf-8", errors="replace")
             obj = json.loads(err_body)
             if isinstance(obj, dict) and not obj.get("ok"):
+                contract_failure = _response_contract_failure(e.headers)
+                if contract_failure is not None:
+                    if obj.get("error_class") == _contract.ERROR_CLASS:
+                        return obj
+                    return contract_failure
                 return obj
         except Exception:
             pass

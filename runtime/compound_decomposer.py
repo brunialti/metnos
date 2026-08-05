@@ -26,10 +26,11 @@ from typing import Optional
 
 import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
 
-# Connettori sequenziali: i SIMBOLI (,;&&) sono lingua-invarianti e restano
-# qui; le PAROLE connettore (e/and/poi/then/...) vivono nel concept
-# traducibile `compound.connector_word` (detection_lexicon). Il pattern di
-# split e' ricostruito deterministicamente dalle forme della lingua corrente.
+# Connettori sequenziali: i SIMBOLI (,;&&) e i terminatori interrogativi o
+# esclamativi sono lingua-invarianti e restano qui; le PAROLE connettore
+# (e/and/poi/then/...) vivono nel concept traducibile
+# `compound.connector_word` (detection_lexicon). Il pattern lessicale di split
+# e' ricostruito deterministicamente dalle forme della lingua corrente.
 
 
 # Apostrofi (tutte le forme Unicode: ASCII, typographic, modifier-letter, grave).
@@ -37,6 +38,13 @@ import detection_lexicon as _dl  # lessici NL traducibili (gemello i18n input)
 # lingua — IT «e'»/«cos'»/«l'», FR «j'»/«qu'», EN «it's»/«don't». Un connettore
 # adiacente a un apostrofo è parte di una parola elisa, NON un separatore.
 _APOSTROPHES = "".join(chr(c) for c in (0x27, 0x2019, 0x02BC, 0x60))  # ' ’ ʼ `
+
+# Confine forte fra frasi letterali. Richiedere spazio dopo i terminatori
+# ASCII evita di spezzare query-string e altri token (`...?q=...`); i segni
+# Unicode coprono gli equivalenti non latini con lo stesso contratto. Il
+# terminatore resta nel chunk precedente, quindi ogni risultato e' ancora uno
+# span letterale della richiesta e puo' essere validato senza riscritture LLM.
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.?!。！？؟])\s+(?=\S)")
 
 
 @functools.lru_cache(maxsize=8)
@@ -93,11 +101,18 @@ TRANSFORM_VERBS = {"filter", "sort", "group", "classify", "describe",
 
 
 def split_query_chunks(query: str) -> list[str]:
-    """Split query su connettori sequenziali universali. Ritorna chunks
-    non vuoti puliti."""
+    """Split su confini forti e connettori sequenziali universali.
+
+    La punteggiatura separa frasi autonome prima del lessico traducibile. In
+    questo modo una richiesta composta non dipende dalla presenza di una
+    congiunzione specifica e ogni chunk conserva esattamente il testo utente.
+    """
     if not query or not query.strip():
         return []
-    parts = _connector_pattern(_dl.current_lang()).split(query)
+    parts: list[str] = []
+    connector = _connector_pattern(_dl.current_lang())
+    for sentence in _SENTENCE_BOUNDARY.split(query.strip()):
+        parts.extend(connector.split(sentence))
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -160,6 +175,78 @@ def _fields_from_schema_marker(query: str) -> list[str]:
             seen.add(f)
             out.append(f)
     return out
+
+
+_TABULAR_WITH_FIELDS_RE = re.compile(
+    r"\b(?:foglio(?:\s+di\s+calcolo|\s+elettronico)?|spreadsheet|sheet|tabella|table)\b"
+    r"[^.;:\n]{0,100}?\b(?:con|with)\b\s*([^.;\n]+)",
+    re.IGNORECASE,
+)
+
+
+def derive_sink_fields(query: str) -> list[str]:
+    """Ricava le colonne dichiarate naturalmente per un sink tabellare.
+
+    Copre «un foglio con origine, data e importo» senza scambiare una frase
+    successiva («segnala ...», «salva ...») per altre colonne. Lo scope e'
+    confinato alla clausola tabellare e termina alla punteggiatura; in assenza
+    di questa forma riusa i marker/sink assignment storici.
+    """
+    # Chat/Markdown clients often wrap a single natural-language clause over
+    # several lines (and may prefix each continuation with `>`).  Newlines are
+    # presentation, not semantic boundaries: collapse them before applying the
+    # clause-scoped parser, otherwise a wrapped schema becomes silently partial
+    # (live: "valore" at EOL dropped "originale, origine, ..." on the next).
+    normalized_query = re.sub(r"(?:^|\n)\s*>\s?", " ", query or "")
+    normalized_query = re.sub(r"\s+", " ", normalized_query).strip()
+    match = _TABULAR_WITH_FIELDS_RE.search(normalized_query)
+    if match:
+        field_clause = match.group(1) or ""
+        # A following output artifact belongs to the next sink, not to the
+        # spreadsheet schema: "..., conflitto, e un archivio ZIP ...".  Stop
+        # at that explicit noun boundary while still allowing ordinary `e`
+        # inside the list of fields.
+        field_clause = re.split(
+            r"\s*,?\s+(?:e|ed|and)\s+(?:(?:un|uno|una|an|a|the)\s+)?"
+            r"(?:archivio|archive|zip|rapporto|report|cartella|folder|directory)\b",
+            field_clause, maxsplit=1, flags=re.IGNORECASE)[0]
+        # Il payload tabellare può seguire nella STESSA frase: «con le colonne
+        # voce, stato e importo e due righe di dati: alpha, ...». Le righe non
+        # sono nuove intestazioni. Taglia sul confine coordinato che introduce
+        # rows/records, indipendentemente dalla quantità espressa prima.
+        field_clause = re.split(
+            r"\s*,?\s+(?:e|ed|and)\s+(?:(?:\d+|[A-Za-zÀ-ÖØ-öø-ÿ]+)\s+)?"
+            r"(?:righe|rows|records)\b",
+            field_clause, maxsplit=1, flags=re.IGNORECASE)[0]
+        # La forma tabellare puo' includere un marker di schema prima della
+        # lista: «spreadsheet con tutti i dati: data, descrizione, importo».
+        # Quel prefisso descrive la completezza, non e' il primo campo. Questa
+        # normalizzazione preserva la forma diretta Atlas («foglio con origine,
+        # data, ...») e il comportamento storico del parser a marker.
+        field_clause = re.sub(
+            r"^\s*(?:(?:le|i|gli|the)\s+)?"
+            r"(?:colonne|campi|intestazioni|voci|columns|fields|headers)"
+            r"\s*:?\s*",
+            "", field_clause, flags=re.IGNORECASE)
+        field_clause = re.sub(
+            r"^\s*(?:(?:tutti\s+i|tutte\s+le|all(?:\s+the)?)\s+)?"
+            r"(?:colonne|campi|intestazioni|voci|columns|fields|headers|"
+            r"dati|data)\s*:\s*",
+            "", field_clause, flags=re.IGNORECASE)
+        parts = [p for p in re.split(
+            r"\s*,\s*|\s+e\s+|\s+ed\s+|\s+and\s+", field_clause)
+                 if p.strip()]
+        out: list[str] = []
+        seen: set[str] = set()
+        for part in parts:
+            field = _clean_field_name(part)
+            if field and field not in seen and len(field) <= 40:
+                seen.add(field)
+                out.append(field)
+        if len(out) >= 2:
+            return out
+    return (_fields_from_schema_marker(normalized_query)
+            or _fields_from_sink_assignment(normalized_query))
 
 
 def _fields_from_sink_assignment(query: str) -> list[str]:
@@ -259,8 +346,7 @@ def derive_extract_fields(query: str) -> list[str]:
             seen.add(f)
             out.append(f)
     # Fallback: nessuna clausola «estrai» → schema d'uscita della clausola create.
-    return (out or _fields_from_schema_marker(query)
-            or _fields_from_sink_assignment(query))
+    return out or derive_sink_fields(query)
 
 
 def detect_chunk_action(chunk: str) -> Optional[tuple[str, str]]:

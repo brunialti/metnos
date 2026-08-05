@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import tempfile
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -40,12 +41,22 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(v) if v else default
 
 
-def _env_int(name: str, default: int) -> int:
+def env_int(name: str, default: int) -> int:
+    """Parse an integer environment override with a stable fallback.
+
+    Domain-specific bounds remain at the call site: a token budget may clamp
+    while a manifest limit must reject non-positive values. Parsing malformed
+    values has one implementation.
+    """
     v = os.environ.get(name)
     try:
         return int(v) if v else default
     except (ValueError, TypeError):
         return default
+
+
+# Compatibility for constants and older imports; new modules use ``env_int``.
+_env_int = env_int
 
 
 def _env_str(name: str, default: str) -> str:
@@ -104,6 +115,10 @@ PATH_USER_STATE    = _env_path("METNOS_USER_STATE",
                                 _home() / ".local" / "state" / "metnos")
 PATH_USER_CONFIG   = _env_path("METNOS_USER_CONFIG",
                                 _home() / ".config" / "metnos")
+PATH_USER_CACHE    = _env_path(
+    "METNOS_USER_CACHE",
+    Path(os.environ.get("XDG_CACHE_HOME") or (_home() / ".cache")) / "metnos",
+)
 
 # Synth executors (synth on-the-fly, ADR 0066)
 PATH_SYNTH_EXECUTORS = PATH_USER_DATA / "executors"
@@ -245,6 +260,94 @@ LOG_DATE_FORMAT        = "%Y-%m-%dT%H:%M:%S"
 
 # --- Helper ensure dirs ---------------------------------------------------
 
+def ensure_private_dir(path: Path) -> Path:
+    """Create/repair one account-private directory without following links."""
+
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError(f"private directory cannot be a symlink: {path}")
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        path.chmod(0o700)
+    except OSError:
+        # Windows ACLs are enforced by the client sandbox instead of POSIX mode.
+        pass
+    return path
+
+
+def ensure_private_file(path: Path) -> Path:
+    """Repair an existing sensitive file to owner-only POSIX permissions."""
+
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError(f"private file cannot be a symlink: {path}")
+    if path.exists():
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    return path
+
+
+def write_private_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Atomically replace a private text file with mode 0600."""
+
+    path = Path(path)
+    ensure_private_dir(path.parent)
+    if path.is_symlink():
+        raise ValueError(f"private file cannot be a symlink: {path}")
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    temporary = Path(temporary_name)
+    try:
+        try:
+            os.fchmod(descriptor, 0o600)
+        except (AttributeError, OSError):
+            pass
+        with os.fdopen(descriptor, "w", encoding=encoding) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        ensure_private_file(path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def append_private_bytes(path: Path, data: bytes) -> None:
+    """Append one complete record to a private file under an advisory lock."""
+
+    path = Path(path)
+    ensure_private_dir(path.parent)
+    if path.is_symlink():
+        raise ValueError(f"private file cannot be a symlink: {path}")
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    lock_module = None
+    try:
+        try:
+            os.fchmod(descriptor, 0o600)
+        except (AttributeError, OSError):
+            ensure_private_file(path)
+        try:
+            import fcntl as lock_module  # Unix server; absent on Windows shim.
+            lock_module.flock(descriptor, lock_module.LOCK_EX)
+        except ImportError:
+            lock_module = None
+        view = memoryview(data)
+        while view:
+            written = os.write(descriptor, view)
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        if lock_module is not None:
+            lock_module.flock(descriptor, lock_module.LOCK_UN)
+        os.close(descriptor)
+
 def ensure_dirs() -> None:
     """Crea i path user (idempotente). Non crea PATH_ROOT (deve esistere
     a deploy time)."""
@@ -252,7 +355,27 @@ def ensure_dirs() -> None:
               PATH_SYNTH_EXECUTORS, PATH_AUDIT, PATH_TURNS, PATH_COST,
               DB_PAIRINGS.parent, DB_RECURRING_TASKS.parent,
               DB_MNESTOMA.parent, DB_SCHEDULER.parent):
-        p.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(p)
+
+    # Repair known record/database formats left with an old umask-dependent
+    # mode. Root directories are already 0700; file repair adds defence in
+    # depth if a parent is later loosened by an administrator.
+    for root in (PATH_USER_DATA, PATH_USER_STATE, PATH_USER_CONFIG):
+        for pattern in ("*.db", "*.sqlite", "*.jsonl", "*.key", "*.sig"):
+            for candidate in root.glob(pattern):
+                if candidate.is_file():
+                    ensure_private_file(candidate)
+    for private_tree in (
+            PATH_TURNS,
+            PATH_USER_DATA / "credentials",
+            PATH_USER_STATE / "location_pending",
+            PATH_USER_STATE / "dialog_pending",
+            PATH_USER_CONFIG / "keys"):
+        if private_tree.exists() and not private_tree.is_symlink():
+            ensure_private_dir(private_tree)
+            for candidate in private_tree.rglob("*"):
+                if candidate.is_file() and not candidate.is_symlink():
+                    ensure_private_file(candidate)
 
 
 # Auto-ensure al primo import (idempotente, low cost).

@@ -9,6 +9,7 @@ query. §7.9.
 from __future__ import annotations
 
 import threading
+import json
 from typing import Optional, Sequence
 
 from store import Backend, Schema
@@ -36,7 +37,8 @@ def _order_rows(rows: list[dict], order: Optional[Sequence]) -> list[dict]:
         else:
             col, d = spec, "asc"
         rev = str(d).lower().startswith("desc")
-        rows = sorted(rows, key=lambda r: (r.get(col) is None, r.get(col)),
+        # Parità SQLite: ASC mette NULL prima, DESC lo mette dopo.
+        rows = sorted(rows, key=lambda r: (r.get(col) is not None, r.get(col)),
                       reverse=rev)
     return rows
 
@@ -66,6 +68,13 @@ class MemoryBackend(Backend):
             tbl = self._tables.setdefault(schema.table, [])
             for row in rows:
                 row = dict(row)
+                for col in schema.json_columns():
+                    value = row.get(col)
+                    if isinstance(value, str) and value:
+                        try:
+                            row[col] = json.loads(value)
+                        except (TypeError, ValueError):
+                            pass
                 if key:
                     idx = next(
                         (i for i, r in enumerate(tbl)
@@ -82,6 +91,14 @@ class MemoryBackend(Backend):
         return len(rows)
 
     def update(self, schema, values, where) -> int:
+        values = dict(values)
+        for col in schema.json_columns():
+            value = values.get(col)
+            if isinstance(value, str) and value:
+                try:
+                    values[col] = json.loads(value)
+                except (TypeError, ValueError):
+                    pass
         n = 0
         with self._lock:
             for r in self._tables.get(schema.table, []):

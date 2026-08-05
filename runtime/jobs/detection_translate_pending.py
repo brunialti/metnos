@@ -3,8 +3,8 @@
 Gemello di `i18n_translate_pending`, lato INPUT. Pesca fino a N concept con
 `needs_translation=1` e, per ogni `(concept, target_lang)`, chiede al LLM di
 produrre le forme di superficie NATURALI nella lingua target a partire dalle
-forme sorgente (en canonico). Strict JSON in/out, temperatura 0 + seed §11
-(deterministico per costruzione, salvo la singola call generativa).
+forme sorgente (en canonico). Strict JSON in/out; la policy di generazione e'
+quella centrale del livello ``fast.fidelity`` (la singola call resta generativa).
 
 Tre `kind`:
   - phrases: tradurre l'insieme di forme -> {"forms": [...]} (varianti
@@ -43,7 +43,8 @@ _LANG_NAMES = {"it": "Italian", "en": "English", "fr": "French",
 
 
 def _tier() -> str:
-    return os.environ.get("METNOS_DETECTION_QUALITY", "wise").lower()
+    from llm_workloads import tier_for
+    return tier_for("translation.detection")
 
 
 def _audit_dir() -> Path:
@@ -109,8 +110,8 @@ def _llm_localize(concept: str, kind: str, source_payload, target_lang: str,
     prompt = tmpl.format(source_name=src, target_name=tgt, concept=concept,
                          payload=json.dumps(source_payload, ensure_ascii=False))
     for _ in range(2):  # iniziale + 1 retry
-        text, meta = call_llm(prompt, _SYS_PROMPT, tier=tier, max_tokens=800,
-                              temperature=0.0)
+        text, meta = call_llm(
+            prompt, _SYS_PROMPT, tier=tier, max_tokens=800)
         obj = _extract_json(text or "")
         if not isinstance(obj, dict):
             continue

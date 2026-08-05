@@ -291,6 +291,45 @@ async def runtime_file(request: web.Request) -> web.Response:
     return _serve_file(p)
 
 
+def _runtime_descriptor_payload(filename: str) -> dict:
+    """Build the signed, immutable identity of a mirrored Python runtime."""
+    filename = _safe_filename(filename)
+    path = MIRROR_RUNTIME_DIR / filename
+    if not path.is_file():
+        raise FileNotFoundError(filename)
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return {
+        "version": 1,
+        "filename": filename,
+        "archive_sha256": digest.hexdigest(),
+        "archive_size": path.stat().st_size,
+    }
+
+
+async def runtime_descriptor(request: web.Request) -> web.Response:
+    """Signed descriptor for the interpreter archive trusted by the client."""
+    filename = _safe_filename(request.match_info["filename"])
+    try:
+        payload = await asyncio.to_thread(_runtime_descriptor_payload, filename)
+        # Lazy import avoids coupling mirror startup to the signing store.
+        import invocations
+        signature = await asyncio.to_thread(invocations.sign_payload, payload)
+    except FileNotFoundError:
+        raise web.HTTPNotFound(reason="runtime file not present")
+    except Exception:
+        log.exception("runtime descriptor failed for %s", filename)
+        raise web.HTTPServiceUnavailable(reason="runtime descriptor unavailable")
+    _audit("runtime_descriptor", filename=filename,
+           sha256=payload["archive_sha256"])
+    return web.json_response(
+        {"descriptor": payload, "sig": signature},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 async def client_manifest(request: web.Request) -> web.Response:
     p = MIRROR_CLIENT_DIR / "manifest.json"
     if not p.is_file():
@@ -334,6 +373,7 @@ def register_routes(app: web.Application) -> None:
     """Aggancia gli handler del mirror a una app aiohttp esistente."""
     app.router.add_get("/agent/pypi/simple/{package}/", simple_index)
     app.router.add_get("/agent/pypi/files/{package}/{filename}", wheel_file)
+    app.router.add_get("/agent/runtime/descriptor/{filename}", runtime_descriptor)
     app.router.add_get("/agent/runtime/{filename}", runtime_file)
     app.router.add_get("/agent/client/manifest.json", client_manifest)
     app.router.add_get("/agent/client/{version}/{target}/{filename}", client_file_versioned)

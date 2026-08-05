@@ -4,7 +4,7 @@ Architettura (decisione 13/5/2026, Q1 canonical+args):
 - Ogni file `<channel>_<provider>.py` espone le funzioni dei verbi web
   (read_html/read_pdf/find/login) per UN provider builtin.
 - Gli executor `read_urls_html.py`/`read_urls_pdf.py`/`find_urls.py`/
-  `login_session.py` dispatchano esplicitamente via `_HANDLERS` table
+  `login_urls.py` dispatchano esplicitamente via `_HANDLERS` table
   cablato (no registry magico, no decorator).
 
 Backend builtin disponibili:

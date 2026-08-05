@@ -26,7 +26,6 @@ if str(_RUNTIME) not in sys.path:
 
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from backends._google_auth_common import (  # noqa: E402
-    has_creds as _has_creds,
     ensure_fresh_token as _ensure_fresh_token,
     auth_needs_inputs as _auth_needs_inputs,
 )

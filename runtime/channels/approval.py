@@ -38,11 +38,16 @@ class ApprovalRequest:
     extra: dict = field(default_factory=dict)
 
 
-# Marker testuale per concessioni di territorio (no emoji; ASCII robusto su tutti i client)
-_TERRITORY_MARKER = {
-    "none": "",
-    "session": " [territorio: sessione]",
-    "permanent": " [territorio: permanente]",
+# Chiavi del catalogo: il renderer non possiede prosa in una lingua concreta.
+_TERRITORY_KEY = {
+    "none": None,
+    "session": "MSG_APPROVAL_TERRITORY_SESSION",
+    "permanent": "MSG_APPROVAL_TERRITORY_PERMANENT",
+}
+_REVERSIBILITY_KEY = {
+    "reversible": "MSG_REVERSIBILITY_REVERSIBLE",
+    "irreversible": "MSG_REVERSIBILITY_IRREVERSIBLE",
+    "partial": "MSG_REVERSIBILITY_PARTIAL",
 }
 
 # Modulazione per ricorrenza: dopo N volte, la carta si accorcia (Roberto sa cosa sta approvando)
@@ -59,29 +64,29 @@ def _shape_for_recurrence(n: int) -> Literal["full", "medium", "short"]:
 
 def render_approval_card(req: ApprovalRequest) -> OutboundMessage:
     """Produce un OutboundMessage con la carta a 3 righe + due bottoni."""
+    from messages import get as _msg
+
     shape = _shape_for_recurrence(req.recurrence_count)
-    territory = _TERRITORY_MARKER[req.territory_concession]
+    territory_key = _TERRITORY_KEY[req.territory_concession]
+    territory = _msg(territory_key) if territory_key else ""
+    reversibility = _msg(_REVERSIBILITY_KEY[req.reversibility])
+    question = _msg("MSG_APPROVAL_QUESTION", action=req.action_verb)
+    metadata = _msg(
+        "MSG_APPROVAL_METADATA",
+        reversibility=reversibility,
+        capability_class=req.capability_class,
+        territory=territory,
+    )
 
     if shape == "full":
-        line1 = f"Vuoi che {req.action_verb}?"
-        line2 = req.target_summary
-        line3 = f"{req.reversibility} | classe: {req.capability_class}{territory}"
-        text = f"{line1}\n{line2}\n{line3}"
+        text = f"{question}\n{req.target_summary}\n{metadata}"
     elif shape == "medium":
-        # 2 righe: domanda + target+meta
-        text = (
-            f"Vuoi che {req.action_verb}? ({req.reversibility}{territory})\n"
-            f"{req.target_summary}"
-        )
+        text = f"{question} ({metadata})\n{req.target_summary}"
     else:  # short
-        # 1 riga compatta: succede di rado che si arrivi qui per richieste mirate
-        text = (
-            f"{req.action_verb.capitalize()} {req.target_summary} "
-            f"[{req.reversibility[:3]}{territory}]?"
-        )
+        text = f"{question} {req.target_summary} [{metadata}]"
 
     buttons = [[
-        {"text": "Approva", "data": f"approve:{req.token}"},
-        {"text": "Rifiuta", "data": f"reject:{req.token}"},
+        {"text": _msg("MSG_BTN_APPROVE"), "data": f"approve:{req.token}"},
+        {"text": _msg("MSG_BTN_REJECT"), "data": f"reject:{req.token}"},
     ]]
     return OutboundMessage(text=text, buttons=buttons)

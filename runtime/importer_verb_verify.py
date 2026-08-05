@@ -127,7 +127,6 @@ def check_plan(plan: Any, *, domain: str = "", action: str = "",
     """
     vm = vocab_map or _load_vocab_map()
     contextual = vm.get("contextual", {})
-    vm.get("verb_by_target_side", {})
 
     chosen = getattr(plan, "verb", "") or ""
     # Permetti override esplicito; fallback ai campi del plan.
@@ -143,12 +142,31 @@ def check_plan(plan: Any, *, domain: str = "", action: str = "",
 
     ctx = contextual.get(f"{dom}:{act}")
     if not ctx:
-        # Domain:action non in contextual: non posso verificare.
-        # L'audit periodico flaggera' questo come "uncovered" — TODO sprint
-        # successivo (estendere contextual o regola di pass-through).
-        return Verdict(aligned=True, chosen_verb=chosen,
-                       mismatch_kind="",
-                       mismatch_reason=f"no contextual cell for {dom}:{act}")
+        # Una cella legacy `actions[action]` è ancora una regola verificabile
+        # e mantiene elastico l'importer. Se manca anche quella, non approvare
+        # per assenza di prova: la nuova action va prima classificata.
+        legacy = (vm.get("actions", {}).get(act) or {})
+        expected = legacy.get("verb", "") if isinstance(legacy, dict) else ""
+        if expected:
+            if chosen == expected:
+                return Verdict(
+                    aligned=True, chosen_verb=chosen, expected_verb=expected,
+                    target_kind=(vm.get("domains", {}).get(dom) or ""),
+                    mismatch_reason=f"legacy action rule for {dom}:{act}",
+                )
+            return Verdict(
+                aligned=False, chosen_verb=chosen, expected_verb=expected,
+                target_kind=(vm.get("domains", {}).get(dom) or ""),
+                mismatch_kind=classify_mismatch(chosen, expected),
+                mismatch_reason=(
+                    f"chosen verb {chosen!r} does not match legacy action "
+                    f"rule {expected!r} for {dom}:{act}"),
+            )
+        return Verdict(
+            aligned=False, chosen_verb=chosen,
+            mismatch_kind="uncovered_context",
+            mismatch_reason=f"no contextual or legacy action rule for {dom}:{act}",
+        )
 
     expected = ctx.get("verb", "")
     target_kind = ctx.get("target_kind", "")

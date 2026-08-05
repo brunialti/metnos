@@ -16,8 +16,9 @@ from urllib.parse import urlsplit
 
 import config as _C
 import credential_mandates
+import detection_lexicon as _detlex
 
-_VERSION = 2
+_VERSION = 3
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"']+", re.IGNORECASE)
 _SCHEMELESS_URL_RE = re.compile(
     r"(?<![/@\w-])"
@@ -105,25 +106,25 @@ def _credentials_disabled(query: str) -> bool:
             == credential_mandates.SITE_MODE_NONE)
 
 
-def build_for_task(query: str, actor: str, *,
+def build_for_task(query: str, actor: str, *, owner_user_id: str,
                    audit_path: Path | None = None) -> dict:
     """Build the minimal domain envelopes derivable at task creation."""
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        raise ValueError("task mandate owner_user_id is required")
     requested_hosts = explicit_hosts(query)
     if not requested_hosts:
         return {}
     profiles = credential_mandates.verified_site_topology(
-        actor, audit_path=audit_path)
+        owner, audit_path=audit_path)
     login_requested = _login_requested(query)
     credentials_disabled = _credentials_disabled(query)
     bindings = []
     for requested in requested_hosts:
-        candidates = [
-            (root, profile) for root, profile in profiles.items()
-            if requested == root or requested in profile["hosts"]
-        ]
-        if candidates:
-            root, profile = min(candidates, key=lambda item: (
-                item[0] != requested, len(item[0]), item[0]))
+        resolved = credential_mandates.resolve_verified_site_profile(
+            profiles, requested)
+        if resolved is not None:
+            root, profile = resolved
             hosts = set(profile["hosts"])
             origins = set(profile["origins"])
             commissioned = True
@@ -145,15 +146,18 @@ def build_for_task(query: str, actor: str, *,
         })
     return {
         "version": _VERSION,
+        "owner_user_id": owner,
         "query_hash": _query_hash(query),
         "capabilities": {"sites": {"bindings": bindings}},
     }
 
 
-def load_for_task(task_name: str, actor: str, *,
+def load_for_task(scheduler_name: str, owner_user_id: str, *,
                   db_path: Path | None = None) -> dict | None:
-    """Load and integrity-check an active task mandate."""
-    if not task_name or not actor:
+    """Load an active mandate by its immutable, owner-scoped identity."""
+    owner = str(owner_user_id or "").strip()
+    scheduler_ref = str(scheduler_name or "").strip()
+    if not scheduler_ref or not owner:
         return None
     path = Path(db_path or _C.DB_RECURRING_TASKS)
     conn = None
@@ -162,11 +166,14 @@ def load_for_task(task_name: str, actor: str, *,
         conn.row_factory = sqlite3.Row
         columns = {row[1] for row in conn.execute(
             "PRAGMA table_info(recurring_tasks)").fetchall()}
-        if "mandates" not in columns:
+        if not {"mandates", "owner_user_id", "scheduler_name"}.issubset(
+                columns):
             return None
         row = conn.execute(
-            "SELECT query, mandates, enabled FROM recurring_tasks "
-            "WHERE name=? AND actor=? LIMIT 1", (task_name, actor)).fetchone()
+            "SELECT query, mandates, enabled, name FROM recurring_tasks "
+            "WHERE owner_user_id=? AND scheduler_name=? LIMIT 1",
+            (owner, scheduler_ref),
+        ).fetchone()
     except (OSError, sqlite3.Error):
         return None
     finally:
@@ -183,15 +190,18 @@ def load_for_task(task_name: str, actor: str, *,
         return None
     if (not isinstance(mandate, dict)
             or mandate.get("version") != _VERSION
+            or mandate.get("owner_user_id") != owner
             or mandate.get("query_hash") != _query_hash(row["query"])):
         return None
     mandate["_query"] = str(row["query"] or "")
+    mandate["_logical_name"] = str(row["name"] or "")
     return mandate
 
 
-def sites_binding(task_name: str, actor: str, host: str, *,
+def sites_binding(scheduler_name: str, owner_user_id: str, host: str, *,
                   db_path: Path | None = None) -> dict | None:
-    mandate = load_for_task(task_name, actor, db_path=db_path)
+    mandate = load_for_task(
+        scheduler_name, owner_user_id, db_path=db_path)
     sites = ((mandate or {}).get("capabilities") or {}).get("sites") or {}
     canonical = credential_mandates.canonical_site_host(host)
     for binding in sites.get("bindings") or []:
@@ -203,9 +213,14 @@ def sites_binding(task_name: str, actor: str, host: str, *,
                    for item in (binding.get("allowed_hosts") or [])}
         if canonical and canonical in (entries | allowed):
             query = str(mandate.get("_query") or "")
-            resolved = {**binding, "task_name": task_name,
-                        "query_hash": mandate.get("query_hash", ""),
-                        "query": query}
+            resolved = {
+                **binding,
+                "task_name": str(mandate.get("_logical_name") or ""),
+                "scheduler_name": scheduler_name,
+                "owner_user_id": owner_user_id,
+                "query_hash": mandate.get("query_hash", ""),
+                "query": query,
+            }
             operations = set(resolved.get("operations") or ())
             root = str(resolved.get("root_host") or canonical)
             if (_credentials_disabled(query)

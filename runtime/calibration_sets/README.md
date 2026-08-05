@@ -1,63 +1,27 @@
-# Planner-split calibration sets
+# Planner-split calibration data
 
-Per-language thresholds for the PLANNER split decision (ADR 0151).
+This directory contains JSON data for `runtime/calibration_check.py`, a
+deterministic three-level threshold lookup:
 
-## Lookup order (3-level fallback)
+1. a user override in
+   `~/.config/metnos/planner_split_calibration.json`;
+2. a language file in this directory;
+3. conservative in-memory defaults.
 
-`runtime/calibration_check.py::ensure_calibration(lang)` cerca:
+`ensure_calibration(lang)` always returns a complete dictionary and
+`threshold_for(calibration, verb)` selects a verb-specific threshold when one
+exists.
 
-1. **User override**: `~/.config/metnos/planner_split_calibration.json`
-   - Se esiste E `data["lang"] == lang` E non e' stale → ritorna quello.
-2. **Library pre-baked** (questa directory): `runtime/calibration_sets/<lang>.json`
-   - Se esiste → ritorna quello.
-3. **Conservative default in-memory**: `threshold_default=0.80`,
-   nessun threshold_by_verb, rank_distance_min=0.15.
-   - Caller puo' opzionalmente schedulare un task one-shot v2
-     `calibrate_planner_split(lang=<lang>)` per generare la calibration
-     reale in background (idempotency key `calibration_<lang>`).
-     Finche' il task non completa, il default in-memory e' usato.
+The current request engine does **not** call this module in its production
+planning path. The files are retained as calibration data for tooling and
+experiments; changing them does not change normal Metnos routing.
 
-## Lingue pre-baked attualmente
+## Files
 
-| lang | threshold_default | notes |
-|------|------------------:|-------|
-| `it` | 0.80 | Placeholder, real calibration pending |
-| `en` | 0.75 | Placeholder, -5pt vs IT per bias linguistico Gemma |
+- `_schema.json`: JSON Schema for a calibration set.
+- `it.json`, `en.json`: bundled sample sets.
 
-Soglie deliberatamente conservative finche' bench corpus #H0c.2 non
-dimostra sicurezza su verbi mutating. Quando il bench reale gira,
-soglie scenderanno (riducendo % fallback monolithic).
-
-## Per aggiungere una nuova lingua
-
-1. Genera la calibration: `python -m runtime.calibrate planner-split --lang es`
-   (CLI non ancora implementata — vedi #H0e in
-   [[project_pending_2026_05_19_v3]]).
-2. Verifica il file generato in `~/.config/metnos/planner_split_calibration.json`.
-3. Copia in `runtime/calibration_sets/es.json`.
-4. Apri PR.
-
-## Per override personalizzato
-
-```bash
-cp runtime/calibration_sets/it.json \
-   ~/.config/metnos/planner_split_calibration.json
-# edita le soglie come preferisci
-```
-
-Override non subisce update se il file ha `lang` corretto e non e' stale.
-
-## Staleness check (deferred)
-
-Un calibration set diventa stale quando:
-- `metnos_commit` differisce di > 30 giorni di log E pool tool e' cambiato
-  (nuovi executor che alterano il pool top-K medio).
-- Modello LLM cambiato (`model` field differente da quello configurato).
-- Schema `version` bumped.
-
-Auto re-generation in background ogni 90 giorni (idempotent via key).
-Implementazione: task scheduler v2, vedi `runtime/scheduler_v2/builtin_callbacks.py`.
-
-## Schema
-
-Vedi `_schema.json` (JSON Schema draft-07).
+An override must use the requested ISO language code. Malformed or mismatched
+files are ignored and the lookup falls back safely. The `generated_at`, commit,
+model, and corpus fields are descriptive metadata; the current implementation
+does not use them to invalidate a set automatically.

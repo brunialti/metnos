@@ -2,7 +2,7 @@
 """metnos-i18n — admin CLI per il DB i18n.
 
 Usage:
-    python3 -m admin.i18n_cli stats
+    python3 -m admin.i18n_cli [--db PATH] stats
     python3 -m admin.i18n_cli get <key>
     python3 -m admin.i18n_cli set <key> <lang> <text>
     python3 -m admin.i18n_cli list [--lang <lang>] [--prefix <prefix>]
@@ -56,10 +56,34 @@ def cmd_list(args):
 
 def cmd_pending(args):
     rows = i18n.list_pending(limit=args.limit)
-    print(f"{len(rows)} pending translations:")
+    total = i18n.count_pending()
+    actionable = i18n.count_pending(actionable_only=True)
+    print(f"{len(rows)} shown; total={total}, actionable={actionable}, "
+          f"blocked_or_stale={total - actionable}:")
     for r in rows:
         src = (r["source_text"] or "")[:60]
         print(f"  [{r['source_lang']} → {r['target_lang']}] {r['key']}: {src!r}")
+
+
+def cmd_repair_pending(_args):
+    report = i18n.repair_complete_pending()
+    print(
+        "repaired complete pending: "
+        f"keys={report['keys']} rows={report['rows']} "
+        f"skipped_keys={report['skipped_keys']}"
+    )
+
+
+def cmd_delete_keys(args):
+    report = i18n.delete_keys(args.keys)
+    print(f"deleted exact keys={report['keys']} rows={report['rows']}")
+
+
+def cmd_queue(args):
+    i18n.mark_for_translation(args.key, args.target_lang, args.source_lang)
+    print(
+        f"queued {args.key}: {args.source_lang} -> {args.target_lang}"
+    )
 
 
 def cmd_add_lang(args):
@@ -80,14 +104,26 @@ def cmd_add_lang(args):
         i18n.mark_for_translation(key, new_lang, src_lang)
         n += 1
     print(f"Added language '{new_lang}' (source={src_lang}): {n} placeholder rows created.")
-    print(f"Daemon translator (TODO) o tool admin riempira' on-demand.")
+    print("Daemon translator (TODO) o tool admin riempira' on-demand.")
 
 
 def cmd_translate_pending(args):
-    """Esegue 1 ciclo del daemon translator (sync). Per debug/manual run."""
-    import i18n_translator
-    n_ok, remaining = i18n_translator.run_one_cycle()
-    print(f"Translated {n_ok} entries. Remaining pending: {remaining}.")
+    """Esegue il motore unico usato da timer systemd e scheduler fallback."""
+    from jobs.i18n_translate_pending import task_i18n_translate_pending
+
+    result = task_i18n_translate_pending(payload={"origin": "admin_cli"})
+    meta = result.get("metadata") or {}
+    remaining = meta.get("pending_actionable")
+    if remaining is None:
+        remaining = i18n.count_pending(actionable_only=True)
+    print(
+        f"Translated {int(result.get('ok_count') or 0)} entries. "
+        f"Errors: {int(result.get('error_count') or 0)}. "
+        f"Remaining actionable: {remaining}. "
+        f"Reason: {meta.get('reason') or 'cycle_complete'}."
+    )
+    if not result.get("ok", False):
+        raise SystemExit(1)
 
 
 def cmd_translate_loop(_args):
@@ -131,6 +167,10 @@ def cmd_validate(args):
 
 def main():
     p = argparse.ArgumentParser(prog="metnos-i18n")
+    p.add_argument(
+        "--db", type=Path,
+        help="DB i18n esplicito (default: percorso runtime configurato)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("stats").set_defaults(fn=cmd_stats)
     g = sub.add_parser("get"); g.add_argument("key"); g.set_defaults(fn=cmd_get)
@@ -143,6 +183,20 @@ def main():
     pe = sub.add_parser("pending")
     pe.add_argument("--limit", type=int, default=50)
     pe.set_defaults(fn=cmd_pending)
+    rp = sub.add_parser("repair-pending")
+    rp.add_argument(
+        "--all-complete", action="store_true", required=True,
+        help="conferma esplicita: normalizza come baseline tutte le coppie complete",
+    )
+    rp.set_defaults(fn=cmd_repair_pending)
+    dk = sub.add_parser("delete-keys")
+    dk.add_argument("keys", nargs="+")
+    dk.set_defaults(fn=cmd_delete_keys)
+    qu = sub.add_parser("queue")
+    qu.add_argument("key")
+    qu.add_argument("target_lang")
+    qu.add_argument("source_lang")
+    qu.set_defaults(fn=cmd_queue)
     al = sub.add_parser("add-lang")
     al.add_argument("code"); al.add_argument("--source-lang")
     al.set_defaults(fn=cmd_add_lang)
@@ -152,6 +206,11 @@ def main():
     v.add_argument("--verbose", action="store_true")
     v.set_defaults(fn=cmd_validate)
     args = p.parse_args()
+    if args.db is not None:
+        if i18n._conn is not None:
+            i18n._conn.close()
+        i18n._conn = None
+        i18n.DB_PATH = args.db.expanduser().resolve()
     args.fn(args)
 
 

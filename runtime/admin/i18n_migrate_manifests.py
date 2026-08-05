@@ -73,12 +73,14 @@ def migrate_manifest(manifest_path: Path, dry_run: bool = False) -> dict:
         if not norm:
             continue
         key = f"{name}.{field}"
-        for lang, text in norm.items():
-            if dry_run:
+        if dry_run:
+            for lang, text in norm.items():
                 print(f"  [dry-run] would set [{key}, {lang}] = {text[:60]!r}")
-            else:
-                i18n.set(key, lang, text)
-            counts["rows"] += 1
+        else:
+            # Le traduzioni del manifest sono un'unita' editoriale completa:
+            # non accodare falsamente una lingua mentre si scrive l'altra.
+            i18n.set_catalog_translations(key, norm)
+        counts["rows"] += len(norm)
         counts["fields"].append(field)
     return counts
 

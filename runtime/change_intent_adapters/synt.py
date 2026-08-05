@@ -1,15 +1,17 @@
 """synt adapter — ~/.local/share/metnos/synt_proposals/*.json → ChangeIntent.
 
-I synt_proposals storici sono "executor request" gia' processati dalla
-pipeline 5 stage. Importiamo in stato FINALIZED (installed) o
-ROLLED_BACK (rejected/abandoned) per preservare l'audit, NON per
-ri-proporli.
+I synt_proposals storici sono "executor request" processati dalla pipeline
+multistage. Importiamo gli stati terminali per preservare l'audit e gli
+``in_progress`` come diagnostica. Gli artefatti ``synthesized`` sono invece
+governati esclusivamente dal promoter (evaluator + grace + kill-switch): non
+li duplichiamo come finta richiesta di triage umano.
 
 Mapping:
   - final_state='installed'       → STATE_FINALIZED  (executor attivo)
   - final_state='rejected*'       → STATE_ROLLED_BACK
   - final_state='abandoned*'      → STATE_ROLLED_BACK
-  - final_state='in_progress'     → STATE_ACCEPTED (synt in corso)
+  - final_state='in_progress'/''  → STATE_PROPOSED (nessuna decisione implicita)
+  - final_state='synthesized'     → non proiettato (owner: promoter)
 """
 from __future__ import annotations
 
@@ -19,8 +21,8 @@ from typing import Iterable
 import config as C
 from change_intents import (
     KIND_CREATE_EXECUTOR,
-    STATE_ACCEPTED,
     STATE_FINALIZED,
+    STATE_PROPOSED,
     STATE_ROLLED_BACK,
     ChangeIntent,
 )
@@ -47,6 +49,12 @@ def iter_synt() -> Iterable[ChangeIntent]:
         abandon_reason = data.get("abandon_reason") or ""
 
         if not name:
+            continue
+        if final_state == "synthesized":
+            # One lifecycle owner only. The promoter persists its decision in
+            # promoter.sqlite and exposes gray/grace outcomes in its review
+            # surface; projecting the same artifact here as PROPOSED would
+            # advertise an approval gate that is not part of execution.
             continue
 
         score = score_from_synt_state(final_state)
@@ -91,5 +99,5 @@ def iter_synt() -> Iterable[ChangeIntent]:
             ci_new.state = STATE_ROLLED_BACK
             ci_new.rolled_back_reason = abandon_reason or final_state
         elif final_state == "in_progress" or not final_state:
-            ci_new.state = STATE_ACCEPTED
+            ci_new.state = STATE_PROPOSED
         yield ci_new

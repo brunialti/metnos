@@ -45,6 +45,9 @@ def put(payload: dict, *, ttl_s: int = _TTL_S) -> str:
       - channel       (str: 'http'|'telegram'|... per routing del risultato)
       - dialog_id     (str: per audit)
     """
+    owner_user_id = str(payload.get("owner_user_id") or "").strip()
+    if not owner_user_id:
+        raise ValueError("OAuth pending owner_user_id is required")
     state = secrets.token_urlsafe(24)
     entry = dict(payload)
     entry["expires_at"] = time.time() + ttl_s
@@ -75,3 +78,20 @@ def size() -> int:
     with _lock:
         _cleanup_expired_locked()
         return len(_store)
+
+
+def purge_owner(owner_user_id: str) -> int:
+    """Remove every outstanding flow for one immutable logical owner."""
+
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return 0
+    with _lock:
+        _cleanup_expired_locked()
+        keys = [
+            key for key, value in _store.items()
+            if str(value.get("owner_user_id") or "") == owner
+        ]
+        for key in keys:
+            _store.pop(key, None)
+        return len(keys)

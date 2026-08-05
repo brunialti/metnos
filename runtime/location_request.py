@@ -21,7 +21,7 @@ API:
     cancel(pending_id) -> dict {status:'cancelled'}
         Rimuove pending senza salvare location.
 
-    get_pending_for(actor, channel) -> dict | None
+    get_pending_for(owner_user_id, channel) -> dict | None
         Lookup attivo: il daemon lo chiama prima del normal dispatch per
         decidere se l'input utente va instradato al pending.
 
@@ -34,6 +34,9 @@ idempotenti. resolve scrive in locations.jsonl via location_store.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
+import fcntl
+import os
 import time
 import uuid
 from pathlib import Path
@@ -41,31 +44,50 @@ from typing import Optional
 
 import config as _C  # §7.11
 PENDING_DIR = _C.PATH_USER_STATE / "location_pending"
+LOCK_PATH = _C.PATH_USER_STATE / "location_pending.lock"
 DEFAULT_TIMEOUT_S = 300
 
 
 def _ensure_dir():
-    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    _C.ensure_private_dir(PENDING_DIR)
 
 
 def _path(pending_id: str) -> Path:
     return PENDING_DIR / f"{pending_id}.json"
 
 
-def request(*, turn_id: str, actor: str, channel: str, original_query: str,
-            goal: str, chat_id: Optional[str] = None,
+@contextmanager
+def _pending_lock(*, exclusive: bool):
+    _C.ensure_private_dir(LOCK_PATH.parent)
+    descriptor = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(
+            descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def request(*, turn_id: str, actor: str, owner_user_id: str,
+            channel: str, original_query: str, goal: str,
+            chat_id: Optional[str] = None,
             timeout_s: int = DEFAULT_TIMEOUT_S) -> dict:
     """Salva pending state. NON invia messaggi al canale (separation of
     concerns: il channel adapter del daemon vede l'esito del turno e fa il
     rendering). Ritorna metadata che il runtime propaga al daemon via
     TurnLog.pending_location.
     """
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        raise ValueError("location pending owner_user_id is required")
     _ensure_dir()
     pending_id = uuid.uuid4().hex[:16]
     now = time.time()
     record = {
         "pending_id": pending_id,
         "turn_id": turn_id,
+        "owner_user_id": owner,
         "actor": actor,
         "channel": channel,
         "chat_id": chat_id,
@@ -75,7 +97,9 @@ def request(*, turn_id: str, actor: str, channel: str, original_query: str,
         "ts_expires": now + timeout_s,
         "status": "awaiting",
     }
-    _path(pending_id).write_text(json.dumps(record, ensure_ascii=False) + "\n")
+    with _pending_lock(exclusive=True):
+        _C.write_private_text(
+            _path(pending_id), json.dumps(record, ensure_ascii=False) + "\n")
     return {
         "pending_id": pending_id,
         "status": "awaiting",
@@ -88,20 +112,32 @@ def request(*, turn_id: str, actor: str, channel: str, original_query: str,
 
 
 def resolve(pending_id: str, lat: float, lon: float, *,
-            source: str, accuracy: Optional[float] = None) -> dict:
+            owner_user_id: str, source: str,
+            accuracy: Optional[float] = None) -> dict:
     """Risolve pending: scrive locations.jsonl + rimuove file."""
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return {"status": "unknown", "error": "logical owner unavailable"}
     p = _path(pending_id)
-    if not p.exists():
-        return {"status": "unknown", "error": "pending_id not found or expired"}
-    record = json.loads(p.read_text())
-    # Persisti in locations.jsonl via location_store
-    try:
-        from location_store import record_location
-        record_location(actor=record["actor"], lat=lat, lon=lon,
-                        accuracy=accuracy, channel=record["channel"])
-    except Exception as e:
-        return {"status": "error", "error": f"record_location failed: {e}"}
-    p.unlink(missing_ok=True)
+    with _pending_lock(exclusive=True):
+        try:
+            record = json.loads(p.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return {"status": "unknown",
+                    "error": "pending_id not found or expired"}
+        if str(record.get("owner_user_id") or "") != owner:
+            return {"status": "unknown",
+                    "error": "pending_id not found or expired"}
+        try:
+            from location_store import record_location
+            record_location(
+                owner_user_id=owner, actor=record.get("actor") or "",
+                lat=lat, lon=lon, accuracy=accuracy,
+                channel=record["channel"], source=source)
+        except Exception as e:
+            return {"status": "error",
+                    "error": f"record_location failed: {e}"}
+        p.unlink(missing_ok=True)
     return {
         "status": "resolved",
         "pending_id": pending_id,
@@ -115,13 +151,22 @@ def resolve(pending_id: str, lat: float, lon: float, *,
     }
 
 
-def cancel(pending_id: str) -> dict:
+def cancel(pending_id: str, *, owner_user_id: str) -> dict:
     """Rimuove pending senza salvare location."""
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return {"status": "unknown", "error": "logical owner unavailable"}
     p = _path(pending_id)
-    if not p.exists():
-        return {"status": "unknown", "error": "pending_id not found or expired"}
-    record = json.loads(p.read_text())
-    p.unlink(missing_ok=True)
+    with _pending_lock(exclusive=True):
+        try:
+            record = json.loads(p.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return {"status": "unknown",
+                    "error": "pending_id not found or expired"}
+        if str(record.get("owner_user_id") or "") != owner:
+            return {"status": "unknown",
+                    "error": "pending_id not found or expired"}
+        p.unlink(missing_ok=True)
     return {
         "status": "cancelled",
         "pending_id": pending_id,
@@ -133,24 +178,27 @@ def cancel(pending_id: str) -> dict:
     }
 
 
-def get_pending_for(actor: str, channel: str) -> Optional[dict]:
-    """Lookup pending attivo per (actor, channel). Ritorna il piu' recente.
+def get_pending_for(owner_user_id: str, channel: str) -> Optional[dict]:
+    """Lookup pending attivo per (owner UUID, channel). Ritorna il più recente.
     Usato dal daemon prima del normal dispatch per intercettare la risposta
     dell'utente al prompt di location."""
-    if not PENDING_DIR.exists():
+    owner = str(owner_user_id or "").strip()
+    if not owner or not PENDING_DIR.exists():
         return None
     candidates = []
     now = time.time()
-    for p in PENDING_DIR.glob("*.json"):
-        try:
-            r = json.loads(p.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        if r.get("actor") != actor or r.get("channel") != channel:
-            continue
-        if r.get("ts_expires", 0) < now:
-            continue  # scaduto, ignora (sweep separato lo elimina)
-        candidates.append((r["ts_created"], r))
+    with _pending_lock(exclusive=False):
+        for p in PENDING_DIR.glob("*.json"):
+            try:
+                r = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if (str(r.get("owner_user_id") or "") != owner
+                    or r.get("channel") != channel):
+                continue
+            if r.get("ts_expires", 0) < now:
+                continue
+            candidates.append((r["ts_created"], r))
     if not candidates:
         return None
     candidates.sort(reverse=True)
@@ -163,17 +211,49 @@ def sweep_expired() -> int:
         return 0
     now = time.time()
     n = 0
-    for p in PENDING_DIR.glob("*.json"):
-        try:
-            r = json.loads(p.read_text())
-        except (OSError, json.JSONDecodeError):
-            p.unlink(missing_ok=True)
-            n += 1
-            continue
-        if r.get("ts_expires", 0) < now:
-            p.unlink(missing_ok=True)
-            n += 1
+    with _pending_lock(exclusive=True):
+        for p in PENDING_DIR.glob("*.json"):
+            try:
+                r = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                p.unlink(missing_ok=True)
+                n += 1
+                continue
+            if r.get("ts_expires", 0) < now:
+                p.unlink(missing_ok=True)
+                n += 1
     return n
+
+
+def _purge(*, owner_user_id: str | None = None,
+           unscoped: bool = False) -> int:
+    if not PENDING_DIR.exists():
+        return 0
+    owner = str(owner_user_id or "").strip()
+    removed = 0
+    with _pending_lock(exclusive=True):
+        for path in tuple(PENDING_DIR.glob("*.json")):
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                record = {}
+            if ((owner and str(record.get("owner_user_id") or "") == owner)
+                    or (unscoped and not record.get("owner_user_id"))):
+                try:
+                    path.unlink()
+                    removed += 1
+                except FileNotFoundError:
+                    pass
+    return removed
+
+
+def purge_owner(owner_user_id: str) -> int:
+    owner = str(owner_user_id or "").strip()
+    return _purge(owner_user_id=owner) if owner else 0
+
+
+def purge_unscoped() -> int:
+    return _purge(unscoped=True)
 
 
 # ---- Forward geocoding fallback (testo libero -> coords) ----------------

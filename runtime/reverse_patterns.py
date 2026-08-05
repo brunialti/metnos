@@ -295,7 +295,10 @@ def _delete_created_paths(plan, results):
 # Compatibile con `blob_sha256` legacy (ricerca in METNOS_HISTORY_DIR).
 
 def _restore_blob_backup(plan, results):
+    import hashlib as _hashlib
     import os as _os
+    import stat as _stat
+    import tempfile as _tempfile
     from pathlib import Path as _Path
     import config as _C  # §7.11
     entries = (results or {}).get("results") or []
@@ -321,6 +324,18 @@ def _restore_blob_backup(plan, results):
 
     try:
         for i, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                continue
+            has_blob_reference = any(entry.get(key) for key in (
+                "blob_path", "prev_blob_path", "blob_sha256",
+                "prev_blob_sha256",
+            ))
+            # Multistage reverse patterns share the same result rows. A newly
+            # created file belongs to delete_created_paths, not to this stage.
+            # Skip non-applicable rows; a declared-but-missing blob below is
+            # still a hard failure.
+            if not has_blob_reference:
+                continue
             blob_path = _find_blob_path(entry)
             if blob_path is None:
                 failed.append({"index": i, "error": "blob not found",
@@ -332,18 +347,56 @@ def _restore_blob_backup(plan, results):
                 failed.append({"index": i, "error": f"blob read failed: {e}",
                                "blob_path": str(blob_path)})
                 continue
+            expected_sha = (entry.get("blob_sha256")
+                            or entry.get("prev_blob_sha256"))
+            if isinstance(expected_sha, str):
+                expected_sha = expected_sha.removeprefix("sha256:")
+                if _hashlib.sha256(raw).hexdigest() != expected_sha:
+                    failed.append({"index": i, "error": "blob integrity mismatch",
+                                   "blob_path": str(blob_path)})
+                    continue
             # Sniff: FS se ha "path", IMAP se ha "account"+"folder"
             if "path" in entry and "account" not in entry:
                 target = _Path(entry["path"])
+                temporary = None
                 try:
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(raw)
+                    fd, temporary_name = _tempfile.mkstemp(
+                        prefix=f".{target.name}.metnos-restore-",
+                        dir=str(target.parent))
+                    temporary = _Path(temporary_name)
+                    with _os.fdopen(fd, "wb") as handle:
+                        handle.write(raw)
+                        handle.flush()
+                        _os.fsync(handle.fileno())
+                    mode = entry.get("mode")
+                    if isinstance(mode, int) and not isinstance(mode, bool):
+                        _os.chmod(temporary, _stat.S_IMODE(mode))
+                    mtime_ns = entry.get("mtime_ns")
+                    atime_ns = entry.get("atime_ns")
+                    if (isinstance(mtime_ns, int) and not isinstance(mtime_ns, bool)
+                            and isinstance(atime_ns, int)
+                            and not isinstance(atime_ns, bool)):
+                        _os.utime(temporary, ns=(atime_ns, mtime_ns))
+                    if entry.get("restore_mode") == "create":
+                        if _os.path.lexists(target):
+                            raise FileExistsError(
+                                "restore destination is occupied")
+                        _os.link(temporary, target)
+                    else:
+                        _os.replace(temporary, target)
                     out.append({"path": str(target),
                                 "bytes_restored": len(raw),
                                 "blob_path": str(blob_path)})
                 except Exception as e:
                     failed.append({"index": i, "path": entry.get("path"),
                                    "error": f"write failed: {e}"})
+                finally:
+                    if temporary is not None:
+                        try:
+                            temporary.unlink()
+                        except FileNotFoundError:
+                            pass
             elif "account" in entry and "folder" in entry:
                 account = entry["account"]
                 folder = entry["folder"]
@@ -383,6 +436,35 @@ def _restore_blob_backup(plan, results):
     }
 
 
+# ---- Pattern: restore_trashed_files --------------------------------------
+# Ripristina file Drive spostati nel cestino. Gli ID non vengono ricavati da
+# locator o query: sono quelli esatti registrati dal forward in `_undo.ids`.
+
+def _restore_trashed_files(plan, results):
+    undo_meta = ((results or {}).get("_undo")
+                 if isinstance(results, dict) else None)
+    ids = undo_meta.get("ids") if isinstance(undo_meta, dict) else None
+    scope = undo_meta.get("scope") if isinstance(undo_meta, dict) else None
+    if (not isinstance(scope, dict)
+            or scope.get("client") != "google_workspace"):
+        return {
+            "ok": False, "ok_count": 0, "fail_count": 1,
+            "results": [], "failed": [{
+                "error": "restore_trashed_files requires google_workspace scope",
+            }],
+        }
+    if (not isinstance(ids, list) or not ids
+            or any(not isinstance(fid, str) or not fid.strip() for fid in ids)):
+        return {
+            "ok": False, "ok_count": 0, "fail_count": 1,
+            "results": [], "failed": [{
+                "error": "restore_trashed_files requires recorded exact ids",
+            }],
+        }
+    from backends.files import google_workspace
+    return google_workspace.restore_trashed({"ids": ids})
+
+
 # ---- Catalog -------------------------------------------------------------
 
 PATTERNS = {
@@ -390,6 +472,7 @@ PATTERNS = {
     "delete_created_dirs":  _delete_created_dirs,
     "delete_created_paths": _delete_created_paths,
     "restore_blob_backup":  _restore_blob_backup,
+    "restore_trashed_files": _restore_trashed_files,
 }
 
 # 5° famiglia `delete_<object>_by_id` (ADR 0123 §2.3): registrata in-place dal
@@ -469,16 +552,14 @@ def build_remote_reverse_calls(names, plan: dict, results: dict) -> dict:
                               "args": {"paths": sorted(
                                   set(parent_dirs),
                                   key=lambda d: str(d).count("/"),
-                                  reverse=True),
-                                  "if_empty_only": True}})
+                                  reverse=True)}})
         elif n == "delete_created_dirs":
             dirs = res.get("dirs_created") or []
             if dirs:
                 calls.append({"executor": "delete_dirs",
                               "args": {"paths": sorted(
                                   set(dirs), key=lambda d: str(d).count("/"),
-                                  reverse=True),
-                                  "if_empty_only": True}})
+                                  reverse=True)}})
         elif n == "restore_blob_backup":
             # Round-trip SENZA blob sul filo (ADR 0183 D3 chiuso 6/7): il blob
             # sta SUL DEVICE (local.delete lo scrive lì prima dell'unlink).

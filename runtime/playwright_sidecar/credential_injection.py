@@ -33,7 +33,6 @@ import base64
 import hashlib
 import hmac
 import inspect
-import os
 import re
 import struct
 import time
@@ -428,16 +427,9 @@ def _host_of(url: str) -> str:
         return ""
 
 
-def _human_delay_ms() -> int:
-    try:
-        value = int(os.getenv("METNOS_SITES_HUMAN_DELAY_MS", "400"))
-    except (TypeError, ValueError):
-        value = 400
-    return max(0, min(value, 3000))
-
-
-async def _human_pause(page, *, stealth: bool = False) -> None:
-    """Pausa breve 'umana' attorno a fill e click credenziale.
+async def _human_pause(page, *, stealth_techniques=(), selector: str = "",
+                       locator=None) -> None:
+    """Prepara l'interazione e applica la pausa opt-in condivisa.
 
     Presidio ANTI-RILEVAMENTO (ritmo non-uniforme), NON stabilizzazione UI:
     SOLO in modalita' stealth PER-SESSIONE (ADR 0191 P1, layer BEHAVIOR del
@@ -445,19 +437,14 @@ async def _human_pause(page, *, stealth: bool = False) -> None:
     stabilita' pagina si ottiene con attese su postcondizioni. Bounded via
     `METNOS_SITES_HUMAN_DELAY_MS`.
     """
-    if not stealth:
-        return
-    from playwright_sidecar import stealth as _st
-    if not _st.technique_enabled("human_delays", stealth=True):
-        return
-    ms = _human_delay_ms()
-    if ms <= 0:
-        return
     try:
-        if hasattr(page, "wait_for_timeout"):
-            await page.wait_for_timeout(ms)
-        else:
-            await asyncio.sleep(ms / 1000)
+        from playwright_sidecar import stealth as _st
+        if locator is None and selector and hasattr(page, "locator"):
+            locator = page.locator(selector).first
+        await _st.prepare_interaction(
+            page, locator, techniques=stealth_techniques)
+        await _st.pause_before_interaction(
+            page, techniques=stealth_techniques)
     except Exception:
         pass
 
@@ -659,6 +646,37 @@ def _install_nav_status_listener(page) -> None:
         pass
 
 
+_AUTH_ENTRY_SEGMENTS = frozenset({
+    "login", "log-in", "signin", "sign-in", "signon", "sign-on",
+    "register", "registration", "signup", "sign-up",
+    "recover", "recovery", "forgot", "reset",
+})
+
+
+def _is_auth_entry_route(url: str) -> bool:
+    """Reject route changes that remain on an authentication entry surface.
+
+    A disappearing password field plus a route change is useful for cookieless
+    appliances, but a transition from sign-in to registration/recovery is not
+    evidence of an authenticated session.  Inspect only normalized URL path
+    and fragment segments; no page copy, hostname, or provider special-case is
+    involved.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(str(url or ""))
+    except ValueError:
+        return False
+    route = f"{parsed.path} {parsed.fragment.split('?', 1)[0]}".lower()
+    segments = {
+        segment for segment in re.split(r"[^a-z0-9-]+", route)
+        if segment
+    }
+    if segments & _AUTH_ENTRY_SEGMENTS:
+        return True
+    compact = {segment.replace("-", "") for segment in segments}
+    return bool(compact & {"login", "signin", "signon", "signup"})
+
+
 async def _observe_post_submit(*, page, context, cookies_before: dict,
                                url_before: str,
                                op_timeout_s: float,
@@ -670,6 +688,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         "otp": False, "captcha": False, "push": False,
         "password_rejected": False, "navigation_confirmed": False,
         "login_surface": False, "surface_checked": False,
+        "auth_entry_route": False,
         "stable_positive": False,
     }
     positive_streak = 0
@@ -700,6 +719,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
                 scrub_url(page.url) != scrub_url(url_before))
         except Exception:
             navigation_confirmed = False
+        auth_entry_route = _is_auth_entry_route(getattr(page, "url", ""))
         state = {
             "cookies": cookies, "changed": changed, "still_pw": still_pw,
             "otp": otp, "captcha": captcha, "push": push,
@@ -707,6 +727,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
             "navigation_confirmed": navigation_confirmed,
             "login_surface": login_surface,
             "surface_checked": surface_checked,
+            "auth_entry_route": auth_entry_route,
             "stable_positive": False,
             # Fix adversarial #5: status HTTP top-level catturato dal listener di
             # navigazione (perform_login), riletto FRESCO a ogni poll (la Response
@@ -715,6 +736,7 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
         }
         positive = bool(
             surface_checked and not login_surface
+            and not auth_entry_route
             and (changed or navigation_confirmed))
         positive_streak = positive_streak + 1 if positive else 0
         state["stable_positive"] = (
@@ -743,10 +765,17 @@ async def _observe_post_submit(*, page, context, cookies_before: dict,
 def _authed_success(observed: dict,
                     session_cookie_names: list[str]) -> bool:
     """Segnale POSITIVO di sessione (password, TOTP e OTP esterno). True solo se
-    stabile-positivo e SENZA rifiuto/sfida."""
+    stabile-positivo e SENZA rifiuto/sfida.
+
+    Un cookie di sessione esplicitamente dichiarato dal vault e cambiato dopo
+    il submit resta una prova forte anche quando il provider conserva una URL
+    ``/signin`` (alcuni endpoint autenticano e renderizzano la pagina account
+    senza cambiare route).  Su una route di ingresso auth, invece, navigazione
+    e cookie generici non bastano: cosi' recovery/registration non diventano
+    falsi positivi.
+    """
     if (observed.get("still_pw") or observed.get("login_surface")
             or not observed.get("surface_checked")
-            or not observed.get("stable_positive")
             or observed.get("otp")
             or observed.get("captcha") or observed.get("push")
             or observed.get("password_rejected")):
@@ -754,6 +783,9 @@ def _authed_success(observed: dict,
     changed = list(observed.get("changed") or ())
     if session_cookie_names:
         return any(c.get("name") in session_cookie_names for c in changed)
+    if (not observed.get("stable_positive")
+            or observed.get("auth_entry_route")):
+        return False
     auth_cookie = any(
         re.search(r"(^|_)(sess(?:ion)?|auth|login|sid|jwt)($|_)",
                   str(c.get("name") or ""), re.IGNORECASE)
@@ -909,7 +941,8 @@ async def _submit_otp_stage(*, page, vault_domain: str,
                             storage_domain: str, owner: str,
                             session_id: str, op_timeout_s: float,
                             audit_field: str,
-                            failure_class: str) -> dict:
+                            failure_class: str,
+                            stealth_techniques=()) -> dict:
     try:
         info = await page.evaluate(_LOCATE_OTP_FORM_JS)
     except Exception:
@@ -934,9 +967,15 @@ async def _submit_otp_stage(*, page, vault_domain: str,
                 return {"ok": False, "error_class": failure_class}
             fields = page.locator('[data-metnos-otp="1"]')
             for index, char in enumerate(code):
+                await _human_pause(
+                    page, stealth_techniques=stealth_techniques,
+                    locator=fields.nth(index))
                 await fields.nth(index).fill(
                     char, timeout=int(op_timeout_s * 1000))
         else:
+            await _human_pause(
+                page, stealth_techniques=stealth_techniques,
+                selector='[data-metnos-otp="1"]')
             await page.fill('[data-metnos-otp="1"]', code,
                             timeout=int(op_timeout_s * 1000))
         try:
@@ -951,6 +990,11 @@ async def _submit_otp_stage(*, page, vault_domain: str,
         current_action = await page.evaluate(_CURRENT_OTP_ACTION_JS)
         if not origin_ok(current_action):
             return {"ok": False, "error_class": "origin_mismatch"}
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector=('[data-metnos-otp-submit="1"]'
+                      if info.get("hasSubmit")
+                      else '[data-metnos-otp="1"]'))
         if info.get("hasSubmit"):
             await page.click('[data-metnos-otp-submit="1"]',
                              timeout=int(op_timeout_s * 1000),
@@ -974,7 +1018,8 @@ async def _advance_totp_stage(*, page, vault_domain: str,
                               storage_domain: str, owner: str,
                               session_id: str, op_timeout_s: float,
                               digits: int = 6, period: int = 30,
-                              algorithm: str = "sha1") -> dict:
+                              algorithm: str = "sha1",
+                              stealth_techniques=()) -> dict:
     try:
         code = _totp_code(totp_secret, digits=int(digits), period=int(period),
                           algorithm=str(algorithm))
@@ -985,7 +1030,8 @@ async def _advance_totp_stage(*, page, vault_domain: str,
         origin_ok=origin_ok, code=code,
         storage_domain=storage_domain, owner=owner,
         session_id=session_id, op_timeout_s=op_timeout_s,
-        audit_field="totp", failure_class="totp_failed")
+        audit_field="totp", failure_class="totp_failed",
+        stealth_techniques=stealth_techniques)
 
 
 async def _complete_one_time_code_stage(*, page, context,
@@ -996,7 +1042,8 @@ async def _complete_one_time_code_stage(*, page, context,
                                         session_cookie_names: list[str],
                                         owner: str, session_id: str,
                                         op_timeout_s: float,
-                                        payload: dict | None = None) -> dict:
+                                        payload: dict | None = None,
+                                        stealth_techniques=()) -> dict:
     try:
         cookies_before = {
             (c.get("name"), c.get("domain"), c.get("path")): c.get("value")
@@ -1010,7 +1057,8 @@ async def _complete_one_time_code_stage(*, page, context,
         origin_ok=origin_ok, code=one_time_code,
         storage_domain=storage_domain, owner=owner,
         session_id=session_id, op_timeout_s=op_timeout_s,
-        audit_field="one_time_code", failure_class="otp_failed")
+        audit_field="one_time_code", failure_class="otp_failed",
+        stealth_techniques=stealth_techniques)
     if not advanced.get("ok"):
         error_class = str(advanced.get("error_class") or "otp_failed")
         reason = ("origin_unverified" if error_class == "origin_mismatch"
@@ -1046,7 +1094,7 @@ async def _advance_username_stage(*, page, vault_domain: str,
                                   session_id: str,
                                   op_timeout_s: float,
                                   before_submit=None,
-                                  stealth: bool = False) -> dict:
+                                  stealth_techniques=()) -> dict:
     """Compila l'identita' e avanza UNA volta verso la password."""
     try:
         info = await page.evaluate(_LOCATE_USERNAME_STAGE_JS)
@@ -1071,10 +1119,15 @@ async def _advance_username_stage(*, page, vault_domain: str,
                                form_host=_host_of(current_action),
                                phase="username_pre_fill")
             return {"ok": False, "error_class": "origin_mismatch"}
-        await _human_pause(page, stealth=stealth)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector='[data-metnos-user-step="1"]')
         await page.fill('[data-metnos-user-step="1"]', username,
                         timeout=int(op_timeout_s * 1000))
-        await _human_pause(page, stealth=stealth)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector=('[data-metnos-user-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-user-step="1"]'))
         try:
             fp = credentials.fingerprint(storage_domain)
         except Exception:
@@ -1161,7 +1214,8 @@ def _credential_form_data(payload: dict) -> dict:
 
 async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
                               owner: str, session_id: str,
-                              op_timeout_s: float) -> dict:
+                              op_timeout_s: float,
+                              stealth_techniques=()) -> dict:
     """Risolve e riempie ``cred:<domain>:<field>`` senza esporre il valore.
 
     Il campo e' scelto esclusivamente dai tag broker-owned prodotti da
@@ -1213,6 +1267,8 @@ async def fill_credential_ref(*, page, expected_domain: str, value_ref: str,
     if field in ("username", "user", "email") and not info.get("hasUser"):
         return {"ok": False, "error_class": "selector_missing"}
     try:
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques, selector=selector)
         await page.fill(selector, value, timeout=int(op_timeout_s * 1000))
     except Exception:
         return {"ok": False, "error_class": "fill_failed"}
@@ -1234,7 +1290,7 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                         page_provider=None, factor_state: dict | None = None,
                         checkpoint=None,
                         total_timeout_s: float | None = None,
-                        stealth: bool = False) -> dict:
+                        stealth_techniques=()) -> dict:
     """Esegue il login nel session-context. Ritorna
     `{ok, logged_in: bool, reason_code: str|None, error_class?: str}`.
     ZERO segreti nel return (reason_code = slug i18n, mai username/password).
@@ -1329,7 +1385,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             storage_domain=storage_domain,
             session_cookie_names=session_cookie_names,
             owner=owner, session_id=session_id,
-            op_timeout_s=budget.remaining(op_timeout_s), payload=payload)
+            op_timeout_s=budget.remaining(op_timeout_s), payload=payload,
+            stealth_techniques=stealth_techniques)
         await _checkpoint(
             checkpoint,
             "complete" if completed.get("logged_in") else "factor_pending")
@@ -1350,7 +1407,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 storage_domain=storage_domain,
                 session_cookie_names=session_cookie_names,
                 owner=owner, session_id=session_id,
-                op_timeout_s=budget.remaining(op_timeout_s), payload=payload)
+                op_timeout_s=budget.remaining(op_timeout_s), payload=payload,
+                stealth_techniques=stealth_techniques)
             if completed.get("logged_in"):
                 await _checkpoint(checkpoint, "complete")
                 return completed
@@ -1474,7 +1532,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                 storage_domain=storage_domain, owner=owner,
                 session_id=session_id,
                 op_timeout_s=budget.remaining(op_timeout_s),
-                before_submit=_before_username_submit, stealth=stealth)
+                before_submit=_before_username_submit,
+                stealth_techniques=stealth_techniques)
             if not advanced.get("ok"):
                 error_class = advanced.get("error_class")
                 mismatch = error_class == "origin_mismatch"
@@ -1636,13 +1695,20 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
                     "reason_code": "origin_unverified",
                     "error_class": "origin_mismatch"}
         if username and info.get("hasUser"):
-            await _human_pause(page, stealth=stealth)
+            await _human_pause(
+                page, stealth_techniques=stealth_techniques,
+                selector='[data-metnos-user="1"]')
             await page.fill('[data-metnos-user="1"]', username,
                             timeout=int(action_timeout * 1000))
-        await _human_pause(page, stealth=stealth)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector='[data-metnos-pw="1"]')
         await page.fill('[data-metnos-pw="1"]', password,
                         timeout=int(action_timeout * 1000))
-        await _human_pause(page, stealth=stealth)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector=('[data-metnos-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-pw="1"]'))
         try:
             fp = credentials.fingerprint(storage_domain)
         except Exception:
@@ -1673,7 +1739,10 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             username=username, payload=payload, factor_state=factor_state,
             budget=budget, checkpoint=checkpoint, force=True)
         action_timeout = budget.remaining(op_timeout_s)
-        await _human_pause(page, stealth=stealth)
+        await _human_pause(
+            page, stealth_techniques=stealth_techniques,
+            selector=('[data-metnos-submit="1"]' if info.get("hasSubmit")
+                      else '[data-metnos-pw="1"]'))
         if info.get("hasSubmit"):
             await page.click('[data-metnos-submit="1"]',
                              timeout=int(action_timeout * 1000),
@@ -1713,7 +1782,8 @@ async def perform_login(*, page, context, domain: str, form_hint: str | None,
             session_id=session_id,
             op_timeout_s=budget.remaining(op_timeout_s),
             digits=totp_digits, period=totp_period,
-            algorithm=str(totp_algorithm))
+            algorithm=str(totp_algorithm),
+            stealth_techniques=stealth_techniques)
         if advanced.get("ok"):
             observed = await _observe_post_submit(
                 page=page, context=context, cookies_before=cookies_before,

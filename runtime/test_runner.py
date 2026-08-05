@@ -32,7 +32,11 @@ import os
 import subprocess
 import sys
 import tomllib
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_shell(cmd):
@@ -78,6 +82,49 @@ def run_executor(executor_path, args, test_env=None):
         return result.returncode, None, f"NON-JSON STDOUT: {result.stdout!r}\nSTDERR: {result.stderr!r}"
 
 
+def run_reference(reference, test_env=None):
+    """Run a signed repository-local pytest reference.
+
+    In-process builtins are modules, not stdin/stdout executables.  Their
+    manifests therefore point at hermetic pytest evidence instead of
+    pretending that the module can be invoked as a subprocess.  Keep this
+    path explicit and repository-confined: a typo or an external path fails
+    closed instead of executing an unrelated test file.
+    """
+    if not isinstance(reference, str) or not reference.strip():
+        return 2, "", "reference must be a non-empty string"
+    raw_path, separator, node_id = reference.strip().partition("::")
+    candidate = (_REPO_ROOT / raw_path).resolve()
+    try:
+        candidate.relative_to(_REPO_ROOT)
+    except ValueError:
+        return 2, "", f"reference outside repository: {raw_path}"
+    if not candidate.is_file():
+        return 2, "", f"reference not found: {raw_path}"
+    selector = str(candidate)
+    if separator:
+        if not node_id.strip():
+            return 2, "", f"empty pytest node id: {reference}"
+        selector = f"{selector}::{node_id.strip()}"
+
+    env = os.environ.copy()
+    runtime_path = str(Path(__file__).resolve().parent)
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        runtime_path if not existing_pp
+        else f"{runtime_path}{os.pathsep}{existing_pp}"
+    )
+    env.setdefault("METNOS_RUNTIME", runtime_path)
+    if test_env:
+        for key, value in test_env.items():
+            env[str(key)] = str(value).replace("{RUNTIME}", runtime_path)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", selector],
+        cwd=_REPO_ROOT, capture_output=True, text=True, env=env,
+    )
+    return result.returncode, result.stdout, result.stderr
+
+
 def expand_hint(hint):
     """Espande ~ nel hint contro l'utente che esegue il runner."""
     return os.path.expanduser(hint)
@@ -119,6 +166,11 @@ def check_hints(args, capabilities, actor="host"):
     `~/.config/metnos/workspace_policy.toml` (sezione [<actor>.<famiglia>.<azione>]);
     in piu' i pattern in `excludes` rifiutano anche se in scope.
     """
+    if not isinstance(args, dict):
+        # Root-shape validation belongs to the executor contract; authority
+        # checks cannot extract a path or host from a non-object input.
+        return None
+
     from urllib.parse import urlparse
     try:
         from workspace_policy import effective_hints
@@ -134,8 +186,31 @@ def check_hints(args, capabilities, actor="host"):
         scope, excludes = effective_hints(actor, name, manifest_hints)
 
         if name.startswith("fs:"):
-            # Estrai i path da varie convenzioni di arg: scalari, liste, entries+template.
-            # Tutti i path presenti devono essere in scope e non matchare excludes.
+            semantic_args = {
+                hint[4:] for hint in manifest_hints
+                if isinstance(hint, str) and hint.startswith("arg:") and hint[4:]
+            }
+            if semantic_args:
+                # ``arg:<name>`` is a signed exact-input authority.  Other
+                # path-looking arguments (for example an index corpus key)
+                # do not inherit filesystem access from it.
+                for arg_name in semantic_args:
+                    raw = args.get(arg_name)
+                    values = raw if isinstance(raw, list) else [raw]
+                    for path in values:
+                        if not isinstance(path, str) or not path:
+                            continue
+                        for ex in excludes:
+                            if match_hint(path, ex):
+                                return (
+                                    f"outside allowed scope: {path} matches exclude {ex}"
+                                )
+                continue
+            # Estrai i path dai carrier di CONTROLLO. `entries` e' invece un
+            # data-plane opaco: una colonna chiamata path/src/dst puo' essere
+            # testo da riportare in un foglio, non autorita' filesystem. Gli
+            # executor che devono autorizzare path dentro record lo dichiarano
+            # esplicitamente con le annotazioni firmate della capability.
             path_candidates = []
             # scalari (legacy + correnti)
             for k in ("path", "base_path", "src", "dst"):
@@ -147,16 +222,6 @@ def check_hints(args, capabilities, actor="host"):
                 v = args.get(k)
                 if isinstance(v, list):
                     path_candidates.extend(p for p in v if isinstance(p, str) and p)
-            # entries: list[{path?, src?, dst?}]
-            entries = args.get("entries")
-            if isinstance(entries, list):
-                for e in entries:
-                    if not isinstance(e, dict):
-                        continue
-                    for ek in ("path", "src", "dst"):
-                        ev = e.get(ek)
-                        if isinstance(ev, str) and ev:
-                            path_candidates.append(ev)
             # dst_template: controlla solo il prefisso fisso prima del primo placeholder.
             dt = args.get("dst_template")
             if isinstance(dt, str) and dt:
@@ -289,6 +354,11 @@ def check_expect(actual, expected):
         elif matcher == "fail_count_eq":
             if actual.get("fail_count") != value:
                 failures.append(f"fail_count_eq: atteso {value}, ottenuto {actual.get('fail_count')}")
+        elif matcher in {"decision", "used", "error_class", "error_code"}:
+            if actual.get(matcher) != value:
+                failures.append(
+                    f"{matcher}: atteso {value!r}, ottenuto "
+                    f"{actual.get(matcher)!r}")
         elif matcher == "has_field":
             # Il campo `value` deve essere presente e non-None nel risultato.
             if actual.get(value) is None:
@@ -310,6 +380,37 @@ def check_expect(actual, expected):
                     f"ottenuto ok={actual.get('ok')} err_class={actual.get('error_class')}")
         else:
             failures.append(f"matcher sconosciuto: {matcher}")
+    return failures
+
+
+def check_parallel_equivalence(
+        executor_path, args, test_env, baseline, runs: int) -> list[str]:
+    """Compare admitted concurrent runs with the sequential result.
+
+    Equality is structural after JSON parsing.  No field is ignored: an
+    executor with timestamps, unstable ordering, collisions or missing
+    provenance is not safe to reorder until its public contract explicitly
+    stabilizes them. Non-read-only admission has additional isolation and
+    postcondition gates in the Executor Standard.
+    """
+    if (not isinstance(runs, int) or isinstance(runs, bool)
+            or not 2 <= runs <= 8):
+        return ["equivalence_runs: atteso intero 2..8"]
+    with ThreadPoolExecutor(
+            max_workers=runs, thread_name_prefix="birth_equivalence") as pool:
+        futures = [
+            pool.submit(run_executor, executor_path, args, test_env)
+            for _ in range(runs)
+        ]
+    failures = []
+    for index, future in enumerate(futures, start=1):
+        rc, actual, stderr = future.result()
+        if actual is None:
+            failures.append(
+                f"parallel_equivalence[{index}]: invoke rc={rc} {stderr[:120]}")
+        elif actual != baseline:
+            failures.append(
+                f"parallel_equivalence[{index}]: risultato diverso dal baseline")
     return failures
 
 
@@ -344,11 +445,35 @@ def main():
     passed = failed = 0
     for test in tests:
         tname = test.get("name", "?")
+        reference = test.get("reference")
         setup = test.get("setup", "")
         teardown = test.get("teardown", "")
         args = test.get("input", {})
         expected = test.get("expect", {})
         test_env = test.get("env", {})
+        equivalence_runs = test.get("equivalence_runs")
+
+        if reference is not None:
+            if any(key in test for key in ("input", "expect", "setup", "teardown")):
+                print(f"  X {tname}")
+                print("      REFERENCE FAIL: reference tests cannot also "
+                      "declare input/expect/setup/teardown")
+                failed += 1
+                continue
+            rc, stdout, stderr = run_reference(reference, test_env)
+            if rc != 0:
+                print(f"  X {tname}")
+                detail = (stdout + stderr).strip()
+                print(f"      REFERENCE FAIL rc={rc} {detail[-2000:]}")
+                failed += 1
+            else:
+                print(f"  v {tname}")
+                passed += 1
+            # ``equivalence_runs`` on a reference identifies the reviewed
+            # equivalence evidence implemented by that test.  The referenced
+            # test itself owns the serial/parallel executions; running pytest
+            # concurrently would test pytest isolation, not executor semantics.
+            continue
 
         setup_rc, _, setup_err = run_shell(setup)
         if setup_rc != 0:
@@ -376,6 +501,13 @@ def main():
                 continue
 
         failures = check_expect(actual, expected)
+        if equivalence_runs is not None:
+            if scope_violation:
+                failures.append(
+                    "parallel_equivalence: il caso non deve fallire il controllo scope")
+            else:
+                failures.extend(check_parallel_equivalence(
+                    executor_path, args, test_env, actual, equivalence_runs))
         run_shell(teardown)
 
         if failures:

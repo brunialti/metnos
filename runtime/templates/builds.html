@@ -1,21 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Build indici · Console Metnos{% endblock %}
+{% block title %}{{ msg("UI_BUILDS_PAGE_TITLE") }}{% endblock %}
 {% block body %}
-<h1>Build indici ({{ rows|length }})</h1>
-<p class="page-sub">Build asincrone degli indici immagine via
-<code>systemd-run --user</code> (ADR 0093). Ogni riga è una coppia
-(directory, indice) tracciata con progresso ed ETA.</p>
-<p class="muted">Stati: <code>running</code> = unit attivo con progress
-recente · <code>done</code> = rename atomico finale completato ·
-<code>aborted</code> = stale detection o unit morto ·
-<code>interrupted</code> = SIGTERM gestito (riprende al prossimo start).</p>
+<h1>{{ msg("UI_BUILDS_TITLE", count=rows|length) }}</h1>
+<p class="page-sub">{{ msg("UI_BUILDS_LEAD") }}
+<code>systemd-run --user</code>. {{ msg("UI_BUILDS_ROW_NOTE") }}</p>
+<p class="muted">{{ msg("UI_BUILDS_STATES") }}
+<code>running</code> = {{ msg("UI_BUILDS_STATE_RUNNING_DESC") }} ·
+<code>done</code> = {{ msg("UI_BUILDS_STATE_DONE_DESC") }} ·
+<code>error</code> = {{ msg("UI_BUILDS_STATE_ERROR_DESC") }} ·
+<code>aborted</code> = {{ msg("UI_BUILDS_STATE_ABORTED_DESC") }} ·
+<code>interrupted</code> = {{ msg("UI_BUILDS_STATE_INTERRUPTED_DESC") }}.</p>
 <div class="table-wrap">
 <table>
   <thead>
     <tr>
-      <th>digest</th><th>directory</th><th>indice</th><th>stato</th>
-      <th>progresso</th><th>eta</th><th>aggiornato</th>
-      <th>unit attivo</th><th>errori</th>
+      <th>{{ msg("UI_BUILDS_COL_DIGEST") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_DIRECTORY") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_INDEX") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_STATUS") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_PROGRESS") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ETA") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_UPDATED") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ACTIVE_UNIT") }}</th>
+      <th>{{ msg("UI_BUILDS_COL_ERRORS") }}</th>
     </tr>
   </thead>
   <tbody>
@@ -25,10 +32,12 @@ recente · <code>done</code> = rename atomico finale completato ·
       <td class="muted">{{ r.base_path }}</td>
       <td><code>{{ r.idx }}</code></td>
       <td>
-        {% if r.state == "done" %}<span class="chip ok">{{ r.state }}</span>
-        {% elif r.state in ("error", "aborted") %}<span class="chip bad">{{ r.state }}</span>
-        {% elif r.state == "running" %}<span class="chip warn">{{ r.state }}</span>
-        {% else %}<span class="chip">{{ r.state }}</span>{% endif %}
+        {% if r.state == "done" %}<span class="chip ok">{{ msg("UI_BUILDS_STATE_DONE") }}</span>
+        {% elif r.state == "error" %}<span class="chip bad">{{ msg("UI_BUILDS_STATE_ERROR") }}</span>
+        {% elif r.state == "aborted" %}<span class="chip bad">{{ msg("UI_BUILDS_STATE_ABORTED") }}</span>
+        {% elif r.state == "running" %}<span class="chip warn">{{ msg("UI_BUILDS_STATE_RUNNING") }}</span>
+        {% elif r.state == "interrupted" %}<span class="chip">{{ msg("UI_BUILDS_STATE_INTERRUPTED") }}</span>
+        {% else %}<span class="chip">{{ msg("UI_BUILDS_STATE_UNKNOWN", state=r.state) }}</span>{% endif %}
       </td>
       <td>
         {% if r.n_total %}
@@ -40,17 +49,17 @@ recente · <code>done</code> = rename atomico finale completato ·
         {% if r.eta_s and r.state == "running" %}{{ (r.eta_s|int // 60) }}m{% else %}-{% endif %}
       </td>
       <td class="muted">
-        {% if r.last_update_age_s is not none %}{{ r.last_update_age_s|int }}s fa
+        {% if r.last_update_age_s is not none %}{{ msg("UI_BUILDS_SECONDS_AGO", seconds=r.last_update_age_s|int) }}
         {% else %}-{% endif %}
       </td>
       <td>
-        {% if r.unit_active %}<span class="chip ok">sì</span>
-        {% else %}<span class="chip">no</span>{% endif %}
+        {% if r.unit_active %}<span class="chip ok">{{ msg("UI_BUILDS_YES") }}</span>
+        {% else %}<span class="chip">{{ msg("UI_BUILDS_NO") }}</span>{% endif %}
       </td>
       <td>{{ r.errors }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="9" class="muted">nessuna build registrata</td></tr>
+    <tr><td colspan="9" class="muted">{{ msg("UI_BUILDS_EMPTY") }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

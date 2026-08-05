@@ -214,6 +214,15 @@ class Scratchpad:
         for k in _LIGHTWEIGHT_TOPLEVEL:
             if k in observation and k not in synthetic:
                 synthetic[k] = observation[k]
+        # Preserve every top-level numeric/boolean measurement.  Executors
+        # evolve faster than this transport layer; an allow-list silently hid
+        # new exact statistics (for example complete-scan and duplicate-group
+        # counts) and left the final composer reasoning from display caps.
+        # Scalars are bounded and cannot leak the heavy payload kept here.
+        for k, value in observation.items():
+            if (k not in synthetic
+                    and isinstance(value, (bool, int, float))):
+                synthetic[k] = value
         if list_field is not None:
             synthetic["list_field"] = list_field
             synthetic["count"] = list_count

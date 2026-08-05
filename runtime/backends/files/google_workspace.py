@@ -2,7 +2,7 @@
 
 Wrappa `~/.local/share/metnos/skills/google-workspace/scripts/google_api.py`
 sub-commands `drive search | get | upload | download | create-folder |
-share | delete`.
+share | delete | restore`.
 
 Mapping verb canonical Metnos → Drive sub-command:
 - find_files  → drive search (vettoriale, paths→query)
@@ -33,8 +33,6 @@ if str(_RUNTIME) not in sys.path:
 
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from backends._google_auth_common import (  # noqa: E402
-    SKILL_NAME,
-    has_creds as _has_creds,
     ensure_fresh_token as _ensure_fresh_token,
     auth_needs_inputs as _auth_needs_inputs,
 )
@@ -571,12 +569,68 @@ def delete(args: dict) -> dict:
         results.append({"ok": True, "id": fid,
                          "status": "permanently_deleted" if permanent else "trashed"})
 
-    return {
+    out = {
         "ok": len(failed) == 0,
         "n_deleted": len(results),
         "results": results,
         "failed": failed,
         "used": len(results),
+        "files_source": "google_workspace",
+    }
+    # The branch actually executed selects its reverse operation just in time.
+    # The manifest remains the signed ceiling; permanent deletion deliberately
+    # emits no undo metadata and can never be presented as reversible.
+    if results and not permanent:
+        out["_undo"] = {
+            "reverse_pattern": "restore_trashed_files",
+            "ids": [row["id"] for row in results if row.get("id")],
+            "scope": {"client": "google_workspace"},
+        }
+    return out
+
+
+def restore_trashed(args: dict) -> dict:
+    """Restore exact broker-owned Drive IDs from trash.
+
+    This is intentionally narrower than :func:`delete`: no locator/query
+    resolution and no user-facing disambiguation.  The IDs originate from the
+    completed forward operation's signed undo record.
+    """
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="args",
+                              reason="must be an object"),
+                "error_class": "invalid_args", "results": [],
+                "failed": [], "ok_count": 0, "fail_count": 0}
+    raw_ids = args.get("ids")
+    if (not isinstance(raw_ids, list) or not raw_ids
+            or any(not isinstance(fid, str) or not fid.strip()
+                   for fid in raw_ids)):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="ids",
+                              reason="must be a non-empty list of strings"),
+                "error_class": "invalid_args", "results": [],
+                "failed": [], "ok_count": 0, "fail_count": 0}
+
+    # Preserve order while refusing duplicate provider mutations.
+    ids = list(dict.fromkeys(fid.strip() for fid in raw_ids))
+    results, failed = [], []
+    for fid in ids:
+        _, err = _run_drive(
+            ["drive", "restore", fid], executor="undo_last_turn",
+            args_base={"file_id": fid, "client": "google_workspace"},
+            result_kind="results",
+        )
+        if err is not None:
+            failed.append({"id": fid, **err})
+            continue
+        results.append({"ok": True, "id": fid, "status": "restored"})
+    return {
+        "ok": len(failed) == 0,
+        "ok_count": len(results),
+        "fail_count": len(failed),
+        "results": results,
+        "failed": failed,
         "files_source": "google_workspace",
     }
 

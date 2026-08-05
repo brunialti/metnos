@@ -5,8 +5,8 @@ Costruisce trie con 4 livelli max. Query → estrae verb canonico
 (intent_extractor o detect_canonical_verb), object canonico, lookup
 O(L) nel trie.
 
-Vocabolario chiuso §2.2 amplifica: 23 verbi × 19 oggetti = 437 nodi
-max al 2° livello. Memory trascurabile.
+Il vocabolario chiuso §2.2 limita il numero di nodi al secondo livello
+al prodotto finito di `vocab.ACTIONS` e `vocab.OBJECTS`. Memoria trascurabile.
 
 Best for: routing deterministico quando verb+object sono chiari.
 Complementare a verb_first ma piu' fine: discrimina anche su qualifier.
@@ -62,7 +62,7 @@ def _query_path(query: str) -> list[str]:
     qtokens = tokenize(query)
     if not qtokens:
         return []
-    verb = detect_canonical_verb(qtokens)
+    verb = detect_canonical_verb(qtokens, query)
     obj = detect_canonical_object(qtokens, query)
     path = []
     if verb:

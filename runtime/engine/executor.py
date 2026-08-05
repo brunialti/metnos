@@ -63,7 +63,12 @@ _TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
                              "thumbnail", "data", "raw", "html", "mime"})
 _TABLE_MAX_ROWS = 200
 _TABLE_MAX_COLS = 6
-
+_TABLE_MAX_CHARS = 16_000
+# Private-use markers consumed only by the safe HTML table renderer.  Markdown
+# has no native per-cell attributes, so this is the transport between a
+# manifest's declarative ``nowrap`` field and the browser presentation.
+_TABLE_NOWRAP_OPEN = "\ue000"
+_TABLE_NOWRAP_CLOSE = "\ue001"
 
 def _align_url_reader_jit(tool: str, args: dict) -> str:
     """Choose the non-lossy reader at the last responsible moment.
@@ -98,15 +103,22 @@ def _align_url_reader_jit(tool: str, args: dict) -> str:
 
 
 def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
-                   max_cols: int = _TABLE_MAX_COLS) -> str:
+                   max_cols: int = _TABLE_MAX_COLS,
+                   max_chars: int = _TABLE_MAX_CHARS,
+                   presentation: dict | None = None) -> str:
     """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
-    zero LLM). Colonne = campi preferiti presenti (cap `max_cols`), righe = tutte
-    le entries fino a `max_rows` (§2.7: nota i18n sul resto). Entries non-dict o
-    senza campi tabulabili → fallback bullet-list."""
+    zero LLM). Colonne = campi preferiti presenti (cap `max_cols`), righe fino
+    al primo fra `max_rows` e `max_chars` (§2.7: nota i18n sul resto). Entries
+    non-dict o senza campi tabulabili → fallback bullet-list."""
+    contract = (presentation or {}).get("list") if isinstance(presentation, dict) else None
+    if isinstance(contract, dict) and contract.get("columns"):
+        return _contract_entries_table(entries, contract)
+
     rows = [e for e in entries if isinstance(e, dict)]
     if not rows:
         return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
                                      more_key="MSG_RENDER_MORE_HIDDEN")
+
     seen: list = []
     for e in rows[:50]:
         for k in e.keys():
@@ -144,13 +156,96 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
         return text if len(text) <= max_chars else text[:max_chars - 1] + "…"
     lines = ["| " + " | ".join(str(c) for c in cols) + " |",
              "| " + " | ".join("---" for _ in cols) + " |"]
+    rendered_chars = sum(len(line) + 1 for line in lines)
+    shown = 0
     for e in rows[:max_rows]:
-        lines.append("| " + " | ".join(_cell(c, e.get(c)) for c in cols) + " |")
+        row = "| " + " | ".join(_cell(c, e.get(c)) for c in cols) + " |"
+        # Keep at least one data row even when a single actionable path is
+        # unusually long. Thereafter the response byte budget is the primary
+        # bound: hundreds of long paths must not turn one chat answer into a
+        # multi-megabyte transport or browser-rendering problem.
+        if shown and rendered_chars + len(row) + 1 > max(1, max_chars):
+            break
+        lines.append(row)
+        rendered_chars += len(row) + 1
+        shown += 1
     out = "\n".join(lines)
-    more = len(rows) - max_rows
+    more = len(rows) - shown
     if more > 0:
         out += "\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)
     return out
+
+
+def _contract_entries_table(entries: list, contract: dict) -> str:
+    """Render a manifest-declared list projection with bounded dimensions."""
+    columns = contract.get("columns") or []
+    max_rows = int(contract.get("max_rows", _TABLE_MAX_ROWS))
+    max_chars = int(contract.get("max_chars", _TABLE_MAX_CHARS))
+
+    def value(entry: object, spec: dict):
+        source = spec.get("source", spec.get("key"))
+        sources = source if isinstance(source, list) else [source]
+        for key in sources:
+            if key == "$entry":
+                return entry
+            if not isinstance(entry, dict):
+                continue
+            candidate = entry.get(key) if isinstance(key, str) else None
+            if candidate not in (None, "", [], {}):
+                return candidate
+        return spec.get("fallback", "")
+
+    def display_datetime(raw: object, kind: object) -> object:
+        """Format a manifest-typed date without knowing its producer domain."""
+        if kind not in {"date", "datetime"} or raw in (None, ""):
+            return raw
+        try:
+            import datetime as _dt
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                parsed = _dt.datetime.fromtimestamp(float(raw), _dt.timezone.utc)
+            elif isinstance(raw, str):
+                text = raw.strip()
+                try:
+                    parsed = _dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+                except ValueError:
+                    from email.utils import parsedate_to_datetime
+                    parsed = parsedate_to_datetime(text)
+            else:
+                return raw
+            if not isinstance(parsed, _dt.datetime):
+                return raw
+            return (parsed.strftime("%d/%m/%y") if kind == "date"
+                    else parsed.strftime("%d/%m/%y %H:%M"))
+        except (OverflowError, OSError, TypeError, ValueError):
+            return raw
+
+    def cell(entry: object, spec: dict) -> str:
+        raw = display_datetime(value(entry, spec), spec.get("type"))
+        if isinstance(raw, (list, tuple, dict)):
+            raw = json.dumps(raw, ensure_ascii=False, sort_keys=True)
+        text = str(raw).replace("|", "\\|").replace("\n", " ").strip()
+        limit = int(spec.get("cell_max", 180))
+        text = text if len(text) <= limit else text[:limit - 1] + "…"
+        # A manifest, not a domain branch, decides which compact identifiers
+        # are indivisible in a table cell (for example a date or account).
+        return (f"{_TABLE_NOWRAP_OPEN}{text}{_TABLE_NOWRAP_CLOSE}"
+                if spec.get("nowrap") else text)
+
+    headers = [str(spec.get("key")) for spec in columns]
+    lines = ["| " + " | ".join(headers) + " |",
+             "| " + " | ".join("---" for _ in headers) + " |"]
+    used = sum(len(line) + 1 for line in lines)
+    shown = 0
+    for entry in entries[:max_rows]:
+        line = "| " + " | ".join(cell(entry, spec) for spec in columns) + " |"
+        if shown and used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+        shown += 1
+    if len(entries) > shown:
+        lines.append(_msg("MSG_RENDER_MORE_HIDDEN", more=len(entries) - shown))
+    return "\n".join(lines)
 
 
 def _entries_bullet_lines(entries: list, *, fields: tuple,
@@ -471,54 +566,11 @@ def _step_list_payload(step_result: dict):
     return None
 
 
-def _consumer_match_arg(consumer_schema, prev_entries):
-    """Rileva l'arg-lista consumer naturale per una lista di entries via
-    convenzione I/O Metnos (plurale↔singolare + `from_entries_key`).
-
-    Replica `agent_runtime._consumer_match_arg` — replicato qui per evitare
-    l'import circolare engine←agent_runtime. Es: find_urls produce
-    entries=[{url, title, ...}], read_urls_html consuma `urls` → singolare
-    `url` presente in entries[0] → estrai entries[*].url. Ritorna il nome
-    dell'arg consumer o None. Esclude `entries`/`from_step`."""
-    if not isinstance(consumer_schema, dict) or not isinstance(prev_entries, list):
-        return None
-    props = consumer_schema.get("properties") or {}
-    if not isinstance(props, dict):
-        return None
-    required = consumer_schema.get("required") or []
-    if not isinstance(required, list):
-        required = []
-    # Caso degenere lista vuota: primo array required (escluso entries/from_step).
-    if not prev_entries:
-        for arg_name in required:
-            if arg_name in ("entries", "from_step"):
-                continue
-            spec = props.get(arg_name)
-            if isinstance(spec, dict) and spec.get("type") and spec.get("type") != "array":
-                continue
-            return arg_name
-        return None
-    if not isinstance(prev_entries[0], dict):
-        return None
-    sample_keys = set(prev_entries[0].keys())
-    candidates = []
-    for arg_name, spec in props.items():
-        if arg_name in ("entries", "from_step"):
-            continue
-        if isinstance(spec, dict) and spec.get("type") and spec.get("type") != "array":
-            continue
-        from_key = spec.get("from_entries_key") if isinstance(spec, dict) else None
-        if isinstance(from_key, str) and from_key in sample_keys:
-            candidates.append(((0 if arg_name in required else 1) - 1, arg_name))
-            continue
-        singular = (arg_name[:-1] if arg_name.endswith("s") and len(arg_name) > 1
-                    else arg_name)
-        if singular in sample_keys:
-            candidates.append((0 if arg_name in required else 1, arg_name))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda t: (t[0], t[1]))
-    return candidates[0][1]
+from from_step_projection import (  # noqa: E402
+    CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
+    consumer_match_arg as _consumer_match_arg,
+    project_from_entries as _project_from_entries,
+)
 
 
 def _seed_entries(seed_steps) -> list:
@@ -678,29 +730,9 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     else:
         entries = _find_list_of_dicts(src) or []
     out = {k: v for k, v in args.items() if k != "from_step"}
-    # Proiezione consumer-arg: se lo schema del consumer dichiara un arg-lista
-    # naturale (es. read_urls_html→`urls`) e non è già presente, proietta
-    # entries[*].<key> in quell'arg. Senza questo, executor che consumano
-    # `urls`/`paths`/`ids` (NON `entries`) ricevevano solo `entries` →
-    # arg required mancante → terminator "Pipeline malformata o argomenti
-    # insufficienti" (bug web pipeline find_urls→read_urls_html via engine v2).
-    consumer_arg = _consumer_match_arg(consumer_schema, entries)
-    if consumer_arg and consumer_arg not in out:
-        match_key = None
-        _spec = (consumer_schema.get("properties") or {}).get(consumer_arg) \
-            if isinstance(consumer_schema, dict) else None
-        if isinstance(_spec, dict):
-            fek = _spec.get("from_entries_key")
-            if isinstance(fek, str) and fek:
-                match_key = fek
-        if not match_key:
-            match_key = (consumer_arg[:-1]
-                         if consumer_arg.endswith("s") and len(consumer_arg) > 1
-                         else consumer_arg)
-        out[consumer_arg] = [e[match_key] for e in entries
-                             if isinstance(e, dict) and e.get(match_key) is not None]
-        return out
-    out["entries"] = entries
+    # Manifest-driven projection shared with the legacy engine: vector payload
+    # plus homogeneous scalar context (for example UID + mailbox account).
+    out, _ = _project_from_entries(out, entries, consumer_schema)
     return out
 
 
@@ -962,7 +994,7 @@ def _resolve_one_filler(name: str, spec, llm_call: Optional[Callable],
         try:
             from messages import get as _msg  # §11 i18n
             sys_msg = _msg("MSG_FILLER_LLM_INSTRUCTION", name=name, prompt=prompt)
-            ans = llm_call(sys_msg, query, max_tokens=20, think=False)
+            ans = llm_call(sys_msg, query, max_tokens=20)
             ans = (ans or "").strip().split("\n")[0].strip()
             if ans:
                 return ans
@@ -1158,13 +1190,25 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             return "\n".join(links)
         if path == "@table":
             # L-mode (output_policy): entries → tabella markdown deterministica
-            # + la nota @note in coda.
+            # + la nota @note in coda. Un producer che espone una
+            # ``final_message_hint`` ha però già una presentazione canonica:
+            # per una mutazione/creazione la tabella dei campi tecnici
+            # (ok/path/kind/rows/...) non è il risultato utile in chat.
             _note = _sub_one(result, "@note")
+            _hint = result.get("final_message_hint")
+            if isinstance(_hint, str) and _hint.strip():
+                rendered_hint = _hint.strip()
+                if _note.strip() and _note.strip() not in rendered_hint:
+                    rendered_hint += _note
+                return rendered_hint
             entries = result.get("entries")
             if not (isinstance(entries, list) and entries):
                 entries = result.get("results")
             if isinstance(entries, list) and entries:
-                return _entries_table(entries) + _note
+                return _entries_table(
+                    entries,
+                    presentation=result.get("_presentation_contract"),
+                ) + _note
             return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
@@ -1613,7 +1657,8 @@ def _finalize_answer_text(framework, steps: list, query: str,
         hint = _last_self_presentation(steps)
         if hint:
             return hint
-        synth = _synthesize_final_from_steps(query, steps, llm_fast)
+        synth = _synthesize_final_from_steps(
+            query, steps, llm_fast, presentation=presentation)
         if synth:
             return synth
     return rendered
@@ -1704,7 +1749,13 @@ def _folder_subdir_count(steps) -> int:
     return 0
 
 
-def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
+def _synthesize_final_from_steps(
+    query: str,
+    steps: list,
+    llm_fast,
+    *,
+    presentation: dict | None = None,
+) -> str:
     """Sintesi LLM della risposta finale dalle observation degli step.
 
     Fallback quando il template è degenere: invece di mostrare "Sono le .",
@@ -1820,7 +1871,7 @@ def _synthesize_final_from_steps(query: str, steps: list, llm_fast) -> str:
         # Raise the cap only for that bounded case.
         final_tokens = _presentation_tokens(presentation,
                                             wide=len(obs_lines) >= 3)
-        out = llm_fast(sys_msg, user_msg, max_tokens=final_tokens, think=False)
+        out = llm_fast(sys_msg, user_msg, max_tokens=final_tokens)
         return (out or "").strip()
     except Exception as ex:
         log.warning("Executor: synthesize_final fallback failed: %r", ex)
@@ -2168,6 +2219,31 @@ class Executor:
             args = _resolve_from_step(
                 _step_args, result.steps,
                 consumer_schema=self._schema_map.get(step.tool))
+            _context_errors = args.pop(
+                _FROM_STEP_CONTEXT_ERRORS_KEY, None)
+            if isinstance(_context_errors, list) and _context_errors:
+                fields = ", ".join(sorted({
+                    str(item.get("arg"))
+                    for item in _context_errors
+                    if isinstance(item, dict) and item.get("arg")
+                })) or "?"
+                failure = {
+                    "ok": False,
+                    "error_class": "ambiguous_source_context",
+                    "error_code": "ERR_FROM_STEP_CONTEXT_AMBIGUOUS",
+                    "error": _msg(
+                        "ERR_FROM_STEP_CONTEXT_AMBIGUOUS", fields=fields),
+                    "context_errors": _context_errors,
+                }
+                log.warning(
+                    "Executor: %s ambiguous required source context: %s",
+                    step.tool, fields)
+                step_idx = len(result.steps) + 1
+                result.steps.append(StepRun(
+                    step_idx=step_idx, tool=step.tool, args=args,
+                    result=failure, ok=False, latency_ms=0,
+                ))
+                continue
             # Universal §7.3: gli helper che consumano `entries` (describe/
             # classify/filter/sort/group/compute/compare_entries) sono spesso
             # emessi dal Proposer SENZA from_step → ricevono 0 entries →

@@ -26,9 +26,8 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
-from skill_wrapper import (  # noqa: E402
-    _skill_home, _needs_inputs_oauth_setup,
-    _get_oauth_provider_for_skill,
+from backends._google_auth_common import (  # noqa: E402
+    auth_needs_inputs as _common_auth_needs_inputs,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from messages import get as _msg  # noqa: E402
@@ -36,22 +35,9 @@ from messages import get as _msg  # noqa: E402
 SKILL_NAME = "google-workspace"
 
 
-def _has_creds() -> bool:
-    return (_skill_home(SKILL_NAME) / "google_token.json").is_file()
-
-
 def _auth_needs_inputs(args_base: dict, *, executor: str) -> dict:
-    try:
-        payload = _needs_inputs_oauth_setup(
-            skill_name=SKILL_NAME, executor=executor,
-            args_base=args_base,
-            **_get_oauth_provider_for_skill(SKILL_NAME),
-        )
-    except Exception as ex:
-        return {"ok": False, "error_class": "auth_required",
-                "error_code": "ERR_OAUTH_SETUP",
-                "error": _msg("ERR_OAUTH_SETUP", reason=str(ex))}
-    return {"ok": False, "decision": "needs_inputs", "needs_inputs": payload}
+    return _common_auth_needs_inputs(
+        args_base, executor=executor, result_kind="entries")
 
 
 def _run_contacts(argv: list[str], *, executor: str, args_base: dict

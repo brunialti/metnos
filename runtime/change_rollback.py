@@ -127,6 +127,16 @@ def _rollback_dedupe_executors(ci: ChangeIntent) -> dict:
 
 
 def _rollback_materialize_pipeline(ci: ChangeIntent) -> dict:
+    effect = ci.applied_effect or {}
+    if "final_kind" in effect or "turn_id" in effect:
+        # La nuova materializzazione non installa artefatti o route: registra
+        # soltanto un turno reale. Il lifecycle puo' essere rolled_back, ma non
+        # esiste configurazione persistente da demotare automaticamente.
+        return {
+            "turn_id": effect.get("turn_id"),
+            "final_kind": effect.get("final_kind"),
+            "note": "no persistent pipeline artifact to roll back",
+        }
     body = ci.intent_body or {}
     shape_hash = body.get("path_shape_hash")
     if not shape_hash:

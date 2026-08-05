@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="it">
+<html lang="{{ ui_lang|e }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -90,16 +90,16 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
 </style>
 </head>
 <body>
-<a class="skip-link" href="#main">Salta al contenuto</a>
+<a class="skip-link" href="#main">{{ msg("UI_SETTINGS_SKIP_CONTENT") }}</a>
 
 <header class="mobilebar">
   <button id="navToggle" type="button" aria-expanded="false" aria-controls="sidebar"
-          aria-label="Apri o chiudi il menu">
+          aria-label="{{ msg('UI_SETTINGS_MENU_TOGGLE') }}">
     <span></span><span></span><span></span>
   </button>
   <span class="brand-mark" aria-hidden="true"></span>
   <span class="brand">Metnos</span>
-  <a class="chat-link" href="/">Chat</a>
+  <a class="chat-link" href="/">{{ msg("UI_SETTINGS_CHAT") }}</a>
 </header>
 
 <div class="shell">
@@ -107,35 +107,19 @@ body.nav-open #navToggle span:nth-child(3){transform:translateY(-6px) rotate(-45
     <div class="brand-row">
       <span class="brand-mark" aria-hidden="true"></span>
       <a class="brand" href="/admin">Metnos</a>
-      <span class="brand-tag">console</span>
-      <a class="chat-link" href="/">Chat</a>
+      <span class="brand-tag">{{ msg("UI_SETTINGS_CONSOLE") }}</span>
+      <a class="chat-link" href="/">{{ msg("UI_SETTINGS_CHAT") }}</a>
     </div>
-    <nav class="nav" aria-label="Navigazione console">
-      <a href="/admin">Settings</a>
-
-      <div class="nav-h" id="nav-h-att">Attività</div>
-      <a href="/admin/turns">Turni</a>
-      <a href="/admin/runs">Scheduler</a>
-      <a href="/admin/timers">Timer</a>
-      <a href="/admin/builds">Build indici</a>
-
-      <div class="nav-h" id="nav-h-ciclo">Ciclo di vita</div>
-      <a href="/admin/changes">Modifiche</a>
-      <a href="/admin/executors">Executor</a>
-      <a href="/admin/executors/stats">Statistiche</a>
-
-      <div class="nav-h" id="nav-h-mem">Memoria</div>
-      <a href="/admin/praxis">Praxis</a>
-
-      <div class="nav-h" id="nav-h-sys">Sistema</div>
-      <a href="/admin/safety">Safety</a>
-      <a href="/admin/users">Utenti</a>
-      <a href="/admin/devices">Dispositivi</a>
+    <nav class="nav" aria-label="{{ msg('UI_SETTINGS_NAV_ARIA') }}">
+      {% for group in settings_navigation(ui_lang) %}
+      {% if group['label'] %}<div class="nav-h" id="nav-h-{{ group['key'] }}">{{ group['label'] }}</div>{% endif %}
+      {% for surface in group['items'] %}<a href="{{ surface.route }}">{{ surface.label(ui_lang) }}</a>{% endfor %}
+      {% endfor %}
     </nav>
     <div class="sidebar-foot">
       <span class="grow"></span>
       <form method="post" action="/admin/logout">
-        <button type="submit">Esci</button>
+        <button type="submit">{{ msg("UI_SETTINGS_LOGOUT") }}</button>
       </form>
     </div>
   </aside>

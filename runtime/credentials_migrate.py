@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config as _C  # noqa: E402 — §7.11
 import credentials as cr  # noqa: E402
 import mail_client as mc  # noqa: E402
+from env_file import read_first as _read_first_env  # noqa: E402
 
 
 _LEGACY_ACCOUNTS = ("metnos_system", "metnos_roberto", "mykleos")
@@ -125,21 +126,12 @@ def migrate_all_smtp(*, dry_run: bool = False) -> list[dict]:
 
 def _read_env_var_from_files(name: str, paths: list[Path]) -> str | None:
     """Legge `name=value` dal primo file disponibile fra `paths`."""
-    for p in paths:
-        if not p.is_file():
-            continue
-        for line in p.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith(f"{name}="):
-                v = line.split("=", 1)[1].strip().strip('"').strip("'")
-                # Anti-whitespace per chiavi sk-ant-/sk- (line-wrap copy-paste)
-                if (v.startswith("sk-ant-") or v.startswith("sk-")) and any(c.isspace() for c in v):
-                    v = "".join(v.split())
-                if v:
-                    return v
-    return None
+    value = _read_first_env(name, paths)
+    # Anti-whitespace per chiavi sk-ant-/sk- (line-wrap copy-paste).
+    if (value and value.startswith(("sk-ant-", "sk-"))
+            and any(char.isspace() for char in value)):
+        return "".join(value.split())
+    return value
 
 
 _API_KEY_SOURCES: dict[str, tuple[list[Path], str]] = {

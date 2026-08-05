@@ -76,7 +76,7 @@ def is_scheduled_turn() -> bool:
 
 
 def scheduled_task_name() -> str:
-    """Stable task identity propagated to executor subprocesses."""
+    """Return the owner-scoped scheduler identity propagated to executors."""
     return str(_SCHEDULED_TASK_NAME.get() or "")
 
 

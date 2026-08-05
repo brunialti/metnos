@@ -36,11 +36,8 @@ log = logging.getLogger(__name__)
 
 def _index_image_root() -> Path:
     """Test isolation via env vars (8/5/2026): vedi runtime/config.py."""
-    import config as _C  # §7.11
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    return _C.PATH_USER_DATA / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root()
 
 
 def _list_index_dirs() -> list[Path]:

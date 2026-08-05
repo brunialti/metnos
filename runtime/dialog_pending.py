@@ -4,8 +4,9 @@ Modulo deterministico (CLAUDE.md §7.9): nessuna chiamata LLM. Un dialogo
 e' un walk sequenziale fra step (var/prompt/schema). Lo stato vive su
 disco perche' il dialogo attraversa piu' turni utente sul canale (le
 risposte arrivano una alla volta da Telegram, oppure tutte insieme via
-form HTTP). Storage per `<sender_id>` (chat_id Telegram, device_id HTTP,
-oppure "host" come fallback).
+form HTTP). Lo storage e' raggruppato per `<sender_id>`, ma l'autorita' e'
+sempre l'identificatore immutabile `owner_user_id`: sender e actor sono
+coordinate di consegna, non identita'.
 
 Layout su disco:
 
@@ -27,6 +28,7 @@ Schema del payload JSON:
       "step_index":        2,
       "started_at":        "2026-05-04T18:32:11Z",
       "actor":             "host",
+      "owner_user_id":     "uuid-immutabile",
       "timeout_s":         600,                # opzionale; default None
       "completed":         false,
       "cancelled":         false,
@@ -50,6 +52,8 @@ Caratteristiche:
 from __future__ import annotations
 
 import json
+import hmac
+import hashlib
 import os
 import re
 import time
@@ -83,13 +87,23 @@ FORM_TTL_S = int(os.environ.get("METNOS_DIALOG_FORM_TTL_S", "600"))
 # ── Helper interni ────────────────────────────────────────────────────
 
 _SAFE_RE = re.compile(r"[^A-Za-z0-9_.-]")
+_DIALOG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 def _safe_sender(sender_id: str) -> str:
     """Sanitizza il sender_id per usarlo come nome di cartella."""
     if not sender_id:
         return "_unknown"
-    return _SAFE_RE.sub("_", str(sender_id))
+    safe = _SAFE_RE.sub("_", str(sender_id))
+    # `.` e `..` sono nomi di directory speciali anche dopo la sostituzione
+    # dei separatori. Non devono mai risolvere fuori da DIALOG_DIR.
+    return "_unknown" if safe in {".", ".."} else safe
+
+
+def valid_dialog_id(dialog_id: str) -> bool:
+    """True solo per identificatori utilizzabili come singolo filename."""
+    value = str(dialog_id or "")
+    return bool(_DIALOG_ID_RE.fullmatch(value)) and ".." not in value
 
 
 def _sender_dir(sender_id: str) -> Path:
@@ -97,6 +111,8 @@ def _sender_dir(sender_id: str) -> Path:
 
 
 def _dialog_path(sender_id: str, dialog_id: str) -> Path:
+    if not valid_dialog_id(dialog_id):
+        raise ValueError("dialog_id non valido")
     return _sender_dir(sender_id) / f"{dialog_id}.json"
 
 
@@ -175,6 +191,13 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
         raise ValueError("dialog_id mancante")
     if not isinstance(payload, dict):
         raise TypeError("payload deve essere un dict")
+    payload = dict(payload)
+    owner = str(payload.get("owner_user_id") or "").strip()
+    if not owner:
+        # Non adottare mai uno stato tramite actor/sender/nome: sono valori
+        # riutilizzabili e quindi non dimostrano l'identita' del proprietario.
+        raise ValueError("owner_user_id mancante")
+    payload["owner_user_id"] = owner
     sd = _sender_dir(sender_id)
     sd.mkdir(parents=True, exist_ok=True)
     try:
@@ -185,7 +208,10 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
     # Scrittura atomica (tmp + os.replace): list_pending/consume/sweep non
     # devono mai leggere JSON parziale (lost update / parse error spuri).
     # chmod sul tmp PRIMA del replace così il file finale nasce 0600.
-    tmp = p.with_name(p.name + ".tmp")
+    owner_tag = hashlib.sha256(
+        ("dialog-owner-v1\0" + owner).encode("utf-8")
+    ).hexdigest()[:20]
+    tmp = p.with_name(f"{p.name}.{owner_tag}.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     try:
         os.chmod(tmp, 0o600)
@@ -195,25 +221,83 @@ def save_pending(sender_id: str, dialog_id: str, payload: dict) -> Path:
     return p
 
 
-def load_pending(sender_id: str, dialog_id: str) -> dict | None:
-    """Carica lo stato del dialogo. Ritorna None se non esiste o e' corrotto."""
-    p = _dialog_path(sender_id, dialog_id)
-    if not p.exists():
+def create_if_no_active(sender_id: str, dialog_id: str, payload: dict,
+                        *, idempotency_key: str) -> str:
+    """Atomically create one pending dialog only when the sender has none.
+
+    The sender lock spans both the active-set check and the durable replace.
+    ``idempotency_key`` is stored for audit/reconciliation; callers derive it
+    from authenticated principal, conversation and literal operation, never
+    from a random dialog identifier.
+    """
+
+    if not idempotency_key:
+        raise ValueError("idempotency_key mancante")
+    owner = str((payload or {}).get("owner_user_id") or "").strip()
+    if not owner:
+        raise ValueError("owner_user_id mancante")
+    with _dialog_lock(sender_id, dialog_id):
+        # Completed dialogs are durable receipts until their TTL expires.
+        # ``list_pending`` intentionally hides them from interaction, so scan
+        # the sender journal explicitly before admitting an identical action.
+        sender_dir = _sender_dir(sender_id)
+        if sender_dir.exists():
+            for path in sender_dir.glob("*.json"):
+                try:
+                    prior = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if (str(prior.get("owner_user_id") or "") == owner
+                        and prior.get("idempotency_key") == idempotency_key
+                        and prior.get("callback_claimed_at")
+                        and not is_expired(prior)):
+                    return "already_claimed"
+        if list_pending(sender_id, owner_user_id=owner):
+            return "active_pending"
+        state = dict(payload)
+        state["idempotency_key"] = str(idempotency_key)
+        save_pending(sender_id, dialog_id, state)
+        return "created"
+
+
+def _load_raw(sender_id: str, dialog_id: str) -> dict | None:
+    """Legge anche record legacy non attribuiti; solo per housekeeping."""
+
+    if not valid_dialog_id(dialog_id):
         return None
+    p = _dialog_path(sender_id, dialog_id)
     try:
         return json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
     except (OSError, json.JSONDecodeError) as ex:
         log.warning("dialog_pending corrotto %s: %s", p, ex)
         return None
 
 
-def list_pending(sender_id: str) -> list[dict]:
+def load_pending(sender_id: str, dialog_id: str, *,
+                 owner_user_id: str) -> dict | None:
+    """Carica soltanto uno stato attribuito a un owner immutabile."""
+
+    owner = str(owner_user_id or "").strip()
+    state = _load_raw(sender_id, dialog_id)
+    if (not owner or state is None
+            or not hmac.compare_digest(
+                str(state.get("owner_user_id") or ""), owner)):
+        return None
+    return state
+
+
+def list_pending(sender_id: str, *, owner_user_id: str) -> list[dict]:
     """Lista i dialoghi pendenti per il sender (non completati e non cancellati).
 
     Utile al daemon per riconoscere uno stato attivo all'arrivo di un
     messaggio dell'utente. Ordinato per `started_at` ascending (il piu'
     vecchio prima); i risultati corrotti vengono saltati silenziosamente.
     """
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return []
     sd = _sender_dir(sender_id)
     if not sd.exists():
         return []
@@ -222,6 +306,9 @@ def list_pending(sender_id: str) -> list[dict]:
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
+            continue
+        if not hmac.compare_digest(
+                str(d.get("owner_user_id") or ""), owner):
             continue
         if d.get("completed") or d.get("cancelled"):
             continue
@@ -232,7 +319,8 @@ def list_pending(sender_id: str) -> list[dict]:
     return out
 
 
-def find_by_dialog_id(dialog_id: str) -> tuple[dict | None, str | None]:
+def find_by_dialog_id(dialog_id: str, *,
+                      owner_user_id: str) -> tuple[dict | None, str | None]:
     """Cerca un dialogo pendente per `dialog_id` GLOBALMENTE, scandendo tutte le
     sender-dir. Ritorna (state, sender_id) o (None, None).
 
@@ -242,7 +330,9 @@ def find_by_dialog_id(dialog_id: str) -> tuple[dict | None, str | None]:
     risolve il chat_id a «host») e i bridge a TTL (cap_pending 10 min) sono
     scaduti mentre il dialogo (timeout_s) e' ancora valido. Salta i
     completati/cancellati/scaduti. §7.9 deterministico."""
-    if not dialog_id or not DIALOG_DIR.exists():
+    owner = str(owner_user_id or "").strip()
+    if (not owner or not valid_dialog_id(dialog_id)
+            or not DIALOG_DIR.exists()):
         return None, None
     for sd in DIALOG_DIR.iterdir():
         if not sd.is_dir():
@@ -254,7 +344,10 @@ def find_by_dialog_id(dialog_id: str) -> tuple[dict | None, str | None]:
             d = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if d.get("completed") or d.get("cancelled") or is_expired(d):
+        if (not hmac.compare_digest(
+                    str(d.get("owner_user_id") or ""), owner)
+                or d.get("completed") or d.get("cancelled")
+                or is_expired(d)):
             return None, None
         return d, (d.get("sender_id") or sd.name)
     return None, None
@@ -308,14 +401,16 @@ def _resolve_choice_reply(value, step):
 
 
 def consume_pending_step(sender_id: str, dialog_id: str, var: str,
-                          value) -> dict:
+                         value, *, owner_user_id: str) -> dict:
     """Avanza atomicamente un dialogo; un solo consumer può vincere."""
     with _dialog_lock(sender_id, dialog_id):
-        return _consume_pending_step_unlocked(sender_id, dialog_id, var, value)
+        return _consume_pending_step_unlocked(
+            sender_id, dialog_id, var, value,
+            owner_user_id=owner_user_id)
 
 
 def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
-                                    value) -> dict:
+                                   value, *, owner_user_id: str) -> dict:
     """Avanza il dialogo registrando il valore raccolto per la variabile `var`.
 
     Comportamento:
@@ -329,7 +424,8 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
     secondo perche' `step_index` e' gia' avanzato (la verita' e' lo stato
     su disco, non il chiamante).
     """
-    state = load_pending(sender_id, dialog_id)
+    state = load_pending(
+        sender_id, dialog_id, owner_user_id=owner_user_id)
     if state is None:
         return {"ok": False, "error": "dialog_not_found",
                 "dialog_id": dialog_id}
@@ -387,14 +483,98 @@ def _consume_pending_step_unlocked(sender_id: str, dialog_id: str, var: str,
             "state": state}
 
 
-def cancel_pending(sender_id: str, dialog_id: str) -> bool:
+def cancel_pending(sender_id: str, dialog_id: str, *,
+                   owner_user_id: str) -> bool:
     """Marca il dialogo come cancellato. Idempotente: True se esisteva."""
     with _dialog_lock(sender_id, dialog_id):
-        return _cancel_pending_unlocked(sender_id, dialog_id)
+        return _cancel_pending_unlocked(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
 
 
-def _cancel_pending_unlocked(sender_id: str, dialog_id: str) -> bool:
-    state = load_pending(sender_id, dialog_id)
+def claim_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
+                        owner_user_id: str) -> bool:
+    """Atomically claim one completed callback carrying the exact nonce.
+
+    This is intentionally narrower than generic dialog completion: existing
+    callbacks retain their historical semantics, while security-sensitive
+    one-shot callbacks (Tutor handoff) gain an explicit replay barrier.
+    """
+
+    return begin_callback_once(
+        sender_id, dialog_id, nonce,
+        owner_user_id=owner_user_id).get("status") == "claimed"
+
+
+def begin_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
+                        owner_user_id: str) -> dict:
+    """Claim a callback or return its durable terminal receipt.
+
+    The callback remains at-most-once: a process crash after the claim is
+    reported as in-progress/indeterminate rather than risking a duplicate
+    mutating turn.  Normal successes and handled failures are persisted and
+    replay their exact receipt on later submissions.
+    """
+
+    if not nonce:
+        return {"status": "invalid"}
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if (state is None or not state.get("completed")
+                or state.get("cancelled") or is_expired(state)):
+            return {"status": "invalid"}
+        on_complete = state.get("on_complete") or {}
+        stored = str(on_complete.get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce)):
+            return {"status": "invalid"}
+        receipt = state.get("callback_receipt")
+        if isinstance(receipt, dict):
+            return {"status": "completed", "receipt": receipt}
+        if state.get("callback_claimed_at"):
+            return {"status": "in_progress"}
+        state["callback_claimed_at"] = _utc_now_iso()
+        state["callback_state"] = "running"
+        save_pending(sender_id, dialog_id, state)
+        return {"status": "claimed"}
+
+
+def complete_callback_once(sender_id: str, dialog_id: str, nonce: str,
+                           receipt: dict, *, owner_user_id: str) -> bool:
+    """Persist the terminal outbox receipt for an already claimed callback."""
+
+    if not nonce or not isinstance(receipt, dict):
+        return False
+    # Validate JSON compatibility before entering the critical section.
+    try:
+        json.dumps(receipt, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return False
+    with _dialog_lock(sender_id, dialog_id):
+        state = load_pending(
+            sender_id, dialog_id, owner_user_id=owner_user_id)
+        if state is None or not state.get("callback_claimed_at"):
+            return False
+        on_complete = state.get("on_complete") or {}
+        stored = str(on_complete.get("nonce") or "")
+        if not stored or not hmac.compare_digest(stored, str(nonce)):
+            return False
+        existing = state.get("callback_receipt")
+        if isinstance(existing, dict):
+            return hmac.compare_digest(
+                json.dumps(existing, ensure_ascii=True, sort_keys=True),
+                json.dumps(receipt, ensure_ascii=True, sort_keys=True),
+            )
+        state["callback_receipt"] = dict(receipt)
+        state["callback_state"] = "completed"
+        state["callback_finished_at"] = _utc_now_iso()
+        save_pending(sender_id, dialog_id, state)
+        return True
+
+
+def _cancel_pending_unlocked(sender_id: str, dialog_id: str, *,
+                             owner_user_id: str) -> bool:
+    state = load_pending(
+        sender_id, dialog_id, owner_user_id=owner_user_id)
     if state is None:
         return False
     if state.get("cancelled"):
@@ -403,6 +583,99 @@ def _cancel_pending_unlocked(sender_id: str, dialog_id: str) -> bool:
     state["cancelled_at"] = _utc_now_iso()
     save_pending(sender_id, dialog_id, state)
     return True
+
+
+def purge_owner(owner_user_id: str) -> int:
+    """Delete pending/receipt files owned by one removed principal.
+
+    Dialog payloads may contain credentials or a still executable callback.
+    They are therefore part of user-data deletion, not ordinary TTL cleanup.
+    Every candidate is re-read while holding its sender lock before removal.
+    """
+
+    owner = str(owner_user_id or "")
+    if not owner or not DIALOG_DIR.exists():
+        return 0
+    removed = 0
+    for sender_dir in tuple(DIALOG_DIR.iterdir()):
+        if not sender_dir.is_dir():
+            continue
+        sender_id = sender_dir.name
+        for path in tuple(sender_dir.glob("*.json")):
+            dialog_id = path.stem
+            if not valid_dialog_id(dialog_id):
+                continue
+            with _dialog_lock(sender_id, dialog_id):
+                state = _load_raw(sender_id, dialog_id)
+                if (state is None
+                        or str(state.get("owner_user_id") or "") != owner):
+                    continue
+                try:
+                    _dialog_path(sender_id, dialog_id).unlink()
+                except FileNotFoundError:
+                    continue
+                removed += 1
+        owner_tag = hashlib.sha256(
+            ("dialog-owner-v1\0" + owner).encode("utf-8")
+        ).hexdigest()[:20]
+        for tmp in tuple(sender_dir.glob(f"*.{owner_tag}.tmp")):
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                continue
+            removed += 1
+        # Legacy temp files had no owner tag. Remove only those whose complete
+        # JSON payload proves ownership; an unrelated partial file is left for
+        # generic stale-temp housekeeping rather than guessed across users.
+        for tmp in tuple(sender_dir.glob("*.json.tmp")):
+            try:
+                state = json.loads(tmp.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if str(state.get("owner_user_id") or "") != owner:
+                continue
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                continue
+            removed += 1
+    return removed
+
+
+def purge_unscoped() -> int:
+    """Ritira stati legacy privi dell'identificatore immutabile dell'owner.
+
+    Non viene tentata alcuna attribuzione da actor, sender o nome: un record
+    non attribuibile non deve diventare eseguibile dopo il riuso di tali valori.
+    """
+
+    if not DIALOG_DIR.exists():
+        return 0
+    removed = 0
+    for sender_dir in tuple(DIALOG_DIR.iterdir()):
+        if not sender_dir.is_dir():
+            continue
+        sender_id = sender_dir.name
+        for path in tuple(sender_dir.glob("*.json")):
+            dialog_id = path.stem
+            if not valid_dialog_id(dialog_id):
+                continue
+            with _dialog_lock(sender_id, dialog_id):
+                state = _load_raw(sender_id, dialog_id)
+                if state is not None and state.get("owner_user_id"):
+                    continue
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    continue
+                removed += 1
+        for tmp in tuple(sender_dir.glob("*.unscoped.tmp")):
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                continue
+            removed += 1
+    return removed
 
 
 def sweep_expired(now_ts: float | None = None) -> list[dict]:
@@ -435,6 +708,13 @@ def sweep_expired(now_ts: float | None = None) -> list[dict]:
                 except OSError:
                     pass
                 continue
+            owner = str(d.get("owner_user_id") or "").strip()
+            if not owner:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+                continue
             terminal = bool(d.get("completed") or d.get("cancelled"))
             if not is_expired(d, now_ts):
                 continue
@@ -451,6 +731,7 @@ def sweep_expired(now_ts: float | None = None) -> list[dict]:
                 "title": d.get("title") or "",
                 "actor": d.get("actor") or "",
                 "channel": d.get("channel") or "",
+                "owner_user_id": owner,
                 "age_s": int(now_ts - started) if started else 0,
                 "timeout_s": int(d.get("timeout_s") or DEFAULT_TTL_S),
             })

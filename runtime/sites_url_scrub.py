@@ -25,8 +25,12 @@ import urllib.parse
 # non deve matchare `zipcode`). Lista chiusa, estendibile con escalation.
 SENSITIVE_PARAMS = frozenset({
     "token", "code", "access_token", "id_token", "refresh_token",
+    "op_token", "auth_token", "oauth_token",
     "ticket", "sig", "signature", "saml", "samlresponse", "otp",
-    "session", "sessionid", "auth", "authorization", "password", "passwd",
+    "session", "sessionid", "session_id", "session-id", "sid",
+    "jsessionid", "phpsessid",
+    "auth", "authorization", "password", "passwd",
+    "csrf", "csrf_token", "xsrf", "xsrf_token",
     "secret", "client_secret", "api_key", "apikey", "key",
 })
 

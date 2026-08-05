@@ -21,11 +21,13 @@ Tempo tipico: ~6-8 minuti (12 turni × ~30s).
 
 Uso:
     python3 smoke.py            # battery + invariants
+    python3 smoke.py --lang en  # stessa harness, battery inglese
     python3 smoke.py --invariants-only   # solo invariants (~1s)
     python3 smoke.py --skip-invariants   # solo battery
 """
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -131,7 +133,11 @@ BATTERY = [
      "min_pass_rate": 0.9},
     # Anti-regressione persons-by-name (ADR 0113).
     {"q": "trova foto di Carol",
-     "tool_re": r"^find_persons_indices$",
+     # ADR 0117: find_persons_indices(name=...) is a thin alias of the unified
+     # find_images_indices(name=...) engine. The deterministic routing canary
+     # below still expects the person-specific alias first; live execution may
+     # legitimately use either single-step spelling.
+     "tool_re": r"^find_(persons|images)_indices$",
      "kind": "answer",
      "expected_first_tool": "find_persons_indices",
      "expected_arg_keys": {"name"},
@@ -147,6 +153,23 @@ try:
     BATTERY = BATTERY + BATTERY_IMPORTS
 except ImportError:
     pass
+
+# Battery inglese storica (ADR 0092), eseguita dalla stessa harness.  Resta
+# deliberatamente limitata agli otto casi equivalenti originari: gli smoke
+# importati e i canary più recenti sono curati nella lingua in cui nascono.
+BATTERY_EN = [
+    {"q": "what time is it?", "tool_re": r"^get_now$", "kind": "answer"},
+    {"q": "list files in /tmp", "tool_re": r"^list_dirs$", "kind": "answer"},
+    {"q": "find *.py files in /tmp", "tool_re": r"^find_files$", "kind": "answer"},
+    {"q": "read /tmp/smoke_test.txt", "tool_re": r"^read_files$",
+     "kind": "answer", "setup": "echo 'hello smoke' > /tmp/smoke_test.txt"},
+    {"q": "summarize today's emails, only the most important ones",
+     "tool_re": r"^read_messages$", "kind": "answer"},
+    {"q": "where am I?", "tool_re": r"^get_location$", "kind": "answer"},
+    {"q": "fetch https://httpbin.org/get", "tool_re": r"^get_urls$",
+     "kind": "answer"},
+    {"q": "what date is today", "tool_re": r"^get_now$", "kind": "answer"},
+]
 
 
 # --- Invariants ------------------------------------------------------------
@@ -218,6 +241,39 @@ def check_invariants(verbose: bool = True):
 def run_one(case: dict, idx: int, total: int) -> dict:
     q = case["q"]
     print(f"[smoke {idx}/{total}] {q}", flush=True)
+    expected_tool = str(case.get("expected_first_tool") or "")
+    try:
+        from pipeline_effects import MUTATING_TOOL_PREFIXES
+        mutating = any(expected_tool.startswith(prefix)
+                       for prefix in MUTATING_TOOL_PREFIXES)
+    except Exception:
+        # Fail closed for the standalone gate: these canonical prefixes must
+        # never fire real effects merely to test routing.
+        mutating = expected_tool.startswith((
+            "create_", "delete_", "move_", "send_", "set_", "write_",
+            "change_", "share_", "order_", "render_",
+        ))
+    if mutating:
+        routed = _run_smoke_with_tool_assertion(case)
+        ok = bool(routed.get("ok"))
+        flag = "PASS" if ok else "FAIL"
+        print(
+            f"  → {flag}  routing-only (nessun side-effect)  "
+            f"expected={expected_tool} actual={routed.get('actual_first')}",
+            flush=True,
+        )
+        return {
+            "query": q,
+            "ok": ok,
+            "kind": "routing_only",
+            "expected_kind": case.get("kind"),
+            "tools": [routed.get("actual_first")] if routed.get("actual_first") else [],
+            "tool_re": case.get("tool_re"),
+            "tool_match": ok,
+            "duration_s": 0.0,
+            "routing_only": True,
+            "reason": routed.get("reason"),
+        }
     if case.get("setup"):
         import subprocess
         subprocess.run(case["setup"], shell=True, check=False, capture_output=True)
@@ -233,6 +289,16 @@ def run_one(case: dict, idx: int, total: int) -> dict:
             {p.name for p in real_idx.iterdir() if p.is_dir()}
             if real_idx.exists() else set()
         )
+    # A smoke run is observation, not learning. Disable L0/L1 only for this
+    # call so a flaky planner sample cannot pollute production caches. Restore
+    # the caller's environment exactly, including the absent-key case.
+    import os as _os_cache
+    _cache_env = {
+        key: _os_cache.environ.get(key)
+        for key in ("METNOS_FASTPATH", "METNOS_AUTOPATH")
+    }
+    _os_cache.environ["METNOS_FASTPATH"] = "0"
+    _os_cache.environ["METNOS_AUTOPATH"] = "0"
     try:
         log = run_turn(q, verbose=False, cap_steps=12)
     except Exception as e:
@@ -244,6 +310,12 @@ def run_one(case: dict, idx: int, total: int) -> dict:
             "error": f"{type(e).__name__}: {e}",
             "duration_s": round(time.time() - t0, 1),
         }
+    finally:
+        for _key, _value in _cache_env.items():
+            if _value is None:
+                _os_cache.environ.pop(_key, None)
+            else:
+                _os_cache.environ[_key] = _value
     # Post-run dry-run guard
     if pre_dirs is not None:
         import os as _os
@@ -294,6 +366,15 @@ def _bow_intent_for_smoke(query: str) -> dict:
     sufficiente per le query del battery; non per pianificatore reale.
     """
     q = query.lower()
+    # Boundary shared with production routing: ``scrivi a <persona>: testo``
+    # and ``write to <person>: text`` mean outbound messaging, not writing a
+    # document.  The recogniser is structural and contains no person names.
+    try:
+        from prefilter import is_direct_message_query
+        if is_direct_message_query(query):
+            return {"verb": "send", "object": "messages"}
+    except Exception:
+        pass
     # Markers di calendario / appuntamenti (forte priorita': identificano
     # univocamente il dominio events, anche se la query contiene "ora"
     # come durata "per un ora").
@@ -325,7 +406,7 @@ def _bow_intent_for_smoke(query: str) -> dict:
     elif any(t in q for t in ("stato", "status", "salute", "health")):
         verb = "get"
     # NB: "ora/data/now/time" senza contesto calendario NON mappa verb=get:
-    # rank_with_intent verb=get senza object pesca get_file_dates/get_files_*
+    # rank_with_intent verb=get senza object pesca get_files_*
     # (catalog order) bypassando get_now. Lasciamo che fallback BoW (rank
     # plain) lavori via affinity di get_now. Regression rilevata 11/5/2026
     # nella stessa sessione F4-F7. La branch "stato/status/salute" sopra
@@ -353,7 +434,7 @@ def _bow_intent_for_smoke(query: str) -> dict:
     # NB: "ora/data/now/time" senza contesto calendario NON mappa a events.
     # "che ora e?" / "che data e oggi" deve cadere nel fallback BoW (rank
     # plain) per pickare get_now via affinity. Mapparlo a events forzerebbe
-    # rank_with_intent a candidare get_file_dates/get_files (primi
+    # rank_with_intent a candidare get_files (primi
     # get_* del catalog) e bypassare get_now. Regression introdotta+fixata
     # nello stesso turno F4-F7 (11/5/2026).
     if not verb and not obj:
@@ -464,10 +545,17 @@ def run_smoke_routing_battery(catalog=None) -> dict:
 
 def main():
     p = argparse.ArgumentParser()
+    default_lang = os.environ.get("METNOS_LANG", "it").split("-", 1)[0]
+    if default_lang not in {"it", "en"}:
+        default_lang = "it"
+    p.add_argument("--lang", choices=("it", "en"),
+                   default=default_lang)
     p.add_argument("--invariants-only", action="store_true")
     p.add_argument("--skip-invariants", action="store_true")
     p.add_argument("--json", action="store_true", help="emit JSON report")
     args = p.parse_args()
+    os.environ["METNOS_LANG"] = args.lang
+    battery = BATTERY_EN if args.lang == "en" else BATTERY
 
     inv_ok = True
     inv_errors = []
@@ -479,17 +567,18 @@ def main():
     if args.invariants_only:
         sys.exit(0 if inv_ok else 1)
 
-    print("=== BATTERY ===")
+    print(f"=== BATTERY ({args.lang.upper()}) ===")
     results = []
-    for i, case in enumerate(BATTERY, 1):
-        results.append(run_one(case, i, len(BATTERY)))
+    for i, case in enumerate(battery, 1):
+        results.append(run_one(case, i, len(battery)))
     n_pass = sum(1 for r in results if r["ok"])
     print()
-    print(f"=== SMOKE: {n_pass}/{len(results)} pass; invariants {'OK' if inv_ok else 'FAIL'}")
+    print(f"=== SMOKE-{args.lang.upper()}: {n_pass}/{len(results)} pass; "
+          f"invariants {'OK' if inv_ok else 'FAIL'}")
 
     if args.json:
         json.dump({"battery": results, "invariants_ok": inv_ok,
-                   "invariants_errors": inv_errors},
+                   "invariants_errors": inv_errors, "lang": args.lang},
                   sys.stdout, indent=2, default=str)
 
     sys.exit(0 if (n_pass == len(results) and inv_ok) else 1)

@@ -41,7 +41,7 @@ def parse_trigger(trigger: str) -> dict[str, Any]:
     Raises ValueError on malformed input.
     """
     if not isinstance(trigger, str) or not trigger:
-        raise ValueError(f"empty trigger")
+        raise ValueError("empty trigger")
     m = _DAILY_RE.match(trigger)
     if m:
         return {"kind": "daily", "hh": int(m.group(1)), "mm": int(m.group(2))}

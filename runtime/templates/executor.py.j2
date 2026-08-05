@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""{{ name }} - executor importato da skill `{{ provenance.imported_from }}`.
+"""{{ name }} - executor {% if builtin_handcrafted %}builtin GitHub handcrafted{% else %}importato da skill `{{ provenance.imported_from }}`{% endif %}.
 
 Wrapper subprocess su `{{ skill_script }}` con sub-command
 `{{ skill_domain }} {{ skill_action }}`.
@@ -26,9 +26,11 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
 from skill_wrapper import (  # noqa: E402
+    _error_code_for_class,
     _skill_home,
     _run_api,
     _classify_error,
+    _validate_skill_args,
 {% if has_oauth_setup %}    _needs_inputs_oauth_setup,
     _get_skill_oauth_config,
 {% endif %}{% if not has_oauth_setup and has_api_key_setup %}    _needs_inputs_api_key_setup,
@@ -180,6 +182,20 @@ def _expand_row_args(args, entry):
 def invoke(args):
     if not isinstance(args, dict):
         return _err_obj("args must be an object", "invalid_args")
+
+    _arg_error = _validate_skill_args(
+        args,
+        allowed=frozenset({{ allowed_args_py }}),
+        required={{ required_args_py }},
+    )
+    if _arg_error:
+        return _err_obj(_arg_error, "invalid_args")
+{% for arg in args if arg.required %}
+    _required = args.get("{{ arg.name }}")
+    if (_required is None or _required == ""
+            or isinstance(_required, (list, dict)) and not _required):
+        return _err_obj("missing required arg '{{ arg.name }}'", "invalid_args")
+{% endfor %}
 {% if vectorial_entries %}
     # Vettoriale §2.1: con `entries` (da from_step) UNA invocazione per entry,
     # args derivati via `<name>_template`/campi entry; aggrega in results. La
@@ -248,23 +264,101 @@ def invoke(args):
         return _err_obj("top_k must be >= 0", "invalid_args")
 {% endif %}
 
-    # Costruzione argv per subprocess.
-    argv = ["{{ skill_domain }}", "{{ skill_action }}"]
+    # Costruzione argv per subprocess. I flag sono separati dai posizionali:
+    # nel path vettoriale l'id coalesciuto va reinserito nella sua posizione
+    # originale per ogni chiamata, anche con piu' posizionali sorgente.
+    flag_argv = []
 {% if needs_time_window %}
-    argv.extend(["--start", start_iso, "--end", end_iso])
+    flag_argv.extend(["--start", start_iso, "--end", end_iso])
 {% endif %}
 {% for f in passthrough_flags %}
     _v = args.get("{{ f.name }}")
     if _v is not None{% if f.skip_default %} and _v != {{ f.skip_default | tojson }}{% endif %}:
-        argv.extend(["--{{ f.cli }}", str(_v) if not isinstance(_v, list) else ",".join(str(x) for x in _v)])
+        flag_argv.extend(["--{{ f.cli }}", str(_v) if not isinstance(_v, list) else ",".join(str(x) for x in _v)])
 {% endfor %}
 {% if vectorial_coalesce %}
+    def _argv_for_row(rid):
+        per_argv = ["{{ skill_domain }}", "{{ skill_action }}"]
+{% for p in positional_cli_args %}
+{% if p.coalesced %}
+        per_argv.append(rid)
+{% else %}
+        _pv = args.get("{{ p.name }}")
+        if _pv is not None:
+            if isinstance(_pv, list):
+                per_argv.extend(str(_item) for _item in _pv)
+            else:
+                per_argv.append(str(_pv))
+{% endif %}
+{% endfor %}
+        per_argv.extend(flag_argv)
+        return per_argv
+
     # Iterazione per ogni row (vettoriale §2.1).
+{% if output_kind == 'entries' %}
+    entries = []
+    failures = []
+    auth_seen = False
+    for rid in rows:
+        per_argv = _argv_for_row(rid)
+        rc, stdout, stderr = _run_api(_api_script(), per_argv, skill_name=SKILL_NAME)
+        if rc != 0:
+            ec = _classify_error(rc, stderr)
+            if ec == "auth_required":
+                auth_seen = True
+                break
+            failures.append({"id": rid, "error": stderr.strip() or f"rc={rc}",
+                             "error_class": ec})
+            continue
+        try:
+            raw = json.loads(stdout) if stdout.strip() else []
+        except json.JSONDecodeError as exc:
+            failures.append({"id": rid, "error": f"invalid JSON from skill: {exc}",
+                             "error_class": "server_error"})
+            continue
+        if isinstance(raw, dict) and (
+                raw.get("ok") is False or raw.get("error_class") or raw.get("error")):
+            ec = raw.get("error_class") or "server_error"
+            if ec == "auth_required":
+                auth_seen = True
+                break
+            failures.append({"id": rid, "error": str(raw.get("error") or "skill error"),
+                             "error_class": ec})
+            continue
+        raw_items = raw if isinstance(raw, list) else [raw]
+        entries.extend(
+            _normalize_record(item, kind="{{ record_kind }}", extra={{ extra_record_fields_py }})
+            for item in raw_items if isinstance(item, dict)
+        )
+    if auth_seen and not entries:
+        return _auth_needs_inputs(dict(args))
+    available_total = len(entries)
+    if top_k_int == 0 or available_total <= top_k_int:
+        kept = entries
+        truncated = False
+    else:
+        kept = entries[:top_k_int]
+        truncated = True
+    out = {"ok": bool(kept) or not failures, "entries": kept,
+           "used": len(kept), "available_total": available_total}
+    if failures:
+        out["failed"] = failures
+        if kept:
+            out["partial"] = True
+        else:
+            out["ok"] = False
+            out["error_class"] = failures[0]["error_class"]
+            out["error"] = failures[0]["error"]
+    if truncated:
+        out.update({"truncated": True, "truncated_what": "{{ truncated_what }}",
+                    "cap_field": "top_k", "cap_value": top_k_int})
+    return out
+{% else %}
     results = []
     failures = []
     auth_seen = False
     for rid in rows:
-        per_argv = list(argv) + [rid]
+        per_argv = _argv_for_row(rid)
         rc, stdout, stderr = _run_api(_api_script(), per_argv, skill_name=SKILL_NAME)
         if rc != 0:
             ec = _classify_error(rc, stderr)
@@ -292,7 +386,18 @@ def invoke(args):
             out["error_class"] = failures[0]["error_class"]
             out["error"] = failures[0]["error"]
     return out
+{% endif %}
 {% else %}
+    argv = ["{{ skill_domain }}", "{{ skill_action }}"]
+{% for p in positional_cli_args %}
+    _pv = args.get("{{ p.name }}")
+    if _pv is not None:
+        if isinstance(_pv, list):
+            argv.extend(str(_item) for _item in _pv)
+        else:
+            argv.append(str(_pv))
+{% endfor %}
+    argv.extend(flag_argv)
     rc, stdout, stderr = _run_api(_api_script(), argv, skill_name=SKILL_NAME)
     if rc != 0:
         ec = _classify_error(rc, stderr)
@@ -399,7 +504,8 @@ def invoke(args):
 # ----- Helper di errore strutturato ----------------------------------------
 
 def _err_obj(msg, ec, partial_keys=False):
-    base = {"ok": False, "error": msg, "error_class": ec}
+    base = {"ok": False, "error": msg, "error_class": ec,
+            "error_code": _error_code_for_class(ec)}
 {% if output_kind == 'entries' %}
     base["entries"] = []
     base["used"] = 0

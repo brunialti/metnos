@@ -282,7 +282,7 @@ def _render_mnestoma(data: dict) -> str:
                 f'<tr><td class="muted">{_h(ev["ts"])}</td>'
                 f'<td><span class="pill muted">{_h(ev["kind"])}</span></td>'
                 f'<td>{delta:+.3f}</td>'
-                f'<td><code>{edge}</code></td>'
+                f'<td><code>{_h(edge)}</code></td>'
                 f'<td class="muted">{_h(ev.get("reason") or "")}</td></tr>'
             )
         out.append(f'<table><thead><tr><th>Quando</th><th>Tipo</th><th>Δ</th><th>Arco</th><th>Reason</th></tr></thead><tbody>{"".join(rows)}</tbody></table>')

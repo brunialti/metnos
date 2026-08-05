@@ -170,6 +170,43 @@ def _verify_dedupe(ci: ChangeIntent) -> Verdict:
 # --- Verifier: materialize_pipeline / cache_pattern ----------------------
 
 def _verify_pipeline(ci: ChangeIntent) -> Verdict:
+    effect = ci.applied_effect or {}
+    # Dal 2/7 materializzare una pipeline significa eseguirla come turno reale;
+    # non esiste piu' una riga multi_tool_paths da osservare. Gli intent gia'
+    # presenti conservano il verifier legacy sotto per retrocompatibilita'.
+    if "final_kind" in effect or "turn_id" in effect:
+        age = _age_days(ci.applied_at)
+        final_kind = str(effect.get("final_kind") or "")
+        metrics = {
+            "turn_id": effect.get("turn_id"),
+            "final_kind": final_kind or "unknown",
+            "step_count": len(effect.get("steps") or []),
+            "age_days": round(age, 1),
+            "effect_counts": dict(effect.get("effect_counts") or {}),
+            "false_success_detected": bool(
+                effect.get("false_success_detected")),
+        }
+        counts = metrics["effect_counts"]
+        failures = int(counts.get("failures") or 0)
+        produced = int(counts.get("items") or 0) + int(
+            counts.get("mutations") or 0)
+        if metrics["false_success_detected"]:
+            return ("rollback", metrics, "materialized turn reported false success")
+        if final_kind in {"error", "loop_break"}:
+            return ("rollback", metrics,
+                    f"materialized turn ended as {final_kind}")
+        if failures > 0:
+            if produced > 0:
+                metrics["status"] = "partial"
+                return ("observing", metrics, None)
+            return ("rollback", metrics,
+                    "materialized turn failed without observable effects")
+        if final_kind == "answer" and age >= _grace_days():
+            return ("finalize", metrics, None)
+        # ask/needs_inputs restano osservabili: una capability JIT puo' essere
+        # completata in seguito e non giustifica un rollback distruttivo.
+        return ("observing", metrics, None)
+
     body = ci.intent_body or {}
     shape_hash = body.get("path_shape_hash")
     age = _age_days(ci.applied_at)

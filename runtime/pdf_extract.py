@@ -13,25 +13,25 @@ carica anche senza librerie PDF installate (ImportError solo alla call).
 from __future__ import annotations
 
 import io
+from importlib.util import find_spec
 
 DEFAULT_MAX_PAGES = 100
 DEFAULT_TRIM_CHARS = 200_000
 
 
-def has_pypdf() -> bool:
+def _module_available(name: str) -> bool:
     try:
-        import pypdf  # noqa: F401
-        return True
-    except ImportError:
+        return find_spec(name) is not None
+    except (ImportError, AttributeError, ValueError):
         return False
+
+
+def has_pypdf() -> bool:
+    return _module_available("pypdf")
 
 
 def has_pdfminer() -> bool:
-    try:
-        import pdfminer.high_level  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return _module_available("pdfminer.high_level")
 
 
 def has_pdf_parser() -> bool:

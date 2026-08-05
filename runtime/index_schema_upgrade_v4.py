@@ -54,11 +54,8 @@ def _virt_vlm_model() -> str:
 
 
 def _index_image_root() -> Path:
-    import config as _C  # §7.11
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    return _C.PATH_USER_DATA / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root()
 
 
 def _list_corpus_dirs(base: Optional[Path] = None) -> list[Path]:

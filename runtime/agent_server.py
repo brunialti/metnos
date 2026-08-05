@@ -52,9 +52,8 @@ import invocations  # noqa: E402
 import config as _C  # noqa: E402 — §7.11
 
 from logging_setup import get_logger
+from process_lock import ProcessLock
 log = get_logger(__name__)
-
-log = logging.getLogger("metnos.agent_server")
 
 DEFAULT_HOST = os.environ.get("METNOS_AGENT_HOST", "127.0.0.1")
 DEFAULT_PORT = int(os.environ.get("METNOS_AGENT_PORT", "8765"))
@@ -144,7 +143,15 @@ def _error(status: int, code: str, message: str) -> web.Response:
 # --- poll / result / heartbeat (protocollo §6) -----------------------------
 
 POLL_BLOCK_MS_MAX = 30_000
-POLL_CHECK_INTERVAL_S = 0.5
+# Questo loop è il wake-up della coda long-poll. Il precedente 0.5s
+# aggiungeva fino a mezzo secondo a ogni executor remoto; il probe SQLite è
+# read-only e può essere più frequente. Override per installazioni con molti
+# device, con limiti per evitare busy-loop o configurazioni troppo lente.
+try:
+    POLL_CHECK_INTERVAL_S = min(1.0, max(
+        0.05, float(os.environ.get("METNOS_AGENT_POLL_CHECK_S", "0.1"))))
+except (TypeError, ValueError):
+    POLL_CHECK_INTERVAL_S = 0.1
 DEVICE_SIG_HEADER = "X-Metnos-Device-Sig"
 
 
@@ -198,6 +205,7 @@ def _server_client_version() -> str | None:
 
 
 _DEFER_RUN: set = set()
+_DEFER_RUN_LOCK = threading.Lock()
 
 
 def _run_deferred_for_device(device_id: str) -> None:
@@ -205,48 +213,77 @@ def _run_deferred_for_device(device_id: str) -> None:
     Best-effort, MAI blocca il poll (gira nel thread pool). Il re-run è un
     run_turn PIENO (planning fresco, gate, undo standard); esito → notice."""
     try:
-        import deferred_turns as _dt
-        import user_notices as _un
-        from messages import get as _m
-        for rec in _dt.pending_for_device(device_id):
-            rid = rec.get("id")
-            if not rid or rid in _DEFER_RUN:
-                continue
-            if rec.get("state") == "expired":
-                _un.append(rec.get("channel") or "", rec.get("actor") or "host",
-                           _m("MSG_DEFER_EXPIRED",
-                              device=rec.get("device_name") or "?",
-                              query=(rec.get("query") or "")[:80]))
-                continue
-            _DEFER_RUN.add(rid)
-            _dt.mark(rid, "running")
-            try:
-                import agent_runtime as _ar
-                nl = _ar.run_turn(
-                    rec.get("query") or "",
-                    actor=rec.get("actor") or "host",
-                    channel=rec.get("channel") or "",
-                    conversation_id=rec.get("conversation_id") or "")
-                ok = bool(nl is not None
-                          and getattr(nl, "final_kind", "") == "answer")
-                _dt.mark(rid, "done" if ok else "failed")
-                # turn:id NELLA notice (10/7, rilievo Roberto): il run
-                # differito gira fuori-sessione — senza l'id l'utente non
-                # può citarlo per segnalare un esito errato.
-                _tid = (getattr(nl, "turn_id", "") or "")[:8]
-                _outcome = (getattr(nl, "final_message", "") or "")[:200]
-                if _tid:
-                    _outcome = f"[turn:{_tid}] {_outcome}"
-                _un.append(
-                    rec.get("channel") or "", rec.get("actor") or "host",
-                    _m("MSG_DEFER_DONE",
-                       device=rec.get("device_name") or "?",
-                       outcome=_outcome))
-            except Exception as ex:
-                _dt.mark(rid, "failed", note=repr(ex)[:200])
-                log.warning("A.1 deferred %s fallito: %r", rid, ex)
-            finally:
-                _DEFER_RUN.discard(rid)
+        device = devices.get_device(device_id)
+        owner_user_id = str(getattr(device, "owner_user_id", "") or "")
+        if not owner_user_id:
+            return
+        from user_lifecycle import OwnerUnavailable, owner_session
+        try:
+            with owner_session(owner_user_id):
+                live = devices.get_device(device_id)
+                if (live is None or live.revoked_at is not None
+                        or str(live.owner_user_id or "") != owner_user_id):
+                    return
+                import deferred_turns as _dt
+                import user_notices as _un
+                from messages import get as _m
+                for rec in _dt.pending_for_device(
+                        device_id, owner_user_id=owner_user_id):
+                    rid = rec.get("id")
+                    if not rid:
+                        continue
+                    with _DEFER_RUN_LOCK:
+                        if rid in _DEFER_RUN:
+                            continue
+                        _DEFER_RUN.add(rid)
+                    try:
+                        if rec.get("state") == "expired":
+                            _un.append(
+                                rec.get("channel") or "",
+                                rec.get("actor") or "host",
+                                _m("MSG_DEFER_EXPIRED",
+                                   device=rec.get("device_name") or "?",
+                                   query=(rec.get("query") or "")[:80]),
+                                owner_user_id=owner_user_id,
+                            )
+                            continue
+                        _dt.mark(
+                            rid, "running", owner_user_id=owner_user_id)
+                        import agent_runtime as _ar
+                        nl = _ar.run_turn(
+                            rec.get("query") or "",
+                            actor=rec.get("actor") or "host",
+                            channel=rec.get("channel") or "",
+                            conversation_id=rec.get("conversation_id") or "",
+                            owner_user_id=owner_user_id)
+                        ok = bool(nl is not None
+                                  and getattr(nl, "final_kind", "") == "answer")
+                        _dt.mark(
+                            rid, "done" if ok else "failed",
+                            owner_user_id=owner_user_id)
+                        _tid = (getattr(nl, "turn_id", "") or "")[:8]
+                        _outcome = (
+                            getattr(nl, "final_message", "") or "")[:200]
+                        if _tid:
+                            _outcome = f"[turn:{_tid}] {_outcome}"
+                        _un.append(
+                            rec.get("channel") or "",
+                            rec.get("actor") or "host",
+                            _m("MSG_DEFER_DONE",
+                               device=rec.get("device_name") or "?",
+                               outcome=_outcome),
+                            owner_user_id=owner_user_id,
+                        )
+                    except Exception as ex:
+                        _dt.mark(
+                            rid, "failed", owner_user_id=owner_user_id,
+                            note=repr(ex)[:200])
+                        log.warning("A.1 deferred %s fallito: %r", rid, ex)
+                    finally:
+                        with _DEFER_RUN_LOCK:
+                            _DEFER_RUN.discard(rid)
+        except OwnerUnavailable:
+            return
     except Exception as ex:  # noqa: BLE001 — mai rompere il poll
         log.warning("A.1 run_deferred noop: %r", ex)
 
@@ -267,8 +304,10 @@ async def poll(request: web.Request) -> web.Response:
     cursor = body.get("cursor") if isinstance(body.get("cursor"), str) else None
 
     loop = asyncio.get_running_loop()
-    # Il poll e' anche liveness implicita: aggiorna last_heartbeat.
-    await loop.run_in_executor(None, lambda: devices.heartbeat(device.id))
+    # Distingui la vita del PROCESSO dalla capacita' del WORKER. Il heartbeat
+    # dedicato continua anche mentre un executor e' bloccato; solo un poll
+    # prova che il loop sequenziale e' pronto a ricevere altro lavoro.
+    await loop.run_in_executor(None, lambda: devices.poll_seen(device.id))
     # Fase 7 A.1: il device è TORNATO (sta pollando) → esegui i turni
     # DIFFERITI col suo consenso. Fire-and-forget nel thread pool; l'esito
     # arriva all'utente via user_notices (A.2). Dedup in-process (_DEFER_RUN).
@@ -618,6 +657,7 @@ async def client_join_status(request: web.Request) -> web.Response:
                 "fingerprint": dev.public_key_fingerprint,
                 "os_family": dev.os_family, "os_arch": dev.os_arch,
                 "last_heartbeat": dev.last_heartbeat,
+                "last_poll": dev.last_poll,
             }
     return web.json_response(out, headers={"Cache-Control": "no-store"})
 
@@ -849,43 +889,6 @@ def make_app() -> web.Application:
     app.router.add_get("/agent/client/join/{join_id}/installer", client_join_installer)
     agent_mirror.register_routes(app)
     return app
-
-
-# --- single-instance lock --------------------------------------------------
-
-class ProcessLock:
-    """Lockfile basato su flock (POSIX). Evita doppie istanze."""
-
-    def __init__(self, path: Path, owner: str = "metnos"):
-        self.path = path
-        self.owner = owner
-        self._fh = None
-
-    def acquire(self) -> None:
-        import fcntl
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = open(self.path, "a+")
-        try:
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as e:
-            self._fh.close()
-            self._fh = None
-            raise RuntimeError(
-                f"{self.owner} gia' in esecuzione (lockfile {self.path}); "
-                f"se sicuro che non lo sia, rimuovi il file."
-            ) from e
-        self._fh.seek(0)
-        self._fh.truncate()
-        self._fh.write(str(os.getpid()))
-        self._fh.flush()
-
-    def release(self) -> None:
-        if self._fh is not None:
-            try:
-                self._fh.close()
-            except Exception as _e:  # silent swallow (auto-fixed)
-                log.warning("silent exception in %s: %s", __name__, _e)
-            self._fh = None
 
 
 # --- standalone runner ----------------------------------------------------

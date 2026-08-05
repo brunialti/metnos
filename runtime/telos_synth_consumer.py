@@ -11,7 +11,7 @@ un marker JSON in `<USER_DATA>/proposal_accepts/synt_pending/<sig>.json`
   3. Ordina per `expected_alignment` desc (FIFO inside same score).
   4. Per ognuno chiama `synth_request.handle_synth_request(args)` con
      `expected_name` + `intent` dal marker.
-  5. Sposta marker in `processed/` (success o failure tracked dal nome
+  5. Sposta marker in `processed/` (success, candidate o failure dal nome
      `<sig>.<status>.json`).
 
 Determinismo §7.9 nella scelta + rate limit. Synth interno e' LLM
@@ -204,6 +204,8 @@ def run_once(*, dry_run: bool = False, max_jobs: Optional[int] = None) -> dict:
         ok = bool(result.get("ok"))
         installed = bool(result.get("installed"))
         status = "success" if (ok and installed) else "failed"
+        if ok and result.get("candidate_created"):
+            status = "candidate"
         if ok and not installed and result.get("synthesized") is False:
             # Short-circuit no-synth (already in catalog, redirected, l7).
             status = "noop"
@@ -216,7 +218,7 @@ def run_once(*, dry_run: bool = False, max_jobs: Optional[int] = None) -> dict:
             "status": status, "result_keys": list(result.keys()),
         })
         stats["processed"] += 1
-        if status == "success":
+        if status in {"success", "candidate"}:
             stats["success"] += 1
         elif status == "noop":
             stats["success"] += 1

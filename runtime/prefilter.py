@@ -156,31 +156,129 @@ _VERB_TO_CANONICAL = {
     # compute
     "calcola": "compute", "calcolo": "compute", "calcolare": "compute",
     "compute": "compute", "calculate": "compute", "hash": "compute",
+    # Forme volutamente polisemiche. Il prefilter sceglie qui il significato
+    # più utile per il richiamo del catalogo; vocab.ACTION_MAPPING conserva
+    # tutti i significati disponibili al planner. Le divergenze sono censite
+    # e verificate da test_verb_canonical_sot.py.
+    "visualizza": "read",
+    "discard": "delete",
+    "classifica": "sort",
+    "etichetta": "classify", "label": "classify",
+    "indicizza": "create", "index": "create",
+    "order": "sort",
 }
 
-# Verbi-superficie polisemici per CONTENITORE (§7.3, fix 3/6/2026). Il
-# vocabolario context-free _VERB_TO_CANONICAL e' 1:1 e quindi LOSSY: "metti/
-# salva" -> "write" soltanto, cosi' i producer `create_*` perdono il verb-boost
-# e il planner sceglie write inventando un path (bug spreadsheet 2-3/6). Qui
-# dichiariamo i SIBLING di lifecycle di un canonical: oltre al primario,
-# surfacciamo anche questi producer (recall pieno) e lasciamo decidere ai
-# layer a valle (write=UPSERT, SCOPO manifest, verifier L6). Auto-limitante:
-# il sibling boosta solo se quel producer esiste DAVVERO per l'oggetto (es.
-# write_files_spreadsheet <-> create_files_spreadsheet); per oggetti con un
-# solo producer (create_events, niente write_events) e' un no-op.
-_VERB_ALSO_CANONICAL: dict[str, tuple[str, ...]] = {
-    "write": ("create",),   # scrivi-in-esistente <-> crea-nuovo
-    "create": ("write",),
-}
 
-# Boost ridotto per il sibling: entra nel pool ma sotto il primario (che resta
-# preferito a parita' di object/qualifier).
-_VERB_SIBLING_BOOST = 7
+def _extend_verb_table_from_vocab() -> None:
+    """Completa il lessico del prefilter dalla fonte canonica multilingue.
+
+    Le forme monolessematiche presenti in una sola azione sono sicure da
+    derivare automaticamente. Le forme polisemiche restano invece affidate
+    alle scelte esplicite sopra: una nuova lingua si estende in ``vocab`` e
+    diventa subito disponibile qui senza duplicare ogni sinonimo.
+    """
+    try:
+        from vocab import ACTION_MAPPING, LANGS
+    except Exception:  # pragma: no cover - bootstrap minimale
+        return
+    candidates: dict[str, set[str]] = {}
+    for canonical, spec in ACTION_MAPPING.items():
+        if not isinstance(spec, dict):
+            continue
+        for lang in LANGS:
+            for surface in spec.get(lang, ()):
+                token = str(surface or "").strip().lower()
+                # Il tokenizer del prefilter lavora su token semplici; frasi e
+                # forme con trattino restano al parser d'intento.
+                if not _WORD_RE.fullmatch(token):
+                    continue
+                candidates.setdefault(token, set()).add(canonical)
+    for token, canonicals in candidates.items():
+        if len(canonicals) == 1:
+            _VERB_TO_CANONICAL.setdefault(token, next(iter(canonicals)))
 
 
-def detect_canonical_verb(qtokens):
+_extend_verb_table_from_vocab()
+
+try:
+    from vocab import SAFE_VERBS as _SAFE_VERBS_SET
+except Exception:  # pragma: no cover - bootstrap minimale senza vocab
+    _SAFE_VERBS_SET = frozenset()
+
+
+def implements_intent_verb(candidate_verb: str, intent_verb: str) -> bool:
+    """True se `candidate_verb` puo' realizzare un intento espresso con
+    `intent_verb`. Concetto astratto, nessun lessico e nessuna lingua: si
+    ragiona solo su token del vocabolario chiuso.
+
+    IL VERBO ESATTO NON E' UN DATO, E' UNA CONGETTURA. L'estrattore proietta la
+    richiesta su UN verbo canonico, e la proiezione e' 1:1 quindi lossy:
+    «metti/salva» finisce su `write` anche quando l'operazione giusta e'
+    `create`, «togli / azzera / rimetti al valore predefinito» finisce su `set`
+    anche quando e' `delete`. Chiudere il pool sul verbo esatto fa sparire dal
+    catalogo tool che esistono, e il planner risponde onestamente «non esiste
+    un tool per togliere una preferenza» pur avendone uno (bug spreadsheet
+    2-3/6/2026; E2E preferenze 29/7/2026).
+
+    QUELLO CHE INVECE REGGE E' LA CLASSE. Su quale verbo mutante l'estrattore
+    sbaglia spesso — `set`, `delete`, `change`, `move` sono tutti plausibili
+    per la stessa frase — ma sul fatto che la richiesta CAMBI qualcosa non
+    sbaglia. Quindi sul lato che muta il pool si chiude sulla classe, e il
+    verbo esatto resta il punteggio piu' alto (+10): recall dalla classe,
+    precisione dal verbo. La domanda «questa richiesta cambia qualcosa?» ha la
+    stessa risposta in ogni lingua, e infatti qui non compare nessuna parola.
+
+    Sul lato di SOLA LETTURA il verbo esatto resta un cancello: li' i verbi non
+    si confondono fra loro e allargare peggiora. Misurato sul corpus dei turni
+    reali (873 query, confronto sui pool costruiti dalla funzione vera):
+      - classe sui DUE lati        -> 9 cambi del primo classificato, tutti
+                                      regressioni (`get_now` -> `sort_entries`,
+                                      `describe_entries` -> `find_files_github`)
+      - classe sul SOLO lato mutante -> 13,3% dei pool toccati, 0 tool persi,
+                                      0 cambi del primo classificato
+    La stessa misura mostra che la tabella di coppie scritta a mano che stava
+    qui (`write`<->`create`) diventa ridondante: rimossa, 0 tool persi e 0
+    cambi di top-1, e `create_*` resta raggiungibile da un intento `write`.
+    """
+    if not candidate_verb or not intent_verb:
+        return False
+    if candidate_verb == intent_verb:
+        return True
+    if intent_verb in _SAFE_VERBS_SET:
+        return False
+    return candidate_verb not in _SAFE_VERBS_SET
+
+
+_DIRECT_MESSAGE_RE = re.compile(
+    r"^\s*(?:scrivi|write)\s+(?:a|to)\s+"
+    r"(?![/\\])[^:\r\n]{1,80}\s*:\s*\S",
+    re.IGNORECASE,
+)
+
+
+def is_direct_message_query(query: str | None) -> bool:
+    """Riconosce un destinatario esplicito seguito dal corpo del messaggio.
+
+    `scrivi a <destinatario>: <testo>` / `write to <recipient>: <text>` e'
+    messaggistica, non scrittura su filesystem. Pretendere INSIEME il
+    separatore destinatario/corpo e un bersaglio che non sia un path tiene le
+    normali `write to /path` nel dominio dei file. Confine deterministico
+    (§7.9), riusato dal gate di smoke e dalle strategie alternative di
+    prefilter.
+    """
+    return bool(query and _DIRECT_MESSAGE_RE.match(query))
+
+
+def detect_canonical_verb(qtokens, query: str | None = None):
     """Ritorna il primo verbo canonico (move/delete/read/...) trovato fra i
-    token della query, o None. Importante per boost del prefilter."""
+    token della query, o None. Importante per boost del prefilter.
+
+    `query` e' opzionale: quando c'e', il confine strutturale
+    `is_direct_message_query` vince sul token, perche' «scrivi a X: ...» e'
+    un invio, non una scrittura.
+    """
+    if is_direct_message_query(query):
+        return "send"
     for tok in sorted(qtokens):
         v = _VERB_TO_CANONICAL.get(tok)
         if v:
@@ -429,6 +527,7 @@ _STOPWORDS = _STOPWORDS_IT | _STOPWORDS_EN
 
 def affinity_score(query_tokens, executor, *,
                    query_canonical_verb=None, query_canonical_object=None,
+                   query_canonical_verbs=None,
                    query_raw=None):
     """Score con preferenza forte al VERBO CANONICO della query, all'oggetto
     canonico, e all'affinity (verbi/azioni dichiarati nel manifest);
@@ -462,12 +561,18 @@ def affinity_score(query_tokens, executor, *,
     soft_pool = (query_tokens & desc_tokens) - hard_matches - _STOPWORDS
     soft = min(len(soft_pool), 3)
     verb_boost = 0
-    if query_canonical_verb:
+    canonical_verbs = tuple(query_canonical_verbs or (
+        (query_canonical_verb,) if query_canonical_verb else ()))
+    if canonical_verbs:
         _first = executor.name.split("_", 1)[0]
-        if _first == query_canonical_verb:
+        if _first in canonical_verbs:
             verb_boost = 10
-        elif _first in _VERB_ALSO_CANONICAL.get(query_canonical_verb, ()):
-            verb_boost = _VERB_SIBLING_BOOST  # producer sibling di lifecycle
+        elif any(implements_intent_verb(_first, verb)
+                 for verb in canonical_verbs):
+            # Stessa classe, verbo diverso: qui il verbo e' gia' solo un boost
+            # (nessuno viene escluso), quindi il fratello non prende nulla e
+            # decidono affinity e oggetto.
+            verb_boost = 0
     object_boost = 0
     if query_canonical_object:
         # Match se l'object canonico e' parte del nome dell'executor (es.
@@ -500,7 +605,8 @@ def rank(query, catalog, k=10, min_score=1):
     qtokens = tokenize(query)
     if not qtokens:
         return list(catalog)[:k]
-    canonical_verb = detect_canonical_verb(qtokens)
+    canonical_verbs = detect_canonical_verbs_all(qtokens)
+    canonical_verb = canonical_verbs[0] if canonical_verbs else None
     canonical_object = detect_canonical_object(qtokens, query)
     # §7.3 Task #41: init rare-tokens cache (idempotente) per rule penalty
     import os as _os_pref
@@ -512,6 +618,7 @@ def rank(query, catalog, k=10, min_score=1):
             log.warning("init_rare_tokens failed: %s", _e)
     scored = [(affinity_score(qtokens, e,
                               query_canonical_verb=canonical_verb,
+                              query_canonical_verbs=canonical_verbs,
                               query_canonical_object=canonical_object,
                               query_raw=query), e)
               for e in catalog]
@@ -607,7 +714,7 @@ _OBJECT_PRIMARY_TOOLS = {
                    "find_persons_indices", "delete_persons"),
     "tasks":     ("list_tasks", "read_tasks", "create_tasks",
                    "delete_tasks", "set_tasks", "read_tasks_history"),
-    "files":     ("find_files", "read_files", "get_files"),
+    "files":     ("find_files", "find_files_hash", "read_files", "get_files"),
     "dirs":      ("list_dirs", "find_dirs"),
     "urls":      ("find_urls", "get_urls", "read_urls_html", "read_urls_pdf"),
     # Calendar events (Google Workspace skill, importati 10/5/2026,
@@ -617,7 +724,8 @@ _OBJECT_PRIMARY_TOOLS = {
     "calendars": ("create_calendars", "delete_calendars"),
     # Contatti Google Workspace (read_contacts dal skill):
     "contacts":  ("read_contacts",),
-    "images":    ("find_images_indices", "change_images", "find_files", "get_files"),
+    "images":    ("find_images_indices", "change_images", "find_files",
+                   "find_files_hash", "get_files"),
     "packages":  ("find_packages",),  # canonical handcrafted name (no get_packages)
     "numbers":   (),  # niente primary, lascia al ranker
     "texts":     ("read_files", "filter_texts_lines"),
@@ -769,6 +877,25 @@ _GENERIC_AFFINITY_VERBS = frozenset({
 })
 
 
+def affinity_phrase_score(query, executor) -> int:
+    """Return the strongest distinctive multi-token affinity match.
+
+    A score is intentionally available separately from pool recall so the
+    deterministic routing guards can compare two already-admitted executors
+    without duplicating the affinity semantics.  Single-token tags and generic
+    action verbs never constitute enough evidence for a routing rewrite.
+    """
+    qtokens = tokenize(query) if query else set()
+    if not qtokens:
+        return 0
+    best = 0
+    for tag in (getattr(executor, "affinity", None) or []):
+        distinctive = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
+        if len(distinctive) >= 2 and distinctive <= qtokens:
+            best = max(best, len(distinctive))
+    return best
+
+
 def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
     """Cross-object recall affinity-based (misroute live 10/6/2026: "quali
     account mail hai?" → read_messages legge 426 email). Causa: l'intent
@@ -788,19 +915,14 @@ def affinity_phrase_recall(query, catalog, *, exclude_names=frozenset(), cap=3):
     (ordinamento -n_token, name) per l'igiene del pool.
 
     Ritorna lista executor (mai i gia' presenti in `exclude_names`)."""
-    qtokens = tokenize(query) if query else set()
-    if not qtokens:
+    if not tokenize(query):
         return []
     hits = []
     for e in _filter_dormant(catalog):
         name = getattr(e, "name", None)
         if not name or name in exclude_names:
             continue
-        best = 0
-        for tag in (getattr(e, "affinity", None) or []):
-            dt = tokenize(tag) - _STOPWORDS - _GENERIC_AFFINITY_VERBS
-            if len(dt) >= 2 and dt <= qtokens:
-                best = max(best, len(dt))
+        best = affinity_phrase_score(query, e)
         if best:
             hits.append((best, name, e))
     hits.sort(key=lambda h: (-h[0], h[1]))
@@ -851,12 +973,19 @@ def rank_with_intent(query, catalog, intent, *, k=3):
         _first = parts[0] if parts else ""
         if _first == verb:
             s = 10
-        elif _first in _VERB_ALSO_CANONICAL.get(verb, ()):
-            s = _VERB_SIBLING_BOOST  # sibling di lifecycle: nel pool, sotto il primario
+        elif implements_intent_verb(_first, verb):
+            # Stessa classe, verbo diverso: NESSUN bonus di verbo. Entra solo
+            # se oggetto, qualifier o affinity lo sostengono — il verbo esatto
+            # resta preferito di 10 punti (vedi `implements_intent_verb`).
+            s = 0
         else:
             continue
         if obj and obj in parts:
-            s += 6
+            # L'oggetto è il confine di dominio dell'intento: un tool del
+            # dominio giusto con verbo fratello deve precedere un verbo esatto
+            # applicato all'oggetto sbagliato. Il match esatto verbo+oggetto
+            # resta comunque nettamente primo (10 + 12).
+            s += 12
         # Qualifier bonus SOLO se il qualifier matcha un token nella query
         # (es. query "leggi il csv" → bonus per read_files_csv). Altrimenti
         # il generico `read_files` deve poter battere i qualified per query
@@ -1146,7 +1275,7 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
 
     Vantaggio dell'intent extractor: robusto a variazioni di linguaggio
     ("archivia", "svuota cestino", "metti in spam") che il lexicon manuale
-    non copre. Latenza tipica ~350ms con il modello locale middle tier.
+    non copre. Latenza tipica ~350ms con il modello locale fast.procedural.
 
     Filtro relativo (28/4 sera): tieni solo score >= max(1, top_score / 2).
     Evita di passare al planner tool con affinity bassa che fanno rumore (il
@@ -1178,7 +1307,8 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
         executors = list(catalog)
         return executors[:k_min], {"chosen_k": min(k_min, len(executors)),
                                     "confidence": 0.0, "scores_top": [], "reason": "empty_query"}
-    canonical_verb = detect_canonical_verb(qtokens)
+    canonical_verbs = detect_canonical_verbs_all(qtokens)
+    canonical_verb = canonical_verbs[0] if canonical_verbs else None
     canonical_object = detect_canonical_object(qtokens, query)
     # §7.3 Task #41 (28/5/2026): pass query_raw per attivare typed-rules
     # (input_coverage, schema_field) gated da METNOS_PREFILTER_RULES=1.
@@ -1192,6 +1322,7 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
             pass
     scored = [(affinity_score(qtokens, e,
                               query_canonical_verb=canonical_verb,
+                              query_canonical_verbs=canonical_verbs,
                               query_canonical_object=canonical_object,
                               query_raw=query), e)
               for e in catalog]

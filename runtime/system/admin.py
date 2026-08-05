@@ -3,7 +3,7 @@
 The admin runs the four-act flow inside its body:
 
     [pre-1] syntactic gate (no LLM)         — reject literal shell command
-    [1+2+3] single LLM call (tier middle)   — kind ∈ {literal_command,
+    [1+2+3] single LLM call (fast.procedural) — kind ∈ {literal_command,
                                                        translated, unknown,
                                                        impossible}
     [4]    deterministic safety tools       — forbidden, blacklist, whitelist
@@ -147,7 +147,7 @@ MANIFEST_VIRTUAL = {
                     "UID hardcoded (es. `uid=1000`). "
                     "NON DEVI: `&&`, `||`, `;`, `|`, `>`, `<`, `$()`, "
                     "backtick. "
-                    "Es: \"mount -t cifs //192.168.1.20/Public /mnt/nas "
+                    "Es: \"mount -t cifs //192.0.2.20/Public /mnt/nas "
                     "-o credentials=${METNOS_CIFS_CREDS},uid=1000\"."
                 ),
             },
@@ -155,7 +155,7 @@ MANIFEST_VIRTUAL = {
                 "type": "string",
                 "description": (
                     "Opzionale. Nome dominio credenziali salvate, formato "
-                    "\"<binding>_<host>\" (es. \"cifs_192.168.1.20\"). "
+                    "\"<binding>_<host>\" (es. \"cifs_192.0.2.20\"). "
                     "Default auto-derivato dal command_proposed quando "
                     "omesso."
                 ),
@@ -172,7 +172,7 @@ MANIFEST_VIRTUAL = {
         },
     },
     "capabilities": [
-        {"name": "admin.shell",
+        {"name": "system:admin",
          "hint": ["mount", "umount", "kill", "systemctl",
                   "chmod", "chown", "ifconfig", "apt", "journalctl"]},
     ],
@@ -277,12 +277,18 @@ Respond with ONE JSON object, exactly one of these shapes:
 def _default_llm_call(prompt: str) -> str:
     """Bridge to the runtime LLM router. Falls back to ok-but-empty in dev.
 
-    The default tier is `middle` (local model think=false) per ADR 0026:
-    intent translation is a procedural task, not a critical safety call.
+    The default tier is ``fast``. Its provider and generation policy belong
+    to the tier configuration; this bridge must not keep a second, hidden
+    local-model profile.
     """
     try:
-        from llm_router import call_middle  # type: ignore
-        return call_middle(prompt, format="json", num_predict=400)
+        from llm_router import LLMRouter
+        from llm_workloads import tier_for
+
+        result = LLMRouter().chat(
+            "", prompt, tier=tier_for("admin.intent_translate"),
+            max_tokens=400)
+        return str(getattr(result, "text", "") or "")
     except Exception as e:  # pragma: no cover (dev fallback)
         log.warning("admin LLM bridge unavailable, returning unknown (%s)", e)
         return '{"kind": "unknown", "reason": "LLM router unavailable"}'
@@ -583,7 +589,7 @@ def decide(
                  sends it on the user's channel; if None, no wait prompts
                  are emitted (useful for testing).
       llm_call:  callable(prompt: str) -> str, returning the LLM's JSON
-                 answer; if None, uses the default (middle tier router).
+                 answer; if None, uses the default fast-tier router.
 
     Returns: AdminDecision describing what to do next.
     """
@@ -1097,7 +1103,7 @@ def _detect_credentials_placeholder(argv: list[str]) -> tuple[str | None, dict]:
     e deriva il dominio canonico atteso (binding + host).
 
     Ritorna (domain, context):
-      - domain: chiave di store attesa (es. "cifs_192.168.1.20"); None se
+      - domain: chiave di store attesa (es. "cifs_192.0.2.20"); None se
         non c'e' placeholder.
       - context: dict con binding/host/share quando derivabili dall'argv.
     """
@@ -1195,7 +1201,7 @@ def _format_cli_instructions(domain: str, ctx: dict) -> str:
         extra += f" --host {host}"
     return (
         "Per inserire le credenziali via terminale:\n\n"
-        "  ssh roberto@192.168.1.33   # se accedi da un altro host\n"
+        "  ssh user@192.0.2.10   # se accedi da un altro host\n"
         f"  metnos-cli credentials add {domain}{extra}\n"
         "    > username: ...\n"
         "    > password: ...\n\n"
@@ -1261,11 +1267,11 @@ def _executor_name_in_argv(argv: list[str]) -> Optional[str]:
     return candidate
 
 
-def invoke(*, intent: str, command_proposed: str,
-           credentials_domain: str | None = None,
-           actor_consent_token: str | None = None,
-           actor: str = "host",
-           **_extra) -> dict:
+def _invoke_impl(*, intent: str, command_proposed: str,
+                 credentials_domain: str | None = None,
+                 actor_consent_token: str | None = None,
+                 actor: str = "host",
+                 **_extra) -> dict:
     """Entrypoint per il PLANNER (ADR 0088).
 
     Questo e' il punto di ingresso registrato nel `VERB_UNIQUE_REGISTRY`
@@ -1582,6 +1588,64 @@ def invoke(*, intent: str, command_proposed: str,
         "summary": f"Stato admin imprevisto: {decision.kind}",
         "audit": decision.audit,
     }
+
+
+def _standardize_result(result: object) -> dict:
+    """Apply the Executor Standard terminal envelope to every admin branch."""
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "decision": "reject",
+            "approval_required": False,
+            "summary": "admin ha prodotto un risultato interno non valido.",
+            "error_class": "internal_error",
+            "error_code": "ERR_BUILTIN_INVALID_RESULT",
+        }
+    out = dict(result)
+    if out.get("ok") is not False:
+        return out
+    audit = out.get("audit") if isinstance(out.get("audit"), dict) else {}
+    gate = str(audit.get("gate") or "")
+    safety = str(audit.get("safety") or "")
+    summary = str(out.get("summary") or "").lower()
+    error_class = str(out.get("error_class") or "").strip()
+    if error_class == "unresolved_placeholders":
+        error_class = "invalid_args"
+        error_code = "ERR_ARG_UNRESOLVED_PLACEHOLDER"
+    elif gate == "catalog_name_rejected":
+        error_class = "invalid_args"
+        error_code = "ERR_ARG_EXECUTOR_AS_COMMAND"
+    elif gate == "pkg_not_whitelisted" or safety in {
+            "forbidden_hit", "blacklist_hit"}:
+        error_class = "permission_denied"
+        error_code = "ERR_PERMISSION_DENIED"
+    elif "non disponibile" in summary or "unavailable" in summary:
+        error_class = "dependency_unavailable"
+        error_code = "ERR_EXT_SVC_UNAVAILABLE"
+    elif "esecuzione fallita" in summary:
+        error_class = "operation_failed"
+        error_code = "ERR_ADMIN_EXECUTION_FAILED"
+    else:
+        error_class = error_class or "invalid_args"
+        error_code = "ERR_ARG_INVALID"
+    out["error_class"] = error_class
+    out.setdefault("error_code", error_code)
+    return out
+
+
+def invoke(*, intent: str, command_proposed: str,
+           credentials_domain: str | None = None,
+           actor_consent_token: str | None = None,
+           actor: str = "host",
+           **_extra) -> dict:
+    return _standardize_result(_invoke_impl(
+        intent=intent,
+        command_proposed=command_proposed,
+        credentials_domain=credentials_domain,
+        actor_consent_token=actor_consent_token,
+        actor=actor,
+        **_extra,
+    ))
 
 
 def _format_card_summary(decision: AdminDecision, *, intent_text: str) -> str:

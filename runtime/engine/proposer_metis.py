@@ -315,7 +315,10 @@ class MetisProposer:
         if not system:
             return []
         try:
-            raw = llm_call(system, query, max_tokens=4096, think=True)
+            from llm_workloads import tier_for
+            raw = llm_call(
+                system, query, max_tokens=4096,
+                tier_override=tier_for("planner.deliberate"))
         except Exception as ex:
             log.warning("MetisProposer LLM call failed: %r", ex)
             return []
@@ -369,7 +372,7 @@ class MetisProposer:
                 # B15 — challenger COMPOUND: diversita' STRUTTURALE per
                 # COSTRUZIONE (§7.9), non per speranza. Il primo tool dei
                 # candidati gia' generati esce dal pool del challenger
-                # (prompt + grammar GBNF): con seed fisso e think=False il
+                # (prompt + grammar GBNF): col contratto exact e seed fisso il
                 # solo segnale testuale non basta (misura 10/6: 3/3 stessa
                 # sequenza) e una seconda call full-pool e' un quasi-
                 # duplicato → spreco. Cosi' l'alternativa parte da un tool

@@ -26,9 +26,8 @@ _RUNTIME = Path(__file__).resolve().parent.parent.parent
 if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 
-from skill_wrapper import (  # noqa: E402
-    _skill_home, _needs_inputs_oauth_setup,
-    _get_oauth_provider_for_skill,
+from backends._google_auth_common import (  # noqa: E402
+    auth_needs_inputs as _common_auth_needs_inputs,
 )
 from backends._google_api_runner import run_with_retry  # noqa: E402
 from messages import get as _msg  # noqa: E402
@@ -36,30 +35,9 @@ from messages import get as _msg  # noqa: E402
 SKILL_NAME = "google-workspace"
 
 
-def _has_creds() -> bool:
-    return (_skill_home(SKILL_NAME) / "google_token.json").is_file()
-
-
 def _auth_needs_inputs(args_base: dict, *, executor: str) -> dict:
-    try:
-        payload = _needs_inputs_oauth_setup(
-            skill_name=SKILL_NAME, executor=executor,
-            args_base=args_base,
-            **_get_oauth_provider_for_skill(SKILL_NAME),
-        )
-    except Exception as ex:
-        return {"ok": False, "error_class": "auth_required",
-                "error_code": "ERR_OAUTH_SETUP",
-                "error": _msg("ERR_OAUTH_SETUP", reason=str(ex)),
-                "results": [], "used": 0}
-    return {
-        "ok": True,
-        "decision": "needs_inputs",
-        "needs_inputs": payload,
-        "results": [], "used": 0,
-        "error_class": "auth_required",
-        "final_message_hint": payload.get("title", ""),
-    }
+    return _common_auth_needs_inputs(
+        args_base, executor=executor, result_kind="results")
 
 
 def _run_gmail(argv: list[str], *, executor: str,
@@ -203,10 +181,9 @@ def read(args: dict) -> dict:
         ids = [e.get("id") for e in search_results
                 if isinstance(e, dict) and e.get("id")]
 
-    # Parallelizza fetch per-id (§7.4: speedup reale, IO subprocess).
-    # Cap 8 concorrenti, ordine preservato dall'output. Auth/needs_inputs
-    # propaga immediatamente: se UN fetch chiede OAuth, fallisce tutti.
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    # Parallelizza fetch per-id con lo stesso budget runtime usato dagli altri
+    # fan-out I/O. Ordine preservato; auth/needs_inputs di un fetch prevale.
+    from executor_workers import map_ordered
     entries: list[dict] = [None] * len(ids)
     needs_inputs_resp: dict | None = None
 
@@ -217,22 +194,21 @@ def read(args: dict) -> dict:
                           args_base=dict(args))
         return idx, d, e
 
-    with ThreadPoolExecutor(max_workers=min(8, max(1, len(ids)))) as pool:
-        futs = [pool.submit(_fetch_one, (i, m)) for i, m in enumerate(ids)]
-        for fut in as_completed(futs):
-            idx, data, err = fut.result()
-            mid = ids[idx]
-            if err is not None:
-                if err.get("decision") == "needs_inputs":
-                    needs_inputs_resp = err
-                    continue
-                entries[idx] = {"id": mid,
-                                "error_class": err.get("error_class"),
-                                "error": err.get("error")}
+    fetched, _skipped = map_ordered(
+        _fetch_one, list(enumerate(ids)))
+    for _order, (idx, data, err) in fetched:
+        mid = ids[idx]
+        if err is not None:
+            if err.get("decision") == "needs_inputs":
+                needs_inputs_resp = err
                 continue
-            if isinstance(data, dict):
-                data.setdefault("id", mid)
-                entries[idx] = data
+            entries[idx] = {"id": mid,
+                            "error_class": err.get("error_class"),
+                            "error": err.get("error")}
+            continue
+        if isinstance(data, dict):
+            data.setdefault("id", mid)
+            entries[idx] = data
 
     if needs_inputs_resp is not None:
         return needs_inputs_resp
@@ -360,7 +336,7 @@ def reply(args: dict) -> dict:
         argv = ["gmail", "reply", in_reply_to, "--body", body]
         if from_header:
             argv.extend(["--from", from_header])
-        data, err = _run_gmail(argv, executor="reply_messages",
+        data, err = _run_gmail(argv, executor="send_messages",
                                args_base=dict(args))
         if err is not None:
             if err.get("decision") == "needs_inputs":

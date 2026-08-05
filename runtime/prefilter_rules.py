@@ -12,11 +12,11 @@ Aggiunge score boost/penalty a `prefilter.affinity_score()` basati su:
 
 Le rules string-only non richiedono ExecutorRegistry tipato del simulator.
 Le rules tipate (10.5, 11.0) leggono `runtime/executor_typing.py` che a sua
-volta legge i 84 typing JSON in `e2e/simulator/typing_cache/`. Se un typing
+volta legge i 84 typing JSON in `tests/simulator/typing_cache/`. Se un typing
 manca per un executor, le rule tipate sono no-op (graceful degrade §2.8).
 
 Reference: bench 446q baseline prefilter 47% top-1 → atteso 65-75% post-rules.
-Source rules: e2e/simulator/graph_search_v2.py SIM_RULE_* + curator data.
+Source rules: tests/simulator/graph_search_v2.py SIM_RULE_* + curator data.
 
 Wiring: enable via env METNOS_PREFILTER_RULES=1 in `prefilter.affinity_score`.
 """
@@ -333,7 +333,7 @@ def compute_input_coverage_score(query_tokens: set, query_raw: str,
     no-op (ritorna 0). Senza signal detectati nel query → 0 (non penalizza
     perche' molti pattern naturali non hanno path/URL espliciti).
 
-    Source: e2e/simulator/graph_search_v2.py:1209-1233 (SIM_RULE_10_5).
+    Source: tests/simulator/graph_search_v2.py:1209-1233 (SIM_RULE_10_5).
     Degradazione vs simulator: la versione simulator usa query.inputs[].
     semantic_type dal parser strutturato; qui dipendiamo da heuristica
     regex su query_raw (universal §7.3, no LLM, no parser dipendenza).
@@ -381,7 +381,7 @@ def compute_schema_field_score(query_tokens: set, executor) -> int:
     Esempio: query "ordinati per data" → schema con `mtime`, `date`,
     `modified_at` riceve +3 (stesso _KEY_CLASSES bucket di "data").
 
-    Source: e2e/simulator/graph_search_v2.py:1312-1352 (SIM_RULE_SCHEMA).
+    Source: tests/simulator/graph_search_v2.py:1312-1352 (SIM_RULE_SCHEMA).
     Degradazione: simulator usa query.constraints[] strutturato; qui
     matchiamo direttamente sui token query (subset di constraint.key).
     """

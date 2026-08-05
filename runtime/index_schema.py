@@ -15,6 +15,7 @@ SOLO la forma dei dati.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 # v4 — unified index (ADR 0117). Sostituisce v2/v3.
@@ -57,6 +58,58 @@ def canonical_corpus_path(base_path, user_data_root=None) -> str:
         return str(p.resolve())
     except OSError:
         return str(p)
+
+
+def image_index_root(explicit_root=None, user_data_root=None) -> Path:
+    """Radice persistente degli indici immagine.
+
+    ``explicit_root`` e' gia' la directory ``image`` ed esiste per i caller
+    che devono isolare lo storage. In sua assenza ``METNOS_INDEX_ROOT`` indica
+    la radice generale degli indici, mentre ``METNOS_USER_DATA`` governa il
+    layout installato. Questa e' la sola derivazione condivisa da builder e
+    reader, evitando drift fra executor e runtime.
+    """
+    import os
+    if explicit_root is not None:
+        return Path(explicit_root)
+    index_root = os.environ.get("METNOS_INDEX_ROOT")
+    if index_root:
+        return Path(index_root) / "image"
+    if user_data_root is None:
+        configured = os.environ.get("METNOS_USER_DATA")
+        user_data_root = (Path(configured) if configured else
+                          Path.home() / ".local" / "share" / "metnos")
+    return Path(user_data_root) / "index" / "image"
+
+
+def corpus_digest(base_path, *, user_data_root=None, length: int = 16) -> str:
+    """Digest stabile della chiave canonica di un corpus."""
+    import hashlib
+    length = max(1, min(64, int(length)))
+    canonical = canonical_corpus_path(base_path, user_data_root=user_data_root)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:length]
+
+
+def image_corpus_dir(base_path, *, explicit_root=None,
+                     user_data_root=None) -> Path:
+    """Directory persistente condivisa di un corpus immagine."""
+    return (image_index_root(explicit_root, user_data_root) /
+            corpus_digest(base_path, user_data_root=user_data_root))
+
+
+def directory_size(path) -> int:
+    """Dimensione best-effort di un albero; file illeggibili sono ignorati."""
+    total = 0
+    root = Path(path)
+    if not root.exists():
+        return 0
+    for candidate in root.rglob("*"):
+        try:
+            if candidate.is_file():
+                total += candidate.stat().st_size
+        except OSError:
+            continue
+    return total
 
 # Legacy: 3 indici disgiunti. Riferito solo dalla migration v3→v4 e da
 # index_schema_upgrade.py (modulo legacy). NON usare per build nuovi.

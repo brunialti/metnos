@@ -25,8 +25,9 @@ import os
 import re
 
 from llm_helpers import call_llm
+from llm_workloads import tier_for
+import i18n as _i18n
 import prompt_loader
-from config import DEFAULT_LANG
 from messages import get as _msg
 
 # Lista degli style preset disponibili. I prompt sono persistiti in
@@ -63,13 +64,13 @@ _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 #   MAP   — una passata `fast` PER ELEMENTO: resume breve + punteggio di
 #           salienza (0-100). Una entry alla volta non sfora MAI il budget
 #           (elimina il problema alla radice — Roberto), output corto, N volte.
-#   REDUCE— una `middle` sintetizza i digest (piccoli → stanno nel budget),
+#   REDUCE— una `fast.procedural` sintetizza i digest (piccoli → stanno nel budget),
 #           ordinati per salienza; se i digest stessi sforano (N enorme),
 #           ricorsione GERARCHICA (riassunto-di-riassunti) fino a convergenza.
 # Copre tutte le entries FINO al cap anti-runaway (sotto). Scatta SOLO
 # over-budget: il caso comune (sotto budget) resta la singola chiamata di
 # prima, invariato.
-# Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast/middle
+# Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast
 # (efficiente, no processo monouso ×N) → NON byte-riproducibile, dichiarato
 # onestamente `meta.deterministic=False` (come il fallback HTTP §11).
 _DESCRIBE_MAPREDUCE = os.environ.get("METNOS_DESCRIBE_MAPREDUCE", "1").strip() != "0"
@@ -176,9 +177,11 @@ def _map_one(entry, map_prompt: str) -> tuple[int, str]:
     monouso), input troncato, output corto. Ritorna (salienza, resume).
     Fail-open §2.8."""
     try:
-        text, _meta = call_llm([_trim_for_map(entry)], map_prompt, tier="fast",
-                               max_tokens=140, deterministic=False,
-                               max_query_chars=_MAP_FIELD_CHARS + 2048)
+        text, _meta = call_llm(
+            [_trim_for_map(entry)], map_prompt,
+            tier=tier_for("entries.describe.map"),
+            max_tokens=140, deterministic=False,
+            max_query_chars=_MAP_FIELD_CHARS + 2048)
     except Exception:
         return 50, _fallback_resume(entry)
     return _parse_salience(text, entry)
@@ -286,7 +289,7 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
             res = handle_describe_entries({
                 "entries": groups, "style": style, "context": context,
                 "data_kind": data_kind, "format": fmt, "group_by": group_by,
-                "tier": "middle", "max_tokens": max_tokens,
+                "tier": tier_for("entries.describe.medium"), "max_tokens": max_tokens,
                 "health_context": health_context,
             }, _mr_depth=mr_depth + 1, _deterministic=False)
             if isinstance(res, dict) and res.get("ok"):
@@ -301,15 +304,11 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
                 s = res.get("summary")
                 if isinstance(s, str) and s.strip() and note:
                     res["summary"] = s.rstrip() + "\n\n" + note
-                # copertura TOTALE: niente campi-troncamento
-                for k in ("truncated", "truncated_what", "used",
-                          "available_total", "cap_field", "cap_value"):
-                    res.pop(k, None)
                 res["map_reduce"] = True
                 res["deterministic"] = False
                 return res
     mapped_entries = entries[:_MR_MAX_ENTRIES] if capped else entries
-    map_prompt = prompt_loader.get("describe_map_salience", DEFAULT_LANG,
+    map_prompt = prompt_loader.get("describe_map_salience", _i18n.current_lang(),
                                    context=context or "")
     digests: list = []
     for e in mapped_entries:
@@ -325,11 +324,11 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
     digests.sort(key=lambda x: x.get("_salience", 0), reverse=True)
     # REDUCE: describe normale sui digest (piccoli → singola chiamata; se
     # sforano ancora, ricorre map-reduce a mr_depth+1 = gerarchico). tier
-    # `middle`, non deterministico (path efficiente).
+    # `fast.procedural`, non deterministico (path efficiente).
     res = handle_describe_entries({
         "entries": digests, "style": style, "context": context,
         "data_kind": data_kind, "format": fmt, "group_by": group_by,
-        "tier": "middle", "max_tokens": max_tokens,
+        "tier": tier_for("entries.describe.medium"), "max_tokens": max_tokens,
         "health_context": health_context,
     }, _mr_depth=mr_depth + 1, _deterministic=False)
     if isinstance(res, dict) and res.get("ok"):
@@ -358,75 +357,121 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
                 "cap_field": "METNOS_DESCRIBE_MR_MAX_ENTRIES",
                 "cap_value": _MR_MAX_ENTRIES,
             })
-        else:
-            # Coperte TUTTE: niente troncamento, item_count = totale reale.
-            for k in ("truncated", "truncated_what", "used", "available_total",
-                      "cap_field", "cap_value"):
-                res.pop(k, None)
         res["map_reduce"] = True
         res["mapped"] = len(mapped_entries)
         res["deterministic"] = False
     return res
 
-# Direttive di formattazione applicate in append al prompt principale.
-# Cosi' il chiamante puo' chiedere lo stesso riassunto in markdown
-# (default Telegram), HTML, plain, o JSON strutturato — senza
-# duplicare i prompt template.
-FORMAT_DIRECTIVES = {
-    "markdown": (
-        "FORMATO OUTPUT: markdown leggero. Bullet list `* ` per "
-        "elenchi, **grassetto** per evidenziare, niente tabelle "
-        "complesse. Compatibile con Telegram MarkdownV2/HTML mixed."
-    ),
-    "html": (
-        "FORMATO OUTPUT: HTML semplice supportato da Telegram Bot API: "
-        "<b>grassetto</b>, <i>corsivo</i>, <code>monospace</code>, "
-        "<a href=\"...\">link</a>. Niente <ul>/<li>: per elenchi usa "
-        "righe separate da \\n con prefisso `• `. Niente tag esotici."
-    ),
-    "plain": (
-        "FORMATO OUTPUT: testo piano. NIENTE markdown, NIENTE HTML, "
-        "NIENTE simboli decorativi. Frasi pulite, paragrafi separati "
-        "da una riga vuota se servono."
-    ),
-    "json": (
-        "FORMATO OUTPUT: un singolo oggetto JSON valido con i campi "
-        "{summary: string, highlights: [string], total: int, "
-        "noise_filtered: int}. Niente prosa fuori dal JSON."
-    ),
-    "bullet_list": (
-        "FORMATO OUTPUT: solo una bullet list (`* `), una riga per "
-        "punto, senza prefazione ne' chiusa. Massimo 10 punti."
-    ),
-}
+_FORMATS = frozenset({"markdown", "html", "plain", "json", "bullet_list"})
+
+
+def _format_directive(fmt: str) -> str:
+    """Renderizza le istruzioni di formato nella lingua del turno.
+
+    Le regole sono prompt versionati e traducibili, non stringhe applicative.
+    Se una lingua nuova non ha ancora il proprio file, ``prompt_loader`` usa
+    il template inglese ma gli passa comunque ``lang_name`` della lingua
+    richiesta, così il modello non confonde la lingua del fallback con quella
+    della risposta.
+    """
+    if fmt not in _FORMATS:
+        return ""
+    return prompt_loader.get(
+        "describe_format", _i18n.current_lang(), format_name=fmt,
+    )
 
 
 def _auto_tier(entries: list) -> str:
     """Sceglie il tier in base alla dimensione del bundle serializzato.
     Heuristica conservativa: testi corti reggono col tier fast,
-    contenuti medi vanno a middle, bundle grossi a wise (per context
-    + qualita' di sintesi su molti item)."""
+    contenuti medi usano fast.procedural, bundle grossi fast.fidelity."""
     try:
         size = len(json.dumps(entries, ensure_ascii=False))
     except Exception:
         size = 0
     n = len(entries)
     if size < 5_000 and n <= 10:
-        return "fast"
+        return tier_for("entries.describe.small")
     if size < 30_000 and n <= 50:
-        return "middle"
-    return "wise"
+        return tier_for("entries.describe.medium")
+    return tier_for("entries.describe")
 
 
-_LINK_SECTION_TITLE = {
-    "it": "Link diretti",
-    "en": "Direct links",
-}
-_PATHS_SECTION_TITLE = {
-    "it": "Path",
-    "en": "Paths",
-}
 _MAX_LINKS_APPENDED = 10
+
+
+def _format_structured_entries(
+        entries: list, fmt: str, group_by: str = "") -> str:
+    """Render lossless per record estratti con schema bounded.
+
+    Le chiavi interne di provenienza (prefisso ``_``) non diventano colonne;
+    ogni altro campo non vuoto compare esattamente una volta per record.
+    """
+    import html
+
+    def value_text(value) -> str:
+        if isinstance(value, (dict, list, tuple)):
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return str(value)
+
+    rows: list[str] = []
+    json_rows: list[dict] = []
+    group_field = None
+    if group_by:
+        try:
+            from ordering_clause import resolve_field
+            group_field = resolve_field(group_by, entries)
+        except Exception:
+            group_field = None
+    # Un'intestazione come ``organizzazione: ?`` non aggiunge informazione
+    # quando la chiave e' assente in TUTTO il corpus. Nei corpus misti il
+    # gruppo senza valore resta invece visibile, cosi' la copertura incompleta
+    # non viene nascosta.
+    if group_field and not any(
+            isinstance(entry, dict)
+            and entry.get(group_field) not in (None, "", [], {})
+            for entry in entries):
+        group_field = None
+    previous_group = object()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            fields = [("value", entry)]
+        else:
+            fields = [
+                (str(key).replace("_", " "), value)
+                for key, value in entry.items()
+                if not str(key).startswith("_") and value not in (None, "", [], {})
+            ]
+        json_rows.append({key: value for key, value in fields})
+        if group_field and isinstance(entry, dict):
+            group_value = entry.get(group_field)
+            group_value = "?" if group_value in (None, "") else str(group_value)
+            if group_value != previous_group:
+                if fmt == "html":
+                    rows.append(
+                        f"<h2>{html.escape(str(group_field))}: "
+                        f"{html.escape(group_value)}</h2>")
+                elif fmt == "plain":
+                    rows.append(f"{group_field}: {group_value}")
+                else:
+                    rows.append(f"## {group_field}: {group_value}")
+                previous_group = group_value
+        if fmt == "html":
+            body = "; ".join(
+                f"<b>{html.escape(key)}</b>: {html.escape(value_text(value))}"
+                for key, value in fields)
+            rows.append(f"• {body}")
+        elif fmt == "plain":
+            rows.append("- " + "; ".join(
+                f"{key}: {value_text(value)}" for key, value in fields))
+        else:
+            rows.append("* " + "; ".join(
+                f"**{key}**: {value_text(value)}" for key, value in fields))
+    if fmt == "json":
+        return json.dumps({"entries": json_rows, "total": len(entries)},
+                          ensure_ascii=False)
+    rows.append(_msg("MSG_COUNT_TOTAL", count=len(entries)))
+    return "\n".join(rows)
 
 
 def _maybe_append_link_section(text: str, entries: list,
@@ -445,8 +490,18 @@ def _maybe_append_link_section(text: str, entries: list,
     if fmt in ("json", "bullet_list"):
         return text
 
-    top = [e for e in entries[:_MAX_LINKS_APPENDED]
-           if isinstance(e, dict) and (e.get("url") or e.get("path"))]
+    top: list[dict] = []
+    seen_targets: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        target = entry.get("url") or entry.get("_source_url") or entry.get("path")
+        if not target or target in seen_targets:
+            continue
+        seen_targets.add(target)
+        top.append(entry)
+        if len(top) >= _MAX_LINKS_APPENDED:
+            break
     if not top:
         return text
 
@@ -456,7 +511,8 @@ def _maybe_append_link_section(text: str, entries: list,
     cited_urls = {u.rstrip(".,;:!?)") for u in raw_urls}
 
     sample = top[:5]
-    sample_urls = [e.get("url") for e in sample if e.get("url")]
+    sample_urls = [e.get("url") or e.get("_source_url") for e in sample
+                   if e.get("url") or e.get("_source_url")]
     sample_paths = [e.get("path") for e in sample if e.get("path")]
 
     # Conteggio match
@@ -468,19 +524,18 @@ def _maybe_append_link_section(text: str, entries: list,
     if coverage >= 0.6:
         return text  # LLM ha gia' citato abbastanza link
 
-    lang = (DEFAULT_LANG or "it").split("-")[0].lower()
     has_urls = bool(sample_urls)
-    title = (_LINK_SECTION_TITLE if has_urls else _PATHS_SECTION_TITLE).get(
-        lang, _LINK_SECTION_TITLE["en"]
+    title = _msg(
+        "MSG_DESCRIBE_DIRECT_LINKS" if has_urls else "MSG_DESCRIBE_PATHS"
     )
 
     items: list[str] = []
     for e in top:
-        u = e.get("url")
+        u = e.get("url") or e.get("_source_url")
         p = e.get("path")
-        label = (e.get("title") or e.get("name")
+        label = (e.get("title") or e.get("_source_title") or e.get("name")
                  or (u or p or "")).replace("[", "(").replace("]", ")")
-        label = label.replace("\n", " ").strip() or "(no title)"
+        label = label.replace("\n", " ").strip() or _msg("MSG_UNTITLED")
         if u and isinstance(u, str) and u.startswith(("http://", "https://")):
             items.append(f"- [{label}]({u})")
         elif p and isinstance(p, str):
@@ -491,9 +546,9 @@ def _maybe_append_link_section(text: str, entries: list,
     if fmt == "html":
         block_lines = [f"<p><b>{title}</b></p><ul>"]
         for e in top:
-            u = e.get("url")
+            u = e.get("url") or e.get("_source_url")
             p = e.get("path")
-            label = (e.get("title") or e.get("name")
+            label = (e.get("title") or e.get("_source_title") or e.get("name")
                      or (u or p or ""))
             label = (label.replace("&", "&amp;")
                           .replace("<", "&lt;")
@@ -527,28 +582,18 @@ def _build_group_directive(key_text: str, entries: list) -> str:
     """Direttiva prompt deterministica per `group_by`. Risolve la chiave
     utente nel campo reale (ordering_clause.resolve_field); se nessun campo
     plausibile (chiave concettuale, es. 'tema') prescrive il raggruppamento
-    per quel concetto. IT/EN come _LINK_SECTION_TITLE (direttiva LLM-facing,
-    non user-facing: fuori dal vincolo i18n DB §11)."""
-    lang = (DEFAULT_LANG or "it").split("-")[0].lower()
+    per quel concetto. Il testo vive nei prompt traducibili e riceve soltanto
+    dati strutturali calcolati qui."""
     try:
         from ordering_clause import resolve_field
         fld = resolve_field(key_text, entries)
     except Exception:
         fld = None
     if fld is None:
-        if lang == "it":
-            return (
-                f"RAGGRUPPAMENTO RICHIESTO DALL'UTENTE — vince su ogni "
-                f"altra istruzione di raggruppamento (affinita'/tema).\n"
-                f"DEVI: organizzare il riassunto in sezioni per "
-                f"'{key_text}'.\n"
-                f"NON DEVI: raggruppare per un criterio diverso da "
-                f"'{key_text}'.")
-        return (
-            f"USER-REQUESTED GROUPING — overrides any other grouping "
-            f"instruction (affinity/topic).\n"
-            f"YOU MUST: organize the summary into sections by "
-            f"'{key_text}'.\nYOU MUST NOT: group by any other criterion.")
+        return prompt_loader.get(
+            "describe_grouping", _i18n.current_lang(), mode="concept",
+            key_text=key_text, field="", section_count=0, sections="",
+        )
     ordered_values: list[str] = []
     counts: dict[str, int] = {}
     for e in entries:
@@ -562,36 +607,15 @@ def _build_group_directive(key_text: str, entries: list) -> str:
     n_vals = len(ordered_values)
     if 2 <= n_vals <= _GROUP_SECTIONS_MAX and n_vals < len(entries):
         sections = ", ".join(f"'{v}' ({counts[v]})" for v in ordered_values)
-        if lang == "it":
-            return (
-                f"RAGGRUPPAMENTO RICHIESTO DALL'UTENTE — vince su ogni "
-                f"altra istruzione di raggruppamento (affinita'/tema).\n"
-                f"DEVI: organizzare il riassunto in {n_vals} sezioni, una "
-                f"per ciascun valore del campo '{fld}', in quest'ordine: "
-                f"{sections}. Ogni sezione inizia con il valore in "
-                f"grassetto.\n"
-                f"NON DEVI: raggruppare per tema ne' mescolare nella stessa "
-                f"sezione entries con valori diversi di '{fld}'.")
-        return (
-            f"USER-REQUESTED GROUPING — overrides any other grouping "
-            f"instruction (affinity/topic).\n"
-            f"YOU MUST: organize the summary into {n_vals} sections, one "
-            f"per value of field '{fld}', in this order: {sections}. "
-            f"Start each section with the value in bold.\n"
-            f"YOU MUST NOT: group by topic or mix entries with different "
-            f"'{fld}' values in the same section.")
-    if lang == "it":
-        return (
-            f"ORDINAMENTO RICHIESTO DALL'UTENTE — vince su ogni altra "
-            f"istruzione di raggruppamento.\n"
-            f"DEVI: presentare le entries nell'ordine dato (sono gia' "
-            f"ordinate per '{fld}'), citando il valore di '{fld}'.\n"
-            f"NON DEVI: riordinarle ne' raggrupparle per tema.")
-    return (
-        f"USER-REQUESTED ORDERING — overrides any other grouping "
-        f"instruction.\nYOU MUST: present the entries in the given order "
-        f"(already sorted by '{fld}'), citing the '{fld}' value.\n"
-        f"YOU MUST NOT: reorder them or group by topic.")
+        return prompt_loader.get(
+            "describe_grouping", _i18n.current_lang(), mode="sections",
+            key_text=key_text, field=fld, section_count=n_vals,
+            sections=sections,
+        )
+    return prompt_loader.get(
+        "describe_grouping", _i18n.current_lang(), mode="ordered",
+        key_text=key_text, field=fld, section_count=n_vals, sections="",
+    )
 
 
 def _detect_kind(entries: list, hint: str | None) -> str:
@@ -693,16 +717,6 @@ DESCRIBE_ENTRIES_TOOL = {
                                    "elenco puntato), 'json' (oggetto strutturato).",
                     "enum": ["markdown", "html", "plain", "bullet_list", "json"],
                 },
-                "tier": {
-                    "type": "string",
-                    "description": "Tier LLM da usare. Default 'auto': sceglie "
-                                   "fast/middle/wise in base alla dimensione "
-                                   "del bundle (entries corte → fast, medie → "
-                                   "middle, lunghe o numerose → wise). "
-                                   "Override esplicito solo se sai che serve.",
-                    "enum": ["auto", "fast", "middle", "wise"],
-                    "default": "auto",
-                },
                 "max_tokens": {
                     "type": "integer",
                     "description": "Tetto per l'output del LLM. Default 600.",
@@ -723,6 +737,160 @@ def _extract_header(entries):
     if isinstance(head, dict) and head.get("_meta"):
         return head, entries[1:]
     return None, entries
+
+
+_DOC_AUDIT_VARIANT_TOKENS = frozenset({
+    "approvato", "approvata", "approved", "final", "finale",
+    "revisione", "revision", "revised", "bozza", "draft", "proposta",
+    "proposto", "proposed", "copia", "copy", "duplicate", "duplicato",
+})
+
+
+def _source_name(entry: dict) -> str:
+    value = (entry.get("_source_name") or entry.get("origine")
+             or entry.get("origin") or entry.get("source") or "")
+    return re.split(r"[\\/]", str(value))[-1]
+
+
+def _document_family(name: str) -> tuple[tuple[str, ...], bool]:
+    """Chiave di famiglia per varianti dello stesso documento.
+
+    Rimuove SOLO marcatori espliciti di versione/stato. Questo evita di
+    confrontare come contraddittorie righe indipendenti dello stesso foglio,
+    ma associa ad esempio ``Budget_Atlas_approvato`` e
+    ``Budget_Atlas_revisione``.
+    """
+    stem = re.sub(r"\.[A-Za-z0-9]{1,8}$", "", name.casefold())
+    tokens = re.findall(r"[a-z0-9à-öø-ÿ]+", stem)
+    kept = [token for token in tokens if token not in _DOC_AUDIT_VARIANT_TOKENS]
+    return tuple(kept), len(kept) != len(tokens)
+
+
+def _first_semantic_value(entry: dict, keys: tuple[str, ...]):
+    folded = {str(key).casefold().replace("_", " "): value
+              for key, value in entry.items()}
+    for key in keys:
+        value = folded.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _document_contradictions(entries: list[dict]) -> list[dict]:
+    """Conflitti deterministici fra varianti nominate dello stesso documento."""
+    families: dict[tuple[str, ...], list[tuple[str, dict, bool]]] = {}
+    seen_sources = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        name = _source_name(entry)
+        if not name or name in seen_sources:
+            continue
+        seen_sources.add(name)
+        family, variant = _document_family(name)
+        if len(family) >= 2:
+            families.setdefault(family, []).append((name, entry, variant))
+
+    conflicts = []
+    fields = (
+        (("importo", "amount", "total", "importi", "amounts"), "importo"),
+        (("scadenza", "scadenze", "deadline", "deadlines", "due date"),
+         "scadenza"),
+        (("fornitore", "supplier", "vendor"), "fornitore"),
+        (("stato", "status", "state", "approval status", "decision status"),
+         "stato"),
+    )
+    for records in families.values():
+        if len(records) < 2 or not any(record[2] for record in records):
+            continue
+        for left_idx in range(len(records)):
+            for right_idx in range(left_idx + 1, len(records)):
+                left_name, left, _ = records[left_idx]
+                right_name, right, _ = records[right_idx]
+                details = []
+                for keys, fallback_label in fields:
+                    lv = _first_semantic_value(left, keys)
+                    rv = _first_semantic_value(right, keys)
+                    if lv and rv and lv.casefold() != rv.casefold():
+                        # Usa il nome campo realmente presente quando possibile;
+                        # il fallback resta comprensibile anche su record misti.
+                        label = next((key for key in keys
+                                      if key in {str(k).casefold().replace('_', ' ')
+                                                 for k in left}), fallback_label)
+                        details.append(f"{label}: {lv} ↔ {rv}")
+                if details:
+                    conflicts.append({
+                        "left": left_name, "right": right_name,
+                        "details": "; ".join(details),
+                    })
+    return conflicts
+
+
+def _append_document_audit(text: str, entries: list[dict], context: str,
+                           fmt: str) -> str:
+    """Audit documentale deterministico richiesto esplicitamente dall'utente."""
+    if fmt not in ("markdown", "plain", "bullet_list"):
+        return text
+    q = (context or "").casefold()
+    wants_conflicts = bool(re.search(
+        r"contradditt|contradict|inconsisten|conflict", q))
+    wants_unreadable = bool(re.search(r"illeggibil|unreadable|corrupt", q))
+    wants_duplicates = bool(re.search(r"duplicat|deduplic", q))
+    if not (wants_conflicts or wants_unreadable or wants_duplicates):
+        return text
+
+    conflicts = _document_contradictions(entries) if wants_conflicts else []
+    unreadable = sorted({
+        _source_name(entry) for entry in entries
+        if isinstance(entry, dict)
+        and (entry.get("readable") is False
+             or entry.get("_source_readable") is False)
+        and _source_name(entry)
+    }) if wants_unreadable else []
+    duplicates = []
+    if wants_duplicates:
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            retained = _source_name(entry)
+            paths = entry.get("_duplicate_paths") or entry.get("duplicate_paths")
+            for path in paths if isinstance(paths, list) else []:
+                duplicate = re.split(r"[\\/]", str(path))[-1]
+                if retained and duplicate:
+                    duplicates.append(f"{retained} ← {duplicate}")
+
+    lines = []
+    if conflicts:
+        # Elimina affermazioni LLM opposte ai fatti appena calcolati. Il testo
+        # generativo resta per il resto intatto; l'audit e' autoritativo.
+        text = re.sub(
+            r"(?im)^.*(?:tutti\s+i\s+dati.*coerent|nessun\w*\s+contraddizion|"
+            r"all\s+(?:the\s+)?data.*consistent|no\s+contradictions?).*(?:\n|$)",
+            "", text).rstrip()
+        # La negazione puo' essere una sola frase dentro una bullet altrimenti
+        # utile (live Atlas: "Errori: ... Nessun dato contraddittorio...").
+        # Rimuovi la sola clausola incompatibile, preservando il resto della
+        # riga e lasciando l'audit deterministico come fonte autoritativa.
+        text = re.sub(
+            r"(?i)(?:nessun\w*|no)(?:\s+\w+){0,4}\s+"
+            r"(?:contraddittor|contradiction|inconsisten|conflict)\w*"
+            r"[^.\n]*(?:\.|$)",
+            "", text).rstrip()
+        for item in conflicts:
+            lines.append(_msg(
+                "MSG_DOCUMENT_AUDIT_CONTRADICTION",
+                left=item["left"], right=item["right"],
+                details=item["details"]))
+    if unreadable:
+        lines.append(_msg("MSG_DOCUMENT_AUDIT_UNREADABLE",
+                          files=", ".join(unreadable)))
+    if duplicates:
+        lines.append(_msg("MSG_DOCUMENT_AUDIT_DUPLICATES",
+                          details="; ".join(sorted(set(duplicates)))))
+    if not lines:
+        return text
+    audit = _msg("MSG_DOCUMENT_AUDIT_HEADER") + "\n" + "\n".join(lines)
+    return (text.rstrip() + "\n\n" + audit).strip() if text.strip() else audit
 
 
 def handle_describe_entries(args, *, verbose: bool = False,
@@ -772,7 +940,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
     group_by = (args or {}).get("group_by") or h.get("group_by") or ""
     fmt = (args or {}).get("format") or h.get("format") or "markdown"
-    tier = (args or {}).get("tier") or h.get("tier") or "auto"
+    tier = "auto"
     # ADR 0111 (7/5/2026): Level 2 — describe_entries deve sapere se la
     # sorgente (`from_step`) aveva un blocco `health` (load/memoria/dischi/
     # servizi). Senza questa visibilita' il LLM dichiarerebbe "non
@@ -800,6 +968,26 @@ def handle_describe_entries(args, *, verbose: bool = False,
         return {"ok": True, "summary": "", "item_count": 0, "style": style,
                 "data_kind": data_kind or "generic",
                 "in_tokens": 0, "out_tokens": 0, "latency_ms": 0}
+
+    # Le collezioni prodotte da extract_entries hanno gia' un piccolo schema.
+    # Una seconda LLM call di sintesi puo' soltanto perdere righe/campi: il
+    # formato compact le rende quindi in modo lossless e riproducibile.
+    if style == "compact" and data_kind == "entries" \
+            and all(isinstance(entry, dict) for entry in entries):
+        text = _format_structured_entries(entries, fmt, str(group_by or ""))
+        text = _maybe_append_link_section(text, entries, fmt, data_kind)
+        return {
+            "ok": True,
+            "summary": text,
+            "item_count": len(entries),
+            "style": style,
+            "data_kind": data_kind,
+            "format": fmt,
+            "deterministic": True,
+            "in_tokens": 0,
+            "out_tokens": 0,
+            "latency_ms": 0,
+        }
 
     # ADR 0153 (19/5/2026 v6): content fetch on-demand. Se le entries
     # hanno SOLO url+title+snippet (tipicamente output di find_urls) e
@@ -884,9 +1072,9 @@ def handle_describe_entries(args, *, verbose: bool = False,
     base_prompt = (prompt_override
                    if prompt_override
                    else prompt_loader.get(f"describe_entries_{style}",
-                                          DEFAULT_LANG,
+                                          _i18n.current_lang(),
                                           n=len(visible_entries), context=context, kind=kind))
-    fmt_directive = FORMAT_DIRECTIVES.get(fmt, "")
+    fmt_directive = _format_directive(fmt)
     # Level 2 (ADR 0111): pre-pend `health_context` quando presente. Il LLM
     # vede un blocco "STATO SERVER GIA' RIASSUNTO" con load/RAM/dischi/
     # servizi formattati e l'istruzione esplicita di non ripeterli ne'
@@ -900,13 +1088,9 @@ def handle_describe_entries(args, *, verbose: bool = False,
         except Exception:
             block = ""
         if block:
-            health_directive = (
-                "STATO SERVER GIA' RIASSUNTO (NON RIPETERE, NON DICHIARARE "
-                "'NON DISPONIBILE'):\n"
-                + block
-                + "\n\nIl tuo compito: riassumi SOLO le entries (processi) "
-                "sotto. Carico/RAM/Dischi/Servizi sono GIA' nel blocco "
-                "sopra, non commentarli, non ripeterli."
+            health_directive = prompt_loader.get(
+                "describe_health_context", _i18n.current_lang(),
+                health_block=block,
             )
     prompt = base_prompt
     if health_directive:
@@ -942,6 +1126,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
     # rispetta le regole di prompt che vietano elenco letterale (il LLM
     # produce sintesi pulita, il post-process aggiunge i link sotto).
     text = _maybe_append_link_section(text, visible_entries, fmt, kind)
+    text = _append_document_audit(text, visible_entries, context, fmt)
 
     # Patch 3 (8/5/2026): se truncated, append nota localizzata al summary
     # cosi' l'utente vede subito il cap (UX onesto §2.8) e il PLANNER
@@ -1020,3 +1205,9 @@ def describe(items, *, style: str | None = None, context: str = "",
     if not res.get("ok"):
         raise RuntimeError(res.get("error", "describe failed"))
     return res["summary"]
+
+
+BUILTIN_INPROC_SPECS = [{
+    "name": "describe_entries", "tool_spec": DESCRIBE_ENTRIES_TOOL,
+    "affinity": ["riassumi", "sintetizza", "describe", "summarize", "entries"],
+}]

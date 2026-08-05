@@ -97,10 +97,10 @@
         <div><span class="chip">{{ r.origin_family }}</span></div>
         <div class="muted">{{ r.origin_module }}</div>
       </td>
-      <td>
+      <td data-tutor-id="changes-row-summary">
         <div>{{ r.intent_summary }}</div>
         {% if r.intent_rationale or r.intent_body %}
-          <details style="margin-top:.3rem">
+          <details data-tutor-id="changes-row-details" style="margin-top:.3rem">
             <summary class="muted">{{ msg('UI_CHANGE_DETAILS') }}</summary>
             {% if r.intent_rationale %}
               <div style="margin-top:.3rem">{{ r.intent_rationale }}</div>
@@ -138,7 +138,7 @@
       </td>
       <td class="tp-actions">
         {% if r.state in ['proposed', 'staged'] %}
-          <button class="btn ok"
+          <button class="btn ok" data-tutor-id="changes-row-accept"
                   hx-post="/admin/changes/{{ r.id }}/accept"
                   hx-target="closest tr" hx-swap="outerHTML">
             {{ msg('UI_CHANGE_BTN_ACCEPT') }}
@@ -146,7 +146,7 @@
           <button class="btn bad"
                   hx-post="/admin/changes/{{ r.id }}/reject"
                   hx-target="closest tr" hx-swap="outerHTML">
-            {{ msg('UI_CHANGE_BTN_REJECT') }}
+            {{ msg('MSG_BTN_REJECT') }}
           </button>
           {% if r.state == 'proposed' %}
             <button class="btn"

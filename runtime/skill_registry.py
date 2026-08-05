@@ -91,6 +91,16 @@ class SkillInfo:
     requires: str = ""             # prerequisito esterno (backend/creds) per la dormancy/installer
 
     @property
+    def is_builtin(self) -> bool:
+        """Identità autoritativa, indipendente dal path d'installazione.
+
+        Una skill Metnos first-party resta builtin anche quando i suoi file
+        sono materializzati in user-data (caso GitHub). ``is_builtin_repo``
+        descrive soltanto la collocazione fisica e non deve degradare il tier.
+        """
+        return self.is_builtin_repo or self.is_first_party
+
+    @property
     def is_metnos_official(self) -> bool:
         return self.trust == "metnos-official"
 
@@ -144,7 +154,7 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
             1 for ex in skill_dir.iterdir()
             if ex.is_dir() and (ex / "manifest.toml").is_file()
         )
-        is_builtin = str(_C.PATH_EXECUTORS) in str(skill_dir.resolve())
+        is_builtin_repo = str(_C.PATH_EXECUTORS) in str(skill_dir.resolve())
         try:
             from skills_catalog import FIRST_PARTY_BUNDLES as _FPB
         except Exception:
@@ -164,8 +174,11 @@ def list_skills(lang: str | None = None) -> list[SkillInfo]:
             auto_enable=sk_auto_enable,
             enabled=enabled,
             n_executors=n_exec,
-            is_imported=not is_builtin,
-            is_builtin_repo=is_builtin,
+            # Provenienza fisica e autorità sono assi distinti: GitHub vive
+            # in user-data ma è mantenuto da Metnos e viene generato come
+            # handcrafted senza [provenance]. Non esporlo mai come imported.
+            is_imported=not (is_builtin_repo or _is_fp),
+            is_builtin_repo=is_builtin_repo,
             is_first_party=_is_fp,
         )
         if lang is not None and info.lang not in ("any", lang.lower()):

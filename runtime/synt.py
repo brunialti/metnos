@@ -3,7 +3,7 @@
 
 Implementa il microdesign synt.html v1.1:
 - strategia REACT/COMPOSE (BFS sul mnestoma, max 5 hop)
-- strategia REACT/GENERATE (POC: stadi 2+3 unificati in una chiamata LLM tier=wise,
+- strategia REACT/GENERATE (POC: stadi 2+3 unificati nel workload `synt.generate`,
   proposta scritta in workspace/.synt/proposals/<id>/ pronta per approvazione CLI)
 - reward formula del cap. 6 con judge stub fisso 0.5
 - audit JSONL append-only
@@ -39,7 +39,11 @@ from typing import Callable, Literal
 sys.path.insert(0, str(Path(__file__).parent))
 from mnestoma import Mnest, Mnestoma  # noqa: E402
 import prompt_loader  # noqa: E402
-from config import DEFAULT_LANG  # noqa: E402
+import i18n as _i18n  # noqa: E402
+from generated_executor_contract import (  # noqa: E402
+    generated_contract_context,
+    validate_generated_manifest_text,
+)
 
 # --- Costanti dal microdesign synt.html cap. 6 e cap. 8 ------------------
 
@@ -552,7 +556,7 @@ class Synt:
 
     def _generate(self, req: SynthRequest, *, intent_key: str) -> SynthProposal:
         """Cade qui quando compose fallisce. POC: stadi 2+3 in una sola chiamata
-        LLM tier=wise via tool-use propose_executor. Salva il proposal su disco
+        LLM col workload ``synt.generate`` via tool-use propose_executor. Salva il proposal su disco
         e ritorna SynthProposal con stato 'generating' (in attesa di stadi 4-7).
 
         Stadi 4 (profilo) e 5 (birth-test) sono svolti qui in forma minima:
@@ -561,7 +565,7 @@ class Synt:
         Birth-test livello 2 (LLM-generated) e' task #5, non in questo metodo.
         """
         if self.router is None:
-            reason = "generate: nessun LLMRouter configurato; tier wise non raggiungibile"
+            reason = "generate: nessun LLMRouter configurato; workload synt.generate non raggiungibile"
             self.locks.lock(f"abandon:{intent_key}", ABANDON_LOCK_DAYS)
             self._log_terminal(req, "generate", "abandoned", reason=reason)
             return self._abandoned(req, reason, strategy="generate")
@@ -579,17 +583,18 @@ class Synt:
         )
 
         try:
-            # max_tokens generoso: il modello locale spende ~1024 in reasoning + il resto
-            # in tool-call (skeleton ~60-100 righe + schema). Tot ~6000 e' sicuro.
+            # Tetto ampio per tool-call, skeleton e schema; non configura il
+            # reasoning, che appartiene al tier selezionato dal workload.
+            from llm_workloads import tier_for
             res = self.router.chat_with_tools(
-                prompt_loader.get("synt_generate", DEFAULT_LANG), user_prompt,
+                prompt_loader.get("synt_generate", _i18n.current_lang()), user_prompt,
                 tools=PROPOSE_EXECUTOR_TOOL,
-                tier="wise",
+                tier=tier_for("synt.generate"),
                 max_tokens=6000,
                 for_code=True,
             )
         except Exception as e:
-            reason = f"generate: errore LLM tier=wise: {e}"
+            reason = f"generate: errore LLM workload synt.generate: {e}"
             self.locks.lock(f"abandon:{intent_key}", ABANDON_LOCK_DAYS)
             self._log_terminal(req, "generate", "abandoned", reason=reason)
             return self._abandoned(req, reason, strategy="generate")
@@ -782,7 +787,7 @@ class Synt:
 
     def _run_birth_tests(self, req: SynthRequest,
                          gp: GeneratedProposal) -> dict:
-        """Stadio 5: chiama LLM tier=wise per generare 3-5 test, li esegue
+        """Stadio 5: usa ``synt.birth_tests`` per generare 3-5 test, li esegue
         contro il file Python del proposal e valuta gli expect.
 
         Ritorna dict con:
@@ -810,11 +815,12 @@ class Synt:
             f"Scrivi 3-5 birth-test conformi al protocollo."
         )
         try:
-            # ~1024 thinking + ~3000 per 3-5 test JSON dichiarativi
+            # Tetto dell'output per 3-5 test JSON dichiarativi.
+            from llm_workloads import tier_for
             res = self.router.chat_with_tools(
-                prompt_loader.get("synt_birth_tests", DEFAULT_LANG), user,
+                prompt_loader.get("synt_birth_tests", _i18n.current_lang()), user,
                 tools=PROPOSE_BIRTH_TESTS_TOOL,
-                tier="wise",
+                tier=tier_for("synt.birth_tests"),
                 max_tokens=4500,
                 for_code=False,  # qui produce solo dichiarazioni di test, non codice
             )
@@ -1055,14 +1061,16 @@ class Synt:
             block.append(f'{cur_lang} = {json.dumps(pdesc, ensure_ascii=False)}')
             props_blocks.append("\n".join(block))
 
-        return (
+        _generated_contract = generated_contract_context(lifecycle="proposed")
+        rendered = (
             f"# Manifest dell'executor '{gp.name}' — Metnos v1.1 (proposal {gp.proposal_id})\n"
             f"# Generato da synt; awaiting human approval.\n\n"
-            f'manifest_format = "1.0"\n\n'
+            f'{_generated_contract["generated_header_toml"]}\n\n'
             f'name        = "{gp.name}"\n'
             f'version     = "0.1.0"\n'
             f'author      = "synt+human <synt@metnos.local>"\n'
             f"affinity    = [{affinity_arr}]\n\n"
+            f'{_generated_contract["execution_policy_toml"]}\n\n'
             f"[description]\n"
             f'{cur_lang} = {json.dumps(gp.description, ensure_ascii=False)}\n\n'
             f"[code]\n"
@@ -1073,6 +1081,9 @@ class Synt:
             f"required = [{required_arr}]\n"
             + "\n".join(props_blocks) + "\n"
         )
+        validate_generated_manifest_text(
+            rendered, expected_lifecycle="proposed")
+        return rendered
 
     # --- Introvertive: specialize (3/5/2026) ------------------------------
 

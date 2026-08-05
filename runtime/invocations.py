@@ -53,12 +53,15 @@ CREATE TABLE IF NOT EXISTS invocations (
     server_sig    TEXT NOT NULL,
     state         TEXT NOT NULL DEFAULT 'queued',
     created_at    TEXT NOT NULL,
+    created_epoch REAL,
     delivered_at  TEXT,
     delivered_epoch REAL,
     deadline_ms   INTEGER NOT NULL,
     completed_at  TEXT,
+    completed_epoch REAL,
     result_json   TEXT,
     abandoned_by_turn INTEGER NOT NULL DEFAULT 0,
+    owner_user_id TEXT NOT NULL DEFAULT '',
     origin_actor  TEXT NOT NULL DEFAULT '',
     origin_channel TEXT NOT NULL DEFAULT ''
 );
@@ -83,6 +86,21 @@ def _migrate_schema(conn) -> None:
                      "ADD COLUMN origin_actor TEXT NOT NULL DEFAULT ''")
         conn.execute("ALTER TABLE invocations "
                      "ADD COLUMN origin_channel TEXT NOT NULL DEFAULT ''")
+    if "owner_user_id" not in cols:
+        conn.execute("ALTER TABLE invocations "
+                     "ADD COLUMN owner_user_id TEXT NOT NULL DEFAULT ''")
+    # Existing rows are attributable only while their immutable device row is
+    # still present.  Actor labels are intentionally never used as fallback.
+    conn.execute(
+        "UPDATE invocations SET owner_user_id=COALESCE(("
+        "SELECT owner_user_id FROM devices "
+        "WHERE devices.id=invocations.device_id), '') "
+        "WHERE owner_user_id=''"
+    )
+    if "created_epoch" not in cols:
+        conn.execute("ALTER TABLE invocations ADD COLUMN created_epoch REAL")
+    if "completed_epoch" not in cols:
+        conn.execute("ALTER TABLE invocations ADD COLUMN completed_epoch REAL")
 # delivered_epoch = time.time() a wall-clock (NON monotonic): il confronto per
 # la redelivery deve sopravvivere a restart/reboot del server, dove il clock
 # monotonic si azzera. La finestra (deadline+grace) è ampia: eventuali salti
@@ -275,11 +293,12 @@ def enqueue_invocation(device_id: str, executor: str, args: dict, *,
         conn.execute(
             """INSERT INTO invocations
                (invocation_id, device_id, payload_json, server_sig, state,
-                created_at, deadline_ms, origin_actor, origin_channel)
-               VALUES (?,?,?,?, 'queued', ?, ?, ?, ?)""",
+                created_at, created_epoch, deadline_ms,
+                owner_user_id, origin_actor, origin_channel)
+               VALUES (?,?,?,?, 'queued', ?, ?, ?, ?, ?, ?)""",
             (invocation_id, device_id,
              json.dumps(payload, ensure_ascii=False), sig,
-             _now_iso(), int(deadline_ms),
+             _now_iso(), time.time(), int(deadline_ms), dev.owner_user_id,
              origin_actor or "", origin_channel or ""),
         )
     finally:
@@ -356,14 +375,16 @@ def expire_stale_invocations(ttl_h: float | None = None, *,
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
             f"""SELECT invocation_id, device_id, payload_json,
-                       abandoned_by_turn, origin_actor, origin_channel
+                       abandoned_by_turn, owner_user_id,
+                       origin_actor, origin_channel
                 FROM invocations WHERE {where}""", params).fetchall()
         if rows:
             ids = [r["invocation_id"] for r in rows]
             conn.execute(
-                "UPDATE invocations SET state = 'expired', completed_at = ? "
+                "UPDATE invocations SET state = 'expired', completed_at = ?, "
+                "completed_epoch = ? "
                 "WHERE invocation_id IN ({})".format(",".join("?" * len(ids))),
-                (_now_iso(), *ids))
+                (_now_iso(), now, *ids))
         conn.execute("COMMIT")
     except Exception:
         try:
@@ -380,15 +401,27 @@ def expire_stale_invocations(ttl_h: float | None = None, *,
         if row["abandoned_by_turn"]:
             _notify_expired(row["payload_json"], row["device_id"],
                             (row["origin_channel"], row["origin_actor"]),
-                            ttl_h)
+                            ttl_h, owner_user_id=row["owner_user_id"])
     return len(rows)
 
 
 def _notify_expired(payload_json, device_id: str, origin: tuple,
-                    ttl_h: float) -> None:
+                    ttl_h: float, *, owner_user_id: str) -> None:
     """B.4: chiusura onesta per il destinatario che aveva ricevuto «esito
     incerto» (A.0) — l'operazione è scaduta senza MAI essere eseguita (§2.8).
     Testo via i18n (MSG_LATE_RESULT_EXPIRED, chiave nel seed). Fail-open."""
+    try:
+        from user_lifecycle import owner_session
+        with owner_session(owner_user_id):
+            _notify_expired_scoped(
+                payload_json, device_id, origin, ttl_h,
+                owner_user_id=owner_user_id)
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("_notify_expired fallita (fail-open): %r", ex)
+
+
+def _notify_expired_scoped(payload_json, device_id: str, origin: tuple,
+                           ttl_h: float, *, owner_user_id: str) -> None:
     try:
         payload = json.loads(payload_json) if payload_json else {}
         executor = payload.get("executor") or "?"
@@ -400,7 +433,9 @@ def _notify_expired(payload_json, device_id: str, origin: tuple,
         text = _msg("MSG_LATE_RESULT_EXPIRED", tool=executor, device=dev_name,
                     h=int(ttl_h))
         import user_notices
-        user_notices.append(channel or "", actor or "host", text)
+        user_notices.append(
+            channel or "", actor or "host", text,
+            owner_user_id=owner_user_id)
         log.info("B.4 notice expired accodata per %s:%s (%s)",
                  channel or "any", actor or "host", executor)
     except Exception as ex:  # noqa: BLE001 — best-effort
@@ -503,11 +538,12 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
     conn = _open_db(db_path)
     was_abandoned = False
     payload_json = None
+    owner_user_id = ""
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT device_id, state, payload_json, abandoned_by_turn, "
-            "origin_actor, origin_channel "
+            "owner_user_id, origin_actor, origin_channel "
             "FROM invocations WHERE invocation_id = ?",
             (invocation_id,),
         ).fetchone()
@@ -531,11 +567,14 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
         origin = (row["origin_channel"] if "origin_channel" in row.keys()
                   else "", row["origin_actor"] if "origin_actor" in row.keys()
                   else "")
+        owner_user_id = str(row["owner_user_id"] or "")
         conn.execute(
             """UPDATE invocations
-               SET state = ?, completed_at = ?, result_json = ?
+               SET state = ?, completed_at = ?, completed_epoch = ?,
+                   result_json = ?
                WHERE invocation_id = ?""",
-            (state, _now_iso(), json.dumps(result, ensure_ascii=False),
+            (state, _now_iso(), time.time(),
+             json.dumps(result, ensure_ascii=False),
              invocation_id),
         )
         conn.execute("COMMIT")
@@ -559,7 +598,9 @@ def complete_invocation(result: dict, *, raw_body: bytes | None = None,
     # «esito incerto») → avvisalo dell'esito reale alla prossima visita sul
     # suo canale (v1: coda user_notices drenata dal primo turno successivo).
     if was_abandoned and state in ("done", "failed"):
-        _notify_late_outcome(payload_json, result, state, origin)
+        _notify_late_outcome(
+            payload_json, result, state, origin,
+            owner_user_id=owner_user_id)
     return True
 
 
@@ -570,10 +611,22 @@ _MUTATING_PREFIXES = ("delete", "move", "write", "create", "send", "share",
 
 
 def _notify_late_outcome(payload_json, result: dict, state: str,
-                         origin: tuple) -> None:
+                         origin: tuple, *, owner_user_id: str) -> None:
     """A.2: accoda l'avviso «l'operazione si è completata DOPO il timeout»
     per il destinatario d'origine. Testo via i18n (§7.13, chiavi nel seed:
     MSG_LATE_RESULT_{DONE,FAILED}). Fail-open."""
+    try:
+        from user_lifecycle import owner_session
+        with owner_session(owner_user_id):
+            _notify_late_outcome_scoped(
+                payload_json, result, state, origin,
+                owner_user_id=owner_user_id)
+    except Exception as ex:  # noqa: BLE001 — best-effort
+        log.warning("_notify_late_outcome fallita (fail-open): %r", ex)
+
+
+def _notify_late_outcome_scoped(payload_json, result: dict, state: str,
+                                origin: tuple, *, owner_user_id: str) -> None:
     try:
         payload = json.loads(payload_json) if payload_json else {}
         executor = payload.get("executor") or "?"
@@ -591,7 +644,9 @@ def _notify_late_outcome(payload_json, result: dict, state: str,
         text = _msg(key, tool=executor, device=dev_name,
                     n=n if isinstance(n, int) else "?")
         import user_notices
-        user_notices.append(channel or "", actor or "host", text)
+        user_notices.append(
+            channel or "", actor or "host", text,
+            owner_user_id=owner_user_id)
         log.info("A.2 notice accodata per %s:%s (%s %s)",
                  channel or "any", actor or "host", executor, state)
     except Exception as ex:  # noqa: BLE001 — best-effort
@@ -638,14 +693,17 @@ def get_invocation(invocation_id: str, *,
         "device_id": row["device_id"],
         "state": row["state"],
         "created_at": row["created_at"],
+        "created_epoch": row["created_epoch"],
         "delivered_at": row["delivered_at"],
+        "delivered_epoch": row["delivered_epoch"],
         "completed_at": row["completed_at"],
+        "completed_epoch": row["completed_epoch"],
         "result": json.loads(row["result_json"]) if row["result_json"] else None,
     }
 
 
 def wait_result(invocation_id: str, timeout_s: float, *,
-                poll_interval_s: float = 0.25,
+                poll_interval_s: float = 0.1,
                 db_path: Path | None = None) -> dict | None:
     """Attesa sincrona (polling) del result. None allo scadere del timeout.
 
@@ -654,7 +712,7 @@ def wait_result(invocation_id: str, timeout_s: float, *,
 
     B.2 (fase 7): polling ADATTIVO — `poll_interval_s` per i primi 5s
     (risposta pronta sui result rapidi), poi 1s: un'attesa lunga non merita
-    4 query/s. Ceiling noto e ACCETTATO: ogni wait_result occupa un thread
+    10 query/s. Ceiling noto e ACCETTATO: ogni wait_result occupa un thread
     del pool per tutta l'attesa; il rimedio strutturale è il differito A.1
     (spec fase 7), NON l'async nell'engine.
     """

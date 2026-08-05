@@ -29,7 +29,7 @@ _VERBS_FALLBACK = {
 _OVERLAY_DISMISS_FALLBACK = (
     "close", "close dialog", "close modal", "dismiss", "dismiss dialog",
     "not now", "maybe later", "later", "got it", "understood", "okay",
-    "cancel", "chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
+    "ok", "cancel", "chiudi", "chiudi dialogo", "chiudi finestra", "ignora",
     "non ora", "non adesso", "forse dopo", "piu tardi", "ho capito",
     "capito", "va bene", "annulla",
 )
@@ -77,18 +77,35 @@ def _concept_forms(concept: str) -> tuple[str, ...]:
 
 def overlay_dismiss_forms() -> tuple[str, ...]:
     """Safe, non-committing exits for obstructing transient overlays."""
-    forms = _concept_forms("sites.overlay_dismiss_target")
+    forms = (_concept_forms("sites.overlay_dismiss_target")
+             + _concept_forms("sites.overlay_acknowledge_target"))
     return forms or _OVERLAY_DISMISS_FALLBACK
 
 
 def privacy_reject_forms() -> tuple[str, ...]:
     """Translated controls that decline optional privacy processing."""
-    return _concept_forms("sites.privacy_reject_target")
+    return (_concept_forms("sites.privacy_reject_target")
+            + _concept_forms("sites.privacy_reject_noun_target"))
 
 
 def privacy_overlay_marker_forms() -> tuple[str, ...]:
     """Translated evidence that a fixed panel is a privacy overlay."""
     return _concept_forms("sites.privacy_overlay_marker")
+
+
+def loading_marker_forms() -> tuple[str, ...]:
+    """Testi brevi che indicano contenuto asincrono non ancora stabile."""
+    return _concept_forms("sites.loading_marker")
+
+
+def is_collection_search_request(text: str) -> bool:
+    """Riconosce una richiesta enumerativa tramite il lessico traducibile."""
+    if _detlex is None:
+        return False
+    try:
+        return bool(_detlex.match("sites.collection_search_request", text or ""))
+    except Exception:
+        return False
 
 
 def normalize_target(text: str) -> str:
@@ -122,6 +139,38 @@ def _primary_action_clause(action: str) -> str:
                        for form in action_forms)):
             return clause
     return clauses[0]
+
+
+def is_goal_navigation_request(action: str) -> bool:
+    """Return whether natural language asks to *reach* page content.
+
+    Search is intrinsically goal-oriented.  A navigation verb without an
+    explicit URL is also a bounded semantic goal (for example ``vai alle mie
+    prenotazioni`` or ``apri il menu account``), whereas an explicit click,
+    fill, submit or wait remains an atomic command.  Forms come from the
+    detection lexicon through the same closed verb map used by ``parse_action``.
+    """
+    clause = _primary_action_clause(action)
+    if re.search(r"https?://[^\s'\"<>]+", clause or "", re.I):
+        return False
+    normalized = normalize(clause)
+    if not normalized:
+        return False
+
+    search_forms = _concept_forms("sites.search_action_verb")
+    if any(re.search(rf"\b{re.escape(form)}\b", normalized)
+           for form in search_forms):
+        return True
+
+    verbs = _verbs()
+    # Match parse_action's precedence: an explicit atomic verb wins even if a
+    # later word also happens to be a navigation verb.
+    for kind in ("submit", "wait", "fill", "click"):
+        if any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
+               for form in verbs[kind]):
+            return False
+    return any(re.search(rf"\b{re.escape(normalize(form))}\b", normalized)
+               for form in verbs["goto"])
 
 
 def parse_action(action: str) -> dict:
@@ -181,6 +230,22 @@ def _candidate_text(candidate: dict) -> str:
         "name", "label", "role", "tag", "type", "placeholder")))
 
 
+def active_goal_control_label(candidate: dict) -> str:
+    """Return a label only for a control whose active state is DOM-attested."""
+    state = any((
+        str(candidate.get("aria_selected") or "").lower() == "true",
+        str(candidate.get("aria_pressed") or "").lower() == "true",
+        str(candidate.get("aria_checked") or "").lower() == "true",
+        str(candidate.get("aria_expanded") or "").lower() == "true",
+        bool(candidate.get("checked")),
+        str(candidate.get("aria_current") or "").lower() in {
+            "true", "page", "step", "location", "date", "time"},
+    ))
+    if not state or candidate.get("disabled"):
+        return ""
+    return str(candidate.get("name") or candidate.get("label") or "").strip()
+
+
 def _is_semantic_control(candidate: dict) -> bool:
     tag = str(candidate.get("tag") or "").lower()
     role = str(candidate.get("role") or "").lower()
@@ -204,7 +269,10 @@ def _target_variants(target: str) -> tuple[str, ...]:
         "site search": "sites.search_entry_target",
     }
     for canonical, concept in semantic_targets.items():
-        forms = [normalize_target(form) for form in _concept_forms(concept)]
+        source_forms = (privacy_reject_forms()
+                        if canonical == "privacy reject"
+                        else _concept_forms(concept))
+        forms = [normalize_target(form) for form in source_forms]
         if target_n and (target_n == canonical or target_n in forms):
             variants.extend(form for form in forms if form)
     return tuple(dict.fromkeys(variants))
@@ -370,6 +438,7 @@ def choose_candidate(target: str, candidates: list[dict], primitive: str) -> dic
 
 def _goal_noise() -> set[str]:
     return (set(_concept_forms("sites.goal_noise"))
+            | set(_concept_forms("sites.goal_noise_articulated_preposition"))
             | set(_concept_forms("sites.goal_scope_quantifier"))
             | set(_concept_forms("sites.personal_goal_marker")))
 
@@ -378,15 +447,18 @@ def _canonical_goal_text(text: str) -> str:
     normalized = normalize_target(text)
     if _detlex is None:
         return normalized
-    try:
-        aliases = _detlex.mapping("sites.goal_term_alias")
-    except Exception:
-        return normalized
-    for canonical, forms in aliases.items():
-        for form in sorted((normalize(x) for x in forms), key=len, reverse=True):
-            if form:
-                normalized = re.sub(
-                    rf"\b{re.escape(form)}\b", normalize(canonical), normalized)
+    for concept in ("sites.goal_term_alias", "sites.goal_state_alias"):
+        try:
+            aliases = _detlex.mapping(concept)
+        except Exception:
+            continue
+        for canonical, forms in aliases.items():
+            for form in sorted(
+                    (normalize(x) for x in forms), key=len, reverse=True):
+                if form:
+                    normalized = re.sub(
+                        rf"\b{re.escape(form)}\b",
+                        normalize(canonical), normalized)
     return " ".join(normalized.split())
 
 
@@ -400,6 +472,44 @@ def goal_is_exhaustive(target: str) -> bool:
     normalized = normalize_target(target)
     return any(_contains_phrase(normalized, form) for form in
                _concept_forms("sites.goal_scope_quantifier"))
+
+
+def preserve_goal_qualifiers(query: str, goal: str, *,
+                             max_words: int = 6) -> str:
+    """Restore navigation semantics that a goal reducer may discard.
+
+    Ownership and exhaustive-scope markers do not contribute content tokens,
+    but they alter how the resolver reaches that content (for example through
+    a personal-area reveal or through continuation controls).  Every restored
+    phrase is copied from a translated detection concept that is actually
+    present in the original query; the model cannot invent it.
+    """
+    query_n = normalize(query)
+    goal_n = normalize(goal)
+    if not query_n or not goal_n:
+        return ""
+
+    matches: list[tuple[int, str]] = []
+    for concept in ("sites.goal_scope_quantifier",
+                    "sites.personal_goal_marker"):
+        forms = tuple(dict.fromkeys(_concept_forms(concept)))
+        if any(_contains_phrase(goal_n, form) for form in forms):
+            continue
+        found: list[tuple[int, int, str]] = []
+        for form in forms:
+            match = re.search(
+                rf"(?:^|\s)({re.escape(form)})(?=\s|$)", query_n)
+            if match:
+                found.append((match.start(1), -len(form.split()), form))
+        if found:
+            start, _neg_words, form = min(found)
+            matches.append((start, form))
+
+    qualifiers = [form for _start, form in sorted(matches)]
+    restored = " ".join((*qualifiers, goal_n)).strip()
+    if not restored or len(restored.split()) > max(1, int(max_words)):
+        return ""
+    return restored
 
 
 def goal_tokens(target: str, *, navigation: bool = False) -> tuple[str, ...]:
@@ -449,7 +559,8 @@ def goal_navigation_candidates(candidates: list[dict], *,
                 or candidate.get("in_viewport") is False
                 or candidate.get("topmost") is False
                 or candidate.get("secret_input") or candidate.get("download")
-                or typ in ("submit", "password")
+                or typ == "password"
+                or (typ == "submit" and candidate.get("form_action"))
                 or tag in ("input", "textarea", "select")
                 or role in ("textbox", "searchbox")):
             continue
@@ -459,6 +570,62 @@ def goal_navigation_candidates(candidates: list[dict], *,
             continue
         out.append(candidate)
     return out
+
+
+def prefer_verifiable_goal_candidates(candidates: list[dict]) -> list[dict]:
+    """Collapse same-name wrappers onto a unique broker-verifiable link."""
+    groups: dict[str, list[dict]] = {}
+    for candidate in candidates:
+        name = normalize(str(
+            candidate.get("name") or candidate.get("label") or ""))
+        groups.setdefault(name, []).append(candidate)
+    out = []
+    for group in groups.values():
+        navigable = [candidate for candidate in group
+                     if _safe_navigation_identity(candidate) is not None]
+        destinations = {
+            _safe_navigation_identity(candidate) for candidate in navigable}
+        if navigable and len(destinations) == 1:
+            out.append(min(navigable, key=lambda candidate: (
+                str(candidate.get("tag") or "").lower() != "a",
+                str(candidate.get("id") or ""))))
+        else:
+            out.extend(group)
+    return out
+
+
+def choose_authenticated_reveal_candidate(
+        candidates: list[dict], *, excluded: set[str] | None = None) -> dict:
+    """Choose one closed disclosure before failing an authenticated goal.
+
+    Account areas often expose only the user's name/avatar while the desired
+    links live in a collapsed menu.  The decision uses browser-owned ARIA/DOM
+    state, never a vendor label: a unique closed semantic disclosure is safe
+    to reveal and then rescan.  Multiple plausible disclosures remain an
+    explicit ambiguity.
+    """
+    eligible = []
+    for candidate in goal_navigation_candidates(
+            candidates, excluded=excluded):
+        if not _is_semantic_control(candidate):
+            continue
+        closed = str(candidate.get("aria_expanded") or "").lower() == "false"
+        controlled = bool(candidate.get("control_targets"))
+        if not (closed or controlled):
+            continue
+        eligible.append(candidate)
+    if not eligible:
+        return {"ok": False, "error_class": "selector_missing", "ranked": []}
+
+    account = [candidate for candidate in eligible
+               if _candidate_matches_concept(
+                   candidate, "sites.account_reveal_control")]
+    pool = account or eligible
+    if len(pool) != 1:
+        return {"ok": False, "error_class": "selector_ambiguous",
+                "ranked": [(0.62, candidate) for candidate in pool[:24]]}
+    return {"ok": True, "candidate": pool[0], "confidence": 0.62,
+            "ranked": [(0.62, pool[0])]}
 
 
 def choose_goal_candidate(target: str, candidates: list[dict], *,
@@ -472,7 +639,9 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
     personal_goal = _is_personal_goal(target)
     account_forms = _concept_forms("sites.account_reveal_control")
     ranked = []
-    for candidate in goal_navigation_candidates(candidates, excluded=excluded):
+    eligible = prefer_verifiable_goal_candidates(
+        goal_navigation_candidates(candidates, excluded=excluded))
+    for candidate in eligible:
         if not goal_candidate_is_admissible(target, candidate):
             continue
         present = set(goal_tokens(str(
@@ -509,6 +678,23 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
         canonical_names = {tuple(goal_tokens(str(
             candidate.get("name") or candidate.get("label") or ""),
             navigation=True)) for candidate in equivalent}
+        # Framework menus commonly expose both an ARIA ``menuitem`` wrapper
+        # and the nested HTTP link with the same accessible name.  The wrapper
+        # may consume a click without navigating (Booking regression 16/7),
+        # while the link has a broker-verifiable destination.  Prefer the
+        # unique navigable equivalent; never invent a URL and keep different
+        # labels or destinations ambiguous.
+        navigable = [candidate for candidate in equivalent
+                     if _safe_navigation_identity(candidate) is not None]
+        navigable_destinations = {
+            _safe_navigation_identity(candidate) for candidate in navigable}
+        if (len(canonical_names) == 1 and len(navigable_destinations) == 1
+                and navigable):
+            top = min(navigable, key=lambda candidate: (
+                str(candidate.get("tag") or "").lower() != "a",
+                str(candidate.get("id") or "")))
+            return {"ok": True, "candidate": top,
+                    "confidence": top_score, "ranked": ranked[:24]}
         safe_destination = len(destinations) == 1 and None not in destinations
         if safe_destination and (len(keys) == 1 or len(canonical_names) == 1):
             top = min(equivalent, key=lambda candidate: (

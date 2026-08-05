@@ -18,10 +18,8 @@ async tasks per healthcheck e dispatch (vedi http_async_tasks.py).
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -39,12 +37,8 @@ _INDEX_BASE: Path | None = None  # test override via setattr
 
 def _index_image_root() -> Path:
     """Test isolation via env vars (8/5/2026): vedi runtime/config.py."""
-    if _INDEX_BASE is not None:
-        return Path(_INDEX_BASE)
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    return _C.PATH_USER_DATA / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root(_INDEX_BASE)
 
 
 def _is_dry_run() -> bool:
@@ -52,7 +46,7 @@ def _is_dry_run() -> bool:
 
 
 _PROGRESS_DIR = _C.PATH_USER_STATE / "build_progress"
-_VALID_IDX = ("scene", "persons", "gps")
+_VALID_IDX = ("unified",)
 
 # Interprete del subprocess di build (deps torch/embedder). §7.11 rename/install-
 # resilient: default = `sys.executable`, lo STESSO python che esegue il runtime
@@ -68,7 +62,8 @@ _BUILD_EXTRA_PYTHONPATH = os.environ.get("METNOS_BUILD_PYTHONPATH", "")
 
 
 def _digest_of(base_path: Path) -> str:
-    return hashlib.sha256(str(base_path.resolve()).encode("utf-8")).hexdigest()[:16]
+    from index_schema import corpus_digest
+    return corpus_digest(base_path)
 
 
 def _unit_name(base_path: Path, idx: str) -> str:
@@ -292,9 +287,10 @@ def list_active_builds() -> list[dict]:
 def cleanup_orphan_tmp_dirs(*, base_path: Path | None = None,
                              idx: str | None = None,
                              max_age_s: float = 7 * 86400) -> dict:
-    """Sweep `<idx_dir>.tmp_<rand>` orphans (no unit attivo + older than).
+    """Rimuove file temporanei atomici abbandonati dal builder unificato.
 
-    Se base_path+idx forniti, sweep solo quel pair. Altrimenti sweep tutti.
+    Se ``base_path`` e ``idx`` sono forniti limita lo sweep a quel corpus.
+    Un progress record ``running`` protegge tutti i temporanei della build.
     """
     swept: list[str] = []
     skipped: list[str] = []
@@ -302,43 +298,45 @@ def cleanup_orphan_tmp_dirs(*, base_path: Path | None = None,
     if not base_root.exists():
         return {"swept": [], "skipped": []}
 
-    targets: list[Path] = []
+    roots: list[Path]
     if base_path is not None and idx is not None:
-        idx_dir = _index_dir(base_path, idx)
-        for sib in idx_dir.parent.glob(f"{idx_dir.name}.tmp_*"):
-            targets.append(sib)
+        roots = [_index_dir(base_path, idx)]
     else:
-        for digest_dir in base_root.iterdir():
-            if not digest_dir.is_dir():
-                continue
-            for sib in digest_dir.glob("*.tmp_*"):
-                targets.append(sib)
+        roots = [base_root]
+
+    targets: set[Path] = set()
+    for root in roots:
+        if not root.exists():
+            continue
+        targets.update(root.rglob("*.tmp"))
+        targets.update(root.rglob("*.tmp.npy"))
 
     now = time.time()
-    for t in targets:
-        if not t.is_dir():
+    for t in sorted(targets):
+        if not t.is_file() or t.is_symlink():
             continue
-        age = now - t.stat().st_mtime
+        try:
+            age = now - t.stat().st_mtime
+        except OSError:
+            continue
         if age < max_age_s:
             skipped.append(str(t))
             continue
-        # Non rimuovere se un unit attivo punta a questo tmp_dir (controllo
-        # debole: cerchiamo un progress.json running che ci punti)
-        if _tmp_dir_is_in_use(t):
+        if _tmp_path_is_in_use(t):
             skipped.append(str(t))
             continue
         try:
-            shutil.rmtree(t)
+            t.unlink()
             swept.append(str(t))
             log.info("cleanup_orphan_tmp_dirs: rimosso %s (age=%.0fs)", t, age)
         except OSError as e:
-            log.warning("cleanup_orphan_tmp_dirs: rmtree fallito %s: %s", t, e)
+            log.warning("cleanup_orphan_tmp_dirs: unlink fallito %s: %s", t, e)
             skipped.append(str(t))
     return {"swept": swept, "skipped": skipped}
 
 
-def _tmp_dir_is_in_use(tmp_dir: Path) -> bool:
-    """True se un progress.json running punta a questo tmp_dir."""
+def _tmp_path_is_in_use(tmp_path: Path) -> bool:
+    """True se un progress JSON running protegge il temporaneo."""
     if not _PROGRESS_DIR.exists():
         return False
     for fp in _PROGRESS_DIR.glob("*.json"):
@@ -346,8 +344,18 @@ def _tmp_dir_is_in_use(tmp_dir: Path) -> bool:
             data = json.loads(fp.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             continue
-        if data.get("state") == "running" and data.get("tmp_dir") == str(tmp_dir):
+        if data.get("state") != "running":
+            continue
+        legacy_tmp = data.get("tmp_dir")
+        if legacy_tmp and Path(str(legacy_tmp)) == tmp_path:
             return True
+        index_dir = data.get("index_dir")
+        if index_dir:
+            try:
+                tmp_path.relative_to(Path(str(index_dir)))
+                return True
+            except ValueError:
+                continue
     return False
 
 

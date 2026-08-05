@@ -137,6 +137,29 @@ def apply_dedupe_executors(ci: ChangeIntent) -> dict:
     b = body.get("b") or ci.intent_target
     if not a or not b or a == b:
         raise ValueError(f"dedupe needs distinct a,b — got a={a} b={b}")
+    # La lista e' la stessa SoT usata dall'ager: una dedupe automatica non
+    # deve poter ritirare il seed minimo del sistema. Un eventuale override
+    # umano futuro dovra' essere una decisione esplicita e auditabile, non un
+    # booleano nascosto nel body di una proposta autogenerata.
+    from executor_aging import PROTECTED_NAMES
+    if b in PROTECTED_NAMES:
+        raise PermissionError(f"cannot deprecate protected executor: {b}")
+    if (C.PATH_EXECUTORS / b).is_dir():
+        raise PermissionError(f"cannot deprecate handcrafted executor: {b}")
+    source = None
+    stats_db = C.PATH_USER_STATE / "executor_stats.db"
+    if stats_db.exists():
+        try:
+            with sqlite3.connect(str(stats_db), timeout=10.0) as stats_conn:
+                row = stats_conn.execute(
+                    "SELECT source FROM executor_stats WHERE name=?", (b,),
+                ).fetchone()
+                source = row[0] if row else None
+        except sqlite3.Error:
+            source = None
+    if not isinstance(source, str) or not source.startswith("synth"):
+        raise PermissionError(
+            f"cannot auto-deprecate executor without synth provenance: {b}")
 
     aliases_path = C.PATH_USER_DATA / "executor_aliases.json"
     aliases_path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,6 +224,9 @@ def apply_materialize_pipeline(ci: ChangeIntent) -> dict:
         "final_message": (getattr(log, "final_message", "") or "")[:400],
         "steps": [getattr(s, "chosen_tool", None)
                   for s in (getattr(log, "steps", None) or [])][:10],
+        "effect_counts": dict(getattr(log, "effect_counts", None) or {}),
+        "false_success_detected": bool(
+            getattr(log, "false_success_detected", False)),
     }
     if fk == "error":
         raise RuntimeError(

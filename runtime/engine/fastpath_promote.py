@@ -42,6 +42,7 @@ import logging
 import os
 import time
 from typing import Optional
+from config import env_int
 
 from . import fastpath as _fp
 from .types import Framework
@@ -55,35 +56,28 @@ KIND = "fastpath_promote"
 # meta-tool del runtime (sintesi, sudoer, sessioni autenticate, scratchpad).
 # Set CHIUSO (§2.2): estendere solo per la stessa classe di motivi.
 NON_PROMOTABLE_TOOLS = frozenset({
-    "admin", "sudoer", "request_new_executor", "login_session",
+    "admin", "sudoer", "request_new_executor", "login_urls",
     "scratchpad_read",
 })
 
 # ── Floor (env-tunable; default PROPOSTI, da confermare con Roberto) ───────
 
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, str(default)))
-    except ValueError:
-        return default
-
-
 def tier1_floor() -> dict:
     return {
-        "min_cluster": _env_int("METNOS_FP_PROMOTE_MIN_CLUSTER", 3),
-        "min_uses": _env_int("METNOS_FP_PROMOTE_MIN_USES", 15),
-        "min_age_days": _env_int("METNOS_FP_PROMOTE_MIN_AGE_DAYS", 30),
-        "max_new_per_night": _env_int("METNOS_FP_PROMOTE_MAX_PER_NIGHT", 3),
+        "min_cluster": env_int("METNOS_FP_PROMOTE_MIN_CLUSTER", 3),
+        "min_uses": env_int("METNOS_FP_PROMOTE_MIN_USES", 15),
+        "min_age_days": env_int("METNOS_FP_PROMOTE_MIN_AGE_DAYS", 30),
+        "max_new_per_night": env_int("METNOS_FP_PROMOTE_MAX_PER_NIGHT", 3),
     }
 
 
 def tier2_floor() -> dict:
     return {
-        "min_cluster": _env_int("METNOS_FP_AUTOPROMOTE_MIN_CLUSTER", 5),
-        "min_uses": _env_int("METNOS_FP_AUTOPROMOTE_MIN_USES", 50),
-        "min_age_days": _env_int("METNOS_FP_PROMOTE_MIN_AGE_DAYS", 30),
-        "min_nights": _env_int("METNOS_FP_AUTOPROMOTE_MIN_NIGHTS", 3),
+        "min_cluster": env_int("METNOS_FP_AUTOPROMOTE_MIN_CLUSTER", 5),
+        "min_uses": env_int("METNOS_FP_AUTOPROMOTE_MIN_USES", 50),
+        "min_age_days": env_int("METNOS_FP_PROMOTE_MIN_AGE_DAYS", 30),
+        "min_nights": env_int("METNOS_FP_AUTOPROMOTE_MIN_NIGHTS", 3),
     }
 
 

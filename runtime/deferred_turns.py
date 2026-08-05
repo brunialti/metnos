@@ -18,11 +18,34 @@ import json
 import os
 import time
 import uuid
-from pathlib import Path
+from contextlib import contextmanager
 
 import config as _C  # §7.11
 
 DB_PATH = _C.PATH_USER_DATA / "deferred_turns.jsonl"
+LOCK_PATH = _C.PATH_USER_DATA / "deferred_turns.lock"
+
+
+@contextmanager
+def _store_lock(*, exclusive: bool):
+    LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(
+            descriptor, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _write_all(descriptor: int, body: bytes) -> None:
+    view = memoryview(body)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise OSError("short write in deferred-turn store")
+        view = view[written:]
 
 
 def _ttl_s() -> float:
@@ -35,21 +58,33 @@ def _ttl_s() -> float:
 def _append(rec: dict) -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(rec, ensure_ascii=False) + "\n"
-    fd = os.open(DB_PATH, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        os.write(fd, line.encode("utf-8"))
-    finally:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-        os.close(fd)
+    with _store_lock(exclusive=True):
+        fd = os.open(DB_PATH, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            _write_all(fd, line.encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
 
 def _load() -> dict[str, dict]:
     """Stato corrente per id (ultimo record vince — event-sourcing minimo)."""
     out: dict[str, dict] = {}
-    if not DB_PATH.exists():
-        return out
-    for line in DB_PATH.read_text(encoding="utf-8").splitlines():
+    with _store_lock(exclusive=False):
+        try:
+            fd = os.open(DB_PATH, os.O_RDONLY)
+        except FileNotFoundError:
+            return out
+        try:
+            chunks = []
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        finally:
+            os.close(fd)
+    for line in b"".join(chunks).decode("utf-8", "replace").splitlines():
         line = line.strip()
         if not line:
             continue
@@ -64,13 +99,18 @@ def _load() -> dict[str, dict]:
 
 
 def add(*, device_id: str, device_name: str, query: str, actor: str,
-        channel: str, conversation_id: str = "") -> str:
+        channel: str, owner_user_id: str,
+        conversation_id: str = "") -> str:
     """Accoda un turno differito. Ritorna l'id."""
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        raise ValueError("deferred turn owner_user_id is required")
     rid = uuid.uuid4().hex[:16]
     _append({
         "id": rid, "state": "pending",
         "device_id": device_id, "device_name": device_name,
         "query": query, "actor": actor or "host",
+        "owner_user_id": owner,
         "channel": channel or "", "conversation_id": conversation_id or "",
         "created_at": time.time(),
         "expires_at": time.time() + _ttl_s(),
@@ -78,22 +118,36 @@ def add(*, device_id: str, device_name: str, query: str, actor: str,
     return rid
 
 
-def mark(rid: str, state: str, note: str = "") -> None:
-    _append({"id": rid, "state": state, "note": note, "ts": time.time()})
+def mark(rid: str, state: str, *, owner_user_id: str,
+         note: str = "") -> None:
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        raise ValueError("deferred turn owner_user_id is required")
+    current = _load().get(str(rid))
+    if (current is None
+            or str(current.get("owner_user_id") or "") != owner):
+        raise ValueError("deferred turn owner mismatch")
+    _append({"id": rid, "state": state, "note": note,
+             "owner_user_id": owner, "ts": time.time()})
 
 
-def pending_for_device(device_id: str) -> list[dict]:
+def pending_for_device(device_id: str, *, owner_user_id: str) -> list[dict]:
     """I differiti PENDING (non scaduti) per il device. I record scaduti
     vengono marcati `expired` qui (lazy) — il chiamante notifica."""
     now = time.time()
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return []
     out = []
     for rec in _load().values():
         if rec.get("state") != "pending":
             continue
         if rec.get("device_id") != device_id:
             continue
+        if str(rec.get("owner_user_id") or "") != owner:
+            continue
         if now > float(rec.get("expires_at") or 0):
-            mark(rec["id"], "expired")
+            mark(rec["id"], "expired", owner_user_id=owner)
             rec = {**rec, "state": "expired"}
             out.append(rec)
             continue
@@ -108,6 +162,74 @@ def expired_unnotified() -> list[dict]:
     for rec in _load().values():
         if rec.get("state") == "pending" and \
                 now > float(rec.get("expires_at") or 0):
-            mark(rec["id"], "expired")
+            owner = str(rec.get("owner_user_id") or "")
+            if not owner:
+                continue
+            mark(rec["id"], "expired", owner_user_id=owner)
             out.append({**rec, "state": "expired"})
     return out
+
+
+def _rewrite_excluding(*, owner_user_id: str | None = None,
+                       unscoped: bool = False) -> int:
+    with _store_lock(exclusive=True):
+        try:
+            fd = os.open(DB_PATH, os.O_RDONLY)
+        except FileNotFoundError:
+            return 0
+        try:
+            chunks = []
+            while True:
+                chunk = os.read(fd, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        finally:
+            os.close(fd)
+        data = b"".join(chunks).decode("utf-8", "replace")
+        parsed: list[tuple[str, dict]] = []
+        final: dict[str, dict] = {}
+        for line in data.splitlines():
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            rid = str(record.get("id") or "")
+            if not rid:
+                continue
+            parsed.append((rid, record))
+            final[rid] = {**final.get(rid, {}), **record}
+        target_owner = str(owner_user_id or "")
+        remove_ids = {
+            rid for rid, record in final.items()
+            if ((target_owner and str(record.get("owner_user_id") or "")
+                 == target_owner)
+                or (unscoped and not record.get("owner_user_id")))
+        }
+        retained = [
+            json.dumps(record, ensure_ascii=False) + "\n"
+            for rid, record in parsed if rid not in remove_ids
+        ]
+        temporary = DB_PATH.with_name(DB_PATH.name + ".rewrite.tmp")
+        tmp_fd = os.open(
+            temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            _write_all(tmp_fd, "".join(retained).encode("utf-8"))
+            os.fsync(tmp_fd)
+        finally:
+            os.close(tmp_fd)
+        os.replace(temporary, DB_PATH)
+        return len(remove_ids)
+
+
+def purge_owner(owner_user_id: str) -> int:
+    """Physically remove all events for one immutable owner."""
+
+    owner = str(owner_user_id or "").strip()
+    return _rewrite_excluding(owner_user_id=owner) if owner else 0
+
+
+def purge_unscoped() -> int:
+    """Retire pre-owner deferred commands; they are never executable."""
+
+    return _rewrite_excluding(unscoped=True)

@@ -137,6 +137,9 @@ def detect(query: str) -> Optional[dict]:
 # Famiglie chiuse §7.3: termine-utente (IT+EN) → candidati campo in ordine
 # di preferenza. Estendere SOLO con campi documentati da executor reali.
 _FIELD_FAMILIES: tuple[tuple[frozenset, tuple[str, ...]], ...] = (
+    (frozenset({"dominio", "domini", "domain", "domains", "host",
+                "hostname"}),
+     ("domain", "dominio", "hostname", "host")),
     (frozenset({"mailbox", "mailboxes", "casella", "caselle", "account",
                 "accounts", "cassetta", "mail"}),
      ("account", "mailbox", "folder", "account_email")),
@@ -229,6 +232,22 @@ _PRESENTER_TOOLS = frozenset({"describe_entries"})
 _ENTRIES_CONSUMER_TOOLS = frozenset({
     "describe_entries", "classify_entries", "extract_entries",
     "filter_entries", "compute_entries", "compare_entries",
+    "sort_entries", "group_entries", "create_files_spreadsheet",
+    "write_files_spreadsheet", "write_files", "write_files_doc",
+})
+
+# Once durable output starts, ordering must already have happened.  Inserting
+# a sort immediately before ``final_answer`` sorts nothing when report/file
+# sinks precede it (live turn 94d748bc).  This boundary is effect-based and
+# independent of the producer domain.
+_OUTPUT_BOUNDARY_TOOLS = frozenset({
+    "create_dirs", "write_files", "write_files_doc",
+    "write_files_spreadsheet", "create_files_doc",
+    "create_files_spreadsheet", "compress_files",
+})
+_KNOWN_ENTRY_TRANSFORMS = frozenset({
+    "extract_entries", "filter_entries", "sort_entries", "group_entries",
+    "classify_entries", "compute_entries", "compare_entries",
 })
 
 _STEPREF_SUB_RE = re.compile(r"(\$\{step|\{\{step)(\d+)(\.)")
@@ -322,6 +341,9 @@ def apply_to_framework(framework, query: str, catalog_names=None):
     if not has_explicit_order and can_inject:
         if "describe_entries" in tools:
             p = max(i for i, t in enumerate(tools) if t == "describe_entries")
+        elif any(tool in _OUTPUT_BOUNDARY_TOOLS for tool in tools):
+            p = min(i for i, tool in enumerate(tools)
+                    if tool in _OUTPUT_BOUNDARY_TOOLS)
         elif "final_answer" in tools:
             p = tools.index("final_answer")
         else:
@@ -338,23 +360,48 @@ def apply_to_framework(framework, query: str, catalog_names=None):
         # riempie su lista vuota → required `entries` mancante; con
         # from_step la lista vuota fluisce onesta, N=0 §2.1).
         guard_nonempty = True
+        source_pos = None
         if p < len(new_steps):
             src = new_steps[p].args.get("from_step")
             if isinstance(src, int) and src < q:
-                sort_args["from_step"] = src
-                guard_nonempty = False
+                source_pos = src
+        # The first output boundary is often ``create_dirs`` and therefore has
+        # no data reference.  Look through all downstream sinks for their
+        # common carrier; if still absent, use the latest known pure entries
+        # transform before the boundary.
+        if source_pos is None:
+            source_pos = next((
+                src for step in new_steps[p:]
+                if isinstance((src := step.args.get("from_step")), int)
+                and src < q
+            ), None)
+        if source_pos is None:
+            source_pos = next((
+                index + 1 for index in range(p - 1, -1, -1)
+                if new_steps[index].tool in _KNOWN_ENTRY_TRANSFORMS
+            ), None)
+        if source_pos is not None:
+            sort_args["from_step"] = source_pos
+            guard_nonempty = False
         for s in new_steps[p:]:
             s.args = _shift_step_refs(s.args, q)
         final_message = _shift_text_refs(final_message, q)
         new_steps.insert(p, _SS(tool="sort_entries", args=sort_args,
                                 if_prev_entries_nonempty=guard_nonempty))
-        # Il consumer subito a valle legge dallo step sort.
-        if p + 1 < len(new_steps) \
-                and new_steps[p + 1].tool in _ENTRIES_CONSUMER_TOOLS:
-            nxt = new_steps[p + 1].args
-            nxt["from_step"] = q
-            if isinstance(nxt.get("entries"), str):
-                nxt.pop("entries")  # placeholder anti-pattern §4.1
+        # Every downstream entries consumer that read the pre-sort carrier
+        # now reads the injected sort.  Consumers with a distinct explicit
+        # branch are left untouched.
+        for downstream in new_steps[p + 1:]:
+            if downstream.tool not in _ENTRIES_CONSUMER_TOOLS:
+                continue
+            current = downstream.args.get("from_step")
+            if source_pos is not None and current == source_pos:
+                downstream.args["from_step"] = q
+            elif current is None and downstream.tool in {
+                    "create_files_spreadsheet", "write_files_spreadsheet"}:
+                downstream.args["from_step"] = q
+            if isinstance(downstream.args.get("entries"), str):
+                downstream.args.pop("entries")
         changed = True
 
     for s in new_steps:
@@ -365,5 +412,13 @@ def apply_to_framework(framework, query: str, catalog_names=None):
 
     if not changed:
         return framework
-    return _FW(steps=new_steps, fillers=framework.fillers,
-               final_message=final_message)
+    return _FW(
+        steps=new_steps,
+        fillers=framework.fillers,
+        final_message=final_message,
+        # Metadato runtime-owned: una normalizzazione deterministica non deve
+        # trasformare una pipeline canonica lunga in un piano LLM ordinario.
+        # Il campo resta volutamente fuori da to_dict/from_dict e dalle cache.
+        runtime_step_cap=int(
+            getattr(framework, "runtime_step_cap", 0) or 0),
+    )

@@ -36,6 +36,15 @@ def _jinja_msg(key: str, **kwargs) -> str:
 _jinja_env.globals["msg"] = _jinja_msg
 
 
+def _settings_navigation(lang: str = "it") -> tuple[dict, ...]:
+    from ui_surfaces import settings_navigation
+
+    return settings_navigation(lang)
+
+
+_jinja_env.globals["settings_navigation"] = _settings_navigation
+
+
 def _jinja_linkify(text) -> "object":
     """Filtro `linkify`: testo → HTML ESCAPED con gli URL http(s) resi
     ancore cliccabili (target=_blank). Nato per i prompt dei dialog che
@@ -61,6 +70,9 @@ _jinja_env.filters["linkify"] = _jinja_linkify
 
 def render_template(name: str, **ctx) -> str:
     """Render del template Jinja `name` con il contesto `ctx`."""
+    if "ui_lang" not in ctx:
+        import i18n as _i18n
+        ctx["ui_lang"] = _i18n.current_lang()
     return _jinja_env.get_template(name).render(**ctx)
 
 

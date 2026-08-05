@@ -5,7 +5,7 @@ emette un verdetto deterministico `accept|gray|reject` basato su:
 
 KILLER (uno solo basta a REJECT):
 1. **inflation**: nome viola `runtime/vocab.py` (verbo non in ACTIONS,
-   oggetto non in OBJECTS, qualifier non in QUALIFIERS o famiglie 3).
+   oggetto non in OBJECTS o qualifier non in QUALIFIERS).
 2. **affinity_overlap**: Jaccard >= 0.4 verso UN executor handcrafted in
    `loader.HANDCRAFTED_FAMILIES` o un altro synth piu' vecchio.
    Soglia stretta 0.4 vs 0.5 al catalog load — l'evaluator e' piu'
@@ -152,12 +152,12 @@ def _check_inflation(proposal: dict) -> tuple[bool, str]:
     obj = parts[1]
     quals = parts[2:]
     if verb not in ACTIONS:
-        return True, f"verbo '{verb}' fuori dalle 22 azioni"
+        return True, f"verbo '{verb}' fuori dalle {len(ACTIONS)} azioni"
     if obj not in OBJECTS:
-        return True, f"oggetto '{obj}' fuori dai 15 oggetti"
+        return True, f"oggetto '{obj}' fuori dai {len(OBJECTS)} oggetti"
     for q in quals:
         if q not in QUALIFIERS:
-            return True, f"qualifier '{q}' fuori dalle 3 famiglie"
+            return True, f"qualifier '{q}' fuori dal vocabolario chiuso"
     return False, ""
 
 

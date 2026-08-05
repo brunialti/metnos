@@ -6,7 +6,8 @@ Idea (§5.bis.1 della roadmap):
 2. Filtra catalog ai tool con prefisso `<verb>_*` (es. verb="find" →
    find_files, find_messages, find_images_indices, ...).
 3. Se sub-set vuoto o << k_min: fallback al catalog completo.
-4. Esegui token-flat rank sul sub-set (riduce N→N/23).
+4. Esegui token-flat rank sul sottoinsieme (riduce N in proporzione ai verbi
+   effettivamente rappresentati nel catalogo).
 
 Deterministico §7.9. Vocabolario chiuso §2.2 amplifica il segnale.
 Compatibile con grammar GBNF (top-K input invariato).

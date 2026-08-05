@@ -160,22 +160,46 @@ def _face_box_json(box) -> str:
 class PersonsRegistry:
     """SQLite-backed registry. Thread-safe via internal lock on writes."""
 
-    def __init__(self, db_path: Path | None = None):
+    def __init__(self, db_path: Path | None = None, *, read_only: bool = False):
         # Lookup DEFAULT_DB_PATH at call time (NOT at function-def time) so
         # tests can monkeypatch the module attribute and have it honored
         # by code paths that don't pass `db_path` explicitly.
         self.db_path = Path(db_path) if db_path is not None else DEFAULT_DB_PATH
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.read_only = bool(read_only)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(
-            str(self.db_path),
-            check_same_thread=False,
-            isolation_level=None,  # autocommit; we use BEGIN/COMMIT explicitly
-        )
+        if self.read_only and self.db_path.exists():
+            # URI mode=ro is an enforcement boundary, not merely intent.  It
+            # also prevents schema bootstrap and journal-mode changes in a
+            # reader sandbox where the exact DB/WAL/SHM files are ro-bound.
+            self._conn = sqlite3.connect(
+                self.db_path.resolve().as_uri() + "?mode=ro",
+                uri=True,
+                check_same_thread=False,
+                isolation_level=None,
+            )
+        elif self.read_only:
+            # A missing registry is the valid empty state.  Use an ephemeral
+            # schema so list/resolve calls stay side-effect free.
+            self._conn = sqlite3.connect(
+                ":memory:", check_same_thread=False, isolation_level=None,
+            )
+            self._conn.executescript(_SCHEMA)
+        else:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(
+                str(self.db_path),
+                check_same_thread=False,
+                isolation_level=None,  # autocommit; explicit BEGIN/COMMIT
+            )
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL;")
         self._conn.execute("PRAGMA foreign_keys=ON;")
-        self._conn.executescript(_SCHEMA)
+        if not self.read_only:
+            self._conn.execute("PRAGMA journal_mode=WAL;")
+            self._conn.executescript(_SCHEMA)
+
+    def _require_writable(self) -> None:
+        if self.read_only:
+            raise PermissionError("persons registry opened read-only")
 
     def close(self) -> None:
         try:
@@ -211,6 +235,7 @@ class PersonsRegistry:
         praticamente identici. Pass `dedupe_cosine_threshold=1.0` per
         disabilitare il dedup semantico.
         """
+        self._require_writable()
         if not name or not str(name).strip():
             raise ValueError("name must be non-empty")
         if mode not in ("add", "replace"):
@@ -335,6 +360,7 @@ class PersonsRegistry:
         }
 
     def delete(self, name: str) -> dict:
+        self._require_writable()
         slug = slugify(name)
         with self._lock:
             cur = self._conn.cursor()
@@ -370,6 +396,7 @@ class PersonsRegistry:
 
         Best-effort §2.8: ritorna il numero di FILE rimossi. DA CHIAMARE DOPO il
         backup-blob (i file servono a `reverse()` per un undo completo)."""
+        self._require_writable()
         d = self.examples_dir(name)
         if not d.is_dir():
             return 0
@@ -436,6 +463,7 @@ class PersonsRegistry:
         INSERT verbatim di riga + esempi (embedding decodificati da base64).
         Idempotente: se lo slug esiste gia' → no-op `{restored: False}`.
         """
+        self._require_writable()
         import base64
         if not isinstance(backup, dict) or "person" not in backup:
             raise ValueError("backup must be a dict from export_person")
@@ -657,7 +685,12 @@ def resolve_face_embeddings_for_name(name: str) -> list:
     """
     if not name:
         return []
+    registry = None
     try:
-        return PersonsRegistry().lookup_embeddings(name)
+        registry = PersonsRegistry(read_only=True)
+        return registry.lookup_embeddings(name)
     except Exception:
         return []
+    finally:
+        if registry is not None:
+            registry.close()

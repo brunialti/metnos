@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -68,6 +69,14 @@ class SchedulerDaemon:
         # created in start() so it binds to the running loop).
         self._running: dict[int, int] = {}
         self._running_lock: asyncio.Lock | None = None
+        # Runtime health is process-local and therefore authoritative for the
+        # co-hosted loop.  Observers must not infer liveness from whether a job
+        # happened to run recently: an idle scheduler is still healthy.
+        self._started_at_epoch: float | None = None
+        self._stopped_at_epoch: float | None = None
+        self._heartbeat_at_epoch: float | None = None
+        self._last_error_class = ""
+        self._last_error_summary = ""
         # Hook opzionale invocato quando un task ricorrente viene
         # auto-disabilitato dal circuit-breaker. Firma: (entry, error: str|None).
         # Settato da chi conosce i canali (recurring_tasks): il daemon resta
@@ -85,9 +94,17 @@ class SchedulerDaemon:
         self._pool = ThreadPoolExecutor(
             max_workers=self.pool_size, thread_name_prefix="metnos-sched-v2"
         )
+        now = time.time()
+        self._started_at_epoch = now
+        self._stopped_at_epoch = None
+        self._heartbeat_at_epoch = now
+        self._last_error_class = ""
+        self._last_error_summary = ""
         loop = asyncio.get_running_loop()
         self._loop = loop
         self._task = loop.create_task(self._loop_main(), name="scheduler_v2_loop")
+        self._task.add_done_callback(lambda _task: self._publish_health())
+        self._publish_health()
 
     async def stop(self, timeout: float = 5.0) -> None:
         if self.shutdown_evt is not None:
@@ -99,11 +116,18 @@ class SchedulerDaemon:
                 await asyncio.wait_for(self._task, timeout=timeout)
             except (asyncio.TimeoutError, asyncio.CancelledError):
                 self._task.cancel()
+            except Exception:
+                # A loop failure is already preserved by runtime_status() and
+                # logged at its origin.  Shutdown must still complete so the
+                # HTTP service can restart cleanly and recover the scheduler.
+                log.warning("scheduler v2 stopped after loop failure")
         self._task = None
         if self._pool is not None:
             self._pool.shutdown(wait=False, cancel_futures=True)
             self._pool = None
         self._loop = None
+        self._stopped_at_epoch = time.time()
+        self._publish_health()
 
     def kick(self) -> None:
         """Signal the loop to re-check schedule_entries immediately.
@@ -141,6 +165,8 @@ class SchedulerDaemon:
             assert self.shutdown_evt is not None and self.wake_evt is not None
             while not self.shutdown_evt.is_set():
                 now = time.time()
+                self._heartbeat_at_epoch = now
+                self._publish_health()
                 due = self.storage.fetch_due(now, limit=100)
                 if due:
                     await asyncio.gather(
@@ -154,11 +180,110 @@ class SchedulerDaemon:
                     await asyncio.wait_for(self.wake_evt.wait(), timeout=sleep_s)
                 except asyncio.TimeoutError:
                     pass
+                self._heartbeat_at_epoch = time.time()
+                self._publish_health()
         except asyncio.CancelledError:
             return
-        except Exception:
+        except Exception as exc:
+            self._last_error_class = type(exc).__name__
+            # Bounded, single-line diagnostics are safe to expose to the
+            # administrator; callback outputs and payloads never enter here.
+            summary = re.sub(r"\s+", " ", str(exc)).strip()
+            self._last_error_summary = summary[:240]
             log.exception("scheduler v2 loop crashed")
             raise
+
+    def _publish_health(self) -> None:
+        """Best-effort IPC snapshot for kill-isolated Tutor probes."""
+
+        try:
+            from .health import publish
+            publish(self.runtime_status())
+        except Exception:
+            log.warning("scheduler v2 health publication failed", exc_info=True)
+
+    @staticmethod
+    def _iso(epoch: float | None) -> str:
+        if epoch is None:
+            return ""
+        return datetime.fromtimestamp(epoch, timezone.utc).isoformat().replace(
+            "+00:00", "Z")
+
+    def runtime_status(self) -> dict:
+        """Return a bounded, source-attested snapshot of the co-hosted loop.
+
+        This is intentionally about the loop itself, not about the success of
+        individual jobs.  A failed callback does not make the scheduler down,
+        and an idle period is not a missing heartbeat.
+        """
+
+        now = time.time()
+        task = self._task
+        if task is None:
+            state = "stopped"
+            healthy = False
+            reason_code = (
+                "graceful_stop" if self._stopped_at_epoch is not None
+                else "not_started"
+            )
+        elif task.cancelled():
+            state = "stopped"
+            healthy = False
+            reason_code = "loop_cancelled"
+        elif task.done():
+            state = "failed" if self._last_error_class else "stopped"
+            healthy = False
+            reason_code = (
+                "loop_failed" if self._last_error_class else "loop_finished"
+            )
+        else:
+            state = "running"
+            healthy = True
+            reason_code = "loop_active"
+
+        try:
+            entries = self.storage.list_all()
+            recent = self.storage.list_runs(limit=1)
+        except Exception as exc:  # health must remain observable on DB faults
+            entries = []
+            recent = []
+            if healthy:
+                state = "degraded"
+                healthy = False
+                reason_code = "storage_unavailable"
+            if not self._last_error_class:
+                self._last_error_class = type(exc).__name__
+                self._last_error_summary = re.sub(
+                    r"\s+", " ", str(exc)).strip()[:240]
+
+        last_run = recent[0] if recent else None
+        heartbeat_age = (
+            max(0.0, now - self._heartbeat_at_epoch)
+            if self._heartbeat_at_epoch is not None else None
+        )
+        return {
+            "component": "scheduler_v2",
+            "cohost": "http",
+            "state": state,
+            "healthy": healthy,
+            "reason_code": reason_code,
+            "started_at": self._iso(self._started_at_epoch),
+            "stopped_at": self._iso(self._stopped_at_epoch),
+            "heartbeat_at": self._iso(self._heartbeat_at_epoch),
+            "heartbeat_age_s": (
+                round(heartbeat_age, 3) if heartbeat_age is not None else None
+            ),
+            "jobs_total": len(entries),
+            "jobs_enabled": sum(1 for entry in entries if entry.enabled),
+            "jobs_running": sum(self._running.values()),
+            "last_run_at": (
+                (last_run.finished_at or last_run.started_at)
+                if last_run is not None else ""
+            ),
+            "last_run_status": last_run.status if last_run is not None else "",
+            "error_class": self._last_error_class,
+            "error_summary": self._last_error_summary,
+        }
 
     def _compute_sleep(self, now: float) -> float:
         nxt = self.storage.next_fire_at_min()
@@ -240,6 +365,17 @@ class SchedulerDaemon:
             self._running[entry.id] = cur + 1
 
         cb = self.callbacks.get(entry.callback_key)
+        # Compatibilità JIT: le entry user finite create prima che il client
+        # propagasse `times` in remaining_runs non devono rifirare per sempre.
+        if entry.recurring and not entry.remaining_runs:
+            try:
+                declared_times = int((entry.payload or {}).get("times") or 0)
+            except (TypeError, ValueError):
+                declared_times = 0
+            if declared_times > 0:
+                inferred = max(1, declared_times - int(entry.total_runs or 0))
+                if self.storage.initialize_remaining_runs(entry.id, inferred):
+                    entry.remaining_runs = inferred
         run_id = self.storage.begin_run(entry.id, entry.name)
         t0 = time.time()
         status = "success"
@@ -299,7 +435,7 @@ class SchedulerDaemon:
                 # Circuit-breaker: N fallimenti CONSECUTIVI → auto-disable.
                 # entry.consecutive_failures e' il valore PRE-run; +1 = quello
                 # che record_outcome scrivera' (coerente, stesso incremento).
-                if status != "success" and _CIRCUIT_BREAK_AFTER > 0:
+                if status in {"error", "timeout"} and _CIRCUIT_BREAK_AFTER > 0:
                     if (entry.consecutive_failures or 0) + 1 >= _CIRCUIT_BREAK_AFTER:
                         disable = True
                         circuit_broken = True

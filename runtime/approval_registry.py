@@ -172,9 +172,7 @@ def resolve(
     now = _now_iso()
     conn = _open_db(db_path)
     try:
-        # Conn aperta con isolation_level=None (autocommit). Niente `with conn`:
-        # le mutazioni che precedono un raise devono restare persistite (es. la
-        # transizione a 'expired' deve sopravvivere all'eccezione).
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute(
             "SELECT * FROM pending WHERE token = ?", (token,),
         ).fetchone()
@@ -190,6 +188,7 @@ def resolve(
                 "UPDATE pending SET status='expired', decision_at=? WHERE token=?",
                 (now, token),
             )
+            conn.commit()
             raise ApprovalError(
                 f"token scaduto: expires_at={row['expires_at']} < ora={now}"
             )
@@ -199,15 +198,21 @@ def resolve(
                 f"decisore non autorizzato: pending da {row['channel']}/{row['sender_id']}, "
                 f"decision da {by_channel}/{by_sender}"
             )
-        conn.execute(
+        cur = conn.execute(
             """UPDATE pending SET status=?, decision_at=?,
                    decision_by_channel=?, decision_by_sender=?
-                   WHERE token=?""",
+                   WHERE token=? AND status='pending'""",
             (decision, now, by_channel, by_sender, token),
         )
+        if cur.rowcount != 1:
+            conn.rollback()
+            raise ApprovalError(f"token gia' risolto: {token}")
         row = conn.execute("SELECT * FROM pending WHERE token=?", (token,)).fetchone()
+        conn.commit()
         return _row_to_pending(row)
     finally:
+        if conn.in_transaction:
+            conn.rollback()
         conn.close()
 
 

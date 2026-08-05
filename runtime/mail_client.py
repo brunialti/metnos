@@ -24,23 +24,22 @@ from email.header import decode_header, make_header
 from pathlib import Path
 
 import config as _C  # §7.11 — rispetta METNOS_USER_CONFIG
+from env_file import read_env as _read_env
 from logging_setup import get_logger
 log = get_logger(__name__)
 
 
-def _read_env(path):
-    env = {}
-    if not Path(path).exists():
-        return env
-    for line in Path(path).read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env[k.strip()] = v.strip().strip('"').strip("'")
-    return env
+def _metnos_legacy_account(env: dict[str, str], *,
+                           user_key: str, password_key: str) -> dict:
+    return {
+        "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.example.com"),
+        "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
+        "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.example.com"),
+        "smtp_port": int(env.get("METNOS_MAIL_PORT_SMTP", "465")),
+        "user": env.get(user_key, ""),
+        "password": env.get(password_key, ""),
+        "verify_tls": True,
+    }
 
 
 def _load_from_credentials_store(account: str) -> dict | None:
@@ -67,9 +66,9 @@ def _load_from_credentials_store(account: str) -> dict | None:
     if not payload.get("user") or not payload.get("password"):
         return None
     return {
-        "imap_host":  payload.get("imap_host", "imap.example.com"),
+        "imap_host":  payload.get("imap_host", ""),
         "imap_port":  int(payload.get("imap_port", 993)),
-        "smtp_host":  payload.get("smtp_host", "smtp.example.com"),
+        "smtp_host":  payload.get("smtp_host", ""),
         "smtp_port":  int(payload.get("smtp_port", 465)),
         "user":       payload["user"],
         "password":   payload["password"],
@@ -87,26 +86,14 @@ def _account_creds(account: str) -> dict:
 
     if account in ("metnos_system", "metnos"):
         env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
-        return {
-            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.example.com"),
-            "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
-            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.example.com"),
-            "smtp_port": int(env.get("METNOS_MAIL_PORT_SMTP", "465")),
-            "user": env.get("METNOS_SYSTEM_USER", ""),
-            "password": env.get("METNOS_SYSTEM_PASS", ""),
-            "verify_tls": True,
-        }
+        return _metnos_legacy_account(
+            env, user_key="METNOS_SYSTEM_USER",
+            password_key="METNOS_SYSTEM_PASS")
     if account == "metnos_roberto":
         env = _read_env(_C.PATH_USER_CONFIG / "mail.env")
-        return {
-            "imap_host": env.get("METNOS_MAIL_HOST_IMAP", "imap.example.com"),
-            "imap_port": int(env.get("METNOS_MAIL_PORT_IMAP", "993")),
-            "smtp_host": env.get("METNOS_MAIL_HOST_SMTP", "smtp.example.com"),
-            "smtp_port": int(env.get("METNOS_MAIL_PORT_SMTP", "465")),
-            "user": env.get("METNOS_ROBERTO_USER", ""),
-            "password": env.get("METNOS_ROBERTO_PASS", ""),
-            "verify_tls": True,
-        }
+        return _metnos_legacy_account(
+            env, user_key="METNOS_ROBERTO_USER",
+            password_key="METNOS_ROBERTO_PASS")
     if account == "mykleos":
         env = _read_env(Path.home() / ".config/mykleos/mail.env")
         return {
@@ -201,6 +188,28 @@ def list_known_accounts() -> list[str]:
                 accounts.append(nm)
         except Exception as _e:  # silent swallow (auto-fixed)
             log.warning("silent exception in %s: %s", __name__, _e)
+    # Accounts created by the installer or ``set_credentials`` are discovered
+    # from the encrypted store's canonical namespace.  This keeps
+    # ``account='all'`` data-driven as new mailboxes are added.
+    try:
+        import credentials as _cr
+        encrypted_names = sorted({
+            domain[len("smtp_"):]
+            for domain in _cr.list_domains()
+            if domain.startswith("smtp_") and len(domain) > len("smtp_")
+        })
+    except Exception as exc:
+        log.warning("encrypted mail account discovery failed: %s", exc)
+        encrypted_names = []
+    for name in encrypted_names:
+        if name in accounts:
+            continue
+        try:
+            c = _account_creds(name)
+            if c.get("user") and c.get("password"):
+                accounts.append(name)
+        except Exception as exc:
+            log.warning("invalid encrypted mail account %s: %s", name, exc)
     # Dinamici da ~/.config/metnos/mail/*.env
     dyn_dir = _C.PATH_USER_CONFIG / "mail"
     if dyn_dir.exists():
@@ -289,6 +298,8 @@ def open_imap(account: str = "metnos_system", *,
     c = _account_creds(account)
     if not c["user"] or not c["password"]:
         raise RuntimeError(f"missing user/password for account {account!r}")
+    if not c["imap_host"]:
+        raise RuntimeError(f"missing IMAP host for account {account!r}")
     if c["verify_tls"]:
         ctx = ssl.create_default_context()
     else:
@@ -310,6 +321,19 @@ def open_imap(account: str = "metnos_system", *,
             conn = imaplib.IMAP4_SSL(
                 c["imap_host"], c["imap_port"], **kwargs)
             conn.login(c["user"], c["password"])
+            # IMAP capabilities are state-dependent.  ``imaplib`` caches the
+            # greeting's pre-authentication CAPABILITY response and LOGIN does
+            # not refresh it; many servers advertise MOVE/UIDPLUS only after
+            # authentication.  Refresh at the single connection choke point so
+            # every backend makes safety decisions from the authoritative set.
+            # Failure is fail-soft: callers retain the greeting set and their
+            # capability gates still fail closed before mutation.
+            try:
+                conn._get_capabilities()
+            except Exception as capability_error:  # noqa: BLE001
+                log.warning(
+                    "open_imap %s post-login capability refresh failed: %r",
+                    account, capability_error)
             return conn
         except (ssl.SSLError, OSError) as e:
             last = e
@@ -351,6 +375,8 @@ def open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL:
     c = _account_creds(account)
     if not c["user"] or not c["password"]:
         raise RuntimeError(f"missing user/password for account {account!r}")
+    if not c["smtp_host"]:
+        raise RuntimeError(f"account {account!r} is not configured for SMTP")
     if c["verify_tls"]:
         ctx = ssl.create_default_context()
     else:

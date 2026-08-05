@@ -8,7 +8,7 @@ Uso:
     systemd-run --user --unit=metnos-progress-watcher \\
         --setenv=METNOS_PROGRESS_FILE=<path> \\
         --setenv=METNOS_BATCH_LABEL="enrichment foto" \\
-        /opt/suprastructure/.venv/bin/python <install_root>/runtime/watch_progress_telegram.py
+        <install_root>/.venv/bin/python <install_root>/runtime/watch_progress_telegram.py
 """
 from __future__ import annotations
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -38,12 +39,37 @@ def _vlm_cfg() -> dict:
         return {}
 
 
-_VLM = _vlm_cfg()
-_VLM_URL = _resolve_vlm_url(os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
-_VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get("model", "qwen3vl-2b")
-_VLM_TIMEOUT_S = int(os.environ.get("METNOS_VLM_TIMEOUT_S") or _VLM.get("timeout_s", 60))
-_VLM_MAX_EDGE = int(os.environ.get("METNOS_VLM_MAX_EDGE") or _VLM.get("max_edge", 1024))
-_VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_tokens", 512))
+_VLM: dict = {}
+_VLM_URL = ""
+_VLM_MODEL = ""
+_VLM_TIMEOUT_S = 60
+_VLM_MAX_EDGE = 1024
+_VLM_MAX_TOKENS = 512
+
+
+def reload_configuration() -> None:
+    """Refresh the request-side VLM settings without starting a model.
+
+    The Models page writes ``vlm_tiers.toml`` atomically.  This client keeps
+    hot-path scalars locally, so the editor calls this hook after a successful
+    save to make the next request use the new endpoint and limits.
+    """
+
+    global _VLM, _VLM_URL, _VLM_MODEL, _VLM_TIMEOUT_S, _VLM_MAX_EDGE, _VLM_MAX_TOKENS
+    _VLM = _vlm_cfg()
+    _VLM_URL = _resolve_vlm_url(
+        os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
+    _VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get(
+        "model", "qwen3vl-2b")
+    _VLM_TIMEOUT_S = int(
+        os.environ.get("METNOS_VLM_TIMEOUT_S") or _VLM.get("timeout_s", 60))
+    _VLM_MAX_EDGE = int(
+        os.environ.get("METNOS_VLM_MAX_EDGE") or _VLM.get("max_edge", 1024))
+    _VLM_MAX_TOKENS = int(
+        os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_tokens", 512))
+
+
+reload_configuration()
 
 
 def _describe_prompt(lang: str) -> str:
@@ -52,35 +78,8 @@ def _describe_prompt(lang: str) -> str:
     RICERCA del contenuto (match cosine/BM25 contro l'indice VLM) — piu'
     dettaglio = piu' recall. Niente cap di parole, niente hint cartella (il
     caso d'uso e' una foto caricata, non un file in un albero indicizzato)."""
-    if (lang or "it").lower().startswith("en"):
-        return (
-            "Describe this image in English, in DETAIL — the description is used "
-            "as a CONTENT SEARCH QUERY, so be thorough. Respond ONLY with valid "
-            "JSON in the exact format below, no extra text:\n"
-            '{\n  "description": "detailed descriptive paragraph: ALL visible '
-            'subjects and their count, the setting/place, every relevant object, '
-            'dominant colors, any visible text verbatim, the action/activity, the '
-            'image type (photo/screenshot/document/diagram) and overall style/mood",'
-            '\n  "keywords": ["10-20", "specific", "search", "keywords"]\n}\n'
-            "RULES: describe ONLY visible things, no assumptions; do not name "
-            "people; if it is a screenshot/document/diagram, say so and summarize "
-            "its content/text; keep keywords in English."
-        )
-    return (
-        "Descrivi questa immagine in italiano, in DETTAGLIO — la descrizione e' "
-        "usata come QUERY di RICERCA del contenuto, quindi sii esauriente. "
-        "Rispondi SOLO con JSON valido nel formato esatto qui sotto, nessun altro "
-        "testo:\n"
-        '{\n  "description": "paragrafo descrittivo dettagliato: TUTTI i soggetti '
-        'visibili e il loro numero, l\'ambiente/luogo, ogni oggetto rilevante, i '
-        'colori dominanti, qualsiasi testo visibile alla lettera, l\'azione/'
-        'attivita\', il tipo di immagine (foto/screenshot/documento/diagramma) e '
-        'lo stile/atmosfera generale",\n  "keywords": ["10-20", "parole", "chiave", '
-        '"di", "ricerca"]\n}\n'
-        "REGOLE: descrivi SOLO cose visibili, niente assunzioni; non fare nomi di "
-        "persone; se e' uno screenshot/documento/diagramma, dillo e riassumine il "
-        "contenuto/testo; keywords in italiano."
-    )
+    import prompt_loader
+    return prompt_loader.get("vlm_describe_image", lang or "it")
 
 
 def _parse_vlm_text(text: str) -> dict:
@@ -123,13 +122,13 @@ def _looks_like_connection_refused(err) -> bool:
     return "refused" in s or "errno 111" in s or "connection refused" in s
 
 
-def _lazy_start_vlm() -> bool:
+def _lazy_start_vlm(*, deadline_at: float | None = None) -> bool:
     try:
         from virt import ensure_vlm_up
     except ImportError:
         return False
     try:
-        return bool(ensure_vlm_up())
+        return bool(ensure_vlm_up(deadline_at=deadline_at))
     except Exception:
         return False
 
@@ -137,25 +136,39 @@ def _lazy_start_vlm() -> bool:
 def describe_image(img_path, *, lang: str | None = None,
                    prompt: str | None = None,
                    url: str | None = None, model: str | None = None,
-                   timeout_s: int | None = None,
-                   max_tokens: int | None = None) -> dict:
+                   timeout_s: float | None = None,
+                   max_tokens: int | None = None,
+                   deadline_at: float | None = None) -> dict:
     """Descrive il CONTENUTO di un'immagine col VLM. Ritorna dict
     {description, keywords, location_hint, activity_hint} (+`_vlm_error` su
-    fallimento, mai solleva — fail-safe §2.8). `lang` default da config.
+    fallimento, mai solleva — fail-safe §2.8). `lang` usa per default la
+    lingua del contesto della richiesta.
     `prompt` override del prompt VLM (default = `_describe_prompt(lang)`,
     ad-hoc per ricerca; create_images_indices passa il suo prompt index-build).
-    `max_tokens` default 1024 (descrizione RICCA per ricerca, vs 512 caption)."""
+    `max_tokens` default 1024 (descrizione RICCA per ricerca, vs 512 caption).
+    ``deadline_at`` è un deadline monotono condiviso: preprocessing, lazy
+    start e retry non possono rinnovare il budget a ogni fase."""
     import base64
     from io import BytesIO
 
     url = url or _VLM_URL
     model = model or _VLM_MODEL
-    timeout_s = timeout_s or _VLM_TIMEOUT_S
+    timeout_s = _VLM_TIMEOUT_S if timeout_s is None else float(timeout_s)
     max_tokens = max_tokens or max(1024, _VLM_MAX_TOKENS)
+
+    def _remaining_timeout() -> float:
+        bounded = max(0.0, float(timeout_s))
+        if deadline_at is not None:
+            bounded = min(
+                bounded, max(0.0, float(deadline_at) - time.monotonic()))
+        return bounded
+
+    if _remaining_timeout() <= 0:
+        return _vlm_fail("deadline_exhausted")
     if lang is None:
         try:
-            from config import DEFAULT_LANG as _dl  # type: ignore
-            lang = _dl
+            import i18n
+            lang = i18n.current_lang()
         except Exception:
             lang = "it"
 
@@ -178,6 +191,9 @@ def describe_image(img_path, *, lang: str | None = None,
         return _vlm_fail(f"read_failed: {e!r}")
     except Exception as e:  # noqa: BLE001
         return _vlm_fail(f"resize_failed: {e!r}")
+
+    if _remaining_timeout() <= 0:
+        return _vlm_fail("deadline_exhausted")
 
     payload = {
         "model": model,
@@ -203,12 +219,20 @@ def describe_image(img_path, *, lang: str | None = None,
         url, data=body, headers={"Content-Type": "application/json"},
         method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        request_timeout = _remaining_timeout()
+        if request_timeout <= 0:
+            return _vlm_fail("deadline_exhausted")
+        with urllib.request.urlopen(req, timeout=request_timeout) as resp:
             raw = resp.read().decode("utf-8")
     except urllib.error.URLError as e:
-        if _looks_like_connection_refused(e) and _lazy_start_vlm():
+        if (_looks_like_connection_refused(e)
+                and _lazy_start_vlm(deadline_at=deadline_at)):
             try:
-                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                request_timeout = _remaining_timeout()
+                if request_timeout <= 0:
+                    return _vlm_fail("deadline_exhausted")
+                with urllib.request.urlopen(
+                        req, timeout=request_timeout) as resp:
                     raw = resp.read().decode("utf-8")
             except (urllib.error.URLError, urllib.error.HTTPError,
                     TimeoutError, OSError) as e2:

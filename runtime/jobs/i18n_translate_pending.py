@@ -8,8 +8,8 @@ risultato con `needs_translation=0`. Idempotente sul `source_hash`: se
 la riga e' gia' stata tradotta e il testo sorgente non e' cambiato dal
 salvataggio precedente, viene saltata.
 
-Override del tier LLM via env `METNOS_I18N_QUALITY` (`middle|wise|frontier`,
-default `wise`). Cap N=20 per fire per non saturare la GPU notturna.
+Il tier LLM e' il contratto centrale ``translation.i18n``. Cap N=20 per fire
+per non saturare la GPU notturna.
 Audit JSONL append-only in `~/.local/share/metnos/i18n_audit/<YYYY-MM-DD>.jsonl`.
 
 Determinismo §7.9: tutto deterministico tranne la singola call LLM di
@@ -25,13 +25,14 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 log = logging.getLogger("metnos.jobs.i18n_translate_pending")
 
 
 # Cap throttling per fire. La GPU locale Strix Halo serve VLM + planner;
-# ~20 traduzioni a tier wise (modello locale) assorbono ~60s GPU/fire. Ora
+# ~20 traduzioni col contratto fast.fidelity locale assorbono ~60s GPU/fire. Ora
 # configurabile (era hardcoded): con cadenza every_6h, 4 fire/giorno × cap.
 # Alzalo per drenare prima il backlog (al costo di burst GPU diurni piu' lunghi).
 CAP_PER_FIRE = int(os.environ.get("METNOS_I18N_CAP_PER_FIRE", "20"))
@@ -64,9 +65,43 @@ def _audit_dir() -> Path:
     return Path(env) if env else _DEFAULT_AUDIT_DIR
 
 
+def _lock_path() -> Path:
+    return _db_path().with_name(_db_path().name + ".translate.lock")
+
+
+@contextmanager
+def _exclusive_translation_lock():
+    """Lock cross-process tra timer systemd e fallback scheduler v2.
+
+    Il file resta intenzionalmente sul disco; `flock` è rilasciato dal kernel
+    anche su crash/kill del processo, quindi non esistono lock stantii.
+    """
+    import fcntl
+
+    path = _lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        os.chmod(path, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        yield True
+    finally:
+        os.close(fd)
+
+
 def _tier() -> str:
-    """LLM tier per la traduzione (default `wise`; override env)."""
-    return os.environ.get("METNOS_I18N_QUALITY", "wise").lower()
+    """Tier dichiarativo della traduzione; nessun tuning per-call."""
+    from llm_workloads import tier_for
+    return tier_for("translation.i18n")
+
+
+def _tier_label(tier: str) -> str:
+    level = getattr(tier, "level", None)
+    return f"{tier}.{level}" if level else str(tier)
 
 
 from timefmt import now_iso_z as _now_iso
@@ -76,6 +111,7 @@ from timefmt import today_iso as _today_iso_date
 
 
 from i18n import _hash_text as _sha256_short  # SoT 16-char (era copia: drift)
+from i18n import _sha256_full as _version_hash  # `sha256:<hex>` catalogo
 
 
 def _sha256_full(text: str) -> str:
@@ -162,8 +198,8 @@ def _materialize_auto_synth_stubs(conn: sqlite3.Connection, tier: str, cap: int)
             f"Genera testo IT+EN."
         )
         try:
-            text, _meta = call_llm(prompt, sys_prompt, tier=tier,
-                                     max_tokens=400, temperature=0.0)
+            text, _meta = call_llm(
+                prompt, sys_prompt, tier=tier, max_tokens=400)
         except Exception as ex:
             log.warning("materialize stub LLM crash key=%s: %r", key, ex)
             errors += 1
@@ -192,21 +228,33 @@ def _materialize_auto_synth_stubs(conn: sqlite3.Connection, tier: str, cap: int)
         if not isinstance(it_text, str) or not isinstance(en_text, str):
             errors += 1
             continue
-        # UPDATE entrambe le lingue + flag.
+        # UPDATE entrambe le lingue. `auto_translated=1` e' la coda di review;
+        # `needs_translation` resta esclusivamente la coda di esecuzione.
         try:
+            it_text = it_text.strip()
+            en_text = en_text.strip()
+            it_short = _sha256_short(it_text)
+            it_version = _version_hash(it_text)
             conn.execute(
                 "UPDATE i18n SET text=?, auto_translated=1, "
-                "needs_translation=1, "
+                "needs_translation=0, source_lang=NULL, source_hash=NULL, "
+                "version_hash=?, source_text_hash=NULL, "
+                "translated_at_iso=?, translated_by=?, "
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
                 "WHERE key=? AND lang='it' AND text LIKE ?",
-                (it_text.strip(), key, _AUTO_SYNTH_PREFIX + "%"),
+                (it_text, it_version, _now_iso(), f"{tier}:auto-synth",
+                 key, _AUTO_SYNTH_PREFIX + "%"),
             )
             conn.execute(
                 "UPDATE i18n SET text=?, auto_translated=1, "
-                "needs_translation=1, "
+                "needs_translation=0, source_lang='it', source_hash=?, "
+                "version_hash=?, source_text_hash=?, "
+                "translated_at_iso=?, translated_by=?, "
                 "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
                 "WHERE key=? AND lang='en' AND text LIKE ?",
-                (en_text.strip(), key, _AUTO_SYNTH_PREFIX + "%"),
+                (en_text, it_short, _version_hash(en_text), it_version,
+                 _now_iso(), f"{tier}:auto-synth", key,
+                 _AUTO_SYNTH_PREFIX + "%"),
             )
             conn.commit()
             generated += 1
@@ -219,36 +267,51 @@ def _materialize_auto_synth_stubs(conn: sqlite3.Connection, tier: str, cap: int)
 def _fetch_pending(conn: sqlite3.Connection, cap: int) -> list[dict]:
     """Pending rows con il loro source text resolved.
 
-    Per ogni riga `needs_translation=1` cerca il source nella stessa key con
-    `lang=source_lang`. Se `source_lang` e' NULL, fallback a `it`. Se il
-    source non esiste o e' vuoto, la riga viene saltata (non si traduce
-    il nulla).
+    Include soltanto righe con sorgente esplicita, diversa dal target e non
+    vuota. Il filtro avviene PRIMA del LIMIT: flag legacy non azionabili non
+    possono affamare indefinitamente le traduzioni valide dietro di loro.
     """
     rows = conn.execute(
-        "SELECT key, lang AS target_lang, source_lang, source_hash, "
-        "       translated_at_iso "
-        "FROM i18n WHERE needs_translation=1 "
-        "ORDER BY key, lang LIMIT ?",
+        "SELECT i.key, i.lang AS target_lang, i.source_lang, i.source_hash, "
+        "       i.source_text_hash, i.translated_at_iso, s.text "
+        "FROM i18n i "
+        "JOIN i18n s ON s.key=i.key AND s.lang=i.source_lang "
+        "WHERE i.needs_translation=1 "
+        "AND i.source_lang IS NOT NULL AND i.source_lang!=i.lang "
+        "AND s.text IS NOT NULL AND trim(s.text)!='' "
+        "ORDER BY i.key, i.lang LIMIT ?",
         (cap,),
     ).fetchall()
     pending: list[dict] = []
     for row in rows:
-        key, target_lang, source_lang, stored_hash, translated_at = row
-        src_lang = (source_lang or "it").lower()
-        src_row = conn.execute(
-            "SELECT text FROM i18n WHERE key=? AND lang=?",
-            (key, src_lang),
-        ).fetchone()
-        src_text = (src_row[0] if src_row else "") or ""
+        (key, target_lang, source_lang, stored_hash, stored_hash_v2,
+         translated_at, src_text) = row
+        src_lang = source_lang.lower()
         pending.append({
             "key": key,
             "target_lang": target_lang,
             "source_lang": src_lang,
             "source_text": src_text,
             "stored_hash": stored_hash,
+            "stored_hash_v2": stored_hash_v2,
             "translated_at_iso": translated_at,
         })
     return pending
+
+
+def _pending_counts(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Ritorna `(totali, azionabili)` con la stessa semantica del fetch."""
+    total = int(conn.execute(
+        "SELECT COUNT(*) FROM i18n WHERE needs_translation=1"
+    ).fetchone()[0])
+    actionable = int(conn.execute(
+        "SELECT COUNT(*) FROM i18n i "
+        "JOIN i18n s ON s.key=i.key AND s.lang=i.source_lang "
+        "WHERE i.needs_translation=1 "
+        "AND i.source_lang IS NOT NULL AND i.source_lang!=i.lang "
+        "AND s.text IS NOT NULL AND trim(s.text)!=''"
+    ).fetchone()[0])
+    return total, actionable
 
 
 def _is_already_translated(row: dict, current_hash: str) -> bool:
@@ -262,21 +325,28 @@ def _is_already_translated(row: dict, current_hash: str) -> bool:
     """
     if not row.get("translated_at_iso"):
         return False
+    stored_v2 = row.get("stored_hash_v2")
+    if stored_v2:
+        return stored_v2 == _version_hash(row.get("source_text") or "")
     stored = row.get("stored_hash")
     return bool(stored) and stored == current_hash
 
 
 _PROMPT_TMPL = (
-    "Traduci la frase IT in {target_name} preservando placeholder "
+    "Traduci la frase da {source_name} a {target_name} preservando placeholder "
     "{{var}} e stile imperativo. Output JSON `{{\"translation\": \"...\"}}`. "
-    "Frase IT: {source_text}"
+    "Testo sorgente: {source_text}"
 )
 
 
-def _build_prompt(source_text: str, target_lang: str) -> str:
+def _build_prompt(source_text: str, source_lang: str, target_lang: str) -> str:
+    source_name = _LANG_NAMES.get(source_lang.lower(), source_lang)
     target_name = _LANG_NAMES.get(target_lang.lower(), target_lang)
     # Doppia chiave nel template: usiamo .format con escape `{{` `}}`.
-    return _PROMPT_TMPL.format(target_name=target_name, source_text=source_text)
+    return _PROMPT_TMPL.format(
+        source_name=source_name, target_name=target_name,
+        source_text=source_text,
+    )
 
 
 def _parse_translation_json(raw: str) -> str | None:
@@ -313,7 +383,35 @@ def _parse_translation_json(raw: str) -> str | None:
     return val or None
 
 
-def _llm_translate(source_text: str, target_lang: str, tier: str) -> tuple[str | None, dict]:
+_FORMAT_FIELD_RE = re.compile(
+    r"(?<!\{)\{([A-Za-z_][A-Za-z0-9_.-]*)"
+    r"(?:![rsa])?(?::[^{}]+)?\}(?!\})"
+)
+
+
+def _validate_candidate(source_text: str, translated_text: str) -> tuple[bool, str | None]:
+    """Gate deterministico minimo prima di rendere persistente una traduzione.
+
+    I placeholder format-style sono contratto runtime: perderne o inventarne
+    uno rende la stringa inutilizzabile. NUL e output vuoti sono sempre
+    corrotti. La qualità linguistica resta al prompt/LLM, non a euristiche
+    fragili di language detection.
+    """
+    if not translated_text.strip():
+        return False, "empty_translation"
+    if "\x00" in translated_text:
+        return False, "nul_in_translation"
+    source_fields = set(_FORMAT_FIELD_RE.findall(source_text))
+    target_fields = set(_FORMAT_FIELD_RE.findall(translated_text))
+    if source_fields != target_fields:
+        missing = sorted(source_fields - target_fields)
+        extra = sorted(target_fields - source_fields)
+        return False, f"placeholder_mismatch missing={missing} extra={extra}"
+    return True, None
+
+
+def _llm_translate(source_text: str, source_lang: str, target_lang: str,
+                   tier: str) -> tuple[str | None, dict]:
     """Chiama il LLM per UNA riga. Retry 1x su JSON malformato.
 
     Ritorna `(translation_or_None, meta)`. Meta include `model`/`tier`/
@@ -322,7 +420,7 @@ def _llm_translate(source_text: str, target_lang: str, tier: str) -> tuple[str |
     """
     from llm_helpers import call_llm
 
-    prompt = _build_prompt(source_text, target_lang)
+    prompt = _build_prompt(source_text, source_lang, target_lang)
     prompt_hash_full = _sha256_full(prompt)
     sys_prompt = (
         "Sei un traduttore tecnico per Metnos. Rispondi SOLO con JSON "
@@ -330,14 +428,22 @@ def _llm_translate(source_text: str, target_lang: str, tier: str) -> tuple[str |
     )
     attempts = 0
     last_text = ""
+    last_rejection = None
     for attempt in range(2):  # tentativo iniziale + 1 retry
         attempts += 1
         text, _meta = call_llm(
-            prompt, sys_prompt, tier=tier, max_tokens=600, temperature=0.0,
-        )
+            prompt, sys_prompt, tier=tier, max_tokens=600)
         last_text = text or ""
         parsed = _parse_translation_json(last_text)
         if parsed:
+            valid, rejection = _validate_candidate(source_text, parsed)
+            if not valid:
+                last_rejection = rejection
+                log.warning(
+                    "i18n candidate rejected target=%s attempt=%d: %s",
+                    target_lang, attempts, rejection,
+                )
+                continue
             meta = {
                 "model": _meta.get("model"),
                 "tier": tier,
@@ -351,6 +457,7 @@ def _llm_translate(source_text: str, target_lang: str, tier: str) -> tuple[str |
         "prompt_hash": prompt_hash_full[:8],
         "attempts": attempts,
         "last_raw": last_text[:200],
+        "rejection": last_rejection,
     }
     return None, meta
 
@@ -367,24 +474,41 @@ def _audit_append(events: list[dict]) -> Path:
 
 
 def _update_translated(conn: sqlite3.Connection, key: str, target_lang: str,
-                       text: str, source_hash: str, translated_by: str) -> None:
+                       text: str, source_lang: str, source_text: str,
+                       source_hash: str, translated_by: str) -> bool:
     """UPDATE atomico della riga tradotta (vedi schema §10.6.x).
 
     Setta `text`, `needs_translation=0`, `source_hash`, `translated_at_iso`,
     `translated_by`. `updated_at` rinfrescato per compat con i fetch
     legacy in `i18n.py`.
     """
-    conn.execute(
+    cur = conn.execute(
         "UPDATE i18n SET text=?, needs_translation=0, source_hash=?, "
+        "version_hash=?, source_text_hash=?, "
         "translated_at_iso=?, translated_by=?, "
         "updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') "
-        "WHERE key=? AND lang=?",
-        (text, source_hash, _now_iso(), translated_by, key, target_lang),
+        "WHERE key=? AND lang=? AND EXISTS ("
+        "SELECT 1 FROM i18n s WHERE s.key=? AND s.lang=? AND s.text=?"
+        ")",
+        (text, source_hash, _version_hash(text), _version_hash(source_text),
+         _now_iso(), translated_by, key, target_lang,
+         key, source_lang, source_text),
+    )
+    conn.commit()
+    return cur.rowcount == 1
+
+
+def _acknowledge_idempotent(conn: sqlite3.Connection, key: str,
+                            target_lang: str) -> None:
+    """Drena una pending già tradotta sullo stesso hash sorgente."""
+    conn.execute(
+        "UPDATE i18n SET needs_translation=0 WHERE key=? AND lang=?",
+        (key, target_lang),
     )
     conn.commit()
 
 
-def task_i18n_translate_pending(payload: dict | None = None) -> dict:
+def _task_i18n_translate_pending_unlocked(payload: dict | None = None) -> dict:
     """Callback scheduler v2: traduce fino a N=20 righe pending del DB i18n.
 
     Payload ignorato (firma uniforme con gli altri callback v2). Ritorna
@@ -401,7 +525,7 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
             "error_count": 0,
             "metadata": {
                 "cap": CAP_PER_FIRE,
-                "tier_used": _tier(),
+                "tier_used": _tier_label(_tier()),
                 "audit_path": None,
                 "reason": "db_absent",
             },
@@ -409,6 +533,7 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
 
     conn = sqlite3.connect(str(db))
     try:
+        conn.execute("PRAGMA busy_timeout=5000")
         cols_added = _ensure_schema(conn)
         if cols_added:
             log.info("i18n schema migration: added %s", cols_added)
@@ -420,16 +545,22 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
             log.info("i18n auto-synth materialize: %s", stub_meta)
         pending = _fetch_pending(conn, cap=CAP_PER_FIRE)
         if not pending:
+            pending_total, pending_actionable = _pending_counts(conn)
             return {
                 "ok": True,
                 "ok_count": 0,
                 "error_count": 0,
                 "metadata": {
                     "cap": CAP_PER_FIRE,
-                    "tier_used": _tier(),
+                    "tier_used": _tier_label(_tier()),
                     "audit_path": None,
-                    "reason": "no_pending",
+                    "reason": (
+                        "no_actionable_pending" if pending_total else "no_pending"
+                    ),
+                    "pending_total": pending_total,
+                    "pending_actionable": pending_actionable,
                     "schema_migration": cols_added,
+                    "auto_synth": stub_meta,
                 },
             }
 
@@ -463,12 +594,15 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
 
             # Idempotency: source invariato + gia' tradotta in passato.
             if _is_already_translated(row, current_hash):
-                events.append({**base_ev, "status": "skipped",
+                _acknowledge_idempotent(conn, key, target_lang)
+                events.append({**base_ev, "status": "acknowledged",
                                "reason": "idempotent_source_unchanged"})
                 continue
 
             try:
-                translation, meta = _llm_translate(source_text, target_lang, tier)
+                translation, meta = _llm_translate(
+                    source_text, row["source_lang"], target_lang, tier,
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("i18n LLM crash key=%s lang=%s: %s",
                             key, target_lang, exc)
@@ -481,6 +615,7 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
                 events.append({**base_ev, "status": "failed",
                                "reason": "llm_unparseable",
                                "attempts": meta.get("attempts"),
+                               "rejection": meta.get("rejection"),
                                "last_raw": meta.get("last_raw")})
                 error_count += 1
                 continue
@@ -488,8 +623,10 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
             model_id = meta.get("model") or "unknown"
             translated_by = f"{model_id}:{meta.get('prompt_hash', '')}"
             try:
-                _update_translated(conn, key, target_lang, translation,
-                                   current_hash, translated_by)
+                updated = _update_translated(
+                    conn, key, target_lang, translation, row["source_lang"],
+                    source_text, current_hash, translated_by,
+                )
             except Exception as exc:  # noqa: BLE001
                 log.warning("i18n UPDATE failed key=%s lang=%s: %s",
                             key, target_lang, exc)
@@ -499,6 +636,14 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
                 error_count += 1
                 continue
 
+            if not updated:
+                events.append({
+                    **base_ev,
+                    "status": "deferred",
+                    "reason": "source_changed_during_translation",
+                })
+                continue
+
             events.append({**base_ev, "status": "ok",
                            "translated_by": translated_by,
                            "translation_len": len(translation)})
@@ -506,6 +651,7 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
 
         audit_path = _audit_append(events) if events else None
         elapsed_ms = int((time.time() - t0_total) * 1000)
+        pending_total, pending_actionable = _pending_counts(conn)
 
         return {
             "ok": True,
@@ -513,12 +659,33 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
             "error_count": error_count,
             "metadata": {
                 "cap": CAP_PER_FIRE,
-                "tier_used": tier,
+                "tier_used": _tier_label(tier),
                 "audit_path": str(audit_path) if audit_path else None,
                 "elapsed_ms": elapsed_ms,
                 "pending_seen": len(pending),
+                "pending_total": pending_total,
+                "pending_actionable": pending_actionable,
                 "schema_migration": cols_added,
+                "auto_synth": stub_meta,
             },
         }
     finally:
         conn.close()
+
+
+def task_i18n_translate_pending(payload: dict | None = None) -> dict:
+    """Entry-point unico per timer systemd e fallback scheduler v2."""
+    with _exclusive_translation_lock() as acquired:
+        if not acquired:
+            return {
+                "ok": True,
+                "ok_count": 0,
+                "error_count": 0,
+                "metadata": {
+                    "cap": CAP_PER_FIRE,
+                    "tier_used": _tier_label(_tier()),
+                    "audit_path": None,
+                    "reason": "already_running",
+                },
+            }
+        return _task_i18n_translate_pending_unlocked(payload)

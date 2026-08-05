@@ -12,7 +12,7 @@ ritorna boilerplate dal codegen + affinity dell'OBJECT.
 
 Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
-- Tier wise (il modello locale), una shot, max 500 tokens output.
+- Workload `skill.description` (`fast.fidelity`), una shot, max 500 token.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
 - Time budget per call: 5s (R1, 24/5/2026). Fallback boilerplate al timeout.
 
@@ -145,7 +145,7 @@ def _try_render_prompt_loader(**vars) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-# System prompt per il tier wise — pattern §6 condensato. Il body del
+# System prompt per la redazione tecnica — pattern §6 condensato. Il body del
 # user prompt viene passato dalla `build_prompt`.
 _WISE_SYSTEM_DEFAULT = (
     "Sei un redattore tecnico Metnos. Rispondi SEMPRE con un solo oggetto JSON "
@@ -156,22 +156,19 @@ _WISE_SYSTEM_DEFAULT = (
 
 def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
               max_tokens: int = 600) -> Optional[str]:
-    """Chiamata reale al tier wise (il modello locale locale via LlamaCppProvider
-    su http://127.0.0.1:8080).
+    """Chiamata reale al tier registrato per le descrizioni tecniche.
 
     Strategie in ordine:
     1. Funzione fake iniettata via env METNOS_LLM_DESCRIPTION_FAKE=mod.fn (test).
-    2. LLMRouter() da <install_root>/runtime → provider("wise").chat() — produzione.
+    2. LLMRouter() + workload registry — produzione.
     3. None (fallback boilerplate; logga WARN tramite logger se disponibile).
 
-    Time budget enforced via thread wrapper: se il provider supera `timeout_s`
-    secondi, ritorna None silenziosamente (caller fallback su boilerplate). Il
-    thread "leaked" continua in background ma non blocca la pipeline di import
-    (un singolo import skill = N executor; un timeout su uno non blocca gli
-    altri).
+    The production time budget is propagated to the provider transport *and*
+    enforced externally.  This keeps the import responsive even when a
+    provider (or an injected fake) ignores its timeout argument.
 
-    think=False per stage 4 (description e' creativo ma non richiede thinking
-    esteso; riduce latenza ~3x). max_tokens=600 sufficiente per JSON.
+    Il tier decide la policy di generazione; questo stadio dichiara soltanto
+    il limite di output. ``max_tokens=600`` è sufficiente per il JSON.
     """
     fake = os.environ.get("METNOS_LLM_DESCRIPTION_FAKE")
     fake_fn = None
@@ -187,58 +184,64 @@ def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
                 _warn_no_llm(f"fake llm import error: {e}")
                 return None
 
-    # Wrap fake/real call uniformemente in thread-with-deadline per garantire
-    # time budget (timeout enforcement simmetrico fra test e produzione).
-    result_holder: dict = {}
+    def _request() -> Optional[str]:
+        if fake_fn is not None:
+            return fake_fn(prompt, timeout_s, max_tokens)
 
-    def _call() -> None:
+        # Produzione: workload skill.description, risolto centralmente.
+        import sys as _sys
+        runtime_dir = Path(__file__).resolve().parent
+        if not runtime_dir.exists():
+            raise RuntimeError("runtime dir non disponibile")
+        if str(runtime_dir) not in _sys.path:
+            _sys.path.insert(0, str(runtime_dir))
+        from llm_router import LLMRouter  # type: ignore
+        from llm_workloads import tier_for  # type: ignore
+        provider = LLMRouter().provider(tier_for("skill.description"))
+        return getattr(provider.chat(
+            _WISE_SYSTEM_DEFAULT,
+            prompt,
+            max_tokens=max_tokens,
+            request_timeout_s=timeout_s,
+        ), "text", None)
+
+    result: dict[str, object] = {}
+
+    def _run_request() -> None:
         try:
-            if fake_fn is not None:
-                text = fake_fn(prompt, timeout_s, max_tokens)
-                if text is None:
-                    result_holder["err"] = "fake llm returned None"
-                    return
-                if not isinstance(text, str) or not text.strip():
-                    result_holder["err"] = "fake llm returned empty"
-                    return
-                result_holder["text"] = text
-                return
-            # Produzione: LLMRouter tier wise.
-            import sys as _sys
-            runtime_dir = Path(__file__).resolve().parent  # ADR 0148 rename-resilient
-            if not runtime_dir.exists():
-                result_holder["err"] = "runtime dir non disponibile"
-                return
-            if str(runtime_dir) not in _sys.path:
-                _sys.path.insert(0, str(runtime_dir))
-            from llm_router import LLMRouter  # type: ignore
-            router = LLMRouter()
-            provider = router.provider("wise")
-            # think=False — JSON-strict, no reasoning extended.
-            # temperature=0 — output deterministico.
-            res = provider.chat(
-                _WISE_SYSTEM_DEFAULT, prompt,
-                max_tokens=max_tokens, temperature=0, think=False,
-            )
-            text = getattr(res, "text", None) or ""
-            if not text.strip():
-                result_holder["err"] = "LLM ritornato vuoto"
-                return
-            result_holder["text"] = text
-        except Exception as e:
-            result_holder["err"] = f"LLM error: {type(e).__name__}: {e}"
+            result["text"] = _request()
+        except BaseException as exc:
+            # The exception is reported by the caller, outside the worker.
+            # A daemon worker is intentionally used: a non-cooperative
+            # provider must never keep the import process alive past timeout.
+            result["error"] = exc
 
-    t = threading.Thread(target=_call, daemon=True)
-    t.start()
-    t.join(timeout=timeout_s)
-    if t.is_alive():
-        _warn_no_llm(f"LLM timeout dopo {timeout_s}s")
+    try:
+        wall_timeout_s = max(0.0, float(timeout_s))
+    except (TypeError, ValueError):
+        _warn_no_llm(f"timeout non valido: {timeout_s!r}")
         return None
-    if "text" in result_holder:
-        return result_holder["text"]
-    if "err" in result_holder:
-        _warn_no_llm(result_holder["err"])
-    return None
+
+    worker = threading.Thread(
+        target=_run_request,
+        name="metnos-skill-description-llm",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout=wall_timeout_s)
+    if worker.is_alive():
+        _warn_no_llm(f"LLM timeout dopo {wall_timeout_s:g}s")
+        return None
+
+    error = result.get("error")
+    if error is not None:
+        _warn_no_llm(f"LLM error: {type(error).__name__}: {error}")
+        return None
+    text = result.get("text")
+    if not isinstance(text, str) or not text.strip():
+        _warn_no_llm("LLM ritornato vuoto")
+        return None
+    return text
 
 
 def _warn_no_llm(reason: str) -> None:
@@ -341,6 +344,35 @@ def _validate_shape(obj) -> bool:
     if aff is not None and not isinstance(aff, list):
         return False
     return True
+
+
+def _qualified_affinity(proposed: list, fallback: list) -> list:
+    """Keep imported-skill affinity action-qualified and deterministic.
+
+    A model may return bare object or action words even when the codegen
+    baseline correctly emits phrases such as ``find messages``.  Bare terms
+    make sibling executors overlap, so model output is accepted only for
+    multi-token phrases and completed with the deterministic baseline.
+    """
+    out: list[str] = []
+    for source in (proposed, fallback):
+        for raw in source or []:
+            if not isinstance(raw, str):
+                continue
+            term = " ".join(raw.split())
+            if len(term.split()) < 2 or term in out:
+                continue
+            out.append(term)
+            if len(out) >= 15:
+                return out
+    if out:
+        return out
+    # Unknown imported vocab may lack a qualified baseline. Preserve the
+    # previous graceful behavior rather than returning an empty affinity.
+    for raw in fallback or proposed or []:
+        if isinstance(raw, str) and raw.strip() and raw.strip() not in out:
+            out.append(raw.strip())
+    return out[:15]
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +491,9 @@ def generate_description_or_fallback(plan, parsed_skill, *,
     )
     elapsed_ms = int((time.perf_counter() - t0) * 1000)
     if res:
+        affinity = _qualified_affinity(
+            res.get("affinity") or [], boilerplate_affinity or [],
+        )
         _append_audit(
             plan_name=plan_name, skill_name=skill_name,
             source="llm", elapsed_ms=elapsed_ms, timeout_s=timeout_s,
@@ -466,7 +501,7 @@ def generate_description_or_fallback(plan, parsed_skill, *,
         return {
             "description_it": res["description_it"],
             "description_en": res["description_en"],
-            "affinity": res["affinity"] or boilerplate_affinity or [],
+            "affinity": affinity,
             "source": "llm",
         }
     _append_audit(

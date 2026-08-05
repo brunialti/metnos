@@ -57,19 +57,9 @@ def _has_unified_v4(corpus_dir: Path) -> bool:
 
 
 def _resolve_corpus_dir(base_path: Path) -> Path:
-    """Risolve la corpus dir indice da base_path.
-    Path LOGICAL (no .resolve()): coerente con _index_dir di
-    find/create/get/delete_images_indices."""
-    import hashlib
-    import os
-    import config as _C  # §7.11
-    from index_schema import canonical_corpus_path
-    digest = hashlib.sha256(
-        canonical_corpus_path(base_path).encode("utf-8")).hexdigest()
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image" / digest[:16]
-    return _C.PATH_USER_DATA / "index" / "image" / digest[:16]
+    """Risolve la corpus dir con la stessa SoT di reader e builder."""
+    from index_schema import image_corpus_dir
+    return image_corpus_dir(base_path)
 
 
 def main():

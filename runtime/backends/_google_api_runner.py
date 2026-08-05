@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -87,6 +88,7 @@ _SSL_PATTERNS = ("SSL", "ASN1", "TLSV", "ssl.SSLError")
 # bilanciato fra latenza e copertura transient (oltre raddoppia attese).
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_TIMEOUT_S = 60
+DEFAULT_BACKOFF_BASE_S = 0.5
 
 
 def _is_ssl_error(stderr: str) -> bool:
@@ -104,6 +106,7 @@ def run_with_retry(
     max_retries: int = DEFAULT_MAX_RETRIES,
     timeout_s: int = DEFAULT_TIMEOUT_S,
     skill_name: str = SKILL_NAME,
+    backoff_base_s: float = DEFAULT_BACKOFF_BASE_S,
 ) -> tuple[dict | list | None, dict | None]:
     """Esegue `python google_api.py <argv>` con retry §7.9.
 
@@ -143,6 +146,8 @@ def run_with_retry(
                 last_err = {"ok": False,
                             "error": f"invalid JSON da google_api: {ex}",
                             "error_class": "server_error"}
+                if _attempt < max_retries and backoff_base_s > 0:
+                    time.sleep(min(4.0, backoff_base_s * (2 ** _attempt)))
                 continue
         ec = _classify_error(rc, stderr)
         err_code, err_text = _i18n_error_for_class(ec, stderr, rc)
@@ -159,11 +164,17 @@ def run_with_retry(
         # invalid_args, not_found) sono permanenti → fail-fast.
         if ec not in _TRANSIENT_ERROR_CLASSES and not _is_ssl_error(stderr):
             return None, last_err
+        if _attempt < max_retries and backoff_base_s > 0:
+            time.sleep(min(4.0, backoff_base_s * (2 ** _attempt)))
     return None, last_err
 
 
 def _skill_root() -> Path:
-    """Lazy-import wrap per `skill_wrapper._skill_home` (evita import top-
-    level se il helper viene usato in contesti senza skill_wrapper)."""
-    from skill_wrapper import _skill_home
-    return _skill_home(SKILL_NAME)
+    """Resolve the versioned bundle code, separately from OAuth state.
+
+    The runner executes the first-party script shipped by the current Metnos
+    checkout. ``_run_api`` still injects the user's ``METNOS_SKILL_HOME`` so
+    tokens and client secrets remain private and user-scoped.
+    """
+    from skill_wrapper import _skill_code_home
+    return _skill_code_home(SKILL_NAME)

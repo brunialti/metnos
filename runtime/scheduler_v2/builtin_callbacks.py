@@ -101,7 +101,9 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "Reaper unico dello stato persistente che cresceva senza pulizia: "
             "undo.jsonl + _history blob (retention METNOS_UNDO_RETENTION_DAYS), "
             "http_cache, location_pending, skill_fetch, install_resume, "
-            "approval_registry, turns/ (METNOS_TURN_LOG_RETENTION_DAYS). "
+            "approval_registry, turns/ e audit periodici con archivi "
+            "compressi e limiti "
+            "(METNOS_TURN_LOG_RETENTION_DAYS). "
             "Wire dei reaper esistenti mai schedulati. Idempotente."
         ),
     },
@@ -143,8 +145,9 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "trigger": "every_6h",
         "callback_key": "i18n_translate_pending",
         "description": (
-            "Traduce fino a 20 righe pending del DB i18n via LLM tier "
-            "wise (override env METNOS_I18N_QUALITY). Idempotente sul "
+            "Fallback ogni 6h del timer i18n: usa lo stesso motore con lock "
+            "interprocesso. Traduce fino a 20 righe pending col contratto "
+            "LLM fast.fidelity. Idempotente sul "
             "source_hash, audit JSONL append-only. Throttle GPU notturna."
         ),
     },
@@ -155,7 +158,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "description": (
             "Gemello lato INPUT di i18n_translate_pending: traduce i lessici "
             "di detection NL pending (detection.sqlite) nella lingua "
-            "d'istanza via LLM tier wise. Evita il fallimento silenzioso al "
+            "d'istanza via LLM fast.fidelity. Evita il fallimento silenzioso al "
             "cambio lingua. I regex morfologici sono saltati (authoring "
             "manuale). Audit JSONL append-only."
         ),
@@ -281,6 +284,16 @@ _BUILTIN_JOBS = [
         ),
     }
 ]
+
+
+def builtin_job_names() -> frozenset[str]:
+    """Return the live scheduler builtin names from their canonical specs.
+
+    Callers must not maintain a second allowlist: nightly consolidation and
+    future additions rewrite ``_BUILTIN_JOBS`` above before this function is
+    evaluated.
+    """
+    return frozenset(str(job["name"]) for job in _BUILTIN_JOBS)
 
 
 def task_images_index_refresh() -> dict:
@@ -628,13 +641,13 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # i18n_translate_pending: traduce 20 righe pending/notte (cap throttling
-    # GPU). Firma nativa v2 (`cb(payload)`), niente wrapper zero-arg.
+    # i18n_translate_pending: fallback every_6h del timer systemd. Entrambi
+    # convergono sullo stesso callback protetto da lock interprocesso.
     from jobs.i18n_translate_pending import task_i18n_translate_pending
     cb.register(
         "i18n_translate_pending",
         task_i18n_translate_pending,
-        "Traduce 20 righe pending del DB i18n (every_6h, tier wise default)",
+        "Fallback i18n every_6h, motore unico con lock (fast.fidelity)",
         replace=True,
     )
 
@@ -643,7 +656,7 @@ def install_default_callbacks(scheduler) -> None:
     cb.register(
         "detection_translate_pending",
         task_detection_translate_pending,
-        "Traduce i lessici di detection NL pending (every_6h, tier wise)",
+        "Traduce i lessici di detection NL pending (every_6h, fast.fidelity)",
         replace=True,
     )
 
@@ -745,7 +758,10 @@ def install_default_callbacks(scheduler) -> None:
         from telos_lenses import LENSES
         # Forza tutte le 10 lenti attive: in modalita' nightly ignoriamo
         # i toggle per-lens individuali.
-        summary = run_all_telos(lenses=list(LENSES.keys()), persist=True)
+        summary = run_all_telos(
+            lenses=list(LENSES.keys()), persist=True,
+            evaluate_duplicates=False,
+        )
         return {"ok": True, **summary}
     cb.register(
         "telos_introspect_nightly",

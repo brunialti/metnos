@@ -8,8 +8,9 @@ Sub-commands:
 - metnos-skills status <skill_name>          Invocazioni, success rate, age.
 - metnos-skills evaluate <skill_name>        Re-invoca admission policy.
 
-Determinismo §7.9: tutto procedurale. LLM solo nel sub-step codegen
-description (Task C.2) e nel verifier L6 (Task D).
+La traduzione dei nomi e degli argomenti è procedurale. Descrizioni e affinità
+possono usare un modello con fallback deterministico; il controllo L6 usa il
+verificatore semantico e fallisce chiuso nel flusso ordinario.
 """
 from __future__ import annotations
 
@@ -190,7 +191,7 @@ def _cmd_import(args) -> int:
     parsed = parse_skill_md(skill_path)
     print(f"  skill: {parsed.name} v{parsed.version} - {len(parsed.sub_commands)} sub-commands")
 
-    print(f"Translating sub-commands -> ExecutorPlans...")
+    print("Translating sub-commands -> ExecutorPlans...")
     plans, rejected = translate_skill(
         parsed,
         imported_from_url=args.url or f"agentskills.io/local/{parsed.name}",
@@ -264,7 +265,7 @@ def _cmd_import(args) -> int:
         if skill_path.resolve() != dest_skill.resolve():
             shutil.copy2(skill_path, dest_skill)
 
-    print(f"Admission policy (ADR 0114 + ADR 0122 + ADR 0159)...")
+    print("Admission policy (ADR 0114 + ADR 0122 + ADR 0159)...")
     skip_binding = bool(args.update)
     report = admit_skill_import(
         parsed, plans,
@@ -286,7 +287,7 @@ def _cmd_import(args) -> int:
     if args.no_sign or os.environ.get("METNOS_SKILLS_NO_SIGN") == "1":
         print("Signing: skipped (--no-sign or METNOS_SKILLS_NO_SIGN=1)")
     else:
-        print(f"Signing accepted executors with Ed25519...")
+        print("Signing accepted executors with Ed25519...")
         for v in report.accepted:
             d = executors_dir / v.plan_name
             if d.exists():
@@ -308,7 +309,7 @@ def _cmd_import(args) -> int:
     _append_audit(parsed, plans, report, translator_rejected=rejected)
 
     print()
-    print(f"Summary:")
+    print("Summary:")
     for v in report.accepted:
         print(f"  + {v.plan_name}")
     for v in report.rejected:
@@ -471,7 +472,7 @@ def _cmd_list(args) -> int:
         n_exec = c.get("total") or s.n_executors
         n_dorm = c.get("dormant", 0)
         kind = ("core" if s.name == "core"
-                else "first-party" if getattr(s, "is_first_party", False)
+                else "builtin" if getattr(s, "is_builtin", False)
                 else "imported")
         dorm = f" ({n_dorm} dormant)" if n_dorm else ""
         print(f"- {s.name} [{kind}] enabled={en} trust={s.trust}: "
@@ -643,7 +644,8 @@ def _cmd_info(args) -> int:
     print(f"auto_enable : {info.auto_enable}")
     print(f"enabled     : {info.enabled}")
     print(f"n_executors : {info.n_executors}")
-    print(f"is_builtin  : {info.is_builtin_repo}")
+    print(f"is_builtin  : {info.is_builtin}")
+    print(f"in_repo     : {info.is_builtin_repo}")
     print(f"is_imported : {info.is_imported}")
     return 0
 

@@ -20,6 +20,7 @@ import json
 import logging
 import re
 from typing import Optional, Callable, Protocol, Sequence
+from config import env_int
 
 from .types import Intent, Framework
 
@@ -58,9 +59,13 @@ _THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
 # description = sola testa). `manifest_lint` e synt importano dalla stessa SoT.
 try:
     from manifest_rules import (RENDER_BUDGET as TOOL_DESC_BUDGET,
-                                HEAD_MAX as _HEAD_MAX, render_head as _render_head)
+                                RENDER_HARD_MAX as _RENDER_HARD_MAX,
+                                HEAD_MAX as _HEAD_MAX,
+                                render_head as _render_head,
+                                render_heads_budgeted as _render_heads_budgeted)
 except Exception:  # pragma: no cover — CLI senza runtime sul path
     TOOL_DESC_BUDGET = 260
+    _RENDER_HARD_MAX = 320
     _HEAD_MAX = 240
 
     def _render_head(desc):
@@ -69,6 +74,9 @@ except Exception:  # pragma: no cover — CLI senza runtime sul path
             c = desc.find("OUT:")
             return (desc[:c] if c > 0 else desc)[:TOOL_DESC_BUDGET].strip()
         return desc.split(".")[0][:180].strip()
+
+    def _render_heads_budgeted(descriptions):
+        return [_render_head(desc) for desc in descriptions]
 
 # Rate-limit del WARN testa-over-budget: 1 volta per tool (evita spam a ogni turno).
 _HEAD_OVERBUDGET_SEEN: set = set()
@@ -84,6 +92,18 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         return "\n".join(f"- {n}" for n in pool)
     from date_tokens import substitute_date_tokens  # §7.11: anni-esempio freschi
     cat_by_name = {getattr(e, "name", None): e for e in catalog}
+    # Budget condiviso: i tool con testa corta cedono spazio a quelli che
+    # richiedono un boundary piu' ricco, entro hard cap e totale bounded.
+    _raw_by_name = {}
+    for name in pool:
+        e = cat_by_name.get(name)
+        if e is not None:
+            _raw_by_name[name] = substitute_date_tokens(
+                getattr(e, "description", "") or "")
+    _rendered = _render_heads_budgeted(
+        [_raw_by_name[name] for name in pool if name in _raw_by_name])
+    _desc_by_name = dict(zip(
+        [name for name in pool if name in _raw_by_name], _rendered))
     lines = []
     for name in pool:
         e = cat_by_name.get(name)
@@ -93,10 +113,10 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         # Troncamento via SoT manifest_rules.render_head (DNA): testa §2.5 fino a
         # OUT: (cap RENDER_BUDGET) per i capitoli; prima frase ROBUSTA (cap
         # RENDER_LEGACY_MAX, non spezza a ".html") per i legacy in attesa di bonifica.
-        _raw = substitute_date_tokens(getattr(e, "description", "") or "")
-        desc_short = _render_head(_raw)
-        # Guard cheap (§7.3, 5/7): la testa §2.5 oltre HEAD_MAX viene TRONCATA nel
-        # render → rischio taglio del NON:/disambiguazione (misroute, classe
+        _raw = _raw_by_name.get(name, "")
+        desc_short = _desc_by_name.get(name) or _render_head(_raw)
+        # Guard cheap (§7.3, 5/7): la testa §2.5 oltre HEAD_MAX dipende dal
+        # budget elastico del pool → possibile taglio del NON:/disambiguazione (classe
         # find_images 9400d90). Il test statico copre i manifest del REPO; questo
         # WARN a runtime intercetta i SINTETIZZATI/IMPORTATI/installati over-budget
         # (fuori dal test). Controllo O(1) sul render che gia' fai; 1 volta/tool.
@@ -105,8 +125,9 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         if _hlen > _HEAD_MAX and name not in _HEAD_OVERBUDGET_SEEN:
             _HEAD_OVERBUDGET_SEEN.add(name)
             log.warning("[manifest] testa §2.5 di '%s' = %d>%d "
-                        "(troncata a %d nel pool → rischio misroute): accorcia "
-                        "SCOPO/PATTERN/NON", name, _hlen, _HEAD_MAX, TOOL_DESC_BUDGET)
+                        "(budget pool elastico, hard cap %d): compatta "
+                        "SCOPO/PATTERN/NON", name, _hlen, _HEAD_MAX,
+                        _RENDER_HARD_MAX)
         schema = getattr(e, "args_schema", None) or {}
         required = schema.get("required") or []
         roo = schema.get("requires_one_of") or []
@@ -156,8 +177,16 @@ def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
     nessun LLM; hash non risolvibili (es. anti_skills di processi passati)
     → conteggio onesto, mai sha grezzi nel prompt.
     """
+    from prompt_loader import get as _prompt_get
     if not excluded_hashes:
-        return "(nessuno)" if lang == "it" else "(none)"
+        return _prompt_get(
+            "engine_excluded_signal", lang,
+            has_excluded=False,
+            shapes_block="",
+            unresolved=0,
+            first_tools="",
+            example_shape="",
+        ).strip()
     try:
         from .executor import framework_shape_for_hash
     except Exception:  # pragma: no cover — import circolare/CLI degradata
@@ -171,7 +200,7 @@ def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
                 shapes.append(s)
         else:
             unresolved += 1
-    lines = [f"- {s}" for s in shapes]
+    shapes_block = "\n".join(f"- {s}" for s in shapes)
     # Primi tool dei piani esclusi (ordine stabile): il vincolo CONCRETO
     # («NON ripartire da X») smuove il modello medio piu' del generico
     # «cambia qualcosa»; «oppure sequenza/argomenti diversi» lascia aperta
@@ -182,27 +211,14 @@ def _render_excluded_signal(excluded_hashes: set[str], lang: str = "it") -> str:
         if ft and ft != "final_answer" and ft not in firsts:
             firsts.append(ft)
     quoted = ", ".join(f"«{f}»" for f in firsts)
-    if lang == "it":
-        if unresolved:
-            lines.append(f"- {unresolved} altri piani gia' rifiutati "
-                         "(forma non nota)")
-        lines.append("DEVI: proporre un piano DIVERSO da quelli sopra"
-                     + (f" — primo tool diverso (NON {quoted}), oppure "
-                        "sequenza/argomenti diversi." if quoted else "."))
-        lines.append("NON DEVI: riemettere un piano elencato sopra.")
-        if shapes:
-            lines.append(f"ERRORE: ripetere identico «{shapes[0]}».")
-    else:
-        if unresolved:
-            lines.append(f"- {unresolved} more plans already rejected "
-                         "(shape unknown)")
-        lines.append("YOU MUST: propose a plan DIFFERENT from those above"
-                     + (f" — different first tool (NOT {quoted}), or a "
-                        "different sequence/arguments." if quoted else "."))
-        lines.append("YOU MUST NOT: re-emit a plan listed above.")
-        if shapes:
-            lines.append(f"ERROR: repeating «{shapes[0]}» verbatim.")
-    return "\n".join(lines)
+    return _prompt_get(
+        "engine_excluded_signal", lang,
+        has_excluded=True,
+        shapes_block=shapes_block,
+        unresolved=unresolved,
+        first_tools=quoted,
+        example_shape=shapes[0] if shapes else "",
+    ).strip()
 
 
 def _render_skeleton(intent, lang: str = "it") -> str:
@@ -234,21 +250,13 @@ def _render_skeleton(intent, lang: str = "it") -> str:
     # INLINE: skeleton vuoto (query mono-azione) → prompt BYTE-IDENTICO al
     # pre-skeleton (zero perturbazione del wise LLM sulle query mono, vedi
     # routing bench). Presente → riga propria sotto keywords.
-    if lang == "en":
-        base = ("\nSUGGESTED STRUCTURE (intent decomposition, NON-BINDING — adapt "
-                "or discard if it doesn't fit; you pick the tools/provider/args, "
-                "cover every clause): " + steps)
-        if cover_seq:
-            base += (f"\nYOU MUST include a step for EACH clause above — you "
-                     f"OMITTED: {cover_seq}. Add it with proper args.")
-        return base
-    base = ("\nSTRUTTURA SUGGERITA (decomposizione dell'intent, NON VINCOLANTE — "
-            "adatta o scarta se non calza; scegli tu tool/provider/args, copri "
-            "ogni clausola): " + steps)
-    if cover_seq:
-        base += (f"\nDEVI includere uno step per OGNI clausola sopra — hai "
-                 f"OMESSO: {cover_seq}. Aggiungilo con gli args corretti.")
-    return base
+    from prompt_loader import get as _prompt_get
+    rendered = _prompt_get(
+        "engine_skeleton", lang,
+        steps=steps,
+        omitted=cover_seq,
+    ).strip()
+    return "\n" + rendered
 
 
 def _render_prior_steps(prior_steps, lang: str = "it") -> str:
@@ -267,7 +275,7 @@ def _render_prior_steps(prior_steps, lang: str = "it") -> str:
             if getattr(s, "kind", "live") == "done"]
     if not done:
         return ""
-    lines = []
+    rendered_steps: list[dict] = []
     for s in done:
         idx = getattr(s, "step_idx", 0)
         tool = getattr(s, "tool", "") or "?"
@@ -279,17 +287,18 @@ def _render_prior_steps(prior_steps, lang: str = "it") -> str:
                 if isinstance(v, list):
                     n = len(v)
                     break
-        outcome = (f"{n} risultati" if (n is not None and lang != "en")
-                   else f"{n} results" if n is not None else "ok")
-        lines.append(f"  {idx}) {tool} → {outcome}")
-    body = "\n".join(lines)
-    if lang == "en":
-        return ("\nDONE SO FAR (prior turn — do NOT re-emit these; reference "
-                "their results via from_step=N; plan ONLY the remaining steps):\n"
-                + body)
-    return ("\nFATTO FINORA (turno precedente — NON ri-emettere questi step; "
-            "referenzia i loro risultati via from_step=N; pianifica SOLO gli "
-            "step rimanenti):\n" + body)
+        rendered_steps.append({
+            "idx": idx,
+            "tool": tool,
+            "count": n if n is not None else 0,
+            "has_count": n is not None,
+        })
+    from prompt_loader import get as _prompt_get
+    rendered = _prompt_get(
+        "engine_prior_steps", lang,
+        steps=rendered_steps,
+    ).strip()
+    return "\n" + rendered
 
 
 def _strip_think(raw: str) -> str:
@@ -369,6 +378,57 @@ def _parse_framework_json(raw: str) -> Optional[dict]:
     return first_dict
 
 
+def _looks_like_truncated_framework(raw: str) -> bool:
+    """True only for an unfinished framework-shaped JSON prefix.
+
+    Grammar-constrained local generation can stop exactly at the output token
+    ceiling while every token produced so far is valid.  Retrying that prefix
+    with a larger ceiling is safe; retrying arbitrary malformed prose is not.
+    """
+    cleaned = _strip_think(raw or "").strip()
+    if not cleaned or '"steps"' not in cleaned:
+        return False
+    if any(True for _block in _iter_balanced_json_objects(cleaned)):
+        return False
+    # The last complete nested step/args object may itself end in `}` while
+    # the outer steps array/framework object is still open.
+    return cleaned.startswith("{")
+
+
+def _proposer_max_tokens(*, query: str, intent: Intent,
+                         effective_pool: list[str], use_fast: bool) -> int:
+    """Bounded output budget scaled by structural complexity.
+
+    The ceiling does not force the model to emit more tokens: complete JSON
+    stops normally.  It only prevents long compound plans from being cut at
+    the historical 1024-token mono-action budget.
+    """
+    def _token_budget(name: str, default: int) -> int:
+        return max(256, min(8192, env_int(name, default)))
+
+    actions = [action for action in (
+        getattr(intent, "actions", None) or []) if isinstance(action, dict)]
+    action_count = len(actions)
+    compound = action_count >= 2
+    # The intent extractor can deliberately stay empty on a long compound
+    # request.  Treating that case as mono-action gave it the 1024-token
+    # ceiling and forced an expensive full retry even though the query and
+    # candidate pool already prove structural complexity.  A larger ceiling
+    # does not force extra generation (complete JSON stops normally); it only
+    # prevents a valid long framework from being cut at the boundary.
+    structurally_complex = (
+        action_count >= 4 or len(effective_pool) >= 32
+        or len(query or "") >= 800)
+    complex_plan = structurally_complex and (compound or action_count == 0)
+    if not use_fast:
+        return _token_budget("METNOS_PROPOSER_MAX_TOKENS_DELIBERATE", 2048)
+    if complex_plan:
+        return _token_budget("METNOS_PROPOSER_MAX_TOKENS_COMPLEX", 2048)
+    if compound:
+        return _token_budget("METNOS_PROPOSER_MAX_TOKENS_COMPOUND", 1536)
+    return _token_budget("METNOS_PROPOSER_MAX_TOKENS_FAST", 1024)
+
+
 class SimpleProposer:
     """Default: 1-shot modello locale wise + parse tollerante.
 
@@ -438,26 +498,21 @@ class SimpleProposer:
                 prior_steps: Sequence = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
-        # Tier downgrade per intent high-confidence.
-        # Bench 28/5/2026 (15q + 446q FROZEN): think=True NON aumenta ok%
-        # rispetto a think=False. Soglia abbassata 0.85→0.70 per coprire
-        # piu' query con la fast path (3-5s vs 25-30s).
+        # Contratto routine per intent high-confidence. Il benchmark storico
+        # ha motivato la soglia; oggi la differenza di decoding e binding vive
+        # nei tier, non in questo call site.
         # Override via env METNOS_PROPOSER_FAST_CONFIDENCE.
         import os
         threshold = float(os.environ.get(
             "METNOS_PROPOSER_FAST_CONFIDENCE", "0.70"))
         use_fast = intent.confidence >= threshold
 
-        # §7.3 GBNF grammar — DEFAULT ON (8/6/2026, decisione Roberto: routing
-        # DETERMINISTICO §7.9). Forza think=False (ADR 0133: grammar+think
-        # collidono): il reasoning think=True è non-deterministico vicino ai
-        # confini (flip read_urls/find_dirs), e il seed da solo non basta a
-        # stabilizzarlo (resta la varianza MTP sul reasoning lungo). grammar
-        # (think=False) + seed fisso (llm_provider) → routing riproducibile.
-        # Bench 28/5: think=True NON aumenta ok%. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
+        # §7.3 GBNF grammar — DEFAULT ON. Se attiva seleziona il workload
+        # ``planner.grammar`` (fast.fidelity), il cui profilo e' compatibile col
+        # vincolo strutturale. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
         use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "1") == "1"
         if use_grammar:
-            use_fast = True  # force think=False
+            use_fast = True  # conserva il budget d'output compatto
 
         # Pool effettivo per prompt+grammar: verb-filter (skip compound) +
         # exclude_tools. Estratto in _effective_pool (override-point §7.3):
@@ -514,10 +569,22 @@ class SimpleProposer:
             return None
         if not system:
             return None
-        # Costruisci kwargs LLM con opzionale grammar
+        # The workload chooses one complete logical tier.  Grammar and the
+        # output ceiling remain operation contracts; decoding parameters do
+        # not live at this call site.
+        from llm_workloads import tier_for
+        if use_grammar:
+            selected_tier = tier_for("planner.grammar")
+        elif use_fast:
+            selected_tier = tier_for("planner.routine")
+        else:
+            selected_tier = tier_for("planner.deliberate")
+        output_budget = _proposer_max_tokens(
+            query=query, intent=intent, effective_pool=effective_pool,
+            use_fast=use_fast)
         llm_kwargs: dict = {
-            "max_tokens": 1024 if use_fast else 2048,
-            "think": not use_fast,
+            "max_tokens": output_budget,
+            "tier_override": selected_tier,
         }
         if use_grammar:
             try:
@@ -539,31 +606,58 @@ class SimpleProposer:
                     llm_kwargs["grammar"] = build_framework_grammar(effective_pool)
             except Exception as ex:
                 log.warning("GBNF grammar load fallita: %r — fallback no-grammar", ex)
-        try:
-            raw = llm_call(system, user, **llm_kwargs)
-        except TypeError:
-            # llm_call non supporta grammar/think kwargs → fallback
-            if "grammar" in llm_kwargs:
-                # B7 — §2.8 no silent failure: il drop della GBNF toglie il
-                # vincolo sui nomi tool → generazione NON vincolata
-                # (allucinazione possibile). Va segnalato, non taciuto.
-                log.warning(
-                    "SimpleProposer: llm_call non supporta 'grammar' — "
-                    "GBNF droppata, generazione non vincolata (§2.8)")
-            llm_kwargs.pop("grammar", None)
+        def _call_model(call_kwargs):
+            call_kwargs = dict(call_kwargs)
             try:
-                raw = llm_call(system, user, **llm_kwargs)
-            except Exception as ex:
-                log.warning("SimpleProposer LLM (fallback) call failed: %r", ex)
-                return None
+                return llm_call(system, user, **call_kwargs)
+            except TypeError:
+                # A test/legacy injected callable may not support the runtime
+                # tier selector or grammar.  Production adapters support both.
+                if "grammar" in call_kwargs:
+                    # B7 — §2.8 no silent failure: il drop della GBNF toglie il
+                    # vincolo sui nomi tool → generazione NON vincolata.
+                    log.warning(
+                        "SimpleProposer: llm_call non supporta 'grammar' — "
+                        "GBNF droppata, generazione non vincolata (§2.8)")
+                call_kwargs.pop("grammar", None)
+                call_kwargs.pop("tier_override", None)
+                return llm_call(system, user, **call_kwargs)
+
+        try:
+            raw = _call_model(llm_kwargs)
         except Exception as ex:
             log.warning("SimpleProposer LLM call failed: %r", ex)
             return None
         parsed = _parse_framework_json(raw or "")
+        if not parsed and _looks_like_truncated_framework(raw or ""):
+            try:
+                retry_limit = max(output_budget, min(
+                    8192, int(os.environ.get(
+                        "METNOS_PROPOSER_MAX_TOKENS_RETRY", "4096"))))
+            except (TypeError, ValueError):
+                retry_limit = max(output_budget, 4096)
+            if retry_limit > output_budget:
+                retry_kwargs = dict(llm_kwargs)
+                retry_kwargs["max_tokens"] = retry_limit
+                log.info(
+                    "SimpleProposer: framework JSON troncato al budget %d; "
+                    "retry fail-closed con budget %d",
+                    output_budget, retry_limit)
+                try:
+                    raw = _call_model(retry_kwargs)
+                    parsed = _parse_framework_json(raw or "")
+                except Exception as ex:
+                    log.warning(
+                        "SimpleProposer LLM truncation retry failed: %r", ex)
+                    parsed = None
         if not parsed:
             log.info("SimpleProposer parse fail. Raw head: %r", (raw or "")[:200])
             return None
-        return Framework.from_dict(parsed)
+        try:
+            return Framework.from_dict(parsed)
+        except Exception as ex:
+            log.info("SimpleProposer framework decode fail: %r", ex)
+            return None
 
 
 # ── Factory (selettore engine) ────────────────────────────────────────────

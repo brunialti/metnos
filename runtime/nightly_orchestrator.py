@@ -52,6 +52,28 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
 )
 
 
+def _declared_failure(result) -> str | None:
+    """Normalizza i comuni report job senza imporre una shape unica."""
+    if not isinstance(result, dict):
+        return None
+    if result.get("ok") is False:
+        return str(result.get("error_class") or result.get("error")
+                   or result.get("reason") or "reported_failure")
+    if result.get("partial") is True or result.get("status") == "partial":
+        return str(result.get("error_class") or "partial_result")
+    for field in ("fail_count", "failed", "error_count"):
+        try:
+            count = int(result.get(field) or 0)
+        except (TypeError, ValueError):
+            count = 0
+        if count > 0:
+            return f"{field}={count}"
+    errors = result.get("errors")
+    if isinstance(errors, (list, dict)) and errors:
+        return f"errors={len(errors)}"
+    return None
+
+
 async def run_nightly(callbacks, payload: dict | None = None) -> dict:
     """Esegue la sequenza notturna invocando i callback registrati per chiave.
 
@@ -71,11 +93,18 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
             # pesante (image refresh GPU) NON deve bloccare l'event loop per la
             # finestra notturna. Sequenziale per costruzione (un await per volta).
             if getattr(info, "is_async", False):
-                await info.fn(None)
+                result = await info.fn(None)
             else:
-                await loop.run_in_executor(None, info.fn, None)
-            ran[key] = "ok"
-            log.info("nightly_maintenance: %s ok", key)
+                result = await loop.run_in_executor(None, info.fn, None)
+            reason = _declared_failure(result)
+            if reason:
+                ran[key] = f"error: {reason}"
+                log.warning(
+                    "nightly_maintenance: %s ha dichiarato fallimento: %s",
+                    key, reason)
+            else:
+                ran[key] = "ok"
+                log.info("nightly_maintenance: %s ok", key)
         except Exception as e:  # §2.8 error-isolation: un fallimento non aborta
             ran[key] = f"error: {type(e).__name__}: {e}"
             log.warning("nightly_maintenance: %s FALLITO: %r", key, e)

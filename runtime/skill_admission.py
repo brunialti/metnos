@@ -1,31 +1,20 @@
-"""skill_admission - applica ADR 0114 (5 layer) + ADR 0122 (auto-evaluator)
-sull'import di una skill.
+"""Controlli di ammissione per gli executor generati da una skill.
 
-API principale: `admit_skill_import(parsed_skill, plans)` -> AdmissionReport.
+API principale: ``admit_skill_import(parsed_skill, plans)``.
 
-Layer applicati:
-- L1 vocab gate: nome deve essere `azione_oggetto[_qualifier]` con
-  verb in vocab.ACTIONS e obj in vocab.OBJECTS.
-- L2 affinity overlap (jaccard 0.5): vs handcrafted in /opt/metnos/executors
-  + altri synth gia' presenti in ~/.local/share/metnos/executors. RIFIUTA
-  il singolo plan in collisione, non l'intero import.
-- L3 efficacy ager: NON applicato a admission-time (l'ager opera live
-  leggendo turn JSONL post-invocation). Da gap 5 (10/5/2026): gli executor
-  importati ricevono il tracking automaticamente — `runtime/executor_aging.py
-  ::apply_efficacy_ager` legge da `~/.local/share/metnos/turns/*.jsonl`
-  filtrato per `chosen_tool` e demota a `deprecated` chi ha success_rate
-  <0.20 dopo 100 invocazioni live, archivia con <0.05 dopo altre 30 post-demotion.
-  Idempotente. Da wirare nel scheduler v2 daily@04:30 (vedi CLAUDE.md §10.6.43).
-- L5 smoke routing: produce una proposta di BATTERY case per smoke.py
-  (NON modifica il file canonico; solo log audit).
-- L6 stage 6 semantic verifier: invoca synt stage 6 (mock-able) su ogni
-  plan, reject su mismatch.
+Il flusso ordinario applica:
 
-Plus credentials binding uniqueness: il [required_credentials].binding
-deve essere unico tra TUTTE le skill importate (scan imports.jsonl).
+* unicità del binding della skill tra le importazioni installate;
+* L1, forma canonica ``azione_oggetto[_qualifier]`` nel vocabolario runtime;
+* L2, sovrapposizione di affinità contro gli executor già installati;
+* L5, asserzione di instradamento quando esistono un caso e un runner;
+* L6, coerenza semantica tra manifest e codice generato.
 
-Determinismo §7.9: tutti i layer sono procedurali. L6 usa LLM ma e'
-graceful-degrade (fallback aligned=True se LLM offline = no false reject).
+L5 può registrare uno skip per pattern non mappati o runner indisponibile. L6
+è fail-closed: divergenza, eccezione o verificatore indisponibile rifiutano il
+piano, salvo un bypass di sviluppo esplicitamente richiesto dal chiamante.
+Le statistiche di efficacia successive all'uso appartengono al ciclo di vita,
+non all'ammissione iniziale.
 """
 from __future__ import annotations
 
@@ -399,7 +388,7 @@ def _stage6_verify_callable() -> Callable:
 
     1. METNOS_STAGE6_VERIFY_FAKE=mod.fn override (test).
     2. /opt/metnos/runtime/synt_stage6_verify.py se importabile.
-    3. fallback aligned=True (graceful-degrade: no false reject quando LLM offline).
+    3. fallback fail-closed: il gate non può approvare ciò che non ha verificato.
     """
     fake = os.environ.get("METNOS_STAGE6_VERIFY_FAKE")
     if fake:
@@ -420,9 +409,13 @@ def _stage6_verify_callable() -> Callable:
         from synt_stage6_verify import verify_semantic_alignment  # type: ignore
         return verify_semantic_alignment
     except Exception:
-        def _noop(description, code_body, **kw):
-            return {"aligned": True, "mismatch": "", "_fallback": True}
-        return _noop
+        def _unavailable(description, code_body, **kw):
+            return {
+                "aligned": False,
+                "mismatch": "semantic_verifier_unavailable",
+                "_fallback": True,
+            }
+        return _unavailable
 
 
 def _stage6_check(plan, manifest_path, code_path, verifier) -> tuple[bool, str]:
@@ -542,7 +535,7 @@ def admit_skill_import(parsed_skill, plans, *,
                        skip_l6: bool = False,
                        skip_binding_check: bool = False,
                        audit_log: bool = True) -> AdmissionReport:
-    """Applica i 4 layer + auto-evaluator a una skill importata.
+    """Applica i controlli di binding, L1, L2, L5 e L6 a una skill.
 
     DEVI: passare parsed_skill (Task A) + plans (Task B).
     NON DEVI: passare plans non generati da skill_codegen (executor_dir e'

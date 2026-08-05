@@ -50,19 +50,17 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from llm_workloads import tier_for
+
 _LOG = logging.getLogger(__name__)
 
-# Default LLM = tier locale (stesso del telos engine MVP fase 1,
-# telos_introspect.py). Mantiene "costo zero in background".
-# "local" = placeholder: il server serve il GGUF caricato (mapping
-# tier→modello fisico solo in llm_router.DEFAULT_TIERS).
-_LOCAL_MODEL = "local"
-_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
+# Il giudice sceglie solo il ruolo logico. Provider, modello, endpoint e
+# politica di generazione appartengono alla configurazione del tier.
+_BACKGROUND_TIER = tier_for("alignment.fit")
 
 
 @dataclass(frozen=True)
@@ -251,25 +249,13 @@ def _parse_fits(raw: str, telos_list: list) -> list[FitEstimate]:
 
 
 def _default_llm_invoke(prompt: str) -> str:
-    """modello locale (Qwen) via `LlamaCppProvider` (stesso pattern di
-    `telos_introspect._llm_invoke_local`). Bypassa LLMRouter
-    perche' tier=middle puo' essere instradato a Sonnet frontier.
+    """Run the configured background tier."""
+    from llm_router import LLMRouter
 
-    think=False di default (formato JSON-only, no reasoning) — il
-    Giudice teleologico non ha bisogno di chain-of-thought per dare
-    un fit numerico per telos. Override via env METNOS_ALIGNMENT_THINK=1.
-    """
-    think = os.environ.get("METNOS_ALIGNMENT_THINK", "0") == "1"
-    from llm_provider import LlamaCppProvider
-    prov = LlamaCppProvider(
-        model=_LOCAL_MODEL,
-        endpoint=_LOCAL_ENDPOINT,
-    )
+    prov = LLMRouter().provider(_BACKGROUND_TIER)
     r = prov.chat(
         "", prompt,
-        max_tokens=2048, temperature=0.1,
-        think=think,
-        reasoning_budget=1024 if think else 0,
+        max_tokens=2048,
     )
     return r.text if hasattr(r, "text") else str(r)
 

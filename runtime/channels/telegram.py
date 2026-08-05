@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -121,14 +122,55 @@ class TelegramChannel:
         except Exception:
             return None
 
-    def _save_offset(self) -> None:
-        if not self.state_path or self._last_update_id is None:
-            return
+    def _save_offset(self, update_id: int) -> bool:
+        """Persiste atomicamente un offset già gestito dal daemon."""
+        if not self.state_path:
+            return True
+        tmp_name = ""
         try:
             self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.state_path.write_text(str(self._last_update_id), encoding="utf-8")
+            try:
+                os.chmod(self.state_path.parent, 0o700)
+            except OSError:
+                pass
+            fd, tmp_name = tempfile.mkstemp(
+                prefix=f".{self.state_path.name}.", suffix=".tmp",
+                dir=str(self.state_path.parent),
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as fp:
+                fp.write(str(update_id))
+                fp.flush()
+                os.fsync(fp.fileno())
+            os.chmod(tmp_name, 0o600)
+            os.replace(tmp_name, self.state_path)
+            return True
         except Exception:
-            pass  # fail-safe: persistenza opzionale, non blocchiamo il daemon
+            if tmp_name:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+            return False
+
+    def ack(self, message_or_update_id) -> bool:
+        """Conferma un update solo DOPO che il daemon lo ha gestito.
+
+        Monotono e idempotente. Se la persistenza fallisce, non avanza
+        neppure l'offset in memoria: il messaggio verrà riproposto.
+        """
+        raw = message_or_update_id
+        if isinstance(raw, InboundMessage):
+            raw = (raw.extra or {}).get("update_id")
+        try:
+            update_id = int(raw)
+        except (TypeError, ValueError):
+            return False
+        if self._last_update_id is not None and update_id <= self._last_update_id:
+            return True
+        if not self._save_offset(update_id):
+            return False
+        self._last_update_id = update_id
+        return True
 
     # --- channel_out -------------------------------------------------------
 
@@ -145,7 +187,7 @@ class TelegramChannel:
         # runtime/ già su sys.path (channels VIVE in runtime/).
         from messages import get as _msg
         text = _msg("MSG_LOCATION_NEEDED", goal=goal)
-        btn_cancel = _msg("MSG_LOCATION_BUTTON_CANCEL")
+        btn_cancel = _msg("MSG_BTN_CANCEL")
         reply_markup = json.dumps({
             "inline_keyboard": [[
                 {"text": btn_cancel, "callback_data": "loc_cancel"},
@@ -464,14 +506,37 @@ class TelegramChannel:
         safe_msg  = re.sub(r"[^A-Za-z0-9_.-]", "_", str(msg_id))
         out_dir = UPLOAD_DIR / safe_chat
         try:
-            out_dir.mkdir(parents=True, exist_ok=True)
+            _C.ensure_private_dir(UPLOAD_DIR)
+            _C.ensure_private_dir(out_dir)
         except OSError:
             return None
         out_path = out_dir / f"{safe_msg}_{idx}{ext}"
+        descriptor = None
+        temporary = None
         try:
-            out_path.write_bytes(data)
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{out_path.name}.", suffix=".tmp",
+                dir=str(out_dir))
+            temporary = Path(temporary_name)
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                descriptor = None
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, out_path)
+            temporary = None
+            _C.ensure_private_file(out_path)
         except OSError:
             return None
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            if temporary is not None:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
         return str(out_path)
 
     # --- channel_in (long-poll) -------------------------------------------
@@ -489,12 +554,8 @@ class TelegramChannel:
         if not resp.get("ok"):
             return []
         out: list[InboundMessage] = []
-        had_updates = False
         for u in resp.get("result", []):
             uid = u.get("update_id")
-            if uid is not None:
-                self._last_update_id = max(self._last_update_id or 0, uid)
-                had_updates = True
             # callback_query: bottoni inline cliccati. Il "testo" e' il
             # callback_data; il dispatcher del daemon lo decodifica
             # (formato: "approve:<token>" / "reject:<token>").
@@ -519,29 +580,22 @@ class TelegramChannel:
 
             msg = u.get("message") or u.get("edited_message")
             if not msg:
+                if uid is not None:
+                    out.append(InboundMessage(
+                        channel=self.name, sender_id="", text="",
+                        message_id="", received_at=time.time(),
+                        extra={"kind": "transport_noop", "update_id": uid},
+                    ))
                 continue
             chat_id = str(msg.get("chat", {}).get("id", ""))
-            # Location share (📎 Posizione su Telegram): persisti subito via
-            # location_store, NON propagare come messaggio testuale (e' un
-            # evento collaterale, non un turno di pianificazione).
+            # Location share (📎 Posizione su Telegram): il transport descrive
+            # soltanto l'evento. Persistenza e associazione all'owner avvengono
+            # nel daemon *dopo* pairing e revocation gate.
             loc = msg.get("location")
             if loc and "latitude" in loc and "longitude" in loc:
                 lat_f = float(loc["latitude"])
                 lon_f = float(loc["longitude"])
                 acc = loc.get("horizontal_accuracy")
-                try:
-                    # runtime/ già su sys.path (channels VIVE in runtime/).
-                    from location_store import record_location  # type: ignore
-                    from actor_resolver import resolve_actor  # type: ignore
-                    actor_name = resolve_actor(self.name, chat_id)
-                    record_location(
-                        actor=actor_name,
-                        channel=f"telegram:{chat_id}",
-                        lat=lat_f, lon=lon_f, accuracy=acc,
-                        source="telegram_share",
-                    )
-                except Exception:
-                    pass
                 # Propaga al daemon come InboundMessage SEMPRE (anche senza
                 # text), perche' il daemon deve sapere di una location share
                 # per gestire il dialog pending della regola §2-quater. Il
@@ -556,13 +610,14 @@ class TelegramChannel:
                     extra={"kind": "location_share", "lat": lat_f, "lon": lon_f,
                             "accuracy": acc, "update_id": uid},
                 ))
-                if "text" not in msg:
-                    continue  # location-only: niente altro da fare per questa update
+                # Un update deve produrre un solo envelope ackabile. Il testo
+                # eventuale resta sul location_share e viene gestito lì.
+                continue
 
-            # Photo allegate (ADR 0092): se msg.photo non vuoto, scarica la
-            # variante a max risoluzione (Bot API: ultima nell'array). Multi-
-            # foto burst Telegram = update_id consecutivi con `media_group_id`
-            # comune; l'aggregazione lato daemon (vedi handle_message).
+            # Photo allegate (ADR 0092): seleziona il file_id, ma non scarica
+            # nulla nel transport. Il download avviene nel daemon soltanto
+            # dopo l'ammissione del sender, evitando traffico e consumo disco
+            # provocabili da utenti non pairati.
             photos = msg.get("photo")
             if photos and isinstance(photos, list) and photos:
                 # Variante a max risoluzione: l'ultimo elemento (Bot API).
@@ -573,15 +628,6 @@ class TelegramChannel:
                     biggest = photos[-1]
                 file_id = biggest.get("file_id")
                 msg_id_str = str(msg.get("message_id", ""))
-                local_path = None
-                if file_id:
-                    local_path = self._download_photo(
-                        file_id, chat_id=chat_id, msg_id=msg_id_str, idx=0,
-                    )
-                # Anche su download fallito, propaghiamo un msg con extra
-                # vuoto + flag attached_failed cosi' il daemon puo' avvisare
-                # l'utente (no silent failure §2.8).
-                attached_paths = [local_path] if local_path else []
                 caption = msg.get("caption") or ""
                 out.append(InboundMessage(
                     channel=self.name,
@@ -591,14 +637,21 @@ class TelegramChannel:
                     received_at=float(msg.get("date", time.time())),
                     extra={
                         "from": msg.get("from", {}), "update_id": uid,
-                        "attached_images": attached_paths,
+                        "photo_file_id": file_id,
+                        "photo_index": 0,
                         "media_group_id": msg.get("media_group_id"),
-                        "attached_failed": (file_id is not None and not local_path),
                     },
                 ))
                 continue
 
             if "text" not in msg:
+                if uid is not None:
+                    out.append(InboundMessage(
+                        channel=self.name, sender_id=chat_id, text="",
+                        message_id=str(msg.get("message_id", "")),
+                        received_at=float(msg.get("date", time.time())),
+                        extra={"kind": "transport_noop", "update_id": uid},
+                    ))
                 continue
             out.append(InboundMessage(
                 channel=self.name,
@@ -608,8 +661,6 @@ class TelegramChannel:
                 received_at=float(msg.get("date", time.time())),
                 extra={"from": msg.get("from", {}), "update_id": uid},
             ))
-        if had_updates:
-            self._save_offset()
         return out
 
     # --- transport ---------------------------------------------------------

@@ -69,6 +69,15 @@ class MetisTerminator:
             return []
         best: list = []
         for s in failed_run.steps:
+            # Session/control observations describe browser state; they are
+            # not user results.  In particular open_sites returns the opened
+            # homepage as an entry, which must not turn a later act_sites
+            # failure into a misleading "partial search results" answer.
+            tool = str(getattr(s, "tool", "")
+                       or getattr(s, "chosen_tool", ""))
+            if tool in {"open_sites", "login_sites", "act_sites",
+                        "delete_sites"}:
+                continue
             r = s.result if isinstance(s.result, dict) else {}
             ents = r.get("entries")
             if not isinstance(ents, list):

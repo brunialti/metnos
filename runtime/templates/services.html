@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ msg("UI_SERVICES_PAGE_TITLE") }} · Metnos{% endblock %}
+{% block head %}
+<style>
+.service-hero{position:relative;overflow:hidden;border:1px solid var(--border);border-radius:var(--r-2);padding:1.15rem 1.25rem;margin:1rem 0 1.5rem;background:radial-gradient(circle at 92% 15%,rgba(24,118,94,.16),transparent 34%),linear-gradient(135deg,var(--surface),var(--surface-2))}
+.service-hero p{max-width:64rem;margin:.35rem 0 0}.service-action-help{font-size:.78rem}.service-summary{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1rem}.service-summary span{display:inline-flex;align-items:center;gap:.35rem;padding:.28rem .55rem;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:.78rem}
+.service-group{margin:1.5rem 0 2rem}.service-group>h2{font-size:.78rem;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin:0 0 .65rem}
+.service-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:1rem}
+.service-card{position:relative;border:1px solid var(--border);border-radius:var(--r-2);padding:1rem;background:linear-gradient(145deg,var(--surface),var(--surface-2));box-shadow:var(--shadow-1);transition:transform .16s ease,border-color .16s ease}.service-card:hover{transform:translateY(-2px);border-color:var(--border-strong)}
+.service-head{display:flex;align-items:center;gap:.65rem}.service-head h3{font-size:1rem;margin:0;flex:1}.scope{font-size:.7rem;padding:.14rem .4rem;border:1px solid var(--border);border-radius:999px;color:var(--muted)}
+.dot{width:11px;height:11px;border-radius:50%;background:#9ca3af;flex:0 0 auto}.dot.running{background:#16a34a;box-shadow:0 0 0 4px #dcfce7}.dot.failed{background:#dc2626;box-shadow:0 0 0 4px #fee2e2}.dot.degraded,.dot.transitioning{background:#d97706;box-shadow:0 0 0 4px #fef3c7}
+.service-desc{margin:.3rem 0 0;color:var(--muted);font-size:.82rem}.service-meta{color:var(--muted);font-size:.8rem;line-height:1.6;margin:.8rem 0}.service-state{color:var(--text);text-transform:capitalize}
+.service-actions{display:flex;gap:.45rem;flex-wrap:wrap}.service-actions form{margin:0}.service-actions button{border:1px solid var(--border-strong);background:var(--surface);border-radius:var(--r-1);padding:.38rem .68rem;cursor:pointer}.service-actions button:hover{background:var(--surface-2)}.service-actions button:disabled{opacity:.35;cursor:not-allowed}
+.health{font-weight:600}.health.ok{color:#15803d}.health.bad{color:#b91c1c}.service-notice{padding:.7rem .85rem;border-radius:var(--r-1);margin:.8rem 0}.service-notice.ok{background:#dcfce7;color:#166534}.service-notice.bad{background:#fee2e2;color:#991b1b}
+.service-alerts{border:1px solid var(--border);border-radius:var(--r-2);padding:1rem;margin:1rem 0;background:var(--surface)}.service-alerts h2{font-size:.9rem;margin:0 0 .6rem}.service-alert{padding:.55rem 0;border-top:1px solid var(--border);font-size:.82rem}.service-alert:first-of-type{border-top:0}.service-alert.critical strong{color:#b91c1c}.service-alert.info strong{color:#15803d}.service-alert time{color:var(--muted);font-size:.72rem}.service-intent{font-weight:600}.service-intent.mismatch{color:#b45309}.service-control-note{color:var(--muted);font-size:.75rem;margin:.55rem 0 0}
+@media(max-width:640px){.service-grid{grid-template-columns:1fr}.service-hero{padding:1rem}.service-card:hover{transform:none}}
+</style>
+{% endblock %}
+{% block body %}
+<p class="eyebrow">{{ msg("UI_SERVICES_EYEBROW") }}</p>
+<h1>{{ msg("UI_SERVICES_TITLE") }}</h1>
+{% if notice == 'accepted' and notice_service and notice_action in ('start', 'stop', 'restart') %}<div class="service-notice ok" role="status">{{ msg("UI_SERVICES_NOTICE_ACCEPTED", action=msg("UI_SERVICES_ACTION_" ~ notice_action|upper), service=notice_service) }}</div>{% elif notice == 'failed' %}<div class="service-notice bad" role="alert">{{ msg("UI_SERVICES_NOTICE_FAILED", service=notice_service or notice_service_key) }}</div>{% endif %}
+{% set running = services|selectattr('status', 'equalto', 'running')|list|length %}
+{% set degraded = services|selectattr('status', 'equalto', 'degraded')|list|length %}
+{% set installed = services|selectattr('installed')|list|length %}
+<section class="service-hero">
+  <strong>{{ msg("UI_SERVICES_HERO_TITLE") }}</strong>
+  <p class="muted">{{ msg("UI_SERVICES_HERO_LEAD") }}</p>
+  <p class="service-action-help">{{ msg("UI_SERVICES_ACTION_HELP") }}</p>
+  <div class="service-summary"><span>{{ msg("UI_SERVICES_SUMMARY_RUNNING", count=running) }}</span><span>{{ msg("UI_SERVICES_SUMMARY_INSTALLED", count=installed) }}</span>{% if degraded %}<span>{{ msg("UI_SERVICES_SUMMARY_DEGRADED", count=degraded) }}</span>{% endif %}<span>{{ msg("UI_SERVICES_REFRESH") }}</span></div>
+</section>
+{% if notifications %}<section class="service-alerts" aria-labelledby="service-alerts-title">
+  <h2 id="service-alerts-title">{{ msg("UI_SERVICES_ALERTS_TITLE") }}</h2>
+  {% for event in notifications %}<div class="service-alert {{ event.severity|default('warning') }}">
+    <strong>{{ event.title }}</strong> — {{ event.body }}<br><time>{{ event.created_at }}</time>
+  </div>{% endfor %}
+</section>{% endif %}
+{% set grouping = namespace(names=[]) %}
+{% for service in services %}{% if service.group not in grouping.names %}{% set grouping.names = grouping.names + [service.group] %}{% endif %}{% endfor %}
+{% for group_name in grouping.names %}
+<section class="service-group"><h2>{{ group_name }}</h2><div class="service-grid">
+{% for s in services if s.group == group_name %}
+  <article class="service-card" id="service-{{ s.key }}">
+    <div class="service-head"><span class="dot {{ s.status }}" aria-hidden="true"></span><h3>{{ s.label }}</h3><span class="scope">{{ msg('UI_SERVICES_SCOPE_' ~ s.scope|upper) }}</span></div>
+    <p class="service-desc">{{ s.description }}</p>
+    <div class="service-meta">
+      <div class="service-state"><strong>{{ msg('UI_SERVICES_STATUS_' ~ s.status|upper) }}</strong> · {{ s.sub_state|default('—') }}</div>
+      {% if s.healthy is not none %}<div class="health {{ 'ok' if s.healthy else 'bad' }}">{{ msg("UI_SERVICES_HEALTH") }} {{ msg("UI_SERVICES_OK") if s.healthy else msg("UI_SERVICES_DOWN") }}{% if s.health_detail %} · {{ s.health_detail }}{% endif %}</div>{% endif %}
+      {% if s.installed %}<div>{{ s.unit }} · {{ msg("UI_SERVICES_PID", pid=s.main_pid|default('—')) }}</div>{% else %}<div>{{ msg("UI_SERVICES_NOT_INSTALLED") }}</div>{% endif %}
+      {% if s.managed_by %}<div>{{ msg("UI_SERVICES_LIFECYCLE", manager=s.managed_by) }}</div>{% endif %}
+      <div class="service-intent{% if not s.in_desired_state %} mismatch{% endif %}">{{ msg("UI_SERVICES_DESIRED", state=msg("UI_SERVICES_DESIRED_" ~ s.desired_state|upper)) }}</div>
+      {% if s.active_since %}<div>{{ msg("UI_SERVICES_ACTIVE_SINCE", value=s.active_since) }}</div>{% endif %}
+    </div>
+    {% set active_now = s.active_state == 'active' %}
+    {% if s.actionable and s.status != 'transitioning' %}<div class="service-actions">
+      {% if s.status == 'stopped' and 'start' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/start"><button type="submit">{{ msg("UI_SERVICES_ACTION_START") }}</button></form>{% endif %}
+      {% if active_now and 'stop' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/stop" data-confirm="{{ msg('UI_SERVICES_CONFIRM_STOP', service=s.label) }}"><button type="submit">{{ msg("UI_SERVICES_ACTION_STOP") }}</button></form>{% endif %}
+      {% if (active_now or s.status == 'failed') and 'restart' in s.allowed_actions %}<form method="post" action="/admin/services/{{ s.key }}/restart" data-confirm="{{ msg('UI_SERVICES_CONFIRM_RESTART', service=s.label) }}"><button type="submit">{{ msg("UI_SERVICES_ACTION_RESTART") }}</button></form>{% endif %}
+    </div>{% endif %}
+    {% if s.key == 'http' %}<p class="service-control-note">{{ msg("UI_SERVICES_CONTROL_PLANE_NOTE") }}</p>{% elif s.managed_by %}<p class="service-control-note">{{ msg("UI_SERVICES_MANUAL_OVERRIDE") }}</p>{% endif %}
+  </article>
+{% endfor %}
+</div></section>
+{% endfor %}
+<script>
+document.querySelectorAll('form[data-confirm]').forEach((form) => {
+  form.addEventListener('submit', (event) => {
+    if (!window.confirm(form.dataset.confirm || '')) event.preventDefault();
+  });
+});
+setInterval(() => { if (!document.hidden) location.reload(); }, 15000);
+</script>
+{% endblock %}

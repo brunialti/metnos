@@ -18,9 +18,12 @@ events audit + skip (niente crash globale).
 """
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 from .promoter_state import audit_append, mark_notified, pending_notification
+from messages import get as _msg
 
 
 CAP_PER_FIRE = 10
@@ -76,6 +79,28 @@ def _resolve_admin_recipient() -> tuple[str | None, str | None]:
     return str(rid), None
 
 
+def _resolve_admin_language() -> str:
+    """Lingua esplicita dell'host destinatario, con ripiego di istanza.
+
+    Il digest e' un messaggio utente prodotto fuori da un turno: non eredita
+    per caso la lingua dell'ultimo richiedente. La preferenza viene quindi
+    risolta di nuovo per il proprietario del canale.
+    """
+    import i18n
+    try:
+        import users
+        hosts = users.list_users(role="host")
+        if hosts:
+            return str(
+                users.get_pref(
+                    hosts[0]["id"], "lang", i18n.current_lang(),
+                ) or i18n.current_lang()
+            )
+    except Exception:
+        pass
+    return i18n.current_lang()
+
+
 def _split_text_for_telegram(text: str, *, max_len: int = TELEGRAM_MESSAGE_MAX,
                                 ) -> list[str]:
     """Split su newline boundary; fallback hard-split a max_len."""
@@ -104,8 +129,9 @@ def _build_inline_keyboard(proposal_id: str) -> list[list[dict]]:
     """
     return [
         [
-            {"text": "ok", "data": f"promoter:{proposal_id}:ok"},
-            {"text": "rollback",
+            {"text": _msg("MSG_PROMOTER_BUTTON_CONFIRM"),
+             "data": f"promoter:{proposal_id}:ok"},
+            {"text": _msg("MSG_PROMOTER_BUTTON_ROLLBACK"),
              "data": f"promoter:{proposal_id}:rollback"},
         ],
     ]
@@ -144,15 +170,49 @@ def _format_digest_body(row: dict) -> str:
     """
     name = row.get("name") or "?"
     grace_until = row.get("grace_until") or ""
-    example = row.get("practical_example") or "(nessun esempio disponibile)"
-    header = f"**Promoter**: nuovo executor `{name}`"
+    example = _localized_practical_example(row)
+    header = _msg("MSG_PROMOTER_DIGEST_HEADER", name=name)
     if grace_until:
-        header += f"\nGrace fino a: `{grace_until}`"
-    footer = (
-        "\n---\nConferma con il bottone **ok** o ripristina con **rollback** "
-        "entro la fine della grace window."
-    )
+        header += "\n" + _msg(
+            "MSG_PROMOTER_DIGEST_GRACE_UNTIL", until=grace_until)
+    footer = "\n---\n" + _msg("MSG_PROMOTER_DIGEST_FOOTER")
     return header + "\n\n" + example + footer
+
+
+def _localized_practical_example(row: dict) -> str:
+    """Rigenera l'esempio nella lingua corrente del destinatario.
+
+    ``practical_example`` e' un artefatto persistito e puo' essere stato
+    creato prima che l'utente cambiasse lingua. Il digest risale invece ai
+    dati semantici della proposta e al verdetto, cosi' tutte le sue scritte
+    seguono la preferenza per-utente risolta al momento dell'invio. Se la
+    proposta non e' piu' disponibile, conserva il rendering persistito come
+    ripiego compatibile con i record precedenti.
+    """
+    proposal_id = str(row.get("proposal_id") or "").strip()
+    if proposal_id:
+        try:
+            import config as _C
+            from .promoter_example import render_practical_example
+
+            proposals_dir = Path(os.environ.get(
+                "METNOS_SYNT_PROPOSALS_DIR",
+                str(_C.PATH_USER_DATA / "synt_proposals"),
+            ))
+            proposal = json.loads(
+                (proposals_dir / f"{proposal_id}.json").read_text(
+                    encoding="utf-8"))
+            raw_verdict = row.get("evaluator_verdict") or "{}"
+            verdict = (json.loads(raw_verdict)
+                       if isinstance(raw_verdict, str)
+                       else dict(raw_verdict))
+            import i18n
+            return render_practical_example(
+                proposal, verdict, lang=i18n.current_lang())
+        except Exception:
+            pass
+    return row.get("practical_example") or _msg(
+        "MSG_PROMOTER_DIGEST_NO_EXAMPLE")
 
 
 def _count_pending_decisions() -> int:
@@ -183,17 +243,10 @@ def _format_aggregated_body(n_total: int, n_grace: int,
 
     Stile §6 prescrittivo. Niente markdown headings (Telegram-friendly).
     """
-    lines = [
-        "*Promoter — decisioni in attesa*",
-        "",
-        f"Hai *{n_total}* decisioni da prendere:",
-        f"  - {n_grace} in grazia",
-        f"  - {n_review} da decidere",
-        f"  - {n_archived} bocciati recenti",
-        "",
-        "Apri il form review per applicarle tutte in una sessione.",
-    ]
-    return "\n".join(lines)
+    return _msg(
+        "MSG_PROMOTER_AGGREGATED_BODY",
+        total=n_total, grace=n_grace, review=n_review, archived=n_archived,
+    )
 
 
 def _build_aggregated_keyboard() -> list[list[dict]]:
@@ -205,7 +258,7 @@ def _build_aggregated_keyboard() -> list[list[dict]]:
     """
     return [
         [
-            {"text": "Apri form review",
+            {"text": _msg("MSG_PROMOTER_BUTTON_OPEN_REVIEW"),
              "data": "promoter:_aggregated:open_form"},
         ],
     ]
@@ -238,8 +291,11 @@ def _task_aggregated(grace_rows: list[dict], *,
             },
         }
 
-    body = _format_aggregated_body(n_total, n_grace, n_review, n_archived)
-    keyboard = _build_aggregated_keyboard()
+    import i18n
+    with i18n.language_context(_resolve_admin_language()):
+        body = _format_aggregated_body(
+            n_total, n_grace, n_review, n_archived)
+        keyboard = _build_aggregated_keyboard()
     sent_ok, send_err = _send_to_admin(recipient, body, keyboard)
     if not sent_ok:
         audit_append({
@@ -296,7 +352,7 @@ def task_promoter_digest(payload: dict | None = None) -> dict:
     Modalita':
     - **aggregated** (default se >= AGGREGATED_THRESHOLD decisioni
       totali): UN messaggio con bottone "Apri form review" → redirect a
-      `/admin/promotions/review` via callback. Marca tutte le row grace
+      `/admin/changes?state=proposed` via callback. Marca tutte le row grace
       come `notified_at` (anti-flood al prossimo fire).
     - **per-item** (fallback): N messaggi (cap CAP_PER_FIRE) con
       keyboard ok/rollback per ogni promote in grace. Comportamento
@@ -362,13 +418,16 @@ def task_promoter_digest(payload: dict | None = None) -> dict:
             },
         }
 
+    import i18n
+    admin_lang = _resolve_admin_language()
     ok_count = 0
     error_count = 0
     for r in rows:
         proposal_id = r.get("proposal_id") or ""
-        body = _format_digest_body(r)
-        chunks = _split_text_for_telegram(body)
-        keyboard = _build_inline_keyboard(proposal_id)
+        with i18n.language_context(admin_lang):
+            body = _format_digest_body(r)
+            chunks = _split_text_for_telegram(body)
+            keyboard = _build_inline_keyboard(proposal_id)
         all_ok = True
         first_err: str | None = None
         for i, chunk in enumerate(chunks):

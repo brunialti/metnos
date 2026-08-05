@@ -1971,18 +1971,6 @@ r = LLMRouter(tiers_override={
 res = r.chat("Sei sintetico.", "ok", tier="fast", for_code=False)
 assert res.provider == "stub"
 """),
-    ("llm_router", "middle_aliased_riceve_preambolo_valutatore", "happy", """
-from llm_router import LLMRouter, MIDDLE_ALIASED_PREAMBLE
-r = LLMRouter(tiers_override={
-    "fast": {"provider":"stub"},
-    "wise": {"provider":"stub"},
-})
-# l'helper interno aggiunge il preambolo solo se middle e' aliasato
-assert r.is_aliased("middle") is True
-sys_out = r._system_for_tier("BASE", "middle", "stub", for_code=False)
-assert sys_out.startswith(MIDDLE_ALIASED_PREAMBLE)
-assert "BASE" in sys_out
-"""),
 ]
 
 # --- synt (modulo) — nuovi case per generate / profile / birth-test / approve / reject ---

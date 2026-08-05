@@ -6,9 +6,9 @@ runtime intercetta la chiamata e attiva la cascata synt (compose → multistage
 generate). Ritorna al LLM una observation con l'esito della sintesi.
 
 Pattern parallelo a `scratchpad_read` (vedi `scratchpad.py`): il tool vive nel
-runtime, niente manifest su disco, niente subprocess. La firma dell'executor
-sintetizzato e l'installazione nel pool restano TODO della sessione UX —
-oggi salviamo la proposal e torniamo l'esito al LLM.
+runtime, niente manifest su disco, niente subprocess. Un risultato generato
+viene salvato e firmato come candidato; l'attivazione resta subordinata ai gate
+dell'Executor Standard e non viene inferita dal solo esito della generazione.
 """
 from __future__ import annotations
 
@@ -21,6 +21,10 @@ from loader import SYNTHESIZED_EXECUTORS_DIR
 from sign import sign_executor
 from vocab import render_actions_pipe, render_objects_pipe, render_qualifiers_pipe
 from messages import get as _msg
+from generated_executor_contract import (
+    generated_contract_context,
+    validate_generated_manifest_text,
+)
 
 from logging_setup import get_logger
 import config as _C  # §7.11
@@ -85,8 +89,11 @@ def _validate_birth_tests(executor_dir):
 
 
 def _install_synthesized(run, intent, user_query):
-    """Scrive manifest.toml + <name>.py in SYNTHESIZED_EXECUTORS_DIR/<name>/
-    e firma con sign_executor. Idempotente: se la cartella esiste viene
+    """Scrive e firma un candidato in SYNTHESIZED_EXECUTORS_DIR/<name>/.
+
+    Il lifecycle resta ``synthesized``: il composer non lo espone finche' un
+    successivo gate di ammissione non completa traduzioni, contratto, autorita'
+    e prove richieste dallo standard. Idempotente: se la cartella esiste viene
     sovrascritta (oggi e' OK perche' il flusso del turno produce un solo
     install per query).
 
@@ -137,10 +144,11 @@ def _install_synthesized(run, intent, user_query):
     import json as _json
     import os as _os
     cur_lang = _os.environ.get("METNOS_LANG", "it")
+    _generated_contract = generated_contract_context(lifecycle="synthesized")
     lines = [
         f'# Manifest synthesized — Metnos synt multistage {time.strftime("%Y-%m-%d")}',
         '',
-        'manifest_format = "1.0"',
+        *_generated_contract["generated_header_toml"].splitlines(),
         '',
         f'name        = "{run.name}"',
         'version     = "0.1.0"',
@@ -154,7 +162,7 @@ def _install_synthesized(run, intent, user_query):
         else:
             lines.append(f'reverse_pattern = "{reverse_pattern}"')
     lines.extend([
-        'lifecycle   = "active"',
+        *_generated_contract["execution_policy_toml"].splitlines(),
         '',
         '[description]',
         f'{cur_lang} = {_json.dumps(description, ensure_ascii=False)}',
@@ -192,7 +200,57 @@ def _install_synthesized(run, intent, user_query):
             elif isinstance(cap, str):
                 lines.append(f'name = {_toml_value(cap)}')
 
-    (out_dir / "manifest.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Il prompt di code generation impone questo envelope. La forma resta
+    # volutamente larga nel candidato; una futura promozione deve verificarla
+    # contro il comportamento effettivo prima di attivare l'executor.
+    lines.extend([
+        '',
+        '[output]',
+        'schema_inline = """',
+        '{',
+        '  ok: bool,',
+        '  ok_count?: int,',
+        '  fail_count?: int,',
+        '  entries?: Array<dict>,',
+        '  results?: Array<dict>,',
+        '  failed?: Array<dict>,',
+        '  error?: str,',
+        '  error_class?: str',
+        '}',
+        '"""',
+        '',
+        '[presentation]',
+        'default_view = "list"',
+        '',
+        '[presentation.list]',
+        'mode = "table"',
+        'columns = [{ key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 160 }]',
+        'max_rows = 200',
+        'max_chars = 16000',
+        'overflow = "notice"',
+    ])
+
+    stage_tests = ((run.stages[2].output or {}).get("tests") or []) \
+        if len(run.stages) >= 3 else []
+    for test in stage_tests:
+        if not isinstance(test, dict):
+            continue
+        lines.extend([
+            '',
+            '[[tests]]',
+            f'name = {_toml_value(test.get("name") or "generated_case")}',
+            f'input = {_toml_value(test.get("input") or {})}',
+            f'expect = {_toml_value(test.get("expect") or {})}',
+        ])
+        if test.get("setup"):
+            lines.append(f'setup = {_toml_value(test["setup"])}')
+        if test.get("teardown"):
+            lines.append(f'teardown = {_toml_value(test["teardown"])}')
+
+    _manifest_text = "\n".join(lines) + "\n"
+    validate_generated_manifest_text(
+        _manifest_text, expected_lifecycle="synthesized")
+    (out_dir / "manifest.toml").write_text(_manifest_text, encoding="utf-8")
 
     # Crea anche manifest.lang_state.json initial con sola entry per la lingua
     # corrente. Il daemon notturno tradurra' nelle altre lingue.
@@ -230,44 +288,45 @@ def _install_synthesized(run, intent, user_query):
     return out_dir
 
 
-SYNTH_REQUEST_TOOL = {
-    "type": "function",
-    "function": {
-        "name": "request_new_executor",
-        "description": (
-            "USA QUESTO TOOL quando nessuno degli executor disponibili copre la richiesta "
-            "utente (es. comprimere/calcolare hash/estrarre da formato non coperto/validare). "
-            "Il runtime lancera' la sintesi automatica di un nuovo executor. "
-            "NON usare per richieste gia' coperte dai tool esistenti."
-        ),
-        "parameters": {
-            "type": "object",
-            "required": ["expected_name", "intent"],
-            "properties": {
-                "expected_name": {
-                    "type": "string",
-                    "description": (
-                        "Nome canonico atteso dell'executor, formato "
-                        "{action}_{object}[_{qualifier}]. Vocabolario azioni: "
-                        + render_actions_pipe() + ". Oggetti: "
-                        + render_objects_pipe() + ". Qualifier opzionale: "
-                        + render_qualifiers_pipe() + "."
-                    ),
-                },
-                "intent": {
-                    "type": "string",
-                    "description": (
-                        "Una-due frasi descrittive di cosa l'executor deve fare, "
-                        "incluso input atteso, output atteso, e cosa fa nei casi limite. "
-                        "Esempio: 'Comprime un file con gzip e scrive l'archivio in un "
-                        "percorso destinazione specifico. Input: paths (lista), dst (path). "
-                        "Output: dst path effettivo. Errore se source mancante.'"
-                    ),
+def build_synth_request_tool() -> dict:
+    """Costruisce lo schema tool nella lingua del contesto corrente.
+
+    Il nome del tool, gli argomenti e il vocabolario canonico restano stabili;
+    la prosa che orienta il modello proviene dal catalogo i18n. Il builder va
+    chiamato nel contesto del turno, cosi' una nuova lingua non richiede branch
+    nel codice.
+    """
+    return {
+        "type": "function",
+        "function": {
+            "name": "request_new_executor",
+            "description": _msg("PROMPT_SYNTH_TOOL_DESCRIPTION"),
+            "parameters": {
+                "type": "object",
+                "required": ["expected_name", "intent"],
+                "properties": {
+                    "expected_name": {
+                        "type": "string",
+                        "description": _msg(
+                            "PROMPT_SYNTH_EXPECTED_NAME",
+                            actions=render_actions_pipe(),
+                            objects=render_objects_pipe(),
+                            qualifiers=render_qualifiers_pipe(),
+                        ),
+                    },
+                    "intent": {
+                        "type": "string",
+                        "description": _msg("PROMPT_SYNTH_INTENT"),
+                    },
                 },
             },
         },
-    },
-}
+    }
+
+
+# Compatibilita' per importatori esterni. Il runtime deve preferire il builder
+# quando prepara un catalogo per un turno.
+SYNTH_REQUEST_TOOL = build_synth_request_tool()
 
 
 def _find_canonical_alias(expected_name, catalog):
@@ -319,11 +378,11 @@ def _find_canonical_alias(expected_name, catalog):
 def handle_synth_request(args, *, user_query, progress=None, verbose=False, current_steps=None):
     """Gestisce la chiamata a request_new_executor.
 
-    Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa LLMRouter
-    per i tier: stage 1-4 con `middle` (procedurale, modello locale), stage 5 con
-    `wise` (creativo+procedurale, modello locale con think=true). Il provider
-    del pianificatore (fast tier) NON e' adatto per la sintesi: qwen3:8b
-    fatica con i 5 stage, specialmente stage 5 CODE.
+    Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa i tier
+    logici `middle` per gli stadi procedurali, `creative` per la descrizione,
+    `wise` per il codice e per la verifica semantica. Provider,
+    modello e policy sono quelli configurati dall'istanza; il tier fast del
+    planner non e' adatto alla sintesi.
     Salva la proposal in PROPOSALS_DIR e ritorna una observation strutturata
     per il LLM.
 
@@ -343,13 +402,40 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     expected_name = (args or {}).get("expected_name") or ""
     intent = (args or {}).get("intent") or user_query
     if not expected_name:
-        return {"ok": False, "error": "missing expected_name in request_new_executor args"}
+        return {"ok": False, "error": _msg("ERR_SYNTH_EXPECTED_NAME_REQUIRED")}
 
     try:
-        from loader import load_catalog as _load_catalog
-        _cat = _load_catalog(verify=True)
+        from loader import (
+            VISIBILITY_COMPOSER as _VISIBILITY_COMPOSER,
+            filter_for_visibility as _filter_for_visibility,
+            load_catalog as _load_catalog,
+        )
+        _raw_cat = _load_catalog(verify=True)
+        _cat = _filter_for_visibility(_raw_cat, _VISIBILITY_COMPOSER)
     except Exception:
+        _raw_cat = None
         _cat = None
+
+    # Un candidato gia' generato non e' un tool disponibile e non deve essere
+    # rigenerato o presentato al planner come tale. Rimane una singola unita'
+    # in attesa dei gate di promozione.
+    _existing_candidate = (
+        _raw_cat.executors.get(expected_name)
+        if _raw_cat is not None else None
+    )
+    if _existing_candidate is not None and _existing_candidate.lifecycle in {
+            "proposed", "synthesized"}:
+        return {
+            "ok": True,
+            "synthesized": True,
+            "installed": False,
+            "candidate_created": True,
+            "candidate_existing": True,
+            "planner_visible": False,
+            "lifecycle": _existing_candidate.lifecycle,
+            "proposed_name": expected_name,
+            "message": _msg("MSG_SYNTH_CANDIDATE_CREATED", name=expected_name),
+        }
 
     if _cat is not None and expected_name in _cat.executors:
         return {
@@ -358,10 +444,8 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "already_in_catalog": True,
             "name": expected_name,
             "expected_name": expected_name,
-            "message": (
-                f"Executor `{expected_name}` esiste gia' nel catalog. "
-                f"NON DEVI rifare la sintesi. CHIAMA `{expected_name}` "
-                f"al prossimo step con gli args appropriati."
+            "message": _msg(
+                "MSG_SYNTH_ALREADY_AVAILABLE", name=expected_name,
             ),
         }
 
@@ -374,10 +458,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                 "redirected": True,
                 "name": canonical,
                 "expected_name": expected_name,
-                "message": (
-                    f"L'executor canonico per questo intent e' `{canonical}`, "
-                    f"non `{expected_name}`. NON DEVI rifare la sintesi. "
-                    f"CHIAMA `{canonical}` al prossimo step."
+                "message": _msg(
+                    "MSG_SYNTH_CANONICAL_REDIRECT",
+                    canonical=canonical, expected=expected_name,
                 ),
             }
 
@@ -411,11 +494,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
                     "expected_name": expected_name,
                     "error": f"duplicates_imported_skill_{primary}",
                     "imported_alternatives": imported_hits,
-                    "message": (
-                        f"L'intent (verb={verb_l7}, object={object_l7}) e' gia' "
-                        f"coperto dallo skill imported `{primary}`. NON DEVI "
-                        f"rifare la sintesi. CHIAMA `{primary}` al prossimo step "
-                        f"con gli args appropriati."
+                    "message": _msg(
+                        "MSG_SYNTH_IMPORTED_REDIRECT",
+                        verb=verb_l7, object=object_l7, name=primary,
                     ),
                 }
     except Exception as _e:
@@ -441,7 +522,7 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
     _BINDING_TO_BUILTIN = {
         "cifs": "admin",         # mount via sudoer
         "ssh":  "admin",          # comandi remoti via sudoer
-        "web":  "login_session",  # sessione autenticata HTTP/cookie
+        "web":  "login_urls",  # autenticazione HTTP/cookie del dominio urls
     }
     _redirect_tool = _BINDING_TO_BUILTIN.get(_binding)
     if _redirect_tool:
@@ -453,82 +534,80 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "binding": _binding,
             "name": _redirect_tool,
             "expected_name": expected_name,
-            "message": (
-                f"La query ha binding={_binding}: il tool nativo "
-                f"`{_redirect_tool}` lo copre. NON DEVI sintetizzare un "
-                f"nuovo executor. CHIAMA `{_redirect_tool}` al prossimo "
-                f"step con gli args appropriati per il task originale."
+            "message": _msg(
+                "MSG_SYNTH_BINDING_REDIRECT",
+                binding=_binding, name=_redirect_tool,
             ),
         }
 
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Synt usa SEMPRE middle+wise (non il tier del pianificatore). Vedi
-    # `metnos_wise_tier_quality_floor` e direttiva 29/4/2026: synt non deve
-    # usare fast tier. middle e' aliased da wise se non configurato.
+    # Synt selects workload contracts only.  Provider/model/decoding policy
+    # are resolved centrally for each logical tier.
     from llm_router import LLMRouter
+    from llm_workloads import tier_for
     _router = LLMRouter()
-    _middle_provider = _router.provider("middle")
-    _wise_provider = _router.provider("wise")
+    _providers = {
+        workload: _router.provider(tier_for(workload))
+        for workload in (
+            "synt.procedural", "synt.description", "synt.multistage",
+            "synt.semantic_verify",
+        )
+    }
 
-    # PoC bench Asse B synt (13/5/2026 sera): env `METNOS_SYNT_BUDGET` permette
-    # di iterare sul reasoning_budget di synt (default 1024 = legacy). Valori
-    # supportati: "0" (no thinking), "<int>" flat. Determinismo §7.9: env-driven.
-    _synt_budget_env = os.environ.get("METNOS_SYNT_BUDGET", "").strip()
-
-    def _synt_budget_kwargs(default_budget: int = 1024) -> dict:
-        """Costruisce kwargs `think`/`reasoning_budget` da `METNOS_SYNT_BUDGET`.
-        - "0" -> think=False (no thinking budget, latenza minima).
-        - "<int>" -> think=True + reasoning_budget=<int>.
-        - "" (default) -> think=True + reasoning_budget=default_budget (legacy).
-        """
-        if _synt_budget_env == "0":
-            return {"think": False}
-        if _synt_budget_env.isdigit() and int(_synt_budget_env) > 0:
-            return {"think": True, "reasoning_budget": int(_synt_budget_env)}
-        return {"think": True, "reasoning_budget": default_budget}
-
-    def _llm_middle(system, user, max_tokens=2500, **kwargs):
+    def _invoke(workload, system, user, max_tokens, **kwargs):
         t0 = time.time()
-        # caller override > budget default (es. stage 6 passa think=False)
-        _kw = {**_synt_budget_kwargs(1024), **kwargs}
-        r = _middle_provider.chat(system, user, max_tokens=max_tokens,
-                                  temperature=0.0, **_kw)
+        r = _providers[workload].chat(
+            system, user, max_tokens=max_tokens, **kwargs)
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,
             "out_tokens": r.out_tokens,
             "latency_ms": int((time.time() - t0) * 1000),
         }
+
+    def _llm_procedural(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.procedural", system, user, max_tokens, **kwargs)
+
+    def _llm_creative(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.description", system, user, max_tokens, **kwargs)
 
     def _llm_wise(system, user, max_tokens=5000, **kwargs):
-        t0 = time.time()
-        # caller override > budget default (es. stage 6 passa think=False)
-        _kw = {**_synt_budget_kwargs(1024), **kwargs}
-        r = _wise_provider.chat(system, user, max_tokens=max_tokens,
-                                temperature=0.0, **_kw)
-        return {
-            "text": r.text or "",
-            "in_tokens": r.in_tokens,
-            "out_tokens": r.out_tokens,
-            "latency_ms": int((time.time() - t0) * 1000),
-        }
+        return _invoke(
+            "synt.multistage", system, user, max_tokens, **kwargs)
+
+    def _llm_fidelity(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.semantic_verify", system, user, max_tokens, **kwargs)
 
     if verbose:
         print(f"[synth_request] starting multistage for expected_name={expected_name!r} intent={intent!r}")
 
     if progress is not None:
-        progress.start(f"Sto costruendo un nuovo strumento: <code>{expected_name}</code>")
+        progress.start(_msg("MSG_SYNTH_PROGRESS_START", name=expected_name))
 
     t_start = time.time()
     try:
-        run = multistage_run_full(intent, _llm_middle, _llm_wise, progress=progress)
+        run = multistage_run_full(
+            intent, _llm_procedural, _llm_wise,
+            llm_call_creative=_llm_creative,
+            llm_call_fidelity=_llm_fidelity,
+            progress=progress,
+        )
     except Exception as ex:
         if progress is not None:
-            progress.update_free(f"sintesi interrotta: {type(ex).__name__}: {ex}")
+            progress.update_free(_msg(
+                "MSG_SYNTH_PROGRESS_INTERRUPTED",
+                reason=f"{type(ex).__name__}: {ex}",
+            ))
         return {
             "ok": False,
-            "error": f"multistage failed: {type(ex).__name__}: {ex}",
+            "error": _msg(
+                "ERR_SYNTH_MULTISTAGE_FAILED",
+                reason=f"{type(ex).__name__}: {ex}",
+            ),
             "expected_name": expected_name,
         }
     elapsed_s = round(time.time() - t_start, 1)
@@ -599,12 +678,9 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             print(f"[synth_request] failed to persist proposal: {ex}")
 
     if run.final_state == "synthesized":
-        n_tests = len((run.stages[2].output or {}).get("tests") or []) if len(run.stages) >= 3 and run.stages[2].success else None
-        tests_part = f" · {n_tests} test verdi" if n_tests else ""
-
-        # Auto-sign + install: scrive manifest+code in SYNTHESIZED_EXECUTORS_DIR
-        # e firma con la chiave dell'autore. Il loader vede il nuovo executor al
-        # prossimo load_catalog() invocato da agent_runtime.
+        # Scrive manifest+code nel pool dei candidati e firma l'unita'. La firma
+        # non implica attivazione: il lifecycle synthesized resta fuori dal
+        # catalogo del composer.
         install_error = None
         try:
             _install_synthesized(run, intent, user_query)
@@ -634,23 +710,29 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
 
         if progress is not None:
             if install_error:
-                progress.update_free(f"<code>{run.name}</code> sintetizzato in {elapsed_s:.0f} s ma install fallito: {install_error}")
+                progress.update_free(_msg(
+                    "MSG_SYNTH_PROGRESS_INSTALL_FAILED",
+                    name=run.name, seconds=f"{elapsed_s:.0f}",
+                    reason=install_error,
+                ))
             else:
-                progress.update_free(f"<code>{run.name}</code> pronto · {elapsed_s:.0f} s{tests_part}\n<i>installato e firmato, lo richiamo sui paths originali…</i>")
+                progress.update_free(_msg(
+                    "MSG_SYNTH_CANDIDATE_CREATED", name=run.name,
+                ))
 
         return {
             "ok": install_error is None,
             "synthesized": True,
-            "installed": install_error is None,
+            "installed": False,
+            "candidate_created": install_error is None,
+            "planner_visible": False,
+            "lifecycle": "synthesized" if install_error is None else None,
             "install_error": install_error,
             "proposed_name": run.name,
             "proposal_id": proposal_id,
             "elapsed_s": elapsed_s,
             "message": (
-                (f"Executor `{run.name}` sintetizzato, firmato e installato "
-                 f"in {elapsed_s} s. **AL PROSSIMO STEP CHIAMA `{run.name}` "
-                 f"con gli args appropriati per il task originale dell'utente "
-                 f"(\"{user_query}\")**: il tool e' ora nel catalog.")
+                _msg("MSG_SYNTH_CANDIDATE_CREATED", name=run.name)
                 if install_error is None
                 else _msg("MSG_SYNTH_FAILED",
                           reason=f"install error: {install_error}")
@@ -658,7 +740,11 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
         }
     elif run.final_state == "rejected":
         if progress is not None:
-            progress.update_free(f"sintesi rigettata: <i>{run.abandon_reason or 'verbo fuori vocab'}</i>")
+            progress.update_free(_msg(
+                "MSG_SYNTH_PROGRESS_REJECTED",
+                reason=(run.abandon_reason
+                        or _msg("MSG_SYNTH_REASON_OUT_OF_VOCAB")),
+            ))
         return {
             "ok": False,
             "synthesized": False,
@@ -666,11 +752,17 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "elapsed_s": elapsed_s,
             "reason": run.abandon_reason or "out-of-vocabulary",
             "message": _msg("MSG_SYNTH_REJECTED_VOCAB",
-                            reason=run.abandon_reason or "verbo out-of-scope"),
+                            reason=(run.abandon_reason
+                                    or _msg("MSG_SYNTH_REASON_OUT_OF_VOCAB"))),
         }
     else:  # abandoned
         if progress is not None:
-            progress.update_free(f"sintesi interrotta · {elapsed_s:.0f} s\n<i>{run.abandon_reason or 'errore in uno stage'}</i>")
+            progress.update_free(_msg(
+                "MSG_SYNTH_PROGRESS_ABANDONED",
+                seconds=f"{elapsed_s:.0f}",
+                reason=(run.abandon_reason
+                        or _msg("MSG_SYNTH_REASON_STAGE_ERROR")),
+            ))
         return {
             "ok": False,
             "synthesized": False,
@@ -678,5 +770,6 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
             "elapsed_s": elapsed_s,
             "reason": run.abandon_reason or "unknown",
             "message": _msg("MSG_SYNTH_FAILED",
-                            reason=run.abandon_reason or "errore in uno stage"),
+                            reason=(run.abandon_reason
+                                    or _msg("MSG_SYNTH_REASON_STAGE_ERROR"))),
         }

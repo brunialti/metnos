@@ -10,8 +10,9 @@ Verbi esposti:
 - `send(args)`: SMTP send con allegati, vettoriale.
 - `read(args)`: IMAP fetch con window temporale + criteri testuali.
 - `find(args)`: alias di read (criteri obbligatori).
-- `delete(args)`: IMAP STORE \\Deleted + EXPUNGE per UID.
-- `move(args)`: IMAP COPY-then-DELETE per UID.
+- `delete(args)`: IMAP STORE \\Deleted + UID EXPUNGE mirato.
+- `move(args)`: UID MOVE atomico; fallback COPY/STORE/UID EXPUNGE solo quando
+  il server dichiara il supporto necessario.
 
 Contratto common: tutti ritornano dict con `ok: bool` + campi verbo-specifici.
 Errori per-item in `failed[]`, mai silenzio (CLAUDE.md §2.8).
@@ -23,7 +24,6 @@ import mimetypes
 import os
 import re
 import sys
-import time
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -44,7 +44,7 @@ _MAX_ATTACH_BYTES_PER_MSG = 25 * 1024 * 1024
 # Limiti di lettura — FONTE UNICA del default operativo (§7.2/§2.5). Il runtime
 # NON inietta il default del manifest: read_messages passa gli args grezzi a
 # backend.read, quindi il default vero nasce qui. Il manifest di read_messages li
-# DOCUMENTA e DEVE combaciare (guard: runtime/tests/test_mail_read_caps.py).
+# DOCUMENTA e DEVE combaciare (guard: tests/runtime/backends/test_mail_read_caps.py).
 _DEFAULT_MAX_RESULTS = 500
 _MAX_RESULTS_CAP = 1000
 _DEFAULT_MAX_TOTAL = 1000
@@ -197,6 +197,11 @@ def _to_list(x):
 
 def _imap_date(d):
     return f"{d.day:02d}-{_MONTHS_IMAP[d.month - 1]}-{d.year}"
+
+
+def _window_now() -> datetime.datetime:
+    """One clock source for both the coarse IMAP query and exact filtering."""
+    return datetime.datetime.now(datetime.timezone.utc).astimezone()
 
 
 def _resolve_attachments(raw, *, max_total_bytes=_MAX_ATTACH_BYTES_PER_MSG):
@@ -412,11 +417,77 @@ def send(args: dict) -> dict:
 
 # --- read / find -----------------------------------------------------------
 
-def _resolve_window(tw):
+def _rolling_window_delta(tw):
+    """Return the rolling duration represented by a mail time-window preset.
+
+    IMAP ``SINCE`` only has calendar-day precision.  Keeping this parser next
+    to ``_resolve_window`` lets ``read`` apply a second, exact timestamp filter
+    without changing the deliberately mail-specific meaning of ``m`` (month).
+    """
+    if not tw or isinstance(tw, dict):
+        return None
+    s = str(tw).strip().lower()
+    word_days = {
+        "last-week": 7, "last-month": 30, "last-year": 365,
+        "last-settimana": 7, "last-mese": 30, "last-anno": 365,
+    }
+    if s in word_days:
+        return datetime.timedelta(days=word_days[s])
+    norm = s.replace("now_minus_", "").replace("now-minus-", "")
+    match = re.search(
+        r"(\d+)\s*[-_ ]?\s*"
+        r"(d|day|days|giorn[oi]|h|hour|hours|or[ae]|"
+        r"w|week|weeks|settiman[ae]|mo|month|months|mes[ei]|m|min|"
+        r"y|year|years|ann[oi])\b",
+        norm,
+    )
+    if not match or not (
+            any(key in s for key in ("last", "past", "minus", "ago"))
+            or s[0:1].isdigit()):
+        return None
+    n, unit = int(match.group(1)), match.group(2)
+    if n < 1:
+        return None
+    if unit in ("d", "day", "days", "giorno", "giorni"):
+        return datetime.timedelta(days=n)
+    if unit in ("h", "hour", "hours", "ora", "ore"):
+        return datetime.timedelta(hours=n)
+    if unit in ("w", "week", "weeks", "settimana", "settimane"):
+        return datetime.timedelta(weeks=n)
+    if unit in ("mo", "month", "months", "mese", "mesi", "m", "min"):
+        return datetime.timedelta(days=30 * n)
+    if unit in ("y", "year", "years", "anno", "anni"):
+        return datetime.timedelta(days=365 * n)
+    return None
+
+
+def _rolling_window_cutoff(tw, *, now=None):
+    delta = _rolling_window_delta(tw)
+    if delta is None:
+        return None
+    return (now or _window_now()) - delta
+
+
+def _entry_datetime(entry: dict):
+    """Parse an RFC 5322 Date header, retaining unknown/naive dates safely."""
+    from email.utils import parsedate_to_datetime
+    try:
+        value = parsedate_to_datetime(entry.get("date") or "")
+    except Exception:
+        return None
+    # A Date header without a zone cannot be compared reliably.  IMAP already
+    # admitted it through the coarse SINCE filter, so retain it rather than
+    # silently losing a possibly relevant message.
+    if value is None or value.tzinfo is None:
+        return None
+    return value
+
+
+def _resolve_window(tw, *, now=None):
     """Ritorna (since_str | None, before_str | None, label)."""
     if not tw:
         return None, None, None
-    now = datetime.datetime.now(datetime.timezone.utc).astimezone()
+    now = now or _window_now()
     if isinstance(tw, dict):
         return tw.get("since"), tw.get("before"), f"custom:{tw}"
     s = str(tw).strip().lower()
@@ -431,7 +502,7 @@ def _resolve_window(tw):
     _WORD = {"last-week": 7, "last-month": 30, "last-year": 365,
              "last-settimana": 7, "last-mese": 30, "last-anno": 365}
     if s in _WORD:
-        d = (now - datetime.timedelta(days=_WORD[s])).date()
+        d = (now - _rolling_window_delta(s)).date()
         return _imap_date(d), None, s
     # §2.4 robustezza NL→determinismo: "N unita' fa". Tollera i prefissi che
     # l'LLM inventa (last-/past-/now_minus_/-ago) e separatori liberi. Per IMAP
@@ -448,17 +519,8 @@ def _resolve_window(tw):
     if m and any(k in s for k in ("last", "past", "minus", "ago")) or (m and s[0:1].isdigit()):
         n = int(m.group(1)); u = m.group(2)
         if n >= 1:
-            if u in ("d", "day", "days", "giorno", "giorni"):
-                delta = datetime.timedelta(days=n)
-            elif u in ("h", "hour", "hours", "ora", "ore"):
-                delta = datetime.timedelta(hours=n)
-            elif u in ("w", "week", "weeks", "settimana", "settimane"):
-                delta = datetime.timedelta(weeks=n)
-            elif u in ("mo", "month", "months", "mese", "mesi", "m", "min"):
-                delta = datetime.timedelta(days=30 * n)
-            elif u in ("y", "year", "years", "anno", "anni"):
-                delta = datetime.timedelta(days=365 * n)
-            else:
+            delta = _rolling_window_delta(s)
+            if delta is None:
                 return None, None, f"unknown_preset:{s}"
             d = (now - delta).date()
             return _imap_date(d), None, f"last-{n}{u}"
@@ -542,7 +604,8 @@ def read(args: dict) -> dict:
         max_total = _DEFAULT_MAX_TOTAL
     max_total = min(max_total, _MAX_TOTAL_CAP)
 
-    since, before, window_label = _resolve_window(time_window)
+    window_now = _window_now()
+    since, before, window_label = _resolve_window(time_window, now=window_now)
     if time_window and window_label and window_label.startswith(("invalid:", "unknown_preset:")):
         return {"ok": False, "error_code": "ERR_TIME_WINDOW_INVALID",
                 "error": _msg("ERR_TIME_WINDOW_INVALID", label=str(window_label))}
@@ -553,31 +616,66 @@ def read(args: dict) -> dict:
 
     entries, failed = [], []
     available_total = 0
-    _t0 = time.time()
     deadline_hit = False
     accounts_read = 0
-    for account in accounts:
-        if len(entries) >= max_total:
-            break
-        # §2.7/§2.8: auto-stop sotto il timeout esecutore → ritorna il parziale
-        # invece di farsi uccidere. Salta gli account non ancora letti.
-        if time.time() - _t0 > _READ_DEADLINE_S:
-            deadline_hit = True
-            break
-        per_account_cap = max_total - len(entries)
+
+    def _read_isolated(account):
+        # Ogni worker possiede connessione e accumulatori propri: nessuna lista
+        # condivisa e nessuna dipendenza dall'ordine di completamento.
+        account_entries: list[dict] = []
+        account_failed: list[dict] = []
         try:
-            avail = _read_one_account(
+            available = _read_one_account(
                 account, folder, max_results, unseen_only,
-                since, before, per_account_cap, page_size,
-                entries, failed, time_window,
+                since, before, max_total, page_size,
+                account_entries, account_failed, time_window,
                 from_contains, subject_contains, body_contains,
                 open_imap, parse_envelope,
             )
-            available_total += avail or 0
-            accounts_read += 1
-        except Exception as e:
-            failed.append({"account": account, "error_code": "ERR_OP_FAILED",
-                            "error": _msg("ERR_OP_FAILED", reason=f"{type(e).__name__}: {e}")})
+        except Exception as exc:
+            available = 0
+            account_failed.append({
+                "account": account,
+                "error_code": "ERR_OP_FAILED",
+                "error": _msg(
+                    "ERR_OP_FAILED",
+                    reason=f"{type(exc).__name__}: {exc}",
+                ),
+            })
+        return account_entries, account_failed, available or 0
+
+    # Fan-out solo quando il runtime ha assegnato >1 worker dalla policy
+    # firmata. map_ordered ricompone sempre nell'ordine degli account e non
+    # avvia nuovi account oltre la deadline interna.
+    from executor_workers import map_ordered
+    account_results, skipped_indexes = map_ordered(
+        _read_isolated, accounts, deadline_s=_READ_DEADLINE_S)
+    for _index, (account_entries, account_failed, available) in account_results:
+        entries.extend(account_entries)
+        failed.extend(account_failed)
+        available_total += available
+        accounts_read += 1
+    deadline_hit = bool(skipped_indexes)
+
+    # ``SINCE`` is calendar-day based: at 15:00, ``last-3d`` also returns
+    # messages from midnight to 14:59 on the boundary day.  Apply the exact
+    # rolling cutoff after fetching.  Unparseable/zone-less Date headers stay
+    # visible (the server-side filter is still authoritative for them).
+    exact_cutoff = (
+        _rolling_window_cutoff(time_window, now=window_now)
+        if time_window and not since_explicit else None
+    )
+    if exact_cutoff is not None and entries:
+        exact_entries = []
+        excluded = 0
+        for entry in entries:
+            received = _entry_datetime(entry)
+            if received is not None and received < exact_cutoff:
+                excluded += 1
+                continue
+            exact_entries.append(entry)
+        entries = exact_entries
+        available_total = max(len(entries), available_total - excluded)
 
     # §2.1 «le piu' recenti PRIMA» GLOBALE su multi-account: senza, l'aggregazione
     # e' per-account (account1 tutto, poi account2...) → le mail recenti di un
@@ -585,15 +683,18 @@ def read(args: dict) -> dict:
     # extract_entries _MAX_INPUTS=50) → un ago recente in 426 mail viene perso.
     # Riordina l'intera lista per data desc (mail non parsabili → in coda).
     if len(accounts) > 1 and len(entries) > 1:
-        from email.utils import parsedate_to_datetime
-
         def _entry_ts(e):
             try:
-                d = parsedate_to_datetime(e.get("date") or "")
+                d = _entry_datetime(e)
                 return d.timestamp() if d else 0.0
             except Exception:
                 return 0.0
         entries.sort(key=_entry_ts, reverse=True)
+    # Per ogni account sono stati raccolti fino a max_total candidati: applicare
+    # il cap dopo il sort globale restituisce davvero le N mail più recenti,
+    # indipendentemente dall'ordine degli account.
+    if len(entries) > max_total:
+        entries = entries[:max_total]
     out = {
         "ok": True,
         "ok_count": len(entries),
@@ -604,7 +705,7 @@ def read(args: dict) -> dict:
     }
     if deadline_hit:
         # §2.7 truncation visibility: parziale onesto, non silenzioso.
-        skipped = [a for a in accounts[accounts_read:]]
+        skipped = [accounts[index] for index in skipped_indexes]
         out["truncated"] = True
         out["truncated_what"] = "accounts_unread"
         out["used"] = len(entries)
@@ -788,6 +889,63 @@ def _read_one_account(account, folder, max_results, unseen_only, since, before,
 
 # --- delete / move ---------------------------------------------------------
 
+def _imap_capabilities(conn) -> set[str]:
+    return {
+        (value.decode("ascii", "ignore")
+         if isinstance(value, bytes) else str(value)).upper()
+        for value in (getattr(conn, "capabilities", ()) or ())
+    }
+
+
+def _supports_uid_expunge(conn) -> bool:
+    # UID EXPUNGE is an extension for IMAP4rev1 (RFC 4315), but part of the
+    # base IMAP4rev2 protocol (RFC 9051).  Rev2 servers therefore need not
+    # advertise UIDPLUS separately.
+    caps = _imap_capabilities(conn)
+    return "UIDPLUS" in caps or "IMAP4REV2" in caps
+
+
+def _supports_atomic_move(conn) -> bool:
+    # MOVE is likewise in the IMAP4rev2 base set and an advertised extension
+    # on IMAP4rev1 servers.
+    caps = _imap_capabilities(conn)
+    return "MOVE" in caps or "IMAP4REV2" in caps
+
+
+def _unselect_without_expunge(conn) -> None:
+    """Leave selected state without the destructive semantics of CLOSE.
+
+    ``imaplib.close()`` permanently removes *every* message already carrying
+    ``\\Deleted`` in the mailbox, including flags set by another client.  The
+    safe release is UNSELECT; LOGOUT remains the final fallback and, by the
+    IMAP specification, implicitly closes without expunging.
+    """
+    unselect = getattr(conn, "unselect", None)
+    if callable(unselect):
+        try:
+            unselect()
+        except Exception:
+            pass
+
+def _uid_expunge(conn, uids: list[str]) -> str | None:
+    """Espunge soltanto gli UID appena marcati, mai l'intera cartella.
+
+    RFC 4315 UIDPLUS è necessario per evitare di cancellare messaggi che un
+    altro client aveva già marcato ``\\Deleted``. Senza capability lasciamo i
+    flag in place e riportiamo un errore onesto; nessun fallback folder-wide.
+    """
+    if not uids:
+        return None
+    if not _supports_uid_expunge(conn):
+        return "UIDPLUS or IMAP4rev2 required for safe targeted expunge"
+    try:
+        status, _ = conn.uid("EXPUNGE", ",".join(str(uid) for uid in uids))
+    except Exception as ex:
+        return str(ex)
+    if status != "OK":
+        return str(status)
+    return None
+
 def delete(args: dict) -> dict:
     """Cancella mail per UID (IMAP STORE \\Deleted + EXPUNGE).
 
@@ -813,6 +971,19 @@ def delete(args: dict) -> dict:
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
                     "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(folder))}
+        if not _supports_uid_expunge(conn):
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": len(uids),
+                "results": [],
+                "failed": [{"uid": str(uid),
+                            "error_code": "ERR_IMAP_SAFE_DELETE_UNSUPPORTED",
+                            "error": _msg("ERR_IMAP_SAFE_DELETE_UNSUPPORTED")}
+                           for uid in uids],
+                "error_code": "ERR_IMAP_SAFE_DELETE_UNSUPPORTED",
+                "error": _msg("ERR_IMAP_SAFE_DELETE_UNSUPPORTED"),
+            }
         for uid in uids:
             try:
                 u = str(uid)
@@ -824,23 +995,37 @@ def delete(args: dict) -> dict:
                 results.append({"uid": u, "account": account, "folder": folder, "ok": True})
             except Exception as e:
                 failed.append({"uid": str(uid), "error": str(e)})
-        try:
-            conn.expunge()
-        except Exception as e:
-            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
-                            "error": _msg("ERR_IMAP_CMD", cmd="EXPUNGE", reason=str(e))})
+        expunge_error = _uid_expunge(
+            conn, [r["uid"] for r in results if r.get("ok")])
+        if expunge_error:
+            pending = [{**item, "ok": False,
+                        "completion_state": "marked_deleted"}
+                       for item in results]
+            failed.extend({
+                "uid": item["uid"],
+                "error_code": "ERR_IMAP_DELETE_INCOMPLETE",
+                "error": _msg("ERR_IMAP_DELETE_INCOMPLETE"),
+            } for item in results)
+            results = []
+        else:
+            pending = []
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        _unselect_without_expunge(conn)
         try:
             conn.logout()
         except Exception:
             pass
-    return {"ok": len(failed) == 0,
+    out = {"ok": len(failed) == 0,
             "ok_count": len(results), "fail_count": len(failed),
             "results": results, "failed": failed}
+    if pending:
+        out.update({
+            "pending": pending,
+            "completion_state": "marked_deleted",
+            "error_code": "ERR_IMAP_DELETE_INCOMPLETE",
+            "error": _msg("ERR_IMAP_DELETE_INCOMPLETE"),
+        })
+    return out
 
 
 # Termini user-facing -> special-use IMAP flag (§5: «Spam»/«Posta indesiderata»
@@ -914,7 +1099,7 @@ def _fetch_message_id(conn, uid) -> str | None:
 
 
 def move(args: dict) -> dict:
-    """Sposta mail fra folder IMAP (COPY-then-STORE \\Deleted + EXPUNGE).
+    """Sposta mail fra folder IMAP senza espungere messaggi estranei.
 
     Args: account, src_folder, dst_folder, uids (list of str).
     """
@@ -946,6 +1131,20 @@ def move(args: dict) -> dict:
         if status != "OK":
             return {"ok": False, "error_code": "ERR_FOLDER_NOT_FOUND",
                     "error": _msg("ERR_FOLDER_NOT_FOUND", folder=str(src_folder))}
+        atomic_move = _supports_atomic_move(conn)
+        if not atomic_move and not _supports_uid_expunge(conn):
+            return {
+                "ok": False,
+                "ok_count": 0,
+                "fail_count": len(uids),
+                "results": [],
+                "failed": [{"uid": str(uid),
+                            "error_code": "ERR_IMAP_SAFE_MOVE_UNSUPPORTED",
+                            "error": _msg("ERR_IMAP_SAFE_MOVE_UNSUPPORTED")}
+                           for uid in uids],
+                "error_code": "ERR_IMAP_SAFE_MOVE_UNSUPPORTED",
+                "error": _msg("ERR_IMAP_SAFE_MOVE_UNSUPPORTED"),
+            }
         # §2.8: valida gli uid contro la cartella sorgente REALE. Un UID COPY di
         # un uid INESISTENTE nel folder selezionato ritorna OK ma NON copia
         # nulla (no-op) → il move dichiarerebbe successo senza spostare (bug
@@ -974,13 +1173,32 @@ def move(args: dict) -> dict:
             # ORA, mentre la mail e' ancora in src e la folder e' selezionata.
             mid = _fetch_message_id(conn, u)
             try:
+                if atomic_move:
+                    st, _ = conn.uid("MOVE", u, dst_imap)
+                    if st != "OK":
+                        failed.append({
+                            "uid": u, "error_code": "ERR_IMAP_CMD",
+                            "error": _msg("ERR_IMAP_CMD", cmd="UID MOVE",
+                                          reason=str(st)),
+                        })
+                        continue
+                    results.append({
+                        "uid": u, "account": account,
+                        "src": src_folder, "dst": dst_folder,
+                        "src_folder": src_folder,
+                        "dst_folder": dst_folder,
+                        "message_id": mid, "ok": True,
+                        "completion_state": "moved",
+                    })
+                    continue
                 # COPY first (so we never DELETE before confirming, §2.9)
                 st, _ = conn.uid("COPY", u, dst_imap)
                 if st != "OK":
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="COPY", reason=str(st))})
                     continue
-                st2, _ = conn.uid("STORE", u, "+FLAGS", "(\\Deleted)")
+                st2, _ = conn.uid(
+                    "STORE", u, "+FLAGS.SILENT", "(\\Deleted)")
                 if st2 != "OK":
                     failed.append({"uid": u, "error_code": "ERR_IMAP_CMD",
                                     "error": _msg("ERR_IMAP_CMD", cmd="STORE-post-COPY", reason=str(st2))})
@@ -994,20 +1212,37 @@ def move(args: dict) -> dict:
                                 "message_id": mid, "ok": True})
             except Exception as e:
                 failed.append({"uid": u, "error": str(e)})
-        try:
-            conn.expunge()
-        except Exception as e:
-            failed.append({"uid": "*", "error_code": "ERR_IMAP_CMD",
-                            "error": _msg("ERR_IMAP_CMD", cmd="EXPUNGE", reason=str(e))})
+        pending = []
+        if not atomic_move:
+            expunge_error = _uid_expunge(
+                conn, [r["uid"] for r in results if r.get("ok")])
+            if expunge_error:
+                pending = [{**item, "ok": False,
+                            "completion_state": "copied_and_marked_deleted"}
+                           for item in results]
+                failed.extend({
+                    "uid": item["uid"],
+                    "error_code": "ERR_IMAP_MOVE_INCOMPLETE",
+                    "error": _msg("ERR_IMAP_MOVE_INCOMPLETE"),
+                } for item in results)
+                results = []
+            else:
+                for item in results:
+                    item["completion_state"] = "moved"
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
+        _unselect_without_expunge(conn)
         try:
             conn.logout()
         except Exception:
             pass
-    return {"ok": len(failed) == 0,
+    out = {"ok": len(failed) == 0,
             "ok_count": len(results), "fail_count": len(failed),
             "results": results, "failed": failed}
+    if pending:
+        out.update({
+            "pending": pending,
+            "completion_state": "copied_and_marked_deleted",
+            "error_code": "ERR_IMAP_MOVE_INCOMPLETE",
+            "error": _msg("ERR_IMAP_MOVE_INCOMPLETE"),
+        })
+    return out

@@ -1,10 +1,10 @@
 """skill_fetch — fetch remoto SKILL.md + scripts (Gap 4, 10/5/2026).
 
 Supporta:
-- `path locale` (file SKILL.md o dir contenente SKILL.md) — ritorna invariato.
-- `agentskills.io/<owner>/<skill>` — canonical mapping a GitHub raw.
-- `https://github.com/<owner>/<skill>` — git clone in `/tmp/skill_imports_cache/`.
-- `https://raw.githubusercontent.com/<owner>/<repo>/<branch>/SKILL.md` — direct urllib.
+- ``path locale`` (file SKILL.md o directory che lo contiene);
+- ``agentskills.io/<owner>/<skill>`` (mapping al file GitHub raw);
+- ``https://github.com/<owner>/<skill>`` (clone del repository);
+- URL raw GitHub che punta direttamente a ``SKILL.md``.
 
 Cache: `~/.cache/metnos/skill_imports/<sha256(url)>/` con TTL 7 giorni.
 Riusa pattern `runtime/http_cache.py` di <install_root>/ (ADR 0105):
@@ -107,13 +107,31 @@ def _cache_dir_for(url: str) -> Path:
     return CACHE_ROOT / key[:2] / key
 
 
+def _cached_skill_path(cache_dir: Path, ttl_s: int) -> Optional[Path]:
+    """Ritorna il ``SKILL.md`` fresco della cache, altrimenti ``None``.
+
+    I download raw vivono in ``<cache_dir>/SKILL.md``; un clone GitHub vive
+    in ``<cache_dir>/<repo>/SKILL.md``. Limitare la ricerca a questi due
+    layout evita di confondere uno SKILL.md annidato fra i riferimenti con il
+    punto d'ingresso del pacchetto.
+    """
+    if ttl_s <= 0:
+        return None
+    candidates = [cache_dir / "SKILL.md"]
+    if cache_dir.is_dir():
+        candidates.extend(sorted(cache_dir.glob("*/SKILL.md")))
+    for skill in candidates:
+        if not skill.is_file():
+            continue
+        age = time.time() - skill.stat().st_mtime
+        if age < ttl_s:
+            return skill
+    return None
+
+
 def _is_cache_valid(cache_dir: Path, ttl_s: int) -> bool:
-    """Cache valida se SKILL.md presente E mtime < ttl_s."""
-    skill = cache_dir / "SKILL.md"
-    if not skill.is_file():
-        return False
-    age = time.time() - skill.stat().st_mtime
-    return age < ttl_s
+    """Compatibilità: vero quando la cache contiene un ingresso fresco."""
+    return _cached_skill_path(cache_dir, ttl_s) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -209,8 +227,8 @@ def fetch_skill_source(arg: str, *,
       force_refresh: bypassa cache, scarica sempre.
 
     Returns:
-      Path al SKILL.md scaricato/risolto. Per remote, anche scripts/
-      e references/ (se presenti) sono nella stessa dir.
+      Path al SKILL.md scaricato o risolto. Un clone di repository conserva
+      anche scripts/ e references/; un URL raw conserva soltanto SKILL.md.
 
     Raises:
       SkillFetchError: URL non riconosciuto, rete giu', SKILL.md assente.
@@ -240,8 +258,9 @@ def fetch_skill_source(arg: str, *,
     # 4. Cache lookup.
     cache_dir = _cache_dir_for(arg)
     if not force_refresh and cache_ttl_s > 0:
-        if _is_cache_valid(cache_dir, cache_ttl_s):
-            return cache_dir / "SKILL.md"
+        cached = _cached_skill_path(cache_dir, cache_ttl_s)
+        if cached is not None:
+            return cached
 
     # 5. Fetch by kind.
     if kind == "raw_github":

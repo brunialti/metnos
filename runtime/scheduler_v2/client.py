@@ -13,7 +13,9 @@ or via PR6's HTTP-level kick endpoint.
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
+import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +88,7 @@ def add_job(
     grace_window_s: int | None = None,
     label: str = "",
     description: str = "",
+    remaining_runs: int = 0,
     tz_name: str = "Europe/Rome",
 ) -> dict:
     """Register a recurring job. UPSERT on `name`. Returns the persisted entry.
@@ -108,6 +111,7 @@ def add_job(
         origin=origin,
         label=label,
         description=description,
+        remaining_runs=max(0, int(remaining_runs or 0)),
     )
     storage = get_storage()
     try:
@@ -198,6 +202,53 @@ def cancel_timer(timer_id: str) -> bool:
     return cancel_job(timer_id)
 
 
+def purge_jobs(names: tuple[str, ...]) -> dict[str, int]:
+    """Remove selected jobs and their run history as one storage operation."""
+
+    storage = get_storage()
+    try:
+        result = storage.purge_names(names)
+    finally:
+        storage.close()
+    if result["entries"]:
+        _try_kick_local_daemon()
+    return result
+
+
+def purge_owner_jobs(owner_user_id: str, *, name_prefix: str,
+                     hinted_names: tuple[str, ...] = ()) -> dict[str, int]:
+    """Remove entries/history discovered by UUID, canonical prefix or hint."""
+
+    storage = get_storage()
+    try:
+        result = storage.purge_owner(
+            owner_user_id, name_prefix=name_prefix,
+            hinted_names=hinted_names)
+    finally:
+        storage.close()
+    if result["entries"]:
+        _try_kick_local_daemon()
+    return result
+
+
+def migrate_owner_job(old_name: str, new_name: str,
+                      payload: dict) -> bool:
+    """Owner migration for a legacy user job, retaining history and stats."""
+
+    storage = get_storage()
+    try:
+        migrated = storage.migrate_owner_name(
+            old_name, new_name,
+            json.dumps(payload, ensure_ascii=True, sort_keys=True,
+                       separators=(",", ":")),
+        )
+    finally:
+        storage.close()
+    if migrated:
+        _try_kick_local_daemon()
+    return migrated
+
+
 def toggle_job(name: str, enabled: bool) -> bool:
     """Enable/disable a job by name. Returns True if the row existed.
 
@@ -259,6 +310,41 @@ def list_jobs(
     return out
 
 
+def list_jobs_readonly(names: tuple[str, ...]) -> list[dict]:
+    """Read only the explicitly admitted recurring rows.
+
+    This accessor is used by user-scoped probes.  Requiring a closed name set
+    prevents loading other owners' plaintext payloads and filtering them only
+    after they have crossed the process boundary.
+    """
+
+    path = _resolve_db_path()
+    admitted = tuple(dict.fromkeys(str(name) for name in names if str(name)))
+    if not admitted or not path.is_file():
+        return []
+    connection = sqlite3.connect(
+        f"file:{path}?mode=ro", uri=True, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    try:
+        columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA table_info(schedule_entries)").fetchall()
+        }
+        if not {"name", "payload", "recurring"}.issubset(columns):
+            raise RuntimeError("scheduler schema not initialized")
+        placeholders = ",".join("?" for _ in admitted)
+        return [
+            _entry_to_dict(ScheduleEntry.from_row(row))
+            for row in connection.execute(
+                f"SELECT * FROM schedule_entries WHERE recurring=1 "
+                f"AND name IN ({placeholders}) ORDER BY next_fire_at",
+                admitted,
+            ).fetchall()
+        ]
+    finally:
+        connection.close()
+
+
 def list_timers() -> list[dict]:
     """List active one-shot entries (recurring=False, enabled=True)."""
     storage = get_storage()
@@ -273,15 +359,46 @@ def list_timers() -> list[dict]:
     ]
 
 
-def history(name: str | None = None, limit: int = 20) -> list[dict]:
+def history(name: str | None = None, limit: int = 20, *,
+            started_from: str | None = None,
+            started_to: str | None = None) -> list[dict]:
     """Return the last N runs, optionally filtered by entry name."""
     n = max(1, int(limit))
     storage = get_storage()
     try:
-        runs = storage.list_runs(limit=n, entry_name=name)
+        runs = storage.list_runs(
+            limit=n, entry_name=name,
+            started_from=started_from, started_to=started_to)
     finally:
         storage.close()
     return [dataclasses.asdict(r) for r in runs]
+
+
+def history_readonly(name: str, limit: int = 20) -> list[dict]:
+    """Read bounded run history without initializing or mutating storage."""
+
+    path = _resolve_db_path()
+    if not name or not path.is_file():
+        return []
+    connection = sqlite3.connect(
+        f"file:{path}?mode=ro", uri=True, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    try:
+        columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA table_info(runs)").fetchall()
+        }
+        if not {"entry_name", "started_at", "status"}.issubset(columns):
+            raise RuntimeError("scheduler history schema not initialized")
+        n = max(1, int(limit))
+        from .models import Run
+        return [dataclasses.asdict(Run.from_row(row)) for row in
+                connection.execute(
+                    "SELECT * FROM runs WHERE entry_name=? "
+                    "ORDER BY started_at DESC LIMIT ?", (name, n),
+                ).fetchall()]
+    finally:
+        connection.close()
 
 
 def run_now(name: str) -> dict:

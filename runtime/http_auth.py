@@ -6,7 +6,8 @@ Tre ruoli: anonymous / user / admin (admin >= user).
   auto-generata al primo start. Solo il fingerprint sha256 va nei log.
 - Device pairing token: lookup in `devices.db` (Bearer = public_key_b64);
   se trovato → ruolo `user`.
-- LAN trusted: 127.0.0.1, 192.168.0.0/16, 10.0.0.0/8 → `user` di default.
+- LAN compatibility: disabled by default; when explicitly enabled it creates
+  an isolated synthetic principal, never the registered host user.
 - Altrove: `anonymous`.
 
 Whitelist anonymous: `/agent/health`, `/agent/register`, `/.well-known/*`.
@@ -18,9 +19,12 @@ import hashlib
 import hmac
 import ipaddress
 import secrets
+import threading
 import time
 
 from aiohttp import web
+
+from http_app_state import ADMIN_KEY as APP_ADMIN_KEY, app_get
 
 import devices
 import config as _C  # §7.11
@@ -33,8 +37,13 @@ import os as _os
 ADMIN_KEY_PATH = _C.PATH_USER_CONFIG / "admin.key"
 
 ANON_WHITELIST_PREFIXES = (
-    "/agent/health", "/agent/register", "/.well-known/",
+    "/agent/health", "/.well-known/",
     "/admin/login",  # form di login deve essere raggiungibile per autenticarsi
+    # I form possono essere aperti su un secondo browser tramite una capability
+    # HMAC limitata a un solo dialogo. Le route applicano ownership/capability
+    # prima di leggere o mutare lo stato; il middleware deve lasciarle arrivare
+    # a quel verificatore invece di sostituire il suo 403 con un 401 generico.
+    "/agent/dialog/",
     "/agent/photos/",  # auth via signed token nell URL stesso
     "/pair/",          # consumo pair token (ADR 0083 + 11/5/2026 channel='http')
     "/oauth/callback", # callback OAuth Google (state token nell URL)
@@ -45,26 +54,46 @@ ANON_WHITELIST_PREFIXES = (
 
 # Path completi (no-prefix match) accessibili ad anonymous: gestiscono
 # il proprio redirect a login quando opportuno.
-ANON_EXACT_PATHS = ("/",)
+ANON_EXACT_PATHS = ("/", "/agent/register", "/admin/onboard")
 ADMIN_PREFIX = "/admin"
 ADMIN_COOKIE = "metnos_admin"
 ADMIN_COOKIE_TTL_S = 86400 * 7  # 7 giorni
 USER_COOKIE = "metnos_user"
 USER_COOKIE_TTL_S = 86400 * 90  # 90 giorni (device pairing persistente)
 
-LAN_NETS = (
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("10.0.0.0/8"),
-)
+
+class IdentityStoreUnavailable(RuntimeError):
+    """Firma valida, ma il binding/revocation store non e' consultabile."""
+
+def _env_enabled(name: str, default: bool = False) -> bool:
+    raw = _os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_lan_nets() -> tuple:
+    raw = _os.environ.get(
+        "METNOS_TRUSTED_LAN_CIDRS",
+        "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+    )
+    networks = []
+    for token in raw.split(","):
+        try:
+            networks.append(ipaddress.ip_network(token.strip(), strict=False))
+        except ValueError:
+            log.warning("invalid METNOS_TRUSTED_LAN_CIDRS entry: %r", token)
+    return tuple(networks)
+
+
+LAN_NETS = _parse_lan_nets()
 
 # Proxy fidati: SOLO se il peer TCP reale (`request.remote`) cade in queste
-# reti gli header `CF-Connecting-IP` / `X-Forwarded-For` vengono onorati per
+# reti gli header standard inoltrati vengono onorati per
 # derivare l'IP del client. Altrimenti chiunque potrebbe spoofare
 # `X-Forwarded-For: 127.0.0.1` e ottenere il bypass LAN → ruolo `user`.
 #
-# Default = loopback: il tunnel Cloudflare (`cloudflared`) gira sullo stesso
-# host e consegna a 127.0.0.1, quindi il deploy resta funzionante. Override
+# Default = loopback: un reverse proxy locale consegna a 127.0.0.1. Override
 # (es. reverse-proxy su altro host LAN) via env `METNOS_TRUSTED_PROXIES`
 # come lista CIDR separata da virgole (es. "127.0.0.0/8,10.0.0.5/32").
 def _parse_trusted_proxies() -> tuple:
@@ -88,7 +117,7 @@ TRUSTED_PROXY_NETS = _parse_trusted_proxies()
 
 
 def _is_trusted_proxy(remote: str | None) -> bool:
-    """True se il peer TCP reale e' un proxy fidato (puo' dettare XFF/CF-IP)."""
+    """True se il peer TCP reale e' un proxy fidato."""
     if not remote:
         return False
     try:
@@ -98,15 +127,33 @@ def _is_trusted_proxy(remote: str | None) -> bool:
     return any(ip in net for net in TRUSTED_PROXY_NETS)
 
 
+def external_request_scheme(request: web.Request) -> str:
+    """Return the browser-facing scheme without trusting spoofable headers."""
+    direct = str(getattr(request, "scheme", "http") or "http").lower()
+    if direct == "https" or not _is_trusted_proxy(request.remote):
+        return direct if direct in {"http", "https"} else "http"
+
+    forwarded = request.headers.get("Forwarded", "").split(",", 1)[0]
+    for field in forwarded.split(";"):
+        key, separator, value = field.partition("=")
+        if separator and key.strip().lower() == "proto":
+            candidate = value.strip().strip('"').lower()
+            if candidate in {"http", "https"}:
+                return candidate
+
+    candidate = request.headers.get("X-Forwarded-Proto", "").split(",", 1)[0]
+    candidate = candidate.strip().lower()
+    return candidate if candidate in {"http", "https"} else "http"
+
+
 def get_or_create_admin_key() -> str:
     """Legge la admin key da ADMIN_KEY_PATH; se non esiste la crea (mode 0600)."""
     p = ADMIN_KEY_PATH
     if p.exists():
-        return p.read_text().strip()
-    p.parent.mkdir(parents=True, exist_ok=True)
+        _C.ensure_private_file(p)
+        return p.read_text(encoding="utf-8").strip()
     key = secrets.token_hex(32)
-    p.write_text(key)
-    p.chmod(0o600)
+    _C.write_private_text(p, key)
     fp = hashlib.sha256(key.encode()).hexdigest()[:16]
     log.warning("[http] generated admin key %s (fingerprint sha256:%s)", p, fp)
     return key
@@ -139,6 +186,40 @@ def verify_admin_cookie(value: str, admin_key: str) -> bool:
     return hmac.compare_digest(sig, expected)
 
 
+_CONSUMED_ONBOARD_TOKENS: dict[str, int] = {}
+_ONBOARD_TOKEN_LOCK = threading.Lock()
+
+
+def consume_admin_onboard_token(
+        value: str, admin_key: str, *, now: int | None = None) -> bool:
+    """Verify and atomically consume a short-lived installer onboarding token."""
+    current = int(time.time()) if now is None else int(now)
+    try:
+        exp_s, nonce, sig = value.split(".", 2)
+        exp = int(exp_s)
+        secret = bytes.fromhex(admin_key)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if exp < current or len(nonce) != 16 or len(sig) != 32:
+        return False
+    if any(char not in "0123456789abcdef" for char in nonce + sig.lower()):
+        return False
+    payload = f"{exp_s}.{nonce}"
+    expected = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig.lower(), expected):
+        return False
+    fingerprint = hashlib.sha256(value.encode()).hexdigest()
+    with _ONBOARD_TOKEN_LOCK:
+        expired = [key for key, deadline in _CONSUMED_ONBOARD_TOKENS.items()
+                   if deadline < current]
+        for key in expired:
+            _CONSUMED_ONBOARD_TOKENS.pop(key, None)
+        if fingerprint in _CONSUMED_ONBOARD_TOKENS:
+            return False
+        _CONSUMED_ONBOARD_TOKENS[fingerprint] = exp
+    return True
+
+
 def issue_user_cookie(admin_key: str, device_id: str,
                        ttl_s: int = USER_COOKIE_TTL_S) -> str:
     """Cookie pair-based per ruolo `user` su un device specifico.
@@ -154,8 +235,8 @@ def issue_user_cookie(admin_key: str, device_id: str,
     return f"{payload}.{sig}"
 
 
-def verify_user_cookie(value: str, admin_key: str) -> str | None:
-    """Ritorna `device_id` se cookie valido, None altrimenti."""
+def _verified_user_cookie_device(value: str, admin_key: str) -> str | None:
+    """Verify only the signed cookie envelope; it grants no role by itself."""
     try:
         exp_s, device_id, sig = value.split(".", 2)
         exp = int(exp_s)
@@ -168,15 +249,36 @@ def verify_user_cookie(value: str, admin_key: str) -> str | None:
                         hashlib.sha256).hexdigest()[:32]
     if not hmac.compare_digest(sig, expected):
         return None
-    # Verifica che il device_id sia ancora legato (non revocato).
+    return device_id
+
+
+def verify_user_cookie_identity(
+        value: str, admin_key: str) -> tuple[str, str] | None:
+    """Resolve a valid cookie to one live, non-deleting logical owner."""
+
+    device_id = _verified_user_cookie_device(value, admin_key)
+    if not device_id:
+        return None
     try:
         import users as _users
-        if not _users.is_device_bound("http", device_id):
+        owner = _users.find_user_by_recipient("http", device_id)
+        if owner is None:
             return None
-    except Exception:
-        # Test env senza users.db: accetta sulla base della firma.
-        pass
-    return device_id
+    except Exception as exc:
+        # Una firma valida prova soltanto che il cookie fu emesso dal server;
+        # il binding corrente e' la revocation source of truth. Se lo store non
+        # e' consultabile non possiamo distinguere un device attivo da uno
+        # revocato: segnala un errore ritentabile, senza promuovere il ruolo.
+        log.warning("user cookie binding lookup failed: %s", exc)
+        raise IdentityStoreUnavailable(str(exc)) from exc
+    return device_id, str(owner["id"])
+
+
+def verify_user_cookie(value: str, admin_key: str) -> str | None:
+    """Compatibility projection returning the device of a live identity."""
+
+    identity = verify_user_cookie_identity(value, admin_key)
+    return identity[0] if identity else None
 
 
 def _is_lan_trusted(remote: str | None) -> bool:
@@ -189,33 +291,53 @@ def _is_lan_trusted(remote: str | None) -> bool:
     return any(ip in net for net in LAN_NETS)
 
 
-def _device_for_token(token: str) -> str | None:
-    """Ritorna `device_id` se `token` matcha la public_key_b64 di un device pairato."""
+def _device_identity_for_token(token: str) -> tuple[str, str] | None:
+    """Resolve one device bearer to its currently live logical owner."""
     try:
         for d in devices.list_devices():
             if hmac.compare_digest(d.public_key_b64, token):
-                return d.id
+                owner = devices.owner_user(d.owner_user_id)
+                if owner is not None:
+                    return d.id, str(owner["id"])
     except Exception as e:  # device DB non ancora inizializzato in test isolati
         log.debug("device lookup failed: %s", e)
     return None
+
+
+def _device_for_token(token: str) -> str | None:
+    """Compatibility projection for callers that only need the device ID."""
+
+    identity = _device_identity_for_token(token)
+    return identity[0] if identity else None
 
 
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
     """Classifica il ruolo del chiamante e applica la policy /admin/."""
     path = request.path
+    # The router has already resolved the request when aiohttp enters a
+    # middleware.  Do not turn an unknown path (or an unsupported method)
+    # into an authentication oracle: preserve the router's ordinary 404/405
+    # response before evaluating credentials.  This branch applies only to
+    # aiohttp's system routes, never to a matched Metnos endpoint.
+    match_info = getattr(request, "match_info", None)
+    if getattr(match_info, "http_exception", None) is not None:
+        return await handler(request)
     role = "anonymous"
     device_id = None
+    authenticated_user_id = None
+    lan_principal = None
 
     auth = request.headers.get("Authorization", "")
     token = auth[7:].strip() if auth.startswith("Bearer ") else ""
 
-    admin_key = request.app.get("admin_key", "")
+    admin_key = app_get(request.app, APP_ADMIN_KEY, "")
     if token and admin_key and hmac.compare_digest(token, admin_key):
         role = "admin"
     elif token:
-        device_id = _device_for_token(token)
-        if device_id:
+        identity = _device_identity_for_token(token)
+        if identity:
+            device_id, authenticated_user_id = identity
             role = "user"
     else:
         # Cookie firmato (solo se Bearer assente: Bearer ha priorita').
@@ -226,38 +348,77 @@ async def auth_middleware(request: web.Request, handler):
             # Pair cookie per device web (ADR 0083 multi-user + 11/5/2026).
             user_cookie = request.cookies.get(USER_COOKIE, "")
             if user_cookie and admin_key:
-                dev = verify_user_cookie(user_cookie, admin_key)
-                if dev:
+                try:
+                    identity = verify_user_cookie_identity(
+                        user_cookie, admin_key)
+                except IdentityStoreUnavailable:
+                    return web.json_response(
+                        {"error": "identity_store_unavailable",
+                         "message": "identity verification temporarily unavailable"},
+                        status=503, headers={"Retry-After": "2"},
+                    )
+                if identity:
                     role = "user"
-                    device_id = dev
+                    device_id, authenticated_user_id = identity
 
     if role == "anonymous":
         # LAN bypass solo se il chiamante non ha provato un Bearer fallito.
-        # Reverse proxy / Cloudflare tunnel: il vero IP del client arriva
-        # nell'header `CF-Connecting-IP` (Cloudflare) o `X-Forwarded-For`
-        # (proxy generico). Se Metnos riceve da localhost (tunnel) ma il
+        # Reverse proxy: il vero IP del client arriva in `X-Forwarded-For`.
+        # Se Metnos riceve da localhost
+        # ma il
         # client originale e' su Internet, NON e' LAN trusted. Senza questa
         # logica, chiunque dietro tunnel HTTPS si vedrebbe ruolo `user`
         # automatico (request.remote == 127.0.0.1).
         effective_remote = request.remote
         # Gli header forwarded sono fidati SOLO se il peer TCP reale e' un
-        # proxy fidato (default: loopback = tunnel Cloudflare). Senza questo
+        # proxy fidato (default: loopback). Senza questo
         # gate, `X-Forwarded-For: 127.0.0.1` da Internet otterrebbe il bypass
         # LAN → ruolo `user` (spoofing).
         if _is_trusted_proxy(request.remote):
-            cf_ip = request.headers.get("CF-Connecting-IP", "").strip()
-            if cf_ip:
-                effective_remote = cf_ip
-            else:
-                xff = request.headers.get("X-Forwarded-For", "").strip()
-                if xff:
-                    # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
-                    effective_remote = xff.split(",")[0].strip()
-        if _is_lan_trusted(effective_remote) and not token:
+            xff = request.headers.get("X-Forwarded-For", "").strip()
+            if xff:
+                # XFF puo' essere lista "client, proxy1, proxy2": usa il primo.
+                effective_remote = xff.split(",")[0].strip()
+        if (_env_enabled("METNOS_TRUST_LAN_ANONYMOUS", False)
+                and _is_lan_trusted(effective_remote) and not token):
             role = "user"
+            material = f"metnos-lan-principal-v1:{effective_remote}".encode()
+            digest = (
+                hmac.new(_cookie_secret(admin_key), material, hashlib.sha256)
+                .hexdigest()[:24]
+                if admin_key else hashlib.sha256(material).hexdigest()[:24]
+            )
+            # This identifier deliberately has no users.db binding.  All data
+            # access remains in an empty synthetic scope until the browser is
+            # paired or authenticates as admin.
+            lan_principal = f"http_lan_{digest}"
 
     request["role"] = role
     request["device_id"] = device_id
+    request["lan_principal"] = lan_principal
+
+    # Admin credentials identify the unique live host principal.  Never defer
+    # this mapping to individual handlers and never synthesize literal
+    # ``host``: owner leases and deletion safety require the immutable UUID.
+    if role == "admin" and not authenticated_user_id:
+        try:
+            import users as _users
+            hosts = _users.list_users(role="host")
+        except Exception:
+            log.warning("admin host identity lookup failed", exc_info=True)
+            return web.json_response(
+                {"error": "identity_store_unavailable",
+                 "message": "identity verification temporarily unavailable"},
+                status=503, headers={"Retry-After": "2"},
+            )
+        if len(hosts) != 1:
+            return web.json_response(
+                {"error": "admin_identity_ambiguous",
+                 "message": "exactly one live host identity is required"},
+                status=503, headers={"Retry-After": "2"},
+            )
+        authenticated_user_id = str(hosts[0]["id"])
+    request["authenticated_user_id"] = authenticated_user_id
 
     # Whitelist anonymous: la valutazione viene PRIMA del check admin/role
     # (altrimenti `/admin/login` non sarebbe raggiungibile per loggarsi).
@@ -280,4 +441,18 @@ async def auth_middleware(request: web.Request, handler):
             status=401,
         )
 
+    if authenticated_user_id:
+        # Cover preprocessing too (uploads, pending dialogs, session takeover),
+        # not only the eventual planner call.  Deletion takes the exclusive
+        # side of this cross-process lease and therefore cannot interleave with
+        # a request that was authenticated for the old owner.
+        try:
+            from user_lifecycle import OwnerUnavailable, async_owner_session
+            async with async_owner_session(authenticated_user_id):
+                return await handler(request)
+        except OwnerUnavailable:
+            return web.json_response(
+                {"error": "user_unavailable", "message": "user unavailable"},
+                status=401,
+            )
     return await handler(request)

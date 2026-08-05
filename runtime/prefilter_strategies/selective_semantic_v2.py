@@ -68,7 +68,7 @@ class SelectiveSemanticV2Strategy:
         # Il legacy non li espone direttamente, allora ricostruisci via affinity_score.
         catalog_list = _filter_dormant(list(catalog))
         qtokens = tokenize(query)
-        cv = detect_canonical_verb(qtokens)
+        cv = detect_canonical_verb(qtokens, query)
         co = detect_canonical_object(qtokens, query)
         raw_scores = []
         for tool in baseline_candidates:

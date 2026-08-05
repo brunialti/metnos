@@ -113,7 +113,7 @@ def _skill_entry(info, counts: dict) -> dict:
     else:
         status = "attiva"
     kind = ("core" if info.name == "core"
-            else "first-party" if getattr(info, "is_first_party", False)
+            else "builtin" if getattr(info, "is_builtin", False)
             else "importata")
     return {
         "name": info.name,

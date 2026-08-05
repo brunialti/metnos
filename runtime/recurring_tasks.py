@@ -25,9 +25,11 @@ Schema sqlite (`~/.local/state/metnos/recurring_tasks.db`):
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sqlite3
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -39,10 +41,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
 DB_PATH = _C.DB_RECURRING_TASKS
 
-_SCHEMA = """
+_TASK_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS recurring_tasks (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    name          TEXT UNIQUE NOT NULL,
+    name          TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    scheduler_name TEXT NOT NULL UNIQUE,
     schedule      TEXT NOT NULL,
     query         TEXT NOT NULL,
     actor         TEXT NOT NULL,
@@ -60,10 +64,25 @@ CREATE TABLE IF NOT EXISTS recurring_tasks (
     mandates      TEXT NOT NULL DEFAULT '{}', -- authority envelope per task;
                                                 -- mai token o credenziali.
     created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
-    enabled       INTEGER NOT NULL DEFAULT 1
+    enabled       INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(owner_user_id, name)
 );
-CREATE INDEX IF NOT EXISTS idx_recurring_actor ON recurring_tasks(actor, channel);
 """
+
+_INDEX_STATEMENTS = (
+    "CREATE INDEX IF NOT EXISTS idx_recurring_actor "
+    "ON recurring_tasks(actor, channel)",
+    "CREATE INDEX IF NOT EXISTS idx_recurring_owner "
+    "ON recurring_tasks(owner_user_id, name)",
+)
+
+
+def _ensure_schema(connection: sqlite3.Connection) -> None:
+    """Create schema without ``executescript``'s implicit transaction commit."""
+
+    connection.execute(_TASK_TABLE_SQL)
+    for statement in _INDEX_STATEMENTS:
+        connection.execute(statement)
 
 # Callback registry pattern (lezione F1 giorgio2): la closure NON viene
 # salvata in DB, solo `callback_key` string. Al boot ogni callback si
@@ -102,48 +121,229 @@ _SCHEDULE_RE = re.compile(r"^(daily@\d{1,2}:\d{2}|every_\d+m)$")
 MAX_TASKS_PER_ACTOR = 50
 
 
-def _open() -> sqlite3.Connection:
+def _scheduler_entry_name(owner_user_id: str, name: str) -> str:
+    """Globally unique scheduler key for an owner-scoped logical name."""
+
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        raise ValueError("recurring task owner_user_id is required")
+    digest = hashlib.sha256(
+        ("metnos-recurring-owner-v1\0" + owner).encode("utf-8")
+    ).hexdigest()[:16]
+    return f"user_{digest}_{name}"
+
+
+def _validated_existing_owner(row: dict) -> str:
+    """Validate an owner UUID already present in a partially migrated row.
+
+    Actor names and channel recipients are deliberately *not* ownership
+    evidence: both can be reused after deletion.  A truly legacy row without
+    an immutable UUID is retired fail-closed by :func:`_open`.
+    """
+
+    owner = str(row.get("owner_user_id") or "").strip()
+    if not owner:
+        return ""
+    try:
+        import users
+        candidate = users.get_user(owner)
+    except Exception as exc:
+        # Identity-store outage is not evidence that an owner disappeared.
+        # Abort the migration so its SQLite transaction can be retried.
+        raise RuntimeError("owner identity validation unavailable") from exc
+    if candidate is None or str(candidate.get("id") or "") != owner:
+        return ""
+    return owner
+
+
+_SCHEMA_LOCK = threading.Lock()
+_SCHEMA_READY_PATH: Path | None = None
+
+
+def _open_and_migrate() -> sqlite3.Connection:
+    """Bootstrap/migrate once per database path, never on owner hot paths."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(DB_PATH))
     c.row_factory = sqlite3.Row
-    c.executescript(_SCHEMA)
-    # Migration idempotente: aggiunta callback_key colonna per DB pre-1/5/2026 sera.
-    cols = {r[1] for r in c.execute("PRAGMA table_info(recurring_tasks)").fetchall()}
-    if "callback_key" not in cols:
-        c.execute("ALTER TABLE recurring_tasks ADD COLUMN callback_key TEXT NOT NULL DEFAULT 'run_user_query'")
-    # Migration: times + fired_count (1/5/2026 sera, supporto one-shot e
-    # max-N-times). NULL/0 = forever.
-    if "times" not in cols:
-        c.execute("ALTER TABLE recurring_tasks ADD COLUMN times INTEGER")
-    if "fired_count" not in cols:
-        c.execute("ALTER TABLE recurring_tasks ADD COLUMN fired_count INTEGER NOT NULL DEFAULT 0")
-    if "grace_window_minutes" not in cols:
-        c.execute("ALTER TABLE recurring_tasks ADD COLUMN grace_window_minutes INTEGER")
-    mandates_added = "mandates" not in cols
-    if mandates_added:
-        c.execute("ALTER TABLE recurring_tasks ADD COLUMN mandates TEXT NOT NULL DEFAULT '{}'")
+    table_exists = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' "
+        "AND name='recurring_tasks'"
+    ).fetchone() is not None
+    rejected_scheduler_names: list[str] = []
+    migrated_scheduler_rows: list[tuple[str, dict]] = []
+    if table_exists:
+        cols = {
+            row[1] for row in c.execute(
+                "PRAGMA table_info(recurring_tasks)").fetchall()
+        }
+        unique_columns = {
+            tuple(
+                info[2] for info in c.execute(
+                    f"PRAGMA index_info('{index_row[1]}')").fetchall()
+            )
+            for index_row in c.execute(
+                "PRAGMA index_list(recurring_tasks)").fetchall()
+            if index_row[2]
+        }
+        needs_owner_migration = (
+            "owner_user_id" not in cols
+            or "scheduler_name" not in cols
+            or ("owner_user_id", "name") not in unique_columns
+        )
+        if needs_owner_migration:
+            rows = [dict(row) for row in c.execute(
+                "SELECT * FROM recurring_tasks").fetchall()]
+            c.execute("ALTER TABLE recurring_tasks "
+                      "RENAME TO recurring_tasks_pre_owner")
+            _ensure_schema(c)
+            for row in rows:
+                owner = _validated_existing_owner(row)
+                old_scheduler = str(
+                    row.get("scheduler_name") or f"user_{row.get('name') or ''}")
+                if not owner:
+                    rejected_scheduler_names.append(old_scheduler)
+                    continue
+                logical_name = str(row.get("name") or "")
+                scheduler_name = _scheduler_entry_name(owner, logical_name)
+                c.execute(
+                    "INSERT INTO recurring_tasks "
+                    "(id,name,owner_user_id,scheduler_name,schedule,query,"
+                    "actor,channel,chat_id,label,callback_key,times,"
+                    "fired_count,grace_window_minutes,mandates,created_at,"
+                    "enabled) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        row.get("id"), logical_name, owner, scheduler_name,
+                        row.get("schedule") or "", row.get("query") or "",
+                        row.get("actor") or "", row.get("channel") or "",
+                        row.get("chat_id"), row.get("label"),
+                        row.get("callback_key") or "run_user_query",
+                        row.get("times"), int(row.get("fired_count") or 0),
+                        row.get("grace_window_minutes"),
+                        row.get("mandates") or "{}",
+                        row.get("created_at") or time.strftime(
+                            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        int(row.get("enabled", 1)),
+                    ),
+                )
+                migrated_scheduler_rows.append((old_scheduler, {
+                    **row,
+                    "name": logical_name,
+                    "owner_user_id": owner,
+                    "scheduler_name": scheduler_name,
+                }))
+            c.execute("DROP TABLE recurring_tasks_pre_owner")
+    _ensure_schema(c)
     try:
         import task_mandates
+        import users as _users
         for row in c.execute(
-                "SELECT name, query, actor, mandates FROM recurring_tasks").fetchall():
-            if (mandates_added or task_mandates.needs_version_upgrade(
-                    row["query"], row["mandates"])):
-                envelope = task_mandates.build_for_task(
-                    row["query"], row["actor"])
+                "SELECT owner_user_id,name,query,actor,mandates "
+                "FROM recurring_tasks").fetchall():
+            if task_mandates.needs_version_upgrade(
+                    row["query"], row["mandates"]):
+                live_owner = _users.get_user(row["owner_user_id"])
+                if (live_owner is None
+                        or str(live_owner.get("id") or "")
+                        != str(row["owner_user_id"])
+                        or str(live_owner.get("name") or "")
+                        != str(row["actor"] or "")):
+                    # A mutable/reused actor label cannot be used to rebuild
+                    # unattended authority.  Keep the task but retire the
+                    # unverifiable envelope; execution will require a fresh
+                    # explicit authorization path.
+                    envelope = {}
+                else:
+                    envelope = task_mandates.build_for_task(
+                        row["query"], row["actor"],
+                        owner_user_id=row["owner_user_id"])
                 c.execute(
-                    "UPDATE recurring_tasks SET mandates=? WHERE name=?",
+                    "UPDATE recurring_tasks SET mandates=? "
+                    "WHERE owner_user_id=? AND name=?",
                     (json.dumps(envelope, ensure_ascii=True, sort_keys=True,
-                                separators=(",", ":")), row["name"]))
+                                separators=(",", ":")),
+                     row["owner_user_id"], row["name"]))
     except Exception as exc:
         log.warning("task mandate migration failed closed: %s", exc)
+    # Cross-database migration cannot be one SQLite transaction.  Perform all
+    # idempotent scheduler operations *before* committing the new registry:
+    # after a crash, the still-legacy registry makes the same operations run
+    # again.  Rejected ownerless rows are purged together with their run
+    # history; merely cancelling their entry would retain personal data.
+    try:
+        from scheduler_v2 import client as sched_client
+        for old_scheduler_name, row in migrated_scheduler_rows:
+            payload = {
+            "name": row["name"],
+            "owner_user_id": row["owner_user_id"],
+            "scheduler_name": row["scheduler_name"],
+            "query": row.get("query") or "",
+            "actor": row.get("actor") or "",
+            "channel": row.get("channel") or "",
+            "chat_id": row.get("chat_id"),
+            "label": row.get("label"),
+            "times": row.get("times"),
+            }
+            renamed = sched_client.migrate_owner_job(
+                old_scheduler_name, row["scheduler_name"], payload)
+            if not renamed:
+                # This also covers a retry after a crash that already renamed
+                # the scheduler row: migrate(new,new) refreshes its payload.
+                renamed = sched_client.migrate_owner_job(
+                    row["scheduler_name"], row["scheduler_name"], payload)
+            if not renamed:
+                grace = row.get("grace_window_minutes")
+                sched_client.add_job(
+                    name=row["scheduler_name"],
+                    trigger=row.get("schedule") or "",
+                    callback_key=row.get("callback_key") or "run_user_query",
+                    payload=payload,
+                    origin="user",
+                    grace_window_s=(int(grace) * 60 if grace else None),
+                    label=row.get("label") or "",
+                    description=("user task: "
+                                 f"{row.get('label') or row['name']}"),
+                    remaining_runs=max(
+                        0, int(row.get("times") or 0)
+                        - int(row.get("fired_count") or 0)),
+                )
+                if not int(row.get("enabled", 1)):
+                    sched_client.toggle_job(row["scheduler_name"], False)
+        if rejected_scheduler_names:
+            sched_client.purge_jobs(tuple(rejected_scheduler_names))
+    except Exception:
+        c.rollback()
+        c.close()
+        raise
     c.commit()
     return c
 
 
+def _ensure_database() -> None:
+    global _SCHEMA_READY_PATH
+
+    target = DB_PATH.resolve()
+    if _SCHEMA_READY_PATH == target and DB_PATH.is_file():
+        return
+    with _SCHEMA_LOCK:
+        if _SCHEMA_READY_PATH == target and DB_PATH.is_file():
+            return
+        connection = _open_and_migrate()
+        connection.close()
+        _SCHEMA_READY_PATH = target
+
+
+def _open() -> sqlite3.Connection:
+    """Open the already initialized registry without global scans or DDL."""
+
+    _ensure_database()
+    connection = sqlite3.connect(str(DB_PATH))
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
 def init_db() -> None:
     """Create or migrate the task registry without retaining a connection."""
-    with _open():
-        pass
+    _ensure_database()
 
 
 def _slugify(label: str, max_len: int = 40) -> str:
@@ -310,6 +510,7 @@ def register_user_task(
     when: str,
     query: str,
     actor: str,
+    owner_user_id: str,
     channel: str,
     chat_id: str | None = None,
     times: int | None = None,
@@ -319,12 +520,17 @@ def register_user_task(
     """Registra un task ricorrente user-defined. Restituisce il record.
     Idempotente: se name esiste gia', UPDATE.
     """
+    owner_user_id = str(owner_user_id or "").strip()
+    if not owner_user_id:
+        raise ValueError("recurring task owner_user_id is required")
     schedule = _parse_when(when)
     name = _slugify(label or query)
+    scheduler_name = _scheduler_entry_name(owner_user_id, name)
     if mandates is None:
         try:
             import task_mandates
-            mandates = task_mandates.build_for_task(query, actor)
+            mandates = task_mandates.build_for_task(
+                query, actor, owner_user_id=owner_user_id)
         except Exception as exc:
             log.warning("task mandate build failed closed: %s", exc)
             mandates = {}
@@ -335,8 +541,9 @@ def register_user_task(
     try:
         # Quota check (anti-runaway).
         n_existing = conn.execute(
-            "SELECT COUNT(*) FROM recurring_tasks WHERE actor=? AND name!=?",
-            (actor, name),
+            "SELECT COUNT(*) FROM recurring_tasks "
+            "WHERE owner_user_id=? AND name!=?",
+            (owner_user_id, name),
         ).fetchone()[0]
         if n_existing >= MAX_TASKS_PER_ACTOR:
             raise ValueError(
@@ -349,25 +556,41 @@ def register_user_task(
         times_val = int(times) if times is not None and int(times) > 0 else None
         gw = int(grace_window_minutes) if grace_window_minutes else None
         conn.execute(
-            "INSERT OR REPLACE INTO recurring_tasks "
-            "(name, schedule, query, actor, channel, chat_id, label, "
+            "INSERT INTO recurring_tasks "
+            "(name, owner_user_id, scheduler_name, schedule, query, actor, "
+            " channel, chat_id, label, "
             " times, fired_count, grace_window_minutes, mandates, enabled) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1)",
-            (name, schedule, query, actor, channel, chat_id, label,
-              times_val, gw, mandates_json),
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 1) "
+            "ON CONFLICT(owner_user_id,name) DO UPDATE SET "
+            "scheduler_name=excluded.scheduler_name, "
+            "schedule=excluded.schedule, query=excluded.query, "
+            "actor=excluded.actor, channel=excluded.channel, "
+            "chat_id=excluded.chat_id, label=excluded.label, "
+            "times=excluded.times, fired_count=0, "
+            "grace_window_minutes=excluded.grace_window_minutes, "
+            "mandates=excluded.mandates, enabled=1",
+            (name, owner_user_id, scheduler_name, schedule, query, actor,
+             channel, chat_id, label, times_val, gw, mandates_json),
         )
         conn.commit()
         return dict(conn.execute(
-            "SELECT * FROM recurring_tasks WHERE name=?", (name,)
+            "SELECT * FROM recurring_tasks "
+            "WHERE owner_user_id=? AND name=?", (owner_user_id, name)
         ).fetchone())
     finally:
         conn.close()
 
 
-def list_user_tasks(actor: str | None = None) -> list[dict]:
+def list_user_tasks(actor: str | None = None, *,
+                    owner_user_id: str | None = None) -> list[dict]:
     conn = _open()
     try:
-        if actor:
+        if owner_user_id:
+            rows = conn.execute(
+                "SELECT * FROM recurring_tasks WHERE owner_user_id=? "
+                "ORDER BY name", (owner_user_id,),
+            ).fetchall()
+        elif actor:
             rows = conn.execute(
                 "SELECT * FROM recurring_tasks WHERE actor=? ORDER BY name",
                 (actor,),
@@ -381,7 +604,80 @@ def list_user_tasks(actor: str | None = None) -> list[dict]:
         conn.close()
 
 
-def cancel_user_task(name_or_id, *, actor: str | None = None) -> bool:
+def list_user_tasks_readonly(owner_user_id: str) -> list[dict]:
+    """Read one owner's tasks without DDL, migrations or cross-owner scans."""
+
+    owner = str(owner_user_id or "").strip()
+    if not owner or not DB_PATH.is_file():
+        return []
+    conn = sqlite3.connect(
+        f"file:{DB_PATH}?mode=ro", uri=True, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    try:
+        columns = {
+            row[1] for row in conn.execute(
+                "PRAGMA table_info(recurring_tasks)").fetchall()
+        }
+        required = {"owner_user_id", "scheduler_name", "name", "query"}
+        if not required.issubset(columns):
+            raise RuntimeError("recurring task owner schema not initialized")
+        return [dict(row) for row in conn.execute(
+            "SELECT * FROM recurring_tasks WHERE owner_user_id=? "
+            "ORDER BY name", (owner,),
+        ).fetchall()]
+    finally:
+        conn.close()
+
+
+def get_user_task_by_scheduler_name(owner_user_id: str,
+                                    scheduler_name: str) -> dict | None:
+    """Resolve one scheduler entry inside one immutable owner boundary.
+
+    Scheduler payloads are deliberately treated as references, not as the
+    current authority for identity, delivery coordinates or task contents.
+    The live registry row is reloaded at every fire/callback.
+    """
+
+    owner = str(owner_user_id or "").strip()
+    entry_name = str(scheduler_name or "").strip()
+    if not owner or not entry_name:
+        return None
+    conn = _open()
+    try:
+        row = conn.execute(
+            "SELECT * FROM recurring_tasks "
+            "WHERE owner_user_id=? AND scheduler_name=? LIMIT 1",
+            (owner, entry_name),
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
+def get_user_task_by_id(owner_user_id: str, task_id: int | str) -> dict | None:
+    """Resolve a short public task reference, scoped by its logical owner."""
+
+    owner = str(owner_user_id or "").strip()
+    try:
+        numeric_id = int(task_id)
+    except (TypeError, ValueError):
+        return None
+    if not owner or numeric_id < 1:
+        return None
+    conn = _open()
+    try:
+        row = conn.execute(
+            "SELECT * FROM recurring_tasks "
+            "WHERE owner_user_id=? AND id=? LIMIT 1",
+            (owner, numeric_id),
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
+def cancel_user_task(name_or_id, *, actor: str | None = None,
+                     owner_user_id: str | None = None) -> bool:
     """Cancella un task per name (slug) O id numerico.
     Se actor specificato, cancella SOLO se appartiene a quell'actor.
     Ritorna True se trovato + cancellato."""
@@ -397,12 +693,18 @@ def cancel_user_task(name_or_id, *, actor: str | None = None) -> bool:
         if as_int is not None:
             sql = "DELETE FROM recurring_tasks WHERE id=?"
             params: tuple = (as_int,)
+        elif str(name_or_id).startswith("user_"):
+            sql = "DELETE FROM recurring_tasks WHERE scheduler_name=?"
+            params = (str(name_or_id),)
         else:
             sql = "DELETE FROM recurring_tasks WHERE name=?"
             params = (str(name_or_id),)
         if actor:
             sql += " AND actor=?"
             params = params + (actor,)
+        if owner_user_id:
+            sql += " AND owner_user_id=?"
+            params = params + (owner_user_id,)
         cur = conn.execute(sql, params)
         conn.commit()
         return cur.rowcount > 0
@@ -410,20 +712,151 @@ def cancel_user_task(name_or_id, *, actor: str | None = None) -> bool:
         conn.close()
 
 
+def purge_owner(owner_user_id: str) -> dict[str, int]:
+    """Delete an owner's task registry, scheduler payloads and run history."""
+
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return {"tasks": 0, "schedule_entries": 0, "runs": 0}
+    conn = _open()
+    try:
+        rows = conn.execute(
+            "SELECT scheduler_name FROM recurring_tasks "
+            "WHERE owner_user_id=?", (owner,),
+        ).fetchall()
+        scheduler_names = tuple(str(row["scheduler_name"]) for row in rows)
+    finally:
+        conn.close()
+    from scheduler_v2 import client as sched_client
+    # Scheduler state is execution-authoritative.  Purge it first; if this
+    # fails the registry remains available for an idempotent retry instead of
+    # losing the only mapping to personal history.
+    purged = sched_client.purge_owner_jobs(
+        owner,
+        name_prefix=_scheduler_entry_name(owner, ""),
+        hinted_names=scheduler_names,
+    )
+    conn = _open()
+    try:
+        with conn:
+            tasks = conn.execute(
+                "DELETE FROM recurring_tasks WHERE owner_user_id=?",
+                (owner,),
+            ).rowcount
+    finally:
+        conn.close()
+    return {
+        "tasks": tasks,
+        "schedule_entries": purged["entries"],
+        "runs": purged["runs"],
+    }
+
+
+def _set_user_task_enabled(name: str, enabled: bool, *,
+                           owner_user_id: str) -> bool:
+    """Keep the user registry mirror aligned with scheduler runtime state.
+
+    ``schedule_entries`` is authoritative for execution; this mirror powers
+    list/delete UX and must not claim that an auto-suspended task is active.
+    """
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return False
+    conn = _open()
+    try:
+        cur = conn.execute(
+            "UPDATE recurring_tasks SET enabled=? "
+            "WHERE owner_user_id=? AND (name=? OR scheduler_name=?)",
+            (1 if enabled else 0, owner, name, name),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def set_user_scheduler_enabled(scheduler_name: str, enabled: bool, *,
+                               owner_user_id: str,
+                               resume: bool = False) -> bool:
+    """Synchronize the user registry and execution-authoritative scheduler.
+
+    Enabling writes the blocking registry guard first and compensates it when
+    the scheduler operation fails.  Disabling also writes the guard first, so
+    a scheduler outage cannot accidentally leave the task executable.
+    """
+
+    owner = str(owner_user_id or "").strip()
+    name = str(scheduler_name or "").strip()
+    if not owner or not name:
+        return False
+    if not _set_user_task_enabled(name, enabled, owner_user_id=owner):
+        return False
+    try:
+        from scheduler_v2 import client as sched_client
+        if enabled and resume:
+            changed = sched_client.resume_job(name)
+        else:
+            changed = sched_client.toggle_job(name, bool(enabled))
+    except Exception:
+        changed = False
+    if changed:
+        return True
+    if enabled:
+        # Restore the safe, suspended state if scheduler activation failed.
+        _set_user_task_enabled(name, False, owner_user_id=owner)
+    return False
+
+
+def get_user_task_by_scheduler_name_admin(scheduler_name: str) -> dict | None:
+    """Resolve a globally unique scheduler key for the local admin CLI."""
+
+    name = str(scheduler_name or "").strip()
+    if not name:
+        return None
+    conn = _open()
+    try:
+        row = conn.execute(
+            "SELECT * FROM recurring_tasks WHERE scheduler_name=? LIMIT 1",
+            (name,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+    finally:
+        conn.close()
+
+
+def _live_telegram_recipient(owner_user_id: str) -> str:
+    """Return the currently verified, runnable Telegram delivery binding."""
+
+    import pairing
+    import users
+
+    binding = users.get_channel(owner_user_id, "telegram")
+    recipient = str((binding or {}).get("recipient_id") or "").strip()
+    if not binding or not binding.get("verified_at") or not recipient:
+        return ""
+    authority = pairing.get_pairing("telegram", recipient)
+    if authority is None or authority.autonomy_level == "ReadOnly":
+        return ""
+    return recipient
+
+
 # --- Bootstrap nel scheduler builtin --------------------------------------
 
-def _increment_fired_and_check_done(name: str) -> tuple[int, bool]:
+def _increment_fired_and_check_done(
+        name: str, *, owner_user_id: str) -> tuple[int, bool]:
     """Atomico: increment fired_count, ritorna (new_count, done).
     done=True se fired_count >= times (e times non-NULL/0)."""
     conn = _open()
     try:
         conn.execute(
-            "UPDATE recurring_tasks SET fired_count = fired_count + 1 WHERE name = ?",
-            (name,),
+            "UPDATE recurring_tasks SET fired_count = fired_count + 1 "
+            "WHERE owner_user_id=? AND name=?",
+            (owner_user_id, name),
         )
         row = conn.execute(
-            "SELECT fired_count, times FROM recurring_tasks WHERE name = ?",
-            (name,),
+            "SELECT fired_count, times FROM recurring_tasks "
+            "WHERE owner_user_id=? AND name=?",
+            (owner_user_id, name),
         ).fetchone()
         conn.commit()
         if row is None:
@@ -490,6 +923,96 @@ def _scheduled_turn_outcome(log):
 
 
 def _run_user_query_callback(record: dict):
+    """Esegue un task nella lingua del relativo utente."""
+    preferred = None
+    owner = None
+    record_owner = str(record.get("owner_user_id") or "").strip()
+    if not record_owner:
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error", error="ownerless scheduled task rejected",
+            output=f"[{record.get('name') or '?'}] owner unavailable",
+        )
+    scheduler_name = str(record.get("scheduler_name") or "").strip()
+    if not scheduler_name:
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error", error="scheduled task reference unavailable",
+            output=f"[{record.get('name') or '?'}] task reference unavailable",
+        )
+    try:
+        import users as _users
+        owner = _users.get_user(record_owner)
+        if (owner is not None
+                and str(owner.get("id") or "") != record_owner):
+            owner = None
+        if owner is not None:
+            preferred = _users.get_pref(owner["id"], "lang", None)
+    except Exception as ex:
+        log.debug("scheduled user language lookup unavailable: %s", ex)
+    if owner is None:
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error",
+            error="scheduled logical owner unavailable",
+            output=f"[{record.get('name') or '?'}] owner unavailable",
+        )
+    if str(owner.get("autonomy_level") or "") == "read_only":
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error",
+            error="scheduled execution blocked by current autonomy",
+            output=f"[{record.get('name') or '?'}] autonomy is read_only",
+        )
+    live_record = get_user_task_by_scheduler_name(
+        record_owner, scheduler_name)
+    if live_record is None or not int(live_record.get("enabled") or 0):
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error", error="scheduled task registry row unavailable",
+            output=f"[{record.get('name') or '?'}] task unavailable",
+        )
+    if str(live_record.get("name") or "") != str(record.get("name") or ""):
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error", error="scheduled task identity mismatch",
+            output=f"[{record.get('name') or '?'}] task identity mismatch",
+        )
+    scoped_record = dict(live_record)
+    scoped_record["owner_user_id"] = str(owner["id"])
+    scoped_record["actor"] = str(owner.get("name") or "")
+    if scoped_record.get("channel") == "telegram":
+        try:
+            recipient = _live_telegram_recipient(record_owner)
+        except Exception as exc:
+            from scheduler_v2.models import CallbackOutcome
+            return CallbackOutcome(
+                status="error", error="scheduled delivery authority unavailable",
+                output=(f"[{record.get('name') or '?'}] delivery authority "
+                        f"unavailable: {type(exc).__name__}"),
+            )
+        if not recipient:
+            from scheduler_v2.models import CallbackOutcome
+            return CallbackOutcome(
+                status="error", error="scheduled delivery authority revoked",
+                output=f"[{record.get('name') or '?'}] delivery revoked",
+            )
+    import i18n as _i18n
+    try:
+        from user_lifecycle import OwnerUnavailable, owner_session
+        with owner_session(scoped_record["owner_user_id"]):
+            with _i18n.language_context(preferred):
+                return _run_user_query_callback_scoped(scoped_record)
+    except OwnerUnavailable:
+        from scheduler_v2.models import CallbackOutcome
+        return CallbackOutcome(
+            status="error",
+            error="scheduled logical owner is being deleted",
+            output=f"[{record.get('name') or '?'}] owner unavailable",
+        )
+
+
+def _run_user_query_callback_scoped(record: dict):
     """Callback canonica `run_user_query`: rilancia run_turn + pusha canale.
 
     Registrata in `_CALLBACKS` come 'run_user_query' al boot. Refactor
@@ -513,11 +1036,13 @@ def _run_user_query_callback(record: dict):
         # describe/extract → frontier). Solo run ricorrenti: i turni
         # interattivi restano intoccati. Reset garantito dal context manager.
         from treated_issues_guard import scheduled_turn_scope
-        with scheduled_turn_scope(task_name=record.get("name") or ""):
+        with scheduled_turn_scope(
+                task_name=record.get("scheduler_name") or ""):
             log = run_turn(
                 record["query"],
                 actor=record["actor"],
                 channel=record["channel"],
+                owner_user_id=record["owner_user_id"],
             )
         msg = (log.final_message or "").strip()
         if not msg:
@@ -554,7 +1079,26 @@ def _run_user_query_callback(record: dict):
             f"empty run (items={_c.get('items', 0)} "
             f"mutations={_c.get('mutations', 0)}) → push suppressed (§2.8)")
         return _finish(" | ".join(log_msg))
-    if record["channel"] == "telegram" and record.get("chat_id"):
+    delivery_recipient = ""
+    if record["channel"] == "telegram":
+        try:
+            # A turn may take minutes.  Do not retain the preflight recipient:
+            # a revocation or rebind during execution must take effect before
+            # any result or pending approval is delivered.
+            delivery_recipient = _live_telegram_recipient(
+                str(record.get("owner_user_id") or ""))
+        except Exception as exc:
+            return _finish(
+                " | ".join(log_msg),
+                delivery_error=("scheduled delivery authority unavailable: "
+                                f"{type(exc).__name__}: {exc}"),
+            )
+        if not delivery_recipient:
+            return _finish(
+                " | ".join(log_msg),
+                delivery_error="scheduled delivery authority revoked",
+            )
+    if record["channel"] == "telegram" and delivery_recipient:
         prefix = (
             f"[task: {record['label'] or record['name']}]\n"
             if record.get("label") else ""
@@ -573,8 +1117,9 @@ def _run_user_query_callback(record: dict):
         if caps and isinstance(caps[0], dict):
             try:
                 from channels.daemon import _cap_pending_save
-                _cap_pending_save(record["chat_id"], record["query"],
-                                  caps[0], getattr(log, "turn_id", ""))
+                _cap_pending_save(delivery_recipient, record["query"],
+                                  caps[0], getattr(log, "turn_id", ""),
+                                  owner_user_id=record["owner_user_id"])
             except Exception as e:
                 log_msg.append(
                     f"cap_pending save failed: {type(e).__name__}: {e}")
@@ -583,7 +1128,7 @@ def _run_user_query_callback(record: dict):
                     keyboard_for_proposal, sender_state_candidates,
                 )
                 candidates = sender_state_candidates(
-                    "telegram", record["chat_id"],
+                    "telegram", delivery_recipient,
                     actor=record.get("actor"),
                     sender_for_state=caps[0].get("sender_for_state"),
                 )
@@ -591,6 +1136,7 @@ def _run_user_query_callback(record: dict):
                 # la keyboard coi label resta utilizzabile (degrado onesto).
                 buttons, _preview = keyboard_for_proposal(
                     caps[0], sender_candidates=candidates,
+                    owner_user_id=record["owner_user_id"],
                     turn_id=getattr(log, "turn_id", None),
                 )
             except Exception as e:
@@ -601,12 +1147,14 @@ def _run_user_query_callback(record: dict):
                 from channels.telegram import TelegramChannel
                 from channels import OutboundMessage
                 ch = TelegramChannel()
-                resp = ch.send(record["chat_id"],
+                resp = ch.send(delivery_recipient,
                                 OutboundMessage(text=prefix + msg,
                                                  buttons=buttons))
                 if isinstance(resp, dict) and not resp.get("ok", True):
                     raise RuntimeError(resp.get("error") or "send returned ok:false")
-                log_msg.append(f"pushed telegram chat={record['chat_id']} attempt={attempt}")
+                log_msg.append(
+                    f"pushed telegram chat={delivery_recipient} "
+                    f"attempt={attempt}")
                 return _finish(" | ".join(log_msg))
             except Exception as e:
                 log_msg.append(f"push attempt {attempt} failed: {type(e).__name__}: {e}")
@@ -620,46 +1168,90 @@ def _run_user_query_callback(record: dict):
 
 
 def _notify_circuit_break(entry, error) -> None:
+    """Notify only while the immutable owner is live and leased."""
+
+    payload = getattr(entry, "payload", None) or {}
+    owner_user_id = str(payload.get("owner_user_id") or "").strip()
+    entry_name = str(getattr(entry, "name", "") or "")
+    if (not owner_user_id
+            or payload.get("scheduler_name") != entry_name
+            or getattr(entry, "origin", "") != "user"):
+        log.warning("ownerless/non-user circuit-break hook rejected: %s",
+                    entry_name)
+        return
+    try:
+        from user_lifecycle import OwnerUnavailable, owner_session
+        with owner_session(owner_user_id):
+            import users
+            owner = users.get_user(owner_user_id)
+            if (owner is None
+                    or str(owner.get("id") or "") != owner_user_id):
+                return
+            binding = users.get_channel(owner_user_id, "telegram")
+            if not binding or not binding.get("verified_at"):
+                return
+            chat_id = str(binding.get("recipient_id") or "").strip()
+            if not chat_id:
+                return
+            _notify_circuit_break_scoped(
+                entry, error, owner_user_id=owner_user_id, chat_id=chat_id)
+    except OwnerUnavailable:
+        log.info("circuit-break notify skipped for deleted owner %s",
+                 owner_user_id)
+
+
+def _notify_circuit_break_scoped(entry, error, *, owner_user_id: str,
+                                 chat_id: str) -> None:
     """Notifica l'owner che il suo task ricorrente e' stato auto-disabilitato
     dal circuit-breaker (N fallimenti consecutivi). Offre 3 scelte inline:
     Continua (riattiva) / Sospendi (resta off, ripristinabile) / Cancella
-    (rimuove la schedulazione). callback_data = `sched:<azione>:<entry_name>`.
+    (rimuove la schedulazione). callback_data = `sched:<azione>:<task_id>`.
 
     Best-effort: nessuna eccezione propagata (il disable e' gia' persistito).
-    Solo canale telegram con chat_id noto; altri canali → solo log.
+    Se il task non nasce da Telegram, risolve il canale Telegram verificato
+    del suo owner; per l'host usa infine il default configurato del canale.
     Testo user-facing via i18n DB (§11, builtin=multilang): chiavi
     MSG_SCHED_CIRCUIT_BREAK + MSG_BTN_SCHED_*."""
     from messages import get as _msg
     payload = getattr(entry, "payload", None) or {}
-    channel = payload.get("channel")
-    chat_id = payload.get("chat_id")
     label = payload.get("label") or payload.get("name") or getattr(entry, "name", "?")
     entry_name = getattr(entry, "name", "")
+    task = get_user_task_by_scheduler_name(owner_user_id, entry_name)
+    if task is None:
+        log.warning("circuit-break registry mapping unavailable for '%s'",
+                    entry_name)
+        return
+    task_id = int(task["id"])
     try:
         from scheduler_v2.daemon import _CIRCUIT_BREAK_AFTER as _n
     except Exception:
         _n = 3
-    if channel != "telegram" or not chat_id:
-        log.warning(
-            "circuit-break su task '%s' ma canale non notificabile "
-            "(channel=%s chat_id=%s) — task disabilitato senza notifica",
-            entry_name, channel, chat_id,
-        )
-        return
+    try:
+        _set_user_task_enabled(
+            entry_name, False, owner_user_id=owner_user_id)
+    except Exception as exc:
+        log.warning("circuit-break mirror sync failed for '%s': %s",
+                    entry_name, exc)
     err_line = (str(error)[:300]) if error else _msg("MSG_ERR_UNKNOWN")
     text = _msg("MSG_SCHED_CIRCUIT_BREAK", label=label, n=_n, error=err_line)
     buttons = [[
-        {"text": _msg("MSG_BTN_SCHED_CONTINUE"), "data": f"sched:cont:{entry_name}"},
-        {"text": _msg("MSG_BTN_SCHED_SUSPEND"), "data": f"sched:susp:{entry_name}"},
-        {"text": _msg("MSG_BTN_SCHED_CANCEL"), "data": f"sched:canc:{entry_name}"},
+        {"text": _msg("MSG_BTN_SCHED_CONTINUE"), "data": f"sched:cont:{task_id}"},
+        {"text": _msg("MSG_BTN_SCHED_SUSPEND"), "data": f"sched:susp:{task_id}"},
+        {"text": _msg("MSG_BTN_SCHED_CANCEL"), "data": f"sched:canc:{task_id}"},
     ]]
     try:
+        current_chat_id = _live_telegram_recipient(owner_user_id)
+        if not current_chat_id:
+            return
         from channels.telegram import TelegramChannel
         from channels import OutboundMessage
         ch = TelegramChannel()
-        ch.send(chat_id, OutboundMessage(text=text, buttons=buttons))
+        result = ch.send(
+            current_chat_id, OutboundMessage(text=text, buttons=buttons))
+        if isinstance(result, dict) and not result.get("ok", True):
+            raise RuntimeError(result.get("error") or "send returned ok:false")
         log.info("circuit-break notificato a chat=%s per task '%s'",
-                 chat_id, entry_name)
+                 current_chat_id, entry_name)
     except Exception as e:
         log.warning("circuit-break notify failed for '%s': %s", entry_name, e)
 
@@ -668,16 +1260,21 @@ def _wrap_with_times_tracking(fn):
     """Wrap callback con auto-increment fired_count + auto-cancel se done."""
     def _wrapped(record):
         out = fn(record)
-        fc, done = _increment_fired_and_check_done(record["name"])
+        owner_user_id = str(record.get("owner_user_id") or "")
+        if not owner_user_id:
+            return out
+        fc, done = _increment_fired_and_check_done(
+            record["name"], owner_user_id=owner_user_id)
         if done:
-            cancel_user_task(record["name"])
             try:
-                from scheduler_v2 import client as sched_client
-                sched_client.cancel_job(f"user_{record['name']}")
-            except Exception as _e:  # silent swallow (auto-fixed)
-                log.warning("silent exception in %s: %s", __name__, _e)
+                # Lo scheduler v2 possiede il countdown e disabilita la entry
+                # nel suo finally. Qui si rimuove solo la proiezione legacy.
+                cancel_user_task(
+                    record["name"], owner_user_id=owner_user_id)
+            except Exception as _e:
+                log.warning("recurring task mirror cleanup failed: %s", _e)
             suffix = (f"times reached ({fc}/{record.get('times')}) "
-                      "→ auto-cancelled")
+                      "→ auto-disabled")
         else:
             suffix = f"fired_count={fc}"
         try:
@@ -923,7 +1520,8 @@ BUILTIN_INPROC_SPECS = [
 # --- Handler dispatcher --------------------------------------------------
 
 def handle_create_tasks(args: dict, *, actor: str, channel: str,
-                          chat_id: str | None = None) -> dict:
+                        owner_user_id: str = "",
+                        chat_id: str | None = None) -> dict:
     label = args.get("label")
     when = args.get("when")
     query = args.get("query")
@@ -934,7 +1532,8 @@ def handle_create_tasks(args: dict, *, actor: str, channel: str,
     try:
         rec = register_user_task(
             label=label, when=when, query=query,
-            actor=actor, channel=channel, chat_id=chat_id,
+            actor=actor, owner_user_id=owner_user_id,
+            channel=channel, chat_id=chat_id,
             times=times, grace_window_minutes=grace,
         )
     except ValueError as e:
@@ -947,11 +1546,13 @@ def handle_create_tasks(args: dict, *, actor: str, channel: str,
         gw_min = rec.get("grace_window_minutes")
         gw_s = int(gw_min) * 60 if gw_min else None
         sched_client.add_job(
-            name=f"user_{rec['name']}",
+            name=rec["scheduler_name"],
             trigger=rec["schedule"],
             callback_key=rec.get("callback_key") or "run_user_query",
             payload={
                 "name": rec["name"],
+                "owner_user_id": rec["owner_user_id"],
+                "scheduler_name": rec["scheduler_name"],
                 "query": rec["query"],
                 "actor": rec["actor"],
                 "channel": rec["channel"],
@@ -963,10 +1564,25 @@ def handle_create_tasks(args: dict, *, actor: str, channel: str,
             grace_window_s=gw_s,
             label=rec.get("label") or "",
             description=f"user task: {rec.get('label')} (actor={actor})",
+            remaining_runs=int(rec.get("times") or 0),
         )
     except Exception as _e:
         log.warning("scheduler_v2 hot-register failed: %s", _e)
-        # write to recurring_tasks.db is durable; daemon picks it up later.
+        # Fail closed: a durable registry row must never claim that a task is
+        # active while its execution projection is absent or indeterminate.
+        # Keep the row (and therefore the identity needed for repair/audit),
+        # but suspend it before reporting the failure to the caller.
+        suspended = _set_user_task_enabled(
+            rec["scheduler_name"], False,
+            owner_user_id=rec["owner_user_id"],
+        )
+        rec["enabled"] = False
+        return {
+            "ok": False,
+            "error": "scheduler registration failed",
+            "task": rec,
+            "persisted_suspended": bool(suspended),
+        }
     return {
         "ok": True,
         "task": rec,
@@ -1045,8 +1661,11 @@ def _next_fire_estimate(sched: str, last_run: str | None) -> str:
     return "?"
 
 
-def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
-    tasks = list_user_tasks(actor=actor)
+def handle_list_tasks(args: dict, *, actor: str,
+                      owner_user_id: str = "", **_) -> dict:
+    if not owner_user_id:
+        return {"ok": False, "error": "logical owner unavailable"}
+    tasks = list_user_tasks(owner_user_id=owner_user_id)
     if not tasks:
         return {"ok": True, "count": 0, "tasks": [],
                 "summary_human": "Nessun task pianificato."}
@@ -1075,9 +1694,21 @@ def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
         # schedule_human
         t["schedule_human"] = _schedule_human(t["schedule"])
         # last_run + status human
-        sched_row = sched_state.get(f"user_{t['name']}", {})
+        sched_row = sched_state.get(t["scheduler_name"], {})
         last_run = sched_row.get("last_run_at")
         last_status = sched_row.get("last_status")
+        scheduler_enabled = sched_row.get("enabled")
+        t["registry_enabled"] = bool(t.get("enabled"))
+        if scheduler_enabled is not None:
+            t["scheduler_enabled"] = bool(scheduler_enabled)
+            t["enabled"] = bool(scheduler_enabled)
+        else:
+            t["scheduler_enabled"] = None
+            t["enabled"] = bool(t.get("enabled"))
+        t["last_status"] = last_status
+        t["last_error"] = str(sched_row.get("last_error") or "")
+        t["consecutive_failures"] = int(
+            sched_row.get("consecutive_failures") or 0)
         if last_run:
             try:
                 from datetime import datetime
@@ -1105,12 +1736,29 @@ def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
     lines = [_msg("MSG_TASKS_LIST_HEADER", count=len(enriched))]
     for t in enriched:
         last = t.get("last_fire_human") or _msg("MSG_TASKS_LAST_NEVER")
+        if not t.get("enabled") and t.get("last_status") in {"error", "timeout"}:
+            state = _msg("MSG_TASK_STATE_FAILED")
+        elif not t.get("enabled"):
+            state = _msg("MSG_TASK_STATE_SUSPENDED")
+        elif t.get("consecutive_failures"):
+            state = _msg(
+                "MSG_TASK_STATE_DEGRADED",
+                count=t["consecutive_failures"],
+            )
+        else:
+            state = _msg("MSG_TASK_STATE_ACTIVE")
+        error_detail = ""
+        if t.get("last_error"):
+            error_detail = _msg(
+                "MSG_TASK_LAST_ERROR", error=t["last_error"][:300])
         lines.append(_msg(
             "MSG_TASKS_LIST_ROW",
             tid=t.get("id", "?"),
             name=t.get("name", "?"),
             sched=t.get("schedule_human") or t.get("schedule", "?"),
             last=last,
+            state=state,
+            error_detail=error_detail,
             query=(t.get("query") or "").strip(),
         ))
     detail_md = "\n".join(lines)
@@ -1129,59 +1777,142 @@ def handle_list_tasks(args: dict, *, actor: str, **_) -> dict:
     }
 
 
-def handle_delete_tasks(args: dict, *, actor: str, **_) -> dict:
+def handle_delete_tasks(args: dict, *, actor: str,
+                        owner_user_id: str = "", **_) -> dict:
+    if not owner_user_id:
+        return {"ok": False, "error": "logical owner unavailable"}
     tid = args.get("id")
     name = args.get("name")
     if tid is None and not name:
         return {"ok": False, "error": "missing: serve 'id' (preferito) o 'name'"}
-    # Risolvi id → name slug per hot-unregister scheduler.
-    target_name = name
-    if tid is not None:
-        conn = _open()
-        try:
+    # Resolve first, retaining the mapping until authoritative scheduler
+    # state and history have been removed successfully.
+    row = None
+    conn = _open()
+    try:
+        if tid is not None:
+            try:
+                row = conn.execute(
+                    "SELECT id,name,scheduler_name FROM recurring_tasks "
+                    "WHERE id=? AND owner_user_id=?",
+                    (int(tid), owner_user_id),
+                ).fetchone()
+            except (TypeError, ValueError):
+                row = None
+        if row is None and name:
             row = conn.execute(
-                "SELECT name FROM recurring_tasks WHERE id=? AND (?='' OR actor=?)",
-                (int(tid), actor or "", actor or ""),
+                "SELECT id,name,scheduler_name FROM recurring_tasks "
+                "WHERE owner_user_id=? AND name=?",
+                (owner_user_id, name),
             ).fetchone()
-            if row:
-                target_name = row["name"]
-        finally:
-            conn.close()
-    # Provo prima tid (preferito se valido), poi fallback su name se tid fail.
-    # Bug live 15/5/2026: LLM emette {id=<inventato>, name=<corretto>} → tid
-    # fallisce e l'handler non tentava il name. Fix: cascade tid → name.
-    ok = False
-    if tid is not None:
-        ok = cancel_user_task(tid, actor=actor)
-    if not ok and name:
-        ok = cancel_user_task(name, actor=actor)
-        if ok:
-            target_name = name
-    if not ok:
+    finally:
+        conn.close()
+    if row is None:
         ref = tid if tid is not None else name
         return {"ok": False, "error": f"task ref='{ref}' non trovato per actor={actor}"}
-    if target_name:
-        try:
-            from scheduler_v2 import client as sched_client
-            sched_client.cancel_job(f"user_{target_name}")
-        except Exception as _e:  # silent swallow (auto-fixed)
-            log.warning("silent exception in %s: %s", __name__, _e)
-    return {"ok": True, "message": f"Task '{target_name or tid or name}' cancellato."}
+    target_name = str(row["name"])
+    target_scheduler_name = str(row["scheduler_name"])
+    try:
+        from scheduler_v2 import client as sched_client
+        sched_client.purge_jobs((target_scheduler_name,))
+    except Exception as exc:
+        return {"ok": False, "error": f"scheduler purge failed: {exc}"}
+    ok = cancel_user_task(row["id"], owner_user_id=owner_user_id)
+    if not ok:
+        return {"ok": False, "error": "task registry cleanup failed"}
+    return {"ok": True, "message": f"Task '{target_name}' cancellato."}
 
 
-def _normalize_task_name(name: str) -> str:
-    """Aggiunge prefisso user_ se manca per i recurring user task; lascia
-    nudo per system task (apply_ager, synt_suggest)."""
-    if name in ("apply_ager", "synt_suggest"):
+def _normalize_task_name(name: str, *, owner_user_id: str = "") -> str:
+    """Prefix user tasks while preserving every live system task name.
+
+    Builtin names come just-in-time from the scheduler's canonical specs;
+    keeping a local allowlist made newly added jobs unreachable by name.
+    """
+    from scheduler_v2.builtin_callbacks import builtin_job_names
+
+    if name in builtin_job_names():
         return name
-    return name if name.startswith("user_") else f"user_{name}"
+    if name.startswith("user_"):
+        return name
+    if not owner_user_id:
+        return name
+    conn = _open()
+    try:
+        row = conn.execute(
+            "SELECT scheduler_name FROM recurring_tasks "
+            "WHERE owner_user_id=? AND name=?",
+            (owner_user_id, name),
+        ).fetchone()
+        return str(row["scheduler_name"]) if row else name
+    finally:
+        conn.close()
 
 
-def handle_read_tasks(args: dict, *, actor: str, **_) -> dict:
+def _principal_is_host(*, actor: str, owner_user_id: str) -> bool:
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return False
+    try:
+        import users
+        principal = users.get_user(owner)
+    except Exception:
+        return False
+    return bool(
+        principal
+        and str(principal.get("id") or "") == owner
+        and principal.get("role") == "host"
+    )
+
+
+def _task_access_scope(*, actor: str, owner_user_id: str
+                       ) -> tuple[dict[str, dict], set[str]]:
+    """Return owner task map and system jobs visible to this principal.
+
+    User jobs are never made visible through their globally unique scheduler
+    key alone.  Hosts may inspect canonical system jobs, but even a host does
+    not inherit another user's task history.
+    """
+
+    owner = str(owner_user_id or "").strip()
+    if not owner:
+        return {}, set()
+    owned = {
+        str(row["scheduler_name"]): row
+        for row in list_user_tasks(owner_user_id=owner)
+    }
+    if not _principal_is_host(actor=actor, owner_user_id=owner):
+        return owned, set()
+    from scheduler_v2.builtin_callbacks import builtin_job_names
+    return owned, set(builtin_job_names())
+
+
+def _resolve_visible_task_name(name: str, *, actor: str,
+                               owner_user_id: str) -> tuple[str, dict | None]:
+    """Resolve a logical reference inside the caller's visibility boundary."""
+
+    requested = str(name or "").strip()
+    owned, system_names = _task_access_scope(
+        actor=actor, owner_user_id=owner_user_id)
+    if requested in owned:
+        return requested, owned[requested]
+    for scheduler_name, row in owned.items():
+        if requested == str(row.get("name") or ""):
+            return scheduler_name, row
+    if requested in system_names:
+        return requested, None
+    return "", None
+
+
+def handle_read_tasks(args: dict, *, actor: str,
+                      owner_user_id: str = "", **_) -> dict:
     name = args.get("name")
     if not name:
         return {"ok": False, "error": "missing required: name"}
-    full_name = _normalize_task_name(name)
+    full_name, user_record = _resolve_visible_task_name(
+        name, actor=actor, owner_user_id=owner_user_id)
+    if not full_name:
+        return {"ok": False, "error": "task non disponibile per questo utente"}
     try:
         from scheduler_v2 import client as sched_client
         rows = [r for r in sched_client.list_jobs() if r["name"] == full_name]
@@ -1191,25 +1922,19 @@ def handle_read_tasks(args: dict, *, actor: str, **_) -> dict:
         return {"ok": False, "error": f"task '{full_name}' non trovato"}
     sched_row = rows[0]
     detail = {"task": sched_row}
-    # Arricchisci con record user se applicabile + actor restrict
-    if full_name.startswith("user_"):
-        user_name = full_name[len("user_"):]
-        urs = [u for u in list_user_tasks() if u["name"] == user_name]
-        if urs:
-            ur = urs[0]
-            if actor != "host" and ur.get("actor") != actor:
-                return {"ok": False, "error": "task non tuo (security)"}
-            detail["user_record"] = ur
+    if user_record is not None:
+        detail["user_record"] = user_record
     return {"ok": True, **detail}
 
 
-def handle_set_tasks(args: dict, *, actor: str, **_) -> dict:
+def handle_set_tasks(args: dict, *, actor: str,
+                     owner_user_id: str = "", **_) -> dict:
     """Cambia stato di un task ricorrente. Dispatch interno fra:
     (a) enabled=bool → toggle abilitazione (host only);
     (b) fire_now=true → esecuzione immediata (host only, ex
         run_scheduled_task_now accorpato 15/5/2026).
     Mutex: esattamente uno dei due deve essere specificato."""
-    if actor != "host":
+    if not _principal_is_host(actor=actor, owner_user_id=owner_user_id):
         return {"ok": False, "error": "solo HOST puo' modificare task (admin)"}
     name = args.get("name")
     enabled = args.get("enabled")
@@ -1221,11 +1946,19 @@ def handle_set_tasks(args: dict, *, actor: str, **_) -> dict:
         return {"ok": False, "error": "specifica 'enabled' (abilita/disabilita) o 'fire_now=true' (esegui subito)"}
     if n_ops > 1:
         return {"ok": False, "error": "enabled e fire_now sono mutex"}
-    full_name = _normalize_task_name(name)
+    full_name, user_record = _resolve_visible_task_name(
+        name, actor=actor, owner_user_id=owner_user_id)
+    if not full_name:
+        return {"ok": False, "error": "task non disponibile per questo utente"}
     if enabled is not None:
         try:
             from scheduler_v2 import client as sched_client
-            ok = sched_client.toggle_job(full_name, bool(enabled))
+            if user_record is not None:
+                ok = set_user_scheduler_enabled(
+                    full_name, bool(enabled),
+                    owner_user_id=owner_user_id)
+            else:
+                ok = sched_client.toggle_job(full_name, bool(enabled))
             if not ok:
                 return {"ok": False, "error": f"task '{full_name}' non trovato"}
         except Exception as e:
@@ -1245,56 +1978,58 @@ def handle_set_tasks(args: dict, *, actor: str, **_) -> dict:
                        f"il daemon lo eseguira' al prossimo tick. Vedi history."}
 
 
-def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
+def handle_read_tasks_history(args: dict, *, actor: str,
+                              owner_user_id: str = "", **_) -> dict:
     name = args.get("name")
     # Default 200 (vs 10 storico): l'utente che chiede "storico ultimi 7
     # giorni" si aspetta vedere TUTTO; 10 fa troppi truncation prompts.
-    limit = int(args.get("limit") or 200)
-    full_name = _normalize_task_name(name) if name else None
-    time_window = args.get("time_window")
     try:
-        from scheduler_v2 import client as sched_client
-        rows = sched_client.history(name=full_name, limit=limit)
-    except Exception as e:
-        return {"ok": False, "error": f"history fetch failed: {e}"}
-    # Actor restrict per task user
-    if full_name and full_name.startswith("user_") and actor != "host":
-        user_name = full_name[len("user_"):]
-        urs = [u for u in list_user_tasks() if u["name"] == user_name]
-        if urs and urs[0].get("actor") != actor:
-            return {"ok": False, "error": "task non tuo (security)"}
-    # Time window filter applicato post-fetch (scheduler v2 client non lo
-    # supporta nativamente). Usa time_window_parser canonical §2.1.
+        limit = int(args.get("limit") or 200)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "limit must be an integer",
+                "error_class": "invalid_args", "history": []}
+    if limit < 1 or limit > 1000:
+        return {"ok": False, "error": "limit must be between 1 and 1000",
+                "error_class": "invalid_args", "history": []}
+    owned, system_names = _task_access_scope(
+        actor=actor, owner_user_id=owner_user_id)
+    if name:
+        full_name, _ = _resolve_visible_task_name(
+            name, actor=actor, owner_user_id=owner_user_id)
+        if not full_name:
+            return {"ok": False, "error": "task non disponibile per questo utente"}
+        visible_names = (full_name,)
+    else:
+        visible_names = tuple(sorted(set(owned) | system_names))
+    time_window = args.get("time_window")
+    started_from = started_to = None
     if time_window:
         try:
-            import sys
-            from pathlib import Path
-            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from datetime import datetime, timezone
             from time_window_parser import parse_time_window
             start_iso, end_iso = parse_time_window(time_window)
-            from datetime import datetime
-            start_ts = datetime.fromisoformat(start_iso).timestamp()
-            end_ts = datetime.fromisoformat(end_iso).timestamp()
-            filtered = []
-            for r in rows:
-                # row started_at puo' essere ISO o epoch
-                started = r.get("started_at") or r.get("ts") or r.get("fired_at")
-                if started is None:
-                    continue
-                try:
-                    if isinstance(started, str):
-                        ts = datetime.fromisoformat(
-                            started.replace("Z", "+00:00")
-                        ).timestamp()
-                    else:
-                        ts = float(started)
-                except (ValueError, TypeError):
-                    continue
-                if start_ts <= ts <= end_ts:
-                    filtered.append(r)
-            rows = filtered
-        except Exception as ex:
-            log.warning("time_window parse failed: %r — ignored", ex)
+            started_from = datetime.fromisoformat(start_iso).astimezone(
+                timezone.utc).isoformat(timespec="seconds")
+            started_to = datetime.fromisoformat(end_iso).astimezone(
+                timezone.utc).isoformat(timespec="seconds")
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "error": str(exc),
+                    "error_class": "invalid_args", "history": []}
+    try:
+        from scheduler_v2 import client as sched_client
+        # Never request global history: even hosts see system jobs plus their
+        # own tasks, not payloads/results belonging to other users.
+        rows = []
+        for visible_name in visible_names:
+            rows.extend(sched_client.history(
+                name=visible_name, limit=limit + 1,
+                started_from=started_from, started_to=started_to))
+        rows.sort(key=lambda row: str(row.get("started_at") or ""),
+                  reverse=True)
+    except Exception as e:
+        return {"ok": False, "error": f"history fetch failed: {e}"}
+    truncated = len(rows) > limit
+    rows = rows[:limit]
     # Aggregati per il final_message_hint (auto_final-friendly).
     by_status: dict[str, int] = {}
     by_task: dict[str, dict] = {}
@@ -1302,8 +2037,8 @@ def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
         st = (r.get("status") or "other").lower()
         by_status[st] = by_status.get(st, 0) + 1
         tn = r.get("entry_name") or r.get("name") or "?"
-        if tn.startswith("user_"):
-            tn = tn[len("user_"):]
+        if tn in owned:
+            tn = owned[tn]["name"]
         d = by_task.setdefault(tn, {"total": 0, "ok": 0, "error": 0})
         d["total"] += 1
         if st == "success" or st == "ok":
@@ -1349,6 +2084,7 @@ def handle_read_tasks_history(args: dict, *, actor: str, **_) -> dict:
         md_block = "\n".join(md_lines)
     return {
         "ok": True, "count": len(rows), "history": rows,
+        "used": len(rows), "cap_value": limit, "truncated": truncated,
         "time_window": time_window,
         "by_status": by_status, "by_task": by_task,
         "summary": hint,

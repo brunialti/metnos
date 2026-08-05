@@ -7,7 +7,7 @@ in ordine, il primo che decide vince. KIS: tabella lineare, niente ML.
 L1 affinita' assoluta (deterministico, mai scavalcato):
   1b `scope: server|device` vincolante;
   1c override esplicito utente (intent nomina un device per nome);
-  1d gate disponibilita' (heartbeat < 60s).
+  1d gate disponibilita' (heartbeat e, quando tracciato, poll < 60s).
 L2 classificazione workload: manifest `class` — per l'MVP ogni classe
   defaulta a `.33` (net/cpu/mixed/llm_local: il server e' lo Strix Halo;
   io_fs senza device nominato = filesystem del server).
@@ -48,14 +48,25 @@ def _parse_iso(ts: str | None) -> datetime | None:
 
 
 def is_available(device, now: datetime | None = None) -> bool:
-    """Gate L1.d: heartbeat fresco (< HEARTBEAT_FRESH_S) e non revocato."""
+    """Gate L1.d: processo vivo E worker pronto, non revocato.
+
+    I record reali recenti espongono ``last_poll``: deve essere fresco quanto
+    il heartbeat. Gli oggetti legacy/test che non hanno ancora l'attributo
+    conservano la semantica heartbeat-only finche' non passano da un poll.
+    """
     if getattr(device, "revoked_at", None) is not None:
         return False
     hb = _parse_iso(getattr(device, "last_heartbeat", None))
     if hb is None:
         return False
     now = now or datetime.now(timezone.utc)
-    return (now - hb).total_seconds() < HEARTBEAT_FRESH_S
+    if (now - hb).total_seconds() >= HEARTBEAT_FRESH_S:
+        return False
+    if hasattr(device, "last_poll"):
+        poll = _parse_iso(getattr(device, "last_poll", None))
+        if poll is None or (now - poll).total_seconds() >= HEARTBEAT_FRESH_S:
+            return False
+    return True
 
 
 def _match_device_by_name(name: str, devices: list) -> object | None:

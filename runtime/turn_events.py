@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import AsyncIterator
@@ -63,6 +64,7 @@ class _TurnState:
     # ritrovare via event log filtrando per conversation+actor.
     conversation_id: str = ""
     actor: str = ""
+    owner_user_id: str = ""
     query: str = ""
     created_at: float = field(default_factory=time.time)
     # asyncio.Event per signalling: subscribers fanno wait() su questo
@@ -80,16 +82,19 @@ class TurnEventLog:
     """
 
     _INSTANCE: "TurnEventLog | None" = None
-    _LOCK_INIT = asyncio.Lock()
+    _LOCK_INIT = threading.Lock()
 
     def __init__(self) -> None:
         self._turns: dict[str, _TurnState] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._lock = threading.RLock()
 
     @classmethod
     def get(cls) -> "TurnEventLog":
         if cls._INSTANCE is None:
-            cls._INSTANCE = cls()
+            with cls._LOCK_INIT:
+                if cls._INSTANCE is None:
+                    cls._INSTANCE = cls()
         return cls._INSTANCE
 
     def bind_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -99,7 +104,8 @@ class TurnEventLog:
     # ─── publisher API ────────────────────────────────────────────────────
 
     def create(self, turn_id: str, *, conversation_id: str = "",
-               actor: str = "", query: str = "") -> None:
+               actor: str = "", owner_user_id: str = "",
+               query: str = "") -> None:
         """Inizializza il record del turno. Idempotente.
 
         gc() opportunistico: sfoltisce i turn chiusi oltre TTL prima di
@@ -109,62 +115,68 @@ class TurnEventLog:
         `conversation_id`/`actor`/`query`: contesto per il recupero in-flight
         su reload pagina (vedi running_turns()).
         """
-        self.gc()
-        if turn_id not in self._turns:
-            self._turns[turn_id] = _TurnState(
-                turn_id=turn_id, conversation_id=conversation_id,
-                actor=actor, query=query)
+        with self._lock:
+            self.gc()
+            if turn_id not in self._turns:
+                self._turns[turn_id] = _TurnState(
+                    turn_id=turn_id, conversation_id=conversation_id,
+                    actor=actor, owner_user_id=owner_user_id or actor,
+                    query=query)
 
-    def running_turns(self, conversation_id: str, actor: str) -> list[dict]:
-        """Turn ancora in esecuzione (non chiusi) per una conversation+actor.
+    def running_turns(self, conversation_id: str, owner_user_id: str) -> list[dict]:
+        """Turn ancora in esecuzione per conversazione e utente logico.
 
         Usato da `turns_recent` per esporre al client i turn in-flight che NON
         sono ancora nei JSONL persistiti (scritti solo a fine turno). Senza
         questo, ricaricare la chat mentre un turn gira lo perde → ⏳ mai
         risolto / falso errore.
         """
-        out: list[dict] = []
-        for st in self._turns.values():
-            if st.closed:
-                continue
-            if st.conversation_id != conversation_id or st.actor != actor:
-                continue
-            out.append({
-                "turn_id": st.turn_id,
-                "query": st.query,
-                "ts_start": st.created_at,
-            })
-        return out
+        with self._lock:
+            out: list[dict] = []
+            for st in self._turns.values():
+                if st.closed:
+                    continue
+                if (st.conversation_id != conversation_id
+                        or st.owner_user_id != owner_user_id):
+                    continue
+                out.append({
+                    "turn_id": st.turn_id,
+                    "query": st.query,
+                    "ts_start": st.created_at,
+                })
+            return out
 
     def append(self, turn_id: str, event_type: str,
                 payload: dict) -> int:
         """Aggiunge un evento; ritorna l'event_id assegnato."""
-        st = self._turns.get(turn_id)
-        if st is None:
-            self.create(turn_id)
-            st = self._turns[turn_id]
-        eid = len(st.events) + 1
-        st.events.append(
-            TurnEvent(id=eid, event_type=event_type, payload=payload)
-        )
-        # Notifica i subscribers asyncio. Se chiamato da thread non-loop,
-        # usa call_soon_threadsafe; altrimenti set() diretto.
-        self._notify(st)
-        return eid
+        with self._lock:
+            st = self._turns.get(turn_id)
+            if st is None:
+                self.create(turn_id)
+                st = self._turns[turn_id]
+            eid = len(st.events) + 1
+            st.events.append(
+                TurnEvent(id=eid, event_type=event_type, payload=payload)
+            )
+            # Notifica i subscribers asyncio. Se chiamato da thread non-loop,
+            # usa call_soon_threadsafe; altrimenti set() diretto.
+            self._notify(st)
+            return eid
 
     def close(self, turn_id: str, *, error: str | None = None) -> None:
         """Marca il turn come chiuso. Subscribers wake-up e exit dopo
         aver consegnato gli ultimi eventi."""
-        st = self._turns.get(turn_id)
-        if st is None:
-            return
-        st.closed = True
-        st.closed_at = time.time()
-        if error:
-            # Aggiungi un evento `error` finale se presente.
-            self.append(turn_id, "error", {"message": error})
-        else:
-            self._notify(st)
+        with self._lock:
+            st = self._turns.get(turn_id)
+            if st is None:
+                return
+            st.closed = True
+            st.closed_at = time.time()
+            if error:
+                # Aggiungi un evento `error` finale se presente.
+                self.append(turn_id, "error", {"message": error})
+            else:
+                self._notify(st)
 
     def _notify(self, st: _TurnState) -> None:
         # Threadsafe wake del cond event.
@@ -192,18 +204,29 @@ class TurnEventLog:
         - Il turn e' chiuso E tutti gli eventi sono stati consegnati.
         - L'iteratore viene cancellato dal caller (es. client disconnect).
         """
-        st = self._turns.get(turn_id)
+        with self._lock:
+            st = self._turns.get(turn_id)
         if st is None:
             # Turno non noto: ritorna immediatamente senza eventi.
             # Il caller dovra' fallback al TurnLog persistente.
             return
         cursor = max(0, int(last_event_id))
         while True:
+            # Clear PRIMA dello snapshot. Se un publisher arriva dopo il
+            # clear, il flag resta set; se arriva prima, l'evento e' gia'
+            # visibile nello snapshot protetto dal lock.
+            st.cond.clear()
             # Consegna tutti gli eventi disponibili dopo il cursor.
-            while cursor < len(st.events):
-                yield st.events[cursor]
+            while True:
+                with self._lock:
+                    event = st.events[cursor] if cursor < len(st.events) else None
+                if event is None:
+                    break
+                yield event
                 cursor += 1
-            if st.closed:
+            with self._lock:
+                closed = st.closed
+            if closed:
                 # Tutti gli eventi consegnati, turno chiuso → done.
                 return
             # Aspetta nuovo evento o close. Heartbeat: timeout periodico
@@ -219,33 +242,54 @@ class TurnEventLog:
                     id=cursor, event_type="_heartbeat", payload={},
                 )
                 continue
-            st.cond.clear()
 
     # ─── inspection / cleanup ──────────────────────────────────────────────
 
     def has(self, turn_id: str) -> bool:
-        return turn_id in self._turns
+        with self._lock:
+            return turn_id in self._turns
+
+    def snapshot(self, turn_id: str) -> dict | None:
+        """Copia coerente per route/diagnostica, senza esporre il dict privato."""
+        with self._lock:
+            st = self._turns.get(turn_id)
+            if st is None:
+                return None
+            return {
+                "closed": st.closed,
+                "conversation_id": st.conversation_id,
+                "actor": st.actor,
+                "owner_user_id": st.owner_user_id,
+                "events": [
+                    {"id": event.id, "event_type": event.event_type,
+                     "payload": dict(event.payload), "ts": event.ts}
+                    for event in st.events
+                    if event.event_type != "_heartbeat"
+                ],
+            }
 
     def stats(self) -> dict:
-        active = sum(1 for s in self._turns.values() if not s.closed)
-        return {
-            "total_turns": len(self._turns),
-            "active": active,
-            "closed": len(self._turns) - active,
-        }
+        with self._lock:
+            active = sum(1 for s in self._turns.values() if not s.closed)
+            return {
+                "total_turns": len(self._turns),
+                "active": active,
+                "closed": len(self._turns) - active,
+            }
 
     def gc(self) -> int:
         """Rimuove turn chiusi da piu' di TTL secondi.
         Ritorna numero di turn rimossi. Idempotente."""
-        now = time.time()
-        to_drop = [
-            tid for tid, st in self._turns.items()
-            if st.closed and st.closed_at is not None
-            and (now - st.closed_at) > _TURN_EVENT_TTL_S
-        ]
-        for tid in to_drop:
-            del self._turns[tid]
-        return len(to_drop)
+        with self._lock:
+            now = time.time()
+            to_drop = [
+                tid for tid, st in self._turns.items()
+                if st.closed and st.closed_at is not None
+                and (now - st.closed_at) > _TURN_EVENT_TTL_S
+            ]
+            for tid in to_drop:
+                del self._turns[tid]
+            return len(to_drop)
 
 
 # ── SSE serializzazione helper ─────────────────────────────────────────────

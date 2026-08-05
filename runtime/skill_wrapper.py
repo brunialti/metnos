@@ -37,6 +37,15 @@ _STORE_TRUE_CACHE: dict = {}  # str(script_path) -> (mtime, frozenset[flag])
 _TRUTHY = {"1", "true", "yes", "si", "sì", "on", "y", "t", "vero"}
 _FALSY = {"0", "false", "no", "off", "n", "f", "", "none", "null", "falso"}
 
+# Context injected by the trusted runtime after planning.  Generated skill
+# wrappers validate provider arguments strictly, but these values are not
+# provider arguments and must never be forwarded to a third-party CLI.  Keep
+# the allowlist closed: an arbitrary underscore-prefixed typo is still an
+# unknown argument.
+_RUNTIME_CONTEXT_ARGS = frozenset({
+    "_actor", "_actor_email", "_channel", "_lang", "_turn_id",
+})
+
 
 def _store_true_flags(script_path: Path) -> frozenset:
     """Rileva i flag `--x` con `action="store_true"` di un CLI argparse
@@ -100,6 +109,51 @@ def _skill_home(skill_name: str) -> Path:
         raise ValueError("skill_name must be a non-empty string")
     import config as _C  # §7.11
     return _C.PATH_USER_DATA / "skills" / skill_name
+
+
+def _skill_code_home(skill_name: str) -> Path:
+    """Resolve immutable skill code independently from per-user state.
+
+    First-party bundles shipped below ``executors/skills`` are executable
+    installation code and must follow the checked-out Metnos version.  OAuth
+    tokens and other mutable material continue to live in ``_skill_home``.
+    Imported skills, for which no bundled source exists, keep using their
+    per-user directory.  ``METNOS_SKILL_CODE_HOME`` is the explicit test and
+    packaging override; it never changes the credential directory.
+    """
+    code_override = os.environ.get("METNOS_SKILL_CODE_HOME", "").strip()
+    if code_override:
+        return Path(code_override)
+    if not isinstance(skill_name, str) or not skill_name.strip():
+        raise ValueError("skill_name must be a non-empty string")
+    import config as _C  # §7.11
+    bundled = _C.PATH_SKILLS_BUILTIN / skill_name
+    if bundled.is_dir():
+        return bundled
+    return _skill_home(skill_name)
+
+
+def _validate_skill_args(args, *, allowed: set[str] | frozenset[str],
+                         required: tuple[str, ...] = ()) -> str | None:
+    """Validate the common generated-wrapper boundary before provider CLI.
+
+    Unknown keys never reach a third-party parser and missing required values
+    never leak provider ``usage:`` text into a user-facing result.
+    """
+    if not isinstance(args, dict):
+        return "args must be an object"
+    unknown = sorted(set(args) - set(allowed) - _RUNTIME_CONTEXT_ARGS)
+    if unknown:
+        return f"unknown arguments: {unknown}"
+    missing = [
+        name for name in required
+        if name not in args or args.get(name) is None
+        or (isinstance(args.get(name), str) and not args[name].strip())
+        or (isinstance(args.get(name), list) and not args[name])
+    ]
+    if missing:
+        return f"missing required arguments: {missing}"
+    return None
 
 
 def _subprocess_runner() -> Optional[Callable]:
@@ -197,6 +251,12 @@ ERROR_CLASS_TABLE = (
     ("token has expired",   "auth_required"),
     ("missing credentials", "auth_required"),
     ("credentials not found", "auth_required"),
+    # Provider capability absent for the authenticated account.  These are
+    # stable API/protocol markers, not localized user-facing prose: retrying
+    # with a different executor cannot enable the remote service.
+    ("failedprecondition",    "capability_missing"),
+    ("failed precondition",   "capability_missing"),
+    ("service not enabled",   "capability_missing"),
     ("modulenotfounderror", "missing_dependency"),
     ("no module named",     "missing_dependency"),
     ("command not found",   "missing_dependency"),
@@ -216,6 +276,24 @@ ERROR_CLASS_TABLE = (
     ("internal server",     "server_error"),
 )
 
+
+ERROR_CODE_BY_CLASS = {
+    "invalid_args": "ERR_ARG_INVALID",
+    "auth_required": "ERR_AUTH_REQUIRED",
+    "rate_limited": "ERR_RATE_LIMITED",
+    "network": "ERR_NETWORK",
+    "missing_dependency": "ERR_DEPENDENCY_MISSING",
+    "not_found": "ERR_NOT_FOUND",
+    "capability_missing": "ERR_CAPABILITY_MISSING",
+    "server_error": "ERR_PROVIDER_SERVER",
+    "unknown": "ERR_PROVIDER_UNKNOWN",
+}
+
+
+def _error_code_for_class(error_class: str) -> str:
+    """Return a stable code for generated provider-wrapper failures."""
+    return ERROR_CODE_BY_CLASS.get(str(error_class or ""), "ERR_PROVIDER_UNKNOWN")
+
 # Combinazioni piu' specifiche (priorita' alta).
 _SPECIAL_COMBOS = (
     (("403", "insufficient"),  "auth_required"),
@@ -229,8 +307,9 @@ _SPECIAL_COMBOS = (
 def _classify_error(returncode: int, stderr: str) -> str:
     """Mappa (rc, stderr) -> error_class deterministica (§2.8 + ADR 0101).
 
-    Classi possibili: auth_required, rate_limited, network, invalid_args,
-    server_error, missing_dependency, not_found, unknown.
+    Classi possibili: auth_required, capability_missing, rate_limited,
+    network, invalid_args, server_error, missing_dependency, not_found,
+    unknown.
 
     DEVI: passare stderr come stringa (None tollerato -> "").
     OK: _classify_error(1, "NOT_AUTHENTICATED") -> "auth_required".
