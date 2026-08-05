@@ -31,6 +31,10 @@ from . import (
     is_output_policy_enabled,
 )
 from executor_helpers import catalog_names
+# SoT delle operazioni singolari ratificate (ADR 0002): il loro oggetto non
+# esiste nel vocabolario chiuso, quindi nessun allineamento per-oggetto le
+# riguarda.
+from vocab import SINGULAR_EXECUTOR_NAMES as _SINGULAR_EXECUTORS
 
 log = logging.getLogger(__name__)
 
@@ -1184,16 +1188,18 @@ def _align_framework_objects(framework: Framework, intent,
             nc = _ng.parse_name(tool) if tool else None
             if not nc:
                 continue
-            intent_objs = by_verb.get(nc.verb)
-            # `get_now` is the canonical producer for a date/time scalar.  In
-            # a compound file+health query the intent extractor also emits
-            # `get processes`; treating `now` as a foreign object would then
-            # rewrite the explicit get_now step to get_processes.  Preserve
-            # this distinct scalar producer so normalization remains
-            # composable across domains.
-            if (nc.verb == "get" and nc.obj == "now"
-                    and "numbers" in (intent_objs or [])):
+            # Operazioni intrinsecamente singolari (ADR 0002,
+            # `vocab.SINGULAR_EXECUTOR_NAMES`): `now` e `location` NON sono
+            # oggetti del vocabolario chiuso, quindi l'intent non puo'
+            # nominarli e sceglie per forza il vicino ammesso — `places` per
+            # una domanda sulla propria posizione, `numbers` in un compound
+            # con data. Un disaccordo d'oggetto qui non e' prova di fratello
+            # sbagliato: e' il limite del vocabolario. Riallineare
+            # riscriveva get_location→get_places («dove sono?» rispondeva
+            # con un elenco di luoghi) e get_now→get_processes.
+            if tool in _SINGULAR_EXECUTORS:
                 continue
+            intent_objs = by_verb.get(nc.verb)
             if not intent_objs or nc.obj in intent_objs \
                     or _fs_equivalent(nc.obj, intent_objs):
                 continue  # verbo non decomposto, o oggetto gia' corretto/equivalente
@@ -1372,6 +1378,21 @@ def _strong_affinity_candidate(query: str, catalog: Optional[list],
             return None
         chunks = _affinity_chunks(query, verb, obj)
         entries = list(catalog or [])
+        # Il gate provider e' un VINCOLO DI CONTESTO, non una preferenza del
+        # pool: senza il marker nella query la variante provider non e' una
+        # candidata legittima. Questo retroscena cercava nell'intero catalogo
+        # e la reintroduceva dopo l'esclusione — «quanti file .py in /tmp»
+        # finiva su find_files_github, che rispondeva sul repo remoto.
+        # Stessa SoT del pool, cosi' la regola resta una sola.
+        try:
+            from tool_grammar import provider_gate_names
+            names = [_entry_name(entry) for entry in entries]
+            kept, _excluded = provider_gate_names(names, query)
+            allowed = set(kept)
+            entries = [entry for entry in entries
+                       if _entry_name(entry) in allowed]
+        except Exception as ex:  # noqa: BLE001 — §2.8: candidatura resta valida
+            log.debug("strong_affinity provider gate noop: %r", ex)
         by_name = {_entry_name(entry): entry for entry in entries}
 
         def _score(entry) -> int:
@@ -1465,6 +1486,47 @@ def _drop_step(framework: Framework, target) -> None:
     framework.final_message = _remap_step_refs(
         getattr(framework, "final_message", "") or "", idx_map)
     framework.steps = kept
+
+
+def _enforce_provider_binding(framework: Framework, query: str,
+                              catalog: Optional[list]) -> Framework:
+    """§7.9: un piano non puo' usare una variante provider che la query non lega.
+
+    Il gate provider filtra il POOL dei candidati, quindi protegge solo i piani
+    nati in quel turno. Un piano che arriva da altrove — una cache L0/L1 scritta
+    prima di una correzione, un piano proposto — lo scavalcava e restava
+    eseguibile: «quanti file .py in /tmp» rigiocava `find_files_github` e
+    rispondeva sul repository remoto invece che sul disco. Il legame provider e'
+    un VINCOLO DI CONTESTO, non una preferenza: qui si applica al piano, con la
+    stessa SoT del pool. Riscrive al fratello canonico solo se esiste nel
+    catalogo; altrimenti lascia lo step com'e' (mai piano monco, §2.8).
+    """
+    try:
+        import detection_lexicon as _dl
+        from tool_grammar import active_provider_suffixes
+        steps = [step for step in (getattr(framework, "steps", None) or [])
+                 if (getattr(step, "tool", "") or "")]
+        if not steps:
+            return framework
+        # `provider_gate_names` non e' riusabile qui: la sua rete di sicurezza
+        # «mai pool vuoto» annulla il verdetto su un piano di un solo step.
+        # La SoT del legame resta la stessa.
+        active = set(active_provider_suffixes(query))
+        suffixes = tuple(_dl.mapping("provider.markers"))
+        catalog_names = {_entry_name(item) for item in (catalog or [])}
+        for step in steps:
+            suffix = next((s for s in suffixes if step.tool.endswith(s)), "")
+            if not suffix or suffix in active:
+                continue
+            canonical = step.tool[: -len(suffix)].rstrip("_")
+            if not canonical or canonical not in catalog_names:
+                continue
+            log.info("[provider_binding] %s → %s (marker assente nella query)",
+                     step.tool, canonical)
+            step.tool = canonical
+    except Exception as ex:  # noqa: BLE001 — §2.8: il piano resta valido
+        log.warning("enforce_provider_binding noop: %r", ex)
+    return framework
 
 
 def _align_strong_affinity_producers(framework: Framework, intent,
@@ -5322,6 +5384,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"intent.actions", "catalog", "query"}),
           rationale="appende il produttore per un verbo RICHIESTO scoperto (usa _align_foreign_producers_v3 come helper interno)",
           adr="0177"),
+    Guard("enforce_provider_binding",
+          lambda fw, i, q, c: _enforce_provider_binding(fw, q, c),
+          scope="routing", writes=frozenset({"step.tool"}),
+          reads=frozenset({"query", "step.tool", "catalog"}),
+          rationale="il legame provider vale sul PIANO, non solo sul pool: una variante provider senza il suo marker nella query torna al fratello canonico anche quando il piano arriva da cache L0/L1 o da una proposta",
+          adr="0182"),
     Guard("align_strong_affinity_producers",
           _align_strong_affinity_producers,
           v3_only=True, scope="routing",

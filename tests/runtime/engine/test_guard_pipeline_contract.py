@@ -36,6 +36,11 @@ EXPECTED_PIPELINE = (
     ("align_framework_objects", False),
     ("route_text_web_image_search", False),
     ("enforce_missing_clauses", False),
+    # Il legame provider vale sul PIANO, non solo sul pool dei candidati: un
+    # piano che arriva da cache L0/L1 o da una proposta puo' portare una
+    # variante provider che la query non lega. Sta PRIMA dell'affinity, così
+    # quella lavora su produttori già legati al contesto giusto.
+    ("enforce_provider_binding", False),
     # Una affinity composta e univoca può correggere il produttore scelto dal
     # planner/enforce verb-level; deve precedere l'enforce per-oggetto, che vede
     # così l'output tipizzato già corretto e non aggiunge un secondo producer.
