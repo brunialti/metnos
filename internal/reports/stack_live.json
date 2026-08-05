@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "profile": "live-legacy-host-with-integrated-health",
+  "generated_at": "2026-07-18T21:19:57Z",
+  "ok": true,
+  "live_cutover_performed": false,
+  "pilot": {
+    "ok": true,
+    "cycles_completed": 2,
+    "duration_ms": 36531,
+    "baseline_restored": true,
+    "rollback_verified": true,
+    "stack_contract_sha256": "20b4f14bfee1516ae98feee3cad57e4157c8203490162e7521e17910f5117ac2",
+    "host_fingerprint": "33631b19daeb02e1c6cd0a78b4002c703f3aa221b622c43aae7539541ede3b23",
+    "cycles": [
+      {
+        "cycle": 1,
+        "ok": true,
+        "readiness": true,
+        "rollback": true,
+        "turn": {
+          "turn_id": "c2801cabbd0041e4",
+          "final_kind": "answer",
+          "successful_steps": 1
+        }
+      },
+      {
+        "cycle": 2,
+        "ok": true,
+        "readiness": true,
+        "rollback": true,
+        "turn": {
+          "turn_id": "1f50d0d6e4d148e3",
+          "final_kind": "answer",
+          "successful_steps": 1
+        }
+      }
+    ]
+  },
+  "post_pilot": {
+    "system_http_active": true,
+    "user_http_active": false,
+    "target_active": false,
+    "playwright_active": true,
+    "side_display_active": true,
+    "issues_sidecar_active": true,
+    "i18n_timer_active": true,
+    "ready": true,
+    "quiescent": true,
+    "catalog_count": 112,
+    "active_turns": 0,
+    "active_sessions": 0,
+    "approval_pending_sessions": 0,
+    "factor_pending_sessions": 0,
+    "pending_opens": 0,
+    "contract_aligned": true,
+    "playwright_fingerprint": "metnos.playwright/1:33be7f1a2bc9fa063e6531aeee396bf6959f53b69f6d7851812b89b52c8ff99c"
+  },
+  "companion_gates": {
+    "isolated_cycles": [
+      "112 passed",
+      "112 passed"
+    ],
+    "host_integrated_cycles": [
+      "132 passed",
+      "132 passed"
+    ],
+    "sites_chromium_real": "5 passed",
+    "index_recovery": "139 passed",
+    "executor_signatures": {
+      "total": 83,
+      "valid": 82,
+      "invalid": [
+        "find_places"
+      ]
+    }
+  }
+}

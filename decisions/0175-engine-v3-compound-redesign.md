@@ -61,7 +61,7 @@ resta byte-intatto: rollback = `METNOS_ENGINE=metis` (drop-in
   silent failure). Fix: merge `set_fields` in ogni entry pre-upsert. Universale
   (non v3-gated).
 
-**Scoperta empirica (banco `bench/compound_dryrun.py`, a secco no-side-effect).**
+**Scoperta empirica (banco `tests/benchmarks/compound_dryrun.py`, a secco no-side-effect).**
 Stress di 4 compound SANE diverse (3-4 clausole, domini misti) — tutte ✓
 deterministiche su v3 **e già su metis**. La tesi del blueprint «l'LLM collassa
 su 4+» è troppo forte: collassa sui CONFONDENTI (provider-ambiguity,
@@ -94,7 +94,7 @@ I fallimenti residui osservati sono **INTENT-level**, non del proposer
 - P3 `set_fields` è universale (bug fix) → beneficia anche v2.
 - Validazione: suite **2732/0**, routing v3 **29/29**, intent gold **25/25**,
   stress 4 compound sane ✓ deterministiche, v2 verificato intatto (reorder skip
-  sotto metis). Banco di prova permanente: `bench/compound_dryrun.py`.
+  sotto metis). Banco di prova permanente: `tests/benchmarks/compound_dryrun.py`.
 - Intent fixes (commit separato): `it/`+`en/intent_extractor.j2` — STORE rule
   estesa a «db locale» (record store = entries qualunque il tipo) + regola
   approval ({get,approval} non {get,persons}).

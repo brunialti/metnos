@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "profile": "isolated-systemd-contract",
+  "generated_at": "2026-07-18T21:19:51.522288Z",
+  "ok": true,
+  "live_cutover_performed": false,
+  "coverage": [
+    "composite_health",
+    "catalog_parity",
+    "fingerprint",
+    "quiescence",
+    "bounded_watchdog",
+    "fresh_install",
+    "legacy_upgrade",
+    "two_cycle_pilot",
+    "rollback",
+    "guarded_cutover",
+    "systemd_unit_verify"
+  ],
+  "host_only_companion_gate": {
+    "tests": [
+      "tests/runtime/http/test_http_server.py"
+    ],
+    "reason": "requires local socket bind unavailable in isolated profile",
+    "profile": "host-integrated",
+    "ok": true,
+    "cycles": [
+      {
+        "cycle": 1,
+        "passed": 132,
+        "known_warnings": 180
+      },
+      {
+        "cycle": 2,
+        "passed": 132,
+        "known_warnings": 180
+      }
+    ],
+    "warning_class": "aiohttp.NotAppKey"
+  },
+  "cycles": [
+    {
+      "cycle": 1,
+      "ok": true,
+      "exit_code": 0,
+      "passed": 112,
+      "duration_ms": 915,
+      "summary_tail": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 0.64s"
+    },
+    {
+      "cycle": 2,
+      "ok": true,
+      "exit_code": 0,
+      "passed": 112,
+      "duration_ms": 864,
+      "summary_tail": "........................................................................ [ 64%]\n........................................                                 [100%]\n112 passed in 0.64s"
+    }
+  ]
+}

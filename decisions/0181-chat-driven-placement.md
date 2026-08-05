@@ -88,7 +88,9 @@ Validazione: unit 16/16; turno REALE su device Windows fisico
   get_inputs con i candidati (forced_device sul resume) è migliore UX (§2.11).
 - **Copertura executor (C7)**: bundlabili al device oggi solo get_files/
   compute_files_loc/list_dirs; find/read (R2) e mutanti (R3) = fasi successive.
-- Report di dettaglio + assessment: `internal/reports/chat_driven_placement_R1_assessment.md`.
+- I dettagli dell'assessment R1 sono ormai assorbiti da questa decisione, dalle
+  estensioni successive e dai test correnti; il report intermedio è stato
+  rimosso come documento superato.
 
 ---
 

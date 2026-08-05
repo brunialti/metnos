@@ -73,6 +73,24 @@ ADR 0188 applica il pattern a `login_sites` e alla navigazione bounded di
 `act_sites`: il planner conosce soltanto input e output, mentre il broker risolve
 gli stati intermedi con autorita' e verifiche specifiche del compito.
 
+`extract_entries` applica lo stesso confine all'incertezza semantica: se lo
+schema non e' esplicito, lo inferisce una sola volta con un modello locale entro
+un numero massimo di campi, poi valida e applica il normale contratto tipizzato.
+Il planner non deve conoscere i campi specifici del dominio.
+
+## Criterio di generalizzazione
+
+Una variante di etichetta, lingua, layout, ordine dei passaggi o schema dei
+record deve essere risolta dallo stesso executor tramite osservazione,
+lessico traducibile, selezione bounded e riosservazione. Non giustifica un ramo
+per sito o per caso.
+
+Serve nuovo codice soltanto quando il compito richiede una capacita' che il
+contratto non possiede: una nuova primitiva d'azione, un nuovo canale di
+osservazione o fattore, una diversa autorita', oppure una nuova postcondizione
+verificabile. L'intelligenza rende adattivo un insieme di capacita'; non crea
+sensori, permessi o verifiche mancanti.
+
 ## Conseguenze
 
 L'adattamento alle variazioni rimane vicino alla competenza che sa verificarlo,
@@ -81,3 +99,30 @@ micro-passaggi. Il costo e' che ogni executor intelligente deve avere test sugli
 stati, sui budget, sugli handoff e sulle postcondizioni, non soltanto sul caso
 felice.
 
+## Runtime standard
+
+L'implementazione comune vive in `runtime/agentic_executor.py` e offre runner
+sincroni e asincroni con lo stesso contratto: contesto bounded, proposta,
+validazione, esecuzione, postcondizione e budget. Gli executor sincroni possono
+usare `deterministic_then_fallback_sync`: il risultato deterministico resta la
+risposta canonica quando il fallback non produce un miglioramento validato.
+
+Il runtime non sceglie provider e non contiene prompt. Ogni adapter di dominio
+carica i prompt da `runtime/prompts/<lang>/` tramite `prompt_loader`; IT ed EN
+devono essere presenti e le altre lingue seguono il fallback standard. Testi
+osservati da pagine, documenti o provider sono dati non attendibili e non
+diventano istruzioni. Codici di stato e vincoli interni sono identificatori
+language-neutral; qualsiasi messaggio mostrato all'utente passa da i18n.
+
+Prima adozione del runtime comune:
+
+- Sites: selezione VLM, navigazione testuale e riduzione del goal;
+- `extract_entries`: inferenza bounded dello schema e validazione dei record;
+- `read_files_ocr`: Tesseract prima, VLM locale solo su risultato insufficiente;
+- `find_images_web`: ranking deterministico prima, ranking semantico locale solo
+  in assenza di segnali lessicali.
+
+Il contratto esterno e i gate comuni non sono definiti da questo ADR ma dallo
+standard fondativo `EXECUTOR_STANDARD.md` (`metnos.executor/1.0`).
+L'intelligenza interna e' un asse ortogonale: non cambia schema pubblico,
+autorita', trasporto o criteri di conformita'.

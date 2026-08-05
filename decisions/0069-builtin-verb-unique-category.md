@@ -162,7 +162,7 @@ to call.
 - ADR 0070 (apply the category to the `admin` / `sudoer` chain).
 - `runtime/loader.py` extension to enforce the five invariants
   (estimated ~80 lines plus tests).
-- A small unit test suite in `runtime/tests/test_verb_unique.py` covering
+- A small unit test suite in `tests/runtime/test_verb_unique.py` covering
   the boot-time rejection of: collision with public vocabulary, missing
   `authorised_callers`, double registration, invocation by an
   unauthorised caller.

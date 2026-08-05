@@ -29,7 +29,7 @@ active executors, no `lifecycle` field in synth-generated manifests,
 no refinement loop, no critical-class detector, no closed naming
 vocabulary in the system prompt.
 
-The dataset (`decisions/synt_stress/queries_50.json`) is calibrated
+The dataset (`tests/stress/synt/queries_50.json`) is calibrated
 60/30/10 against the three terminal outcomes the synt is meant to
 distinguish:
 
@@ -87,7 +87,7 @@ Phase B. Dataset (8 min)
 ------------------------
 
 The 50 queries are saved in
-`decisions/synt_stress/queries_50.json`. Each carries an expected
+`tests/stress/synt/queries_50.json`. Each carries an expected
 label, a desired_executor name (used as the proto-mnest dst), a
 capability_hint list, and a one-line rationale.
 
@@ -158,7 +158,7 @@ Phase D. Proto-mnest follow-up (~9 min)
 ---------------------------------------
 
 The 30 follow-up queries
-(`decisions/synt_stress/queries_30_protomnest.json`) reuse the patterns
+(`tests/stress/synt/queries_30_protomnest.json`) reuse the patterns
 that emerged in Phase C and stress the planner's ability to reach the
 same executor pool repeatedly. Result on the planner:
 
@@ -207,7 +207,7 @@ Phase E. LLM tier comparison (~12 min)
 
 We ran a representative subset of 10 queries (6 new_executor, 2
 proto_mnest, 2 rejected) on four wise tiers. Results in
-`decisions/synt_stress/llm_tier_comparison.json`:
+`tests/stress/synt/llm_tier_comparison.json`:
 
 | tier              | new_exec | proto | rejected | overall | latency | cost  |
 |-------------------|---------:|------:|---------:|--------:|--------:|------:|
@@ -372,13 +372,13 @@ adds the first two as one-line surface fixes.
 - Memory `metnos_threeway_benchmark_26apr.md`: prior empirical data on
   qwen3:8b vs Gemma 4 26B vs Claude Sonnet, consistent with this run.
 - Raw data:
-  - `decisions/synt_stress/queries_50.json`
-  - `decisions/synt_stress/queries_30_protomnest.json`
-  - `decisions/synt_stress/queries_subset_10.json`
-  - `decisions/synt_stress/results_iter_1.jsonl`
-  - `decisions/synt_stress/results_iter_2_protomnest.jsonl`
-  - `decisions/synt_stress/results_tier_*.jsonl`
-  - `decisions/synt_stress/llm_tier_comparison.json`
+  - `tests/stress/synt/queries_50.json`
+  - `tests/stress/synt/queries_30_protomnest.json`
+  - `tests/stress/synt/queries_subset_10.json`
+  - `tests/stress/synt/results_iter_1.jsonl`
+  - `tests/stress/synt/results_iter_2_protomnest.jsonl`
+  - `tests/stress/synt/results_tier_*.jsonl`
+  - `tests/stress/synt/llm_tier_comparison.json`
   - Per-query analysis: `*.analysis.json` for each results file
 - Harness: `runtime/stress/synt_stress_50.py`,
   `runtime/stress/synt_stress_analyze.py`,

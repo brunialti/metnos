@@ -191,7 +191,7 @@ deterministico §7.9, applicabile a qualsiasi pool senza training.
 - Provider wiring: `runtime/llm_provider.py::LlamaCppProvider.chat_with_tools`
 - Pool filter: `runtime/tool_grammar.py::filter_pool_for_grammar`
 - Validator: `runtime/tool_grammar.py::validate_tool_call`
-- Test: `runtime/tests/test_tool_grammar.py` (43 unit test)
+- Test: `tests/runtime/engine/test_tool_grammar.py` (43 unit test)
 - Bench: `runtime/bench_grammar.py` (10 query × 2 modes)
 - Env: `METNOS_GRAMMAR=1` in `~/.config/systemd/user/metnos-http.service.d/grammar.conf`
 - Bug llama-server: `b540-5755a100c` underscore rules ignorate, unused rules interferiscono

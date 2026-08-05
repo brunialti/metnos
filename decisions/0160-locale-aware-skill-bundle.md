@@ -143,6 +143,6 @@ indipendente per locale (un utente francese non scarica it_locale).
 - `runtime/bills_extract.py` (447 LOC) + `runtime/bills_vendors.json` (47 LOC)
   → spostati a `executors/skills/it_locale/scripts/bills_extract.py` +
   `executors/skills/it_locale/vendors.json`.
-- E2E test `e2e/scenarios/test_bills_pipeline_real.py` aggiornato:
+- E2E test `tests/e2e/scenarios/test_bills_pipeline_real.py` aggiornato:
   sys.path centralizzato a module level, niente hardcoded `/opt/metnos`.
 - Creati `SKILL.md` + `README.md` + `docs/` placeholder.

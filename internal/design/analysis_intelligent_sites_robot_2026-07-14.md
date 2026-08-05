@@ -37,18 +37,19 @@ estrai); cambia solo **dove** girano le primitive. Astrazione `BrowserSurface`.
 | Modalita' | Superficie | Onesta' | Browser | Credenziali | Default |
 |-----------|-----------|---------|---------|-------------|---------|
 | `headless` | `PlaywrightSurface` | onesto | Chromium server (honest) | vault | **SI** |
-| `headless_stealth` | `PlaywrightSurface`+bundle §2 | anti-rilev., sperim. | Chromium server (stealth) | vault | no |
+| `side` | `PlaywrightSurface` | pilotato, grafico | Chromium completo server | vault | no |
 | `extension` | `ExtensionSurface` §3 | **onesto**, browser reale | device utente | reali | no |
 
 Gli executor `open/login/read/act/delete_sites` NON cambiano (drop-in). Il resolver
-sceglie la superficie per-sessione all'`op_open`.
+sceglie la superficie per-sessione all'`op_open`. Le tecniche stealth §2 sono
+ortogonali e applicabili singolarmente a `headless` e `side`.
 
 ### 1.1 `BrowserSurface` — astrazione della FASE EXTENSION, NON prerequisito headless (chiude #1, H3)
 
 **Decisione (H3)**: l'astrazione `BrowserSurface` **NON e' un prerequisito** del
-lavoro headless e **non** precede i fix di sicurezza. Le modalita' `headless`/
-`headless_stealth` girano sul broker odierno con la sola aggiunta del secondo
-browser (§2.2). L'estrazione di una superficie unica attraverso cui far passare
+lavoro Playwright e **non** precede i fix di sicurezza. Le modalita' `headless`/
+`side` condividono il broker odierno cambiando la variante browser all'open
+(§2.2). L'estrazione di una superficie unica attraverso cui far passare
 `op_open/login/read/act` + navigazione goal + `action_resolver` e' un refactor
 grande (quei punti toccano `page` in profondita': `op_open:925`, `op_read:1184`,
 `op_login:1273`, `op_act:3425`, goto `2673/3042`) — NON un «diff strutturale a
@@ -64,49 +65,50 @@ negli outcome (`reason_code`), guasti come `SurfaceError`/`SurfaceTimeout`; time
 per-op espliciti; backpressure = lock per-sessione (F1 FIX C). Dettaglio completo
 si fissa all'apertura della fase extension.
 
-## 2. Stealth — pref per-turno, due browser, registro estensibile, propagazione end-to-end (chiude #1-round1, #2, #10, #7, C2)
+## 2. Website browsing — superficie, stealth per-entry, propagazione end-to-end
 
-### 2.1 Interruttore e ceiling (non piu' env globale)
-- **Pref** `pref_sites_stealth` (user_prefs, vocab CHIUSO ADR 0187), valori `{"on","off"}`,
-  default `"off"`; risolto bool `= (value == "on")`. Toggle UI in `/admin/users`
-  (riusa `admin_user_prefs`, `http_routes_admin.py:935`).
-- **Param runtime**: `open_sites` guadagna l'arg **`_stealth: bool`** (`runtime_resolved=true`,
-  schema boolean default false, nascosto al proposer — come `_open_approvals`). Il
-  runtime lo risolve per-turno dalla pref e lo passa a `open_sites`→broker.
+### 2.1 Interruttore, sotto-opzioni e ceiling (non piu' env globale)
+- **Pannello Website browsing**: pref `sites_browser_mode=headless|side` (default
+  `headless`), master `sites_stealth` (`on|off`, default `off`) e una pref `on|off`
+  per ogni entry del registro. La UI `/admin/users` rende il master e checkbox
+  indipendenti dal catalogo restituito da `stealth.preference_specs()`; assenza =
+  `off`. Il master limita le tecniche ma non cancella le selezioni memorizzate.
+- **Param runtime**: `open_sites` riceve `_stealth` e
+  `_stealth_techniques: array[string]`, entrambi `runtime_resolved=true` e nascosti
+  al proposer. La lista e' chiusa ai nomi del registro, normalizzata in registry
+  order e conservata nei replay di approvazione.
 - **Ceiling** `METNOS_SITES_STEALTH_ALLOWED` (default `"1"`): se `"0"` e pref `on` →
   stealth **forzato off** (default onesto), audit `stealth_denied_by_ceiling`, NON un
   errore (degrado onesto).
 
-### 2.2 Due browser + effetto immediato senza restart (C2)
-- `_browser_honest` (no launch-arg) sempre; `_browser_stealth` (launch-arg) **lazy**.
-- **Lock lazy-launch**: `asyncio.Lock` `_stealth_launch_lock`; double-check
-  (`if _browser_stealth is None: async with lock: if still None: launch`).
-- `op_open` risolve **effective_stealth = pref_on AND ceiling_allows**, sceglie il
-  browser, costruisce la surface, e **fissa** `session[sid]["stealth"]` +
-  `session[sid]["surface"]` per l'intera vita della sessione.
-- **Health/shutdown**: entrambi i browser sondati con `is_connected`
-  (`session_broker.py:568`); disconnesso → rilancio lazy alla prossima op; shutdown
-  chiude entrambi (lo stealth solo se lanciato).
+### 2.2 Varianti browser + effetto immediato senza restart (C2)
+- Browser headless honest sempre pronto; varianti headless+LAUNCH, side honest e
+  side+LAUNCH **lazy**. Side usa `headless=False` e richiede DISPLAY/Wayland su Linux.
+- **Lock lazy-launch** unico con double-check sulla variante richiesta.
+- `op_open` risolve `browser_mode` e **effective_techniques = selected** solo se
+  master e ceiling sono attivi; la chiave della variante e' `(mode, has_LAUNCH)`.
+  La surface e la sessione fissano la tupla effettiva per tutta la loro vita.
+- **Health/shutdown**: stato distinto per le quattro varianti possibili; shutdown
+  chiude tutte quelle lanciate. `side_browser_available=false` se manca il display.
 - **Replay approvazioni**: al resume di un gate la sessione ESISTE → si riusa la sua
   surface (stealth fissato all'open). Un cambio pref a meta'-turno NON tocca la
   sessione aperta; una sessione NUOVA post-resume ri-risolve.
-- **Toggle UI → la sessione successiva usa l'altro browser, subito.** Costo ~200MB se
-  lo stealth e' stato usato; rilassa §7.4 solo qui, motivato.
+- **Salvataggio UI → la sessione successiva usa subito la nuova selezione.** Il
+  costo del secondo browser esiste solo se `webdriver_launch_arg` e' selezionata.
 
 ### 2.3 Registro tecniche (C2-estensibilita')
 `runtime/playwright_sidecar/stealth.py`:
 ```
-StealthTechnique(name:str, layer:str, apply:callable, enabled_when:callable)
+StealthTechnique(name, preference_key, label_key, help_key, layer, apply)
 #   layer ∈ {LAUNCH, CONTEXT, BEHAVIOR}
 #   apply per layer:
 #     LAUNCH   : apply(launch_args:list[str]) -> None     # append, dedupe
 #     CONTEXT  : apply(context_kwargs:dict, init_scripts:list[str]) -> None
 #     BEHAVIOR : apply(flow_config:dict) -> None           # abilita human_pause
-#   enabled_when(profile:str) -> bool   # profile="on"/"off" oggi; regge "basic|aggressive" futuro
 ```
-- Entry iniziali: `webdriver_launch_arg` (LAUNCH,on_any), `ua_override` (CONTEXT,on_any),
-  `mobile_emulation` (CONTEXT,on_opt=OFF per ora), `chrome_permissions_js` (CONTEXT,on_any),
-  `human_delays` (BEHAVIOR,on_any).
+- Entry iniziali: `webdriver_launch_arg` (LAUNCH), `ua_override` (CONTEXT),
+  `mobile_emulation` (CONTEXT), `chrome_permissions_js` (CONTEXT),
+  `human_delays` (BEHAVIOR). Sono tutte selezionabili singolarmente e off di default.
 - **Ordine**: registry-order per layer; LAUNCH al lancio browser, CONTEXT a
   `new_context`+`add_init_script`, BEHAVIOR nel flusso login.
 - **Idempotenza**: init-script aggiunto una volta per contesto; launch-args dedupati.
@@ -117,12 +119,12 @@ StealthTechnique(name:str, layer:str, apply:callable, enabled_when:callable)
 ### 2.4 Default onesto + correzioni
 - DEFAULT: UA nativo, `navigator.webdriver` nativo, nessun ritardo (attese su
   postcondizioni). Misure funzionali: viewport, WebRTC off, service-worker block.
-- `locale`/`timezone` (`_context_kwargs:102-103`) da `pref_locale`/`pref_timezone`
-  (fallback `METNOS_LANG` + tz di sistema), NON costanti it-IT/Europe-Rome.
+- `locale` deriva da `_lang`/`METNOS_LANG`; `timezone` dal sistema/TZ. Non
+  esistono `pref_locale`/`pref_timezone` e non vanno introdotte.
 - **Rimuovere** da `_STEALTH_JS:187-188` il ramo `defineProperty(navigator,'webdriver')`
   (inefficace, verificato). `webdriver` si nasconde SOLO col launch-arg.
-- Etichetta: **[IMPLEMENTATO PARZIALE, NON VERIFICATO]** finche' due-browser+pref
-  sostituisce l'env e i test §10.2 esistono.
+- Implementazione verificata da `test_sites_stealth.py`: mode, layer isolati,
+  binding replay, UI e fallimento side senza display.
 
 ## 3. Estensione companion — superficie remota onesta (C1)
 
@@ -358,7 +360,7 @@ Il runtime la trasforma in un passo di **piano firmato** via il gate F2
    alias fuori lista negato (match esatto); con chiave assente stesso-sito
    first-party ammesso, altro sito registrabile negato;
    locator: submitter impliciti + js-link **rifiutati**; stealth su browser
-   **riavviato** (routing due-browser, non env); cooldown persistente dopo restart.
+   **riavviato** (routing per variante, non env); cooldown persistente dopo restart.
 9. Igiene: ripristinare le global monkeypatchate a fine test.
 
 ### 10.3 Reale (post-§7): Booking «login e mostra le prenotazioni» → catena completa;
@@ -374,7 +376,7 @@ attesta la pagina; record o vuoto onesto con evidenza. Non martellare account re
 ## 12. Prerequisiti bloccanti (ordine) + Done gate (simulatore)
 
 0. **Seam `BrowserSurface`** (§1.1) — estrazione pura; suite verde invariata.
-1. **Stealth** pref+due-browser+registro+propagazione end-to-end (§2); rimuovi il
+1. **Website browsing** superficie+registro stealth+propagazione end-to-end (§2); rimuovi il
    `webdriver` defineProperty. Done: test §10.2-8 (stealth su restart).
 2. **`origins` credenziale** (§4) + migrazione derive-on-read. Done: §10.2-8 origine.
 3. **Goal DTO unico + derivare `_VERB_TO_CANONICAL` da vocab** (§5). Done: «apri

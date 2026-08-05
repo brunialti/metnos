@@ -13,7 +13,7 @@ coverage guard). Universale/deterministico, no hardcoded/ad-hoc, no regressione.
   set_translated/enqueue_language).
 - `runtime/detection_lexicon_seed.py` — fonte canonica IT+EN (register_all).
 - `runtime/config.py` — `DB_DETECTION`.
-- `runtime/tests/test_detection_lexicon.py` — copertura/anti-silenzio/union.
+- `tests/runtime/i18n/test_detection_lexicon.py` — copertura/anti-silenzio/union.
 
 ## Principio anti-regressione
 Per ogni concept l'UNIONE it+en deve = insieme del costrutto hardcoded

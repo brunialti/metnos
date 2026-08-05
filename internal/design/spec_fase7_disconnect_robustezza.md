@@ -48,7 +48,7 @@ Piccolo notificatore server-side: alla transizione `done|failed|expired` di un'i
 - **Sandbox**: primo taglio = PARITÀ Linux-senza-bwrap: process-group + timeout kill + `sandbox="none"` DICHIARATO (il campo esiste già). `sandbox-exec`/Seatbelt = incremento successivo separato (profilo SBPL con gli stessi hint→root; API deprecata ma funzionante — decisione a valle).
 - **pyenv**: python-build-standalone pubblica `aarch64-apple-darwin` → `pyenv.rs` deve solo mappare `os_family="macos"`→asset giusto (verificare la detection in `main.rs`/`state.rs` e il campo `platforms` dei manifest: aggiungere `"macos"` ai 13 device-abili è un edit manifest+re-sign §7.10).
 - **Installer**: `install.sh` è POSIX — verificare le assunzioni Linux (systemd unit! su mac serve LaunchAgent plist). Deliverable: `install-macos.sh` con LaunchAgent + `metnos-client` in `~/Library/Application Support/Metnos/`.
-- **e2e**: riusare `scripts/e2e-remote-executor.sh` su un mac reale (o CI se disponibile); pairing+find_packages+write+undo.
+- **e2e**: riusare `tests/e2e/tools/e2e-remote-executor.sh` su un mac reale (o CI se disponibile); pairing+find_packages+write+undo.
 **Done C**: pairing da mac reale, 13 executor girano, undo round-trip verde, self-update funziona (verificare che `selfupdate.rs` gestisca il path .app-less: è un binario nudo, dovrebbe essere identico).
 
 ## Ordine consigliato

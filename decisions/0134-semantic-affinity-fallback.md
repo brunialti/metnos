@@ -81,7 +81,7 @@ nella SELEZIONE, non nel re-rank): default conservativo 4.
 - Latency aggiuntiva 25ms solo sul 14% delle query (cap_expand
   budget complessivo turno ben sotto soglia).
 - Cache invalidation deterministica via hash → robusta a re-sign.
-- 15/15 unit test in `runtime/tests/test_affinity_semantic.py`
+- 15/15 unit test in `tests/runtime/learning/test_affinity_semantic.py`
   (cache, key invalidation, fallback con cache None, opt-out env).
 - Bug fix collaterale: rimosso mapping `"del": "delete"` da
   `_VERB_TO_CANONICAL` (preposizione articolata IT "del sistema"

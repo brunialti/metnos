@@ -243,3 +243,12 @@ con riferimento a questo ADR.
 immediate (rinomine + nuovo verbo). Le tabelle sono dati ispezionabili,
 il verifier e' deterministico, l'estensione a provider futuri e' un
 template ripetitivo.
+
+### Verifica aggiornata 23/7/2026
+
+Il catalogo sorgente Google Workspace contiene 24 sotto-comandi. Il traduttore
+corrente produce 24 plan e zero rifiuti. In particolare `drive:get` usa ora
+`get_files_google_workspace` per i metadata, distinto da
+`drive:download` (`read_files_google_workspace`) per il contenuto. Le collisioni
+Gmail sono risolte con le modalità canoniche e generali `thread` e `labels`;
+la Naming Authority valida anche la composizione modalità + provider.

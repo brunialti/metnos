@@ -108,8 +108,8 @@ positiva.
 ## Test
 
 - Smoke invariants OK (catalog 55, 0 rejected).
-- `runtime/tests/test_read_urls_html.py` 7/7 PASS.
-- `runtime/tests/test_read_urls_pdf.py` 7/7 PASS.
+- `tests/runtime/executors/test_read_urls_html.py` 7/7 PASS.
+- `tests/runtime/executors/test_read_urls_pdf.py` 7/7 PASS.
 - Regression: 656/664 PASS — 8 fail pre-esistenti (gallery×3,
   http_server×3, pipeline_smoke, users_smoke_e2e). **Zero nuove
   regressioni.**
@@ -127,3 +127,20 @@ positiva.
 - `/tmp/bench_compute_loc.py`
 - `/tmp/bench_read_urls.py`
 - `/tmp/bench_read_urls_multi.py`
+
+## Riesame worker `read_urls_html` (2026-07-21)
+
+La baseline riproducibile corrente e' in
+`internal/reports/read_urls_html_worker_benchmark_2026-07-21.md`. Su 20 URL
+same-host il throttle satura a 4 e i cap 8/16/32 non riducono la p50; su cinque
+host il throughput continua invece a scalare fino ai 20 job disponibili.
+
+Il pool per invocazione e' quindi limitato anche dalla capacita' utile
+`host_distinti * cap_per_host`, oltre che dal cap globale e dal numero di job.
+Il test con HTML da 256 KiB conferma p50 equivalente fra 4 e 20 thread, ma
+riduce il delta RSS da 35,41 a 19,98 MiB. Output e ordine restano equivalenti.
+
+Questa ottimizzazione non risolve il throttle trasversale: due invocazioni
+possono ancora raddoppiare la pressione sullo stesso host. Un limite condiviso
+fra processi o una chiave per insiemi di host richiede una decisione distinta;
+non viene implicato dalla presente modifica locale.

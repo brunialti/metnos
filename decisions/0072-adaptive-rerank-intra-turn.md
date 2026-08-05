@@ -91,5 +91,5 @@ Vincoli operativi:
 
 - `runtime/adaptive_rerank.py`
 - `runtime/agent_runtime.py` (hook dopo step ok)
-- `runtime/tests/test_adaptive_rerank.py`
+- `tests/runtime/engine/test_adaptive_rerank.py`
 - ADR 0073 (bench embedding-vs-token, 4/5/2026)

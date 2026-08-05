@@ -16,6 +16,9 @@ related: [0125, 0187, 0188, 0189, 0190]
 > = terza superficie onesta (browser reale utente), **non piu' esclusa**; (C2)
 > **stealth attivabile da UI, effetto immediato senza restart/admin**, e
 > **costruito per essere esteso** (registro di tecniche).
+> **Estensione Roberto, 15/7**: (C3) pannello Website browsing con superficie
+> `headless|side`; `side` = Chromium completo grafico pilotato, componibile con
+> ciascuna tecnica stealth senza profili predefiniti.
 > Confine sull'occultamento: **fuori dal DEFAULT** (il default e' onesto, nativo);
 > disponibile SOLO come **modalita' opt-in ESPLICITAMENTE sperimentale/anti-
 > rilevamento** (non «lecita»), a rischio del **proprietario** (pref per-turno, non
@@ -65,20 +68,23 @@ Alternativa **RIAMMESSA come terza superficie** (commitment C1, 14/7):
 
 ## Decisione
 
-- **Logica unica, TRE superfici** (§1 analisi v4): la macchina intelligente e'
+- **Logica unica, TRE superfici** (§1 analisi v4, rev. side browser 15/7): la macchina intelligente e'
   **una sola** (osserva→decide→agisci); cambia solo la **superficie browser** su
   cui gira, scelta da un **resolver** (config/pref, non intento — pattern
   `backend_resolver`), dietro gli **stessi** executor `open/login/read/act_sites`
   (drop-in, planner-invisibile):
   1. **`headless`** (DEFAULT) — robot server onesto, non mascherato;
-  2. **`headless_stealth`** (opt-in, §Occultamento) — headless anti-rilevamento;
+  2. **`side`** (opt-in) — Chromium completo grafico sul server, pilotato da
+     Playwright; richiede un display disponibile e non ripiega su headless;
   3. **`extension`** (opt-in, commitment C1) — browser **reale** dell'utente via
      estensione companion, onesto, su device (canale Fase 7). Astrazione comune
      `BrowserSurface` (open/enumerate/fill/click/read/screenshot/close): il seam
      va introdotto SUBITO, l'impianto `extension` e' fase dedicata successiva.
-  Nessun canale **API/email** per `sites`. Per la classe OSTACOLI l'intelligenza
-  LOCALE dell'executor (ADR 0189) su superficie headless copre la maggioranza dei
-  siti; per la classe FINGERPRINT la superficie `extension` e' la via onesta.
+  Le tecniche stealth (§Occultamento) sono un asse ortogonale selezionabile per
+  entry sulle due superfici Playwright (`headless` e `side`), non una superficie
+  o un profilo. Nessun canale **API/email** per `sites`. Per la classe FINGERPRINT
+  `side` evita il solo headless-shell ma resta automazione; `extension` e' la via
+  onesta sul browser dell'utente.
 - **Mandato del proprietario**: l'executor agisce sul mandato del proprietario
   delle credenziali (ADR 0190). **«Onesto non vuol dire scemo»**: finche' e'
   **legalmente possibile**, PERSISTE e si adatta per fare cio' che gli e' chiesto;
@@ -105,17 +111,21 @@ Alternativa **RIAMMESSA come terza superficie** (commitment C1, 14/7):
   nativo**: UA nativo (nessun override — spoofing ≠ igiene), `navigator.webdriver`
   nativo (NIENTE launch-arg `AutomationControlled`), attese su **postcondizioni**
   (niente ritardi «umani»).
-  - **Interruttore = user-pref `pref_sites_stealth`** (bool, vocab CHIUSO, ADR
-    0187), toggle da UI, **letto per-turno**, valido SOLO per le sessioni del
-    proprietario (owner-bound) — **non** un env process-globale (risolve @3 #1).
-    Kill-switch admin `METNOS_SITES_STEALTH_ALLOWED` come **ceiling** di deployment.
-  - **Effetto immediato senza restart** (C2): il sidecar tiene **due browser** —
-    `_browser_honest` (default) e `_browser_stealth` (launch-arg, lazy). `op_open`
-    instrada per-sessione secondo la pref. Toggle in UI → sessione successiva
-    sull'altro browser, subito.
-  - **Bundle = REGISTRO di tecniche estensibile** (C2): ogni tecnica dichiara il
-    layer (`LAUNCH`/`CONTEXT`/`BEHAVIOR`); aggiungere una tecnica futura = una entry,
-    zero modifiche al cuore; regge un profilo (`off|basic|aggressive`) senza refactor.
+  - **Interruttore master = user-pref `sites_stealth`** (`on|off`, vocab CHIUSO,
+    ADR 0187), letto per-turno e valido SOLO per le sessioni owner-bound. Sotto
+    il master, ogni entry del registro ha una pref `on|off` indipendente generata
+    dalla stessa entry (`sites_stealth_webdriver`, `sites_stealth_user_agent`,
+    `sites_stealth_mobile`, `sites_stealth_browser_apis`,
+    `sites_stealth_human_delays`). Assenza = `off`; nessun profilo/bundle
+    predefinito. Kill-switch `METNOS_SITES_STEALTH_ALLOWED` = ceiling deployment.
+  - **Effetto immediato senza restart** (C2): il sidecar tiene il browser headless
+    honest sempre pronto e lancia lazy la variante esatta richiesta fra
+    headless+LAUNCH, side honest e side+LAUNCH. `op_open` sceglie prima la
+    superficie (`sites_browser_mode=headless|side`), poi applica solo le tecniche
+    selezionate. Salvataggio UI → sessione successiva aggiornata subito.
+  - **Registro estensibile, selezione per-entry** (C2): ogni tecnica dichiara
+    pref, chiavi i18n, layer (`LAUNCH`/`CONTEXT`/`BEHAVIOR`) e applicazione;
+    aggiungerla = una entry, senza enumerare combinazioni o modificare il cuore.
   - **Esplicitamente anti-rilevamento**, a rischio del proprietario, NON «lecito».
     Nota tecnica: `webdriver` si nasconde solo col launch-arg (init-JS inefficace —
     il tentativo `defineProperty(navigator,'webdriver')` va **rimosso** da `_STEALTH_JS`).
@@ -155,7 +165,9 @@ superficie inutile ai client automatizzati sulla base di fingerprint/segnali
 headless (Amazon retail e simili). In headless l'intelligenza locale non
 ricostruisce osservazioni che il server non riceve → degrada onesto con
 reason_code neutro; la superficie **`extension`** (browser reale, opt-in) e' la
-via onesta per quella classe. Nessun canale **API/email**. Il contratto drop-in
+via onesta per quella classe. `side` puo' evitare segnali specifici del
+headless-shell, ma resta pilotato e non garantisce l'accesso. Nessun canale
+**API/email**. Il contratto drop-in
 degli executor `open/login/read/act_sites` non cambia su nessuna superficie
 (planner-invisibile).
 
@@ -170,7 +182,7 @@ non dalla dismissione «sicura».
 
 ## Verifica
 
-- **Funzionali** (`runtime/tests/test_sites_login_simulator.py`, opt-in
+- **Funzionali** (`tests/simulator/sites/test_login_browser.py`, opt-in
   `METNOS_SITES_SIM=1`): privacy non-navigante che riappare; consenso navigante →
   piano firmato; ostruzione generica su target occluso; nudo `selector_missing`
   senza chiusura; `empty_surface` neutro; esiti post-submit con cooldown incrementato
@@ -179,13 +191,13 @@ non dalla dismissione «sicura».
   catena completa con **goal tipizzato dal runtime** che ATTESTA la pagina-obiettivo.
 - **Sicurezza** (§10.2 v4): origine schema/porta e alias non autorizzato; locator
   submit/js-link rifiutato; stealth per-sessione su browser **riavviato** (routing
-  due-browser, non env-globale); cooldown persistente dopo restart; concorrenza
+  routing per variante, non env-globale); cooldown persistente dopo restart; concorrenza
   atomica.
 - **Reale** (dominio leniente, Booking): `open→login→act_sites(goal)→read→extract→
   describe`; record o vuoto **onesto** con evidenza della pagina target. Nessun E2E
   reale prima del cooldown completo (non martellare account reali).
 - **`accepted` solo quando** testo ADR e analisi v4 coincidono su: tre superfici,
-  due procedure a budget distinti, stealth pref/due-browser, cooldown §7,
+  due procedure a budget distinti, superficie+stealth per-entry, cooldown §7,
   `credential_origins` §4. Fino ad allora resta `proposed` (@3 #12).
 - Analisi implementativa (destinata a Opus + prossimo giro adversarial):
   `internal/design/analysis_intelligent_sites_robot_2026-07-14.md` (v4 autonoma).

@@ -57,11 +57,44 @@ kill-switch. Gli executor sono client sottili del sidecar Playwright su `:8771`.
   "Fatture". Ogni click e' riosservato; un resolver testuale locale vede solo
   ID, ruoli e nomi accessibili. La prima azione sensibile apre un gate batch;
   i passi deterministici successivi, sullo stesso host, riusano quel consenso.
+- Quando il planner non emette una navigazione necessaria a una richiesta di
+  record, il runtime recluta `act_sites` in modalita' goal interna. Un solo
+  reducer locale bounded puo' restituire esclusivamente una frase breve ed
+  estrattiva composta da parole della query; il broker la tratta come target
+  tipizzato della normale primitiva `search`. URL, selettori, azioni e termini
+  inventati vengono rifiutati. I resolver procedurali usano `think=false`: il
+  budget piccolo serve al JSON validato, non a ragionamento non osservabile.
+  L'input/output pubblico dell'executor non cambia.
+- Il login non puo' usare la sola navigazione URL come postcondizione. Il broker
+  ricontrolla strutturalmente il frame top-level e richiede che l'assenza di una
+  superficie di autenticazione resti stabile per osservazioni consecutive;
+  errori di osservazione e remount SPA transitori non producono successo. Il
+  form ancora presente nel primo frame post-submit non termina l'osservazione:
+  azzera la sequenza positiva e resta sotto controllo fino al budget.
+- La diagnostica di ogni login non completato usa screenshot fail-closed. Oltre
+  a password, OTP e campi identita' standard, la redazione copre indirizzi email
+  riecheggiati nei nodi testuali tramite il loro formato strutturale. L'overlay
+  copre il solo intervallo corrispondente, non l'intero nodo testuale, senza
+  leggere valori dal vault o usare lessico linguistico.
+- Se il primo goal dopo un login verificato non osserva alcun candidato, il
+  broker puo' tornare una sola volta all'URL di ingresso same-host conservato in
+  memoria e rieseguire il resolver normale. Il reset e' ammesso soltanto prima
+  di qualsiasi passo del goal e con un mandato credenziale gia' valido per la
+  navigazione; il tentativo viene marcato prima dell'I/O. Non dipende da testo
+  d'errore, vendor, selettori o URL indovinati e non puo' diventare un retry
+  loop.
 - Quando il goal e' raggiunto, controlli contestuali di continuazione
   (`mostra/carica altro`, pagina successiva e forme tradotte) possono essere
   eseguiti fino a sei volte. Ogni passo richiede contenuto nuovo; controllo
   esaurito, contenuto ripetuto o budget chiudono il ciclo. Le pagine navigate
   vengono aggregate nella lettura finale senza duplicati.
+- Una richiesta di record dalla pagina viene normalizzata deterministicamente
+  in `read_sites -> extract_entries -> describe_entries`. `extract_entries`
+  usa i campi espliciti quando presenti; altrimenti inferisce una sola volta un
+  piccolo schema bounded dallo scopo e dal testo tramite modello locale. Il
+  router non contiene campi, tipi di record o nomi di sito. Un risultato vuoto
+  resta `entries=[]` e viene presentato onestamente, senza ripescare un blob
+  precedente.
 - Redirect, documenti bloccati e popup estendono la rete solo con gate esatto e
   token one-shot. Widget osservati non ampliano l'allowlist se la pagina e' gia'
   interagibile; un popup unico e consentito diventa la pagina attiva.
@@ -88,7 +121,13 @@ kill-switch. Gli executor sono client sottili del sidecar Playwright su `:8771`.
   Host nuovi, selezione VLM o origine credenziale delegata mantengono il gate.
   Se l'origine del form differisce dal binding vault, il broker non copia il
   binding: richiede un token one-shot sulla coppia esatta e ricontrolla il form
-  immediatamente prima del fill.
+  immediatamente prima del fill. L'ALIAS `www` (una sola label) del root del
+  vault e' pero' la stessa origine di login e viene accettato senza gate: il
+  form email-first servito su `www.<root>` mentre il vault e' `<root>` (pattern
+  comune) non apre un dialogo. Nessun ALTRO sottodominio (`login.<root>`,
+  host terzi) e' ripiegato: restano origini distinte e mantengono il token
+  one-shot. Speculare al fallback record-name `www.host -> host` (14/7,
+  turn 04e74199 Amazon).
 - I codici e le chiavi `MSG_SITES_RC_*` hanno nomi canonici inglesi; i testi
   sono IT+EN nel DB i18n e nel seed d'installazione.
 - I secondi fattori hanno un resolver interno a canali, invisibile al planner.
@@ -108,6 +147,11 @@ kill-switch. Gli executor sono client sottili del sidecar Playwright su `:8771`.
   task viene inoltre intersecato con l'envelope esatto; un fire fuori mandato
   fallisce con `mandate_scope_exceeded` e non crea un dialogo che nessun utente
   potrebbe risolvere in tempo reale.
+- Il resolver del mandato condivide il solo alias di binding gia' ammesso
+  dall'iniettore: un profilo audit rooted su `www.host` puo' usare la credenziale
+  scoped di `host`. Una credenziale esatta ha precedenza e nessun altro
+  sottodominio, fratello o suffisso eredita autorita'. La regola vale allo stesso
+  modo per query interattive e task.
 
 ## Conseguenze
 
@@ -120,10 +164,23 @@ preferibile un backend first-party rispetto all'automazione della dashboard.
 
 ## Verifica
 
-- `runtime/tests/test_sites_security.py`: owner, origine, redazione, audit,
+- Il Capability Registry canonico distingue `network:sites`,
+  `auth.password_storage` e `drive:permissions`; i cinque executor `*_sites`
+  dichiarano collocazione `server`. Verifica 19/7/2026: cluster dominio
+  360 passati, 2 skip dichiarati, ripetuto in due cicli; simulatore Chromium
+  5/5 e sidecar live 3/3.
+
+- `tests/runtime/sites/test_sites_security.py`: owner, origine, redazione, audit,
   resolver, consenso privacy, off-viewport, username-first/continue, TOTP,
-  2FA-push, goal post-login, taint, gate/token e allowlist.
-- `runtime/tests/test_factor_resolvers.py`: binding mailbox esatto, cursore UID
+  2FA-push, goal post-login, recupero landing una-tantum, taint, gate/token e
+  allowlist.
+- `tests/runtime/sites/test_sites_structured_extraction.py`: inserzione idempotente
+  della catena tipizzata, inferenza schema bounded, piping, zero record e
+  assenza di costanti per sito/campo.
+- `tests/runtime/sites/test_sites_open_resource_relevance.py`: i documenti di
+  subframe terzi restano bloccati senza promuoversi a gate; le navigazioni
+  top-level conservano il gate esatto.
+- `tests/runtime/engine/test_factor_resolvers.py`: binding mailbox esatto, cursore UID
   pre-submit, Junk standard, issuer generico, budget/cancellazione, OTP
   segmentato, timeout riclassificato, resume e TTL del factor checkpoint.
 - Runner executor: 313/313.

@@ -1,22 +1,35 @@
 # RM-0003 — Tutor integrato: guida operativa intelligente
 
-**Stato:** `in_progress`  
-**Creazione:** 2026-07-23  
-**Ultima revisione:** 2026-07-24 (notte)  
-**Implementazione reale:** F2 implementato, verificato in test e in replay live
-mirati sul boundary HTTP; correttore di bozze deterministico post-composizione
-attivo (§5.7). Certificazione per-corpus: gate a radice flessiva e skip
-documentati (§5.6); f1_equivalence 30/38 non-fail, boundary 12/12; la
-ri-certificazione completa col correttore e un turno live Telegram restano da
-completare prima del ritiro delle schede. F3 e F4 sono progettati, non
-implementati.  
+**Stato:** `closed`
+
+**Creazione:** 2026-07-23
+
+**Chiusura:** 2026-07-30
+
+**Ultima revisione:** 2026-07-30
+
+**Implementazione reale:** F2, F3 e F4 implementati. F2 dispone del catalogo
+firmato, del confine semantico e del correttore deterministico; F3 aggiunge
+quattro osservazioni correnti tipizzate e la consegna monouso di una clausola
+d'azione letterale; F4 aggiunge ledger delle lacune, associazioni per utente,
+riscontro positivo/negativo, cancellazione e replay controfattuale. Le prove
+isolate F3/F4 e il caso di instradamento per identità documentale sono verdi.
+La chiusura del 30 luglio 2026 è sostenuta dal catalogo firmato di 3.396 unità,
+dalle suite Tutor e i18n verdi, dalle certificazioni F3/F4, dal campione UI
+finale e dalla verifica del servizio e della pubblicazione in esercizio.
+
 **Conservazione:** persistente fino a implementazione dimostrata o cancellazione
-esplicita di Roberto.  
+esplicita di Roberto.
+
 **Decisione di prodotto:** il Tutor deve rispondere a domande imprevedibili per
 forma e contenuto usando esclusivamente conoscenza locale ammessa, senza
 diventare un secondo planner e senza richiedere schede precompilate per ogni
-executor.  
-**ADR:** 0197 (fondazione semantica), 0198 (compilatore F2 e superamento F1).  
+executor.
+
+**ADR:** 0197 (fondazione semantica), 0198 (compilatore F2 e superamento F1),
+0202 (osservazioni, consegna e apprendimento privato), 0203 (identità delle
+fonti pubblicate).
+
 **Fonti verificate:** `runtime/tutor/`, `runtime/published_docs.py`, `docs/`,
 manifest ammessi dal loader, `tutor/sources.toml`,
 `runtime/services_registry.py`, `runtime/devices.py`,
@@ -62,8 +75,8 @@ Il Tutor deve rendere Metnos comprensibile dalla chat:
 - adattare forma e lingua della risposta alla domanda;
 - distinguere conoscenza pubblica e amministrativa;
 - dichiarare una lacuna invece di completarla con conoscenza plausibile;
-- in futuro osservare stato live e consegnare un'azione al normale motore,
-  soltanto su conferma.
+- osservare lo stato corrente tramite fonti tipizzate e consegnare una clausola
+  d'azione al normale motore soltanto su conferma.
 
 La metrica principale non è il numero di risposte. È la combinazione di
 copertura utile, fedeltà alle fonti e **zero richieste operative sottratte**.
@@ -180,29 +193,56 @@ Prove reali query→fonte inglese:
 Una composizione reale in francese da contesto esclusivamente inglese ha
 prodotto una risposta francese grounded in 1,59 secondi.
 
-### 3.4 Evidenze di riuso per F3
+### 3.4 F3 implementato
 
-Non serve un nuovo framework di osservazione generico:
+`runtime/tutor/probes.py` contiene un registro chiuso di quattro `ProbeSpec`.
+Le fonti `ui_surface` riportano i relativi `probe_refs` nel catalogo firmato;
+né la domanda né il modello possono scegliere una sonda o costruirne gli
+argomenti. I dati provengono dai registri già autorevoli:
 
-- `services_registry.snapshots()` possiede già probe bounded concorrenti;
-- `devices.list_by_owner()` e `get_device()` applicano identità e ownership;
-- `recurring_tasks.list_user_tasks()` e gli handler di cronologia sono
-  actor-scoped;
-- il loader espone membership, lifecycle, dormancy e policy;
-- `dialog_pending` salva stato 0600, con TTL, scrittura atomica e owner del
-  canale;
-- `TutorRequest.probes` esiste ma non è ancora consumato;
-- `executor_scheduler` è il punto unico per limiti e backpressure.
+- `loader.load_catalog()` per executor ammessi, provenienza e ciclo di vita;
+- `services_registry.snapshots()` per lo stato dei servizi;
+- `devices.list_by_owner()` più `placement.is_available()` per i soli
+  dispositivi dell'utente;
+- `recurring_tasks.list_user_tasks(actor=...)` e scheduler v2 per i soli task
+  dell'attore e tre esecuzioni recenti.
 
-### 3.5 Evidenze di riuso per F4
+Audience, schema delle chiavi, dimensione, timeout, TTL e durata massima del
+dato scaduto appartengono al `ProbeSpec`. Le cache sono separate per sonda,
+utente, attore, audience e lingua. Il risultato è una `ObservationCapsule` con
+stato chiuso `ok|partial|unavailable|stale`; ogni errore conserva uno stato
+esplicito e non viene presentato come salute.
 
-- `turn_feedback` registra feedback collegato a un turn ID;
-- `change_intents` offre lifecycle proposta→applicazione→osservazione→rollback,
-  ma il suo `ALL_KINDS` è chiuso e oggi non contempla conoscenza Tutor;
-- il catalogo Tutor è già compilabile, firmabile e sostituibile atomicamente;
-- la telemetria Tutor non conserva la query in chiaro e oggi non è sufficiente
-  per apprendere nuove formulazioni: ogni estensione deve quindi avere una
-  politica privacy esplicita.
+`runtime/tutor/handoff.py` separa una richiesta `MIXED` soltanto quando il
+decompositore canonico conserva esattamente due segmenti letterali e il mode
+gate trova una parte `EXPLAIN` e una `ACT`. `dialog_pending` conserva la parte
+d'azione con owner, conversazione, hash della clausola, hash del catalogo,
+nonce e TTL. `runtime/orchestration.py` reclama la conferma una volta sola,
+ricontrolla identità, scadenza, catalogo e autonomia, poi chiama il normale
+`run_turn`; un pending precedente non viene sostituito.
+
+### 3.5 F4 implementato
+
+`runtime/tutor/gaps.py` registra in SQLite 0600 soltanto hash normalizzato,
+vettore quando disponibile, lingua, audience, causa chiusa, fonti, versioni e
+scadenza. Evidenze di turno, lacune e contatori hanno quote e TTL distinti; ogni
+riga è separata mediante un hash dell'identità utente.
+
+Il riscontro della chat è collegato tramite `turn_feedback`: un ✓ può promuovere
+in `runtime/tutor/associations.py` l'associazione fra il vettore della domanda
+e la fonte primaria realmente servita; un ✗ elimina la stessa associazione e
+registra `feedback_negative`. L'associazione è utilizzabile soltanto dallo
+stesso utente e con lo stesso spazio di embedding, audience e hash della fonte
+firmata. Il recupero la consulta dopo il mode gate; non modifica il planner,
+le cache L0/L1 o le richieste `ACT`.
+
+La mappa del debito raggruppa le lacune per causa e vicinanza coseno senza testo
+in chiaro. `runtime/tutor/counterfactual.py` rilegge le associazioni contro la
+matrice firmata corrente e rifiuta fingerprint cambiati, fonti orfane, contenuti
+mutati, vettori invalidi o regressioni di rango. `purge_owner()` cancella in
+modo verificabile ledger e associazioni del solo utente. F4 non crea
+change-intent e non pubblica documentazione: quel passaggio resta escluso finché
+non esiste un contenuto reale e revisionabile da proporre.
 
 ## 4. Invarianti
 
@@ -464,13 +504,11 @@ Ogni probe dichiara:
 - sorgente/versione che ne giustifica l'uso.
 
 Il modello non sceglie né nomina probe. Le unità recuperate contengono
-`probe_refs` firmati. Il binder accetta soltanto:
-
-- valori fissi nella fonte; oppure
-- ID esatti presenti nella query e risolti con ownership.
-
-Ambiguità, owner errato o binding libero producono chiarimento, non una prova
-più ampia.
+`probe_refs` firmati. Le quattro sonde correnti hanno `bindings=()`: derivano
+lo scope esclusivamente dal principal autenticato e non accettano argomenti
+della domanda. Il contratto conserva il campo `bindings` per una futura
+estensione chiusa; un valore libero o un ID non risolto con ownership non può
+entrare nel runner.
 
 ### 6.2 Envelope di osservazione
 
@@ -499,29 +537,22 @@ non viene trasformato in uno stato sano.
 
 ### 6.3 Handoff all'azione
 
-Il Tutor non esegue. Può offrire una **action reference canonica** proveniente
-da una fonte firmata. Dopo conferma:
+Il Tutor non esegue. Quando una richiesta contiene una spiegazione e
+un'operazione separabili, conserva la **clausola d'azione letterale** scritta
+dall'utente. Dopo conferma:
 
 1. salva un pending server-side legato a principal, conversazione, hash del
-   catalogo, TTL e nonce monouso;
-2. preserva la query canonica letterale, mai il testo generato;
+   catalogo, hash della clausola, TTL e nonce monouso;
+2. preserva la clausola letterale, mai una riscrittura o il testo generato;
 3. passa la richiesta al normale motore Metnos;
 4. planner, vaglio, autonomia, consenso ed executor restano invariati.
 
 `dialog_pending` è riusabile estendendo in modo chiuso `on_complete` con
-`tutor_handoff`; non va creato un secondo store di conferme.
-
-**Scelta scoperta in implementazione (25/7, DA RATIFICARE).** Nel caso MIXED
-la «query canonica letterale» è ambigua: (a) l'intera query utente con
-bypass del boundary Tutor al consume — semplice, ma la clausola interrogativa
-rientra nel planner e produce rumore; (b) la sola CLAUSOLA D'AZIONE
-letterale, segmentata al momento della creazione del pending dall'intent
-extractor del motore (riuso, nessuna nuova logica NL; se la segmentazione è
-ambigua si ricade nell'attuale chiarimento) — fedele allo spirito «letterale,
-mai generato» e pulita per il planner; (c) una richiesta-esempio attestata
-dalla fonte — ma è testo non dell'utente e §6.3 lo vieta per il pending.
-RACCOMANDATA: (b) con ripiego (a-mai, chiarimento-sì). Fino alla ratifica il
-comportamento MIXED resta l'attuale chiarimento.
+`tutor_handoff`; non esiste un secondo store di conferme. La scelta della sola
+clausola d'azione è ratificata: passare l'intera richiesta riporterebbe la parte
+interrogativa nel planner, mentre usare un esempio della fonte consegnerebbe
+testo non scritto dall'utente. Se la segmentazione non è esatta, il sistema
+chiede di separare le due richieste e non crea il pending.
 
 ### 6.4 Gate F3
 
@@ -538,82 +569,77 @@ F3 non parte prima della stabilità live di F2.
 
 ## 7. F4 — manutenzione intelligente, non addestramento online
 
-F4 serve a piegare il costo di manutenzione. Non modifica pesi del modello e
-non pubblica autonomamente testo generato.
+F4 riduce il costo di manutenzione senza modificare i pesi del modello, senza
+aggiungere frasi di instradamento e senza pubblicare testo generato.
 
-### 7.1 Eventi minimi
+### 7.1 Ledger privacy-bounded
 
-Il sistema distingue:
+Il database `tutor_learning.sqlite`, con permessi 0600, contiene tre tabelle:
 
-- nessuna fonte recuperata;
-- fonte obsoleta o contraddittoria;
-- composer insufficiente;
-- ambiguità spiegazione/azione;
-- feedback negativo;
-- copertura presente ma lingua debole.
+- `turn_evidence`: prova breve necessaria a collegare un successivo riscontro
+  alla fonte realmente servita;
+- `gap_events`: lacune con causa chiusa e scadenza;
+- `query_counters`: ricorrenze aggregate per esito.
 
-Per default le query riuscite restano soltanto hash e contatori aggregati. Le
-lacune che richiedono clustering possono conservare localmente:
+Il sistema distingue `no_source`, `restricted_source`, `stale_source`,
+`source_conflict`, `composer_insufficient`, `composer_incomplete`,
+`composer_unavailable`, `mode_ambiguity`, `feedback_negative`,
+`weak_language`, `live_observation_incomplete` e `source_unavailable`.
 
-- embedding della query;
-- estratto redatto e cifrato/0600;
-- lingua, audience, source ID e motivo;
-- TTL breve, limite di dimensione e cancellazione verificabile.
+La domanda non viene conservata in chiaro. Ogni riga usa l'hash normalizzato
+della domanda e l'hash derivato dell'utente; il vettore entra solo quando serve
+alla prova o al raggruppamento. Evidenze, gap e contatori hanno TTL e quote per
+utente distinti. Il pruning avviene su ogni scrittura e lettura rilevante.
 
-Il testo grezzo non entra nel catalogo e non viene conservato indefinitamente.
+### 7.2 Associazioni promosse dal riscontro
 
-### 7.2 Pipeline notturna proposta
+Un ✓ su un turno Tutor può creare o confermare una riga in
+`tutor_associations.sqlite` soltanto se la telemetria dispone di:
 
-1. raccogli gap e feedback negativi;
-2. redigi e normalizza localmente;
-3. raggruppa con BGE e deduplica;
-4. richiedi ricorrenza o convergenza minima;
-5. confronta il cluster con hash di fonti e catalogo correnti;
-6. classifica il debito: fonte mancante, stale, conflitto, composizione o modo;
-7. genera un change-intent di nuovo tipo
-   `update_tutor_knowledge`, aggiunto esplicitamente ad `ALL_KINDS`;
-8. applica automaticamente solo rigenerazioni meccaniche di fonti già
-   ammesse; guide, admin e sicurezza richiedono review umana;
-9. compila un candidato firmato;
-10. esegue replay contro esempi trattenuti e corpus operativo;
-11. osserva metriche e finalizza o usa il rollback del change-intent.
+- vettore normalizzato e fingerprint dell'embedder;
+- versione del catalogo;
+- ID e hash della fonte primaria realmente servita;
+- audience e identità dell'utente autenticato.
 
-Non si deve abusare di un kind esistente: il nuovo intent richiede adapter e
-applier propri.
+Il match richiede lo stesso utente e lo stesso fingerprint. Una fonte assente o
+con hash diverso invalida e rimuove la riga. Un'associazione vicina può entrare
+nella banda di pertinenza; soltanto una corrispondenza forte, confermata
+dall'utente, può diventare primaria. Un ✗ rimuove l'associazione della domanda
+e registra un unico gap negativo, con semantica last-write-wins.
 
-### 7.3 Meccanismi proposti
+Questa leva vive dentro `retrieve_sources`, ma dopo il mode gate. Non può
+trasformare `ACT` in `EXPLAIN`, non entra nel planner e non modifica le chiavi
+delle cache dei piani condivisi.
 
-**Mappa del debito conoscitivo.** I gap vengono aggregati per vicinato
-semantico e causa, non come semplice lista di domande. Permette di correggere
-una fonte invece di aggiungere dieci schede equivalenti.
+### 7.3 Mappa del debito, replay e oblio
 
-**Replay controfattuale.** Prima di pubblicare, il candidato viene confrontato
-con esempi storici redatti e con query operative: deve aumentare copertura
-senza rubare azioni.
+`debt_map()` raggruppa gli eventi attivi per causa, fingerprint, dimensione e
+vicinanza coseno. Senza vettore, aggrega soltanto la ricorrenza dello stesso
+hash. Il risultato espone conteggi, lingue, audience, fonti e intervallo
+temporale, mai il testo della domanda.
 
-**Ritiro automatico assistito delle schede.** Una scheda F1 è proposta per il
-ritiro soltanto quando il catalogo dinamico supera il suo acceptance set nelle
-lingue richieste. La cancellazione resta osservabile e reversibile.
+`replay_associations()` confronta ogni associazione con la matrice e le unità
+del catalogo firmato corrente. Verifica fingerprint, presenza e hash della
+fonte, forma e finitezza del vettore, normalizzazione e rango prima/dopo. Il
+corpus operativo resta un gate separato perché la prova fondamentale è che il
+mode gate preceda sempre questa leva.
 
-**Contratti di freschezza.** Manifest: invalidazione immediata su identità del
-catalogo; documenti: hash; procedure curate: review e versione esplicita;
-osservazioni F3: TTL breve.
+`purge_owner()` cancella ledger e associazioni del solo utente e restituisce i
+conteggi eliminati. F4 non genera un `change_intent`, non modifica fonti e non
+ritira schede. Un'eventuale proposta editoriale futura richiederà un contenuto
+reale, una decisione separata e revisione umana.
 
-### 7.4 Metriche F4
+### 7.4 Gate F4
 
-- copertura per tipo fonte, lingua e audience;
-- lacune oneste;
-- false sottrazioni al planner, target zero;
-- conflitti tra fonti;
-- insufficienza del composer;
-- p50/p95 di retrieval, mode e composizione;
-- feedback positivo/negativo per vicinato semantico;
-- crescita del corpus e quota di unità stale.
-
-Le soglie vanno derivate da distribuzioni misurate e versionate, non inventate
-a priori. Il gate F4 richiede almeno due settimane di osservazione con rollback
-provato e nessuna pubblicazione autonoma di contenuti amministrativi o di
-sicurezza.
+- separazione fra due utenti, incluso lo stesso testo della domanda;
+- scadenza dell'evidenza come confine di autorizzazione al riscontro;
+- quote e pruning senza contaminazione fra owner;
+- ✓ che promuove soltanto la fonte servita e ✗ che rimuove;
+- invalidazione su hash fonte o fingerprint embedder;
+- mappa del debito per causa e vicinato;
+- cancellazione verificabile per utente;
+- replay controfattuale con almeno un'associazione reale del catalogo;
+- zero sottrazioni sul corpus delle richieste operative.
 
 ## 8. Rischi e contromisure
 
@@ -656,35 +682,40 @@ sicurezza.
 - [x] certificazione con un turno live Telegram (`35bba21a0a774f31`, 24/7
       23:36: `channel=telegram, mode=tutor`, esito fondata; lead naturale,
       confine chat web rispettato, route e controlli devices completi);
-- [ ] osservazione zero false-steal su corpus operativo;
+- [x] zero false-steal sui nove casi operativi del certificatore F4
+      (`internal/reports/tutor_f34_cert_2026-07-28/f4.json`);
 - [x] decisione di ritiro delle schede informative F1 (25/7: due
       tranche; tranche 1 eseguita — vedi §9-bis e registro).
 
 ### F3
 
-- [ ] specifica eseguibile `ProbeSpec`;
-- [ ] quattro probe iniziali;
-- [ ] capsule e budget scheduler;
-- [ ] handoff monouso tramite pending esistente;
-- [ ] test avversariali e prova live.
+- [x] specifica eseguibile `ProbeSpec`;
+- [x] quattro sonde iniziali;
+- [x] capsule, timeout, TTL, cache per principal e scheduler centrale;
+- [x] consegna monouso tramite il pending esistente;
+- [x] test avversariali e certificazione con il modello locale reale;
+- [ ] turno post-distribuzione nell'istanza in esercizio.
 
 ### F4
 
-- [ ] schema eventi privacy-bounded;
-- [ ] nuovo change-intent e adapter;
-- [ ] clustering/debt map;
-- [ ] replay controfattuale;
-- [ ] osservazione di due settimane e rollback.
+- [x] schema eventi privacy-bounded, quote, TTL e cancellazione per utente;
+- [x] riscontro positivo/negativo collegato alla fonte realmente servita;
+- [x] associazioni per utente invalidate da fonte o embedder;
+- [x] raggruppamento semantico della mappa del debito;
+- [x] replay controfattuale con associazione temporanea reale;
+- [x] corpus anti-sottrazione al planner;
+- [x] nessun change-intent o auto-pubblicazione senza un contenuto reale.
 
 ## 9-bis. Revisione 25/7 — F3 ed F4 alla prova di un F2 maturo
 
 Rilettura integrale a valle di: certificazione stabile a ~110/134 non-fail,
 diagnosi della coda (salto semantico dell'embedder, §10 registro), ritiro
 tranche 1 delle schede, A/B embedder (BGE-M3 4/8 → Qwen3-Embedding-0.6B 7/8
-sui casi di coda). Le sezioni 6 e 7 restano la specifica; qui si decide che
-cosa ne è ancora giustificato e in quale forma.
+sui casi di coda). Questa sezione conserva l'analisi che aveva proposto un
+rinvio; l'ordine esplicito del 28/7 di implementare F3 e F4 lo ha superato. Le
+sezioni 6 e 7 descrivono ora il contratto effettivamente consegnato.
 
-### F3 — ridimensionato a «F3-lite»: handoff subito, probe a domanda
+### F3 — ipotesi «F3-lite», poi superata
 
 Che cosa è cambiato rispetto al disegno: (1) la proiezione dei servizi entra
 già nel catalogo come fonte statica che dichiara esplicitamente «lo stato
@@ -695,13 +726,14 @@ richieda un'osservazione live nel Tutor. Il framework completo (registro
 `ProbeSpec`, envelope, binder ownership-aware) oggi non ha domanda misurata
 che lo giustifichi: è costo pronto per un bisogno ipotetico.
 
-Resta giustificato il KERNEL: l'**handoff monouso** (§6.3) — spiegazione che
+L'analisi considerava allora giustificato soltanto il nucleo: la
+**consegna monouso** (§6.3) — spiegazione che
 termina offrendo l'azione al motore via `dialog_pending` esteso con
 `tutor_handoff`, query canonica letterale, nonce e TTL. È piccolo, riusa uno
 store esistente e chiude l'unico attrito reale osservato (MIXED serviti solo
-a metà). DECISIONE PROPOSTA: implementare il solo handoff; i probe si
-sbloccano quando la telemetria mostra domande live ricorrenti respinte
-(contatore dedicato, non impressione).
+a metà). Il rinvio delle sonde è stato superato dall'ordine di implementazione
+del 28/7; i vincoli individuati qui sono però rimasti e sono diventati il
+registro chiuso, i limiti e l'isolamento descritti in §6.
 
 ### F4 — riformulato: il debito non è più delle schede, è del retrieval
 
@@ -1348,6 +1380,37 @@ misurata da sola, perché la sola visibilità estesa cambia la competizione nei
 casi utente e non è stata isolata da questa passata. Consegnato di cert32 resta
 il solo corpus mail (`typical_operations` 32/0).
 
+## 9-nonies. Un nome di documento non è una collocazione file (28/7)
+
+Il turno `2922f38388974a83` ha chiesto che cosa contenesse
+`metnos_prospettive_estese_v1.html`. Il motore lo ha trattato come un file
+utente, ha ereditato la collocazione appiccicosa `PC-ROBERTO` e ha costruito un
+percorso Windows inesistente. Due errori distinti: destinazione presunta e
+dominio presunto.
+
+La correzione non usa la parola «file», un nome speciale o una precedenza
+server. `published_docs.resolve_reference()` confronta nome completo, percorso
+relativo e URL canonico con lo stesso inventario validato che governa
+pubblicazione e compilazione Tutor. La corrispondenza esatta produce
+un'attestazione del runtime per il mode gate; non riconoscere o non distinguere
+la fonte produce `None`.
+
+Per una lettura o un riassunto, `answer_request()` carica le unità firmate e
+passa a `retrieve_sources()` il solo `source_ref` del documento. Le schede e
+le altre unità sono escluse; la similarità ordina le sezioni della fonte ma non
+può cambiarne l'identità. Una modifica, uno spostamento o una cancellazione
+restano `ACT` e ricadono nel motore normale. La collocazione dell'ultimo turno
+non entra in questo percorso.
+
+L'inventario delle identità viene riutilizzato finché non cambia l'identità
+filesystem delle pagine; sull'host corrente il controllo caldo costa circa
+5-6 ms invece dei circa 125 ms necessari a riparsare tutti gli HTML a ogni
+turno. Test di modulo,
+test di servizio e certificazione reale coprono anche suffissi più lunghi,
+ambiguità fra lingue, nome sconosciuto e cancellazione. La prova completa ha
+restituito `detection=published_document_reference`, sole fonti del documento,
+collegamento canonico e nessuna azione. ADR 0203.
+
 ## 10. Registro di avanzamento
 
 | Data | Evento | Evidenza |
@@ -1404,3 +1467,7 @@ il solo corpus mail (`typical_operations` 32/0).
 | 2026-07-26 | Leva E′: clausole della primaria quando è prosa | Ambito corretto di §9-sexies: le fonti che attestano `one_off` e `vagli` sono sezioni `manual` pubbliche, primarie in 3 dei 4 casi, non le schede. Istruzione del ledger condizionata alla presenza di clausole. Due difetti dell'estrattore trovati dai test: terminatore seguito da chiusura di citazione, e virgolette curve in EN (corretto come classe tipografica). 100 test tutor verdi; cert29a/b misura insieme la leva e il LIVELLO DI RUMORE |
 | 2026-07-26 | Leva E′ ritirata: il ledger è un budget saturo | Isolata a **+3 / −5** riscorando le risposte di cert25 col corpus corretto (stesse risposte, matcher nuovo). Sui guadagni la riparazione NON scatta e sulle perdite non c'è nessun buco di clausola: la leva agisce arricchendo il PRIMO prompt, e il carico aggiunto sposta contenuto obbligatorio già coperto. Si attivava su 63 casi su 127. Regola generale: aggiungere una famiglia di voci al ledger costa più di quanto renda — una variante richiede un meccanismo che non passi dal prompt del composer (§9-septies.5). Difetto separato aperto: 46 aree di capacità chieste a una domanda di login |
 | 2026-07-26 | cert32: ratifica corpus mail validata, conoscenza admin bocciata | 110+7/134 (+2/−7 contro cert31). `ops-mail-credentials-typo` passa col meccanismo corrente (ADR 0199) e `typical_operations` chiude 32/0: il file `.env` che il test pretendeva è documentato come percorso di COMPATIBILITÀ. L'apertura di `knowledge_audience` non porta la superficie in selezione (8 fonti, nessuna è la pagina: difetto di retrieval) e la clausola d'accesso aggiunta al testo di 28 unità costa 6 casi. Il budget saturo vale anche per il TESTO DELLA FONTE, non solo per il ledger (§9-octies) |
+| 2026-07-28 | F3 implementato | Quattro sonde chiuse con capsule, audience, timeout/TTL/cache per principal e scheduler; consegna letterale monouso su HTTP e Telegram tramite `dialog_pending`; ADR 0202, 18 test F3/F4 mirati. |
+| 2026-07-28 | F4 implementato e certificato | Ledger 0600 senza query in chiaro, associazioni per utente, ✓/✗, mappa del debito, oblio e replay. Certificazione isolata: una fonte reale da rango 3184 a 1, 1/1 replay, 9/9 richieste operative fuori dal Tutor, associazione di prova eliminata. |
+| 2026-07-28 | Identità delle fonti pubblicate | ADR 0203; nome/percorso/URL esatto prima del mode gate, retrieval vincolato al documento. Caso reale `metnos_prospettive_estese_v1.html`: risposta fondata con collegamento canonico, sole fonti della pagina e nessuna azione; 296 test mirati complessivi verdi. |
+| 2026-07-30 | RM-0003 chiusa | Catalogo firmato: 4 schede e 3.396 unità. F3: consegna mista, osservazione live e documento esatto certificati. F4: associazione per utente da rango 2 a 1 e confine operativo 9/9. Suite finale: 139 test Tutor, 236 test prompt/i18n, campione UI critico verde; servizio caricato dal virtualenv di Metnos e distribuzione pubblica verificata. |

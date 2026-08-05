@@ -525,12 +525,12 @@ runtime/templates/changes.html                 → UI /admin/changes
 runtime/http_routes_admin.py                  → handler admin_changes + admin_change_action
 runtime/config.py                              → DB_CHANGE_INTENTS
 runtime/scheduler_v2/builtin_callbacks.py     → 3 entry: materialize, applier, observer
-runtime/tests/test_change_intents.py           → 15 test schema/state-machine
-runtime/tests/test_change_intent_adapters.py   → 10 test adapter
-runtime/tests/test_change_intents_ui.py        → 8 test UI handler
-runtime/tests/test_change_applier.py           → 7 test applier
-runtime/tests/test_change_applier_extend.py    → 7 test extend
-runtime/tests/test_change_observer.py          → 8 test observer + rollback
+tests/runtime/learning/test_change_intents.py           → 15 test schema/state-machine
+tests/runtime/learning/test_change_intent_adapters.py   → 10 test adapter
+tests/runtime/learning/test_change_intents_ui.py        → 8 test UI handler
+tests/runtime/learning/test_change_applier.py           → 7 test applier
+tests/runtime/learning/test_change_applier_extend.py    → 7 test extend
+tests/runtime/learning/test_change_observer.py          → 8 test observer + rollback
 ```
 
 ## 8.2 Scheduler triggers
@@ -569,7 +569,7 @@ Prima esecuzione materializer (post-deploy):
 
 ## 8.6 Note operative
 
-- Smoke test prima del deploy: `python3 -m pytest runtime/tests/test_change_*.py -v` (55 test).
+- Smoke test prima del deploy: `python3 -m pytest tests/runtime/test_change_*.py -v` (55 test).
 - Materializer locale dry-run: `python3 -m runtime.jobs.change_intent_materialize` (idempotente).
 - Inspezione DB: `sqlite3 ~/.local/state/metnos/change_intents.sqlite ".dump"`.
 - Audit JSONL: `~/.local/share/metnos/audit/change_{intent_materialize,applier,observer}.jsonl`.

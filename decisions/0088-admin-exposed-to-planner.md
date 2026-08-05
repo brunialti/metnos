@@ -168,7 +168,7 @@ on a third non-trivial intent (after CIFS mount in ADR 0087).
   message branch for admin approval).
 - `runtime/prefilter.py`: ~45 LOC (`_SHELL_INTENT_HINTS`,
   `_detect_shell_intent`, head-injection in both ranker paths).
-- `runtime/tests/test_admin_exposure.py`: 5 tests (catalog membership,
+- `tests/runtime/http/test_admin_exposure.py`: 5 tests (catalog membership,
   prefilter top-K, planner-mock invocation, approval card flow,
   cap-pending consume).
 - ADR 0069 receives a header note marking «modified by 0088».

@@ -99,6 +99,6 @@ vince il passo 1 → **comportamento invariato**, rischio zero (verificato: suit
   opt-in li riporta sotto linter.
 - Lavoro residuo: aggiornare la doc `docs/*/architecture/multilang.html` (il
   flusso «review obbligatoria» è superato) e il claim del post di presentazione
-  (già aggiornato). Guard: `runtime/tests/test_prompt_loader.py`
+  (già aggiornato). Guard: `tests/runtime/infra/test_prompt_loader.py`
   (`TestKFallbackAndAutoPromote`, fallback EN) + `test_loader_description_lang.py`
   (`TestResolveLangTextEnFallback`).

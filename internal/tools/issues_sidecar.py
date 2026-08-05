@@ -29,11 +29,21 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "runtime"))
 
 from aiohttp import web  # noqa: E402
-import github_issue_qa_store as store  # noqa: E402
+import store as _store  # noqa: E402
+from store_bootstrap import register_builtin_stores  # noqa: E402
+
+register_builtin_stores()
 
 PENDING = ("new",)
 STAGING = ("prepared", "approved")
 PUBLISHED = ("posted",)
+
+
+def _list_records(*, limit: int) -> list[dict]:
+    """Read through the canonical generic store used by the executor flow."""
+    return _store.get_store("github_issue_qa").find(
+        order=(("issue_number", "desc"),), limit=limit,
+    )
 
 
 def _fmt_ts(ts) -> str:
@@ -101,7 +111,7 @@ td.ti{max-width:42ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 
 async def index(request: web.Request) -> web.Response:
-    recs = store.list_records(limit=1000)
+    recs = _list_records(limit=1000)
     by = {
         "PENDING (non-answer)": [r for r in recs if r.get("status") in PENDING],
         "STAGING (non pubblicate)": [r for r in recs if r.get("status") in STAGING],
@@ -122,7 +132,7 @@ async def index(request: web.Request) -> web.Response:
 
 
 async def api_issues(request: web.Request) -> web.Response:
-    return web.json_response(store.list_records(limit=1000))
+    return web.json_response(_list_records(limit=1000))
 
 
 def _pick_port(start: int, tries: int = 12) -> int | None:

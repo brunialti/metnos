@@ -86,7 +86,7 @@ Forma prescrittiva DEVI / NON DEVI / OK / ERRORE (§6).
 
 ### (c) Test deterministici
 
-`runtime/tests/test_read_urls_html.py` aggiunge 7 test che mockano server
+`tests/runtime/executors/test_read_urls_html.py` aggiunge 7 test che mockano server
 HTTP locale e verificano la mappatura status → error_class:
 
 - `test_failed_403_has_error_class_forbidden`
@@ -131,9 +131,9 @@ HTTP locale e verificano la mappatura status → error_class:
 
 ## Test
 
-- `runtime/tests/test_read_urls_html.py` 18/18 PASS.
-- `runtime/tests/test_prompt_loader.py` 14/14 PASS (planner.j2 byte-valid).
-- Regression `pytest runtime/tests/` 663/671 PASS, 8 fail pre-esistenti
+- `tests/runtime/executors/test_read_urls_html.py` 18/18 PASS.
+- `tests/runtime/infra/test_prompt_loader.py` 14/14 PASS (planner.j2 byte-valid).
+- Regression `pytest tests/runtime/` 663/671 PASS, 8 fail pre-esistenti
   (gallery×3, http_server×3, pipeline_smoke, users_smoke_e2e). ZERO
   nuove regressioni.
 - Smoke invariants 55/55 catalog OK.

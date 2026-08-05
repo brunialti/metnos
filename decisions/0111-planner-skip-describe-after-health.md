@@ -182,7 +182,7 @@ Determinismo: zero LLM nel path. Heuristic basata su set chiusi
 
 ## Test
 
-`runtime/tests/test_health_planner_finalize.py` — 8 test:
+`tests/runtime/engine/test_health_planner_finalize.py` — 8 test:
 
 - Level 1 (2): planner.j2 contiene `(Z.cinque)` con marker stile §6
   (DEVI/NON DEVI/OK/ERRORE) + riferimenti a `get_processes`,

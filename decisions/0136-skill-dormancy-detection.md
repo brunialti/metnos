@@ -89,7 +89,7 @@ introspezione (`metnos-skills list`, admin UI).
   filter prefilter cambia output.
 - Fail-open su exception del check (non castrare per errore di
   check function buggata).
-- 14 unit test `runtime/tests/test_skill_credentials.py` coprono:
+- 14 unit test `tests/runtime/skills/test_skill_credentials.py` coprono:
   parse provenance, check google ok/missing/invalid/no-refresh,
   compute_dormancy unknown/missing/ok, _filter_dormant, fail-open.
 

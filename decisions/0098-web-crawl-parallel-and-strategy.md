@@ -153,16 +153,16 @@ Open / future:
 - JS-rendering completo (Playwright sidecar) — non in roadmap immediata.
 
 ## Test
-- `runtime/tests/test_find_urls.py`: 10/10 PASS (8 originali + 2 nuovi
+- `tests/runtime/executors/test_find_urls.py`: 10/10 PASS (8 originali + 2 nuovi
   per meta-refresh: target follow + loop cap; vedi addendum 8/5/2026).
-- `runtime/tests/test_read_urls_html.py`: 11/11 PASS (+6 nuovi:
+- `tests/runtime/executors/test_read_urls_html.py`: 11/11 PASS (+6 nuovi:
   iframe captured, iframe auto-follow same-host, no follow cross-host,
   PDF linked relevance, JS detected SPA, static HTML not marked).
-- `runtime/tests/test_auto_final_on_duplicate.py`: 22/22 PASS
+- `tests/runtime/engine/test_auto_final_on_duplicate.py`: 22/22 PASS
   (+4 nuovi: prefer_read_when_discovery_last,
   keeps_discovery_when_no_content, summary_field_for_content,
   no_read_keeps_discovery).
-- `runtime/tests/test_prompt_loader.py`: 14/14 PASS (planner.j2 edit OK).
+- `tests/runtime/infra/test_prompt_loader.py`: 14/14 PASS (planner.j2 edit OK).
 - Full regression: 1059/1059 (8/5/2026 notte).
 - Smoke invariants: 55/55 catalog OK.
 
@@ -218,7 +218,7 @@ Convergence log `~/.local/share/metnos/convergence_log_organico.jsonl`:
 
 ### Test convergenza
 
-`runtime/tests/test_find_urls.py`: 2 nuovi test (totale 10/10):
+`tests/runtime/executors/test_find_urls.py`: 2 nuovi test (totale 10/10):
 - `test_meta_refresh_followed_to_real_homepage`: body 81-byte meta-refresh
   → BFS atterra su `/atp/`, 5 link interni + 1 PDF discovered.
 - `test_meta_refresh_loop_capped`: A→B→A loop cap rispettato (no
@@ -228,5 +228,5 @@ Convergence log `~/.local/share/metnos/convergence_log_organico.jsonl`:
 
 - `executors/find_urls/find_urls.py`: +50 LOC (helper +
   pre-fetch loop + BFS detect + signature).
-- `runtime/tests/test_find_urls.py`: +75 LOC (2 nuovi test).
+- `tests/runtime/executors/test_find_urls.py`: +75 LOC (2 nuovi test).
 - `executors/find_urls/manifest.toml.sig`: re-firmato (§7.10 CLAUDE.md).

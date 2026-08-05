@@ -93,17 +93,17 @@ Due interventi disgiunti, deterministici (§7.9), uniti dal tema
 
 ### Test (24 nuovi)
 
-- `runtime/tests/test_chunk_html_splitsafe.py` (8 casi): short→1
+- `tests/runtime/http/test_chunk_html_splitsafe.py` (8 casi): short→1
   chunk, `<b>` aperto close+reopen, `<pre>` lungo splittato dentro,
   4 tag annidati LIFO/FIFO, void tag non in stack, `<a href>` con
   attributi preservati, fallback space-split, max_len rispettato.
-- `runtime/tests/test_html_chat_rendering.py` (8 casi):
+- `tests/runtime/http/test_html_chat_rendering.py` (8 casi):
   `_safe_final_html` con bold/table/empty/None/HTML escape/equivalente
   a `to_safe_html`/link/code-block; smoke import.
 
-Run: `/opt/suprastructure/.venv/bin/python -m pytest
-runtime/tests/test_chunk_html_splitsafe.py
-runtime/tests/test_html_chat_rendering.py -xvs` — 16/16 PASS.
+Run: `/opt/metnos/.venv/bin/python -m pytest
+tests/runtime/http/test_chunk_html_splitsafe.py
+tests/runtime/http/test_html_chat_rendering.py -xvs` — 16/16 PASS.
 
 ## Consequences
 
@@ -129,7 +129,7 @@ runtime/tests/test_html_chat_rendering.py -xvs` — 16/16 PASS.
 ## Test
 
 - 16/16 PASS (test_chunk_html_splitsafe + test_html_chat_rendering).
-- Regression `pytest runtime/tests/` (esclusi smoke + telegram_pairing)
+- Regression `pytest tests/runtime/` (esclusi smoke + telegram_pairing)
   741 PASS / 1 FAIL pre-esistente (`test_pipeline_smoke` find_urls
   topic ranking, non correlato).
 - `python -m runtime.smoke --invariants-only`: 55/55 catalog OK,

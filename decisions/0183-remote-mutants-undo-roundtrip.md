@@ -14,8 +14,8 @@ La cancellazione del planner legacy (`af6c7b8`, notturno 4/7) ha rimosso l'**uni
 ### D2 — Reverse device = chiamate executor accodate ALLO STESSO device
 `reverse_patterns.build_remote_reverse_calls(names, plan, results)`: traduzione DETERMINISTICA dei pattern fs puri-path in chiamate agli executor mutanti già firmati — NIENTE replica del catalogo in Rust (i rail coda-firmata + executor-firmati bastano):
 - `swap_src_dst` (fs) → `move_files` — nome invariato: un gruppo per cartella-sorgente con `dst_template="<parent>/{name}"`; RENAME: chiamata singola con template letterale. Stringhe path ORIGINALI preservate (mai riscrivere i separatori). Le coppie IMAP restano server-side.
-- `delete_created_paths` → `delete_files(paths=creati)` + `delete_dirs(if_empty_only=true)` sui `dirs_created`.
-- `delete_created_dirs` → `delete_dirs(if_empty_only=true)`.
+- `delete_created_paths` → `delete_files(paths=creati)` + `delete_dirs(force=false)` sui `dirs_created`.
+- `delete_created_dirs` → `delete_dirs(force=false)`.
 - `restore_blob_backup` → **NON remotabile** (il blob vive sul device, il log sul server): finisce in `unsupported`, riportato onesto.
 `undo_last_turn._reverse_on_device`: enqueue + attesa sincrona bounded (`METNOS_UNDO_DEVICE_TIMEOUT_S`, default 25s); stati terminali `done/failed/error/denied/expired`; «eseguito-ma-fallito» distinto da «mai arrivato» con l'evidenza (`state` + `device_result` troncato) nelle `stages` del dettaglio. Timeout/offline → **failed ritentabile** (mai `undone` senza ribaltamento reale — principio 29/4).
 
@@ -35,4 +35,4 @@ La cancellazione del planner legacy (`af6c7b8`, notturno 4/7) ha rimosso l'**uni
 - **PC Windows reale**: client 0.2.7 con shim stantio → i mutanti falliscono onesti finché il client non riparte ≥0.2.10 (validazione Windows da coordinare).
 - **Sticky-device + path server-like**: la destinazione appiccicosa instrada anche query con path palesemente del server (es. `/opt/metnos/...` → `C:\opt\...` not-found sul PC). Migliorabile con un hint forma-path→host nel resolver placement (fuori scope CP4).
 - ACL di scrittura Windows (AppContainer) resta W4.
-- Windows-side `delete_dirs` reverse su alberi con junction/ACL: comportamento = quello di `local.py` (if_empty_only).
+- Windows-side `delete_dirs` reverse su alberi con junction/ACL: comportamento = quello di `local.py` (`force=false`, solo directory vuote).

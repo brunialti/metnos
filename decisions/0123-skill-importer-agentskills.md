@@ -166,6 +166,10 @@ capability) impedisce leak cleartext al PLANNER.
 
 ## Consequences
 
+Verifica 19/7/2026: i tre executor canonici del vault dichiarano il vincolo
+`metnos:credentials_metadata_only`; cluster credenziali, immagini e file
+186 passati e 2 skip dichiarati per due cicli. Audit firme core 83/83.
+
 **Positive**:
 - Catalogo Metnos estendibile da skill terze senza duplicare canali
 - Stessi controlli qualita' (admission + ager + evaluator) per import e synth
@@ -211,6 +215,25 @@ rejected per qualifier non in vocab — risolti dal gap 1 closure 10/5).
 4. Fetch remoto da agentskills.io (GitHub raw + git clone + cache)
 5. L3 efficacy ager docs (no-code, gia' attivo)
 6. Smoke battery auto-add (smoke_imports.py separato + concat in smoke.py)
+
+### Amendamento 23/7/2026 — Google Workspace 24/24
+
+Il mapping contestuale di ADR 0128 e l'asse provider di ADR 0136 sostituiscono
+il vecchio esempio piatto sopra. La skill Google Workspace corrente espone 24
+sotto-comandi e il traduttore ne ammette 24, senza rifiuti. Le tre ambiguità
+residue sono chiuse con modalità canoniche generali `thread` e `labels`, più la
+distinzione verbale fra metadata e contenuto Drive:
+
+- `gmail reply` → `send_messages_thread_google_workspace`;
+- `gmail labels` → `list_messages_labels_google_workspace`;
+- `drive get` → `get_files_google_workspace`, distinto da
+  `drive download` → `read_files_google_workspace`.
+
+`sheets update` e `sheets append` restano distinti come `set_*` e `write_*`.
+La Naming Authority ammette modalità e provider come assi ortogonali.
+La documentazione precedente che indicava `sheets append` come terzo rifiuto
+era obsoleta: il terzo rifiuto effettivo era `drive download`, in collisione
+con `drive get` a causa della vecchia traduzione di entrambi come `read_files`.
 
 ## References
 

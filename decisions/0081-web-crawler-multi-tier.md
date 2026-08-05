@@ -191,9 +191,9 @@ solo perche' l'utente dichiara possesso; non e' override LLM-driven.
 - `executors/read_urls_pdf/` (manifest + code + sig).
 - `executors/login_session/` (manifest + code + sig — ADR 0082).
 - `executors/group_entries/` (manifest + code + sig).
-- `runtime/tests/test_find_urls.py` (8 test mock).
-- `runtime/tests/test_read_urls_html.py` (5 test).
-- `runtime/tests/test_read_urls_pdf.py` (3 test).
+- `tests/runtime/executors/test_find_urls.py` (8 test mock).
+- `tests/runtime/executors/test_read_urls_html.py` (5 test).
+- `tests/runtime/executors/test_read_urls_pdf.py` (3 test).
 - `~/.config/metnos/{owned_domains,trusted_origins}.json` (config templates).
 - ADR 0012 (UX di approval per tier-2 promote, futura integrazione vaglio).
 - Memoria `mykleos_topology_and_security.md` (24/4/2026: 3 assi safety —

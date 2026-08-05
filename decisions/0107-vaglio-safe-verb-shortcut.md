@@ -68,6 +68,6 @@ ancora bloccato dalla guardia.
 
 ## Test plan
 
-`runtime/tests/test_vaglio_safe_verb_shortcut.py` (8 test): action
+`tests/runtime/safety/test_vaglio_safe_verb_shortcut.py` (8 test): action
 extraction, ogni safe-verb shortcut, ogni destructive verb non-shortcut,
 guardia che precede lo shortcut, set membership. Tutti pass.

@@ -72,4 +72,7 @@ Questa architettura presuppone che il **gap-signal sia AFFIDABILE.** Un sistema 
 
 ---
 
-**Riferimenti**: ADR 0177 (analisi motore), ADR 0161 (Praxis), ADR 0170 (tassonomia skill), `internal/reports/feasibility_learning_loop_2026-05-30.md` (W1 skill-learning, W2 user-modeling). Conversazione 23/6 (single→multi-skill-agent, bottom-up/top-down).
+**Riferimenti**: ADR 0177 (analisi motore), ADR 0161 (Praxis), ADR 0170
+(tassonomia skill), ADR 0185 (W1 learning-loop) e
+`internal/roadmap/RM-0001-conoscenza-utente-locale.md` (conoscenza utente).
+Conversazione 23/6 (single→multi-skill-agent, bottom-up/top-down).

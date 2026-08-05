@@ -88,14 +88,14 @@ private turn logs, no model download:
 ```
 git clone https://github.com/brunialti/metnos-prefilter-bench
 cd metnos-prefilter-bench
-python3 bench/repro_prefilter_bench.py --mode comparison
+python3 tests/benchmarks/repro_prefilter_bench.py --mode comparison
 ```
 
 The production method is three files: `runtime/prefilter.py`, `runtime/prefilter_rules.py`,
 `runtime/executor_typing.py`. (`token_flat_v2` is also in the tree but is an opt-in **not**
 wired into production — the table labels the live config explicitly so you don't have to
 take my word for it.) The `selective_semantic` rows need the BGE-M3 model; see
-`bench/README.md` to reproduce the dense baseline.
+`tests/benchmarks/README.md` to reproduce the dense baseline.
 
 ## Caveats I'd raise before you copy this
 

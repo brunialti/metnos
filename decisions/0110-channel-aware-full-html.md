@@ -162,7 +162,7 @@ whitelist diverse, mapping diverso, paragrafo handling diverso).
 
 ## Test
 
-Suite nuova `runtime/tests/test_to_safe_html_full.py`: 28 casi
+Suite nuova `tests/runtime/http/test_to_safe_html_full.py`: 28 casi
 deterministici copertura: empty/None, table (con allineamento),
 heading h1/h2/h3 + heading-with-inline, bullet `*` e `-`, numbered,
 blockquote single + multi-merged, hr, paragrafi (singolo + bold-in-p
@@ -171,14 +171,14 @@ hint), inline (code/link/italic/snake_case-preserve), security
 (`<script>`, `<img onerror>`, `&` escape), combined heading + list
 + table.
 
-Suite aggiornata `runtime/tests/test_html_chat_rendering.py`: 9 casi
+Suite aggiornata `tests/runtime/http/test_html_chat_rendering.py`: 9 casi
 allineati su `to_safe_html_full` (table → `<table>` invece di `<pre>`,
 nuovo test `heading_renders_as_h1`, code block ora `<pre><code>`).
 
-Run: `pytest runtime/tests/test_to_safe_html_full.py
-runtime/tests/test_html_chat_rendering.py -xvs` → 37/37 PASS.
+Run: `pytest tests/runtime/http/test_to_safe_html_full.py
+tests/runtime/http/test_html_chat_rendering.py -xvs` → 37/37 PASS.
 
-Regression `pytest runtime/tests/` (esclusi smoke + telegram_pairing):
+Regression `pytest tests/runtime/` (esclusi smoke + telegram_pairing):
 770 PASS / 1 FAIL pre-esistente (`test_pipeline_smoke` find_urls
 topic ranking, gia' noto da ADR 0109, non correlato).
 

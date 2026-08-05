@@ -164,7 +164,7 @@ beneficia tutti gli executor).
   `expand_tokens(query_tokens)` prima del match. Cap di sicurezza:
   espansione max 10× del set originale (anti-explosion in caso di
   errori di curatela).
-- Test `runtime/tests/test_affinity_lemmas.py`: 8-10 case su miss
+- Test `tests/runtime/test_affinity_lemmas.py`: 8-10 case su miss
   storici del corpus turn JSONL (appuntamento singolare, scadenze,
   incontri, posta, ps, inbox, cosa devo fare domani).
 - Aggiornare smoke battery (`runtime/smoke.py`) con 3 case anti-regressione

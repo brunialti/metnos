@@ -1,0 +1,97 @@
+{
+  "catalog_version": "sha256:43bf1ede110effc3dc688ffb4139f9ff269cd402757a746c135daf9549e54031",
+  "query": "Come funziona la pagina Servizi? Poi cerca README.md",
+  "explanation_clause": "Come funziona la pagina Servizi?",
+  "action_clause": "cerca README.md",
+  "checks": {
+    "answer_is_handoff": true,
+    "semantic_mixed_detection": true,
+    "literal_action_preserved": true,
+    "literal_hash_bound": true,
+    "pending_created": true,
+    "owner_bound": true,
+    "closed_choices": true,
+    "service_probe_ok": true,
+    "catalog_version_bound": true,
+    "local_llm_observed_running": true,
+    "published_document_resolved": true,
+    "published_document_sources_bound": true,
+    "published_document_no_action": true,
+    "published_document_linked": true
+  },
+  "answer": {
+    "esito": "handoff",
+    "answer_md": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Come funziona la pagina Servizi?»\n\nLa pagina **Servizi** è una superficie dell'interfaccia utente di Metnos accessibile tramite il percorso **Settings > Sistema > Servizi** (route `/admin/services`) nella chat web.\n\nEcco come funziona e cosa mostra:\n\n**1. Visualizzazione dello stato dei servizi**\nLa pagina elenca tutti i servizi installati, fornendo per ciascuno le seguenti informazioni:\n*   **Stato systemd:** Lo stato operativo del processo di sistema.\n*   **Salute applicativa:** Indica se il servizio è funzionante (`healthy`).\n*   **Installazione:** Conferma se il servizio è installato.\n*   **PID e Gruppo:** Identificativi tecnici del processo.\n\nL'elenco si aggiorna automaticamente ogni **15 secondi**.\n\n**2. Azioni disponibili**\nPer i servizi che lo supportano, la pagina offre i pulsanti operativi:\n*   **Avvia**\n*   **Arresta**\n*   **Riavvia**\n\n**3. Elenco dei servizi visibili**\nAttualmente, la pagina mostra i seguenti 10 servizi, suddivisi per ambito:\n\n*   **Core:**\n    *   **HTTP server:** Gestisce API, chat e Settings.\n    *   **Telegram daemon:** Gestisce il canale Telegram e le notifiche.\n    *   **Local language model:** Interfaccia per i modelli locali (llama-server).\n    *   **i18n translator:** Gestisce il riempimento differito delle traduzioni.\n*   **Website browsing:**\n    *   **Side display:** Display grafico virtuale del browser.\n    *   **Playwright sidecar:** Gestisce il browser e le sessioni Sites.\n*   **Search & geo:**\n    *   **SearXNG:** Motore di ricerca web.\n    *   **Geo server:** Geocoding locale (Photon/OSM).\n*   **Connectivity:**\n    *   **Cloudflare tunnel:** Fornisce accesso remoto alla chat.\n    *   **Issues sidecar:** Bridge locale per le issue amministrative.\n\n**Nota importante:** Questa pagina controlla i processi e le unità di servizio attivi, ma **non** è il registro delle skill e non serve a scegliere il fornitore per una singola richiesta di elaborazione.",
+    "source_ids": [
+      "knowledge:runtime-settings-services-it",
+      "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0042",
+      "knowledge:doc-public-skills-backends-04742f8dae1e-it-0003"
+    ],
+    "card_ids": [],
+    "score_band": "high",
+    "elapsed_ms": 38306,
+    "detection": "semantic_mixed_handoff",
+    "turn_id": "",
+    "repair_pass": 0,
+    "repair_missing": [],
+    "repair_remaining": [],
+    "handoff_query": "cerca README.md",
+    "handoff_created": false,
+    "pending_dialog_id": "",
+    "probe_statuses": [
+      [
+        "service_health",
+        "ok"
+      ]
+    ],
+    "gap_reason": ""
+  },
+  "document_query": "cosa contiene il file metnos_prospettive_estese_v1.html",
+  "document_source_ref": "docs/it/Metnos_Prospettive_Estese_v1.html",
+  "document_answer": {
+    "esito": "fondata",
+    "answer_md": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Quali sono le sezioni principali del documento Metnos_Prospettive_Estese_v1.html?»\n\nIl file `Metnos_Prospettive_Estese_v1.html` è un documento di pubblicazione ufficiale ([Metnos — Prospettive estese](https://metnos.com/it/Metnos_Prospettive_Estese_v1)) che descrive le capacità disponibili, i confini operativi e i criteri di evoluzione del sistema.\n\nSecondo l'indice attestato nel contesto, il documento contiene le seguenti sezioni:\n\n1.  **Come leggere questa pagina**\n2.  **A. File, documenti e indici locali**: descrive le operazioni su percorsi autorizzati, inclusa la ricerca di file, il calcolo di hash, la lettura di vari formati (testo, PDF, CSV, immagini con OCR) e la costruzione di indici locali.\n3.  **B. Servizi, account e altri sistemi**\n4.  **C. Ciò che Metnos non osserva in autonomia**\n5.  **D. Proposte e iniziativa controllata**: spiega come Metnos formula proposte (non autorizzazioni autonome) e come gestisce le attività programmate tramite scheduler.\n6.  **E. Web, luoghi e contenuti esterni**\n7.  **F. Telos e vaglio**\n8.  **3. Utenti, dispositivi e sessioni**: tratta appaiamento, isolamento e trasferimento di sessione.\n9.  **4. Vincoli che restano invarianti**\n10. **5. Esempi in linguaggio naturale**: fornisce indicazioni su come interpretare i riferimenti alle impostazioni, distinguendo tra chat web e Telegram.\n11. **6. Approfondimenti tecnici**: indica la presenza di guide all'architettura, cataloghi degli executor, dettagli sui canali di comunicazione e sulle policy di approvazione.",
+    "source_ids": [
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0002",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0005",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0012",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0011"
+    ],
+    "card_ids": [],
+    "score_band": "high",
+    "elapsed_ms": 101232,
+    "detection": "published_document_reference",
+    "turn_id": "",
+    "repair_pass": 0,
+    "repair_missing": [],
+    "repair_remaining": [],
+    "handoff_query": "",
+    "handoff_created": false,
+    "pending_dialog_id": "",
+    "probe_statuses": [],
+    "gap_reason": ""
+  },
+  "pending": {
+    "dialog_id": "bc91df512ec84aca",
+    "owner_user_id": "host",
+    "conversation_id": "f3-cert-conversation",
+    "timeout_s": 300,
+    "choices": [
+      "execute",
+      "cancel"
+    ],
+    "callback_type": "tutor_handoff",
+    "literal_query": "cerca README.md",
+    "query_hash": "1f1704b108dbdce04a16672cd235fa20ff1d16bae7605e4225d88a87a3696aa0",
+    "catalog_version": "sha256:43bf1ede110effc3dc688ffb4139f9ff269cd402757a746c135daf9549e54031"
+  },
+  "llm_service": {
+    "unit": "llama-server.service",
+    "scope": "system",
+    "installed": true,
+    "active_state": "active",
+    "healthy": true,
+    "status": "running"
+  },
+  "passed": true
+}

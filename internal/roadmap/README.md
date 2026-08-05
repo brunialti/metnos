@@ -70,4 +70,4 @@ Ogni roadmap deve inoltre separare chiaramente:
 |---|---|---|---|---|
 | [RM-0001](RM-0001-conoscenza-utente-locale.md) | Conoscenza utente locale: memoria forte, semplice e automatica | `ready` | design F0-F6 finalizzato; implementazione non iniziata | 2026-07-26 |
 | [RM-0002](RM-0002-linter-manifest-multilingue.md) | Linter multilingue dei manifest executor | `active` | non iniziata | 2026-07-23 |
-| [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `in_progress` | F2 certificato HTTP; turno live Telegram aperto; F3/F4 progettate | 2026-07-23 |
+| [RM-0003](RM-0003-tutor-integrato.md) | Tutor integrato: guida operativa intelligente | `closed` | F2/F3/F4 implementate, certificate e distribuite | 2026-07-30 |

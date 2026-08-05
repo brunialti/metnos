@@ -15,7 +15,7 @@
 ## Cleanup manifest scovato → ✅ LAVORATO (6/7 sera)
 I 30 args config (client/account/provider) senza marker sono stati decisi **per-tool alla prova dell'executor** (non per convenzione di nome): **20 marcati** `runtime_resolved` (mono-provider o plumbing; move_files e trio `*_files_doc` riscoperti MONO leggendo i `_HANDLERS`) e **10 esenti intent-bearing** (client files multi-provider = clause-derived; move_messages.client metnos|gmail senza owner runtime; `account` mail — i casi 2+ account sono delegati al planner dal resolver stesso).
 
-Politica = fonte unica in `runtime/tests/test_config_args_marking_policy.py` (+ regole in `arg_provenance.is_intent_bearing_config`); da qui in poi `n_unmarked_config > 0` = drift reale, non backlog. La marcatura ha scovato e chiuso anche il bug d'injection fuori-enum di `resolve_backend_arg` (share_files rotto su ogni share senza marker drive) e 2 enum stantii (write_files lazy-gw, find_events_empty gw handler reale).
+Politica = fonte unica in `tests/runtime/infra/test_config_args_marking_policy.py` (+ regole in `arg_provenance.is_intent_bearing_config`); da qui in poi `n_unmarked_config > 0` = drift reale, non backlog. La marcatura ha scovato e chiuso anche il bug d'injection fuori-enum di `resolve_backend_arg` (share_files rotto su ogni share senza marker drive) e 2 enum stantii (write_files lazy-gw, find_events_empty gw handler reale).
 
 ## Lettura per il refactor
 - Il **28%** degli args (runtime+clause) è ciò che i guard-args oggi rincorrono. Rendendo runtime-inject + clause-derive AUTORITATIVI, questi guard diventano no-op.

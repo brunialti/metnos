@@ -146,7 +146,7 @@ executor se intent matcha").
   `outlook` skill con `read_events_outlook` → next synth attempt su
   qualunque (verb=read, object=events) ottiene entrambe le alternative.
 - Test convergence per il bug-live caso: 14 nuovi test in
-  `runtime/tests/test_admission_layer7.py` (boot discovery, canonical
+  `tests/runtime/skills/test_admission_layer7.py` (boot discovery, canonical
   object, L7 6-case decision tree, bug-live replica).
 
 **Harder/more expensive**:
@@ -186,7 +186,7 @@ File modificati:
   `invalidate_imported_bindings_cache`, tabelle `_OBJECT_SYNONYMS_IT/EN`.
 - `runtime/synth_request.py` (+33 righe): L7 gate dopo
   `_find_canonical_alias`, before `multistage_run_full`.
-- `runtime/tests/test_admission_layer7.py` (NEW, 14 test).
+- `tests/runtime/skills/test_admission_layer7.py` (NEW, 14 test).
 
 Test stats: 14 PASS / 0 FAIL. Suite totale 1278 PASS / 20 FAIL
 pre-esistenti (i18n IT vs EN, clip_embedding gated, sse_keepalive,

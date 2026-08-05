@@ -2,7 +2,9 @@
 
 **Status**: proposed
 **Date**: 2026-05-31
-**Context phase**: convergenza competitiva (W1) — vedi `internal/reports/feasibility_learning_loop_2026-05-30.md`
+**Context phase**: convergenza competitiva W1; l'implementazione successiva è
+consolidata in ADR 0185. La conoscenza dell'utente, separata da W1, è tracciata
+in `internal/roadmap/RM-0001-conoscenza-utente-locale.md`.
 
 ## Context
 

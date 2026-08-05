@@ -262,10 +262,10 @@ verita'. Rifiutato: rimosso senza shim.
 - `runtime/channels/daemon.py`: rimosso _consume_credentials_required +
   branch nel cap-pending consume (~50 LOC), _on_get_inputs_completed
   delega a process_completion_callback (~30 LOC).
-- `runtime/tests/test_get_inputs_credentials_flow.py`: 3 test riscritti
+- `tests/runtime/entries/test_get_inputs_credentials_flow.py`: 3 test riscritti
   per ADR 0091 (admin needs_inputs, orchestrate, completion+resume).
-- `runtime/tests/test_orchestration.py`: 11 test nuovi per il modulo.
-- `runtime/tests/test_credentials_3tier_flow.py`: 1 test rinominato
+- `tests/runtime/engine/test_orchestration.py`: 11 test nuovi per il modulo.
+- `tests/runtime/safety/test_credentials_3tier_flow.py`: 1 test rinominato
   + 1 test riallineato.
 
 **Carry-over.**
@@ -294,8 +294,8 @@ verita'. Rifiutato: rimosso senza shim.
 - `runtime/http_routes_agent.py` (dialog_submit + `_escape_html`).
 - `runtime/channels/daemon.py` (`_on_get_inputs_completed` delega a
   process_completion_callback; branch credentials_required rimosso).
-- `runtime/tests/test_get_inputs_credentials_flow.py` (3 test E2E).
-- `runtime/tests/test_orchestration.py` (11 test unit).
-- `runtime/tests/test_credentials_3tier_flow.py` (5 test, riallineati).
+- `tests/runtime/entries/test_get_inputs_credentials_flow.py` (3 test E2E).
+- `tests/runtime/engine/test_orchestration.py` (11 test unit).
+- `tests/runtime/safety/test_credentials_3tier_flow.py` (5 test, riallineati).
 - ADR 0089 (Strato 2 origine, ora modificata).
 - ADR 0090 (get_inputs primitive).

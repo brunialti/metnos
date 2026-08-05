@@ -140,10 +140,10 @@ L'admin key locale fa da master: chi controlla `~/.config/metnos/admin.key`
 ## Consequences
 
 - **Nuovo modulo runtime**: `runtime/credentials.py` (con 6 funzioni
-  pubbliche + 6 test in `runtime/tests/test_credentials.py`).
+  pubbliche + 6 test in `tests/runtime/safety/test_credentials.py`).
 - **Modifiche a TurnLog**: 2 nuovi campi (`redacted`, `n_redacted_fields`)
   + scrub in `write()` (~30 LOC). 6 test in
-  `runtime/tests/test_scrub_credentials.py`.
+  `tests/runtime/safety/test_scrub_credentials.py`.
 - **Sicurezza modello**: chi compromette `admin.key` compromette tutte
   le credenziali. La admin.key e' mode 0600 ed e' generata localmente.
   Per trasportare credenziali fra device: re-store sul nuovo device,
@@ -160,8 +160,8 @@ L'admin key locale fa da master: chi controlla `~/.config/metnos/admin.key`
 - `runtime/credentials.py` (modulo cifratura).
 - `runtime/agent_runtime.py` (`_scrub_credentials`, `_scrub_args_recursive`,
   TurnLog fields, write() scrub).
-- `runtime/tests/test_credentials.py` (6 test).
-- `runtime/tests/test_scrub_credentials.py` (6 test).
+- `tests/runtime/safety/test_credentials.py` (6 test).
+- `tests/runtime/safety/test_scrub_credentials.py` (6 test).
 - `executors/login_session/` (consumer di credentials.load).
 - ADR 0078 (admin.key origin: http_auth.get_or_create_admin_key).
 - ADR 0081 (companion: web crawler che usa cookies prodotti da login).

@@ -109,9 +109,9 @@ MSG_GPHOTOS_IRREVERSIBLE it="Nota: l'API Google non permette di eliminare foto c
 (la nota IRREVERSIBLE va appesa UNA volta al primo upload del turno, nel result `message`).
 
 ### 3.7 Test P1 (criteri di accettazione)
-- Unit (`runtime/tests/test_google_photos_backend.py`): chunking 50, risoluzione album per nome, error-shape §2.8; CLI mockato (monkeypatch `run_with_retry`).
+- Unit (`tests/runtime/backends/test_google_photos_backend.py`): chunking 50, risoluzione album per nome, error-shape §2.8; CLI mockato (monkeypatch `run_with_retry`).
 - Manifest-test `[[tests]]` nei manifest: lista vuota ok (§2.1), args invalidi.
-- E2E reale (gate umano, come `runtime/tests/e2e_google_backend.py`): `runtime/tests/e2e_google_photos.py` — carica 2 foto di test in album `metnos-e2e`, `find` le ritrova (year=anno corrente), `get` le riscarica, confronto sha256. ≥1 turno reale `/agent/turn`: «carica le foto di /tmp/x su google photos nell'album Test» (§8.5).
+- E2E reale (gate umano, come `tests/e2e/manual/google_backend_live.py`): `tests/e2e/manual/google_photos_live.py` — carica 2 foto di test in album `metnos-e2e`, `find` le ritrova (year=anno corrente), `get` le riscarica, confronto sha256. ≥1 turno reale `/agent/turn`: «carica le foto di /tmp/x su google photos nell'album Test» (§8.5).
 
 ## 4. FASE P2 — Archivio completo via Takeout (statistiche, anno, UI)
 
@@ -149,7 +149,7 @@ L'export Takeout materializza OGNI album come cartella `Takeout/Google Foto/<Nom
 - Occupazione: `total_size_gb` = occupazione reale della libreria alla data dell'ultimo export (dichiararlo nella risposta è compito del describe: nessun lavoro).
 
 ### 4.4 Test P2
-- Unit `runtime/tests/test_extract_files.py`: zip/tgz felici, zip-slip bloccato (member `../../evil`), lista vuota, formato ignoto → errore onesto.
+- Unit `tests/runtime/test_extract_files.py`: zip/tgz felici, zip-slip bloccato (member `../../evil`), lista vuota, formato ignoto → errore onesto.
 - E2E: archivio zip di 3 jpg di test → turno reale con la query canonica §4.2 (senza il ramo Drive: file locale) → indice creato → `find_images_indices` con `time_window` dell'anno delle foto trova 3.
 - Accettazione finale (con Takeout reale di Roberto): conteggio = numero foto dell'export; «foto del <anno>» in chat mostra la gallery.
 
@@ -169,7 +169,7 @@ Design minimo (implementare solo su ratifica): scope `photospicker.mediaitems.re
 3. **P2** (rimandato, su richiesta Roberto): prima `extract_files` §4.1, poi task §4.2.
 4. Validazione con Roberto a ogni fase (upload reale; picker reale; Takeout).
 
-Ogni passo: suite (`METNOS_ENGINE=v3 pytest runtime/tests/ -q`) + ≥1 turno reale `/agent/turn` sul dominio toccato (§8.5) + re-sign degli executor toccati (§7.10) + restart servizio (§8.6: mai durante un turno attivo).
+Ogni passo: suite (`METNOS_ENGINE=v3 pytest tests/runtime/ -q`) + ≥1 turno reale `/agent/turn` sul dominio toccato (§8.5) + re-sign degli executor toccati (§7.10) + restart servizio (§8.6: mai durante un turno attivo).
 
 ## 8. LEGGI VINCOLANTI per l'implementatore (violarle = PR respinta)
 

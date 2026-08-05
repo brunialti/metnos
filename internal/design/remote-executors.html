@@ -1091,8 +1091,8 @@ W3.1 e W3.2 sono parallelizzabili (file disgiunti: <code>client-rs/</code> vs
   chiusa la fase): <code>cargo test</code> (client-rs) ·
   <code>cargo build --release --target x86_64-pc-windows-gnu</code> (il target di
   distribuzione DEVE compilare: <code>windows-sys</code> supporta gnu) ·
-  <code>python3 -m pytest runtime/tests -q</code> 0 fail ·
-  <code>bash scripts/e2e-remote-executor.sh</code> tutti PASS (regressione Linux) ·
+  <code>python3 -m pytest tests/runtime -q</code> 0 fail ·
+  <code>bash tests/e2e/tools/e2e-remote-executor.sh</code> tutti PASS (regressione Linux) ·
   per edit ai .j2: <code>python3 runtime/prompts_lint.py</code>.</li>
 <li><strong>i18n §11</strong>: ogni messaggio user-facing NUOVO = chiave DB IT+EN nel
   vivo (<code>python3 -m admin.i18n_cli set</code> da <code>runtime/</code>, poi azzera
@@ -1166,7 +1166,7 @@ if fam not in plats:
 <p><code>PlacementError</code> con <code>code=</code> esiste già (stesso pattern di
 <code>ERR_DEVICE_UNREACHABLE</code>). Testi IT/EN brevi, es. IT: «l'executor {executor}
 non supporta il sistema del dispositivo {name} ({os})». Unit in
-<code>runtime/tests/test_placement.py</code>: device windows + executor senza
+<code>tests/runtime/remote/test_placement.py</code>: device windows + executor senza
 platforms → raise; con <code>platforms=["linux","windows"]</code> → passa.
 DEFINITION OF DONE W3.0 (client-half, già fatto 3/7): un device Windows appaiato
 riceve rifiuti onesti, MAI esecuzioni; suite+E2E Linux invariati. Il gate

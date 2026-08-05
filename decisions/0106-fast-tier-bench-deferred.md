@@ -52,7 +52,7 @@ Sotto soglia → resta middle, archiviare i numeri come baseline futura.
 Esempi:
 
 ```bash
-/opt/suprastructure/.venv/bin/python -m bench_intent_vaglio_tier \
+/opt/metnos/.venv/bin/python -m bench_intent_vaglio_tier \
     --kind=both --n=50
 ```
 

@@ -171,7 +171,7 @@ Due nuove capability dichiarate:
 
 - `index.write` — scrittura sotto `~/.local/share/metnos/index/image/**`
   (richiesta da `create_*` e `delete_*`).
-- `index.read` — lettura sotto la stessa root (richiesta da `find_*` e
+- `index:read` — lettura sotto la stessa root (richiesta da `find_*` e
   `get_*`).
 
 ## Consequences
@@ -213,7 +213,7 @@ Due nuove capability dichiarate:
 - `/opt/myclaw/executors/find_images_indices/` (manifest + code; rinominato 5/5/2026).
 - `/opt/myclaw/executors/delete_images_indices/` (manifest + code; rinominato 5/5/2026).
 - `/opt/myclaw/executors/get_images_indices/` (manifest + code; rinominato 5/5/2026).
-- `/opt/myclaw/runtime/tests/test_{create,find,delete,get}_images_indices.py`
+- `/opt/myclaw/tests/runtime/test_{create,find,delete,get}_images_indices.py`
   (25 test, 21 always-on + 4 SigLIP-gated).
 - `/opt/myclaw/CLAUDE.md` (§1, §2.2, §10.6.13, ADR registry bump 85→86).
 

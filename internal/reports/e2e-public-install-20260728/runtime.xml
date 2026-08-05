@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="4.739" timestamp="2026-07-28T15:11:08.438875+02:00" hostname="beelink"><testcase classname="" name="tests.runtime.infra.test_complex_query_fixture_manager" time="0.000"><error message="collection failure">ImportError while importing test module '/opt/metnos-e2e/tests/runtime/infra/test_complex_query_fixture_manager.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/runtime/infra/test_complex_query_fixture_manager.py:8: in &lt;module&gt;
+    from scripts.manage_complex_query_fixture import _is_result_artifact  # noqa: E402
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ModuleNotFoundError: No module named 'scripts.manage_complex_query_fixture'</error></testcase></testsuite></testsuites>

@@ -102,4 +102,30 @@ for format and discipline; see `_template.md` for the template.
 > `0198` replaces the card-bounded Tutor with one signed dynamic knowledge
 > compiler over admitted manifests, allowlisted public documentation and
 > curated procedures; language fallback is per concept, and F1 cards become a
-> removable compatibility layer after equivalence certification.
+> removable compatibility layer after equivalence certification. Latest:
+> `0200` proposes the finalized RM-0001 design: personal knowledge remains
+> outside planner/shared caches, typed values are injected after planning,
+> low-risk owner learning becomes automatic after certification, and deletion
+> invalidates queued compilation; executor experience and Leiden are excluded.
+> Latest: `0201` separates the authenticated owner, logical conversation and
+> browser writer lease. A session conflict now offers cancel, activate the
+> current conversation, or atomically continue the previous device's
+> conversation; the complete chat surface, embedded dialogs included, is
+> guarded as catalog-driven i18n. Latest: `0202` adds closed read-only Tutor
+> observations, a literal one-shot action handoff, and private per-user
+> query-to-source learning after the mode gate. Latest: `0203` resolves an
+> exact published filename, relative path, or canonical URL before routing and
+> binds informational retrieval to that document without stealing mutations
+> or unknown files from the ordinary engine.
+> Latest: `0204` introduces the centrally budgeted deterministic parallel
+> visitor used by every recursive filesystem executor, while the web crawler
+> retains its rate-aware parallel BFS under the same budget. Latest: `0205`
+> adds complete exact duplicate-file search with size/sample/SHA-256 stages,
+> adaptive I/O and an opaque per-user cache; display limits no longer limit the
+> compared source. Latest: `0206` makes Tutor live observations fail closed:
+> a proposed view needs an independent full-coverage verification and a
+> contrastive semantic primary before it may displace an ordinary read-only
+> executor. Latest: `0207` replaces mixed per-call LLM tuning with five tiers
+> (`fast`, `middle`, `wise`, `creative`, `frontier`) and three centrally
+> configured `fast` levels (`micro`, `procedural`, `fidelity`); provider,
+> model and decoding policy now belong only to the configured tier.

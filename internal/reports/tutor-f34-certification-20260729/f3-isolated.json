@@ -1,0 +1,35 @@
+{
+  "query": "Come funziona la pagina Servizi? Poi cerca README.md",
+  "explanation_clause": "Come funziona la pagina Servizi?",
+  "action_clause": "cerca README.md",
+  "checks": {
+    "answer_is_handoff": false,
+    "semantic_mixed_detection": false,
+    "literal_action_preserved": false,
+    "literal_hash_bound": false,
+    "pending_created": false,
+    "owner_bound": false,
+    "closed_choices": false,
+    "service_probe_ok": false,
+    "catalog_version_bound": false,
+    "local_llm_observed_running": false,
+    "published_document_is_tutor": false,
+    "published_document_sources_bound": false,
+    "published_document_no_action": false,
+    "published_document_linked": false
+  },
+  "answer": null,
+  "document_query": "cosa contiene il file metnos_prospettive_estese_v1.html",
+  "document_source_ref": "docs/it/Metnos_Prospettive_Estese_v1.html",
+  "document_answer": null,
+  "pending": null,
+  "llm_service": {
+    "unit": "metnos-llm.service",
+    "scope": "user",
+    "installed": false,
+    "active_state": "unknown",
+    "healthy": false,
+    "status": "missing"
+  },
+  "passed": false
+}

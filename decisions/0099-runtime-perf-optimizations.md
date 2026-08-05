@@ -119,12 +119,12 @@ Open / future:
 
 ## Test
 
-- `runtime/tests/test_fast_path.py`: +7 test su `try_seed_step` (URL+path,
+- `tests/runtime/engine/test_fast_path.py`: +7 test su `try_seed_step` (URL+path,
   bare domain, no URL, trailing punct, empty, http/https, first URL wins).
   Suite totale 36/36 PASS.
-- `runtime/tests/test_loader_description_lang.py` + `test_introvertive_loop_stress.py`:
+- `tests/runtime/i18n/test_loader_description_lang.py` + `test_introvertive_loop_stress.py`:
   18/18 PASS (cache key + signature aging DB).
-- `runtime/tests/test_run_turn_reference_images.py`: 14/14 PASS
+- `tests/runtime/infra/test_run_turn_reference_images.py`: 14/14 PASS
   (nessuna interferenza seed_step con reference_images).
 - Full regression: 656 pass / 8 fail (le 8 pre-esistenti).
 - Smoke invariants: 55/55 catalog OK.
@@ -138,4 +138,4 @@ Open / future:
   reasoning_budget dinamico nel `provider.chat_with_tools`.
 - `runtime/loader.py`: `_CATALOG_CACHE` + `_catalog_cache_signature` +
   `invalidate_catalog_cache()`. ~50 LOC.
-- `runtime/tests/test_fast_path.py`: +7 test seed_step.
+- `tests/runtime/engine/test_fast_path.py`: +7 test seed_step.

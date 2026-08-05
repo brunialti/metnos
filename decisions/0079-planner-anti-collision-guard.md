@@ -143,7 +143,7 @@ modifica al codice.
   PROJECT PATHS + ANTI-COLLISION nel prompt).
 - `runtime/project_paths.json` (config single source).
 - `runtime/loader.py` (`_gc_collisions`, integrato in `load_catalog`).
-- `runtime/tests/test_loader_gc.py` (5 test).
+- `tests/runtime/infra/test_loader_gc.py` (5 test).
 - `executors/compute_files_loc/` (nuovo handcrafted, sostituisce synth
   buggy).
 - `runtime/vocab.py` (qualifier `_loc` aggiunto in QUALIFIERS).

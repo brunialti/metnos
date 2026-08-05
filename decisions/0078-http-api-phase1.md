@@ -134,7 +134,7 @@ framework CSS.
 - `runtime/http_routes_agent.py` (SSE, well-known, devices/me).
 - `runtime/http_routes_admin.py` (collezioni read-only + actions).
 - `runtime/templates/` (8 file Jinja, htmx + uPlot CDN).
-- `runtime/tests/test_http_server.py` (12 test, AioHTTPTestCase).
+- `tests/runtime/http/test_http_server.py` (12 test, AioHTTPTestCase).
 - ADR 0066 (synth executors path, riferito da catalog provider).
 - Pattern reference: `/opt/giorgio2/interfaces/voice_server.py`,
   `/opt/suprastructure/gateway/server.py`.

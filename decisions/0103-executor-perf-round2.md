@@ -123,9 +123,9 @@ documentato.
 ## Test
 
 - Smoke invariants: catalog 55, 0 rejected.
-- `runtime/tests/test_read_urls_html.py` 17/17 PASS.
-- `runtime/tests/test_read_urls_pdf.py` 3/3 PASS.
-- `runtime/tests/test_find_urls.py` 8/8 PASS.
+- `tests/runtime/executors/test_read_urls_html.py` 17/17 PASS.
+- `tests/runtime/executors/test_read_urls_pdf.py` 3/3 PASS.
+- `tests/runtime/executors/test_find_urls.py` 8/8 PASS.
 - Regression: 691/699 PASS — 8 fail pre-esistenti (gallery×3, http_server×3,
   pipeline_smoke, users_smoke_e2e). **Zero nuove regressioni.**
 - Re-firma manifest: 6 `manifest.toml.sig` rinnovati durante il ciclo

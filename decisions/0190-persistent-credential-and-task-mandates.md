@@ -62,10 +62,10 @@ sia le query interattive sia i task di lettura applicano il mandato persistente.
 
 ## Verifica
 
-- `runtime/tests/test_task_mandates.py`: default interattivo, estrazione host
+- `tests/runtime/infra/test_task_mandates.py`: default interattivo, estrazione host
   esatti, esclusione degli host solo osservati, integrita' query, revoca scope,
   redirect unattended, divieto POST e propagazione task.
-- `runtime/tests/test_sites_security.py`: gate one-shot, batch goal,
+- `tests/runtime/sites/test_sites_security.py`: gate one-shot, batch goal,
   continuazioni bounded e nessun ampliamento implicito della rete.
 - Suite credenziali: form prima del salvataggio web, metadata-only update e
   preservazione dei segreti.

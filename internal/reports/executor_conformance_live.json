@@ -1,0 +1,4340 @@
+{
+  "schema_version": 2,
+  "standard": "metnos.executor/1.0",
+  "scope": "live-catalog-surfaces",
+  "summary": {
+    "total": 115,
+    "states": {
+      "conformant_claim": 115
+    },
+    "risks": {
+      "critical": 55,
+      "high": 28,
+      "low": 25,
+      "medium": 7
+    },
+    "sources": {
+      "builtin": 17,
+      "handcrafted": 98
+    },
+    "transports": {
+      "in-process": 17,
+      "local-or-remote": 13,
+      "local-subprocess": 85
+    },
+    "surfaces": {
+      "admitted": 115,
+      "configured": 115,
+      "loadable": 115,
+      "planner": 115
+    },
+    "structural_ready": 115,
+    "findings": 0,
+    "findings_by_code": {}
+  },
+  "executors": [
+    {
+      "name": "act_sites",
+      "path": "executors/act_sites/manifest.toml",
+      "domain": "sites",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "admin",
+      "path": "runtime/builtin_executor_contracts/admin/manifest.toml",
+      "domain": "unclassified",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "change_files_format",
+      "path": "executors/change_files_format/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "change_pulls_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/change_pulls_github/manifest.toml",
+      "domain": "pulls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "classify_entries",
+      "path": "runtime/builtin_executor_contracts/classify_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compare_entries",
+      "path": "runtime/builtin_executor_contracts/compare_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compress_files",
+      "path": "executors/compress_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 8,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compute_entries",
+      "path": "executors/compute_entries/manifest.toml",
+      "domain": "entries",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 8,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compute_files_loc",
+      "path": "executors/compute_files_loc/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "remote-equivalence",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compute_signatures",
+      "path": "executors/compute_signatures/manifest.toml",
+      "domain": "signatures",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "consult_frontier",
+      "path": "executors/consult_frontier/manifest.toml",
+      "domain": "frontier",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_calendars",
+      "path": "executors/create_calendars/manifest.toml",
+      "domain": "calendars",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_dirs",
+      "path": "executors/create_dirs/manifest.toml",
+      "domain": "dirs",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_events",
+      "path": "executors/create_events/manifest.toml",
+      "domain": "events",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_files_doc",
+      "path": "executors/create_files_doc/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_files_spreadsheet",
+      "path": "executors/create_files_spreadsheet/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_images_indices",
+      "path": "executors/create_images_indices/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent",
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "proposal-rejection",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_issues_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/create_issues_github/manifest.toml",
+      "domain": "issues",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_tasks",
+      "path": "runtime/builtin_executor_contracts/create_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_tasks_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/create_tasks_github/manifest.toml",
+      "domain": "tasks",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_calendars",
+      "path": "executors/delete_calendars/manifest.toml",
+      "domain": "calendars",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_credentials",
+      "path": "executors/delete_credentials/manifest.toml",
+      "domain": "credentials",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_dirs",
+      "path": "executors/delete_dirs/manifest.toml",
+      "domain": "dirs",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 8,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_entries",
+      "path": "runtime/builtin_executor_contracts/delete_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_events",
+      "path": "executors/delete_events/manifest.toml",
+      "domain": "events",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_files",
+      "path": "executors/delete_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "remote-equivalence",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_images_indices",
+      "path": "executors/delete_images_indices/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_issues_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/delete_issues_github/manifest.toml",
+      "domain": "issues",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_messages_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/delete_messages_github/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_persons",
+      "path": "executors/delete_persons/manifest.toml",
+      "domain": "persons",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_sites",
+      "path": "executors/delete_sites/manifest.toml",
+      "domain": "sites",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "mutation",
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_tasks",
+      "path": "runtime/builtin_executor_contracts/delete_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "describe_entries",
+      "path": "runtime/builtin_executor_contracts/describe_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "describe_images",
+      "path": "runtime/builtin_executor_contracts/describe_images/manifest.toml",
+      "domain": "images",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "proposal-rejection",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "describe_numbers",
+      "path": "executors/describe_numbers/manifest.toml",
+      "domain": "numbers",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "extract_entries",
+      "path": "runtime/builtin_executor_contracts/extract_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent",
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "proposal-rejection",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "filter_entries",
+      "path": "executors/filter_entries/manifest.toml",
+      "domain": "entries",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 12,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "filter_lists",
+      "path": "executors/filter_lists/manifest.toml",
+      "domain": "lists",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "filter_texts_lines",
+      "path": "executors/filter_texts_lines/manifest.toml",
+      "domain": "texts",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_contacts",
+      "path": "executors/find_contacts/manifest.toml",
+      "domain": "contacts",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_credentials",
+      "path": "executors/find_credentials/manifest.toml",
+      "domain": "credentials",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_dirs",
+      "path": "executors/find_dirs/manifest.toml",
+      "domain": "dirs",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_entries",
+      "path": "runtime/builtin_executor_contracts/find_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_events_empty",
+      "path": "executors/find_events_empty/manifest.toml",
+      "domain": "events",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_files",
+      "path": "executors/find_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 10,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_files_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/find_files_github/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_images_google_photos",
+      "path": "executors/find_images_google_photos/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_images_indices",
+      "path": "executors/find_images_indices/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "privacy"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "data-minimization",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_images_web",
+      "path": "executors/find_images_web/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_issues_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/find_issues_github/manifest.toml",
+      "domain": "issues",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_packages",
+      "path": "executors/find_packages/manifest.toml",
+      "domain": "packages",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "remote-equivalence",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_persons_indices",
+      "path": "executors/find_persons_indices/manifest.toml",
+      "domain": "persons",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "privacy"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "data-minimization",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_places",
+      "path": "executors/find_places/manifest.toml",
+      "domain": "places",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_pulls_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/find_pulls_github/manifest.toml",
+      "domain": "pulls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_urls",
+      "path": "executors/find_urls/manifest.toml",
+      "domain": "urls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent",
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "proposal-rejection",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_approval",
+      "path": "executors/get_approval/manifest.toml",
+      "domain": "approval",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_files",
+      "path": "executors/get_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "network",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "remote-equivalence",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_images_google_photos",
+      "path": "executors/get_images_google_photos/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_images_indices",
+      "path": "executors/get_images_indices/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "privacy"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "data-minimization",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_inputs",
+      "path": "executors/get_inputs/manifest.toml",
+      "domain": "inputs",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_location",
+      "path": "executors/get_location/manifest.toml",
+      "domain": "location",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_now",
+      "path": "executors/get_now/manifest.toml",
+      "domain": "now",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_persons",
+      "path": "executors/get_persons/manifest.toml",
+      "domain": "persons",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "privacy"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "data-minimization",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_places",
+      "path": "executors/get_places/manifest.toml",
+      "domain": "places",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 7,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_processes",
+      "path": "executors/get_processes/manifest.toml",
+      "domain": "processes",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "network",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "remote-equivalence",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_proposals",
+      "path": "executors/get_proposals/manifest.toml",
+      "domain": "proposals",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_signatures",
+      "path": "executors/get_signatures/manifest.toml",
+      "domain": "signatures",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "get_urls",
+      "path": "executors/get_urls/manifest.toml",
+      "domain": "urls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "group_entries",
+      "path": "executors/group_entries/manifest.toml",
+      "domain": "entries",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_dirs",
+      "path": "executors/list_dirs/manifest.toml",
+      "domain": "dirs",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "remote-equivalence",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_dirs_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/list_dirs_github/manifest.toml",
+      "domain": "dirs",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_skills",
+      "path": "runtime/builtin_executor_contracts/list_skills/manifest.toml",
+      "domain": "skills",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_tasks",
+      "path": "runtime/builtin_executor_contracts/list_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "login_sites",
+      "path": "executors/login_sites/manifest.toml",
+      "domain": "sites",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "login_urls",
+      "path": "executors/login_urls/manifest.toml",
+      "domain": "urls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "move_files",
+      "path": "executors/move_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 15,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "remote-equivalence",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "move_messages",
+      "path": "executors/move_messages/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "open_sites",
+      "path": "executors/open_sites/manifest.toml",
+      "domain": "sites",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_contacts",
+      "path": "executors/read_contacts/manifest.toml",
+      "domain": "contacts",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_events",
+      "path": "executors/read_events/manifest.toml",
+      "domain": "events",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files",
+      "path": "executors/read_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 9,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_csv",
+      "path": "executors/read_files_csv/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_doc",
+      "path": "executors/read_files_doc/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/read_files_github/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_ocr",
+      "path": "executors/read_files_ocr/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "proposal-rejection",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_spreadsheet",
+      "path": "executors/read_files_spreadsheet/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_files_xlsx",
+      "path": "executors/read_files_xlsx/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_issues_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/read_issues_github/manifest.toml",
+      "domain": "issues",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_messages",
+      "path": "executors/read_messages/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_persons",
+      "path": "executors/read_persons/manifest.toml",
+      "domain": "persons",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "privacy"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "data-minimization",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_pulls_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/read_pulls_github/manifest.toml",
+      "domain": "pulls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_sites",
+      "path": "executors/read_sites/manifest.toml",
+      "domain": "sites",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_tasks",
+      "path": "runtime/builtin_executor_contracts/read_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_tasks_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/read_tasks_github/manifest.toml",
+      "domain": "tasks",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_tasks_history",
+      "path": "runtime/builtin_executor_contracts/read_tasks_history/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_urls_html",
+      "path": "executors/read_urls_html/manifest.toml",
+      "domain": "urls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_urls_pdf",
+      "path": "executors/read_urls_pdf/manifest.toml",
+      "domain": "urls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "medium",
+      "risk_axes": [
+        "network"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "send_messages",
+      "path": "executors/send_messages/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "send_messages_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/send_messages_github/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_credentials",
+      "path": "executors/set_credentials/manifest.toml",
+      "domain": "credentials",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 2,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_issues_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/set_issues_github/manifest.toml",
+      "domain": "issues",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_messages",
+      "path": "executors/set_messages/manifest.toml",
+      "domain": "messages",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "provider-error-normalization",
+        "regression",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_persons",
+      "path": "executors/set_persons/manifest.toml",
+      "domain": "persons",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_pulls_github",
+      "path": "${METNOS_USER_DATA}/executors/skills/github/set_pulls_github/manifest.toml",
+      "domain": "pulls",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_signatures",
+      "path": "executors/set_signatures/manifest.toml",
+      "domain": "signatures",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_skills",
+      "path": "runtime/builtin_executor_contracts/set_skills/manifest.toml",
+      "domain": "skills",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_tasks",
+      "path": "runtime/builtin_executor_contracts/set_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "share_files",
+      "path": "executors/share_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 4,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "sort_entries",
+      "path": "executors/sort_entries/manifest.toml",
+      "domain": "entries",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "undo_last_turn",
+      "path": "executors/undo_last_turn/manifest.toml",
+      "domain": "last",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_entries",
+      "path": "runtime/builtin_executor_contracts/write_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_files",
+      "path": "executors/write_files/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-or-remote",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider",
+        "remote"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 10,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "remote-equivalence",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency",
+        "target-no-fallback"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_files_doc",
+      "path": "executors/write_files_doc/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 5,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_files_spreadsheet",
+      "path": "executors/write_files_spreadsheet/manifest.toml",
+      "domain": "files",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 6,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_images_google_photos",
+      "path": "executors/write_images_google_photos/manifest.toml",
+      "domain": "images",
+      "source": "handcrafted",
+      "transport": "local-subprocess",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "critical",
+      "risk_axes": [
+        "authority",
+        "mutation",
+        "network",
+        "provider"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 3,
+      "signature_present": true,
+      "required_gates": [
+        "dependency-unavailable",
+        "e2e",
+        "handoff",
+        "i18n-it-en",
+        "mandate-denial",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "provider-error-normalization",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "secret-redaction",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "admitted",
+        "configured",
+        "loadable",
+        "planner"
+      ],
+      "rejection_reasons": []
+    }
+  ]
+}

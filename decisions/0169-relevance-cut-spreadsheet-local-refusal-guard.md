@@ -66,7 +66,7 @@ Sbloccato lo step spreadsheet, il foglio reale conteneva **placeholder letterali
 - find_images_indices ritorna un conteggio onesto (`available_total` = outlier reali) → il dialog cap §2.11 diventa sensato ("100 di 107", non "100 di 31062").
 - "metti in uno spreadsheet … invia per email" funziona self-hosted senza OAuth.
 - Rifiuti LLM intercettati prima dell'executor su QUALSIASI executor.
-- Regressioni bloccate: `e2e/scenarios/test_spreadsheet_local_relevance_cut.py` (16 test deterministici) + manifest tests dei 3 executor spreadsheet.
+- Regressioni bloccate: `tests/e2e/scenarios/test_spreadsheet_local_relevance_cut.py` (16 test deterministici) + manifest tests dei 3 executor spreadsheet.
 - `relevance_cut` è candidato per generalizzare ad altri retrieval scored (follow-up).
 
 ## 3. Manifest linter strutturale + wiring synt (3/6)

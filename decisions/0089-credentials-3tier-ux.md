@@ -257,11 +257,11 @@ daemon (`kind="credentials_required"`).
   fingerprint` + argparse).
 - `install/manifest.toml` + `install/setup.sh`: `[[scripts.entry]]`
   section + `step_scripts()` to symlink in `/usr/local/bin/`.
-- `runtime/tests/test_credentials_extraction.py`: 10 tests (regex
+- `tests/runtime/safety/test_credentials_extraction.py`: 10 tests (regex
   variants IT+EN, scrub spans, host derivation, store roundtrip).
-- `runtime/tests/test_cli_credentials.py`: 3 tests (subprocess add+list+
+- `tests/runtime/safety/test_cli_credentials.py`: 3 tests (subprocess add+list+
   remove, password mismatch, missing remove).
-- `runtime/tests/test_credentials_3tier_flow.py`: 5 smoke tests of the
+- `tests/runtime/safety/test_credentials_3tier_flow.py`: 5 smoke tests of the
   three-layer pipeline (mocked at the sudoer boundary).
 
 **Carry-over.**

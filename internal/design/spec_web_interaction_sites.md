@@ -28,7 +28,7 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 
 - **Vault cifrato** — `runtime/credentials.py`: Fernet per-dominio (`~/.config/metnos/credentials/<d>.json.age` 0600), chiave HKDF da `admin.key`; `store/load(domain)/list_domains/remove/fingerprint`. Regola `*_credentials` **metadata-only** + `assert_no_secrets_in_return` (`credentials.FORBIDDEN_KEYS`) + Vaglio. Mail/NAS leggono già i segreti via `credentials.load`. → Presidio #1 infrastrutturato.
 - **Motore** — `runtime/playwright_sidecar/server.py`: UN Chromium headless persistente (~200MB), oggi `POST /render {url}`→testo/html, contesti usa-e-getta. Client `client.py`. Install `install/sidecar.py`.
-- **Cookie-session** — `executors/login_session/`: jar Netscape in `~/.config/metnos/cookies/<d>.txt` (0600, ADR 0082), re-iniettato via `auth_cookies_file`.
+- **Cookie-session URL/HTTP** — `executors/login_urls/`: jar Netscape in `~/.config/metnos/cookies/<d>.txt` (0600, ADR 0082), re-iniettato via `auth_cookies_file`.
 - **VLM** — `runtime/vlm_client.py::describe_image` con `qwen3vl-2b` locale (config `~/.config/metnos/vlm_tiers.toml` via `virt.get_vlm()`).
 - **HITL** — `executors/get_approval/` (2 bottoni + `on_approve`), `orchestration._process_gate_dispatch`/`_process_resume_engine_gate`, `approval_registry.py` (sqlite).
 - **Sandbox** — `runtime/sandbox.py` bwrap: rete gated da capability. Stato fra invocazioni = file, executor stateless.
@@ -55,6 +55,12 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
   contiene `goal`, `state`, `observed`, `history`, `constraints`; la primitiva
   resta fissata dal codice e il modello ritorna soltanto un `candidate_id`
   broker-owned. I valori in `observed` sono dati di pagina non fidati.
+- **Recupero landing autenticata**: se il primo goal non trova alcun candidato,
+  il broker puo' ripartire una sola volta dall'URL di ingresso same-host della
+  sessione e riosservare con il resolver normale. Sono prerequisiti login
+  verificato, zero passi gia' eseguiti e mandato credenziale preesistente per la
+  navigazione esatta. Il tentativo e' consumato prima dell'I/O; non usa testo di
+  pagina, vendor, selettori o destinazioni dedotte.
 - **UI custom e popup**: accessibilita' prima; poi geometria/topmost e nodi
   foglia visibili `cursor:pointer`. Un reveal richiede nuova osservazione e
   firma stabile. Popup multipli falliscono `popup_ambiguous`; un popup unico
@@ -65,6 +71,8 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 - **[CRITICO-1 — anti-phishing]** il broker inietta una credenziale SOLO se: (1) l'origine dell'`action` del form di login coincide ESATTAMENTE con il dominio del vault oppure con una origine delegata approvata tramite token one-shot sulla coppia esatta; (2) il campo è nel **frame top-level** (MAI iframe); (3) origine e DOM sono verificati PRIMA di digitare. Mismatch → RIFIUTO (`error_class:"origin_mismatch"`), niente digitazione. Deterministico, non affidato al VLM.
 - **[CRITICO-2 — la destinazione non la sceglie l'LLM]** per i `value_ref` di tipo `cred:<domain>:<field>` il broker **IGNORA** ogni selettore proposto dall'LLM/planner e risolve AUTONOMAMENTE il campo credenziale legittimo dell'origine attesa. L'LLM non può mai dirigere dove va una credenziale. Un `value_ref:cred:` è ammesso SOLO sul campo che il broker stesso ha identificato come credenziale di quell'origine.
 - **[CRITICO-3 — niente segreto negli screenshot]**: (a) MAI `screenshot` fra un `fill` credenziale e il `submit`; (b) **redazione deterministica** dei campi input `type=password` E dei campi appena riempiti dal broker con credenziali/OTP, PRIMA di ogni capture (overlay nero via CSS injection pre-shot); (c) la risoluzione VLM avviene SOLO su screenshot **PRE-fill**; (d) **VLM FRONTIER (Opus) VIETATO** su qualsiasi pagina in contesto autenticato o di credenziale (solo VLM locale, che comunque non deve mai vedere un campo segreto in chiaro).
+- La redazione degli indirizzi email renderizzati usa intervalli DOM esatti per
+  ogni match strutturale; non seleziona l'intero nodo testuale circostante.
 - **URL-scrub [FIX E]**: da ogni `url`/`final_url` restituito/loggato/persistito, scrub deterministico dei parametri sensibili (`token,code,access_token,id_token,ticket,sig,saml,otp,session,auth`) in query E fragment. Un token nell'URL è un segreto.
 - **2FA a canali** — il broker classifica il canale dalla pagina e invoca un
   resolver ristretto; input/output pubblici di `login_sites` non cambiano.
@@ -88,9 +96,16 @@ Fonti: OpenAI hardening-Atlas, Brave (Comet injection), 1Password (credential ri
 Tutti: manifest §2.5 IT+EN, i18n §7.13 (3 posti), firma §7.10, onestà §2.8. **[FIX G — vettorialità]** operano su `session_ids: array[str]` (o `from_step`), con fan-out: una entry per sessione. `open_sites` produce N sessioni → i successivi le consumano tutte (o l'utente ne cita una).
 
 - **`open_sites`** (F1): args `urls: array[str]`, `session_label` opz., `allowlist: array[str]` opz. (default = domini esatti degli urls — **D-D: esatto**). OUT `entries=[{session_id,url,title,ok}]`.
-- **`login_sites`** (F1, intelligente drop-in): args `session_ids`|`from_step`; `domain` opz. (handle vault; default = origine login della pagina, verificata §3.2); `form_hint` opz. Attraversa autonomamente consenso privacy, ingresso login, flussi username-first/continue, password e fattori entro un deadline condiviso. Ogni submit separa dispatch (`no_wait_after`) e osservazione; i checkpoint sono `discovering|username_submit|primary_submit|factor_pending|factor_resolving|factor_submit|complete|failed`. OTP email puo' essere risolto come sopra; gli altri OTP/CAPTCHA/push producono handoff redatto; TOTP e' opt-in nel vault. OUT `entries=[{session_id,logged_in:bool,reason_code?}]`, invariato. `critical=true`. **Zero segreti nel result** (`reason_code` = codice i18n, MAI username/password).
+- **`login_sites`** (F1, intelligente drop-in): args `session_ids`|`from_step`; `domain` opz. (handle vault; default = origine login della pagina, verificata §3.2); `form_hint` opz. Attraversa autonomamente consenso privacy, ingresso login, flussi username-first/continue, password e fattori entro un deadline condiviso. Ogni submit separa dispatch (`no_wait_after`) e osservazione; i checkpoint sono `discovering|username_submit|primary_submit|factor_pending|factor_resolving|factor_submit|complete|failed`. La postcondizione positiva richiede osservazioni strutturali consecutive senza una superficie login top-level; un remount SPA transitorio o un errore di osservazione non vale come successo. Il form presente nel primo frame post-submit azzera la sequenza ma viene riosservato fino al budget, per non anticipare una navigazione ancora in partenza. OTP email puo' essere risolto come sopra; gli altri OTP/CAPTCHA/push producono handoff redatto; TOTP e' opt-in nel vault. Ogni fallimento non continuabile produce screenshot con password, campi identita' standard e indirizzi email testuali mascherati, poi chiude la sessione. OUT `entries=[{session_id,logged_in:bool,reason_code?}]`, invariato. `critical=true`. **Zero segreti nel result** (`reason_code` = codice i18n, MAI username/password).
 - **`read_sites`** (F1): args `session_ids`|`from_step`; `include_screenshot` def true; `include_forms` def false. OUT `entries=[{session_id,url,title,text,screenshot_path,sensitive}]`.
-- **`act_sites`** (F2): args `session_ids`|`from_step`; `action: str` (NL); `value_ref` opz. Oltre alle primitive singole, `search` mantiene un goal post-login, attraversa menu con riosservazione bounded e applica filtri finali. Dopo il goal puo' seguire controlli contestuali di continuazione/load-more/next fino a 6 volte, soltanto finche' il contenuto cambia; pagine distinte sono aggregate per la lettura finale. Un modello locale puo' scegliere soltanto un ID da nomi/ruoli broker-owned. Gate §4.2. OUT `results`. `critical=true`, `revertible=false`.
+- **`act_sites`** (F2): args `session_ids`|`from_step`; `action: str` (NL); `value_ref` opz. Oltre alle primitive singole, `search` mantiene un goal post-login, attraversa menu con riosservazione bounded e applica filtri finali. Il runtime puo' attivare una modalita' goal non pubblica: un reducer locale produce una frase bounded usando soltanto parole della query e il broker la passa come target tipizzato a `search`; output invalido fallisce chiuso, senza creare una sintassi CLI. Dopo il goal puo' seguire controlli contestuali di continuazione/load-more/next fino a 6 volte, soltanto finche' il contenuto cambia; pagine distinte sono aggregate per la lettura finale. Un modello locale puo' scegliere soltanto un ID da nomi/ruoli broker-owned. Gate §4.2. OUT `results`. `critical=true`, `revertible=false`.
+
+Una richiesta di record osservati nella pagina compone il dominio con l'helper
+universale `extract_entries`: `read_sites -> extract_entries ->
+describe_entries`. Il runtime garantisce la forma della catena; se i campi non
+sono espliciti, `extract_entries` inferisce una sola volta uno schema bounded e
+lo valida prima dell'estrazione. Il router non conosce sito, tipo di record o
+nomi di campo e disabilita il drill-down stateless sul contenuto autenticato.
 
 ### 3.5 Contenuto autenticato — no-frontier [MEDIO red-team]
 Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati personali) NON passano mai al VLM/LLM frontier: describe/sintesi restano LOCALI. Taint `no_frontier` propagato dal `read_sites` autenticato al describe a valle.
@@ -105,7 +120,7 @@ Le entries `sites` con `sensitive:true` (contenuto post-login: saldi, dati perso
 
 ## 5. Vocab (`sites` — RATIFICATO, escalation §2.2)
 - Nuovo oggetto `sites` in `vocab.py::OBJECTS`. Confine manifest: `NON: pagina senza login = read_urls_html; sites = sessione con stato/credenziali`.
-- **Verbi — D-A RATIFICATA ✓ (10/7)**: token NUOVI in `vocab.py::ACTIONS` = `login`, `open`, `act` (`read` esiste già; precedente: `login_session` è già builtin fuori-grammatica). Mappatura forzata sui canonici RESPINTA (ambigua). Enforce in `naming_grammar` (legge §10.4).
+- **Verbi — D-A RATIFICATA ✓ (10/7)**: token NUOVI in `vocab.py::ACTIONS` = `login`, `open`, `act` (`read` esiste già; il cookie-login HTTP è il canonico `login_urls`). Mappatura forzata sui canonici RESPINTA (ambigua). Enforce in `naming_grammar` (legge §10.4).
 - Lessici (phrases, §7.13): `sites.reference` («sul sito/portale», «accedi a»), `sites.sensitive_action` (§4.2, ma la classificazione VERA è sul DOM §FIX-H, il lessico è solo un hint aggiuntivo).
 
 ## 6. UI

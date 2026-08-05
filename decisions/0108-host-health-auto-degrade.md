@@ -80,7 +80,7 @@ crawler torna semplicemente in T1 (rate piu' polite).
 
 ## Test plan
 
-`runtime/tests/test_host_health.py` (9 test): under-threshold no block,
+`tests/runtime/infra/test_host_health.py` (9 test): under-threshold no block,
 threshold triggers, 503 conta, 200 non conta, TTL expire 24h,
 cleanup_expired, idempotente, window prune, manual-listed host
 permanente. Tutti pass.

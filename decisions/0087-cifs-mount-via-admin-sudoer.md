@@ -217,9 +217,9 @@ proves itself again on a non-trivial intent.
 - `runtime/verb_unique/admin.py`: prompt update, ~10 LOC.
 - `runtime/verb_unique/sudoer.py`: placeholder substitution branch,
   ~70 LOC.
-- `runtime/tests/test_cifs_helper.py`: 6 tests (roundtrip, cleanup,
+- `tests/runtime/backends/test_cifs_helper.py`: 6 tests (roundtrip, cleanup,
   missing domain, missing fields, concurrency, domain canonicalisation).
-- `runtime/tests/test_admin_mount_cifs.py`: 7 tests (canonicalisation,
+- `tests/runtime/http/test_admin_mount_cifs.py`: 7 tests (canonicalisation,
   seed lookup, admin decide, sudoer substitution, missing credentials,
   end-to-end chain).
 - `~/.config/metnos/workspace_policy.toml`: extend `[host.fs.read].scope`

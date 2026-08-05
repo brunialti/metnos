@@ -6,18 +6,67 @@
 > Aggiornare QUI (non in CLAUDE.md) quando si aggiunge/rimuove un meccanismo.
 
 **Naming / vocab / grammatica**
+- **Executor Standard v1** (ADR 0193): `EXECUTOR_STANDARD.md` e' il contratto
+  normativo `metnos.executor/1.0`; `runtime/executor_standard.py` valida i claim
+  meccanici, compresi i nomi chiusi di `runtime/policy.py::CAPABILITY_REGISTRY`.
+  Legacy senza dichiarazione ammessi durante la migrazione; una dichiarazione
+  presente e' bloccante nel loader se incompleta o sconosciuta.
+- **Assi executor distinti** (ADR 0195): appartenenza, origine e trasporto non
+  sono sinonimi. I 16 `*_github` sono builtin Metnos con
+  `origin="handcrafted"`, senza `[provenance].imported_from`; il codegen GitHub
+  e `test_builtin_executor_contracts.py` bloccano la regressione. Inventario
+  live verificato: 115/115 standard e firmati, origine 98 handcrafted + 17
+  runtime builtin in-process.
+- **Politica centrale di esecuzione executor** (ADR 0196):
+  `executor_scheduler.invoke_scheduled` avvolge il choke-point universale;
+  default classe 0 e pool trasversale spento, metriche e retropressione sempre
+  applicate. Le classi 1-3 richiedono prova di equivalenza; gli effetti non
+  read-only richiedono anche una chiave d'isolamento e l'identita' runtime.
+  `generated_executor_contract.py` vincola tutti i generatori alla stessa
+  intestazione e politica seriale; il modello non puo' promuoversi da solo.
+- **Visita ricorsiva comune** (ADR 0204-0205):
+  `runtime/parallel_walk.py` e' l'unico visitor ricorsivo per gli alberi del
+  filesystem; callback `accept`/`transform`/`descend`, frontiera dinamica,
+  ricomposizione ordinata, symlink non seguiti ed errori espliciti. Il budget
+  totale d'istanza deriva centralmente da CPU visibili e `max_workers`; arriva
+  agli executor tramite `executor_workers.assigned_workers` e ogni altro
+  limite puo' soltanto ridurlo. Guard: `test_parallel_walk.py`,
+  `test_parallel_recursive_executors.py`, test di chiusura device e prove di
+  equivalenza nei manifest. `find_urls` mantiene la BFS specializzata ma usa
+  `executor_workers.map_ordered`; guard ermetica
+  `test_find_urls_parallel_recursive.py`.
+- **Duplicati esatti senza cap di sorgente** (ADR 0205):
+  `find_files_hash` applica dimensione -> campione negativo -> SHA-256 completo;
+  `max_results` limita solo l'output e `source_complete` distingue ogni limite
+  della sorgente. Cache per utente senza path in chiaro, valida soltanto sulla
+  firma `stat`; guard `test_find_files_hash.py` e prova di nascita concorrente.
 - **Naming Authority** (ADR 0156): `runtime/naming_grammar.py` valida nome + genera GBNF da `vocab.py`. Single source per stage 1/telos/skill importer.
 - **Manifest linter strutturale** (ADR 0169): `runtime/manifest_lint.py` deterministico (§7.9) — check FORMA scheda-tool (CAPITOLI, PATTERN-budget, PATTERN-args ⊆ schema, output-shape §2.6, affinity-overlap, NON→sibling). Wired synt stage 5.5. CLI `--all`.
 - **Constrained generation** (ADR 0133): `runtime/tool_grammar.py` GBNF per ogni step. Loop-detect `runtime/loop_detect.py`. Opt-in `METNOS_GRAMMAR=1`.
 - **Grammar pool extensions** (ADR 0135): `final_answer` synthetic from step≥2; `_parse_tool_call_tolerant` JSON recovery; `_FROM_STEP_HELPERS` esclusi al primo step.
 - **Skill dormancy + provider qualifier** (ADR 0136): `Executor.dormant` se skill senza credenziali (`runtime/skill_credentials.py`). Gate pool provider: `tool_grammar.provider_gate_names` su `detection_lexicon provider.markers` (chiavi da `vocab.PROVIDER_SUFFIXES`).
-- **Invocazioni skill-backed: sandbox+placement** (10/7/2026): `sandbox.invocation_skills` (5 segnali, SoT `vocab.PROVIDER_SKILLS`, guard `test_provider_skills_cover_suffixes`) → bind RW skill home + rete in bwrap (`skill_extras`) e pin server in `invoke_executor` (mai device per backend provider). Test `runtime/tests/test_sandbox_skill_backed.py`. Senza: OAuth-in-loop (token invisibile alla sandbox, dal 9/7 = bubblewrap) e misroute su device.
+- **Invocazioni skill-backed: sandbox+placement** (10/7/2026): `sandbox.invocation_skills` (5 segnali, SoT `vocab.PROVIDER_SKILLS`, guard `test_provider_skills_cover_suffixes`) → bind RW skill home + rete in bwrap (`skill_extras`) e pin server in `invoke_executor` (mai device per backend provider). Test `tests/runtime/safety/test_sandbox_skill_backed.py`. Senza: OAuth-in-loop (token invisibile alla sandbox, dal 9/7 = bubblewrap) e misroute su device.
 - **Vocab extension persons+tasks** (ADR 0137): OBJECTS 17→19. Synonyms IT+EN in `vocab.py`.
 - **filter_lists + tassonomia liste** (ADR 0138): `filter_lists` (set ops bi-list) vs `filter_entries` (1L predicati). Wire `_resolve_from_step` Layer 5.
 - **Builtin scheduler v2 canonical** (ADR 0133 ext): `create/list/delete/read/set_tasks` con fallback `id→name`.
 - **`*_tasks` conditional injection**: iniettati nel pool PLANNER solo se query ha marker scheduling (`_TASKS_MARKERS` in `tool_grammar.py`).
 
 **Planner / Praxis / runtime flow**
+- **Tutor F2 pre-planner senza contaminazione** (ADR 0197-0198, RM-0003):
+  `runtime/tutor_boundary.py` è l'unico adapter HTTP/Telegram; il detector
+  richiede due segnali dal `detection_lexicon`, esclude allegati/segreti e
+  chiarisce le query miste senza eseguirle. L'innesto precede i consumer
+  pending ma non li consuma. `runtime/tutor/catalog.py` ammette soltanto il
+  catalogo SQLite firmato, read-only e con last-known-good; audience derivata
+  solo dal principal autenticato. Il corpus unifica manifest ammessi,
+  documentazione allowlist e guide curate; `concept_id` applica fallback
+  lingua per singolo concetto verso EN. `tutor-exclude` impedisce che roadmap
+  pubblica diventi capacità corrente. BGE-M3 e segnale lessicale derivato
+  scelgono la fonte senza `affinity`/`exact`; mode e composer locali usano lo
+  slot centrale `llm` e non hanno strumenti. Procedure admin deterministiche.
+  Guard: `tests/runtime/tutor/test_tutor_f1.py` (cross-lingua reale,
+  shape/firma/recovery, exclusion, separazione operativa, HTTP/Telegram senza
+  planner).
 - **Praxis Engine — pentade** (ADR 0161): cascata `fast_path→intent_extractor→Praxis.try_match→Mētis→Noûs→Pronoia→Aporia`. `runtime/{praxis,praxis_propose,praxis_executor,pronoia,aporia}.py`, wire pre-PLANNER `agent_runtime.run_turn`.
 - **ClusterLLM + classify_fail** (ADR 0162): estende 0161. `runtime/praxis_cluster.py` BGE-M3 + cosine + champion/challenger. `runtime/pronoia_classify_fail.py` dispatch ✗. Constants in `runtime/praxis_constants.py`.
 - **Fastpath L0 lifecycle AUTO** (11/6, decisione Roberto — NIENTE bottone approvazione; copertura di classe 12/6): auto-produzione `engine/fastpath.record_success` ← `dispatch._maybe_record_fastpath` da OGNI turno-successo la cui query esatta non è in cache 0a — engine/recovery (origin `auto`), hit L1 (`autopath`: bug live «controlla tutte le mailbox», la famiglia con skill L1 non registrava mai), hit 0b (`cosine`, promozione a 0a); MAI da hit 0a (esclusi undo_last_turn/get_inputs + literal temporale ISO assoluto `_has_absolute_temporal_literal` → replay stantio); pertinenza 0b solo `query_specific=0` (`engine/executor.is_query_specific`, condiviso L1; include `time_window/time_windows` literal — misura 12/6: pivot «oggi/ieri» cosine 0.9722 > soglia 0.92 > parafrasi 0.946, nessuna soglia li separa); aging+morte `fastpath.prune` ← `task_state_reaper` (grazia 14gg / stale 30gg / cap LRU 500, env `METNOS_FASTPATH_*`; C1 tool∉catalog, C2-provenienza ESATTA via tabella `promotions` (fp_id+canonical_hash → executor promosso in catalog ∧ ∉piano; immune se il piano lo usa), C2 famiglia `{intent_verb}_{intent_object}[_*]` §2.2 non nel piano); C1 hit-time guard in `dispatch.run_turn` (delete + fall-through, self-healing); valvole: `POST /admin/praxis/fastpaths/{id}/delete` + feedback ✗ `turn_feedback.apply_feedback` → `fastpath.delete_by_query` (LWW: un fastpath colpito rinfresca last_used e vince in cascata → senza valvola sarebbe immortale).
@@ -30,8 +79,8 @@
 - **PLANNER split GBNF** (ADR 0151): `runtime/planner_split.py::chat_with_tools_split` 2-call. Opt-in `METNOS_PLANNER_SPLIT=1`. 1.72× speedup.
 - **Pattern intent-implicit** (ADR 0129): `vocab.detect_implicit_actions(query)` deterministico. Wire `intent_extractor → agent_runtime → orchestration._orchestrate_implicit_actions`.
 - **Compound query decomposition** (4/6): intent LLM → `actions=[{verb,object}]` per CLAUSOLA (`intent_extractor.j2` it+en); `dispatch` rank pool per-PAIR (object reale per clausola); `proposer` salta verb-filter se `len(actions)>=2`. No dizionari sinonimi; `detect_canonical_verbs_all` = fallback lessicale.
-- **Guard deterministici di struttura compound** (ADR 0174/0175): `dispatch._apply_deterministic_structure_guards` (su L0/L1/L3) = `_align_framework_objects` (ri-allinea tool-fratelli/oggetto-estraneo all'intent; v3 `_align_foreign_producers_v3`: un produttore con oggetto preso SOLO da una clausola CONSUMER — es. `read_files` per «salvali in un csv» — è un FANTASMA del proposer flaky → RIALLINEA se solo-produttore o DROP se ORFANO+oggetto-produttore già coperto, via `_step_is_consumed`+`_remap_step_refs`; ESCLUDE `entries` meta-oggetto pipe; guard `test_align_foreign_producers_v3.py`) → `_enforce_missing_clauses` (appende clausole RICHIESTE scoperte; produttori {find/read/get/list} INTERSCAMBIABILI per copertura, no produttore spurio) → `_ensure_extract_clause` (la clausola «estrai» è un TRANSFORM INTERMEDIO: INSERISCE `extract_entries` dopo l'ultimo produttore PRIMA del consumer mutante + rewiring `from_step`, non in coda; **+ riempie l'arg REQUIRED `fields`** — sia su insert sia su un extract_entries già presente ma incompleto — via `compound_decomposer.derive_extract_fields`) → `_conform_to_intent_order`. `derive_tool_name` query-aware sul qualifier (`_FORMAT_HINTS` «foglio»→spreadsheet) + generico `<verb>_entries` anche per `extract`. Banco `bench/compound_extract_create_bench.py` (produttore→extract→create). Guard `test_ensure_extract_clause.py`.
-- **extract_entries `fields` deterministici** (bug live 22/6): `compound_decomposer.derive_extract_fields(query)` ricava i nomi-campo dalla clausola «estrai X, Y e Z» (chunk verbless = continuazione lista campi; taglio prep-frase from/da/in, scarto articoli; §7.9 no-LLM). Cablato in DUE path che emettevano `extract_entries` SENZA il required `fields` → «missing 'fields'»: (1) `compound_decomposer.decompose_query` (path «COMPOUND DECOMPOSED» deterministico, NON passa per i guard dispatch); (2) `dispatch._ensure_extract_clause` (path engine-v2). Guard `test_ensure_extract_clause.py::TestDeriveExtractFields`.
+- **Guard deterministici di struttura compound** (ADR 0174/0175): `dispatch._apply_deterministic_structure_guards` (su L0/L1/L3) = `_align_framework_objects` (ri-allinea tool-fratelli/oggetto-estraneo all'intent; v3 `_align_foreign_producers_v3`: un produttore con oggetto preso SOLO da una clausola CONSUMER — es. `read_files` per «salvali in un csv» — è un FANTASMA del proposer flaky → RIALLINEA se solo-produttore o DROP se ORFANO+oggetto-produttore già coperto, via `_step_is_consumed`+`_remap_step_refs`; ESCLUDE `entries` meta-oggetto pipe; guard `test_align_foreign_producers_v3.py`) → `_enforce_missing_clauses` (appende clausole RICHIESTE scoperte; produttori {find/read/get/list} INTERSCAMBIABILI per copertura, no produttore spurio) → `_ensure_extract_clause` (la clausola «estrai» è un TRANSFORM INTERMEDIO: INSERISCE `extract_entries` dopo l'ultimo produttore PRIMA del consumer mutante + rewiring `from_step`, non in coda; riempie `fields` deterministicamente quando la query li espone e altrimenti delega l'inferenza bounded al drop-in) → `_conform_to_intent_order`. `derive_tool_name` query-aware sul qualifier (`_FORMAT_HINTS` «foglio»→spreadsheet) + generico `<verb>_entries` anche per `extract`. Banco `tests/benchmarks/compound_extract_create_bench.py` (produttore→extract→create). Guard `test_ensure_extract_clause.py`.
+- **extract_entries con schema esplicito o inferito** (bug live 22/6 + sites 13/7): `compound_decomposer.derive_extract_fields(query)` mantiene la precedenza deterministica quando la clausola espone i campi. Se `fields` e' omesso, `extract_entries` esegue una sola inferenza locale bounded (max 8 chiavi normalizzate e validate) e poi applica la normale estrazione tipizzata; un `fields` esplicito malformato fallisce chiuso. Il guard sites inserisce idempotentemente `read_sites -> extract_entries -> describe_entries`, senza costanti per sito, record o campo. Guard `test_ensure_extract_clause.py` + `test_sites_structured_extraction.py`.
 - **Hedge anti producer-bias** (9/6): `proposer_metis._n_candidates` N=2 se intent.verb side-effecting (`_is_action_verb`, SoT `vocab.ACTIONS−SAFE_VERBS` — sostituisce gating-confidence morto B2); `_generate_grammar_multi` spende il budget SOLO come hedge pool-verbo se cand1 non azione-first E query con target literal (`_has_explicit_target` §4.2); telos-rank verb-match +0.2 decide + malus −0.3 step consecutivi duplicati. Prompt: `engine_proposer.j2` (it+en) pattern C azione-first su target nominato + regola FILLER-non-config-lookup.
 - **Shape FSM normalization**: `TurnLog.write()` normalizza ultimo step a `final_answer` se vuoto. Lint regex `^E*F?$`.
 - **Inproc tool catalog injection**: `loader._inject_inproc_tool_specs` + `BUILTIN_INPROC_SPECS` espone tool moduli runtime al catalog admin.
@@ -53,6 +102,7 @@
 - **Skill registry**: `runtime/skill_registry.py` espone `list_skills/enable/disable`, gating via `is_skill_enabled()`.
 - **Tassonomia skill 3-tier + confine skill↔backend** (ADR 0170): `tier ∈ {core, first_party, imported}` (`skills_catalog.skill_tier`). Backend=COME (config, `backend_resolver`), skill=SE/QUALI (attivazione/fiducia/packaging); ortogonali, dipendenza dichiarata UNA volta al backend, skill aggrega. Mono→multi provider = +backend +skill, 0 executor (`*_issues` resta canonico, provider→resolver). google-workspace = Tier 2 vendorizzata `executors/skills/google-workspace/`. Tier 3 = sandbox 7-layer (ADR 0159); pubblico spedisce solo Tier 1+2.
 - **Sandbox per-skill foundation** (ADR 0140 ext): `Executor.sandbox_profile/provenance/is_imported`. Audit `runtime/skill_audit.py`. Watchdog `jobs/skill_sandbox_watchdog.py`.
+- **Autorita' provider dichiarativa** (ADR 0193): `runtime/capabilities.py::effective_capabilities` risolve `when={arg,values}` fail-closed; `executor_standard._validate_authority` blocca binding provider mancanti/eccedenti/ignoti; `sandbox.invocation_skills` usa solo `provider:access` per executor conformi e mantiene i 5 segnali storici esclusivamente per i legacy. Guard: `test_capability_registry.py`, `test_executor_standard.py`, `test_sandbox_skill_backed.py`, `test_provider_axis_naming.py`.
 - **Catalog invariants al load**: `runtime/loader.py` rifiuta synth con collision verso handcrafted. `_gc_collisions` sposta i rejected in tmp.
 - **No synth ridondanti**: stage 1 NAMING preferisce canonical esistente se intent coperto.
 - **Synth_request short-circuit** (ADR 0076): `handle_synth_request` skip pre-cascata su catalog match.
@@ -76,7 +126,7 @@
 - **delete_files executor**: `executors/delete_files/` + `backends/files/local.py::delete_files` reversible.
 
 **Crawler / web**
-- **Pipeline web/news/scuola** (ADR 0081+0082+0098+0101+0105+0108): `{find_urls,read_urls_html,read_urls_pdf,login_session}`. Tier config `~/.config/metnos/{owned_domains,trusted_origins}.json`.
+- **Pipeline web/news/scuola** (ADR 0081+0082+0098+0101+0105+0108): `{find_urls,read_urls_html,read_urls_pdf,login_urls}`. Tier config `~/.config/metnos/{owned_domains,trusted_origins}.json`.
 - **Web crawl parallel** (ADR 0098): `runtime/host_throttle.py` Semaphore per-host. ThreadPoolExecutor cap.
 - **Crawler error_class** (ADR 0101): `read_urls_html._fetch_one` ritorna `(None, {error, error_class})`.
 - **HTTP cache disk** (ADR 0105): `runtime/http_cache.py` storage sharded sha. TTL via env.
@@ -88,11 +138,13 @@
 - **Install-on-demand** (ADR 0143 TODO): `runtime/system_binaries.py` whitelist. Error `binary_missing` → auto-inject admin step. Sudoers NOPASSWD `apt-get install -y *`. Whitelist guard in `runtime/system/admin.py`.
 - **Credenziali UX 3 strati** (ADR 0089+0091): `extract_credentials` regex + dialog `needs_inputs` (`orchestrate_needs_inputs`) + CLI `metnos-cli credentials`. Binding `_BINDING_STRONG/_WEAK`.
 - **Credenziali single store** (ADR 0131): `runtime/credentials.py` Fernet+HKDF, domain `smtp_<account>`. CLI `python3 -m credentials_migrate`.
-- **Sites intelligenti drop-in** (ADR 0188): `session_broker.op_login` + `credential_injection.perform_login` implementano consenso/scroll/landing/ingresso/username/continue/password/2FA con budget; `act_sites(search)` mantiene un goal post-login e riosserva menu bounded sotto un gate batch. Modello solo su ID enumerati e mai dopo fill; origine delegata via token one-shot ricontrollato; guard in `runtime/tests/test_sites_security.py`.
-- **Executor intelligenti a mandato ristretto** (ADR 0189): stesso contratto I/O e stessa autorita' di un executor normale; ciclo interno bounded, deterministic-first, postcondizione obbligatoria e handoff esplicito. Il catalogo per dominio e' generato da `scripts/generate_executor_catalog.py`; guard in `runtime/tests/test_executor_catalog_docs.py`.
+- **Sites intelligenti drop-in** (ADR 0188): `session_broker.op_login` + `credential_injection.perform_login` implementano consenso/scroll/landing/ingresso/username/continue/password/2FA con budget e postcondizione strutturale stabile, immune sia ai remount SPA transitori sia al form ancora visibile nel primo frame post-submit; ogni fallimento conserva evidenza redatta e chiude salvo handoff continuabile. `act_sites(search)` mantiene un goal post-login e riosserva menu bounded sotto un gate batch. Per richieste strutturate il runtime puo' reclutarlo con un target tipizzato ottenuto da un reducer locale bounded, estrattivo e `think=false`, senza esporre sintassi al planner. Modello solo su ID enumerati e mai dopo fill; origine delegata via token one-shot ricontrollato; guard in `tests/runtime/sites/test_sites_security.py` e `tests/runtime/sites/test_sites_structured_extraction.py`.
+- **Executor intelligenti a mandato ristretto** (ADR 0189): stesso contratto I/O e stessa autorita' di un executor normale; ciclo interno bounded, deterministic-first, postcondizione obbligatoria e handoff esplicito. Il catalogo per dominio e' generato da `scripts/generate_executor_catalog.py`; guard in `tests/runtime/executors/test_executor_catalog_docs.py`.
 
 **UI / output / i18n**
 - **Engine UI dichiarativo** (ADR 0090): `get_inputs(title, dialog=[...], fmt=...)`. Storage `runtime/dialog_pending.py` (path da `_C.PATH_USER_DATA`). Adapters Telegram + HTTP.
+- **Trasferimento conversazione fra browser** (ADR 0201): owner, `conversation_id` e lease `device_token` sono identità distinte. Un conflict offre sempre annulla / attiva la conversazione corrente / continua quella precedente; takeover one-shot owner-bound con ricontrollo del vecchio writer in `BEGIN IMMEDIATE`. Lease e conflitti sono indipendenti per `(user_id, channel)`; anche puntatore, token, command buffer e cronologia nel browser sono sotto `user_scope` (`metnos_chat_history:v3:<user_scope>:<conversation_id>`), con import legacy riservato all'host. `/agent/turns/recent` è owner+conversation-bound; `/agent/turn/submit` rifiuta lease revocate o discordanti. Guard: `test_active_sessions.py`, `test_http_session_endpoints.py`, `test_chat_session_integration.py`, matrice Playwright in `test_chat_dialog_lifecycle_browser.py`.
+- **Ogni scritta della chat è i18n** (ADR 0201): `chat.html`, `dialog_form.html` e `base_bare.html` usano lingua runtime e `msg()` per label, attributi accessibili, testo JS ed errori locali; niente dizionari per-lingua nel client. `test_chat_i18n_compliance.py` vieta prosa statica nei nodi/sink visibili; `test_seed_i18n_gate_keys.py` deriva le chiavi da entrambi i template e richiede IT+EN.
 - **Output formatter deterministico** (ADR 0095): `runtime/output_format.py` channel-agnostic markdown. NIENTE LLM.
 - **Channel-aware HTML** (ADR 0109+0110): `runtime/html_sanitizer.py::{to_safe_html, to_safe_html_full}`. Dispatch in `http_routes_agent::_safe_final_html`.
 - **Prompt-as-data + multilingua** (ADR 0092): `runtime/prompts/<lang>/<role>.j2`. `prompt_loader.get/compose()`. CLI `metnos-prompts`. Sub-dir lingua secondaria deve avere stesso set di `it/` (boot check).
@@ -127,7 +179,7 @@
 - **Proposals cleanup** (ADR 0096): `runtime/proposals_cleanup.py` 4 op (move + UPDATE, NIENTE delete).
 - **Lifecycle summary** (ADR 0097): `runtime/lifecycle_summary.py` aggregatore READ-ONLY ager.
 - **Inactivity-decay esenta gli handcrafted** (bug delete_persons 13/6, ROOT): `executor_aging.apply_executor_ager` salta `not _is_synth(source)` (contatore `handcrafted_skipped`) — SOLO i synth invecchiano per inattivita'. Simmetrico con `apply_feedback_ager` (efficacy) e col docstring del modulo; prima la decay notturna deprecava handcrafted core a basso uso (`delete_persons` 30gg) → fuori dal catalog composer (`filter_for_visibility`) → pool di routing senza l'unico provider → misroute silenzioso a un fratello (`delete_persons`→`delete_credentials`, falso successo §2.8). Data-fix one-off: undeprecate degli handcrafted on-disk deprecati per inattivita'. Guard `test_introvertive_loop_stress.py::test_handcrafted_never_ages_by_inactivity`.
-- **Routing bench = catalog composer** (§11 fidelity, 13/6): `bench/routing_subset_bench.py` usa `filter_for_visibility(load_catalog, VISIBILITY_COMPOSER)` (non più RAW): un executor routable deprecato spariva dal pool reale ma restava nel bench → guard verde mentre prod regrediva. Gold enrollment `delete_persons`/`get_persons` aggiunti.
+- **Routing bench = catalog composer** (§11 fidelity, 13/6): `tests/benchmarks/routing_subset_bench.py` usa `filter_for_visibility(load_catalog, VISIBILITY_COMPOSER)` (non più RAW): un executor routable deprecato spariva dal pool reale ma restava nel bench → guard verde mentre prod regrediva. Gold enrollment `delete_persons`/`get_persons` aggiunti.
 - **Strato-3 anti-deadlock su routing-change** (bug delete_persons 13/6): `agent_runtime._strato3_routing_changed` — prima di escalare al dialog 5-azioni (gate `consec≥3`), ricostruisce la pipeline che il sistema proporrebbe ORA con le funzioni di produzione (`build_routing_pool` + `get_proposer().propose`, NESSUNA esecuzione, propose memoizzato → 0 costo extra nel turno reale) e confronta la firma col rejected-set: se è NUOVA (mai bocciata) NON escala → i ✗ stantii di un routing già corretto (fix intent/vocab/undeprecate) non bloccano più in eterno. Fail-safe §2.8 (in dubbio escala). Guard `test_strato3_routing_change_guard.py`.
 - **Proposal auto-evaluator** (ADR 0122): `proposals_eta_index.py` + `proposal_evaluator.py` 6 killer + 7 signal. CLI `admin.proposals_cli evaluate`.
 - **Unified change_intent lifecycle** (ADR 0158): single object/FSM/UI `/admin/changes`. 6 kind. Storage sqlite. Jobs `change_intent_materialize/applier/observer`. Soft-deprecation `/admin/{proposals,promotions}`.
@@ -145,13 +197,16 @@
 **Project paths / config**
 - **PROJECT PATHS** (ADR 0079): `runtime/project_paths.json` mappa progetti → root.
 - **Config persistente** (Fase 12): `runtime/runtime_settings.py` + `~/.config/metnos/runtime.toml`. Hierarchy `env > toml > default`.
-- **Distribuzione public-subset** (ADR 0145 ext): `/opt/metnos` = baseline completo (`decisions/` TRACCIATO, `docs/` ignorato); repo pubblico = export deterministico `scripts/export-public.sh` (git ls-files − e2e/tests/bench/stress/internal/decisions/docs/CLAUDE.md/binari; IP funzionali→localhost; manifest firmati+`.sig` preservati). Audit `scripts/scrub-scan.sh [--strict]`. ADR/docs NON pubblici.
+- **Distribuzione public-subset** (ADR 0145 ext): `/opt/metnos` = baseline completo (`decisions/` TRACCIATO, `docs/` ignorato); repo pubblico = export deterministico `scripts/export-public.sh` (git ls-files − `tests/{e2e,runtime,benchmarks,stress,internal}`/decisions/docs/CLAUDE.md/binari; IP funzionali→localhost; manifest firmati+`.sig` preservati). Audit `scripts/scrub-scan.sh [--strict]`. ADR/docs NON pubblici.
 
 **PLANNER difese specifiche**
 - **PLANNER skip describe after health** (ADR 0111): 4 difese post `get_processes(include_health=true)`. Safety net `_prepend_health_block_if_any`.
 
 **Smoke / E2E / test infra**
-- **Executor-manifest gate** (7/7/2026): `runtime/tests/test_executor_manifests_gate.py` fa girare `run_all_tests.py` DENTRO pytest → la suite executor-manifest è parte del baseline tracciato, non più orfana (era referenziata solo in `export-public.sh` → 12 regressioni silenziose accumulate). ~30s.
+- **Quality gate E2E consecutivo** (ADR 0192): `tests/e2e/run.sh --quality-gate` + `quality_gate.py` richiedono 2 run consecutivi con zero errori/failure, 100% success, copertura eseguita >=95%, matrice stabile e almeno 280 test; soglie versionate in `quality_targets.json`.
+- **Corpus outcome evidence-based** (ADR 0192): `tests/e2e/corpus/extract.py::_infer_success` non equipara piu' `final_kind=answer` al successo; servono risultati executor esplicitamente riusciti, e `Corpus.positives` esclude i mutanti.
+- **E2E environment parity** (ADR 0192): `E2EServer` usa la `.venv` Metnos installata e `sandbox._build_bwrap_args` monta read-only il Python environment attivo; fixture realistiche preservano via symlink indici e workspace immagini senza copiarli.
+- **Executor-manifest gate** (7/7/2026): `tests/runtime/skills/test_executor_manifests_gate.py` fa girare `run_all_tests.py` DENTRO pytest → la suite executor-manifest è parte del baseline tracciato, non più orfana (era referenziata solo in `export-public.sh` → 12 regressioni silenziose accumulate). ~30s.
 - **Smoke battery** (`runtime/smoke.py`, ADR 0114 L5): OBBLIGATORIA pre `./deploy.sh`, post synth, daily, e tocchi a `prefilter.py`/`agent_runtime.py`/`synt_multistage.py`/`loader.py`.
 - **E2E driver baseline**: `server._copy_db_with_wal` + `_seed_i18n_baseline` sempre + lint regex `^E*F?$`.
 - **Judge prompt safety-aware**: `prompts/{it,en}/e2e_judge.j2` riconosce consensi (signature/mount/sudoer) come ok.
@@ -223,7 +278,21 @@
 - **Task mai sospeso su dialogo sites**: host o azione fuori envelope -> `mandate_scope_exceeded`, fail-closed; configurazione soltanto in un run interattivo.
 - **Topologia verificata**: il mandato usa solo `session_open`, `approved_*` e `credential_origin_approval` dell'audit; host meramente osservati esclusi.
 - **Continuazione risultati bounded**: load-more/next contestuale, max 6, stop su contenuto invariato/ripetuto, aggregazione pagine senza duplicati.
+**Stealth Sites ADR 0191 (15/7/2026)**
+- **Superficie e tecniche ortogonali**: `sites_browser_mode=headless|side` e il registro `STEALTH_TECHNIQUES` attraversano replay/client/server e sono fissati nella sessione. Settings li raggruppa in Website browsing; `test_sites_stealth.py` verifica mode, binding e UI.
+- **Variante esatta, nessun fallback**: `session_broker.op_open` passa `(browser_mode, launch_browser_required(effective_techniques))`; CONTEXT/BEHAVIOR non abilitano WebDriver e side senza display fallisce esplicitamente.
 **Provenienza args — marcatura config + clamp backend (6/7/2026)**
-- **Politica marcatura `runtime_resolved`**: 20 config-args marcati / 10 esenti intent-bearing; tabella fonte-unica `runtime/tests/test_config_args_marking_policy.py` (6 test: nuovi config-args fuori tabella FALLISCONO; multi-provider files mai marcato; marcato mai required; `n_unmarked_config==0`), regole in `arg_provenance.is_intent_bearing_config`.
+- **Politica marcatura `runtime_resolved`**: 20 config-args marcati / 10 esenti intent-bearing; tabella fonte-unica `tests/runtime/infra/test_config_args_marking_policy.py` (6 test: nuovi config-args fuori tabella FALLISCONO; multi-provider files mai marcato; marcato mai required; `n_unmarked_config==0`), regole in `arg_provenance.is_intent_bearing_config`.
 - **Clamp enum-aware `resolve_backend_arg`**: il DEFAULT per-object non scavalca l'enum del TOOL (share_files gw-only rompeva su ogni share senza marker drive); l'ESPLICITO non è clampato (errore onesto «client non applicabile» §2.8). Callsite unico engine/executor.py con `args_schema`; `test_backend_resolver_enum_clamp.py`.
 - **Cap anti-runaway describe map-reduce**: `describe_entries._MR_MAX_ENTRIES` (env `METNOS_DESCRIBE_MR_MAX_ENTRIES`, default 100, 0=illimitato §2.4) limita il MAP alle prime N entries — senza tetto: 1759 chiamate LLM/~20min su «/tmp» (6/7). Nota utente NEL summary (MSG_DESCRIBE_TRUNCATED; il notice runtime salta i PROCESSOR) + campi §2.7. Test `test_describe_entries_cap.py::test_mapreduce_cap_*`.
+
+**Tutor F3/F4 e identità delle fonti (ADR 0202-0203, 28/7/2026)**
+- **Sonde chiuse dalla fonte**: `tutor.probes._REGISTRY` + `KnowledgeUnit.probe_refs`; audience prima dell'esecuzione, cache per utente/attore/ruolo/lingua, limiti e stati espliciti. Gate: `test_tutor_f3_f4.py::test_f3_probe_*`.
+- **Consegna letterale monouso**: `tutor.handoff.create_pending` + `orchestration._process_tutor_handoff`; owner, conversazione, hash clausola/catalogo, nonce e TTL, reclamo atomico prima di `run_turn`. Gate: test `test_f3_*handoff*` e certificatore F3.
+- **Apprendimento privato dopo il mode gate**: `tutor.gaps` + `tutor.associations`; niente query in chiaro, scope utente, TTL/cap, hash fonte+fingerprint embedder, feedback negativo rimuove, replay controfattuale. Gate: test F4 + `scripts/certify_tutor_f4.py`.
+- **Nome documento non è placement file**: `published_docs.resolve_reference` attesta nome/percorso/URL della sola pubblicazione; `tutor.service` vincola il retrieval allo `source_ref`, mentre modifica/uso operativo resta `ACT`. Gate: test `published_docs`, Tutor source binding e caso reale in `scripts/certify_tutor_f3.py`.
+
+**Virtualizzazione LLM: fast a tre livelli (ADR 0207, 5/8/2026)**
+- **Registro workload chiuso**: `runtime/llm_workloads.py` associa ogni workload a `fast.micro|fast.procedural|fast.fidelity|wise|creative|frontier`; nomi ignoti falliscono. Gate: `test_llm_six_tier_contracts.py`.
+- **Policy soltanto nel tier**: i consumer possono impostare tetto output, deadline, grammatica e tool schema, mai `temperature`/`think`/`reasoning_budget`; il guard AST copre runtime, executor e diagnostica distribuita. Gate: `test_llm_virtualization_boundaries.py`.
+- **Default e UI onesti**: i tre livelli `fast` ereditano il binding centrale e hanno policy esplicite nel router; `creative` può riusare il solo binding fisico di `wise` mantenendo la sua policy. `frontier` assente non ripiega sul locale. Installer, pagina Modelli e metadati Synt condividono lo stesso vocabolario. Gate: `test_llm_six_tier_contracts.py` + `test_virt_configuration_view.py`.

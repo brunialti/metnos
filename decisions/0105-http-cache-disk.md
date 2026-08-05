@@ -98,10 +98,10 @@ Determinismo §7.9: zero LLM, hashing + I/O atomico.
 
 ## Test plan
 
-`runtime/tests/test_http_cache.py` (10 test): canonical url, sharding,
+`tests/runtime/http/test_http_cache.py` (10 test): canonical url, sharding,
 TTL=0 disable, expired, atomic write, cleanup_older_than, key
 consistency. Tutti passano deterministicamente.
 
-`runtime/tests/test_read_urls_html.py` esistenti: 11/11 passano (no
+`tests/runtime/executors/test_read_urls_html.py` esistenti: 11/11 passano (no
 regressioni — il path cache e' opt-in, default ttl_s=900 ma vuoto al
 primo run).

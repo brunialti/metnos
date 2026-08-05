@@ -195,7 +195,7 @@ patterns).
 - `prompts/{it,en}/synt_naming.j2`/`synt_signature.j2` aggiornati con
   paragrafo `_empty` qualifier + 3 esempi cross-domain (events/files/
   dirs).
-- Test: `runtime/tests/test_find_events_empty.py` (10+ test inclusi
-  parser `size`), `runtime/tests/test_propose_and_fire_pipeline.py`
+- Test: `tests/runtime/executors/test_find_events_empty.py` (10+ test inclusi
+  parser `size`), `tests/runtime/learning/test_propose_and_fire_pipeline.py`
   (aggiornati i riferimenti a `find_events_empty`), nuovo blocco
   `_parse_size_to_minutes` 8 case (cf. workflow operativo).

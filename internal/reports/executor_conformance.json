@@ -1,0 +1,539 @@
+{
+  "schema_version": 2,
+  "standard": "metnos.executor/1.0",
+  "scope": "core-manifests",
+  "summary": {
+    "total": 17,
+    "states": {
+      "conformant_claim": 17
+    },
+    "risks": {
+      "high": 6,
+      "low": 11
+    },
+    "sources": {
+      "builtin": 17
+    },
+    "transports": {
+      "in-process": 17
+    },
+    "surfaces": {
+      "configured": 17
+    },
+    "structural_ready": 17,
+    "findings": 0,
+    "findings_by_code": {}
+  },
+  "executors": [
+    {
+      "name": "admin",
+      "path": "runtime/builtin_executor_contracts/admin/manifest.toml",
+      "domain": "unclassified",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "classify_entries",
+      "path": "runtime/builtin_executor_contracts/classify_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "compare_entries",
+      "path": "runtime/builtin_executor_contracts/compare_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "create_tasks",
+      "path": "runtime/builtin_executor_contracts/create_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_entries",
+      "path": "runtime/builtin_executor_contracts/delete_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "delete_tasks",
+      "path": "runtime/builtin_executor_contracts/delete_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "describe_entries",
+      "path": "runtime/builtin_executor_contracts/describe_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "describe_images",
+      "path": "runtime/builtin_executor_contracts/describe_images/manifest.toml",
+      "domain": "images",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "proposal-rejection",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "extract_entries",
+      "path": "runtime/builtin_executor_contracts/extract_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "intelligent",
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "budget-exhaustion",
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "proposal-rejection",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency",
+        "untrusted-observation"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "find_entries",
+      "path": "runtime/builtin_executor_contracts/find_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_skills",
+      "path": "runtime/builtin_executor_contracts/list_skills/manifest.toml",
+      "domain": "skills",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "list_tasks",
+      "path": "runtime/builtin_executor_contracts/list_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_tasks",
+      "path": "runtime/builtin_executor_contracts/read_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "read_tasks_history",
+      "path": "runtime/builtin_executor_contracts/read_tasks_history/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_skills",
+      "path": "runtime/builtin_executor_contracts/set_skills/manifest.toml",
+      "domain": "skills",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "set_tasks",
+      "path": "runtime/builtin_executor_contracts/set_tasks/manifest.toml",
+      "domain": "tasks",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "low",
+      "risk_axes": [],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "regression",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    },
+    {
+      "name": "write_entries",
+      "path": "runtime/builtin_executor_contracts/write_entries/manifest.toml",
+      "domain": "entries",
+      "source": "builtin",
+      "transport": "in-process",
+      "state": "conformant_claim",
+      "lifecycle": "active",
+      "risk": "high",
+      "risk_axes": [
+        "mutation"
+      ],
+      "findings": [],
+      "structural_ready": true,
+      "birth_tests": 1,
+      "signature_present": true,
+      "required_gates": [
+        "e2e",
+        "i18n-it-en",
+        "manifest",
+        "natural-paraphrases",
+        "postcondition",
+        "regression",
+        "repeat-interruption",
+        "reverse-or-nonreversible",
+        "signature",
+        "success-empty-invalid-dependency"
+      ],
+      "surfaces": [
+        "configured"
+      ],
+      "rejection_reasons": []
+    }
+  ]
+}

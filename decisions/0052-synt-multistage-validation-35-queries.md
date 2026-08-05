@@ -38,7 +38,7 @@ server itself reasons up to its 1024-token reasoning budget regardless
 of client-side flags), and stage 5 uses the same provider. Online
 fallback was never invoked, in keeping with the open-source-first
 preference recorded in ADR 0016. Raw outcomes are appended to
-`decisions/synt_stress/results_multistage_35.jsonl` and aggregated in
+`tests/stress/synt/results_multistage_35.jsonl` and aggregated in
 the companion `.summary.json`.
 
 The classifier of correctness for the multistage run is the natural

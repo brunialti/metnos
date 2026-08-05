@@ -1,0 +1,97 @@
+{
+  "query": "Come funziona la pagina Servizi? Poi cerca README.md",
+  "explanation_clause": "Come funziona la pagina Servizi?",
+  "action_clause": "cerca README.md",
+  "checks": {
+    "answer_is_handoff": true,
+    "semantic_mixed_detection": true,
+    "literal_action_preserved": true,
+    "literal_hash_bound": true,
+    "pending_created": true,
+    "owner_bound": true,
+    "closed_choices": true,
+    "service_probe_ok": true,
+    "catalog_version_bound": true,
+    "local_llm_observed_running": true,
+    "published_document_is_tutor": true,
+    "published_document_sources_bound": true,
+    "published_document_no_action": true,
+    "published_document_linked": true
+  },
+  "answer": {
+    "esito": "handoff",
+    "answer_md": "Chiedi a Metnos con una richiesta come quella di questo esempio: «Quali servizi sono attivi e come posso gestirli?»\n\nLa pagina **Servizi** è una sezione della chat web di Metnos che funge da cruscotto di monitoraggio e controllo per i processi installati. Ecco come funziona nel dettaglio:\n\n**Posizione e Accesso**\nLa pagina si trova nel percorso **Settings > Sistema > Servizi** (route `/admin/services`). È accessibile direttamente dalla chat web di Metnos.\n\n**Cosa Mostra**\nLa pagina elenca tutti i servizi installati, fornendo per ciascuno le seguenti informazioni:\n*   **Stato systemd**: Se il servizio è in esecuzione.\n*   **Salute applicativa**: Se il servizio è operativo e sano.\n*   **Installazione**: Conferma che il servizio è installato.\n*   **PID e Gruppo**: Identificativi tecnici del processo.\n*   **Azioni**: Dove disponibili, offre i pulsanti per **Avvia**, **Arresta** e **Riavvia** il servizio.\n\n**Aggiornamento**\nI dati nella pagina si aggiornano automaticamente ogni **15 secondi**.\n\n**Elenco dei Servizi Attuali**\nAttualmente sono presenti 10 servizi, suddivisi per ambito:\n\n*   **Core**:\n    *   **HTTP server**: Gestisce API, chat e Settings.\n    *   **Telegram daemon**: Gestisce il canale Telegram e le notifiche.\n    *   **Local language model**: Utilizza `llama-server` per i modelli locali.\n    *   **i18n translator**: Gestisce il riempimento differito delle traduzioni.\n*   **Website browsing**:\n    *   **Side display**: Display grafico virtuale del browser.\n    *   **Playwright sidecar**: Gestisce browser e sessioni Sites.\n*   **Search & geo**:\n    *   **SearXNG**: Motore di ricerca web.\n    *   **Geo server**: Geocoding locale tramite Photon/OSM.\n*   **Connectivity**:\n    *   **Cloudflare tunnel**: Permette l'accesso remoto alla chat.\n    *   **Issues sidecar**: Bridge locale per issue amministrative.\n\n**Nota Importante**\nQuesta pagina controlla i processi e le unità di servizio, ma **non è il registro delle skill** e non seleziona il fornitore per una singola richiesta di elaborazione. Serve a verificare lo stato operativo dell'infrastruttura sottostante.\n\nVuoi affidare ora a Metnos la parte operativa della richiesta? Sarà trattata come un nuovo turno, con gli stessi controlli e le stesse eventuali conferme.\n\n1. Continua con l’azione\n2. Annulla",
+    "source_ids": [
+      "knowledge:runtime-settings-services-it",
+      "knowledge:doc-public-metnos-glossario-v1-5a5705674e57-it-0042",
+      "knowledge:doc-public-skills-backends-04742f8dae1e-it-0003",
+      "knowledge:doc-public-http-api-0da31771129d-it-0004",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0001"
+    ],
+    "card_ids": [],
+    "score_band": "high",
+    "elapsed_ms": 13179,
+    "detection": "semantic_mixed_handoff",
+    "turn_id": "d3c0492525554180",
+    "repair_pass": 0,
+    "repair_missing": [],
+    "repair_remaining": [],
+    "handoff_query": "cerca README.md",
+    "handoff_created": true,
+    "pending_dialog_id": "c8e43d0be5e2476e",
+    "probe_statuses": [
+      [
+        "service_health",
+        "ok"
+      ]
+    ],
+    "gap_reason": ""
+  },
+  "document_query": "cosa contiene il file metnos_prospettive_estese_v1.html",
+  "document_source_ref": "docs/it/Metnos_Prospettive_Estese_v1.html",
+  "document_answer": {
+    "esito": "fondata",
+    "answer_md": "Il file **Metnos_Prospettive_Estese_v1.html** è una guida ufficiale (pubblicata all'indirizzo [Metnos — Prospettive estese](https://metnos.com/it/Metnos_Prospettive_Estese_v1)) che descrive le capacità operative, i confini e i criteri di evoluzione di Metnos.\n\nIl documento è strutturato nelle seguenti sezioni principali:\n\n1.  **Come leggere questa pagina**: Spiega che Metnos non è solo una chat, ma può cercare, leggere, trasformare contenuti e operare su dispositivi. Definisce cosa rende una capacità \"disponibile\" (executor attivo, policy, autorizzazioni) e cosa è solo un'architettura potenziale.\n2.  **File, documenti e indici locali**: Dettaglia le operazioni sui file autorizzati (ricerca, hash, lettura di PDF/CSV/immagini con OCR, creazione di indici locali).\n3.  **Servizi, account e altri sistemi**: Descrive come gli account configurati (email, calendari, Google Photos, browser autenticati) ampliano le operazioni di Metnos, mantenendo l'isolamento delle credenziali utente.\n4.  **Ciò che Metnos non osserva in autonomia**: (Titolo presente nell'indice, dettagli specifici non forniti nel contesto estratto).\n5.  **Proposte e iniziativa controllata**: (Titolo presente nell'indice, dettagli specifici non forniti nel contesto estratto).\n6.  **Web, luoghi e contenuti esterni**: (Titolo presente nell'indice, dettagli specifici non forniti nel contesto estratto).\n7.  **Telos e vaglio**: (Titolo presente nell'indice, dettagli specifici non forniti nel contesto estratto).\n8.  **Utenti, dispositivi e sessioni**: Riguarda appaiamento, isolamento e trasferimento di sessione.\n9.  **Vincoli che restano invarianti**: (Titolo presente nell'indice, dettagli specifici non forniti nel contesto estratto).\n10. **Esempi in linguaggio naturale**: Fornisce esempi pratici di richieste, specificando che i riferimenti alle impostazioni puntano alla chat web dell'istanza Metnos.\n11. **Approfondimenti tecnici**: Rimanda ad altre guide per architettura, catalogo executor, canali di chat, policy e guida rapida.\n\nIn sintesi, il file funge da manifesto delle funzionalità attuali e dei limiti di Metnos, distinguendo tra ciò che è operativo e ciò che è teorico.",
+    "source_ids": [
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0001",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0002",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0003",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0012",
+      "knowledge:doc-public-metnos-prospettive-estese-v1-a90a7f55d05c-it-0011"
+    ],
+    "card_ids": [],
+    "score_band": "high",
+    "elapsed_ms": 11584,
+    "detection": "published_document_reference",
+    "turn_id": "68d481bc3ef1490a",
+    "repair_pass": 0,
+    "repair_missing": [],
+    "repair_remaining": [],
+    "handoff_query": "",
+    "handoff_created": false,
+    "pending_dialog_id": "",
+    "probe_statuses": [],
+    "gap_reason": ""
+  },
+  "pending": {
+    "dialog_id": "c8e43d0be5e2476e",
+    "owner_user_id": "host",
+    "conversation_id": "f3-cert-conversation",
+    "timeout_s": 300,
+    "choices": [
+      "execute",
+      "cancel"
+    ],
+    "callback_type": "tutor_handoff",
+    "literal_query": "cerca README.md"
+  },
+  "llm_service": {
+    "unit": "llama-server.service",
+    "scope": "system",
+    "installed": true,
+    "active_state": "active",
+    "healthy": true,
+    "status": "running"
+  },
+  "passed": true
+}

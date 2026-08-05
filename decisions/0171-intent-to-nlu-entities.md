@@ -30,7 +30,7 @@ intent **scarno**: `{verb, object}` dal vocabolario chiuso §2.2, più due
 arricchimenti additivi — `actions=[{verb,object}, …]` per le query compound
 (ranking pool per-clausola, `runtime/engine/routing_pool.py:59`) e
 `implicit_actions` (ADR 0129). Una sola call LLM middle, ~370ms/query, verb+object
-100/100 sul corpus gold (`bench/intent_accuracy_bench.py`, 25 casi).
+100/100 sul corpus gold (`tests/benchmarks/intent_accuracy_bench.py`, 25 casi).
 
 Tutto ciò che NON è verbo/oggetto — i **valori** che diventano argomenti degli
 executor (quante foto, con chi, di quale anno, dove) — viene oggi ricostruito in
@@ -215,7 +215,7 @@ Tre domande, da rispondere con numeri reali sul corpus gold (.33, Qwen 3.6
   TIPI→arg, non valori→referenti. La risoluzione valore→referente (slug, finestra)
   è codice deterministico, non enumerazione.
 - **Regressione verb/object**: additivo per costruzione; il bench
-  `bench/intent_accuracy_bench.py` resta gate (25/25), esteso con assert
+  `tests/benchmarks/intent_accuracy_bench.py` resta gate (25/25), esteso con assert
   sull'estrazione entità (gold con `entities` attese), verb/object invariati.
 
 ### Lavoro generato (coda §J)

@@ -150,11 +150,11 @@ per orchestrazione, healthcheck, notification dispatch e cleanup.
 
 ## Test
 
-- `runtime/tests/test_build_orchestrator.py`: 11 case (start/stop/status,
+- `tests/runtime/infra/test_build_orchestrator.py`: 11 case (start/stop/status,
   unit naming, mock systemd-run, atomic rename, list active).
-- `runtime/tests/test_build_runner.py`: 11 case (resume, SIGTERM flush,
+- `tests/runtime/test_build_runner.py`: 11 case (resume, SIGTERM flush,
   progress schema, batch N=500 boundary).
-- `runtime/tests/test_async_lifecycle.py`: 10 case (healthcheck stale,
+- `tests/runtime/infra/test_async_lifecycle.py`: 10 case (healthcheck stale,
   notification dispatch, tmpcache sweep).
 - **32/32 PASS** post-implementazione.
 - Smoke regression IT 8/8 OK.

@@ -130,7 +130,7 @@ Work spawned:
   manifest fields (TOML `[fast_path]` block) and shrink `fast_path.py`
   to a loader.
 
-Tests: `runtime/tests/test_fast_path.py` — 29 cases (positive matches IT+EN,
+Tests: `tests/runtime/engine/test_fast_path.py` — 29 cases (positive matches IT+EN,
 robustness to case/punctuation/apostrophes/whitespace, negative matches,
 template rendering, error fallthrough, normalizer unit tests). Regression
 suite: 594 passed (8 pre-existing accepted failures unchanged). Smoke

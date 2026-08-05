@@ -1,0 +1,73 @@
+{
+  "certification_seed": {
+    "unit_id": "doc-public-metnos-glossario-v1-5a5705674e57-it-0026",
+    "source_hash": "sha256:99a7e72295077106307a1136cfb98d863f5c15f08f698a782ad7d6913fbb4845",
+    "embedding_fingerprint": "sha256:71b01bcc470a7582b5470cbf63fade847c13f886f1dea6936f3672690cddcdd5"
+  },
+  "associations": {
+    "owner_scoped": true,
+    "cases": [
+      {
+        "query_hash": "5a8433059cc5aabcc2411dde4f50ca887b17ef05f5cb4a2f46aeb74591356aa8",
+        "unit_id": "doc-public-metnos-glossario-v1-5a5705674e57-it-0026",
+        "baseline_rank": 3205,
+        "after_rank": 1,
+        "passed": true,
+        "reason": ""
+      }
+    ],
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failures": [],
+    "association_layer_after_mode_gate": true
+  },
+  "operational_boundary": [
+    {
+      "id": "boundary-action-file-search",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-mail",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-web",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-location",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-hash",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-schedule",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-site",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-github",
+      "passed": true,
+      "outcome": null
+    },
+    {
+      "id": "boundary-action-conversational",
+      "passed": true,
+      "outcome": null
+    }
+  ],
+  "passed": true
+}

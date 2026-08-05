@@ -172,9 +172,9 @@ eventi calendar". Da convertire in feature.
 - `runtime/templates/proposals_telos.html` (nuovo)
 - `runtime/templates/base.html` (+1 link nav)
 - `runtime/templates/dashboard.html` (+1 card)
-- `runtime/tests/test_alignment_engine.py` (22/22 PASS, ricalibrato +
+- `tests/runtime/infra/test_alignment_engine.py` (22/22 PASS, ricalibrato +
   classe `FormulaOrderingTests` con 3 test qualitativi)
-- `runtime/tests/test_telos_proposals_store.py` (nuovo, 19/19 PASS)
+- `tests/runtime/learning/test_telos_proposals_store.py` (nuovo, 19/19 PASS)
 - `docs/{it,en}/architecture/telos.html` cap.3+4+5
 
 **Backfill output:**

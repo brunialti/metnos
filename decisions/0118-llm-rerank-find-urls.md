@@ -76,7 +76,7 @@ sa riconoscere autorita' istituzionale dal contesto (`.gov.it ≈ .gov`,
 `runtime/prompts/{it,en}/web_rerank.j2`: nuovi 2 file, ~30 righe ciascuno.
 Pattern §6 (DEVI/NON DEVI/OK/ERRORE) + scala score esplicita.
 
-`runtime/tests/test_find_urls_llm_rerank.py`: 8 test (empty, single,
+`tests/runtime/executors/test_find_urls_llm_rerank.py`: 8 test (empty, single,
 LLM failure, JSON invalid, valid reorder, unknown URL skipped, empty
 top, code fence stripped).
 

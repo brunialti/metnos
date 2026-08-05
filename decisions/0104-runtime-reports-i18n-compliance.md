@@ -119,10 +119,10 @@ invariati (gallery, http_server dialog, pipeline_smoke topic, users e2e).
 
 ## Test
 
-- `runtime/tests/test_lifecycle_summary.py` — 8 PASS.
-- `runtime/tests/test_output_format.py` — 17 PASS.
-- `runtime/tests/test_orchestration.py` — 17 PASS.
-- `runtime/tests/test_auto_final_on_duplicate.py` — 22 PASS.
+- `tests/runtime/infra/test_lifecycle_summary.py` — 8 PASS.
+- `tests/runtime/engine/test_output_format.py` — 17 PASS.
+- `tests/runtime/engine/test_orchestration.py` — 17 PASS.
+- `tests/runtime/engine/test_auto_final_on_duplicate.py` — 22 PASS.
 - Spot-check `METNOS_LANG=en` su lifecycle_summary, output_format,
   orchestration: tutti 3 verdi (Lifecycle Summary EN, _Summary:_ prefix,
   Server status/Load/RAM/Disks/Services).

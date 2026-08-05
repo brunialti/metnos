@@ -61,7 +61,7 @@ heading dedicato, non mescolati al riassunto.
 - Wired in `handle_describe_entries` dopo `call_llm` e PRIMA della nota
   `MSG_DESCRIBE_TRUNCATED`.
 
-`runtime/tests/test_describe_entries_link_section.py`: 10 test
+`tests/runtime/entries/test_describe_entries_link_section.py`: 10 test
 coprono append, skip-on-coverage, file kind path, no url/path,
 fmt=json/bullet_list skip, html format, sanitize brackets, empty
 entries, cap a 10, nontext input passthrough.

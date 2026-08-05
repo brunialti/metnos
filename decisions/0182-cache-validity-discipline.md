@@ -46,4 +46,4 @@ Su cambio reale del mondo (executor editato/ri-firmato, capacità nuova nella fa
 - `loader`: l'oggetto Executor espone `digest` (parse di `[code].digest` già letto per la verifica).
 - Chiusi per costruzione: i due episodi del TODO CRUCIALE (negativo 25/6, positivo 3/7) + la falla alternative-cache (5/7).
 - La sig NON copre: cambi di prompt del proposer, versioni dei guard (coperti da ADR 0174+CP1), lessici. Se un giorno un piano dipendesse da altro stato, aggiungere un asse, non allargare questi.
-- Test: `runtime/tests/test_cache_validity.py` (sig-funzioni + hit→miss per entrambi gli assi su store temporanei + epoch nel key proposer).
+- Test: `tests/runtime/engine/test_cache_validity.py` (sig-funzioni + hit→miss per entrambi gli assi su store temporanei + epoch nel key proposer).

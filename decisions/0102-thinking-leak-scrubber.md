@@ -140,4 +140,4 @@ Un solo punto di scrubbing — tutti i ~30 path che assegnano
   §7.9 codice deterministico > LLM, §2.8 no silent failure.
 - ADR 0101 Z.ter/Z.quater (riferimento per stile soft-fail).
 - Bug live 7/5/2026 18:22 turn «Metis mythology comparison».
-- Test: `runtime/tests/test_thinking_leak_scrubber.py` (12/12).
+- Test: `tests/runtime/infra/test_thinking_leak_scrubber.py` (12/12).
