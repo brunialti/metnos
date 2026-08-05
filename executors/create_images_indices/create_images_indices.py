@@ -1117,7 +1117,7 @@ def invoke(args):
             if first.reason == "permission_denied" else "io_error",
             "error_code": "ERR_PERMISSION_DENIED"
             if first.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
-            "error": _msg("ERR_PERMISSION_DENIED")
+            "error": _msg("ERR_PERMISSION_DENIED", path=str(first.path))
             if first.reason == "permission_denied"
             else _msg("ERR_FILE_READ_FAILED", path=str(first.path)),
             "detail": first.reason,

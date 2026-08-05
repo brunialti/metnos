@@ -26,7 +26,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import format_exact_integer, run_stdio  # noqa: E402
+from executor_helpers import (  # noqa: E402
+    apply_skipped_branches, format_exact_integer, run_stdio, walk_failure,
+)
 from parallel_walk import parallel_walk  # noqa: E402
 from path_alias import resolve_path_with_alias  # noqa: E402
 
@@ -198,20 +200,11 @@ def invoke(args):
     entries = (all_entries if max_results == 0
                else all_entries[:max_results])
     truncated = len(entries) < available_total
-    failed = [{
-        "path": str(error.path),
-        "error_class": "permission_denied"
-        if error.reason == "permission_denied" else "io_error",
-        "error_code": "ERR_PERMISSION_DENIED"
-        if error.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
-        "error": _msg("ERR_PERMISSION_DENIED")
-        if error.reason == "permission_denied"
-        else _msg("ERR_FILE_READ_FAILED", path=str(error.path)),
-        "detail": error.reason,
-    } for error in walk.errors]
+    failed = [walk_failure(error.path, error.reason)
+              for error in walk.errors]
 
     out = {
-        "ok": not failed,
+        "ok": True,
         "entries": entries,
         "ok_count": len(entries),
         "fail_count": len(failed),
@@ -244,10 +237,7 @@ def invoke(args):
             symlinks=symlink_count_total,
             truncated=truncated,
         )
-    if failed:
-        out["error"] = failed[0]["error"]
-        if entries:
-            out["partial"] = True
+    apply_skipped_branches(out, failed, entries)
     if truncated:
         out.update({
             "truncated": True,

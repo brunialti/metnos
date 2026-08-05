@@ -23,7 +23,54 @@ from __future__ import annotations
 
 from typing import Any
 
+from messages import get as _msg
 from worker_policy import bounded_worker_count
+
+
+def walk_failure(path, reason: str) -> dict:
+    """Record di un ramo che una visita ricorsiva non ha potuto leggere.
+
+    Punto unico: ogni chiamante ricostruiva il dizionario a mano e ometteva
+    il segnaposto `{path}` del template, cosi' l'utente leggeva la graffa
+    grezza al posto del percorso.
+    """
+    denied = reason == "permission_denied"
+    return {
+        "path": str(path),
+        "error_class": "permission_denied" if denied else "io_error",
+        "error_code": (
+            "ERR_PERMISSION_DENIED" if denied else "ERR_FILE_READ_FAILED"),
+        "error": _msg(
+            "ERR_PERMISSION_DENIED" if denied else "ERR_FILE_READ_FAILED",
+            path=str(path)),
+        "detail": reason,
+    }
+
+
+def apply_skipped_branches(out: dict, failed: list, produced) -> None:
+    """Distingue «ricerca fallita» da «rami saltati» (§2.8, §2.11).
+
+    Un solo ramo illeggibile — sotto `/tmp` bastano le directory private di
+    systemd — annullava migliaia di risultati validi: la ricerca tornava
+    `ok=false` e il planner ripiegava su un fratello che falliva a sua volta.
+    Un risultato prodotto NON e' un fallimento: i rami non letti si
+    dichiarano, non affondano la risposta. Il fallimento resta quando la
+    visita non ha prodotto nulla, cioe' quando la base stessa e' illeggibile
+    o inesistente.
+
+    ``produced`` e' cio' che dimostra che l'operazione ha reso qualcosa: la
+    lista delle voci per una ricerca, il numero di file esaminati per un
+    confronto che puo' legittimamente non trovare nulla.
+    """
+    if not failed:
+        return
+    out["ok"] = bool(produced)
+    if produced:
+        out["partial"] = True
+        out["skipped_branches"] = len(failed)
+        out["skipped_paths"] = [record["path"] for record in failed[:10]]
+    else:
+        out["error"] = failed[0]["error"]
 
 
 def backup_file_for_undo(path) -> str:

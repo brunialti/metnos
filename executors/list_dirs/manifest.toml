@@ -35,7 +35,7 @@ en = "SCOPO: lists directories and files; recursive mode walks subdirectories in
 # sul device non dipende da uno shim aggiornato. §7.2 modulare, §7.3 generale.
 [code]
 files  = ["list_dirs.py", "path_alias.py"]
-digest = "sha256:0fe2a4b765ddb2a6ebedeba1cfa3758ad4efa2619fe9f6b2fbd0604b980bac2e"
+digest = "sha256:050904d1457a6806790100f6201fa16bb147a57650d0281e129c69eb8cf664a1"
 
 [args]
 type     = "object"

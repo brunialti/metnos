@@ -28,7 +28,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(parent / "runtime") for parent in Path(__file__).resolve().parents
     if (parent / "runtime" / "config.py").is_file()))
 
-from executor_helpers import format_exact_integer, run_stdio  # noqa: E402
+from executor_helpers import (  # noqa: E402
+    apply_skipped_branches, format_exact_integer, run_stdio, walk_failure,
+)
 from executor_workers import (  # noqa: E402
     assigned_workers,
     map_ordered,
@@ -339,19 +341,8 @@ def _batches(values: list, workers: int):
 
 
 def _failure(path: Path, reason: str) -> dict:
-    if reason == "permission_denied":
-        message = _msg("ERR_PERMISSION_DENIED")
-        code = "ERR_PERMISSION_DENIED"
-    else:
-        message = _msg("ERR_FILE_READ_FAILED", path=str(path))
-        code = "ERR_FILE_READ_FAILED"
-    return {
-        "path": str(path),
-        "error_class": "io_error",
-        "error_code": code,
-        "error": message,
-        "detail": reason,
-    }
+    """Ramo non letto, con lo stesso record delle altre visite ricorsive."""
+    return walk_failure(path, reason)
 
 
 def _markdown_code(value) -> str:
@@ -494,7 +485,12 @@ def invoke(args):
     recursive = bool(args.get("recursive", True))
     case_sensitive = bool(args.get("case_sensitive", False))
     by_size: dict[int, list[_FileStamp]] = defaultdict(list)
-    failed: list[dict] = []
+    # Due nature diverse di incompletezza, §2.8: un ramo non letto
+    # RESTRINGE l'ambito, un confronto non riuscito lascia INDECISO il
+    # verdetto di duplicato su un file che era in ambito. Il secondo non
+    # puo' presentarsi come ricerca riuscita: «0 duplicati» sarebbe falso.
+    skipped_branches: list[dict] = []
+    unresolved: list[dict] = []
     def _to_stamp(path, _kind, _depth, directory_entry):
         stat = directory_entry.stat(follow_symlinks=False)
         return _FileStamp(
@@ -521,7 +517,9 @@ def invoke(args):
     stamps = walk.items
     scan_truncated = walk.truncated
     for walk_error in walk.errors:
-        failed.append(_failure(walk_error.path, walk_error.reason))
+        # Ramo non letto: riduce l'ambito, non falsifica il confronto.
+        skipped_branches.append(
+            _failure(walk_error.path, walk_error.reason))
     for stamp in stamps:
         by_size[stamp.size].append(stamp)
     scanned_files = len(stamps)
@@ -565,7 +563,7 @@ def invoke(args):
                     raw_batch, _sample_digest_stable,
                     workers=sample_workers)):
             if digest is None:
-                failed.append(_failure(stamp.path, reason or "sample_failed"))
+                unresolved.append(_failure(stamp.path, reason or "sample_failed"))
                 continue
             sampled_files += 1
             samples_by_key[stamp.cache_key] = digest
@@ -608,7 +606,7 @@ def invoke(args):
                 batch, _digest_jobs(
                     raw_batch, _sha256_stable, workers=hash_workers)):
             if digest is None:
-                failed.append(_failure(stamp.path, reason or "hash_failed"))
+                unresolved.append(_failure(stamp.path, reason or "hash_failed"))
                 continue
             hashed_files += 1
             hashed_bytes += stamp.size
@@ -652,8 +650,10 @@ def invoke(args):
     redundant_files_count = len(relations)
     results_truncated = bool(max_results and len(relations) > max_results)
     entries = relations if not max_results else relations[:max_results]
+    # Contratto pubblico invariato: `failed` resta l'unione delle due nature.
+    failed = unresolved + skipped_branches
     out = {
-        "ok": not failed,
+        "ok": not unresolved,
         "ok_count": len(entries),
         "fail_count": len(failed),
         "entries": entries,
@@ -689,10 +689,11 @@ def invoke(args):
             **({"alias_resolved": alias_note} if alias_note else {}),
         },
     }
-    if failed:
-        out["error"] = failed[0]["error"]
-        if scanned_files:
-            out["partial"] = True
+    # Il confronto indeciso resta un fallimento; il ramo saltato no.
+    if not unresolved:
+        apply_skipped_branches(out, skipped_branches, scanned_files)
+    elif skipped_branches:
+        out["skipped_branches"] = len(skipped_branches)
     if scan_truncated:
         out.update({
             "truncated": True,
