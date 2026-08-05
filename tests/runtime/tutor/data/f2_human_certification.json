@@ -242,7 +242,7 @@
    "route": "/admin/builds",
    "must_cover": [
     [
-     "Settings > Attività > Build indici"
+     "Settings > Attività > Creazione indici"
     ],
     [
      "directory"
@@ -525,6 +525,115 @@
     [
      "cloud"
     ]
+   ]
+  },
+  {
+   "id": "admin-virt-effective-config",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dove posso vedere quale embedder e quali modelli sono configurati davvero?",
+   "expected": "answer",
+   "route": "/admin/virt",
+   "must_cover": [
+    [
+     "Settings > Sistema > Modelli"
+    ],
+    [
+     "LLM"
+    ],
+    [
+     "embedding",
+     "embedder"
+    ],
+    [
+     "VLM",
+     "visione"
+    ],
+    [
+     "provider",
+     "fornitore"
+    ],
+    [
+     "modello"
+    ],
+    [
+     "endpoint"
+    ],
+    [
+     "effettiv"
+    ]
+   ]
+  },
+  {
+   "id": "admin-virt-source-errors",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "La pagina dei modelli mi dice anche da quale file arrivano i valori e se il TOML è sbagliato?",
+   "expected": "answer",
+   "route": "/admin/virt",
+   "must_cover": [
+    [
+     "file di configurazione"
+    ],
+    [
+     "override d'ambiente",
+     "variabile d'ambiente",
+     "variabili d'ambiente"
+    ],
+    [
+     "errore"
+    ],
+    [
+     "TOML"
+    ],
+    [
+     "sensibili",
+     "oscurati"
+    ],
+    [
+     "sola lettura",
+     "non modific",
+     "non sono modificabili"
+    ]
+   ]
+  },
+  {
+   "id": "installer-ui-connection",
+   "group": "admin_ui",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dopo l installazione, come apro la Web UI da questo server o da un altro dispositivo della LAN?",
+   "expected": "answer",
+   "route": "architecture/http_api",
+   "must_cover": [
+    [
+     "127.0.0.1"
+    ],
+    [
+     "install_summary.md"
+    ],
+    [
+     "URL LAN",
+     "indirizzo LAN"
+    ],
+    [
+     "esattamente",
+     "senza modifiche"
+    ],
+    [
+     "token"
+    ],
+    [
+     "non inoltrare",
+     "non esporre"
+    ]
+   ],
+   "must_not": [
+    "IP_DEL_SERVER",
+    "Settings > Sistema > Dispositivi",
+    "sidecar issue"
    ]
   },
   {
@@ -1248,14 +1357,19 @@
      "credenzial"
     ],
     [
-     "~/.config/metnos/mail",
-     "file"
+     "IMAP"
     ],
     [
-     "HOST_IMAP",
-     "IMAP"
+     "modulo",
+     "flusso",
+     "chiede"
+    ],
+    [
+     "cifrat",
+     "redatt"
     ]
-   ]
+   ],
+   "nota_evidenza": "L'attesa precedente pretendeva il percorso `~/.config/metnos/mail/<nome>.env` e il campo `HOST_IMAP`. Le fonti pubbliche lo documentano, ma come PERCORSO DI COMPATIBILITÀ E MIGRAZIONE, e dichiarano che «il vault cifrato ha precedenza» (`doc-public-mail-accounts-766a246aa389-it-0005`). Il meccanismo corrente è il modulo credenziali iniettato dal dominio (ADR 0199): Metnos chiede i campi in un flusso protetto e i segreti sono cifrati e sostituiti da un marcatore redatto prima del planner (`...-it-0006`). Il test misura ora quel meccanismo: insegnare il file insegnerebbe la via deprecata. Ratificato da Roberto il 26/7/2026."
   },
   {
    "id": "ops-mail-organize",
@@ -1574,6 +1688,54 @@
    "expected": "fallthrough"
   },
   {
+   "id": "boundary-action-mail-metnos-regression",
+   "group": "boundary",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Controlla se c'è posta metnos",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-action-mail-read-regression",
+   "group": "boundary",
+   "audience": "user",
+   "channel": "http",
+   "query": "Leggi le mie email",
+   "expected": "fallthrough"
+  },
+  {
+   "id": "boundary-observe-services",
+   "group": "boundary",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Qual è lo stato corrente dei servizi di Metnos?",
+   "expected": "observe",
+   "probe_id": "service_health",
+   "probes": {
+    "service_health": {
+     "total": 1,
+     "running": 1,
+     "degraded": 0,
+     "services": [
+      {
+       "key": "http",
+       "label": "Metnos HTTP",
+       "description": "Chat web e API",
+       "status": "running",
+       "installed": true,
+       "healthy": true,
+       "scope": "system"
+      }
+     ]
+    }
+   },
+   "must_cover": [
+    [
+     "Metnos HTTP"
+    ]
+   ]
+  },
+  {
    "id": "boundary-action-web",
    "group": "boundary",
    "audience": "user",
@@ -1635,7 +1797,7 @@
    "audience": "user",
    "channel": "http",
    "query": "Spiegami come funziona la ricerca dei file e poi cercami i PDF di luglio",
-   "expected": "clarification"
+   "expected": "handoff"
   },
   {
    "id": "boundary-mixed-services",
@@ -1643,7 +1805,7 @@
    "audience": "instance_admin",
    "channel": "http",
    "query": "Dimmi cosa mostra la pagina Servizi e riavvia il componente web",
-   "expected": "clarification"
+   "expected": "handoff"
   },
   {
    "id": "boundary-mixed-mail",
@@ -1651,6 +1813,16 @@
    "audience": "user",
    "channel": "http",
    "query": "Come si archiviano le email? Archivia anche quelle di ieri",
+   "action_literal": "Archivia anche quelle di ieri",
+   "expected": "handoff"
+  },
+  {
+   "id": "boundary-mixed-pending-preserved",
+   "group": "boundary",
+   "audience": "instance_admin",
+   "channel": "http",
+   "query": "Dimmi cosa mostra la pagina Servizi e riavvia il componente web",
+   "has_pending": true,
    "expected": "clarification"
   }
  ],

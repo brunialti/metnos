@@ -1,0 +1,329 @@
+{
+  "args_count_in_clause": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "base_path": "/opt/metnos/runtime",
+          "max_results": 5,
+          "pattern": "*.py",
+          "patterns": [
+            "*.py"
+          ]
+        },
+        "tool": "find_files"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "args_missing_path": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "path": "/opt/metnos/decisions"
+        },
+        "tool": "list_dirs"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "args_missing_pattern": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "base_path": "/tmp",
+          "pattern": "*.log",
+          "patterns": [
+            "*.log"
+          ]
+        },
+        "tool": "find_files"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "args_universal_pattern": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "base_path": "/tmp",
+          "pattern": "*.txt",
+          "patterns": [
+            "*.txt"
+          ]
+        },
+        "tool": "find_files"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "kakebo_dirty_pre_guard": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "client": "google_workspace",
+          "query": "KAKEBO SPESE 2026"
+        },
+        "tool": "find_files"
+      },
+      {
+        "args": {
+          "client": "google_workspace",
+          "name": "KAKEBO SPESE 2026"
+        },
+        "tool": "read_files"
+      },
+      {
+        "args": {
+          "fields": [
+            "data",
+            "descrizione",
+            "importo"
+          ],
+          "from_step": 2,
+          "instruction": "cerca su google drive il file KAKEBO SPESE 2026 e crea uno spreadsheet con tutti i dati: data, descrizione, importo",
+          "max_per_text": 500
+        },
+        "tool": "extract_entries"
+      },
+      {
+        "args": {
+          "from_step": 3,
+          "where_field": "data",
+          "where_regex": "^(?:2026)-"
+        },
+        "tool": "filter_entries"
+      },
+      {
+        "args": {
+          "client": "local",
+          "columns": [
+            "data",
+            "descrizione",
+            "importo"
+          ],
+          "from_step": 4
+        },
+        "tool": "create_files_spreadsheet"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "kakebo_drive_doc_to_sheet": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "client": "google_workspace",
+          "query": "KAKEBO SPESE 2026"
+        },
+        "tool": "find_files"
+      },
+      {
+        "args": {
+          "client": "google_workspace",
+          "from_step": 1,
+          "name": "KAKEBO SPESE 2026"
+        },
+        "tool": "read_files"
+      },
+      {
+        "args": {
+          "fields": [
+            "data",
+            "descrizione",
+            "importo"
+          ],
+          "from_step": 2,
+          "instruction": "cerca su google drive il file KAKEBO SPESE 2026 e crea uno spreadsheet con tutti i dati: data, descrizione, importo",
+          "max_per_text": 500
+        },
+        "tool": "extract_entries"
+      },
+      {
+        "args": {
+          "from_step": 3,
+          "where_field": "data",
+          "where_regex": "^(?:2026)-"
+        },
+        "tool": "filter_entries"
+      },
+      {
+        "args": {
+          "client": "local",
+          "columns": [
+            "data",
+            "descrizione",
+            "importo"
+          ],
+          "from_step": 4
+        },
+        "tool": "create_files_spreadsheet"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "l0_list_dirs_create": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "path": "C:\\Windows\\System32\\drivers\\etc",
+          "recursive": false
+        },
+        "tool": "list_dirs"
+      },
+      {
+        "args": {
+          "client": "local",
+          "columns": [
+            "path"
+          ],
+          "from_step": 1,
+          "title": "File in etc"
+        },
+        "tool": "create_files_spreadsheet"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "mail_delete_trash": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "query": "spam"
+        },
+        "tool": "find_messages"
+      },
+      {
+        "args": {
+          "dst_folder": "Trash",
+          "from_step": 1
+        },
+        "if_prev_entries_nonempty": true,
+        "tool": "move_messages"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "mail_to_sheet": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "time_window": "last-30d"
+        },
+        "tool": "read_messages"
+      },
+      {
+        "args": {
+          "fields": [
+            "importo",
+            "data"
+          ],
+          "from_step": 1,
+          "instruction": "leggi le mail con le fatture, estrai importo e data, e mettile in un foglio",
+          "batch_size": 8,
+          "drill_down": false,
+          "max_per_text": 20,
+          "max_sources": 500,
+          "max_total": 500
+        },
+        "tool": "extract_entries"
+      },
+      {
+        "args": {
+          "client": "local",
+          "columns": [
+            "importo",
+            "data"
+          ],
+          "from_step": 2
+        },
+        "tool": "create_files_spreadsheet"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "mono_get_now": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {},
+        "tool": "get_now"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  },
+  "poisoned_find_install_root": {
+    "fillers": {},
+    "final_message": "",
+    "steps": [
+      {
+        "args": {
+          "path": "C:\\Windows\\System32\\drivers\\etc"
+        },
+        "tool": "list_dirs"
+      },
+      {
+        "args": {
+          "client": "local",
+          "columns": [
+            "path"
+          ],
+          "title": "File in etc"
+        },
+        "tool": "create_files_spreadsheet"
+      },
+      {
+        "args": {},
+        "tool": "final_answer"
+      }
+    ]
+  }
+}

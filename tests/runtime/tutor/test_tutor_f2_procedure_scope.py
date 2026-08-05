@@ -11,8 +11,11 @@ primaria e' la stessa pagina, o non e' una pagina affatto, la procedura resta
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from tutor.compose import Composition
 from tutor.models import TutorPrincipal, TutorRequest
+from tutor.mode import ModeDecision
 from tutor.semantic import SemanticContext, SourceHit
 from tutor.service import answer_request
 from tutor.sources import KnowledgeUnit
@@ -41,10 +44,19 @@ def _principal() -> TutorPrincipal:
 
 def _run(monkeypatch, hits):
     seen: dict[str, str] = {}
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: ())
+    monkeypatch.setattr(
+        "tutor.catalog.load_request_snapshot",
+        lambda: SimpleNamespace(
+            version="sha256:test-catalog", cards=(),
+            units=tuple(hit.unit for hit in hits if hit.unit is not None),
+            card_index=None, knowledge_index=None,
+        ),
+    )
     monkeypatch.setattr("tutor.service.retrieve_sources",
                         lambda *a, **k: SemanticContext(hits, top_score=0.9))
-    monkeypatch.setattr("tutor.mode.classify_mode", lambda *a, **k: "EXPLAIN")
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *a, **k: ModeDecision("EXPLAIN", True))
 
     def fake_compose(**kwargs):
         seen["context"] = kwargs["context"]

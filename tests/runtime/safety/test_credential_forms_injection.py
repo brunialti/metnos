@@ -76,6 +76,28 @@ def test_unknown_source_is_ignored():
     assert args == {}
 
 
+def test_scheduler_health_source_overwrites_untrusted_value(monkeypatch):
+    observation = {
+        "component": "scheduler_v2", "state": "running",
+        "healthy": True, "reason_code": "loop_active",
+    }
+    monkeypatch.setitem(
+        agent_runtime._RUNTIME_ARG_SOURCES,
+        "scheduler_health", lambda: observation,
+    )
+    executor = SimpleNamespace(
+        name="get_processes", args_schema={"properties": {
+            "scheduler_health": {
+                "type": "object", "runtime_resolved": True,
+                "runtime_source": "scheduler_health",
+            },
+        }},
+    )
+    args = agent_runtime._fill_runtime_sourced_args(
+        executor, {"scheduler_health": {"state": "failed"}})
+    assert args["scheduler_health"] == observation
+
+
 def test_server_side_collector_matches_live_catalog():
     """Nel processo server (chiavi trusted presenti) il collettore raccoglie
     i 4 domini dichiaranti correnti; l'iniezione end-to-end li consegna."""

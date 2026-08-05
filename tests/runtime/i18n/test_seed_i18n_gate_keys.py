@@ -10,10 +10,100 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+import re
 from pathlib import Path
 
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 _SEED_DB = _RUNTIME.parent / "install" / "data" / "i18n_seed.sqlite"
+_CHAT_TEMPLATE = _RUNTIME / "templates" / "chat.html"
+_DIALOG_TEMPLATE = _RUNTIME / "templates" / "dialog_form.html"
+_BUILDS_TEMPLATE = _RUNTIME / "templates" / "builds.html"
+_SERVICES_TEMPLATE = _RUNTIME / "templates" / "services.html"
+_SERVICE_HEALTH_MONITOR = _RUNTIME / "service_health_monitor.py"
+
+# La chat e' una superficie i18n completa: il gate ricava le chiavi dal
+# template, quindi ogni nuova label Jinja/JavaScript diventa automaticamente
+# obbligatoria in IT+EN sul fresh install. Le chiavi d'errore delle API di
+# sessione non compaiono nel template ma possono essere mostrate dalla chat.
+_REQUIRED_CHAT_SERVER_KEYS = (
+    "ERR_CHAT_SESSION_WRITE_DENIED",
+    "ERR_CHAT_SESSION_REGISTER",
+    "ERR_CHAT_SESSION_RESOLUTION_TOKEN",
+    "ERR_CHAT_SESSION_RESOLUTION_CHANGED",
+    "ERR_CHAT_SESSION_TOKEN_REQUIRED",
+    "ERR_CHAT_CONVERSATION_REQUIRED",
+    "ERR_CHAT_CONVERSATION_FORBIDDEN",
+    "ERR_DIALOG_PARSE_KIND",
+    "MSG_APPROVAL_ACCEPTED",
+    "MSG_APPROVAL_REJECTED",
+    "MSG_APPROVAL_QUESTION",
+    "MSG_APPROVAL_METADATA",
+    "MSG_APPROVAL_TERRITORY_SESSION",
+    "MSG_APPROVAL_TERRITORY_PERMANENT",
+    "MSG_REVERSIBILITY_REVERSIBLE",
+    "MSG_REVERSIBILITY_IRREVERSIBLE",
+    "MSG_REVERSIBILITY_PARTIAL",
+    "ERR_EXECUTOR_CATALOG_EMPTY",
+    "MSG_DESCRIBE_DIRECT_LINKS",
+    "MSG_DESCRIBE_PATHS",
+    "MSG_UNTITLED",
+)
+
+
+def _required_chat_keys() -> tuple[str, ...]:
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (_CHAT_TEMPLATE, _DIALOG_TEMPLATE)
+    )
+    template_keys = set(re.findall(r"msg\(\s*['\"]([A-Z0-9_.-]+)['\"]", source))
+    return tuple(sorted(template_keys | set(_REQUIRED_CHAT_SERVER_KEYS)))
+
+
+def _required_build_keys() -> tuple[str, ...]:
+    """Chiavi letterali possedute dalla pagina Settings > Creazione indici."""
+    source = _BUILDS_TEMPLATE.read_text(encoding="utf-8")
+    return tuple(sorted(set(
+        re.findall(r"msg\(\s*['\"]([A-Z0-9_.-]+)['\"]", source)
+    )))
+
+
+_REQUIRED_UI_SERVICES_DYNAMIC_KEYS = (
+    "UI_SERVICES_ACTION_START",
+    "UI_SERVICES_ACTION_STOP",
+    "UI_SERVICES_ACTION_RESTART",
+    "UI_SERVICES_STATUS_RUNNING",
+    "UI_SERVICES_STATUS_FAILED",
+    "UI_SERVICES_STATUS_DEGRADED",
+    "UI_SERVICES_STATUS_TRANSITIONING",
+    "UI_SERVICES_STATUS_MISSING",
+    "UI_SERVICES_STATUS_STOPPED",
+    "UI_SERVICES_DESIRED_RUNNING",
+    "UI_SERVICES_DESIRED_STOPPED",
+    "UI_SERVICES_SCOPE_USER",
+    "UI_SERVICES_SCOPE_SYSTEM",
+)
+
+
+def _required_services_keys() -> tuple[str, ...]:
+    """Literal and dynamically composed keys owned by Settings > Services."""
+    source = _SERVICES_TEMPLATE.read_text(encoding="utf-8")
+    literal = {
+        key for key in re.findall(
+            r"msg\(\s*['\"]([A-Z0-9_.-]+)['\"]", source,
+        )
+        if not key.endswith("_")
+    }
+    return tuple(sorted(
+        literal | set(_REQUIRED_UI_SERVICES_DYNAMIC_KEYS)
+    ))
+
+
+def _required_service_alert_keys() -> tuple[str, ...]:
+    """Keys rendered by the transition-based administrator notifier."""
+    source = _SERVICE_HEALTH_MONITOR.read_text(encoding="utf-8")
+    return tuple(sorted(set(re.findall(
+        r"messages\.get\(\s*[\"']([A-Z0-9_.-]+)[\"']", source,
+    ))))
 
 # Chiavi user-facing introdotte dal flusso gate-resume/consenso (20/6) +
 # gate mutazioni-di-massa (6/7).
@@ -47,6 +137,7 @@ _REQUIRED_KEYS = (
     "MSG_DIALOG_STEP_REPROMPT",
     "MSG_DIALOG_TEMPORARILY_UNAVAILABLE",
     "MSG_CONSENT_GATE_MASS_MUTATION",
+    "MSG_CONSENT_GATE_MASS_MUTATION_GENERIC",
     "MSG_ACTION_DELETE",
     "MSG_ACTION_MOVE",
     "MSG_LOCAL_HERE",
@@ -73,10 +164,79 @@ _REQUIRED_UPLOAD_KEYS = (
 
 _REQUIRED_EXECUTOR_STANDARD_KEYS = (
     "MSG_SYNTH_CANDIDATE_CREATED",
+    "ERR_SYNTH_EXPECTED_NAME_REQUIRED",
+    "ERR_SYNTH_MULTISTAGE_FAILED",
+    "MSG_SYNTH_ALREADY_AVAILABLE",
+    "MSG_SYNTH_CANONICAL_REDIRECT",
+    "MSG_SYNTH_IMPORTED_REDIRECT",
+    "MSG_SYNTH_BINDING_REDIRECT",
+    "MSG_SYNTH_PROGRESS_START",
+    "MSG_SYNTH_PROGRESS_INTERRUPTED",
+    "MSG_SYNTH_PROGRESS_INSTALL_FAILED",
+    "MSG_SYNTH_PROGRESS_REJECTED",
+    "MSG_SYNTH_PROGRESS_ABANDONED",
+    "MSG_SYNTH_REASON_OUT_OF_VOCAB",
+    "MSG_SYNTH_REASON_STAGE_ERROR",
+    "PROMPT_SYNTH_TOOL_DESCRIPTION",
+    "PROMPT_SYNTH_EXPECTED_NAME",
+    "PROMPT_SYNTH_INTENT",
     "ERR_FILE_READ_FAILED",
     "ERR_WORKSHEET_INDEX_INVALID",
     "ERR_WORKSHEET_NOT_FOUND",
     "ERR_PERSONS_REGISTRY_UNAVAILABLE",
+)
+
+_REQUIRED_STRATO3_KEYS = (
+    "MSG_STRATO3_TITLE",
+    "MSG_STRATO3_DESCRIPTION",
+    "MSG_STRATO3_PROMPT",
+    "MSG_STRATO3_ACTION_RETRY",
+    "MSG_STRATO3_ACTION_SYNTH",
+    "MSG_STRATO3_ACTION_FRONTIER",
+    "MSG_STRATO3_ACTION_REFORMULATE",
+    "MSG_STRATO3_ACTION_ABANDON",
+    "PROMPT_STRATO3_SYNTH_QUERY",
+    "PROMPT_STRATO3_FRONTIER_QUERY",
+)
+
+_REQUIRED_CHANNEL_KEYS = (
+    "MSG_TELEGRAM_PHOTO_BATCH_CAPTION",
+)
+
+_REQUIRED_PROMOTER_DIGEST_KEYS = (
+    "MSG_PROMOTER_BUTTON_CONFIRM",
+    "MSG_PROMOTER_BUTTON_ROLLBACK",
+    "MSG_PROMOTER_BUTTON_OPEN_REVIEW",
+    "MSG_PROMOTER_DIGEST_HEADER",
+    "MSG_PROMOTER_DIGEST_GRACE_UNTIL",
+    "MSG_PROMOTER_DIGEST_NO_EXAMPLE",
+    "MSG_PROMOTER_DIGEST_FOOTER",
+    "MSG_PROMOTER_AGGREGATED_BODY",
+)
+
+_REQUIRED_PROMOTER_EXAMPLE_KEYS = (
+    "MSG_PROMOTER_COMMENTARY_TITLE",
+    "MSG_PROMOTER_COMMENTARY_UNAVAILABLE",
+    "MSG_PROMOTER_EXAMPLE_CALLS_60D",
+    "MSG_PROMOTER_EXAMPLE_CURRENT_PIPELINE",
+    "MSG_PROMOTER_EXAMPLE_DOES_NOT_REPLACE",
+    "MSG_PROMOTER_EXAMPLE_NEW_PIPELINE",
+    "MSG_PROMOTER_EXAMPLE_QUERY",
+    "MSG_PROMOTER_EXAMPLE_REPLACEMENT_SHARE",
+    "MSG_PROMOTER_EXAMPLE_REPLACES",
+    "MSG_PROMOTER_EXAMPLE_SCOPE_MUTATIONS",
+    "MSG_PROMOTER_EXAMPLE_SCOPE_OTHER",
+    "MSG_PROMOTER_EXAMPLE_SCOPE_READS",
+    "MSG_PROMOTER_EXAMPLE_SYNTHETIC_QUERY",
+    "MSG_PROMOTER_EXAMPLE_UNDEFINED",
+    "MSG_PROMOTER_INSUFFICIENT_DATA",
+    "MSG_PROMOTER_PERF_FREQUENCY_MISSING",
+    "MSG_PROMOTER_PERF_FREQUENCY_VALUE",
+    "MSG_PROMOTER_PERF_TIME_MISSING",
+    "MSG_PROMOTER_PERF_TIME_VALUE",
+    "MSG_PROMOTER_PERF_TITLE",
+    "MSG_PROMOTER_PERF_TOKENS_MISSING",
+    "MSG_PROMOTER_PERF_TOKENS_VALUE",
 )
 
 # Dominio sites F1/F2: tassonomia login + gate azioni sensibili. Queste chiavi
@@ -141,6 +301,7 @@ _REQUIRED_TRUNCATION_KEYS = (
     "MSG_OBJECT_URLS",
     "MSG_OBJECT_PATHS",
     "MSG_OBJECT_FILES",
+    "MSG_OBJECT_DUPLICATE_FILES",
     "MSG_OBJECT_EVENTS",
     "MSG_OBJECT_PROPOSALS",
     "MSG_OBJECT_IMAGE_FILES",
@@ -196,6 +357,16 @@ _REQUIRED_TUTOR_KEYS = (
     "MSG_TUTOR_ADMIN_REQUIRED",
     "MSG_TUTOR_CATALOG_INCOMPLETE",
     "MSG_TUTOR_UNAVAILABLE",
+    "MSG_TUTOR_HANDOFF_TITLE",
+    "MSG_TUTOR_HANDOFF_DESCRIPTION",
+    "MSG_TUTOR_HANDOFF_PROMPT",
+    "MSG_TUTOR_HANDOFF_CONTINUE",
+    "MSG_TUTOR_HANDOFF_CANCEL",
+    "MSG_TUTOR_HANDOFF_CANCELLED",
+    "MSG_TUTOR_HANDOFF_INVALID",
+    "MSG_TUTOR_HANDOFF_STALE",
+    "MSG_TUTOR_HANDOFF_REPLAYED",
+    "MSG_TUTOR_HANDOFF_FAILED",
 )
 
 
@@ -267,6 +438,78 @@ _REQUIRED_UI_CHANGE_KEYS = (
     "UI_CHANGE_DEPRECATION_LINK",
 )
 
+_REQUIRED_UI_VIRT_KEYS = (
+    "UI_SETTINGS_SKIP_CONTENT",
+    "UI_SETTINGS_MENU_TOGGLE",
+    "UI_SETTINGS_CHAT",
+    "UI_SETTINGS_CONSOLE",
+    "UI_SETTINGS_NAV_ARIA",
+    "UI_SETTINGS_LOGOUT",
+    "UI_VIRT_PAGE_TITLE",
+    "UI_VIRT_EYEBROW",
+    "UI_VIRT_TITLE",
+    "UI_VIRT_LEAD",
+    "UI_VIRT_REFRESH",
+    "UI_VIRT_RELOAD",
+    "UI_VIRT_REDACTION_NOTE",
+    "UI_VIRT_BINDING",
+    "UI_VIRT_GENERATION_POLICY",
+    "UI_VIRT_PARAMETERS",
+    "UI_VIRT_EDIT",
+    "UI_VIRT_SAVE",
+    "UI_VIRT_CANCEL",
+    "UI_VIRT_RESET",
+    "UI_VIRT_RESET_CONFIRM",
+    "UI_VIRT_SAVED",
+    "UI_VIRT_RESET_DONE",
+    "UI_VIRT_EDIT_ERROR_CONFLICT",
+    "UI_VIRT_EDIT_ERROR_INVALID",
+    "UI_VIRT_EDIT_ERROR_WRITE",
+    "UI_VIRT_CONFIG_FILE",
+    "UI_VIRT_STATUS",
+    "UI_VIRT_STATUS_INVALID",
+    "UI_VIRT_STATUS_CONFIGURED",
+    "UI_VIRT_STATUS_DEFAULTS",
+    "UI_VIRT_ENV_OVERRIDE",
+    "UI_VIRT_ERROR",
+    "UI_VIRT_ERROR_TOML",
+    # ADR 0207: fast/middle/wise mancanti nel file ricadono sul binding
+    # predefinito, quindi le due diagnosi "tier obbligatorio assente" non
+    # sono piu' raggiungibili. Resta la sola diagnosi per-ruolo.
+    "UI_VIRT_ERROR_LLM_PROVIDER",
+    "UI_VIRT_ERROR_LLM_CONFIG",
+    "UI_VIRT_ORIGIN_CONFIGURED",
+    "UI_VIRT_ORIGIN_ALIAS",
+    "UI_VIRT_ORIGIN_FALLBACK",
+    "UI_VIRT_ORIGIN_DEFAULTS",
+    "UI_VIRT_VALUE_REDACTED",
+    "UI_VIRT_VALUE_SANITIZED",
+    "UI_VIRT_VALUE_TRUNCATED",
+    "UI_VIRT_NO_FIELDS",
+    "UI_VIRT_NO_ROLES",
+    "UI_VIRT_FAMILY_LLM",
+    "UI_VIRT_FAMILY_LLM_DESC",
+    "UI_VIRT_LLM_TIP",
+    "UI_VIRT_FAMILY_EMBEDDING",
+    "UI_VIRT_FAMILY_EMBEDDING_DESC",
+    "UI_VIRT_EMBEDDING_READONLY_TIP",
+    "UI_VIRT_FAMILY_VLM",
+    "UI_VIRT_FAMILY_VLM_DESC",
+    "UI_VIRT_VLM_TIP",
+    # Una descrizione per scheda: senza queste la pagina elenca sette nomi
+    # tecnici senza dire quale lavoro passa da ciascuno.
+    "UI_VIRT_ROLE_LLM_FAST_MICRO",
+    "UI_VIRT_ROLE_LLM_FAST_PROCEDURAL",
+    "UI_VIRT_ROLE_LLM_FAST_FIDELITY",
+    "UI_VIRT_ROLE_LLM_MIDDLE",
+    "UI_VIRT_ROLE_LLM_WISE",
+    "UI_VIRT_ROLE_LLM_CREATIVE",
+    "UI_VIRT_ROLE_LLM_FRONTIER",
+    "UI_VIRT_ROLE_EMBEDDING_TEXT",
+    "UI_VIRT_ROLE_EMBEDDING_IMAGE",
+    "UI_VIRT_ROLE_VLM_DEFAULT",
+)
+
 
 class TestSeedHasGateKeys(unittest.TestCase):
     def test_seed_file_exists(self):
@@ -288,6 +531,25 @@ class TestSeedHasGateKeys(unittest.TestCase):
                         txt and "<missing" not in txt,
                         f"seed manca {key}[{lang}] (rigenera install/data/"
                         f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_chat_keys_present_it_en(self):
+        required = _required_chat_keys()
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(required))), required,
+            )}
+        finally:
+            conn.close()
+        for key in required:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(
+                        text and "<missing" not in text,
+                        f"seed manca {key}[{lang}] per la finestra chat",
+                    )
 
     def test_upload_faceless_keys_present_it_en(self):
         conn = sqlite3.connect(str(_SEED_DB))
@@ -318,6 +580,27 @@ class TestSeedHasGateKeys(unittest.TestCase):
         finally:
             conn.close()
         for key in _REQUIRED_EXECUTOR_STANDARD_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(text and "<missing" not in text)
+
+    def test_strato3_and_promoter_keys_present_it_en(self):
+        required = (
+            _REQUIRED_STRATO3_KEYS
+            + _REQUIRED_PROMOTER_DIGEST_KEYS
+            + _REQUIRED_PROMOTER_EXAMPLE_KEYS
+            + _REQUIRED_CHANNEL_KEYS
+        )
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(required))), required,
+            )}
+        finally:
+            conn.close()
+        for key in required:
             for lang in ("it", "en"):
                 with self.subTest(key=key, lang=lang):
                     text = rows.get((key, lang))
@@ -392,6 +675,85 @@ class TestSeedHasGateKeys(unittest.TestCase):
                         txt and "<missing" not in txt,
                         f"seed manca {key}[{lang}] (rigenera install/data/"
                         f"i18n_seed.sqlite dalla i18n.sqlite di esercizio)")
+
+    def test_ui_virt_keys_present_it_en(self):
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(_REQUIRED_UI_VIRT_KEYS))),
+                _REQUIRED_UI_VIRT_KEYS,
+            )}
+        finally:
+            conn.close()
+        for key in _REQUIRED_UI_VIRT_KEYS:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(
+                        text and "<missing" not in text,
+                        f"seed manca {key}[{lang}] per Settings > Modelli",
+                    )
+
+    def test_ui_build_keys_present_it_en(self):
+        required = _required_build_keys()
+        self.assertTrue(required)
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(required))), required,
+            )}
+        finally:
+            conn.close()
+        for key in required:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(
+                        text and "<missing" not in text,
+                        f"seed manca {key}[{lang}] per Settings > Creazione indici",
+                    )
+
+    def test_ui_services_keys_present_it_en(self):
+        required = _required_services_keys()
+        self.assertTrue(required)
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(required))), required,
+            )}
+        finally:
+            conn.close()
+        for key in required:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(
+                        text and "<missing" not in text,
+                        f"seed manca {key}[{lang}] per Settings > Servizi",
+                    )
+
+    def test_service_alert_keys_present_it_en(self):
+        required = _required_service_alert_keys()
+        self.assertTrue(required)
+        conn = sqlite3.connect(str(_SEED_DB))
+        try:
+            rows = {(key, lang): text for key, lang, text in conn.execute(
+                "SELECT key, lang, text FROM i18n WHERE key IN ({})".format(
+                    ",".join("?" * len(required))), required,
+            )}
+        finally:
+            conn.close()
+        for key in required:
+            for lang in ("it", "en"):
+                with self.subTest(key=key, lang=lang):
+                    text = rows.get((key, lang))
+                    self.assertTrue(
+                        text and "<missing" not in text,
+                        f"seed manca {key}[{lang}] per gli avvisi servizi",
+                    )
 
     def test_honesty_keys_present_it_en(self):
         conn = sqlite3.connect(str(_SEED_DB))

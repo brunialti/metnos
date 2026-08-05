@@ -8,6 +8,7 @@ from types import SimpleNamespace
 _RUNTIME = (Path(__file__).resolve().parents[3] / "runtime")
 
 from engine.dispatch import (  # noqa: E402
+    _enforce_complete_sink_cardinality,
     _enforce_create_only_artifact_policy,
     _normalize_grouped_artifact_templates,
     _normalize_filter_operation_values,
@@ -133,6 +134,61 @@ def test_tabular_sink_schema_propagates_through_entry_transforms():
         "url", "title", "origin", "final_url", "confidence"]
     snapshot = out.to_dict()
     assert _propagate_sink_schema_to_extract(out).to_dict() == snapshot
+
+
+def _cardinality_catalog(*, sink_complete=True, producer_annotated=True):
+    producer_spec = {"type": "integer", "default": 500}
+    if producer_annotated:
+        producer_spec.update({
+            "pipeline_role": "presentation_limit",
+            "complete_value": 0,
+        })
+    sink_spec = {"type": "array"}
+    if sink_complete:
+        sink_spec["source_cardinality"] = "complete"
+    return [
+        SimpleNamespace(name="discover_records", args_schema={
+            "properties": {"limit": producer_spec}}),
+        SimpleNamespace(name="filter_records", args_schema={
+            "properties": {"entries": {"type": "array"}}}),
+        SimpleNamespace(name="persist_records", args_schema={
+            "properties": {"payload": sink_spec}}),
+    ]
+
+
+def test_complete_sink_lifts_implicit_presentation_cap_through_lineage():
+    fw = _framework(
+        ("discover_records", {"query": "x"}),
+        ("filter_records", {"from_step": 1}),
+        ("persist_records", {"from_step": 2}),
+    )
+    out = _enforce_complete_sink_cardinality(fw, _cardinality_catalog())
+    assert out.steps[0].args["limit"] == 0
+    snapshot = out.to_dict()
+    assert (_enforce_complete_sink_cardinality(out, _cardinality_catalog())
+            .to_dict() == snapshot)
+
+
+def test_complete_sink_preserves_explicit_source_limit():
+    fw = _framework(
+        ("discover_records", {"query": "x", "limit": 25}),
+        ("persist_records", {"from_step": 1}),
+    )
+    out = _enforce_complete_sink_cardinality(fw, _cardinality_catalog())
+    assert out.steps[0].args["limit"] == 25
+
+
+def test_cardinality_guard_requires_both_manifest_annotations():
+    for catalog in (
+        _cardinality_catalog(sink_complete=False),
+        _cardinality_catalog(producer_annotated=False),
+    ):
+        fw = _framework(
+            ("discover_records", {"query": "x"}),
+            ("persist_records", {"from_step": 1}),
+        )
+        before = fw.to_dict()
+        assert _enforce_complete_sink_cardinality(fw, catalog).to_dict() == before
 
 
 def test_grouped_report_virtual_key_is_resolved_from_declared_schema():

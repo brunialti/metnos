@@ -9,10 +9,13 @@ esplicito dei buchi, poi si consegna comunque (cap onesto, niente loop).
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from tutor.compose import Composition
 from tutor.models import TutorPrincipal, TutorRequest
+from tutor.mode import ModeDecision
 from tutor.semantic import SemanticContext, SourceHit
 from tutor.service import (
     _coverage_items, _find_gaps, _render_ledger, answer_request,
@@ -57,8 +60,9 @@ def _surface_complete_text(key: str = "changes") -> str:
 
     from ui_surfaces import by_key
     surface = by_key(key)
-    parts = [surface.route, "Fermati se qualcosa non torna."]
+    parts = [surface.route]
     parts += list(surface.visible("it")) + list(surface.controls("it"))
+    parts += list(surface.stop_conditions("it"))
     return " ".join(parts)
 
 
@@ -71,10 +75,19 @@ def _principal() -> TutorPrincipal:
 
 def _patch_context(monkeypatch, hits: tuple[SourceHit, ...]):
     context = SemanticContext(hits, top_score=0.9)
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: ())
+    monkeypatch.setattr(
+        "tutor.catalog.load_request_snapshot",
+        lambda: SimpleNamespace(
+            version="sha256:test-catalog", cards=(),
+            units=tuple(hit.unit for hit in hits if hit.unit is not None),
+            card_index=None, knowledge_index=None,
+        ),
+    )
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *a, **k: context)
-    monkeypatch.setattr("tutor.mode.classify_mode", lambda *a, **k: "EXPLAIN")
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *a, **k: ModeDecision("EXPLAIN", True))
 
 
 # ---------------------------------------------------------------- rilettura
@@ -83,7 +96,7 @@ def test_surface_gaps_route_items_and_stop_conditions():
     coverage = _coverage_items((_hit(_unit("ui_surface", key="changes")),))
     surface = coverage["surfaces"][0]
     assert surface["route"] == "/admin/changes"
-    assert surface["stop"] is True
+    assert surface["stop_conditions"]
 
     complete = _surface_complete_text("changes")
     assert _find_gaps(coverage, complete, "it") == []
@@ -92,9 +105,9 @@ def test_surface_gaps_route_items_and_stop_conditions():
     gaps = _find_gaps(coverage, without_route, "it")
     assert any("/admin/changes" in gap for gap in gaps)
 
-    without_stop = complete.replace("Fermati se", "Attenzione a")
+    without_stop = complete.replace(surface["stop_conditions"][0], "")
     gaps = _find_gaps(coverage, without_stop, "it")
-    assert any("stop conditions" in gap for gap in gaps)
+    assert any("stop condition" in gap for gap in gaps)
 
 
 def test_inflected_roots_cover_checklist_items():
@@ -246,7 +259,7 @@ def test_short_labels_need_every_word_at_root_level():
                 "surfaces": [{
                     "entry": "x", "label": "Timer", "route": "/admin/timers",
                     "visible": (), "controls": ("abilita", "esegui ora"),
-                    "stop": False,
+                    "stop_conditions": (),
                 }]}
     partial = ("Dalla pagina /admin/timers puoi abilitare un task oppure "
                "eseguire le operazioni previste.")
@@ -268,14 +281,16 @@ def test_identifier_labels_match_the_slug_the_answer_writes():
 
     text = "Copro le aree `events_empty` e `files_spreadsheet`."
     assert _root_hit("empty", text)
-    assert _label_covered("events_empty", text, set(), {})
-    assert not _label_covered("messages", text, set(), {})
+    assert _label_covered("events_empty", text, {})
+    assert not _label_covered("messages", text, {})
 
 
 def test_ledger_is_scoped_to_the_primary_page():
-    """Con una superficie primaria la checklist non porta le voci di ALTRE
-    pagine: il correttore spendeva l'unica ricomposizione sui buchi
-    sbagliati (misurato: 15 voci tutte estranee alla domanda)."""
+    """La checklist UI segue soltanto una superficie primaria.
+
+    Una pagina secondaria resta evidenza per il compositore, ma non diventa
+    una sezione obbligatoria in una risposta su un altro argomento.
+    """
 
     from tutor.service import _ledger_scope
 
@@ -285,8 +300,31 @@ def test_ledger_is_scoped_to_the_primary_page():
     scoped = _ledger_scope((users, changes, doc), users)
     assert users in scoped and doc in scoped
     assert changes not in scoped
-    # Primaria non-UI: nessuna pagina in competizione, nessuna restrizione.
-    assert _ledger_scope((doc, users, changes), doc) == (doc, users, changes)
+    # Primaria non-UI: le pagine secondarie non entrano nella checklist.
+    assert _ledger_scope((doc, users, changes), doc) == (doc,)
+
+
+def test_secondary_ui_surface_is_context_not_mandatory_coverage(monkeypatch):
+    """Regressione del turno 1ab456aa, senza codificare embedder o Modifiche."""
+
+    doc = _hit(_unit("capability_catalog", text="- modelli [configura]"))
+    surface = _hit(_unit("ui_surface", key="changes"))
+    _patch_context(monkeypatch, (doc, surface))
+    seen: dict[str, str] = {}
+
+    def fake_compose(**kwargs):
+        seen["context"] = kwargs["context"]
+        return Composition("answer", "Configura il modello nel file indicato.")
+
+    monkeypatch.setattr("tutor.compose.compose_answer", fake_compose)
+    answer = answer_request(TutorRequest(
+        "Come configuro questo componente?", "it", _principal()))
+    assert answer is not None and answer.repair_pass == 0
+    # La fonte secondaria è ancora leggibile dal compositore.
+    assert "knowledge:unit-ui_surface-changes-it" in seen["context"]
+    # Ma il ledger non impone percorso e contenuti della pagina.
+    ledger = seen["context"].split("[COVERAGE_LEDGER]")[-1]
+    assert "/admin/changes" not in ledger
 
 
 def test_composer_ledger_excludes_the_other_page(monkeypatch):

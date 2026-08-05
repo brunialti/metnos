@@ -30,7 +30,9 @@ def test_human_certification_corpus_is_broad_unique_and_safe():
     assert groups["boundary"] >= 12
     expected = Counter(case["expected"] for case in cases)
     assert expected["fallthrough"] >= 9
-    assert expected["clarification"] >= 3
+    assert expected["handoff"] >= 3
+    assert expected["clarification"] >= 1
+    assert expected["observe"] >= 1
 
 
 def test_every_canonical_admin_surface_has_multiple_human_checks():

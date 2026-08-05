@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -11,6 +12,7 @@ from tutor.cards import load_published
 from tutor.compose import Composition
 from tutor.detect import classify
 from tutor.models import TutorPrincipal, TutorRequest
+from tutor.mode import ModeDecision
 from tutor.semantic import (
     SemanticContext, SemanticMatch, SourceHit, retrieve, retrieve_sources,
 )
@@ -39,10 +41,26 @@ def _principal(audience: str = "instance_admin") -> TutorPrincipal:
     )
 
 
+def _patch_request_snapshot(monkeypatch, *, cards=(), units=(),
+                            version="sha256:test-catalog"):
+    """Install one internally consistent catalog generation for service tests."""
+
+    monkeypatch.setattr(
+        "tutor.catalog.load_request_snapshot",
+        lambda: SimpleNamespace(
+            version=version,
+            cards=tuple(cards),
+            units=tuple(units),
+            card_index=None,
+            knowledge_index=None,
+        ),
+    )
+
+
 def _route(monkeypatch, card_id: str | None, *, compose: bool = True,
            mode: str = "EXPLAIN"):
     cards = load_published()
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards)
     context = None
     if card_id:
         card = next(item for item in cards if item.card_id == card_id)
@@ -58,7 +76,8 @@ def _route(monkeypatch, card_id: str | None, *, compose: bool = True,
 
     monkeypatch.setattr("tutor.service.retrieve_sources", selected)
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: mode)
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision(mode, True))
     if compose:
         from tutor.compose import Composition
         monkeypatch.setattr(
@@ -220,6 +239,77 @@ def test_f2_corpus_is_explicit_dynamic_and_excludes_internal_sources():
     assert all("internal/" not in ref for ref in refs)
     assert all("turns/" not in ref and "logs/" not in ref for ref in refs)
     assert max(len(unit.semantic) for unit in units) < 1100
+    public_units = tuple(
+        unit for unit in units if unit.source_ref.startswith("docs/"))
+    assert public_units
+    assert all(unit.public_url.startswith("https://metnos.com/")
+               for unit in public_units)
+    assert all(not unit.public_url for unit in units
+               if not unit.source_ref.startswith("docs/"))
+
+
+def test_executor_parent_semantics_project_canonical_manifest_affinity_only():
+    units = build_knowledge_units()
+    move = next(
+        unit for unit in units
+        if unit.source_ref == "manifest:move_messages:it"
+    )
+    assert "archivio" in move.semantic.casefold()
+    assert "email" in move.semantic.casefold()
+    assert "SCOPO:" not in move.semantic
+    assert "archivio" not in move.text.casefold()
+    destination = next(
+        unit for unit in units
+        if unit.source_ref.startswith(
+            "manifest:move_messages:arg:dst_folder:it#")
+    )
+    assert "executor=move_messages" in destination.semantic
+    assert "archivio" in destination.semantic.casefold()
+    assert destination.text in destination.semantic
+    assert "affinity=" not in destination.text
+
+
+def test_tutor_context_exposes_only_canonical_public_document_links():
+    from dataclasses import replace
+
+    from tutor.service import _render_context
+
+    internal = _knowledge_unit()
+    public = replace(
+        internal,
+        unit_id="doc-public-guide-it-0001",
+        source_kind="manual",
+        authority="published_documentation",
+        source_ref="docs/it/guide.html#1",
+        public_url="https://metnos.com/it/guide",
+    )
+    public_hit = SourceHit(
+        source_type="knowledge", source_id=public.unit_id, lang="it",
+        score=0.9, unit=public,
+    )
+    internal_hit = SourceHit(
+        source_type="knowledge", source_id=internal.unit_id, lang="it",
+        score=0.8, unit=internal,
+    )
+    assert "public_url=https://metnos.com/it/guide" in _render_context(
+        public_hit, cards=(), audience="user")
+    assert "public_url=" not in _render_context(
+        internal_hit, cards=(), audience="user")
+
+
+def test_tutor_prompt_links_only_attested_public_documents():
+    from prompt_loader import get
+
+    for lang in ("it", "en"):
+        prompt = get("tutor_compose", lang)
+        assert "public_url=<URL>" in prompt
+        assert "Markdown" in prompt
+        assert "manifest" in prompt.casefold()
+
+    italian = get("tutor_compose", "it")
+    english = get("tutor_compose", "en")
+    assert "contraddice la premessa" in italian
+    assert "contradicts the question's premise" in english
 
 
 def test_f2_services_come_from_the_canonical_settings_registry():
@@ -232,7 +322,9 @@ def test_f2_services_come_from_the_canonical_settings_registry():
     assert all(unit.authority == "runtime_registry" for unit in units)
     assert all(unit.source_kind == "ui_surface" for unit in units)
     assert {unit.title for unit in units} == {
-        "Settings > Sistema > Servizi"}
+        "Settings > Sistema > Servizi",
+        "Settings > System > Services",
+    }
     assert all(len(unit.semantic) < 220 for unit in units)
     assert all("Inventario" in unit.semantic or "Inventory" in unit.semantic
                for unit in units)
@@ -246,6 +338,25 @@ def test_f2_services_come_from_the_canonical_settings_registry():
                for path in declared_source_files())
 
 
+def test_scheduler_diagnosis_is_typed_bilingual_and_live():
+    from tutor.sources import _observation_view_units
+
+    units = [
+        unit for unit in _observation_view_units()
+        if unit.observation_ref == "SCHEDULER_HEALTH"
+    ]
+    assert {unit.lang for unit in units} == {"it", "en"}
+    assert all(unit.audience == "instance_admin" for unit in units)
+    assert all(unit.authority == "runtime_registry" for unit in units)
+    assert all(unit.source_kind == "live_observation" for unit in units)
+    assert all(unit.observation_ref == "SCHEDULER_HEALTH" for unit in units)
+    italian = next(unit for unit in units if unit.lang == "it")
+    english = next(unit for unit in units if unit.lang == "en")
+    assert "Stato e salute del loop scheduler" in italian.semantic
+    assert "Scheduler-loop state and health" in english.semantic
+    assert "Payload e output" in italian.text
+
+
 def test_settings_navigation_and_tutor_share_the_canonical_ui_registry():
     from http_render import render_template
     from tutor.sources import _ui_surface_units, declared_source_files
@@ -255,13 +366,18 @@ def test_settings_navigation_and_tutor_share_the_canonical_ui_registry():
     surfaces = catalog()
     units = _ui_surface_units()
     procedures = sum(bool(surface.procedure("it")) for surface in surfaces)
-    assert len(units) == (len(surfaces) - 1) * 2 + procedures * 2
+    projected = tuple(surface for surface in surfaces
+                      if surface.key != "services")
+    expected_surface_units = sum(
+        2 + len(surface.visible("it")) + len(surface.visible("en"))
+        for surface in projected
+    )
+    assert len(units) == expected_surface_units + procedures * 2
     assert {unit.source_kind for unit in units} == {
         "ui_surface", "ui_procedure"}
     surface_by_key = {surface.key: surface for surface in surfaces}
     for unit in units:
-        key = unit.concept_id.removeprefix(
-            "runtime-ui-procedure-").removeprefix("runtime-ui-")
+        key = unit.source_ref.split(":")[2]
         assert unit.audience == surface_by_key[key].knowledge_audience
     assert any(path.name == "ui_surfaces.py"
                for path in declared_source_files())
@@ -283,6 +399,19 @@ def test_settings_navigation_and_tutor_share_the_canonical_ui_registry():
     for control in ("crea un guest", "emetti token", "salva le preferenze",
                     "elimina l'utente"):
         assert control in users.text
+
+    settings_facets = [
+        unit for unit in units
+        if unit.unit_id.startswith("runtime-ui-settings-facet-")
+        and unit.lang == "it"
+    ]
+    settings = next(surface for surface in surfaces
+                    if surface.key == "settings")
+    assert len(settings_facets) == len(settings.visible("it"))
+    assert all(unit.source_ref == "runtime:ui_surface:settings:it"
+               for unit in settings_facets)
+    assert any("latenza mediana" in unit.semantic
+               for unit in settings_facets)
 
 
 def test_f2_executor_knowledge_follows_the_admitted_catalog(monkeypatch, tmp_path):
@@ -346,6 +475,18 @@ def test_f2_document_sources_remain_bilingual(tmp_path):
     assert "fr" not in found and "pt-br" not in found
 
 
+def test_supplemental_tutor_sources_reject_internal_in_every_environment(
+        tmp_path):
+    for lang in ("it", "en"):
+        target = tmp_path / "internal" / lang / "guide.html"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f"<h1>{lang}</h1>", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="internal material"):
+        _resolve_language_paths(
+            "internal/{lang}/guide.html", ("it", "en"), repo_root=tmp_path)
+
+
 def test_f2_document_parser_excludes_published_roadmap_claims():
     from tutor import sources
 
@@ -380,6 +521,8 @@ def test_f2_executor_descriptions_admit_new_manifest_language(
     units = sources._executor_units()
     assert {unit.lang for unit in units} == {"it", "fr"}
     assert {unit.concept_id for unit in units} == {"executor-inspect_objects"}
+    assert all(unit.observation_ref == "" for unit in units)
+    assert all("effect=read_only" in unit.text for unit in units)
 
 
 def _knowledge_unit(*, unit_id="executor-read_messages-it",
@@ -446,6 +589,195 @@ def test_f2_language_fallback_is_per_concept_not_global():
     assert "executor-beta-en" in selected
 
 
+def test_manifest_root_becomes_primary_and_orphan_arguments_are_excluded():
+    from dataclasses import replace
+
+    from tutor.catalog import VectorIndex
+
+    root = replace(
+        _knowledge_unit(
+            unit_id="executor-relevant-it",
+            concept_id="executor-relevant",
+            text="Operazione completa pertinente",
+        ),
+        title="relevant_items",
+        source_ref="manifest:relevant_items:it",
+    )
+    relevant_arg = replace(
+        root,
+        unit_id="executor-relevant-arg-it",
+        concept_id="executor-relevant-arg",
+        source_kind="executor_manifest_argument",
+        title="relevant_items.target",
+        source_ref="manifest:relevant_items:arg:target:it#1",
+    )
+    orphan_root = replace(
+        root,
+        unit_id="executor-orphan-it",
+        concept_id="executor-orphan",
+        title="orphan_items",
+        source_ref="manifest:orphan_items:it",
+    )
+    orphan_arg = replace(
+        relevant_arg,
+        unit_id="executor-orphan-arg-it",
+        concept_id="executor-orphan-arg",
+        title="orphan_items.email",
+        source_ref="manifest:orphan_items:arg:email:it#1",
+    )
+    units = (orphan_arg, root, relevant_arg, orphan_root)
+    index = VectorIndex(
+        refs=tuple((unit.unit_id, "it") for unit in units),
+        matrix=np.asarray([
+            [1.0, 0.0],
+            [0.98, 0.1989975],
+            [0.97, 0.2431049],
+            [0.70, 0.7141428],
+        ], dtype=np.float32),
+        dimension=2,
+        fingerprint="test",
+    )
+
+    class Embedder:
+        def embed_query(self, _text):
+            return np.asarray([1.0, 0.0], dtype=np.float32)
+
+    context = retrieve_sources(
+        "domanda naturale", "it", "user", cards=(), units=units,
+        knowledge_index=index, embedder=Embedder(), minimum_score=0.7,
+    )
+
+    assert context is not None
+    assert context.hits[0].source_id == root.unit_id
+    selected = {hit.source_id for hit in context.hits}
+    assert relevant_arg.unit_id in selected
+    assert orphan_arg.unit_id not in selected
+
+
+def test_manifest_argument_is_not_displaced_by_an_unrelated_manual():
+    from dataclasses import replace
+
+    from tutor.catalog import VectorIndex
+
+    argument = replace(
+        _knowledge_unit(
+            unit_id="executor-alpha-arg-email-it",
+            concept_id="executor-alpha-arg-email",
+            text="Parametro email dell'operazione alpha",
+        ),
+        source_kind="executor_manifest_argument",
+        title="alpha_items.email",
+        source_ref="manifest:alpha_items:arg:email:it#1",
+    )
+    manual = replace(
+        argument,
+        unit_id="doc-nearby-it",
+        concept_id="doc-nearby",
+        source_kind="manual",
+        authority="published_documentation",
+        title="Guida vicina",
+        source_ref="docs/it/nearby.html#1",
+    )
+    units = (argument, manual)
+    index = VectorIndex(
+        refs=tuple((unit.unit_id, "it") for unit in units),
+        matrix=np.asarray([
+            [1.0, 0.0],
+            [0.98, 0.1989975],
+        ], dtype=np.float32),
+        dimension=2,
+        fingerprint="test",
+    )
+
+    class Embedder:
+        def embed_query(self, _text):
+            return np.asarray([1.0, 0.0], dtype=np.float32)
+
+    context = retrieve_sources(
+        "domanda sul parametro", "it", "user", cards=(), units=units,
+        knowledge_index=index, embedder=Embedder(), minimum_score=0.7,
+    )
+
+    assert context is not None
+    assert context.hits[0].source_id == argument.unit_id
+
+
+def test_manifest_composition_scope_uses_only_explicit_source_neighbourhood():
+    from dataclasses import replace
+
+    from tutor.service import (
+        _coherent_manifest_scope,
+        _coverage_items,
+        _ledger_scope,
+    )
+
+    primary = replace(
+        _knowledge_unit(
+            unit_id="executor-alpha-it", concept_id="executor-alpha",
+            text="SCOPO: trasforma elementi; ricerca preliminare -> beta_items.",
+        ),
+        title="alpha_items", source_ref="manifest:alpha_items:it",
+    )
+    linked = replace(
+        primary,
+        unit_id="executor-beta-it", concept_id="executor-beta",
+        title="beta_items", source_ref="manifest:beta_items:it",
+        text="SCOPO: cerca elementi per alpha_items.",
+    )
+    unrelated = replace(
+        primary,
+        unit_id="executor-gamma-it", concept_id="executor-gamma",
+        title="gamma_items", source_ref="manifest:gamma_items:it",
+        text="SCOPO: amministra un oggetto distinto.",
+    )
+
+    def argument(root, name):
+        family = root.title
+        return replace(
+            root,
+            unit_id=f"executor-{family}-arg-{name}-it",
+            concept_id=f"executor-{family}-arg-{name}",
+            source_kind="executor_manifest_argument",
+            title=f"{family}.{name}",
+            source_ref=f"manifest:{family}:arg:{name}:it#1",
+        )
+
+    def document(unit_id, text):
+        return replace(
+            primary,
+            unit_id=unit_id, concept_id=unit_id,
+            source_kind="manual", authority="published_documentation",
+            title="Guida", text=text, semantic=text,
+            source_ref=f"docs/it/{unit_id}.html#1",
+        )
+
+    units = (
+        primary, argument(unrelated, "email"), linked,
+        argument(primary, "target"), argument(linked, "query"), unrelated,
+        document("doc-best", "Spiegazione generale pertinente."),
+        document("doc-noise", "Procedimento differente."),
+        document("doc-linked", "Contratto alpha_items e relativi limiti."),
+    )
+    hits = tuple(SourceHit(
+        source_type="knowledge", source_id=unit.unit_id, lang="it",
+        score=1.0 - index / 100, unit=unit,
+    ) for index, unit in enumerate(units))
+
+    scoped = _coherent_manifest_scope(hits, hits[0])
+    selected = {hit.source_id for hit in scoped}
+    assert primary.unit_id in selected
+    assert linked.unit_id in selected
+    assert argument(primary, "target").unit_id in selected
+    assert argument(linked, "query").unit_id in selected
+    assert "doc-best" in selected and "doc-linked" in selected
+    assert unrelated.unit_id not in selected
+    assert argument(unrelated, "email").unit_id not in selected
+    assert "doc-noise" not in selected
+
+    coverage = _coverage_items(_ledger_scope(scoped, hits[0]))
+    assert len(coverage["tools"]) == 1
+
+
 def test_f2_expands_adjacent_sections_of_a_selected_document():
     from tutor.catalog import VectorIndex
 
@@ -498,6 +830,48 @@ def test_f2_expands_adjacent_sections_of_a_selected_document():
     )
     assert context is not None
     assert third.unit_id in {hit.source_id for hit in context.hits}
+
+
+def test_exact_document_identity_binds_retrieval_before_similarity():
+    from tutor.catalog import VectorIndex
+
+    document = KnowledgeUnit(
+        unit_id="doc-guide-it-0001", concept_id="doc-guide-0001",
+        lang="it", audience="user", source_kind="operational",
+        authority="published_documentation", priority=95,
+        title="Una sezione", text="Contenuto del documento",
+        semantic="Tema lontano dalla formulazione dell'utente",
+        source_ref="docs/it/guide.html#1", content_hash="sha256:guide",
+        public_url="https://metnos.com/it/guide",
+    )
+    unrelated = _knowledge_unit(
+        unit_id="executor-unrelated-it",
+        text="Cosa contiene il file richiesto",
+    )
+    index = VectorIndex(
+        refs=((document.unit_id, "it"), (unrelated.unit_id, "it")),
+        matrix=np.asarray([[0.0, 1.0], [1.0, 0.0]], dtype=np.float32),
+        dimension=2, fingerprint="test",
+    )
+
+    class Embedder:
+        def embed_texts(self, _texts):
+            return np.asarray([[1.0, 0.0]], dtype=np.float32)
+
+        def embed_query(self, text):
+            return self.embed_texts([text])[0]
+
+    trace = {}
+    context = retrieve_sources(
+        "Cosa contiene guide.html?", "it", "user", cards=(),
+        units=(document, unrelated), knowledge_index=index,
+        embedder=Embedder(), minimum_score=0.99,
+        required_source_ref="docs/it/guide.html", explain=trace,
+    )
+
+    assert context is not None
+    assert tuple(hit.source_id for hit in context.hits) == (document.unit_id,)
+    assert trace["identity_source_ref"] == "docs/it/guide.html"
 
 
 def _oriented(unit_id, vector_marker, *, authority="published_documentation",
@@ -723,11 +1097,12 @@ def test_f2_service_answers_without_any_card_match(monkeypatch):
         source_type="knowledge", source_id=unit.unit_id, lang="it",
         score=0.86, unit=unit,
     ),), top_score=0.86)
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *_a, **_k: context)
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True))
     monkeypatch.setattr(
         "tutor.compose.compose_answer",
         lambda **kwargs: Composition("answer", kwargs["context"]))
@@ -753,11 +1128,12 @@ def test_f2_unpredictable_explanation_forms_bypass_the_f1_gate(
         source_type="knowledge", source_id=unit.unit_id, lang="it",
         score=0.84, unit=unit,
     ),), top_score=0.84)
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *_a, **_k: context)
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True))
     monkeypatch.setattr(
         "tutor.compose.compose_answer",
         lambda **kwargs: Composition("answer", kwargs["context"]))
@@ -772,40 +1148,67 @@ def test_f2_semantic_gate_does_not_steal_an_action(monkeypatch):
         source_type="knowledge", source_id=unit.unit_id, lang="it",
         score=0.84, unit=unit,
     ),), top_score=0.84)
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *_a, **_k: context)
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "ACT")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("ACT", True))
     request = TutorRequest(
         "Per favore leggi tutte le mie email", "it", _principal("user"))
     assert answer_request(request) is None
 
 
-def test_f2_semantic_gate_clarifies_a_mixed_request(monkeypatch):
+def test_current_readonly_executor_target_returns_to_operational_runtime(
+        monkeypatch):
+    """An OBSERVE request without a complete view remains operational."""
+
+    from tutor.observation_views import ViewSelection
+
+    _patch_request_snapshot(monkeypatch, cards=(), units=())
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("OBSERVE", True))
+    monkeypatch.setattr(
+        "tutor.observation_views.select_view",
+        lambda **_kwargs: ViewSelection(None, True, "no_complete_view"))
+    monkeypatch.setattr(
+        "tutor.service.retrieve_sources",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("OBSERVE crossed static retrieval")))
+    monkeypatch.setattr(
+        "tutor.probes.execute_probe_refs",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("unselected observation crossed probe gate")))
+
+    assert answer_request(TutorRequest(
+        "temperatura cpu pc-roberto", "it", _principal("user"))) is None
+
+
+def test_f2_unproven_mixed_request_falls_through_to_compound_planner(monkeypatch):
     cards = load_published()
     unit = _knowledge_unit()
     context = SemanticContext((SourceHit(
         source_type="knowledge", source_id=unit.unit_id, lang="it",
         score=0.84, unit=unit,
     ),), top_score=0.84)
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *_a, **_k: context)
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "MIXED")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("MIXED", True))
     monkeypatch.setattr("tutor.service._msg", lambda key: key)
     answer = answer_request(TutorRequest(
         "Illustrami la posta e poi leggila", "it", _principal("user")))
-    assert answer is not None and answer.esito == "clarification"
-    assert answer.detection == "semantic_mixed"
+    assert answer is None
 
 
 def test_single_clause_canonical_action_uses_semantic_safe_fallthrough(
         monkeypatch):
     monkeypatch.setattr(
-        "tutor.mode.classify_mode",
-        lambda *_a, **_k: "ACT",
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("ACT", True),
     )
     request = TutorRequest(
         "Leggi le mie email", "it", _principal("user"))
@@ -815,14 +1218,15 @@ def test_single_clause_canonical_action_uses_semantic_safe_fallthrough(
 def test_canonical_action_start_does_not_hide_a_mixed_second_clause(
         monkeypatch):
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "MIXED")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("MIXED", True))
     monkeypatch.setattr("tutor.service._msg", lambda key: key)
     request = TutorRequest(
         "Dimmi cosa mostra la pagina Servizi e riavvia il componente web",
         "it", _principal("instance_admin"),
     )
     answer = answer_request(request)
-    assert answer is not None and answer.esito == "clarification"
+    assert answer is None
 
 
 def test_f2_mode_classifier_uses_the_central_llm_slot(monkeypatch):
@@ -830,7 +1234,7 @@ def test_f2_mode_classifier_uses_the_central_llm_slot(monkeypatch):
 
     observed = {}
 
-    def scheduled(executor, call):
+    def scheduled(executor, call, **_kwargs):
         observed["policy"] = executor.execution_policy
         return call()
 
@@ -848,7 +1252,39 @@ def test_f2_mode_classifier_uses_the_central_llm_slot(monkeypatch):
     assert "temperature" not in observed["call"]
 
 
-def test_normal_action_falls_through_to_runtime():
+def test_mode_and_followup_relation_are_independent_classifiers(monkeypatch):
+    from tutor.mode import classify_mode_decision
+
+    calls = []
+    answers = iter(("OBSERVE", "FOLLOWUP"))
+    monkeypatch.setattr(
+        "executor_scheduler.invoke_scheduled",
+        lambda _executor, call, **_kwargs: call())
+
+    def call(payload, prompt, **_kwargs):
+        calls.append((dict(payload), prompt))
+        return next(answers), {}
+
+    monkeypatch.setattr("llm_helpers.call_llm", call)
+    decision = classify_mode_decision(
+        "E quello?", "it",
+        conversation_context=(
+            "PREVIOUS_USER_QUESTION: Qual è lo stato del servizio?\n"
+            "PREVIOUS_TUTOR_ANSWER: Il servizio è attivo."),
+        deadline_at=10**12,
+    )
+
+    assert decision.mode == "OBSERVE"
+    assert decision.is_followup is True
+    assert set(calls[0][0]) == {"language", "user_query"}
+    assert "conversation_context" not in calls[0][0]
+    assert "conversation_context" in calls[1][0]
+
+
+def test_normal_action_falls_through_to_runtime(monkeypatch):
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("ACT", True))
     request = TutorRequest("Leggi le mie email", "it", _principal())
     assert answer_request(request) is None
 
@@ -895,7 +1331,7 @@ def _procedure_unit_context(monkeypatch, *, audience: str):
 
     unit = next(u for u in _ui_surface_units()
                 if u.unit_id == "runtime-ui-procedure-changes-it")
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: ())
+    _patch_request_snapshot(monkeypatch, units=(unit,))
     hit = SourceHit(source_type="knowledge", source_id=unit.unit_id,
                     lang="it", score=0.9, unit=unit)
     restricted = not (audience == "instance_admin"
@@ -904,7 +1340,9 @@ def _procedure_unit_context(monkeypatch, *, audience: str):
                else SemanticContext((hit,), top_score=0.9))
     monkeypatch.setattr(
         "tutor.service.retrieve_sources", lambda *a, **k: context)
-    monkeypatch.setattr("tutor.mode.classify_mode", lambda *a, **k: "EXPLAIN")
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *a, **k: ModeDecision("EXPLAIN", True))
     return unit
 
 
@@ -1015,7 +1453,8 @@ def test_composer_receives_the_delivery_channel(monkeypatch):
 
     observed = {}
     monkeypatch.setattr(
-        "executor_scheduler.invoke_scheduled", lambda _executor, call: call())
+        "executor_scheduler.invoke_scheduled",
+        lambda _executor, call, **_kwargs: call())
 
     def call(payload, _prompt, **_kwargs):
         observed.update(payload)
@@ -1035,7 +1474,8 @@ def test_new_language_uses_english_prompt_fallback_but_keeps_target(monkeypatch)
 
     observed = {}
     monkeypatch.setattr(
-        "executor_scheduler.invoke_scheduled", lambda _executor, call: call())
+        "executor_scheduler.invoke_scheduled",
+        lambda _executor, call, **_kwargs: call())
 
     def call(payload, prompt, **_kwargs):
         observed["payload"] = payload
@@ -1058,7 +1498,7 @@ def test_local_composer_uses_central_llm_resource(monkeypatch):
 
     observed = {}
 
-    def scheduled(executor, call):
+    def scheduled(executor, call, **_kwargs):
         observed["policy"] = executor.execution_policy
         return call()
 
@@ -1086,7 +1526,8 @@ def test_local_composer_rejects_insufficient_or_thinking(monkeypatch):
     from tutor.compose import compose_answer
 
     monkeypatch.setattr(
-        "executor_scheduler.invoke_scheduled", lambda _executor, call: call())
+        "executor_scheduler.invoke_scheduled",
+        lambda _executor, call, **_kwargs: call())
     expected = {
         "TUTOR_CONTEXT_INSUFFICIENT": "insufficient",
         "<think>reasoning": "unavailable",
@@ -1107,6 +1548,16 @@ def test_composer_insufficient_is_a_lacuna_not_unavailable(monkeypatch):
     from tutor.compose import Composition
 
     _route(monkeypatch, "github-capabilities", compose=False)
+    admitted = [
+        f"{verb}_{obj}_github"
+        for obj in ("issues", "pulls", "files", "dirs", "tasks", "messages")
+        for verb in ("read", "find", "create")
+    ][:16]
+    monkeypatch.setattr(
+        "loader.load_catalog",
+        lambda: [SimpleNamespace(
+            name=name, membership="builtin") for name in admitted],
+    )
     monkeypatch.setattr(
         "tutor.compose.compose_answer",
         lambda **_kwargs: Composition("insufficient"),
@@ -1129,7 +1580,7 @@ def test_same_conversation_probe_is_one_ranking_with_companion(monkeypatch):
     ),), top_score=0.78)
     observed = {}
 
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
 
     def retrieve(query, *_args, **kwargs):
         observed.setdefault("calls", []).append(
@@ -1141,7 +1592,9 @@ def test_same_conversation_probe_is_one_ranking_with_companion(monkeypatch):
         return Composition("answer", "La fonte descrive la verifica.")
 
     monkeypatch.setattr("tutor.service.retrieve_sources", retrieve)
-    monkeypatch.setattr("tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True, is_followup=True))
     monkeypatch.setattr("tutor.compose.compose_answer", compose)
     previous = (
         "PREVIOUS_USER_QUESTION: Quanto impiega il catalogo all'avvio?\n"
@@ -1150,6 +1603,7 @@ def test_same_conversation_probe_is_one_ranking_with_companion(monkeypatch):
     answer = answer_request(TutorRequest(
         "Motivo del problema?", "it", _principal(),
         conversation_context=previous,
+        previous_question="Quanto impiega il catalogo all'avvio?",
     ))
 
     assert answer is not None and answer.esito == "fondata"
@@ -1187,7 +1641,7 @@ def test_independent_question_does_not_mix_recent_context(monkeypatch):
     observed = {}
     query = "Quanto impiega il Tutor a compilare il catalogo all'avvio?"
 
-    monkeypatch.setattr("tutor.catalog.load_cards", lambda: cards)
+    _patch_request_snapshot(monkeypatch, cards=cards, units=(unit,))
 
     def retrieve(value, *_args, **_kwargs):
         observed.setdefault("retrieval_queries", []).append(value)
@@ -1199,7 +1653,9 @@ def test_independent_question_does_not_mix_recent_context(monkeypatch):
         return Composition("answer", "La fonte descrive la verifica.")
 
     monkeypatch.setattr("tutor.service.retrieve_sources", retrieve)
-    monkeypatch.setattr("tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+    monkeypatch.setattr(
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True))
     monkeypatch.setattr("tutor.compose.compose_answer", compose)
     answer = answer_request(TutorRequest(
         query, "it", _principal(), conversation_context="OLD EXCHANGE",
@@ -1228,6 +1684,24 @@ def test_conversation_cache_is_ephemeral_and_principal_isolated():
     assert recent_context(second) == ""
     _clear_for_tests()
     assert recent_context(first) == ""
+
+
+def test_conversation_cache_never_retains_live_or_incomplete_answers():
+    from tutor.conversation import _clear_for_tests, recent_context, remember
+    from tutor.models import TutorAnswer
+
+    _clear_for_tests()
+    principal = _principal("user")
+    request = TutorRequest("Qual è lo stato corrente?", "it", principal)
+    remember(request, TutorAnswer(
+        "fondata", "Stato osservato.",
+        probe_statuses=(("owned_device_state", "ok"),),
+    ))
+    assert recent_context(principal) == ""
+    remember(request, TutorAnswer(
+        "fondata", "Risposta parziale.", gap_reason="composer_incomplete",
+    ))
+    assert recent_context(principal) == ""
 
 
 def test_help_preserves_pending_with_explicit_notice(monkeypatch):
@@ -1263,7 +1737,8 @@ def test_boundary_reports_unavailable_and_never_executes_failed_help(
             ImportError("simulated stale module")),
     )
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True))
     monkeypatch.setattr(
         "tutor_boundary._msg",
         lambda key: {
@@ -1296,16 +1771,19 @@ def test_boundary_failure_preserves_operational_fallthrough(monkeypatch):
         lambda _request: (_ for _ in ()).throw(RuntimeError("unavailable")),
     )
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "ACT")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("ACT", True))
 
-    assert boundary_answer("Leggi le mie email", _principal()) is None
+    result = boundary_answer("Leggi le mie email", _principal())
+    assert result is not None and result.esito == "tutor_error"
 
 
 def test_catalog_failure_cannot_steal_a_semantic_action(monkeypatch):
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "ACT")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("ACT", True))
     monkeypatch.setattr(
-        "tutor.catalog.load_cards",
+        "tutor.catalog.load_request_snapshot",
         lambda: (_ for _ in ()).throw(RuntimeError("catalog unavailable")),
     )
     request = TutorRequest(
@@ -1316,9 +1794,10 @@ def test_catalog_failure_cannot_steal_a_semantic_action(monkeypatch):
 def test_catalog_failure_is_unavailable_only_after_semantic_explain(
         monkeypatch):
     monkeypatch.setattr(
-        "tutor.mode.classify_mode", lambda *_a, **_k: "EXPLAIN")
+        "tutor.mode.classify_mode_decision",
+        lambda *_a, **_k: ModeDecision("EXPLAIN", True))
     monkeypatch.setattr(
-        "tutor.catalog.load_cards",
+        "tutor.catalog.load_request_snapshot",
         lambda: (_ for _ in ()).throw(RuntimeError("catalog unavailable")),
     )
     monkeypatch.setattr("tutor.service._msg", lambda key: key)
@@ -1369,6 +1848,63 @@ def test_signed_catalog_builds_cards_and_vectors(tmp_path, monkeypatch):
     assert np.isfinite(knowledge_index.matrix).all()
 
 
+def test_tutor_input_stamp_detects_same_size_same_mtime_doc_change(
+        tmp_path, monkeypatch):
+    """A published-page edit must invalidate F2 even in reproducible builds."""
+
+    from tutor import catalog
+
+    source = tmp_path / "published.html"
+    source.write_text("alpha", encoding="utf-8")
+    original = source.stat()
+    monkeypatch.setattr(catalog, "_source_files", lambda: (source,))
+    monkeypatch.setattr(catalog, "embedding_fingerprint", lambda: "sha256:model")
+    monkeypatch.setattr(catalog, "executor_catalog_stamp", lambda: "sha256:tools")
+
+    before = catalog.input_stamp()
+    source.write_text("omega", encoding="utf-8")
+    os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+
+    assert source.stat().st_size == original.st_size
+    assert source.stat().st_mtime_ns == original.st_mtime_ns
+    assert catalog.input_stamp() != before
+
+
+def test_tutor_input_stamp_includes_compiler_implementation(monkeypatch):
+    from tutor import catalog
+
+    monkeypatch.setattr(catalog, "_source_files", lambda: ())
+    monkeypatch.setattr(catalog, "embedding_fingerprint", lambda: "sha256:model")
+    monkeypatch.setattr(catalog, "executor_catalog_stamp", lambda: "sha256:tools")
+    monkeypatch.setattr(
+        catalog, "_compiler_implementation_digest", lambda: "sha256:compiler-a")
+    before = catalog.input_stamp()
+    monkeypatch.setattr(
+        catalog, "_compiler_implementation_digest", lambda: "sha256:compiler-b")
+
+    assert catalog.input_stamp() != before
+
+
+def test_changed_input_rebuilds_a_complete_tutor_candidate(
+        tmp_path, monkeypatch):
+    catalog = _patch_catalog_paths(monkeypatch, tmp_path)
+    catalog.compile_catalog()
+    expected = len(build_knowledge_units())
+    observed: list[int] = []
+    real_build = catalog._build_candidate
+
+    def capture(path, source_digest, input_digest, knowledge):
+        observed.append(len(knowledge))
+        return real_build(path, source_digest, input_digest, knowledge)
+
+    monkeypatch.setattr(catalog, "_build_candidate", capture)
+    monkeypatch.setattr(catalog, "input_stamp", lambda: "sha256:docs-changed")
+    catalog.compile_catalog()
+
+    assert observed == [expected]
+    assert int(catalog._metadata(catalog.CATALOG_PATH)["knowledge_count"]) == expected
+
+
 def test_signed_catalog_last_good_recovery(tmp_path, monkeypatch):
     catalog = _patch_catalog_paths(monkeypatch, tmp_path)
     catalog.compile_catalog()
@@ -1401,6 +1937,38 @@ def test_failed_catalog_candidate_does_not_replace_current(tmp_path, monkeypatch
     assert catalog.verify_catalog()
 
 
+def test_inputs_changed_during_build_cannot_replace_current(
+        tmp_path, monkeypatch):
+    catalog = _patch_catalog_paths(monkeypatch, tmp_path)
+    catalog.compile_catalog()
+    admitted = catalog.CATALOG_PATH.read_bytes()
+    admitted_sig = catalog.SIGNATURE_PATH.read_bytes()
+    stamps = iter(("sha256:before-build", "sha256:during-build"))
+    monkeypatch.setattr(catalog, "input_stamp", lambda: next(stamps))
+
+    with pytest.raises(RuntimeError, match="inputs changed during catalog build"):
+        catalog.compile_catalog(force=True)
+
+    assert catalog.CATALOG_PATH.read_bytes() == admitted
+    assert catalog.SIGNATURE_PATH.read_bytes() == admitted_sig
+    assert catalog.verify_catalog()
+
+
+def test_interrupted_catalog_candidates_are_cleaned_under_next_build(
+        tmp_path, monkeypatch):
+    catalog = _patch_catalog_paths(monkeypatch, tmp_path)
+    stale_db = catalog.CATALOG_PATH.parent / ".tutor_catalog.interrupted.sqlite"
+    stale_sig = catalog.CATALOG_PATH.parent / ".tutor_catalog.interrupted.sqlite.sig"
+    stale_db.write_bytes(b"")
+    stale_sig.write_bytes(b"")
+
+    catalog.compile_catalog()
+
+    assert not stale_db.exists()
+    assert not stale_sig.exists()
+    assert catalog.verify_catalog()
+
+
 def test_stale_process_cannot_recompile_with_new_file_identity(
         tmp_path, monkeypatch):
     catalog = _patch_catalog_paths(monkeypatch, tmp_path)
@@ -1430,12 +1998,287 @@ def test_http_boundary_returns_tutor_without_blocking_event_loop(monkeypatch):
     result = asyncio.run(http_routes_agent._apply_tutor_http(
         {"role": "admin", "device_id": None},
         query="Come approvo una proposta di modifica?",
-        actor="host", conversation_id="c1", sender_id="http:host:c1",
+        actor="host", user_id="u1", conversation_id="c1",
+        sender_id="http:host:c1",
     ))
     assert result is not None and result.esito == "fondata"
     assert len(result.turn_id) == 16
     assert "/admin/changes" in result.answer_md
     assert "Fermati se" in result.answer_md
+
+
+def test_tutor_boundary_sensitive_direct_call_falls_through(monkeypatch):
+    from contextlib import nullcontext
+
+    import tutor_boundary
+
+    principal = tutor_boundary.http_principal(
+        role="admin", device_id=None, actor="host", user_id="u1")
+    monkeypatch.setattr(
+        "user_lifecycle.owner_session", lambda _owner: nullcontext())
+    monkeypatch.setattr(
+        "credential_intake.contains_sensitive_input", lambda _query: True)
+
+    assert tutor_boundary._answer(
+        "token=secret", principal,
+        has_pending=False, pending_sender_id="http:u1:c1",
+    ) is None
+
+
+def test_tutor_boundary_keeps_ready_explanation_near_deadline(monkeypatch):
+    import time
+    from contextlib import nullcontext
+
+    import tutor_boundary
+    from tutor.models import TutorAnswer
+
+    principal = tutor_boundary.http_principal(
+        role="admin", device_id=None, actor="host", user_id="u1")
+    ready = TutorAnswer(esito="fondata", answer_md="Risposta fondata.")
+    monkeypatch.setattr(
+        "user_lifecycle.owner_session", lambda _owner: nullcontext())
+    monkeypatch.setattr(
+        "credential_intake.contains_sensitive_input", lambda _query: False)
+    monkeypatch.setattr("i18n.current_lang", lambda: "it")
+    monkeypatch.setattr(
+        "tutor.deadline.new_deadline", lambda: time.monotonic() + 0.5)
+    monkeypatch.setattr("tutor.conversation.recent_context", lambda _p: "")
+    monkeypatch.setattr("tutor.conversation.remember", lambda *_a: None)
+    monkeypatch.setattr("tutor.answer_request", lambda _request: ready)
+    monkeypatch.setattr(tutor_boundary, "record_async", lambda _r, a: a)
+
+    assert tutor_boundary._answer(
+        "Come funziona?", principal,
+        has_pending=False, pending_sender_id="http:u1:c1",
+    ) == ready
+
+
+def test_tutor_boundary_reuses_resumable_turn_id(monkeypatch):
+    from contextlib import nullcontext
+
+    import tutor_boundary
+    from tutor.models import TutorAnswer
+
+    principal = tutor_boundary.http_principal(
+        role="admin", device_id=None, actor="host", user_id="u1")
+    monkeypatch.setattr(
+        "user_lifecycle.owner_session", lambda _owner: nullcontext())
+    monkeypatch.setattr(
+        "credential_intake.contains_sensitive_input", lambda _query: False)
+    monkeypatch.setattr("i18n.current_lang", lambda: "it")
+    monkeypatch.setattr("tutor.conversation.recent_context", lambda _p: "")
+    monkeypatch.setattr("tutor.conversation.recent_question", lambda _p: "")
+    monkeypatch.setattr("tutor.conversation.remember", lambda *_a: None)
+    monkeypatch.setattr(
+        "tutor.answer_request",
+        lambda _request: TutorAnswer(
+            esito="fondata", answer_md="Risposta fondata."),
+    )
+    observed = {}
+
+    def record(_request, answer):
+        observed["turn_id"] = answer.turn_id
+        return answer
+
+    monkeypatch.setattr(tutor_boundary, "record_async", record)
+    result = tutor_boundary._answer(
+        "Come funziona?", principal,
+        has_pending=False, pending_sender_id="http:u1:c1",
+        turn_id_hint="0123456789abcdef",
+    )
+
+    assert result.turn_id == "0123456789abcdef"
+    assert observed["turn_id"] == result.turn_id
+
+
+def test_resumable_preprocess_defers_tutor_until_after_202(monkeypatch):
+    import agent_runtime
+    import active_sessions
+    import http_routes_agent
+
+    class Request(dict):
+        content_type = "application/json"
+        path = "/agent/turn/submit"
+
+        async def json(self):
+            return {
+                "query": "Come funziona il Tutor?",
+                "conversation_id": "c1",
+                "device_token": "writer-token",
+            }
+
+    async def user_id(_request):
+        return "u1"
+
+    async def must_not_run(*_args, **_kwargs):
+        pytest.fail("Tutor ran before the resumable 202 boundary")
+
+    monkeypatch.setattr(http_routes_agent, "_resolve_actor", lambda *_a: "host")
+    monkeypatch.setattr(http_routes_agent, "_resolve_session_user_id", user_id)
+    monkeypatch.setattr(http_routes_agent, "_apply_tutor_http", must_not_run)
+    monkeypatch.setattr(
+        http_routes_agent, "_apply_dialog_cancel", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        http_routes_agent, "_apply_dialog_pending", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        http_routes_agent, "scrub_sensitive_text", lambda query: (query, 0))
+    monkeypatch.setattr(
+        active_sessions, "validate_writer", lambda *_a, **_k: (True, ""))
+    monkeypatch.setattr(
+        agent_runtime, "prepare_credentials_for_routing",
+        lambda query: pytest.fail(
+            "credential preparation ran before deferred pending resolution"),
+    )
+
+    error, data = asyncio.run(http_routes_agent._preprocess_turn(
+        Request(role="admin")))
+
+    assert error is None
+    assert data["_tutor_deferred"] is True
+    assert data["_deferred_query"] == "Come funziona il Tutor?"
+    assert data["original_query"] == "Come funziona il Tutor?"
+
+
+def test_turn_submit_returns_202_while_deferred_tutor_is_running(monkeypatch):
+    import json
+
+    import http_routes_agent
+    from turn_events import TurnEventLog
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class Request(dict):
+        app = {}
+
+    class Pool:
+        def __init__(self):
+            self.releases = []
+
+        def release(self, reservation, completed=False):
+            self.releases.append((reservation, completed))
+
+    pool = Pool()
+    reservation = object()
+    deferred = http_routes_agent._preprocessed_turn_data(
+        query_for_run="Come funziona il Tutor?",
+        immediate_msg=None,
+        immediate_source="",
+        immediate_turn_id="",
+        actor="host",
+        user_id="u1",
+        conversation_id="c1",
+        sender_id="http:u1:c1",
+        reference_images=[],
+        original_query="Come funziona il Tutor?",
+        tutor_deferred=True,
+        deferred_query="Come funziona il Tutor?",
+    )
+
+    async def preprocess(_request):
+        return None, deferred
+
+    async def reserve(_request, _actor):
+        return reservation
+
+    async def resolve(*_args, **kwargs):
+        assert kwargs["turn_id_hint"]
+        started.set()
+        await release.wait()
+        return http_routes_agent._preprocessed_turn_data(
+            query_for_run=kwargs["safe_original_query"],
+            immediate_msg="Risposta Tutor.",
+            immediate_source="tutor",
+            immediate_turn_id=kwargs["turn_id_hint"],
+            actor=kwargs["actor"],
+            user_id=kwargs["user_id"],
+            conversation_id=kwargs["conversation_id"],
+            sender_id=kwargs["sender_id"],
+            reference_images=[],
+            original_query=kwargs["safe_original_query"],
+        )
+
+    monkeypatch.setattr(http_routes_agent, "_preprocess_turn", preprocess)
+    monkeypatch.setattr(http_routes_agent, "_reserve_turn", reserve)
+    monkeypatch.setattr(http_routes_agent, "_turn_pool", lambda _request: pool)
+    monkeypatch.setattr(
+        http_routes_agent, "_resolve_open_http_turn", resolve)
+
+    async def scenario():
+        response = await asyncio.wait_for(
+            http_routes_agent.turn_submit(Request()), timeout=0.2)
+        assert response.status == 202
+        payload = json.loads(response.body)
+        turn_id = payload["turn_id"]
+        await asyncio.wait_for(started.wait(), timeout=0.2)
+        before = TurnEventLog.get().snapshot(turn_id)
+        assert before is not None and before["closed"] is False
+        assert before["events"] == []
+        release.set()
+        for _ in range(20):
+            await asyncio.sleep(0)
+            after = TurnEventLog.get().snapshot(turn_id)
+            if after is not None and after["closed"]:
+                break
+        assert after is not None and after["closed"] is True
+        assert after["events"][-1]["event_type"] == "final"
+        assert after["events"][-1]["payload"]["final_message"] == (
+            "Risposta Tutor.")
+
+    asyncio.run(scenario())
+    assert pool.releases == [(reservation, True)]
+
+
+def test_http_tutor_pool_saturation_falls_through_without_consuming_pending(
+        monkeypatch):
+    import agent_runtime
+    import http_routes_agent
+    from channels import daemon as daemon_mod
+
+    class Request(dict):
+        content_type = "application/json"
+        path = "/agent/turn"
+
+        async def json(self):
+            return {
+                "query": "Trova i file duplicati",
+                "conversation_id": "c1",
+            }
+
+    async def user_id(_request):
+        return "u1"
+
+    async def tutor_busy(*_args, **_kwargs):
+        raise http_routes_agent.TutorBoundaryBusy("saturated")
+
+    pending_calls = []
+
+    def pending(*_args, **kwargs):
+        pending_calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(http_routes_agent, "_resolve_actor", lambda *_a: "host")
+    monkeypatch.setattr(http_routes_agent, "_resolve_session_user_id", user_id)
+    monkeypatch.setattr(http_routes_agent, "_apply_tutor_http", tutor_busy)
+    monkeypatch.setattr(http_routes_agent, "_apply_dialog_cancel", lambda *_a, **_k: None)
+    monkeypatch.setattr(http_routes_agent, "_apply_dialog_pending", pending)
+    monkeypatch.setattr(
+        http_routes_agent, "scrub_sensitive_text", lambda query: (query, ()))
+    monkeypatch.setattr(daemon_mod, "_classify_yes_no", lambda _query: None)
+    monkeypatch.setattr(
+        agent_runtime, "prepare_credentials_for_routing",
+        lambda query: (query, [], ()),
+    )
+
+    error, data = asyncio.run(http_routes_agent._preprocess_turn(
+        Request(role="admin")))
+
+    assert error is None
+    assert data["query_for_run"] == "Trova i file duplicati"
+    assert data["immediate_msg"] is None
+    # Only the closed-schema pre-pass ran; the open pending was preserved.
+    assert len(pending_calls) == 1
+    assert pending_calls[0]["admit_only_valid_closed"] is True
 
 
 def test_async_boundary_preserves_only_valid_persisted_tutor_id():
@@ -1481,11 +2324,19 @@ def test_telegram_boundary_short_circuits_before_run_turn(monkeypatch):
         lambda *_: SimpleNamespace(autonomy_level="Full", actor="host"),
     )
     monkeypatch.setattr(daemon_mod.pairing, "touch_last_seen", lambda *_: None)
+    monkeypatch.setattr(
+        "users.find_user_by_recipient",
+        lambda *_a, **_k: {
+            "id": "u1", "name": "host", "role": "host",
+            "autonomy_level": "full",
+        },
+    )
     monkeypatch.setattr(daemon, "_callback_principal", lambda _msg: {
         "user_id": "u1", "sender_id": "42", "actor": "host",
         "role": "host", "autonomy": "Full",
     })
-    monkeypatch.setattr(daemon_mod, "_cap_pending_load", lambda *_: None)
+    monkeypatch.setattr(
+        daemon_mod, "_cap_pending_load", lambda *_a, **_k: None)
     message = InboundMessage(
         channel="telegram", sender_id="42",
         text="Come faccio a creare un task che legga le mie email?",

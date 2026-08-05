@@ -6,7 +6,8 @@
 # Restano tracciati nel repo per chi clone-a; non vengono pubblicati come
 # parte dei release artifact.
 
-# Doc interni — narrativa di sessione, bench dettagliati, registry interno.
+# Materiale interno — mai parte di un archivio di distribuzione.
+internal/              export-ignore
 docs/it/internal/      export-ignore
 docs/en/internal/      export-ignore
 
@@ -38,3 +39,6 @@ deploy.sh               export-ignore
 *.html      text eol=lf
 *.sh        text eol=lf
 *.json      text eol=lf
+
+# Firme Ed25519 raw: byte arbitrari, mai testo/normalizzazione EOL.
+*.sig       binary

@@ -93,6 +93,19 @@ def test_generated_page_is_admitted_by_the_public_inventory():
     assert "https://metnos.com/en/interface" in published
 
 
+def test_ui_reference_teaches_a_natural_request_and_telegram_boundary():
+    module = _module()
+    italian = module.render("it")
+    english = module.render("en")
+
+    assert "Chiedi a Metnos con una richiesta come quella di questo esempio" in italian
+    assert "Ask Metnos with a request like this example" in english
+    assert "Settings &gt; Sistema &gt; Modelli" in italian
+    assert "Settings &gt; System &gt; Models" in english
+    assert "si apre sempre nella chat web" in italian
+    assert "always opens in the web chat" in english
+
+
 def test_major_public_docs_link_to_the_ui_reference():
     for lang in ("it", "en"):
         paths = tuple(

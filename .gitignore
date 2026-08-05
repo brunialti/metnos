@@ -86,6 +86,8 @@ docs/*
 !docs/en/
 docs/it/*
 docs/en/*
+!docs/it/Metnos_QuickTour.html
+!docs/en/Metnos_QuickTour.html
 !docs/it/architecture/
 !docs/en/architecture/
 docs/it/architecture/*
@@ -96,6 +98,12 @@ docs/en/architecture/*
 !docs/en/architecture/intelligent_executors.html
 !docs/it/architecture/executor_catalog.html
 !docs/en/architecture/executor_catalog.html
+!docs/it/architecture/virtualization.html
+!docs/en/architecture/virtualization.html
+!docs/it/architecture/tutor.html
+!docs/en/architecture/tutor.html
+!docs/it/architecture/mail_accounts.html
+!docs/en/architecture/mail_accounts.html
 !docs/assets/
 docs/assets/*
 !docs/assets/architecture-flow.png
@@ -114,11 +122,8 @@ runtime/testing/
 runtime/prompts.toml
 runtime/.review_status.md
 
-# --- Decision/test stress artifacts --------------------------------------
-decisions/synt_stress/
-
 # --- Test result dumps con dati interni (ADR 0145) -----------------------
-decisions/synt_stress/
+tests/stress/**/results_*
 decisions/executor_requests.jsonl
 decisions/executor_diary.md
 *.jsonl
@@ -143,11 +148,11 @@ cloudflare/
 # --- GitHub Actions cache locali / artefatti tooling ---------------------
 .github/cache/
 
-# --- E2E simulator: cache di parsing/typing (artefatti generati) ---------
-e2e/simulator/parse_cache/
-e2e/simulator/parse_cache_dedicated/
-e2e/simulator/parse_cache.pre_D/
-e2e/simulator/typing_cache/
+# --- Simulatori: cache di parsing/typing (artefatti generati) ------------
+tests/simulator/parse_cache/
+tests/simulator/parse_cache_dedicated/
+tests/simulator/parse_cache.pre_D/
+tests/simulator/typing_cache/
 
 # --- GitHub workflow: stato runtime delle issue (dati, non codice) -------
 /issues/
