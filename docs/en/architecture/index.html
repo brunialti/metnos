@@ -599,7 +599,7 @@ governing architecture.
 <!-- local LLM -->
 <rect x="616" y="290" width="298" height="64" rx="10" fill="#dbeafe" stroke="#2B6CB0" stroke-width="1.8" filter="url(#f1-sh)"/>
 <text x="765" y="314" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">configured LLM backends</text>
-<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoints resolved for fast &middot; middle &middot; wise</text>
+<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoints resolved for fast &middot; middle &middot; wise &middot; creative</text>
 <text x="765" y="346" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">local or remote, without changing the planner</text>
 <path d="M 560 234 Q 590 234 606 290" fill="none" stroke="#2B6CB0" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#f1-arr)"/>
 <text x="588" y="262" text-anchor="middle" fill="#2B6CB0" font-size="9" font-style="italic">it thinks here</text>
@@ -628,7 +628,7 @@ governing architecture.
 <tbody>
 <tr><td><strong>Shape</strong></td><td>Python &ge; 3.12 process, executor-based microarchitecture, and constrained one-shot planning in the M&emacr;tis engine (ch. 5).</td></tr>
 <tr><td><strong>Tools</strong></td><td>Signed executors in the catalog, plus those <em>synthesized on the fly</em> and those imported behind a gate (ch. 7). All are vectorized: list in, list out. The <a href="../domains.html">domain reference</a> provides the user view; current names and counts live in the <a href="executor_catalog.html">generated catalog</a>.</td></tr>
-<tr><td><strong>Brain</strong></td><td>Compatible local or remote LLM endpoints; four abstract tiers <code>fast / middle / wise / frontier</code> (ch. 8). Frontier = cloud opt-in.</td></tr>
+<tr><td><strong>Brain</strong></td><td>Compatible local or remote LLM endpoints; five abstract tiers <code>fast / middle / wise / creative / frontier</code> (ch. 8). Frontier = cloud opt-in.</td></tr>
 <tr><td><strong>Channels</strong></td><td>Telegram (outbound long-poll, no open ports) + web on port 8770 (chat and admin dashboards), ch. 11.</td></tr>
 <tr><td><strong>Devices</strong></td><td>A controlled part of the catalog can run on registered PCs in the same network through <code>metnos-client</code>: the server remains the point of policy, selection, signing and audit; the device runs only executors declared compatible. Detail: <a href="remote_executors.html">remote executors</a>.</td></tr>
 <tr><td><strong>Senses</strong></td><td>In-process image pipeline: semantics + faces + EXIF in one unified index (ch. 10).</td></tr>
@@ -1841,11 +1841,11 @@ from outside: no package runs on trust.
 </figure>
 
 
-<h1 id="s8">8. Four tiers, governed routing</h1>
+<h1 id="s8">8. Five tiers, governed routing</h1>
 
 <p class="lead">
 Tiers are <strong>abstract roles</strong>, not pinned models:
-<code>fast / middle / wise</code> are assignments you bind to whatever endpoint
+<code>fast / middle / wise / creative</code> are assignments you bind to whatever endpoint
 you have, and <code>frontier</code> is the optional cloud role. Several tiers may
 share one endpoint or use separate endpoints: the planner always sees the role.
 </p>
@@ -1853,9 +1853,10 @@ share one endpoint or use separate endpoints: the planner always sees the role.
 <table>
 <thead><tr><th style="width:14%">Tier</th><th style="width:34%">Role</th><th>Constraint</th></tr></thead>
 <tbody>
-<tr><td><code>fast</code></td><td>Short structured extractions: intent, fillers, classifications. Reasoning off.</td><td>Configured endpoint; short replies. Mandatory.</td></tr>
-<tr><td><code>middle</code></td><td>Procedural work: synthesis stages 1-4, descriptions, judgments.</td><td>Endpoint and parameters configured for the role.</td></tr>
-<tr><td><code>wise</code></td><td>The planner: proposes the whole plan; writes the stage-5 code.</td><td>Mandatory: it <em>never degrades</em> to fast.</td></tr>
+<tr><td><code>fast</code></td><td>Short structured decisions: intent, fillers, and bounded reductions.</td><td>Configured endpoint; short replies. Mandatory.</td></tr>
+<tr><td><code>middle</code></td><td>Procedural work and intermediate judgments: extraction, classification, and synthesis stages 1-3.</td><td>The role's deterministic policy.</td></tr>
+<tr><td><code>wise</code></td><td>The planner and high-fidelity synthesis: whole plans, code, and verification.</td><td>The role's deterministic policy.</td></tr>
+<tr><td><code>creative</code></td><td>Divergent proposals and editorial text, including synthesis stage 4.</td><td>Separate policy with temperature 0.35.</td></tr>
 <tr><td><code>frontier</code></td><td>An external consult when explicitly requested (e.g. analyzing an issue).</td><td>Cloud API, opt-in, with managed fallback if the key is absent.</td></tr>
 </tbody>
 </table>

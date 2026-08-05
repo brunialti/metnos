@@ -59,6 +59,7 @@ def compose_answer(
 
     from executor_scheduler import invoke_scheduled
     from llm_helpers import call_llm
+    from llm_workloads import tier_for
     from prompt_loader import get as get_prompt
     from .deadline import new_deadline, remaining
 
@@ -87,7 +88,7 @@ def compose_answer(
             text, metadata = call_llm(
                 payload,
                 prompt,
-                tier="wise",
+                tier=tier_for("tutor.compose"),
                 # Broad catalog questions need room to represent every
                 # admitted area while retaining a natural example when asked.
                 # Measured on the certified corpus: every passing overview
@@ -95,7 +96,7 @@ def compose_answer(
                 # previous 1536-token ceiling, so the prompt's "increase
                 # density rather than drop areas" had no room left.  The
                 # budget is a per-call parameter of this consumer: the shared
-                # ``wise`` binding, and therefore executor synthesis, is
+                # logical binding, and therefore executor synthesis, is
                 # untouched.  Short answers stop on their own and pay nothing.
                 max_tokens=2048,
                 max_query_chars=_MAX_PAYLOAD_CHARS,

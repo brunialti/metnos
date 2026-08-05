@@ -80,11 +80,15 @@ mandatory failure must stop the run and must not commit that phase's sentinel.
 
 ## Model and asset contract
 
-`fast`, `middle`, `wise` and `frontier` are logical roles. The planner must not
-depend on concrete model names. Text-tier bindings live in
+`fast` (levels `micro`, `procedural`, `fidelity`), `middle`, `wise`,
+`creative` and `frontier` are logical roles. The planner must not depend on concrete model names. Text-tier bindings live in
 `~/.config/metnos/llm_tiers.toml`; embedding and vision-language bindings live
 in `embedding_tiers.toml` and `vlm_tiers.toml`. The web chat exposes their
 effective values under **Settings → System → Models**.
+
+Service units must not export temperature, thinking, or reasoning-budget
+knobs. Those values belong exclusively to the selected tier configuration;
+operations may still set output ceilings, deadlines, grammars, and tool schemas.
 
 The BGE-M3 ONNX model and tokenizer are mandatory. Phase 2 places them at the
 paths used by the in-process embedder and verifies their pinned SHA-256 values.

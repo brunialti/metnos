@@ -90,7 +90,7 @@ debian_optional = [
 # dall’installatore gestito oppure indicato dall’operatore in llm_tiers.toml.
 [[model_bindings.entry]]
 name = "text_llm_tiers"
-roles = ["fast", "middle", "wise", "frontier"]
+roles = ["fast.micro", "fast.procedural", "fast.fidelity", "middle", "wise", "creative", "frontier"]
 config = "~/.config/metnos/llm_tiers.toml"
 managed_by = "install/llm_manager.py"
 accepted_sources = ["compatible_endpoint", "managed_llama_cpp", "frontier_api"]
@@ -332,7 +332,7 @@ purpose = "Firma locale degli executor ammessi dall’installazione."
 
 [[external_services.entry]]
 name = "compatible_llm_endpoint"
-purpose = "Inferenza per i livelli fast, middle e wise quando non si usa il motore locale gestito."
+purpose = "Inferenza per fast (micro, procedural e fidelity), middle, wise e creative quando non si usa il motore locale gestito."
 optional = true
 config = "~/.config/metnos/llm_tiers.toml"
 

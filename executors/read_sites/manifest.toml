@@ -62,6 +62,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "url", "session_id"], cell_max = 180 },
+  { key = "url", source = "url", cell_max = 240 },
+  { key = "ok", source = "ok", cell_max = 16 },
+  { key = "sensitive", source = "sensitive", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:sites"
 hint = ["*"]

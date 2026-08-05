@@ -64,7 +64,11 @@ _TABLE_COL_SKIP = frozenset({"content", "body", "body_text", "text", "snippet",
 _TABLE_MAX_ROWS = 200
 _TABLE_MAX_COLS = 6
 _TABLE_MAX_CHARS = 16_000
-
+# Private-use markers consumed only by the safe HTML table renderer.  Markdown
+# has no native per-cell attributes, so this is the transport between a
+# manifest's declarative ``nowrap`` field and the browser presentation.
+_TABLE_NOWRAP_OPEN = "\ue000"
+_TABLE_NOWRAP_CLOSE = "\ue001"
 
 def _align_url_reader_jit(tool: str, args: dict) -> str:
     """Choose the non-lossy reader at the last responsible moment.
@@ -100,15 +104,21 @@ def _align_url_reader_jit(tool: str, args: dict) -> str:
 
 def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
                    max_cols: int = _TABLE_MAX_COLS,
-                   max_chars: int = _TABLE_MAX_CHARS) -> str:
+                   max_chars: int = _TABLE_MAX_CHARS,
+                   presentation: dict | None = None) -> str:
     """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
     zero LLM). Colonne = campi preferiti presenti (cap `max_cols`), righe fino
     al primo fra `max_rows` e `max_chars` (§2.7: nota i18n sul resto). Entries
     non-dict o senza campi tabulabili → fallback bullet-list."""
+    contract = (presentation or {}).get("list") if isinstance(presentation, dict) else None
+    if isinstance(contract, dict) and contract.get("columns"):
+        return _contract_entries_table(entries, contract)
+
     rows = [e for e in entries if isinstance(e, dict)]
     if not rows:
         return _entries_bullet_lines(entries, fields=_BULLET_FIELDS_DATED,
                                      more_key="MSG_RENDER_MORE_HIDDEN")
+
     seen: list = []
     for e in rows[:50]:
         for k in e.keys():
@@ -164,6 +174,78 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     if more > 0:
         out += "\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)
     return out
+
+
+def _contract_entries_table(entries: list, contract: dict) -> str:
+    """Render a manifest-declared list projection with bounded dimensions."""
+    columns = contract.get("columns") or []
+    max_rows = int(contract.get("max_rows", _TABLE_MAX_ROWS))
+    max_chars = int(contract.get("max_chars", _TABLE_MAX_CHARS))
+
+    def value(entry: object, spec: dict):
+        source = spec.get("source", spec.get("key"))
+        sources = source if isinstance(source, list) else [source]
+        for key in sources:
+            if key == "$entry":
+                return entry
+            if not isinstance(entry, dict):
+                continue
+            candidate = entry.get(key) if isinstance(key, str) else None
+            if candidate not in (None, "", [], {}):
+                return candidate
+        return spec.get("fallback", "")
+
+    def display_datetime(raw: object, kind: object) -> object:
+        """Format a manifest-typed date without knowing its producer domain."""
+        if kind not in {"date", "datetime"} or raw in (None, ""):
+            return raw
+        try:
+            import datetime as _dt
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                parsed = _dt.datetime.fromtimestamp(float(raw), _dt.timezone.utc)
+            elif isinstance(raw, str):
+                text = raw.strip()
+                try:
+                    parsed = _dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+                except ValueError:
+                    from email.utils import parsedate_to_datetime
+                    parsed = parsedate_to_datetime(text)
+            else:
+                return raw
+            if not isinstance(parsed, _dt.datetime):
+                return raw
+            return (parsed.strftime("%d/%m/%y") if kind == "date"
+                    else parsed.strftime("%d/%m/%y %H:%M"))
+        except (OverflowError, OSError, TypeError, ValueError):
+            return raw
+
+    def cell(entry: object, spec: dict) -> str:
+        raw = display_datetime(value(entry, spec), spec.get("type"))
+        if isinstance(raw, (list, tuple, dict)):
+            raw = json.dumps(raw, ensure_ascii=False, sort_keys=True)
+        text = str(raw).replace("|", "\\|").replace("\n", " ").strip()
+        limit = int(spec.get("cell_max", 180))
+        text = text if len(text) <= limit else text[:limit - 1] + "…"
+        # A manifest, not a domain branch, decides which compact identifiers
+        # are indivisible in a table cell (for example a date or account).
+        return (f"{_TABLE_NOWRAP_OPEN}{text}{_TABLE_NOWRAP_CLOSE}"
+                if spec.get("nowrap") else text)
+
+    headers = [str(spec.get("key")) for spec in columns]
+    lines = ["| " + " | ".join(headers) + " |",
+             "| " + " | ".join("---" for _ in headers) + " |"]
+    used = sum(len(line) + 1 for line in lines)
+    shown = 0
+    for entry in entries[:max_rows]:
+        line = "| " + " | ".join(cell(entry, spec) for spec in columns) + " |"
+        if shown and used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+        shown += 1
+    if len(entries) > shown:
+        lines.append(_msg("MSG_RENDER_MORE_HIDDEN", more=len(entries) - shown))
+    return "\n".join(lines)
 
 
 def _entries_bullet_lines(entries: list, *, fields: tuple,
@@ -912,7 +994,7 @@ def _resolve_one_filler(name: str, spec, llm_call: Optional[Callable],
         try:
             from messages import get as _msg  # §11 i18n
             sys_msg = _msg("MSG_FILLER_LLM_INSTRUCTION", name=name, prompt=prompt)
-            ans = llm_call(sys_msg, query, max_tokens=20, think=False)
+            ans = llm_call(sys_msg, query, max_tokens=20)
             ans = (ans or "").strip().split("\n")[0].strip()
             if ans:
                 return ans
@@ -1123,7 +1205,10 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             if not (isinstance(entries, list) and entries):
                 entries = result.get("results")
             if isinstance(entries, list) and entries:
-                return _entries_table(entries) + _note
+                return _entries_table(
+                    entries,
+                    presentation=result.get("_presentation_contract"),
+                ) + _note
             return _sub_one(result, "@count") + _note  # 0 entries → conteggio onesto
         # Universal §7.9 fallback: prova path diretto, poi entries[*].field
         v = _resolve_stepref_with_fallback(result, path)
@@ -1786,7 +1871,7 @@ def _synthesize_final_from_steps(
         # Raise the cap only for that bounded case.
         final_tokens = _presentation_tokens(presentation,
                                             wide=len(obs_lines) >= 3)
-        out = llm_fast(sys_msg, user_msg, max_tokens=final_tokens, think=False)
+        out = llm_fast(sys_msg, user_msg, max_tokens=final_tokens)
         return (out or "").strip()
     except Exception as ex:
         log.warning("Executor: synthesize_final fallback failed: %r", ex)

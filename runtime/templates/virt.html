@@ -17,12 +17,15 @@
 .virt-family{margin:0 0 var(--sp-7);scroll-margin-top:var(--sp-4)}
 .virt-family-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,390px);
   align-items:start;gap:var(--sp-4);margin-bottom:var(--sp-4)}
-.virt-family-copy{min-width:0}.virt-family-copy h2{margin:0 0 .25rem}
-.virt-family-copy p{margin:.2rem 0;color:var(--muted);max-width:72ch}
+.virt-family-copy{min-width:0}.virt-family-copy h2{margin:0}
+.virt-family-description{margin:.35rem 0 0!important;color:var(--ink-2)!important;max-width:68ch}
+.virt-info-tip{display:inline-flex;align-items:center;justify-content:center;
+  width:1.1rem;height:1.1rem;margin-left:.32rem;vertical-align:.1em;
+  border:1px solid var(--border-strong);border-radius:50%;color:var(--muted);
+  font-family:var(--font-ui);font-size:.66em;line-height:1;cursor:help}
+.virt-info-tip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .virt-family-actions{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
   margin-top:var(--sp-3)}.virt-family-actions form{margin:0}
-.virt-policy-note{padding-left:.7rem;border-left:2px solid var(--accent-line);
-  font-size:var(--fs-1);color:var(--ink-2)!important}
 .virt-file{font-size:var(--fs-1);border:1px solid var(--border);border-radius:var(--r-2);
   background:var(--surface);padding:.75rem .85rem;box-shadow:var(--shadow-1)}
 .virt-file-line{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;
@@ -43,6 +46,9 @@
 .virt-card-head{display:flex;align-items:center;gap:.55rem;padding:var(--sp-3) var(--sp-4);
   border-bottom:1px solid var(--border);background:var(--surface-2)}
 .virt-card h3{font-family:var(--font-mono);font-size:var(--fs-3);margin:0;flex:1}
+.virt-role-desc{margin:0;padding:var(--sp-3) var(--sp-4);color:var(--ink-2);
+  font-size:var(--fs-1);line-height:1.5;border-bottom:1px solid var(--border)}
+.virt-role-desc:last-child{border-bottom:0}
 .virt-card-body{padding:var(--sp-4)}
 .virt-block+.virt-block{margin-top:var(--sp-4);padding-top:var(--sp-4);
   border-top:1px solid var(--border)}
@@ -115,11 +121,9 @@
 <section class="virt-family" aria-labelledby="virt-{{ family.key }}">
   <div class="virt-family-head">
     <div class="virt-family-copy">
-      <h2 id="virt-{{ family.key }}">{{ msg(family.title_key) }}</h2>
-      <p>{{ msg(family.description_key) }}</p>
-      {% if family.policy_note_key %}
-      <p class="virt-policy-note">{{ msg(family.policy_note_key) }}</p>
-      {% endif %}
+      <h2 id="virt-{{ family.key }}">{{ msg(family.title_key) }}{% if family.tip_key %}<span class="virt-info-tip" tabindex="0" role="img" title="{{ msg(family.tip_key) }}" aria-label="{{ msg(family.tip_key) }}">i</span>{% endif %}</h2>
+      <p class="virt-family-description">{{ msg(family.description_key) }}</p>
+      {% if family.ui_editable %}
       <div class="virt-family-actions">
         {% if edit_family == family.key %}
         <button class="btn primary" type="submit" form="virt-edit-{{ family.key }}">{{ msg("UI_VIRT_SAVE") }}</button>
@@ -133,6 +137,7 @@
           <button class="btn bad" type="submit">{{ msg("UI_VIRT_RESET") }}</button>
         </form>
       </div>
+      {% endif %}
     </div>
     <div class="virt-file">
       <div class="virt-file-line">
@@ -172,6 +177,7 @@
         <h3>{{ role.name }}</h3>
         <span class="virt-origin">{{ msg("UI_VIRT_ORIGIN_" ~ role.origin|upper) }}</span>
       </div>
+      {% if role.description_key %}<p class="virt-role-desc">{{ msg(role.description_key) }}</p>{% endif %}
       {% if role.fields %}<div class="virt-card-body">
       {% if role.binding_fields %}
       <section class="virt-block">

@@ -16,7 +16,7 @@ en = "SCOPO: Extracts structured records from already observed entries. PATTERN:
 
 [code]
 files = ["../../extract_entries.py"]
-digest = "sha256:42e69985c6e546876942c290378eb2d4b07fef9f76d53423373177a41e3b6f58"
+digest = "sha256:db4b36cf9bbc108738f6c07f56bb8e94613cdd5c76523251b6d7d43ccbd6f77b"
 
 [args]
 type = "object"

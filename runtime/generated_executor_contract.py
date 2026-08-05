@@ -84,4 +84,13 @@ def validate_generated_manifest_text(
             and placement.get("min_sandbox") != "appcontainer"):
         raise GeneratedContractError(
             "generated remote executors must require min_sandbox=appcontainer")
+    output = manifest.get("output") or {}
+    schema = output.get("schema_inline") if isinstance(output, dict) else ""
+    if isinstance(schema, str) and "entries" in schema:
+        presentation = manifest.get("presentation") or {}
+        if (not isinstance(presentation, dict)
+                or presentation.get("default_view") != "list"):
+            raise GeneratedContractError(
+                "generated list-producing executor must declare "
+                "presentation.default_view='list'")
     return manifest

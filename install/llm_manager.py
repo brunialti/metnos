@@ -34,8 +34,8 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Catalogo modelli — data-driven. Ordinato per capacita' DECRESCENTE.
 # `min_budget_gb` = memoria (VRAM dedicata o quota RAM unificata) necessaria a
-# far girare il modello Q4_K_M con un minimo di contesto. `wise_capable` = supera
-# il quality-floor del tier `wise` (vedi llm_router.WISE_QUALITY_WHITELIST_LOCAL).
+# far girare il modello Q4_K_M con un minimo di contesto. `wise_capable` indica
+# il floor prudenziale dell'installer per workload deliberativi complessi.
 # ⚠️ hf_repo/hf_file da VERIFICARE prima del go-public (non testabili offline).
 # `hf_revision` PIN la riproducibilità (INSTALL_NOTES "pin sha256 in the release
 # pipeline"): un commit-sha HF = file IMMUTABILE; `"main"` = ref MOBILE (avviso
@@ -72,6 +72,7 @@ CATALOG = [
 _LLAMA_TAG_DEFAULT = "b9608"
 
 DEFAULT_ENDPOINT = "http://127.0.0.1:8080"
+LOCAL_TIER_NAMES = ("fast", "middle", "wise", "creative")
 # Frazione della RAM unificata/sistema utilizzabile per il modello (lascia
 # margine per OS, KV-cache, embedding in-process, resto di Metnos).
 UNIFIED_RAM_FRACTION = 0.6
@@ -204,7 +205,7 @@ def recommend(hw: dict) -> Plan:
     plan.wise_ok = chosen["wise_capable"]
     token = chosen["tier_token"]
     # tutti i tier locali sullo stesso modello (come l'esercizio); endpoint unico
-    plan.tiers = {t: token for t in ("fast", "middle", "wise")}
+    plan.tiers = {t: token for t in LOCAL_TIER_NAMES}
 
     if accel == "cpu":
         plan.warnings.append(
@@ -214,7 +215,7 @@ def recommend(hw: dict) -> Plan:
         plan.warnings.append(
             f"{chosen['label']} non supera il quality-floor del tier `wise`: "
             "la pianificazione complessa sara' meno affidabile. Aggiungi memoria "
-            "per un modello >=32B, o usa `frontier` per i task wise.")
+            "per un modello >=32B, o usa `frontier` per workload deliberativi.")
     if budget < 8:
         plan.warnings.append(
             f"Budget memoria molto basso (~{budget} GB): qualita'/contesto ridotti.")
@@ -247,7 +248,7 @@ def _render_tiers_toml(plan: Plan, model_file: Path) -> str:
         "# Override flat dei tier locali → llama-server.",
         "",
     ]
-    for tier in ("fast", "middle", "wise"):
+    for tier in LOCAL_TIER_NAMES:
         lines += [
             f"[{tier}]",
             'provider = "llamacpp"',
@@ -259,7 +260,7 @@ def _render_tiers_toml(plan: Plan, model_file: Path) -> str:
         "# frontier resta opt-in (API cloud): configurane la key a parte.",
         "[frontier]",
         'provider = "anthropic"',
-        'model = "claude-opus-4-7"',
+        'model = "claude-opus-4-8"',
         "",
     ]
     return "\n".join(lines)
@@ -707,7 +708,7 @@ def provision(plan: Plan, *, dry_run: bool = True, assume_yes: bool = False) -> 
     emit(f"Scaricare {plan.hf_repo}/{plan.hf_file} (~{_q4_gb(plan)} GB, {_pin}) "
          f"in {model_file}  [huggingface]")
     # 3) tiers config
-    emit(f"Scrivere {tiers} (tier fast/middle/wise → llamacpp {model_file.name} "
+    emit(f"Scrivere {tiers} (tier locali → llamacpp {model_file.name} "
          f"@ {plan.endpoint})")
     # 4) servizio
     emit(f"Installare+abilitare+avviare llama-server (systemd USER unit "

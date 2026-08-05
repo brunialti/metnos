@@ -12,7 +12,7 @@ ritorna boilerplate dal codegen + affinity dell'OBJECT.
 
 Integrazione produzione (in <install_root>):
 - Usa `prompt_loader.get("synt_stage4_description_imported", "it", ...)` o EN.
-- Tier wise (il modello locale), una shot, max 500 tokens output.
+- Workload `skill.description` (`fast.fidelity`), una shot, max 500 token.
 - Output parsato come JSON `{description_it, description_en, affinity}`.
 - Time budget per call: 5s (R1, 24/5/2026). Fallback boilerplate al timeout.
 
@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -144,7 +145,7 @@ def _try_render_prompt_loader(**vars) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
-# System prompt per il tier wise — pattern §6 condensato. Il body del
+# System prompt per la redazione tecnica — pattern §6 condensato. Il body del
 # user prompt viene passato dalla `build_prompt`.
 _WISE_SYSTEM_DEFAULT = (
     "Sei un redattore tecnico Metnos. Rispondi SEMPRE con un solo oggetto JSON "
@@ -155,19 +156,19 @@ _WISE_SYSTEM_DEFAULT = (
 
 def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
               max_tokens: int = 600) -> Optional[str]:
-    """Chiamata reale al tier wise (il modello locale locale via LlamaCppProvider
-    su http://127.0.0.1:8080).
+    """Chiamata reale al tier registrato per le descrizioni tecniche.
 
     Strategie in ordine:
     1. Funzione fake iniettata via env METNOS_LLM_DESCRIPTION_FAKE=mod.fn (test).
-    2. LLMRouter() da <install_root>/runtime → provider("wise").chat() — produzione.
+    2. LLMRouter() + workload registry — produzione.
     3. None (fallback boilerplate; logga WARN tramite logger se disponibile).
 
-    The production time budget is propagated to the provider transport.  The
-    optional injected fake receives the same budget as part of its contract.
+    The production time budget is propagated to the provider transport *and*
+    enforced externally.  This keeps the import responsive even when a
+    provider (or an injected fake) ignores its timeout argument.
 
-    think=False per stage 4 (description e' creativo ma non richiede thinking
-    esteso; riduce latenza ~3x). max_tokens=600 sufficiente per JSON.
+    Il tier decide la policy di generazione; questo stadio dichiara soltanto
+    il limite di output. ``max_tokens=600`` è sufficiente per il JSON.
     """
     fake = os.environ.get("METNOS_LLM_DESCRIPTION_FAKE")
     fake_fn = None
@@ -183,35 +184,64 @@ def _call_llm(prompt: str, *, timeout_s: int = DEFAULT_TIMEOUT_S,
                 _warn_no_llm(f"fake llm import error: {e}")
                 return None
 
-    try:
+    def _request() -> Optional[str]:
         if fake_fn is not None:
-            text = fake_fn(prompt, timeout_s, max_tokens)
-        else:
-            # Produzione: LLMRouter tier wise.
-            import sys as _sys
-            runtime_dir = Path(__file__).resolve().parent
-            if not runtime_dir.exists():
-                _warn_no_llm("runtime dir non disponibile")
-                return None
-            if str(runtime_dir) not in _sys.path:
-                _sys.path.insert(0, str(runtime_dir))
-            from llm_router import LLMRouter  # type: ignore
-            provider = LLMRouter().provider("wise")
-            text = getattr(provider.chat(
-                _WISE_SYSTEM_DEFAULT,
-                prompt,
-                max_tokens=max_tokens,
-                temperature=0,
-                think=False,
-                request_timeout_s=timeout_s,
-            ), "text", None)
-        if not isinstance(text, str) or not text.strip():
-            _warn_no_llm("LLM ritornato vuoto")
-            return None
-        return text
-    except Exception as exc:
-        _warn_no_llm(f"LLM error: {type(exc).__name__}: {exc}")
+            return fake_fn(prompt, timeout_s, max_tokens)
+
+        # Produzione: workload skill.description, risolto centralmente.
+        import sys as _sys
+        runtime_dir = Path(__file__).resolve().parent
+        if not runtime_dir.exists():
+            raise RuntimeError("runtime dir non disponibile")
+        if str(runtime_dir) not in _sys.path:
+            _sys.path.insert(0, str(runtime_dir))
+        from llm_router import LLMRouter  # type: ignore
+        from llm_workloads import tier_for  # type: ignore
+        provider = LLMRouter().provider(tier_for("skill.description"))
+        return getattr(provider.chat(
+            _WISE_SYSTEM_DEFAULT,
+            prompt,
+            max_tokens=max_tokens,
+            request_timeout_s=timeout_s,
+        ), "text", None)
+
+    result: dict[str, object] = {}
+
+    def _run_request() -> None:
+        try:
+            result["text"] = _request()
+        except BaseException as exc:
+            # The exception is reported by the caller, outside the worker.
+            # A daemon worker is intentionally used: a non-cooperative
+            # provider must never keep the import process alive past timeout.
+            result["error"] = exc
+
+    try:
+        wall_timeout_s = max(0.0, float(timeout_s))
+    except (TypeError, ValueError):
+        _warn_no_llm(f"timeout non valido: {timeout_s!r}")
         return None
+
+    worker = threading.Thread(
+        target=_run_request,
+        name="metnos-skill-description-llm",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout=wall_timeout_s)
+    if worker.is_alive():
+        _warn_no_llm(f"LLM timeout dopo {wall_timeout_s:g}s")
+        return None
+
+    error = result.get("error")
+    if error is not None:
+        _warn_no_llm(f"LLM error: {type(error).__name__}: {error}")
+        return None
+    text = result.get("text")
+    if not isinstance(text, str) or not text.strip():
+        _warn_no_llm("LLM ritornato vuoto")
+        return None
+    return text
 
 
 def _warn_no_llm(reason: str) -> None:

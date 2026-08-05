@@ -94,6 +94,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "url", "$entry"], cell_max = 180 },
+  { key = "url", source = ["url", "final_url"], cell_max = 240 },
+  { key = "status_code", source = "status_code", cell_max = 16 },
+  { key = "content_type", source = "content_type", cell_max = 80 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 # Scope-seed di default: localhost. Lo scope effettivo in prod = questo hint ∪

@@ -163,7 +163,7 @@ def run_lens(
       operators: tuple di label. Per lens senza operatori espliciti, ("",).
       build_prompt: callable che riceve ctx + operator label e ritorna prompt.
       ctx: contesto LensCtx.
-      llm_invoke: adapter LLM (e.g. _llm_invoke_local).
+      llm_invoke: adapter LLM (e.g. _llm_invoke_tier).
       grammar: GBNF opzionale per constrained generation.
       paternalism_filter: scarta proposte che giudicano l'utente.
     """

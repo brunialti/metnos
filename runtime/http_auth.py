@@ -315,6 +315,14 @@ def _device_for_token(token: str) -> str | None:
 async def auth_middleware(request: web.Request, handler):
     """Classifica il ruolo del chiamante e applica la policy /admin/."""
     path = request.path
+    # The router has already resolved the request when aiohttp enters a
+    # middleware.  Do not turn an unknown path (or an unsupported method)
+    # into an authentication oracle: preserve the router's ordinary 404/405
+    # response before evaluating credentials.  This branch applies only to
+    # aiohttp's system routes, never to a matched Metnos endpoint.
+    match_info = getattr(request, "match_info", None)
+    if getattr(match_info, "http_exception", None) is not None:
+        return await handler(request)
     role = "anonymous"
     device_id = None
     authenticated_user_id = None

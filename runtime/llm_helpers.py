@@ -6,7 +6,9 @@ prompt, dentro chiama un LLM, ritorna testo. Per non duplicare logica
 di routing in ogni nuovo executor, esponiamo qui la funzione minima:
 
     from llm_helpers import call_llm
-    text, meta = call_llm(query, prompt, tier='middle', max_tokens=600)
+    from llm_workloads import tier_for
+    text, meta = call_llm(
+        query, prompt, tier=tier_for("entries.extract"), max_tokens=600)
 
 `query` puo' essere stringa, dict, lista (verra' serializzata in JSON
 compatto) o gia' una stringa formattata.
@@ -14,10 +16,10 @@ compatto) o gia' una stringa formattata.
 `prompt` e' il system prompt: il mestiere semantico del chiamante (es.
 "sintetizza per importanza", "traduci in inglese", "estrai entita'").
 
-`tier` è VIRTUALE: 'fast' / 'middle' / 'wise'. Default 'middle' per
-sintesi/classificazione/scrittura breve. Il modello FISICO dietro ogni
-tier (datato) vive solo in `llm_router.py::DEFAULT_TIERS`; qui si parla
-solo di tier.
+`tier` è VIRTUALE e appartiene al vocabolario chiuso di `llm_router`.
+I consumer di produzione lo ricavano normalmente da `llm_workloads`; il
+default `fast` resta solo per compatibilita' dell'helper generico. Il modello
+FISICO dietro ogni tier vive solo nella configurazione centrale.
 
 Capability implicita: `llm:call` (l'executor che usa questo helper
 deve dichiararla nel manifest, quando il loader le fara' rispettare).
@@ -41,7 +43,6 @@ from llm_provider import LlamaCppProvider, make_provider_from_spec
 from llm_router import resolved_tier_spec, tier_endpoint as _tier_endpoint
 
 
-_UNSET = object()
 _OUTPUT_POLICIES = frozenset({"raw", "public"})
 _PUBLIC_FORBIDDEN_MARKERS = (
     "<think", "</think", "<|channel", "<channel|>", "INLINE_FORM:",
@@ -177,7 +178,7 @@ def _call_llm_proc(system: str, user: str, *, max_tokens: int,
     binary = _completion_bin()
     if not binary:
         return None
-    endpoint = endpoint or _tier_endpoint("middle")
+    endpoint = endpoint or _tier_endpoint("fast")
     model = _server_model_path(endpoint, deadline_at=deadline_at)
     if not model:
         return None
@@ -226,10 +227,8 @@ def call_llm(
     query: Any,
     prompt: str,
     *,
-    tier: str = "middle",
+    tier: str = "fast",
     max_tokens: int = 600,
-    temperature: float | object = _UNSET,
-    think: bool | None | object = _UNSET,
     deterministic: bool = False,
     max_query_chars: int = 12000,
     output_policy: str = "raw",
@@ -237,11 +236,9 @@ def call_llm(
 ) -> tuple[str, dict]:
     """Chiama il LLM del tier indicato. Ritorna (text, meta).
 
-    Se `temperature` e `think` non sono specificati, vengono risolti dalla
-    policy centrale del tier in `llm_router.resolved_tier_spec`. I chiamanti
-    normali scelgono quindi un livello logico, non parametri del modello.
-    Override espliciti restano riservati a contratti strutturali che li
-    richiedono (per esempio una grammatica chiusa).
+    Temperature, thinking, and reasoning budget are resolved only from the
+    central tier policy. Callers select a logical role; they cannot retain a
+    second decoding profile.
 
     `deterministic=True`: generazione byte-riproducibile via processo
     llama-completion monouso (vedi blocco DETERMINISTICA sopra). Richiede
@@ -266,11 +263,8 @@ def call_llm(
             raise TimeoutError("LLM request deadline exhausted")
         deadline_at = time.monotonic() + parsed_timeout
     spec = resolved_tier_spec(tier)
-    resolved_temperature = (
-        float(spec.get("temperature", 0.0))
-        if temperature is _UNSET else float(temperature)
-    )
-    resolved_think = spec.get("think") if think is _UNSET else think
+    resolved_temperature = float(spec.get("temperature", 0.0))
+    resolved_think = spec.get("think")
     reasoning_budget = int(spec.get("reasoning_budget") or 0)
     provider_name = str(spec.get("provider") or "")
     endpoint = _tier_endpoint(tier)
@@ -326,8 +320,11 @@ def call_llm(
         call_kwargs["reasoning_budget"] = max(1, reasoning_budget)
     if deadline_at is not None:
         call_kwargs["request_timeout_s"] = _remaining_budget(deadline_at)
+    from llm_telemetry import tier_context
+
     t0 = time.time()
-    r = provider.chat(prompt, user_payload, **call_kwargs)
+    with tier_context(tier):
+        r = provider.chat(prompt, user_payload, **call_kwargs)
     latency_ms = int((time.time() - t0) * 1000)
     # Single response-normalization and policy point.  Future
     # provider-neutral post-processing belongs here, not in every consumer.

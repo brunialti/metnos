@@ -16,10 +16,6 @@ Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/usr/lib/python3/dist-packages:/opt/metnos:/opt/metnos/runtime
 Environment=METNOS_HTTP_HOST=0.0.0.0
 Environment=METNOS_HTTP_PORT=8770
-# Tier wise per PLANNER (25/5/2026): bench n=3 conferma ~2.2 min/turn
-# vs ~4.3 min/turn middle baseline, stessa qualita' onesta'. Budget
-# 2048 permette al LLM di convergere prima a final_answer senza retry.
-Environment=METNOS_REASONING_BUDGET=4096
 # Praxis Engine (ADR 0161): sostituisce il PLANNER step-by-step.
 # Il PLANNER legacy è stato RIMOSSO (ADR 0181-ext, 4/7/2026): il declino del
 # motore moderno dà un esito ONESTO (§2.8), non più un fallback ReAct degenere.

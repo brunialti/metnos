@@ -102,6 +102,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "start", source = "start", cell_max = 32 },
+  { key = "end", source = "end", cell_max = 32 },
+  { key = "duration_min", source = "duration_min", cell_max = 16 },
+  { key = "calendar_id", source = "calendar_id", cell_max = 80 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["~/.local/share/metnos/calendar.ics"]

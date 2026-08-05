@@ -56,6 +56,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "binding", source = "binding", cell_max = 80 },
+  { key = "status", source = "status", cell_max = 32 },
+  { key = "age_days", source = "age_days", cell_max = 16 },
+  { key = "scopes", source = "scopes", cell_max = 160 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:credentials_metadata_only"
 hint = []

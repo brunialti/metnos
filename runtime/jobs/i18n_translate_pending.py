@@ -8,8 +8,8 @@ risultato con `needs_translation=0`. Idempotente sul `source_hash`: se
 la riga e' gia' stata tradotta e il testo sorgente non e' cambiato dal
 salvataggio precedente, viene saltata.
 
-Override del tier LLM via env `METNOS_I18N_QUALITY` (`middle|wise|frontier`,
-default `wise`). Cap N=20 per fire per non saturare la GPU notturna.
+Il tier LLM e' il contratto centrale ``translation.i18n``. Cap N=20 per fire
+per non saturare la GPU notturna.
 Audit JSONL append-only in `~/.local/share/metnos/i18n_audit/<YYYY-MM-DD>.jsonl`.
 
 Determinismo §7.9: tutto deterministico tranne la singola call LLM di
@@ -32,7 +32,7 @@ log = logging.getLogger("metnos.jobs.i18n_translate_pending")
 
 
 # Cap throttling per fire. La GPU locale Strix Halo serve VLM + planner;
-# ~20 traduzioni a tier wise (modello locale) assorbono ~60s GPU/fire. Ora
+# ~20 traduzioni col contratto fast.fidelity locale assorbono ~60s GPU/fire. Ora
 # configurabile (era hardcoded): con cadenza every_6h, 4 fire/giorno × cap.
 # Alzalo per drenare prima il backlog (al costo di burst GPU diurni piu' lunghi).
 CAP_PER_FIRE = int(os.environ.get("METNOS_I18N_CAP_PER_FIRE", "20"))
@@ -94,8 +94,14 @@ def _exclusive_translation_lock():
 
 
 def _tier() -> str:
-    """LLM tier per la traduzione (default `wise`; override env)."""
-    return os.environ.get("METNOS_I18N_QUALITY", "wise").lower()
+    """Tier dichiarativo della traduzione; nessun tuning per-call."""
+    from llm_workloads import tier_for
+    return tier_for("translation.i18n")
+
+
+def _tier_label(tier: str) -> str:
+    level = getattr(tier, "level", None)
+    return f"{tier}.{level}" if level else str(tier)
 
 
 from timefmt import now_iso_z as _now_iso
@@ -192,8 +198,8 @@ def _materialize_auto_synth_stubs(conn: sqlite3.Connection, tier: str, cap: int)
             f"Genera testo IT+EN."
         )
         try:
-            text, _meta = call_llm(prompt, sys_prompt, tier=tier,
-                                     max_tokens=400, temperature=0.0)
+            text, _meta = call_llm(
+                prompt, sys_prompt, tier=tier, max_tokens=400)
         except Exception as ex:
             log.warning("materialize stub LLM crash key=%s: %r", key, ex)
             errors += 1
@@ -426,8 +432,7 @@ def _llm_translate(source_text: str, source_lang: str, target_lang: str,
     for attempt in range(2):  # tentativo iniziale + 1 retry
         attempts += 1
         text, _meta = call_llm(
-            prompt, sys_prompt, tier=tier, max_tokens=600, temperature=0.0,
-        )
+            prompt, sys_prompt, tier=tier, max_tokens=600)
         last_text = text or ""
         parsed = _parse_translation_json(last_text)
         if parsed:
@@ -520,7 +525,7 @@ def _task_i18n_translate_pending_unlocked(payload: dict | None = None) -> dict:
             "error_count": 0,
             "metadata": {
                 "cap": CAP_PER_FIRE,
-                "tier_used": _tier(),
+                "tier_used": _tier_label(_tier()),
                 "audit_path": None,
                 "reason": "db_absent",
             },
@@ -547,7 +552,7 @@ def _task_i18n_translate_pending_unlocked(payload: dict | None = None) -> dict:
                 "error_count": 0,
                 "metadata": {
                     "cap": CAP_PER_FIRE,
-                    "tier_used": _tier(),
+                    "tier_used": _tier_label(_tier()),
                     "audit_path": None,
                     "reason": (
                         "no_actionable_pending" if pending_total else "no_pending"
@@ -654,7 +659,7 @@ def _task_i18n_translate_pending_unlocked(payload: dict | None = None) -> dict:
             "error_count": error_count,
             "metadata": {
                 "cap": CAP_PER_FIRE,
-                "tier_used": tier,
+                "tier_used": _tier_label(tier),
                 "audit_path": str(audit_path) if audit_path else None,
                 "elapsed_ms": elapsed_ms,
                 "pending_seen": len(pending),
@@ -678,7 +683,7 @@ def task_i18n_translate_pending(payload: dict | None = None) -> dict:
                 "error_count": 0,
                 "metadata": {
                     "cap": CAP_PER_FIRE,
-                    "tier_used": _tier(),
+                    "tier_used": _tier_label(_tier()),
                     "audit_path": None,
                     "reason": "already_running",
                 },

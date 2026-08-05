@@ -36,16 +36,16 @@ from typing import Callable, Optional
 _LOG = logging.getLogger(__name__)
 
 import config as _C  # §7.11
+from llm_workloads import tier_for
 
 TELEMETRY_PATH = _C.PATH_USER_DATA / "telos_proposals.jsonl"
 
-# LLM default per le lenti: modello locale (Qwen) via llama-server :8080.
-# Bypass LLMRouter (che secondo `~/.config/metnos/llm_tiers.toml` instrada
-# middle a Sonnet frontier). Il telos engine deve girare a costo zero,
-# in background, su modello locale — questo e' un vincolo del progetto
-# (vedi docs/it/architecture/telos.html §3 "Vive in BACKGROUND").
-_LOCAL_MODEL = "local"
-_LOCAL_ENDPOINT = "http://127.0.0.1:8080"
+# Il componente sceglie solo il proprio ruolo logico. Provider, modello,
+# endpoint e politica di generazione sono responsabilità della configurazione
+# dei tier, anche per il lavoro eseguito in background.
+# Le lenti formulano proposte creative e comparative.  Il registry decide il
+# ruolo logico; questo modulo non conosce provider o parametri di generazione.
+_BACKGROUND_TIER = tier_for("telos.lens")
 
 
 def _stored_target_lens_pairs() -> set:
@@ -216,34 +216,19 @@ def _build_executors_sample(catalog, max_n: int = 8) -> list[dict]:
     return out
 
 
-def _llm_invoke_local(prompt: str, *, grammar: str | None = None) -> str:
-    """Adapter LLM locale via LlamaCppProvider diretto a :8080.
+def _llm_invoke_tier(prompt: str, *, grammar: str | None = None) -> str:
+    """Run the configured background tier.
 
-    BYPASSA LLMRouter perche' `~/.config/metnos/llm_tiers.toml` puo'
-    instradare tier=middle a un provider frontier (Sonnet/Opus): per il
-    telos engine vogliamo SEMPRE il modello locale (background, zero
-    cost, vincolo §3 telos.html "Vive in BACKGROUND").
-
-    Thinking budget configurabile via env:
-      METNOS_TELOS_THINK=0|1   abilita reasoning (default 0)
-      METNOS_TELOS_REASONING_BUDGET=N  (default 1024, ignorato se THINK=0)
-
-    `grammar`: GBNF opzionale. Se passata, vincola l'output (Naming
-    Authority, ADR 0133).
+    Provider, model, endpoint, and generation policy belong to the tier
+    configuration. ``grammar`` remains a per-call output constraint.
     """
-    think = os.environ.get("METNOS_TELOS_THINK", "0") == "1"
-    rb = int(os.environ.get("METNOS_TELOS_REASONING_BUDGET", "1024"))
     try:
-        from llm_provider import LlamaCppProvider
-        prov = LlamaCppProvider(
-            model=_LOCAL_MODEL,
-            endpoint=_LOCAL_ENDPOINT,
-        )
+        from llm_router import LLMRouter
+
+        prov = LLMRouter().provider(_BACKGROUND_TIER)
         r = prov.chat(
             "", prompt,
-            max_tokens=2048, temperature=0.7,
-            think=think,
-            reasoning_budget=rb,
+            max_tokens=2048,
             grammar=grammar,
         )
         return r.text if hasattr(r, "text") else str(r)
@@ -267,7 +252,7 @@ def run_for_telos(
     Args:
       telos: oggetto Telos
       catalog: oggetto Catalog Metnos (None -> load_catalog())
-      llm_invoke: callable(prompt) -> str. None -> default middle tier.
+      llm_invoke: callable(prompt) -> str. None -> default creative tier.
       lenses: lista nomi lenti da applicare. None -> tutte attive da env.
       operators: per SCAMPER, subset operatori. None -> tutti e 7.
       persist: True -> scrive telemetria a TELEMETRY_PATH.
@@ -285,7 +270,7 @@ def run_for_telos(
         except Exception as ex:
             _LOG.error("telos_introspect: catalog load failed: %r", ex)
             return []
-    llm = llm_invoke or _llm_invoke_local
+    llm = llm_invoke or _llm_invoke_tier
     from telos_lenses import LENSES, LENSES_NO_GRAMMAR, is_lens_enabled, run_lens, LensCtx
 
     if lenses is None:

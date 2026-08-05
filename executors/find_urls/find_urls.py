@@ -1065,9 +1065,10 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
     }
 
     try:
+        from llm_workloads import tier_for
         text, meta = _call_llm(
-            payload, prompt, tier="middle",
-            max_tokens=900, temperature=0.0, think=False,
+            payload, prompt, tier=tier_for("urls.rerank"),
+            max_tokens=900,
         )
     except Exception as ex:
         return ([c["url"] for c in candidates],

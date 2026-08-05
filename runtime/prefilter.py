@@ -1275,7 +1275,7 @@ def _rank_adaptive_legacy(query, catalog, k_min=5, k_max=8, *, llm_call=None,
 
     Vantaggio dell'intent extractor: robusto a variazioni di linguaggio
     ("archivia", "svuota cestino", "metti in spam") che il lexicon manuale
-    non copre. Latenza tipica ~350ms con il modello locale middle tier.
+    non copre. Latenza tipica ~350ms con il modello locale fast.procedural.
 
     Filtro relativo (28/4 sera): tieni solo score >= max(1, top_score / 2).
     Evita di passare al planner tool con affinity bassa che fanno rumore (il

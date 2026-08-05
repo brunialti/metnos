@@ -65,6 +65,17 @@ hint = ["Google People API HTTPS"]
 [output]
 schema_inline = "{ ok: bool, entries: array, error?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "provider:access"
 hint = ["google-workspace"]

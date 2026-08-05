@@ -49,7 +49,7 @@ def _configured_framework(env: Mapping[str, str]) -> str:
     try:
         from llm_router import DEFAULT_TIERS, _tiers_from_config
         tiers = _tiers_from_config() or DEFAULT_TIERS
-        spec = tiers.get("middle") or tiers.get("wise") or tiers.get("fast") or {}
+        spec = tiers.get("fast") or tiers.get("wise") or {}
         return str(spec.get("provider") or "unknown").strip().lower()
     except Exception:
         return "unknown"

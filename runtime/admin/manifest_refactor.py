@@ -109,7 +109,7 @@ def _is_verbose(manifest: dict) -> tuple[bool, list[str]]:
 
 
 def _build_refactor_prompt(name: str, current: dict, reference: dict) -> str:
-    """Prompt per il modello locale: compacta description preservando semantica."""
+    """Prompt per il tier configurato: compacta description preservando semantica."""
     return f"""SEI un compattatore di manifest.toml di Metnos. Devi
 RISCRIVERE le description IT+EN seguendo 4 regole di stile:
 
@@ -140,15 +140,13 @@ NIENTE markdown fences. La sostanza tecnica DEVE essere preservata
 
 
 def _llm_compact(prompt: str) -> dict | None:
-    """Chiama il modello locale, parse JSON output. None se fallisce."""
+    """Chiama il tier configurato e interpreta JSON. None se fallisce."""
     try:
-        from llm_provider import LlamaCppProvider
-        prov = LlamaCppProvider(
-            model="local",
-            endpoint="http://127.0.0.1:8080",
-        )
-        r = prov.chat("", prompt, max_tokens=2048, temperature=0.3,
-                      think=False)
+        from llm_router import LLMRouter
+        from llm_workloads import tier_for
+
+        prov = LLMRouter().provider(tier_for("manifest.refactor"))
+        r = prov.chat("", prompt, max_tokens=2048)
         text = r.text if hasattr(r, "text") else str(r)
     except Exception as ex:
         print(f"  LLM call failed: {ex}", file=sys.stderr)

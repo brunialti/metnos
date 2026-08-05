@@ -114,6 +114,21 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "path"], cell_max = 160 },
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "score", source = "score", cell_max = 16 },
+  { key = "match_type", source = "match_type", cell_max = 32 },
+  { key = "description", source = "description", cell_max = 180 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
 hint = ["arg:reference_images"]

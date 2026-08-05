@@ -16,17 +16,38 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Callable
 
 log = logging.getLogger("metnos.llm")
 
 # Extra observers: each called with the call record dict. Must never raise.
 _sinks: list[Callable[[dict], None]] = []
+_current_tier: ContextVar[str | None] = ContextVar(
+    "metnos_llm_tier", default=None)
 
 
 def add_sink(fn: Callable[[dict], None]) -> None:
     """Register an additional observer ``fn(record_dict)`` (metrics/cost/…)."""
     _sinks.append(fn)
+
+
+@contextmanager
+def tier_context(tier: str | None):
+    """Attach the logical tier to provider-level telemetry for one call.
+
+    Providers deliberately know only their physical model.  Router/gateway
+    code establishes this context so the shared telemetry hook can retain the
+    logical binding without adding a non-portable ``tier`` argument to every
+    provider implementation.
+    """
+
+    token = _current_tier.set(str(tier) if tier else None)
+    try:
+        yield
+    finally:
+        _current_tier.reset(token)
 
 
 def record(*, provider: str, model: str | None = None, system: str = "",
@@ -43,7 +64,9 @@ def record(*, provider: str, model: str | None = None, system: str = "",
                      (user or "")[:300], text[:200])
         if _sinks:
             rec = {
-                "provider": provider, "model": model, "tier": tier, "kind": kind,
+                "provider": provider, "model": model,
+                "tier": tier if tier is not None else _current_tier.get(),
+                "kind": kind,
                 "system": system, "user": user, "text": text,
                 "in_tokens": getattr(result, "in_tokens", None),
                 "out_tokens": getattr(result, "out_tokens", None),

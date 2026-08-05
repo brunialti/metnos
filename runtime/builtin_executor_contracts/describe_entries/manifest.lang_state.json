@@ -85,12 +85,12 @@
   },
   "args.tier.description": {
     "it": {
-      "version_hash": "sha256:6732cc7167d27c4f837c75116cc5558da8e39c822c53f7aca4c7a48391aa8ef5",
+      "version_hash": "sha256:45562c3c70d9f3bf4397e92110a0ce9a8ba48ab9c45fd0859be988f8f10848cc",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:954e09bd0ba9bb973776bf2710c2acd498c1ec9f36e642a3a60f30a99f3e5fd5",
+      "version_hash": "sha256:ddd6f8826fd6f1bcb8ac1aa5971b27adeea304730714b8403811ee554c3cded3",
       "source_lang": null,
       "source_hash": null
     }

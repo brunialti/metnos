@@ -138,6 +138,21 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "path"], cell_max = 160 },
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "type", source = ["type", "kind", "mime"], cell_max = 48 },
+  { key = "size", source = "size", cell_max = 24 },
+  { key = "mtime", source = "mtime", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
 hint = ["~/notes/**", "/tmp/**"]

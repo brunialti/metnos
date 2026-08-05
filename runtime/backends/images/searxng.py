@@ -104,7 +104,9 @@ def _agentic_rerank(entries: list[dict], query: str, lang: str) -> list[dict]:
     def propose(ctx):
         try:
             from llm_router import LLMRouter
-            provider = LLMRouter().provider("fast")
+            from llm_workloads import tier_for
+            provider = LLMRouter().provider(
+                tier_for("images.search_rerank"))
             if getattr(provider, "mode", "") != "local":
                 return None
             prompt = prompt_loader.get(
@@ -112,8 +114,7 @@ def _agentic_rerank(entries: list[dict], query: str, lang: str) -> list[dict]:
                 query_json=json.dumps(query, ensure_ascii=False),
                 candidates_json=json.dumps(ctx.observed, ensure_ascii=True),
             )
-            result = provider.chat(
-                "", prompt, max_tokens=128, temperature=0, think=False)
+            result = provider.chat("", prompt, max_tokens=128)
             raw = str(getattr(result, "text", "") or "").strip()
             if raw.startswith("```"):
                 raw = "\n".join(raw.splitlines()[1:-1]).strip()

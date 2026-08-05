@@ -95,6 +95,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "role", source = "role", cell_max = 32 },
+  { key = "autonomy_level", source = "autonomy_level", cell_max = 48 },
+  { key = "n_examples", source = "n_examples", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["identity_profile:local"]

@@ -61,7 +61,8 @@ Google Workspace is connected after installation through its OAuth flow. Phase
 ## The AI backend (bring your own)
 
 Metnos never talks to a concrete model directly. It sees logical **tiers**
-(`fast` / `middle` / `wise` / `frontier`) and a text **embedder**. Phase 2 wires
+(`fast` with `micro` / `procedural` / `fidelity`, `middle`, `wise`, `creative`, and
+`frontier`) and a text **embedder**. Phase 2 wires
 them up; you choose how they are served:
 
 ```
@@ -74,9 +75,9 @@ them up; you choose how they are served:
 - **Embeddings** run **in-process**: standalone ONNX BGE-M3, no external hub required. The model/endpoint is config-driven (`embedding_tiers.toml`); Metnos is autonomous for embedding out of the box.
 - **Chat tiers** point at a compatible `llama-server` endpoint, local or remote. Canonical defaults live in `runtime/llm_router.py`; `frontier` remains an opt-in binding configured with credentials from phase 4.
 
-Without a local `middle`/`wise` tier the planner falls back to frontier for every
-turn (higher latency and cost). The installer warns you about this rather than
-hiding it.
+Without the required local bindings, planning cannot start. `frontier` remains
+an explicit, credentialed escalation; it is never a silent replacement for a
+missing local role.
 
 ## Skills: modular capabilities
 

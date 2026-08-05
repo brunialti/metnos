@@ -90,6 +90,17 @@ en = "Backend implementation (default 'httpx' = urllib stdlib + HostThrottle + p
 [output]
 schema_inline = "{ ok: bool, entries: array, metadata?: object, error?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 hint = ["http://*", "https://*"]

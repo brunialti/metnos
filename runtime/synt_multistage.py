@@ -10,23 +10,22 @@ Ordine: dai compiti piu' procedurali/lookup (facili per LLM) a quelli piu'
 creativi (richiedono fluidita' linguistica).
 
 Stages:
-  1. NAMING+CLASS (procedurale, fast/middle): nome conforme vocabolario chiuso +
-                                              revertible/critical/target_kind.
-                                              LOOKUP nel vocabolario.
+  1. NAMING+CLASS (procedurale, middle): nome conforme vocabolario chiuso +
+                                        revertible/critical/target_kind.
+                                        LOOKUP nel vocabolario.
   2. SIGNATURE   (procedurale, middle): args_schema + capabilities + reverse_pattern.
                                         SCHEMA JSON strutturato.
   3. TESTS       (procedurale, middle): 4-6 birth test TOML con expect concrete.
                                         STRUTTURA fissa (input/expect/setup).
-  4. DESCRIPTION (creativo, middle/wise): description LLM-readable + affinity.
-                                          PROSA narrativa.
+  4. DESCRIPTION (creative): description LLM-readable + affinity.
+                             PROSA narrativa.
   5. CODE        (creativo+procedurale, wise): file Python invoke + reverse() se serve.
                                                 LOGIC che ha tutto il contesto.
 
-Tre tier (memoria metnos_design_3tier_llm + design_3tier_llm):
-  fast   = qwen3:8b   (Ollama)   — per stage 1 quando il task e' lookup.
-  middle = modello locale (LlamaCpp) — per stage 2-4 strutturati.
-  wise   = modello locale con think=true OR Claude come ULTIMA istanza — stage 5.
-LLM online = ultima istanza solo se locale fallisce.
+Contratti logici (ADR 0207, risolti da ``llm_workloads``): stage 1-3
+``middle``, stage 4 ``creative``, stage 5 ``wise`` e verifica semantica
+``wise``. Provider, modello e decoding appartengono alla configurazione del
+tier; questi stadi possiedono soltanto schema e tetto dell'output.
 
 Ogni stage scrive checkpoint. Se uno stage fallisce, abbandono con motivo.
 """
@@ -251,9 +250,8 @@ def _parse_json_strict(text: str) -> Optional[dict]:
 def run_stage1(user_request: str, llm_call) -> StageResult:
     """llm_call: callable(system, user, max_tokens) -> {text, in_tokens, out_tokens, latency_ms}.
 
-    Note max_tokens: il modello locale con --reasoning-budget=1024 consuma ~1024 token
-    in thinking interno PRIMA di emettere il JSON; quindi max_tokens deve essere
-    >> 1024 per non troncare l'output. Stage procedurali: 1800 tipico.
+    ``max_tokens`` e' il tetto strutturale dell'output dello stage. La policy
+    di reasoning non viene stimata o compensata qui: appartiene al tier.
     """
     stage1_prompt = prompt_loader.get(
         "synt_naming",
@@ -476,18 +474,28 @@ def _register_synth_keys(code: str) -> int:
     return n_registered
 
 
-def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None) -> MultistageRun:
-    """Orchestratore 5 stages. Stages 1-4 middle, stage 5 wise.
+def run_full(user_request: str, llm_call_procedural, llm_call_wise, *,
+             llm_call_creative=None, llm_call_fidelity=None,
+             progress=None) -> MultistageRun:
+    """Orchestratore a 6 stadi, separato per contratto di workload.
+
+    Stages 1-3 are procedural (middle), stage 4 is editorial (creative),
+    stage 5 is deliberate code synthesis (wise), and stage 6 is faithful
+    semantic verification (wise). Production supplies all four roles
+    explicitly; the optional editorial and fidelity callbacks make isolated
+    stage tests compact.
 
     `progress` (opzionale): istanza di runtime.progress.Progress. Se passato,
     riceve `update(stage)` all'inizio di ogni stadio per UX (Telegram, HTML).
     Default None = nessun progress (test/CLI).
     """
     import uuid
+    llm_call_creative = llm_call_creative or llm_call_procedural
+    llm_call_fidelity = llm_call_fidelity or llm_call_wise
     run = MultistageRun(user_request=user_request, proposal_id=uuid.uuid4().hex[:12])
 
     if progress is not None: progress.update(1)
-    s1 = run_stage1(user_request, llm_call_middle)
+    s1 = run_stage1(user_request, llm_call_procedural)
     run.stages.append(s1)
     if not s1.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage1: {s1.error}"; return run
@@ -496,19 +504,20 @@ def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None
     run.name = s1.output["name"]
 
     if progress is not None: progress.update(2)
-    s2 = run_stage2(user_request, s1.output, llm_call_middle)
+    s2 = run_stage2(user_request, s1.output, llm_call_procedural)
     run.stages.append(s2)
     if not s2.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage2: {s2.error}"; return run
 
     if progress is not None: progress.update(3)
-    s3 = run_stage3(user_request, s1.output, s2.output, llm_call_middle)
+    s3 = run_stage3(user_request, s1.output, s2.output, llm_call_procedural)
     run.stages.append(s3)
     if not s3.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage3: {s3.error}"; return run
 
     if progress is not None: progress.update(4)
-    s4 = run_stage4(user_request, s1.output, s2.output, s3.output, llm_call_middle)
+    s4 = run_stage4(
+        user_request, s1.output, s2.output, s3.output, llm_call_creative)
     run.stages.append(s4)
     if not s4.success:
         run.final_state = "abandoned"; run.abandon_reason = f"stage4: {s4.error}"; return run
@@ -574,9 +583,8 @@ def run_full(user_request: str, llm_call_middle, llm_call_wise, *, progress=None
             description = (s4.output.get("description") or "") if s4 and s4.output else ""
             code_body = run.code_text or ""
             if description and code_body:
-                # Re-uso llm_call_wise: same tier (modello locale).
                 def _v_llm(prompt, model):
-                    res = llm_call_wise(prompt, "", max_tokens=300, think=False)
+                    res = llm_call_fidelity(prompt, "", max_tokens=300)
                     return res or {}
                 verdict = verify_semantic_alignment(
                     description=description,

@@ -38,6 +38,7 @@ import os
 import re
 
 from llm_helpers import call_llm
+from llm_workloads import tier_for
 from messages import get as _msg
 
 from logging_setup import get_logger
@@ -316,7 +317,7 @@ def _classify_batch(items: list[dict], dimension: str, classes: list[str],
     # Output corto: ~5 token per label * n + boilerplate JSON
     max_tok = max(64, 12 * len(items))
     text, meta = call_llm(
-        projected, prompt, tier=tier, max_tokens=max_tok, temperature=0.0,
+        projected, prompt, tier=tier, max_tokens=max_tok,
         max_query_chars=CLASSIFY_QUERY_MAX_CHARS,
         timeout_s=CLASSIFY_LLM_TIMEOUT_S,
     )
@@ -362,11 +363,11 @@ def _dependency_failure(exc: Exception) -> bool:
 
 def _auto_tier(n_items: int) -> str:
     """Per classificare un set chiuso di label, fast basta nei piccoli
-    batch. Per batch grandi diamo middle che ha piu' margine sulla
-    coerenza dell'output strutturato."""
+    batch. Per batch grandi usa fast.procedural per mantenere la coerenza
+    dell'output strutturato."""
     if n_items <= 30:
-        return "fast"
-    return "middle"
+        return tier_for("entries.classify.small")
+    return tier_for("entries.classify")
 
 
 CLASSIFY_ENTRIES_TOOL = {
@@ -460,15 +461,6 @@ CLASSIFY_ENTRIES_TOOL = {
                                    "Batch piu' grossi = meno chiamate ma "
                                    "piu' rischio di output mal-formato.",
                     "default": 30,
-                },
-                "tier": {
-                    "type": "string",
-                    "description": "Tier LLM. 'auto' (default) sceglie fast "
-                                   "per batch piccoli, middle per piu' "
-                                   "grossi. Per task soggettivi o domini "
-                                   "tecnici considera middle/wise.",
-                    "enum": ["auto", "fast", "middle", "wise"],
-                    "default": "auto",
                 },
                 "fields": {
                     "type": "array",
@@ -586,7 +578,7 @@ def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     batch_size = int((args or {}).get("batch_size", 30))
     if batch_size <= 0 or batch_size > 200:
         return {"ok": False, "error": "batch_size must be in 1..200"}
-    tier = (args or {}).get("tier") or "auto"
+    tier = "auto"
     fields = (args or {}).get("fields") or DEFAULT_FIELDS.get(kind)
 
     if not entries:

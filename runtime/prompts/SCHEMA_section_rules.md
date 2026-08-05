@@ -11,7 +11,7 @@ Target: -25-35% byte size, semantica identica. PoC su `calendar` (IT+EN).
 ```yaml
 # Frontmatter equivalente a `{# --- ... --- #}` Jinja (the design guide §6.1)
 role: planner
-tier: middle
+tier: fast
 lang: it
 style: prescriptive
 version: 1

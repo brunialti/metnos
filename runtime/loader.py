@@ -29,6 +29,7 @@ from executor_metadata import (
     standard_state as _standard_state,
     transport_kind as _transport_kind,
 )
+from presentation_contract import normalize_presentation as _normalize_presentation
 
 from logging_setup import get_logger
 log = get_logger(__name__)
@@ -248,6 +249,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         output_schema=_declared_output_schema(manifest),
         execution_policy=_execution_policy(manifest),
         execution_policy_declared=isinstance(manifest.get("execution"), dict),
+        presentation=_normalize_presentation(manifest),
     )
 
 
@@ -545,18 +547,10 @@ class Executor:
     # Vuoto = scope "any" (gira su .33 come oggi). Consumato da
     # placement.choose_placement nel hook di invoke_executor.
     placement: dict = field(default_factory=dict)
-    # Planning complexity hint (19/5/2026): suggerisce al planner se questa
-    # call beneficia di reasoning LLM (think=True) o se la decisione e' ovvia
-    # e think=False e' sufficiente (5-10x speedup sul modello locale - bench
-    # 19/5). Valori:
-    #   - "low":    decisione ovvia (es. read_files con path esplicito) → think=False
-    #   - "medium": default; il planner usa think=True con budget ridotto
-    #   - "high":   query complessa (synt, multi-step composto) → think=True full budget
-    # Letto dal manifest `[planning] complexity = "low|medium|high"`. Se non
-    # dichiarato, fallback automatico in `agent_runtime` basato sul verbo del
-    # nome (producer verbs get/read/find/list → low, mutating → medium).
-    # NOTA: validato sul modello locale. Per modelli diversi vedi
-    # [[metnos_todo_high_think_per_model]].
+    # Hint storico `[planning] complexity = "low|medium|high"`, mantenuto nel
+    # modello dati per compatibilita' dei manifest. Non controlla piu' think,
+    # temperature o budget: i consumer selezionano un workload e la relativa
+    # policy vive esclusivamente nei tier LLM (ADR 0207).
     complexity: str = ""
     # Relazioni dichiarative producer→consumer. Il producer nomina strumenti
     # che possono consumarne naturalmente l'output; il routing li rende
@@ -588,6 +582,9 @@ class Executor:
     intelligence: str = "deterministic"
     transport: str = "local-subprocess"
     output_schema: str = ""
+    # Optional user-facing projection declared by the manifest. Empty means
+    # historical renderer/compatibility path.
+    presentation: dict = field(default_factory=dict)
     # Scheduler policy normalized by the loader.  Default serial preserves the
     # exact historical execution semantics for every existing executor.
     execution_policy: dict = field(default_factory=_execution_policy)
@@ -1480,6 +1477,7 @@ def _load_dir_into_catalog(executors_dir: Path, catalog: Catalog, verify: bool,
             output_schema=_declared_output_schema(manifest),
             execution_policy=_execution_policy(manifest),
             execution_policy_declared=isinstance(manifest.get("execution"), dict),
+            presentation=_normalize_presentation(manifest),
         )
         catalog.executors[name] = ex
 

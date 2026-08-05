@@ -109,7 +109,9 @@ ai telos correnti:</p>
  <li><code>counterfactual</code> e <code>constitutional</code>.</li>
 </ul>
 
-<p>Le lenti usano un modello locale per la parte generativa. Attorno a questa parte
+<p>Le lenti usano il tier logico <code>wise</code> per la parte generativa. Il
+provider, il modello, l'endpoint e la politica di generazione sono quelli configurati
+per quel tier; il job non li sostituisce con un profilo locale. Attorno a questa parte
 probabilistica, il runtime applica regole deterministiche: selezione delle lenti,
 controlli anti-paternalismo, convalida dei nomi, limite delle proposte, eliminazione dei duplicati
 per coppia obiettivo&ndash;lente e persistenza locale.</p>

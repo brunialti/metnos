@@ -507,6 +507,25 @@ def _validate_intelligence(findings: list[StandardFinding], manifest: dict) -> N
         )
 
 
+def _validate_presentation(findings: list[StandardFinding], manifest: dict,
+                           *, active: bool) -> None:
+    """Validate a declared manifest-owned user-facing projection.
+
+    Older signed third-party executors retain compatibility while the shipped
+    catalog is migrated. Synt generation has a separate hard admission gate,
+    and the repository inventory test keeps every shipped list producer on the
+    new contract.
+    """
+    try:
+        from presentation_contract import validate_presentation
+        errors = validate_presentation(manifest)
+    except Exception as exc:
+        _add(findings, "presentation_invalid", f"presentation unavailable: {exc}")
+        return
+    for error in errors:
+        _add(findings, "presentation_invalid", error)
+
+
 def validate_manifest(manifest: dict, *, require_declaration: bool = True,
                       active: bool = True) -> list[StandardFinding]:
     """Return deterministic conformance findings for one parsed manifest.
@@ -547,6 +566,7 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
     _validate_description(findings, manifest, active=active)
     _validate_args(findings, manifest, active=active)
     _validate_intelligence(findings, manifest)
+    _validate_presentation(findings, manifest, active=active)
     _validate_execution(findings, manifest, active=active)
 
     code = manifest.get("code")

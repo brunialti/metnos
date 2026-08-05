@@ -145,6 +145,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "duplicate_of", source = "duplicate_of", cell_max = 240 },
+  { key = "size", source = "size", cell_max = 24 },
+  { key = "group_count", source = "group_count", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
 hint = ["arg:base_path"]

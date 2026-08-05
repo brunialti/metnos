@@ -421,7 +421,7 @@ def _proposer_max_tokens(*, query: str, intent: Intent,
         or len(query or "") >= 800)
     complex_plan = structurally_complex and (compound or action_count == 0)
     if not use_fast:
-        return _token_budget("METNOS_PROPOSER_MAX_TOKENS_THINK", 2048)
+        return _token_budget("METNOS_PROPOSER_MAX_TOKENS_DELIBERATE", 2048)
     if complex_plan:
         return _token_budget("METNOS_PROPOSER_MAX_TOKENS_COMPLEX", 2048)
     if compound:
@@ -498,26 +498,21 @@ class SimpleProposer:
                 prior_steps: Sequence = ()) -> Optional[Framework]:
         if not query or llm_call is None:
             return None
-        # Tier downgrade per intent high-confidence.
-        # Bench 28/5/2026 (15q + 446q FROZEN): think=True NON aumenta ok%
-        # rispetto a think=False. Soglia abbassata 0.85→0.70 per coprire
-        # piu' query con la fast path (3-5s vs 25-30s).
+        # Contratto routine per intent high-confidence. Il benchmark storico
+        # ha motivato la soglia; oggi la differenza di decoding e binding vive
+        # nei tier, non in questo call site.
         # Override via env METNOS_PROPOSER_FAST_CONFIDENCE.
         import os
         threshold = float(os.environ.get(
             "METNOS_PROPOSER_FAST_CONFIDENCE", "0.70"))
         use_fast = intent.confidence >= threshold
 
-        # §7.3 GBNF grammar — DEFAULT ON (8/6/2026, decisione Roberto: routing
-        # DETERMINISTICO §7.9). Forza think=False (ADR 0133: grammar+think
-        # collidono): il reasoning think=True è non-deterministico vicino ai
-        # confini (flip read_urls/find_dirs), e il seed da solo non basta a
-        # stabilizzarlo (resta la varianza MTP sul reasoning lungo). grammar
-        # (think=False) + seed fisso (llm_provider) → routing riproducibile.
-        # Bench 28/5: think=True NON aumenta ok%. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
+        # §7.3 GBNF grammar — DEFAULT ON. Se attiva seleziona il workload
+        # ``planner.grammar`` (fast.fidelity), il cui profilo e' compatibile col
+        # vincolo strutturale. Disattiva: METNOS_PROPOSER_GRAMMAR=0.
         use_grammar = os.environ.get("METNOS_PROPOSER_GRAMMAR", "1") == "1"
         if use_grammar:
-            use_fast = True  # force think=False
+            use_fast = True  # conserva il budget d'output compatto
 
         # Pool effettivo per prompt+grammar: verb-filter (skip compound) +
         # exclude_tools. Estratto in _effective_pool (override-point §7.3):
@@ -574,13 +569,22 @@ class SimpleProposer:
             return None
         if not system:
             return None
-        # Costruisci kwargs LLM con opzionale grammar
+        # The workload chooses one complete logical tier.  Grammar and the
+        # output ceiling remain operation contracts; decoding parameters do
+        # not live at this call site.
+        from llm_workloads import tier_for
+        if use_grammar:
+            selected_tier = tier_for("planner.grammar")
+        elif use_fast:
+            selected_tier = tier_for("planner.routine")
+        else:
+            selected_tier = tier_for("planner.deliberate")
         output_budget = _proposer_max_tokens(
             query=query, intent=intent, effective_pool=effective_pool,
             use_fast=use_fast)
         llm_kwargs: dict = {
             "max_tokens": output_budget,
-            "think": not use_fast,
+            "tier_override": selected_tier,
         }
         if use_grammar:
             try:
@@ -607,7 +611,8 @@ class SimpleProposer:
             try:
                 return llm_call(system, user, **call_kwargs)
             except TypeError:
-                # llm_call non supporta grammar/think kwargs → fallback
+                # A test/legacy injected callable may not support the runtime
+                # tier selector or grammar.  Production adapters support both.
                 if "grammar" in call_kwargs:
                     # B7 — §2.8 no silent failure: il drop della GBNF toglie il
                     # vincolo sui nomi tool → generazione NON vincolata.
@@ -615,6 +620,7 @@ class SimpleProposer:
                         "SimpleProposer: llm_call non supporta 'grammar' — "
                         "GBNF droppata, generazione non vincolata (§2.8)")
                 call_kwargs.pop("grammar", None)
+                call_kwargs.pop("tier_override", None)
                 return llm_call(system, user, **call_kwargs)
 
         try:

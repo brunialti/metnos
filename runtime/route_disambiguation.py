@@ -91,7 +91,6 @@ def _semantic_relation(query: str, candidates: list[str], intent, *,
             prompt,
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             max_tokens=12,
-            think=False,
         )
     except TypeError:
         try:

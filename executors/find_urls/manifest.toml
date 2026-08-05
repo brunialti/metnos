@@ -32,7 +32,7 @@ en = "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:48b4251198a070e80ccd9391fa5e802a83840751c0581319c024cb833e728a32"
+digest = "sha256:38650cc8f5405cd434dc6302a9cbe4a4b051b71892f40475577511cc58b4a410"
 
 [args]
 type     = "object"
@@ -210,6 +210,17 @@ en = "Backend implementation (default 'httpx' = urllib stdlib + SearXNG + HostTh
 [output]
 schema_inline = "{ ok: bool, entries: array, discovered_documents?: integer, discovery_strategy?: string, metadata?: object, error?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 hint = ["http://*", "https://*"]

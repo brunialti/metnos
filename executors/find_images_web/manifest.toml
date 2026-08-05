@@ -80,6 +80,17 @@ en = "Maximum results per text query or per reverse-search result block. Default
 [output]
 schema_inline = "{ ok: bool, entries: array, attachments?: array, error?: string, error_class?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 hint = ["127.0.0.1", "vision.googleapis.com", "oauth2.googleapis.com"]

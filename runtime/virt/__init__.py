@@ -4,11 +4,12 @@ Tre facciate config-driven, stile `llm_router` (factory, NIENTE registry/DI):
 
     from virt import get_embedder, get_llm, get_vlm
     get_embedder("text").embed_texts([...])   # BGE-M3 (o SigLIP "image", o http)
-    get_llm("middle").chat(system, user).text  # delega a llm_router
+    get_llm("fast", level="procedural").chat(system, user).text
     get_vlm()                                  # spec config del VLM :8081
 
-Cambiare modello = editare `~/.config/metnos/{embedding,vlm}_tiers.toml` (il LLM
-ha già `llm_tiers.toml`). Mai il codice. I default uguagliano la realtà attuale.
+LLM e VLM si configurano dalla pagina Modelli; il backend di embedding non si
+cambia dalla UI: richiede una migrazione verificata e la ricostruzione degli
+indici. I default uguagliano la realtà attuale.
 """
 from __future__ import annotations
 
@@ -111,11 +112,14 @@ def get_local_embedder(role: str = "text"):
     return obj
 
 
-def get_llm(role: str = "middle"):
-    """LLMProvider per tier ("fast"/"middle"/"wise"/"frontier"). Delega a
-    `llm_router` — che È già la factory config-driven da `llm_tiers.toml`."""
+def get_llm(role: str = "fast", *, level: str | None = None):
+    """LLMProvider for a canonical tier and optional ``fast`` level.
+
+    The closed vocabulary and concrete config-driven binding are owned by
+    :mod:`llm_router`; callers normally select it through ``llm_workloads``.
+    """
     from llm_router import LLMRouter
-    return LLMRouter().provider(role)
+    return LLMRouter().provider(role, level=level)
 
 
 def get_vlm(role: str = "default") -> dict:

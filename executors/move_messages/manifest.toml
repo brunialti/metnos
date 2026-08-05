@@ -22,8 +22,8 @@ revertible = true
 reverse_pattern = "swap_src_dst"
 
 [description]
-it = "SCOPO: sposta messaggi tra cartelle o etichette (vettoriale). PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"); il contesto account/cartella resta legato agli UID. Gli ID IMAP passati direttamente richiedono account e src_folder espliciti. NON: cambiare solo etichette (-> set_messages); cancellare senza spostare (non esiste). OUT: results=[...]."
-en = "SCOPO: move messages between folders or labels (vectorial). PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"); account/folder context remains bound to the UIDs. Direct IMAP IDs require explicit account and src_folder. NON: change labels only (-> set_messages); delete without moving (does not exist). OUT: results=[...]."
+it = "SCOPO: sposta messaggi tra cartelle o etichette. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). Per ID IMAP diretti fornisci account e src_folder. NON: cambiare solo etichette (-> set_messages) o cancellare. OUT: results=[...]."
+en = "SCOPO: move messages between folders or labels. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). For direct IMAP IDs provide account and src_folder. NON: change labels only (-> set_messages) or delete. OUT: results=[...]."
 
 [code]
 files  = ["move_messages.py"]

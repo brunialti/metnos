@@ -25,6 +25,7 @@ import os
 import re
 
 from llm_helpers import call_llm
+from llm_workloads import tier_for
 import i18n as _i18n
 import prompt_loader
 from messages import get as _msg
@@ -63,13 +64,13 @@ _DESCRIBE_HARD_MAX = int(os.environ.get("METNOS_DESCRIBE_HARD_MAX", "200"))
 #   MAP   — una passata `fast` PER ELEMENTO: resume breve + punteggio di
 #           salienza (0-100). Una entry alla volta non sfora MAI il budget
 #           (elimina il problema alla radice — Roberto), output corto, N volte.
-#   REDUCE— una `middle` sintetizza i digest (piccoli → stanno nel budget),
+#   REDUCE— una `fast.procedural` sintetizza i digest (piccoli → stanno nel budget),
 #           ordinati per salienza; se i digest stessi sforano (N enorme),
 #           ricorsione GERARCHICA (riassunto-di-riassunti) fino a convergenza.
 # Copre tutte le entries FINO al cap anti-runaway (sotto). Scatta SOLO
 # over-budget: il caso comune (sotto budget) resta la singola chiamata di
 # prima, invariato.
-# Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast/middle
+# Determinismo §11: il path map-reduce e' N+1 chiamate HTTP fast
 # (efficiente, no processo monouso ×N) → NON byte-riproducibile, dichiarato
 # onestamente `meta.deterministic=False` (come il fallback HTTP §11).
 _DESCRIBE_MAPREDUCE = os.environ.get("METNOS_DESCRIBE_MAPREDUCE", "1").strip() != "0"
@@ -176,9 +177,11 @@ def _map_one(entry, map_prompt: str) -> tuple[int, str]:
     monouso), input troncato, output corto. Ritorna (salienza, resume).
     Fail-open §2.8."""
     try:
-        text, _meta = call_llm([_trim_for_map(entry)], map_prompt, tier="fast",
-                               max_tokens=140, deterministic=False,
-                               max_query_chars=_MAP_FIELD_CHARS + 2048)
+        text, _meta = call_llm(
+            [_trim_for_map(entry)], map_prompt,
+            tier=tier_for("entries.describe.map"),
+            max_tokens=140, deterministic=False,
+            max_query_chars=_MAP_FIELD_CHARS + 2048)
     except Exception:
         return 50, _fallback_resume(entry)
     return _parse_salience(text, entry)
@@ -286,7 +289,7 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
             res = handle_describe_entries({
                 "entries": groups, "style": style, "context": context,
                 "data_kind": data_kind, "format": fmt, "group_by": group_by,
-                "tier": "middle", "max_tokens": max_tokens,
+                "tier": tier_for("entries.describe.medium"), "max_tokens": max_tokens,
                 "health_context": health_context,
             }, _mr_depth=mr_depth + 1, _deterministic=False)
             if isinstance(res, dict) and res.get("ok"):
@@ -321,11 +324,11 @@ def _describe_map_reduce(entries: list, *, style: str, context: str,
     digests.sort(key=lambda x: x.get("_salience", 0), reverse=True)
     # REDUCE: describe normale sui digest (piccoli → singola chiamata; se
     # sforano ancora, ricorre map-reduce a mr_depth+1 = gerarchico). tier
-    # `middle`, non deterministico (path efficiente).
+    # `fast.procedural`, non deterministico (path efficiente).
     res = handle_describe_entries({
         "entries": digests, "style": style, "context": context,
         "data_kind": data_kind, "format": fmt, "group_by": group_by,
-        "tier": "middle", "max_tokens": max_tokens,
+        "tier": tier_for("entries.describe.medium"), "max_tokens": max_tokens,
         "health_context": health_context,
     }, _mr_depth=mr_depth + 1, _deterministic=False)
     if isinstance(res, dict) and res.get("ok"):
@@ -381,18 +384,17 @@ def _format_directive(fmt: str) -> str:
 def _auto_tier(entries: list) -> str:
     """Sceglie il tier in base alla dimensione del bundle serializzato.
     Heuristica conservativa: testi corti reggono col tier fast,
-    contenuti medi vanno a middle, bundle grossi a wise (per context
-    + qualita' di sintesi su molti item)."""
+    contenuti medi usano fast.procedural, bundle grossi fast.fidelity."""
     try:
         size = len(json.dumps(entries, ensure_ascii=False))
     except Exception:
         size = 0
     n = len(entries)
     if size < 5_000 and n <= 10:
-        return "fast"
+        return tier_for("entries.describe.small")
     if size < 30_000 and n <= 50:
-        return "middle"
-    return "wise"
+        return tier_for("entries.describe.medium")
+    return tier_for("entries.describe")
 
 
 _MAX_LINKS_APPENDED = 10
@@ -715,16 +717,6 @@ DESCRIBE_ENTRIES_TOOL = {
                                    "elenco puntato), 'json' (oggetto strutturato).",
                     "enum": ["markdown", "html", "plain", "bullet_list", "json"],
                 },
-                "tier": {
-                    "type": "string",
-                    "description": "Tier LLM da usare. Default 'auto': sceglie "
-                                   "fast/middle/wise in base alla dimensione "
-                                   "del bundle (entries corte → fast, medie → "
-                                   "middle, lunghe o numerose → wise). "
-                                   "Override esplicito solo se sai che serve.",
-                    "enum": ["auto", "fast", "middle", "wise"],
-                    "default": "auto",
-                },
                 "max_tokens": {
                     "type": "integer",
                     "description": "Tetto per l'output del LLM. Default 600.",
@@ -948,7 +940,7 @@ def handle_describe_entries(args, *, verbose: bool = False,
     prompt_override = (args or {}).get("prompt_override") or h.get("prompt_override")
     group_by = (args or {}).get("group_by") or h.get("group_by") or ""
     fmt = (args or {}).get("format") or h.get("format") or "markdown"
-    tier = (args or {}).get("tier") or h.get("tier") or "auto"
+    tier = "auto"
     # ADR 0111 (7/5/2026): Level 2 — describe_entries deve sapere se la
     # sorgente (`from_step`) aveva un blocco `health` (load/memoria/dischi/
     # servizi). Senza questa visibilita' il LLM dichiarerebbe "non

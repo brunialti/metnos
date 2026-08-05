@@ -70,6 +70,17 @@ hint = ["127.0.0.1"]
 [output]
 schema_inline = "{ ok: bool, entries: array, failed: array, ok_count: integer, fail_count: integer, partial?: bool, truncated?: bool, truncated_what?: string, used?: integer, available_total?: integer, cap_field?: string, cap_value?: integer, error?: string, error_class?: string, error_code?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[tests]]
 name   = "lista_vuota_ok"
 input  = { paths = [] }

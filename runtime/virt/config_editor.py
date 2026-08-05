@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-import tomli_w
+try:
+    import tomli_w
+except ModuleNotFoundError:  # pragma: no cover - deployment repair path
+    tomli_w = None  # type: ignore[assignment]
 
 try:
     import tomllib
@@ -53,6 +56,20 @@ class ConfigEditError(ValueError):
         super().__init__(detail or code)
         self.code = code
         self.detail = detail
+
+
+def _toml_dumps(document: Mapping[str, Any]) -> str:
+    """Serialize only when the optional writer dependency is available.
+
+    The models overview is read-only and must remain available even if a
+    damaged deployment is missing ``tomli-w``.  Writes then fail closed with
+    the route's existing, localized ``toml_unavailable`` error instead of
+    turning the whole page into an HTTP 500.
+    """
+
+    if tomli_w is None:
+        raise ConfigEditError("toml_unavailable")
+    return tomli_w.dumps(document)
 
 
 def _family_path(family: str) -> Path:
@@ -181,7 +198,10 @@ def _validate_url(value: object, *, field: str) -> None:
 
 def _validate_llm(document: dict[str, Any]) -> None:
     from llm_provider import make_provider_from_spec
-    from llm_router import LLMRouter, _normalize_tiers_dict
+    from llm_router import (
+        FAST_LEVEL_ORDER, LLMRouter, _normalize_tiers_dict,
+        complete_tier_spec,
+    )
 
     tiers = _normalize_tiers_dict(document)
     try:
@@ -193,21 +213,27 @@ def _validate_llm(document: dict[str, Any]) -> None:
     for role, spec in router.tiers.items():
         if not isinstance(spec, dict):
             raise ConfigEditError("invalid_configuration", str(role))
-        endpoint = spec.get("endpoint") or spec.get("base_url")
-        if endpoint:
-            _validate_url(endpoint, field=f"{role}.endpoint")
-        provider = str(spec.get("provider") or "")
-        if role == "frontier" and provider == "none":
-            continue
-        try:
-            make_provider_from_spec(spec)
-        except Exception as exc:
-            raise ConfigEditError(
-                "invalid_configuration", str(role)) from exc
-        for key in ("reasoning_budget", "num_predict"):
-            if key in spec and int(spec[key]) < 0:
+        candidates = (
+            [(f"fast.level.{level}", complete_tier_spec(
+                "fast", spec, level=level)) for level in FAST_LEVEL_ORDER]
+            if role == "fast" else [(role, complete_tier_spec(role, spec))]
+        )
+        for display_role, effective in candidates:
+            endpoint = effective.get("endpoint") or effective.get("base_url")
+            if endpoint:
+                _validate_url(endpoint, field=f"{display_role}.endpoint")
+            provider = str(effective.get("provider") or "")
+            if role == "frontier" and provider == "none":
+                continue
+            try:
+                make_provider_from_spec(effective)
+            except Exception as exc:
                 raise ConfigEditError(
-                    "invalid_configuration", f"{role}.{key}")
+                    "invalid_configuration", str(display_role)) from exc
+            for key in ("reasoning_budget", "num_predict"):
+                if key in effective and int(effective[key]) < 0:
+                    raise ConfigEditError(
+                        "invalid_configuration", f"{display_role}.{key}")
 
 
 def _resolved_simple(
@@ -280,10 +306,12 @@ def _validate(family: str, document: dict[str, Any]) -> None:
     else:
         raise ConfigEditError("unknown_family")
     try:
-        serialized = tomli_w.dumps(document)
+        serialized = _toml_dumps(document)
         if tomllib is None:
             raise RuntimeError("tomllib unavailable")
         tomllib.loads(serialized)
+    except ConfigEditError:
+        raise
     except Exception as exc:
         raise ConfigEditError("invalid_document", str(exc)) from exc
 
@@ -313,7 +341,7 @@ def _atomic_write(
     text = (
         "# Configurazione virt gestita da Metnos.\n"
         "# I segreti non sono esposti dall'interfaccia amministrativa.\n\n"
-        + tomli_w.dumps(document)
+        + _toml_dumps(document)
     )
     temp_name = ""
     try:
@@ -361,6 +389,13 @@ def _invalidate_runtime(family: str) -> None:
                 virt._cache.pop(key, None)
     elif family == "vlm":
         virt._vlm_started.clear()
+        try:
+            import vlm_client
+            vlm_client.reload_configuration()
+        except Exception:
+            # The VLM request client is optional and must never make a
+            # validated configuration save fail after the atomic replacement.
+            pass
 
 
 def save(

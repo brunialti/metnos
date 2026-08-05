@@ -5,7 +5,7 @@ Trasforma GENERALE, non ad-hoc: una description legacy verbosa -> SOLA TESTA a 4
 capitoli (SCOPO/PATTERN/NON/OUT), IT+EN, riusando la macchina synt (stage-4
 family). Il prompt `synt_description_normalize.j2` codifica la regola §2.5; il
 driver fornisce SOLO contesto deterministico per-manifest (verbo, oggetto, args,
-fratelli, shape §2.6) e lascia all'LLM-middle la compressione creativa. Niente
+fratelli, shape §2.6) e lascia a fast.procedural la compressione creativa. Niente
 testo hardcoded per-manifest (§7.3/§8.3: si itera il prompt, non l'output).
 
 Flusso per famiglia (routing-critical, §2.5):
@@ -269,27 +269,15 @@ def length_warn(s: str) -> str | None:
 
 
 # -------------------------------------------------------------------------
-# LLM (middle tier, come synt stage-4)
+# LLM (fast.procedural, come synt stage-4)
 # -------------------------------------------------------------------------
 def _make_llm():
-    import os
     from llm_router import LLMRouter
-    tier = os.environ.get("METNOS_NORMALIZE_TIER", "middle").strip()
-    prov = LLMRouter().provider(tier)
-
-    # METNOS_NORMALIZE_THINK: "0"/"false" -> think=False; intero -> reasoning_budget.
-    # Sweet spot empirico (Roberto, 8/6): un po' di thinking aiuta, molto affonda
-    # (1024 bruciava il token cap senza emettere JSON). Default 256.
-    import os
-    # Default "0" (think=False): A/B 8/6 -> piu' affidabile (8/8 vs 7/8), il 256
-    # ogni tanto tronca su prompt lunghi. Overridabile per esperimenti.
-    _tb = os.environ.get("METNOS_NORMALIZE_THINK", "0").strip().lower()
-    _think = _tb not in ("0", "false", "no")
-    _budget = int(_tb) if _tb.isdigit() else 256
+    from llm_workloads import tier_for
+    prov = LLMRouter().provider(tier_for("manifest.normalize"))
 
     def call(user: str, max_tokens=1500):
-        kw = {"think": True, "reasoning_budget": _budget} if _think else {"think": False}
-        r = prov.chat("", user, max_tokens=max_tokens, temperature=0.0, **kw)
+        r = prov.chat("", user, max_tokens=max_tokens)
         return r.text or ""
     return call
 

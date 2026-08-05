@@ -96,8 +96,9 @@ L’accettazione iniziale e l’inserimento delle credenziali restano interattiv
 
 ## Modelli e livelli
 
-Metnos distingue i ruoli `fast`, `middle`, `wise` e `frontier`; non impone un
-modello unico. La configurazione effettiva è in:
+Metnos distingue `fast` (livelli `micro`, `procedural`, `fidelity`), `wise`,
+`creative` e `frontier`; non impone un modello unico. La configurazione
+effettiva è in:
 
 ```text
 ~/.config/metnos/llm_tiers.toml

@@ -59,6 +59,7 @@ device_ok = false
 name   = "no_location_ancora_condivisa"
 setup  = "rm -f /tmp/metnos_loc_test.jsonl"
 input  = { actor = "test_no_data" }
+env    = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
 expect = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
 
 [[tests]]
@@ -69,8 +70,9 @@ expect = { ok = false, error_contains = "deve essere una stringa" }
 # Sample concreto di output (one-shot per synt + fast-path generator).
 [[tests]]
 name        = "happy_path_sample"
-setup       = "mkdir -p \"$METNOS_USER_DATA\" && printf '%s\\n' '{\"ts\":1778078500.0,\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
+setup       = "mkdir -p \"$METNOS_USER_DATA\" && printf '%s\\n' '{\"ts\":1778078500.0,\"owner_user_id\":\"manifest-location-owner\",\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
 input       = { actor = "test_sample" }
+env         = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
 expect      = { ok = true, has_field = "location" }
 expect_full = """
 {

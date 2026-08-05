@@ -15,7 +15,7 @@ en = "SCOPO: Classifies entries into a closed set of classes. PATTERN: natural r
 
 [code]
 files = ["../../classify_entries.py"]
-digest = "sha256:c473d866b1651f57a27678c52b448c94592818f6d7ab98f273773bb532c794c0"
+digest = "sha256:fb9443f43deb2b9ba33d061f094fbd390fc85972853411de02fab7f6c225d9b8"
 
 [args]
 type = "object"
@@ -77,15 +77,6 @@ default = 30
 [args.properties.batch_size.description]
 it = "Dimensione del batch al LLM. Default 30. Batch piu' grossi = meno chiamate ma piu' rischio di output mal-formato."
 en = "Maximum entries or independent sources per model batch."
-
-[args.properties.tier]
-type = "string"
-default = "auto"
-enum = ["auto", "fast", "middle", "wise"]
-
-[args.properties.tier.description]
-it = "Tier LLM. 'auto' (default) sceglie fast per batch piccoli, middle per piu' grossi. Per task soggettivi o domini tecnici considera middle/wise."
-en = "Runtime model tier selector."
 
 [args.properties.fields]
 type = "array"

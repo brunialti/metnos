@@ -1,7 +1,7 @@
 """Generatore deterministico dell'esempio pratico per ogni promote.
 
 §7.9 (deterministico) per il blocco principale e per la stima risparmio.
-Estensione 11/5/2026 (Roberto): aggiunto UN paragrafo LLM tier middle
+Estensione 11/5/2026 (Roberto): aggiunto UN paragrafo LLM creative
 come narrativa interpretabile (NON come decisione). E' l'UNICO uso di
 LLM nel daemon — il fallback su timeout/down e' deterministico.
 
@@ -20,7 +20,7 @@ Output `render_practical_example()` ha 3 sezioni:
 
     <!-- llm_commentary -->
     ## Commento
-    <paragrafo modello locale tier middle, 3-5 frasi>
+    <paragrafo modello locale creative, 3-5 frasi>
 
 Sorgenti dati:
 - `sig_key` del proposal (lista JSON-parseable, ADR 0077).
@@ -49,6 +49,7 @@ _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11
 import i18n as _i18n
 from messages import get as _msg
+from llm_workloads import tier_for
 
 # Stima conservativa della core size del prompt PLANNER (Fase C, 11/5/2026
 # section-aware ~5-8KB): assumiamo 6KB per la versione single-section.
@@ -375,7 +376,7 @@ def _format_perf_savings_block(savings: dict, *, lang: str = "it") -> str:
 
 
 def _render_llm_commentary(deterministic_data: dict, *, lang: str = "it") -> str:
-    """Genera UN paragrafo LLM tier middle che spiega la promozione.
+    """Genera UN paragrafo LLM creative che spiega la promozione.
 
     Input `deterministic_data` shape:
         {
@@ -454,10 +455,8 @@ def _render_llm_commentary(deterministic_data: dict, *, lang: str = "it") -> str
         text, _meta = call_llm(
             user_payload,
             system_prompt,
-            tier="middle",
+            tier=tier_for("promotion.commentary"),
             max_tokens=_LLM_COMMENTARY_MAX_TOKENS,
-            temperature=0.2,
-            think=False,
             timeout_s=_LLM_COMMENTARY_TIMEOUT_S,
         )
     except Exception:
@@ -533,7 +532,7 @@ def render_practical_example(
 
     Sezione 1 — analisi deterministica §7.9.
     Sezione 2 — stima risparmio %, deterministica §7.9.
-    Sezione 3 — UN paragrafo LLM (modello locale tier middle) con
+    Sezione 3 — UN paragrafo LLM (modello locale creative) con
         fallback "(commento non disponibile)" se LLM down/timeout.
 
     `skip_llm=True`: salta la sezione 3 (usato dai test che non vogliono

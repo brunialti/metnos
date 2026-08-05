@@ -3,7 +3,7 @@
 
 Design 1/5/2026 sera (vedi `metnos_design_i18n_final.md` punto 15):
 - Sweep DB i18n per entries con needs_translation=1
-- Batch LLM call (modello locale middle tier, ~5-10s per batch 50 entries)
+- Batch LLM call (livello locale fast.fidelity, ~5-10s per batch 50 entries)
 - UPDATE entries con text + needs_translation=0
 - Self-healing: retry su fallimento
 - Throttle: 30s al boot → 5min steady state
@@ -29,6 +29,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 import i18n  # noqa: E402
+from llm_workloads import tier_for  # noqa: E402
 from vocab import ACTIONS, OBJECTS, QUALIFIERS  # noqa: E402
 
 log = logging.getLogger("metnos.i18n_translator")
@@ -37,6 +38,23 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 BATCH_SIZE = 25  # entries per LLM call (compromesso latenza/throughput)
 INTERVAL_BOOT_S = 30
 INTERVAL_STEADY_S = 300
+_TRANSLATION_TIER = tier_for("translation.i18n")
+
+
+def translation_tier_for_quality(quality: str):
+    """Map the two public translation qualities to logical LLM requests.
+
+    This is the sole bridge from the human-facing quality vocabulary to the
+    router vocabulary.  ``fidelity`` preserves the central workload
+    contract selected by the router.
+    """
+    normalized = (quality or "fidelity").strip().lower()
+    if normalized == "fidelity":
+        return _TRANSLATION_TIER
+    if normalized == "frontier":
+        return "frontier"
+    raise ValueError(
+        f"unknown translation quality {quality!r}; use fidelity or frontier")
 
 # Mapping codice → nome lingua per il prompt LLM
 _LANG_NAMES = {
@@ -120,10 +138,9 @@ def _is_llm_targeted_key(key: str) -> bool:
     return False
 
 
-def _llm_call(prompt: str, max_tokens: int = 4000, tier: str = "middle") -> str | None:
-    """LLM call via LLMRouter. Tier: middle (modello locale) per testi
-    user-facing brevi; wise (stesso o frontier) per prompt LLM-targeted
-    grandi che richiedono massima fedelta' semantica."""
+def _llm_call(prompt: str, max_tokens: int = 4000,
+              tier: str = _TRANSLATION_TIER) -> str | None:
+    """LLM call via the configured high-fidelity tier."""
     try:
         from llm_router import LLMRouter
     except ImportError as e:
@@ -131,9 +148,9 @@ def _llm_call(prompt: str, max_tokens: int = 4000, tier: str = "middle") -> str 
         return None
     try:
         r = LLMRouter()
-        provider = r.provider(tier)
-        res = provider.chat("", prompt, max_tokens=max_tokens, temperature=0,
-                              think=False)
+        provider = r.provider(translation_tier_for_quality(tier)
+                            if tier in ("fidelity", "frontier") else tier)
+        res = provider.chat("", prompt, max_tokens=max_tokens)
         return res.text or ""
     except Exception as e:
         log.warning("LLM call failed (tier=%s): %s", tier, e)
@@ -164,7 +181,7 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
     """Batch translate. Ritorna {key: translated_text}. Pipeline:
     - Separa entries in due classi: user-facing (prompt corto) vs LLM-targeted
       (prompt grande, fedelta' massima richiesta). Le ultime usano prompt
-      template piu' rigoroso e tier `wise` per maggior capacita'.
+      template piu' rigoroso e livello `fast.fidelity` per maggiore fedelta'.
     - Per ogni classe, raggruppa per (source_lang, target_lang) e invoca LLM.
     """
     if not entries:
@@ -181,8 +198,10 @@ def translate_batch(entries: list[dict]) -> dict[str, str]:
 
     out: dict[str, str] = {}
     for cls_name, cls_entries, template, tier, max_tok in [
-        ("user-facing", user_facing, _PROMPT_TEMPLATE_USER_FACING, "middle", 4000),
-        ("llm-targeted", llm_targeted, _PROMPT_TEMPLATE_LLM_TARGETED, "wise", 24000),
+        ("user-facing", user_facing, _PROMPT_TEMPLATE_USER_FACING,
+         _TRANSLATION_TIER, 4000),
+        ("llm-targeted", llm_targeted, _PROMPT_TEMPLATE_LLM_TARGETED,
+         _TRANSLATION_TIER, 24000),
     ]:
         if not cls_entries:
             continue
@@ -261,8 +280,7 @@ def run_loop(boot_interval: float = INTERVAL_BOOT_S,
 # Flusso:
 #   1. translate_prompt_file(role) legge `prompts/it/<role>.j2`
 #   2. pre-pass: maschera placeholder Jinja2 + code-fences con sentinel UUID
-#   3. UNA call LLM tier='wise' (frontier locale: modello locale, oppure online
-#      via config tiers — Sonnet/GPT-5)
+#   3. UNA call LLM col contratto `translation.i18n` (tier `wise`)
 #   4. post-pass: restore sentinel; canonical map DEVI/NON DEVI/OK/ERRORE→
 #      MUST/MUST NOT/OK/ERROR; "E' UN ERRORE"→"THIS IS AN ERROR"
 #   5. validation: sintassi MiniJinja, set placeholder identico, len ratio
@@ -488,15 +506,12 @@ Output the translated prompt now (no fences, no prose):"""
 
 
 def _llm_call_for_prompt(prompt: str, max_tokens: int = 32000,
-                          tier: str = "wise") -> str | None:
+                          tier: str = _TRANSLATION_TIER) -> str | None:
     """LLM call dedicato per traduzione prompt lunghi.
 
-    Tier `wise` = frontier locale (modello locale) o online (Anthropic/OpenAI/
-    Google/Mistral) come configurato in `~/.config/metnos/llm_tiers.toml`.
-
-    `frontier` non e' un tier separato in Metnos: il quality floor del
-    `wise` (vedi llm_router.WISE_QUALITY_WHITELIST_*) impone di per se'
-    il modello locale o superiore.
+    Il default e' il contratto ``translation.i18n`` (tier ``wise``).
+    ``frontier`` resta un'escalation esplicita del comando di manutenzione;
+    provider e modello sono risolti da ``llm_tiers.toml``.
     """
     try:
         from llm_router import LLMRouter
@@ -505,11 +520,11 @@ def _llm_call_for_prompt(prompt: str, max_tokens: int = 32000,
         return None
     try:
         r = LLMRouter()
-        provider = r.provider(tier)
+        provider = r.provider(translation_tier_for_quality(tier)
+                            if tier in ("fidelity", "frontier") else tier)
         # max_tokens generoso: alcuni prompt arrivano a 27 KB; con ratio
         # 1.4 max servono ~38 KB. 32000 token ≈ 100-130 KB testo, sufficiente.
-        res = provider.chat("", prompt, max_tokens=max_tokens, temperature=0,
-                              think=False)
+        res = provider.chat("", prompt, max_tokens=max_tokens)
         return res.text or ""
     except Exception as exc:
         log.warning("LLM call failed (tier=%s): %s", tier, exc)
@@ -540,7 +555,7 @@ def _scrub_unknown_sentinels(text: str, known: set[str]) -> tuple[str, int]:
 
 def translate_prompt_file(role: str, target_lang: str = "en",
                            source_lang: str = "it",
-                           tier: str = "wise",
+                           tier: str = _TRANSLATION_TIER,
                            max_retries: int = 1) -> dict:
     """Traduce un singolo prompt file da `prompts/<source_lang>/<role>.j2`
     a `prompts/<target_lang>/_pending/<role>.j2.candidate`.
@@ -643,7 +658,7 @@ def translate_prompt_file(role: str, target_lang: str = "en",
 
 
 def translate_all_prompts(target_lang: str = "en", source_lang: str = "it",
-                           tier: str = "wise",
+                           tier: str = _TRANSLATION_TIER,
                            skip_existing_synced: bool = True) -> list[dict]:
     """Traduce tutti i `.j2` di `prompts/<source_lang>/` verso `<target_lang>`.
 
@@ -696,7 +711,7 @@ def _sha256_text(text: str) -> str:
 
 
 def _translate_short_text(source_text: str, *, source_lang: str,
-                           target_lang: str, tier: str = "wise",
+                           target_lang: str, tier: str = _TRANSLATION_TIER,
                            max_retries: int = 1) -> tuple[str | None, list[str]]:
     """Traduce una stringa breve (description manifest, 100-1500 char) usando
     il pattern di `translate_prompt_file` (mask Jinja2 placeholder, prescriptive
@@ -824,7 +839,7 @@ def _decide_edit_source(state: dict, resource_key: str,
 
 def align_manifest_descriptions(executor_dirs: list[Path] | None = None,
                                   *, target_langs: list[str] | None = None,
-                                  tier: str = "wise",
+                                  tier: str = _TRANSLATION_TIER,
                                   resign: bool = True,
                                   dry_run: bool = False) -> list[dict]:
     """Sweep dei manifest e auto-allineamento delle description multilingua.
@@ -1149,7 +1164,7 @@ def _file_mtime_safe(p: Path) -> float:
 
 
 def align_prompts(*, target_langs: list[str] | None = None,
-                    tier: str = "wise",
+                    tier: str = _TRANSLATION_TIER,
                     dry_run: bool = False) -> list[dict]:
     """Sweep dei `runtime/prompts/<lang>/<role>.j2` e auto-allineamento
     multilingua via pattern latest-wins simmetrico (estensione ADR 0092).
@@ -1391,7 +1406,7 @@ def align_prompts(*, target_langs: list[str] | None = None,
 
 
 def align_messages(*, target_langs: list[str] | None = None,
-                     tier: str = "wise",
+                     tier: str = _TRANSLATION_TIER,
                      dry_run: bool = False) -> list[dict]:
     """Sweep DB i18n.sqlite e auto-allineamento via pattern latest-wins
     simmetrico (estensione ADR 0092 al Layer 3, 6/5/2026).
@@ -1484,21 +1499,21 @@ def align_messages(*, target_langs: list[str] | None = None,
 
 
 def _resolve_tier_arg(argv: list[str]) -> str:
-    """Resolve `--quality {wise,frontier}` da argv. Default `wise`.
+    """Resolve `--quality {fidelity,frontier}`. Default `fidelity`.
 
-    Permette anche `--quality=wise` (= sintassi). Restituisce nome tier
-    canonico in `DEFAULT_TIERS` (`wise` o `frontier`).
+    Accetta anche la forma `--quality=fidelity`. Restituisce una richiesta
+    logica (`fast.fidelity` o `frontier`).
     """
     for i, a in enumerate(argv):
         if a == "--quality" and i + 1 < len(argv):
             v = argv[i + 1]
-            if v in ("wise", "frontier"):
-                return v
+            if v in ("frontier", "fidelity"):
+                return translation_tier_for_quality(v)
         if a.startswith("--quality="):
             v = a.split("=", 1)[1]
-            if v in ("wise", "frontier"):
-                return v
-    return "wise"
+            if v in ("frontier", "fidelity"):
+                return translation_tier_for_quality(v)
+    return _TRANSLATION_TIER
 
 
 if __name__ == "__main__":

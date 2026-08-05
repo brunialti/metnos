@@ -3,7 +3,7 @@
 The admin runs the four-act flow inside its body:
 
     [pre-1] syntactic gate (no LLM)         — reject literal shell command
-    [1+2+3] single LLM call (tier middle)   — kind ∈ {literal_command,
+    [1+2+3] single LLM call (fast.procedural) — kind ∈ {literal_command,
                                                        translated, unknown,
                                                        impossible}
     [4]    deterministic safety tools       — forbidden, blacklist, whitelist
@@ -277,12 +277,18 @@ Respond with ONE JSON object, exactly one of these shapes:
 def _default_llm_call(prompt: str) -> str:
     """Bridge to the runtime LLM router. Falls back to ok-but-empty in dev.
 
-    The default tier is `middle` (local model think=false) per ADR 0026:
-    intent translation is a procedural task, not a critical safety call.
+    The default tier is ``fast``. Its provider and generation policy belong
+    to the tier configuration; this bridge must not keep a second, hidden
+    local-model profile.
     """
     try:
-        from llm_router import call_middle  # type: ignore
-        return call_middle(prompt, format="json", num_predict=400)
+        from llm_router import LLMRouter
+        from llm_workloads import tier_for
+
+        result = LLMRouter().chat(
+            "", prompt, tier=tier_for("admin.intent_translate"),
+            max_tokens=400)
+        return str(getattr(result, "text", "") or "")
     except Exception as e:  # pragma: no cover (dev fallback)
         log.warning("admin LLM bridge unavailable, returning unknown (%s)", e)
         return '{"kind": "unknown", "reason": "LLM router unavailable"}'
@@ -583,7 +589,7 @@ def decide(
                  sends it on the user's channel; if None, no wait prompts
                  are emitted (useful for testing).
       llm_call:  callable(prompt: str) -> str, returning the LLM's JSON
-                 answer; if None, uses the default (middle tier router).
+                 answer; if None, uses the default fast-tier router.
 
     Returns: AdminDecision describing what to do next.
     """

@@ -99,6 +99,18 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "query", source = "query", cell_max = 160 },
+  { key = "matches", source = "matches", cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 hint = ["nominatim.openstreetmap.org", "localhost"]

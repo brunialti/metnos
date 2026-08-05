@@ -172,6 +172,23 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "date",    source = "date",                    type = "date",     cell_max = 24, nowrap = true },
+  { key = "account", source = "account",                 type = "string",   cell_max = 32, nowrap = true },
+  { key = "from",    source = "from",                    type = "string",   cell_max = 80 },
+  { key = "subject", source = "subject",                 type = "string",   cell_max = 140 },
+  { key = "summary", source = ["summary", "body_preview"], type = "string", cell_max = 180, derived_by = "describe_entries" },
+  { key = "category", source = "category",               type = "string",   cell_max = 32, fallback = "unclassified", derived_by = "classify_entries" },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
+
 [[capabilities]]
 name = "mail:read"
 hint = ["imap.example.com"]

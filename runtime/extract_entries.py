@@ -11,7 +11,7 @@ strutturato → entries strutturate» per QUALSIASI dominio:
 
 Estensione di confine §2.2 (ratificata da Roberto 3/6): `extract` non è più
 «solo archivi» ma «struttura embedded in un contenitore» (archivi + record da
-testo). LLM tier `middle` di default (parsing+normalizzazione = compito medio).
+testo). Usa il workload `entries.extract` (fast.procedural).
 
 Output: `entries` = lista PIATTA dei record estratti (può essere più lunga o più
 corta della lista d'ingresso). I campi-data (`start/end/date/when/...`) sono
@@ -832,7 +832,7 @@ def _infer_fields(entries: list, instruction: str, tier: str) -> tuple[list[str]
     def propose(_ctx):
         raw, meta = call_llm(
             sample, _build_field_inference_prompt(instruction),
-            tier=tier, max_tokens=256, think=False,
+            tier=tier, max_tokens=256,
         )
         fields = _parse_inferred_fields(raw)
         return AgenticProposal(fields, evidence=meta) if fields else None
@@ -1088,7 +1088,8 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 "error_class": "invalid_args", "entries": []}
 
     instruction = a.get("instruction") or a.get("what") or ""
-    tier = a.get("tier") or "middle"
+    from llm_workloads import tier_for
+    tier = tier_for("entries.extract")
     fields = a.get("fields")
     infer_fields = fields in (None, "", [])
     if isinstance(fields, str) and fields.strip():
@@ -1381,8 +1382,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                 out_truncated += 1
 
     def _llm_extract(src_text):
-        raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt,
-                             think=False)
+        raw, meta = call_llm(src_text, prompt, tier=tier, max_tokens=mt)
         _record_llm_meta(meta, mt)
         parsed = [{f: rec.get(f, "") for f in model_fields}
                   for rec in _parse_records(
@@ -1426,7 +1426,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
         raw, meta = call_llm(
             payload,
             _build_batch_prompt(model_fields, instruction, max_per_text),
-            tier=tier, max_tokens=_extract_max_tokens(record_cap), think=False,
+            tier=tier, max_tokens=_extract_max_tokens(record_cap),
             max_query_chars=_BATCH_QUERY_CHARS + 4096,
         )
         with llm_metrics_lock:

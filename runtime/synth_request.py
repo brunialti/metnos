@@ -218,6 +218,16 @@ def _install_synthesized(run, intent, user_query):
         '  error_class?: str',
         '}',
         '"""',
+        '',
+        '[presentation]',
+        'default_view = "list"',
+        '',
+        '[presentation.list]',
+        'mode = "table"',
+        'columns = [{ key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 160 }]',
+        'max_rows = 200',
+        'max_chars = 16000',
+        'overflow = "notice"',
     ])
 
     stage_tests = ((run.stages[2].output or {}).get("tests") or []) \
@@ -368,11 +378,11 @@ def _find_canonical_alias(expected_name, catalog):
 def handle_synth_request(args, *, user_query, progress=None, verbose=False, current_steps=None):
     """Gestisce la chiamata a request_new_executor.
 
-    Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa LLMRouter
-    per i tier: stage 1-4 con `middle` (procedurale, modello locale), stage 5 con
-    `wise` (creativo+procedurale, modello locale con think=true). Il provider
-    del pianificatore (fast tier) NON e' adatto per la sintesi: qwen3:8b
-    fatica con i 5 stage, specialmente stage 5 CODE.
+    Lancia synt_multistage.run_full sincronamente (~150 s wall). Usa i tier
+    logici `middle` per gli stadi procedurali, `creative` per la descrizione,
+    `wise` per il codice e per la verifica semantica. Provider,
+    modello e policy sono quelli configurati dall'istanza; il tier fast del
+    planner non e' adatto alla sintesi.
     Salva la proposal in PROPOSALS_DIR e ritorna una observation strutturata
     per il LLM.
 
@@ -532,56 +542,45 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
 
     PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Synt usa SEMPRE middle+wise (non il tier del pianificatore). Vedi
-    # `metnos_wise_tier_quality_floor` e direttiva 29/4/2026: synt non deve
-    # usare fast tier. middle e' aliased da wise se non configurato.
+    # Synt selects workload contracts only.  Provider/model/decoding policy
+    # are resolved centrally for each logical tier.
     from llm_router import LLMRouter
+    from llm_workloads import tier_for
     _router = LLMRouter()
-    _middle_provider = _router.provider("middle")
-    _wise_provider = _router.provider("wise")
+    _providers = {
+        workload: _router.provider(tier_for(workload))
+        for workload in (
+            "synt.procedural", "synt.description", "synt.multistage",
+            "synt.semantic_verify",
+        )
+    }
 
-    # PoC bench Asse B synt (13/5/2026 sera): env `METNOS_SYNT_BUDGET` permette
-    # di iterare sul reasoning_budget di synt (default 1024 = legacy). Valori
-    # supportati: "0" (no thinking), "<int>" flat. Determinismo §7.9: env-driven.
-    _synt_budget_env = os.environ.get("METNOS_SYNT_BUDGET", "").strip()
-
-    def _synt_budget_kwargs(default_budget: int = 1024) -> dict:
-        """Costruisce kwargs `think`/`reasoning_budget` da `METNOS_SYNT_BUDGET`.
-        - "0" -> think=False (no thinking budget, latenza minima).
-        - "<int>" -> think=True + reasoning_budget=<int>.
-        - "" (default) -> think=True + reasoning_budget=default_budget (legacy).
-        """
-        if _synt_budget_env == "0":
-            return {"think": False}
-        if _synt_budget_env.isdigit() and int(_synt_budget_env) > 0:
-            return {"think": True, "reasoning_budget": int(_synt_budget_env)}
-        return {"think": True, "reasoning_budget": default_budget}
-
-    def _llm_middle(system, user, max_tokens=2500, **kwargs):
+    def _invoke(workload, system, user, max_tokens, **kwargs):
         t0 = time.time()
-        # caller override > budget default (es. stage 6 passa think=False)
-        _kw = {**_synt_budget_kwargs(1024), **kwargs}
-        r = _middle_provider.chat(system, user, max_tokens=max_tokens,
-                                  temperature=0.0, **_kw)
+        r = _providers[workload].chat(
+            system, user, max_tokens=max_tokens, **kwargs)
         return {
             "text": r.text or "",
             "in_tokens": r.in_tokens,
             "out_tokens": r.out_tokens,
             "latency_ms": int((time.time() - t0) * 1000),
         }
+
+    def _llm_procedural(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.procedural", system, user, max_tokens, **kwargs)
+
+    def _llm_creative(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.description", system, user, max_tokens, **kwargs)
 
     def _llm_wise(system, user, max_tokens=5000, **kwargs):
-        t0 = time.time()
-        # caller override > budget default (es. stage 6 passa think=False)
-        _kw = {**_synt_budget_kwargs(1024), **kwargs}
-        r = _wise_provider.chat(system, user, max_tokens=max_tokens,
-                                temperature=0.0, **_kw)
-        return {
-            "text": r.text or "",
-            "in_tokens": r.in_tokens,
-            "out_tokens": r.out_tokens,
-            "latency_ms": int((time.time() - t0) * 1000),
-        }
+        return _invoke(
+            "synt.multistage", system, user, max_tokens, **kwargs)
+
+    def _llm_fidelity(system, user, max_tokens=2500, **kwargs):
+        return _invoke(
+            "synt.semantic_verify", system, user, max_tokens, **kwargs)
 
     if verbose:
         print(f"[synth_request] starting multistage for expected_name={expected_name!r} intent={intent!r}")
@@ -591,7 +590,12 @@ def handle_synth_request(args, *, user_query, progress=None, verbose=False, curr
 
     t_start = time.time()
     try:
-        run = multistage_run_full(intent, _llm_middle, _llm_wise, progress=progress)
+        run = multistage_run_full(
+            intent, _llm_procedural, _llm_wise,
+            llm_call_creative=_llm_creative,
+            llm_call_fidelity=_llm_fidelity,
+            progress=progress,
+        )
     except Exception as ex:
         if progress is not None:
             progress.update_free(_msg(

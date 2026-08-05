@@ -76,6 +76,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "filename", source = ["filename", "name", "id"], cell_max = 160 },
+  { key = "album", source = "album", cell_max = 120 },
+  { key = "created_at", source = "created_at", cell_max = 32 },
+  { key = "mime", source = "mime", cell_max = 64 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["photos:remote"]

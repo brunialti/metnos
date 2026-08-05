@@ -85,6 +85,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "session_id", source = "session_id", cell_max = 100 },
+  { key = "logged_in", source = "logged_in", cell_max = 16 },
+  { key = "reason_code", source = "reason_code", cell_max = 64 },
+  { key = "message", source = "message", cell_max = 180 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:sites"
 hint = ["*"]

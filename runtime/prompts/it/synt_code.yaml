@@ -31,6 +31,18 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: presentation_contract
+    body: |
+      CONTRATTO DI PRESENTAZIONE DEL MANIFEST: la vista utente e' dichiarativa,
+      non codice dell'executor. Se l'output dichiara `entries`, DEVI dichiarare
+      `[presentation] default_view="list"`;
+      `[presentation.list]` dichiara colonne, fonti, fallback e limiti; il
+      runtime la renderizza genericamente. `$entry` e' ammesso solo come ultimo
+      fallback per record opachi o scalari. Restituisci dati nei campi dichiarati:
+      NON generare Markdown/UI e NON fare rami per mail, file o eventi.
+      Per date usa il tipo chiuso `date` (resa utente `gg/mm/aa`); per data e
+      ora usa `datetime`. Restituisci sempre il valore grezzo, non una cella formattata.
+
   - name: language_and_stdlib
     body: |
       DEVI: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.

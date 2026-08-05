@@ -88,7 +88,10 @@ header form button:hover{color:var(--accent)}
    sovrappone al testo vicino. Rendere la tabella scrollabile e le celle
    spezzabili mantiene ogni risposta dentro il suo frame. */
 .msg[data-html-mode="true"] table{display:block;max-width:100%;overflow-x:auto;
-     overscroll-behavior-inline:contain}
+     overscroll-behavior-inline:contain;font-size:.86em;line-height:1.32}
+.msg[data-html-mode="true"] th,.msg[data-html-mode="true"] td{padding:.12rem .4rem}
+.msg th.cell-nowrap,.msg td.cell-nowrap{white-space:nowrap;word-break:normal;
+     overflow-wrap:normal}
 .msg th,.msg td{padding:.15rem .5rem;border-bottom:1px solid var(--border);
      overflow-wrap:anywhere;word-break:break-word;white-space:normal;
      max-width:min(38rem,75vw)}
@@ -153,22 +156,6 @@ header form button:hover{color:var(--accent)}
                     border-radius:var(--r-1)}
 .msg .msg-fb-retry:hover{opacity:1;color:var(--accent);background:var(--accent-soft)}
 .msg .msg-fb-retry:active{background:var(--surface-3)}
-
-/* ---------- copia testo messaggio (bolle testuali): discreto come i badge
-   feedback (visibile a riposo via opacity, niente hover-only per touch).
-   Riga azioni sotto il testo, allineata a destra. ---------- */
-.msg .msg-actions{display:flex;justify-content:flex-end;margin-top:.25rem}
-.msg .msg-copy-btn{border:none;background:transparent;cursor:pointer;
-                    color:var(--muted);font-family:var(--font-mono);
-                    font-size:var(--fs-0);line-height:1;
-                    min-width:24px;min-height:22px;padding:.1rem .3rem;
-                    border-radius:var(--r-1);opacity:.55;
-                    transition:opacity var(--t-1) var(--ease),
-                               color var(--t-1) var(--ease),
-                               background var(--t-1) var(--ease)}
-.msg .msg-copy-btn:hover,.msg .msg-copy-btn:focus-visible{opacity:1;
-                    color:var(--ink-2);background:var(--surface-2)}
-.msg .msg-copy-btn.done{color:var(--ok-fg);opacity:1;cursor:default}
 
 /* ---------- breadcrumb pipeline (badge executor) ---------- */
 .msg .path-badges{display:flex;flex-wrap:wrap;gap:.25rem;align-items:center;
@@ -801,27 +788,6 @@ function copyMsgText(t){
   });
 }
 
-// Bottone copia (bolle utente): icona discreta, conferma transitoria.
-function makeCopyBtn(getText){
-  const cb = document.createElement('button');
-  cb.type = 'button';
-  cb.className = 'msg-copy-btn';
-  cb.title = '{{ msg("MSG_CHAT_COPY_HINT")|e }}';
-  cb.setAttribute('aria-label', cb.title);
-  cb.textContent = '⧉';
-  cb.addEventListener('click', () => {
-    copyMsgText(getText()).then(() => {
-      cb.classList.add('done');
-      cb.textContent = '{{ msg("MSG_CHAT_COPY_DONE")|e }}';
-      setTimeout(() => {
-        cb.classList.remove('done');
-        cb.textContent = '⧉';
-      }, 1200);
-    }).catch(() => {});
-  });
-  return cb;
-}
-
 // Copia l'INTERA conversazione (header "copia chat"). Raccoglie il testo pulito
 // (data-copytext) di ogni bolla con etichetta-ruolo; salta le effimere
 // (thinking) e le gallery. Riusa copyMsgText (fallback non-secure-context).
@@ -1202,16 +1168,6 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode){
   // turn_id/executor restano visibili senza dover scorrere sotto l'iframe.
   if(inlineFormContext) d.appendChild(inlineFormContext);
   if(inlineFormWrap) d.appendChild(inlineFormWrap);
-  // Copia il testo pulito di ogni bolla conversazionale. Usare lo snapshot
-  // data-copytext evita di includere metadati, feedback e la stessa riga
-  // azioni; rende inoltre copiabili le risposte bot, non solo le query.
-  if(['me', 'bot', 'err', 'tool', 'tool-info'].includes(cls)
-      && d.dataset.copytext){
-    const act = document.createElement('div');
-    act.className = 'msg-actions';
-    act.appendChild(makeCopyBtn(() => d.dataset.copytext || ''));
-    d.appendChild(act);
-  }
   log.appendChild(d);
   if(attachments && attachments.length){
     const imgs = attachments.filter(a => a && a.thumb_url);

@@ -3,7 +3,8 @@
 
 Bug live 8/5: synth `find_texts` aveva `description` "motori di ricerca
 online" ma il `code` faceva tutt'altro. Stage 6 confronta description vs
-code via LLM (tier wise = modello locale) e rifiuta i misalignments.
+code via LLM (workload ``synt.semantic_verify`` → ``wise``) e rifiuta
+i misalignments.
 
 Determinismo §7.9: solo JSON parsing strict, retry 1x su malformed,
 fallback `aligned=False` (fail-safe — meglio rifiutare un buon synth che
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import Callable
 
 import config as _C  # §7.11
+from llm_workloads import tier_for
 
 VERIFY_AUDIT_DIR = _C.PATH_USER_DATA / "synth_audit"
 
@@ -105,9 +107,15 @@ def _default_llm_call(prompt: str, model: str) -> dict:
     provider = router.provider(model)
     res = provider.chat(
         _VERIFY_SYSTEM_DEFAULT, prompt,
-        max_tokens=300, temperature=0, think=False,
+        max_tokens=300,
     )
     return {"text": getattr(res, "text", None) or ""}
+
+
+def _request_label(request: str) -> str:
+    """Human/audit label for a logical request, including a fast level."""
+    level = getattr(request, "level", None)
+    return f"{request}.{level}" if level else str(request)
 
 
 def verify_semantic_alignment(
@@ -153,14 +161,15 @@ def verify_semantic_alignment(
     models_env = os.environ.get("LLM_VERIFY_MODELS", "").strip()
     models: list[str] = (
         [m.strip() for m in models_env.split(",") if m.strip()]
-        if models_env else ["wise"]
+        if models_env else [tier_for("synt.semantic_verify")]
     )
 
     # Single model path (default)
     if len(models) == 1:
         model = models[0]
         verdict, raw_text = _single_verify(prompt, model, llm_call)
-        out = {**verdict, "model": model, "raw": _parse_verify_json(raw_text or "")}
+        out = {**verdict, "model": _request_label(model),
+               "raw": _parse_verify_json(raw_text or "")}
         _write_audit(name_hint, prompt, raw_text, verdict, [model])
         return out
 

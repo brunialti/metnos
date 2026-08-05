@@ -59,7 +59,7 @@ en = "SCOPO: consult an expert oracle for deep analysis. PATTERN: consult_fronti
 
 [code]
 files  = ["consult_frontier.py"]
-digest = "sha256:656790202008cd3ff5f54c1d32c44a18da50740f5f1eec13feace6f9eacfd71a"
+digest = "sha256:a0686ea9f1d1473532547ff0da808c178957cad97dc25c27a5c9b47b74b59452"
 
 [args]
 type     = "object"
@@ -104,12 +104,12 @@ en = "Whitelist of tool names the frontier can call. Default: derived from remot
 
 [args.properties.tier]
 type        = "string"
-enum        = ["fast", "middle", "wise", "frontier"]
-default     = "wise"
+enum        = ["fast", "middle", "precise", "wise", "creative", "frontier"]
+default     = "frontier"
 
 [args.properties.tier.description]
-it = "Tier LLM astratto: `fast` privilegia latenza/costo, `middle` equilibrio, `wise` ragionamento profondo, `frontier` massima capacità con fallback configurato. Con remote_context, `fast` viene promosso a `middle` per rendere affidabile il tool loop."
-en = "Abstract LLM tier: `fast` favors latency/cost, `middle` balances them, `wise` favors deep reasoning, and `frontier` uses maximum capability with the configured fallback. With remote_context, `fast` is promoted to `middle` for a reliable tool loop."
+it = "Tier LLM astratto. `fast`: decisioni minime; `middle`: trasformazioni strutturate; `precise`: alta fedeltà; `wise`: pianificazione; `creative`: generazione divergente; `frontier`: escalation esplicita di massima capacità. Default `frontier`. Con remote_context, `fast` viene promosso a `middle` per un tool loop affidabile."
+en = "Abstract LLM tier. `fast`: micro-decisions; `middle`: structured transforms; `precise`: high fidelity; `wise`: planning; `creative`: divergent generation; `frontier`: explicit maximum-capability escalation. Default: `frontier`. With remote_context, `fast` is promoted to `middle` for a reliable tool loop."
 
 [args.properties.max_tokens]
 type        = "integer"

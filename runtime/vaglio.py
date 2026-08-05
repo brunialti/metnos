@@ -12,7 +12,7 @@ Due fasi distinte, come da cap.11 dell'Architettura:
 
 In v1.1 il **giudice e' rule-based** (heuristiche locali, niente LLM):
 delibera in microsecondi e non costa nulla. Il giudice LLM e' rimandato
-a v1.2 (richiede tier middle/wise configurato + budget). La separazione
+a v1.2 (richiede fast.procedural o wise configurato + budget). La separazione
 deontologia/teleologia (binaria/graduata) evita il fenomeno chiamato
 "auto-conferma del modello" (cap.11.1 Architettura): se mescolassi le
 due in un unico punteggio, un giudice teleologico tenderebbe a
@@ -41,7 +41,7 @@ VAGLIO_LOG_DIR = _C.PATH_USER_DATA / "vaglio"
 JUDGE_THRESHOLD = float(os.environ.get("METNOS_JUDGE_THRESHOLD", "0.30"))
 
 # Backend del giudice: "rule-based-v1" (default, deterministico, costo zero) o
-# "llm-v1" (usa il tier middle dell'LLMRouter, contesto separato dal proponente,
+# "llm-v1" (usa fast.procedural dell'LLMRouter, contesto separato dal proponente,
 # prompt sulle 4 Leggi e i telos). LLM e' opt-in via env var perche' costa.
 JUDGE_KIND = os.environ.get("METNOS_JUDGE_KIND", "rule-based-v1")
 
@@ -242,7 +242,7 @@ def judge_score(intent: str, executor_name: str, args: dict, context: dict | Non
 
 
 def _judge_score_llm(intent: str, executor_name: str, args: dict, context: dict | None = None) -> tuple[float, str]:
-    """Giudice LLM tier=middle. Ritorna (score, reason).
+    """Giudice LLM fast.procedural. Ritorna (score, reason).
 
     Il prompt user contiene SOLO chiavi di args (non valori) per privacy:
     stesso principio del logging JSONL.
@@ -264,13 +264,11 @@ def _judge_score_llm(intent: str, executor_name: str, args: dict, context: dict 
     try:
         import prompt_loader
         import i18n
+        from llm_workloads import tier_for
         router = LLMRouter()
-        # think=False per evitare che il modello locale sprechi i 1024 token di reasoning
-        # in bullet-list invece di emettere il JSON. Il giudice e' un task
-        # procedurale (label + reason breve), niente thinking necessario.
         res = router.chat(prompt_loader.get("vaglio", i18n.current_lang()), user,
-                          tier="middle",
-                          max_tokens=120, for_code=False, think=False)
+                          tier=tier_for("vaglio.judge"),
+                          max_tokens=120, for_code=False)
     except Exception as e:
         return 0.5, f"llm-judge fallback (chat failed): {e}"
 

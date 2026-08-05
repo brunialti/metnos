@@ -72,6 +72,17 @@ hint = ["nominatim.openstreetmap.org"]
 [output]
 schema_inline = "{ ok: bool, entries: array, ok_count: integer, fail_count: integer, truncated?: bool, error?: string }"
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[tests]]
 name     = "dates_semantic_default"
 setup    = "mkdir -p /tmp/metnos_test_meta && echo x > /tmp/metnos_test_meta/a.txt && touch -d '2024-06-15 12:00:00' /tmp/metnos_test_meta/a.txt"

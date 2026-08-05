@@ -19,6 +19,18 @@ Skeleton manifest already decided (DO NOT change it):
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
 
+MANIFEST PRESENTATION CONTRACT:
+The user-facing view is declarative and does not belong in executor code.
+When output declares `entries`, the producer manifest MUST declare
+`[presentation] default_view="list"`; its
+`[presentation.list]` declares columns, sources, fallbacks, and bounds. The
+runtime renders that projection generically. `$entry` is allowed only as the
+last fallback for opaque or scalar records. You MUST return structured data
+in declared fields; MUST NOT generate Markdown/UI or branch by object kind
+(mail, files, events, etc.).
+Use the closed type `date` for dates (user rendering `dd/mm/yy`) and
+`datetime` for date plus time. Always return the raw value, never a formatted cell.
+
 STRUCTURAL PRINCIPLES (valid for any verb):
 
 MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.

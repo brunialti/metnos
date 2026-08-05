@@ -146,8 +146,8 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "callback_key": "i18n_translate_pending",
         "description": (
             "Fallback ogni 6h del timer i18n: usa lo stesso motore con lock "
-            "interprocesso. Traduce fino a 20 righe pending via LLM tier "
-            "wise (override env METNOS_I18N_QUALITY). Idempotente sul "
+            "interprocesso. Traduce fino a 20 righe pending col contratto "
+            "LLM fast.fidelity. Idempotente sul "
             "source_hash, audit JSONL append-only. Throttle GPU notturna."
         ),
     },
@@ -158,7 +158,7 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "description": (
             "Gemello lato INPUT di i18n_translate_pending: traduce i lessici "
             "di detection NL pending (detection.sqlite) nella lingua "
-            "d'istanza via LLM tier wise. Evita il fallimento silenzioso al "
+            "d'istanza via LLM fast.fidelity. Evita il fallimento silenzioso al "
             "cambio lingua. I regex morfologici sono saltati (authoring "
             "manuale). Audit JSONL append-only."
         ),
@@ -647,7 +647,7 @@ def install_default_callbacks(scheduler) -> None:
     cb.register(
         "i18n_translate_pending",
         task_i18n_translate_pending,
-        "Fallback i18n every_6h, motore unico con lock (tier wise default)",
+        "Fallback i18n every_6h, motore unico con lock (fast.fidelity)",
         replace=True,
     )
 
@@ -656,7 +656,7 @@ def install_default_callbacks(scheduler) -> None:
     cb.register(
         "detection_translate_pending",
         task_detection_translate_pending,
-        "Traduce i lessici di detection NL pending (every_6h, tier wise)",
+        "Traduce i lessici di detection NL pending (every_6h, fast.fidelity)",
         replace=True,
     )
 

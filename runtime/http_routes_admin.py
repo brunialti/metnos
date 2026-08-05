@@ -48,12 +48,11 @@ log = get_logger(__name__)
 async def admin_virt(request: web.Request) -> web.Response:
     """GET /admin/virt — effective, redacted model configuration."""
 
-    from virt.configuration import snapshot
-    from virt.config_editor import FAMILIES
+    from virt.configuration import UI_EDITABLE_FAMILIES, snapshot
 
     html = wants_html(request)
     edit_family = request.query.get("edit", "") if html else ""
-    if edit_family not in FAMILIES:
+    if edit_family not in UI_EDITABLE_FAMILIES:
         edit_family = ""
     payload = await asyncio.to_thread(snapshot, edit_family=edit_family)
     headers = {"Cache-Control": "no-store"}
@@ -2039,8 +2038,8 @@ async def admin_device_test_invoke(request: web.Request) -> web.Response:
 
 ROUTES = (
     ("GET",  "/admin/virt",                      admin_virt),
-    ("POST", r"/admin/virt/{family:llm|embedding|vlm}/save", admin_virt_save),
-    ("POST", r"/admin/virt/{family:llm|embedding|vlm}/reset", admin_virt_reset),
+    ("POST", r"/admin/virt/{family:llm|vlm}/save", admin_virt_save),
+    ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),
     ("GET",  "/admin/services",                  admin_services),
     ("POST", r"/admin/services/{name}/{action:start|stop|restart}", admin_service_action),
     # /admin/skills/{id}/history rimossa 13/6/2026: store Praxis dismesso (Engine v2).

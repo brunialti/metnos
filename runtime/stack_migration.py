@@ -41,9 +41,9 @@ from stack_reconcile import (
 
 SCHEMA_VERSION = 1
 SYSTEM_HTTP = "metnos-http.service"
-BASELINE_USER_UNITS = RUNTIME_COMPONENT_UNITS + (
-    "metnos-i18n-translator.timer",
-)
+# The translator timer is already one of the runtime components.  Keep one
+# canonical entry so pilot baseline capture/restore cannot report it twice.
+BASELINE_USER_UNITS = RUNTIME_COMPONENT_UNITS
 STACK_CONTRACT_UNITS = (
     TARGET_UNIT,
     SYSTEM_HTTP,

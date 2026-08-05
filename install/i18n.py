@@ -174,14 +174,14 @@ _CATALOG: dict[str, dict[str, str]] = {
         "it": "scritto {path}",
     },
     "p2_local_tiers_head": {
-        "en": "  [bold]Local tiers[/bold] · fast / middle / wise",
-        "it": "  [bold]Tier locali[/bold] · fast / middle / wise",
+        "en": "  [bold]Local tiers[/bold] · fast (micro / procedural / fidelity) / middle / wise / creative",
+        "it": "  [bold]Tier locali[/bold] · fast (micro / procedural / fidelity) / middle / wise / creative",
     },
     "p2_local_tiers_desc": {
-        "en": "  [dim]One llama-server serves all three; they differ only in per-call[/dim]\n"
-              "  [dim]parameters (think, num_predict). Concrete model per tier: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
-        "it": "  [dim]Un solo llama-server serve tutti e tre; differiscono solo nei[/dim]\n"
-              "  [dim]parametri per-chiamata (think, num_predict). Modello concreto per tier: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
+        "en": "  [dim]One llama-server may serve every local role; each role keeps its own configured policy.[/dim]\n"
+              "  [dim]Concrete bindings and policies: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
+        "it": "  [dim]Un solo llama-server puo' servire ogni ruolo locale; ogni ruolo conserva la propria policy configurata.[/dim]\n"
+              "  [dim]Binding e policy concreti: runtime/llm_router.py::DEFAULT_TIERS.[/dim]",
     },
     "p2_endpoint_alive": {
         "en": "an LLM endpoint already answers at {endpoint} — wiring the local tiers to it",

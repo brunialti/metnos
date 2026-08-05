@@ -598,7 +598,7 @@ collegati cambia il dominio operativo, senza cambiare l'architettura che lo gove
 <!-- local LLM -->
 <rect x="616" y="290" width="298" height="64" rx="10" fill="#dbeafe" stroke="#2B6CB0" stroke-width="1.8" filter="url(#f1-sh)"/>
 <text x="765" y="314" text-anchor="middle" fill="#1A477A" font-size="11.5" font-weight="700">servizio LLM configurato</text>
-<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoint risolti per fast &middot; middle &middot; wise</text>
+<text x="765" y="332" text-anchor="middle" fill="#475569" font-size="9.5">endpoint risolti per fast &middot; middle &middot; wise &middot; creative</text>
 <text x="765" y="346" text-anchor="middle" fill="#475569" font-size="9" font-style="italic">locale o remoto, senza cambiare il pianificatore</text>
 <path d="M 560 234 Q 590 234 606 290" fill="none" stroke="#2B6CB0" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#f1-arr)"/>
 <text x="588" y="262" text-anchor="middle" fill="#2B6CB0" font-size="9" font-style="italic">pensa qui</text>
@@ -627,7 +627,7 @@ collegati cambia il dominio operativo, senza cambiare l'architettura che lo gove
 <tbody>
 <tr><td><strong>Forma</strong></td><td>Processo Python &ge; 3.12, microarchitettura a executor e pianificazione vincolata in un singolo passaggio nel motore M&emacr;tis (cap. 5).</td></tr>
 <tr><td><strong>Strumenti</strong></td><td>Executor firmati nel catalogo, pi&ugrave; quelli <em>sintetizzati al volo</em> e quelli importati dopo il filtro di ammissione (cap. 7). Tutti vettoriali: lista in ingresso, lista in uscita. La <a href="../domains.html">guida dei domini</a> offre la vista utente; nomi e conteggio correnti sono nel <a href="executor_catalog.html">catalogo generato</a>.</td></tr>
-<tr><td><strong>Cervello</strong></td><td>Endpoint LLM compatibili, locali o remoti; quattro livelli astratti <code>fast / middle / wise / frontier</code> (cap. 8). <code>frontier</code> indica il cloud facoltativo.</td></tr>
+<tr><td><strong>Cervello</strong></td><td>Endpoint LLM compatibili, locali o remoti; cinque livelli astratti <code>fast / middle / wise / creative / frontier</code> (cap. 8). <code>frontier</code> indica il cloud facoltativo.</td></tr>
 <tr><td><strong>Canali</strong></td><td>Telegram (interrogazione in uscita, senza porte aperte) e web sulla porta 8770 (chat e pannello amministrativo), cap. 11.</td></tr>
 <tr><td><strong>Dispositivi</strong></td><td>Una parte controllata del catalogo pu&ograve; girare su PC registrati nella stessa rete tramite <code>metnos-client</code>: il server conserva regole, scelta, firma e registro; il dispositivo esegue solo executor dichiarati compatibili. Dettaglio: <a href="remote_executors.html">executor remoti</a>.</td></tr>
 <tr><td><strong>Sensi</strong></td><td>Elaborazione delle immagini nel processo: semantica, volti ed EXIF confluiscono in un indice unificato (cap. 10).</td></tr>
@@ -1846,11 +1846,11 @@ importate da fuori: nessun pacchetto si esegue sulla fiducia.
 </figure>
 
 
-<h1 id="s8">8. Quattro livelli, un instradamento governato</h1>
+<h1 id="s8">8. Cinque livelli, un instradamento governato</h1>
 
 <p class="lead">
 I livelli sono <strong>ruoli astratti</strong>, non modelli inchiodati:
-<code>fast / middle / wise</code> sono incarichi che leghi a qualunque endpoint
+<code>fast / middle / wise / creative</code> sono incarichi che leghi a qualunque endpoint
 tu abbia, <code>frontier</code> &egrave; il cloud facoltativo. Pi&ugrave; livelli possono
 condividere un endpoint oppure essere separati: il pianificatore vede sempre il ruolo.
 </p>
@@ -1858,9 +1858,10 @@ condividere un endpoint oppure essere separati: il pianificatore vede sempre il 
 <table>
 <thead><tr><th style="width:14%">Livello</th><th style="width:34%">Ruolo</th><th>Vincolo</th></tr></thead>
 <tbody>
-<tr><td><code>fast</code></td><td>Estrazioni brevi e strutturate: intento, valori da completare, classificazioni. Ragionamento spento.</td><td>Endpoint configurato; risposta corta. Obbligatorio.</td></tr>
-<tr><td><code>middle</code></td><td>Lavoro procedurale: stadi 1-4 della sintesi, descrizioni, giudizi.</td><td>Endpoint e parametri configurati per il ruolo.</td></tr>
-<tr><td><code>wise</code></td><td>Il pianificatore: propone il piano intero; scrive il codice dello stadio 5.</td><td>Obbligatorio: <em>non degrada mai</em> a fast.</td></tr>
+<tr><td><code>fast</code></td><td>Decisioni brevi e strutturate: intento, filler e riduzioni ristrette.</td><td>Endpoint configurato; risposta corta. Obbligatorio.</td></tr>
+<tr><td><code>middle</code></td><td>Lavoro procedurale e giudizi intermedi: estrazioni, classificazioni e stadi 1-3 della sintesi.</td><td>Policy deterministica del ruolo.</td></tr>
+<tr><td><code>wise</code></td><td>Il pianificatore e la sintesi ad alta fedelt&agrave;: piano intero, codice e verifiche.</td><td>Policy deterministica del ruolo.</td></tr>
+<tr><td><code>creative</code></td><td>Proposte divergenti e testo editoriale, incluso lo stadio 4 della sintesi.</td><td>Policy separata con temperatura 0,35.</td></tr>
 <tr><td><code>frontier</code></td><td>Un consulto esterno quando richiesto esplicitamente, per esempio per analizzare una segnalazione.</td><td>API cloud facoltativa, con ripiego gestito se la chiave non c'&egrave;.</td></tr>
 </tbody>
 </table>

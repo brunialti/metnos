@@ -53,6 +53,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "slug", source = "slug", cell_max = 100 },
+  { key = "n_examples", source = "n_examples", cell_max = 16 },
+  { key = "updated_at", source = "updated_at", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["persons_registry:local"]

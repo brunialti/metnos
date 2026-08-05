@@ -51,9 +51,9 @@ The admitted executor set determines the concrete operating domain. A personal
 or household assistant is one possible installation profile, not Metnos's
 architectural definition.
 
-Metnos sees logical **tiers** (`fast` / `middle` / `wise` / `frontier`) rather
-than model names. Local tiers may share one compatible endpoint or use separate
-ones; `frontier` is opt-in. The tier-to-model binding lives in
+Metnos sees logical **tiers** (`fast` with `micro` / `procedural` /
+`fidelity`, `middle`, `wise`, `creative`, and `frontier`) rather than model names. Local tiers may share one
+compatible endpoint or use separate ones; `frontier` is opt-in. The tier-to-model binding lives in
 `~/.config/metnos/llm_tiers.toml`, so changing a model changes configuration,
 not planner code. Embeddings run in-process; there is no dependency on another
 project's Python environment.

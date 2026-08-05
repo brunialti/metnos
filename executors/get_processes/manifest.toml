@@ -110,6 +110,21 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "pid", source = "pid", cell_max = 16 },
+  { key = "name", source = "name", cell_max = 100 },
+  { key = "user", source = "user", cell_max = 80 },
+  { key = "cpu_pct", source = "cpu_pct", cell_max = 16 },
+  { key = "mem_pct", source = "mem_pct", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "system:read"
 hint = ["processes", "health", "network_interfaces", "service_status"]

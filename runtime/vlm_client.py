@@ -39,12 +39,37 @@ def _vlm_cfg() -> dict:
         return {}
 
 
-_VLM = _vlm_cfg()
-_VLM_URL = _resolve_vlm_url(os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
-_VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get("model", "qwen3vl-2b")
-_VLM_TIMEOUT_S = int(os.environ.get("METNOS_VLM_TIMEOUT_S") or _VLM.get("timeout_s", 60))
-_VLM_MAX_EDGE = int(os.environ.get("METNOS_VLM_MAX_EDGE") or _VLM.get("max_edge", 1024))
-_VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_tokens", 512))
+_VLM: dict = {}
+_VLM_URL = ""
+_VLM_MODEL = ""
+_VLM_TIMEOUT_S = 60
+_VLM_MAX_EDGE = 1024
+_VLM_MAX_TOKENS = 512
+
+
+def reload_configuration() -> None:
+    """Refresh the request-side VLM settings without starting a model.
+
+    The Models page writes ``vlm_tiers.toml`` atomically.  This client keeps
+    hot-path scalars locally, so the editor calls this hook after a successful
+    save to make the next request use the new endpoint and limits.
+    """
+
+    global _VLM, _VLM_URL, _VLM_MODEL, _VLM_TIMEOUT_S, _VLM_MAX_EDGE, _VLM_MAX_TOKENS
+    _VLM = _vlm_cfg()
+    _VLM_URL = _resolve_vlm_url(
+        os.environ.get("METNOS_VLM_URL") or _VLM.get("endpoint"))
+    _VLM_MODEL = os.environ.get("METNOS_VLM_MODEL") or _VLM.get(
+        "model", "qwen3vl-2b")
+    _VLM_TIMEOUT_S = int(
+        os.environ.get("METNOS_VLM_TIMEOUT_S") or _VLM.get("timeout_s", 60))
+    _VLM_MAX_EDGE = int(
+        os.environ.get("METNOS_VLM_MAX_EDGE") or _VLM.get("max_edge", 1024))
+    _VLM_MAX_TOKENS = int(
+        os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_tokens", 512))
+
+
+reload_configuration()
 
 
 def _describe_prompt(lang: str) -> str:

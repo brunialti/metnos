@@ -93,13 +93,19 @@ SERVICES: tuple[ServiceSpec, ...] = (
         description_en="Browser and Sites sessions", group_en="Website browsing",
     ),
     ServiceSpec(
-        "llm", "Modello linguistico locale", "llama-server dei tier locali", "Nucleo",
+        "llm", "Modello linguistico locale",
+        "Server locale per fast.micro, fast.procedural, fast.fidelity, middle, wise e creative.",
+        "Nucleo",
         (_target("metnos-llm.service"),
          _target("llama-server.service", "system")),
-        "http://127.0.0.1:8080", "METNOS_LLM_MID_URL", "/health",
+        "http://127.0.0.1:8080", "METNOS_LLM_URL", "/health",
         integrated=True,
         label_en="Local language model",
-        description_en="llama-server for local tiers", group_en="Core",
+        description_en=(
+            "Local server for fast.micro, fast.procedural, fast.fidelity, "
+            "middle, wise, and creative."
+        ),
+        group_en="Core",
         health_policy="process",
     ),
     ServiceSpec(
@@ -121,11 +127,16 @@ SERVICES: tuple[ServiceSpec, ...] = (
         description_en="Local Photon/OSM geocoding", group_en="Search & geo",
     ),
     ServiceSpec(
-        "i18n", "Traduttore i18n", "Riempimento differito delle traduzioni",
+        "i18n", "Traduttore i18n",
+        "Completa automaticamente le traduzioni differite con fast.fidelity.",
         "Nucleo", (_target("metnos-i18n-translator.timer"),),
         required=True, integrated=True,
         label_en="i18n translator",
-        description_en="Deferred translation completion", group_en="Core",
+        description_en=(
+            "Automatically completes deferred translations with "
+            "fast.fidelity."
+        ),
+        group_en="Core",
     ),
 )
 

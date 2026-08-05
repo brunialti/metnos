@@ -2234,15 +2234,15 @@ async def _reduce_site_goal(query: str) -> str:
             import i18n
             import prompt_loader
             from llm_router import LLMRouter
+            from llm_workloads import tier_for
 
-            provider = LLMRouter().provider("fast")
+            provider = LLMRouter().provider(tier_for("sites.goal_reduce"))
             if getattr(provider, "mode", "") != "local":
                 return ""
             prompt = prompt_loader.get(
                 "sites_goal_reducer", i18n.current_lang(),
                 query_json=json.dumps(bounded_query, ensure_ascii=False))
-            result = provider.chat(
-                prompt, "", max_tokens=64, temperature=0, think=False)
+            result = provider.chat(prompt, "", max_tokens=64)
             return str(getattr(result, "text", "") or "")
         except Exception:
             return ""
@@ -2319,7 +2319,8 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
     def _call_local(prompt: str) -> str:
         try:
             from llm_router import LLMRouter
-            provider = LLMRouter().provider("fast")
+            from llm_workloads import tier_for
+            provider = LLMRouter().provider(tier_for("sites.action_reduce"))
             if getattr(provider, "mode", "") != "local":
                 return ""
             import i18n
@@ -2327,8 +2328,7 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
             system_prompt = prompt_loader.get(
                 "agentic_sites_action_system", i18n.current_lang())
             result = provider.chat(
-                system_prompt, prompt,
-                max_tokens=64, temperature=0, think=False)
+                system_prompt, prompt, max_tokens=64)
             return str(getattr(result, "text", "") or "")
         except Exception:
             return ""

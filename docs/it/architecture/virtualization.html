@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; virtualizzazione dei modelli</title>
- <meta name="description" content="Come Metnos configura modelli linguistici, embedding e VLM: ruoli logici, pagina Modelli, salvataggio validato, ripristino e file TOML effettivi.">
+ <meta name="description" content="Come Metnos mostra LLM, embedding e VLM: ruoli logici, pagina Modelli, modifiche validate per LLM e VLM e embedding consultabile.">
  <meta name="keywords" content="virtualizzazione, modelli, LLM, embedding, VLM, configurazione, tier, TOML, Metnos">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/it/architecture/virtualization">
  <meta property="og:title" content="Metnos &mdash; virtualizzazione dei modelli">
- <meta property="og:description" content="Ruoli logici e configurazione effettiva di LLM, embedding e VLM, modificabile dalla chat web.">
+ <meta property="og:description" content="Ruoli logici e configurazione effettiva di LLM, embedding e VLM: LLM e VLM modificabili, embedding consultabile.">
  <meta property="og:locale" content="it_IT">
  <meta property="og:locale:alternate" content="en_US">
  <meta property="og:site_name" content="Metnos">
@@ -26,7 +26,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — virtualizzazione dei modelli",
- "description": "Come Metnos configura modelli linguistici, embedding e VLM attraverso ruoli logici, una pagina amministrativa e file TOML validati.",
+ "description": "Come Metnos mostra LLM, embedding e VLM attraverso ruoli logici, una pagina amministrativa e file TOML validati; l'embedding è consultabile.",
  "url": "https://metnos.com/it/architecture/virtualization",
  "inLanguage": "it",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -121,7 +121,8 @@ modificarla senza cambiare il codice dei componenti che la usano.</p>
  <li><a href="#cap5">Ripristino e copie di recupero</a></li>
  <li><a href="#cap6">File effettivi e precedenza</a></li>
  <li><a href="#cap7">Confini locali e remoti</a></li>
- <li><a href="#cap8">Riferimenti tecnici</a></li>
+ <li><a href="#cap8">Censimento delle chiamate LLM</a></li>
+ <li><a href="#cap9">Riferimenti tecnici</a></li>
 </ol>
 </div>
 
@@ -133,16 +134,18 @@ modificarla senza cambiare il codice dei componenti che la usano.</p>
  pagina risponde all'indirizzo <code>/admin/virt</code>.</li>
  <li>Scegli la famiglia che vuoi esaminare: modelli linguistici,
  <em>embedding</em> o modello visivo-linguistico.</li>
- <li>Premi <strong>Modifica</strong> per rendere modificabili i valori visibili
- di quella famiglia.</li>
+ <li>Per i modelli linguistici e visivo-linguistici, premi
+ <strong>Modifica</strong> per rendere modificabili i valori visibili.</li>
+ <li>L&rsquo;embedding è consultabile: sostituirne il backend richiede una procedura
+ dedicata, compatibilità verificata e la ricostruzione degli indici.</li>
  <li>Controlla i valori e premi <strong>Salva modifiche</strong>. Il messaggio di conferma
  indica che le chiamate successive useranno la nuova configurazione.</li>
 </ol>
 
 <p>La pagina si apre in modalit&agrave; di consultazione. Il pulsante
 <strong>Rileggi configurazione</strong> carica di nuovo il file e aggiorna la visualizzazione; non salva
-modifiche e non riavvia i modelli. La modifica &egrave; separata per famiglia, cos&igrave;
-un intervento sull'LLM non riscrive anche la configurazione di embedding o VLM.</p>
+modifiche e non riavvia i modelli. Le modifiche dalla pagina sono separate tra LLM e
+VLM; l&rsquo;embedding resta consultabile e non viene riscritto dalla UI.</p>
 
 <p>Questa configurazione appartiene all'istanza Metnos eseguita da quell'account
 di sistema. Non &egrave; una preferenza personale dell'utente della conversazione.</p>
@@ -158,8 +161,8 @@ pacchetto <code>runtime/virt</code>:</p>
 <tbody>
 <tr>
  <td>modello linguistico</td>
- <td><code>fast</code>, <code>middle</code>, <code>wise</code>, <code>frontier</code></td>
- <td><code>virt.get_llm(role)</code></td>
+ <td><code>fast.micro</code>, <code>fast.procedural</code>, <code>fast.fidelity</code>, <code>middle</code>, <code>wise</code>, <code>creative</code>, <code>frontier</code></td>
+ <td><code>virt.get_llm(role, level=...)</code></td>
  <td>un fornitore linguistico risolto dal router dei tier</td>
 </tr>
 <tr>
@@ -179,9 +182,14 @@ pacchetto <code>runtime/virt</code>:</p>
 
 <p>I nomi dei tier LLM esprimono un'intenzione del chiamante. Non certificano
 da soli la qualit&agrave; del modello concreto: &egrave; l'amministratore a decidere quale
-fornitore e quale modello soddisfano ciascun ruolo. In una configurazione LLM
-esplicita, <code>fast</code> e <code>wise</code> sono obbligatori;
-<code>middle</code>, se assente, viene associato a <code>wise</code>.
+fornitore e quale modello soddisfano ciascun ruolo. Un file LLM parziale
+ sostituisce solo i ruoli che contiene; per <code>fast</code>, <code>middle</code> e <code>wise</code>
+omessi restano validi i valori iniziali. I tre livelli di <code>fast</code>
+ereditano il binding di <code>fast</code> e possono ricevere un override mirato
+in <code>[fast.level.micro]</code>, <code>[fast.level.procedural]</code> o
+<code>[fast.level.fidelity]</code>. Se <code>creative</code> &egrave; assente,
+il suo binding fisico viene associato a <code>wise</code> conservando la policy
+creativa.
 <code>frontier</code> &egrave; facoltativo e chi lo richiede deve gestirne
 l'eventuale indisponibilit&agrave;.</p>
 
@@ -189,6 +197,7 @@ l'eventuale indisponibilit&agrave;.</p>
 
 text_encoder = get_embedder("text")
 planner = get_llm("wise")
+translator = get_llm("fast", level="fidelity")
 vision_spec = get_vlm("default")</pre>
 
 <p>La virtualizzazione separa quindi due decisioni: il componente sceglie il
@@ -212,13 +221,14 @@ conosce, invece, richiede una sua implementazione.</p>
  <li>la politica di generazione dei tier LLM, compresi
  <code>think</code>, <code>temperature</code> e
  <code>reasoning_budget</code> quando presenti;</li>
- <li>gli altri parametri scalari effettivi, per esempio
- <code>num_predict</code>, limiti, timeout e percorsi del modello.</li>
+ <li>gli altri parametri scalari effettivi, per esempio timeout e percorsi del modello.</li>
 </ul>
 
-<p>I valori della politica di generazione sono i valori predefiniti del tier.
-Un'operazione con esigenze specifiche pu&ograve; sostituirli per una sola chiamata;
-la pagina non presenta quell'eccezione temporanea come nuova configurazione.</p>
+<p>I valori della politica di generazione sono i valori effettivi del tier,
+risolti dal file di configurazione e dai valori iniziali. Le operazioni scelgono
+un tier e non mantengono un secondo profilo di decodifica. Limiti di output,
+deadline, grammatiche e schemi dei tool restano vincoli strutturali della
+singola operazione.</p>
 
 <p>Password, token, chiavi, credenziali e parti sensibili degli URL non vengono
 mostrati. Restano esclusi anche dai campi inviati dal modulo. I segreti gi&agrave;
@@ -231,7 +241,7 @@ una proiezione limitata e priva di segreti della configurazione risolta.</p>
 
 <h1 id="cap4">4. Modificare e salvare</h1>
 
-<p>Premendo <strong>Modifica</strong>, Metnos espone soltanto i valori scalari
+<p>Per LLM e VLM, premendo <strong>Modifica</strong>, Metnos espone soltanto i valori scalari
 visibili che sa rappresentare senza cambiarne il tipo. I campi sensibili e i
 valori non modificabili restano in sola lettura. Al salvataggio il runtime:</p>
 
@@ -254,7 +264,7 @@ gi&agrave; acquisito.</p>
 
 <h1 id="cap5">5. Ripristino e copie di recupero</h1>
 
-<p>Il pulsante <strong>Ripristina</strong> opera su una sola famiglia e richiede
+<p>Il pulsante <strong>Ripristina</strong> opera su LLM o VLM e richiede
 conferma. Riscrive i valori iniziali forniti dalla versione di Metnos
 installata. Non sceglie automaticamente una vecchia configurazione personale
 e non ricostruisce le scelte compiute durante un'installazione precedente.</p>
@@ -315,8 +325,9 @@ valida.</p>
 </tr>
 <tr>
  <td>embedding</td>
- <td>I valori iniziali usano fornitori locali nello stesso processo. La
- configurazione generale pu&ograve; scegliere un endpoint compatibile; gli executor
+ <td>I valori iniziali usano fornitori locali nello stesso processo. Il cambio di
+ backend &egrave; una migrazione amministrativa dedicata, non un comando della pagina;
+ gli executor
  in sola lettura che dichiarano calcolo locale usano invece
  <code>get_local_embedder()</code> e non acquisiscono autorit&agrave; di rete per
  effetto di quella scelta.</td>
@@ -336,13 +347,43 @@ valida.</p>
 endpoint remoto in una risorsa locale e non concede da sola rete, credenziali
 o capacit&agrave; aggiuntive a un executor.</p>
 
-<h1 id="cap8">8. Riferimenti tecnici</h1>
+<h1 id="cap8">8. Censimento delle chiamate LLM</h1>
+
+<p>Ogni chiamata di produzione sceglie un workload logico. Il router lo risolve
+in un tier e, per <code>fast</code>, nel relativo livello. Il componente pu&ograve;
+definire requisiti propri della singola operazione, come <code>max_tokens</code>,
+timeout o una grammatica di output; non sceglie provider, modello o endpoint e non
+mantiene un secondo profilo di generazione. La configurazione dell'istanza &egrave; quindi
+l'unica responsabile dei valori effettivi di ciascun tier.</p>
+
+<table>
+<thead><tr><th>Area</th><th>Tier</th><th>Motivo del ruolo</th></tr></thead>
+<tbody>
+<tr><td>Routing e estrazione intent</td><td><code>fast.micro</code></td><td>Classificazione breve e strutturata.</td></tr>
+<tr><td>Proposte, pianificazione e sintesi</td><td><code>wise</code></td><td>Confronto fra alternative e generazione articolata.</td></tr>
+<tr><td>Normalizzazione, verifiche e amministrazione procedurale</td><td><code>fast.procedural</code></td><td>Trasformazioni e giudizi strutturati.</td></tr>
+<tr><td>Traduzione, composizione grounded e verifica semantica</td><td><code>fast.fidelity</code></td><td>Alta fedelt&agrave; su contesti estesi senza generazione divergente.</td></tr>
+<tr><td>Pianificazione vincolata da grammatica</td><td><code>fast.fidelity</code></td><td>Output esatto su contesto esteso; la grammatica resta un vincolo dell'operazione.</td></tr>
+<tr><td>Telos e redazione divergente</td><td><code>creative</code></td><td>Proposte creative e comparative.</td></tr>
+<tr><td>Alignment</td><td><code>fast.procedural</code></td><td>Produce una stima strutturata di aderenza ai telos.</td></tr>
+<tr><td>Escalation esterna esplicita</td><td><code>frontier</code></td><td>Massima capacit&agrave; configurata, invocata intenzionalmente.</td></tr>
+</tbody>
+</table>
+
+<p>Un tier pu&ograve; puntare a un servizio locale o remoto e pu&ograve; essere modificato
+dall'amministratore. Cambiarlo cambia le chiamate successive di tutte le righe che
+lo usano: per questo &egrave; chi configura i tier a valutarne capacit&agrave;, costo,
+riservatezza e disponibilit&agrave;.</p>
+
+<h1 id="cap9">9. Riferimenti tecnici</h1>
 
 <ul>
  <li><code>runtime/virt/__init__.py</code> &mdash; facciate e valori iniziali di
  embedding e VLM;</li>
  <li><code>runtime/llm_router.py</code> &mdash; tier LLM, associazioni, alias e
  politica di inferenza;</li>
+ <li><code>runtime/llm_workloads.py</code> &mdash; registro dichiarativo che
+ associa ogni workload di produzione a un solo tier logico;</li>
  <li><code>runtime/virt/configuration.py</code> &mdash; proiezione effettiva,
  provenienza e oscuramento dei segreti;</li>
  <li><code>runtime/virt/config_editor.py</code> &mdash; modifica validata,

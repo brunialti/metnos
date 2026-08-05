@@ -5558,7 +5558,8 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     if is_output_policy_enabled():
         try:
             from output_policy import normalize_terminal
-            framework, _op_info = normalize_terminal(framework, intent, query)
+            framework, _op_info = normalize_terminal(
+                framework, intent, query, catalog=catalog)
             if _op_info.get("action") not in ("", "noop"):
                 log.info("[output_policy] mode=%s action=%s producer-kind=%s",
                          _op_info.get("mode"), _op_info.get("action"),

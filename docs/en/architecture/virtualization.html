@@ -4,7 +4,7 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0">
  <title>Metnos &mdash; model virtualization</title>
- <meta name="description" content="How Metnos configures language models, embeddings, and VLMs: logical roles, the Models page, validated saves, restore behavior, and effective TOML files.">
+ <meta name="description" content="How Metnos shows language models, embeddings, and VLMs: logical roles, the Models page, validated LLM and VLM changes, and view-only embedding.">
  <meta name="keywords" content="virtualization, models, LLM, embedding, VLM, configuration, tier, TOML, Metnos">
  <meta name="author" content="the owner">
  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
@@ -15,7 +15,7 @@
  <meta property="og:type" content="article">
  <meta property="og:url" content="https://metnos.com/en/architecture/virtualization">
  <meta property="og:title" content="Metnos &mdash; model virtualization">
- <meta property="og:description" content="Logical roles and effective configuration for LLMs, embeddings, and VLMs, editable from the web chat.">
+ <meta property="og:description" content="Logical roles and effective configuration for LLMs, embeddings, and VLMs: LLM and VLM are editable; embedding is view-only.">
  <meta property="og:locale" content="en_US">
  <meta property="og:locale:alternate" content="it_IT">
  <meta property="og:site_name" content="Metnos">
@@ -26,7 +26,7 @@
  "@context": "https://schema.org",
  "@type": "TechArticle",
  "headline": "Metnos — model virtualization",
- "description": "How Metnos configures language models, embeddings, and VLMs through logical roles, an administration page, and validated TOML files.",
+ "description": "How Metnos shows language models, embeddings, and VLMs through logical roles, an administration page, and validated TOML files; embedding is view-only.",
  "url": "https://metnos.com/en/architecture/virtualization",
  "inLanguage": "en",
  "isPartOf": {"@type": "WebSite", "name": "Metnos", "url": "https://metnos.com/"},
@@ -121,7 +121,8 @@ it without changing the code of the components that use it.</p>
  <li><a href="#cap5">Restoring and recovery copies</a></li>
  <li><a href="#cap6">Effective files and precedence</a></li>
  <li><a href="#cap7">Local and remote boundaries</a></li>
- <li><a href="#cap8">Technical references</a></li>
+ <li><a href="#cap8">LLM-call census</a></li>
+ <li><a href="#cap9">Technical references</a></li>
 </ol>
 </div>
 
@@ -133,16 +134,17 @@ it without changing the code of the components that use it.</p>
  page is served at <code>/admin/virt</code>.</li>
  <li>Choose the family you want to inspect: language models, embeddings, or
  the vision-language model.</li>
- <li>Press <strong>Edit</strong> to make the visible values for that family
- editable.</li>
+ <li>For language and vision-language models, press <strong>Edit</strong> to
+ make the visible values editable.</li>
+ <li>Embedding is view-only: replacing its backend requires a dedicated
+ procedure, verified compatibility, and index reconstruction.</li>
  <li>Review the values and press <strong>Save changes</strong>. The confirmation states
  that subsequent calls will use the new configuration.</li>
 </ol>
 
 <p>The page opens in viewing mode. <strong>Reload configuration</strong> reads the
-file and renders the current state again; it does not save changes or restart models. Editing is
-separate for each family, so changing the LLM configuration does not rewrite
-the embedding or VLM configuration.</p>
+file and renders the current state again; it does not save changes or restart models. Page edits are
+separate between LLM and VLM; embedding remains view-only and is never rewritten from the UI.</p>
 
 <p>This is administrative configuration for the Metnos instance run by that
 system account. It is not a personal preference of an individual conversation
@@ -159,8 +161,8 @@ request. Resolution goes through three public entry points in
 <tbody>
 <tr>
  <td>language model</td>
- <td><code>fast</code>, <code>middle</code>, <code>wise</code>, <code>frontier</code></td>
- <td><code>virt.get_llm(role)</code></td>
+ <td><code>fast.micro</code>, <code>fast.procedural</code>, <code>fast.fidelity</code>, <code>middle</code>, <code>wise</code>, <code>creative</code>, <code>frontier</code></td>
+ <td><code>virt.get_llm(role, level=...)</code></td>
  <td>a language-model provider resolved by the tier router</td>
 </tr>
 <tr>
@@ -180,9 +182,13 @@ request. Resolution goes through three public entry points in
 
 <p>The LLM tier names express the caller's intent. They do not by themselves
 certify the quality of the concrete model: the administrator decides which
-provider and model satisfy each role. In an explicit LLM configuration,
-<code>fast</code> and <code>wise</code> are required; when
-<code>middle</code> is absent, it is mapped to <code>wise</code>.
+provider and model satisfy each role. A partial LLM file overrides only the
+roles it contains; omitted <code>fast</code>, <code>middle</code>, and <code>wise</code> bindings use
+their initial values. Fast levels inherit the <code>fast</code> binding and may
+be overridden in <code>[fast.level.micro]</code>,
+<code>[fast.level.procedural]</code>, or <code>[fast.level.fidelity]</code>.
+When <code>creative</code> is absent, its physical binding is mapped to
+<code>wise</code> while retaining the creative policy.
 <code>frontier</code> is optional, and callers that request it must handle its
 possible unavailability.</p>
 
@@ -190,6 +196,7 @@ possible unavailability.</p>
 
 text_encoder = get_embedder("text")
 planner = get_llm("wise")
+translator = get_llm("fast", level="fidelity")
 vision_spec = get_vlm("default")</pre>
 
 <p>Virtualization therefore separates two decisions: the component selects a
@@ -212,13 +219,13 @@ requires an implementation.</p>
  <li>the provider, model, and endpoint binding;</li>
  <li>the LLM tier's generation policy, including <code>think</code>,
  <code>temperature</code>, and <code>reasoning_budget</code> when present;</li>
- <li>the other effective scalar parameters, such as <code>num_predict</code>,
- limits, timeouts, and model paths.</li>
+ <li>the other effective scalar parameters, such as timeouts and model paths.</li>
 </ul>
 
-<p>Generation-policy values are tier defaults. An operation with specific
-requirements may override them for one call; the page does not present that
-temporary exception as a new configuration.</p>
+<p>Generation-policy values are the tier's effective values, resolved from the
+configuration file and initial values. Operations select a tier and do not keep
+a second decoding profile. Output ceilings, deadlines, grammars, and tool
+schemas remain operation-level structural constraints.</p>
 
 <p>Passwords, tokens, keys, credentials, and sensitive URL parts are not
 shown. They are also excluded from fields submitted by the form. Secrets
@@ -231,7 +238,7 @@ a bounded, secret-free projection of the resolved configuration.</p>
 
 <h1 id="cap4">4. Editing and saving</h1>
 
-<p>After you press <strong>Edit</strong>, Metnos exposes only visible scalar
+<p>For LLM and VLM, after you press <strong>Edit</strong>, Metnos exposes only visible scalar
 values whose type it can preserve. Sensitive fields and values that cannot be
 edited remain read-only. On save, the runtime:</p>
 
@@ -252,7 +259,7 @@ resources it has already acquired.</p>
 
 <h1 id="cap5">5. Restoring and recovery copies</h1>
 
-<p><strong>Restore defaults</strong> operates on one family and asks for
+<p><strong>Restore defaults</strong> operates on LLM or VLM and asks for
 confirmation. It writes the initial values supplied by the installed Metnos
 version. It does not automatically select an old personal configuration or
 reconstruct choices made during an earlier installation.</p>
@@ -311,8 +318,8 @@ distinguishes any fallback values from a valid configuration.</p>
 </tr>
 <tr>
  <td>embedding</td>
- <td>The initial values use local, in-process providers. General configuration
- may select a compatible endpoint; read-only executors that declare local
+ <td>The initial values use local, in-process providers. Changing the backend is a
+ dedicated administrative migration, not a page control; read-only executors that declare local
  computation use <code>get_local_embedder()</code> instead and do not acquire
  network authority because of that setting.</td>
 </tr>
@@ -330,13 +337,43 @@ distinguishes any fallback values from a valid configuration.</p>
 endpoint into a local resource, nor does it grant an executor network access,
 credentials, or additional capabilities by itself.</p>
 
-<h1 id="cap8">8. Technical references</h1>
+<h1 id="cap8">8. LLM-call census</h1>
+
+<p>Every production call selects a logical workload. The router resolves it to
+a tier and, for <code>fast</code>, to its level. A component may define
+operation-specific requirements such as <code>max_tokens</code>, a timeout, or
+an output grammar; it does not select a provider, model, or endpoint, and it does
+not retain a second generation profile. The instance configuration is therefore
+the sole owner of each tier's effective values.</p>
+
+<table>
+<thead><tr><th>Area</th><th>Tier</th><th>Reason for the role</th></tr></thead>
+<tbody>
+<tr><td>Routing and intent extraction</td><td><code>fast.micro</code></td><td>Short, structured classification.</td></tr>
+<tr><td>Proposals, planning, and synthesis</td><td><code>wise</code></td><td>Comparing alternatives and articulated generation.</td></tr>
+<tr><td>Normalization, checks, and procedural administration</td><td><code>fast.procedural</code></td><td>Structured transformations and judgments.</td></tr>
+<tr><td>Translation, grounded composition, semantic verification</td><td><code>fast.fidelity</code></td><td>High-context fidelity without divergent decoding.</td></tr>
+<tr><td>Grammar-constrained planning</td><td><code>fast.fidelity</code></td><td>Exact high-context output; the grammar remains an operation constraint.</td></tr>
+<tr><td>Telos and divergent editorial generation</td><td><code>creative</code></td><td>Creative, comparative proposals.</td></tr>
+<tr><td>Alignment</td><td><code>fast.procedural</code></td><td>It produces a structured estimate of fit to telos.</td></tr>
+<tr><td>Explicit external escalation</td><td><code>frontier</code></td><td>Maximum configured capability, invoked intentionally.</td></tr>
+</tbody>
+</table>
+
+<p>A tier may point to a local or remote service and may be changed by an
+administrator. Changing it changes subsequent calls in every row that uses it;
+the person configuring tiers must therefore assess capability, cost, privacy, and
+availability.</p>
+
+<h1 id="cap9">9. Technical references</h1>
 
 <ul>
  <li><code>runtime/virt/__init__.py</code> &mdash; facades and initial embedding
  and VLM values;</li>
  <li><code>runtime/llm_router.py</code> &mdash; LLM tiers, bindings, aliases, and
  inference policy;</li>
+ <li><code>runtime/llm_workloads.py</code> &mdash; declarative registry mapping
+ each production workload to one logical tier;</li>
  <li><code>runtime/virt/configuration.py</code> &mdash; effective projection,
  provenance, and secret redaction;</li>
  <li><code>runtime/virt/config_editor.py</code> &mdash; validated editing,

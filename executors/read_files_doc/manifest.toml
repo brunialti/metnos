@@ -82,6 +82,19 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "document_id", "id"], cell_max = 180 },
+  { key = "kind", source = "kind", cell_max = 48 },
+  { key = "content_length", source = "content_length", cell_max = 24 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["doc:remote"]

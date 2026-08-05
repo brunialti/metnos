@@ -131,7 +131,24 @@ def presentation_mode(intent_cls: str, data_kind: str) -> str:
     return table.get("_", _DEFAULT.get(intent_cls, L))
 
 
-def resolve(intent_verb: str, producer_name: str, query: str = "") -> dict:
+def _declared_mode(presentation: dict | None, intent_cls: str) -> str:
+    """Map a producer-declared default view to a renderer primitive.
+
+    Counts, mutations and packaging retain their semantic presentation even
+    when a producer also declares a list view.  The declaration owns ordinary
+    read/enumerate/transform output; the legacy matrix is only their fallback.
+    """
+    if not isinstance(presentation, dict):
+        return ""
+    if presentation.get("default_view") != "list":
+        return ""
+    if intent_cls in {READ, ENUMERATE, TRANSFORM}:
+        return L
+    return ""
+
+
+def resolve(intent_verb: str, producer_name: str, query: str = "",
+            presentation: dict | None = None) -> dict:
     """Risolutore completo. Ritorna {intent_class, data_kind, mode}."""
     # Nei workflow compound il verbo primario descrive spesso la sorgente
     # (es. ``find``), mentre l'ultimo produttore e' un'operazione di packaging
@@ -146,8 +163,9 @@ def resolve(intent_verb: str, producer_name: str, query: str = "") -> dict:
     effective_verb = producer_verb if terminal_package else intent_verb
     ic = intent_class(effective_verb, "" if terminal_package else query)
     dk = data_kind_of(producer_name)
-    return {"intent_class": ic, "data_kind": dk,
-            "mode": presentation_mode(ic, dk)}
+    mode = _declared_mode(presentation, ic) or presentation_mode(ic, dk)
+    return {"intent_class": ic, "data_kind": dk, "mode": mode,
+            "manifest_declared": bool(_declared_mode(presentation, ic))}
 
 
 # ── Modi a ranking (no notify-then-ask "allargo?") ───────────────────────────
@@ -255,7 +273,7 @@ def _terminal_entries_pos(steps, producer_pos: int) -> int:
     return pos
 
 
-def normalize_terminal(framework, intent, query: str = ""):
+def normalize_terminal(framework, intent, query: str = "", catalog=None):
     """Riscrive il TERMINALE di presentazione del framework secondo la matrice
     deterministica (resolve). Puro §7.9: zero LLM, zero I/O di stato; l'input
     NON è mutato. Ritorna (framework, info) — framework nuovo solo se cambia.
@@ -286,7 +304,14 @@ def normalize_terminal(framework, intent, query: str = ""):
     verb = getattr(intent, "verb", None)
     if verb is None:
         verb = intent if isinstance(intent, str) else ""
-    r = resolve(verb, producer, query)
+    declared_presentation = {}
+    for executor in (catalog or []):
+        if getattr(executor, "name", "") == producer:
+            value = getattr(executor, "presentation", None)
+            if isinstance(value, dict):
+                declared_presentation = value
+            break
+    r = resolve(verb, producer, query, declared_presentation)
     info.update(r)
 
     from engine.types import StepSpec, Framework  # lazy: evita import circolari

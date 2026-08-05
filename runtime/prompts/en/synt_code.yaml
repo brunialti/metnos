@@ -26,6 +26,18 @@ context:
   user_request: "{{ user_request }}"
 
 rules:
+  - name: presentation_contract
+    body: |
+      MANIFEST PRESENTATION CONTRACT: the user view is declarative, not
+      executor code. When output declares `entries`, you MUST declare
+      `[presentation] default_view="list"`;
+      `[presentation.list]` declares columns, sources, fallbacks, and bounds;
+      the runtime renders it generically. `$entry` is allowed only as the last
+      fallback for opaque or scalar records. Return declared structured fields:
+      do NOT generate Markdown/UI or branch by mail, file, or event kind.
+      Use the closed type `date` for dates (user rendering `dd/mm/yy`) and
+      `datetime` for date plus time. Always return raw values, never formatted cells.
+
   - name: language_and_stdlib
     body: |
       MUST: Python 3.12+ stdlib + runtime modules in /opt/metnos/runtime.

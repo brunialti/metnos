@@ -36,7 +36,7 @@ en = "SCOPO: index photos in `base_path` (incremental or rebuild). PATTERN: crea
 
 [code]
 files  = ["create_images_indices.py"]
-digest = "sha256:3b128c8d4b3933cd8f2b91d451c6781ff342a1c31cae75aa047c73da298bbab7"
+digest = "sha256:bf9689b9c0957f9d99e8c56358f5d46b9ac10d815e8d98da05319239445cd6d9"
 
 [args]
 type     = "object"

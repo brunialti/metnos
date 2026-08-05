@@ -250,14 +250,14 @@
     "version_hash": "sha256:613dd6eab16e1000c6dddcb0c8677c600646eaa9883cab259e1355278c339ad9"
   },
   "synt_birth_tests": {
-    "source_hash": "sha256:5156709cb24c91a90110ac5510513a138faa53b24755c3b453d4bdfd3c9a6bf5",
+    "source_hash": "sha256:1ee7f4acdff85e404f40794eef7364785a6fe2510392f8dfb77e111102b349c9",
     "source_lang": "it",
-    "version_hash": "sha256:06a667dfa05a7a3f4fb068196863692c1764f94b0c6f9557fa13b00a8194a616"
+    "version_hash": "sha256:d57034e4ac4219d3654c49bf8037784130d08d6f38c00f518b51fb0caeb8b635"
   },
   "synt_code": {
     "source_hash": "sha256:6004e4a87c02e0664880ce4c8198aba0189070c30fe17bbe1594158f09b9017f",
     "source_lang": "it",
-    "version_hash": "sha256:a4885824dcfe0306b90cc4cd25298b45a4bc1bd012f9411913294f0bf5eefecb"
+    "version_hash": "sha256:66deb07b060382087351aa620fd9a64e7ab8aa0c4ddfc0a628029c5ff97327b0"
   },
   "synt_code_addendum_create": {
     "source_hash": "sha256:833f1e5856b789fbdbddbedc6804ce0611822b3c7fe1036793ae412b772ad1d4",
@@ -320,9 +320,9 @@
     "version_hash": "sha256:1c3e05f4879e93def987bbb5b3cbef91b9a5900665ac6b339f6e1fd0134a3047"
   },
   "synt_description": {
-    "source_hash": "sha256:e958be113a67b73ce5a02f849077a6829cd2dadc940792bffcae0bbd05068a29",
+    "source_hash": "sha256:f054af72a835ebf0526f57eb5566bc1e6e25985960d5cbbfc610bf736d7f90db",
     "source_lang": "it",
-    "version_hash": "sha256:6890aa01c37ffb4443a53e437b72553f0ff7793048d3c346edf150911e3ddc35"
+    "version_hash": "sha256:5d863592c48a6534cd098c0b587342cc2d9cb1691b289df9d48ff9933822a3f7"
   },
   "synt_description_normalize": {
     "source_hash": null,
@@ -330,9 +330,9 @@
     "version_hash": "sha256:afa81b7acddeeac993d33663c8dfe95e374750b379d7575e13b3f6af423e1013"
   },
   "synt_generate": {
-    "source_hash": "sha256:4257ceff20252e3c13239f67c666f303163edb0b803d52ca497e9ba8b9777fae",
+    "source_hash": "sha256:90d9a0e4169c006a4b55b827c449a007f5eee0de70074138e1b41a2ba7a9980c",
     "source_lang": "it",
-    "version_hash": "sha256:b13e68a52d1739b477c81701a3e9b9851947cd732f2679dd78a353d812103fa1"
+    "version_hash": "sha256:3c169d08afe4624ace2201345c9c488f6c5def848d99cefb2e90561f49d53875"
   },
   "synt_naming": {
     "source_hash": "sha256:f33f4e544b0716c9f869efcc2a238d4d610219b1930a69d2220b8ea0243ce016",

@@ -133,109 +133,6 @@ DEFAULT_CAP_MAX_PER_TURN = int(os.environ.get("METNOS_CAP_MAX_PER_TURN", "3") or
 SCRATCHPAD_THRESHOLD_BYTES = 4096  # observation oltre questa dimensione vanno in scratchpad
 
 
-# --- Think budget modulation per planner step (19/5/2026) ------------------
-# Pattern A+B (manifest [planning] complexity + verb-of-name fallback).
-# Bench del modello locale 19/5/2026 + euristica Roberto:
-#  - Exec deterministico: think=False, budget=0.
-#  - Binary contestuale: think=True, budget=64-128.
-#  - Tool calling pool ≤5: think=True, budget=256.
-#  - Tool calling pool 6-15: think=True, budget=512.
-#  - Tool calling pool >15: think=True, budget=768.
-#  - Code generation (synt stage 5): think=True, budget=1024+.
-# NOTA: skip think (False) NON e' implementabile per tool-calling: bench
-# 19/5 ha dimostrato che il planner sceglie tool sbagliato senza reasoning
-# → loop_break. Quindi la modulazione e' SOLO sul budget.
-# Vedi [[feedback_thinking_budget_heuristic]] e
-# [[metnos_todo_high_think_per_model]] (validazione cross-model pendente).
-
-# Verbi a bassa complessita' decisionale: tool-calling diretto.
-# Le 3 categorie (low/medium/high) derivano dal verbo del name se il
-# manifest non dichiara [planning] complexity (Pattern B).
-_VERB_COMPLEXITY = {
-    # Low: producer/snapshot deterministici, scelta tool ovvia se prefilter ok.
-    "get": "low", "read": "low", "list": "low", "find": "low",
-    # Medium: filtri/computi/comparazioni (richiedono valutazione predicato).
-    "filter": "medium", "sort": "medium", "group": "medium",
-    "classify": "medium", "describe": "medium", "compare": "medium",
-    "compute": "medium", "order": "medium",
-    # High: mutating + extract + creare = rischio + creativita'.
-    "write": "high", "move": "high", "delete": "high", "create": "high",
-    "send": "high", "change": "high", "extract": "high", "share": "high",
-    "set": "high",
-}
-
-# Budget tokens per (complexity, pool_size_bucket).
-# Euristica Roberto 19/5: tool-call (pattern matching NL→template) ha bisogno
-# di thinking ma non troppo. Il budget cresce un po' (ma non troppo) col
-# pool size. Scaling moderato — bench 19/5 ha mostrato che budget aggressivi
-# bassi causano scelta tool sbagliato (request_new_executor invece di
-# write_files allo step 3).
-_BUDGET_TABLE = {
-    # (complexity, pool_bucket): budget
-    ("low",    "small"):  256,   # pool ≤5
-    ("low",    "medium"): 320,   # pool 6-15 (+25%)
-    ("low",    "large"):  384,   # pool >15 (+50% vs small)
-    ("medium", "small"):  320,
-    ("medium", "medium"): 384,
-    ("medium", "large"):  512,
-    ("high",   "small"):  384,
-    ("high",   "medium"): 512,
-    ("high",   "large"):  640,
-}
-
-
-def _infer_complexity_from_name(name: str) -> str:
-    """Pattern B: fallback automatico dal verbo del name. Producer
-    (get/read/find/list) → low; filtri/compute → medium; mutating → high.
-    """
-    verb = name.split("_", 1)[0]
-    return _VERB_COMPLEXITY.get(verb, "medium")
-
-
-def _pool_size_bucket(n: int) -> str:
-    if n <= 5:
-        return "small"
-    if n <= 15:
-        return "medium"
-    return "large"
-
-
-def _decide_reasoning_budget(candidates, tools_for_step, step_num, loop_start_step):
-    """Determina il reasoning_budget per questo planner call basato su:
-    (1) step_num: step 1 forza complexity=medium (cascata multi-step composto
-        non e' nota dal prefilter; budget basato solo su top-1 sottostima);
-    (2) step 2+: complexity dal prefilter top-1 (manifest [planning] o
-        inferred via verb);
-    (3) dimensione del pool tools_for_step (small/medium/large).
-
-    Ritorna l'int reasoning_budget per LlamaCppProvider.
-
-    Bench 19/5: step 1 con complexity=low (inferred da producer top-1)
-    causava planner cascade sbagliata su query multi-step "scarica e salva"
-    (sceglieva read_urls_html invece della pipeline corretta). Step 1 ottiene
-    sempre medium + 50% boost. Sostituisce formula dyn legacy step1=768/step2+=256.
-    """
-    pool_bucket = _pool_size_bucket(len(tools_for_step or []))
-
-    is_step1 = (step_num == loop_start_step)
-    if is_step1:
-        # Step 1: complexity forzata medium (decisione di cascata multi-step).
-        complexity = "medium"
-    elif not candidates:
-        complexity = "medium"
-    else:
-        top1 = candidates[0]
-        complexity = getattr(top1, "complexity", "") or _infer_complexity_from_name(top1.name)
-
-    base = _BUDGET_TABLE.get((complexity, pool_bucket), 384)
-
-    # Step 1 boost: pool grande, history vuota, decisione di cascata.
-    if is_step1:
-        base = int(base * 1.5)
-
-    return base
-
-
 # Anti thinking-leak (ADR 0102, 7/5/2026). Il modello locale con think=true a volte
 # emette il proprio reasoning interno nel canale `text` invece che nel
 # canale `thinking` separato — il final_message dell'utente si riempie di
@@ -5822,9 +5719,14 @@ def invoke_tool_by_name(tool_name: str, args: dict, *, catalog: list,
     if exec_obj is None:
         return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                 "error_class": "tool_unknown"}
-    return invoke_executor(
+    result = invoke_executor(
         exec_obj, args, timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
         actor=actor, channel=channel, owner_user_id=owner_user_id)
+    contract = getattr(exec_obj, "presentation", None)
+    if isinstance(result, dict) and contract:
+        result = dict(result)
+        result["_presentation_contract"] = contract
+    return result
 
 
 # --- Auto-remediation generalizzata (ADR 0153) -----------------------------
@@ -6054,7 +5956,7 @@ def _run_engine(
         }
 
     # Provider LLM fast (per filler resolve)
-    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
+    def _llm_call_fast(sys_msg, user_msg, *, max_tokens=80, **kw):
         # Robustezza + osservabilità (ADR 0181-ext): la fast-call era un
         # `except: return ""` MUTO — un hiccup di connessione LLM (reset/rifiuto)
         # spariva senza traccia e faceva declinare il turno (causa-radice del
@@ -6066,14 +5968,15 @@ def _run_engine(
         for _attempt in (1, 2):
             try:
                 from llm_router import LLMRouter
+                from llm_workloads import tier_for
                 ck = {
                     "max_tokens": max_tokens,
-                    "think": think,
                     "request_timeout_s": ENGINE_FAST_LLM_TIMEOUT_S,
                 }
                 if kw.get("grammar") is not None:
                     ck["grammar"] = kw["grammar"]
-                res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+                res = LLMRouter().provider(
+                    tier_for("intent.extract")).chat(sys_msg, user_msg, **ck)
                 return (getattr(res, "text", res) or "").strip()
             except Exception as _e:  # noqa: BLE001
                 log.warning("engine v2 _llm_call_fast tentativo %d fallito: %r",
@@ -6087,26 +5990,25 @@ def _run_engine(
         return ""
 
     # Provider LLM wise (per Proposer)
-    def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+    def _llm_call_wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
         if _llm_state["unavailable"]:
             return ""
         try:
             from llm_router import LLMRouter
-            tier = kw.get("tier_override") or "wise"
-            # Inoltra `grammar` (GBNF) e `reasoning_budget` al provider: senza
-            # questo il Proposer girava SEMPRE non vincolato anche con
+            from llm_workloads import tier_for
+            tier = kw.get("tier_override") or tier_for("planner.deliberate")
+            # Inoltra la GBNF al provider: è un vincolo di output, non una
+            # policy di generazione. Thinking e sampling appartengono al tier.
+            # Senza la grammar il Proposer girerebbe non vincolato anche con
             # METNOS_PROPOSER_GRAMMAR=1 → nomi tool allucinati (es. get_issues)
             # fuori dal pool (bug 2/6/2026). chat() supporta grammar →
             # payload['grammar'] a llama-server.
             ck = {
                 "max_tokens": max_tokens,
-                "think": think,
                 "request_timeout_s": ENGINE_WISE_LLM_TIMEOUT_S,
             }
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            if kw.get("reasoning_budget") is not None:
-                ck["reasoning_budget"] = kw["reasoning_budget"]
             res = LLMRouter().provider(tier).chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
         except Exception as ex:
@@ -6298,6 +6200,22 @@ def _run_engine(
         e.name: e for e in catalog if getattr(e, "name", None)
     }
 
+    def _attach_presentation_contract(tool_name: str, result: object) -> object:
+        """Carry producer-owned rendering metadata into the shared engine.
+
+        The normal chat path invokes executors through this local callback,
+        rather than through ``invoke_tool_by_name``.  Keep the two paths
+        equivalent: otherwise a manifest contract exists in the catalog but
+        ``${stepN.@table}`` silently falls back to the legacy projection.
+        """
+        executor = _catalog_by_name.get(tool_name)
+        contract = getattr(executor, "presentation", None) if executor else None
+        if isinstance(result, dict) and contract:
+            enriched = dict(result)
+            enriched["_presentation_contract"] = contract
+            return enriched
+        return result
+
     def _effective_executor_args(tool_name: str, args: dict) -> dict:
         """Apply the same planner-invisible arguments on sync and async paths."""
         effective_args = args
@@ -6328,12 +6246,13 @@ def _run_engine(
             return {"ok": False, "error": f"tool '{tool_name}' non in catalog",
                      "error_class": "tool_unknown"}
         try:
-            return invoke_executor(
+            result = invoke_executor(
                 exec_obj, _effective_executor_args(tool_name, args),
                 timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
                 autonomy="supervised", turn_id=turn_id,
                 actor=actor, channel=channel, target_device=_target_name,
                 owner_user_id=owner_user_id)
+            return _attach_presentation_contract(tool_name, result)
         except Exception as ex:
             return {"ok": False, "error": f"{type(ex).__name__}: {ex}",
                      "error_class": "exception"}
@@ -6343,12 +6262,23 @@ def _run_engine(
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
             raise ValueError(f"tool '{tool_name}' is not async-admissible")
-        return submit_executor(
+        future = submit_executor(
             exec_obj, _effective_executor_args(tool_name, args),
             timeout_s=(getattr(exec_obj, "timeout_s", None) or 120),
             autonomy="supervised", turn_id=turn_id,
             actor=actor, channel=channel, target_device=_target_name,
             owner_user_id=owner_user_id)
+        contract = getattr(exec_obj, "presentation", None)
+        if contract and hasattr(future, "add_done_callback"):
+            def _attach_when_done(done_future) -> None:
+                try:
+                    result = done_future.result()
+                    if isinstance(result, dict):
+                        result.setdefault("_presentation_contract", contract)
+                except Exception:
+                    pass
+            future.add_done_callback(_attach_when_done)
+        return future
 
     def _can_parallelize(tool_name: str) -> bool:
         exec_obj = _catalog_by_name.get(tool_name)
@@ -6740,22 +6670,24 @@ def _strato3_routing_changed(user_query: str, *, lang: str) -> bool:
         from engine.routing_pool import build_routing_pool
         from engine.proposer import get_proposer
 
-        def _fast(sys_msg, user_msg, *, max_tokens=80, think=False, **kw):
+        def _fast(sys_msg, user_msg, *, max_tokens=80, **kw):
             from llm_router import LLMRouter
-            ck = {"max_tokens": max_tokens, "think": think}
+            from llm_workloads import tier_for
+            ck = {"max_tokens": max_tokens}
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            res = LLMRouter().provider("fast").chat(sys_msg, user_msg, **ck)
+            res = LLMRouter().provider(
+                tier_for("intent.extract")).chat(sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
 
-        def _wise(sys_msg, user_msg, *, max_tokens=2048, think=True, **kw):
+        def _wise(sys_msg, user_msg, *, max_tokens=2048, **kw):
             from llm_router import LLMRouter
-            ck = {"max_tokens": max_tokens, "think": think}
+            from llm_workloads import tier_for
+            ck = {"max_tokens": max_tokens}
             if kw.get("grammar") is not None:
                 ck["grammar"] = kw["grammar"]
-            if kw.get("reasoning_budget") is not None:
-                ck["reasoning_budget"] = kw["reasoning_budget"]
-            res = LLMRouter().provider(kw.get("tier_override") or "wise").chat(
+            res = LLMRouter().provider(
+                kw.get("tier_override") or tier_for("planner.deliberate")).chat(
                 sys_msg, user_msg, **ck)
             return (getattr(res, "text", res) or "").strip()
 
@@ -6812,7 +6744,7 @@ def _owner_scoped_turn(function):
 
 
 @_owner_scoped_turn
-def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, think=None, progress=None,
+def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
              cap_steps=DEFAULT_CAP_STEPS, cap_same=DEFAULT_CAP_SAME_EXECUTOR,
              scratchpad_threshold=SCRATCHPAD_THRESHOLD_BYTES,
              actor="host", channel="", conversation_id="", owner_user_id="",
@@ -7393,7 +7325,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("query", nargs="+")
     ap.add_argument("--model", default=None)
-    ap.add_argument("--think", action="store_true", help="Abilita thinking del LLM (qwen3, deepseek)")
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--cap-steps", type=int, default=DEFAULT_CAP_STEPS)
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -7401,7 +7332,7 @@ if __name__ == "__main__":
 
     query = " ".join(args.query)
     log = run_turn(query, model=args.model, k=args.k,
-                   cap_steps=args.cap_steps, think=args.think, verbose=args.verbose)
+                   cap_steps=args.cap_steps, verbose=args.verbose)
     print(f"\n>>> {log.final_message}\n")
     if args.verbose:
         total_in = sum(s.llm_in_tokens for s in log.steps)

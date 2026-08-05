@@ -20,6 +20,18 @@ Schema del manifest gia' deciso (NON cambiarlo):
   revertible: {{ revertible }}, reverse_pattern: {{ reverse_pattern }}
   description: {{ description }}
 
+CONTRATTO DI PRESENTAZIONE DEL MANIFEST:
+La vista per l'utente e' dichiarativa, non appartiene al codice dell'executor.
+Se l'output dichiara `entries`, il manifest del producer DEVE dichiarare
+`[presentation] default_view="list"`;
+`[presentation.list]` definisce colonne, fonti, fallback e limiti. Il runtime
+renderizza quella proiezione in modo generico. `$entry` e' ammesso solo come
+ultimo fallback per record opachi o scalari. DEVI restituire dati strutturati
+nei campi dichiarati; NON DEVI generare Markdown/UI o ramificare per tipo di
+oggetto (mail, file, eventi, ecc.).
+Per date usa il tipo chiuso `date` (resa utente `gg/mm/aa`); per data e ora
+usa `datetime`. Restituisci sempre il valore grezzo, non una cella formattata.
+
 PRINCIPI STRUTTURALI (validi per qualunque verbo):
 
 DEVI: Python 3.12+ stdlib + moduli runtime in /opt/metnos/runtime.

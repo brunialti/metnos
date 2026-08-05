@@ -137,6 +137,53 @@ The following rules are mandatory:
 - An empty valid result is different from an execution failure. The executor
   MUST preserve that distinction.
 
+### 3.4 Presentation contract
+
+The manifest is the authority for the user-facing projection of a producer
+result. Executor code returns structured facts; it MUST NOT render Markdown,
+HTML, cards, or make object-kind branches merely to choose a presentation.
+
+Every active executor shipped with Metnos whose output schema declares
+`entries` MUST declare one bounded default view. Synt applies the same rule to
+new generated executors:
+
+```toml
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table" # table | cards | bullet
+columns = [
+  { key = "item", source = ["id", "name", "title", "$entry"], cell_max = 160 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice" # notice | paginate | download
+```
+
+`key` is the stable logical field shown to the user. `source` is one field or
+an ordered fallback list from the result entry. `$entry` is the universal last
+fallback for a list of scalars or otherwise opaque records; it renders the
+whole value compactly and MUST NOT be used before a meaningful declared field.
+A column MAY declare a literal
+`fallback`, a closed semantic `type`, a localization `label_key`, and a
+declarative `derived_by` helper. Those declarations are metadata: they do not
+authorize an extra model call or an executor-specific renderer branch.
+Set `nowrap = true` only for short identifiers that must remain on one line;
+the browser renderer applies it to that cell and uses the table's existing
+horizontal scrolling if the available width is insufficient.
+
+The closed `type` values are `string`, `number`, `boolean`, `json`, `date`,
+and `datetime`. `date` renders a user-facing date as `dd/mm/yy`; `datetime`
+also includes the local clock time. Producers return the raw structured value,
+never a preformatted table cell.
+
+The runtime owns the renderer primitives (`table`, `cards`, `bullet`) and may
+apply a smaller transport cap. A manifest budget never enlarges source access:
+data-reading caps and transport limits remain separate. Pre-existing external
+executors retain the generic renderer during migration; shipped and new
+Synt-generated list producers MUST emit this contract.
+
 ## 4. Authority and effects
 
 - The manifest MUST declare all required capabilities using names from the

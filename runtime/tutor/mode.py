@@ -65,6 +65,7 @@ def _invoke_closed_classifier(*, prompt_name: str, executor,
 
     from executor_scheduler import SchedulerAdmissionTimeout, invoke_scheduled
     from llm_helpers import call_llm
+    from llm_workloads import tier_for
     from prompt_loader import get as get_prompt
 
     call_deadline = phase_deadline(deadline_at, mode_budget_s())
@@ -79,7 +80,7 @@ def _invoke_closed_classifier(*, prompt_name: str, executor,
             text, _metadata = call_llm(
                 payload,
                 prompt,
-                tier="fast",
+                tier=tier_for("tutor.mode"),
                 max_tokens=12,
                 max_query_chars=_MAX_CLASSIFIER_PAYLOAD_CHARS,
                 timeout_s=remaining(call_deadline),

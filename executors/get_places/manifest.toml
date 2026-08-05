@@ -84,6 +84,19 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "place", source = "place", cell_max = 180 },
+  { key = "lat", source = "lat", cell_max = 32 },
+  { key = "lon", source = "lon", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:http"
 hint = ["maps.googleapis.com", "127.0.0.1", "localhost"]

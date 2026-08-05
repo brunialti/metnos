@@ -355,7 +355,10 @@ def _classify_folder_label(label: str, lang: str) -> tuple[str, str]:
         )
     cat, place = "ALTRO", ""
     try:
-        out = _folder_ctx_llm().chat(sysp, f"'{label}' =>", tier="middle").text
+        from llm_workloads import tier_for
+        out = _folder_ctx_llm().chat(
+            sysp, f"'{label}' =>",
+            tier=tier_for("images.folder_classify")).text
         line = (out or "").strip().splitlines()[0] if out else ""
         line = re.sub(r"^[\*\s>]+", "", line).strip()
         parts = (line.split("|") + [""])[:2]

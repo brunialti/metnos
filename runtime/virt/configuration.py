@@ -19,6 +19,7 @@ from . import DEFAULT_EMBEDDERS, DEFAULT_VLM, tiers
 _MAX_FIELDS = 128
 _MAX_VALUE_CHARS = 240
 _MAX_EDIT_VALUE_CHARS = 4096
+UI_EDITABLE_FAMILIES = frozenset({"llm", "vlm"})
 _BINDING_KEYS = frozenset({"provider", "model", "endpoint", "base_url"})
 _SECRET_PARTS = frozenset({
     "accesskey", "apikey", "auth", "authorization", "bearer", "clientsecret",
@@ -233,21 +234,41 @@ def _fields(
     return rows
 
 
+def _role_description_key(family: str, name: str) -> str:
+    """Derive the explanatory key of one card, empty when not catalogued.
+
+    The key is computed from the role identity, so a new tier or fast level
+    gets its own text by adding two i18n rows and no code.  A role without a
+    catalogued description simply shows no paragraph: the page never renders
+    a missing-key marker to an administrator.
+    """
+
+    from i18n import key_exists
+
+    slug = name.upper().replace(".", "_").replace("-", "_")
+    candidate = f"UI_VIRT_ROLE_{family.upper()}_{slug}"
+    return candidate if key_exists(candidate) else ""
+
+
 def _role_payload(
         *, name: str, origin: str, spec: Mapping[str, Any],
+        family: str = "",
         sources: Mapping[str, str] | None = None,
         policy_keys: frozenset[str] = frozenset(),
+        pointer_prefix: tuple[str, ...] | None = None,
         include_edit: bool = False,
 ) -> dict[str, Any]:
     """Build one role card while retaining a complete flat JSON view."""
 
     fields = _fields(
         spec, sources=sources, policy_keys=policy_keys,
-        pointer_prefix=(name,), include_edit=include_edit,
+        pointer_prefix=pointer_prefix or (name,), include_edit=include_edit,
     )
     return {
         "name": name,
         "origin": origin,
+        "description_key": (
+            _role_description_key(family, name) if family else ""),
         "fields": fields,
         "binding_fields": [f for f in fields if f["group"] == "binding"],
         "policy_fields": [f for f in fields if f["group"] == "policy"],
@@ -265,7 +286,9 @@ def _family_status(*, exists: bool, error: str, error_key: str = "") -> str:
 
 def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
     from llm_router import (
-        DEFAULT_TIERS, INFERENCE_POLICY_KEYS, LLMRouter,
+        DEFAULT_TIERS, FAST_LEVEL_ORDER,
+        INFERENCE_POLICY_KEYS, LLMRouter, TIER_ORDER,
+        TierConfigError,
         complete_tier_spec, tier_config_document,
     )
 
@@ -276,19 +299,20 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
     if not error:
         try:
             resolved = LLMRouter(config_path=document.path).tiers
-        except Exception:
+        except TierConfigError as exc:
             # Some historical TierConfigError messages interpolate the whole
             # offending mapping.  Never carry that mapping to an HTTP view:
             # it may contain a provider credential under a future field name.
             error = ""
-            if document.tiers and "fast" not in document.tiers:
-                error_key = "UI_VIRT_ERROR_LLM_FAST"
-            elif document.tiers and "wise" not in document.tiers:
-                error_key = "UI_VIRT_ERROR_LLM_WISE"
-            elif document.tiers and not document.tiers["wise"].get("provider"):
+            if getattr(exc, "tier", ""):
                 error_key = "UI_VIRT_ERROR_LLM_PROVIDER"
             else:
                 error_key = "UI_VIRT_ERROR_LLM_CONFIG"
+        except Exception:
+            # Keep provider construction and unforeseen validation failures
+            # closed too; no exception detail reaches the secret-safe view.
+            error = ""
+            error_key = "UI_VIRT_ERROR_LLM_CONFIG"
 
     if (error or error_key) and document.tiers:
         # A semantically invalid file is still useful diagnostic evidence.
@@ -299,21 +323,70 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
         # labelled as fallback, never as a valid effective configuration.
         resolved = DEFAULT_TIERS
 
+    # An existing configuration can omit the optional frontier role. Keep the
+    # complete vocabulary visible and editable without pretending
+    # that an external call is currently available.  Saving this card
+    # materializes the section through the same allowlisted editor as aliases.
+    if not (error or error_key) and "frontier" not in resolved:
+        resolved = dict(resolved)
+        resolved["frontier"] = {
+            "provider": "none",
+            "model": DEFAULT_TIERS["frontier"]["model"],
+        }
+
     roles = []
-    for role, spec in resolved.items():
+    for role in TIER_ORDER:
+        if role not in resolved:
+            continue
+        spec = resolved[role]
         if error or error_key:
             origin = "fallback"
         elif role in document.tiers:
             origin = "configured"
-        elif bool(spec.get("_aliased_from_wise")):
+        elif bool(spec.get("_aliased_from")):
             origin = "alias"
         else:
             origin = "defaults"
 
-        effective_spec = (
-            complete_tier_spec(str(role), spec)
-            if role in DEFAULT_TIERS else dict(spec)
-        )
+        if role == "fast":
+            raw_source = document.tiers.get("fast", {})
+            configured_levels = raw_source.get("level", {}) \
+                if isinstance(raw_source, dict) else {}
+            for level in FAST_LEVEL_ORDER:
+                effective_spec = complete_tier_spec("fast", spec, level=level)
+                raw_level = configured_levels.get(level, {}) \
+                    if isinstance(configured_levels, dict) else {}
+                raw_root_keys = {
+                    str(key) for key in raw_source
+                    if str(key) != "level" and not str(key).startswith("_")
+                } if isinstance(raw_source, dict) else set()
+                raw_level_keys = {
+                    str(key) for key in raw_level
+                    if not str(key).startswith("_")
+                } if isinstance(raw_level, dict) else set()
+                if origin == "fallback":
+                    sources = {str(key): "fallback" for key in effective_spec}
+                elif origin == "defaults":
+                    sources = {str(key): "defaults" for key in effective_spec}
+                else:
+                    sources = {
+                        str(key): (
+                            "configured" if str(key) in raw_level_keys
+                            else "configured" if str(key) in raw_root_keys
+                            else "defaults"
+                        )
+                        for key in effective_spec
+                    }
+                roles.append(_role_payload(
+                    name=f"fast.{level}", origin=origin, family="llm",
+                    spec=effective_spec, sources=sources,
+                    policy_keys=frozenset(INFERENCE_POLICY_KEYS),
+                    pointer_prefix=("fast", "level", level),
+                    include_edit=include_edit,
+                ))
+            continue
+
+        effective_spec = complete_tier_spec(str(role), spec)
         if origin == "fallback":
             sources = {str(key): "fallback" for key in effective_spec}
         elif origin == "defaults":
@@ -322,7 +395,8 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
             raw_source = document.tiers.get(str(role), {})
             inherited_origin = "configured"
             if origin == "alias":
-                raw_source = document.tiers.get("wise", {})
+                raw_source = document.tiers.get(
+                    str(spec.get("_aliased_from") or "wise"), {})
                 inherited_origin = "alias"
             raw_keys = {
                 str(key) for key in raw_source
@@ -335,7 +409,7 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
                 for key in effective_spec
             }
         roles.append(_role_payload(
-            name=str(role), origin=origin, spec=effective_spec,
+            name=str(role), origin=origin, family="llm", spec=effective_spec,
             sources=sources,
             policy_keys=frozenset(INFERENCE_POLICY_KEYS),
             include_edit=include_edit,
@@ -345,7 +419,7 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
         "key": "llm",
         "title_key": "UI_VIRT_FAMILY_LLM",
         "description_key": "UI_VIRT_FAMILY_LLM_DESC",
-        "policy_note_key": "UI_VIRT_GENERATION_NOTE",
+        "tip_key": "UI_VIRT_LLM_TIP",
         "config": {
             "path": _bounded(document.path),
             "revision": config_revision(document.path),
@@ -364,6 +438,8 @@ def _llm_family(*, include_edit: bool = False) -> dict[str, Any]:
 def _simple_family(
         *, kind: str, defaults: dict[str, dict], key: str,
         title_key: str, description_key: str,
+        tip_key: str = "",
+        ui_editable: bool = True,
         include_edit: bool = False,
 ) -> dict[str, Any]:
     document = tiers.config_document(kind)
@@ -398,15 +474,16 @@ def _simple_family(
                 for name in base
             }
         roles.append(_role_payload(
-            name=role, origin=origin, spec=base, sources=sources,
+            name=role, origin=origin, family=kind, spec=base, sources=sources,
             include_edit=include_edit,
         ))
     env_var = f"METNOS_{kind.upper()}_TIERS_CONFIG"
     return {
         "key": key,
+        "ui_editable": ui_editable,
         "title_key": title_key,
         "description_key": description_key,
-        "policy_note_key": "",
+        "tip_key": tip_key,
         "config": {
             "path": _bounded(document.path),
             "revision": config_revision(document.path),
@@ -432,24 +509,30 @@ def snapshot(*, edit_family: str = "") -> dict[str, Any]:
     secret values.
     """
 
-    if edit_family not in {"", "llm", "embedding", "vlm"}:
+    if edit_family not in UI_EDITABLE_FAMILIES:
         edit_family = ""
 
     return {
         "read_only": not bool(edit_family),
         "secrets_redacted": True,
         "families": [
-            _llm_family(include_edit=edit_family == "llm"),
+            {
+                **_llm_family(include_edit=edit_family == "llm"),
+                "ui_editable": True,
+            },
             _simple_family(
                 kind="embedding", defaults=DEFAULT_EMBEDDERS,
                 key="embedding", title_key="UI_VIRT_FAMILY_EMBEDDING",
                 description_key="UI_VIRT_FAMILY_EMBEDDING_DESC",
-                include_edit=edit_family == "embedding",
+                tip_key="UI_VIRT_EMBEDDING_READONLY_TIP",
+                ui_editable=False,
             ),
             _simple_family(
                 kind="vlm", defaults=DEFAULT_VLM,
                 key="vlm", title_key="UI_VIRT_FAMILY_VLM",
                 description_key="UI_VIRT_FAMILY_VLM_DESC",
+                tip_key="UI_VIRT_VLM_TIP",
+                ui_editable=True,
                 include_edit=edit_family == "vlm",
             ),
         ],
