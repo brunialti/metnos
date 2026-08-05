@@ -2,9 +2,10 @@
 # Lettura di PDF da URL (ADR 0081, 4/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_urls_pdf"
-version     = "0.1.0"
+version     = "0.2.0"
 timeout_s   = 300
 author      = "Roberto Brunialti"
 affinity    = [
@@ -18,7 +19,7 @@ en = "SCOPO: reads PDF documents from URLs and extracts text and metadata. PATTE
 
 [code]
 files  = ["read_urls_pdf.py"]
-digest = "sha256:910470e794d5db72a249f767f26027c97cc39e6e951ea8477c0bc2bdf5b34fec"
+digest = "sha256:e694d2a838f67ece7cb112861ad035771fe15796b48ca3eff3424df308f3ea0c"
 
 [args]
 type     = "object"
@@ -79,15 +80,29 @@ type        = "string"
 enum        = ["httpx", "playwright"]
 default     = "httpx"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend di implementazione (default 'httpx' = urllib stdlib + HostThrottle + pypdf). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
 en = "Backend implementation (default 'httpx' = urllib stdlib + HostThrottle + pypdf). 'playwright' = stub (not yet active). Future external plugins may add other clients."
 
+[output]
+schema_inline = "{ ok: bool, entries: array, metadata?: object, error?: string }"
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
-name = "network.read"
+name = "network:http"
 hint = ["http://*", "https://*"]
 
 [[tests]]

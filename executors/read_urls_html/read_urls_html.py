@@ -30,17 +30,18 @@ import gzip
 import html
 import http.cookiejar
 import io
-import json
 import multiprocessing
 import os
 import re
 import sys
 import time
+import datetime as _dt
 import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -111,6 +112,20 @@ _GLOBAL_MAX = int(os.environ.get(
     "METNOS_READ_URLS_GLOBAL_MAX", min(32, max(1, multiprocessing.cpu_count()) * 4)
 ))
 _PER_HOST_MAX = int(os.environ.get("METNOS_READ_URLS_PER_HOST", "4"))
+
+
+def _worker_count_for_urls(urls: list[str]) -> int:
+    """Bound the pool to network slots that can perform useful work.
+
+    ``HostThrottle`` admits at most ``_PER_HOST_MAX`` requests for each
+    distinct netloc.  Threads beyond that aggregate capacity can only block on
+    semaphores; they do not overlap parsing because the fetch releases its
+    host slot before parsing.  Keep the historical global and item caps while
+    avoiding those guaranteed-idle threads.
+    """
+    hosts = {urllib.parse.urlparse(url).netloc for url in urls}
+    useful_slots = max(1, len(hosts)) * _PER_HOST_MAX
+    return min(_GLOBAL_MAX, len(urls), useful_slots)
 
 # Tag i cui contenuti vengono SCARTATI integralmente (rumore di pagina).
 # `iframe` resta in DROP per il body_text estratto (non vogliamo includere
@@ -371,6 +386,145 @@ def _classify_url_error(reason) -> str:
     if "timed out" in rs or "timeout" in rs:
         return "timeout"
     return "network"
+
+
+def _invalid_result(error: str, code: str) -> dict:
+    """Canonical fail-closed shape for invocation-level input errors."""
+    return {
+        "ok": False,
+        "ok_count": 0,
+        "fail_count": 0,
+        "entries": [],
+        "failed": [],
+        "error": error,
+        "error_class": "invalid_input",
+        "error_code": code,
+    }
+
+
+_PAGE_DATE_META_KEYS = (
+    "article:modified_time", "article:published_time", "date",
+    "dc.date", "dcterms.date", "last-modified", "last_modified",
+)
+_LABELED_PAGE_DATE_RE = re.compile(
+    r"(?:last\s+updated(?:\s+on)?|ultima\s+modifica(?:\s+il)?|"
+    r"ultimo\s+aggiornamento(?:\s+il)?)\s*[:\-]?\s*"
+    r"(\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4})",
+    re.IGNORECASE,
+)
+
+
+def _page_date(meta: dict, body_text: str) -> str:
+    """Return only an explicitly labelled/structured page date.
+
+    Version numbers and code samples contain many date-shaped tokens.  The
+    previous LLM extraction turned those into invented page dates.  This
+    helper accepts metadata fields or a labelled ``Last updated`` phrase and
+    otherwise returns an honest empty value.
+    """
+    candidates = []
+    if isinstance(meta, dict):
+        candidates.extend(meta.get(key) for key in _PAGE_DATE_META_KEYS)
+    match = _LABELED_PAGE_DATE_RE.search(body_text or "")
+    if match:
+        candidates.append(match.group(1))
+    for value in candidates:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        raw = value.strip()
+        iso = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", raw)
+        if iso:
+            return iso.group(1)
+        try:
+            parsed = parsedate_to_datetime(raw)
+        except (TypeError, ValueError, OverflowError):
+            parsed = None
+        if parsed is not None:
+            return parsed.date().isoformat()
+        for fmt in ("%b %d, %Y", "%B %d, %Y"):
+            try:
+                return _dt.datetime.strptime(raw, fmt).date().isoformat()
+            except ValueError:
+                continue
+    return ""
+
+
+def _enrich_web_audit_entry(entry: dict, requested_url: str) -> dict:
+    """Attach producer-owned audit facts without an LLM.
+
+    These fields are exact functions of the HTTP result and extracted text.
+    Publishing them on every success lets ``extract_entries`` take its
+    structured-projection path (0 model tokens) for web inventory/report
+    workflows.
+    """
+    final_url = str(entry.get("url") or requested_url)
+    body_text = str(entry.get("body_text") or "")
+    js_required = bool(entry.get("error_class") == "js_rendered")
+    if js_required:
+        status = "js_required"
+    elif not body_text.strip():
+        status = "empty"
+    else:
+        status = "ok"
+    try:
+        domain = urllib.parse.urlsplit(final_url).hostname or ""
+    except ValueError:
+        domain = ""
+    entry.update({
+        "origin": requested_url,
+        "requested_url": requested_url,
+        "final_url": final_url,
+        "domain": domain,
+        "language": entry.get("lang") or "",
+        "date": _page_date(entry.get("meta") or {}, body_text),
+        "text_length": len(body_text),
+        "status": status,
+        "confidence": 0.99 if status == "ok" else 0.70,
+        "redirected": final_url != requested_url,
+        "iframe_count": len(entry.get("iframe_urls") or []),
+        "js_required": js_required,
+        "error": "",
+    })
+    return entry
+
+
+def _failed_web_audit_entry(failed: dict) -> dict:
+    """Lossless row for an unreadable URL, opt-in for audit reports."""
+    requested_url = str(failed.get("url") or "")
+    try:
+        domain = urllib.parse.urlsplit(requested_url).hostname or ""
+    except ValueError:
+        domain = ""
+    error_class = str(failed.get("error_class") or "unknown")
+    return {
+        "url": requested_url,
+        "origin": requested_url,
+        "requested_url": requested_url,
+        "final_url": "",
+        "domain": domain,
+        "title": "",
+        "body_text": "",
+        "meta": {},
+        "lang": "",
+        "language": "",
+        "date": "",
+        "text_length": 0,
+        "status": error_class,
+        "confidence": 0.99,
+        "redirected": False,
+        "iframe_urls": [],
+        "iframe_count": 0,
+        "linked_documents": [],
+        "js_rendered": False,
+        "js_signals": [],
+        "js_required": error_class == "js_rendered",
+        "notice": None,
+        "error": str(failed.get("error") or "unknown"),
+        "error_class": error_class,
+        "error_code": failed.get("error_code") or "url_unknown",
+        "fetched_at": time.time(),
+        "readable": False,
+    }
 
 
 # Script inline (no src) che CONTENGONO DATI (molte coppie "chiave":valore),
@@ -693,21 +847,81 @@ def _invoke_default(args: dict) -> dict:
     Il dispatcher `invoke()` la chiama via `backends.urls.httpx_default`.
     """
     urls = args.get("urls")
-    if isinstance(urls, str):
-        urls = [urls]
     if urls is None:
-        urls = []
+        return _invalid_result(_msg("ERR_ARG_MISSING", arg="urls"),
+                               "urls_missing")
     if not isinstance(urls, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="urls", of="strings")}
+        return _invalid_result(
+            _msg("ERR_ARG_NOT_LIST_OF", arg="urls", of="strings"),
+            "urls_not_array",
+        )
 
     auth_cookies_file = args.get("auth_cookies_file")
-    timeout_s = float(args.get("timeout_s", 10.0))
-    max_bytes = int(args.get("max_bytes", _DEFAULT_MAX_BYTES))
+    if (auth_cookies_file is not None
+            and (not isinstance(auth_cookies_file, str)
+                 or not auth_cookies_file.strip())):
+        return _invalid_result(
+            _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="auth_cookies_file"),
+            "auth_cookies_file_invalid",
+        )
+    timeout_raw = args.get("timeout_s", 10.0)
+    if (isinstance(timeout_raw, bool)
+            or not isinstance(timeout_raw, (int, float))
+            or not 1.0 <= float(timeout_raw) <= 60.0):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="timeout_s",
+                 reason="expected a number in range 1..60"),
+            "timeout_invalid",
+        )
+    timeout_s = float(timeout_raw)
+    max_bytes_raw = args.get("max_bytes", _DEFAULT_MAX_BYTES)
+    if (isinstance(max_bytes_raw, bool)
+            or not isinstance(max_bytes_raw, int)
+            or max_bytes_raw < 0):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="max_bytes",
+                 reason="expected a non-negative integer"),
+            "max_bytes_invalid",
+        )
+    max_bytes = max_bytes_raw
     if max_bytes <= 0:
         max_bytes = _DEFAULT_MAX_BYTES
     # ADR 0105: HTTP cache disk-based. cache_ttl_s=0 disabilita.
-    cache_ttl_s = int(args.get("cache_ttl_s", DEFAULT_TTL_S))
+    cache_ttl_raw = args.get("cache_ttl_s", DEFAULT_TTL_S)
+    if (isinstance(cache_ttl_raw, bool)
+            or not isinstance(cache_ttl_raw, int)
+            or cache_ttl_raw < 0):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="cache_ttl_s",
+                 reason="expected a non-negative integer"),
+            "cache_ttl_invalid",
+        )
+    cache_ttl_s = cache_ttl_raw
     cache = HttpCache(ttl_s=cache_ttl_s) if cache_ttl_s > 0 else None
+
+    follow_iframes = args.get("follow_iframes", True)
+    if not isinstance(follow_iframes, bool):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="follow_iframes",
+                 reason="expected a boolean"),
+            "follow_iframes_not_boolean",
+        )
+    include_failures_as_entries = args.get(
+        "include_failures_as_entries", False)
+    if not isinstance(include_failures_as_entries, bool):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="include_failures_as_entries",
+                 reason="expected a boolean"),
+            "include_failures_as_entries_not_boolean",
+        )
+    # ADR 0125: opt-in JS-rendering via sidecar Playwright. Default false.
+    js_render = args.get("js_render", False)
+    if not isinstance(js_render, bool):
+        return _invalid_result(
+            _msg("ERR_ARG_INVALID", arg="js_render",
+                 reason="expected a boolean"),
+            "js_render_not_boolean",
+        )
 
     if not urls:
         return {"ok": True, "ok_count": 0, "fail_count": 0,
@@ -716,18 +930,23 @@ def _invoke_default(args: dict) -> dict:
     try:
         opener = _build_opener(auth_cookies_file)
     except FileNotFoundError as e:
-        return {"ok": False, "error": str(e)}
+        return {
+            **_invalid_result(str(e), "auth_cookies_file_not_found"),
+            "error_class": "not_found",
+        }
     except Exception as e:
-        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e))}
+        return {
+            **_invalid_result(_msg("ERR_OP_FAILED", reason=str(e)),
+                              "auth_cookies_file_invalid"),
+            "error_class": "invalid_content",
+        }
 
-    follow_iframes = bool(args.get("follow_iframes", True))
     # ADR 0125: opt-in JS-rendering via sidecar Playwright. Default false
     # per backwards compat con throughput. Quando true:
     #   - entries con `error_class="js_rendered"` (SPA detected dopo fetch)
     #     vengono ri-richieste al sidecar.
     #   - failed con `error_class="js_rendered"` analogamente.
     # Se il sidecar e' down, lasciamo lo stato pre-existing (degrade graceful).
-    js_render = bool(args.get("js_render", False))
 
     # Pre-validate + assegna indice originale per output deterministico.
     valid_jobs: list[tuple[int, str]] = []
@@ -735,7 +954,18 @@ def _invoke_default(args: dict) -> dict:
     for i, url in enumerate(urls):
         if not isinstance(url, str) or not url:
             failed.append({"url": str(url), "error": _msg("ERR_INVALID_URL"),
-                           "error_class": "unknown", "_idx": i})
+                           "error_class": "invalid_input",
+                           "error_code": "invalid_url", "_idx": i})
+            continue
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError:
+            parsed = None
+        if (parsed is None or parsed.scheme.lower() not in {"http", "https"}
+                or not parsed.hostname):
+            failed.append({"url": url, "error": _msg("ERR_INVALID_URL"),
+                           "error_class": "invalid_input",
+                           "error_code": "invalid_url", "_idx": i})
             continue
         valid_jobs.append((i, url))
 
@@ -747,9 +977,12 @@ def _invoke_default(args: dict) -> dict:
         if isinstance(err, dict):
             return {"url": url, "error": err.get("error", "unknown"),
                     "error_class": err.get("error_class", "unknown"),
+                    "error_code": err.get("error_code") or (
+                        "url_" + str(err.get("error_class", "unknown"))),
                     "_idx": i}
         return {"url": url, "error": str(err) if err else "unknown",
-                "error_class": "unknown", "_idx": i}
+                "error_class": "unknown", "error_code": "url_unknown",
+                "_idx": i}
 
     entries_indexed: list[tuple[int, dict]] = []
     if len(valid_jobs) == 1:
@@ -762,7 +995,7 @@ def _invoke_default(args: dict) -> dict:
             entries_indexed.append((i, ent))
     elif valid_jobs:
         throttle = HostThrottle(per_host_limit=_PER_HOST_MAX)
-        workers = min(_GLOBAL_MAX, len(valid_jobs))
+        workers = _worker_count_for_urls([url for _, url in valid_jobs])
         with ThreadPoolExecutor(max_workers=workers) as ex:
             futs = {ex.submit(_fetch_one_with_retry, url, opener,
                               timeout_s, max_bytes,
@@ -799,7 +1032,7 @@ def _invoke_default(args: dict) -> dict:
                     break  # 1 follow max per pagina
         if followups:
             throttle2 = HostThrottle(per_host_limit=_PER_HOST_MAX)
-            workers = min(_GLOBAL_MAX, len(followups))
+            workers = _worker_count_for_urls([url for _, url in followups])
             with ThreadPoolExecutor(max_workers=workers) as ex:
                 futs = {ex.submit(_fetch_one, ifu, opener, timeout_s,
                                   max_bytes, throttle2, cache): (pos, ifu)
@@ -921,10 +1154,25 @@ def _invoke_default(args: dict) -> dict:
                 failed.pop(fpos)
 
     # Riordina per indice originale (deterministico, indipendente da ordine
-    # di completamento dei worker).
+    # di completamento dei worker) e pubblica i fatti audit producer-owned.
     entries_indexed.sort(key=lambda t: t[0])
-    entries: list[dict] = [e for _, e in entries_indexed]
     failed.sort(key=lambda d: d.get("_idx", 0))
+    for idx, entry in entries_indexed:
+        requested_url = (urls[idx] if 0 <= idx < len(urls)
+                         and isinstance(urls[idx], str) else entry.get("url", ""))
+        _enrich_web_audit_entry(entry, requested_url)
+
+    success_count = len(entries_indexed)
+    if include_failures_as_entries:
+        report_entries = list(entries_indexed)
+        report_entries.extend(
+            (int(item.get("_idx", len(urls))), _failed_web_audit_entry(item))
+            for item in failed
+        )
+        report_entries.sort(key=lambda pair: pair[0])
+        entries: list[dict] = [entry for _, entry in report_entries]
+    else:
+        entries = [entry for _, entry in entries_indexed]
     for d in failed:
         d.pop("_idx", None)
 
@@ -936,14 +1184,23 @@ def _invoke_default(args: dict) -> dict:
     # Bug pre-fix: `ok = len(failed)==0` scartava 17 pagine buone per 1 URL 429
     # → il planner trattava lo step come fallito → loop_break/resa.
     result = {
-        "ok": len(entries) > 0 or len(failed) == 0,
-        "ok_count": len(entries),
+        # In audit mode, a structured failure row is itself useful output:
+        # let downstream report sinks render an all-failed batch honestly.
+        "ok": (len(entries) > 0 if include_failures_as_entries
+               else success_count > 0 or len(failed) == 0),
+        "ok_count": success_count,
         "fail_count": len(failed),
         "entries": entries,
         "failed": failed,
     }
-    if entries and failed:
+    if include_failures_as_entries:
+        result["audit_mode"] = True
+    if success_count and failed:
         result["partial"] = True
+    elif failed and not include_failures_as_entries:
+        result["error"] = failed[0].get("error") or "unknown"
+        result["error_class"] = failed[0].get("error_class") or "unknown"
+        result["error_code"] = failed[0].get("error_code") or "url_unknown"
     # Telemetria JS-render (ADR 0125): esposta quando il rendering e' stato
     # ingaggiato (opt-in esplicito O auto-escalation §7.9). Turn senza SPA
     # restano puliti.
@@ -975,11 +1232,19 @@ def _resolve_backend(client: str):
 
 
 def invoke(args: dict) -> dict:
+    if not isinstance(args, dict):
+        return _invalid_result(
+            _msg("ERR_ARGS_NOT_OBJECT"), "args_not_object")
     client = args.get("client") or _DEFAULT_CLIENT
+    if not isinstance(client, str):
+        return _invalid_result(
+            _msg("ERR_ARG_NOT_STRING", arg="client"), "client_not_string")
     backend = _resolve_backend(client)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}")}
+        return _invalid_result(
+            _msg("ERR_NOT_APPLICABLE", what=f"client {client!r}"),
+            "client_unsupported",
+        )
     return backend.read_html(args)
 
 

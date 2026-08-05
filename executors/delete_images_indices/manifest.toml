@@ -3,20 +3,24 @@
 # modalita'=indices). ADR 0086 (rinominato 5/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_images_indices"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["cancella", "delete", "rimuovi", "remove", "indice", "index", "rebuild", "free-storage", "foto", "image"]
 revertible  = false
 
+[output]
+schema_inline = "{ ok: bool, base_path?: string, idx?: string, deleted?: array, freed_bytes?: integer, dry_run?: bool, error?: string }"
+
 [description]
-it = "SCOPO: cancella l'indice persistente delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
-en = "SCOPO: delete the persistent image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+it = "SCOPO: cancella l'indice persistente unificato delle immagini. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: cancellare foto reali (-> delete_files); ricostruire (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
+en = "SCOPO: delete the persistent unified image index. PATTERN: delete_images_indices(base_path=\"...\", idx=\"all\"). NON: delete actual photos (-> delete_files); rebuild (-> create_images_indices). OUT: {ok, deleted:[paths], freed_bytes, dry_run}."
 
 [code]
 files  = ["delete_images_indices.py"]
-digest = "sha256:ed4f8fc37e4a50d92784bcacc8a6d1a2f05b3476892975495e4b3302a48e9a85"
+digest = "sha256:0bd2da54c425f9718479cdfcfbd84c844364002f448c5a44d15ebaae3d14c20f"
 
 [args]
 type     = "object"
@@ -31,12 +35,12 @@ en = "Root directory of the collection (the same one used in create_images_indic
 
 [args.properties.idx]
 type        = "string"
-enum        = ["scene", "persons", "gps", "all"]
+enum        = ["unified", "all"]
 default     = "all"
 
 [args.properties.idx.description]
-it = "Quale indice cancellare. 'all' (default) = tutti i tipi (scene+persons+gps); altrimenti uno solo."
-en = "Which index to delete. 'all' (default) = all types (scene+persons+gps); otherwise only one."
+it = "Indice da cancellare. `all` e `unified` indicano entrambi l'unico indice attivo post-ADR0117."
+en = "Index to delete. `all` and `unified` both select the single active post-ADR0117 index."
 
 [args.properties.dry_run]
 type        = "boolean"
@@ -47,7 +51,7 @@ it = "Se true, non cancella, solo elenca cosa cancellerebbe."
 en = "If true, it does not delete, it only lists what it would delete."
 
 [[capabilities]]
-name = "index.write"
+name = "fs:write"
 hint = ["~/.local/share/metnos/index/image/**"]
 
 [[tests]]

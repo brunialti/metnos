@@ -1,18 +1,30 @@
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 name        = "get_signatures"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["safety", "signatures", "lookup", "verifica permessi",
                 "controllo autorizzazioni", "elenco autorizzati",
                 "elenco vietati", "review pending", "candidati promozione",
                 "differenze seed"]
 
-revertible       = true
-reverse_pattern  = []
+revertible       = false
+
+[output]
+schema_inline = "{ ok: bool, negate?: bool, allow?: bool, matched_pattern?: string | null, matched_path?: string | null, severity?: string, reason?: string, age_class?: string | null, uses?: integer, last_used_at?: string | null, count?: integer, entries?: array, threshold?: object, seed_path?: string, seed_version?: integer, db_version?: integer, diff?: object, totals?: object, error?: string }"
+
+[[capabilities]]
+name = "fs:read"
+hint = ["~/.config/metnos/**", "~/.local/share/metnos/**"]
+
+[[tests]]
+name = "missing_kind"
+input = {}
+expect = { ok = false }
 
 [description]
-it = "SCOPO: ottiene signature da liste sicurezza (whitelist/blacklist/graylist/forbidden). PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: calcola sig (-> compute_signatures); imposta permessi (-> set_signatures). OUT: entries=[{negate,matched_pattern,severity,reason,allow,age_class,uses,last_used_at,matched_path}]."
-en = "SCOPO: gets signatures from security lists (whitelist/blacklist/graylist/forbidden). PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: computes sig (-> compute_signatures); sets permissions (-> set_signatures). OUT: entries=[{negate,matched_pattern,severity,reason,allow,age_class,uses,last_used_at,matched_path}]."
+it = "SCOPO: consulta liste e stato delle signature di sicurezza. PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: calcolare signature (-> compute_signatures); modificare curatela (-> set_signatures). OUT: i lookup singoli restituiscono campi flat (`negate`/`allow`/`matched_*`); `graylist`, `all` e `promotion_candidates` restituiscono `entries`; `seed_diff` restituisce `diff` e `totals`."
+en = "SCOPO: query safety-signature lists and status. PATTERN: get_signatures(kind=\"blacklist\", signature=\"...\"). NON: compute signatures (-> compute_signatures); modify curation (-> set_signatures). OUT: single lookups return flat fields (`negate`/`allow`/`matched_*`); `graylist`, `all`, and `promotion_candidates` return `entries`; `seed_diff` returns `diff` and `totals`."
 
 [code]
 files  = ["get_signatures.py"]

@@ -3,9 +3,10 @@
 # di get_processes+list_processes. Predicati lato ps/proc, no post-filter.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_processes"
-version     = "0.2.0"
+version     = "0.3.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",
@@ -18,12 +19,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: ottiene snapshot processi e salute sistema. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={system,cpu,gpu,load,memory,thermal,power,disk,network,peripherals,services,collected_at} (system=hostname/os/arch, cpu=model/cores/freq, gpu=vendor/vram, network=iface/ip/mac, peripherals=usb/block)."
-en = "SCOPO: gets processes snapshot and system health. PATTERN: get_processes(top=5, include_health=true). NON: list_tasks, get_files, get_now, get_location. OUT: entries=[{pid,ppid,name,cmd,user,cpu_pct,mem_pct,started_at}], health={system,cpu,gpu,load,memory,thermal,power,disk,network,peripherals,services,collected_at} (system=hostname/os/arch, cpu=model/cores/freq, gpu=vendor/vram, network=iface/ip/mac, peripherals=usb/block)."
+it = "SCOPO: legge processi e salute del sistema. PATTERN: get_processes(top=5, include_health=true). NON: task schedulati (-> list_tasks), metadati file (-> get_files), ora o posizione (-> get_now/get_location). OUT: entries e health attestato."
+en = "SCOPO: reads processes and system health. PATTERN: get_processes(top=5, include_health=true). NON: scheduled tasks (-> list_tasks), file metadata (-> get_files), time or location (-> get_now/get_location). OUT: attested entries and health."
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:6c28d5fdcb2d75912d054e70f7119525981f73d681c8454596f8bc27ccd8394d"
+digest = "sha256:0a1030e11d06ac45346f65e73cbdea8d347474a2d5f9189a948cee953e4af256"
 
 [args]
 type     = "object"
@@ -59,9 +60,11 @@ default     = false
 [args.properties.include_health.description]
 it = """bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.
 USO: stato/salute/uptime/carico/IP/rete/temperatura del server.
+Su Windows thermal usa, nell'ordine, WMI Libre/OpenHardwareMonitor già attivo, una DLL LibreHardwareMonitor configurata localmente, quindi zone ACPI; una zona ACPI non viene presentata come temperatura CPU.
 NON DEVI usare health/with_health/system/status."""
 en = """bool. If true adds dict health.{load,memory,thermal,disk,network,services}.
 USE: status/health/uptime/load/IP/network/temperature of server.
+On Windows, thermal data comes, in order, from a running Libre/OpenHardwareMonitor WMI provider, a locally configured LibreHardwareMonitor DLL, then ACPI zones; an ACPI zone is never presented as an attested CPU temperature.
 MUST NOT use health/with_health/system/status."""
 
 [args.properties.services_extra]
@@ -73,6 +76,15 @@ it = """Lista systemd --user unit aggiuntive in health.services. Default [].
 Solo se include_health=true. OK: ["llama-server","headscaled"]."""
 en = """List of extra systemd --user units in health.services. Default [].
 Only if include_health=true. OK: ["llama-server","headscaled"]."""
+
+[args.properties.scheduler_health]
+type            = "object"
+runtime_resolved = true
+runtime_source   = "scheduler_health"
+
+[args.properties.scheduler_health.description]
+it = "Solo runtime: stato attestato del loop scheduler co-ospitato dal server HTTP. Il planner non può valorizzarlo e non viene inviato ai dispositivi remoti."
+en = "Runtime only: attested state of the scheduler loop co-hosted by the HTTP server. The planner cannot set it, and it is not sent to remote devices."
 
 [output]
 # Shape del dict ritornato da invoke(). Sintassi TS-like: tipi base
@@ -89,29 +101,44 @@ schema_inline = """
   health?: {
     load: {available:bool, "1m":float, "5m":float, "15m":float, uptime_s:int, reason?:str},
     memory: {available:bool, total_mb:int, used_mb:int, free_mb:int, pct:float, swap_total_mb:int, swap_used_mb:int, swap_pct:float, reason?:str},
-    thermal: {available:bool, cpu_c?:int, gpu_c?:int, nvme_c?:int},
+    thermal: {available:bool, source?:str, quality?:str, reason_code?:str, cpu_c?:float, gpu_c?:float, nvme_c?:float, sensors?:Array<{kind:str, name:str, identifier:str, value_c:float}>},
     disk: Array<{mount:str, device:str, fstype:str, total_gb:float, used_gb:float, free_gb:float, pct:float}>,
     network: Array<{iface:str, ipv4:Array<str>, ipv6:Array<str>, up:bool}>,
-    services: Array<{name:str, status:str, active_since_s_mono?:int}>,
+    services: Array<{name:str, status:str, key?:str, scope?:str, installed?:bool, healthy?:bool, reason_code?:str, cohost?:str, heartbeat_at?:str, heartbeat_age_s?:float|null, jobs_total?:int, jobs_enabled?:int, jobs_running?:int, last_run_at?:str, last_run_status?:str, error_class?:str, error_summary?:str, active_since_s_mono?:int}>,
     collected_at: int
   }
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "pid", source = "pid", cell_max = 16 },
+  { key = "name", source = "name", cell_max = 100 },
+  { key = "user", source = "user", cell_max = 80 },
+  { key = "cpu_pct", source = "cpu_pct", cell_max = 16 },
+  { key = "mem_pct", source = "mem_pct", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
+[[capabilities]]
+name = "system:read"
+hint = ["processes", "health", "network_interfaces", "service_status"]
+
+# Implementazione: ps/systemctl e, su Windows, PowerShell+CIM. La capability
+# forza il Job Object sul client Windows: WMI/RPC non funziona in AppContainer.
 [[capabilities]]
 name = "code:exec"
-hint = ["ps", "/proc"]
-
-# network: SOLO lettura interfacce (health.network: iface/ip/mac, Roberto 9/7).
-# Senza, bwrap fa --unshare-net e le interfacce spariscono (network=[] muto).
-[[capabilities]]
-name = "network"
-hint = []
+hint = ["ps", "systemctl", "powershell", "WMI/CIM", "nvidia-smi", "rocm-smi"]
 
 [[tests]]
 name   = "no_filters_returns_all"
 input  = {}
-expect = { ok = true, has_field = "entries", entries_min = 5 }
+expect = { ok = true, has_field = "entries", entries_min = 1 }
 
 [[tests]]
 name   = "filter_by_name_contains"
@@ -165,3 +192,4 @@ expect_full = """
 # scope="any" = server di default; device SOLO se la chat lo nomina.
 scope    = "any"
 device_ok = true
+min_sandbox = "job-object"

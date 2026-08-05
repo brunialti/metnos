@@ -2,22 +2,29 @@
 # Aggregator profilo identitario: JOIN persons.sqlite + users.db.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_persons"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["io", "me", "chi sono", "mio profilo", "il mio account",
-                "quali account", "dimmi tutto su", "profilo di", "host", "guest",
-                "who am i", "my profile", "my account", "which accounts",
+                "dimmi tutto su", "profilo di", "host", "guest",
+                "who am i", "my profile", "my account",
                 "tell me about", "paired user", "ruolo", "autonomy"]
+revertible  = false
+platforms   = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [description]
-it = "SCOPO: profilo identitario completo. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confondere con get_persons (scheda) o find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
-en = "SCOPO: full identity profile. PATTERN: read_persons(name=\"X\", role=\"guest\"). NON: confuse with get_persons (card) or find_persons_indices (face match). OUT: entries=[{slug, name, role, autonomy_level, n_examples, examples, channels, is_self}]."
+it = "SCOPO: legge profili identitari locali. PATTERN: read_persons(name=\"X\") o read_persons(role=\"guest\"). NON: registro biometrico -> get_persons; foto -> find_persons_indices; modifiche o credenziali. OUT: entries con ruolo, autonomia, esempi e canali."
+en = "SCOPO: reads local identity profiles. PATTERN: read_persons(name=\"X\") or read_persons(role=\"guest\"). NON: biometric registry -> get_persons; photos -> find_persons_indices; changes or credentials. OUT: entries with role, autonomy, examples, and channels."
 
 [code]
 files  = ["read_persons.py"]
-digest = "sha256:4d197e8e19b329093cd206f1f9d7a7c0af35ac9e5b2dbdef3de0a07b88e31038"
+digest = "sha256:3038487bb145e3808353b7a8f5f53434d25404cc8313541342da3d2ff86d0617"
 
 [args]
 type     = "object"
@@ -27,11 +34,12 @@ required = []
 type        = "string"
 
 [args.properties.name.description]
-it = "Nome della persona (string libera, slugify case+accent-insensitive). Accetta placeholder ${RUNTIME:actor} per actor corrente. Es. name='Lucia', name='${RUNTIME:actor}'. Mutualmente esclusivo con role."
-en = "Person name (free string, slugify case+accent-insensitive). Accepts placeholder ${RUNTIME:actor} for current actor. E.g. name='Lucia', name='${RUNTIME:actor}'. Mutually exclusive with role."
+it = "Nome libero, normalizzato senza distinzione di maiuscole o accenti. Accetta ${RUNTIME:actor}; mutuamente esclusivo con role."
+en = "Free name, normalized case- and accent-insensitively. Accepts ${RUNTIME:actor}; mutually exclusive with role."
 
 [args.properties.role]
 type        = "string"
+enum        = ["host", "guest"]
 
 [args.properties.role.description]
 it = "Filtro per ruolo paired: 'host' o 'guest'. Ritorna lista di TUTTI con quel ruolo. Mutualmente esclusivo con name."
@@ -53,6 +61,14 @@ default     = true
 it = "Se true (default), include il campo `channels` (Telegram/HTTP/mail paired) per ogni entry. Disattivare per performance."
 en = "If true (default), includes `channels` field (paired Telegram/HTTP/mail) for each entry. Disable for performance."
 
+[args.properties._actor]
+type             = "string"
+runtime_resolved = true
+
+[args.properties._actor.description]
+it = "Identità dell'attore fornita internamente dal runtime; non è un input dell'utente o del modello."
+en = "Actor identity supplied internally by the runtime; it is not user or model input."
+
 [output]
 schema_inline = """
 {
@@ -64,21 +80,55 @@ schema_inline = """
     autonomy_level?: 'read_only' | 'restricted' | 'full',
     n_examples: int,
     examples?: Array<{image_path, face_box, sha256, created_at}>,
-    channels?: Array<{channel, verified, created_at}>,
+    channels?: Array<{channel, verified: bool, verified_at?: str}>,
+    prefs?: object,
     is_self?: bool,
     email?: str,
-    user_id?: str
   }>,
   n_entries?: int,
   status?: 'unknown_name',
   final_message_hint?: str,
-  error?: str
+  error?: str,
+  error_class?: 'invalid_input' | 'resource_unavailable',
+  error_code?: str,
+  detail?: str
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "role", source = "role", cell_max = 32 },
+  { key = "autonomy_level", source = "autonomy_level", cell_max = 48 },
+  { key = "n_examples", source = "n_examples", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
-hint = ["~/.local/share/metnos/persons.sqlite",
-         "~/.local/share/metnos/users.db"]
+hint = ["identity_profile:local"]
 
-reversible = true
+[[tests]]
+name   = "rejects_non_object_args"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }
+
+[[tests]]
+name   = "rejects_non_string_name"
+input  = { name = 42 }
+expect = { ok = false, field_eq = { error_code = "name_not_string" } }
+
+[[tests]]
+name   = "rejects_unknown_role"
+input  = { role = "admin" }
+expect = { ok = false, field_eq = { error_code = "role_invalid" } }
+
+[[tests]]
+name   = "unknown_profile_is_honest_empty"
+input  = { name = "metnos_birth_test_missing_profile_xyz" }
+expect = { ok = true, field_eq = { status = "unknown_name" } }

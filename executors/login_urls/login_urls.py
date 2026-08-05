@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""login_session — login al form web con credenziali cifrate (ADR 0082).
+"""login_urls — login HTTP/cookie con credenziali cifrate (ADR 0082).
 
 Workflow:
     1. Cerca `~/.config/metnos/cookies/<domain>.txt` esistente. Se presente
@@ -24,7 +24,6 @@ Capability: ["network.read", "network.write", "auth.password_storage"].
 from __future__ import annotations
 
 import http.cookiejar
-import json
 import os
 import re
 import sys

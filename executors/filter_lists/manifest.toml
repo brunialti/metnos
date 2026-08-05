@@ -2,9 +2,10 @@
 # Operatori logici set ops fra 2 liste di entries.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "filter_lists"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["intersect", "intersezione", "union", "unione",
                 "differenza", "difference", "overlap", "sovrappone",
@@ -17,7 +18,7 @@ en = "SCOPO: ops between TWO lists (A=from_step, B=with_step) on on_keys; delta 
 
 [code]
 files  = ["filter_lists.py"]
-digest = "sha256:cf9be63ae28a5fad2faff2192e49223521f2456f87ce11da16492f00a1167aec"
+digest = "sha256:65a871915ed689719edfc594308a0e46ff602390ac6059f4b518af3bb09574e0"
 
 [args]
 type     = "object"
@@ -75,6 +76,24 @@ type        = "array"
 [args.properties.entries_b.description]
 it = "Lista SECONDARIA inline (alternativa a with_step). Solitamente non passata direttamente."
 en = "Inline SECONDARY list (alternative to with_step). Usually not passed directly."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  op?: "intersect" | "union" | "difference" | "symdiff" | "overlap" | "delta",
+  entries?: Array<object>,
+  metadata?: {
+    count_a: int, count_b: int, count_out: int,
+    on_keys?: Array<str>, auto_detect_temporal?: bool
+  },
+  error?: str, error_class?: str
+}
+"""
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
 
 [[tests]]
 name   = "intersect_path"

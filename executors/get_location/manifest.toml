@@ -3,21 +3,23 @@
 # per actor; il plurale `get_locations` sara' aggiunto se servira' la storia.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_location"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = ["location", "posizione", "dove", "where", "GPS", "qui", "now", "current"]
 revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: ottiene la posizione GPS corrente dell'utente. PATTERN: get_location(actor=\"host\"). NON: cercare per pattern (-> find); elencare container (-> list). OUT: entries=[{lat, lon, ts, accuracy, channel, age_seconds}]."
-en = "SCOPO: gets the user's current GPS location. PATTERN: get_location(actor=\"host\"). NON: search by pattern (-> find); list containers (-> list). OUT: entries=[{lat, lon, ts, accuracy, channel, age_seconds}]."
+it = "SCOPO: ottiene l'ultima posizione GPS osservata per l'attore corrente. PATTERN: get_location(). NON: geocodificare un nome -> find_places; leggere la cronologia delle posizioni. OUT: {location,age_seconds,actor} o errore not_found tipizzato."
+en = "SCOPO: gets the latest GPS position observed for the current actor. PATTERN: get_location(). NON: geocode a place name -> find_places; read location history. OUT: {location,age_seconds,actor} or a typed not_found failure."
 
 [code]
 files  = ["get_location.py"]
-digest = "sha256:a57ec1bd286cea708dc3d2aa614ac731c9000a23cd11d31a12368d2d5cf5059a"
+digest = "sha256:6b7f834b18a5486b799cf80f6a551c4384688353cccf39cc00b14d288b38a666"
 
 [args]
 type     = "object"
@@ -25,6 +27,7 @@ type     = "object"
 [args.properties.actor]
 type        = "string"
 default     = "host"
+runtime_resolved = true
 
 [args.properties.actor.description]
 it = "Identificativo dell'utente di cui leggere la posizione. Default 'host' (l'utente principale). In multi-user (futuro): 'guest:<id>' per i membri della famiglia pairati."
@@ -40,7 +43,7 @@ schema_inline = """
   },
   age_seconds?: int,
   actor?: str,
-  error?: str
+  error?: str, error_class?: str, error_code?: str
 }
 """
 
@@ -48,10 +51,15 @@ schema_inline = """
 name = "fs:read"
 hint = ["~/.local/share/metnos/locations.jsonl"]
 
+[placement]
+scope = "server"
+device_ok = false
+
 [[tests]]
 name   = "no_location_ancora_condivisa"
 setup  = "rm -f /tmp/metnos_loc_test.jsonl"
 input  = { actor = "test_no_data" }
+env    = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
 expect = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
 
 [[tests]]
@@ -62,7 +70,9 @@ expect = { ok = false, error_contains = "deve essere una stringa" }
 # Sample concreto di output (one-shot per synt + fast-path generator).
 [[tests]]
 name        = "happy_path_sample"
-input       = { actor = "host" }
+setup       = "mkdir -p \"$METNOS_USER_DATA\" && printf '%s\\n' '{\"ts\":1778078500.0,\"owner_user_id\":\"manifest-location-owner\",\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
+input       = { actor = "test_sample" }
+env         = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
 expect      = { ok = true, has_field = "location" }
 expect_full = """
 {

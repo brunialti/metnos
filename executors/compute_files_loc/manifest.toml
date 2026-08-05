@@ -4,9 +4,10 @@
 # nessun filtro estensione, output ~7x il valore reale).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "compute_files_loc"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["compute", "calcola", "loc", "linee", "righe", "lines", "code", "codice", "count", "conta", "statistiche", "stats", "lines-of-code", "sloc"]
 revertible  = false
@@ -16,13 +17,20 @@ lifecycle   = "active"
 # device), pathlib ovunque, encoding esplicito, nessun comando POSIX.
 platforms   = ["linux", "windows"]
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
-it = "SCOPO: calcola statistiche LOC (linee, blank, commenti) su codice sorgente. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (-> change_files_format); comprimere in archivi (-> compress_files). OUT: entries=[{total_files,total_lines,total_blank,total_comment,by_ext,by_path}]."
-en = "SCOPO: compute LOC stats (lines, blank, comments) on source code. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (-> change_files_format); compress into archives (-> compress_files). OUT: entries=[{total_files,total_lines,total_blank,total_comment,by_ext,by_path}]."
+it = "SCOPO: calcola statistiche LOC su codice sorgente, visitando gli alberi in parallelo. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convertire formati (change_files_format) o creare archivi (compress_files). OUT: totali e statistiche per estensione e percorso."
+en = "SCOPO: computes source-code LOC statistics, walking directory trees in parallel. PATTERN: compute_files_loc(paths=[\"/src\"]). NON: convert formats (change_files_format) or create archives (compress_files). OUT: totals and statistics by extension and path."
 
 [code]
 files  = ["compute_files_loc.py"]
-digest = "sha256:c5713ef1fbf2f8c487f0c459787fd071335e80141a087ebddf5d76aaa9505f7e"
+digest = "sha256:be8875ae3ede0aa63b0b287d02c5843564492f017c520f4c9f6de7d194bee3fc"
 
 [args]
 type     = "object"
@@ -32,8 +40,8 @@ required = ["paths"]
 type        = "array"
 
 [args.properties.paths.description]
-it = "Lista di path: una directory (esplorata ricorsivamente) o un singolo file. Es. ['/opt/metnos'] oppure ['/home/x/main.py', '/home/x/utils.py']. Caso degenere = lista a 1 elemento."
-en = "List of paths: a directory (explored recursively) or a single file. E.g. ['/opt/metnos'] or ['/home/x/main.py', '/home/x/utils.py']. Degenerate case = 1-element list."
+it = "Path esatti senza glob: directory esplorate ricorsivamente o singoli file. Es. ['/opt/metnos'] o ['/home/x/main.py']."
+en = "Exact non-glob paths: recursively scanned directories or individual files. E.g. ['/opt/metnos'] or ['/home/x/main.py']."
 
 [args.properties.include_ext]
 type        = "array"
@@ -74,6 +82,28 @@ default     = 50000
 it = "Tetto massimo di file processati. Default 50000. Quando raggiunto, l'output ha truncated=true + cap_field='max_files'."
 en = "Maximum number of processed files. Default 50000. When reached, the output has truncated=true + cap_field='max_files'."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  total_files: int,
+  total_lines: int,
+  total_blank: int,
+  total_comment: int,
+  by_ext: dict[str, {files: int, lines: int}],
+  by_path: Array<{path: str, lines: int, blank: int, comment: int}>,
+  summary: str,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str
+}
+"""
+
 [[capabilities]]
 name = "fs:read"
 hint = ["**/*"]
@@ -83,6 +113,8 @@ name     = "mix_py_md_html"
 setup    = "mkdir -p /tmp/metnos_loc_test && printf 'a\\nb\\nc\\n' > /tmp/metnos_loc_test/main.py && printf '# title\\n\\npar\\n' > /tmp/metnos_loc_test/README.md && printf '<html></html>\\n' > /tmp/metnos_loc_test/page.html"
 input    = { paths = ["/tmp/metnos_loc_test"] }
 expect   = { ok = true, field_eq = { total_files = 3 } }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
 teardown = "rm -rf /tmp/metnos_loc_test"
 
 [[tests]]
@@ -126,3 +158,4 @@ teardown = "rm -rf /tmp/metnos_loc_test"
 # hardcoded DEVICE_ELIGIBLE. scope="any" = server di default, device se nominato.
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

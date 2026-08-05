@@ -21,7 +21,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -30,7 +29,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import normalize_vector_result, run_stdio  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 
 _VIA_CHANNEL_ALIAS = {"mail": "email"}
@@ -48,15 +47,35 @@ _DEFAULT_CLIENT = "google_workspace"
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARGS_NOT_OBJECT"), "results": []}
+    ids = []
+    if isinstance(args.get("message_ids"), list):
+        ids.extend(str(x).strip() for x in args["message_ids"] if x)
+    if isinstance(args.get("message_id"), str) and args["message_id"].strip():
+        ids.append(args["message_id"].strip())
+    if not ids:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARG_MISSING", arg="message_id/message_ids"),
+                "results": []}
+    add = args.get("add") or []
+    remove = args.get("remove") or []
+    if not add and not remove:
+        return {"ok": False, "error_code": "ERR_ARG_MISSING",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARG_MISSING", arg="add/remove"),
+                "results": []}
     via_raw = args.get("via_channel") or "email"
     via_channel = _VIA_CHANNEL_ALIAS.get(via_raw, via_raw)
     client = args.get("client") or _DEFAULT_CLIENT
     backend = _HANDLERS.get((via_channel, client))
     if backend is None:
-        avail = sorted({k for k in _HANDLERS})
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"{via_channel}/{client}")}
-    return backend.labels(args)
+    return normalize_vector_result(backend.labels(args), entry_key="results")
 
 
 def main():

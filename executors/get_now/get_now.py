@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """time_read — executor di Metnos v1.1."""
-import json
 import os
 import sys
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+import config as _C  # noqa: E402
 
 try:
     from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -20,7 +20,10 @@ except ImportError:
 
 
 def invoke(args):
-    tz_name = args.get("timezone", "UTC")
+    # Il default deve essere quello dell'installazione, non UTC cablato. Il
+    # fast path già usava DEFAULT_TIMEZONE; i piani L0/L1/L3 senza argomento
+    # devono osservare lo stesso fuso.
+    tz_name = args.get("timezone") or _C.DEFAULT_TIMEZONE
     try:
         if tz_name == "UTC":
             tz = timezone.utc
@@ -28,10 +31,14 @@ def invoke(args):
             if ZoneInfo is None:
                 return {"ok": False, "error": _msg("ERR_ZONEINFO_MISSING")}
             tz = ZoneInfo(tz_name)
-    except ZoneInfoNotFoundError as e:
-        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="timezone", reason=str(tz_name))}
-    except Exception as e:
-        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="timezone", reason=str(tz_name))}
+    except ZoneInfoNotFoundError:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARG_INVALID", arg="timezone", reason=str(tz_name))}
+    except Exception:
+        return {"ok": False, "error_code": "ERR_ARG_INVALID",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARG_INVALID", arg="timezone", reason=str(tz_name))}
 
     now = datetime.now(tz)
     hhmm = now.strftime("%H:%M")

@@ -3,6 +3,7 @@
 # Dispatcher canonical spreadsheet read: default LOCALE, Google opt-in.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_files_spreadsheet"
 version     = "0.2.0"
@@ -21,7 +22,7 @@ en = "SCOPO: reads a spreadsheet rows (local .xlsx/.csv or Google Sheet). PATTER
 
 [code]
 files  = ["read_files_spreadsheet.py"]
-digest = "sha256:2f148665a64581c8f2fb966b6596d1a0000633c1a282c4da4db4fcaadddae5eb"
+digest = "sha256:e99dcae906cf230f643df2a409c5b3e9d8df31c5c5403070c6da0d7728892f0b"
 
 [args]
 type     = "object"
@@ -93,9 +94,25 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "row", source = "$entry", cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["spreadsheet:local"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "missing_spreadsheet_id_fails"

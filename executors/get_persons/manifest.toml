@@ -2,22 +2,29 @@
 # Naming compositivo: azione_oggetto. PR2 persons registry.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_persons"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
-affinity    = ["chi", "elenca persone", "lista persone", "registro persone",
+affinity    = ["elenca persone", "lista persone", "registro persone",
                 "persone enrollate", "chi è enrollato", "enrolled",
                 "quante foto", "list persons", "who is registered",
                 "registered persons", "person info", "registry"]
+revertible  = false
+platforms   = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [description]
-it = "SCOPO: ottiene dati dal registro persone (chi è enrollato, elenco enrollment). PATTERN: get_persons(name=\"Carol\"); senza arg elenca tutte. NON: cercare foto (-> find_persons_indices); enrollare (-> set_persons). OUT: {ok, entries:[{slug, name, n_examples, created_at, updated_at, examples?}], n_entries, ambiguous?, status?, final_message_hint?}."
-en = "SCOPO: gets data from the persons registry (who is enrolled, enrollment list). PATTERN: get_persons(name=\"Carol\"); without args lists all. NON: search photos (-> find_persons_indices); enroll (-> set_persons). OUT: {ok, entries:[{slug, name, n_examples, created_at, updated_at, examples?}], n_entries, ambiguous?, status?, final_message_hint?}."
+it = "SCOPO: legge il registro biometrico persone. PATTERN: get_persons(name=\"nome\"); senza arg elenca tutti. NON: profili -> read_persons; foto -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}."
+en = "SCOPO: reads the biometric persons registry. PATTERN: get_persons(name=\"name\"); no args lists everyone. NON: profiles -> read_persons; photos -> find_persons_indices; enrollment -> set_persons. OUT: {ok,entries,n_entries,status?}."
 
 [code]
 files  = ["get_persons.py"]
-digest = "sha256:3d53b2ac6c2a32bdff9da4c9a3face6c14feaa6c3b28685cdfc6d01072fc28da"
+digest = "sha256:4a7f9589ffd51d4b1c779ca52517cc806632f3f04160c529984da59edf534ead"
 
 [args]
 type     = "object"
@@ -39,17 +46,37 @@ schema_inline = """
   ambiguous?: bool,
   status?: 'unknown_name',
   final_message_hint?: str,
-  error?: str
+  error?: str,
+  error_class?: 'invalid_input' | 'resource_unavailable',
+  error_code?: str,
+  detail?: str
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "slug", source = "slug", cell_max = 100 },
+  { key = "n_examples", source = "n_examples", cell_max = 16 },
+  { key = "updated_at", source = "updated_at", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
-hint = ["~/.local/share/metnos/persons.sqlite"]
-
-reversible = true
+hint = ["persons_registry:local"]
 
 [[tests]]
 name   = "rejects_non_string_name"
 input  = { name = 42 }
-expect = { ok = false, error_contains = "string" }
+expect = { ok = false, field_eq = { error_code = "name_not_string" } }
+
+[[tests]]
+name   = "rejects_non_object_args"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }

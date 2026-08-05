@@ -2,9 +2,10 @@
 # Naming compositivo: azione_oggetto. PR2 persons registry.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_persons"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["dimentica", "rimuovi persona", "cancella persona",
                 "cancella enrollment", "enrollment", "enrollement",
@@ -16,6 +17,7 @@ affinity    = ["dimentica", "rimuovi persona", "cancella persona",
 # (restore_person). Top-level (NON dentro [[capabilities]], altrimenti il
 # loader non lo legge). Il loader usa `revertible` (con la v).
 revertible  = true
+reverse_pattern = "restore_person"
 
 [description]
 it = "SCOPO: cancella persone/enrollment dal registro biometrico (purge o per nome/slug). PATTERN: delete_persons(names=[\"A\"]). NON: credenziali/token (-> delete_credentials); foto dal filesystem (-> delete_files). OUT: {ok, results:[{slug, name, removed_examples}], n_removed, removed_examples_total, unknown_names?, ambiguous?, decision?, needs_inputs?, final_message_hint?}."
@@ -74,6 +76,14 @@ items = { type = "string" }
 it = "Lista di slug esatti da cancellare (post-disambig batch)."
 en = "List of exact slugs to delete (post-disambig batch)."
 
+[args.properties.dry_run]
+type = "boolean"
+default = false
+
+[args.properties.dry_run.description]
+it = "Se true, valida e mostra quali persone verrebbero cancellate senza modificare il registro."
+en = "If true, validates and reports which persons would be deleted without changing the registry."
+
 [output]
 schema_inline = """
 {
@@ -91,7 +101,7 @@ schema_inline = """
 """
 
 [[capabilities]]
-name = "metnos:write"
+name = "fs:write"
 hint = ["~/.local/share/metnos/persons.sqlite"]
 
 [[tests]]

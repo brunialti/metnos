@@ -14,7 +14,6 @@ Contratto:
             entries[i] = {path, headers, rows: list[dict|list], row_count}
 """
 import csv
-import json
 import os
 import sys
 from pathlib import Path
@@ -23,16 +22,33 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
-from executor_helpers import coerce_cap  # noqa: E402
+from executor_helpers import coerce_cap, run_stdio, vector_result  # noqa: E402
+
+
+def _failed(error_class, error_code, error, *, detail=None):
+    out = {
+        "error_class": error_class,
+        "error_code": error_code,
+        "error": error,
+    }
+    if detail:
+        out["detail"] = detail
+    return out
 
 
 def _read_one(path_arg, delimiter, encoding, has_header, max_rows):
     path = Path(os.path.expanduser(path_arg)).resolve()
     if not path.exists():
-        return None, "path does not exist"
+        return None, _failed(
+            "not_found", "path_not_found",
+            _msg("ERR_PATH_NOT_FOUND", path=str(path)),
+        )
     if not path.is_file():
-        return None, "path is not a file"
+        return None, _failed(
+            "invalid_input", "path_not_file",
+            _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="non-file",
+                 path=str(path)),
+        )
     try:
         with open(path, "r", encoding=encoding, newline="") as f:
             sample = f.read(4096)
@@ -79,14 +95,30 @@ def _read_one(path_arg, delimiter, encoding, has_header, max_rows):
                 "_available_total": available_total,
             }, None
     except UnicodeDecodeError as e:
-        return None, f"encoding error: {e}"
+        return None, _failed(
+            "invalid_content", "csv_encoding_invalid",
+            _msg("ERR_FILE_READ_FAILED", path=str(path)), detail=str(e),
+        )
     except OSError as e:
-        return None, f"os error: {e}"
+        return None, _failed(
+            "io_error", "file_read_failed",
+            _msg("ERR_FILE_READ_FAILED", path=str(path)), detail=str(e),
+        )
     except Exception as e:
-        return None, f"csv parse error: {e}"
+        return None, _failed(
+            "invalid_content", "csv_parse_failed",
+            _msg("ERR_FILE_READ_FAILED", path=str(path)), detail=str(e),
+        )
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     paths = args.get("paths")
     delimiter = args.get("delimiter")
     encoding = args.get("encoding") or "utf-8"
@@ -94,7 +126,12 @@ def invoke(args):
     max_rows = coerce_cap(args, "max_rows", 10000, maximum=1000000)
 
     if not isinstance(paths, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_LIST", arg="paths"),
+            "error_class": "invalid_input",
+            "error_code": "paths_not_list",
+        }
 
     entries, failed = [], []
     aggregate_truncated = False
@@ -102,11 +139,22 @@ def invoke(args):
     aggregate_available = 0
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
+            failed.append({
+                "index": i,
+                "path": p,
+                **_failed(
+                    "invalid_input", "path_not_nonempty_string",
+                    _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path"),
+                ),
+            })
             continue
         entry, err = _read_one(p, delimiter, encoding, has_header, max_rows)
         if err:
-            failed.append({"index": i, "path": str(Path(os.path.expanduser(p)).resolve()), "error": err})
+            failed.append({
+                "index": i,
+                "path": str(Path(os.path.expanduser(p)).resolve()),
+                **err,
+            })
             continue
         if entry.pop("_truncated", False):
             aggregate_truncated = True
@@ -114,13 +162,7 @@ def invoke(args):
         aggregate_available += entry.pop("_available_total", entry.get("row_count", 0))
         entries.append(entry)
 
-    out = {
-        "ok": len(failed) == 0,
-        "ok_count": len(entries),
-        "fail_count": len(failed),
-        "entries": entries,
-        "failed": failed,
-    }
+    out = vector_result(entries, failed)
     if aggregate_truncated:
         out["truncated"] = True
         out["truncated_what"] = _msg("MSG_OBJECT_LINES")

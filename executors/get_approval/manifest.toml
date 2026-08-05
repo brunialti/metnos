@@ -3,9 +3,11 @@
 # `approval` (gate di consenso umano). Builtin cross-skill, general-purpose.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_approval"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
     "approva", "approvazione", "conferma", "confirm", "autorizza", "consenso",
@@ -18,7 +20,7 @@ en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: ge
 
 [code]
 files  = ["get_approval.py"]
-digest = "sha256:612d7acc3bc93170cece7901c4c2f12d26ff90a1c8a517b673d591f788a3d931"
+digest = "sha256:5e5b194deb844f1f3f9e17f9fa9497f798fef7e71e2c7d09903335c8edde7418"
 
 [args]
 type     = "object"
@@ -102,9 +104,56 @@ runtime_resolved = true
 it = "Runtime-only. Soglia: il gate chiede SOLO se guard_count la supera. Default 0 (chiede su ogni conteggio > 0). Usato dal gate mutazioni-di-massa."
 en = "Runtime-only. Threshold: the gate asks ONLY if guard_count exceeds it. Default 0 (asks on any count > 0). Used by the mass-mutation gate."
 
+[args.properties._pre_approved]
+type = "boolean"
+runtime_resolved = true
+
+[args.properties._pre_approved.description]
+it = "Solo runtime. Indica che il consenso è già stato registrato e consente la ripresa trasparente della pipeline."
+en = "Runtime only. Indicates that consent was already recorded and allows the pipeline to resume transparently."
+
+[args.properties.actor]
+type = "string"
+runtime_resolved = true
+
+[args.properties.actor.description]
+it = "Solo runtime. Identificatore logico dell'utente a cui appartiene il dialogo."
+en = "Runtime only. Logical identifier of the user who owns the dialogue."
+
+[args.properties.channel]
+type = "string"
+runtime_resolved = true
+
+[args.properties.channel.description]
+it = "Solo runtime. Canale sul quale presentare la richiesta di consenso."
+en = "Runtime only. Channel on which the consent request is presented."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: 'approved'|'input_required',
+  dialog_id?: str,
+  step_index?: int,
+  step_total?: int,
+  values?: dict,
+  fmt?: str,
+  final_message_hint?: str,
+  expandable_caps?: Array<dict>,
+  metadata?: {title: str, n_steps: int, fmt: str, actor: str, channel: str},
+  error?: str,
+  error_class?: str,
+  error_code?: str
+}
+"""
+
 [[capabilities]]
 name = "dialog.user_input"
 hint = []
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "manca_prompt_fallisce"
@@ -123,5 +172,8 @@ expect = { ok = false, error_contains = "tool" }
 
 [[tests]]
 name   = "happy_path_approval"
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_approval_happy" }
+setup  = "rm -rf /tmp/metnos_test_get_approval_happy"
 input  = { prompt = "Approvi la risposta alla issue #47?", on_approve = { tool = "write_entries", args = { store = "github_issue_qa", entries = [{ repo = "o/r", issue_number = 47, status = "approved" }] } } }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
+teardown = "rm -rf /tmp/metnos_test_get_approval_happy"

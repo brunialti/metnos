@@ -14,7 +14,6 @@ Contratto:
                  max_results?: int = 1000, with_line_numbers?: bool = false}
     stdout: JSON {ok, ok_count, lines, regex_used, total_input_lines}
 """
-import json
 import os
 import re
 import sys
@@ -29,6 +28,13 @@ from executor_helpers import coerce_cap  # noqa: E402
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     content = args.get("content")
     regex = args.get("regex")
     substring = args.get("substring")
@@ -37,18 +43,38 @@ def invoke(args):
     with_line_numbers = bool(args.get("with_line_numbers", False))
 
     if content is None:
-        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="content")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_MISSING", arg="content"),
+            "error_class": "invalid_input",
+            "error_code": "content_missing",
+        }
     if isinstance(content, list):
         try:
             content_str = "\n".join(str(c) for c in content)
         except Exception as e:
-            return {"ok": False, "error": f"content list contains non-stringifiable item: {e}"}
+            return {
+                "ok": False,
+                "error": _msg("ERR_ARG_INVALID", arg="content", reason=str(e)),
+                "error_class": "invalid_input",
+                "error_code": "content_invalid",
+            }
     elif isinstance(content, str):
         content_str = content
     else:
-        return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="content", reason=type(content).__name__)}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_INVALID", arg="content", reason=type(content).__name__),
+            "error_class": "invalid_input",
+            "error_code": "content_invalid",
+        }
     if regex is None and substring is None:
-        return {"ok": False, "error": _msg("ERR_ARG_MISSING_ONE_OF", options="regex, substring")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_MISSING_ONE_OF", options="regex, substring"),
+            "error_class": "invalid_input",
+            "error_code": "filter_missing",
+        }
 
     flags = re.IGNORECASE if case_insensitive else 0
     matcher = None
@@ -56,7 +82,12 @@ def invoke(args):
         try:
             matcher = re.compile(regex, flags)
         except re.error as e:
-            return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="regex", reason=str(e))}
+            return {
+                "ok": False,
+                "error": _msg("ERR_ARG_INVALID", arg="regex", reason=str(e)),
+                "error_class": "invalid_input",
+                "error_code": "regex_invalid",
+            }
     sub = (substring.lower() if (substring and case_insensitive) else substring)
 
     lines_in = content_str.split("\n")

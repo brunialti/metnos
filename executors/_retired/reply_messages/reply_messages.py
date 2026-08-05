@@ -22,7 +22,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -52,7 +51,6 @@ def invoke(args):
     client = args.get("client") or _DEFAULT_CLIENT
     backend = _HANDLERS.get((via_channel, client))
     if backend is None:
-        avail = sorted({k for k in _HANDLERS})
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"{via_channel}/{client}")}
     return backend.reply(args)

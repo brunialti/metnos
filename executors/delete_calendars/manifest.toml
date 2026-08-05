@@ -3,9 +3,11 @@
 # Cancella un CALENDARIO-contenitore Google. DESTRUTTIVO + IRREVERSIBILE.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_calendars"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
     "cancella calendario", "elimina calendario", "rimuovi calendario",
@@ -20,7 +22,7 @@ en = "SCOPO: delete Google calendar containers (DESTRUCTIVE: also removes the ev
 
 [code]
 files  = ["delete_calendars.py"]
-digest = "sha256:76a1657df1b48532a40491255b8250b2591aa5a9efe97aaffb96f55af97c0b48"
+digest = "sha256:60a7685b598fd9ca501239d4a14d3199b0e68576b4228cefc8530d33ab15ac56"
 
 [args]
 type     = "object"
@@ -70,7 +72,12 @@ schema_inline = """
 """
 
 [[capabilities]]
-name = "metnos:write"
+name = "provider:access"
+hint = ["google-workspace"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "non_dict_args_fails"

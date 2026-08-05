@@ -18,7 +18,6 @@ Output: entries=[{url, title, body_text, author?, n_pages, fetched_at}]
 from __future__ import annotations
 
 import http.cookiejar
-import json
 import multiprocessing
 import os
 import sys
@@ -36,12 +35,8 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from host_throttle import HostThrottle  # noqa: E402
-# Estrazione PDF condivisa (§7.3) — re-export _has_* per i test esistenti.
-from pdf_extract import (  # noqa: E402
-    extract_pdf_text as _extract_pdf_text,
-    has_pypdf as _has_pypdf,
-    has_pdfminer as _has_pdfminer,
-)
+# Estrazione PDF condivisa (§7.3).
+from pdf_extract import extract_pdf_text as _extract_pdf_text  # noqa: E402
 
 
 USER_AGENT = "metnos-crawler/1.1 (+contact@metnos.com)"

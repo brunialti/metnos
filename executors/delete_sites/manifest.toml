@@ -1,8 +1,9 @@
 # Manifest executor `delete_sites` — dominio sites §9 (kill-switch / revoca).
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_sites"
-version     = "0.1.0"
+version     = "0.2.0"
 timeout_s   = 60
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -61,9 +62,8 @@ expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 
 [[tests]]
 name   = "all_true_ok_senza_sessioni"
-input  = { all = true }
-expect = { ok = true }
+reference = "tests/runtime/sites/test_sites_security.py::test_delete_sites_all_empty_is_idempotent"
 
 [placement]
-scope     = "any"
+scope     = "server"
 device_ok = false

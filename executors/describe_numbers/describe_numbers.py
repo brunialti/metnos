@@ -11,7 +11,6 @@ Contratto:
     stdin: JSON {values: list[number], fields?: list[str] | "all"}
     stdout: JSON {ok, n, statistics: {field: value, ...}}
 """
-import json
 import math
 import os
 import statistics
@@ -48,6 +47,13 @@ def _percentile(values_sorted, p):
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     values = args.get("values")
     # §2.1/§2.8: values non pipato (None) o non-lista (scalare/dict per piping
     # impreciso) → lista vuota (stats n=0 ok), MAI hard-fail che spezza la
@@ -62,10 +68,20 @@ def invoke(args):
     if not isinstance(values, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="values", of="numbers")}
     if not isinstance(fields, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="fields", of="strings | 'all'")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_LIST_OF", arg="fields", of="strings | 'all'"),
+            "error_class": "invalid_input",
+            "error_code": "fields_not_list",
+        }
     unknown = [f for f in fields if f not in ALL_FIELDS]
     if unknown:
-        return {"ok": False, "error": _msg("ERR_UNKNOWN_FIELDS", unknown=unknown, supported=ALL_FIELDS)}
+        return {
+            "ok": False,
+            "error": _msg("ERR_UNKNOWN_FIELDS", unknown=unknown, supported=ALL_FIELDS),
+            "error_class": "invalid_input",
+            "error_code": "fields_unknown",
+        }
 
     nums = []
     n_missing = 0

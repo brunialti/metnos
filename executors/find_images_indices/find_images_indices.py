@@ -34,7 +34,6 @@ Backward compat:
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -42,6 +41,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -126,12 +126,8 @@ def _resolve_cap(args) -> tuple[int, bool]:
 
 
 def _index_image_root() -> Path:
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root()
 
 
 def _user_data_root() -> Path:
@@ -153,31 +149,84 @@ def _index_dir(base_path: Path) -> Path:
     # Il digest del corpus e' calcolato sul path CANONICAL (symlink risolto),
     # coerente con create_images_indices._index_dir, cosi' symlink e path
     # reale mappano sullo stesso indice (fix 30/5/2026).
-    digest = hashlib.sha256(
-        _canonical_corpus_path(base_path).encode("utf-8")
-    ).hexdigest()
-    return _index_image_root() / digest[:16] / "unified"
+    from index_schema import image_corpus_dir
+    return image_corpus_dir(base_path) / "unified"
+
+
+@dataclass(frozen=True)
+class _IndexedCorpus:
+    """A persisted corpus label paired with its already materialized index.
+
+    ``base_path`` is descriptive metadata and may be offline or intentionally
+    absent from the reader sandbox. ``idx_dir`` is the authority-bearing
+    materialized directory discovered under the read-only index root.
+    """
+
+    base_path: Path
+    idx_dir: Path
+
+
+def _path_identity(value) -> str:
+    """Lexical absolute path identity that never requires source visibility."""
+    path = Path(os.path.expanduser(str(value)))
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _meta_base_path(meta_path: Path) -> Path | None:
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    raw = meta.get("base_path")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return Path(os.path.expanduser(raw))
+
+
+def _find_materialized_index(base_path: Path) -> _IndexedCorpus | None:
+    """Resolve an explicit corpus from index metadata before probing storage.
+
+    The direct digest remains the fast path.  The metadata scan is essential
+    when the index was keyed by the logical workspace symlink while
+    ``meta.json.base_path`` records its NAS target: inside the conforming
+    reader sandbox neither the symlink nor the target is mounted.
+    """
+    direct = _index_dir(base_path)
+    if (direct / "meta.json").exists():
+        return _IndexedCorpus(base_path=base_path, idx_dir=direct)
+    wanted = _path_identity(base_path)
+    for meta_path in sorted(_index_image_root().glob("*/unified/meta.json")):
+        persisted = _meta_base_path(meta_path)
+        if persisted is not None and _path_identity(persisted) == wanted:
+            return _IndexedCorpus(base_path=persisted,
+                                  idx_dir=meta_path.parent)
+    return None
 
 
 def _is_dry_run() -> bool:
     return os.environ.get("METNOS_DRY_RUN", "0") == "1"
 
 
-def _discover_indexed_dirs() -> list[Path]:
-    """Trova tutte le sotto-dir di user_data che hanno un indice unificato.
+def _discover_indexed_dirs() -> list[_IndexedCorpus]:
+    """Discover corpora from read-only index metadata, not from user storage.
 
-    Centralizza la discovery usata sia dal ramo `base_path` vuoto sia dai
-    fallback quando un `base_path` esplicito non risolve. Il match avviene
-    via `_index_dir(sub)` che canonicalizza (resolve) il path, cosi' un
-    symlink (es. `Immagini`→NAS) collima con l'indice costruito sul path
-    reale (fix 30/5/2026)."""
-    root = _user_data_root()
-    dirs: list[Path] = []
-    if root.exists():
-        for sub in sorted(root.iterdir()):
-            if sub.is_dir():
-                if (_index_dir(sub) / "meta.json").exists():
-                    dirs.append(sub)
+    This keeps a query inside ``index:read``: the executor does not need to
+    enumerate ``PATH_USER_DATA`` or mount the original photo trees merely to
+    find an already materialized index.
+    """
+    dirs: list[_IndexedCorpus] = []
+    seen: set[str] = set()
+    for meta_path in sorted(_index_image_root().glob("*/unified/meta.json")):
+        path = _meta_base_path(meta_path)
+        if path is None:
+            continue
+        key = _path_identity(path)
+        if key not in seen:
+            seen.add(key)
+            dirs.append(_IndexedCorpus(base_path=path,
+                                       idx_dir=meta_path.parent))
     return dirs
 
 
@@ -186,7 +235,8 @@ def _discover_indexed_dirs() -> list[Path]:
 _BP_NOT_FOUND = "\x00bp_not_found:"
 
 
-def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, str | None]:
+def _resolve_base_path(base_path_arg) -> tuple[
+        _IndexedCorpus | None, list[_IndexedCorpus] | None, str | None]:
     """Risolve `base_path` arg (3 modalita').
 
     Ritorna (single_dir, multi_dirs, message). Esattamente uno fra
@@ -204,13 +254,18 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
         or arg.startswith("~") or arg.startswith("/")
     )
     if is_path_like:
+        # The source corpus may be offline while its materialized index remains
+        # queryable.  Check the index before probing the source filesystem.
+        materialized = _find_materialized_index(p)
+        if materialized is not None:
+            return materialized, None, None
         if p.exists() and p.is_dir():
             # Path esistente con indice → usalo direttamente. _index_dir
             # canonicalizza (resolve) cosi' symlink e path reale collimano.
             logical = p
             idx_dir = _index_dir(logical)
             if (idx_dir / "meta.json").exists():
-                return logical, None, None
+                return _IndexedCorpus(logical, idx_dir), None, None
             # Path esiste ma senza indice → discovery prima di proporre build.
             discovered = _discover_indexed_dirs()
             if discovered:
@@ -218,7 +273,7 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
                     f"base_path '{arg}' non indicizzato → fallback discovery "
                     f"({len(discovered)} indici trovati)"
                 )
-            return logical, None, None  # nessun indice altrove: build su questo
+            return _IndexedCorpus(logical, idx_dir), None, None
         # Path-like (ben formato) ma INESISTENTE → ERRORE (decisione 2/6, opz 3):
         # un path esplicito che non esiste e' un errore, NON un fallback
         # silenzioso a un altro corpus (coerente con find_dirs §path-not-found).
@@ -227,13 +282,11 @@ def _resolve_base_path(base_path_arg) -> tuple[Path | None, list[Path] | None, s
         return None, None, _BP_NOT_FOUND + arg
     # Arg simbolico (nome cartella, non un path). Match esatto sui figli di
     # user_data; altrimenti fallback discovery prima del dialog di build.
-    root = _user_data_root()
-    if root.exists():
-        target = arg.lower()
-        for sub in root.iterdir():
-            if sub.is_dir() and sub.name.lower() == target:
-                return sub.resolve(), None, None
     discovered = _discover_indexed_dirs()
+    target = arg.lower()
+    for sub in discovered:
+        if sub.base_path.name.lower() == target:
+            return sub, None, None
     if discovered:
         return None, discovered, (
             f"base_path '{arg}' non corrisponde a una cartella nota → "
@@ -408,19 +461,14 @@ def _corpus_token_embs(idx_dir):
     if not tokens:
         return [], None
     try:
-        from virt import get_embedder
-        te = get_embedder("text")
+        from virt import get_local_embedder
+        te = get_local_embedder("text")
         embs = te.embed_texts(tokens).astype(np.float32, copy=False)
     except Exception as ex:
         log.warning("corpus tokens embed fail: %r", ex)
         return [], None
-    try:
-        tmp = cache_path.with_name(cache_path.name + ".tmp")
-        with open(tmp, "wb") as f:
-            np.savez_compressed(f, tokens=np.array(tokens), embs=embs)
-        tmp.replace(cache_path)
-    except Exception as ex:
-        log.warning("corpus_tokens.npz write fail: %r", ex)
+    # Query executors are strictly read-only.  Cache materialization belongs
+    # to create_images_indices; a missing cache is computed in memory only.
     return tokens, embs
 
 
@@ -458,8 +506,8 @@ def _expand_query_via_corpus(query, tokens, embs,
     if not q_lower or not tokens or embs is None:
         return [q_lower] if q_lower else []
     try:
-        from virt import get_embedder
-        te = get_embedder("text")
+        from virt import get_local_embedder
+        te = get_local_embedder("text")
         qv = te.embed_query(query)
         qv = qv / np.linalg.norm(qv) if np.linalg.norm(qv) > 0 else qv
     except Exception:
@@ -491,114 +539,6 @@ def _expand_query_via_corpus(query, tokens, embs,
 
 def _query_expansion_enabled() -> bool:
     return os.environ.get("METNOS_QUERY_EXPANSION", "1") != "0"
-
-
-# ----- LLM-based query expansion (15/5/2026) ----------------------------
-# BGE-M3 corpus token expansion degenera per query brevi mono-token:
-# "mare" → {amare, mappe, mercato, morte, madre, mese} (cosine generico).
-# LLM expansion (Gemma 4 26B middle tier locale) genera sinonimi puliti
-# rispettando la lingua della query (prompt language-instruction).
-# Cache disk indefinita (sinonimi stabili).
-
-_QE_LLM_CACHE_DIR = Path.home() / ".cache" / "metnos" / "query_expansion_llm"
-_QE_LLM_MAX_TOKENS = 200
-
-
-def _expand_query_via_llm(query: str) -> list[str]:
-    """LLM-based query expansion language-sensitive con cache disk.
-
-    Il prompt istruisce il LLM a mantenere la lingua della query e
-    generare sinonimi semantici stretti (non parole generiche). Cache
-    indefinita per query (sha256 del lowercased). Determinismo §7.9
-    eccetto la singola call LLM irriducibilmente generativa.
-
-    Output sempre include la query originale (lowercased) come primo
-    elemento. Vuoto solo se LLM non disponibile.
-    """
-    q_clean = (query or "").strip()
-    if not q_clean:
-        return []
-    q_lower = q_clean.lower()
-    key = hashlib.sha256(q_lower.encode("utf-8")).hexdigest()[:16]
-    cache_path = _QE_LLM_CACHE_DIR / f"{key}.json"
-    if cache_path.exists():
-        try:
-            data = json.loads(cache_path.read_text())
-            cached = data.get("expanded")
-            if isinstance(cached, list) and cached:
-                return cached
-        except Exception:
-            pass
-    # Prompt language-sensitive: scritto in INGLESE (lingua neutra per
-    # Gemma multilingua, evita bias verso italiano se prompt e' in italiano)
-    # con few-shot examples in IT+EN per ancorare il behavior. Il LLM
-    # detecta la lingua della query e risponde IN-LANG.
-    prompt = (
-        "You are a multilingual thesaurus. Detect the language of the "
-        "input concept and produce synonyms IN THE SAME LANGUAGE.\n"
-        f'Concept: "{q_clean}"\n'
-        "Generate 8 specific synonyms (single words or short 2-token "
-        "phrases). Constraints:\n"
-        "- SAME LANGUAGE as the input (Italian input → Italian synonyms; "
-        "English input → English synonyms; etc.)\n"
-        "- Tight semantic synonyms only\n"
-        "- NO generic words (thing, object, item, cosa, oggetto)\n"
-        "- NO preamble, NO explanation\n"
-        "Examples (showing language fidelity — pay attention to language match):\n"
-        "- \"mare\" (Italian) → mare, oceano, marea, spiaggia, costa, mar, marina, onde\n"
-        "- \"sea\" (English) → sea, ocean, tide, shore, coast, marina, waves, water\n"
-        "- \"snow\" (English) → snow, ice, frost, blizzard, snowflake, snowfall, hail, winter\n"
-        "- \"compleanno\" (Italian) → compleanno, festa, anniversario, torta, "
-        "candeline, auguri, regalo, festeggiamento\n"
-        "- \"birthday\" (English) → birthday, anniversary, party, celebration, "
-        "jubilee, gala, fete, occasion\n"
-        "- \"neige\" (French) → neige, glace, gel, flocon, blizzard, hiver, "
-        "neigeux, poudreuse\n"
-        "Output: single line, comma-separated synonyms only, "
-        "NO concept name prefix."
-    )
-    try:
-        from llm_router import LLMRouter
-        r = LLMRouter()
-        provider = r.provider("middle")
-        res = provider.chat(
-            "", prompt, max_tokens=_QE_LLM_MAX_TOKENS,
-            temperature=0, think=False,
-        )
-        raw = (res.text or "").strip()
-    except Exception as ex:
-        log.warning("LLM query expansion failed: %r", ex)
-        return [q_lower]
-    # Parse: strip markdown fences, prendi prima riga utile
-    raw = re.sub(r"^```[a-zA-Z]*\s*", "", raw)
-    raw = re.sub(r"\s*```\s*$", "", raw)
-    line = raw.splitlines()[0] if raw else ""
-    expanded: list[str] = [q_lower]
-    seen = {q_lower}
-    for tok in line.split(","):
-        t = tok.strip().lower()
-        # Strip wrap quotes/asterischi LLM puo' aggiungere
-        t = t.strip('"\'*` ')
-        if t and t not in seen and 1 < len(t) < 30:
-            seen.add(t); expanded.append(t)
-    if len(expanded) <= 1:
-        return [q_lower]
-    # Cache disk (atomic write)
-    try:
-        _QE_LLM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = cache_path.with_name(cache_path.name + ".tmp")
-        tmp.write_text(json.dumps(
-            {"query": q_clean, "expanded": expanded},
-            ensure_ascii=False, indent=2,
-        ))
-        tmp.replace(cache_path)
-    except Exception as ex:
-        log.debug("LLM expansion cache write fail: %r", ex)
-    return expanded
-
-
-def _query_expansion_llm_enabled() -> bool:
-    return os.environ.get("METNOS_QUERY_EXPANSION_LLM", "1") != "0"
 
 
 # ----- Date extraction from path/filename (15/5/2026) -------------------
@@ -802,11 +742,16 @@ def _split_persons_from_query(query_text: str,
       CONTENUTO (mare, montagna) sopravvivono."""
     if not query_text:
         return query_text, [], "and"
+    registry = None
     try:
         from persons_registry import PersonsRegistry
-        persons = PersonsRegistry().list_all()
+        registry = PersonsRegistry(read_only=True)
+        persons = registry.list_all()
     except Exception:
         return query_text, [], "and"
+    finally:
+        if registry is not None:
+            registry.close()
     if not persons:
         return query_text, [], "and"
     tok2slug: dict[str, set] = {}
@@ -1262,26 +1207,13 @@ def _filter_unified(
     text_scores: dict[int, float] = {}
     q_expanded: list[str] = []  # cache for output meta
     if query_text:
-        # Query expansion strategia (15/5/2026 §7.3):
-        # (1) LLM expansion (Gemma 4 26B middle, language-sensitive) — preferita.
-        #     Produce sinonimi puliti anche per query brevi mono-token.
-        #     Cache disk indefinita → costo solo prima call per query.
-        # (2) Fallback corpus token (BGE-M3) per query lunghe se LLM fail.
-        # (3) Fallback nessuna expansion (query brevi senza LLM) → BM25 sul
-        #     keyword originale + cosine fallback hybrid.
+        # Deterministic, local-only expansion from the indexed corpus.  Short
+        # mono-token queries intentionally skip expansion because the local
+        # embedding neighbourhood is too broad; BM25 + cosine remain active.
         q_clean = query_text.strip()
         _is_short_mono = (len(q_clean.split()) == 1 and len(q_clean) <= 5)
-        # Strategia (1) LLM
-        if _query_expansion_llm_enabled():
-            try:
-                q_expanded = _expand_query_via_llm(query_text)
-            except Exception as ex:
-                log.debug("LLM expansion fallita: %r", ex)
-                q_expanded = []
-        # Strategia (2) corpus BGE-M3 SOLO per query lunghe (>5 char,
-        # multi-token) e se LLM ha fallito.
-        if (not q_expanded and idx_dir is not None
-                and _query_expansion_enabled() and not _is_short_mono):
+        if (idx_dir is not None and _query_expansion_enabled()
+                and not _is_short_mono):
             try:
                 tokens, embs = _corpus_token_embs(idx_dir)
                 if tokens and embs is not None:
@@ -1295,8 +1227,8 @@ def _filter_unified(
         )
         q_vec = None
         try:
-            from virt import get_embedder
-            te = get_embedder("text")
+            from virt import get_local_embedder
+            te = get_local_embedder("text")
             qv = te.embed_texts([query_text])
             if qv.ndim == 2 and qv.shape[0] == 1:
                 q_vec = _l2_normalize(qv[0])
@@ -1509,193 +1441,32 @@ def _check_args(args: dict) -> str | None:
     return None
 
 
-# §7.3 Lazy indexing helpers --------------------------------------------------
-
-def _default_workspace_dir() -> Path:
-    """Default workspace foto: `<USER_DATA>/Immagini`.
-    Memoria utente: «se dico Immagini cerca sul workspace .local/.../metnos».
-    §7.11: usa `_user_data_root()` (legge METNOS_USER_DATA a RUNTIME) e non
-    `config.PATH_USER_DATA` (cablato all'import → ignorava l'override env e
-    faceva trapelare il workspace reale nei test)."""
-    return _user_data_root() / "Immagini"
-
-
-def _discover_existing_photo_dirs() -> list[Path]:
-    """Trova directory candidate per indicizzazione: il workspace foto default
-    (`PATH_USER_DATA/Immagini`, tipicamente un symlink configurabile verso il
-    mount reale). §7.11: niente path assoluti hardcoded (era cablato
-    `/tmp/nas_public/media/Immagini`, un mount volatile) — il symlink `Immagini`
-    copre gia' qualunque destinazione, rename/mount-resiliente."""
-    cands: list[Path] = []
-    ws = _default_workspace_dir()
-    if ws.exists() and ws.is_dir():
-        cands.append(ws)
-    return cands
-
-
-def _scan_image_count(d: Path, *, max_scan: int = 50000) -> tuple[int, float]:
-    """Conta foto e somma dimensioni (best-effort, cap)."""
-    n = 0
-    sz = 0
-    exts = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".tiff", ".bmp"}
-    try:
-        for p in d.rglob("*"):
-            if n >= max_scan:
-                break
-            if p.is_file() and p.suffix.lower() in exts:
-                n += 1
-                try:
-                    sz += p.stat().st_size
-                except OSError:
-                    pass
-    except OSError:
-        pass
-    return n, sz / (1024 * 1024)  # MB
-
-
-def _propose_lazy_index_dialog(args: dict) -> dict:
-    """Ritorna needs_inputs per scelta dir quando 0 indici e query ambigua.
-    L'orchestrator (agent_runtime) mostra dialog all'utente; on_complete
-    re-invoca find_images_indices con base_path scelto.
-    """
-    cands = _discover_existing_photo_dirs()
-    if not cands:
-        return {
-            "ok": False, "entries": [], "error_class": "no_workspace",
-            "error": (
-                "Nessuna directory foto trovata. Crea "
-                f"`{_default_workspace_dir()}` (anche symlink a una dir esterna) "
-                "oppure passa `base_path=/percorso/esplicito`."
-            ),
-            "_terminal": True,
-        }
-    # choices = path bare (selezionando, value = path) + summary in prompt
-    choices = [str(c) for c in cands]
-    summary_lines = ["Directory disponibili:"]
-    for c in cands:
-        n, mb = _scan_image_count(c)
-        gb = mb / 1024
-        summary_lines.append(f"  • {c}  →  {n:,} foto, {gb:.1f} GB")
-    prompt = (
-        "Non ci sono ancora indici. La prima query foto richiede una "
-        "scansione iniziale (durata dipende dal numero foto, va in "
-        "background, non blocca le richieste successive).\n\n"
-        + "\n".join(summary_lines)
-    )
+def _index_missing_result(base_path: Path | None) -> dict:
+    """Return an honest handoff; a read executor never starts a build."""
+    target = base_path or (_user_data_root() / "Immagini")
     return {
-        "ok": True,
-        "decision": "needs_inputs",
-        "needs_inputs": {
-            "title": "Quale directory vuoi indicizzare per le ricerche foto?",
-            "dialog": [{
-                "var": "base_path",
-                "prompt": prompt,
-                "schema": {
-                    "kind": "choice",
-                    "choices": choices,
-                },
-            }],
-            "fmt": "form",
-            "on_complete": {
-                "type": "resume_executor_with_values",
-                "executor": "find_images_indices",
-                "args_base": dict(args),
-            },
+        "ok": False,
+        "entries": [],
+        "error_class": "index_missing",
+        "error_code": "image_index_missing",
+        "error": _msg("ERR_IMAGE_INDEX_MISSING", base_path=str(target)),
+        "base_path": str(target),
+        "recommended_action": {
+            "executor": "create_images_indices",
+            "args": {"base_path": str(target)},
         },
     }
 
 
-def _spawn_index_build(base_path: Path, args: dict) -> dict:
-    """Spawna `create_images_indices(base_path=...)` come systemd-run user
-    unit. Scrive marker per notifica completion. Ritorna status
-    indexing_started subito (non blocca turn).
-    """
-    import hashlib as _hl
-    import os as _os
-    import subprocess as _sp
-    import time as _t
-
-    job_id = _hl.sha256(f"{base_path}_{_t.time()}".encode()).hexdigest()[:12]
-    unit_name = f"metnos-build-{job_id}-unified"
-
-    # Estima conta foto + tempo
-    n_count, mb = _scan_image_count(base_path)
-    gb = mb / 1024
-    # 3.3s/foto stima conservativa
-    est_min = round(n_count * 3.3 / 60, 1)
-
-    # Marker dir riusa `_COMPLETE_DIR` del dispatcher esistente
-    # (http_async_tasks.py `notification_dispatcher_task` polla /tmp/metnos_build_complete).
-    # Schema atteso: actor, channel, base_path, idx, n_entries, duration_s,
-    # errors_count, ok.
-    notify_dir = Path("/tmp") / "metnos_build_pending"  # transient durante build
-    notify_dir.mkdir(parents=True, exist_ok=True)
-    pending_marker = notify_dir / f"{job_id}.json"
-    ts_start = _t.time()
-    pending_marker.write_text(json.dumps({
-        "job_id": job_id,
-        "base_path": str(base_path),
-        "idx": "unified",
-        "n_estimated": n_count,
-        "actor": args.get("_actor") or "host",
-        "channel": args.get("_channel") or "http",
-        "ts_started": ts_start,
-    }, ensure_ascii=False))
-
-    # Spawn detached via subprocess.Popen + start_new_session. Più
-    # affidabile di systemd-run --user (richiede user-session attiva).
-    # Log su file per audit. Process child del metnos-http ma indipendente
-    # (start_new_session = new session group).
-    metnos_root = _os.environ.get("METNOS_INSTALL_ROOT", "/opt/metnos")
-    log_dir = Path("/tmp") / "metnos_build_logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / f"{job_id}.log"
-    env = dict(_os.environ)
-    env["METNOS_BUILD_JOB_ID"] = job_id
-    env["METNOS_BUILD_NOTIFY_MARKER"] = str(pending_marker)
-    cmd = [
-        "/usr/bin/python3",
-        f"{metnos_root}/runtime/build_runner_unified.py",
-        "--base-path", str(base_path),
-    ]
-    try:
-        log_fh = open(log_path, "ab")
-        _sp.Popen(
-            cmd, stdout=log_fh, stderr=log_fh, stdin=_sp.DEVNULL,
-            start_new_session=True, env=env, cwd=metnos_root,
-        )
-    except (OSError, _sp.SubprocessError) as ex:
-        try:
-            pending_marker.unlink()
-        except OSError:
-            pass
-        return {
-            "ok": False, "entries": [], "error_class": "build_spawn_failed",
-            "error": f"spawn failed: {type(ex).__name__}: {ex}",
-            "base_path": str(base_path),
-            "_terminal": True,
-        }
-
-    return {
-        "ok": True,
-        "status": "indexing_started",
-        "entries": [],
-        "base_path": str(base_path),
-        "job_id": job_id,
-        "n_estimated": n_count,
-        "est_size_gb": round(gb, 1),
-        "est_minutes": est_min,
-        "final_message_hint": (
-            f"Ho avviato l'indicizzazione di {n_count:,} foto in `{base_path}` "
-            f"(~{gb:.1f} GB). Stima: ~{est_min} min. "
-            f"Va in background, non blocca le tue prossime richieste. "
-            f"Ti scrivo su Telegram quando ho finito."
-        ),
-        "_terminal": True,
-    }
-
-
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "entries": [],
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+        }
     legacy_idx = args.get("idx")
     if legacy_idx is not None and legacy_idx not in ("", "all"):
         log.warning(
@@ -1761,23 +1532,21 @@ def invoke(args):
         if not _tk_ok:
             return {"ok": False, "error": _msg("ERR_ARG_NOT_POSITIVE_INT", arg="top_k")}
 
-    single_dir, multi_dirs, msg = _resolve_base_path(args.get("base_path"))
-    if single_dir is None and multi_dirs is None:
+    single_corpus, multi_dirs, msg = _resolve_base_path(args.get("base_path"))
+    if single_corpus is None and multi_dirs is None:
         # Path-like esplicito inesistente (opz 3): errore, non dialog di build.
         if msg and msg.startswith(_BP_NOT_FOUND):
             _bad = msg[len(_BP_NOT_FOUND):]
             return {"ok": False, "entries": [], "error_class": "not_found",
                     "error_code": "ERR_PATH_NOT_FOUND",
                     "error": _msg("ERR_PATH_NOT_FOUND", path=_bad)}
-        # §7.3 lazy index: 0 indici E query SENZA base_path esplicito →
-        # ritorna needs_inputs dialog per scelta dir + spawn build su scelta.
-        # Default suggerito: ~/.local/share/metnos/Immagini.
-        return _propose_lazy_index_dialog(args)
+        return _index_missing_result(None)
 
     if multi_dirs is not None:
         return _invoke_multi_dirs(multi_dirs, args, msg)
 
-    idx_dir = _index_dir(single_dir)
+    single_dir = single_corpus.base_path
+    idx_dir = single_corpus.idx_dir
     if not (idx_dir / "meta.json").exists():
         # Detect schema_too_old (legacy v3 dirs presenti)
         sha_dir = idx_dir.parent
@@ -1791,9 +1560,7 @@ def invoke(args):
                 "base_path": str(single_dir),
                 "schema_version": INDEX_SCHEMA_VERSION,
             }
-        # §7.3 lazy index: path esplicito SENZA indice → spawn build async
-        # + notify utente, ritorna status indexing_started.
-        return _spawn_index_build(single_dir, args)
+        return _index_missing_result(single_dir)
 
     entries, emb_text, emb_face, meta = _load_unified_index(idx_dir)
     if not is_unified_schema(meta):
@@ -1897,7 +1664,8 @@ def _build_attachments_from_entries(entries: list[dict]) -> list[dict]:
     return atts
 
 
-def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
+def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
+                       msg: str | None) -> dict:
     all_entries: list[dict] = []
     n_above = 0
     total_size_bytes = 0
@@ -1905,8 +1673,9 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
     error_classes: set[str] = set()
     schema_too_old_dirs: list[str] = []
     merged_unenrolled: list[str] = []
-    for d in dirs:
-        idx_dir = _index_dir(d)
+    for corpus in dirs:
+        d = corpus.base_path
+        idx_dir = corpus.idx_dir
         if not (idx_dir / "meta.json").exists():
             error_classes.add("index_missing")
             continue
@@ -1945,7 +1714,7 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
         "entries": truncated_entries,
         "n_above_threshold": n_above,
         "schema_version": INDEX_SCHEMA_VERSION,
-        "_resolved_dirs": [str(d) for d in dirs],
+        "_resolved_dirs": [str(corpus.base_path) for corpus in dirs],
         "_resolve_msg": msg or "",
         "metadata": {
             "total_count": n_above,
@@ -1972,6 +1741,15 @@ def _invoke_multi_dirs(dirs: list[Path], args: dict, msg: str | None) -> dict:
                             "scena/oggetto generico. Per ricerca scena "
                             "sul web usa 'cerca foto simili sul web' "
                             "(Google Vision API).")
+        elif "index_missing" in error_classes:
+            missing = _index_missing_result(
+                dirs[0].base_path if dirs else None)
+            out.update({
+                "error_class": missing["error_class"],
+                "error_code": missing["error_code"],
+                "error": missing["error"],
+                "recommended_action": missing["recommended_action"],
+            })
         elif error_classes:
             out["error_class"] = sorted(error_classes)[0]
     # Truncated check: confronto contro n_above (totale above threshold

@@ -1,7 +1,9 @@
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "act_sites"
-version     = "0.1.0"
+version     = "0.2.0"
+intelligence = "agentic"
 timeout_s   = 180
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -20,7 +22,7 @@ en = "SCOPO: acts or navigates toward a goal in a web session, with confirmation
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:5955cf6281cb824c0bd77926d0423fc02d54ef7566b3782c53f0f922931ec22d"
+digest = "sha256:0dc7f25f661f7f1e3f939e5e82036f55687b8bbacb8c78ea9437111c135eba19"
 
 [args]
 type = "object"
@@ -52,6 +54,13 @@ runtime_resolved = true
 it = "Solo runtime: token opachi emessi dal broker e ripresentati dopo approvazione."
 en = "Runtime only: opaque tokens issued by the broker and replayed after approval."
 
+[args.properties._goal_mode]
+type = "boolean"
+runtime_resolved = true
+[args.properties._goal_mode.description]
+it = "Solo runtime: interpreta action come fine semantico da raggiungere prima della lettura."
+en = "Runtime only: treat action as the semantic goal to reach before reading."
+
 [output]
 schema_inline = """
 {ok: bool, results: Array<{session_id: str, ok: bool, executed: bool, primitive?: str, url?: str, reason_code?: str}>}
@@ -76,5 +85,5 @@ input = { session_ids = ["abc"] }
 expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 
 [placement]
-scope = "host"
+scope = "server"
 device_ok = false

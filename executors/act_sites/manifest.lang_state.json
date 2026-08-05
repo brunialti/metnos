@@ -58,5 +58,17 @@
       "source_lang": "it",
       "source_hash": "sha256:61cbe596785b115578d08a2cd3473db2ba3414fd5212210bcd20fb7ae0c4f7f4"
     }
+  },
+  "args._goal_mode.description": {
+    "it": {
+      "version_hash": "sha256:3dec11e1d913e8860087b92fba62d1b2cb51826c9251872b1942b96060a9572d",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:3b08f9641fc20979e7faf2e544187013f0849c35ac43b805c8f050d779ea17fe",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

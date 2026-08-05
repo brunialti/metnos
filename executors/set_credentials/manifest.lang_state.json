@@ -1,12 +1,12 @@
 {
   "description": {
     "it": {
-      "version_hash": "sha256:5b194b038667565f1ecf1319fde4c9c3d58c051931bb5a22207730943a7be8ff",
+      "version_hash": "sha256:a4f1313f18c957f08444efa1705e8fe7dc6d919afa41053ea1acc47f948b30d6",
       "source_lang": null,
       "source_hash": null
     },
     "en": {
-      "version_hash": "sha256:6e115fbb536cdb64aa85afa31ddbfe4fd871b30aeceb5fde74017d886057cf3a",
+      "version_hash": "sha256:930116b9ee3833ad4394bc7668a17e82a00ac50cac8d8fade1fe67acfce125da",
       "source_lang": null,
       "source_hash": null
     }
@@ -79,6 +79,42 @@
     },
     "en": {
       "version_hash": "sha256:d7264f932625be13a07d0bef06dc8d5b8a029f3d1942d766c5593920a7644293",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.credential_kind.description": {
+    "it": {
+      "version_hash": "sha256:cde7dc88897f686324222e0329a6307e80f19c55a177e18d453becb77bbfde99",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:13a7ebe280287d58cc40119c97700516767aa6a9668f749bbb7c8df6ad44fc7b",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.account_name.description": {
+    "it": {
+      "version_hash": "sha256:e0e355b41b5fe26f5c9fb8b33a56c91f694bd2599e1d4f4639ea3945b1b14931",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:e7358ea9c97dd016a0aeb20d2eb1b84882ccc008d2dad8ce0a5c3f22dddea82c",
+      "source_lang": null,
+      "source_hash": null
+    }
+  },
+  "args.credential_forms.description": {
+    "it": {
+      "version_hash": "sha256:686f410e4442013942cc28b453848eb4b4c9e34a54c21815f2374bd3ffa260c4",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:446afa495ccfcdc9460f06237d408b4353aedf9652e32dbe9579c10379c90e21",
       "source_lang": null,
       "source_hash": null
     }

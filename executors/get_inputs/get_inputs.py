@@ -71,6 +71,18 @@ def _safe_sender(actor: str, channel: str | None) -> str:
     return actor
 
 
+def _failure(error_code: str, error: str,
+             *, error_class: str = "invalid_input", **fields) -> dict:
+    """Return the typed failure envelope shared by every terminal branch."""
+    return {
+        "ok": False,
+        "error": error,
+        "error_class": error_class,
+        "error_code": error_code,
+        **fields,
+    }
+
+
 def _utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
 
@@ -398,28 +410,57 @@ def invoke(args: dict) -> dict:
       - se cancelled: `{decision: "cancelled"}`.
       - se ancora pending: `{decision: "input_required", ...}`.
     """
+    if not isinstance(args, dict):
+        return _failure("args_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
+
     # Import lazy: dialog_pending vive in runtime/, riferito via PYTHONPATH.
     try:
         import dialog_pending as _dp
-    except ImportError as ex:
-        return {"ok": False, "error": f"dialog_pending non disponibile: {ex}"}
+    except ImportError:
+        return _failure(
+            "dialog_dependency_missing",
+            _msg("ERR_DEPENDENCY_MISSING", what="dialog_pending"),
+            error_class="dependency_unavailable",
+        )
 
     # Lookup di dialogo esistente (TASK 4 / pattern A: PLANNER ri-chiama
     # get_inputs con dialog_id per recuperare i values raccolti).
     explicit_dialog_id = args.get("dialog_id")
     actor = args.get("actor") or os.environ.get("METNOS_ACTOR") or "host"
     channel = args.get("channel") or os.environ.get("METNOS_CHANNEL") or ""
+    owner_user_id = str(
+        os.environ.get("METNOS_OWNER_USER_ID") or "").strip()
+    if not owner_user_id:
+        return _failure(
+            "owner_unavailable", _msg("ERR_OP_FAILED", reason="owner"),
+            error_class="authorization")
+    if explicit_dialog_id is not None and not isinstance(explicit_dialog_id, str):
+        return _failure(
+            "dialog_id_not_string",
+            _msg("ERR_ARG_NOT_STRING", arg="dialog_id"),
+        )
+    if not isinstance(actor, str):
+        return _failure(
+            "actor_not_string", _msg("ERR_ARG_NOT_STRING", arg="actor"))
+    if not isinstance(channel, str):
+        return _failure(
+            "channel_not_string", _msg("ERR_ARG_NOT_STRING", arg="channel"))
     sender_id = _safe_sender(actor, channel)
 
     if explicit_dialog_id:
-        existing = _dp.load_pending(sender_id, explicit_dialog_id)
-        if existing is None:
-            return {
-                "ok": False,
-                "error": "dialog_not_found",
-                "dialog_id": explicit_dialog_id,
-                "actor": actor, "channel": channel,
-            }
+        existing = _dp.load_pending(
+            sender_id, explicit_dialog_id,
+            owner_user_id=owner_user_id)
+        if (existing is None or str(existing.get("owner_user_id") or "")
+                != owner_user_id):
+            return _failure(
+                "dialog_not_found",
+                _msg("ERR_DIALOG_NOT_FOUND"),
+                error_class="not_found",
+                dialog_id=explicit_dialog_id,
+                actor=actor,
+                channel=channel,
+            )
         if existing.get("cancelled"):
             return {
                 "ok": True,
@@ -450,13 +491,18 @@ def invoke(args: dict) -> dict:
     # Creazione di un nuovo dialogo: valida tutto.
     title = args.get("title")
     if not isinstance(title, str) or not title.strip():
-        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="title")}
+        return _failure(
+            "title_missing", _msg("ERR_ARG_MISSING", arg="title"))
     if len(title) > 80:
-        return {"ok": False, "error": _msg("ERR_TITLE_TOO_LONG", max=80)}
+        return _failure(
+            "title_too_long", _msg("ERR_TITLE_TOO_LONG", max=80))
 
     description = args.get("description")
     if description is not None and not isinstance(description, str):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="description")}
+        return _failure(
+            "description_not_string",
+            _msg("ERR_ARG_NOT_STRING", arg="description"),
+        )
 
     dialog = args.get("dialog")
     # §2.4 robustezza NL→determinismo: il proposer emette talvolta un SINGOLO
@@ -494,8 +540,11 @@ def invoke(args: dict) -> dict:
         # error_class strutturato (§7.3): un dialog malformato dal planner è
         # un arg invalido RECUPERABILE → l'engine fa recovery/re-propose, non
         # un dead-end con stringa grezza in faccia all'utente.
-        return {"ok": False, "error": _msg("ERR_DIALOG_INVALID", detail=err),
-                "error_class": "invalid_args"}
+        return _failure(
+            "dialog_invalid",
+            _msg("ERR_DIALOG_INVALID", detail=err),
+            error_class="invalid_args",
+        )
 
     # Pattern propose-and-fire (ADR 0127): se l'arg `entries` e' presente
     # (popolato a runtime quando il PLANNER chiama get_inputs con
@@ -551,37 +600,32 @@ def invoke(args: dict) -> dict:
     )
     if needs_derivation:
         if not isinstance(entries_for_choices, list):
-            return {
-                "ok": False,
-                "error": (
-                    "step kind=choice/multi_choice con display_template "
-                    "richiede `from_step=N` top-level di args (il runtime "
-                    "espande from_step in entries). Nessuna `entries` ricevuta."
-                ),
-                "error_class": "invalid_args",
-            }
+            return _failure(
+                "choice_entries_missing",
+                _msg("ERR_ARG_MISSING", arg="entries"),
+                error_class="invalid_args",
+            )
         if len(entries_for_choices) == 0:
-            return {
-                "ok": False,
-                "error": (
-                    "step kind=choice/multi_choice derivato da `entries` "
-                    "VUOTE — niente scelte disponibili. Verifica che lo step "
-                    "from_step abbia prodotto >=1 entry, o passa choices "
-                    "esplicite."
-                ),
-                "error_class": "invalid_args",
-            }
+            return _failure(
+                "choice_entries_empty",
+                _msg("ERR_ARG_INVALID", arg="entries", reason="empty"),
+                error_class="invalid_args",
+            )
         dialog = _derive_choices_from_entries(dialog, entries_for_choices)
 
     fmt_arg = args.get("fmt") or "auto"
     if fmt_arg not in ("auto", "dialogue", "form", "voice"):
-        return {"ok": False, "error": _msg("ERR_FMT_INVALID", value=repr(fmt_arg))}
+        return _failure(
+            "fmt_invalid", _msg("ERR_FMT_INVALID", value=repr(fmt_arg)))
 
     timeout_s = args.get("timeout_s")
     if timeout_s is not None:
-        if not isinstance(timeout_s, int) or timeout_s < 1 or timeout_s > MAX_TIMEOUT_S:
-            return {"ok": False,
-                    "error": _msg("ERR_TIMEOUT_RANGE", max=MAX_TIMEOUT_S)}
+        if (not isinstance(timeout_s, int) or isinstance(timeout_s, bool)
+                or timeout_s < 1 or timeout_s > MAX_TIMEOUT_S):
+            return _failure(
+                "timeout_invalid",
+                _msg("ERR_TIMEOUT_RANGE", max=MAX_TIMEOUT_S),
+            )
     else:
         # Default per FORMA del dialogo (§7.3): 60s per i dialoghi semplici
         # (1 step si/no/scelta), 600s per form (>=2 step) e credenziali, cosi'
@@ -604,6 +648,7 @@ def invoke(args: dict) -> dict:
         "step_index": 0,
         "started_at": _utc_now_iso(),
         "actor": actor,
+        "owner_user_id": owner_user_id,
         "channel": channel,
         "timeout_s": timeout_s,
         "completed": False,
@@ -611,8 +656,12 @@ def invoke(args: dict) -> dict:
     }
     try:
         _dp.save_pending(sender_id, dialog_id, state)
-    except (OSError, ValueError, TypeError) as ex:
-        return {"ok": False, "error": f"save_pending fallito: {ex}"}
+    except (OSError, ValueError, TypeError):
+        return _failure(
+            "dialog_save_failed",
+            _msg("ERR_OP_FAILED", reason="dialog state"),
+            error_class="io_error",
+        )
 
     final_message_hint = _build_final_message_hint(state, fmt)
     return {

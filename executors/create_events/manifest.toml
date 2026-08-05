@@ -3,9 +3,10 @@
 # Dispatcher canonical (sequel di read_events, 13/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "create_events"
-version     = "0.4.0"
+version     = "0.5.0"
 author      = "Roberto Brunialti"
 affinity    = [
     "fissa", "fissa appuntamento", "prenota", "book", "schedule", "crea evento",
@@ -22,7 +23,7 @@ en = "SCOPO: create calendar appointments. PATTERN: create_events(summary=\"Stan
 
 [code]
 files  = ["create_events.py"]
-digest = "sha256:99af53e0294ad11bb164c7a305fa4d14a253bd0af044cf3216726c2ac58617e4"
+digest = "sha256:29af328731a4c1358786a5e23ddbcd8ac47b8c36ebb56bd6bf5431df2439ed7d"
 
 [args]
 type     = "object"
@@ -92,15 +93,20 @@ schema_inline = """
   results: Array<dict>,
   n_created: int,
   used: int,
-  _undo?: {pattern: 'delete_events_by_id', ids: [str]},
+  _undo?: {reverse_pattern: 'delete_events_by_id', ids: [str], scope?: object},
   error?: str,
   error_class?: str
 }
 """
 
 [[capabilities]]
-name = "metnos:write"
+name = "fs:write"
 hint = ["~/.local/share/metnos/calendar.ics"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "missing_summary_fails"

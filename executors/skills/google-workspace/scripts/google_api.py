@@ -39,6 +39,18 @@ if _SCRIPTS_DIR not in sys.path:
 from _skill_home import get_skill_home
 from _scopes import SCOPES  # SoT unica (guard: test_google_scopes_sot)
 
+try:
+    # Presente quando lo script gira come backend Metnos. Il budget arriva dal
+    # manifest firmato attraverso il runtime, anche su executor remoti.
+    from executor_workers import assigned_workers, map_ordered
+except ImportError:  # uso standalone della skill: fallback fail-closed seriale
+    def assigned_workers(*, item_count=None):
+        return 1
+
+    def map_ordered(fn, items, *, deadline_s=None):
+        del deadline_s
+        return [(index, fn(item)) for index, item in enumerate(items)], []
+
 METNOS_SKILL_HOME = get_skill_home()
 TOKEN_PATH = METNOS_SKILL_HOME / "google_token.json"
 CLIENT_SECRET_PATH = METNOS_SKILL_HOME / "google_client_secret.json"
@@ -95,12 +107,17 @@ def _run_gws(parts: list[str], *, params: dict | None = None, body: dict | None 
     if body is not None:
         cmd.extend(["--json", json.dumps(body)])
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        env=_gws_env(),
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            env=_gws_env(),
+            timeout=int(os.environ.get("METNOS_GWS_TIMEOUT_S", "300")),
+        )
+    except subprocess.TimeoutExpired:
+        print("gws command timed out", file=sys.stderr)
+        sys.exit(124)
     if result.returncode != 0:
         err = result.stderr.strip() or result.stdout.strip() or "Unknown gws error"
         print(err, file=sys.stderr)
@@ -180,6 +197,7 @@ def get_credentials():
                 indent=2,
             )
         )
+        TOKEN_PATH.chmod(0o600)
     if not creds.valid:
         print("Token is invalid. Re-run setup.", file=sys.stderr)
         sys.exit(1)
@@ -472,8 +490,9 @@ def calendar_list(args):
 
     if _gws_binary():
         events = []
-        for cid in cal_ids:
-            results = _run_gws(
+
+        def _list_gws_calendar(cid):
+            return cid, _run_gws(
                 ["calendar", "events", "list"],
                 params={
                     "calendarId": cid,
@@ -484,6 +503,9 @@ def calendar_list(args):
                     "orderBy": "startTime",
                 },
             )
+
+        listed, _skipped = map_ordered(_list_gws_calendar, cal_ids)
+        for _index, (cid, results) in listed:
             for e in results.get("items", []):
                 events.append({
                     "id": e["id"],
@@ -514,11 +536,23 @@ def calendar_list(args):
     else:
         direct_cal_ids = [args.calendar]
     events = []
-    for cid in direct_cal_ids:
-        results = service.events().list(
+
+    def _list_direct_calendar(cid):
+        # googleapiclient service/httplib2 non e' thread-safe: ogni worker
+        # parallelo possiede il proprio service. Il ramo seriale riusa quello
+        # già costruito per preservare costo e comportamento storici.
+        worker_service = (
+            service if assigned_workers(item_count=len(direct_cal_ids)) == 1
+            else build_service("calendar", "v3")
+        )
+        result = worker_service.events().list(
             calendarId=cid, timeMin=time_min, timeMax=time_max,
             maxResults=args.max, singleEvents=True, orderBy="startTime",
         ).execute()
+        return cid, result
+
+    listed, _skipped = map_ordered(_list_direct_calendar, direct_cal_ids)
+    for _index, (cid, results) in listed:
         for e in results.get("items", []):
             events.append({
                 "id": e["id"],
@@ -950,6 +984,23 @@ def drive_delete(args):
     service = build_service("drive", "v3")
     service.files().update(fileId=args.file_id, body=body).execute()
     print(json.dumps({"status": "trashed", "fileId": args.file_id, "permanent": False}))
+
+
+def drive_restore(args):
+    """Restore a Drive file from trash by exact file ID."""
+    body = {"trashed": False}
+    if _gws_binary():
+        _run_gws(
+            ["drive", "files", "update"],
+            params={"fileId": args.file_id},
+            body=body,
+        )
+        print(json.dumps({"status": "restored", "fileId": args.file_id}))
+        return
+
+    service = build_service("drive", "v3")
+    service.files().update(fileId=args.file_id, body=body).execute()
+    print(json.dumps({"status": "restored", "fileId": args.file_id}))
 
 
 # =========================================================================
@@ -1839,6 +1890,10 @@ def main():
     p.add_argument("file_id")
     p.add_argument("--permanent", action="store_true", help="Permanently delete (default is trash, which is reversible)")
     p.set_defaults(func=drive_delete)
+
+    p = drv_sub.add_parser("restore")
+    p.add_argument("file_id")
+    p.set_defaults(func=drive_restore)
 
     # --- Contacts ---
     con = sub.add_parser("contacts")

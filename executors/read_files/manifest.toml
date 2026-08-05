@@ -3,6 +3,7 @@
 # Questo file è firmato dalla chiave autore; la firma vive in `manifest.toml.sig`.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_files"
 version     = "0.1.0"
@@ -19,12 +20,12 @@ affinity    = ["read", "leggi", "lettura", "apri", "file", "documento", "testo",
 # qui dichiarato. Mismatch → executor rifiutato.
 
 [description]
-it = "SCOPO: legge il contenuto di file locali (vettoriale §2.1). PATTERN: read_files(path=\"/dir\", pattern=\"*.json\", parse=\"json\") legge i file di una CARTELLA (no find_files); da step -> from_step=N. NON: max_bytes e tail_bytes insieme. OUT: vettoriale entries=[...]; 1 file scalare {content,metadata}."
-en = "SCOPO: read local file content (vectorial §2.1). PATTERN: read_files(path=\"/dir\", pattern=\"*.json\", parse=\"json\") reads a FOLDER's files (no find_files); from a step -> from_step=N. NON: max_bytes and tail_bytes together. OUT: vectorial entries=[...]; single file scalar {content,metadata}."
+it = "SCOPO: legge PDF/DOCX/XLSX/CSV misti e calcola firme hash SHA-256. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: singolo foglio -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries con testo, leggibilità, sha256 e origine; duplicates."
+en = "SCOPO: reads mixed PDF/DOCX/XLSX/CSV and computes SHA-256 hash signatures. PATTERN: read_files(from_step=N, parse=\"auto\", deduplicate_content=true). NON: one sheet -> read_files_spreadsheet/read_files_xlsx; OCR -> read_files_ocr. OUT: entries with text, readability, sha256, source; duplicates."
 
 [code]
 files  = ["read_files.py"]
-digest = "sha256:23f719d26c862690076241ecfd88392a4f82c277b84fa3f087b118dc0cc648e6"  # sostituito al momento della firma
+digest = "sha256:05a832a5061a74117e17a85b2d31c9f3ec6049e2d5f6aa7b0065b1dd4e9c55c7"  # sostituito al momento della firma
 
 # --- Argomenti accettati (JSON Schema, sottoinsieme v1.1) -------------------
 [args]
@@ -49,8 +50,8 @@ en = "Scalar form (ONE file): absolute path of the file to read. For many files 
 type        = "array"
 
 [args.properties.paths.description]
-it = "Vettoriale: lista di path assoluti da leggere. Anche un solo elemento. Tipicamente popolata da `from_step` (proietta entries[*].path)."
-en = "Vectorial: list of absolute paths to read. Even a single element. Typically filled by `from_step` (projects entries[*].path)."
+it = "Lista di path assoluti esatti, senza glob `*`/`?`; anche uno solo. `from_step` puo' proiettare entries[*].path."
+en = "List of exact absolute paths, without `*`/`?` globs; one is valid. `from_step` may project entries[*].path."
 
 [args.properties.entries]
 type        = "array"
@@ -75,11 +76,19 @@ en = "When `path` is a FOLDER: glob of files to read inside it (e.g. '*.json'). 
 
 [args.properties.parse]
 type        = "string"
-enum        = ["json"]
+enum        = ["json", "auto"]
 
 [args.properties.parse.description]
-it = "Se 'json', interpreta il contenuto di ogni file come JSON e fonde i campi nell'entry (record interrogabile da filter_entries). Solo vettoriale."
-en = "If 'json', parses each file content as JSON and merges the fields into the entry (record queryable by filter_entries). Vectorial only."
+it = "'json' fonde il JSON nell'entry; 'auto' normalizza PDF, DOCX, XLSX, CSV e testo, conservando metadati, SHA-256 e diagnostica."
+en = "'json' merges JSON into the entry; 'auto' normalizes PDF, DOCX, XLSX, CSV, and text while preserving metadata, SHA-256, and diagnostics."
+
+[args.properties.deduplicate_content]
+type        = "boolean"
+default     = false
+
+[args.properties.deduplicate_content.description]
+it = "Con parse='auto', deduplica solo nell'output per contenuto identico, conserva il primo e annota duplicate_paths; non modifica file."
+en = "With parse='auto', deduplicates identical content only in output, keeps the first, and records duplicate_paths; files are unchanged."
 
 [args.properties.max_files]
 type        = "integer"
@@ -137,6 +146,41 @@ default     = "local"
 it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: legge file/Google Doc/Sheet su Drive (export a testo), richiede pairing Google."
 en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: reads files/Google Docs/Sheets on Drive (export to text), requires Google pairing."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  content?: str,
+  metadata?: {
+    encoding: str,
+    bytes: int,
+    chars?: int,
+    path: str,
+    file_size: int,
+    read_offset: int,
+    read_mode: 'full' | 'head' | 'tail' | 'offset'
+  },
+  entries?: Array<dict>,
+  duplicates?: Array<{path: str, duplicate_of: str, signature: str, content_sha256: str}>,
+  deduped_count?: int,
+  readable_count?: int,
+  unreadable_count?: int,
+  ok_count?: int,
+  fail_count?: int,
+  used?: int,
+  available_total?: int,
+  files_source?: 'google_workspace',
+  truncated?: bool,
+  truncated_what?: str,
+  cap_field?: str,
+  cap_value?: int,
+  error_code?: str,
+  error_class?: str,
+  error?: str,
+  detail?: str
+}
+"""
+
 [[capabilities]]
 name = "fs:read"
 hint = ["~/notes/**", "/tmp/**"]
@@ -145,6 +189,11 @@ hint = ["~/notes/**", "/tmp/**"]
 # Il runtime esegue questi test quando l'executor viene installato. Setup e
 # teardown sono comandi shell opzionali per le fixture; input è il JSON degli
 # argomenti; expect contiene matcher su ok/error/contenuto.
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name     = "legge_file_utf8_esistente"
@@ -212,3 +261,4 @@ teardown = "rm -rf /tmp/metnos_test_fs_read"
 # lazy-gw nel dispatcher (il device non carica mai il ramo Drive).
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

@@ -26,6 +26,7 @@ if _RT not in sys.path:
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
+from sites_url_scrub import scrub_url  # noqa: E402
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -67,7 +68,10 @@ def invoke(args: dict) -> dict:
         any_sensitive = any_sensitive or sensitive
         entry = {
             "session_id": sid, "ok": True,
-            "url": res.get("url"), "title": res.get("title", ""),
+            # Defense in depth at the executor boundary: a stale or
+            # non-standard sidecar response cannot place a session-bearing URL
+            # into extraction, the final answer or the persistent turn log.
+            "url": scrub_url(res.get("url")), "title": res.get("title", ""),
             "text": res.get("text", ""), "sensitive": sensitive,
         }
         if include_forms:

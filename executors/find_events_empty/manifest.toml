@@ -3,6 +3,7 @@
 # Dispatcher canonical (sequel di delete_events, 13/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_events_empty"
 version     = "0.4.0"
@@ -23,7 +24,7 @@ en = "SCOPO: find free slots in the calendar. PATTERN: find_events_empty(time_wi
 
 [code]
 files  = ["find_events_empty.py"]
-digest = "sha256:d1c7bb464b4d1798c2d435241acea471d91ff9c2e630cf1022bf12b91e2bd280"
+digest = "sha256:32e6e8f240e372e1c0b7215c435e64bfb211ecfe3090e31f06eb6269f77b8d50"
 
 [args]
 type     = "object"
@@ -78,7 +79,7 @@ type        = "string"
 # esiste — misurato 6/7/2026). Niente default: SoT = default_event_client().
 enum        = ["local", "google_workspace"]
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -101,13 +102,32 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "start", source = "start", cell_max = 32 },
+  { key = "end", source = "end", cell_max = 32 },
+  { key = "duration_min", source = "duration_min", cell_max = 16 },
+  { key = "calendar_id", source = "calendar_id", cell_max = 80 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["~/.local/share/metnos/calendar.ics"]
 
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
 [[tests]]
 name   = "ritorna_entries_implementato"
-input  = { time_windows = ["tomorrow"], size = "1hour" }
+input  = { time_windows = ["tomorrow"], size = "1hour", client = "local" }
 expect = { ok = true, has_field = "entries" }
 
 [[tests]]

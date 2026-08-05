@@ -2,9 +2,11 @@
 # Crawler BFS multi-tier per scoperta URL su seed (ADR 0081, 4/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_urls"
-version     = "0.1.0"
+version     = "0.3.0"
+intelligence = "llm"
 timeout_s   = 900
 author      = "Roberto Brunialti"
 # Affinity bilingue IT+EN (§9.3): "informazioni/notizie/novità/information"
@@ -17,13 +19,20 @@ affinity    = [
                 "feed", "rss", "topic", "informazioni", "information", "notizie", "novità"
             ]
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "network_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
 it = "SCOPO: cerca e scopri URL e documenti sul web. PATTERN: find_urls(search_query=\"...\") o find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read su URL noti. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated."
 en = "SCOPO: find and discover URLs and documents on the web. PATTERN: find_urls(search_query=\"...\") or find_urls(seed_urls=[\"...\"], topic=[...]). NON: get/read on known URLs. OUT: entries=[{url,title,snippet,score,depth,content_type,fetched_at,lastmod,is_document,doc_ext,parent_url}], discovered_documents, discovery_strategy, metadata, robots_skipped, truncated."
 
 [code]
 files  = ["find_urls.py"]
-digest = "sha256:eb4c79159c40c2fdd0bcacbaa9ff05d488e187c007b1e8cc316c14f4a3df22fa"
+digest = "sha256:38650cc8f5405cd434dc6302a9cbe4a4b051b71892f40475577511cc58b4a410"
 
 [args]
 type     = "object"
@@ -156,8 +165,8 @@ en = "If true (default), reads /robots.txt once per origin and respects Disallow
 type        = "string"
 
 [args.properties.auth_cookies_file.description]
-it = "OPZIONALE. OMETTERE per ricerche pubbliche (notizie, wikipedia, blog, web search generica). USARE SOLO quando l'utente cita esplicitamente un sito che richiede login (es. 'spaggiari', 'gmail web', 'portale aziendale'). Path a un file Mozilla cookies.txt da iniettare nelle Request: prima `login_session(domain=...)` produce il file, poi find_urls lo usa. Esempio: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. Se passato ma il file non esiste, il crawl prosegue pubblico (degradazione silenziosa)."
-en = "OPTIONAL. OMIT for public searches (news, wikipedia, blogs, generic web search). USE ONLY when the user explicitly cites a site that requires login (e.g. 'spaggiari', 'gmail web', 'company portal'). Path to a Mozilla cookies.txt file to be injected into Requests: first `login_session(domain=...)` produces the file, then find_urls uses it. Example: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. If passed but the file does not exist, the crawl continues publicly (silent degradation)."
+it = "OPZIONALE. OMETTERE per ricerche pubbliche (notizie, wikipedia, blog, web search generica). USARE SOLO quando l'utente cita esplicitamente un sito che richiede login (es. 'spaggiari', 'gmail web', 'portale aziendale'). Path a un file Mozilla cookies.txt da iniettare nelle Request: prima `login_urls(domain=...)` produce il file, poi find_urls lo usa. Esempio: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. Se passato ma il file non esiste, il crawl prosegue pubblico (degradazione silenziosa)."
+en = "OPTIONAL. OMIT for public searches (news, wikipedia, blogs, generic web search). USE ONLY when the user explicitly cites a site that requires login (e.g. 'spaggiari', 'gmail web', 'company portal'). Path to a Mozilla cookies.txt file to be injected into Requests: first `login_urls(domain=...)` produces the file, then find_urls uses it. Example: '~/.config/metnos/cookies/web.spaggiari.eu.txt'. If passed but the file does not exist, the crawl continues publicly (silent degradation)."
 
 [args.properties.time_window]
 type        = "string"
@@ -191,19 +200,33 @@ type        = "string"
 enum        = ["httpx", "playwright"]
 default     = "httpx"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
 it = "Backend di implementazione (default 'httpx' = urllib stdlib + SearXNG + HostThrottle). 'playwright' = stub (non ancora attivo). Plugin esterni futuri potranno aggiungere altri client."
 en = "Backend implementation (default 'httpx' = urllib stdlib + SearXNG + HostThrottle). 'playwright' = stub (not yet active). Future external plugins may add other clients."
 
+[output]
+schema_inline = "{ ok: bool, entries: array, discovered_documents?: integer, discovery_strategy?: string, metadata?: object, error?: string }"
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
-name = "network.read"
+name = "network:http"
 hint = ["http://*", "https://*"]
 
 [[capabilities]]
-name = "crawl.recursive"
+name = "network:http"
 hint = ["mode=research", "mode=archive"]
 
 [[tests]]
@@ -215,3 +238,8 @@ expect = { ok = false, error_contains = "seed_urls" }
 name   = "errore_se_seed_urls_vuoto_senza_search_query"
 input  = { seed_urls = [] }
 expect = { ok = false, error_contains = "seed_urls" }
+
+[[tests]]
+name = "bfs_parallela_equivalente"
+reference = "tests/runtime/executors/test_find_urls_parallel_recursive.py::test_parallel_bfs_is_structurally_equivalent_to_serial"
+equivalence_runs = 2

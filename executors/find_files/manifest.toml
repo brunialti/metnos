@@ -2,13 +2,13 @@
 # Naming compositivo: azione_oggetto. Promosso a seed il 27 aprile 2026.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_files"
-version     = "0.2.1"
-# Il walk ricorsivo su filesystem grandi/lenti (mount di rete) e' legittimamente
-# lento; il default loader di 30s lo fa scadere. Timeout ampio: lo scan e'
-# comunque limitato dall'early-stop su `max_results` (default backend 1000) e da
-# `max_depth`. Stessa classe di get_files (§2.11).
+version     = "0.4.0"
+# Il walk ricorsivo usa il visitor parallelo comune. `max_results` limita
+# l'output; un sondaggio interno molto piu' ampio mantiene affidabili i conteggi
+# ordinari senza materializzare corpus arbitrariamente grandi.
 timeout_s   = 120
 # C7 CP3: il backend local è pathlib/os puro → gira anche su
 # Windows (validato find/read sul device e2e 5/7). Senza questa
@@ -19,13 +19,20 @@ affinity    = [
     "find", "trova", "cerca", "search", "ricerca", "file", "documento", "glob", "pattern"
             ]
 
+[execution]
+effect            = "read_only"
+parallelism_class = 3
+resource_class    = "local_io"
+concurrency_key   = "none"
+equivalence_gate  = "verified"
+
 [description]
-it = "SCOPO: cerca file per pattern in directory. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (lookup ID). OUT: entries=[{path,name,type,mime,kind,size,mtime}]."
-en = "SCOPO: search files by pattern in directory. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (ID lookup). OUT: entries=[{path,name,type,mime,kind,size,mtime}]."
+it = "SCOPO: cerca file per pattern con visita ricorsiva parallela. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (lookup ID); ricerca di duplicati esatti (-> find_files_hash). OUT: entries=[{path,name,type,mime,kind,size,mtime}], conteggi e completezza della sorgente."
+en = "SCOPO: search files by pattern with a parallel recursive walk. PATTERN: find_files(base_path=\"/\", patterns=[\"*.jpg\"]). NON: list_dirs+filter_entries; get_files (ID lookup); exact duplicate search (-> find_files_hash). OUT: entries=[{path,name,type,mime,kind,size,mtime}], counts, and source completeness."
 
 [code]
 files  = ["find_files.py"]
-digest = "sha256:5c27264ec57995ba025dacd6c4167378cd6d268d6c45bfae025b8aa7e7fc506a"
+digest = "sha256:4823c1736c5714c247c0450baf041e302386c4ed625d074c7b56fba88ee4d78f"
 
 [args]
 type     = "object"
@@ -47,10 +54,11 @@ en = "Single glob pattern to search for in names. E.g. 'README.md', '*.pdf', 'di
 
 [args.properties.patterns]
 type        = "array"
+semantic_type = "file_globs"
 
 [args.properties.patterns.description]
-it = "Lista di pattern glob. Match se almeno un pattern matcha. Es. ['*.jpg','*.png']. Cumulativo con pattern."
-en = "List of glob patterns. Match if at least one pattern matches. E.g. ['*.jpg','*.png']. Cumulative with patterns."
+it = "Lista di pattern glob. Corrisponde se almeno un pattern coincide, per esempio ['*.jpg','*.png']; è cumulativa con pattern. Il runtime può ricavarla da tipi naturali generali come «file immagine» o «video»."
+en = "List of glob patterns. Matches when at least one pattern matches, for example ['*.jpg','*.png']; cumulative with pattern. The runtime can derive it from broad natural types such as 'image files' or 'video'."
 
 [args.properties.case_sensitive]
 type        = "boolean"
@@ -74,8 +82,8 @@ minimum     = 1
 default     = 1000
 
 [args.properties.max_results.description]
-it = "Tetto massimo di risultati. Default 1000. Quando raggiunto, l'output ha truncated=true e il runtime aggiunge un avviso al messaggio finale."
-en = "Maximum number of results. Default 1000. When reached, the output has truncated=true and the runtime adds a warning to the final message."
+it = "Numero massimo di risultati mostrati. Default 1000. La ricerca usa un sondaggio interno molto più ampio e dichiara se anche quello viene esaurito."
+en = "Maximum displayed results. Default 1000. Search uses a much wider internal probe and reports if that probe is exhausted too."
 
 [args.properties.max_depth]
 type        = "integer"
@@ -112,26 +120,55 @@ schema_inline = """
     kind: str, size: int, mtime: float
   }>,
   matches: Array<str>,
+  ok_count: int,
+  fail_count: int,
+  failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
   metadata: {
     base_path: str, patterns: Array<str>, recursive: bool,
-    case_sensitive: bool, count: int, visited: int, truncated: bool
+    case_sensitive: bool, count: int, visited: int, visited_dirs: int,
+    walk_workers: int, source_complete: bool, truncated: bool
   },
   truncated?: bool,
   truncated_what?: str,
   used?: int,
+  available_total?: int,
+  available_at_least?: int,
+  source_scan_truncated?: bool,
   error?: str
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "path"], cell_max = 160 },
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "type", source = ["type", "kind", "mime"], cell_max = 48 },
+  { key = "size", source = "size", cell_max = 24 },
+  { key = "mtime", source = "mtime", cell_max = 32 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
 hint = ["~/notes/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name     = "trova_file_esatto"
 setup    = "mkdir -p /tmp/metnos_test_find/sub && echo a > /tmp/metnos_test_find/hello.txt && echo b > /tmp/metnos_test_find/sub/deeper.txt"
 input    = { pattern = "hello.txt", base_path = "/tmp/metnos_test_find" }
 expect   = { ok = true, matches_contains = "hello.txt" }
+env      = { METNOS_EXECUTOR_ASSIGNED_WORKERS = "32" }
+equivalence_runs = 2
 teardown = "rm -rf /tmp/metnos_test_find"
 
 [[tests]]
@@ -217,14 +254,6 @@ expect_full = """
 }
 """
 
-[args.properties.kind]
-type        = "string"
-default     = ""
-
-[args.properties.kind.description]
-it = "t"
-en = "t"
-
 [placement]
 # C7 Area-2 CP3 (5/7): manifest-driven come list_dirs (F2, ADR 0034) —
 # scope="any" = server di default; device SOLO se la chat lo nomina.
@@ -232,3 +261,4 @@ en = "t"
 # lazy-gw nel dispatcher (il device non carica mai il ramo Drive).
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

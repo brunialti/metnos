@@ -1,15 +1,32 @@
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 name        = "compute_signatures"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity = ["compute", "canonicalize", "signature", "reversibility", "seed", "bootstrap"]
 
-revertible       = true
-reverse_pattern  = []
+revertible       = false
+
+[output]
+schema_inline = "{ ok: bool, signature?: string, binary?: string, subcommand_or_flag?: string, target_kind?: string, requires_sudo?: bool, class?: string, undo_hint?: string | null, reason?: string, applied?: integer, skipped?: integer, seed_version?: integer, db_version?: integer, upgraded?: bool, skipped_signatures?: array, summary?: string, error?: string }"
+
+[[capabilities]]
+name = "compute:pure"
+hint = ["signature"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.local/state/metnos/safety.db"]
+when = { arg = "op", values = ["seed_apply"] }
+
+[[tests]]
+name = "missing_op"
+input = {}
+expect = { ok = false }
 
 [description]
-it = "SCOPO: calcola e trasforma signature. PATTERN: compute_signatures(op='command', argv=[...]). NON: gestire whitelist/blacklist (-> get_signatures); modificare curatela (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
-en = "SCOPO: compute and transform signatures. PATTERN: compute_signatures(op='command', argv=[...]). NON: manage whitelist/blacklist (-> get_signatures); modify curation (-> set_signatures). OUT: entries=[{signature, binary, subcommand_or_flag, target_kind, requires_sudo}]."
+it = "SCOPO: calcola o classifica signature; può applicare idempotentemente il seed di sicurezza. PATTERN: compute_signatures(op='command', argv=[...]). NON: consultare liste (-> get_signatures); modificare curatela utente (-> set_signatures). OUT: per `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; per `reversibility` {class,undo_hint,reason}; per `seed_apply` {applied,skipped,seed_version,...}."
+en = "SCOPO: compute or classify a signature; it can idempotently apply the safety seed. PATTERN: compute_signatures(op='command', argv=[...]). NON: query lists (-> get_signatures); modify user curation (-> set_signatures). OUT: for `command` {signature,binary,subcommand_or_flag,target_kind,requires_sudo}; for `reversibility` {class,undo_hint,reason}; for `seed_apply` {applied,skipped,seed_version,...}."
 
 [code]
 files  = ["compute_signatures.py"]

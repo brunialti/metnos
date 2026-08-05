@@ -23,7 +23,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -63,6 +62,12 @@ def _backend(client: str):
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+        }
     client = args.get("client") or "local"
     backend = _backend(client)
     if backend is None:

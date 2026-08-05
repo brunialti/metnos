@@ -3,27 +3,35 @@
 # `find_persons_indices` resta come thin alias (vedi suo manifest).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_images_indices"
-version     = "0.2.0"
+version     = "0.3.0"
 author      = "Roberto Brunialti"
 affinity    = ["cerca", "find", "search", "ricerca-foto", "ricerca-volti",
                 "ricerca-semantica", "foto", "image", "volti", "faces",
                 "persons", "geotag", "near", "vicino", "primo-piano",
                 "ritratto", "simili", "similar", "uguale", "alike",
                 "stesso-soggetto", "same-subject", "come-questa",
-                "like-this"]
+                "like-this", "immagini indicizzate", "indexed pictures",
+                "indexed images"]
 
 # Query pure (indice gia' presente) ~1 s.
 timeout_s = 14400
+revertible = false
+platforms = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [description]
-it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="bob"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
-en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="bob"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+it = """SCOPO: cerca foto indicizzate per contenuto, persona o volto. PATTERN: find_images_indices(query_text="mare"); name="nome"; min_face_pixels=40000. NON: EXIF di path noti -> get_files; file di una cartella per path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
+en = """SCOPO: search indexed photos by content, person or face. PATTERN: find_images_indices(query_text="sea"); name="name"; min_face_pixels=40000. NON: EXIF of known paths -> get_files; files of a folder by path -> find_files. OUT: entries=[{path,score}] + metadata{total_count,total_size_gb}."""
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:bda7714f579549569da57e5f1d2d97290da1726819cae3ca34c53e35b55a8513"
+digest = "sha256:0222cb463213410edb764a1cf9d55ea770c3b37c3607a531063f749208826a9f"
 
 [args]
 type     = "object"
@@ -59,16 +67,25 @@ en = "Textual query for semantic CONTENT search. The VLM has described each phot
 type        = "string"
 
 [args.properties.name.description]
-it = "Nome della persona registrata via `set_persons` (es. 'bob', 'carol'). Filtro IDENTITA': cosine ArcFace. UN solo nome. Per AND multi-persona usa `names` plurale (es. names=['alice','carol'] → foto con ENTRAMBI). Combinabile con tutti gli altri args."
-en = "Name of the person registered via `set_persons` (e.g., 'bob', 'carol'). IDENTITY filter: ArcFace cosine. ONE name only. For AND multi-person use `names` plural (e.g. names=['alice','carol'] → photos with BOTH). Combinable with all other args."
+it = "Nome di una persona registrata via `set_persons`. Filtro IDENTITA' ArcFace; per piu' persone usa `names`. Combinabile con gli altri criteri."
+en = "Name of a person registered via `set_persons`. ArcFace IDENTITY filter; use `names` for multiple people. Combinable with other criteria."
 
 [args.properties.names]
 type        = "array"
 items       = { type = "string" }
 
 [args.properties.names.description]
-it = "Lista di nomi enrollati con semantica AND: ogni foto deve contenere TUTTI i nomi (face match per ognuno). Es. names=['alice','carol'] tiene solo foto con ENTRAMBI. Plurale §2.1. MATCH ESATTO sui slug enrollati: wildcard NON supportati. Tolleranza §2.4: `name=\"alice, carol\"` con virgola viene auto-promosso a names plurale."
-en = "List of enrolled names with AND semantics: each photo must contain ALL the names (face match for each). E.g. names=['alice','carol'] keeps only photos with BOTH. Plural §2.1. EXACT MATCH on enrolled slugs: wildcards NOT supported. Tolerance §2.4: `name=\"alice, carol\"` with comma auto-promoted to names plural."
+it = "Lista di nomi registrati; `names_op=and` richiede tutti i volti nella stessa foto, `or` almeno uno. MATCH ESATTO sugli slug, senza wildcard; una stringa separata da virgole viene tollerata e promossa a lista."
+en = "List of registered names; `names_op=and` requires every face in one photo, while `or` requires at least one. EXACT slug match, no wildcards; a comma-separated string is tolerated and promoted to a list."
+
+[args.properties.names_op]
+type        = "string"
+enum        = ["and", "or"]
+default     = "and"
+
+[args.properties.names_op.description]
+it = "Operatore fra più nomi: `and` richiede tutte le persone nella stessa foto; `or` ne richiede almeno una. Default `and`."
+en = "Operator between multiple names: `and` requires every person in the same photo; `or` requires at least one. Default `and`."
 
 [args.properties.text_score_min]
 type        = "number"
@@ -179,13 +196,62 @@ type        = "string"
 it = "DEPRECATED post-ADR0117. Ignorato con warn log. NON USARE."
 en = "DEPRECATED post-ADR0117. Ignored with warn log. DO NOT USE."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{
+    path: str, name?: str, score: number,
+    match_type: 'text' | 'face' | 'gps' | 'compose',
+    description: str, keywords: Array<str>, size_bytes?: int,
+    location_hint?: str, activity_hint?: str, gps?: object,
+    taken_at?: str, bbox?: Array<number>
+  }>,
+  attachments?: Array<{kind: 'image', path: str, basename: str, score?: number, caption?: str, date?: str}>,
+  n_above_threshold?: int,
+  base_path?: str,
+  schema_version?: int,
+  metadata?: {total_count: int, total_size_bytes: int, total_size_gb: number, n_with_size: int},
+  applied_paths_filter?: int,
+  names_unenrolled?: Array<str>,
+  name_unenrolled?: bool,
+  truncated?: bool, truncated_what?: str, used?: int,
+  available_total?: int, cap_field?: str, cap_value?: int,
+  error?: str, error_class?: str, error_code?: str,
+  recommended_action?: {executor: str, args: object}
+}
+"""
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "path"], cell_max = 160 },
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "score", source = "score", cell_max = 16 },
+  { key = "match_type", source = "match_type", cell_max = 32 },
+  { key = "description", source = "description", cell_max = 180 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
-hint = ["~/**", "/mnt/**", "/tmp/**"]
+hint = ["arg:reference_images"]
 
 [[capabilities]]
-name = "index.read"
-hint = ["~/.local/share/metnos/index/image/**"]
+name = "index:read"
+hint = ["image"]
+
+[[capabilities]]
+name = "metnos:read"
+hint = ["persons_registry:local"]
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
 
 [[tests]]
 name   = "criterio_mancante_fallisce"
@@ -201,3 +267,8 @@ expect = { ok = false, error_contains = "non trovato" }
 name   = "idx_arg_ignored_no_crash"
 input  = { base_path = "/tmp/metnos_does_not_exist_xyz_unified", idx = "scene", query_text = "mare" }
 expect = { ok = false }
+
+[[tests]]
+name   = "radice_non_oggetto_fallisce"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }

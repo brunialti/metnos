@@ -3,9 +3,11 @@
 # Invariante di sicurezza: metadata-only (capability metnos:credentials_metadata_only).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_credentials"
-version     = "0.1.0"
+version     = "0.2.0"
+revertible  = false
 author      = "Roberto Brunialti"
 affinity    = ["credenziali", "chiavi", "token", "segreti", "configurate",
                 "quali account", "elenca credenziali", "registro credenziali",
@@ -54,6 +56,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "binding", source = "binding", cell_max = 80 },
+  { key = "status", source = "status", cell_max = 32 },
+  { key = "age_days", source = "age_days", cell_max = 16 },
+  { key = "scopes", source = "scopes", cell_max = 160 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:credentials_metadata_only"
 hint = []
@@ -61,8 +77,6 @@ hint = []
 [[capabilities]]
 name = "metnos:read"
 hint = []
-
-reversible = true
 
 [[tests]]
 name   = "rejects_explicit_empty_query"

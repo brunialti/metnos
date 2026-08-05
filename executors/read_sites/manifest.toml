@@ -1,8 +1,9 @@
 # Manifest executor `read_sites` — dominio sites F1 (spec §3.4).
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_sites"
-version     = "0.1.0"
+version     = "0.2.0"
 timeout_s   = 120
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
@@ -18,7 +19,7 @@ en = "SCOPO: reads text + REDACTED screenshot of an open web session (post-login
 
 [code]
 files  = ["read_sites.py"]
-digest = "sha256:059041a81367d13cc2efd6458bebd8379ea24038b9f159ca1394b2ab44309fd5"
+digest = "sha256:2d4b8ce6fe6a2dadabd4810357663c407cd92c25ea749eddb27ef903e032b387"
 
 [args]
 type     = "object"
@@ -61,6 +62,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "url", "session_id"], cell_max = 180 },
+  { key = "url", source = "url", cell_max = 240 },
+  { key = "ok", source = "ok", cell_max = 16 },
+  { key = "sensitive", source = "sensitive", cell_max = 16 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:sites"
 hint = ["*"]
@@ -76,5 +91,5 @@ input  = { session_ids = [] }
 expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 
 [placement]
-scope     = "any"
+scope     = "server"
 device_ok = false

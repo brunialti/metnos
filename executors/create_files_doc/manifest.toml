@@ -3,9 +3,10 @@
 # Dispatcher canonical Google Docs create (24/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name             = "create_files_doc"
-version          = "0.1.0"
+version          = "0.2.0"
 author           = "Roberto Brunialti"
 affinity         = [
     "doc", "documento", "google doc", "google docs",
@@ -22,7 +23,7 @@ en = "SCOPO: creates a new Google Doc. PATTERN: create_files_doc(title='Title', 
 
 [code]
 files  = ["create_files_doc.py"]
-digest = "sha256:4eb6f23abdf0934863e0db36e3db804b011a6efe1fa899c038a060e4c3318702"
+digest = "sha256:fddf1a53dba351a5cba7ba27d0de07a09eb15a2f9bdc01c04a53cc6254697b3a"
 
 [args]
 type     = "object"
@@ -48,7 +49,7 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -76,6 +77,11 @@ schema_inline = """
 [[capabilities]]
 name = "metnos:create"
 hint = ["doc:remote"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "missing_title_fails"

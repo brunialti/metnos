@@ -5,7 +5,7 @@ Prima vivevano in TRE liste driftate (google_api.SCOPES, setup.SCOPES, preset
 usava la preset e ha materializzato il drift — token rigenerato SENZA
 gmail.send / gmail.readonly / cloud-vision (che il token precedente aveva) →
 invio mail e vision rotti in silenzio. Una lista sola + guard di parita'
-(`runtime/tests/test_google_scopes_sot.py`): il drift diventa impossibile.
+(`tests/runtime/backends/test_google_scopes_sot.py`): il drift diventa impossibile.
 
 NB: gmail.modify NON implica gmail.send (scope separato). cloud-vision serve a
 `vision web_detect`. contacts.readonly basta (People API in sola lettura).

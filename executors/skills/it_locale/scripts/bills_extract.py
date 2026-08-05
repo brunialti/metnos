@@ -37,7 +37,6 @@ import json
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from email.message import Message
 from pathlib import Path
@@ -232,8 +231,10 @@ def _focus_text(text: str, *, max_chars: int = 4000) -> str:
 
 
 def _llm_extract_bill(focused_text: str, vendor_hint: str) -> dict:
-    """LLM Gemma 4 26B extract schema bolletta. Determinismo
-    temperature=0; output sempre parsato come dict."""
+    """Estrazione bolletta col workload ``bills.extract`` (tier middle).
+
+    La policy appartiene al tier; qui l'output viene sempre parsato come dict.
+    """
     from llm_helpers import call_llm
     prompt = (
         f"Estrai dalla bolletta italiana di {vendor_hint} questi campi:\n"
@@ -246,8 +247,10 @@ def _llm_extract_bill(focused_text: str, vendor_hint: str) -> dict:
         "Se un campo manca: null."
     )
     try:
-        out, _ = call_llm(focused_text, prompt, tier="middle",
-                          max_tokens=200, temperature=0.0)
+        from llm_workloads import tier_for
+        out, _ = call_llm(
+            focused_text, prompt, tier=tier_for("bills.extract"),
+            max_tokens=200)
     except Exception:
         return {}
     cleaned = out.strip()
@@ -344,9 +347,10 @@ def extract_bill_from_email(msg: Message, *,
             result["raw_provenance"] = "text_llm"
             return result
 
-    # Niente extract riuscito ma identificato come bolletta
-    result["raw_provenance"] = "identified_only"
-    return result
+    # Il mittente identifica il provider, non il tipo del singolo messaggio.
+    # Senza almeno un campo economico o temporale non abbiamo evidenza
+    # sufficiente per promuovere la comunicazione a bolletta.
+    return None
 
 
 def bills_in_account(account: str, *, time_window: str = "last-90d",

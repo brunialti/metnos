@@ -23,7 +23,6 @@ size_bytes_in, size_bytes_out}]` + `summary` + truncation visibility §2.7.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -34,7 +33,9 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import (  # noqa: E402
+    backup_file_for_undo, restore_file_from_undo_backup, run_stdio,
+)
 import time
 from pathlib import Path
 from typing import Any
@@ -216,8 +217,14 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
     in_paths = paths[:max_files]
 
     results = []
+    dirs_created: list[str] = []
     if dst_dir:
-        Path(dst_dir).mkdir(parents=True, exist_ok=True)
+        dst_root = Path(dst_dir).expanduser().resolve()
+        cursor = dst_root
+        while not cursor.exists() and cursor != cursor.parent:
+            dirs_created.append(str(cursor))
+            cursor = cursor.parent
+        dst_root.mkdir(parents=True, exist_ok=True)
 
     for src in in_paths:
         t0 = time.time()
@@ -229,6 +236,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
             continue
         if src_ext == to_format:
             results.append({"src": src, "dst": src, "ok": True,
+                             "path": src, "created": False,
                              "error": _msg("ERR_FORMAT_SAME"),
                              "error_class": "noop_same_format",
                              "elapsed_ms": 0})
@@ -246,11 +254,24 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
                              "error_class": "unsupported_pair"})
             continue
         dst = _dst_path(src, to_format, dst_dir, dst_suffix)
-        if Path(dst).exists() and not overwrite:
+        dst_path = Path(dst)
+        dst_existed = dst_path.exists()
+        if dst_existed and not overwrite:
             results.append({"src": src, "dst": dst, "ok": False,
                              "error": _msg("ERR_DST_EXISTS", path=dst),
                              "error_class": "dst_exists"})
             continue
+        prev_blob_path = None
+        if dst_existed:
+            try:
+                prev_blob_path = backup_file_for_undo(dst_path)
+            except OSError as exc:
+                results.append({
+                    "src": src, "dst": dst, "ok": False,
+                    "error": str(exc),
+                    "error_class": "undo_backup_failed",
+                })
+                continue
         cmd_argv = builder(src, dst, src_ext, to_format, quality)
         missing = _binary_missing(cmd_argv)
         if missing:
@@ -260,6 +281,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
             proc = subprocess.run(cmd_argv, capture_output=True, text=True,
                                    timeout=300)
             if proc.returncode != 0:
+                restore_file_from_undo_backup(dst_path, prev_blob_path)
                 err = (proc.stderr or proc.stdout or "").strip()[:500]
                 results.append({"src": src, "dst": None, "ok": False,
                                  "error": err or f"exit {proc.returncode}",
@@ -268,15 +290,21 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
                 continue
             size_in = Path(src).stat().st_size if Path(src).exists() else 0
             size_out = Path(dst).stat().st_size if Path(dst).exists() else 0
-            results.append({"src": src, "dst": dst, "ok": True,
-                             "elapsed_ms": int((time.time() - t0) * 1000),
-                             "size_bytes_in": size_in,
-                             "size_bytes_out": size_out})
+            row = {"src": src, "dst": dst, "path": dst,
+                   "created": not dst_existed, "ok": True,
+                   "elapsed_ms": int((time.time() - t0) * 1000),
+                   "size_bytes_in": size_in,
+                   "size_bytes_out": size_out}
+            if prev_blob_path:
+                row["prev_blob_path"] = prev_blob_path
+            results.append(row)
         except subprocess.TimeoutExpired:
+            restore_file_from_undo_backup(dst_path, prev_blob_path)
             results.append({"src": src, "dst": None, "ok": False,
                              "error": _msg("ERR_TIMEOUT"),
                              "error_class": "timeout"})
         except OSError as e:
+            restore_file_from_undo_backup(dst_path, prev_blob_path)
             results.append({"src": src, "dst": None, "ok": False,
                              "error": str(e),
                              "error_class": "os_error"})
@@ -289,6 +317,7 @@ def invoke(args: dict | None = None, **kwargs: Any) -> dict[str, Any]:
     out: dict[str, Any] = {
         "ok": True,
         "results": results,
+        "dirs_created": dirs_created,
         "ok_count": ok_count,
         "summary": summary,
     }

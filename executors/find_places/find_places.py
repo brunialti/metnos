@@ -5,9 +5,9 @@ Cerca POI per query testuale. Vettoriale per costruzione: una sola call
 processa una lista di queries. Ogni query restituisce fino a `max_results`
 match.
 
-Backend: Nominatim (default pubblico, override via env METNOS_NOMINATIM_URL
-per self-hostato). Cache locale in ~/.local/share/metnos/geo_cache.sqlite.
-Throttle ≥1.1s fra request consecutive.
+Backend: chain provider-agnostic configurata da ``METNOS_GEO_PROVIDERS``;
+default Google Places, con fallback Photon. L'executor non dipende da un
+provider specifico.
 
 Contratto:
     stdin:  JSON {queries: list[str], max_results?: int}
@@ -15,7 +15,6 @@ Contratto:
                   rate_limited?: bool, place_warning?: str}
     `entries` ha forma list[{query, matches: list[{name,lat,lon,address,place_slug}]}]
 """
-import json
 import os
 import sys
 from pathlib import Path
@@ -34,6 +33,7 @@ from geo_provider import forward_search as _geo_forward  # noqa: E402
 
 def invoke(args):
     queries = args.get("queries")
+    response_lang = str(args.get("_lang") or "it").split("-", 1)[0].lower()
     max_results = coerce_cap(args, "max_results", 5, maximum=50)
     # §2.4 robustezza NL→determinismo: l'LLM passa spesso un singolo string per
     # un arg-lista (queries="ospedali" invece di ["ospedali"]). Coalesce a lista
@@ -60,8 +60,8 @@ def invoke(args):
     # `near` come STRINGA (nome città/zona, non coordinate): l'LLM lo passa per
     # query compound "<POI> a <city>" (es. "ospedali" + near="Padova"). Non
     # scartarlo in silenzio (§2.8: si perderebbe il vincolo geografico) né
-    # geocodificarlo qui: foldalo nel testo di OGNI query → Nominatim risolve
-    # "ospedali Padova" nativamente (§2.4, deterministico). Se near è già
+    # geocodificarlo qui: foldalo nel testo di OGNI query e lascia che il
+    # provider risolva "ospedali Padova" (§2.4, deterministico). Se near è già
     # coords (sopra), salta.
     if near is None and isinstance(near_raw, str) and near_raw.strip():
         _near_s = near_raw.strip()
@@ -72,7 +72,7 @@ def invoke(args):
         ]
     radius_km = args.get("radius_km")
     # bounded default: TRUE quando near e' presente (1/5/2026 fix).
-    # Senza bounded, Nominatim viewbox e' solo bias di ranking debole
+    # Senza bounded, il vincolo spaziale del provider puo' essere solo un bias
     # → top match puo' essere a 150km (caso "Farmacia, Correzzola, Padova"
     # che vince la query globale "farmacia" anche con bias Brescia).
     # Con bounded=True restringe stretto al viewbox (~radius_km). L'utente
@@ -94,7 +94,7 @@ def invoke(args):
                 continue
             matches, source = _geo_forward(
                 q.strip(), max_results=max_results, near=near,
-                radius_km=radius_km, bounded=bounded, lang="it",
+                radius_km=radius_km, bounded=bounded, lang=response_lang,
             )
             backend_used = source
             if source == "rate_limited":

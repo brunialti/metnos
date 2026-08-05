@@ -82,5 +82,17 @@
       "source_lang": null,
       "source_hash": null
     }
+  },
+  "args.dry_run.description": {
+    "it": {
+      "version_hash": "sha256:5cddb3afc6aeaf4cfaad85b894489f200767b1f4cf429714faef071abc57a23c",
+      "source_lang": null,
+      "source_hash": null
+    },
+    "en": {
+      "version_hash": "sha256:75dbf631f167bbc35db07a91e845c4afd0923972f2d37562794791e25df7e604",
+      "source_lang": null,
+      "source_hash": null
+    }
   }
 }

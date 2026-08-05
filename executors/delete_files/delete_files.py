@@ -16,7 +16,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -33,12 +32,54 @@ _HANDLERS = {
 }
 
 
-def invoke(args):
-    client = args.get("client") or "local"
+def _backend(client: str):
     backend = _HANDLERS.get(client)
+    if backend is None and client == "google_workspace":
+        try:
+            from backends.files import google_workspace as backend
+        except ImportError:
+            return None
+        _HANDLERS[client] = backend
+    return backend
+
+
+def _fail(error_code: str, error: str, *, error_class: str) -> dict:
+    return {
+        "ok": False,
+        "ok_count": 0,
+        "fail_count": 0,
+        "results": [],
+        "failed": [],
+        "error_class": error_class,
+        "error_code": error_code,
+        "error": error,
+    }
+
+
+def invoke(args):
+    if not isinstance(args, dict):
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+            error_class="invalid_args",
+        )
+    client = args.get("client", "local")
+    if not isinstance(client, str) or not client.strip():
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="client",
+                 reason="must be the string 'local'"),
+            error_class="invalid_args",
+        )
+    backend = _backend(client)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
+        return _fail(
+            "ERR_NOT_APPLICABLE",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
+    if client == "google_workspace":
+        return backend.delete(args)
     return backend.delete_files(args)
 
 

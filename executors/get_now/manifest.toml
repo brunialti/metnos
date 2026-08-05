@@ -1,9 +1,11 @@
 # Manifest dell'executor `time_read` — Metnos v1.1
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_now"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux", "windows", "macos"]
 author      = "Roberto Brunialti"
 affinity    = [
     "time", "ora", "ore", "data", "orario", "orari", "fuso", "calendario", "now", "adesso",
@@ -11,31 +13,32 @@ affinity    = [
             ]
 
 [description]
-it = "SCOPO: ottiene l'ora corrente. PATTERN: get_now(timezone=\"UTC\"). NON: cercare pattern (-> find) o elencare container (-> list). OUT: entries=[{iso_time}]."
-en = "SCOPO: gets the current time. PATTERN: get_now(timezone=\"UTC\"). NON: search patterns (-> find) or list containers (-> list). OUT: entries=[{iso_time}]."
+it = "SCOPO: ottiene data e ora correnti nel fuso configurato o in un fuso IANA esplicito. PATTERN: get_now() oppure get_now(timezone=\"Europe/Rome\"). NON: leggere eventi calendario o stimare un fuso da un luogo. OUT: {content,now,time,date,metadata} con errore tipizzato sui fusi invalidi."
+en = "SCOPO: gets the current date and time in the configured timezone or an explicit IANA zone. PATTERN: get_now() or get_now(timezone=\"Europe/Rome\"). NON: read calendar events or infer a timezone from a place. OUT: {content,now,time,date,metadata} with typed failure for invalid zones."
 
 [code]
 files  = ["get_now.py"]
-digest = "sha256:d4e8f8b86f522c7fbe05f8da7798fd70cc3b02941cc838be017d787d9425c6b1"
+digest = "sha256:788db41769c73b8a0fbcd9bd7739ec4e8513c2d9cd3ce11c1a09f7fb91af1f59"
 
 [args]
 type = "object"
 
 [args.properties.timezone]
 type        = "string"
-default     = "UTC"
+default     = "Europe/Rome"
 
 [args.properties.timezone.description]
-it = "Fuso orario IANA (es. 'Europe/Rome'). Default 'UTC'."
-en = "IANA Timezone (e.g., 'Europe/Rome'). Default 'UTC'."
+it = "Fuso orario IANA (es. 'Europe/Rome'). Default: fuso configurato, Europe/Rome nell'installazione standard."
+en = "IANA timezone (e.g. 'Europe/Rome'). Default: configured timezone, Europe/Rome in the standard installation."
 
 [output]
 schema_inline = """
 {
   ok: bool,
   content: str,
-  metadata: { timezone: str, iso8601: str, epoch: float },
-  error?: str
+  now?: str, time?: str, date?: str,
+  metadata?: { timezone: str, iso8601: str, epoch: float, time: str, date: str },
+  error?: str, error_class?: str, error_code?: str
 }
 """
 
@@ -43,10 +46,14 @@ schema_inline = """
 name = "time:read"
 hint = []  # capability atomica, target_kind='none'
 
+[placement]
+scope = "server"
+device_ok = false
+
 [[tests]]
-name   = "ora_utc_default"
+name   = "ora_configured_default"
 input  = {}
-expect = { ok = true, metadata_field_eq = { timezone = "UTC" } }
+expect = { ok = true, metadata_field_eq = { timezone = "Europe/Rome" } }
 
 [[tests]]
 name   = "ora_in_europe_rome"

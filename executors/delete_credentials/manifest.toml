@@ -4,9 +4,11 @@
 # Verbo `delete` §2.2: mutazione terminale. Modello delete_persons ADR 0086 PR2.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_credentials"
-version     = "0.1.0"
+version     = "0.2.0"
+revertible  = false
 author      = "Roberto Brunialti"
 affinity    = ["dimentica credenziale", "rimuovi token", "cancella credenziali",
                 "revoca account", "elimina chiave", "purge credenziali",
@@ -19,7 +21,7 @@ en = "SCOPO: delete credentials from storage (purge or bindings). PATTERN: delet
 
 [code]
 files  = ["delete_credentials.py"]
-digest = "sha256:b40a942c0786dc563f87875bcc4206403e39484069f2c54bbfb0b01a5f062701"
+digest = "sha256:3cfc9b4a5cec32007a24cd1f46c520b8c69f461bcae6ee0a5cf09f742cf4d2c7"
 
 [args]
 type     = "object"
@@ -67,11 +69,6 @@ hint = []
 [[capabilities]]
 name = "metnos:write"
 hint = []
-
-# Reverse pattern §2.3: delete e' terminale (modello delete_persons ADR 0086 PR2).
-# Il catalogo deterministico non copre delete_credentials. Per ripristinare,
-# l'utente esegue set_credentials con gli stessi valori.
-reversible = false
 
 [[tests]]
 name   = "rejects_no_args"

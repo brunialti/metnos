@@ -6,7 +6,6 @@
 combinando:
   - persons.sqlite (biometric enrollment: examples ArcFace)
   - users.db      (account paired ADR 0083: role, autonomy, channels)
-  - contacts      (futuro: email/phone)
 
 Distinzione semantica vs `get_persons`:
   get_persons     → scheda registro (slug, name, n_examples) — single store
@@ -16,12 +15,11 @@ Determinismo §7.9: nessun LLM, solo sqlite JOIN. Cross-link via slug
 (persons.slug == slugify(users.name)).
 
 Pattern `${RUNTIME:actor}` (ADR 0163): l'arg `name` accetta placeholder
-runtime risolto a monte da praxis_executor. Es. `name="${RUNTIME:actor}"`
+runtime risolto a monte dall'engine. Es. `name="${RUNTIME:actor}"`
 viene risolto in `name="host"` (o nome configurato) prima dell'invoke.
 """
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import sys
@@ -36,52 +34,14 @@ from persons_registry import PersonsRegistry, slugify  # noqa: E402
 import config as _C  # noqa: E402
 
 
-def _provider_label(imap_host: str) -> str:
-    """Etichetta provider leggibile dall'host IMAP (no lista hardcoded §7.3)."""
-    h = (imap_host or "").strip().lower()
-    for pfx in ("imap.", "imaps.", "mail.", "in."):
-        if h.startswith(pfx):
-            return h[len(pfx):]
-    return h
-
-
-def _list_actor_mail_accounts() -> list[dict]:
-    """Vista LIVE degli account mail configurati (SoT = mail_client/env, ADR 0163
-    «contacts futuro»). Profilo = vista, NON copia: zero duplicazione, niente
-    doppio pool. Espone SOLO account+indirizzo+provider; MAI segreti.
-    §7.9 deterministico (lettura env/config). Robusto: ogni errore → []."""
-    try:
-        import mail_client as _mc  # _RUNTIME gia' su sys.path
-    except Exception:
-        return []
-    out: list[dict] = []
-    try:
-        known = _mc.list_known_accounts()
-    except Exception:
-        return []
-    for acc in known:
-        try:
-            c = _mc._account_creds(acc)
-        except Exception:
-            continue
-        addr = (c.get("user") or "").strip()
-        if not addr:
-            continue
-        out.append({
-            "account": acc,
-            "address": addr,
-            "provider": _provider_label(c.get("imap_host") or ""),
-        })
-    return out
-
-
 def _persons_db_path() -> Path | None:
     v = os.environ.get("METNOS_USER_DATA")
     return (Path(v) / "persons.sqlite") if v else None
 
 
 def _users_db_path() -> Path:
-    return _C.PATH_USER_DATA / "users.db"
+    root = os.environ.get("METNOS_USER_DATA")
+    return (Path(root) if root else Path(_C.PATH_USER_DATA)) / "users.db"
 
 
 def _load_users_by_slug() -> dict:
@@ -92,41 +52,67 @@ def _load_users_by_slug() -> dict:
     udb = _users_db_path()
     if not udb.exists():
         return {}
+    conn = None
     try:
-        conn = sqlite3.connect(str(udb))
+        conn = sqlite3.connect(
+            udb.resolve().as_uri() + "?mode=ro",
+            uri=True,
+            isolation_level=None,
+        )
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
         rows = conn.execute(
             "SELECT id, name, display_name, role, autonomy_level, "
-            "created_at, email, notes FROM users").fetchall()
+            "created_at, email FROM users").fetchall()
         out: dict = {}
         for r in rows:
             d = dict(r)
             d["slug"] = slugify(d.get("name") or "")
-            d["display_slug"] = slugify(d.get("display_name") or "")
+            display_name = d.get("display_name")
+            d["display_slug"] = slugify(display_name) if display_name else ""
             out[d["slug"]] = d
-        # Allega channels per ogni user
+        # Allega una proiezione minima dei canali. recipient_id e token di
+        # pairing restano fuori dal processo e dall'output.
         try:
             ch_rows = conn.execute(
-                "SELECT user_id, channel, verified, created_at "
+                "SELECT user_id, channel, verified_at "
                 "FROM user_channels").fetchall()
             chs_by_user: dict = {}
             for c in ch_rows:
-                chs_by_user.setdefault(c["user_id"], []).append(dict(c))
+                chs_by_user.setdefault(c["user_id"], []).append({
+                    "channel": c["channel"],
+                    "verified": bool(c["verified_at"]),
+                    "verified_at": c["verified_at"],
+                })
             for d in out.values():
                 d["channels"] = chs_by_user.get(d["id"], [])
         except sqlite3.OperationalError:
             pass
-        conn.close()
+        # Preferenze dalla stessa connessione read-only: importare users.py
+        # aprirebbe invece una connessione bootstrap capace di scrivere.
+        try:
+            pref_rows = conn.execute(
+                "SELECT user_id, key, value FROM user_prefs"
+            ).fetchall()
+            prefs_by_user: dict = {}
+            for pref in pref_rows:
+                prefs_by_user.setdefault(pref["user_id"], {})[
+                    pref["key"]
+                ] = pref["value"]
+            for d in out.values():
+                d["prefs"] = prefs_by_user.get(d["id"], {})
+        except sqlite3.OperationalError:
+            pass
         return out
-    except Exception:
-        return {}
+    finally:
+        if conn is not None:
+            conn.close()
 
 
 def _merge_entry(person: dict | None, user: dict | None,
                   *, is_self: bool = False,
                   include_examples: bool = True,
-                  include_channels: bool = True,
-                  include_mail_accounts: bool = False) -> dict:
+                  include_channels: bool = True) -> dict:
     """Fonde un record persons + un record users in una entry unificata."""
     if person is None and user is None:
         return {}
@@ -147,28 +133,14 @@ def _merge_entry(person: dict | None, user: dict | None,
         entry.setdefault("name", user.get("display_name") or user.get("name"))
         entry["role"] = user.get("role")
         entry["autonomy_level"] = user.get("autonomy_level")
-        entry["user_id"] = user.get("id")
         if user.get("email"):
             entry["email"] = user["email"]
-        # W2 v1 (ADR 0187): le preferenze esplicite fanno parte del profilo
-        # («chi sono io» le mostra). Best-effort: users.db senza tabella → {}.
-        try:
-            import users as _users_mod
-            _prefs = _users_mod.list_prefs(user.get("id") or "")
-            if _prefs:
-                entry["prefs"] = _prefs
-        except Exception:
-            pass
+        if user.get("prefs"):
+            entry["prefs"] = user["prefs"]
         if include_channels and user.get("channels") is not None:
             entry["channels"] = user["channels"]
     if is_self:
         entry["is_self"] = True
-    # Account mail come VISTA del profilo (no duplicazione, ADR 0163).
-    # Solo per host/self: gli account operati da Metnos appartengono al host.
-    if include_mail_accounts:
-        ma = _list_actor_mail_accounts()
-        if ma:
-            entry["mail_accounts"] = ma
     return entry
 
 
@@ -193,14 +165,66 @@ def _match_user_to_person(reg, user: dict) -> dict | None:
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     name = args.get("name")
     role = args.get("role")  # filter: host | guest | None
     include_examples = args.get("include_examples", True)
     include_channels = args.get("include_channels", True)
-    actor = args.get("_actor") or ""  # passed via runtime if available
+    actor = args.get("_actor") or os.environ.get("METNOS_ACTOR") or ""
 
-    reg = PersonsRegistry(db_path=_persons_db_path())
-    users_by_slug = _load_users_by_slug()
+    if name is not None and not isinstance(name, str):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_STRING", arg="name"),
+            "error_class": "invalid_input",
+            "error_code": "name_not_string",
+        }
+    if role is not None and role not in {"host", "guest"}:
+        return {
+            "ok": False,
+            "error": _msg("ERR_ADMIN_ROLE_INVALID", role=role),
+            "error_class": "invalid_input",
+            "error_code": "role_invalid",
+        }
+    if name and role:
+        return {
+            "ok": False,
+            "error": _msg(
+                "ERR_ARG_INVALID", arg="name/role",
+                reason="mutuamente esclusivi / mutually exclusive",
+            ),
+            "error_class": "invalid_input",
+            "error_code": "name_role_conflict",
+        }
+    for field, value in (
+        ("include_examples", include_examples),
+        ("include_channels", include_channels),
+    ):
+        if not isinstance(value, bool):
+            return {
+                "ok": False,
+                "error": _msg("ERR_ARG_ENUM", arg=field, allowed="true, false"),
+                "error_class": "invalid_input",
+                "error_code": f"{field}_not_boolean",
+            }
+
+    try:
+        reg = PersonsRegistry(db_path=_persons_db_path(), read_only=True)
+        users_by_slug = _load_users_by_slug()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": _msg("ERR_DEPENDENCY_MISSING", what="identity profile"),
+            "error_class": "resource_unavailable",
+            "error_code": "identity_profile_unavailable",
+            "detail": str(exc),
+        }
 
     # Generic "host"/"guest" actor → risolvi via users.role
     if actor.lower() in ("host", "guest"):
@@ -212,8 +236,6 @@ def invoke(args):
     try:
         # Modalita' A: lookup specifico per name
         if name:
-            if not isinstance(name, str):
-                return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="name")}
             slugs = reg.resolve_name(name)
             person = reg.get(slugs[0]) if slugs else None
             # User match: prima slug diretto, poi token-anywhere su display_name/name
@@ -223,10 +245,13 @@ def invoke(args):
                 # Fallback: cerca user il cui name/display matcha token con
                 # `name` query (es. name="Roberto Brunialti" → user.name="roberto")
                 for u in users_by_slug.values():
-                    if (slugify(u.get("name") or "") in slugify(name)
-                            or slugify(u.get("display_name") or "")
-                            in slugify(name)
-                            or slugify(name) in slugify(u.get("name") or "")):
+                    query_slug = slugify(name)
+                    account_slug = slugify(u.get("name") or "")
+                    display_name = u.get("display_name")
+                    display_slug = slugify(display_name) if display_name else ""
+                    if (account_slug in query_slug
+                            or (display_slug and display_slug in query_slug)
+                            or query_slug in account_slug):
                         user = u
                         break
             if person is None and user is None:
@@ -244,13 +269,10 @@ def invoke(args):
                 slugify(actor) in target_slug
                 or target_slug in slugify(actor)
                 or (user is not None and user.get("name") == actor))
-            attach_mail = is_self or (
-                user is not None and user.get("role") == "host")
             entry = _merge_entry(
                 person, user, is_self=is_self,
                 include_examples=include_examples,
-                include_channels=include_channels,
-                include_mail_accounts=attach_mail)
+                include_channels=include_channels)
             return {
                 "ok": True,
                 "entries": [entry],
@@ -267,11 +289,11 @@ def invoke(args):
             matched = _match_user_to_person(reg, u)
             if matched and matched.get("slug"):
                 user_to_person[u_slug] = matched["slug"]
+        matched_person_slugs = set(user_to_person.values())
 
         entries: list[dict] = []
         # Unione delle chiavi: persone enrollate + utenti paired (con cross-link)
         all_keys = set(persons_by_slug.keys()) | set(users_by_slug.keys())
-        emitted_person_slugs: set = set()
         for key in sorted(all_keys):
             p = persons_by_slug.get(key)
             u = users_by_slug.get(key)
@@ -279,9 +301,10 @@ def invoke(args):
             if u is not None and key in user_to_person:
                 pslug = user_to_person[key]
                 p = persons_by_slug.get(pslug)
-                emitted_person_slugs.add(pslug)
-            # Se key è person_slug e già emesso via cross-link → skip
-            if p is not None and key in emitted_person_slugs and u is None:
+            # Le persone collegate sono emesse dalla chiave user anche quando
+            # il person_slug viene prima alfabeticamente: niente duplicati
+            # dipendenti dall'ordine di iterazione.
+            if p is not None and key in matched_person_slugs and u is None:
                 continue
             if role:
                 if u is None or u.get("role") != role:
@@ -289,17 +312,23 @@ def invoke(args):
             is_self = bool(actor) and (
                 slugify(actor) == key
                 or (u is not None and u.get("name") == actor))
-            attach_mail = is_self or (u is not None and u.get("role") == "host")
             entry = _merge_entry(
                 p, u, is_self=is_self,
                 include_examples=include_examples,
-                include_channels=include_channels,
-                include_mail_accounts=attach_mail)
+                include_channels=include_channels)
             entries.append(entry)
         return {
             "ok": True,
             "entries": entries,
             "n_entries": len(entries),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": _msg("ERR_DEPENDENCY_MISSING", what="identity profile"),
+            "error_class": "resource_unavailable",
+            "error_code": "identity_profile_unavailable",
+            "detail": str(exc),
         }
     finally:
         reg.close()

@@ -3,6 +3,7 @@
 # Dispatcher canonical Google Docs read (24/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_files_doc"
 version     = "0.1.0"
@@ -21,7 +22,7 @@ en = "SCOPO: reads text from Google Doc. PATTERN: read_files_doc(name='document 
 
 [code]
 files  = ["read_files_doc.py"]
-digest = "sha256:f39981c5c1e367b187c26771cb72822c11c878cc53c6c15e7d5c2b077b8ceb9b"
+digest = "sha256:4c2f03167bbbd5cf15b33b9c8ffea2a269cb86a1bdae2d32c9a4af5c2a1a454c"
 
 [args]
 type     = "object"
@@ -57,7 +58,7 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -81,9 +82,27 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "document_id", "id"], cell_max = 180 },
+  { key = "kind", source = "kind", cell_max = 48 },
+  { key = "content_length", source = "content_length", cell_max = 24 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["doc:remote"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "missing_document_id_fails"

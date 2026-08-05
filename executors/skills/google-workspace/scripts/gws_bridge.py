@@ -51,7 +51,7 @@ def refresh_token(token_data: dict) -> dict:
 
     req = urllib.request.Request(token_data["token_uri"], data=params)
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
@@ -65,9 +65,11 @@ def refresh_token(token_data: dict) -> dict:
         tz=timezone.utc,
     ).isoformat()
 
-    get_token_path().write_text(
+    token_path = get_token_path()
+    token_path.write_text(
         json.dumps(_normalize_authorized_user_payload(token_data), indent=2)
     )
+    token_path.chmod(0o600)
     return token_data
 
 
@@ -100,7 +102,14 @@ def main():
     env = os.environ.copy()
     env["GOOGLE_WORKSPACE_CLI_TOKEN"] = access_token
 
-    result = subprocess.run(["gws"] + sys.argv[1:], env=env)
+    try:
+        result = subprocess.run(
+            ["gws"] + sys.argv[1:], env=env,
+            timeout=int(os.environ.get("METNOS_GWS_TIMEOUT_S", "300")),
+        )
+    except subprocess.TimeoutExpired:
+        print("ERROR: gws command timed out", file=sys.stderr)
+        sys.exit(124)
     sys.exit(result.returncode)
 
 

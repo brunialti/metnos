@@ -2,25 +2,25 @@
 # Naming compositivo §2.2: find_contacts. Read-only su rubrica esterna.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_contacts"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = [
     "find", "trova", "cerca", "search", "ricerca",
     "contatto", "contatti", "contact", "contacts",
     "rubrica", "address book", "agenda contatti",
-    "amico", "amici", "persona", "people", "person",
     "telefono", "numero", "phone", "email", "indirizzo"
 ]
 
 [description]
-it = "SCOPO: cerca contatti nella rubrica esterna per nome/email/telefono. PATTERN: find_contacts(query=\"Luca\"). NON: leggere un singolo contatto (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
-en = "SCOPO: search contacts in external address book by name/email/phone. PATTERN: find_contacts(query=\"Luca\"). NON: read a single contact (-> read_contacts). OUT: entries=[{id, name, emails, phones}]."
+it = "SCOPO: cerca contatti nella rubrica esterna per nome/email/telefono. PATTERN: find_contacts(query=\"nome\"). NON: leggere un singolo contatto (-> read_contacts); profili identitari (-> read_persons). OUT: entries=[{id, name, emails, phones}]."
+en = "SCOPO: search contacts in an external address book by name/email/phone. PATTERN: find_contacts(query=\"name\"). NON: read one contact (-> read_contacts); identity profiles (-> read_persons). OUT: entries=[{id, name, emails, phones}]."
 
 [code]
 files  = ["find_contacts.py"]
-digest = "sha256:09f7f780c1339895c1da56ad6411e67998c44ff5f6d1438a61303fa4f275cb23"
+digest = "sha256:69a99e56f78803d23ee20100e0dc5123704661028b07179b3fedb88cf26ba3c9"
 
 [args]
 type     = "object"
@@ -43,39 +43,60 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 [args.properties.client.description]
 it = "Backend rubrica. Default 'google_workspace'. Futuro: 'local' (vCard import)."
 en = "Address book backend. Default 'google_workspace'. Future: 'local' (vCard import)."
 
 [[capabilities]]
-name = "exec_subprocess"
+name = "code:exec"
 hint = ["subprocess Python google_api.py contacts list"]
 
 [[capabilities]]
-name = "exec_net"
+name = "network:http"
 hint = ["Google People API HTTPS"]
 
-[reversible]
-value = false
+[output]
+schema_inline = "{ ok: bool, entries: array, error?: string }"
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "display_name", "email", "$entry"], cell_max = 160 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "caso felice"
 input  = { query = "" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts" }
 expect = { ok = true }
 
 [[tests]]
 name   = "con query"
 input  = { query = "luca", max_results = 5 }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts" }
 expect = { ok = true }
 
 [[tests]]
 name   = "client invalido"
 input  = { client = "invalid" }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts" }
 expect = { ok = false, error_contains = "Operazione non applicabile per questo provider" }
 
 [[tests]]
 name   = "max_results piccolo"
 input  = { max_results = 1 }
+env    = { METNOS_SUBPROCESS_FAKE = "skill_test_fakes.contacts" }
 expect = { ok = true }

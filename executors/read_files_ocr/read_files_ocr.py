@@ -16,7 +16,6 @@ Contratto:
     stdout: JSON {ok, ok_count, fail_count, entries, failed}
             entries[i] = {path, content: str, char_count: int, lang}
 """
-import json
 import os
 import shutil
 import subprocess
@@ -28,9 +27,50 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import coerce_cap, run_stdio, vector_result  # noqa: E402
+from agentic_executor import (  # noqa: E402
+    AgenticContext, AgenticLimits, AgenticProposal,
+    deterministic_then_fallback_sync,
+)
+import prompt_loader  # noqa: E402
+import vlm_client  # noqa: E402
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".gif", ".webp", ".heic"}
+
+
+def _ocr_is_insufficient(content: str) -> bool:
+    compact = "".join(ch for ch in str(content or "") if ch.isalnum())
+    return len(compact) < 8
+
+
+def _improve_ocr_with_agentic_fallback(path: Path, content: str,
+                                        response_lang: str) -> str:
+    """Use the local VLM only when deterministic OCR produced little text."""
+    def propose(_ctx):
+        prompt = prompt_loader.get("agentic_ocr_extract", response_lang)
+        result = vlm_client.describe_image(
+            path, lang=response_lang, prompt=prompt, max_tokens=1024)
+        if result.get("_vlm_error"):
+            return None
+        text = str(result.get("description") or "").strip()
+        return AgenticProposal(text) if text else None
+
+    return deterministic_then_fallback_sync(
+        deterministic=lambda: content,
+        needs_fallback=_ocr_is_insufficient,
+        context=lambda primary: AgenticContext(
+            goal={"operation": "verbatim_ocr"},
+            observed={"path_suffix": path.suffix.lower(),
+                      "deterministic_char_count": len(primary or "")},
+            constraints={"verbatim_only": True},
+        ),
+        propose=propose,
+        execute=lambda proposal, _ctx: str(proposal.action),
+        validate=lambda proposal, _ctx: bool(str(proposal.action).strip()),
+        limits=AgenticLimits(max_attempts=1),
+        postcondition=lambda result, _ctx: (
+            not _ocr_is_insufficient(str(result or ""))),
+    )
 
 
 def _ocr_image(path, lang):
@@ -85,8 +125,17 @@ def _read_one(path_arg, lang):
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     paths = args.get("paths")
     lang = args.get("lang") or "ita+eng"
+    response_lang = str(args.get("_lang") or "it").split("-", 1)[0].lower()
+    max_files = coerce_cap(args, "max_files", 20, maximum=100)
     if paths is None or not isinstance(paths, list):
         return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
     if not isinstance(lang, str):
@@ -94,8 +143,10 @@ def invoke(args):
     if not shutil.which("tesseract"):
         return {"ok": False, "error": _msg("ERR_TESSERACT_MISSING")}
 
+    available_total = len(paths)
+    selected_paths = paths[:max_files]
     entries, failed = [], []
-    for i, p in enumerate(paths):
+    for i, p in enumerate(selected_paths):
         if not isinstance(p, str) or not p:
             failed.append({"index": i, "path": p, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
             continue
@@ -103,20 +154,28 @@ def invoke(args):
         if err is not None:
             failed.append({"index": i, "path": str(Path(os.path.expanduser(p)).resolve()), "error": err})
             continue
+        resolved_path = Path(os.path.expanduser(p)).resolve()
+        if resolved_path.suffix.lower() in IMG_EXTS:
+            content = _improve_ocr_with_agentic_fallback(
+                resolved_path, content, response_lang)
         entries.append({
-            "path": str(Path(os.path.expanduser(p)).resolve()),
+            "path": str(resolved_path),
             "content": content,
             "char_count": len(content),
             "lang": lang,
         })
 
-    return {
-        "ok": len(failed) == 0,
-        "ok_count": len(entries),
-        "fail_count": len(failed),
-        "entries": entries,
-        "failed": failed,
-    }
+    out = vector_result(entries, failed)
+    if available_total > len(selected_paths):
+        out.update({
+            "truncated": True,
+            "truncated_what": _msg("MSG_OBJECT_PATHS"),
+            "used": len(selected_paths),
+            "available_total": available_total,
+            "cap_field": "max_files",
+            "cap_value": max_files,
+        })
+    return out
 
 
 def main():

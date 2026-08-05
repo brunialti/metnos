@@ -23,7 +23,7 @@ en = "SCOPO: reply in-thread to Gmail messages. PATTERN: reply_messages(message_
 
 [code]
 files  = ["reply_messages.py"]
-digest = "sha256:59c817a7406dca995d13d135ca8aaca2ed77877616f61807831c5bf7a04fa5d6"
+digest = "sha256:ac53d86d5469c84506a811eb27454ca244d4cc8e0ce89222d1b6df42aa412161"
 
 [args]
 type     = "object"
@@ -73,7 +73,7 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -83,6 +83,11 @@ en = "Backend: only 'google_workspace' (Gmail API). Manual SMTP reply not suppor
 [[capabilities]]
 name = "mail:send"
 hint = ["gmail:send"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "args_invalidi_no_ids"

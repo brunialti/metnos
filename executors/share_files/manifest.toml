@@ -4,9 +4,10 @@
 # `set` (upsert stato interno).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "share_files"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity = [
     "share", "condividi", "condividere", "grant", "give-access",
@@ -24,7 +25,7 @@ en = "SCOPO: grants access permissions to Drive files without duplicating them. 
 
 [code]
 files  = ["share_files.py"]
-digest = "sha256:85e51209e80d31efb1bccf8e739c7cb26cceddc9230a6aa6118d813f76b26301"
+digest = "sha256:c49ca412761bde43ada3a49de5e6b9fd1ef8403cc4763af26e4f9356ef5ea34c"
 
 [args]
 type = "object"
@@ -89,7 +90,7 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -99,6 +100,14 @@ en = "Backend: only 'google_workspace' (Drive). Local fs not supported."
 [[capabilities]]
 name = "drive:permissions"
 hint = ["drive:share"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[output]
+schema_inline = "{ ok: bool, results: array, ok_count: integer, fail_count: integer, error?: string }"
 
 [[tests]]
 name   = "args_invalidi_no_ids"

@@ -3,9 +3,10 @@
 # Sostituisce `create_dir` (single-item) il 27 aprile 2026.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "create_dirs"
-version     = "0.4.0"
+version     = "0.5.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -21,7 +22,7 @@ en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=
 
 [code]
 files  = ["create_dirs.py"]
-digest = "sha256:ca41155ecdf942de8fe162e5fd3a1fdbc458b1bad0d0ebc0b0fb4a48e1804c30"
+digest = "sha256:6fa454133f8eeea87fd9448cf0dff421c6809175970263980be30b1748049b81"
 
 [args]
 type     = "object"
@@ -71,9 +72,29 @@ default     = "local"
 it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
 en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  results: Array<{path: str, created: bool, mode_octal?: str}>,
+  failed: Array<{index: int, path, error_code?: str, error: str}>,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
 [[capabilities]]
 name = "fs:write"
 hint = ["~/notes/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name     = "crea_lista_di_dirs"
@@ -120,7 +141,8 @@ expect = { ok = false, error_contains = "must be a list" }
 
 [placement]
 # C7 Area-2 estensione (5/7 sera): mutante con reverse remotabile
-# (delete_created_dirs → delete_dirs if_empty_only accodato allo stesso
+# (delete_created_dirs → delete_dirs con force=false accodato allo stesso
 # device da undo_last_turn, ADR 0183 D2).
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

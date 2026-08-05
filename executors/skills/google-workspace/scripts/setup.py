@@ -24,6 +24,7 @@ Agent workflow:
 from __future__ import annotations  # allow PEP 604 `X | None` on Python 3.9+
 
 import argparse
+from importlib.util import find_spec
 import json
 import os
 import subprocess
@@ -84,23 +85,21 @@ def _format_missing_scopes(missing_scopes: list[str]) -> str:
 
 def install_deps():
     """Install Google API packages if missing. Returns True on success."""
-    try:
-        import googleapiclient  # noqa: F401
-        import google_auth_oauthlib  # noqa: F401
+    if (find_spec("googleapiclient") is not None
+            and find_spec("google_auth_oauthlib") is not None):
         print("Dependencies already installed.")
         return True
-    except ImportError:
-        pass
 
     print("Installing Google API dependencies...")
     try:
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", "--quiet"] + REQUIRED_PACKAGES,
             stdout=subprocess.DEVNULL,
+            timeout=int(os.environ.get("METNOS_SETUP_PIP_TIMEOUT_S", "600")),
         )
         print("Dependencies installed.")
         return True
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         print(f"ERROR: Failed to install dependencies: {e}")
         print(
             "On environments without pip (e.g. Nix), install the optional extra instead:"
@@ -112,10 +111,8 @@ def install_deps():
 
 def _ensure_deps():
     """Check deps are available, install if not, exit on failure."""
-    try:
-        import googleapiclient  # noqa: F401
-        import google_auth_oauthlib  # noqa: F401
-    except ImportError:
+    if (find_spec("googleapiclient") is None
+            or find_spec("google_auth_oauthlib") is None):
         if not install_deps():
             sys.exit(1)
 
@@ -186,6 +183,7 @@ def check_auth(quiet: bool = False):
                     indent=2,
                 )
             )
+            TOKEN_PATH.chmod(0o600)
             missing_scopes = _missing_scopes_from_payload(_load_token_payload(TOKEN_PATH))
             if missing_scopes:
                 print(f"AUTHENTICATED (partial): Token refreshed but missing {len(missing_scopes)} scopes:")
@@ -235,6 +233,7 @@ def store_client_secret(path: str):
         sys.exit(1)
 
     CLIENT_SECRET_PATH.write_text(json.dumps(data, indent=2))
+    CLIENT_SECRET_PATH.chmod(0o600)
     print(f"OK: Client secret saved to {CLIENT_SECRET_PATH}")
 
 
@@ -250,6 +249,7 @@ def _save_pending_auth(*, state: str, code_verifier: str):
             indent=2,
         )
     )
+    PENDING_AUTH_PATH.chmod(0o600)
 
 
 def _load_pending_auth() -> dict:
@@ -375,6 +375,7 @@ def exchange_auth_code(code: str):
         print("Some services may not be available.")
 
     TOKEN_PATH.write_text(json.dumps(token_payload, indent=2))
+    TOKEN_PATH.chmod(0o600)
     PENDING_AUTH_PATH.unlink(missing_ok=True)
     print(f"OK: Authenticated. Token saved to {TOKEN_PATH}")
     print(f"Profile-scoped token location: {display_skill_home()}/google_token.json")
@@ -401,7 +402,8 @@ def revoke():
                 f"https://oauth2.googleapis.com/revoke?token={creds.token}",
                 method="POST",
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
+            ),
+            timeout=30,
         )
         print("Token revoked with Google.")
     except Exception as e:

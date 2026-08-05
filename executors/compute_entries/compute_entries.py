@@ -43,20 +43,40 @@ _OPS = _OPS_NUMERIC | _OPS_COUNT
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     entries = args.get("entries")
     key = args.get("key")
     op = args.get("op")
     return_entry = bool(args.get("return_entry", False))
 
     if not isinstance(entries, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_LIST", arg="entries"),
+            "error_class": "invalid_input",
+            "error_code": "entries_not_list",
+        }
     if op not in _OPS:
-        return {"ok": False,
-                "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS)))}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS))),
+            "error_class": "invalid_input",
+            "error_code": "op_invalid",
+        }
     # 'count' (senza key) e' permesso: count totale di entries.
     if op != "count" and (not isinstance(key, str) or not key):
-        return {"ok": False,
-                "error": _msg("ERR_ARG_MISSING", arg="key")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_MISSING", arg="key"),
+            "error_class": "invalid_input",
+            "error_code": "key_missing",
+        }
 
     count_input = len(entries)
     ignored = 0
@@ -136,7 +156,12 @@ def invoke(args):
     elif op == "min":
         result, winner_entry = min(values, key=lambda t: t[0])
     else:
-        return {"ok": False, "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS)))}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_ENUM", arg="op", allowed=", ".join(sorted(_OPS))),
+            "error_class": "invalid_input",
+            "error_code": "op_invalid",
+        }
 
     out = {
         "ok": True,

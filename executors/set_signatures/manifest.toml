@@ -1,17 +1,31 @@
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 name        = "set_signatures"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["imposta", "autorizza", "vieta", "permetti", "rimuovi",
                 "curatela", "gestione signatures", "configura permessi",
-                "approva comando", "blocca comando"]
+                "approva comando", "blocca comando", "set signature",
+                "authorize command", "allow command", "deny command",
+                "blacklist command", "whitelist command", "remove signature"]
 
-revertible       = true
-reverse_pattern  = ["delete_created_paths"]
+revertible       = false
+
+[output]
+schema_inline = "{ ok: bool, signature?: string, kind?: string, severity?: string, source?: string, removed?: bool, previous_kind?: string, message?: string, error?: string }"
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/.config/metnos/**", "~/.local/share/metnos/**"]
+
+[[tests]]
+name = "missing_kind"
+input = { signature = "x" }
+expect = { ok = false }
 
 [description]
-it = "SCOPO: imposta, autorizza o rimuove signatures dalla curatela utente. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolare -> compute_signatures; lookup statico -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
-en = "SCOPO: set, authorize or remove signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; static lookup -> get_signatures. OUT: entries=[{kind,signature,severity,reason}]."
+it = "SCOPO: imposta o rimuove signature dalla curatela. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"motivo\"). NON: calcolo -> compute_signatures; lettura -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; non annullabile."
+en = "SCOPO: sets or removes signatures from user curation. PATTERN: set_signatures(kind=\"blacklist\", signature=\"bin:cmd:kind\", reason=\"reason\"). NON: compute -> compute_signatures; read -> get_signatures. OUT: {signature,kind,removed?,previous_kind?,message}; not undoable."
 
 [code]
 files  = ["set_signatures.py"]

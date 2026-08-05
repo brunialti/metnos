@@ -2,18 +2,16 @@
 """
 delete_images_indices — executor di Metnos v1.1.
 
-Cancella l'indice persistente delle immagini in `base_path` per il tipo
-specificato (scene|persons|gps|all). Operazione non reversibile (no blob
-backup): l'indice si puo' ricostruire da zero con `create_images_indices`.
+Cancella l'indice persistente unificato delle immagini in `base_path`.
+Operazione non reversibile (no blob backup): l'indice si puo' ricostruire da
+zero con `create_images_indices`.
 
 Cancella SOLO il derivato persistente in
-    `~/.local/share/metnos/index/image/<sha8>/<idx>/`
+    `~/.local/share/metnos/index/image/<sha16>/unified/`
 Le foto reali sul filesystem non vengono toccate.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import shutil
 import sys
@@ -25,18 +23,13 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 
-_VALID_IDX_FULL = ("scene", "persons", "gps")
+_VALID_IDX_FULL = ("unified",)
 _VALID_IDX = _VALID_IDX_FULL + ("all",)
 
 
 def _index_image_root() -> Path:
-    """Test isolation via env vars (8/5/2026): vedi runtime/config.py."""
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root()
 
 
 def _is_dry_run() -> bool:
@@ -46,23 +39,13 @@ def _is_dry_run() -> bool:
 def _index_root_for_base(base_path: Path) -> Path:
     # Chiave corpus via SoT condivisa (index_schema.canonical_corpus_path):
     # logica/stabile al mount, coerente con find/create/get (fix 23/6).
-    from index_schema import canonical_corpus_path
-    digest = hashlib.sha256(
-        canonical_corpus_path(base_path).encode("utf-8")).hexdigest()
-    return _index_image_root() / digest[:16]
+    from index_schema import image_corpus_dir
+    return image_corpus_dir(base_path)
 
 
 def _dir_size(path: Path) -> int:
-    total = 0
-    if not path.exists():
-        return 0
-    for p in path.rglob("*"):
-        try:
-            if p.is_file():
-                total += p.stat().st_size
-        except OSError:
-            continue
-    return total
+    from index_schema import directory_size
+    return directory_size(path)
 
 
 def invoke(args):

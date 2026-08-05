@@ -31,7 +31,6 @@ Contratto:
 """
 import datetime as _dt
 import fnmatch
-import json
 import os
 import re
 import sys
@@ -166,7 +165,12 @@ def _extract_time_windows(entries: list, field_start: str | None = None,
 def invoke(args):
     entries = args.get("entries")
     if not isinstance(entries, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="entries", of="dicts")}
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "entries_not_list",
+            "error": _msg("ERR_ARG_NOT_LIST_OF", arg="entries", of="dicts"),
+        }
 
     kinds = _ensure_list(args.get("kind"))
     types = _ensure_list(args.get("type"))
@@ -178,7 +182,12 @@ def invoke(args):
         try:
             name_regex = re.compile(name_regex_str, re.IGNORECASE)
         except re.error as e:
-            return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="name_regex", reason=str(e))}
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "invalid_name_regex",
+                "error": _msg("ERR_ARG_INVALID", arg="name_regex", reason=str(e)),
+            }
     size_min = args.get("size_min")
     size_max = args.get("size_max")
     mtime_after = _parse_iso_to_epoch(args.get("mtime_after"))
@@ -207,11 +216,21 @@ def invoke(args):
         try:
             where_regex_re = re.compile(where_regex_str, re.IGNORECASE)
         except re.error as e:
-            return {"ok": False, "error": _msg("ERR_ARG_INVALID", arg="where_regex", reason=str(e))}
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "invalid_where_regex",
+                "error": _msg("ERR_ARG_INVALID", arg="where_regex", reason=str(e)),
+            }
     _has_where_str_op = any(x is not None for x in (
         where_starts_with, where_contains, where_glob, where_regex_str))
     if (where_in or where_not_in or _has_where_str_op) and not where_field:
-        return {"ok": False, "error": _msg("ERR_FILTER_WHERE_FIELD")}
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "missing_where_field",
+            "error": _msg("ERR_FILTER_WHERE_FIELD"),
+        }
 
     def keep(e):
         if not isinstance(e, dict):
@@ -234,7 +253,20 @@ def invoke(args):
             return False
         if size_max is not None and (size is None or size > size_max):
             return False
+        # I producer filesystem canonici non erano coerenti sul nome:
+        # `list_dirs` espone mtime_epoch, `find_files` espone mtime. Il filtro
+        # temporale deve consumare entrambi senza costringere il planner a una
+        # trasformazione artificiale (turn live 67d22e8c). ISO resta ammesso
+        # per producer esterni; valori non interpretabili vengono esclusi in
+        # modo deterministico quando un bound è richiesto.
         mt = e.get("mtime_epoch")
+        if mt is None:
+            mt = e.get("mtime")
+        if mt is not None and not isinstance(mt, (int, float)):
+            try:
+                mt = float(mt)
+            except (TypeError, ValueError):
+                mt = _parse_iso_to_epoch(mt)
         if mtime_after is not None and (mt is None or mt < mtime_after):
             return False
         if mtime_before is not None and (mt is None or mt > mtime_before):

@@ -20,6 +20,8 @@ Modalita':
 - **mail (back-compat)**: `to=email|list` su ogni message.
 - **multi-user `to_user` + `via_channel`**: resolution via
   `runtime/users.py` (ADR 0083), policy cross-user via vaglio (ADR 0084).
+- **reply Gmail**: `in_reply_to=<message id>` dentro il message; usa lo
+  stesso verbo canonico `send` e conserva thread/References nel backend.
 
 Contratto:
     args:
@@ -37,7 +39,6 @@ back-compat (vedi `_VIA_CHANNEL_ALIAS`).
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import sys
@@ -52,7 +53,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import run_stdio, vector_result  # noqa: E402
 from backends.messages import email_metnos, telegram_bot  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 
@@ -155,11 +156,41 @@ def _normalize_via(via: str) -> str:
     return _VIA_CHANNEL_ALIAS.get(via, via)
 
 
+def _mail_account_error(account: str) -> dict | None:
+    """Valida un account soltanto quando il ramo email lo usa.
+
+    Un invio Telegram non deve dipendere dalla presenza di configurazione
+    SMTP. Un account fornito esplicitamente resta invece validato subito:
+    conserva il fail-closed contro nomi inventati dal planner.
+    """
+    if account.strip().lower() in (
+            "all", "auto", "noreply", "dyn", "metnos", "metnos_system"):
+        return None
+    try:
+        from mail_client import resolve_account as _resolve_acc
+        if _resolve_acc(account) is None:
+            return {
+                "ok": False,
+                "error_code": "ERR_UNKNOWN_ACCOUNT",
+                "error": _msg("ERR_UNKNOWN_ACCOUNT", account=account),
+                "error_class": "invalid_args",
+                "results": [],
+                "failed": [],
+                "ok_count": 0,
+                "fail_count": 0,
+            }
+    except Exception:
+        # mail_client non disponibile: il backend emettera' l'errore operativo
+        # canonico se e quando il ramo email viene realmente eseguito.
+        return None
+    return None
+
+
 def invoke(args):
     messages = args.get("messages")
     # Default account configurabile (config-hierarchy env>default §11): permette
     # di dirottare l'uscita su un account con quota quando il provider di default
-    # è esaurito (es. Migadu out-quota → METNOS_DEFAULT_MAIL_ACCOUNT=knowcastle),
+    # è esaurito (es. quota esaurita → METNOS_DEFAULT_MAIL_ACCOUNT=account_work),
     # senza che l'LLM/planner scelga l'account (resta config, non intento).
     account = (args.get("account")
                or os.environ.get("METNOS_DEFAULT_MAIL_ACCOUNT")
@@ -175,20 +206,14 @@ def invoke(args):
                 "error": _msg("ERR_ARG_NOT_LIST", arg="messages")}
     if not isinstance(account, str) or not account.strip():
         return {"ok": False, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="account")}
-    # Intercetta SUBITO un account INESISTENTE (decisione 2/6): un account che
-    # non risolve a uno noto e' una probabile ALLUCINAZIONE dell'LLM → errore.
-    # Va PRIMA del no-op su messages=[] (§2.1: lista vuota = "niente da fare",
-    # non un errore — ma solo se l'account e' valido). Riservati esclusi.
-    if account.strip().lower() not in ("all", "auto", "noreply", "dyn"):
-        try:
-            from mail_client import resolve_account as _resolve_acc
-            if _resolve_acc(account) is None:
-                return {"ok": False, "error_code": "ERR_UNKNOWN_ACCOUNT",
-                        "error": _msg("ERR_UNKNOWN_ACCOUNT", account=account),
-                        "error_class": "invalid_args",
-                        "results": [], "failed": [], "ok_count": 0, "fail_count": 0}
-        except Exception:
-            pass  # mail_client non disponibile → degradazione sicura, non bloccare
+    # Un account esplicito e' parte dell'intento e viene validato anche per un
+    # no-op; il default di configurazione viene invece verificato just-in-time
+    # soltanto se almeno una request prende davvero il ramo email.
+    account_explicit = args.get("account") is not None
+    if account_explicit:
+        account_error = _mail_account_error(account)
+        if account_error is not None:
+            return account_error
     if len(messages) > 50:
         return {"ok": False,
                 "error": _msg("ERR_SEND_RATE_LIMIT", max=50)}
@@ -204,6 +229,30 @@ def invoke(args):
             continue
         per_msg_to_user = m.get("to_user") or top_to_user
         per_msg_via = _normalize_via(m.get("via_channel") or via_channel or "auto")
+
+        # Una risposta in-thread e' una specializzazione dell'azione canonica
+        # `send`, non un verbo pubblico separato. Il destinatario e gli header
+        # vengono ricavati dal messaggio originale dal backend Gmail.
+        in_reply_to = m.get("in_reply_to")
+        if in_reply_to is not None:
+            reply_client = client or "google_workspace"
+            reply_channel = "email" if per_msg_via == "auto" else per_msg_via
+            if not isinstance(in_reply_to, str) or not in_reply_to.strip():
+                failed_pre.append({"index": i, "error_code": "ERR_ARG_INVALID",
+                                   "error": _msg("ERR_ARG_INVALID", arg="in_reply_to", reason="non-empty string")})
+                continue
+            if not isinstance(m.get("body"), str) or not m["body"].strip():
+                failed_pre.append({"index": i, "error_code": "ERR_ARG_MISSING",
+                                   "error": _msg("ERR_ARG_MISSING", arg="body")})
+                continue
+            if reply_channel != "email" or reply_client != "google_workspace":
+                failed_pre.append({"index": i,
+                                   "error": _msg("ERR_NOT_APPLICABLE", what=f"reply via {reply_channel}/{reply_client}")})
+                continue
+            requests.append({"operation": "reply", "channel": "email",
+                             "client": "google_workspace", "msg": dict(m),
+                             "index": i, "recipient_user": None})
+            continue
 
         if per_msg_to_user is not None:
             # Multi-user path: resolve to recipient_id + concrete channel.
@@ -341,35 +390,60 @@ def invoke(args):
                              "msg": msg_n, "index": i,
                              "recipient_user": None})
 
-    # Raggruppa per (channel, client) e dispatch al backend builtin.
-    grouped: dict[tuple[str, str | None], list[dict]] = {}
+    # Raggruppa per (operation, channel, client) e dispatch al backend builtin.
+    grouped: dict[tuple[str, str, str | None], list[dict]] = {}
     for r in requests:
-        key = (r["channel"], r["client"])
+        key = (r.get("operation", "send"), r["channel"], r["client"])
         grouped.setdefault(key, []).append(r["msg"])
+
+    if not account_explicit and any(
+            channel == "email" for _operation, channel, _client in grouped):
+        account_error = _mail_account_error(account)
+        if account_error is not None:
+            return account_error
 
     results, failed = [], list(failed_pre)
     for key, msgs in grouped.items():
-        backend = _HANDLERS.get(key)
+        operation, channel, selected_client = key
+        backend = _HANDLERS.get((channel, selected_client))
         if backend is None:
-            avail = sorted({k[0] for k in _HANDLERS})
             for m in msgs:
                 failed.append({"index": -1,
                                "error": _msg("ERR_NOT_APPLICABLE", what=str(key))})
             continue
+        if operation == "reply":
+            for m in msgs:
+                reply_args = {
+                    "message_id": m["in_reply_to"],
+                    "body": m["body"],
+                }
+                if m.get("from_header"):
+                    reply_args["from_header"] = m["from_header"]
+                res = backend.reply(reply_args)
+                if res.get("decision") == "needs_inputs":
+                    return res
+                results.extend(res.get("results", []))
+                failed.extend(res.get("failed", []))
+                if (not res.get("ok") and res.get("error")
+                        and not res.get("failed")):
+                    failed.append({"index": -1, "channel": channel,
+                                   "error_code": res.get("error_code"),
+                                   "error": res["error"]})
+            continue
         backend_args = {"messages": msgs}
-        if key[0] == "email":
+        if channel == "email":
             backend_args["account"] = account
         # Allegati top-level → ai backend che li consegnano (email + telegram).
         # Turn 6772053c: erano inoltrati SOLO a email → su telegram il file
         # creato non partiva mai come documento. §2.8 (l'utente lo chiedeva).
-        if top_level_attachments is not None and key[0] in ("email", "telegram"):
+        if top_level_attachments is not None and channel in ("email", "telegram"):
             backend_args["attachments_top"] = top_level_attachments
         # Attribute lookup a call-time: i test possono patchare `backend.send`.
         res = backend.send(backend_args)
         if not res.get("ok") and res.get("error") and not res.get("results") and not res.get("failed"):
             # Backend-level error (connect failed, etc.): tag the originating messages.
             for m in msgs:
-                failed.append({"index": -1, "channel": key[0],
+                failed.append({"index": -1, "channel": channel,
                                "error_code": res.get("error_code"),
                                "error": res["error"]})
             continue
@@ -378,13 +452,7 @@ def invoke(args):
         for f in res.get("failed", []):
             failed.append(f)
 
-    return {
-        "ok": len(failed) == 0,
-        "ok_count": len(results),
-        "fail_count": len(failed),
-        "results": results,
-        "failed": failed,
-    }
+    return vector_result(results, failed, entry_key="results")
 
 
 def main():

@@ -58,7 +58,9 @@ sys.path.insert(0, _RUNTIME)
 
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from executor_workers import assigned_workers  # noqa: E402
 from index_schema import INDEX_SCHEMA_VERSION
+from parallel_walk import parallel_walk  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -103,12 +105,8 @@ _VLM_MAX_TOKENS = int(os.environ.get("METNOS_VLM_MAX_TOKENS") or _VLM.get("max_t
 
 
 def _index_image_root() -> Path:
-    v = os.environ.get("METNOS_INDEX_ROOT")
-    if v:
-        return Path(v) / "image"
-    base = os.environ.get("METNOS_USER_DATA")
-    base_p = Path(base) if base else Path.home() / ".local" / "share" / "metnos"
-    return base_p / "index" / "image"
+    from index_schema import image_index_root
+    return image_index_root()
 
 
 def _is_dry_run() -> bool:
@@ -124,52 +122,33 @@ def _index_dir(base_path: Path) -> Path:
     symlink e path reale devono mappare sullo stesso indice (fix 30/5/2026).
     `invoke()` passa gia' un path resolved, ma canonicalizziamo anche qui per
     robustezza ai caller diretti."""
-    from index_schema import canonical_corpus_path
-    canon = canonical_corpus_path(base_path)
-    digest = hashlib.sha256(canon.encode("utf-8")).hexdigest()
-    return _index_image_root() / digest[:16] / "unified"
+    from index_schema import image_corpus_dir
+    return image_corpus_dir(base_path) / "unified"
 
 
-def _walk_images(base: Path, recursive: bool, max_files: int) -> tuple[list[Path], bool]:
-    out: list[Path] = []
-    truncated = False
-    walker = base.rglob("*") if recursive else base.iterdir()
-    for p in walker:
-        try:
-            if not p.is_file():
-                continue
-        except OSError:
-            continue
-        if p.suffix.lower() not in _IMAGE_EXTS:
-            continue
-        out.append(p)
-        if len(out) >= max_files:
-            truncated = True
-            break
-    return out, truncated
-
-
-def _scan_dir_extensions(base: Path, recursive: bool) -> tuple[int, int, int, set[str]]:
-    """Conta file per estensione. Ritorna (n_total, n_image, n_other, other_exts)."""
-    n_total = 0
-    n_image = 0
-    n_other = 0
-    other_exts: set[str] = set()
-    walker = base.rglob("*") if recursive else base.iterdir()
-    for p in walker:
-        try:
-            if not p.is_file():
-                continue
-        except OSError:
-            continue
-        n_total += 1
-        ext = p.suffix.lower()
-        if ext in _IMAGE_EXTS:
-            n_image += 1
-        else:
-            n_other += 1
-            other_exts.add(p.suffix.upper() if p.suffix else "<no_ext>")
-    return n_total, n_image, n_other, other_exts
+def _scan_image_corpus(base: Path, recursive: bool):
+    """Una sola visita parallela produce diagnostica e lista immagini."""
+    walk = parallel_walk(
+        base,
+        accept=lambda _path, kind, _depth: kind == "file",
+        recursive=recursive,
+    )
+    all_files = walk.items
+    images = [path for path in all_files if path.suffix.lower() in _IMAGE_EXTS]
+    other = [path for path in all_files if path.suffix.lower() not in _IMAGE_EXTS]
+    other_exts = {
+        path.suffix.upper() if path.suffix else "<no_ext>" for path in other
+    }
+    return {
+        "n_total": len(all_files),
+        "n_image": len(images),
+        "n_other": len(other),
+        "other_exts": other_exts,
+        "images": images,
+        "errors": walk.errors,
+        "visited_dirs": walk.visited_dirs,
+        "walk_workers": walk.workers,
+    }
 
 
 def _file_signature(path: Path) -> tuple[float, int]:
@@ -376,7 +355,10 @@ def _classify_folder_label(label: str, lang: str) -> tuple[str, str]:
         )
     cat, place = "ALTRO", ""
     try:
-        out = _folder_ctx_llm().chat(sysp, f"'{label}' =>", tier="middle").text
+        from llm_workloads import tier_for
+        out = _folder_ctx_llm().chat(
+            sysp, f"'{label}' =>",
+            tier=tier_for("images.folder_classify")).text
         line = (out or "").strip().splitlines()[0] if out else ""
         line = re.sub(r"^[\*\s>]+", "", line).strip()
         parts = (line.split("|") + [""])[:2]
@@ -583,7 +565,6 @@ def _build_unified(
 
     # §7.3: SigLIP image embedding (image-to-image visual similarity)
     try:
-        from virt import get_embedder
         clip_engine_obj = get_embedder("image")
         if clip_engine_obj.available:
             image_dim = int(clip_engine_obj.dimension)
@@ -625,8 +606,14 @@ def _build_unified(
     # Parallelismo client-side: cap a llama-server --parallel slots (2).
     # Insightface (ONNX) e urllib sono thread-safe; BGE resta nel main
     # thread per preservare l'ordine di idx.
-    _n_par = int(os.environ.get("METNOS_VLM_PARALLEL", "1"))
-    _n_par = max(1, min(_n_par, 8))
+    try:
+        _provider_parallel = int(os.environ.get("METNOS_VLM_PARALLEL", "1"))
+    except (TypeError, ValueError):
+        _provider_parallel = 1
+    # Il provider puo' imporre un limite piu' basso; non puo' superare il
+    # budget centrale assegnato a questa invocazione.
+    _n_par = max(1, min(
+        _provider_parallel, assigned_workers(), 8))
 
     def _process_one(p):
         """Restituisce (path, status, payload). Eseguibile in parallelo."""
@@ -1121,9 +1108,27 @@ def invoke(args):
     if not base.is_dir():
         return {"ok": False, "error": _msg("ERR_PATH_WRONG_TYPE", expected="dir", actual="file", path=base)}
 
+    scan = _scan_image_corpus(base, recursive)
+    if scan["errors"]:
+        first = scan["errors"][0]
+        return {
+            "ok": False,
+            "error_class": "permission_denied"
+            if first.reason == "permission_denied" else "io_error",
+            "error_code": "ERR_PERMISSION_DENIED"
+            if first.reason == "permission_denied" else "ERR_FILE_READ_FAILED",
+            "error": _msg("ERR_PERMISSION_DENIED")
+            if first.reason == "permission_denied"
+            else _msg("ERR_FILE_READ_FAILED", path=str(first.path)),
+            "detail": first.reason,
+            "fail_count": len(scan["errors"]),
+            "base_path": str(base),
+        }
+
     # Dry run: enumera senza side-effect
     if bool(args.get("dry_run")) or _is_dry_run():
-        n_total, n_image, n_other, other_exts = _scan_dir_extensions(base, recursive)
+        n_image = scan["n_image"]
+        n_other = scan["n_other"]
         # Stima: VLM ~3s, ArcFace ~0.2s, text ~0.05s, EXIF/IO trascurabile
         est_per_file = 3.3
         bytes_per_entry = 4_000  # JSON entry + embedding refs
@@ -1136,12 +1141,15 @@ def invoke(args):
             "n_other_files": int(n_other),
             "est_time_s": round(n_image * est_per_file, 1),
             "est_size_mb": round(n_image * bytes_per_entry / (1024 * 1024), 2),
+            "visited_dirs": scan["visited_dirs"],
+            "walk_workers": scan["walk_workers"],
         }
 
     # Pre-walk diagnostico
-    n_total, n_image_files, n_other_files, other_exts = _scan_dir_extensions(
-        base, recursive,
-    )
+    n_total = scan["n_total"]
+    n_image_files = scan["n_image"]
+    n_other_files = scan["n_other"]
+    other_exts = scan["other_exts"]
     if n_image_files == 0:
         seen = ", ".join(sorted(other_exts)) if other_exts else "(nessuna)"
         supported = "jpg/jpeg/png/heic/webp/tiff/bmp"
@@ -1159,7 +1167,8 @@ def invoke(args):
             "base_path": str(base),
         }
 
-    paths, truncated = _walk_images(base, recursive, max_files)
+    paths = scan["images"][:max_files]
+    truncated = len(scan["images"]) > max_files
     idx_dir = _index_dir(base)
     # Undo §2.3 (module.reverse): l'indice e' ribaltabile SOLO se questo turno
     # lo CREA ex-novo (idx_dir non esisteva). Un update incrementale di un
@@ -1241,6 +1250,8 @@ def invoke(args):
         "model_image": result.get("model_image", "none"),
         "dim_text": int(result["dim_text"]),
         "dim_image": int(result.get("dim_image", 0)),
+        "visited_dirs": scan["visited_dirs"],
+        "walk_workers": scan["walk_workers"],
     }
 
     # §7.3 Completion marker per `notification_dispatcher_task`

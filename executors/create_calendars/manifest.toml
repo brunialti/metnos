@@ -3,9 +3,11 @@
 # Crea un CALENDARIO-contenitore Google (distinto da create_events = evento).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "create_calendars"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
     "crea calendario", "nuovo calendario", "create calendar", "new calendar",
@@ -16,12 +18,12 @@ reverse_pattern  = "delete_calendars_by_id"
 lifecycle        = "active"
 
 [description]
-it = "SCOPO: crea un NUOVO calendario-contenitore Google (non un evento). PATTERN: create_calendars(summary=\"metnos\"). NON: evento/appuntamento -> create_events; elencare -> list_calendars; cancellare -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
-en = "SCOPO: create a NEW Google calendar container (not an event). PATTERN: create_calendars(summary=\"metnos\"). NON: event/appointment -> create_events; list -> list_calendars; delete -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
+it = "SCOPO: crea un NUOVO calendario-contenitore Google (non un evento). PATTERN: create_calendars(summary=\"metnos\"). NON: evento/appuntamento -> create_events; non elenca calendari; cancellare -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
+en = "SCOPO: create a NEW Google calendar container (not an event). PATTERN: create_calendars(summary=\"metnos\"). NON: event/appointment -> create_events; does not list calendars; delete -> delete_calendars. OUT: results=[{ok, calendar_id, summary}]."
 
 [code]
 files  = ["create_calendars.py"]
-digest = "sha256:626e2c10d3211adec640c89561fca346272a9e5f105a2db222e88e0a57804f2c"
+digest = "sha256:c4ab5c058622f393af9505ba06772f0d1997b044b9a446b3cb9181a49ed4bbd7"
 
 [args]
 type     = "object"
@@ -71,7 +73,12 @@ schema_inline = """
 """
 
 [[capabilities]]
-name = "metnos:write"
+name = "provider:access"
+hint = ["google-workspace"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "non_dict_args_fails"

@@ -1,35 +1,38 @@
-# google-workspace (skill first-party, Tier 2)
+# Google Workspace skill
 
-Capacità Google Workspace di Metnos — Gmail, Calendar, Drive, Contacts,
-Sheets, Docs — esposte agli executor `*_google_workspace` / `write_files_doc`
-/ `*_events` / `*_messages` tramite i backend in
-`runtime/backends/{events,files,messages,contacts}/google_workspace.py`.
+This first-party skill connects Metnos to Gmail, Calendar, Drive, Contacts,
+Sheets, and Docs through one Metnos-managed OAuth setup. It remains dormant
+until its credential files are present and valid.
 
-**Tier**: first-party (builtin). Dormant finché non è configurato OAuth.
-La dipendenza esterna (credenziali OAuth Google) è dichiarata QUI; gli
-executor restano provider-agnostici e il `backend_resolver` (ADR 0165)
-sceglie il provider da configurazione.
+The planner uses canonical Metnos executors. Provider selection and API details
+remain behind the backend resolver; a user request does not need to name the
+Google implementation.
 
-## Contenuto
+## Contents
 
-- `SKILL.md` — descrizione, setup OAuth passo-passo, comandi, regole.
-- `scripts/google_api.py` — CLI verso le API Google (preferisce `gws` se
-  presente, altrimenti client Python). Comandi `gmail/calendar/drive/
-  contacts/sheets/docs`. `docs delete-range` = supporto undo §2.3 dell'append.
-- `scripts/setup.py` — flusso OAuth2 (`--check`/`--auth-url`/`--auth-code`).
-- `scripts/gws_bridge.py` — ponte token ↔ CLI `gws`.
-- `scripts/_skill_home.py` — risolve la home della skill via
-  `METNOS_SKILL_HOME` (iniettata dal runtime).
-- `references/gmail-search-syntax.md` — operatori di ricerca Gmail.
+| Path | Purpose |
+|---|---|
+| `SKILL.md` | capability description and complete OAuth setup procedure |
+| `scripts/setup.py` | OAuth check, authorization URL, code exchange, and revocation |
+| `scripts/google_api.py` | stable JSON command boundary for Workspace operations |
+| `scripts/gws_bridge.py` | optional bridge to the `gws` command when installed |
+| `scripts/_scopes.py` | service-to-OAuth-scope mapping |
+| `scripts/_skill_home.py` | installed skill directory resolution |
+| `references/gmail-search-syntax.md` | Gmail query operators used by search commands |
 
-## Credenziali (mai versionate)
+## Credentials
 
-`google_token.json` e `google_client_secret.json` vivono nella copia
-INSTALLATA in `<user-data>/skills/google-workspace/`, non nel repo. Generate
-da `setup.py`. Vedi `.gitignore` del bundle.
+`google_client_secret.json` and `google_token.json` live only in the installed
+skill directory under the Metnos user data root. They are ignored by version
+control and are never bundled in the public repository.
 
-## Note di provenienza
+Run the setup through Metnos or follow the step-by-step commands in `SKILL.md`.
+The token refreshes through the same local credential file. Revocation removes
+the local authorization state and does not alter executor manifests.
 
-Implementazione ridisegnata e mantenuta nel progetto Metnos. Lo script CLI
-parla direttamente con le Google API (OAuth2 desktop flow); nessun servizio
-intermedio di terzi.
+## Execution boundary
+
+`google_api.py` emits structured JSON and prefers the optional `gws` command
+when it can preserve the Metnos contract. Otherwise it uses the bundled Python
+implementation. This backend choice is deterministic configuration, not an LLM
+decision.

@@ -2,26 +2,35 @@
 # Forward a `find_images_indices` (engine unificato).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_persons_indices"
-version     = "0.2.0"
+version     = "0.3.0"
 author      = "Roberto Brunialti"
 affinity    = ["cerca persona", "trova", "foto di", "find person",
-                "search person", "photos of", "carol", "bob",
+                "search person", "photos of",
                 "volti", "faces", "primo piano", "ritratto", "portrait",
-                "ravvicinata", "close-up", "mezzo busto", "half-bust"]
+                "ravvicinata", "close-up", "mezzo busto", "half-bust",
+                "primi piani", "persona registrata", "enrolled person"]
+revertible  = false
+platforms   = ["linux"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [description]
-it = "SCOPO: cerca foto di persona registrata. PATTERN: find_persons_indices(name=\"bob\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); lookup diretto (-> get_persons). OUT: entries=[{score, match_type}]."
-en = "SCOPO: search photos of registered person. PATTERN: find_persons_indices(name=\"bob\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); direct lookup (-> get_persons). OUT: entries=[{score, match_type}]."
+it = "SCOPO: cerca foto di persona registrata. PATTERN: find_persons_indices(name=\"nome\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); lookup diretto (-> get_persons). OUT: entries=[{score, match_type}]."
+en = "SCOPO: search photos of a registered person. PATTERN: find_persons_indices(name=\"name\", reference_images=[\"/img.jpg\"]). NON: enroll (-> set_persons); direct lookup (-> get_persons). OUT: entries=[{score, match_type}]."
 
 [code]
 files  = ["find_persons_indices.py"]
-digest = "sha256:c458b626418a1e3ff6ee814d6d466c64fee57104cea29ef77385f6586645ba88"
+digest = "sha256:c1f191f78ef476ff6355440cac96f2628595e4570aa748a54485949df1887e35"
 
 [args]
 type     = "object"
 required = []
+requires_one_of = [["name", "reference_images"]]
 
 [args.properties.name]
 type        = "string"
@@ -32,6 +41,7 @@ en = "Name of the enrolled person."
 
 [args.properties.reference_images]
 type        = "array"
+items       = { type = "string" }
 
 [args.properties.reference_images.description]
 it = "Lista di foto-query: estrae i volti via ArcFace e cerca match."
@@ -85,17 +95,67 @@ default     = "all"
 it = "Filtro temporale (vedi find_images_indices)."
 en = "Time filter (see find_images_indices)."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  entries: Array<{
+    path: str, name?: str, score: number,
+    match_type: 'face' | 'compose', description: str,
+    keywords: Array<str>, size_bytes?: int, bbox?: Array<number>,
+    taken_at?: str, gps?: object
+  }>,
+  attachments?: Array<{kind: 'image', path: str, basename: str, score?: number, caption?: str, date?: str}>,
+  n_above_threshold?: int, base_path?: str, schema_version?: int,
+  metadata?: {total_count: int, total_size_bytes: int, total_size_gb: number, n_with_size: int},
+  truncated?: bool, used?: int, available_total?: int,
+  error?: str, error_class?: str, error_code?: str,
+  recommended_action?: {executor: str, args: object}
+}
+"""
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "name", source = ["name", "path"], cell_max = 160 },
+  { key = "path", source = "path", cell_max = 240 },
+  { key = "score", source = "score", cell_max = 16 },
+  { key = "match_type", source = "match_type", cell_max = 32 },
+  { key = "description", source = "description", cell_max = 180 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "fs:read"
-hint = ["~/**", "/mnt/**"]
+hint = ["arg:reference_images"]
 
 [[capabilities]]
 name = "metnos:read"
-hint = ["~/.local/share/metnos/persons.sqlite", "~/.local/share/metnos/index/**"]
+hint = ["persons_registry:local"]
 
-reversible = true
+[[capabilities]]
+name = "index:read"
+hint = ["image"]
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
 
 [[tests]]
 name   = "no_criterion_fails"
 input  = { base_path = "/tmp" }
 expect = { ok = false, error_contains = "name" }
+
+[[tests]]
+name   = "non_object_root_fails"
+input  = []
+expect = { ok = false, field_eq = { error_code = "args_not_object" } }
+
+[[tests]]
+name   = "missing_index_fails_without_build"
+input  = { base_path = "/tmp/metnos_person_index_missing_xyz", name = "Nobody" }
+expect = { ok = false }

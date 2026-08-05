@@ -2,9 +2,10 @@
 # Critical (default): forza online in mode hybrid. Approval per_target.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "write_files"
-version     = "0.2.0"
+version     = "0.3.0"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -12,7 +13,7 @@ platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["write", "scrittura", "file", "salva", "scrivi", "crea"]
 revertible      = true
-reverse_pattern = "delete_created_paths"
+reverse_pattern = ["restore_blob_backup", "delete_created_paths"]
 lifecycle       = "active"
 
 [description]
@@ -21,7 +22,7 @@ en = "SCOPO: persist records/text to local files (vectorial §2.1). PATTERN: wri
 
 [code]
 files  = ["write_files.py"]
-digest = "sha256:024f59b1324688d2ff75c9f25ff2efbc5b2d64f5ed97c3d7e23d8a22ed1b2984"
+digest = "sha256:875ac36fc5019afb58f4df74e481851454aef1c0932d5e1c2d5c88792eddf2a0"
 
 [args]
 type     = "object"
@@ -99,6 +100,10 @@ type        = "string"
 enum        = ["utf-8", "latin-1", "binary"]
 default     = "utf-8"
 
+[args.properties.encoding.description]
+it = "Codifica del contenuto: 'utf-8' (default), 'latin-1' oppure 'binary' per base64."
+en = "Content encoding: 'utf-8' (default), 'latin-1', or 'binary' for base64."
+
 [args.properties.mode]
 type        = "string"
 enum        = ["overwrite", "append", "fail_if_exists", "skip_if_exists"]
@@ -123,6 +128,14 @@ en = "Backend implementation. 'local' = local filesystem (default). 'google_work
 [[capabilities]]
 name = "fs:write"
 hint = ["~/notes/scratch/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[output]
+schema_inline = "{ ok: bool, results: array, ok_count: integer, fail_count: integer, created_count?: integer, skipped_count?: integer, error?: string }"
 
 [[tests]]
 name     = "scrive_file_nuovo_overwrite"
@@ -198,3 +211,4 @@ expect   = { ok = true, metadata_field_eq = { ok_count = 0 } }
 # resta server-only (restore_blob_backup non remotabile: blob sul device).
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

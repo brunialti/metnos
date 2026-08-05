@@ -16,8 +16,8 @@ affinity    = ["salva credenziale", "configura account", "registra token",
                 "store key", "api key", "oauth setup"]
 
 [description]
-it = "SCOPO: cifra credenziali e fa scegliere il mandato dei siti. PATTERN: set_credentials(binding='x', fields={}); senza fields: binding nuovo apre il form guidato (tipo, poi campi), binding esistente aggiorna il mandato. NON: leggere credenziali -> find_credentials; mostrare segreti; chiedere i segreti in chat. OUT: results=[{binding,fingerprint,scopes,replaced}]."
-en = "SCOPO: encrypts credentials and asks for the site mandate. PATTERN: set_credentials(binding='x', fields={}); without fields: a new binding opens the guided form (kind, then fields), an existing one updates the mandate. NON: read credentials -> find_credentials; expose secrets; ask for secrets in chat. OUT: results=[{binding,fingerprint,scopes,replaced}]."
+it = "SCOPO: cifra credenziali; definisce il mandato. PATTERN: set_credentials(binding='x', fields={}); senza fields apre il form o aggiorna il mandato. NON: leggere credenziali (-> find_credentials); esporre segreti. OUT: metadati del binding."
+en = "SCOPO: encrypts credentials; defines the mandate. PATTERN: set_credentials(binding='x', fields={}); without fields opens the form or updates the mandate. NON: read credentials (-> find_credentials); expose secrets. OUT: binding metadata."
 
 [code]
 files  = ["set_credentials.py"]

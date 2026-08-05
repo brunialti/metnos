@@ -20,7 +20,6 @@ Determinismo §7.9: niente LLM. Detection ML lazy via face_embedding.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 from pathlib import Path

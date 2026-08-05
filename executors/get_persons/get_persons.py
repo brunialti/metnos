@@ -9,7 +9,6 @@ Determinismo §7.9: nessun LLM, solo SQLite via PersonsRegistry.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -28,9 +27,35 @@ def _persons_db_path() -> Path | None:
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     name = args.get("name")
 
-    reg = PersonsRegistry(db_path=_persons_db_path())
+    # Validate before opening the registry: malformed input must not depend on
+    # filesystem availability or create state as a side effect.
+    if name is not None and not isinstance(name, str):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_STRING", arg="name"),
+            "error_class": "invalid_input",
+            "error_code": "name_not_string",
+        }
+
+    try:
+        reg = PersonsRegistry(db_path=_persons_db_path(), read_only=True)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": _msg("ERR_PERSONS_REGISTRY_UNAVAILABLE"),
+            "error_class": "resource_unavailable",
+            "error_code": "persons_registry_unavailable",
+            "detail": str(exc),
+        }
     try:
         if name is None or name == "":
             entries = reg.list_all()
@@ -53,9 +78,6 @@ def invoke(args):
                 "n_entries": len(entries),
                 "final_message_hint": hint,
             }
-
-        if not isinstance(name, str):
-            return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="name")}
 
         slugs = reg.resolve_name(name)
         if not slugs:

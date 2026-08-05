@@ -17,7 +17,6 @@ Contratto:
     stdout: JSON {ok, location: {lat, lon, ts, accuracy?, channel}, age_seconds}
             oppure {ok: false, error: "no location received yet ..."}.
 """
-import json
 import os
 import sys
 import time
@@ -34,11 +33,23 @@ from location_store import get_last_location  # noqa: E402
 def invoke(args):
     actor = args.get("actor") or "host"
     if not isinstance(actor, str):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_STRING", arg="actor")}
-    rec = get_last_location(actor)
+        return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
+                "error_class": "invalid_args",
+                "error": _msg("ERR_ARG_NOT_STRING", arg="actor")}
+    owner_user_id = str(os.environ.get("METNOS_OWNER_USER_ID") or "").strip()
+    if not owner_user_id:
+        return {
+            "ok": False,
+            "error_code": "ERR_LOGICAL_OWNER_UNAVAILABLE",
+            "error_class": "authorization",
+            "error": "logical owner unavailable",
+        }
+    rec = get_last_location(owner_user_id=owner_user_id)
     if rec is None:
         return {
             "ok": False,
+            "error_code": "ERR_NO_LOCATION_YET",
+            "error_class": "not_found",
             "error": _msg("ERR_NO_LOCATION_YET"),
         }
     return {

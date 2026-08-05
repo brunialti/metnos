@@ -2,9 +2,11 @@
 # Naming compositivo: verbo_oggetto_plurale. Vettoriale per costruzione.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "find_places"
-version     = "0.6.0"
+version     = "0.7.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 # Affinity: verbi + preposizioni di luogo (IT+EN), nessun POI hardcoded.
 # I sostantivi (farmacia/restaurant/...) emergono dalla query utente, non
@@ -25,7 +27,7 @@ en = "SCOPO: find real-world places by text query or coordinates. PATTERN: find_
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:30b92eccd801aee75b0e7f06f5bb7ee2ee4a6dd3b0a94d86dc9f5bcd6ba0caa9"
+digest = "sha256:481471157e35dfd2f5991ce08168832c4c32ebad0fbf0b9ba9d7d303608eca74"
 
 [args]
 type     = "object"
@@ -97,9 +99,25 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "query", source = "query", cell_max = 160 },
+  { key = "matches", source = "matches", cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
-name = "net:read"
+name = "network:http"
 hint = ["nominatim.openstreetmap.org", "localhost"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "lista_vuota_ok"

@@ -7,9 +7,12 @@
 # (admin / undo / synthesize / consult).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "consult_frontier"
-version     = "0.1.0"
+version     = "0.2.0"
+intelligence = "agentic"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
     "consulta", "consult", "chiedi", "ask", "frontier", "oracolo",
@@ -22,13 +25,33 @@ lifecycle         = "active"
 critical          = false
 
 [[capabilities]]
-name = "metnos:external_llm"
+name = "llm:local"
+hint = []
 
 [[capabilities]]
-name = "metnos:read"
+name = "llm:online"
+hint = []
+outbound_args = ["local_context"]
 
 [[capabilities]]
-name = "metnos:net"
+name = "fs:read"
+hint = ["$METNOS_INSTALL_ROOT/**", "$HOME/**", "/tmp/**"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["$XDG_CACHE_HOME/metnos/consult_frontier/**"]
+
+[[capabilities]]
+name = "network:http"
+hint = ["api.github.com"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["github"]
+
+[placement]
+scope = "server"
+device_ok = false
 
 [description]
 it = "SCOPO: consulta un oracolo esperto per analisi profonda. PATTERN: consult_frontier(role=\"esperto\", output_spec={...}). NON: riassunti locali (-> describe_entries). OUT: {response_text, response_structured, tokens_in, tokens_out, cost_usd, tier_used, cached, iters_done, remote_bytes_read}."
@@ -36,7 +59,7 @@ en = "SCOPO: consult an expert oracle for deep analysis. PATTERN: consult_fronti
 
 [code]
 files  = ["consult_frontier.py"]
-digest = "sha256:656790202008cd3ff5f54c1d32c44a18da50740f5f1eec13feace6f9eacfd71a"
+digest = "sha256:a0686ea9f1d1473532547ff0da808c178957cad97dc25c27a5c9b47b74b59452"
 
 [args]
 type     = "object"
@@ -81,12 +104,22 @@ en = "Whitelist of tool names the frontier can call. Default: derived from remot
 
 [args.properties.tier]
 type        = "string"
-enum        = ["fast", "middle", "wise", "frontier"]
-default     = "wise"
+enum        = ["fast", "middle", "precise", "wise", "creative", "frontier"]
+default     = "frontier"
 
 [args.properties.tier.description]
-it = "Tier LLM: wise (Opus 4.7) | middle (Sonnet 4.6) | fast (Haiku 4.5) | frontier (Opus 4.7 con fallback OpenAI/GPT-5). Auto-bump a middle se remote_context presente e tier='fast' (Haiku gestisce male tool loop)."
-en = "LLM tier: wise (Opus 4.7) | middle (Sonnet 4.6) | fast (Haiku 4.5) | frontier (Opus 4.7 with OpenAI/GPT-5 fallback). Auto-bumped to middle if remote_context present and tier='fast' (Haiku handles tool loops poorly)."
+it = "Tier LLM astratto. `fast`: decisioni minime; `middle`: trasformazioni strutturate; `precise`: alta fedeltà; `wise`: pianificazione; `creative`: generazione divergente; `frontier`: escalation esplicita di massima capacità. Default `frontier`. Con remote_context, `fast` viene promosso a `middle` per un tool loop affidabile."
+en = "Abstract LLM tier. `fast`: micro-decisions; `middle`: structured transforms; `precise`: high fidelity; `wise`: planning; `creative`: divergent generation; `frontier`: explicit maximum-capability escalation. Default: `frontier`. With remote_context, `fast` is promoted to `middle` for a reliable tool loop."
+
+[args.properties.max_tokens]
+type        = "integer"
+minimum     = 1
+maximum     = 65536
+default     = 4096
+
+[args.properties.max_tokens.description]
+it = "Budget massimo di token della risposta del frontier. Default 4096; non modifica il budget delle letture remote."
+en = "Maximum token budget for the frontier response. Default 4096; it does not change the remote-read budget."
 
 [args.properties.max_tool_iters]
 type        = "integer"

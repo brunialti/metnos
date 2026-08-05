@@ -2,6 +2,7 @@
 # Riduzione numerica di una lista di entries: max/min/avg/sum/count.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "compute_entries"
 version     = "0.1.0"
@@ -16,7 +17,7 @@ en = "SCOPO: compute an aggregated value (max/min/avg/sum/count) on entries. PAT
 
 [code]
 files  = ["compute_entries.py"]
-digest = "sha256:3e26bce312e52fd972d9666f3cd8adda8d4189853996075938ccc1ef841597c0"
+digest = "sha256:6e3509c011917d86d155169f5dbe32f965df4e806f7753a99f7f4377f2181019"
 
 [args]
 type     = "object"
@@ -51,6 +52,25 @@ default     = false
 [args.properties.return_entry.description]
 it = "Solo per op='max'/'min': se true, l'output include 'entry' = il dict completo della entry vincitrice (utile per scoprire QUALE elemento ha il max/min). Default false (ritorna solo il valore)."
 en = "Only for op='max'/'min': if true, the output includes 'entry' = the complete dict of the winning entry (useful for discovering WHICH element has the max/min). Default false (returns only the value)."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  value?: number | bool | string | null,
+  op?: 'max' | 'min' | 'avg' | 'sum' | 'count' | 'count_distinct',
+  key?: str,
+  count_input?: int,
+  count_used?: int,
+  ignored_non_numeric?: int,
+  entry?: dict,
+  truncated_upstream?: bool,
+  materialized_count?: int,
+  error?: str,
+  error_class?: 'invalid_input',
+  error_code?: str
+}
+"""
 
 [[capabilities]]
 name = "compute:pure"

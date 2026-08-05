@@ -33,7 +33,6 @@ Contratto:
             arricchisce entries ritorna entries").
 """
 import datetime
-import json
 import os
 import sys
 from pathlib import Path

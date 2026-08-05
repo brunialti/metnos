@@ -3,9 +3,10 @@
 # Dispatcher canonical Google Docs append (24/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "write_files_doc"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = [
     "doc", "documento", "google doc", "google docs",
@@ -15,6 +16,7 @@ affinity    = [
 # §2.3 reversibile via module.reverse(): l'append registra inserted_at +
 # characters_appended; l'undo elimina quel range (deleteContentRange).
 revertible  = true
+reverse_pattern = "module.reverse"
 lifecycle   = "active"
 
 [description]
@@ -23,7 +25,7 @@ en = "SCOPO: append text to an existing Google Doc (.doc). PATTERN: write_files_
 
 [code]
 files  = ["write_files_doc.py"]
-digest = "sha256:42de1db92f7d013af7d962afbf9d9c49dd2994bed11e4ba972658f7f1874548d"
+digest = "sha256:ef3b7111bb6871052bef6e99ec8e5d38d022961ac3ef1f48a876bb037ac0eeb5"
 
 [args]
 type     = "object"
@@ -48,7 +50,7 @@ type    = "string"
 enum    = ["google_workspace"]
 default = "google_workspace"
 # config non-intento (lessons A3/B1): risolta dal runtime, NON esposta
-# all'LLM. Politica: runtime/tests/test_config_args_marking_policy.py.
+# all'LLM. Politica: tests/runtime/infra/test_config_args_marking_policy.py.
 runtime_resolved = true
 
 [args.properties.client.description]
@@ -75,6 +77,11 @@ schema_inline = """
 [[capabilities]]
 name = "metnos:write"
 hint = ["doc:remote"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "missing_document_id_fails"

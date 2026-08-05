@@ -9,8 +9,8 @@ Due modi:
   B) tool-use loop con remote_context (frontier esplora repo GitHub,
      issue, file remoti via tool read-only)
 
-Tier auto-bump a `middle` se mode=B e tier='fast' (Haiku non gestisce
-bene tool loop). Cache opzionale su disco con TTL configurabile.
+Tier auto-bump al workload strutturato `frontier.tool_loop` se mode=B e il
+caller ha chiesto `fast`. Cache opzionale su disco con TTL configurabile.
 
 Determinismo §7.9 per ogni cosa che non sia la call LLM stessa:
 selezione tool, validazione args, parsing output, cache lookup, fallback
@@ -37,6 +37,8 @@ if str(_RUNTIME) not in sys.path:
     sys.path.insert(0, str(_RUNTIME))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from llm_router import TIER_ORDER  # noqa: E402
+from llm_workloads import tier_for  # noqa: E402
 
 # ---- Tools whitelist (read-only by hard constraint) ----------------------
 
@@ -510,8 +512,8 @@ def _validate_args(args: dict) -> Optional[dict]:
                 return {"ok": False,
                         "error": _msg("ERR_ARG_INVALID", arg=f"remote_context[{i}].kind", reason=str(k)),
                         "error_class": "invalid_args"}
-    tier = args.get("tier", "wise")
-    if tier not in ("fast", "middle", "wise", "frontier"):
+    tier = args.get("tier", tier_for("frontier.consult"))
+    if tier not in TIER_ORDER:
         return {"ok": False,
                 "error": _msg("ERR_ARG_INVALID", arg="tier", reason=repr(tier)),
                 "error_class": "invalid_args"}
@@ -550,22 +552,23 @@ def _estimate_cost(provider: str, model: str,
 # ---- Tier resolution & LLM call -------------------------------------------
 
 def _resolve_tier(args: dict) -> str:
-    tier = args.get("tier", "wise")
+    tier = args.get("tier", tier_for("frontier.consult"))
     if tier == "fast" and args.get("remote_context"):
-        return "middle"  # auto-bump §6 / docstring
+        return tier_for("frontier.tool_loop")
     return tier
 
 
 def _try_call(spec: dict, system: str, user: str,
               tools: list[dict] | None, history: list[dict] | None,
-              max_tokens: int) -> tuple[Any, dict]:
+              max_tokens: int, tier: str) -> tuple[Any, dict]:
     """Tenta una call con `spec` (provider+model). Ritorna (result, meta)
     o (None, meta_with_error). `result` e' un `ToolUseResult` o `ChatResult`
     a seconda di tools.
     """
-    from llm_provider import make_provider_from_spec, ProviderError
+    from llm_provider import ProviderError
+    from llm_router import provider_from_tier_spec
     try:
-        prov = make_provider_from_spec(spec)
+        prov = provider_from_tier_spec(tier, spec)
     except Exception as e:
         return None, {"error": str(e), "error_class": "provider_unavailable",
                        "provider": spec.get("provider"),
@@ -573,7 +576,8 @@ def _try_call(spec: dict, system: str, user: str,
     try:
         if tools is not None:
             res = prov.chat_with_tools(
-                system, user, tools, history=history, max_tokens=max_tokens,
+                system, user, tools, history=history,
+                max_tokens=max_tokens,
             )
         else:
             res = prov.chat(system, user, max_tokens=max_tokens)
@@ -609,7 +613,8 @@ def _run_mode_a(args: dict, tier: str, system: str, user: str,
     last_err = None
     fallback_used = False
     for idx, spec in enumerate(chain):
-        res, meta = _try_call(spec, system, user, None, None, max_tokens)
+        res, meta = _try_call(
+            spec, system, user, None, None, max_tokens, tier)
         if res is None:
             last_err = meta
             fallback_used = True
@@ -703,7 +708,7 @@ def _tool_loop_once(spec: dict, system: str, user: str,
     while iters < max_iters:
         iters += 1
         res, meta = _try_call(
-            spec, system, current_user, tools, history, max_tokens,
+            spec, system, current_user, tools, history, max_tokens, tier,
         )
         if res is None:
             if iters == 1:

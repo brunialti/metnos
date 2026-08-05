@@ -18,11 +18,12 @@ Contratto:
 from __future__ import annotations
 
 import gzip
-import json
+import errno
 import os
 import shutil
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -46,80 +47,236 @@ def _infer_format(dest: str) -> str:
     return "zip"
 
 
-def _collect_paths(args: dict):
-    """Accetta `paths` (lista di str) O `entries` (lista di dict con
-    path/src/file) — robusto al from_step di find_files (§2.10)."""
+def _collect_paths(args: dict) -> tuple[object, list[dict]]:
+    """Project runtime ``entries[*].path`` without echoing record contents."""
     paths = args.get("paths")
-    if paths is None:
-        ents = args.get("entries")
-        if isinstance(ents, list):
-            paths = []
-            for e in ents:
-                if isinstance(e, str):
-                    paths.append(e)
-                elif isinstance(e, dict):
-                    v = e.get("path") or e.get("src") or e.get("file")
-                    if isinstance(v, str):
-                        paths.append(v)
-    if isinstance(paths, str):
-        paths = [paths]
-    return paths
+    entries = args.get("entries")
+    if paths is not None and entries is not None:
+        return None, [{
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg("ERR_ARG_INVALID", arg="paths/entries",
+                          reason="use exactly one input form"),
+        }]
+    if paths is not None:
+        return paths, []
+    if not isinstance(entries, list):
+        return None, []
+    projected = []
+    failed = []
+    for index, entry in enumerate(entries):
+        value = entry.get("path") if isinstance(entry, dict) else None
+        if isinstance(value, str) and value:
+            projected.append(value)
+            continue
+        failed.append({
+            "index": index,
+            "error_code": "ERR_ARG_INVALID",
+            "error": _msg("ERR_ARG_INVALID", arg=f"entries[{index}].path",
+                          reason="must be a non-empty string"),
+        })
+    return projected, failed
+
+
+def _fail(error_code: str, error: str, *, failed=None) -> dict:
+    failed = failed if isinstance(failed, list) else []
+    return {
+        "ok": False,
+        "ok_count": 0,
+        "fail_count": len(failed),
+        "results": [],
+        "failed": failed,
+        "error_class": "invalid_args" if error_code.startswith("ERR_ARG_")
+                       or error_code == "ERR_DST_EXISTS" else "unknown",
+        "error_code": error_code,
+        "error": error,
+    }
+
+
+def _missing_parent_dirs(parent: Path) -> list[Path]:
+    """Return missing parents deepest-first, without changing the filesystem."""
+    missing = []
+    current = parent
+    while not current.exists() and current != current.parent:
+        missing.append(current)
+        current = current.parent
+    return missing
+
+
+def _remove_empty_dirs(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+
+
+def _create_parent_dirs(missing: list[Path]) -> list[Path]:
+    """Create missing parents shallow-first and report only dirs we created."""
+    created = []
+    for path in reversed(missing):
+        try:
+            path.mkdir()
+        except FileExistsError:
+            if not path.is_dir():
+                raise
+        else:
+            created.append(path)
+    return created
+
+
+def _write_archive(path: Path, fmt: str, valid: list[Path]) -> None:
+    if fmt == "zip":
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            for source in valid:
+                archive.write(source, arcname=source.name)
+    elif fmt in ("tar", "gztar"):
+        with tarfile.open(path, "w:gz" if fmt == "gztar" else "w") as archive:
+            for source in valid:
+                archive.add(source, arcname=source.name)
+    else:
+        with open(valid[0], "rb") as source, gzip.open(path, "wb") as archive:
+            shutil.copyfileobj(source, archive)
 
 
 def invoke(args: dict) -> dict:
-    args = args or {}
-    paths = _collect_paths(args)
+    if not isinstance(args, dict):
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+        )
+    paths, failed = _collect_paths(args)
     if not isinstance(paths, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST_OF", arg="paths", of="strings"),
-                "error_class": "invalid_args", "results": []}
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_NOT_LIST_OF", arg="paths", of="strings"),
+            failed=failed,
+        )
     dest = args.get("dest")
     if not (isinstance(dest, str) and dest.strip()):
-        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="dest"),
-                "error_class": "invalid_args", "results": []}
-    fmt = (args.get("format") or "").strip().lower() or _infer_format(dest)
+        return _fail("ERR_ARG_MISSING", _msg("ERR_ARG_MISSING", arg="dest"))
+    raw_fmt = args.get("format")
+    if raw_fmt is not None and not isinstance(raw_fmt, str):
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="format", reason="must be a string"),
+        )
+    fmt = (raw_fmt or "").strip().lower() or _infer_format(dest)
     if fmt not in _FMTS:
-        fmt = _infer_format(dest)
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="format",
+                 reason=f"must be one of {', '.join(_FMTS)}"),
+        )
     dest_p = Path(os.path.expanduser(dest))
-
-    valid, failed = [], []
-    for p in paths:
+    if not dest_p.is_absolute():
+        dest_p = (Path.cwd() / dest_p).resolve()
+    valid = []
+    seen_names: set[str] = set()
+    for index, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"path": str(p), "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
+            item = {
+                "index": index,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path"),
+            }
+            if isinstance(p, str):
+                item["path"] = p
+            failed.append(item)
             continue
         fp = Path(os.path.expanduser(p))
+        if not fp.is_absolute():
+            fp = (Path.cwd() / fp).resolve()
         if not fp.exists():
-            failed.append({"path": p, "error": _msg("ERR_PATH_NOT_FOUND", path=p)})
+            failed.append({
+                "index": index, "path": p,
+                "error_code": "ERR_PATH_NOT_FOUND",
+                "error": _msg("ERR_PATH_NOT_FOUND", path=p),
+            })
             continue
         if fp.is_dir():
-            failed.append({"path": p, "error": _msg("ERR_OP_FAILED", reason=f"{p}: directory")})
+            failed.append({
+                "index": index, "path": p,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="path",
+                              reason=f"{p}: directory"),
+            })
             continue
+        try:
+            same_as_dest = fp.resolve() == dest_p.resolve()
+        except OSError:
+            same_as_dest = fp.absolute() == dest_p.absolute()
+        if same_as_dest:
+            failed.append({
+                "index": index, "path": p,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="dest",
+                              reason="destination cannot be an input file"),
+            })
+            continue
+        if fp.name in seen_names:
+            failed.append({
+                "index": index, "path": p,
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="paths",
+                              reason=f"duplicate archive name: {fp.name}"),
+            })
+            continue
+        seen_names.add(fp.name)
         valid.append(fp)
 
     if not valid:
         # §2.1 degenere: nessun file valido → ok solo se non c'erano fallimenti.
         return {"ok": len(failed) == 0, "ok_count": 0, "fail_count": len(failed),
                 "results": [], "failed": failed}
+    if dest_p.exists():
+        return _fail("ERR_DST_EXISTS", _msg("ERR_DST_EXISTS"), failed=failed)
     if fmt == "gz" and len(valid) > 1:
-        return {"ok": False,
-                "error": _msg("ERR_OP_FAILED", reason="gz comprime un solo file; usa zip o tar per piu' file"),
-                "error_class": "invalid_args", "results": []}
+        return _fail(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="format",
+                 reason="gz accepts exactly one input file"),
+            failed=failed,
+        )
+
+    parent = dest_p.parent
+    missing_dirs = _missing_parent_dirs(parent)
+    created_dirs: list[Path] = []
+    tmp_path: Path | None = None
     try:
-        if dest_p.parent and not dest_p.parent.exists():
-            dest_p.parent.mkdir(parents=True, exist_ok=True)
-        if fmt == "zip":
-            with zipfile.ZipFile(dest_p, "w", zipfile.ZIP_DEFLATED) as z:
-                for fp in valid:
-                    z.write(fp, arcname=fp.name)
-        elif fmt in ("tar", "gztar"):
-            with tarfile.open(dest_p, "w:gz" if fmt == "gztar" else "w") as t:
-                for fp in valid:
-                    t.add(fp, arcname=fp.name)
-        else:  # gz
-            with open(valid[0], "rb") as fin, gzip.open(dest_p, "wb") as fout:
-                shutil.copyfileobj(fin, fout)
-    except Exception as e:
-        return {"ok": False, "error": _msg("ERR_OP_FAILED", reason=str(e)),
-                "error_class": "unknown", "results": []}
+        created_dirs = _create_parent_dirs(missing_dirs)
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=f".{dest_p.name}.metnos-", dir=str(parent))
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        _write_archive(tmp_path, fmt, valid)
+        # Pubblicazione create-only portabile: ``xb`` impedisce il replace
+        # anche se la destinazione compare dopo il pre-check (Windows incluso).
+        with tmp_path.open("rb") as source, dest_p.open("xb") as target:
+            shutil.copyfileobj(source, target)
+    except FileExistsError:
+        return _fail("ERR_DST_EXISTS", _msg("ERR_DST_EXISTS"), failed=failed)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST:
+            return _fail("ERR_DST_EXISTS", _msg("ERR_DST_EXISTS"), failed=failed)
+        return {
+            **_fail("ERR_OP_FAILED", _msg("ERR_OP_FAILED", reason=str(exc)),
+                    failed=failed),
+            "error_class": "unknown",
+        }
+    except Exception as exc:
+        return {
+            **_fail("ERR_OP_FAILED", _msg("ERR_OP_FAILED", reason=str(exc)),
+                    failed=failed),
+            "error_class": "unknown",
+        }
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except FileNotFoundError:
+                pass
+        if not dest_p.exists():
+            _remove_empty_dirs(list(reversed(created_dirs)))
 
     size = dest_p.stat().st_size if dest_p.exists() else 0
     return {
@@ -130,6 +287,7 @@ def invoke(args: dict) -> dict:
                      "file_count": len(valid), "archive_bytes": size, "format": fmt}],
         "added": [str(f) for f in valid],
         "failed": failed,
+        "dirs_created": [str(path) for path in created_dirs],
     }
 
 

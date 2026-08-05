@@ -26,7 +26,6 @@ Determinismo §7.9: zero LLM, zero I/O. Pure compute in memoria.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -76,9 +75,10 @@ def _to_epoch(v):
             pass
         try:
             import datetime as _dt
-            return _dt.datetime.fromisoformat(
-                s.replace("Z", "+00:00")
-            ).timestamp()
+            parsed = _dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+            return parsed.timestamp()
         except Exception:
             return None
     return None
@@ -206,19 +206,23 @@ def invoke(args: dict) -> dict:
             b_by_key.setdefault(k, e)
 
     keys_a_set = set(keys_a)
+    ordered_a = list(dict.fromkeys(keys_a))
+    ordered_b = list(b_by_key)
     if op == "intersect":
-        out_keys = keys_a_set & keys_b
+        out_keys = [k for k in ordered_a if k in keys_b]
         entries_out = [a_by_key[k] for k in out_keys]
     elif op == "difference":
-        out_keys = keys_a_set - keys_b
+        out_keys = [k for k in ordered_a if k not in keys_b]
         entries_out = [a_by_key[k] for k in out_keys]
     elif op == "union":
         entries_out = list(a_by_key.values())
-        for k in keys_b - keys_a_set:
+        for k in ordered_b:
+            if k in keys_a_set:
+                continue
             entries_out.append(b_by_key[k])
     elif op == "symdiff":
-        only_a = keys_a_set - keys_b
-        only_b = keys_b - keys_a_set
+        only_a = [k for k in ordered_a if k not in keys_b]
+        only_b = [k for k in ordered_b if k not in keys_a_set]
         entries_out = [a_by_key[k] for k in only_a]
         entries_out.extend(b_by_key[k] for k in only_b)
     elif op == "delta":

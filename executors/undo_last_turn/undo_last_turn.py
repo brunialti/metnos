@@ -31,7 +31,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from loader import load_catalog
-from reverse_patterns import apply_patterns, build_remote_reverse_calls
+from reverse_patterns import PATTERNS, apply_patterns, build_remote_reverse_calls
 from undo import UndoLog
 
 
@@ -138,6 +138,46 @@ def _load_module(code_path: Path):
     return mod
 
 
+def _unknown_patterns(patterns) -> list[str]:
+    """Restituisce le etichette non appartenenti al catalogo chiuso."""
+    names = [patterns] if isinstance(patterns, str) else patterns
+    if not isinstance(names, list):
+        return [str(patterns)]
+    return [name for name in names if name not in PATTERNS]
+
+
+def _effective_reverse_pattern(ex, rec):
+    """Select the executed branch's pattern within the manifest ceiling."""
+    declared = ex.reverse_pattern
+    declared_names = ([declared] if isinstance(declared, str)
+                      else list(declared or []))
+    results = rec.get("results") or {}
+    undo_meta = results.get("_undo") if isinstance(results, dict) else None
+    selected = (undo_meta.get("reverse_pattern")
+                if isinstance(undo_meta, dict) else None)
+    if selected is None:
+        return declared, None
+    selected_names = ([selected] if isinstance(selected, str)
+                      else list(selected) if isinstance(selected, list) else [])
+    if (not selected_names
+            or any(not isinstance(name, str) or name not in declared_names
+                   for name in selected_names)):
+        return None, "runtime reverse pattern is outside manifest ceiling"
+    return selected, None
+
+
+def _reverse_with_module(ex, rec):
+    """Fallback custom per executor manuali con pattern legacy/assente."""
+    mod = _load_module(ex.code_path)
+    if mod is None or not hasattr(mod, "reverse"):
+        return None, _msg("ERR_UNDO_NO_REVERSE")
+    try:
+        return mod.reverse(
+            rec.get("plan") or {}, rec.get("results") or {}), None
+    except Exception as exc:
+        return None, f"reverse() exception: {exc}"
+
+
 def invoke(args):
     log_path_arg = args.get("log_path")
     log = UndoLog(Path(log_path_arg)) if log_path_arg else UndoLog()
@@ -171,30 +211,39 @@ def invoke(args):
             skipped += 1
             continue
         rev_result = None
-        # priority 1: catalogo deterministico (manifest.reverse_pattern)
-        if ex.reverse_pattern:
+        reverse_pattern, selection_error = _effective_reverse_pattern(ex, rec)
+        if selection_error:
+            details.append({"op_id": rec["op_id"], "executor": executor_name,
+                            "status": "error", "reason": selection_error})
+            skipped += 1
+            continue
+        # Priority 1: catalogo deterministico. Un'etichetta ignota non viene
+        # eseguita parzialmente: per gli executor manuali cade sul reverse()
+        # del modulo. Un pattern CONOSCIUTO che fallisce non usa il fallback,
+        # evitando doppi effetti o un reverse diverso da quello dichiarato.
+        unknown = _unknown_patterns(reverse_pattern) if reverse_pattern else []
+        if reverse_pattern and not unknown:
             try:
                 if rec.get("device"):
                     # C7 CP4: op eseguita su un DEVICE → il reverse gira LI'
                     # (§2.9), mai sul filesystem del server.
-                    rev_result = _reverse_on_device(ex.reverse_pattern, rec)
+                    rev_result = _reverse_on_device(reverse_pattern, rec)
                 else:
-                    rev_result = apply_patterns(ex.reverse_pattern, rec.get("plan") or {}, rec.get("results") or {})
+                    rev_result = apply_patterns(reverse_pattern, rec.get("plan") or {}, rec.get("results") or {})
             except Exception as e:
                 details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "error", "reason": f"reverse_pattern exception: {e}"})
                 skipped += 1
                 continue
         else:
-            # priority 2: fallback a reverse() custom del modulo (back-compat)
-            mod = _load_module(ex.code_path)
-            if mod is None or not hasattr(mod, "reverse"):
-                details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "skipped", "reason": _msg("ERR_UNDO_NO_REVERSE")})
-                skipped += 1
-                continue
-            try:
-                rev_result = mod.reverse(rec.get("plan") or {}, rec.get("results") or {})
-            except Exception as e:
-                details.append({"op_id": rec["op_id"], "executor": executor_name, "status": "error", "reason": f"reverse() exception: {e}"})
+            # Priority 2: fallback custom. Un reverse custom non puo' essere
+            # spostato implicitamente sul server per un effetto nato sul device.
+            if rec.get("device"):
+                rev_result = _reverse_on_device(reverse_pattern, rec)
+            else:
+                rev_result, reverse_error = _reverse_with_module(ex, rec)
+            if rev_result is None:
+                details.append({"op_id": rec["op_id"], "executor": executor_name,
+                                "status": "skipped", "reason": reverse_error})
                 skipped += 1
                 continue
         # Status onesto: "undone" solo se il reverse ha effettivamente ribaltato

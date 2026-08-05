@@ -15,7 +15,6 @@ Accetta "crea calendario" (default nome) e 'crea calendario "test pippo"'
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path

@@ -15,7 +15,6 @@ il runtime esegue il branch via `orchestration._process_gate_dispatch`.
 Funziona INTERATTIVO e SCHEDULATO (il dialog resta pending finche' l'utente
 non sceglie). Deterministico (CLAUDE.md §7.9): zero LLM nel critical path.
 """
-import json
 import os
 import sys
 import uuid
@@ -42,26 +41,41 @@ def _utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
 
 
-def _validate_branch(branch, name: str) -> str | None:
+def _failure(error_code: str, error: str,
+             *, error_class: str = "invalid_input") -> dict:
+    return {
+        "ok": False,
+        "error": error,
+        "error_class": error_class,
+        "error_code": error_code,
+    }
+
+
+def _validate_branch(branch, name: str) -> tuple[str, str] | None:
     """Un branch (`on_approve`/`on_reject`) deve essere {tool: str, args: dict?}."""
     if not isinstance(branch, dict):
-        return _msg("ERR_ARG_NOT_DICT", arg=name)
+        return _msg("ERR_ARG_NOT_DICT", arg=name), f"{name}_not_object"
     tool = branch.get("tool") or branch.get("executor")
     if not isinstance(tool, str) or not tool:
-        return _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg=f"{name}.tool")
+        return (_msg("ERR_ARG_NOT_NONEMPTY_STRING", arg=f"{name}.tool"),
+                f"{name}_tool_invalid")
     args = branch.get("args")
     if args is not None and not isinstance(args, dict):
-        return _msg("ERR_ARG_NOT_DICT", arg=f"{name}.args")
+        return (_msg("ERR_ARG_NOT_DICT", arg=f"{name}.args"),
+                f"{name}_args_not_object")
     return None
 
 
 def invoke(args: dict) -> dict:
+    if not isinstance(args, dict):
+        return _failure("args_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
+
     # gate-resume re-run (20/6/2026): l'utente ha GIA' approvato in un turno
     # precedente; questa e' la RIPRESA della pipeline col gate auto-passato
     # (engine inietta `_pre_approved` quando runtime_ctx._gate_approved). Passa
     # trasparente — ok senza nuovo dialog — cosi' gli step a valle (send/write)
     # proseguono. Deterministico §7.9.
-    if args.get("_pre_approved"):
+    if args.get("_pre_approved") is True:
         return {"ok": True, "decision": "approved", "final_message_hint": ""}
 
     # §2.11/§2.8 (gate-vuoto 22/6 + soglia mutazioni-di-massa 6/7): `guard_count`
@@ -83,8 +97,8 @@ def invoke(args: dict) -> dict:
 
     prompt = args.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
-        return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="prompt"),
-                "error_class": "invalid_args"}
+        return _failure(
+            "prompt_missing", _msg("ERR_ARG_MISSING", arg="prompt"))
     # Prompt troppo lungo → TRONCA invece di fallire (§2.8 degrado onesto): il
     # prompt puo' inglobare un riassunto data-driven (es. ${stepN.@brief} con
     # i titoli delle issue) la cui lunghezza non e' nota a monte; un hard-fail
@@ -95,13 +109,13 @@ def invoke(args: dict) -> dict:
     on_approve = args.get("on_approve")
     err = _validate_branch(on_approve, "on_approve")
     if err:
-        return {"ok": False, "error": err, "error_class": "invalid_args"}
+        return _failure(err[1], err[0])
 
     on_reject = args.get("on_reject")
     if on_reject is not None:
         err = _validate_branch(on_reject, "on_reject")
         if err:
-            return {"ok": False, "error": err, "error_class": "invalid_args"}
+            return _failure(err[1], err[0])
 
     # Etichette bottoni: default i18n (MSG_BTN_*), override esplicito a 2 voci.
     options = args.get("options")
@@ -117,12 +131,22 @@ def invoke(args: dict) -> dict:
 
     actor = args.get("actor") or os.environ.get("METNOS_ACTOR") or "host"
     channel = args.get("channel") or os.environ.get("METNOS_CHANNEL") or ""
+    owner_user_id = str(
+        os.environ.get("METNOS_OWNER_USER_ID") or "").strip()
+    if not owner_user_id:
+        return _failure(
+            "owner_unavailable", _msg("ERR_OP_FAILED", reason="owner"),
+            error_class="authorization")
     sender_id = _safe_sender(actor, channel)
 
     try:
         import dialog_pending as _dp
-    except ImportError as ex:
-        return {"ok": False, "error": f"dialog_pending non disponibile: {ex}"}
+    except ImportError:
+        return _failure(
+            "dialog_dependency_missing",
+            _msg("ERR_DEPENDENCY_MISSING", what="dialog_pending"),
+            error_class="dependency_unavailable",
+        )
 
     # Dialog a 1 step `choice`: i value sono canonici (approve/reject), le label
     # sono user-facing. on_complete cabla il dispatch (deterministico).
@@ -152,14 +176,17 @@ def invoke(args: dict) -> dict:
 
     timeout_s = args.get("timeout_s")
     if timeout_s is not None and (not isinstance(timeout_s, int)
+                                  or isinstance(timeout_s, bool)
                                   or timeout_s < 1 or timeout_s > MAX_TIMEOUT_S):
-        return {"ok": False, "error": _msg("ERR_TIMEOUT_RANGE", max=MAX_TIMEOUT_S)}
+        return _failure(
+            "timeout_invalid", _msg("ERR_TIMEOUT_RANGE", max=MAX_TIMEOUT_S))
     if timeout_s is None:
         timeout_s = _dp.default_timeout_for(dialog)
 
     dialog_id = uuid.uuid4().hex[:16]
     branches = {"type": "gate_dispatch", "approve_value": "approve",
-                "on_approve": on_approve}
+                "on_approve": on_approve,
+                "owner_user_id": owner_user_id}
     if on_reject is not None:
         branches["on_reject"] = on_reject
 
@@ -173,6 +200,7 @@ def invoke(args: dict) -> dict:
         "step_index": 0,
         "started_at": _utc_now_iso(),
         "actor": actor,
+        "owner_user_id": owner_user_id,
         "channel": channel,
         "timeout_s": timeout_s,
         "completed": False,
@@ -181,8 +209,12 @@ def invoke(args: dict) -> dict:
     }
     try:
         _dp.save_pending(sender_id, dialog_id, state)
-    except (OSError, ValueError, TypeError) as ex:
-        return {"ok": False, "error": f"save_pending fallito: {ex}"}
+    except (OSError, ValueError, TypeError):
+        return _failure(
+            "dialog_save_failed",
+            _msg("ERR_OP_FAILED", reason="dialog state"),
+            error_class="io_error",
+        )
 
     # fmt=form (web): il marker INLINE_FORM viene sostituito da chat.html con
     # l'iframe di /agent/dialog/<id>/form (stesso contratto di get_inputs).

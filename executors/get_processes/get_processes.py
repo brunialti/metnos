@@ -627,53 +627,46 @@ def _read_disk() -> list[dict]:
     return out
 
 
-# Set notevole di unit Metnos da controllare: 3 service long-running +
-# 3 timer ricorrenti. I service one-shot attivati dai timer non sono
-# inclusi (lo stato del timer 'active'/'waiting' copre gia' il flusso).
-# Niente hardcoding di servizi non Metnos (llama-server e simili NON
-# sono nostri).
-_METNOS_SERVICES = (
-    "metnos-http",
-    "metnos-telegram-daemon",
-    "metnos-prompts-translator.timer",
-    "metnos-backup.timer",
-)
-# NB: `metnos-scheduler` e `metnos-i18n-translator.timer` NON sono qui: lo
-# scheduler v2 è co-hosted nel processo http (ADR 0112), non un servizio
-# systemd, e l'i18n è un suo job (`i18n_translate_pending`, every_6h), non un
-# servizio a sé. Verificarli via `systemctl is-active` dava un falso ✗ su
-# unità inesistenti. Lo scheduler è riportato sotto via heartbeat reale.
+# Il catalogo base dei servizi vive in runtime/services_registry.py. Questo
+# executor mantiene solo il supporto a ``services_extra`` espliciti, che non
+# diventano per questo servizi amministrabili dal core.
 
 
-def _scheduler_cohost_status() -> str:
-    """Stato REALE dello scheduler v2 co-host (ADR 0112): heartbeat del db.
-    L'ultimo run < 180s ⇒ vivo (esiste un job `dialog_pending_sweep` every_1m).
-    Niente assunzioni: se il co-host muore (raro init-fail silenzioso), i run
-    si fermano e questo diventa 'inactive' davvero (§2.8)."""
-    try:
-        import sqlite3
-        import datetime as _dt
-        try:
-            import config as _C
-            db = Path(_C.PATH_USER_STATE) / "scheduler_v2.sqlite"
-        except Exception:
-            db = Path.home() / ".local/state/metnos/scheduler_v2.sqlite"
-        if not Path(db).exists():
-            return "inactive"
-        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
-        try:
-            row = con.execute("SELECT max(finished_at) FROM runs").fetchone()
-        finally:
-            con.close()
-        if not row or not row[0]:
-            return "inactive"
-        t = _dt.datetime.fromisoformat(str(row[0]))
-        if t.tzinfo is None:
-            t = t.replace(tzinfo=_dt.timezone.utc)
-        delta = (_dt.datetime.now(_dt.timezone.utc) - t).total_seconds()
-        return "active" if 0 <= delta < 180 else "inactive"
-    except Exception:
-        return "unknown"
+def _scheduler_service_entry(observation: object) -> dict | None:
+    """Project the runtime-owned scheduler observation into system health.
+
+    The scheduler is an asyncio task inside the HTTP process, not a systemd
+    unit.  Its liveness therefore comes from the in-process daemon handle,
+    injected by the server through the signed manifest.  Missing observations
+    are omitted: a device or direct standalone invocation must not invent a
+    server-side ``inactive`` state merely because it cannot see that handle.
+    """
+
+    if not isinstance(observation, dict):
+        return None
+    state = str(observation.get("state") or "unknown")[:32]
+    healthy = observation.get("healthy") is True
+    entry = {
+        "name": "scheduler",
+        "key": "scheduler",
+        "status": "active" if healthy else state,
+        "scope": "integrated",
+        "installed": state != "unavailable",
+        "healthy": healthy,
+        "reason_code": str(observation.get("reason_code") or "")[:64],
+        "cohost": str(observation.get("cohost") or "http")[:32],
+        "heartbeat_at": str(observation.get("heartbeat_at") or "")[:48],
+        "heartbeat_age_s": observation.get("heartbeat_age_s"),
+        "jobs_total": int(observation.get("jobs_total") or 0),
+        "jobs_enabled": int(observation.get("jobs_enabled") or 0),
+        "jobs_running": int(observation.get("jobs_running") or 0),
+        "last_run_at": str(observation.get("last_run_at") or "")[:48],
+        "last_run_status": str(
+            observation.get("last_run_status") or "")[:32],
+        "error_class": str(observation.get("error_class") or "")[:96],
+        "error_summary": str(observation.get("error_summary") or "")[:240],
+    }
+    return entry
 
 
 def _user_runtime_env() -> dict:
@@ -723,12 +716,41 @@ def _is_active_dual(name: str) -> tuple[str, str]:
     return last_status, last_scope
 
 
-def _read_services(unit_names: tuple[str, ...] = _METNOS_SERVICES) -> list[dict]:
-    """Per ogni unit: status (system o --user, primo bus che risponde
-    'active') + active_since."""
+def _read_services(
+        unit_names: tuple[str, ...] | None = None, *,
+        scheduler_health: object = None) -> list[dict]:
+    """Legge il catalogo core oppure un insieme esplicito non amministrato."""
     out: list[dict] = []
     if shutil.which("systemctl") is None:
         return out
+    if unit_names is None:
+        try:
+            import services_registry
+
+            rows = services_registry.snapshots(
+                probe_endpoints=False, include_missing=True,
+            )
+        except (ImportError, OSError):
+            return out
+        for row in rows:
+            name = str(row.get("unit") or row.get("key") or "")
+            if name.endswith(".service"):
+                name = name[:-8]
+            entry = {
+                "name": name,
+                "key": row.get("key", ""),
+                "status": row.get("active_state", "unknown"),
+                "scope": row.get("scope", "unknown"),
+                "installed": bool(row.get("installed")),
+            }
+            if row.get("active_since"):
+                entry["active_since"] = row["active_since"]
+            out.append(entry)
+        scheduler = _scheduler_service_entry(scheduler_health)
+        if scheduler is not None:
+            out.append(scheduler)
+        return out
+
     for name in unit_names:
         status, scope = _is_active_dual(name)
         entry = {"name": name, "status": status}
@@ -748,16 +770,274 @@ def _read_services(unit_names: tuple[str, ...] = _METNOS_SERVICES) -> list[dict]
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
             pass
         out.append(entry)
-    # Scheduler v2 co-host (ADR 0112): stato reale via heartbeat, non systemd.
-    out.append({"name": "scheduler", "status": _scheduler_cohost_status()})
     return out
 
 
+def _thermal_sensor_kind(identifier: object) -> str:
+    """Classifica un sensore LHM dal suo identifier canonico.
+
+    Non usa il nome visualizzato (localizzato e dipendente dal produttore):
+    gli identifier di Libre/OpenHardwareMonitor sono l'interfaccia stabile.
+    """
+    value = str(identifier or "").casefold().replace("\\", "/")
+    segments = {part for part in value.split("/") if part}
+    if segments & {"intelcpu", "amdcpu", "cpu"}:
+        return "cpu"
+    if any(part == "gpu" or part.startswith("gpu-") for part in segments):
+        return "gpu"
+    if "nvme" in segments:
+        return "nvme"
+    if segments & {"storage", "hdd", "ssd"}:
+        return "storage"
+    return "other"
+
+
+def _normalise_windows_thermal(payload: object) -> dict:
+    """Valida e normalizza l'output del collector PowerShell Windows."""
+    if not isinstance(payload, dict):
+        return {
+            "available": False,
+            "source": "none",
+            "reason_code": "invalid_backend_output",
+        }
+    source = str(payload.get("source") or "none").casefold()
+    allowed_sources = {
+        "librehardwaremonitor_wmi",
+        "openhardwaremonitor_wmi",
+        "librehardwaremonitor_dll",
+        "windows_acpi",
+        "none",
+    }
+    if source not in allowed_sources:
+        source = "none"
+    quality = (
+        "generic_zone" if source == "windows_acpi"
+        else "hardware_sensor" if source != "none"
+        else "unavailable"
+    )
+    rows = payload.get("sensors") or []
+    if isinstance(rows, dict):
+        rows = [rows]
+    sensors: list[dict] = []
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                value_c = round(float(row.get("value_c")), 1)
+            except (TypeError, ValueError):
+                continue
+            # Esclude sentinel/valori palesemente corrotti senza imporre una
+            # soglia operativa al dispositivo.
+            if not -50.0 <= value_c <= 200.0:
+                continue
+            identifier = str(row.get("identifier") or "")[:240]
+            kind = (
+                "acpi" if source == "windows_acpi"
+                else _thermal_sensor_kind(identifier)
+            )
+            sensors.append({
+                "kind": kind,
+                "name": str(row.get("name") or "")[:160],
+                "identifier": identifier,
+                "value_c": value_c,
+            })
+    sensors.sort(key=lambda row: (
+        row["kind"], row["identifier"], row["name"], row["value_c"]))
+    if not sensors:
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": str(
+                payload.get("reason_code") or "no_supported_sensor")[:64],
+        }
+    out: dict[str, Any] = {
+        "available": True,
+        "source": source,
+        "quality": quality,
+        "sensors": sensors,
+    }
+    # Per CPU/GPU il valore sintetico e' il massimo corrente dei sensori
+    # pertinenti (package/hotspot/core): una scelta conservativa e ripetibile.
+    # Le zone ACPI NON diventano cpu_c: Windows non attesta a quale componente
+    # fisica corrispondano, quindi etichettarle "CPU" sarebbe un overclaim.
+    for kind, key in (("cpu", "cpu_c"), ("gpu", "gpu_c"),
+                      ("nvme", "nvme_c")):
+        values = [row["value_c"] for row in sensors if row["kind"] == kind]
+        if values:
+            out[key] = max(values)
+    return out
+
+
+_WINDOWS_THERMAL_PS = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+
+function Emit-ThermalResult([string]$source, [object[]]$sensors) {
+  [pscustomobject]@{ source = $source; sensors = @($sensors) } |
+    ConvertTo-Json -Compress -Depth 5
+  exit 0
+}
+
+# Via piu' leggera: se Libre/OpenHardwareMonitor e' gia' in esecuzione ed
+# espone il proprio namespace WMI, non carichiamo librerie e non chiediamo
+# privilegi ulteriori al client Metnos.
+$providers = @(
+  @{ Namespace = 'root\LibreHardwareMonitor'; Source = 'librehardwaremonitor_wmi' },
+  @{ Namespace = 'root\OpenHardwareMonitor';  Source = 'openhardwaremonitor_wmi' }
+)
+foreach ($provider in $providers) {
+  try {
+    $rows = @(
+      Get-CimInstance -Namespace $provider.Namespace -ClassName Sensor -Property Name,Identifier,SensorType,Value -ErrorAction Stop |
+      Where-Object { [string]$_.SensorType -eq 'Temperature' -and $null -ne $_.Value } |
+      ForEach-Object {
+        [pscustomobject]@{
+          name = [string]$_.Name
+          identifier = [string]$_.Identifier
+          value_c = [double]$_.Value
+        }
+      }
+    )
+    if ($rows.Count -gt 0) { Emit-ThermalResult $provider.Source $rows }
+  } catch { }
+}
+
+# Backend opzionale locale, senza pythonnet: l'amministratore del dispositivo
+# puo' indicare la DLL della distribuzione ufficiale gia' presente. Nessun
+# download o ricerca ricorsiva del filesystem avviene durante una richiesta.
+$dll = $env:METNOS_LIBREHARDWAREMONITOR_DLL
+if ($dll -and (Test-Path -LiteralPath $dll -PathType Leaf)) {
+  $computer = $null
+  try {
+    [void][System.Reflection.Assembly]::LoadFrom((Resolve-Path -LiteralPath $dll).Path)
+    $computer = New-Object LibreHardwareMonitor.Hardware.Computer
+    $computer.IsCpuEnabled = $true
+    $computer.IsGpuEnabled = $true
+    $computer.IsStorageEnabled = $true
+    $computer.IsMotherboardEnabled = $true
+    $computer.Open()
+    $rows = New-Object System.Collections.ArrayList
+    function Visit-Hardware([object]$hardware, [System.Collections.ArrayList]$result) {
+      $hardware.Update()
+      foreach ($sensor in @($hardware.Sensors)) {
+        if ([string]$sensor.SensorType -eq 'Temperature' -and $null -ne $sensor.Value) {
+          [void]$result.Add([pscustomobject]@{
+            name = [string]$sensor.Name
+            identifier = [string]$sensor.Identifier
+            value_c = [double]$sensor.Value
+          })
+        }
+      }
+      foreach ($sub in @($hardware.SubHardware)) { Visit-Hardware $sub $result }
+    }
+    foreach ($hardware in @($computer.Hardware)) { Visit-Hardware $hardware $rows }
+    if ($rows.Count -gt 0) { Emit-ThermalResult 'librehardwaremonitor_dll' $rows }
+  } catch { }
+  finally { if ($null -ne $computer) { try { $computer.Close() } catch { } } }
+}
+
+# Fallback built-in. MSAcpi_ThermalZoneTemperature espone zone ACPI, non una
+# temperatura CPU attestata: il server conservera' questa distinzione.
+try {
+  $rows = @(
+    Get-CimInstance -Namespace 'root\wmi' -ClassName MSAcpi_ThermalZoneTemperature -Property InstanceName,CurrentTemperature -ErrorAction Stop |
+    Where-Object { $null -ne $_.CurrentTemperature -and [double]$_.CurrentTemperature -gt 0 } |
+    ForEach-Object {
+      [pscustomobject]@{
+        name = [string]$_.InstanceName
+        identifier = [string]$_.InstanceName
+        value_c = [math]::Round(([double]$_.CurrentTemperature / 10.0) - 273.15, 1)
+      }
+    }
+  )
+  if ($rows.Count -gt 0) { Emit-ThermalResult 'windows_acpi' $rows }
+} catch { }
+
+[pscustomobject]@{
+  source = 'none'; sensors = @(); reason_code = 'no_supported_sensor'
+} | ConvertTo-Json -Compress -Depth 3
+"""
+
+
+def _read_thermal_windows() -> dict:
+    """Temperature Windows via un solo processo PowerShell, con timeout.
+
+    La raccolta avviene sul device: il server non apre WinRM, non usa
+    credenziali remote e non installa dipendenze. Il client contiene il
+    sottoprocesso nel proprio Job Object.
+    """
+    powershell = (
+        shutil.which("powershell.exe")
+        or shutil.which("powershell")
+        or shutil.which("pwsh")
+    )
+    if not powershell:
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": "powershell_unavailable",
+        }
+    try:
+        proc = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive",
+             "-Command", _WINDOWS_THERMAL_PS],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=6.0,
+            shell=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": "thermal_probe_timeout",
+        }
+    except (FileNotFoundError, OSError):
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": "thermal_probe_failed",
+        }
+    if proc.returncode != 0:
+        return {
+            "available": False,
+            "source": "none",
+            "quality": "unavailable",
+            "reason_code": "thermal_probe_failed",
+        }
+    # Profili PowerShell disabilitati; teniamo comunque il parser robusto a
+    # righe informative emesse dal runtime e accettiamo solo un JSON-oggetto.
+    for line in reversed((proc.stdout or "").splitlines()):
+        try:
+            payload = json.loads(line.strip())
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(payload, dict):
+            return _normalise_windows_thermal(payload)
+    return {
+        "available": False,
+        "source": "none",
+        "quality": "unavailable",
+        "reason_code": "invalid_backend_output",
+    }
+
+
 def _read_thermal() -> dict:
-    """Delega a `host_health.collect_thermal` (SoT 24/5/2026). Mantiene
-    il nome locale per back-compat (questo modulo `get_processes` viene
-    invocato come subprocess separato e potrebbe non aver `runtime/`
-    sul path); in caso di import fallito, mantiene la logica inline."""
+    """Raccoglie temperature dalla sorgente nativa della piattaforma.
+
+    Windows usa WMI/LHM/ACPI sul device. Linux delega a
+    `host_health.collect_thermal` (SoT 24/5/2026), con fallback inline quando
+    il runtime completo non e' presente nel bundle remoto.
+    """
+    if os.name == "nt":
+        return _read_thermal_windows()
     try:
         sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
             str(p / "runtime") for p in Path(__file__).resolve().parents
@@ -1131,14 +1411,16 @@ def _read_peripherals() -> dict:
     return out
 
 
-def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
+def _collect_health(
+        services_extra: tuple[str, ...] | None = None, *,
+        scheduler_health: object = None) -> dict:
     """Aggrega le sezioni descrittive+dinamiche. Nessuna chiamata LLM (§7.9).
     Raccolta SEMPRE completa (Roberto 9/7): la risposta poi usa la parte
     pertinente alla richiesta (blocco-status sintetico vs domande specifiche
     su cpu/gpu/ip/periferiche che pescano dalle sezioni)."""
-    units = _METNOS_SERVICES
+    services = _read_services(scheduler_health=scheduler_health)
     if services_extra:
-        units = _METNOS_SERVICES + tuple(services_extra)
+        services.extend(_read_services(tuple(services_extra)))
     return {
         "system": _read_system(),
         "cpu": _read_cpu(),
@@ -1150,7 +1432,7 @@ def _collect_health(services_extra: tuple[str, ...] | None = None) -> dict:
         "disk": _read_disk(),
         "network": _read_network(),
         "peripherals": _read_peripherals(),
-        "services": _read_services(units),
+        "services": services,
         "collected_at": int(time.time()),
     }
 
@@ -1262,6 +1544,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
     if include_health:
         result["health"] = _collect_health(
             tuple(s for s in services_extra_in if isinstance(s, str)),
+            scheduler_health=args.get("scheduler_health"),
         )
     return result
 

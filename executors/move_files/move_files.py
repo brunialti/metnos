@@ -22,7 +22,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -39,16 +38,43 @@ _HANDLERS = {
 }
 
 
+def _failure(error_code, error, *, error_class="invalid_args"):
+    return {
+        "ok": False,
+        "ok_count": 0,
+        "fail_count": 0,
+        "results": [],
+        "dirs_created": [],
+        "failed": [],
+        "error_class": error_class,
+        "error_code": error_code,
+        "error": error,
+    }
+
+
 def _backend_for(args):
     client = args.get("client") or "local"
     return _HANDLERS.get(client), client
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return _failure(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="args", reason="must be an object"),
+        )
+    if "client" in args and not isinstance(args["client"], str):
+        return _failure(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="client", reason="must be a string"),
+        )
     backend, client = _backend_for(args)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
+        return _failure(
+            "ERR_NOT_APPLICABLE",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
     return backend.move(args)
 
 
@@ -58,11 +84,29 @@ def reverse(plan, results):
     `plan` puo' contenere `args` originali con `client`; in mancanza
     cade su 'local'.
     """
-    args = (plan or {}).get("args") or {}
+    if not isinstance(plan, dict) or not isinstance(results, dict):
+        return _failure(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="plan/results", reason="must be objects"),
+        )
+    args = plan.get("args") or {}
+    if not isinstance(args, dict):
+        return _failure(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="plan.args", reason="must be an object"),
+        )
+    if "client" in args and not isinstance(args["client"], str):
+        return _failure(
+            "ERR_ARG_INVALID",
+            _msg("ERR_ARG_INVALID", arg="client", reason="must be a string"),
+        )
     backend, client = _backend_for(args)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
+        return _failure(
+            "ERR_NOT_APPLICABLE",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
     return backend.reverse_move(plan, results)
 
 

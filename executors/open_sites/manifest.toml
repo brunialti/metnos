@@ -1,8 +1,9 @@
 # Manifest executor `open_sites` — dominio sites F1 (spec §3.4).
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "open_sites"
-version     = "0.2.0"
+version     = "0.3.0"
 # Apertura context + navigazione: il broker ha timeout interno 20s/op; qui il
 # tetto client è ampio per il fan-out su più url.
 timeout_s   = 120
@@ -20,7 +21,7 @@ en = "SCOPO: opens a persistent browser session ready for login and reading. PAT
 
 [code]
 files  = ["open_sites.py"]
-digest = "sha256:2e27022bebc67144cc544553b479e7e30933ddea072dbacb719901941db55c28"
+digest = "sha256:6a0b00b06ca44b11c9392244798edf78ac9c2ad7bfed46f6f59c8e76f082852b"
 
 [args]
 type     = "object"
@@ -75,8 +76,24 @@ en = "Runtime only: exact opens bound to approved redirect/allowlist tokens."
 type = "string"
 runtime_resolved = true
 [args.properties._stealth.description]
-it = "Solo runtime: modalita' stealth per-turno (on|off) dalla pref sites_stealth."
-en = "Runtime only: per-turn stealth mode (on|off) from the sites_stealth pref."
+it = "Solo runtime: interruttore principale stealth per-turno (on|off) dalla preferenza utente."
+en = "Runtime only: per-turn stealth master switch (on|off) from the user preference."
+
+[args.properties._stealth_techniques]
+type = "array"
+items = { type = "string", enum = ["webdriver_launch_arg", "ua_override", "mobile_emulation", "chrome_permissions_js", "human_delays"] }
+runtime_resolved = true
+[args.properties._stealth_techniques.description]
+it = "Solo runtime: tecniche stealth selezionate singolarmente nelle preferenze utente."
+en = "Runtime only: stealth techniques selected individually in user preferences."
+
+[args.properties._browser_mode]
+type = "string"
+enum = ["headless", "side"]
+runtime_resolved = true
+[args.properties._browser_mode.description]
+it = "Solo runtime: superficie browser scelta nelle preferenze Website browsing (headless|side)."
+en = "Runtime only: browser surface selected in Website browsing preferences (headless|side)."
 
 [args.properties._lang]
 type = "string"
@@ -96,6 +113,20 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "title", source = ["title", "url"], cell_max = 180 },
+  { key = "url", source = "url", cell_max = 240 },
+  { key = "ok", source = "ok", cell_max = 16 },
+  { key = "reason_code", source = "reason_code", cell_max = 64 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "network:sites"
 hint = ["*"]
@@ -116,5 +147,5 @@ expect = { ok = false, field_eq = { error_class = "invalid_args" } }
 
 [placement]
 # §10.8: server-only. Il broker e le credenziali vivono sul server.
-scope     = "any"
+scope     = "server"
 device_ok = false

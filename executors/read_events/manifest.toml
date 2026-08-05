@@ -3,6 +3,7 @@
 # Dispatcher canonical (sequel di read_files/read_messages, 13/5/2026).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "read_events"
 version     = "0.4.0"
@@ -15,13 +16,20 @@ affinity    = [
 revertible  = false
 lifecycle   = "active"
 
+[execution]
+effect           = "read_only"
+parallelism_class = 1
+resource_class   = "network_io"
+concurrency_key  = "none"
+equivalence_gate = "verified"
+
 [description]
 it = "SCOPO: legge eventi calendario. PATTERN: read_events(time_window='today', top_k=10). NON: leggere mail o creare eventi (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}]."
 en = "SCOPO: reads calendar events. PATTERN: read_events(time_window='today', top_k=10). NON: read mail or create events (-> read_messages, create_events). OUT: entries=[{kind:'calendar_event', id, start, end, summary, location}]."
 
 [code]
 files  = ["read_events.py"]
-digest = "sha256:5e9af8306de7a23e667df1042016b1fb5c61aba09ed41eefe5e6083da0a40a7c"
+digest = "sha256:b6b5cd3e50f2c9f7d8a4e2d270c8508d6dcc4a406ca7e000ee0cd924c0ba32a7"
 
 [args]
 type     = "object"
@@ -95,14 +103,34 @@ schema_inline = """
 }
 """
 
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "start", source = "start", cell_max = 32 },
+  { key = "end", source = "end", cell_max = 32 },
+  { key = "summary", source = ["summary", "title", "id"], cell_max = 180 },
+  { key = "calendar_id", source = "calendar_id", cell_max = 80 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[capabilities]]
 name = "metnos:read"
 hint = ["~/.local/share/metnos/calendar.ics"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name   = "reads_local_ok"
 input  = { time_window = "today", client = "local" }
 expect = { ok = true }
+equivalence_runs = 2
 
 [[tests]]
 name   = "invalid_client_rejected"

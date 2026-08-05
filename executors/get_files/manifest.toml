@@ -3,27 +3,28 @@
 # Copre anche le date semantiche EXIF/birth (fields=['dates.semantic']).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_files"
-version     = "0.4.1"
+version     = "0.5.0"
 author      = "Roberto Brunialti"
 # EXIF/geo su molte foto (specie su mount di rete) e' legittimamente lento →
 # timeout ampio (il default loader e' 30s, troppo poco). Il worst-case e'
 # comunque limitato dal cap `max_results` (§2.11) sotto.
 timeout_s   = 180
-affinity    = ["exif", "foto", "photo", "image", "gps", "geotag", "luogo", "place", "camera", "image_dimensions"]
+affinity    = ["file metadata", "metadati file", "file size", "dimensione file", "byte", "file date", "data file", "exif", "foto", "photo", "image", "gps", "geotag", "luogo", "place", "camera", "image_dimensions"]
 # W3.2 (executor remoti §16.3): self-contained (solo stdlib + PIL + shim
 # messages/executor_helpers, nessuna dipendenza runtime/ non bundlata al
 # device), pathlib ovunque, encoding esplicito, nessun comando POSIX.
 platforms   = ["linux", "windows"]
 
 [description]
-it = "SCOPO: ottiene dati EXIF (gps, luogo, camera, data) da immagini NOTE. PATTERN: get_files(paths=[\"/tmp/img.jpg\"], fields=['gps']). NON: cercare foto per soggetto (-> find_images_indices); per pattern (-> find_files). OUT: entries=[{dates.semantic,gps,place,image_dimensions}]."
-en = "SCOPO: gets EXIF data (gps, place, camera, date) from KNOWN image paths. PATTERN: get_files(paths=[\"/tmp/img.jpg\"], fields=['gps']). NON: searching photos by subject (-> find_images_indices); by pattern (-> find_files). OUT: entries=[{dates.semantic,gps,place,image_dimensions}]."
+it = "SCOPO: ottiene dimensione, date ed EXIF di file NOTI. PATTERN: get_files(paths=[\"/tmp/a.jpg\"], fields=['size','dates.semantic']). NON: cercare per soggetto -> find_images_indices; per pattern -> find_files. OUT: entries con size_bytes, dates, gps e camera."
+en = "SCOPO: gets size, dates, and EXIF for KNOWN files. PATTERN: get_files(paths=[\"/tmp/a.jpg\"], fields=['size','dates.semantic']). NON: search by subject -> find_images_indices; by pattern -> find_files. OUT: entries with size_bytes, dates, GPS, and camera."
 
 [code]
 files  = ["get_files.py"]
-digest = "sha256:7c9269a4b51661219f01fdb1691b487c5612a2d11cc102b87ff1f21663f4d17a"
+digest = "sha256:6311a5d260667f304d1b048128f46e391f6fed2bf3746e37e123aa15dbd05fe0"
 
 [args]
 type     = "object"
@@ -34,24 +35,24 @@ type        = "integer"
 minimum     = 1
 
 [args.properties.from_step.description]
-it = "Numero dello step precedente (in questo turno) che ha prodotto la lista di file da arricchire. Es. al passo 1 find_files trova le foto, al passo 2 get_files riceve from_step=1. ALTERNATIVA: usa `paths` se l'utente cita path letterali nella query e nessuno step precedente ha prodotto la lista (caso atomico)."
-en = "Number of the previous step (in this turn) that produced the list of files to enrich. E.g., at step 1 find_files finds the photos, at step 2 get_files receives from_step=1. ALTERNATIVE: use `paths` if the user cites literal paths in the query and no previous step produced the list (atomic case)."
+it = "Step precedente che ha prodotto i file da arricchire, es. find_files al passo 1 -> from_step=1. Per path letterali usa paths."
+en = "Previous step that produced the files to enrich, e.g. find_files at step 1 -> from_step=1. Use paths for literal paths."
 
 [args.properties.paths]
 type        = "array"
 items       = { type = "string" }
 
 [args.properties.paths.description]
-it = "Lista di path letterali (es. ['/tmp/foo.jpg', '/home/x/y.png']). Usa questa forma per il caso atomico (utente cita 1+ path nella query e nessuno step ha gia' prodotto la lista). Non combinare con `from_step`."
-en = "List of literal paths (e.g., ['/tmp/foo.jpg', '/home/x/y.png']). Use this form for the atomic case (user mentions 1+ paths in the query and no step has already produced the list). Do not combine with `from_step`."
+it = "Path letterali esatti, senza glob `*`/`?`; es. ['/tmp/foo.jpg']. Non combinare con `from_step`."
+en = "Exact literal paths, without `*`/`?` globs; e.g. ['/tmp/foo.jpg']. Do not combine with `from_step`."
 
 [args.properties.fields]
 type        = "array"
 items       = { type = "string" }
 
 [args.properties.fields.description]
-it = "Lista di metadata da estrarre. Valori validi: 'size' (dimensione file in byte → `size_bytes`, vale per QUALSIASI file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (ultimi 5 = EXIF, solo foto). In alternativa la stringa 'all'. Default: ['dates.semantic']. Esempio dimensione: ['size']; foto con luogo: ['dates.semantic', 'place']."
-en = "List of metadata to extract. Valid values: 'size' (file size in bytes → `size_bytes`, works for ANY file), 'dates.semantic', 'dates.created', 'dates.modified', 'gps', 'place', 'device', 'image_dimensions' (last 5 = EXIF, photos only). Alternatively the string 'all'. Default: ['dates.semantic']. Example size: ['size']; photo with location: ['dates.semantic', 'place']."
+it = "Metadati: size, dates.semantic/created/modified, gps, place, device, image_dimensions o all. Default ['dates.semantic']."
+en = "Metadata: size, dates.semantic/created/modified, gps, place, device, image_dimensions, or all. Default ['dates.semantic']."
 
 [args.properties.max_results]
 type        = "integer"
@@ -65,9 +66,23 @@ name = "fs:read"
 hint = ["~/**", "/tmp/**"]
 
 [[capabilities]]
-name = "net:read"
+name = "network:http"
 hint = ["nominatim.openstreetmap.org"]
 
+[output]
+schema_inline = "{ ok: bool, entries: array, ok_count: integer, fail_count: integer, truncated?: bool, error?: string }"
+
+[presentation]
+default_view = "list"
+
+[presentation.list]
+mode = "table"
+columns = [
+  { key = "item", source = ["id", "name", "title", "subject", "path", "url", "$entry"], cell_max = 240 },
+]
+max_rows = 200
+max_chars = 16000
+overflow = "notice"
 [[tests]]
 name     = "dates_semantic_default"
 setup    = "mkdir -p /tmp/metnos_test_meta && echo x > /tmp/metnos_test_meta/a.txt && touch -d '2024-06-15 12:00:00' /tmp/metnos_test_meta/a.txt"
@@ -111,3 +126,4 @@ expect = { ok = false, metadata_field_eq = { truncated = true, used = 1, availab
 # hardcoded DEVICE_ELIGIBLE. scope="any" = server di default, device se nominato.
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

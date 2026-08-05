@@ -17,7 +17,6 @@ Determinismo §7.9: zero LLM, glue layer.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -30,6 +29,27 @@ from executor_helpers import run_stdio  # noqa: E402
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "entries": [],
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
+
+    # Validate before importing the unified engine or touching local models.
+    if not args.get("name") and not args.get("reference_images"):
+        return {
+            "ok": False,
+            "entries": [],
+            "error": _msg(
+                "ERR_ARG_MISSING_ONE_OF", options="name, reference_images",
+            ),
+            "error_class": "invalid_input",
+            "error_code": "search_criterion_missing",
+        }
+
     # Glue: forwarda name/reference_images all'executor unificato.
     sib = Path(__file__).resolve().parent.parent / "find_images_indices"
     sys.path.insert(0, str(sib))
@@ -38,13 +58,6 @@ def invoke(args):
     forwarded = dict(args)
     # Drop `idx` se presente (deprecato, non instrada via unified).
     forwarded.pop("idx", None)
-
-    # Almeno uno fra name / reference_images deve esserci.
-    if not forwarded.get("name") and not forwarded.get("reference_images"):
-        return {
-            "ok": False,
-            "error": _msg("ERR_ARG_MISSING_ONE_OF", options="name, reference_images"),
-        }
 
     return fii.invoke(forwarded)
 

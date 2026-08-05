@@ -4,9 +4,11 @@
 # raccolta dichiarativa di valori dall'utente in risposta a un dialogo.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "get_inputs"
-version     = "0.1.0"
+version     = "0.2.0"
+platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
     "chiedi", "domanda", "dialogo", "dialog", "input", "form", "modulo", "prompt", "wizard",
@@ -20,11 +22,18 @@ en = "SCOPO: gets structured inputs (dialog/form). PATTERN: get_inputs(title='..
 
 [code]
 files  = ["get_inputs.py"]
-digest = "sha256:8470e9dd582981bcb478bfe8c0e5d7a325441c0d20b9cf64226814224efa8adc"
+digest = "sha256:206fa39c34a5691c70f06c8bb00f6ac9bec0c5ef3dce032587045bc7659bd8ab"
 
 [args]
 type     = "object"
-required = ["title", "dialog"]
+required = []
+
+[args.properties.dialog_id]
+type = "string"
+
+[args.properties.dialog_id.description]
+it = "ID di un dialogo esistente da rileggere dopo la risposta. Alternativo a title+dialog; non creare o inventare ID."
+en = "ID of an existing dialogue to retrieve after the response. Alternative to title+dialog; do not create or invent IDs."
 
 [args.properties.title]
 type        = "string"
@@ -79,9 +88,42 @@ description = "Per kind=choice/multi_choice con from_step: template Python {fiel
 type        = "string"
 description = "Per kind=choice/multi_choice con from_step: nome del campo entry da usare come value (es. 'start')."
 
+[args.properties.dialog.items.properties.schema.properties.choices]
+type        = "array"
+description = "Scelte esplicite per choice/multi_choice; valori scalari o oggetti {label,value}."
+
+[args.properties.dialog.items.properties.schema.properties.from_entries]
+type        = "boolean"
+description = "Deriva le scelte dalle entries risolte dal runtime tramite from_step."
+
+[args.properties.dialog.items.properties.schema.properties.options]
+type        = "array"
+description = "Opzioni per choice_with_preview: oggetti {value,label,preview_image_path}."
+
+[args.properties.dialog.items.properties.schema.properties.options.items]
+type     = "object"
+required = ["value", "label", "preview_image_path"]
+
+[args.properties.dialog.items.properties.schema.properties.options.items.properties.value]
+type = ["string", "integer"]
+
+[args.properties.dialog.items.properties.schema.properties.options.items.properties.label]
+type = "string"
+
+[args.properties.dialog.items.properties.schema.properties.options.items.properties.preview_image_path]
+type = "string"
+
+[args.properties.dialog.items.properties.schema.properties.secret]
+type        = "boolean"
+description = "Indica che il valore raccolto deve essere trattato come segreto."
+
 [args.properties.dialog.items.properties.optional]
 type        = "boolean"
 description = "Se true, lo step puo' essere saltato dall'utente."
+
+[args.properties.dialog.items.properties.default]
+type        = ["string", "integer", "number", "boolean", "array", "object"]
+description = "Valore predefinito opzionale dello step."
 
 [args.properties.fmt]
 type        = "string"
@@ -94,10 +136,19 @@ en = "Rendering modes. 'auto' (default): form if ≥3 steps on HTTP channel, oth
 
 [args.properties.actor]
 type        = "string"
+runtime_resolved = true
 
 [args.properties.actor.description]
-it = "Opzionale. Identificatore logico dell'utente che riceve il dialogo (multi-user). Default 'host'. Il runtime lo deriva di norma dall'actor del turno; non e' necessario settarlo dal PLANNER."
-en = "Optional. Logical identifier of the user receiving the dialogue (multi-user). Default 'host'. The runtime normally derives it from the turn actor; it is not necessary to set it from the PLANNER."
+it = "Solo runtime. Identificatore logico dell'utente che riceve il dialogo (multi-user)."
+en = "Runtime-only logical identifier of the user receiving the dialogue (multi-user)."
+
+[args.properties.channel]
+type = "string"
+runtime_resolved = true
+
+[args.properties.channel.description]
+it = "Solo runtime. Canale sul quale presentare e recuperare il dialogo."
+en = "Runtime only. Channel on which the dialogue is presented and retrieved."
 
 [args.properties.timeout_s]
 type        = "integer"
@@ -105,8 +156,8 @@ minimum     = 1
 maximum     = 3600
 
 [args.properties.timeout_s.description]
-it = "Opzionale. TTL del dialogo in secondi. Default 3600 (1 h). Max 3600. Oltre, lo stato pendente viene scartato dal cleanup."
-en = "Optional. Dialogue TTL in seconds. Default 3600 (1 h). Max 3600. Beyond this, the pending state is discarded by the cleanup."
+it = "Opzionale. TTL del dialogo in secondi. Se omesso usa il default runtime configurabile (normalmente 600 s). Max esplicito 3600; alla scadenza il cleanup scarta lo stato pendente."
+en = "Optional dialogue TTL in seconds. If omitted, uses the configurable runtime default (normally 600 s). Explicit maximum 3600; cleanup discards pending state at expiry."
 
 [args.properties.from_step]
 type        = "integer"
@@ -118,14 +169,40 @@ en = "Optional. Step number from the current turn whose `entries` will be used t
 
 [args.properties.entries]
 type        = "array"
+runtime_resolved = true
 
 [args.properties.entries.description]
 it = "Auto-popolato dal runtime quando il PLANNER passa `from_step`. Lista di record (dict) usata per derivare `choices` degli step kind=choice/multi_choice con display_template. Il PLANNER NON deve passarla esplicitamente: passa `from_step` e il runtime fa il lavoro."
 en = "Auto-populated by the runtime when the PLANNER passes `from_step`. List of records (dict) used to derive `choices` of choice/multi_choice steps with display_template. The PLANNER MUST NOT pass it explicitly: pass `from_step` and the runtime handles it."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  decision?: 'input_required'|'completed'|'cancelled',
+  dialog_id?: str,
+  step_index?: int,
+  step_total?: int,
+  values?: dict,
+  fmt?: str,
+  final_message_hint?: str,
+  expandable_caps?: Array<dict>,
+  metadata?: {title: str, n_steps: int, fmt: str, actor: str, channel: str},
+  actor?: str,
+  channel?: str,
+  error?: str,
+  error_class?: str,
+  error_code?: str
+}
+"""
+
 [[capabilities]]
 name = "dialog.user_input"
 hint = []
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "manca_dialog_fallisce"
@@ -149,10 +226,16 @@ expect = { ok = false, error_contains = "kind" }
 
 [[tests]]
 name   = "happy_path_singolo_step_text"
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_text" }
+setup  = "rm -rf /tmp/metnos_test_get_inputs_text"
 input  = { title = "Quale citta'?", dialog = [{ var = "city", prompt = "Citta':", schema = { kind = "text" } }] }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 1 } }
+teardown = "rm -rf /tmp/metnos_test_get_inputs_text"
 
 [[tests]]
 name   = "happy_path_credenziali_due_step"
+env    = { METNOS_USER_DATA = "/tmp/metnos_test_get_inputs_credentials" }
+setup  = "rm -rf /tmp/metnos_test_get_inputs_credentials"
 input  = { title = "Credenziali NAS", dialog = [{ var = "username", prompt = "User:", schema = { kind = "text" } }, { var = "password", prompt = "Pwd:", schema = { kind = "credentials", secret = true } }] }
 expect = { ok = true, metadata_field_eq = { decision = "input_required", step_total = 2 } }
+teardown = "rm -rf /tmp/metnos_test_get_inputs_credentials"

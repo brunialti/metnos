@@ -3,9 +3,10 @@
 # `_format` = qualifier modalita' (famiglia operazione, §2.2).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "change_files_format"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity    = ["converti", "convert", "cambia-formato", "change-format",
                  "transcode", "encode", "ricodifica", "format-conversion",
@@ -14,23 +15,38 @@ affinity    = ["converti", "convert", "cambia-formato", "change-format",
                  "audio-extract", "ridimensiona-formato",
                  "trasforma-immagine"]
 revertible        = true
-reverse_pattern   = "delete_created_paths"
+reverse_pattern   = ["restore_blob_backup", "delete_created_paths"]
 lifecycle         = "active"
 critical          = false
 
 [[capabilities]]
-name = "metnos:read"
+name = "fs:read"
+hint = ["~/**", "/mnt/**", "/tmp/**"]
 
 [[capabilities]]
-name = "metnos:write"
+name = "fs:write"
+hint = ["~/**", "/mnt/**", "/tmp/**"]
+# `dst_dir` e' un target esplicito; senza di esso l'output viene derivato
+# accanto a ciascun path sorgente. Il choke-point live valida entrambi anche
+# nel fallback senza bubblewrap.
+path_args = ["dst_dir"]
+parent_path_args = ["paths"]
+
+[output]
+schema_inline = "{ ok: bool, results: array, dirs_created: array, ok_count: integer, summary: string, truncated?: bool, truncated_what?: string, used?: integer, available_total?: integer, cap_field?: string, cap_value?: integer, error?: string }"
+
+[[tests]]
+name = "missing_source_fails"
+input = {}
+expect = { ok = false }
 
 [description]
-it = "SCOPO: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: estrarre testo (-> read_files); decomprimere archivi (-> compress_files). OUT: results=[...]."
-en = "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: extract text (-> read_files); decompress archives (-> compress_files). OUT: results=[...]."
+it = "SCOPO: converte file tra formati (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: estrarre testo (-> read_files); decomprimere archivi (-> compress_files). OUT: {results:[{src,dst,path,created,prev_blob_path?}], dirs_created, ok_count, summary}."
+en = "SCOPO: converts files between formats (JPG/PNG/WEBP/GIF, MP4/WEBM, audio). PATTERN: change_files_format(paths=[...], to_format='jpg'). NON: extract text (-> read_files); decompress archives (-> compress_files). OUT: {results:[{src,dst,path,created,prev_blob_path?}], dirs_created, ok_count, summary}."
 
 [code]
 files  = ["change_files_format.py"]
-digest = "sha256:f907be8c8db3bb45df6120da3680843fd53d22d7404ec52e03cb02f62f6019f1"
+digest = "sha256:90503db0ff691e6fec97fc12c4cbb32d111d30106cf0b1f03f182122b8f0556f"
 
 [args]
 type     = "object"

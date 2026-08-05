@@ -50,6 +50,7 @@ def invoke(args: dict) -> dict:
     if not isinstance(action, str) or not action.strip():
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="action"),
                 "error_class": "invalid_args", "results": []}
+    goal_mode = args.get("_goal_mode") is True
     value_ref = args.get("value_ref")
     approval_tokens = args.get("approval_tokens") or {}
     if not isinstance(approval_tokens, dict):
@@ -61,7 +62,8 @@ def invoke(args: dict) -> dict:
     for sid in session_ids:
         res = session_client.session_act(
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
-            approval_token=approval_tokens.get(sid))
+            approval_token=approval_tokens.get(sid),
+            goal_query=(action if goal_mode else None))
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -74,7 +76,8 @@ def invoke(args: dict) -> dict:
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
             "primitive": res.get("primitive"), "url": res.get("url"),
-            "reason_code": None if res.get("ok") else res.get("error_class"),
+            "reason_code": (None if res.get("ok") else
+                            res.get("reason_code") or res.get("error_class")),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
             **({"observed_candidates": res.get("observed_candidates")}
                if res.get("observed_candidates") else {}),
@@ -99,6 +102,7 @@ def invoke(args: dict) -> dict:
             "on_approve": {"tool": "act_sites", "args": {
                 "session_ids": list(tokens), "action": action,
                 "approval_tokens": tokens,
+                **({"_goal_mode": True} if goal_mode else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
             }},
             "on_reject": {"tool": "delete_sites", "args": {
@@ -123,9 +127,16 @@ def invoke(args: dict) -> dict:
     else:
         out["error_class"] = next((r["reason_code"] for r in results
                                    if r["reason_code"]), "action_failed")
-        out["error"] = (_msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
-                        if out["error_class"] == "mandate_scope_exceeded"
-                        else _msg("ERR_OP_FAILED", reason="act_sites"))
+        if out["error_class"] == "mandate_scope_exceeded":
+            out["error"] = _msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
+        elif out["error_class"] == "navigation_failed":
+            out["error"] = _msg("MSG_SITES_RC_UNAVAILABLE")
+        elif out["error_class"] == "side_browser_unavailable":
+            out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+        else:
+            out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
+        if str(out["error"]).startswith("<missing:"):
+            out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
     return out
 
 

@@ -57,6 +57,15 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 
+_RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
+    str(p / "runtime") for p in Path(__file__).resolve().parents
+    if (p / "runtime" / "config.py").is_file()
+)
+if _RUNTIME not in sys.path:
+    sys.path.insert(0, _RUNTIME)
+from services_registry import endpoint as _service_endpoint  # noqa: E402
+
+
 USER_AGENT = "metnos-crawler/1.2 (+metnos@metnos.com)"
 
 # Floor hardcoded: nessun mode/tier puo' scendere sotto 200 ms in tier
@@ -93,8 +102,8 @@ BLOCKED_FILE = CONFIG_DIR / "blocked_origins.json"
 # chiede "cerca <topic>" senza fornire URL espliciti, find_urls puo'
 # interrogare SearXNG locale (multi-backend aggregator self-hosted, §10.3)
 # per ottenere automaticamente i seed_urls top-N. Backend default: porta
-# 8888 di localhost; override via env METNOS_SEARXNG_URL.
-SEARXNG_URL_DEFAULT = "http://localhost:8888"
+# L'endpoint e il relativo override vivono nel catalogo servizi del core.
+SEARXNG_URL_DEFAULT = _service_endpoint("searxng", include_env=False)
 # Profilo batch+interattivo: 3s tagliava i motori lenti-ma-buoni → pool
 # candidati parziale/ballerino che AFFAMA il rerank wide_n (sotto). 12s (≤
 # max_request_timeout istanza) lascia completare l'aggregazione. Tuning via env
@@ -381,14 +390,15 @@ def _host_capacity() -> dict:
     T1 unknown=2, T2 trusted=6, T3 owned=12. Valori conservativi: si puo'
     abbassare via env METNOS_FIND_URLS_GLOBAL_MAX e METNOS_FIND_URLS_PER_HOST_*.
     """
-    import multiprocessing
-    import os
-    cpu = max(1, multiprocessing.cpu_count())
-    # Banda upstream tipica .33 fiber 2.5 Gbps: ben oltre 32 conn possibili.
-    # Cap = min(64, cpu * 4) bilancia FD ulimit + memoria parsing (~10MB/conn).
-    global_max = int(os.environ.get(
-        "METNOS_FIND_URLS_GLOBAL_MAX", min(64, cpu * 4)
-    ))
+    # Il runtime assegna il tetto firmato. L'override locale puo' soltanto
+    # ridurlo: non esiste piu' un secondo scheduler nascosto nel crawler.
+    assigned = assigned_workers()
+    try:
+        configured = int(os.environ.get(
+            "METNOS_FIND_URLS_GLOBAL_MAX", assigned))
+    except (TypeError, ValueError):
+        configured = assigned
+    global_max = max(1, min(assigned, configured))
     return {
         "global_max": global_max,
         "per_host": {
@@ -406,11 +416,13 @@ def _host_capacity() -> dict:
 
 
 # Throttle condiviso (ADR 0103) — modulo runtime/host_throttle.py.
-sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
-    str(p / "runtime") for p in Path(__file__).resolve().parents
-    if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
+from executor_workers import (  # noqa: E402
+    assigned_workers,
+    map_ordered,
+    worker_budget,
+)
 from host_throttle import HostThrottle  # noqa: E402
 # Host health tracker per auto-degrade T2→T1 su 429/503 (ADR 0108).
 try:
@@ -950,9 +962,7 @@ def _searxng_search_full(query: str, top_n: int = SEARXNG_TOP_N,
     """
     if not query or not query.strip():
         return ([], "search_backend_invalid")
-    base = (base_url
-            or os.environ.get("METNOS_SEARXNG_URL", SEARXNG_URL_DEFAULT)
-            ).rstrip("/")
+    base = (base_url or _service_endpoint("searxng")).rstrip("/")
     # §7.9: NIENTE restrizione di lingua. Senza questo, l'istanza SearXNG usa il
     # suo default (IT) → filtra/penalizza i risultati EN PRIMA del rerank (bug
     # "AMD ROCm" → congressi medici IT invece di AMD-chip/ROCm). La lingua giusta
@@ -1026,7 +1036,6 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
         return ([c["url"] for c in candidates],
                 {"used": False, "reason": "trivial_size"})
     try:
-        import sys as _sys
         # runtime/ già su sys.path dalla bootstrap a riga 380 (METNOS_RUNTIME-aware).
         from prompt_loader import get as _prompt_get  # type: ignore
         from llm_helpers import call_llm as _call_llm  # type: ignore
@@ -1056,9 +1065,10 @@ def _llm_rerank_candidates(user_query: str, candidates: list[dict],
     }
 
     try:
+        from llm_workloads import tier_for
         text, meta = _call_llm(
-            payload, prompt, tier="middle",
-            max_tokens=900, temperature=0.0, think=False,
+            payload, prompt, tier=tier_for("urls.rerank"),
+            max_tokens=900,
         )
     except Exception as ex:
         return ([c["url"] for c in candidates],
@@ -1224,7 +1234,7 @@ def _invoke_default(args: dict) -> dict:
                     "error": (
                         "search backend unavailable "
                         "(SearXNG @ "
-                        f"{os.environ.get('METNOS_SEARXNG_URL', SEARXNG_URL_DEFAULT)})"
+                        f"{_service_endpoint('searxng')})"
                         " and no seed_urls fallback"
                     ),
                     "error_class": err_class,
@@ -1540,17 +1550,16 @@ def _invoke_default(args: dict) -> dict:
         """
         if len(urls) <= 1:
             return {urls[0]: _fetch_html(urls[0])} if urls else {}
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        out: dict[str, tuple | None] = {}
         workers = min(_global_inflight_max, len(urls))
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = {ex.submit(_fetch_html, u): u for u in urls}
-            for fut in as_completed(futs):
-                u = futs[fut]
-                try:
-                    out[u] = fut.result()
-                except Exception:
-                    out[u] = None
+        def _safe_fetch(url: str):
+            try:
+                return _fetch_html(url)
+            except Exception:
+                return None
+        with worker_budget(workers):
+            completed, skipped = map_ordered(_safe_fetch, urls)
+        out = {urls[index]: result for index, result in completed}
+        out.update({urls[index]: None for index in skipped})
         return out
 
     # Pre-fetch dei seed per scoprire eventuali RSS feed (link rel=alternate)
@@ -1699,7 +1708,7 @@ def _invoke_default(args: dict) -> dict:
             if path_include and not _matches_any(path, path_include):
                 continue
             # parsa solo se html
-            title = ""; snippet = ""; rss_links_local = []
+            title = ""; snippet = ""
             if "text/html" in ctype.lower() and text:
                 # Meta-refresh detection in BFS: se il body e' un puro
                 # redirect <meta http-equiv="refresh" url=...>, accoda il
@@ -1723,7 +1732,6 @@ def _invoke_default(args: dict) -> dict:
                     p = _LinkExtractor()
                     p.feed(text)
                     title = p.title; snippet = p.snippet
-                    p.rss_links
                     # accoda link interni se profondita' lo permette
                     if depth < max_depth:
                         for href in p.links:

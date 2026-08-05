@@ -12,7 +12,6 @@ Contratto:
     stdout: JSON {ok, ok_count, fail_count, entries, failed}
             entries[i] = {path, sheet, headers, rows: list[dict|list], row_count}
 """
-import json
 import os
 import sys
 from pathlib import Path
@@ -21,8 +20,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
-from executor_helpers import coerce_cap  # noqa: E402
+from executor_helpers import coerce_cap, run_stdio, vector_result  # noqa: E402
 
 try:
     import openpyxl
@@ -30,28 +28,60 @@ except ImportError:
     openpyxl = None
 
 
+def _failed(error_class, error_code, error, *, detail=None):
+    out = {
+        "error_class": error_class,
+        "error_code": error_code,
+        "error": error,
+    }
+    if detail:
+        out["detail"] = detail
+    return out
+
+
 def _read_one(path_arg, sheet, has_header, max_rows):
     if openpyxl is None:
-        return None, "openpyxl not installed (pip install --user openpyxl)"
+        return None, _failed(
+            "dependency_missing", "openpyxl_missing",
+            _msg("ERR_DEPENDENCY_MISSING", what="openpyxl"),
+        )
     path = Path(os.path.expanduser(path_arg)).resolve()
     if not path.exists():
-        return None, "path does not exist"
+        return None, _failed(
+            "not_found", "path_not_found",
+            _msg("ERR_PATH_NOT_FOUND", path=str(path)),
+        )
     if not path.is_file():
-        return None, "path is not a file"
+        return None, _failed(
+            "invalid_input", "path_not_file",
+            _msg("ERR_PATH_WRONG_TYPE", expected="file", actual="non-file",
+                 path=str(path)),
+        )
     try:
         wb = openpyxl.load_workbook(filename=str(path), read_only=True, data_only=True)
     except Exception as e:
-        return None, f"openpyxl load failed: {e}"
+        return None, _failed(
+            "invalid_content", "xlsx_parse_failed",
+            _msg("ERR_FILE_READ_FAILED", path=str(path)), detail=str(e),
+        )
     try:
         if sheet is None:
             ws = wb.worksheets[0]
         elif isinstance(sheet, int):
             if sheet < 0 or sheet >= len(wb.worksheets):
-                return None, f"sheet index {sheet} out of range (0..{len(wb.worksheets)-1})"
+                return None, _failed(
+                    "invalid_input", "worksheet_index_invalid",
+                    _msg("ERR_WORKSHEET_INDEX_INVALID", index=sheet,
+                         maximum=len(wb.worksheets) - 1),
+                )
             ws = wb.worksheets[sheet]
         else:
             if sheet not in wb.sheetnames:
-                return None, f"sheet name {sheet!r} not found; available: {wb.sheetnames}"
+                return None, _failed(
+                    "not_found", "worksheet_not_found",
+                    _msg("ERR_WORKSHEET_NOT_FOUND", sheet=sheet),
+                    detail=", ".join(wb.sheetnames),
+                )
             ws = wb[sheet]
         headers = None
         rows = []
@@ -93,13 +123,30 @@ def _read_one(path_arg, sheet, has_header, max_rows):
 
 
 def invoke(args):
+    if not isinstance(args, dict):
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARGS_NOT_OBJECT"),
+            "error_class": "invalid_input",
+            "error_code": "args_not_object",
+        }
     paths = args.get("paths")
     sheet = args.get("sheet")
+    # Il manifest espone `sheet` come stringa per compatibilità con i planner
+    # JSON. Una stringa composta solo da cifre indica però un indice 0-based,
+    # come documentato, non il nome letterale del foglio.
+    if isinstance(sheet, str) and sheet.strip().isdigit():
+        sheet = int(sheet.strip())
     has_header = bool(args.get("has_header", True))
     max_rows = coerce_cap(args, "max_rows", 10000, maximum=1000000)
 
     if not isinstance(paths, list):
-        return {"ok": False, "error": _msg("ERR_ARG_NOT_LIST", arg="paths")}
+        return {
+            "ok": False,
+            "error": _msg("ERR_ARG_NOT_LIST", arg="paths"),
+            "error_class": "invalid_input",
+            "error_code": "paths_not_list",
+        }
 
     entries, failed = [], []
     aggregate_truncated = False
@@ -107,11 +154,22 @@ def invoke(args):
     aggregate_available = 0
     for i, p in enumerate(paths):
         if not isinstance(p, str) or not p:
-            failed.append({"index": i, "path": p, "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path")})
+            failed.append({
+                "index": i,
+                "path": p,
+                **_failed(
+                    "invalid_input", "path_not_nonempty_string",
+                    _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path"),
+                ),
+            })
             continue
         entry, err = _read_one(p, sheet, has_header, max_rows)
         if err:
-            failed.append({"index": i, "path": str(Path(os.path.expanduser(p)).resolve()), "error": err})
+            failed.append({
+                "index": i,
+                "path": str(Path(os.path.expanduser(p)).resolve()),
+                **err,
+            })
             continue
         if entry.pop("_truncated", False):
             aggregate_truncated = True
@@ -119,13 +177,7 @@ def invoke(args):
         aggregate_available += entry.pop("_available_total", entry.get("row_count", 0))
         entries.append(entry)
 
-    out = {
-        "ok": len(failed) == 0,
-        "ok_count": len(entries),
-        "fail_count": len(failed),
-        "entries": entries,
-        "failed": failed,
-    }
+    out = vector_result(entries, failed)
     if aggregate_truncated:
         out["truncated"] = True
         out["truncated_what"] = _msg("MSG_OBJECT_LINES")

@@ -24,6 +24,7 @@ if _RT not in sys.path:
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
+from playwright_sidecar import stealth as stealth_registry  # noqa: E402
 
 
 def invoke(args: dict) -> dict:
@@ -44,14 +45,15 @@ def invoke(args: dict) -> dict:
         allowlist = [allowlist]
     label = args.get("session_label") or ""
     task_name = os.environ.get("METNOS_TASK_NAME") or None
+    task_owner_user_id = os.environ.get("METNOS_OWNER_USER_ID") or None
     credential_mode = str(args.get("_credential_mode") or "default")
     if credential_mode not in {"default", "none"}:
         return {"ok": False,
                 "error": _msg("ERR_ARG_INVALID", arg="_credential_mode",
                               reason="default|none"),
                 "error_class": "invalid_args", "entries": []}
-    # ADR 0191 P1: stealth per-turno, runtime-resolved dalla pref `sites_stealth`
-    # ("on"/"off"). Convertito qui in bool per il broker; conservato nei replay.
+    # ADR 0191 P1: master e sotto-opzioni indipendenti sono runtime-owned e
+    # conservati integralmente nei replay di approvazione.
     stealth_pref = str(args.get("_stealth") or "off").strip().lower()
     if stealth_pref not in {"on", "off"}:
         return {"ok": False,
@@ -59,6 +61,22 @@ def invoke(args: dict) -> dict:
                               reason="on|off"),
                 "error_class": "invalid_args", "entries": []}
     stealth = (stealth_pref == "on")
+    raw_techniques = args.get("_stealth_techniques") or []
+    unknown_techniques = stealth_registry.unknown_techniques(raw_techniques)
+    if unknown_techniques:
+        return {"ok": False,
+                "error": _msg("ERR_ARG_INVALID", arg="_stealth_techniques",
+                              reason="closed technique list"),
+                "error_class": "invalid_args", "entries": []}
+    stealth_techniques = list(
+        stealth_registry.normalize_selection(raw_techniques))
+    browser_mode = str(
+        args.get("_browser_mode") or "headless").strip().lower()
+    if browser_mode not in {"headless", "side"}:
+        return {"ok": False,
+                "error": _msg("ERR_ARG_INVALID", arg="_browser_mode",
+                              reason="headless|side"),
+                "error_class": "invalid_args", "entries": []}
     # ADR 0191 fix #9: lingua del turno (runtime-resolved) per locale/timezone.
     lang = str(args.get("_lang") or "").strip() or None
     max_total = int(args.get("max_total") or 4)
@@ -96,7 +114,11 @@ def invoke(args: dict) -> dict:
             prepared = session_client.session_open(
                 owner=owner, url=url, allowlist=allowlist,
                 session_label=label, task_name=task_name,
-                credential_mode=credential_mode, stealth=stealth, lang=lang)
+                owner_user_id=task_owner_user_id,
+                task_owner_user_id=task_owner_user_id,
+                credential_mode=credential_mode, stealth=stealth,
+                stealth_techniques=stealth_techniques,
+                browser_mode=browser_mode, lang=lang)
             token = prepared.get("approval_token")
             if prepared.get("error_class") != "approval_required" or not token:
                 return {"ok": False,
@@ -120,7 +142,10 @@ def invoke(args: dict) -> dict:
                     "urls": urls, "allowlist": allowlist,
                     "session_label": label, "max_total": max_total,
                     "_credential_mode": credential_mode,
-                    "_stealth": stealth_pref, "_lang": lang or "",
+                    "_stealth": stealth_pref,
+                    "_stealth_techniques": stealth_techniques,
+                    "_browser_mode": browser_mode,
+                    "_lang": lang or "",
                     "_allowlist_tokens": pending_tokens,
                 }},
             })
@@ -142,8 +167,12 @@ def invoke(args: dict) -> dict:
         res = session_client.session_open(
             owner=owner, url=url, allowlist=attempt_allowlist,
             session_label=label, approval_token=attempt_token,
-            task_name=task_name, credential_mode=credential_mode,
-            stealth=stealth, lang=lang)
+            task_name=task_name,
+            owner_user_id=task_owner_user_id,
+            task_owner_user_id=task_owner_user_id,
+            credential_mode=credential_mode,
+            stealth=stealth, stealth_techniques=stealth_techniques,
+            browser_mode=browser_mode, lang=lang)
         next_allowlist = (res.get("approved_allowlist")
                           if res.get("error_class") == "approval_required"
                           else attempt_allowlist)
@@ -163,6 +192,7 @@ def invoke(args: dict) -> dict:
                 "session_id": res.get("session_id"),
                 "url": res.get("url"), "title": res.get("title", ""),
                 "ok": True,
+                **({"reused": True} if res.get("reused") else {}),
                 # Fix adversarial #10: superficie osservata (403/429/5xx/vuota)
                 # su un'apertura RIUSCITA va esposta, non scartata.
                 **({"reason_code": res["reason_code"]}
@@ -196,7 +226,10 @@ def invoke(args: dict) -> dict:
                 "urls": urls, "session_label": label,
                 "max_total": max_total,
                 "_credential_mode": credential_mode,
-                "_stealth": stealth_pref, "_lang": lang or "",
+                "_stealth": stealth_pref,
+                "_stealth_techniques": stealth_techniques,
+                "_browser_mode": browser_mode,
+                "_lang": lang or "",
                 "_open_approvals": attempted_specs,
             }},
         })
@@ -215,9 +248,12 @@ def invoke(args: dict) -> dict:
     if not out["ok"]:
         # onestà §2.8: nessuna sessione aperta → error esplicito
         out["error_class"] = entries[0].get("reason_code") if entries else "open_failed"
-        out["error"] = (_msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
-                        if out["error_class"] == "mandate_scope_exceeded"
-                        else _msg("ERR_OP_FAILED", reason="open_sites"))
+        if out["error_class"] == "mandate_scope_exceeded":
+            out["error"] = _msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
+        elif out["error_class"] == "side_browser_unavailable":
+            out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+        else:
+            out["error"] = _msg("ERR_OP_FAILED", reason="open_sites")
     return out
 
 

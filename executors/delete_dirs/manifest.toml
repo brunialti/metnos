@@ -5,14 +5,17 @@
 # nel vocabolario chiuso.
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "delete_dirs"
-version     = "0.1.0"
+version     = "0.2.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
     "delete", "elimina", "cancella", "rmdir", "rimuovi", "remove", "directory", "cartella"
             ]
+revertible  = false
+lifecycle   = "active"
 
 [description]
 it = "SCOPO: cancella directory (vuote o forzate). PATTERN: delete_dirs(paths=[\"/tmp\"], force=false). NON: creare (-> create_dirs); elencare (-> list_dirs); cercare (-> find_dirs). OUT: results=[...], best-effort."
@@ -20,7 +23,7 @@ en = "SCOPO: delete directories (empty or forced). PATTERN: delete_dirs(paths=[\
 
 [code]
 files  = ["delete_dirs.py"]
-digest = "sha256:408f608d6dd4eb491c7bf060fd0a2dd69a348f122a96181c3215eecc0c3d1084"
+digest = "sha256:8442db41b7e6d1327d28a04bc8e94d285a7a27b884d9faacede606cd40dc4603"
 
 [args]
 type     = "object"
@@ -55,9 +58,29 @@ default     = "local"
 it = "Implementazione backend (default 'local' = filesystem locale). Plugin esterni futuri (gdrive, dropbox, ecc.) potranno aggiungere altri client."
 en = "Backend implementation (default 'local' = local filesystem). Future external plugins (gdrive, dropbox, etc.) may add other clients."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  results: Array<{path: str, removed: bool}>,
+  failed: Array<{index: int, path, error_code?: str, error: str}>,
+  error_class?: str,
+  error_code?: str,
+  error?: str
+}
+"""
+
 [[capabilities]]
 name = "fs:write"
 hint = ["~/notes/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
 
 [[tests]]
 name     = "rimuove_dir_vuota"
@@ -110,7 +133,8 @@ input  = { paths = "/tmp/foo" }
 expect = { ok = false, error_contains = "must be a list" }
 
 [placement]
-# C7 Area-2 est. (6/7): rmdir SOLO-vuote (if_empty_only default) = danno
+# C7 Area-2 est. (6/7): rmdir SOLO-vuote (force=false) = danno
 # zero contenuti; non revertibile per contratto (nessun reverse_pattern).
 scope    = "any"
 device_ok = true
+min_sandbox = "appcontainer"

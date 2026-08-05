@@ -28,7 +28,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -37,7 +36,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import normalize_vector_result, run_stdio  # noqa: E402
 from backends.messages import email_metnos, telegram_bot  # noqa: E402
 from backends.messages import gmail_google_workspace  # noqa: E402
 
@@ -64,11 +63,10 @@ def invoke(args):
     client = args.get("client") or _DEFAULT_CLIENT
     backend = _HANDLERS.get((via_channel, client))
     if backend is None:
-        avail = sorted({k[0] for k in _HANDLERS})
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"{via_channel}/{client}")}
     # Attribute lookup a call-time: i test possono patchare `backend.read`.
-    return backend.read(args)
+    return normalize_vector_result(backend.read(args), entry_key="entries")
 
 
 def _json_safe(o):

@@ -6,6 +6,7 @@
 # sono le RIGHE (lines come qualifier-granularita', non come oggetto).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "filter_texts_lines"
 version     = "0.3.0"
@@ -15,12 +16,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: filtra righe di testo per pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: leggere file (-> read_files); cercare in directory (-> find). OUT: entries=[{line_number, text}]."
-en = "SCOPO: filter text lines by pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: read files (-> read_files); search directories (-> find). OUT: entries=[{line_number, text}]."
+it = "SCOPO: filtra righe di testo per pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: leggere file (-> read_files); cercare in directory (-> find). OUT: lines=[{line,line_number?}]."
+en = "SCOPO: filter text lines by pattern. PATTERN: filter_texts_lines(content=\"...\"). NON: read files (-> read_files); search directories (-> find). OUT: lines=[{line,line_number?}]."
 
 [code]
 files  = ["filter_texts_lines.py"]
-digest = "sha256:40e008bad734fe3491a6c921e98756c4fcd3ce0bee3890f044d162b64501fc94"
+digest = "sha256:c2152f3cbb58e144144a59291e3d8714833a84a839ad5a1515dba1c94adcc267"
 
 [args]
 type     = "object"
@@ -72,6 +73,31 @@ default     = false
 [args.properties.with_line_numbers.description]
 it = "Se true, ogni risultato include `line_number` (1-based). Default false: solo `line`."
 en = "If true, every result includes `line_number` (1-based). Default false: only `line`."
+
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count?: int,
+  lines?: Array<{line: str, line_number?: int}>,
+  total_input_lines?: int,
+  regex_used?: str | null,
+  substring_used?: str | null,
+  truncated?: bool,
+  truncated_what?: str,
+  used?: int,
+  available_total?: int,
+  cap_field?: str,
+  cap_value?: int,
+  error?: str,
+  error_class?: 'invalid_input',
+  error_code?: str
+}
+"""
+
+[[capabilities]]
+name = "compute:pure"
+hint = []
 
 [[tests]]
 name   = "regex_basic"

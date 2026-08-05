@@ -20,7 +20,6 @@ Contratto:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -61,21 +60,52 @@ def _backend_for(args):
     return _backend(client), client
 
 
+def _failure(error_code, error, *, error_class="invalid_input"):
+    return {
+        "ok": False,
+        "ok_count": 0,
+        "fail_count": 0,
+        "results": [],
+        "failed": [],
+        "error_class": error_class,
+        "error_code": error_code,
+        "error": error,
+    }
+
+
 def invoke(args):
+    if not isinstance(args, dict):
+        return _failure("args_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
+    client_arg = args.get("client")
+    if client_arg is not None and not isinstance(client_arg, str):
+        return _failure(
+            "client_not_string", _msg("ERR_ARG_NOT_STRING", arg="client"))
     backend, client = _backend_for(args)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
+        return _failure(
+            "client_not_supported",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
     return backend.create_dirs(args)
 
 
 def reverse(plan, results):
     """Undo del create_dirs: delega al backend usato dal forward."""
+    if not isinstance(plan, dict):
+        return _failure("plan_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
+    if not isinstance(results, dict):
+        return _failure("results_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
     args = (plan or {}).get("args") or {}
+    if not isinstance(args, dict):
+        return _failure("plan_args_not_object", _msg("ERR_ARGS_NOT_OBJECT"))
     backend, client = _backend_for(args)
     if backend is None:
-        return {"ok": False,
-                "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'")}
+        return _failure(
+            "client_not_supported",
+            _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),
+            error_class="not_applicable",
+        )
     return backend.reverse_create_dirs(plan, results)
 
 

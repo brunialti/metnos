@@ -3,7 +3,7 @@
 Promuove l'idea del Capability Registry v1.1 (gia' compilata in
 `policy.html` v1.0) in un modulo Python che:
 
-1. Dichiara le 13 capability canoniche con i loro attributi (critical,
+1. Dichiara le capability canoniche con i loro attributi (critical,
    default_approval, target_kind).
 2. Compila la tabella autonomy x capability: dato un livello di autonomia
    (ReadOnly/Supervised/Full) e una capability, ritorna l'esito
@@ -34,7 +34,7 @@ TargetKind = Literal["path_glob", "host", "exact", "none"]
 ApprovalMode = Literal["none", "per_target", "always"]
 
 
-# --- Capability Registry v1.1 (13 voci canoniche) -------------------------
+# --- Capability Registry v1.1 ---------------------------------------------
 
 @dataclass(frozen=True)
 class CapabilitySpec:
@@ -46,6 +46,12 @@ class CapabilitySpec:
 
 
 CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
+    # Deterministic in-memory computation
+    "compute:pure": CapabilitySpec(
+        "compute:pure", critical=False, default_approval="none",
+        target_kind="none",
+        description="Calcolo deterministico in memoria senza I/O esterno",
+    ),
     # File system
     "fs:read": CapabilitySpec(
         "fs:read", critical=False, default_approval="per_target",
@@ -69,6 +75,11 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         target_kind="host",
         description="HTTP/HTTPS GET/POST verso host autorizzati",
     ),
+    "network:sites": CapabilitySpec(
+        "network:sites", critical=False, default_approval="per_target",
+        target_kind="host",
+        description="Sessione browser controllata verso origini autorizzate",
+    ),
     # LLM
     "llm:local": CapabilitySpec(
         "llm:local", critical=False, default_approval="none",
@@ -90,6 +101,11 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         "mail:send", critical=True, default_approval="always",
         target_kind="exact",
         description="Invio SMTP a destinatari (irreversibile, alta posta in gioco)",
+    ),
+    "mail:write": CapabilitySpec(
+        "mail:write", critical=True, default_approval="always",
+        target_kind="exact",
+        description="Modifica cartelle, label o stato di messaggi esistenti",
     ),
     # Channel
     "channel:in": CapabilitySpec(
@@ -119,6 +135,85 @@ CAPABILITY_REGISTRY: dict[str, CapabilitySpec] = {
         "calendar:read", critical=False, default_approval="per_target",
         target_kind="exact",
         description="Lettura eventi da un calendario autorizzato",
+    ),
+    # Metnos-managed local resources
+    "index:read": CapabilitySpec(
+        "index:read", critical=False, default_approval="per_target",
+        target_kind="exact",
+        description="Lettura di un indice locale amministrato da Metnos",
+    ),
+    "metnos:read": CapabilitySpec(
+        "metnos:read", critical=False, default_approval="per_target",
+        target_kind="exact",
+        description="Lettura di una risorsa locale amministrata da Metnos",
+    ),
+    "metnos:write": CapabilitySpec(
+        "metnos:write", critical=True, default_approval="per_target",
+        target_kind="exact",
+        description="Modifica di una risorsa amministrata da Metnos",
+    ),
+    "metnos:create": CapabilitySpec(
+        "metnos:create", critical=True, default_approval="per_target",
+        target_kind="exact",
+        description="Creazione di una risorsa amministrata da Metnos",
+    ),
+    "metnos:cache": CapabilitySpec(
+        "metnos:cache", critical=False, default_approval="none",
+        target_kind="none",
+        description=(
+            "Scrittura best-effort in una cache tecnica amministrata da "
+            "Metnos, priva di effetti sui dati utente"
+        ),
+    ),
+    "metnos:credentials_metadata_only": CapabilitySpec(
+        "metnos:credentials_metadata_only", critical=False,
+        default_approval="none", target_kind="none",
+        description="Vincolo metadata-only per il ciclo di vita del vault credenziali",
+    ),
+    # Read-only host/device introspection. Resource hints constrain which
+    # kernel and service surfaces the sandbox exposes.
+    "system:read": CapabilitySpec(
+        "system:read", critical=False, default_approval="per_target",
+        target_kind="exact",
+        description="Lettura diagnostica di sistema su un host o dispositivo autorizzato",
+    ),
+    # Delega vincolata alla sola autorita' gia' esercitata dall'ultimo turno
+    # dello stesso attore. Non concede una mutazione nuova o un target nuovo.
+    "system:undo": CapabilitySpec(
+        "system:undo", critical=True, default_approval="none",
+        target_kind="exact",
+        description="Ribaltare operazioni revertibili dell'ultimo turno posseduto",
+    ),
+    # Comando privilegiato mediato dal verb-unique builtin admin. Resta
+    # sempre soggetto al vaglio/whitelist e non equivale a code:exec libero.
+    "system:admin": CapabilitySpec(
+        "system:admin", critical=True, default_approval="always",
+        target_kind="exact",
+        description="Esecuzione privilegiata mediata dal vaglio amministrativo",
+    ),
+    # Remote-provider authority. The hint is a closed provider-skill binding;
+    # an invocation-level ``when`` clause may narrow it to one backend.
+    "provider:access": CapabilitySpec(
+        "provider:access", critical=False, default_approval="per_target",
+        target_kind="exact",
+        description="Accesso a rete e credenziali di un provider autorizzato",
+    ),
+    "auth.password_storage": CapabilitySpec(
+        "auth.password_storage", critical=True, default_approval="per_target",
+        target_kind="exact",
+        description="Lettura controllata di credenziali cifrate per uno scope autorizzato",
+    ),
+    "drive:permissions": CapabilitySpec(
+        "drive:permissions", critical=True, default_approval="always",
+        target_kind="exact",
+        description="Concessione o modifica di permessi ACL su file Drive",
+    ),
+    # Interazione umana posseduta dal runtime: accede soltanto alla directory
+    # del dialogo pendente già ristretta da sandbox.dialog_extras.
+    "dialog.user_input": CapabilitySpec(
+        "dialog.user_input", critical=False, default_approval="none",
+        target_kind="none",
+        description="Raccolta di una risposta umana tramite dialogo pendente",
     ),
 }
 
@@ -150,6 +245,9 @@ def _init_table() -> None:
             # Eccezione: fs:read e mail:read sono "lettura" anche se per_target;
             # in ReadOnly servono ma chiedono approval per ogni nuovo target.
             if cap_name in ("fs:read", "mail:read", "calendar:read",
+                            "network:sites",
+                            "index:read", "metnos:read", "system:read",
+                            "provider:access",
                             "channel:in", "time:read", "parse:local"):
                 _TABLE[("ReadOnly", cap_name)] = "approval_required" if spec.default_approval != "none" else "allowed"
             else:

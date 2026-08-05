@@ -3,9 +3,12 @@
 # Reversibile §2.3: swap_src_dst (folder ↔ folder).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name        = "move_messages"
-version     = "0.1.0"
+version     = "0.2.2"
+platforms   = ["linux"]
+lifecycle   = "active"
 author      = "Roberto Brunialti"
 affinity = [
     "move", "sposta", "muovi", "trasferisci",
@@ -19,12 +22,12 @@ revertible = true
 reverse_pattern = "swap_src_dst"
 
 [description]
-it = "SCOPO: sposta messaggi tra cartelle o etichette (vettoriale). PATTERN: move_messages(message_ids=[\"18b3c4...\"], dst_folder=\"Trash\"). NON: cambiare solo etichette (-> set_messages); cancellare senza spostare (non esiste). OUT: results=[...]."
-en = "SCOPO: move messages between folders or labels (vectorial). PATTERN: move_messages(message_ids=[\"18b3c4...\"], dst_folder=\"Trash\"). NON: change labels only (-> set_messages); delete without moving (does not exist). OUT: results=[...]."
+it = "SCOPO: sposta messaggi tra cartelle o etichette. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). Per ID IMAP diretti fornisci account e src_folder. NON: cambiare solo etichette (-> set_messages) o cancellare. OUT: results=[...]."
+en = "SCOPO: move messages between folders or labels. PATTERN: read_messages(...) -> move_messages(from_step=1, dst_folder=\"Trash\"). For direct IMAP IDs provide account and src_folder. NON: change labels only (-> set_messages) or delete. OUT: results=[...]."
 
 [code]
 files  = ["move_messages.py"]
-digest = "sha256:182ed03ecda846012e7c33219f342d2661078185b35006cf3873959ebd80ec78"
+digest = "sha256:4c8201931b21bdbf8ec14db55a8cd3c91fb6b727eb9eb2b93d0eb5f495ec4ee0"
 
 [args]
 type = "object"
@@ -63,24 +66,30 @@ en = "Single message ID (alternative to message_ids for N=1)."
 type = "string"
 
 [args.properties.dst_folder.description]
-it = "Cartella di destinazione. Nomi utente: 'Trash', 'Cestino', 'Junk', 'Spam', 'Posta indesiderata', 'Archivio', 'Archive', oppure user-label arbitrario. Mapping interno deterministico verso label system Gmail."
-en = "Destination folder. User names: 'Trash', 'Cestino', 'Junk', 'Spam', 'Posta indesiderata', 'Archivio', 'Archive', or arbitrary user-label. Internal deterministic mapping to Gmail system labels."
+it = "Cartella o etichetta di destinazione. Accetta nomi utente come 'Trash', 'Cestino', 'Spam', 'Archivio' o un nome arbitrario; il backend li risolve nella propria cartella/label canonica."
+en = "Destination folder or label. Accepts user-facing names such as 'Trash', 'Junk', 'Spam', 'Archive', or an arbitrary name; each backend resolves its canonical folder/label."
 
 [args.properties.src_folder]
 type    = "string"
-default = "INBOX"
+# `from_step` may carry UIDs read from a non-default folder.  The projection
+# layer injects this value only when every source entry agrees.
+from_entries_key = "folder"
+from_entries_required = { arg = "client", values = ["metnos"] }
 
 [args.properties.src_folder.description]
-it = "Solo IMAP (client='metnos'): cartella sorgente, default 'INBOX'."
-en = "IMAP only (client='metnos'): source folder, default 'INBOX'."
+it = "Solo IMAP: obbligatoria insieme ad account quando gli ID sono forniti direttamente; con from_step viene derivata dai risultati di origine. Ignorata per Gmail."
+en = "IMAP only: required together with account when IDs are supplied directly; with from_step it is derived from the source results. Ignored for Gmail."
 
 [args.properties.account]
 type    = "string"
-default = "metnos_system"
+# UIDs are scoped to a mailbox.  Preserve that producer context across the
+# pipeline instead of relying on the consumer default or planner repetition.
+from_entries_key = "account"
+from_entries_required = { arg = "client", values = ["metnos"] }
 
 [args.properties.account.description]
-it = "Account IMAP (client='metnos'). Ignorato per Gmail."
-en = "IMAP account (client='metnos'). Ignored for Gmail."
+it = "Solo IMAP: obbligatorio insieme a src_folder quando gli ID sono forniti direttamente; con from_step viene derivato dai risultati di origine. Ignorato per Gmail."
+en = "IMAP only: required together with src_folder when IDs are supplied directly; with from_step it is derived from the source results. Ignored for Gmail."
 
 [args.properties.via_channel]
 type    = "string"
@@ -100,9 +109,31 @@ default = "metnos"
 it = "Backend: 'metnos' (IMAP), 'google_workspace' (Gmail API). MATCH ESATTO."
 en = "Backend: 'metnos' (IMAP), 'google_workspace' (Gmail API). EXACT MATCH."
 
+[output]
+schema_inline = """
+{
+  ok: bool,
+  ok_count: int,
+  fail_count: int,
+  partial?: bool,
+  results: Array<object>,
+  failed: Array<object>,
+  error?: str, error_class?: str, error_code?: str
+}
+"""
+
 [[capabilities]]
 name = "mail:write"
 hint = ["imap:move", "gmail:labels.modify"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
+when = { arg = "client", values = ["google_workspace"] }
+
+[placement]
+scope = "server"
+device_ok = false
 
 [[tests]]
 name   = "args_invalidi_no_ids"

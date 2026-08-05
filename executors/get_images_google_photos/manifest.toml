@@ -3,6 +3,7 @@
 # Dispatcher canonical Google Photos download (spec Google Photos P1).
 
 manifest_format = "1.0"
+executor_standard = "metnos.executor/1.0"
 
 name             = "get_images_google_photos"
 version          = "0.1.0"
@@ -98,6 +99,10 @@ hint = ["photos:remote"]
 [[capabilities]]
 name = "fs:write"
 hint = ["~/.local/share/metnos/Immagini/**", "/tmp/**"]
+
+[[capabilities]]
+name = "provider:access"
+hint = ["google-workspace"]
 
 [[tests]]
 name   = "missing_ids_and_entries_fails"

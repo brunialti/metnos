@@ -14,7 +14,6 @@ Accetta `ids` (calendar_id) o un NOME (`summary`) risolto via list_calendars.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
