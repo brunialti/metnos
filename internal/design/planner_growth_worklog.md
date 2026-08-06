@@ -15,9 +15,12 @@ sul codice vecchio → 5. `pytest -q tests/runtime` intera → 6. riavvio prod
 (`sudo -n systemctl restart metnos-http.service`) → 7. almeno un turno reale sul
 dominio toccato → 8. commit in italiano, senza trailer.
 
-Gli strumenti di misura sono nello scratchpad di sessione (`guard_probe.py`,
-`replay_corpus.py`, `snapshot_plans.py`, `count_guard_errors.py`); portarli nel
-repo è il passo 4.
+L'oracolo vive nel repo (`tests/runtime/infra/test_guard_corpus_equivalence.py`,
+804 piani reali) e il corpus si ricostruisce da un'istanza viva con
+`internal/tools/build_guard_corpus.py`. Le sonde usate per l'analisi
+(`guard_probe.py`, `replay_corpus.py`, `snapshot_plans.py`,
+`count_guard_errors.py`) sono rimaste nello scratchpad di sessione: servono a
+misurare, non a proteggere.
 
 ## Fatto
 
@@ -127,7 +130,6 @@ unificata e la misura accesa.
 
 | | cosa | dove |
 |---|---|---|
-| **4** | portare l'oracolo a 2424 piani nel repo | `tests/runtime/infra/` |
 | **5** | resto della famiglia E, in ombra (661 righe: 5 guardie la cui proprietà è già applicata altrove, 3 a tabella) | — |
 | **6** | famiglia D nei manifest come `requires` (705 righe) | manifest |
 | **7** | consolidare B e C (638 righe, 7 guardie → 2) | — |
