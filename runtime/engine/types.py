@@ -188,6 +188,13 @@ OPERATIONAL_ERROR_CLASSES = frozenset({
     # all'utente di riparare un guasto del servizio. Turno reale 71d4ac52,
     # 6/8/2026, con il sidecar fermo dal 2/8.
     "sidecar_contract_mismatch",
+    # Capacita' del servizio, non forma della richiesta: le sessioni browser
+    # hanno un tetto per utente (2) e uno globale (4), e scadono per inattivita'
+    # dopo 15 minuti. Chi chiede mentre il tetto e' pieno non ha scritto male
+    # la domanda — deve solo ritentare. Turno reale f50762f6, 6/8/2026: la
+    # sessione occupata era di un TEST, e l'utente ha letto «aggiungi dettagli
+    # concreti (percorso, nome, periodo)».
+    "quota_exceeded", "capacity",
 })
 
 
