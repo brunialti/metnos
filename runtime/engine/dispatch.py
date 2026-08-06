@@ -1315,8 +1315,8 @@ def _align_framework_action_pairs(framework: Framework, intent, query: str,
                 log.info("[action_pair] %s → %s (coppia %s+%s scoperta)",
                          tool, target, verb, obj)
                 step.tool = target
-                covered.discard((nc.verb, nc.obj))
-                covered.add((verb, obj))
+                # La copertura si rilegge da `parsed`, che qui viene aggiornato:
+                # non esiste un insieme separato da tenere allineato.
                 parsed[id(step)] = (target, _ng.parse_name(target))
                 changed = True
                 break
