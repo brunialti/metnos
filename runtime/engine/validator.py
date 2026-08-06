@@ -21,7 +21,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from from_step_projection import required_source_context_fields
+from from_step_projection import (
+    carries_upstream_payload, projection_can_fill,
+    required_source_context_fields,
+)
 from messages import get as _msg
 
 from .types import Framework
@@ -130,8 +133,23 @@ class Validator:
                     continue
                 provided = True
                 break
-            if not provided:
-                return f"requires_one_of {group} violato"
+            if provided:
+                continue
+            # Un consumatore in pipeline non porta ancora il dato: `from_step`
+            # diventa `entries` — o l'arg-lista naturale del consumatore — solo
+            # all'invoke. Il ramo dei `required` qui sopra lo sa gia'; questo non
+            # lo sapeva, e bocciava la forma CANONICA del piping (§4.1) su nove
+            # gruppi del catalogo, fra cui read_files, delete_files e get_urls.
+            # Ogni bocciatura costava un re-propose LLM, e il piano rifatto
+            # poteva essere peggiore: misurato il 6/8 su «trova i file .md ... e
+            # leggili», dove il proposer riproponeva find_files_hash (duplicati)
+            # al posto di find_files e il turno finiva «Nessun risultato».
+            # Un gruppo di soli scalari resta violato: il contesto scalare ha il
+            # suo controllo, con un messaggio proprio (§2.8).
+            if (carries_upstream_payload(args)
+                    and projection_can_fill(schema, group)):
+                continue
+            return f"requires_one_of {group} violato"
         missing_context = required_source_context_fields(
             args, schema, allow_deferred_from_step=True)
         if missing_context:

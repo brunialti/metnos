@@ -6912,8 +6912,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # il re-propose del validator produce un piano FRESCO che le
                 # scavalcherebbe (regressione universale, non di un guard
                 # specifico). Ri-applicale — sono idempotenti.
-                framework = _apply_deterministic_structure_guards(
+                framework2 = _apply_deterministic_structure_guards(
                     framework2, intent, query, catalog)
+                # La ri-proposta si accetta solo se MIGLIORA. Il re-propose e'
+                # cieco (esclude l'hash fallito, non dice che cosa non andava),
+                # quindi puo' tornare un piano diverso e peggiore: misurato il
+                # 6/8 su «trova i file .md ... e leggili», dove il piano scartato
+                # era corretto e il rifatto sceglieva find_files_hash (duplicati)
+                # → «Nessun risultato trovato». Stesso criterio del re-propose
+                # dei verbi scoperti qui sopra, che accetta solo se copre di piu'.
+                _errs2 = Validator(catalog).check(framework2).errors
+                if len(_errs2) < len(vres.errors):
+                    framework = framework2
+                else:
+                    log.info("[L2 validator] ri-proposta SCARTATA: %d errori "
+                             "contro %d del piano originale",
+                             len(_errs2), len(vres.errors))
 
     # Preparazione UNIVERSALE pre-esecuzione (funzione condivisa, 10/7):
     # guards (idempotenti — 2ª passata no-op sul path normale) → output_policy

@@ -201,7 +201,40 @@ guardie si contano con `grep '\[<marcatore>'`, che NON è il nome della guardia
 
 ## Difetti aperti trovati per strada (indipendenti, non toccati)
 
-- composta «trova i file … **e leggili**» → `find_files_hash` + `read_files` →
-  «Nessun risultato trovato»; senza la seconda clausola va bene a `find_files`.
 - `seed_from_run` semina righe L1 che `lookup` scarterà per sempre.
 - `apply_efficacy_ager` non è agganciato a nessuno scheduler.
+
+### Chiuso: la composta «trova i file … e leggili» — e il passo 0 che l'ha chiusa
+
+Il sintomo diceva «routing»: `find_files_hash` (il cercatore di DUPLICATI) al
+posto di `find_files`, e «Nessun risultato trovato» con entrambi gli step
+ok=True. La colonna del **piano grezzo** aggiunta al passo 0 ha detto subito che
+il proposer non c'entrava: il suo piano era `find_files + read_files +
+describe_entries`, corretto. La riscrittura veniva DOPO.
+
+Non era una guardia (verificato: la pipeline offline non tocca il tool, e
+`guard_stats` segna solo `fill_clause_args` su quel turno). Era il **Validator**:
+
+1. `read_files(from_step=1)` — la forma canonica del piping, §4.1 — violava
+   `requires_one_of ['path','paths','entries','name']`, perché il ramo dei
+   `requires_one_of` non sapeva ciò che il ramo dei `required` sa da sempre:
+   `from_step` diventa `entries` solo all'invoke. **Nove gruppi del catalogo**
+   ne erano colpiti (read_files, delete_files, get_urls, read_files_doc,
+   read_files_spreadsheet, get/write_images_google_photos, find_images_indices,
+   find_persons_indices): ogni turno FRESCO con un consumatore piped pagava un
+   re-propose LLM (i turni serviti da L0/L1 non passano dal Validator, quindi
+   non lo pagavano — e infatti il difetto è rimasto invisibile).
+2. Il re-propose è **cieco** (esclude l'impronta del piano fallito, non dice che
+   cosa non andava) e il piano che tornava veniva accettato **comunque**. Così
+   un piano corretto è stato scambiato con uno peggiore.
+
+Due difetti in fila, ognuno generale, nessuno dei due «un caso». Chiusi
+entrambi: il disgiuntivo riconosce il piping quando il gruppo ha un arg-lista
+(un gruppo di soli scalari resta violato, ha il suo controllo), e la ri-proposta
+si accetta solo se il conto degli errori scende — lo stesso criterio che il
+re-propose dei verbi scoperti usa venti righe più su.
+
+**Ricaduta sul metodo**: il passo 0 non serviva solo al corpus. È la prima
+domanda da fare davanti a un misroute — *il proposer aveva già sbagliato, o
+gliel'abbiamo rotto noi dopo?* — e si legge con una query su
+`observations.framework_raw_json`.
