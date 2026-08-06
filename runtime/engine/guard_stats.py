@@ -67,8 +67,18 @@ def _conn():
     return c
 
 
+def _sotto_test() -> bool:
+    """La suite attraversa la pipeline migliaia di volte con piani costruiti a
+    mano: sommarli al traffico reale falserebbe l'unica misura che serve a
+    decidere se una guardia si puo' ritirare. Misurato: una sola esecuzione
+    della suite aggiungeva 5621 attraversamenti."""
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
 def record(name: str, fired: bool) -> None:
     """Un attraversamento della guardia `name`; `fired` = ha mutato il piano."""
+    if _sotto_test():
+        return
     _SEEN[name] += 1
     if fired:
         _FIRES[name] += 1

@@ -19,6 +19,7 @@ from pathlib import Path
 
 def _fresh(tmp_path, monkeypatch, flush_every="0"):
     monkeypatch.setenv("METNOS_GUARD_STATS_DB", str(tmp_path / "guard_stats.db"))
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
     monkeypatch.setenv("METNOS_GUARD_STATS_FLUSH", flush_every)
     import engine.guard_stats as GS
     importlib.reload(GS)
@@ -77,3 +78,14 @@ def test_un_db_illeggibile_non_fa_fallire_nulla(tmp_path, monkeypatch):
     GS.record("qualsiasi", True)
     GS.flush()          # non solleva
     assert GS.stats() == []
+
+
+def test_la_suite_non_inquina_la_misura_di_esercizio(tmp_path, monkeypatch):
+    """La suite attraversa la pipeline migliaia di volte con piani costruiti a
+    mano. Sommarli al traffico reale falserebbe l'unica misura che serve a
+    decidere un ritiro: misurato, una sola esecuzione aggiungeva 5621
+    attraversamenti."""
+    GS = _fresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "qualche::test")
+    GS.record("align_framework_objects", True)
+    assert not GS._SEEN and GS.stats() == []
