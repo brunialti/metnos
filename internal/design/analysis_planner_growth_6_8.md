@@ -706,20 +706,33 @@ Non è una riscrittura in altra sintassi: **è conoscenza che era già nel siste
 ri-implementata caso per caso in un secondo posto.** Questa è la risposta al
 primo requisito, ed è più forte di quanto sperassi.
 
-**CORREZIONE del 6/8 sera, verificata sul codice.** La prima riga della tabella
-NON regge. `normalize_filter_operation_values` sarebbe «il mestiere di Guard
-#0» solo se `filter_entries` dichiarasse un enum per `kind`: Guard #0 scarta un
-valore fuori dominio *dell'enum dichiarato*. Ma `kind` è un dominio **aperto**
-(categorie di entry: file, dir, image…), quindi non c'è enum da dichiarare, e
-`dedup` non è un valore fuori enum — è un **marcatore d'operazione infilato in
-uno slot di predicato**. Nessun meccanismo esistente lo copre.
+**VERIFICA del 6/8 sera, sul codice, tutte e cinque. Ne regge UNA.** La colonna
+«dove la proprietà ESISTE GIÀ» era stata compilata leggendo le docstring. Letta
+sul codice del meccanismo che dovrebbe coprire il caso, il conto cambia:
 
-Lezione: la mappatura caso→proprietà di §5.2 è stata fatta leggendo le
-docstring. Le altre quattro «esistono già altrove» vanno verificate **sul
-codice, una per una**, prima di cancellare alcunché — questa è la prova che una
-di esse poteva non reggere. Non invalida la tesi (una proprietà vera resta una
-guardia vera, §4.6); ridimensiona il conto: le cancellazioni sicure sono
-**meno di cinque** finché non sono verificate.
+| guardia | il meccanismo copre davvero? | spari reali (journal, 21 gg) | esito |
+|---|---|---|---|
+| `overwrite_phantom_install_args` | **SÌ** — le cause sono chiuse a monte da luglio (`arg_provenance` + config-args marcati) | 0 (22 gg) | **RITIRATA** `84e1512c` |
+| `normalize_filter_operation_values` | NO — Guard #0 scarta un valore fuori da un enum **dichiarato**; `filter_entries.kind` è dominio APERTO, e `dedup` non è un valore fuori enum ma un marcatore d'operazione in uno slot di predicato | 0 | resta |
+| `decontaminate_reader_qualifier` | NO — il pool è l'**unione** dei pool per-clausola (`routing_pool.py:326-387`) e il ranking usa la query INTERA: l'unione è proprio ciò che rende possibile la contaminazione. Nessun componente vincola il qualifier di uno step alla sua clausola | 0 | resta |
+| `route_filename_pattern_to_find` | NO — non sposta un arg: **inserisce un produttore** (`find` gemello) e ricuce il read. Nessun meccanismo lo fa; Guard #0 non toglierebbe `paths`, che `read_files` dichiara | 0 | resta |
+| `normalize_result_folder_exclusion` | NO — nessuno applica un predicato di percorso al campo che porta il percorso | **4** | resta (e **spara**) |
+| `degenerate_find_to_list` | NO — `align_framework_action_pairs` (che gira prima) costruisce `f"{verb}_{obj}"` = `list_files`, che **non esiste**, e si ferma. E un allineamento cieco del verbo sarebbe sbagliato: il contenuto semantico è «find SENZA selettore», che nessun meccanismo di verbi conosce | 0 | resta |
+
+Il conto onesto della famiglia E: **una cancellazione, non cinque.** Le altre
+quattro proprietà sono vere e generali, ma **nessun componente le applica**:
+il lavoro lì non è cancellare una guardia, è **costruire la superficie** che la
+sostituisce. Costo e rischio della Mossa 3 vanno riletti con questo numero.
+
+Materiale grezzo già in casa, per chi la costruirà: la mappa step→clausola
+esiste (`step_chunk` dentro `_fill_clause_args`), ma è una **variabile locale di
+una guardia**, non una superficie condivisa. Renderla condivisa è il primo
+mattone dell'indipendenza delle clausole.
+
+Lezione, che vale oltre questa tabella: **una docstring dice che cosa una
+guardia crede di fare, non che cosa un altro componente fa davvero.** Prima di
+cancellare si legge il codice del meccanismo che dovrebbe già coprire il caso —
+qui, quattro volte su cinque, non lo copriva.
 
 Le tre marcate «1 regola, N righe» sono il caso onesto intermedio: la regola è
 una, le righe crescono coi casi — ma una riga di tabella non porta vincolo
@@ -859,17 +872,21 @@ del planner, tutti e quattro sono utili anche se poi il resto non si facesse.
 
 ## 7. Stato del lavoro / ripresa
 
-**Analisi chiusa e misurata.** L'unica modifica al codice di prodotto è la
-correzione del `NameError` di §3.8 (due righe vestigiali in
-`align_framework_action_pairs`), validata a 0 differenze su 2424 piani reali,
-suite verde e turni reali — **non ancora committata**. Tutto il resto del §6
-aspetta la decisione di Roberto.
+**Analisi chiusa e misurata; i passi 0-4 del §6 sono FATTI e in prod.** Il
+diario dei lavori — che cosa è stato fatto, con quale commit, e che cosa resta —
+vive in `internal/design/planner_growth_worklog.md`: quello è il documento da
+aprire per riprendere, questo è la prova. Riassunto: difetto vivo di §3.8
+chiuso, piano grezzo registrato, cricchetto di §3.6 chiuso in uscita, porta
+unica di inserimento step, spari persistiti, oracolo sui piani reali nel repo,
+**prima guardia ritirata**. Il passo 5 è aperto con la verifica di §5.2 fatta e
+in gran parte negativa.
 
-Gli strumenti di misura vivono in `scratchpad/`: `guard_probe.py` (sonda
-passiva), `replay_corpus.py` (spari + contesa per periodo),
-`snapshot_plans.py` (oracolo di equivalenza a 2424 piani),
-`count_guard_errors.py` (eccezioni ingoiate). Vanno portati nel repo se si
-procede — il §6 passo 4 è già scritto lì dentro.
+Gli strumenti di misura del passo 4 sono nel repo
+(`internal/tools/build_guard_corpus.py`, oracolo in
+`tests/runtime/infra/test_guard_corpus_equivalence.py`); le sonde d'analisi
+(`guard_probe.py`, `replay_corpus.py`, `snapshot_plans.py`,
+`count_guard_errors.py`) sono rimaste nello scratchpad di sessione: servono a
+misurare, non a proteggere.
 
 Tutte le sezioni sono scritte: §1 misure · §2 diagnosi e tassonomia (famiglie
 A-F) · §3 sei verifiche, tutte concluse · §4 disegno · §5 risposta al
@@ -889,24 +906,28 @@ niente motore di regole). Qui sotto, perché quella risposta è quella giusta.
    argomento dalla conformazione allo schema **su ogni tool**, per sempre.
    Oggi 21 nomi, fra cui `path`, `paths`, `mode`, `exist_ok`, `dst_folder`.
 2. Il passaggio a case-by-rule è **verificato**, non asserito (§5.2): le 10
-   guardie di famiglia E stanno su 7 proprietà, e **5 di quelle 7 esistono già
-   altrove nel sistema**. Non è riscrivere in un'altra sintassi: è conoscenza
-   già presente, reimplementata caso per caso in un secondo posto.
+   guardie di famiglia E stanno su 7 proprietà. Ma delle cinque «esistono già
+   altrove», lette sul codice, **ne regge una sola** — quella già ritirata. Le
+   altre quattro proprietà sono vere e generali e **nessuno le applica**: lì il
+   lavoro è costruire la superficie, non cancellare la guardia.
 3. La garanzia di «qualità almeno comparabile» **non va inventata**: è
    `tests/runtime/infra/test_provenance_equivalence.py`, scritto a luglio
    proprio per questo e già in forma di oracolo byte-identico. Gli mancano solo
    i casi: 11 oggi, contro 2353 piani reali già su disco (§5.3).
 
-**Decisione attesa da Roberto**: il §6. I passi 1-4 sono preparazione senza
-rischio (non cambiano il comportamento del planner e valgono da soli anche se
-il resto non si facesse); i passi 5-8 sono la migrazione vera, una famiglia
-alla volta, ognuna in ombra col protocollo §5.4.
+**Decisione attesa da Roberto**: i passi 5-8, cioè la migrazione vera, una
+famiglia alla volta e ognuna in ombra col protocollo §5.4. La verifica di §5.2
+ne ha cambiato il prezzo: nella famiglia E c'era **una** cancellazione, ed è
+fatta; il resto è costruzione di superfici. I passi 1-4 (preparazione senza
+rischio) sono chiusi.
 
 **Se riprendi e vuoi ricontrollare prima di fidarti**: §A rifà tutte le misure
 di §1 e §3 con comandi copiabili. I difetti fuori tema trovati per strada sono
-in §6.1 — quello dell'executor stats è grave e indipendente da tutto il resto.
-Aggiunto il 6/8: la composta «trova i file … e leggili» va al fratello
-sbagliato e risponde falso-negativo (§3.8, ultimo capoverso).
+in §6.1; quello dell'executor stats — grave e indipendente — è chiuso il 6/8
+(`f9cdc528`): il gancio è in `ExecutorScheduler.invoke`, non nell'anello del
+motore, perché lì non passano né i turni serviti da L0 né i builtin. Resta
+aperta la composta «trova i file … e leggili», che va al fratello sbagliato e
+risponde falso-negativo (§3.8, ultimo capoverso).
 
 ---
 
