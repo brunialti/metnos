@@ -706,6 +706,21 @@ Non è una riscrittura in altra sintassi: **è conoscenza che era già nel siste
 ri-implementata caso per caso in un secondo posto.** Questa è la risposta al
 primo requisito, ed è più forte di quanto sperassi.
 
+**CORREZIONE del 6/8 sera, verificata sul codice.** La prima riga della tabella
+NON regge. `normalize_filter_operation_values` sarebbe «il mestiere di Guard
+#0» solo se `filter_entries` dichiarasse un enum per `kind`: Guard #0 scarta un
+valore fuori dominio *dell'enum dichiarato*. Ma `kind` è un dominio **aperto**
+(categorie di entry: file, dir, image…), quindi non c'è enum da dichiarare, e
+`dedup` non è un valore fuori enum — è un **marcatore d'operazione infilato in
+uno slot di predicato**. Nessun meccanismo esistente lo copre.
+
+Lezione: la mappatura caso→proprietà di §5.2 è stata fatta leggendo le
+docstring. Le altre quattro «esistono già altrove» vanno verificate **sul
+codice, una per una**, prima di cancellare alcunché — questa è la prova che una
+di esse poteva non reggere. Non invalida la tesi (una proprietà vera resta una
+guardia vera, §4.6); ridimensiona il conto: le cancellazioni sicure sono
+**meno di cinque** finché non sono verificate.
+
 Le tre marcate «1 regola, N righe» sono il caso onesto intermedio: la regola è
 una, le righe crescono coi casi — ma una riga di tabella non porta vincolo
 d'ordine, non porta esenzione di schema (§3.6), non porta rimappatura a mano

@@ -130,10 +130,33 @@ unificata e la misura accesa.
 
 | | cosa | dove |
 |---|---|---|
-| **5** | resto della famiglia E, in ombra (661 righe: 5 guardie la cui proprietà è già applicata altrove, 3 a tabella) | — |
+| **5** | resto della famiglia E, in ombra — **PRIMA verificare sul CODICE, una per una, le «proprietà già applicate altrove»** (vedi nota) | — |
 | **6** | famiglia D nei manifest come `requires` (705 righe) | manifest |
 | **7** | consolidare B e C (638 righe, 7 guardie → 2) | — |
 | **8** | decidere sulla famiglia F (1023 righe, la meno verificata) | — |
+
+### Nota sul passo 5 — la prima verifica ha smentito la mappatura
+
+Aperto il passo 5 da `normalize_filter_operation_values`, che §5.2 dava come
+«mestiere di Guard #0». **Non lo è.** Guard #0 scarta un valore fuori dominio
+*di un enum dichiarato*; `filter_entries.kind` è un dominio **aperto**
+(categorie di entry), quindi non c'è enum, e `dedup` non è un valore fuori enum
+— è un marcatore d'operazione infilato in uno slot di predicato. Nessun
+meccanismo esistente lo copre: la guardia resta.
+
+**Conseguenza operativa per chi riprende**: la mappatura caso→proprietà di §5.2
+è stata fatta leggendo le docstring. Le altre quattro «esistono già altrove»
+(`overwrite_phantom_install_args` — già ritirata e confermata,
+`decontaminate_reader_qualifier`, `route_filename_pattern_to_find`,
+`normalize_result_folder_exclusion`, `degenerate_find_to_list`) vanno
+verificate **sul codice del meccanismo che dovrebbe già coprirle**, una per
+una, prima di cancellare. Il metodo è quello usato per il ritiro riuscito:
+(1) chi altro applica la proprietà, e la applica DAVVERO in questo caso?
+(2) spari nel journal reale; (3) piani ancora affetti nelle cache servite;
+(4) oracolo prima/dopo. Se uno dei quattro non torna, la guardia resta.
+
+Il conto realistico della famiglia E scende quindi sotto la stima di §5.2
+finché le verifiche non sono fatte.
 
 ## Difetti aperti trovati per strada (indipendenti, non toccati)
 
