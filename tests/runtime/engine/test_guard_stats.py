@@ -89,3 +89,17 @@ def test_la_suite_non_inquina_la_misura_di_esercizio(tmp_path, monkeypatch):
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "qualche::test")
     GS.record("align_framework_objects", True)
     assert not GS._SEEN and GS.stats() == []
+
+
+def test_un_replay_offline_non_inquina_la_misura(tmp_path, monkeypatch):
+    """La suite non e' l'unico modo di attraversare la pipeline senza essere
+    traffico vero: un bench o l'oracolo del corpus rigirano piani salvati con
+    lo STESSO codice di un turno. Il 6/8 un vaglio ha scritto 1673
+    attraversamenti finti nel contatore di produzione — l'unico dato su cui si
+    decide un ritiro. Chi replaya lo deve dichiarare; qui si verifica che la
+    dichiarazione serva davvero."""
+    GS = _fresh(tmp_path, monkeypatch)
+    monkeypatch.setenv("METNOS_GUARD_STATS", "0")
+    GS.record("align_framework_objects", True)
+    GS.flush()
+    assert not GS._SEEN and GS.stats() == []

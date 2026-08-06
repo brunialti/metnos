@@ -67,17 +67,31 @@ def _conn():
     return c
 
 
-def _sotto_test() -> bool:
-    """La suite attraversa la pipeline migliaia di volte con piani costruiti a
-    mano: sommarli al traffico reale falserebbe l'unica misura che serve a
-    decidere se una guardia si puo' ritirare. Misurato: una sola esecuzione
-    della suite aggiungeva 5621 attraversamenti."""
-    return "PYTEST_CURRENT_TEST" in os.environ
+def _fuori_esercizio() -> bool:
+    """Vero quando questo processo NON e' traffico reale.
+
+    Due casi, e il secondo l'ho imparato a spese mie (6/8 sera). Il primo e' la
+    suite: attraversa la pipeline migliaia di volte con piani costruiti a mano,
+    e una sola esecuzione aggiungeva 5621 attraversamenti. Il secondo sono i
+    REPLAY OFFLINE — un bench, l'oracolo del corpus, uno script d'analisi che
+    rigira 804 piani salvati: non hanno `PYTEST_CURRENT_TEST`, quindi
+    passavano. Successo davvero: un vaglio ha replayato il corpus e ha scritto
+    1673 attraversamenti e 139 spari nel contatore di PRODUZIONE, cioe'
+    nell'unico dato su cui si decide un ritiro. Il contatore e' stato azzerato.
+
+    Chi rigira piani salvati DEVE dichiararlo con `METNOS_GUARD_STATS=0` (o
+    puntare `METNOS_GUARD_STATS_DB` a un file temporaneo). Non e' deducibile
+    dal processo: il replay usa esattamente lo stesso codice del turno vero —
+    ed e' proprio per questo che serve dirlo."""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return True
+    return os.environ.get("METNOS_GUARD_STATS", "1").strip().lower() in (
+        "0", "false", "no", "off")
 
 
 def record(name: str, fired: bool) -> None:
     """Un attraversamento della guardia `name`; `fired` = ha mutato il piano."""
-    if _sotto_test():
+    if _fuori_esercizio():
         return
     _SEEN[name] += 1
     if fired:

@@ -31,6 +31,7 @@ pool quando la query non nomina immagini.
 | lente | esito | integrato? |
 |---|---|---|
 | 1. fattibilità nel codice reale | **3 leve su 4 abbattute**, la quarta ridotta a 2/9 | sì (sotto) |
+| 2. curiamo il sintomo o la causa? | **il prompt ORDINA due degli errori che le guardie riparano** | sì, più un difetto trovato per strada |
 
 ---
 
@@ -144,3 +145,74 @@ Dalla lente 1, riformulato:
    solo assorbe le 2 guardie sink, senza toccare né pool né grammatica.
 
 
+
+---
+
+## Lente 2 — «stiamo curando il sintomo invece della causa?»
+
+**Verdetto: sì, in parte — e la parte curabile a monte non è "fidarsi di più
+del modello": è togliere le contraddizioni fra il prompt e gli strati
+deterministici a valle.** Verificato di persona sul prompt e sui manifest.
+
+### 2.1 Il prompt ordina l'errore che poi una guardia ripara
+
+Due contraddizioni, entrambe nel file vivo `prompts/it/engine_proposer.j2`:
+
+- **riga 83**: «DEVI usare `total_size_gb`/`total_size_bytes`». Quel campo lo
+  dichiarano **due soli executor** (`find_images_indices`,
+  `find_persons_indices`) — non `find_files`, non `find_dirs`. Il modello lo ha
+  applicato a `find_dirs`, e a ripararlo c'è `route_folder_size`: **133 righe di
+  guardia per una riga di prompt sbagliata.** La riga per giunta è due regole
+  incollate senza a-capo: la regola SPAZIO/GB pende sotto il punto elenco delle
+  foto.
+- **righe 88-90**: «produttore + **describe_entries** + final_answer. Template:
+  `${step2.summary}`». Ma `output_policy` cancella quello step e riscrive il
+  finale — è il `drop_describe+final` che si vede nel journal a ogni turno di
+  lettura. Misurato dall'agente sui piani grezzi: **27%** dei piani pianificano
+  un describe che viene buttato, **45%** hanno il `final_message` scritto dal
+  modello e poi sostituito.
+
+Non è «il modello sbaglia»: è il prompt che gli chiede di decidere una cosa che
+un altro strato possiede interamente e sovrascrive sempre.
+
+### 2.2 Le mutazioni le fa qualcuno che nessuno conta
+
+Sui 22 piani grezzi disponibili, **le 34 guardie hanno sparato zero volte**:
+tutte e 12 le mutazioni vengono da `output_policy.normalize_terminal`, che gira
+subito dopo la pipeline e **non è strumentata**. Il registro `Guard` si conta,
+`output_policy` no — quindi si attribuiscono alle guardie mutazioni che non
+fanno.
+
+### 2.3 L'oracolo che ho costruito oggi misura la pipeline contro sé stessa
+
+`internal/tools/build_guard_corpus.py` costruisce il corpus da
+`framework_json`, cioè dal piano **post**-guardie. Come rete anti-regressione
+va benissimo (è ciò per cui è nato); come misura dell'errore del modello non
+vale nulla. Quando si rigenera, usare `framework_raw_json` (la colonna del
+passo 0, che esiste dal 6/8 e ha 22 righe).
+
+### 2.4 Le leve a monte già esistono, e due sono già state bocciate
+
+Lo **scheletro vincolante** esiste già (non vincolante alla prima passata,
+vincolante sulla ri-proposta); la **grammatica sugli args** è la stessa bocciata
+il 6/7 (lente 1); e **non esiste un tier locale più forte** — il proposer gira
+già su `wise`, e fast/middle/wise oggi condividono lo stesso modello.
+
+### 2.5 Dove la cura a monte NON deve arrivare
+
+Dataflow, copertura dell'azione e legame provider sono **invarianti**, non
+casi: un prompt non può garantire una cardinalità né un binding di provider,
+può solo renderli probabili. Lì la guardia è la risposta giusta (§7.9) e resta.
+
+### 2.6 Difetto trovato per strada, e chiuso subito
+
+L'agente ha letto il DB sbagliato (`~/.local/share/` invece di
+`~/.local/state/`) e ha concluso che il contatore delle guardie fosse vuoto.
+Sbagliato — ma controllando ho scoperto di peggio: **il suo replay dell'oracolo
+aveva scritto nel contatore di PRODUZIONE** 1673 attraversamenti e 139 spari,
+cioè nell'unico dato su cui si decide un ritiro. Il guard `_sotto_test`
+copriva solo pytest; un replay offline usa lo stesso codice di un turno vero e
+passava.
+
+Chiuso: `METNOS_GUARD_STATS=0` dichiarabile da chi replaya, dichiarato dal tool
+del corpus, test che fallisce sul codice vecchio, contatore azzerato.

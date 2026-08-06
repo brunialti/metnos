@@ -1,5 +1,10 @@
 """Estrae dal registro reale un corpus di piani ANONIMIZZATO e campionato."""
-import json, re, sqlite3, sys, hashlib
+import json, os, re, sqlite3, sys, hashlib
+
+# Chi rigira piani salvati NON e' traffico reale: senza questa riga il replay
+# scrive nel contatore di esercizio delle guardie, cioe' nell'unico dato su cui
+# si decide un ritiro. Successo il 6/8/2026 (1673 attraversamenti finti).
+os.environ.setdefault("METNOS_GUARD_STATS", "0")
 from pathlib import Path
 from collections import defaultdict
 
