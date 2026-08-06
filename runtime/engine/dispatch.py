@@ -6845,6 +6845,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # tool-fratelli con object NON richiesto (es. find_pulls_github per clausola
     # {find,issues}); (2) enforce — appende le clausole RICHIESTE scoperte dopo
     # skeleton+re-propose. Stessa sequenza condivisa dagli hit cache L0/L1 (D3-B).
+    # Fotografia del piano GREZZO (6/8): le guardie mutano sul posto, quindi
+    # va presa qui. Serve a sapere che cosa ciascuna guardia ripara davvero —
+    # l'observation da sola registra un piano già sano.
+    _framework_raw = framework.to_dict()
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
 
@@ -6895,7 +6899,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         try:
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
-                query=query, latency_ms=run.elapsed_ms, catalog=catalog)
+                query=query, latency_ms=run.elapsed_ms, catalog=catalog,
+                framework_raw=_framework_raw)
             # W1 learning-loop (ADR 0185): turno engine OK e COSTOSO ripetuto
             # → autopath SHADOW (senza aspettare il ✓ umano). Deterministico,
             # soglie METNOS_SEED_STEPS/METNOS_SEED_REPEAT; no-op se un
