@@ -111,6 +111,13 @@ default     = "local"
 it = "Implementazione backend. 'local' = filesystem locale (default). 'google_workspace' = Google Drive: cerca file su Drive per nome/query, richiede pairing Google."
 en = "Backend implementation. 'local' = local filesystem (default). 'google_workspace' = Google Drive: search files on Drive by name/query, requires Google pairing."
 
+[args.properties.query]
+type = "string"
+
+[args.properties.query.description]
+it = "Testo cercato nel nome del file. Vale solo con client='google_workspace'; il backend locale usa 'pattern'/'patterns'. Esempio: \"KAKEBO SPESE 2026\". Senza, su Drive si ricade su 'patterns' o 'pattern'."
+en = "Text searched in the file name. Only with client='google_workspace'; the local backend uses 'pattern'/'patterns'. Example: \"KAKEBO SPESE 2026\". Without it, Drive falls back to 'patterns' or 'pattern'."
+
 [output]
 schema_inline = """
 {

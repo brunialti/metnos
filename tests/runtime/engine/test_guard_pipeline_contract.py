@@ -102,6 +102,11 @@ EXPECTED_PIPELINE = (
     # Vincolo utente no-overwrite applicato per ultimo a ogni pipeline di
     # artefatti, anche quando un normalizzatore precedente l'ha ricostruita.
     ("enforce_create_only_artifact_policy", False),
+    # ULTIMA per costruzione: conforma allo schema del tool quello che parte
+    # davvero per l'executor. Sta in fondo perche' un arg fuori-schema puo'
+    # essere la PROVA che una guardia legge (include_health su get_files):
+    # toglierlo prima accieca chi lo legge. Ingresso tollerante, uscita stretta.
+    ("strip_unknown_args", True),
 )
 
 

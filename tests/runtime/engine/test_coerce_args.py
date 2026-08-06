@@ -116,20 +116,90 @@ def test_idempotent():
     assert not changed and twice == once
 
 
-def test_guard_owned_args_never_touched():
+def test_guard_owned_arg_survives_sul_tool_che_lo_dichiara():
     """Gli arg dichiarati nei `writes` dei guard a valle (registro PROV.1,
-    es. `client`) sono ESENTI anche se marcati/fuori-schema: dominio dei
-    guard — l'idempotenza della catena dipende da questa esenzione."""
+    es. `client`) restano anche se MARCATI `runtime_resolved`: sono dominio dei
+    guard, e l'idempotenza della catena dipende da questa esenzione."""
     owned = frozenset({"client"})
-    # marcato MA guard-owned → resta (align/scope_sink lo arbitrano dopo)
     out, changed = coerce_step_args({"client": "local"}, SCHEMA,
                                     guard_owned=owned)
     assert not changed and out == {"client": "local"}
-    # perfino fuori-schema (es. list_dirs senza client dichiarato): resta
-    no_client_schema = {"properties": {"path": {"type": "string"}}}
-    out, changed = coerce_step_args({"client": "google_workspace"},
-                                    no_client_schema, guard_owned=owned)
-    assert not changed and out == {"client": "google_workspace"}
+
+
+def test_guard_owned_resta_tollerato_all_ingresso_perche_e_una_prova():
+    """L'esenzione all'INGRESSO deve restare larga: un arg fuori-schema può
+    essere la PROVA che una guardia a valle legge. `include_health` non
+    appartiene al contratto di `get_files`, ed è esattamente per questo che
+    dimostra un instradamento sbagliato. Toglierlo qui accieca la guardia —
+    misurato, rompe il ripristino del produttore health."""
+    owned = frozenset({"include_health"})
+    no_health_schema = {"properties": {"paths": {"type": "array"}}}
+    out, changed = coerce_step_args({"include_health": True}, no_health_schema,
+                                    guard_owned=owned)
+    assert not changed and out == {"include_health": True}
+
+
+def test_uscita_toglie_cio_che_il_tool_non_dichiara():
+    """Il CRICCHETTO, chiuso il 6/8 in USCITA. L'esenzione `guard_owned` è per
+    NOME NUDO: una guardia che dichiara `args.X` rende `X` accettabile su OGNI
+    tool, per sempre — erano 21 nomi, fra cui `path`, `paths`, `mode`,
+    `exist_ok`, `dst_folder`, cioè dove scrivere e che cosa cancellare. Non si
+    può chiudere all'ingresso senza accecare chi legge quegli arg come prova;
+    si chiude qui, dove nessuno deve più leggerli.
+
+    Misurato sul corpus reale: 132 piani su 2423 cambiano, e ogni differenza è
+    una caduta — nessun tool cambia, nessun arg appare. Verificato uno per uno
+    che nessun executor legga l'arg che gli cade."""
+    from engine.coerce_args import strip_unknown_args
+    from engine.types import Framework, StepSpec
+
+    class _Ex:
+        def __init__(self, name, props):
+            self.name = name
+            self.args_schema = {"type": "object", "properties": props}
+
+    cat = [_Ex("list_dirs", {"path": {"type": "string"}}),
+           _Ex("senza_schema", {})]
+    fw = Framework(steps=[
+        StepSpec(tool="list_dirs", args={"path": "/tmp", "client": "google",
+                                         "from_step": 1, "_actor": "roberto"}),
+        StepSpec(tool="senza_schema", args={"qualunque": 1}),
+        StepSpec(tool="tool_ignoto", args={"qualunque": 1})])
+    out = strip_unknown_args(fw, cat)
+    # fuori schema via; piping universale e metadati runtime restano
+    assert out.steps[0].args == {"path": "/tmp", "from_step": 1,
+                                 "_actor": "roberto"}
+    # schema non tipizzato o tool ignoto → no-op, mai bloccare
+    assert out.steps[1].args == {"qualunque": 1}
+    assert out.steps[2].args == {"qualunque": 1}
+
+
+def test_uscita_e_idempotente():
+    from engine.coerce_args import strip_unknown_args
+    from engine.types import Framework, StepSpec
+
+    class _Ex:
+        name = "list_dirs"
+        args_schema = {"type": "object",
+                       "properties": {"path": {"type": "string"}}}
+
+    fw = Framework(steps=[StepSpec(tool="list_dirs",
+                                   args={"path": "/tmp", "client": "google"})])
+    once = strip_unknown_args(fw, [_Ex()])
+    snapshot = dict(once.steps[0].args)
+    twice = strip_unknown_args(once, [_Ex()])
+    assert twice.steps[0].args == snapshot == {"path": "/tmp"}
+
+
+def test_guard_owned_resta_idempotente_dopo_la_stretta():
+    """La stretta non riapre l'oscillazione che l'esenzione preveniva: un arg
+    guard-owned e DICHIARATO dal tool sopravvive a quante applicazioni si
+    vuole."""
+    owned = frozenset({"client"})
+    once, _ = coerce_step_args({"client": "local", "pattern": "x"}, SCHEMA,
+                               guard_owned=owned)
+    twice, changed = coerce_step_args(once, SCHEMA, guard_owned=owned)
+    assert not changed and twice == once == {"client": "local", "pattern": "x"}
 
 
 def test_chain_idempotence_with_guard_rewrite():

@@ -3661,6 +3661,20 @@ def _coerce_args_to_schema(framework: Framework,
         return framework
 
 
+def _strip_unknown_args(framework: Framework,
+                        catalog: Optional[list]) -> Framework:
+    """USCITA della pipeline: il piano che parte per l'executor e' conforme ai
+    manifest. Chiude il cricchetto dell'esenzione `guard_owned`, che all'ingresso
+    resta una tolleranza necessaria (un arg fuori-schema puo' essere la prova
+    che una guardia legge). Implementazione in `engine/coerce_args.py`."""
+    try:
+        from engine.coerce_args import strip_unknown_args
+        return strip_unknown_args(framework, catalog)
+    except Exception as ex:  # noqa: BLE001 — conformazione best-effort
+        log.warning("strip_unknown_args noop (best-effort): %r", ex)
+        return framework
+
+
 _IPV4_RE = re.compile(
     r"(?<![\w.])((?:25[0-5]|2[0-4]\d|1?\d?\d)"
     r"(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?::(\d{1,5}))?(?![\w.])")
@@ -5748,6 +5762,12 @@ GUARD_PIPELINE: tuple = (
                             "args.mode", "args.exist_ok"}),
           reads=frozenset({"query", "catalog", "step.tool"}),
           rationale="vincolo no-overwrite uniforme: cartella per-turno, collision refusal e sink spreadsheet create-only per ogni dominio",
+          adr="0177"),
+    Guard("strip_unknown_args",
+          lambda fw, i, q, c: _strip_unknown_args(fw, c),
+          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          reads=frozenset({"catalog"}),
+          rationale="ULTIMA per costruzione: l'esenzione guard_owned dell'ingresso e' per nome nudo e cresce a ogni guardia nuova (21 nomi, incluso path/mode/exist_ok/dst_folder, esenti su OGNI tool). Non si chiude all'ingresso senza accecare chi legge quegli arg come prova; si chiude qui, dove nessuno deve piu' leggerli. Ingresso tollerante, uscita conforme ai manifest",
           adr="0177"),
 )
 

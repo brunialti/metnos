@@ -56,10 +56,22 @@ def coerce_step_args(args: dict, schema,
 
     `guard_owned`: nomi-arg che un guard A VALLE dichiara nei suoi `writes`
     (dal registro PROV.1, es. `client` di align_provider/scope_sink). Il
-    backstop NON li tocca MAI: sono dominio dei guard, e toccarli romperebbe
+    backstop non li arbitra: sono dominio dei guard, e toccarli romperebbe
     l'idempotenza della catena (coerce droppa → guard riscrive → oscillazione
     alla ri-applicazione). Il costo onesto: un leak LLM su un arg guard-owned
-    passa il coerce — lo arbitra il proprietario a valle (guard/resolver)."""
+    passa il coerce — lo arbitra il proprietario a valle (guard/resolver).
+
+    L'esenzione e' una tolleranza DENTRO la pipeline, non un lasciapassare fino
+    all'executor (6/8). Serve perche' un arg fuori-schema puo' essere la PROVA
+    che una guardia a valle legge — `include_health` su `get_files` non
+    appartiene al contratto di get_files ed e' esattamente per questo che
+    dimostra un errore di instradamento. Toglierla qui accieca la guardia
+    (misurato: rompe il ripristino del produttore health).
+
+    Il cricchetto — un nome esente su OGNI tool per sempre, appena una guardia
+    lo dichiara — si chiude all'USCITA: `strip_unknown_args`, ultima della
+    pipeline, conforma allo schema quello che davvero parte per l'executor.
+    Ingresso tollerante, uscita stretta."""
     if not isinstance(args, dict) or not args:
         return args, False
     # Confine di autorita': nessun metadato interno puo' provenire dal modello,
@@ -100,6 +112,44 @@ def coerce_step_args(args: dict, schema,
             continue
         coerced[key] = val
     return coerced, changed
+
+
+def strip_unknown_args(framework, catalog):
+    """USCITA della pipeline: toglie da ogni step gli arg che il suo tool non
+    dichiara. Applica SOLO la regola fuori-schema — non tocca `runtime_resolved`
+    ne' gli enum, che appartengono all'ingresso e alle guardie.
+
+    Perche' esiste (6/8): l'esenzione `guard_owned` all'ingresso e' per nome
+    nudo, quindi cresce da sola — ogni guardia nuova che dichiara `args.X`
+    rende `X` accettabile su OGNI tool, per sempre. Erano 21 nomi, fra cui
+    `path`, `paths`, `mode`, `exist_ok`, `dst_folder`: dove scrivere, che cosa
+    cancellare, se sovrascrivere. Non si puo' chiudere all'ingresso senza
+    accecare le guardie che leggono quegli arg come prova; si chiude qui, dove
+    nessuno deve piu' leggerli. Cosi' l'esenzione resta una tolleranza interna
+    e il piano che parte per l'executor e' conforme ai manifest.
+
+    Chiavi sempre salve: `_*` (metadati iniettati dal runtime) e il piping
+    universale (`from_step`, `entries`). Tool senza schema tipizzato: no-op."""
+    by_name = {}
+    for e in catalog or []:
+        n = getattr(e, "name", None)
+        if isinstance(n, str):
+            by_name[n] = getattr(e, "args_schema", None)
+    for s in getattr(framework, "steps", []) or []:
+        args = getattr(s, "args", None)
+        if not isinstance(args, dict) or not args:
+            continue
+        props = _typed_props(by_name.get(getattr(s, "tool", None)))
+        if props is None:
+            continue
+        kept = {k: v for k, v in args.items()
+                if (not isinstance(k, str)) or k.startswith("_")
+                or k in _UNIVERSAL_KEYS or k in props}
+        if len(kept) != len(args):
+            log.info("[strip_unknown_args] %s: fuori schema=%s",
+                     s.tool, sorted(set(args) - set(kept)))
+            s.args = kept
+    return framework
 
 
 def coerce_framework_to_schema(framework, catalog,
