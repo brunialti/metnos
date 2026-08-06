@@ -1742,6 +1742,13 @@ def _thermal_absence_message(thermal: dict, health: dict) -> str:
     distingue «questa macchina non puo'» da «manca il backend», e la stessa
     domanda torna.
 
+    Il messaggio nomina il programma e dichiara il CONFINE: quel programma e'
+    di terze parti e Metnos non lo installa per mandato — il client non cerca
+    ne' scarica binari durante un'invocazione, e la scelta di installarlo resta
+    di chi possiede la macchina (decisione di Roberto, 6/8/2026). Dire
+    «installa X» senza dire «io non lo faccio» lascerebbe credere che il
+    sistema possa arrangiarsi da solo.
+
     Deterministico §7.9: `reason_code` dell'executor + sistema operativo
     dichiarato dal device. Qualunque altro motivo (probe fallito, PowerShell
     assente, output non valido) resta sul messaggio generico: la sua causa non

@@ -6873,59 +6873,22 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         except Exception as ex:
             log.warning("strato3 escalation failed: %s", ex) if hasattr(log, "warning") else None
 
-    # Blocco prescrittivo per il PLANNER: lista delle credenziali estratte
-    # nel turno corrente. Solo metadata (domain + context), MAI le pwd.
-    # ADR 0092: il PLANNER è caricato da runtime/prompts/<lang>/planner/.
-    # Fase C (11/5/2026): rendering 3-layer (_core + sections + _footer) via
-    # `prompt_loader.compose()`. Selettore deterministico delle sezioni via
-    # `vocab.sections_for_object(intent.object)`. Quando l'intent extractor
-    # non si e' ancora eseguito (early route_info=None nel turno) o l'object
-    # e' unknown, passiamo sections=None → composer include TUTTE le sezioni
-    # (degrade graceful). Lo split avviene piu' avanti nel turno via re-render
-    # se serve, ma per il PLANNER prompt sistema il render iniziale e' OK con
-    # all-sections — il routing si concretizza ai prossimi step.
-    # Lingua esplicita al call site: snapshot del contesto per-utente.
-    try:
-        # `route_info` non e' ancora disponibile a questo punto (precede
-        # l'intent extractor del turno principale). Per il primo prompt
-        # PLANNER passiamo sections=None (= all sections) come degrade
-        # graceful. Refactor futuro: rendering lazy del system prompt ad
-        # ogni step, basato sull'intent extractor risolto.
-        _planner_sections = None
-    except Exception:
-        _planner_sections = None
-    _now_vars = _render_now_vars()
-    planner_system = prompt_loader.compose(
-        "planner",
-        _turn_lang,
-        sections=_planner_sections,
-        vocab_actions=_vocab_actions(),
-        vocab_objects=_vocab_objects(),
-        vocab_qualifiers=_vocab_qualifiers(),
-        project_paths=_render_project_paths_block(),
-        users_known=_render_users_known_block(),
-        telos_block=_render_telos_block(_turn_lang),
-        rejected_block=("" if bypass_rejected_pipelines
-                         else _render_rejected_pipelines_block(user_query, _turn_lang)),
-        **_now_vars,
-    )
-    # Il by-product `canonical_query` e i contesti dinamici sono prompt-data:
-    # ogni blocco segue la lingua del turno e ricade integralmente su EN per
-    # una lingua nuova ancora priva di traduzione.
-    if os.environ.get("METNOS_CANONICAL_QUERY", "1") == "1":
-        planner_system += "\n" + _render_canonical_query_block(_turn_lang)
-    if extracted_meta:
-        planner_system += "\n" + _render_credentials_context_block(
-            extracted_meta, _turn_lang)
-
-    # Reference images uploaded (ADR 0092): blocco prescrittivo al PLANNER
-    # cosi' il primo step richiama find_images_indices con from_step=1
-    # (entries del @uploaded virtuale) invece di chiedere altre foto.
+    # Il prompt di sistema del PLANNER legacy (`prompts/<lang>/planner/`,
+    # _core + sezioni + _footer) veniva composto QUI a ogni turno — 913 righe
+    # rese, 94 KB — e poi non lo leggeva nessuno: il consumatore era il loop
+    # ReAct, cancellato il 4/7 con `af6c7b87`. Verificato staticamente il
+    # 6/8/2026: zero letture di `planner_system` in tutta `run_turn`. Composto
+    # e buttato, con i suoi blocchi dinamici (canonical_query, contesto
+    # credenziali, immagini di riferimento) al seguito.
+    #
+    # Il prompt VIVO del piano e' `prompts/<lang>/engine_proposer.j2` (183
+    # righe), caricato dal proposer dell'engine. I file di `planner/` restano
+    # sul disco — sono tradotti, indicizzati e visibili in /admin/prompts — ma
+    # da qui in poi nessuno li rende: sono candidati al ritiro con la stessa
+    # disciplina delle guardie (prima la prova che non servono, poi la
+    # cancellazione).
     _ref_images_for_prompt = [p for p in (reference_images or [])
                                if isinstance(p, str) and p.strip()]
-    if _ref_images_for_prompt:
-        planner_system += "\n" + _render_reference_images_block(
-            _ref_images_for_prompt, _turn_lang)
 
     # Progress canale visivo: avvio con messaggio "neutro" prima della
     # decisione fast-path vs PLANNER. Il messaggio "Sto pensando..." era

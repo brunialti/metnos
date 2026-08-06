@@ -30,6 +30,19 @@ def test_windows_senza_backend_dice_quale_installare() -> None:
     assert "LibreHardwareMonitor" in testo
 
 
+def test_il_messaggio_dichiara_anche_che_metnos_non_installa() -> None:
+    """Nominare il programma senza dire «io non lo installo» lascerebbe
+    credere che il sistema possa arrangiarsi: il confine e' parte della
+    risposta (decisione di Roberto, 6/8). Verificato in ENTRAMBE le lingue —
+    un confine tradotto a meta' e' un confine perso."""
+    import i18n
+
+    for lingua, frase in (("it", "non installa"), ("en", "does not install")):
+        with i18n.language_context(lingua):
+            testo = i18n.get("MSG_HEALTH_THERMAL_NO_BACKEND_WINDOWS")
+        assert frase in testo, f"{lingua}: manca il confine di mandato"
+
+
 @pytest.mark.parametrize("motivo", [
     "thermal_probe_failed", "thermal_probe_timeout",
     "powershell_unavailable", "invalid_backend_output", "",
