@@ -14,12 +14,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: ottiene l'ultima posizione GPS osservata per l'attore corrente. PATTERN: get_location(). NON: geocodificare un nome -> find_places; leggere la cronologia delle posizioni. OUT: {location,age_seconds,actor} o errore not_found tipizzato."
-en = "SCOPO: gets the latest GPS position observed for the current actor. PATTERN: get_location(). NON: geocode a place name -> find_places; read location history. OUT: {location,age_seconds,actor} or a typed not_found failure."
+it = "SCOPO: dice dove si trova l'attore corrente. PATTERN: get_location(). NON: geocodificare un nome di luogo -> find_places; cercare luoghi vicini -> get_places; leggere la cronologia. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Prova in ordine posizione condivisa, configurata, WiFi e IP; `source` dice quale ha risposto e `ip` vale una citta', non una posizione."
+en = "SCOPO: tells where the current actor is. PATTERN: get_location(). NON: geocode a place name -> find_places; look for nearby places -> get_places; read the history. OUT: {location:{lat,lon,source,accuracy_m},age_seconds?,actor}. Tries in order shared, configured, WiFi and IP; `source` states which one answered, and `ip` is worth a city, not a position."
 
 [code]
 files  = ["get_location.py"]
-digest = "sha256:6b7f834b18a5486b799cf80f6a551c4384688353cccf39cc00b14d288b38a666"
+digest = "sha256:7c0e9e87998998747f3bc1623be5c2468e4ede7b251a103e15d931cb6cfb1b2e"
 
 [args]
 type     = "object"
@@ -39,8 +39,13 @@ schema_inline = """
   ok: bool,
   location?: {
     lat: float, lon: float, ts: float,
-    accuracy: float | null, channel: str | null
+    source: "shared" | "configured" | "wifi" | "ip",
+    accuracy_m: float | null,
+    accuracy?: float | null, channel?: str | null,
+    label?: str, access_points?: int, via_tunnel?: bool
   },
+  entries?: [ { gps: {lat: float, lon: float}, lat: float, lon: float,
+                source: str } ],
   age_seconds?: int,
   actor?: str,
   error?: str, error_class?: str, error_code?: str
@@ -49,17 +54,34 @@ schema_inline = """
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/.local/share/metnos/locations.jsonl"]
+hint = ["~/.local/share/metnos/locations.jsonl",
+        "~/.config/metnos/location.toml"]
+
+# Solo le due sorgenti dedotte: beaconDB per gli access point visibili e la
+# geolocalizzazione dall'IP pubblico. La posizione condivisa e quella
+# configurata non toccano la rete.
+[[capabilities]]
+name = "network:http"
+hint = ["api.beacondb.net", "ipapi.co"]
+
+# `iw dev <if> scan dump` legge la cache di scansione del kernel (nessun
+# privilegio) e `ip route get` riconosce una rotta di default in tunnel: con
+# una VPN attiva l'IP racconta dove esce il tunnel, non dove sei.
+[[capabilities]]
+name = "code:exec"
+hint = ["iw", "ip"]
 
 [placement]
 scope = "server"
 device_ok = false
 
+# Sorgenti di rete spente: il test resta ermetico e verifica il FONDO della
+# catena, cioe' che senza alcuna sorgente si dichiari di non sapere.
 [[tests]]
-name   = "no_location_ancora_condivisa"
+name   = "nessuna_sorgente_sa_rispondere"
 setup  = "rm -f /tmp/metnos_loc_test.jsonl"
 input  = { actor = "test_no_data" }
-env    = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
+env    = { METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
 expect = { ok = false, error_contains = "Nessuna posizione ricevuta per ora. Condividi una posizione su Telegram con il bottone allegati e riprova" }
 
 [[tests]]
@@ -72,7 +94,7 @@ expect = { ok = false, error_contains = "deve essere una stringa" }
 name        = "happy_path_sample"
 setup       = "mkdir -p \"$METNOS_USER_DATA\" && printf '%s\\n' '{\"ts\":1778078500.0,\"owner_user_id\":\"manifest-location-owner\",\"actor\":\"test_sample\",\"channel\":\"telegram\",\"lat\":45.4642,\"lon\":9.19,\"accuracy\":12.5}' > \"$METNOS_USER_DATA/locations.jsonl\""
 input       = { actor = "test_sample" }
-env         = { METNOS_OWNER_USER_ID = "manifest-location-owner" }
+env         = { METNOS_OWNER_USER_ID = "manifest-location-owner", METNOS_LOCATION_FRESH_S = "99999999999", METNOS_LOCATION_WIFI = "0", METNOS_LOCATION_IP = "0" }
 expect      = { ok = true, has_field = "location" }
 expect_full = """
 {
@@ -81,7 +103,9 @@ expect_full = """
     "lat": 45.4642,
     "lon": 9.1900,
     "ts": 1778078500.0,
+    "source": "shared",
     "accuracy": 12.5,
+    "accuracy_m": 12.5,
     "channel": "telegram"
   },
   "age_seconds": 223,

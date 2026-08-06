@@ -63,6 +63,13 @@ def test_get_now_success_and_typed_invalid_zone() -> None:
 
 
 def test_get_location_success_not_found_and_invalid_actor(monkeypatch) -> None:
+    # Le sorgenti dedotte (WiFi, IP) restano spente: qui si verifica il
+    # contratto dell'executor, non la rete. Senza questo il `not_found` non
+    # esisterebbe piu' — la catena risponderebbe con la citta' dell'IP.
+    monkeypatch.setattr(
+        get_location.host_location, "host_position", lambda **_: None)
+    # Il record di prova ha ts=1.0 (1970): oltre qualunque finestra di
+    # freschezza, quindi vale come ULTIMA risorsa in fondo alla catena.
     monkeypatch.setenv("METNOS_OWNER_USER_ID", "owner-a")
     monkeypatch.setattr(get_location, "get_last_location", lambda *, owner_user_id: (
         {"lat": 45.0, "lon": 9.0, "ts": 1.0, "channel": "test"}
