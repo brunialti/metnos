@@ -255,14 +255,14 @@
       },
       {
         "args": {
+          "batch_size": 8,
+          "drill_down": false,
           "fields": [
             "importo",
             "data"
           ],
           "from_step": 1,
           "instruction": "leggi le mail con le fatture, estrai importo e data, e mettile in un foglio",
-          "batch_size": 8,
-          "drill_down": false,
           "max_per_text": 20,
           "max_sources": 500,
           "max_total": 500
@@ -306,7 +306,7 @@
     "steps": [
       {
         "args": {
-          "path": "C:\\Windows\\System32\\drivers\\etc"
+          "path": "/opt/metnos/executors/read_files"
         },
         "tool": "list_dirs"
       },

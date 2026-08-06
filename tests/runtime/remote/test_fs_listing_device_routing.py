@@ -8,8 +8,10 @@ Catena di difetti misurati, ognuno col suo fix deterministico §7.9:
      cadeva su un default appreso AVVELENATO (`/opt/metnos/executors/…`).
   3. args_resolver: i path dell'install root non vanno MAI ricordati come
      scope-default né iniettati (si auto-rinforzano: 46 usi).
-  4. dispatch `_overwrite_phantom_install_args`: un arg path install-root NON
-     nominato dalla query è un fantasma → rimosso (ripara i piani cachati).
+  4. dispatch `_overwrite_phantom_install_args`: RITIRATA il 6/8/2026. Era la
+     riparazione a valle del sintomo; le cause 2 e 3 chiudono la sorgente del
+     veleno, e il journal reale mostra 0 spari in 22 giorni (la condizione di
+     ritiro scritta nella guardia stessa) con nessun piano avvelenato in cache.
   5. dispatch `_degenerate_find_to_list` (§2.2): con intento LIST, un
      find_files(base_path=X) senza selettore è un'enumerazione di contenitore
      → list_dirs (device-eligible).
@@ -111,10 +113,28 @@ def test_install_root_never_injected(monkeypatch):
 
 # ── 4-7. guard chain: dal piano avvelenato al piano corretto ─────────────
 
-def test_poisoned_cached_plan_repaired_to_list_dirs():
-    """Piano L0 avvelenato (find senza selettore + base_path fantasma) →
-    la catena guard lo ripara: fantasma rimosso, path dalla clausola,
-    swap a list_dirs. Il create NON riceve il path come output."""
+def test_predicato_install_root_riconosce_la_radice():
+    """§7.3: la CAUSA, non il sintomo. Il veleno nasceva da un default appreso
+    che puntava dentro l'install root e si auto-rinforzava (46 usi misurati).
+    `args_resolver` non lo ricorda e non lo inietta — lo provano i due test
+    qui sopra. Qui si blocca il PREDICATO su cui poggiano entrambi.
+
+    Il 6/8 la guardia che lo RIPARAVA a valle
+    (`overwrite_phantom_install_args`) e' stata ritirata: 0 spari in 22 giorni
+    di journal reale — la condizione di ritiro scritta nella guardia stessa —
+    e nessun piano avvelenato nelle cache L0/L1. Restano le due protezioni
+    causali, che sono quelle che contano."""
+    import args_resolver as AR
+
+    assert AR._is_install_root_path("/opt/metnos/executors/read_files")
+    assert not AR._is_install_root_path(WIN_DIR)
+    assert not AR._is_install_root_path("/home/utente/Documenti")
+
+
+def test_piano_avvelenato_resta_comunque_un_contenitore_da_enumerare():
+    """L'altra meta' della catena regge da sola: con intento LIST, un
+    `find_files` senza selettore discriminante e' un'enumerazione di
+    contenitore e diventa `list_dirs` (§2.2), device-eligible."""
     from engine.types import Framework, StepSpec
     from engine import dispatch as D
     cat = _catalog()
@@ -130,7 +150,6 @@ def test_poisoned_cached_plan_repaired_to_list_dirs():
         fw, _intent_list_files(), Q, cat)
     tools = [s.tool for s in out.steps if s.tool != "final_answer"]
     assert tools[0] == "list_dirs", tools
-    assert out.steps[0].args.get("path") == WIN_DIR
     cre = next(s for s in out.steps if s.tool.startswith("create"))
     assert "path" not in cre.args and "base_path" not in cre.args, cre.args
 

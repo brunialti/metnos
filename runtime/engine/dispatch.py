@@ -3145,39 +3145,6 @@ _UNIVERSAL_GLOBS = frozenset({"*", "*.*", "**"})
 
 # Arg path-ish di SCOPE che il proposer/una cache possono avvelenare con un
 # path dell'install root (pattern-by-example / default appreso / piano cachato).
-_PATHISH_SCOPE_ARGS = ("base_path", "path")
-
-
-def _overwrite_phantom_install_args(framework: Framework,
-                                    query: str) -> Framework:
-    """§7.3 (turni 2cd8862a/e130c549): un arg path (`base_path`/`path`) che
-    punta DENTRO l'install root di Metnos (`/opt/metnos/executors/…`) e che la
-    query NON nomina è un FANTASMA — entra dal pattern-by-example del proposer,
-    da un default appreso avvelenato o da un piano L0 cachato rotto. Qui viene
-    RIMOSSO (i guard a valle — `_fill_clause_args` — lo ri-derivano dalla
-    clausola; senza, l'executor chiede/erra ONESTO). Gira anche sugli hit
-    cache (ADR 0174): ripara i piani già avvelenati. Se la query nomina
-    esplicitamente l'install root («conta le LOC di /opt/metnos/runtime») il
-    valore è legittimo e resta."""
-    try:
-        from args_resolver import _is_install_root_path
-        q = (query or "")
-        for s in framework.steps:
-            a = getattr(s, "args", None) or {}
-            for k in _PATHISH_SCOPE_ARGS:
-                v = a.get(k)
-                if isinstance(v, str) and _is_install_root_path(v) \
-                        and v.strip() not in q:
-                    log.info("[phantom_install] %s.%s=%r rimosso "
-                             "(install-root non nominato dalla query)",
-                             s.tool, k, v)
-                    a.pop(k, None)
-        return framework
-    except Exception as ex:  # noqa: BLE001 — best-effort
-        log.warning("overwrite_phantom_install_args noop (best-effort): %r", ex)
-        return framework
-
-
 def _dl_match(concept: str, text: str) -> bool:
     """Wrapper best-effort su detection_lexicon.match (§7.3): NL→canonico dal
     lessico seedato IT+EN, mai liste-sinonimi hardcoded. Import lazy (il modulo
@@ -5604,12 +5571,6 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"step.tool", "args.kind"}),
           rationale="un valore-operazione (dedup) non è una categoria di filter_entries; prima del group dedup viene rimosso senza toccare altri predicati",
           adr="0177"),
-    Guard("overwrite_phantom_install_args",
-          lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q),
-          scope="structure", writes=frozenset({"args.base_path", "args.path"}),
-          reads=frozenset({"query"}),
-          rationale="rimuove base_path/path install-root non nominati dalla query (default appreso avvelenato / cache stantia). Cat. C spec provenienza: rimovibile con evidenza journal «[phantom_install]» = 0 fire su >=14 giorni di traffico reale (finestra aperta 7/7/2026, verifica >=21/7)",
-          adr="0182"),
     Guard("align_framework_objects",
           lambda fw, i, q, c: _align_framework_objects(fw, i, c),
           scope="structure", writes=frozenset({"step.tool"}),

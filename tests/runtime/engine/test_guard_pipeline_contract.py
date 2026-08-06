@@ -32,7 +32,6 @@ EXPECTED_PIPELINE = (
     # l'output grezzo del proposer; i guard a valle scrivono dopo di lui).
     ("coerce_args_to_schema", True),
     ("normalize_filter_operation_values", False),
-    ("overwrite_phantom_install_args", False),
     ("align_framework_objects", False),
     ("route_text_web_image_search", False),
     ("enforce_missing_clauses", False),

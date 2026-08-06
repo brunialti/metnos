@@ -15,6 +15,17 @@ Il golden e' un'IMPRONTA per caso, non l'uscita intera: un file di uscite
 peserebbe come il corpus. Su divergenza il test stampa ingresso e uscita del
 caso, che e' quello che serve per capire.
 
+LIMITE DA TENERE A MENTE leggendo una divergenza: i casi che vengono dalle
+osservazioni NON hanno il testo della query (il registro non lo conserva), solo
+quelli che vengono dai fastpath ce l'hanno. Una guardia che legge la query si
+comporta qui in modo diverso da come si comporta in esercizio — e la differenza
+non e' neutra, e' sistematica. Misurato il 6/8 ritirando
+`overwrite_phantom_install_args`: con la query vuota la condizione «il percorso
+non e' nominato dalla query» e' sempre vera, quindi la guardia sembrava
+riparare 41 piani che in produzione non toccava affatto. Se una divergenza
+riguarda una guardia che legge la query, verificarla sui casi con `query`
+piena prima di trarne conclusioni.
+
 Rigenerare (SOLO quando il cambiamento e' voluto, mai per far passare il test):
 
     ./.venv/bin/python -m pytest tests/runtime -q     # prima: dev'essere verde
