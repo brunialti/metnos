@@ -26,10 +26,16 @@ def main():
         env.update({
             "METNOS_USER_DATA": str(root / "data"),
             "METNOS_USER_STATE": str(root / "state"),
+            # La configurazione dell'utente era l'unica radice mutabile
+            # rimasta scoperta: un born-test leggeva il file VERO
+            # dell'installazione (misurato su get_location, che ha imparato a
+            # leggere `location.toml`) e il suo esito dipendeva da come e'
+            # configurata la macchina di chi lancia la suite.
+            "METNOS_USER_CONFIG": str(root / "config"),
             "METNOS_INDEX_ROOT": str(root / "data" / "index"),
             "METNOS_HISTORY_DIR": str(root / "data" / "_history"),
         })
-        for path in (root / "data", root / "state"):
+        for path in (root / "data", root / "state", root / "config"):
             path.mkdir(parents=True, exist_ok=True)
         # Error strings and detection concepts are immutable seed inputs for
         # the birth tests. Copy only those two stores; never expose the rest of
@@ -38,6 +44,23 @@ def main():
             source = installed_data / name
             if source.is_file():
                 shutil.copy2(source, root / "data" / name)
+        # Le chiavi di fiducia sono l'altro ingresso immutabile: senza, il
+        # loader scarta ogni executor firmato e la suite misurerebbe la
+        # verifica delle firme invece del comportamento.
+        installed_config = Path(
+            os.environ.get("METNOS_USER_CONFIG")
+            or (Path.home() / ".config" / "metnos"))
+        if (installed_config / "keys").is_dir():
+            shutil.copytree(installed_config / "keys", root / "config" / "keys",
+                            dirs_exist_ok=True)
+        # Anche la politica dello spazio di lavoro e' un ingresso, non stato:
+        # i born-test usano percorsi sotto /tmp e senza di essa ricadrebbero
+        # sull'ambito predefinito `~/**`. Resta l'unico file di configurazione
+        # copiato oltre alle chiavi: il resto (posizione, tier, admin key) non
+        # deve raggiungere un executor sotto test.
+        policy = installed_config / "workspace_policy.toml"
+        if policy.is_file():
+            shutil.copy2(policy, root / "config" / policy.name)
         for m in manifests:
             print(f"\n>>> {m.parent.name}")
             result = subprocess.run(

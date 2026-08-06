@@ -13,7 +13,8 @@ Contratto:
     stdin:  JSON {queries: list[str], max_results?: int}
     stdout: JSON {ok, ok_count, fail_count, entries, failed,
                   rate_limited?: bool, place_warning?: str}
-    `entries` ha forma list[{query, matches: list[{name,lat,lon,address,place_slug}]}]
+    `entries` e' PIATTO: una entry per LUOGO trovato,
+    {name,lat,lon,address,place_slug,distance_km?,query} (§2.1/§2.6/§2.10).
 """
 import os
 import sys
@@ -23,7 +24,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import run_stdio, scalar_coordinate  # noqa: E402
 from executor_helpers import coerce_cap  # noqa: E402
 _msg = msg  # alias: alcuni rami di validazione usano _msg (unifica i nomi)
 # Geo provider unico via wrapper (1/5/2026 v0.6.0): chain configurabile via
@@ -48,15 +49,23 @@ def invoke(args):
     # oppure il record completo di get_location {location: {lat, lon, ...}}.
     near_raw = args.get("near")
     near = None
+
+    def _pair(lat, lon):
+        """Coppia di coordinate, tollerante alla forma plurale del planner."""
+        lat_v, lon_v = scalar_coordinate(lat), scalar_coordinate(lon)
+        if lat_v is None or lon_v is None or not (-90.0 <= lat_v <= 90.0):
+            return None
+        return {"lat": lat_v, "lon": lon_v}
+
     if isinstance(near_raw, dict):
         if "lat" in near_raw and "lon" in near_raw:
-            near = {"lat": near_raw["lat"], "lon": near_raw["lon"]}
+            near = _pair(near_raw["lat"], near_raw["lon"])
         elif isinstance(near_raw.get("location"), dict):
             loc = near_raw["location"]
             if "lat" in loc and "lon" in loc:
-                near = {"lat": loc["lat"], "lon": loc["lon"]}
+                near = _pair(loc["lat"], loc["lon"])
     elif isinstance(near_raw, (list, tuple)) and len(near_raw) == 2:
-        near = {"lat": near_raw[0], "lon": near_raw[1]}
+        near = _pair(near_raw[0], near_raw[1])
     # `near` come STRINGA (nome città/zona, non coordinate): l'LLM lo passa per
     # query compound "<POI> a <city>" (es. "ospedali" + near="Padova"). Non
     # scartarlo in silenzio (§2.8: si perderebbe il vincolo geografico) né
@@ -129,6 +138,20 @@ def invoke(args):
         "failed": failed,
         "backend": backend_used,
     }
+    # Zero risultati SENZA guasti del servizio: l'utente non puo' distinguere
+    # «non c'e' nulla» da «hai cercato la cosa sbagliata», e una tabella vuota
+    # suggerisce la prima. Questo executor cerca per NOME; una richiesta per
+    # CATEGORIA («le vie qui intorno») non ha nessun nome da trovare e torna
+    # sempre vuota. Il confine si dichiara invece di lasciarlo dedurre (§2.8).
+    # Condizione strutturale, nessun vocabolario: la si riconosce dall'esito.
+    if entries == [] and not failed and not aborted:
+        response["authoritative_presentation"] = {
+            "scope": "always",
+            "text": _msg("MSG_FIND_PLACES_ONLY_BY_NAME",
+                         terms=", ".join(
+                             f"«{q.strip()}»" for q in queries
+                             if isinstance(q, str) and q.strip())),
+        }
     if aborted:
         response["aborted"] = True
     return response

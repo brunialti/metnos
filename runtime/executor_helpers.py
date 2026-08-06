@@ -27,6 +27,30 @@ from messages import get as _msg
 from worker_policy import bounded_worker_count
 
 
+def scalar_coordinate(value):
+    """Un numero da un valore che il planner puo' aver reso plurale (§2.4).
+
+    Il confine NL→determinismo produce sistematicamente la forma degenere:
+    dove lo schema vuole uno scalare arriva `[41.8664]`. Preso alla lettera,
+    un ancoraggio geografico diventa un dict con dentro due liste e il
+    provider lo scarta: la ricerca «qui vicino» si allarga in silenzio al
+    mondo intero (misurato su find_places, 50 risultati da tutta Italia).
+
+    Ritorna un float, oppure None se il valore non e' una coordinata.
+    """
+    if isinstance(value, (list, tuple)):
+        if len(value) != 1:
+            return None
+        value = value[0]
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if -180.0 <= number <= 180.0 else None
+
+
 def walk_failure(path, reason: str) -> dict:
     """Record di un ramo che una visita ricorsiva non ha potuto leggere.
 

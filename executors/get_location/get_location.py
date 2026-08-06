@@ -119,12 +119,56 @@ def _from_shared(rec: dict, actor: str) -> dict:
     }
 
 
+def _coords(position: dict) -> str:
+    label = position.get("label")
+    text = f"{position['lat']:.4f}, {position['lon']:.4f}"
+    return f"{text} ({label})" if label else text
+
+
+def _verify(actor: str) -> dict:
+    """Confronto esplicito fra la posizione DICHIARATA e quella RILEVATA ORA.
+
+    La configurata descrive la MACCHINA, non chi la usa: da un portatile in
+    viaggio, o dietro una VPN, resterebbe «casa» con tutta l'autorevolezza di
+    un dato esatto. Quando l'utente chiede di rideterminare la posizione non
+    si sceglie per lui: si mostrano le due e si dice quale e' quale.
+    """
+    configured = host_location.configured_position()
+    detected = (host_location.wifi_position()
+                or host_location.ip_position())
+    out = {"ok": True, "actor": actor, "verified": True}
+    if configured:
+        out["location"] = {**configured, "ts": time.time()}
+        out["entries"] = _pipeable(configured)
+    if detected:
+        out["detected"] = detected
+        if not configured:
+            out["location"] = {**detected, "ts": time.time()}
+            out["entries"] = _pipeable(detected)
+    if not configured and not detected:
+        return {"ok": False, "error_code": "ERR_NO_LOCATION_YET",
+                "error_class": "not_found",
+                "error": _msg("ERR_NO_LOCATION_YET")}
+    if configured and detected:
+        text = _msg("MSG_LOCATION_VERIFY_BOTH",
+                    configured=_coords(configured), detected=_coords(detected))
+    elif configured:
+        text = _msg("MSG_LOCATION_VERIFY_NO_LIVE", configured=_coords(configured))
+    else:
+        text = _presentation(detected)["text"]
+    out["authoritative_presentation"] = {"scope": "always", "text": text}
+    return out
+
+
 def invoke(args):
     actor = args.get("actor") or "host"
     if not isinstance(actor, str):
         return {"ok": False, "error_code": "ERR_ARG_NOT_STRING",
                 "error_class": "invalid_args",
                 "error": _msg("ERR_ARG_NOT_STRING", arg="actor")}
+
+    if args.get("verify"):
+        return _verify(actor)
 
     # La condivisa e' owner-scoped; le sorgenti dell'host no. Senza owner
     # logico si salta il primo anello e si prosegue: la macchina sa comunque
