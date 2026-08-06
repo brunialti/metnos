@@ -1140,6 +1140,195 @@ def _fs_equivalent(step_obj: str, intent_objs) -> bool:
                     for o in (intent_objs or ())))
 
 
+def _consumes_upstream(step) -> bool:
+    """Vero se il passo gia' consuma l'uscita di un passo precedente.
+
+    E' il discriminante fra un produttore MAL ASSEGNATO e un fratello scelto
+    DELIBERATAMENTE. Due turni reali con lo stesso intent {get, places} e lo
+    stesso strumento find_places:
+      - «dimmi la via piu' vicina» → find_places(query="via"): ignora la
+        posizione appena calcolata e cerca la parola. E' il misroute.
+      - «dimmi le 3 vie piu' vicine e il quartiere» → find_places(queries=
+        ["street"], near={lat,lon}): consuma la posizione ed e' la ricerca di
+        prossimita' giusta, che `get_places` non saprebbe fare.
+    Chi consuma il passo a monte ha una ragione per esistere: non si tocca.
+    """
+    args = getattr(step, "args", None) or {}
+    if args.get("from_step"):
+        return True
+
+    def _refers(value) -> bool:
+        # Stessa regex del rimappatore degli indici: il riferimento fra passi
+        # ha una forma sola, e non se ne inventa una seconda qui.
+        if isinstance(value, str):
+            return bool(_STEPREF_RE.search(value))
+        if isinstance(value, dict):
+            return any(_refers(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(_refers(v) for v in value)
+        return False
+
+    return any(_refers(value) for value in args.values())
+
+
+def _wire_upstream_producer(framework: Framework, step, entry) -> None:
+    """Collega il passo corretto al produttore che lo precede (§4.1).
+
+    Chi riscrive lo strumento deve lasciare il passo ESEGUIBILE: cambiare il
+    verbo senza ricollegare l'ingresso produce un passo giusto e muto, che
+    fallisce per argomento mancante. Il collegamento fra passi e' `from_step`,
+    e si applica solo quando lo schema del nuovo strumento lo dichiara, il
+    passo non ha gia' un ingresso, e il produttore a monte e' UNO SOLO: con
+    piu' candidati la scelta non e' deterministica e si lascia stare.
+    """
+    schema = _entry_schema(entry) or {}
+    properties = schema.get("properties") or {}
+    if "from_step" not in properties:
+        return
+    args = getattr(step, "args", None) or {}
+    if any(key in args and args[key] not in (None, "", [], {})
+           for key in ("from_step", "entries", "coords")):
+        return
+    steps = list(getattr(framework, "steps", None) or [])
+    try:
+        position = steps.index(step)
+    except ValueError:
+        return
+    import naming_grammar as _ng
+    from vocab import PRODUCER_VERBS
+    upstream = [index for index, other in enumerate(steps[:position], start=1)
+                if (lambda nc: nc and nc.verb in PRODUCER_VERBS)(
+                    _ng.parse_name(getattr(other, "tool", "") or ""))]
+    if len(upstream) != 1:
+        return
+    step.args = {**args, "from_step": upstream[0]}
+
+
+def _align_framework_action_pairs(framework: Framework, intent, query: str,
+                                  catalog: Optional[list]) -> Framework:
+    """§7.9: un'azione dell'intent si copre con la COPPIA (verbo, oggetto).
+
+    `enforce_missing_clauses` verifica la proiezione VERBO, `enforce_missing_objects`
+    quella OGGETTO. Un piano puo' soddisfarle entrambe senza soddisfare nessuna
+    coppia, e li' nessuna guardia guarda: e' un produttore mal assegnato.
+
+    Misurato sul turno «dimmi la via piu' vicina» (intent {get, places}): il
+    piano era get_location + find_places, quindi il verbo `get` risultava
+    coperto da get_location e l'oggetto `places` da find_places, mentre la
+    coppia chiesta — reverse-geocoding da coordinate — non la eseguiva nessuno.
+    L'utente riceveva una tabella vuota di ricerche testuali della parola
+    «via».
+
+    Deterministica e senza vocabolario: legge solo la grammatica dei nomi,
+    l'intent e il catalogo. Riscrive un solo passo, e soltanto quando
+    l'intent dissente in modo esplicito:
+      - la coppia chiesta esiste come strumento reale e NON e' gia' nel piano
+        (un `find` legittimo come precursore di un `get` chiesto resta intatto,
+        perche' li' la coppia e' gia' coperta dal suo passo);
+      - il passo da correggere produce l'oggetto giusto col verbo sbagliato, e
+        la sua coppia non e' a sua volta un'azione chiesta;
+      - le operazioni singolari (ADR 0002) non si toccano: il loro oggetto non
+        esiste nella grammatica.
+    """
+    try:
+        import naming_grammar as _ng
+        from vocab import PRODUCER_VERBS
+
+        actions = [a for a in (getattr(intent, "actions", None) or [])
+                   if isinstance(a, dict)]
+        if not actions:
+            verb = (getattr(intent, "verb", "") or "").lower()
+            obj = (getattr(intent, "object", "") or "").lower()
+            if verb and obj:
+                actions = [{"verb": verb, "object": obj}]
+        steps = [s for s in (getattr(framework, "steps", None) or [])
+                 if (getattr(s, "tool", "") or "") != "final_answer"]
+        if not actions or not steps:
+            return framework
+
+        names = catalog_names(catalog)
+        by_name = {_entry_name(e): e for e in (catalog or [])}
+        wanted = {((a.get("verb") or "").lower(), (a.get("object") or "").lower())
+                  for a in actions}
+        wanted.discard(("", ""))
+
+        parsed = {}
+        for step in steps:
+            tool = getattr(step, "tool", "") or ""
+            nc = _ng.parse_name(tool) if tool else None
+            if nc and nc.verb and nc.obj:
+                parsed[id(step)] = (tool, nc)
+
+        def _is_covered(verb: str, obj: str) -> bool:
+            # Un produttore filesystem soddisfa il fratello (files↔dirs): la
+            # copertura si valuta con la stessa equivalenza del resto del
+            # motore, altrimenti list_dirs sembrerebbe non coprire {list,files}.
+            return any(nc.verb == verb
+                       and (nc.obj == obj or _fs_equivalent(nc.obj, [obj]))
+                       for _tool, nc in parsed.values())
+
+        changed = False
+        for verb, obj in sorted(wanted):
+            # Solo coppie PRODUTTRICI. Una clausola consumatrice (write, create,
+            # send...) non si copre riscrivendo un produttore: si distruggerebbe
+            # il flusso dei dati — misurato, la guardia trasformava list_dirs in
+            # write_files su «elenca i file e mettili in un foglio».
+            if not verb or not obj or verb not in PRODUCER_VERBS:
+                continue
+            if _is_covered(verb, obj):
+                continue
+            target = f"{verb}_{obj}"
+            if target not in names:
+                continue
+            for step in steps:
+                entry = parsed.get(id(step))
+                if not entry:
+                    continue
+                tool, nc = entry
+                if tool in _SINGULAR_EXECUTORS or nc.verb == verb:
+                    continue
+                # Oggetto ESATTO: l'equivalenza filesystem serve a riconoscere
+                # una copertura legittima, non a giustificare una riscrittura
+                # fra fratelli — quella e' materia dell'allineamento oggetti.
+                if nc.obj != obj:
+                    continue
+                if (nc.verb, nc.obj) in wanted or nc.verb not in PRODUCER_VERBS:
+                    continue
+                # Il passo serve gia' un'altra coppia chiesta, per equivalenza?
+                # Allora non e' mal assegnato: sta facendo il suo lavoro.
+                if any(other_verb == nc.verb
+                       and _fs_equivalent(nc.obj, [other_obj])
+                       for other_verb, other_obj in wanted):
+                    continue
+                if _consumes_upstream(step):
+                    continue
+                candidate = by_name.get(target)
+                if candidate is None:
+                    continue
+                # Gli argomenti del verbo sbagliato non valgono per quello
+                # giusto: si conformano allo schema del nuovo strumento invece
+                # di sopravvivergli addosso.
+                step.args = _candidate_args(
+                    candidate, getattr(step, "args", None) or {}, framework,
+                    query, [query], exclude_step=step)
+                _wire_upstream_producer(framework, step, candidate)
+                log.info("[action_pair] %s → %s (coppia %s+%s scoperta)",
+                         tool, target, verb, obj)
+                step.tool = target
+                covered.discard((nc.verb, nc.obj))
+                covered.add((verb, obj))
+                parsed[id(step)] = (target, _ng.parse_name(target))
+                changed = True
+                break
+        if changed:
+            log.info("[action_pair] piano riallineato: %s",
+                     [getattr(s, "tool", "") for s in
+                      (getattr(framework, "steps", None) or [])])
+    except Exception as ex:  # noqa: BLE001 — §2.8: il piano resta valido
+        log.warning("align_framework_action_pairs noop: %r", ex)
+    return framework
+
+
 def _align_framework_objects(framework: Framework, intent,
                              catalog: Optional[list]) -> Framework:
     """§7.9 deterministico: ri-allinea il tool di uno step quando il proposer
@@ -5450,6 +5639,12 @@ GUARD_PIPELINE: tuple = (
           v3_only=True, scope="per-clause", writes=frozenset({"args.*"}),
           reads=frozenset({"clause", "catalog"}),
           rationale="riempie gli args deducibili dal chunk della clausola (pattern/date/store); NON sovrascrive l'LLM. È LO STAGE clause-derive (esito PROV.3 6/7: già ben costruito, count-cap nidificati; non sussumere)",
+          adr="0177"),
+    Guard("align_framework_action_pairs",
+          _align_framework_action_pairs,
+          scope="routing", writes=frozenset({"step.tool", "args.*"}),
+          reads=frozenset({"intent.actions", "query", "catalog"}),
+          rationale="DOPO fill_clause_args, che e' quando il piano ha gli ingressi: un fratello che CONSUMA il produttore a monte e' una scelta deliberata, uno che lo ignora e' un misroute. Un'azione si copre con la COPPIA (verbo,oggetto): le due proiezioni separate possono essere entrambe soddisfatte mentre nessuno esegue la coppia chiesta (turn «dimmi la via piu' vicina»: get coperto da get_location, places da find_places, reverse-geocoding da nessuno)",
           adr="0177"),
     Guard("normalize_result_folder_exclusion",
           lambda fw, i, q, c: _normalize_result_folder_exclusion(fw, q, c),
