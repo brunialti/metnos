@@ -5817,8 +5817,13 @@ GUARD_PIPELINE: tuple = (
 # grammar-on-args. Un guard che MUTA il framework «spara» — meno spari con la
 # grammar-args = i guard diventano no-op perché l'LLM non produce più l'errore.
 # Strumentazione passiva (snapshot pre/post): NON cambia il comportamento dei
-# guard. Attiva solo con METNOS_GUARD_FIRE_COUNT=1 (default off, costo zero in
-# prod: to_dict per guard è O(steps)).
+# guard.
+#
+# ACCESA di default dal 6/8, e persistente (`engine/guard_stats.py`). Prima era
+# spenta e viveva solo in memoria di processo: nessuno sapeva quali guardie
+# sparassero ancora, quindi nessuna si poteva ritirare, quindi il loro numero
+# poteva solo salire. Costo misurato: 0,03 ms per piano (0,369 → 0,399 ms
+# sull'intera pipeline). Si spegne con METNOS_GUARD_FIRE_COUNT=0.
 _GUARD_FIRE_COUNTS: dict = {}
 
 
@@ -5842,7 +5847,12 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     import os as _os
     from . import is_v3
     _v3 = is_v3()
-    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "0") == "1"
+    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "1") == "1"
+    if _count:
+        try:
+            from . import guard_stats as _gs
+        except Exception:  # noqa: BLE001 — la misura non blocca mai un turno
+            _gs = None
     for _g in GUARD_PIPELINE:
         if _g.v3_only and not _v3:
             continue
@@ -5853,12 +5863,21 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
                 _before = None
             framework = _g.fn(framework, intent, query, catalog)
             try:
-                if _before is not None and framework.to_dict() != _before:
+                _fired = (_before is not None
+                          and framework.to_dict() != _before)
+                if _fired:
                     _GUARD_FIRE_COUNTS[_g.name] = _GUARD_FIRE_COUNTS.get(_g.name, 0) + 1
+                if _gs is not None and _before is not None:
+                    _gs.record(_g.name, _fired)
             except Exception:
                 pass
         else:
             framework = _g.fn(framework, intent, query, catalog)
+    if _count and _gs is not None:
+        try:
+            _gs.end_plan()
+        except Exception:  # noqa: BLE001
+            pass
     return framework
 
 
