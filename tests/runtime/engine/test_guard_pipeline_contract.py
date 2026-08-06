@@ -61,6 +61,12 @@ EXPECTED_PIPELINE = (
     # di fill (opera su step in ordine-intent) — solo move, mai delete.
     ("enrich_move_source_dir", True),
     ("fill_clause_args", True),
+    # La copertura di un'azione si verifica sulla COPPIA (verbo,oggetto): le due
+    # proiezioni separate possono essere entrambe soddisfatte mentre nessuno
+    # esegue la coppia chiesta. DOPO fill, che e' quando il piano ha gli
+    # ingressi: un fratello che CONSUMA il produttore a monte e' deliberato,
+    # uno che lo ignora e' un misroute.
+    ("align_framework_action_pairs", False),
     # Esclusione di una cartella antenata: il filtro deve usare path completo.
     ("normalize_result_folder_exclusion", False),
     ("resolve_store_field_refs", True),
