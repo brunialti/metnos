@@ -685,14 +685,9 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         prod_1b = pi + 1          # indice 1-based del produttore
         k = prod_1b + 1           # indice 1-based dove vivra' l'extract
         # Rewiring from_step PRIMA dell'insert: chi consumava il produttore ora
-        # consuma l'extract; i ref a posizioni >= k slittano +1.
-        for s in steps:
-            fs = (getattr(s, "args", None) or {}).get("from_step")
-            if isinstance(fs, int):
-                if fs == prod_1b:
-                    s.args["from_step"] = k
-                elif fs >= k:
-                    s.args["from_step"] = fs + 1
+        # consuma l'extract. Lo SLITTAMENTO degli indici lo fa `insert_steps`
+        # (unico posto che rimappa from_step, ${stepN} e final_message insieme);
+        # qui resta solo il RICABLAGGIO, che e' semantica di questa guardia.
         # Deriva `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y»
         # quando sono espliciti. Se la query non li espone, l'executor inferisce
         # internamente un piccolo schema: il guard non conosce il dominio.
@@ -704,8 +699,15 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             ins_args["instruction"] = query
         if _bulk_sink:
             _apply_bulk_limits(ins_args, getattr(steps[pi], "tool", "") or "")
-        steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
         framework.steps = steps
+        new_step = StepSpec(tool="extract_entries", args=ins_args)
+        insert_steps(framework, pi + 1, [new_step])
+        for s in framework.steps:
+            if s is new_step:
+                continue
+            if (getattr(s, "args", None) or {}).get("from_step") == prod_1b:
+                s.args["from_step"] = k
+        steps = framework.steps
         log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
                  "produttore @%d) fields=%s", k, prod_1b, _fields or "—")
         return framework
@@ -1093,16 +1095,13 @@ def _enrich_move_source_dir(framework: Framework, query: str,
                 continue  # glob esplicito = intento diverso, non toccare
             my_idx = steps.index(mv)              # 0-based
             old_mv_1b = my_idx + 1                # 1-based del move PRIMA dell'insert
-            steps.insert(my_idx, StepSpec(tool="find_files",
-                                          args={"base_path": src}))
-            # renumber: ogni from_step >= old_mv_1b (che puntava a move o oltre)
-            # slitta di 1 per l'inserimento. Il move stesso lo settiamo dopo.
-            for s in steps:
-                if s is mv:
-                    continue
-                sfs = (getattr(s, "args", None) or {}).get("from_step")
-                if isinstance(sfs, int) and sfs >= old_mv_1b:
-                    s.args["from_step"] = sfs + 1
+            # Lo slittamento degli indici e' di `insert_steps`: rimappa
+            # from_step, ${stepN} e final_message insieme. Il move si ricabla
+            # subito sotto, quindi il suo from_step slittato viene sovrascritto.
+            framework.steps = steps
+            insert_steps(framework, my_idx,
+                         [StepSpec(tool="find_files", args={"base_path": src})])
+            steps = framework.steps
             mv.args = {k: v for k, v in a.items()
                        if k not in ("entries", "paths")}
             mv.args["from_step"] = old_mv_1b      # = pos 1-based del find_files
@@ -2142,6 +2141,46 @@ def _remap_step_refs(obj, idx_map: dict):
     return obj
 
 
+def insert_steps(framework: Framework, at: int, new_steps: list) -> Framework:
+    """Inserisce `new_steps` in posizione `at` (0-based) RIMAPPANDO TUTTO.
+
+    Unico modo ammesso di inserire uno step in un piano. `steps.insert()`
+    diretto e' vietato (test `test_no_direct_steps_insert`): ogni guardia che
+    lo faceva si costruiva la propria rimappa a mano, e ne rimappava un pezzo —
+    `_route_folder_size` aggiornava `from_step` e lasciava indietro
+    `${stepN.field}` e `final_message`, con la docstring che lo metteva per
+    iscritto. E' la classe-bug T3 dell'audit 21/7, «il fix a piu' alto ritorno
+    anti-regressione dell'intero audit».
+
+    Rimappa, con lo STESSO `idx_map`: gli args di ogni step preesistente, il
+    `final_message` e i `fillers`. Gli indici sono 1-based nei riferimenti
+    (`from_step: 3`, `${step3.path}`) e 0-based nella lista: uno step che oggi
+    sta in posizione `at` o dopo scala di `len(new_steps)`.
+
+    Gli args dei nuovi step NON vengono rimappati: chi li costruisce conosce
+    gia' la numerazione finale. Ritorna lo stesso framework, mutato sul posto.
+    """
+    steps = getattr(framework, "steps", None)
+    if steps is None or not new_steps:
+        return framework
+    at = max(0, min(int(at), len(steps)))
+    shift = len(new_steps)
+    idx_map = {i: (i if i <= at else i + shift)
+               for i in range(1, len(steps) + 1)}
+    for s in steps:
+        args = getattr(s, "args", None)
+        if isinstance(args, dict):
+            s.args = _remap_step_refs(args, idx_map)
+    fm = getattr(framework, "final_message", None)
+    if isinstance(fm, str) and fm:
+        framework.final_message = _remap_step_refs(fm, idx_map)
+    fillers = getattr(framework, "fillers", None)
+    if isinstance(fillers, dict) and fillers:
+        framework.fillers = _remap_step_refs(fillers, idx_map)
+    steps[at:at] = list(new_steps)
+    return framework
+
+
 def _contains_stepref(obj, pos: int) -> bool:
     """True se `obj` (dict/list/str ricorsivo) contiene un ${stepN} con N==pos."""
     ref = "${step%d" % pos
@@ -3035,9 +3074,13 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
                 if k in s.args:
                     find_args[k] = s.args[k]
             s.args = {k: v for k, v in s.args.items() if k != "paths"}
-            s.args["from_step"] = i + 1          # find inserito a i → step i+1
-            steps.insert(i, StepSpec(tool=find_twin, args=find_args))
+            # Prima non rimappava NULLA: ogni `from_step`/`${stepN}` a valle
+            # restava appeso alla numerazione vecchia. `insert_steps` lo fa.
             framework.steps = steps
+            insert_steps(framework, i,
+                         [StepSpec(tool=find_twin, args=find_args)])
+            steps = framework.steps
+            s.args["from_step"] = i + 1          # find inserito a i → step i+1
             log.info("[filename_pattern §4.3] %s(paths=[%r]) -> %s(pattern=%r)"
                      " + read(from_step)", tool, name, find_twin, name)
             break  # un solo aggancio per turno
@@ -3357,22 +3400,20 @@ def _route_folder_size(framework: Framework, query: str,
                     comp = StepSpec(tool="compute_entries",
                                     args={"from_step": idx, "op": "sum",
                                           "key": "size"})
-                    # renumber: ogni from_step >= idx+1 slitta di 1 (inseriamo
-                    # a posizione idx+1). L'unico consumer possibile è a valle.
-                    for s in steps:
-                        sfs = _args(s).get("from_step")
-                        if isinstance(sfs, int) and sfs >= idx + 1:
-                            s.args["from_step"] = sfs + 1
-                    steps.insert(idx, comp)
+                    # Lo slittamento e' di `insert_steps`: prima qui si
+                    # rimappava solo `from_step`, lasciando indietro
+                    # `${stepN.field}` e `final_message` — la classe-bug T3.
                     framework.steps = steps
+                    insert_steps(framework, idx, [comp])
+                    steps = framework.steps
                     changed = True
                     break   # una cartella-target per turno (caso reale)
 
         if changed:
-            # NB: il template final_message del proposer può essere STANTÌO
-            # rispetto al piano riscritto («…contengono N directory»), ma il
-            # finalizer presenta AUTORITATIVAMENTE la riduzione scalare
-            # (compute sum-size) prima del render — non serve toccarlo qui.
+            # NB: il TESTO del final_message può restare stantìo nel merito
+            # («…contengono N directory») — è il finalizer a presentare
+            # autoritativamente la riduzione scalare. I suoi RIFERIMENTI agli
+            # step, invece, li rinumera `insert_steps`.
             log.info("[folder_size §7.9] piano→find_files(recursive)+compute("
                      "sum,size): peso cartella = file ricorsivi")
         return framework
