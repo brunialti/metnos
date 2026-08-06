@@ -142,6 +142,64 @@ def stats() -> list[dict]:
     return sorted(by_name.values(), key=lambda r: (-r["fires"], r["name"]))
 
 
+DORMANT_DAYS = int(os.environ.get("METNOS_GUARD_DORMANT_DAYS", "60"))
+DORMANT_MIN_SEEN = int(os.environ.get("METNOS_GUARD_DORMANT_MIN_SEEN", "500"))
+
+
+def dormant(*, days: int | None = None,
+            min_seen: int | None = None, now_iso: str | None = None) -> list[dict]:
+    """Le guardie che non hanno riparato NIENTE in una finestra lunga.
+
+    Perche' esiste (6/8/2026). Il ritiro di una guardia era un progetto: si
+    apriva un'analisi, si misurava a mano, e infatti in due mesi ne era stata
+    ritirata una sola. Con gli spari persistiti la domanda «quali sono
+    candidate?» e' una query, e questa lista entra nel riepilogo notturno
+    accanto agli executor invecchiati: il «meno uno» diventa un evento
+    ordinario invece che un'impresa.
+
+    NON e' un verdetto. Zero spari ha due letture opposte — la guardia non
+    serve piu', oppure il piano arriva sano proprio perche' lei c'e' — e
+    nessun dato qui le distingue. E' la lista su cui vale la pena spendere il
+    protocollo in quattro passi (chi altro applica la proprieta' / spari nel
+    journal / piani ancora affetti nelle cache / oracolo prima-dopo).
+
+    Tre requisiti perche' un nome compaia, e servono tutti: mai sparata nella
+    finestra, attraversata abbastanza volte da rendere il silenzio
+    significativo, e osservata da abbastanza tempo. Una guardia nata ieri non
+    e' dormiente: e' giovane.
+    """
+    days = DORMANT_DAYS if days is None else days
+    min_seen = DORMANT_MIN_SEEN if min_seen is None else min_seen
+    adesso = now_iso or now_iso_z()
+    fuori = []
+    for riga in stats():
+        if riga["seen"] < min_seen:
+            continue
+        if _giorni(adesso, riga.get("first_seen")) < days:
+            continue        # non abbiamo ancora guardato abbastanza a lungo
+        if riga["fires"] and _giorni(adesso, riga.get("last_fire_at")) < days:
+            continue        # ha sparato dentro la finestra
+        fuori.append({"name": riga["name"], "seen": riga["seen"],
+                      "fires": riga["fires"],
+                      "last_fire_at": riga.get("last_fire_at"),
+                      "osservata_da_giorni": int(
+                          _giorni(adesso, riga.get("first_seen")))})
+    return sorted(fuori, key=lambda r: (-r["seen"], r["name"]))
+
+
+def _giorni(dopo_iso: str, prima_iso: str | None) -> float:
+    """Giorni fra due timestamp ISO-Z; assenza = infinito (mai vista sparare)."""
+    if not prima_iso:
+        return float("inf")
+    from datetime import datetime
+    try:
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        return (datetime.strptime(dopo_iso, fmt)
+                - datetime.strptime(prima_iso, fmt)).total_seconds() / 86400.0
+    except ValueError:
+        return float("inf")
+
+
 def _flush_at_exit() -> None:
     """All'uscita del processo il logging puo' avere gia' chiuso i suoi flussi:
     un contatore non deve stampare un errore mentre tutto si spegne."""

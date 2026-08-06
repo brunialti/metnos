@@ -915,11 +915,19 @@ niente motore di regole). Qui sotto, perché quella risposta è quella giusta.
    proprio per questo e già in forma di oracolo byte-identico. Gli mancano solo
    i casi: 11 oggi, contro 2353 piani reali già su disco (§5.3).
 
-**Decisione attesa da Roberto**: i passi 5-8, cioè la migrazione vera, una
-famiglia alla volta e ognuna in ombra col protocollo §5.4. La verifica di §5.2
-ne ha cambiato il prezzo: nella famiglia E c'era **una** cancellazione, ed è
-fatta; il resto è costruzione di superfici. I passi 1-4 (preparazione senza
-rischio) sono chiusi.
+**Passi 5-8: CHIUSI il 6/8** (Roberto ha delegato la decisione). Non si
+migrano, e la ragione è misurata sul journal reale: le famiglie che la sequenza
+proponeva di consolidare — B, C, D, F — sono quelle che portano il traffico
+(440 spari su 451 in 21 giorni), mentre la famiglia quasi muta è la E, già
+trattata col primo ritiro. Il `requires` nei manifest sposterebbe il grilletto
+e non il corpo (le due precondizioni vere sono 550 righe di logica di dominio),
+e l'oracolo copre 13 guardie su 34: una riscrittura di 2300 righe con quella
+rete non è reversibile, è una scommessa. Tabella completa, criteri di
+riapertura e il meccanismo che li sostituisce (guardie dormienti nel riepilogo
+notturno) nel diario dei lavori.
+
+Il problema di crescita era reale ed è chiuso dai passi 1-4: non era il numero
+di guardie, era il cricchetto, la rinumerazione dimenticata e l'invisibilità.
 
 **Se riprendi e vuoi ricontrollare prima di fidarti**: §A rifà tutte le misure
 di §1 e §3 con comandi copiabili. I difetti fuori tema trovati per strada sono

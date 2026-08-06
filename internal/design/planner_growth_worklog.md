@@ -128,14 +128,70 @@ Conto: **35 → 34 guardie**. Al netto della nascita di `strip_unknown_args`,
 siamo al numero di partenza — ma con il cricchetto chiuso, la rinumerazione
 unificata e la misura accesa.
 
-## Da fare
+## Passi 5-8: CHIUSI (6/8/2026, decisione delegata da Roberto)
 
-| | cosa | dove |
-|---|---|---|
-| **5** | resto della famiglia E, in ombra. **La verifica preliminare è FATTA** (nota qui sotto): resta una sola cancellazione possibile, già fatta — il lavoro rimasto è costruire le superfici | — |
-| **6** | famiglia D nei manifest come `requires` (705 righe) | manifest |
-| **7** | consolidare B e C (638 righe, 7 guardie → 2) | — |
-| **8** | decidere sulla famiglia F (1023 righe, la meno verificata) | — |
+**Non si migrano. La misura dice che si riscriverebbe il codice che lavora.**
+
+Spari reali per famiglia, journal di 21 giorni (`grep '\[<marcatore>'`, i
+marcatori non sono i nomi delle guardie):
+
+| famiglia | righe | spari 21gg | che cos'è |
+|---|---|---|---|
+| **F** (passo 8) | 1020 | **101** | i tre `normalize_*_report_pipeline`: la famiglia più grossa è anche **la più viva** |
+| **C** (passo 7) | 234 | **185** | quasi tutti da `scope_sink_provider_to_clause` |
+| **D** (passo 6) | 761 | **127** | quasi tutti da `ensure_extract_clause` |
+| **B** (passo 7) | 319 | 27 | copertura verbo/oggetto/coppia |
+| **E** (passo 5) | 654 | **11** | la famiglia quasi morta — ed è l'unica già lavorata (1 ritiro) |
+
+Le tre ragioni, in ordine di peso:
+
+1. **Il risparmio non c'è dove lo cercavamo.** La sequenza proponeva di
+   consolidare B, C, D, F: sono esattamente le famiglie che portano il traffico
+   (440 spari su 451). La famiglia quasi muta è E, già trattata: 1 ritiro fatto
+   e le altre quattro proprietà **non applicate da nessuno** (verifica §5.2) —
+   migrarle vuol dire costruire superfici nuove, non cancellare guardie.
+2. **Il `requires` nei manifest sposterebbe il grilletto, non il corpo.** Delle
+   cinque guardie D solo due sono davvero precondizioni, e sono le due grosse:
+   `ensure_site_session_precursor` (361 righe di consenso/sessione/credenziali)
+   e `ensure_extract_clause` (190 di propagazione schema). Un manifest può
+   dichiarare *che* serve un produttore a monte, non *come* costruirlo.
+3. **L'oracolo copre 13 guardie su 34.** Una riscrittura di 2300 righe con una
+   rete che ne verifica un terzo non è «reversibile a ogni passo»: è una
+   scommessa. Il protocollo §5.4 chiede byte-identico su tutto il corpus, e il
+   corpus non ce l'ha.
+
+**Il problema di crescita, però, era reale — ed è quello che i passi 1-4 hanno
+chiuso.** Non era il numero di guardie: era il cricchetto (ogni guardia nuova
+allargava il buco nello schema, per sempre), la rinumerazione dimenticata, e
+l'invisibilità. Oggi una guardia nuova non allarga niente, non può sbagliare
+l'inserimento, deve passare 804 piani reali, e i suoi spari si contano.
+
+### Criteri di riapertura (perché «non si fa» non sia un rinvio)
+
+- **Famiglia F** → quando serve un **quarto** report-pipeline. A tre, la
+  tabella dichiarativa costa più di quanto renda; a quattro si ripaga.
+- **Inserimento di produttore** (D+E) → quando una **quinta** guardia deve
+  inserire un produttore a monte. Oggi sono quattro
+  (`ensure_site_session_precursor`, `ensure_extract_clause`,
+  `enrich_move_source_dir`, `route_filename_pattern_to_find`) e la metà
+  meccanica esiste già (`insert_steps`).
+- **Ritiro** → automatico nel senso che la lista si presenta da sola: vedi
+  sotto.
+
+### Quello che sostituisce la migrazione: il ritiro diventa ordinario
+
+`guard_stats.dormant()` elenca le guardie che **non hanno riparato niente** in
+una finestra lunga, e la lista compare ogni notte nel riepilogo lifecycle
+accanto agli executor invecchiati (`METNOS_GUARD_DORMANT_DAYS`, default 60;
+`METNOS_GUARD_DORMANT_MIN_SEEN`, default 500). Tre requisiti insieme —
+silenzio, massa, tempo — perché una guardia giovane o poco attraversata non è
+dormiente.
+
+Resta una lista di **candidate**, mai un verdetto: zero spari significa «non
+serve più» oppure «il piano arriva sano proprio perché c'è», e il protocollo in
+quattro passi resta manuale. Ma la domanda «quali?» adesso è una query, non un
+progetto — ed è per questo che in due mesi ne era stata ritirata una sola.
+Primo verdetto utile: ottobre (il contatore parte dal 6/8).
 
 ### Nota sulle statistiche degli executor
 
