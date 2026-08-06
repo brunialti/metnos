@@ -52,12 +52,62 @@ era lì ed è tornato verde da solo: nessun golden rigenerato.
 (`find_files.query`, `write_files_spreadsheet.path`) sono testo model-facing
 scritto da Opus per necessità strutturale.
 
+| **2** | un solo modo di inserire uno step, e rimappa tutto | `f1fdf64a` | 4 guardie migrate a `insert_steps`; test statico vieta `steps.insert`. 0 differenze sui piani reali; provato in diretta che `${stepN}` e `final_message` prima restavano indietro |
+
+### Nota sul passo 2
+
+Il corpus reale non contiene piani che esercitano le rimappe mancanti, quindi
+l'oracolo è verde per assenza di casi, non per assenza di bug. La prova sta
+altrove: su `enrich_move_source_dir` ora `${step1.path}` diventa
+`${step2.path}` e il `final_message` segue — prima restavano entrambi appesi
+alla numerazione vecchia.
+
+Fuori dalla porta unica resta `ensure_extracted_period_scope`: non inserisce
+soltanto, ricabla i consumatori dell'extract sul filtro nuovo con una mappa non
+uniforme. È dichiarato nel test, non dimenticato.
+
+Osservato per strada, non toccato: «sposta i file **di** X» non attiva
+`enrich_move_source_dir` (il lessico `fs.files_in_folder` copre «da»/«in»,
+non «di»). Con «dalla cartella X» funziona. Non l'ho esteso di proposito: «di»
+è ambiguo («i file di ieri»), e allargarlo qui sarebbe un lessico a orecchio.
+
+| **3** | gli spari delle guardie si contano e restano | `d9624fc4` | `engine/guard_stats.py`, acceso di default (costo 0,03 ms/piano), riversato ogni 5 piani. Verificato in prod: 6 turni → 15 attraversamenti su tutte e 35 le guardie |
+
+### Nota sul passo 3
+
+Il numero di guardie è 35, non 34: `strip_unknown_args` è nata al passo 1. È
+l'unica aggiunta di questa sessione, ed è una **proprietà** (conformità in
+uscita), non un caso.
+
+Come leggere `guard_stats.db`:
+
+```bash
+sqlite3 ~/.local/state/metnos/guard_stats.db \
+  'select name, fires, seen, last_fire_at from guard_fire order by fires desc'
+```
+
+Zero spari **non** è una condanna: può voler dire «non serve più» oppure
+«serve, e il piano arriva sano proprio perché c'è». Il ritiro richiede la
+quarantena osservata — si spegne la guardia e si guarda se l'errore risale.
+
+| **4** | l'oracolo di equivalenza sui piani reali entra nel repo | `a5a765a7` | 804 casi anonimizzati (osservazioni + fastpath **con** il testo della query), golden a impronte, test di copertura. Strumento in `internal/tools/build_guard_corpus.py` |
+
+### Nota sul passo 4
+
+Il corpus è **anonimizzato**: nomi e percorsi personali sostituiti, e ogni
+piano che porti valori lunghi (contenuto reale bake-ato, corpi di mail) è
+scartato. Verificato a mano che non resti nulla di personale prima di
+committarlo.
+
+I fastpath ci sono perché portano il **testo della query**: senza, le guardie
+che la leggono non sparano mai e il corpus non le copre. Con loro, il corpus
+esercita 13 guardie su 35 — le altre 22 non sono coperte, ed è scritto nel test
+invece che sottinteso.
+
 ## Da fare
 
 | | cosa | dove |
 |---|---|---|
-| **2** | helper unico `insert_steps()` + test che vieta `steps.insert` diretto | `dispatch.py` (`_remap_step_refs` esiste già) |
-| **3** | persistere i conteggi di sparo delle guardie, contatore acceso in prod | `dispatch.py` (`_GUARD_FIRE_COUNTS`) |
 | **4** | portare l'oracolo a 2424 piani nel repo | `tests/runtime/infra/` |
 | **5** | famiglia E a regole, in ombra (689 righe: 6 guardie da cancellare, 3 a tabella) | — |
 | **6** | famiglia D nei manifest come `requires` (705 righe) | manifest |
