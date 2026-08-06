@@ -45,24 +45,25 @@ _FIRES: Counter = Counter()
 _SEEN: Counter = Counter()
 _LAST: dict[str, str] = {}
 _PLANS = [0]
-_DB_READY = [False]
 
 
 def _conn():
+    """Lo schema si assicura a OGNI connessione, non una volta per processo:
+    sotto test la radice di stato e' una cartella temporanea che sparisce fra
+    un caso e l'altro, e una cache direbbe «tabella gia' creata» su un file
+    appena rinato vuoto."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(str(DB_PATH), timeout=5.0)
-    if not _DB_READY[0]:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS guard_fire (
-            name         TEXT PRIMARY KEY,
-            fires        INTEGER NOT NULL DEFAULT 0,
-            seen         INTEGER NOT NULL DEFAULT 0,
-            first_seen   TEXT,
-            last_fire_at TEXT
-        );
-        """)
-        c.commit()
-        _DB_READY[0] = True
+    c.executescript("""
+    CREATE TABLE IF NOT EXISTS guard_fire (
+        name         TEXT PRIMARY KEY,
+        fires        INTEGER NOT NULL DEFAULT 0,
+        seen         INTEGER NOT NULL DEFAULT 0,
+        first_seen   TEXT,
+        last_fire_at TEXT
+    );
+    """)
+    c.commit()
     return c
 
 
@@ -131,4 +132,13 @@ def stats() -> list[dict]:
     return sorted(by_name.values(), key=lambda r: (-r["fires"], r["name"]))
 
 
-atexit.register(flush)
+def _flush_at_exit() -> None:
+    """All'uscita del processo il logging puo' avere gia' chiuso i suoi flussi:
+    un contatore non deve stampare un errore mentre tutto si spegne."""
+    try:
+        flush()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+atexit.register(_flush_at_exit)
