@@ -128,6 +128,67 @@ Conto: **35 → 34 guardie**. Al netto della nascita di `strip_unknown_args`,
 siamo al numero di partenza — ma con il cricchetto chiuso, la rinumerazione
 unificata e la misura accesa.
 
+## RIAPERTURA (6/8 sera) — la chiusura era giusta sulla risposta sbagliata
+
+Roberto, dopo aver letto la chiusura: *«è una follia. un file .py che cresce di
+oltre 20 volte in due mesi e arriva a oltre 7k LOC non è gestibile alla lunga.
+serve pensare in grande e lateralmente: regole generali per pattern
+universali»*.
+
+Ha ragione, e l'errore è mio: ho misurato **una** sostituzione (tabella di dati
++ interprete), ho visto che non paga — è vero, i dati sono il 4% — e mi sono
+fermato lì. «Quella sostituzione non paga» non è «non esiste una
+riformulazione». Rifatta la classificazione **per CAUSA** invece che per
+famiglia, il quadro cambia:
+
+| causa (perché la guardia esiste) | guardie | righe | spari 21gg |
+|---|---|---|---|
+| **1. il piano non ha TIPI** — il dataflow fra step non è dichiarato da nessuna parte | 9 | 1059 | 162 |
+| **2. il POOL offre il candidato sbagliato** — l'applicabilità di un tool non è dichiarata | 13 | 1079 | 249 |
+| **3. gli ARGS non hanno un contratto abbastanza forte** | 9 | 627 | 10 |
+| **4. modelli di FLUSSO interi** — non è riparazione, è pianificazione | 3 | 1020 | 101 |
+
+Tre leve universali, una per causa, più uno spostamento di livello:
+
+1. **Tipi sul dataflow.** Ogni tool dichiara che cosa produce e che cosa
+   consuma; il piano diventa una pipeline tipizzata. Allora «manca il
+   produttore», «il campo non esiste», «le colonne del sink non arrivano
+   all'extract», «l'ordine non segue le clausole» smettono di essere nove
+   procedure e diventano **un validatore + un inseritore**. Metà meccanica già
+   esiste (`insert_steps`). Assorbe ~1000 righe.
+2. **Applicabilità dichiarata + un gate del pool.** Tredici guardie riparano
+   *dopo* una scelta che il pool non doveva nemmeno offrire. La prova che
+   funziona è in casa e costa 30 righe: `_gate_image_modality` (2/7) ha ucciso
+   una classe intera togliendo i tool-immagine dal pool quando la query non
+   nomina immagini. Generalizzato = `[applicability]` nel manifest, come già si
+   fa per `[placement]`, `[execution]`, `[credential_form]`. Assorbe ~1000
+   righe e **il picco degli spari** (249).
+3. **Contratto degli args alla generazione**, non alla riparazione: la
+   grammatica vincolata esiste già per i NOMI (ADR 0133/0156); estesa agli args
+   rende irrappresentabile ciò che oggi si conforma a valle.
+4. **La famiglia F non si riscrive: cambia livello.** Quelle 1020 righe non
+   riparano un piano sbagliato — *sono* un piano. Il posto di un piano per una
+   classe di richieste è L1/skill, non `dispatch.py`. (§3.3 diceva che L1 oggi
+   non regge condizioni e rami: allora si estende L1, che è un lavoro con un
+   confine, invece di tenere 1020 righe nel motore.)
+
+**E la regola che ferma la crescita per costruzione**: oggi una guardia nuova
+costa una funzione e una riga nel registro — cioè niente. Deve costare una
+dichiarazione: *a quale delle tre cause appartiene, e perché il meccanismo di
+quella causa non la copre*. Se non sa rispondere, non è una guardia nuova: è
+un'estensione del meccanismo. È la stessa disciplina del vocabolario chiuso
+degli executor (§2.2), applicata al motore.
+
+Spezzare `dispatch.py` in più file è cosmesi finché le cause restano: 7000
+righe in cinque file sono sempre 7000 righe.
+
+**Ordine proposto** (rendimento per rischio, misurato): prima la leva 2 su UNA
+sola famiglia (i provider: 185 spari, 234 righe, e il precedente
+`_gate_image_modality` come modello), in ombra col corpus a 804 piani. Se la
+misura tiene, la leva 1. La 3 e la 4 dopo.
+
+---
+
 ## Passi 5-8: CHIUSI (6/8/2026, decisione delegata da Roberto)
 
 **Non si migrano. La misura dice che si riscriverebbe il codice che lavora.**
