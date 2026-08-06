@@ -204,6 +204,29 @@ guardie si contano con `grep '\[<marcatore>'`, che NON è il nome della guardia
 - `seed_from_run` semina righe L1 che `lookup` scarterà per sempre.
 - `apply_efficacy_ager` non è agganciato a nessuno scheduler.
 
+### Non era un difetto: i verbi nudi nell'affinity di `find_files_hash`
+
+Segnalati come sospetti («un cercatore di duplicati non dovrebbe rivendicare
+*trova*/*find*»), poi **misurati**, e la misura ha smentito il sospetto due
+volte di seguito:
+
+| ipotesi | misura sul corpus congelato (223 query) |
+|---|---|
+| «il verbo nudo è rumore: il verb-boost lo conta già» → toglierlo ovunque | **top-1 97 → 80.** È un marcatore di PRIMATO di famiglia: distingue il default dai fratelli provider (`list_dirs` vs `list_dirs_github`, `find_files` vs `find_files_github`), che il +10 del verbo non può separare perché ce l'hanno tutti |
+| «allora toglierlo ai soli fratelli qualificati» (4 casi) | 0 cambi sul corpus, ma fuori corpus appiattisce `read_files_csv` su `read_files` per «leggi il csv» (24→20 contro 21): il verbo è la base additiva su cui il qualifier costruisce |
+
+Su `find_files_hash` in particolare: togliere i due tag rompe il pareggio 24-24
+con `find_files` su «trova i file .md …» — pareggio che oggi risolve
+l'ordine alfabetico — ma gli fa perdere margine sulle sue query di firma e lo
+fa scivolare dal 2° al 4° posto su «trova i duplicati nella cartella immagini».
+E il path VIVO (`rank_with_intent`) quei verbi non li conta affatto. Lasciato
+com'è, con la misura scritta in `decisions/anti-regression-index.md` perché
+nessuno la rifaccia da capo.
+
+Lo strumento è ora nel repo: `scripts/bench_prefilter_corpus.py` (`--dump` /
+`--confronta`, elenca ogni query in cui il primo cambia). Il corpus congelato
+esisteva dal 5/6 e non lo leggeva nessuno.
+
 ### Chiuso: la composta «trova i file … e leggili» — e il passo 0 che l'ha chiusa
 
 Il sintomo diceva «routing»: `find_files_hash` (il cercatore di DUPLICATI) al
