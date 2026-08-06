@@ -109,6 +109,8 @@ invece che sottinteso.
 
 | **5a** | ritirata la prima guardia della storia della pipeline | `84e1512c` | `overwrite_phantom_install_args`: condizione di ritiro scritta nella guardia stessa, verificata su journal (22 gg, 0 spari), cache servite (0 piani avvelenati) e corpus |
 
+| — | l'uso degli executor torna a lasciare traccia (difetto indipendente, chiuso) | — | gancio nell'UNICO punto attraversato da subprocess, remoto, builtin e onda parallela (`ExecutorScheduler.invoke`); verificato in prod su tre turni reali |
+
 ### Nota sul passo 5a — il primo «meno uno»
 
 La guardia riparava **a valle** un veleno le cui **cause** sono chiuse a monte
@@ -135,6 +137,33 @@ unificata e la misura accesa.
 | **7** | consolidare B e C (638 righe, 7 guardie → 2) | — |
 | **8** | decidere sulla famiglia F (1023 righe, la meno verificata) | — |
 
+### Nota sulle statistiche degli executor
+
+Il gancio per-invocazione fu cancellato il 4/7 con `af6c7b87` insieme al planner
+legacy e mai ricablato in engine v3. La consegna lo dava a
+`engine/executor.py:2624`: **sarebbe stato il posto sbagliato**, perché lì
+passano solo gli step dell'anello del motore — non i turni serviti da L0, non le
+riprese dopo un dialogo, non i builtin in-process. Un executor usato SOLO via
+cache sarebbe risultato inattivo e l'aging l'avrebbe deprecato. Il punto giusto
+è `ExecutorScheduler.invoke` (ADR 0196: «ogni invocazione attraversa lo
+scheduler»), dove passano tutti e quattro i trasporti.
+
+Due cose che non erano ovvie e sono nel codice:
+
+- lo scheduler ammette anche **slot interni** che executor non sono (mode, sonde
+  e compositore del Tutor prendono lo slot `llm`): hanno nome e politica ma
+  nessuna unità firmata su disco. Il discriminante è `code_path`; senza,
+  l'aging si sarebbe trovato righe di ciclo di vita per cose che un ciclo di
+  vita non ce l'hanno.
+- il gancio **non registra sotto pytest**, come `guard_stats`: la suite invoca
+  executor veri migliaia di volte. Verificato dopo la suite intera — il registro
+  reale è rimasto a 193 righe e allo stesso `last_used_at`.
+
+Danno del mese di buio: **nessuna deprecazione ingiusta**. L'ultimo evento di
+aging è del 8/7 e da allora non ce ne sono altri, perché tutto ciò che era
+deprecabile lo era già stato a giugno; il costo è stato di misura persa, non di
+capacità ritirate.
+
 ### Nota sul passo 5 — la prima verifica ha smentito la mappatura
 
 Aperto il passo 5 da `normalize_filter_operation_values`, che §5.2 dava come
@@ -160,9 +189,6 @@ finché le verifiche non sono fatte.
 
 ## Difetti aperti trovati per strada (indipendenti, non toccati)
 
-- 🚨 statistiche executor rotte da un mese: il gancio per-invocazione fu
-  cancellato il 4/7 con `af6c7b87`, va ricablato a `engine/executor.py:2624`.
-  124 righe su 193 con `last_used_at` vuoto.
 - composta «trova i file … **e leggili**» → `find_files_hash` + `read_files` →
   «Nessun risultato trovato»; senza la seconda clausola va bene a `find_files`.
 - `seed_from_run` semina righe L1 che `lookup` scarterà per sempre.
