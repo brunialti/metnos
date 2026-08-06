@@ -104,12 +104,31 @@ che la leggono non sparano mai e il corpus non le copre. Con loro, il corpus
 esercita 13 guardie su 35 — le altre 22 non sono coperte, ed è scritto nel test
 invece che sottinteso.
 
+| **5a** | ritirata la prima guardia della storia della pipeline | `84e1512c` | `overwrite_phantom_install_args`: condizione di ritiro scritta nella guardia stessa, verificata su journal (22 gg, 0 spari), cache servite (0 piani avvelenati) e corpus |
+
+### Nota sul passo 5a — il primo «meno uno»
+
+La guardia riparava **a valle** un veleno le cui **cause** sono chiuse a monte
+da luglio. È §7.3 nella sua forma pulita: il sintomo era la rete, il fix
+generalizza la causa, e quando la causa è chiusa la rete si può togliere.
+
+Trovata qui una **trappola metodologica** da ricordare: i piani presi dalle
+osservazioni non portano il testo della query. Una guardia che legge la query
+si comporta nel replay diversamente che in esercizio — questa, con la query
+vuota, sembrava riparare **41 piani** che in produzione non toccava affatto.
+Se una divergenza riguarda una guardia che legge la query, verificarla sui casi
+con `query` piena prima di trarne conclusioni. È scritto anche nel test.
+
+Conto: **35 → 34 guardie**. Al netto della nascita di `strip_unknown_args`,
+siamo al numero di partenza — ma con il cricchetto chiuso, la rinumerazione
+unificata e la misura accesa.
+
 ## Da fare
 
 | | cosa | dove |
 |---|---|---|
 | **4** | portare l'oracolo a 2424 piani nel repo | `tests/runtime/infra/` |
-| **5** | famiglia E a regole, in ombra (689 righe: 6 guardie da cancellare, 3 a tabella) | — |
+| **5** | resto della famiglia E, in ombra (661 righe: 5 guardie la cui proprietà è già applicata altrove, 3 a tabella) | — |
 | **6** | famiglia D nei manifest come `requires` (705 righe) | manifest |
 | **7** | consolidare B e C (638 righe, 7 guardie → 2) | — |
 | **8** | decidere sulla famiglia F (1023 righe, la meno verificata) | — |
