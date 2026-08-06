@@ -50,3 +50,33 @@ def test_un_solo_controllo_resta_il_caso_semplice(monkeypatch) -> None:
     esito = ar.choose_authenticated_reveal_candidate(
         [_controllo("solo", "Il tuo account")])
     assert esito["ok"] is True and esito["candidate"]["id"] == "solo"
+
+
+def test_il_ripiego_account_non_compete_con_una_corrispondenza_vera() -> None:
+    """Regressione del 5/8, vista il 7/8 su «i tuoi prossimi viaggi».
+
+    Il riscritto aveva messo il controllo «account» DENTRO la classifica del
+    fine con un punteggio fisso. Ma quel controllo non condivide un token col
+    fine: apre soltanto il posto dove il fine potrebbe stare. A pari punteggio
+    con candidati veri il margine si annulla, e tre voci identiche — che da
+    sole sarebbero collassate in una — diventano ambigue insieme a lui.
+
+    Qui si verifica la proprieta': un ripiego entra solo se NESSUN candidato
+    tocca il fine.
+    """
+    def _voce(id_, nome, tag="a"):
+        return {"id": id_, "name": nome, "tag": tag, "role": "link",
+                "href": f"https://esempio.it/{id_}", "visible": True,
+                "clickable": True}
+
+    veri = [_voce("v1", "Viaggio per lavoro"), _voce("v2", "Viaggio per lavoro"),
+            _voce("v3", "Viaggio per lavoro")]
+    conto = _voce("acc", "Il tuo account: nome cognome, Livello 3", tag="button")
+
+    solo_veri = ar.choose_goal_candidate("i tuoi prossimi viaggi", veri)
+    con_ripiego = ar.choose_goal_candidate("i tuoi prossimi viaggi", veri + [conto])
+
+    assert solo_veri.get("ok") == con_ripiego.get("ok"), (
+        "la presenza del ripiego ha cambiato l'esito su candidati veri identici")
+    if con_ripiego.get("ok"):
+        assert con_ripiego["candidate"]["id"] != "acc"

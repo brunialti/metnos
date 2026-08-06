@@ -655,6 +655,8 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
     personal_goal = _is_personal_goal(target)
     account_forms = _concept_forms("sites.account_reveal_control")
     ranked = []
+    ripieghi = []          # candidati che non toccano il fine: si usano solo se
+    #                        nessun altro lo tocca (vedi sotto)
     eligible = prefer_verifiable_goal_candidates(
         goal_navigation_candidates(candidates, excluded=excluded))
     for candidate in eligible:
@@ -673,12 +675,26 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
             focus = len(overlap) / max(1, len(present))
             score = min(1.0, 0.72 * coverage + 0.28 * focus)
         elif account_reveal:
-            score = 0.62
+            # Un RIPIEGO non compete con una corrispondenza vera. Il controllo
+            # «account» non condivide un token col fine — apre soltanto il
+            # posto dove il fine potrebbe stare — e mescolarlo alla classifica
+            # con un punteggio fisso lo mette alla pari dei candidati veri:
+            # nomi diversi allo stesso punteggio = margine nullo = ambiguita',
+            # e il flusso muore proprio dove prima proseguiva (regressione
+            # introdotta il 5/8, vista il 7/8 su «i tuoi prossimi viaggi»:
+            # «Il tuo account» a pari merito con tre «Viaggio per lavoro»
+            # identici, che da soli sarebbero collassati in uno).
+            # Resta in coda: se NESSUN candidato tocca il fine, aprire il menu
+            # e' l'unica mossa sensata ed e' quella che si fa.
+            ripieghi.append((0.62, candidate))
+            continue
         else:
             continue
         if not _is_semantic_control(candidate):
             score *= 0.72
         ranked.append((score, candidate))
+    if not ranked:
+        ranked = ripieghi
     ranked.sort(key=lambda item: item[0], reverse=True)
     if not ranked or ranked[0][0] < 0.55:
         return {"ok": False, "error_class": "selector_missing",
