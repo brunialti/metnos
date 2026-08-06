@@ -621,6 +621,22 @@ def choose_authenticated_reveal_candidate(
                if _candidate_matches_concept(
                    candidate, "sites.account_reveal_control")]
     pool = account or eligible
+    if len(pool) > 1:
+        # Lo STESSO controllo, reso piu' volte, non sono piu' controlli.
+        # Booking espone il pulsante account in testata, nel menu compatto e
+        # in una copia nascosta: tre elementi, un solo nome accessibile, una
+        # sola cosa da aprire. Trattarli come rivali fermava il flusso proprio
+        # dove serviva un clic — «elemento in alto a destra → Prenotazioni e
+        # viaggi» (turno reale 7803a3f2, 7/8/2026). E' la stessa equivalenza
+        # per nome canonico che il percorso goal applica gia' ai wrapper ARIA;
+        # qui mancava. Nomi diversi restano un'ambiguita' vera.
+        nomi = {tuple(goal_tokens(str(
+            candidate.get("name") or candidate.get("label") or ""),
+            navigation=True)) for candidate in pool}
+        if len(nomi) == 1:
+            pool = [min(pool, key=lambda candidate: (
+                not _is_semantic_control(candidate),
+                str(candidate.get("id") or "")))]
     if len(pool) != 1:
         return {"ok": False, "error_class": "selector_ambiguous",
                 "ranked": [(0.62, candidate) for candidate in pool[:24]]}

@@ -6190,11 +6190,17 @@ def _run_engine(
                 _site_owner, spec["preference_key"], "off") or "off") == "on"
         ]
         _site_lang = _users.get_pref(_site_owner, "lang", None) or ""
+        # Sblocco automatico delle risorse: preferenza per-utente, default
+        # off. Viaggia come arg invisibile al planner, come stealth e
+        # browser_mode — il modello non deve poter decidere un confine di rete.
+        _site_auto_allow = (_users.get_pref(
+            _site_owner, "sites_auto_allow_resources", "off") or "off") == "on"
     except Exception:
         _site_stealth_pref = "off"
         _site_browser_mode = "headless"
         _site_stealth_techniques = []
         _site_lang = ""
+        _site_auto_allow = False
 
     _catalog_by_name = {
         e.name: e for e in catalog if getattr(e, "name", None)
@@ -6232,6 +6238,7 @@ def _run_engine(
                               "_stealth": _site_stealth_pref,
                               "_stealth_techniques": _site_stealth_techniques,
                               "_browser_mode": _site_browser_mode,
+                              "_auto_allow_resources": _site_auto_allow,
                               "_lang": _site_lang}
         return effective_args
 
@@ -6812,7 +6819,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     # gestire utenti e pair URL via chat o Telegram. Determinismo §7.9:
     # niente PLANNER, niente synth. Restricted a actor='host'.
     try:
-        from admin_chat_commands import matches as _adm_match, dispatch as _adm_disp
+        from admin_chat_commands import (
+            is_command_shape as _adm_match, dispatch as _adm_disp)
         if _adm_match(user_query_for_run):
             import os as _os
             origin = _os.environ.get("METNOS_PUBLIC_ORIGIN",

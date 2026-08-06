@@ -201,6 +201,21 @@ def answer(query: str, principal, *, has_pending: bool = False,
     results and never become implicit permission to continue.
     """
 
+    # Un COMANDO non e' una domanda. `/help` somiglia moltissimo a una
+    # richiesta di spiegazione, e infatti il Tutor se lo prendeva e rispondeva
+    # «non ho ancora una guida consolidata» — mentre il runtime aveva la
+    # risposta esatta, deterministica, gia' pronta (bug live 7/8/2026: da
+    # quando il Tutor gira PRIMA del runtime, tutti i comandi barra erano
+    # spariti dalla chat). Il confine e' quello gia' dichiarato altrove
+    # (`admin_chat_commands.matches`): niente grammatica nuova, e nessun
+    # rischio di scambiare un percorso assoluto per un comando.
+    try:
+        from admin_chat_commands import is_command_shape as _comando
+        if _comando(query):
+            return None
+    except Exception:  # noqa: BLE001 — il confine non fallisce per questo
+        pass
+
     try:
         return _answer(
             query, principal,

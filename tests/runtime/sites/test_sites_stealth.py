@@ -439,6 +439,9 @@ def test_settings_post_persists_exact_side_webdriver_only_group(monkeypatch):
         ("u1", "sites_stealth", "on"),
     ]
     assert ("u1", "sites_stealth_webdriver", "on") in writes
+    # Lo sblocco automatico delle risorse fa parte dello stesso profilo di
+    # superficie: casella assente = off, come per ogni tecnica (6/8/2026).
+    assert ("u1", "sites_auto_allow_resources", "off") in writes
     for spec in http_routes_admin.users.sites_stealth_preference_specs():
         expected = ("on" if spec["preference_key"] ==
                     "sites_stealth_webdriver" else "off")

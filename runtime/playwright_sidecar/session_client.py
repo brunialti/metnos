@@ -101,6 +101,7 @@ def session_open(*, owner: str, url: str, allowlist=None,
                  stealth: bool = False,
                  stealth_techniques: list[str] | None = None,
                  browser_mode: str = "headless",
+                 auto_allow_resources: bool = False,
                  lang: str | None = None,
                  **kw) -> dict:
     return _post("/session/open", {"owner": owner, "url": url,
@@ -115,6 +116,8 @@ def session_open(*, owner: str, url: str, allowlist=None,
                                    "stealth_techniques": (
                                        list(stealth_techniques or [])),
                                    "browser_mode": browser_mode,
+                                   "auto_allow_resources": bool(
+                                       auto_allow_resources),
                                    "lang": lang}, **kw)
 
 

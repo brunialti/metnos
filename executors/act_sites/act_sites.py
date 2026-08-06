@@ -133,6 +133,21 @@ def invoke(args: dict) -> dict:
             out["error"] = _msg("MSG_SITES_RC_UNAVAILABLE")
         elif out["error_class"] == "side_browser_unavailable":
             out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+        elif out["error_class"] == "selector_ambiguous":
+            # Il broker rifiuta di INDOVINARE fra piu' elementi equivalenti, ed
+            # e' giusto cosi'. Ma i candidati li ha gia' in mano
+            # (`observed_candidates`: nome, ruolo, punteggio): tacerli lascia
+            # l'utente davanti a «operazione fallita» senza sapere che la
+            # scelta e' sua e quale sia. Qui si nominano, bounded.
+            nomi = []
+            for riga in results:
+                for candidato in (riga.get("observed_candidates") or [])[:5]:
+                    nome = str(candidato.get("name") or "").strip()
+                    if nome and nome not in nomi:
+                        nomi.append(nome)
+            out["error"] = (_msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS_LIST",
+                                 candidates=", ".join(f"«{n}»" for n in nomi[:5]))
+                            if nomi else _msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS"))
         else:
             out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
         if str(out["error"]).startswith("<missing:"):

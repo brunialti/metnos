@@ -12,7 +12,7 @@ Presidi implementati ESATTAMENTE come da spec (zero variazione creativa):
   §3.1 FIX B — TTL in PAUSA finché `gate_pending` (attesa OTP/approvazione).
   §3.1 FIX C — timeout per-op (20s), cap contesti concorrenti (4), quota
                per-utente (2), lock per-sessione (un'op appesa non stalla le altre).
-  §3.1 FIX D — route() aborta fuori-allowlist; WebRTC neutralizzato;
+  §3.1 FIX D — route() abortisce fuori-allowlist; WebRTC neutralizzato;
                navigazione top-level data:/blob: bloccata.
   §3.2      — login delegato a credential_injection (origine verificata,
                destinazione risolta dal broker, no-segreto).
@@ -851,9 +851,28 @@ def _observe_blocked_request(store: dict, host: str, resource_type: str,
         observation["parent_host"] = str(provenance["parent_host"])
 
 
+def _audit_auto_allow(ctx: dict | None, host: str, resource_type: str) -> None:
+    """Traccia la PRIMA ammissione automatica di un host.
+
+    Lo sblocco automatico toglie il gate, non la memoria: senza questa riga
+    «con chi ha parlato la sessione» diventerebbe irricostruibile proprio nel
+    modo d'uso piu' permissivo (§2.8)."""
+    try:
+        sites_audit.record("allowlist_auto_allow",
+                           owner=(ctx or {}).get("owner", ""),
+                           domain=(ctx or {}).get("domain", ""),
+                           added_host=host, resource_type=resource_type,
+                           source="user_pref_auto_allow")
+    except Exception:  # noqa: BLE001 — un audit non blocca una navigazione
+        pass
+
+
 def _make_route_guard(allowlist: set[str],
-                      blocked_requests: dict[str, dict] | None = None):
-    """Ritorna un handler `context.route` che ABORTA le richieste fuori
+                      blocked_requests: dict[str, dict] | None = None,
+                      auto_allow: bool = False,
+                      auto_allowed: set[str] | None = None,
+                      audit_ctx: dict | None = None):
+    """Ritorna un handler `context.route` che ABORTISCE le richieste fuori
     allowlist e la navigazione top-level `data:`/`blob:`.
 
     Gli host negati vengono osservati solo per una whitelist chiusa di tipi di
@@ -888,6 +907,21 @@ def _make_route_guard(allowlist: set[str],
                         _observe_blocked_request(
                             blocked_requests, host, resource_type,
                             _request_provenance(request))
+                    # Sblocco automatico (preferenza per-utente, default OFF).
+                    # L'utente ha scelto di rinunciare al gate: l'host entra
+                    # nell'allowlist VIVA della sessione — la closure osserva
+                    # lo stesso insieme — e ci resta per il resto della
+                    # sessione. Non e' silenzioso: la PRIMA ammissione di ogni
+                    # host finisce nel registro d'audit, cosi' «chi ha parlato
+                    # con chi» resta ricostruibile anche quando nessuno ha
+                    # dovuto approvare.
+                    if auto_allow and host:
+                        allowlist.add(host)
+                        if auto_allowed is not None and host not in auto_allowed:
+                            auto_allowed.add(host)
+                            _audit_auto_allow(audit_ctx, host, resource_type)
+                        await route.continue_()
+                        return
                     await route.abort()
                 return
             if scheme in ("about", "chrome-error"):
@@ -895,7 +929,7 @@ def _make_route_guard(allowlist: set[str],
             else:
                 await route.abort()
         except Exception:
-            # In dubbio: aborta (fail-closed sul confine di rete).
+            # In dubbio: abortisce (fail-closed sul confine di rete).
             try:
                 await route.abort()
             except Exception:
@@ -1080,7 +1114,8 @@ async def _reuse_compatible_session(*, owner: str, owner_user_id: str,
                 or entry.get("owner") != owner
                 or entry.get("owner_user_id") != owner_user_id
                 or entry.get("open_host") != open_host
-                or set(entry.get("allowlist") or ()) != set(allowlist)
+                or set(entry.get("allowlist_declared")
+                       or entry.get("allowlist") or ()) != set(allowlist)
                 or entry.get("label", "") != (session_label or "")
                 or entry.get("credential_mode") != credential_mode
                 or entry.get("browser_mode") != browser_mode
@@ -1128,6 +1163,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                   stealth: bool = False,
                   stealth_techniques=None,
                   browser_mode: str = "headless",
+                  auto_allow_resources: bool = False,
                   lang: str | None = None) -> dict:
     """Apre UNA sessione su `url` (§3.4 open_sites fa fan-out su N url).
 
@@ -1242,6 +1278,9 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             return {"ok": False, "error": "invalid allowlist approval",
                     "error_class": "approval_invalid"}
     blocked_requests: dict[str, dict] = {}
+    # Host ammessi dallo sblocco automatico: serve solo a non ripetere
+    # la riga d'audit a ogni richiesta dello stesso host.
+    auto_allowed_hosts: set[str] = set()
     # ADR 0191 P1: il master e il ceiling delimitano l'insieme selezionato.
     # La superficie e' indipendente dalle tecniche. Solo LAUNCH sceglie la
     # variante WebDriver della superficie; CONTEXT/BEHAVIOR non la implicano.
@@ -1271,8 +1310,25 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 "error_class": "capacity"}
     owner_count = sum(1 for e in _sessions.values() if e.get("owner") == owner)
     if owner_count >= _PER_USER_QUOTA:
+        # «Quota piena» da sola non dice niente a chi legge. I fatti che
+        # servono per capire e per decidere sono tre, e li sappiamo tutti e
+        # tre: quante sessioni sono aperte, SU QUALI SITI, e fra quanto la
+        # piu' vecchia scade da sola (7/8/2026, richiesta di Roberto).
+        aperte = [e for e in _sessions.values() if e.get("owner") == owner]
+        ospiti = sorted({str(e.get("open_host") or "") for e in aperte if
+                         e.get("open_host")})
+        try:
+            attesa = max(0, int(min(
+                (_TTL_IDLE_S - (time.time() - float(e.get("last_used") or 0))
+                 for e in aperte), default=0)))
+        except Exception:  # noqa: BLE001 — un conto approssimato non blocca
+            attesa = 0
         return {"ok": False, "error": "per-user session quota reached",
-                "error_class": "quota_exceeded"}
+                "error_class": "quota_exceeded",
+                "open_sessions": len(aperte), "open_hosts": ospiti[:4],
+                "quota": _PER_USER_QUOTA,
+                "idle_release_s": int(_TTL_IDLE_S),
+                "retry_after_s": attesa}
     try:
         browser = await _browser_provider(
             browser_mode,
@@ -1297,7 +1353,12 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 techniques=effective_techniques):
             await context.add_init_script(_js)
         await context.route(
-            "**/*", _make_route_guard(allowlist, blocked_requests))
+            "**/*", _make_route_guard(
+                allowlist, blocked_requests,
+                auto_allow=bool(auto_allow_resources),
+                auto_allowed=auto_allowed_hosts,
+                audit_ctx={"owner": owner, "domain": _canonical_host(
+                    _host_of_url(url)), "session_label": session_label}))
         if hasattr(context, "route_web_socket"):
             async def _ws_guard(ws):
                 host = _host_of_url(ws.url)
@@ -1408,6 +1469,13 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         _host_of_url(url))
     _sessions[session_id] = {
         "context": context, "page": page, "allowlist": allowlist,
+        # Confine DICHIARATO all'apertura, congelato. `allowlist` e' il
+        # set VIVO che il guardiano muta quando lo sblocco automatico
+        # ammette un host: confrontare quello per il riuso significava
+        # non riusare mai piu' una sessione appena un asset veniva
+        # ammesso — e la richiesta successiva sbatteva nella quota
+        # (turno reale cfc1b52e, 7/8/2026).
+        "allowlist_declared": frozenset(allowlist),
         # ADR 0191 P1: surface owner-bound + selezione FISSATA all'open per tutta
         # la sessione (il replay gate la riusa, non la ricalcola).
         "surface": browser_surface.PlaywrightSurface(

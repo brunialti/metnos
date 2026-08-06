@@ -559,7 +559,7 @@ def _apply_dialog_cancel(sender_id: str, query: str, *,
     Soluzione §7.3: PRIMA del pipeline, se la query e' un undo pattern E
     ci sono dialog pending per il sender, cancella TUTTI i dialog pending
     e ritorna il messaggio di conferma. L'utente vede coerenza fra
-    l'istruzione data (annulla aborta il dialogo) e l'effetto osservato.
+    l'istruzione data (annulla abortisce il dialogo) e l'effetto osservato.
 
     Ritorna None se non c'e' nulla da fare (caller prosegue normale).
     """

@@ -17,7 +17,7 @@ Proprieta':
     digest dopo promoter; refresh indice immagini (GPU-heavy) per primo e da solo.
   - GPU-SAFE per costruzione: esecuzione sequenziale (un task alla volta) → mai
     due task GPU-heavy in parallelo (supera lo staggering a orari fissi, ADR 0167).
-  - ERROR-ISOLATION (§2.8): un task che fallisce NON aborta gli altri; ogni esito
+  - ERROR-ISOLATION (§2.8): un task che fallisce NON abortisce gli altri; ogni esito
     e' catturato; ritorna un sommario {task: ok|error|missing}.
   - async-aware: invoca callback sync e async (CallbackInfo.is_async).
 
@@ -105,7 +105,7 @@ async def run_nightly(callbacks, payload: dict | None = None) -> dict:
             else:
                 ran[key] = "ok"
                 log.info("nightly_maintenance: %s ok", key)
-        except Exception as e:  # §2.8 error-isolation: un fallimento non aborta
+        except Exception as e:  # §2.8 error-isolation: un fallimento non abortisce
             ran[key] = f"error: {type(e).__name__}: {e}"
             log.warning("nightly_maintenance: %s FALLITO: %r", key, e)
     ok_count = sum(1 for v in ran.values() if v == "ok")

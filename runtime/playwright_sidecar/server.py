@@ -519,6 +519,7 @@ async def handle_session_open(request):
             stealth=(b.get("stealth") is True),
             stealth_techniques=b.get("stealth_techniques"),
             browser_mode=b.get("browser_mode", "headless"),
+            auto_allow_resources=bool(b.get("auto_allow_resources")),
             lang=b.get("lang"))
     return await _broker_call(request, _op)
 

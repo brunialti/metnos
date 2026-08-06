@@ -25,8 +25,8 @@ required = []
 type = "array"
 
 [args.properties.keys.description]
-it = "Preferenze da rimuovere, per nome esatto. Ammesse: lang, tone, reply_length, units, sites_browser_mode, sites_stealth, sites_stealth_webdriver, sites_stealth_user_agent, sites_stealth_mobile, sites_stealth_context_coherence, sites_stealth_browser_apis, sites_stealth_human_delays, sites_stealth_focus_events, sites_stealth_session_reuse"
-en = "Preferences to remove, by exact name. Allowed: lang, tone, reply_length, units, sites_browser_mode, sites_stealth, sites_stealth_webdriver, sites_stealth_user_agent, sites_stealth_mobile, sites_stealth_context_coherence, sites_stealth_browser_apis, sites_stealth_human_delays, sites_stealth_focus_events, sites_stealth_session_reuse"
+it = "Preferenze da rimuovere, per nome esatto. Ammesse: lang, tone, reply_length, units, sites_browser_mode, sites_stealth, sites_auto_allow_resources, sites_stealth_webdriver, sites_stealth_user_agent, sites_stealth_mobile, sites_stealth_context_coherence, sites_stealth_browser_apis, sites_stealth_human_delays, sites_stealth_focus_events, sites_stealth_session_reuse"
+en = "Preferences to remove, by exact name. Allowed: lang, tone, reply_length, units, sites_browser_mode, sites_stealth, sites_auto_allow_resources, sites_stealth_webdriver, sites_stealth_user_agent, sites_stealth_mobile, sites_stealth_context_coherence, sites_stealth_browser_apis, sites_stealth_human_delays, sites_stealth_focus_events, sites_stealth_session_reuse"
 
 [args.properties.keys.items]
 type = "string"
