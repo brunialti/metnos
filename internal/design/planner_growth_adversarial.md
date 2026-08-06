@@ -244,3 +244,21 @@ Quello che NON si fa più, e perché: grammatica sugli args (referto negativo de
 6/7), gate del pool per applicabilità (il pool non esiste su L0/L1), famiglia F
 in L1 (L1 è piatta e rifiuta i query-specific), `[applicability]` nei manifest
 (precedente `[planning]`: zero adozioni).
+
+### Risultati attesi, scritti PRIMA (così si può verificare chi aveva ragione)
+
+| # | intervento | risultato atteso, misurabile | come si verifica | rischio |
+|---|---|---|---|---|
+| 1 | prompt: togliere le due contraddizioni | describe pianificati-e-buttati **27% → ~0**; final sostituiti **45% → ~0**; un passo in meno pianificato nella maggioranza dei turni di lettura; **`route_folder_size` (133 righe) perde la sua causa** e diventa candidata alla quarantena | confronto piano grezzo↔finale su `framework_raw_json` + conteggio `drop_describe` nel journal, prima e dopo | il modello smette di scrivere un finale utile dove `output_policy` NON interviene: va guardato sui turni non-lettura |
+| 2 | strumentare `output_policy` | si scopre chi muta davvero. **Previsione esplicita: risulterà il mutatore n.1, sopra ogni guardia** | stessa tabella di `guard_stats`, voce `OUTPUT_POLICY:<azione>` | nessuno: è telemetria, non cambia comportamento |
+| 3 | corpus dal piano GREZZO | l'oracolo passa da «la pipeline non cambia rispetto a sé stessa» a «la pipeline ripara ciò che il modello sbaglia» — cioè diventa la misura che oggi non esiste | rigenerazione quando le righe grezze bastano (oggi 22) | nessuno finché resta affiancato all'oracolo attuale |
+| 4 | 21 giorni di traffico pulito | **prima lista credibile di guardie dormienti.** Previsione dal journal: 10+ guardie a zero spari; **3-5 ritiri possibili** se la quarantena regge | riepilogo notturno, `guard_stats.dormant()` | zero spari resta ambiguo: il ritiro esige comunque i 4 passi |
+| 5 | `step_chunk` a superficie condivisa | non toglie righe subito: toglie la ragione per cui 5 guardie ricalcolano la stessa nozione, e rende possibile che la prossima contaminazione di clausola sia una riga invece di una guardia | oracolo a 804 piani verde + spari invariati | tocca `fill_clause_args`, la guardia più calda |
+
+**Il totale onesto, senza abbellirlo**: non sono «2300 righe in meno». Sono
+~130-200 righe ritirabili nel giro di un mese, la crescita futura frenata dalla
+regola di ammissione (una guardia dichiara *quale informazione usa*, e solo lo
+schema statico dei manifest è candidabile a una superficie), e — la parte che
+vale di più — **misure che diventano vere**: oggi tre su quattro erano viziate
+(spari contati sulle righe di log con 10 guardie mute, oracolo circolare,
+contatore inquinato da un replay).
