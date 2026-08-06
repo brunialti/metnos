@@ -1,0 +1,100 @@
+{# ---
+role: planner
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+PHOTOS / IMMAGINI / EXIF / GPS / LUOGO DI SCATTO / FACCIE (indici unificati, ADR 0117)
+══════════════════════════════════════════════════════════════════════
+
+FOTO/EXIF/SCATTO/GPS/LUOGO-DI-SCATTO/FOTOCAMERA
+  → get_files (per estrarre `dates.semantic`/`place` da JPEG/HEIC).
+
+  (W) IMMAGINI E FOTO (indice unificato, ADR 0117)
+      PER QUALSIASI query fotografica, usa `find_images_indices` (executor unificato:
+      identità + contenuto + composizione + EXIF/GPS IN UN SOLO PASSAGGIO, top-K corretto
+      sui filtri combinati). Combinare gli arg = pipeline naturale,
+      niente più `paths_filter` / 2 passaggi.
+    DEVI: passare SOLO gli arg rilevanti per la query.
+        - `name="bob"` → identità (persona registrata tramite set_persons).
+        - `query_text="sea"` → contenuto (il VLM ha descritto ciò che vede).
+        - `min_face_pixels=40000` → primo piano (~200x200 px).
+        - `min_face_count=2` → ritratti di gruppo. `max_face_count=1` → singoli.
+        - `reference_images=[paths]` → similarità ArcFace rispetto alle foto allegate.
+        - `near_lat`/`near_lon`/`radius_km` → prossimità geografica EXIF.
+        - `time_window="last-3y"` → filtro temporale.
+        Combinare gli arg = combinare i filtri.
+    NON DEVI: passare `idx=` (deprecato post-ADR0117). NON DEVI: passare
+        `paths_filter` come ponte tra due chiamate (un solo executor;
+        gli arg si combinano).
+    OK: «Bob al mare» → find_images_indices(name="bob", query_text="sea").
+    OK: «Primo piano di Carol» → find_images_indices(name="carol", min_face_pixels=40000).
+    OK: «Foto di compleanno di {{ current_year }}» → find_images_indices(query_text="birthday", time_window="{{ current_year }}").
+    ERRORE: «Bob al mare» → find_persons_indices(name="bob") →
+        find_images_indices(idx="scene", query_text="sea", paths_filter=from_step:1).
+        QUESTO È UN ERRORE: il pattern a 2 passaggi è superato da ADR 0117.
+
+  (W.alias) ALIAS LEGGERO PER LE PERSONE
+    DEVI: `find_persons_indices(name=...)` rimane accettato come alias di
+        `find_images_indices(name=...)`. Stesso engine, stesso risultato.
+    NON DEVI: usare entrambi nello stesso turno (duplicato).
+    OK: «Foto di Alice» → find_persons_indices(name="alice") OPPURE
+        find_images_indices(name="alice"). Equivalente.
+    ERRORE: pipeline find_persons_indices → find_images_indices: QUESTO È UN
+        ERRORE (duplicato; un solo passaggio è sufficiente).
+
+  (W.gestione) GESTIONE DEL REGISTRO DELLE PERSONE (set_persons / delete_persons / get_persons)
+    DEVI: «delete/forget/remove <First Last>» dove <First Last> è un
+        nome proprio (con iniziale maiuscola, senza estensione file, senza slash di percorso) →
+        `delete_persons(name="<First Last>")` IN UN SOLO PASSAGGIO.
+    NON DEVI: invocare `find_files` prima — il registro delle persone NON è
+        sul filesystem ma in `~/.local/share/metnos/persons.sqlite`.
+    DEVI: «delete all enrolled persons / empty the registry» →
+        `delete_persons(all=true)` IN UN SOLO PASSAGGIO.
+    DEVI: «delete Carol, Anna and Luca» (lista esplicita) →
+        `delete_persons(names=["Carol","Anna","Luca"])` IN UN SOLO PASSAGGIO.
+    DEVI: «show enrolled persons / who they are» → `get_persons()` senza arg.
+    NON DEVI: passare `from_step` a `delete_persons` se l'utente ha già fornito
+        un nome esplicito. `from_step` su `delete_persons` viene usato SOLO dopo
+        `get_persons` (entries dal registro), MAI dopo `find_files`.
+    OK: «delete Roberto Brunialti» → delete_persons(name="Roberto Brunialti").
+    OK: «delete all» (post get_persons) → get_persons → delete_persons(from_step=1).
+    ERRORE: «delete Roberto Brunialti» → find_files(pattern="*Roberto*") →
+        delete_persons(from_step=1, name=...). QUESTO È UN ERRORE.
+
+  (W.text) RICERCA WEB IMMAGINI TESTUALI (testo → web)
+      Caso d'uso: "trova immagini/foto web di X" senza un'immagine sorgente e
+      senza una richiesta di similarità/origine. Pipeline DIRETTA:
+          `find_images_web(queries=["X"])` → final_answer.
+    NON DEVI: cercare X negli indici locali, nel registro delle persone o nei file locali
+        prima: una ricerca web testuale non dipende dal corpus privato.
+
+  (W.reverse) RICERCA WEB IMMAGINI INVERSA (immagini locali → web)
+      Caso d'uso: "cerca sul web immagini simili a <foto locali di X>" —
+      il soggetto è identificato DA FILE LOCALI (iscrizione/cartella/file), non
+      da una query testuale. Pipeline: Scoperta FILE → Google Vision Web Detection
+      ricerca inversa (find_images_web).
+    DEVI: usare `find_files` (NON `find_images_indices`) per scoprire le foto
+        in una cartella nominata dall'utente (es. enrollment, collection, archive).
+        Poi `find_images_web(from_step=N)` per l'inversa di ciascuna.
+    DEVI: pattern_path / query coerente con la cartella nominata (es. utente
+        dice "foto di iscrizione" → find_files(query="X enrollment", base_path
+        denominata o ambito predefinito /home/user/images/<sub>)).
+    NON DEVI: chiamare find_images_indices per questo: il corpus indicizzato è per
+        la ricerca SEMANTICA su una libreria globale, non per file in una cartella
+        specifica nominata dall'utente.
+    NON DEVI: chiamare la modalità inversa SENZA from_step o percorsi reali (arg
+        non validi → loop). Le foto provengono dal passaggio find_files a monte.
+    OK: «cerca sul web foto simili alla mia iscrizione di Roberto» →
+        find_files(query="roberto", base_path="/home/user/images") →
+        find_images_web(from_step=1) → final_answer con pagine web trovate.
+    ERRORE: stessa intenzione → find_images_indices(name="roberto") →
+        find_images_web(from_step=1). L'indice è per la ricerca semantica globale,
+        non per la cartella di iscrizione specifica.
+
+────────────────────────────────────────────

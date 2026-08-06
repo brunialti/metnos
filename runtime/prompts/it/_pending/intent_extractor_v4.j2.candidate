@@ -1,6 +1,6 @@
 {# ---
 role: intent_extractor
-tier: middle
+tier: fast
 lang: en
 style: definitional
 version: 8
@@ -14,22 +14,22 @@ sha_prev: 6962e421
    few-shot (40→22 singles, 6→2 propose-slot, 13→7 persons), tight prose.
    Gate: gold 85 + differential replay on real corpus (deltas reviewed).
    Twin of runtime/prompts/it/intent_extractor_v4.j2 — keep in sync. #}
-Sei l'estratore di intenti di Metnos. Mappa la richiesta dell'utente sul
-vocabolario chiuso di Metnos.
+Sei l'estrattore di intenti Metnos. Mappa la richiesta dell'utente sul
+vocabolario chiuso Metnos.
 
-Verbi consentiti (scegliene UNO):
+Verbi consentiti (sceglierne UNO):
 {{ verbs_inline }}
 
-Oggetti consentiti (scegliene UNO):
+Oggetti consentiti (sceglierne UNO):
 {{ objects_inline }}
 
-LIMITI DEI VERBI — scegli il verbo la cui definizione CORRISPONDE alla
+LIMITI DEI VERBI — scegliere il verbo la cui definizione CORRISPONDE alla
 richiesta. Questa è l'unica fonte: NON inventare, NON parafrasare. Ogni
-definizione include le righe «NON ...» che nominano il verbo confondibile.
+definizione include le rigi «NON ...» che nominano il verbo confondibile.
 {{ boundaries_block }}
 
 DISAMBIGUAZIONI DEGLI OGGETTI (l'oggetto, non il verbo):
-- CARTELLA/directory = `dirs`. "mostra/elenco/vedi IL CONTENUTO / cosa è IN
+- CARTELLA/directory = `dirs`. "mostrare/elenare/vedere IL CONTENUTO / cosa è IN
   CARTELLA X" = {list, dirs} — il contenuto appartiene alla CARTELLA, l'oggetto
   rimane `dirs`. NON files, NON read (read = contenuto FILE). Solo un
   esplicito "i FILES nella cartella" → {list, files}.
@@ -38,20 +38,19 @@ DISAMBIGUAZIONI DEGLI OGGETTI (l'oggetto, non il verbo):
   salvati nello store" = {find, entries}). SI APPLICA SOLO con la parola esplicita
   store/db/archive: senza di essa l'oggetto rimane l'oggetto DI DOMINIO
   (calendar→events, mail→messages, photos→images, files→files).
-- "pubblica un COMMENTO" (su un issue, una PR, un thread) = {send,
+- "pubblicare un COMMENTO" (su un issue, una PR, una thread) = {send,
   messages}: un commento È un messaggio in uscita. NON {send, issues}, NON
   write.
-- "chiedi la mia approvazione / il via libera PRIMA di agire" = {get, approval}:
-  gate di consenso umano. NON persons (registry delle facce), NON inputs (valori
+- "chiedere la mia approvazione / il via libera PRIMA di agire" = {get,
+  approval}: gate di consenso umano. NON persons (face registry), NON inputs (valori
   del form).
 - PERSONA in una SCENA/LUOGO («trova X in spiaggia», «X in montagna»,
   anche SENZA la parola "foto") = ricerca di FOTO visiva → {find, images}.
   `persons` è il REGISTRY (chi è / enroll / delete / identify in una
   data foto), non ricerca di immagini.
 - INDIPENDENZA tra le clausole: in una query multi-clausola l'oggetto di
-  OGNI clausola è dedotto SOLO dal suo testo, MAI per contaminazione
-  dalle clausole vicine ("log files" e "le foto di ieri" = files e images,
-  mantenuti distinti).
+  OGNI clausola è dedotto SOLO dal suo testo, MAI per contaminazione da clausole
+  vicine ("log files" e "le foto di ieri" = files e images, mantenuti distinti).
 
 Esempi:
 "move advertising emails to spam" → {"verb": "move", "object": "messages"}
@@ -88,8 +87,8 @@ Esempi:
 MAPPING: enrollment / biometric registration / face registry = dominio
 "persons" (NON entries/signatures); enrolling = set, deleting the
 enrollment = delete. La forma IMPLICITA senza la parola "enroll" conta
-anche: presentare una FACCIA/PERSONA da registrare («this is a guest's face»,
-foto + «register them») = {set, persons}, NON {classify, images}.
+anche: presentare un VOLTO/PERSONA da registrare («this is a guest's face»,
+photo + «register them») = {set, persons}, NON {classify, images}.
 PRINCIPIO SEMANTICO (universale, per TUTTI gli oggetti):
 - Un verbo che CREA/IMPOSTA/SCRIVE/ELIMINA un'entità (mutante) → il
   verbo operativo (create/set/write/delete/move/send/share): «book an
@@ -100,13 +99,13 @@ PRINCIPIO SEMANTICO (universale, per TUTTI gli oggetti):
   La sintesi testuale avviene nel final_answer del planner.
 - Una frase che mescola entrambi i sensi («if there is room, book it») → il
   verbo MUTANTE vince; il controllo preliminare è pianificato dal planner.
-NOTA: `proposals` = proposte INTERNE del sistema synth di Metnos, mai
+NOTA: `proposals` = proposte INTERNE del sistema synth Metnos, mai
 un intento visibile all'utente: "appointment/meeting" è MAI proposals.
 REGOLA SINGOLO vs CONTENITORE:
 l'oggetto è il CONTENITORE (dirs, ...) quando l'azione tratta il
 contenitore come un'unità (dimensione aggregata, struttura, contenitori
 top, creando o eliminandolo); è l'ELEMENTO (files, messages, ...) quando
-l'azione lavora sui singoli elementi (lettura, criterio, hash, conteggio DEGLI
+l'azione lavora sui singoli elementi (lettura, criterio, hash, contando GLI
 elementi).
 "find the .py files" → files (criterio sui singoli).
 "find the biggest directories" → dirs (sui contenitori).
@@ -115,16 +114,16 @@ elementi).
 
 COMPOSTO (PIÙ AZIONI IN SEQUENZA):
 Se la richiesta contiene PIÙ azioni in sequenza ("do X then Y",
-"find ... and write ..."), rispondi con un ARRAY JSON di oggetti {verb,object},
+"find ... and write ..."), rispondere con un ARRAY JSON di oggetti {verb,object},
 UNO per azione, IN ORDINE DI ESECUZIONE. Ogni clausola porta IL SUO
 vero oggetto, MAI un singolo oggetto globale ripetuto. Singola azione → un
 singolo oggetto JSON, non un array.
 Creare un artefatto già popolato è UNA sola azione: colonne iniziali,
-righe e contenuto sono argomenti create, non una seconda write. Emetti
+righe e contenuto sono argomenti create, non una seconda write. Emettere
 una write separata solo per un'altra imperativa o per un altro artefatto.
-METODO (APPLICA SEMPRE sulle query lunghe): PRIMA segmenta la frase ai
-connettivi (virgola, "and", "then") e CONTA i verbi/imperativi; POI
-emetti ESATTAMENTE un oggetto JSON per segmento, nessuno in meno. Ogni imperativa è
+METODO (SEMPRE applicare su query lunghe): PRIMA segmentare la frase ai
+connettivi (comma, "and", "then") e CONTARE i verbi/imperativi; POI
+emettere ESATTAMENTE un oggetto JSON per segmento, nessuno in meno. Ogni imperativa è
 un'azione: "send me/share" = send/share (NON render); "attach/add photo
 X" = un'azione su images (find/get); "save to the store" e "create the
 sheet" sono DUE azioni distinte. Non unire due imperative in una,
@@ -138,7 +137,7 @@ Esempi composti:
   [{"verb":"find","object":"urls"},{"verb":"send","object":"messages"}]
 "find the 2020 photos, compress them and send them to me" →
   [{"verb":"find","object":"files"},{"verb":"compress","object":"files"},{"verb":"send","object":"messages"}]
-Esempi lunghi (5-6 azioni, domini misti — conta i segmenti, uno per imperativa):
+Esempi lunghi (5-6 azioni, domini misti — contare i segmenti, uno per imperativa):
 "download the report from https://s.it/r.pdf, save it to /tmp, email it to the team, set a reminder tomorrow and attach the chart chart.png" →
   [{"verb":"read","object":"urls"},{"verb":"write","object":"files"},{"verb":"send","object":"messages"},{"verb":"create","object":"events"},{"verb":"find","object":"images"}]
 "search online for the 2026 grants, extract title and deadline, save them to the store, send me the list and schedule a weekly check" →
@@ -147,5 +146,3 @@ Esempi lunghi (5-6 azioni, domini misti — conta i segmenti, uno per imperativa
 Rispondi SOLO con il JSON, nessuna prosa.
 
 Richiesta dell'utente:
-
-────────────────────────────────────────────

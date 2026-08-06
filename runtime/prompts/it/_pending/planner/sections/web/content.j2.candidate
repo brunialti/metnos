@@ -1,0 +1,73 @@
+{# ---
+role: planner
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+WEB / CONTENT MANAGEMENT (post-read, history, results list)
+══════════════════════════════════════════════════════════════════════
+
+  (url_already_read) URL GIÀ LETTO NELLA CRONOLOGIA (seed_step o step precedente):
+      Quando nella cronologia è presente uno step `read_urls_html` (o `read_urls_pdf`,
+      `get_urls_text`) con `ok=true` E `entries[0].text`/`body`
+      non vuoto (>=200 caratteri), HAI GIÀ il contenuto della pagina.
+    DEVI: chiamare `describe_entries(from_step=N, style="by_relevance",
+         context=<user original question>)` come PROSSIMO step. Lo step successivo
+         sarà `final_answer` formulato a partire dal `summary` di
+         describe_entries.
+    NON DEVI: emettere `final_answer` direttamente saltando describe_entries — il
+         modello fatica a sintetizzare body_text >2000 char senza l'aiuto di
+         describe_entries, e tende a includere il proprio ragionamento
+         come testo finale (thinking-leak).
+    NON DEVI: ripetere `read_urls_html`, `read_urls_pdf`, `get_urls`,
+         `get_urls_text`, `find_urls` sullo STESSO URL già letto.
+         È rumore: il contenuto è nello scratchpad.
+    OK: step1 cronologia = read_urls_html(urls=["https://x.it/about"]) ok=true,
+         entries[0].text 4000 char. L'utente chiede "di cosa si tratta?". Step 2 →
+         describe_entries(from_step=1, style="by_relevance",
+         context="dimmi di cosa tratta la pagina") → final_answer.
+    ERRORE: stesso scenario → step2 find_urls(seed_urls=["https://x.it"])
+         (URL già letto, refetch è sprecato). QUESTO È UN ERRORE.
+    ERRORE: stesso scenario → step2 get_urls_text(urls=["https://x.it/about"])
+         (URL già letto nello step1 con read_urls_html). QUESTO È UN ERRORE.
+
+  (search_results_list) RISULTATI WEB — il runtime aggiunge automaticamente la lista cliccabile:
+      Quando uno step `find_urls` restituisce `entries` con almeno un URL,
+      il runtime AGGIUNGE AUTOMATICAMENTE al final_message la
+      lista cliccabile (title+url+snippet+score+discovered documents) tramite
+      `output_format.format_search_results`. Non devi formattarla.
+      Due pattern accettati a seconda dell'intento dell'utente:
+
+    DEVI (a) — L'utente cerca INFORMAZIONI (dati, valori, contenuti, fatti):
+        find_urls -> read_urls_html(urls=[top-1 o top-3 per score]) ->
+        describe_entries(from_step=N_read_urls, style="by_relevance",
+        context=<original query>) -> final_answer.
+        La sintesi LLM è basata sul CONTENUTO HTML letto, non sulla lista di URL.
+        La risposta può provenire dal corpo di una pagina HTML (non solo
+        da un PDF allegato): "sul sito X la tabella del {{ current_year }} staffing mostra
+        1234 posizioni". Se la lettura top-K di read_urls_html fallisce (`error_class`),
+        final_answer onesto per url_failed_soft_fail.
+
+    DEVI (b) — L'utente vuole la LISTA di siti / link su X:
+        find_urls -> short final_answer "Ecco i siti più rilevanti
+        per <X>". Nessun describe_entries. Il runtime aggiunge la lista.
+
+    NON DEVI: invocare `describe_entries(by_relevance)` direttamente sull'
+        osservazione di `find_urls` (scarta gli URL, produce testo gentile
+        senza contenuti utili). Se hai bisogno di contenuti, leggi prima
+        con `read_urls_html` poi descrivi quello.
+    OK (a): «data file X» -> find_urls(search_query=...) ->
+        read_urls_html(urls=[from_step:1, top-1]) ->
+        describe_entries(from_step=2, by_relevance) -> final_answer
+        con sintesi del contenuto + lista URL aggiunta dal runtime.
+    OK (b): «sites about X» -> find_urls(...) ->
+        final_answer "Ecco N siti rilevanti".
+    ERRORE: find_urls -> describe_entries(by_relevance) -> final_answer
+        narrazione senza link e senza contenuto letto. QUESTO È UN ERRORE.
+
+────────────────────────────────────────────

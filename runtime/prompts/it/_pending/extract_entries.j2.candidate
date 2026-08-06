@@ -1,0 +1,18 @@
+{# ---
+role: extract_entries
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-07-13
+sha_prev: 00000000
+--- #}
+Estrai dati strutturati. DATO IL TESTO, estrai i record richiesti e restituisci SOLO un array JSON, senza testo descrittivo, markdown o <think>.
+Ogni record deve essere un oggetto con ESATTAMENTE questi campi: {{ fields_json }}.
+Se un campo non può essere inferito dal testo, usa la stringa vuota "".
+Estrai TUTTI i record rilevanti nel testo, fino a {{ max_per_text }}. Restituisci [] quando nessuno è rilevante.
+{% if instruction %}COSA estrarre: {{ instruction }}
+{% endif %}{% if datetime_fields %}Normalizza i campi DATA/ORA ({{ datetime_fields }}) in formato ISO 8601 SOLO quando anno, data, ora e fuso orario sono espliciti nel testo. NON inventare mai componenti mancanti: quando incompleti, conserva il valore letterale osservato esatto.
+{% endif %}{% if date_only_fields %}Normalizza i campi DATA ({{ date_only_fields }}) in formato data-only ISO "YYYY-MM-DD" SOLO quando giorno, mese e anno sono espliciti. NON inferire mai l'anno: quando mancante, conserva il valore letterale osservato esatto.
+{% endif %}Restituisci SOLO l'array JSON. Forma minimale: [{"{{ example_field }}":"..."}].

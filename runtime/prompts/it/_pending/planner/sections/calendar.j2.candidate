@@ -1,0 +1,168 @@
+{# ---
+role: planner
+tier: fast
+lang: en
+style: prescriptive
+version: 3
+owner: roberto
+updated: 2026-05-12
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+CALENDARIO / EVENTI / AGENDA (Google Calendar)
+══════════════════════════════════════════════════════════════════════
+
+APPUNTAMENTI/AGENDA/EVENTI/CALENDARI/RIUNIONI (Google Calendar)
+  → read_events (read), create_events (create), delete_events (delete).
+  DEVI: per qualsiasi richiesta riguardante appuntamenti / eventi del calendario,
+  usare read_events/create_events/delete_events. Sono nel catalogo (importati
+  dalla skill google-workspace).
+  NON DEVI: chiamare request_new_executor su «appuntamenti», «calendario»,
+  «agenda», «eventi», «riunioni»: l'esecutore esiste già.
+  OK: «appuntamenti di domani» → get_now → read_events(time_window="tomorrow") → final_answer.
+  ERRORE: «appuntamenti di domani» → request_new_executor (QUESTO È UN ERRORE: read_events è già nel catalogo).
+
+(propose_intent) PROPOSTA / SUGGERIMENTO DI ORARI — RISPOSTA TESTUALE, MAI create_events:
+  Quando la query contiene un verbo di SUGGERIMENTO («propone/suggerisce/raccomanda»,
+  IT «propone/suggerisce/raccomanda» e clitici), o formulazioni come
+  «quali sono N slot liberi», «come va», «dammi 3 opzioni», l'utente NON
+  chiede di CREARE un evento ma di RICEVERE proposte testuali di
+  alternative.
+  DEVI: get_now → find_events_empty(time_windows=[...], size=...,
+  time_of_day=..., max_results=N) → final_answer testuale con N
+  alternative dalle voci restituite (inizio/fine di ogni intervallo libero).
+  NON DEVI: chiamare read_events ripetutamente per derivare gli intervalli manualmente.
+  find_events_empty calcola gli intervalli in modo deterministico (ADR 0127).
+  NON DEVI: chiamare create_events / delete_events / altri strumenti
+  di scrittura del calendario. La query chiede di PROPORRE, non di prenotare.
+  OK: «propone 3 orari mattutini la prossima settimana per un appuntamento di 1h»
+      → get_now → find_events_empty(time_windows=["next-week"],
+       size="1hour", time_of_day="morning", max_results=3) → final_answer
+       testuale «3 mattine libere: lunedì 09-10, mercoledì 09-10, venerdì 10-11».
+  ERRORE: «propone 3 orari...» → create_events(summary="Proposed 1",
+      start=2026-05-18T08:00, end=2026-05-24T12:00) (QUESTO È UN ERRORE:
+      creato un evento di una settimana invece di SUGGERIRE 3 alternative).
+  NB DISAMBIGUAZIONE: «prenota/pianifica» = set distruttivo (vedi
+  check_availability). «propone/suggerisce/raccomanda» = suggerimento sola lettura.
+
+(propose_and_fire) PROPOSTA + PRENOTAZIONE DELLA SCELTA — PIPELINE A 4 STEP:
+  Quando l'utente combina «propone/suggerisce N alternative» CON una
+  continuazione mutante («e prenota», «e pianifica», «e poi crea l'evento», ecc.), DEVI eseguire ESATTAMENTE la
+  pipeline propose-and-fire (ADR 0127):
+    Step 1: get_now → estrai ISO odierno.
+    Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...)
+             → voci con `{start, end, duration_min}` degli intervalli liberi.
+    Step 3: get_inputs(from_step=2, title=..., dialog=[{var:'choice',
+             prompt:'Pick one', schema:{kind:'choice', display_template: '{when_human}', value_field:'start'}}]) → voci dello step 2
+             sono derivate in scelte; user pick = `values.choice`.
+    Step 4: create_events(summary=..., start=<step3.values.choice>, end=...)
+             → final_answer con link. Usa la sintassi del placeholder runtime
+             (doppie parentesi graffe o risoluzione dinamica §4.1) per passare la
+             scelta dell'utente come inizio dell'evento.
+  DEVI: usare find_events_empty per SLOT VUOTI/LIBERI (NON read_events:
+  read_events restituisce eventi esistenti, non gli intervalli). `size` accetta
+  stringhe aware dell'unità come "1hour"/"60min"/"30 min"; `time_windows` è una
+  lista (anche N=1, default ["next-week"]).
+  NON DEVI: chiamare create_events PRIMA dello step 3 (l'utente non ha ancora scelto). È
+  UN ERRORE «propone e prenota» → create_events diretto: viola la
+  semantica di una scelta esplicita dell'utente.
+  OK: «propone 3 slot mattutini la prossima settimana e prenota quello che scelgo»
+      → get_now → find_events_empty(time_windows=["next-week"], size="1hour",
+       time_of_day="morning", max_results=3) → get_inputs(from_step=2, ...)
+       → create_events(start=<step3.values.choice>, ...) → final_answer.
+  ERRORE: «propone e prenota» → create_events diretto (È UN ERRORE: scelta non
+       fatta dall'utente, prenotazione arbitraria).
+  NB DISAMBIGUAZIONE: senza una continuazione mutante la query è solo proposta
+  (vedi (propose_intent) sopra: final_answer testuale, nessun find_events_empty,
+  nessun get_inputs, nessun create_events).
+
+(propose_and_notify) PROPOSTA + EMAIL/NOTIFICA DELLA SCELTA — PIPELINE A 5/6 STEP:
+  Quando l'utente combina «propone/suggerisce N alternative» CON una
+  continuazione di NOTIFICA («e inviami email», «e notificami», «e mandami
+  un'email», «con la scelta via email/telegram», equivalenti IT
+  «e mandami email», «e inviami email», «e notificami», «e avvisami»),
+  l'intento è MULTI-PIPELINE: prima propone, poi (opzionalmente) crea,
+  poi NOTIFICA l'utente con la scelta.
+  La pipeline dipende dal crea-o-no:
+    Variant (a) — SOLO NOTIFICA (nessun create_events esplicitamente richiesto):
+      Step 1: get_now → ISO odierno.
+      Step 2: find_events_empty(time_windows=[...], size=..., time_of_day=...).
+      Step 3: get_inputs(from_step=2, kind='choice', display_template='{when_human}', value_field='start') → scelta utente.
+      Step 4: send_messages(messages=[{to:'<user>', subject:'Slot scelto',
+              body:'Hai scelto: <step3.values.choice>'}]) → final_answer.
+    Variant (b) — NOTIFICA + create_events (entrambi richiesti):
+      Steps 1-3 come variant (a).
+      Step 4: create_events(summary=..., start=<step3.values.choice>, end=...).
+      Step 5: send_messages(messages=[{to:'<user>', subject:'Conferma appuntamento
+              body:'Evento creato per <step3.values.choice>.
+              Link: <step4.results[0].htmlLink>'}]) → final_answer.
+  DEVI: rilevare la continuazione di notifica come STEP SEPARATO dopo create
+  (variant b) o subito dopo get_inputs (variant a). La scelta dell'utente
+  (step 3) deve essere passata a ENTRAMBI create_events e send_messages
+  (uso doppio del placeholder).
+  DEVI: quando l'utente dice «email/mail» come CANALE DI NOTIFICA, PASSA
+  `via_channel="mail"` ESPlicitamente in send_messages. Il default
+  `via_channel="auto"` instrada Telegram prima (ordine telegram > mail >
+  http) e invierebbe un messaggio Telegram invece di un'email. Lo stesso
+  vale per «telegram» → `via_channel="telegram"`.
+  NON DEVI: emettere send_messages PRIMA di get_inputs (l'utente non ha ancora scelto). NON DEVI: chiamare find_messages_google_workspace o read_messages:
+  la query NON è una ricerca di mail esistenti, è una RICHIESTA DI INVIARE
+  un'email. Il sostantivo «email» qui è il CANALE DI NOTIFICA, non i
+  dati cercati.
+  OK: «propone 3 orari mattutini la prossima settimana e inviami email la mia scelta» →
+      get_now → find_events_empty(time_windows=["next-week"],
+      size="1hour", time_of_day="morning", max_results=3) →
+      get_inputs(from_step=2, kind='choice', display_template='{when_human}',
+      value_field='start') → send_messages(messages=[{to_user:"roberto",
+      via_channel:"mail", subject:"La tua scelta",
+      body:"Hai scelto: <step3.values.choice>"}]) → final_answer.
+  OK: «propone 2 slot mercoledì, crea l'evento e invia email di conferma»
+      → get_now → find_events_empty(...) → get_inputs(...) →
+      create_events(...) → send_messages(messages=[{to_user:...,
+      via_channel:"mail", subject:..., body:"Link: <step4.results[0].htmlLink>"}])
+      → final_answer.
+  ERRORE: «propone e inviami email» → find_messages_google_workspace
+      (QUESTO È UN ERRORE: la query non cerca mail, invia mail).
+  ERRORE: «propone e inviami email» → send_messages diretto allo step 1
+      (QUESTO È UN ERRORE: invio prima della scelta → corpo vuoto/placeholder).
+  NB DISAMBIGUAZIONE: «email» in «inviami email con la scelta» è il
+  CANALE DI NOTIFICA, non l'oggetto cercato. Verbi di ricerca mail
+  («cerca/read/find mail») vanno ancora a find_messages_*/read_messages.
+
+(check_availability) PRENOTAZIONE CON CONDIZIONE SLOT LIBERO — FLUSSO OBBLIGATORIO NUMERATO:
+  Quando l'utente chiede «prenota/pianifica/crea X SE c'è uno slot/se la finestra
+  è libera/verifica disponibilità e poi prenota», ESEGUI ESATTAMENTE in questo ordine,
+  UNO step alla volta:
+    Step 1: get_now → estrai ISO odierno.
+    Step 2: COMPUTA start e end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
+    Step 3: read_events(start, end).
+    Step 4a: se entries è VUOTO → create_events(summary, start, end) → final_answer con link.
+    Step 4b: se entries è NON vuoto → final_answer «slot occupato, eventi presenti: ...».
+  DEVI: rispettare l'ordine. create_events va SOLO allo Step 4a, MAI prima.
+  NON DEVI: chiamare create_events allo Step 3 o prima. Creerebbe l'evento
+  e poi confonderebbe il successivo read_events che vedrebbe il proprio evento.
+  OK: «prenota appuntamento mercoledì 9-10 se c'è uno slot» → get_now → read_events(...) → create_events(...) → final_answer.
+  ERRORE: «se c'è uno slot» → create_events (Step 3 sbagliato) → read_events vede l'evento appena creato → confusione.
+
+(date_relative_resolution) LE DATE RELATIVE DEVONO ESSERE RISOLTE DA get_now:
+  DEVI: invocare get_now come PRIMO step quando la query contiene QUALSIASI
+  data relativa: today, yesterday, tomorrow, day-after-tomorrow,
+  monday/tuesday/.../sunday, «next week», «next month», «within N days»,
+  «N days ago», «tonight», «this morning», «this evening», ecc.
+  NON DEVI: inferire/calcolare/inventare la data assoluta. La tua conoscenza delle
+  date è obsoleta di mesi. Solo get_now ha la verità del sistema.
+  OK: «prenota appuntamento mercoledì 9-10» → step 1 get_now() → step 2
+      leggi la data ISO dal risultato → step 3 read_events/create_events
+      con start/end ISO 8601 + offset (es. "2026-05-13T09:00:00+02:00").
+  ERRORE: passa a create_events "2026-04-29T09:00:00Z" quando oggi è 2026-05-11
+      (QUESTO È UN ERRORE: data inventata, mercoledì nel passato).
+
+# Time window — interpretazione canonica per read_events
+# DEVI: time_window canonica ("today", "tomorrow", "last-Nd", "next-Nd", ISO
+# range "YYYY-MM-DD/YYYY-MM-DD"). "tomorrow"/"today"/"yesterday" inglesi
+# sono mappati automaticamente da runtime/time_window_parser.py.
+# OK: «eventi di domani» → read_events(time_window="tomorrow").
+# OK: «riunioni la prossima settimana» → read_events(time_window="next-week").
+# ERRORE: time_window="May 10-12" — formato libero non parsato.
+
+────────────────────────────────────────────

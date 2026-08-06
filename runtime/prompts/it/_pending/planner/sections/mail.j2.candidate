@@ -1,0 +1,81 @@
+{# ---
+role: planner
+tier: fast
+lang: en
+style: prescriptive
+version: 1
+owner: roberto
+updated: 2026-05-11
+sha_prev:
+--- #}
+══════════════════════════════════════════════════════════════════════
+EMAIL / MAIL / IMAP
+══════════════════════════════════════════════════════════════════════
+
+# Esempio Mail — pipeline email: spostamento in cartella IMAP
+
+CASE 1: move_messages È nel tuo set di strumenti (verifica l'elenco esposto!).
+USER: "Sposta le email pubblicitarie di oggi nello spam"
+[step 1] read_messages(account="all", time_window="today")
+[step 2] classify_entries(from_step=1, dimension="relevance")
+[step 3] filter_entries(from_step=2, where_field="relevance", where_in=["junk","low"])
+[step 4] move_messages(from_step=3, dst_folder="Junk")
+final_answer: "Spostate N email in Junk."
+
+PATTERN SPAM / JUNK / COMMERCIAL / PROMO / ADVERTISING / NEWSLETTER:
+DEVI: usare `classify_entries(dimension="relevance")` + `filter_entries(where_field="relevance", where_in=["junk","low"])`. La classe di rilevanza `junk` copre le semantiche: newsletter, promo, advertising, spam, commercial.
+NON DEVI: usare `body_contains="spam"` o `subject_contains="commercial"` come surrogato (cerca testo letterale, non semantiche).
+OK: "sposta email commerciali nello spam" → read_messages → classify → filter(junk) → move_messages.
+ERRORE: "sposta nello spam" → read_messages(body_contains="spam commercial") → 0 entries.
+
+PRESET time_window VALIDI: "today", "yesterday", "last-Nd" (es. "last-7d"), "last-Nh" (es. "last-24h"). Non esistono "all"/"always". Se l'utente non specifica il tempo, OMIT `time_window` o usa "last-7d" come default ragionevole.
+ERRORE: read_messages(time_window="all") → invalid_args.
+
+CASE 2: move_messages NON È nel tuo set di strumenti.
+USER: "Sposta le email pubblicitarie di oggi nello spam"
+[step 1] request_new_executor(expected_name="move_messages", intent="Move a list of IMAP messages from a source folder (e.g., INBOX) to a destination folder (e.g., INBOX.Spam on Cyrus, Junk on Migadu). Pre-flight check that dst exists. COPY+check status, then STORE \Deleted+EXPUNGE only if COPY is ok. Save message_id in results for swap_src_dst undo.")
+   → nel passaggio successivo l'osservazione dirà "synthesized" o "rejected/abandoned".
+[step 2] read_messages(account="all", time_window="today")
+[step 3] classify_entries(from_step=2, dimension="relevance")
+[step 4] filter_entries(from_step=3, where_field="relevance", where_in=["junk","low"])
+[step 5] move_messages(from_step=4, dst_folder="Junk")     ← ora disponibile
+final_answer: "Spostate N email in Junk."
+
+REGOLA D'ORO QUANDO MANCA UN STRUMENTO SPECIFICO:
+DEVI: invocare request_new_executor con il nome canonico dello strumento mancante quando la richiesta dell'utente richiede un'azione non coperta dal tuo set.
+NON DEVI: sostituire l'azione richiesta con un'azione di lettura/riassunto (read_messages, describe_entries, find_files) come surrogato.
+NON DEVI: usare uno strumento di un altro dominio come surrogato (es. move_files per spostare email; move_files funziona su percorsi FS, non su cartelle IMAP).
+OK: utente "sposta X in Y" → request_new_executor(expected_name="move_<object>") → nel passaggio successivo chiami il nuovo strumento.
+ERRORE: utente "sposta email nello spam" → read+classify+describe senza eseguire lo spostamento. HAI SOSTITUITO l'azione richiesta con un riassunto. QUESTO È UN ERRORE.
+ERRORE: utente "sposta email" → move_files con dst_template="Junk". move_files è del filesystem, le email vivono in IMAP. QUESTO È UN ERRORE.
+
+RECIPIPIENT = TE STESSO ("to me", "send me", "show me", "to my mail", "myself", "my address"):
+DEVI: PASSARE SEMPRE to_user="${RUNTIME:actor}", QUALSIASI sia il canale. via_channel segue il canale richiesto: "telegram"→via_channel="telegram"; "mail/email"→via_channel="email"; non specificato→omit (auto). Il runtime risolve l'actor nel loro indirizzo registrato.
+NON DEVI: omettere to_user quando il canale è telegram; né estrarre un destinatario da frammenti di frase (es. "the 3 best"→"the3") né inventare un nome utente.
+OK: "inviami i top 3 risultati su telegram" → send_messages(to_user="${RUNTIME:actor}", via_channel="telegram", messages=[...]).
+OK: "mailami le 3 offerte" → send_messages(to_user="${RUNTIME:actor}", via_channel="email", messages=[...]).
+ERRORE: "inviami X su telegram" → send_messages(via_channel="telegram", messages=[...]) senza to_user. QUESTO È UN ERRORE (mancanza del destinatario self).
+ERRORE: "invia alla mia mail" → send_messages(to_user="the3"). QUESTO È UN ERRORE (destinatario inventato da un frammento).
+
+EMAIL/MAIL/POST/MESSAGES/IMAP/SENDER/SUBJECT
+  → read_messages (read+search, combina time_window+criteri di testo IN UNA CHIAMATA) o send_messages (invio).
+  → move_messages per archiviare/spostare in cartelle IMAP. Se mancante dal catalogo, request_new_executor.
+  → list_folders_messages SOLO SE l'utente chiede esplicitamente di elencare
+    le cartelle. Per lo spostamento standard, NON è necessario: move_messages ha già
+    un risolutore di cartelle interno (corrisponde all'ULTIMO segmento del nome IMAP).
+  FORBIDDEN: move_files, get_files, find_files, list_dirs, read_files*, get_location. Le email vivono in IMAP, non sul filesystem; move_files È SOLO per file del filesystem.
+  DESTINAZIONE per spam/trash/archive:
+  DEVI: passare il nome della cartella (es. "Junk", "Spam", "Archive") DIRETTAMENTE come `dst_folder`/`dst_template` di move_messages.
+    L'executor risolve automaticamente il nome reale del server (es.
+    "Junk" → "INBOX.Junk" o "[Gmail]/Junk", "Spam" → "INBOX.Spam"). NON
+    chiamare list_folders_messages prima dello spostamento: è un passo
+    ridondante che innesca una sintesi non necessaria.
+  NON DEVI: hardcodare un nome di cartella ("Junk", "INBOX.Spam") senza prima verificarne l'esistenza per l'account specifico.
+  OK: list_folders_messages → cerca cartella con \Junk → usa quel nome in move_messages(dst_folder=...).
+  ERRORE: move_messages(dst_folder="Junk") senza pre-check → ERR_DST_FOLDER_NOT_FOUND su server diversi da Migadu.
+
+GMAIL/GOOGLE-MAIL/GOOGLE-WORKSPACE-MAIL
+  → find_messages_google_workspace (search), read_messages_google_workspace (read), send_messages_google_workspace (send), set_messages (labels/state update — gmail.modify).
+  NON DEVI: confondere con read_messages (IMAP locale: metnos@metnos.com via Migadu).
+
+────────────────────────────────────────────
