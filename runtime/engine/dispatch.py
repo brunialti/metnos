@@ -3017,6 +3017,10 @@ def _route_mail_delete_to_trash(framework: Framework,
 
 # Marcatori di pluralità: la query chiede PIÙ file con quel nome, non un path
 # univoco. «i/tutti i/ogni/gli file X» → X è un PATTERN da cercare, non UN path.
+# Verbi con cui l'utente chiede di VEDERE qualcosa: dopo una navigazione
+# a obiettivo il piano deve leggere, non solo arrivare.
+_READ_INTENT_VERBS = ("read", "find", "get", "list")
+
 _PLURAL_FILE_MARKERS = (
     "tutti i", "tutti gli", "i file", "gli file", "ogni file", "i files",
     "all the", "all ", "every ", "the files", "each ",
@@ -3705,6 +3709,55 @@ def _site_url_from_host_token(text: str) -> Optional[str]:
     if port is not None and not (0 < int(port) <= 65535):
         return None
     return f"http://{host}:{port}" if port else f"http://{host}"
+
+
+def _ensure_site_goal_read(framework: Framework, intent,
+                           catalog: Optional[list]) -> Framework:
+    """Arrivare non e' mostrare: dopo una navigazione a obiettivo, si legge.
+
+    `act_sites` con un obiettivo NAVIGA e riporta «azione completata»; il
+    contenuto della pagina raggiunta lo legge `read_sites`, che e' anche il
+    solo a redigere lo screenshot. Un piano che si ferma all'arrivo risponde
+    «fatto» a chi aveva chiesto di VEDERE — misurato il 7/8/2026: il pilota
+    arrivava davvero su `mytrips`, e il turno finiva senza un dato.
+
+    E' la simmetrica di `ensure_site_session_precursor`, che ricostruisce cio'
+    che serve PRIMA; qui si chiude cio' che serve DOPO. Deterministica §7.9:
+    guarda la forma del piano e il verbo dell'intento, nessun lessico nuovo,
+    nessun nome di sito. No-op se un `read_sites` c'e' gia', se il tool manca
+    dal catalogo, o se l'intento non e' di lettura (una richiesta puramente
+    operativa — «prenota», «cancella» — non deve produrre una lettura).
+    """
+    try:
+        steps = list(getattr(framework, "steps", None) or [])
+        names = catalog_names(catalog)
+        if "read_sites" not in names:
+            return framework
+        if any((s.tool or "") == "read_sites" for s in steps):
+            return framework
+        verbi = {(a.get("verb") or "").lower()
+                 for a in (getattr(intent, "actions", None) or [])
+                 if isinstance(a, dict)}
+        verbi.add((getattr(intent, "verb", "") or "").lower())
+        if not (verbi & set(_READ_INTENT_VERBS)):
+            return framework
+        for pos, step in enumerate(steps, start=1):
+            if (step.tool or "") != "act_sites":
+                continue
+            args = step.args if isinstance(step.args, dict) else {}
+            if not (args.get("action") or args.get("goal")
+                    or args.get("_goal_mode")):
+                continue
+            insert_steps(framework, pos,
+                         [StepSpec(tool="read_sites",
+                                   args={"from_step": pos})])
+            log.info("[site_goal_read] act_sites(obiettivo) -> read_sites "
+                     "inserito dopo lo step %d", pos)
+            break
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, il piano resta valido
+        log.warning("ensure_site_goal_read noop: %r", ex)
+        return framework
 
 
 def _ensure_site_session_precursor(framework: Framework, intent, query: str,
@@ -5613,6 +5666,12 @@ GUARD_PIPELINE: tuple = (
           scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "step.tool"}),
           rationale="spec sites F1/F2: login/read/act_sites richiedono open_sites; ricostruisce open→[login]→[read]→[act] preservando action/value_ref",
+          adr="sites-F2"),
+    Guard("ensure_site_goal_read",
+          lambda fw, i, q, c: _ensure_site_goal_read(fw, i, c),
+          scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.verb", "step.tool", "step.args", "catalog"}),
+          rationale="arrivare non e' mostrare: act_sites con obiettivo NAVIGA, il contenuto lo legge read_sites (che e' anche il solo a redigere). Simmetrica di ensure_site_session_precursor",
           adr="sites-F2"),
     Guard("decontaminate_reader_qualifier",
           lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),

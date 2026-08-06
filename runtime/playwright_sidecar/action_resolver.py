@@ -538,13 +538,51 @@ def _is_root_navigation(candidate: dict) -> bool:
         parsed = urllib.parse.urlsplit(href)
     except ValueError:
         return False
+    # UN SOLO predicato di «home», non due. Il lato ARRIVO sapeva gia' che
+    # `/index.it.html` e' la home di un sito localizzato (`_is_home_path`,
+    # scritto il 15/7 apposta); il lato PARTENZA continuava a chiedere
+    # `path == "/"` e quindi ammetteva il logo come passo verso un fine
+    # personale. Il pilota ci ha bruciato due dei quattro passi disponibili,
+    # andando dalla home alla home (turno reale 7/8/2026). Due funzioni che
+    # rispondono alla stessa domanda in modo diverso sono un difetto, non una
+    # differenza.
     return (parsed.scheme.lower() in {"http", "https"}
-            and (parsed.path or "/") == "/")
+            and _is_home_path(parsed.path or "/"))
 
 
 def goal_candidate_is_admissible(target: str, candidate: dict) -> bool:
     """Apply goal-level safety constraints to deterministic and model paths."""
     return not (_is_personal_goal(target) and _is_root_navigation(candidate))
+
+
+# Un nome accessibile lungo come una frase e' PROSA, non una destinazione.
+# Le etichette di navigazione sono corte per natura («Prenotazioni e viaggi»,
+# «Il tuo account: nome cognome, Livello 3 di Genius»); un paragrafo di
+# informativa non e' un posto dove si va. Misurato il 7/8/2026 su Booking: il
+# candidato in testa per «mostrami le mie prenotazioni» era il pulsante «I
+# prezzi mostrati sono stime e quindi possono variare. Vedrai l'importo
+# effettivo al momento della prenotazione…», che vince solo perche' contiene
+# la parola «prenotazione» — e la sua presenza rendeva ambiguo tutto il resto.
+_MAX_PAROLE_ETICHETTA = 12
+# I due punti NON sono punteggiatura di frase: le etichette li usano
+# («Il tuo account: nome cognome»). Il punto seguito da altro testo si
+# ("… possono variare. Vedrai l'importo…").
+_FRASE = re.compile(r"[.;!?]\s+\S")
+
+
+def _looks_like_prose(name: str) -> bool:
+    """Vero se il nome e' un testo descrittivo invece di un'etichetta.
+
+    Due segnali, entrambi indipendenti dalla lingua e dal sito: la lunghezza in
+    parole e la punteggiatura di frase (un punto seguito da altro testo). Una
+    voce di menu non ha ne' l'una ne' l'altra.
+    """
+    grezzo = str(name or "").strip()
+    if not grezzo:
+        return False
+    if len(normalize(grezzo).split()) > _MAX_PAROLE_ETICHETTA:
+        return True
+    return bool(_FRASE.search(grezzo))
 
 
 def goal_navigation_candidates(candidates: list[dict], *,
@@ -566,7 +604,10 @@ def goal_navigation_candidates(candidates: list[dict], *,
             continue
         if goal_candidate_key(candidate) in excluded:
             continue
-        if not normalize(str(candidate.get("name") or candidate.get("label") or "")):
+        nome = str(candidate.get("name") or candidate.get("label") or "")
+        if not normalize(nome):
+            continue
+        if _looks_like_prose(nome):
             continue
         out.append(candidate)
     return out
@@ -595,7 +636,8 @@ def prefer_verifiable_goal_candidates(candidates: list[dict]) -> list[dict]:
 
 
 def choose_authenticated_reveal_candidate(
-        candidates: list[dict], *, excluded: set[str] | None = None) -> dict:
+        candidates: list[dict], *, excluded: set[str] | None = None,
+        account_only: bool = False) -> dict:
     """Choose one closed disclosure before failing an authenticated goal.
 
     Account areas often expose only the user's name/avatar while the desired
@@ -620,6 +662,13 @@ def choose_authenticated_reveal_candidate(
     account = [candidate for candidate in eligible
                if _candidate_matches_concept(
                    candidate, "sites.account_reveal_control")]
+    # Un pannello QUALUNQUE (un calendario, un filtro) serve solo a scoprire
+    # la prima volta dove sta l'area personale. Dopo che un passo e' stato
+    # eseguito, l'unica rivelazione legittima e' quella dell'area personale:
+    # altrimenti un controllo estraneo prende il posto di un candidato che
+    # manca, e il pilota apre cose a caso.
+    if account_only and not account:
+        return {"ok": False, "error_class": "selector_missing", "ranked": []}
     pool = account or eligible
     if len(pool) > 1:
         # Lo STESSO controllo, reso piu' volte, non sono piu' controlli.
@@ -644,13 +693,38 @@ def choose_authenticated_reveal_candidate(
             "ranked": [(0.62, pool[0])]}
 
 
+def goal_discriminates_on_site(target: str, site_host: str) -> bool:
+    """Il fine distingue qualcosa, su QUESTO sito?
+
+    Il riduttore porta «le mie prenotazioni» al token `booking` (l'alias del
+    lessico copre prenotazione/viaggio/trip). Su `booking.com` quel token sta
+    nel logo, nel disclaimer prezzi, in mezza pagina: la somiglianza testuale
+    non sceglie piu' niente, e qualunque cosa vinca e' rumore. Misurato il
+    7/8/2026: tre voci a 0,860 e una a 0,751, margine sotto soglia, ambiguita'.
+
+    Quando il fine e' contenuto nell'identita' del sito, non e' un criterio di
+    somiglianza: e' una precondizione gia' soddisfatta dall'esserci. La scelta
+    deve passare al canale STRUTTURALE (aprire l'area personale), non a una
+    classifica di parole. Universale: nessun nome di sito qui dentro.
+    """
+    wanted = set(goal_tokens(target, navigation=True))
+    if not wanted or not site_host:
+        return True
+    del_sito = set(normalize(str(site_host).replace(".", " ")).split())
+    return not wanted.issubset(del_sito)
+
+
 def choose_goal_candidate(target: str, candidates: list[dict], *,
-                          excluded: set[str] | None = None) -> dict:
+                          excluded: set[str] | None = None,
+                          site_host: str = "") -> dict:
     """Sceglie un passo che copre una parte semantica del fine.
 
     I numeri restano vincoli terminali (anno/importo) e non penalizzano il nome
     di un menu. Il margine rende ambiguita' e collisioni un fallimento chiuso.
     """
+    if site_host and not goal_discriminates_on_site(target, site_host):
+        return {"ok": False, "error_class": "goal_not_discriminating",
+                "ranked": []}
     wanted = set(goal_tokens(target, navigation=True))
     personal_goal = _is_personal_goal(target)
     account_forms = _concept_forms("sites.account_reveal_control")

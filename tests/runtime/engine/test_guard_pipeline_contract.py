@@ -49,6 +49,10 @@ EXPECTED_PIPELINE = (
     # consumer sites (login/read_sites). Dopo enforce_missing_objects (che può
     # appendere il consumer), prima delle riscritture di qualifier/ordine.
     ("ensure_site_session_precursor", False),
+    # Simmetrica della precedente: quella ricostruisce cio' che serve PRIMA di
+    # una navigazione a obiettivo, questa chiude cio' che serve DOPO — arrivare
+    # non e' mostrare (7/8/2026).
+    ("ensure_site_goal_read", False),
     ("decontaminate_reader_qualifier", True),
     ("ensure_extract_clause", True),
     ("ensure_extracted_period_scope", True),

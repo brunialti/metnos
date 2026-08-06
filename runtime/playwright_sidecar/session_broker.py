@@ -1676,6 +1676,18 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     "reason_code": "approval_pending",
                     "session_id": session_id}
         await _touch(entry)
+        # Un login e' uno STATO, non un'azione: se lo stato c'e' gia',
+        # l'operazione e' gia' riuscita. Senza questa riga una sessione
+        # autenticata e riusata rientrava nella macchina di accesso, cercava un
+        # modulo che non c'e' — perche' l'utente e' dentro — e rispondeva «non
+        # ho trovato un modulo di login», chiudendo il turno su un successo
+        # (turno reale e43fefafb0a6463e, 7/8/2026). Il flag lo scrive solo un
+        # login verificato di questo processo, e il riuso di sessione lo
+        # pretende: non e' una supposizione.
+        if entry.get("authenticated"):
+            return {"ok": True, "logged_in": True,
+                    "reason_code": "already_authenticated",
+                    "session_id": session_id}
         entry["_sid"] = session_id
         flow = entry.get("login_flow")
         if (not isinstance(flow, dict) or flow.get("domain") != dom
@@ -2726,10 +2738,13 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         at_goal_limit = flow_steps >= _MAX_GOAL_STEPS
         candidates = await _enumerate_candidates(entry["page"])
         excluded = set(flow.get("visited") or ())
+        # Il sito su cui siamo: serve a sapere se il fine distingue qualcosa
+        # qui dentro (un fine che coincide col nome del sito non distingue).
+        sito_corrente = _host_of_url(getattr(entry.get("page"), "url", "") or "")
         chosen = ({"ok": False, "error_class": "goal_step_limit"}
                   if at_goal_limit else action_resolver.choose_goal_candidate(
                       parsed.get("target", ""), candidates,
-                      excluded=excluded))
+                      excluded=excluded, site_host=sito_corrente))
         if not at_goal_limit and not chosen.get("ok"):
             scroll = action_resolver.choose_goal_scroll_candidate(
                 parsed.get("target", ""), candidates, excluded=excluded)
@@ -2738,11 +2753,19 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 candidates = await _enumerate_candidates(entry["page"])
                 chosen = action_resolver.choose_goal_candidate(
                     parsed.get("target", ""), candidates,
-                    excluded=excluded)
+                    excluded=excluded, site_host=sito_corrente)
+        # Il canale STRUTTURALE (aprire l'area personale) non e' un ripiego di
+        # cortesia riservato al primo passo: e' la mossa GIUSTA ogni volta che
+        # la classifica testuale non puo' decidere — perche' ha fallito, o
+        # perche' il fine non discrimina su questo sito. Limitarlo a
+        # `flow_steps == 0` lo rendeva irraggiungibile proprio dove serviva:
+        # al passo 0 vinceva il logo, e dal passo 1 in poi nessuno lo chiedeva
+        # piu' (turno reale 7/8/2026, quattro passi spesi per restare fermi).
         if (not at_goal_limit and not chosen.get("ok")
-                and entry.get("authenticated") and flow_steps == 0):
+                and entry.get("authenticated")):
             chosen = action_resolver.choose_authenticated_reveal_candidate(
-                candidates, excluded=excluded)
+                candidates, excluded=excluded,
+                account_only=flow_steps > 0)
         # Il contenitore puo' essere gia' la pagina corrente (URL diretto o
         # landing utile): verificare prima evita click artificiali. La prova
         # esclude i soli label interattivi, quindi un menu omonimo non basta.
