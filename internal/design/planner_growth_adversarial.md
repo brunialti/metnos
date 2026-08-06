@@ -216,3 +216,31 @@ passava.
 
 Chiuso: `METNOS_GUARD_STATS=0` dichiarabile da chi replaya, dichiarato dal tool
 del corpus, test che fallisce sul codice vecchio, contatore azzerato.
+
+---
+
+## Che cosa resta da fare (in ordine, misurabile)
+
+Dopo due lenti, la lista non è più «migrare le famiglie». È questa:
+
+1. **Togliere le due contraddizioni dal prompt del proposer** (righe 83 e
+   88-90). Baseline già misurata: 27% dei piani grezzi pianificano un
+   `describe_entries` che viene buttato, 45% scrivono un `final_message` poi
+   sostituito. Obiettivo: entrambi verso zero. È l'unico intervento che riduce
+   il lavoro del modello *e* toglie la ragione d'essere di una guardia da 133
+   righe (`route_folder_size`).
+2. **Strumentare `output_policy` come le guardie**: oggi muta i piani più di
+   chiunque altro e non lo conta nessuno. Senza, si continuerà ad attribuire
+   alle guardie mutazioni che non fanno.
+3. **Rigenerare il corpus da `framework_raw_json`** quando ci saranno
+   abbastanza righe: l'oracolo attuale misura la pipeline contro la propria
+   uscita (va bene come rete, non come misura).
+4. **Aspettare 21 giorni di traffico vero** prima di qualunque ritiro: il
+   contatore è stato azzerato stasera e riparte pulito.
+5. **`step_chunk` a superficie condivisa** (dalla lente 1): tocca la guardia più
+   calda e quattro che dipendono dalla stessa nozione.
+
+Quello che NON si fa più, e perché: grammatica sugli args (referto negativo del
+6/7), gate del pool per applicabilità (il pool non esiste su L0/L1), famiglia F
+in L1 (L1 è piatta e rifiuta i query-specific), `[applicability]` nei manifest
+(precedente `[planning]`: zero adozioni).
