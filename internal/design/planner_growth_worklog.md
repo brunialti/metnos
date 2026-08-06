@@ -320,6 +320,13 @@ guardie si contano con `grep '\[<marcatore>'`, che NON è il nome della guardia
 
 - `seed_from_run` semina righe L1 che `lookup` scarterà per sempre.
 - `apply_efficacy_ager` non è agganciato a nessuno scheduler.
+- **«apri il sito X e dimmi che titolo ha» → `open_sites` + `find_urls`**
+  (ricerca web) invece di `open_sites` + `read_sites` (leggi la pagina aperta).
+  `find_urls` fallisce onestamente per args mancanti, ma il piano era sbagliato
+  a monte: dopo un'apertura di sessione, «dimmi cosa c'è» è una LETTURA di quella
+  sessione, non una ricerca. Trovato il 6/8 verificando il riavvio del sidecar
+  (turno 71d4ac52). Da guardare col piano grezzo: se il proposer sceglie
+  `find_urls` da solo è routing, se lo mette una guardia è la pipeline.
 
 ### Non era un difetto: i verbi nudi nell'affinity di `find_files_hash`
 
