@@ -3971,10 +3971,17 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     def _append_acts(source_steps) -> None:
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
+            # Conserva TUTTO cio' che il planner ha dichiarato, non una lista
+            # chiusa di tre: ogni campo aggiunto dopo che questa riga e' stata
+            # scritta veniva buttato via qui in silenzio — `done_when` e
+            # `ambito` non arrivavano mai all'executor, e il fine tornava a
+            # essere una stringa sola. Si sostituisce solo il modo in cui la
+            # sessione arriva: `from_step` al posto di `session_ids`.
             act_args = {"from_step": len(new_steps)}
-            for key in ("action", "value_ref", "_goal_mode"):
-                if original_args.get(key) is not None:
-                    act_args[key] = original_args[key]
+            act_args.update({
+                chiave: valore for chiave, valore in original_args.items()
+                if chiave not in ("from_step", "session_ids")
+                and valore is not None})
             new_steps.append(StepSpec(tool="act_sites", args=act_args))
 
     if want_login:
