@@ -122,6 +122,13 @@ default = "local"
 it = "Backend: 'local' (default, file .xlsx/.csv) o 'google_workspace' (Google Sheets online, richiede OAuth + range)."
 en = "Backend: 'local' (default, .xlsx/.csv file) or 'google_workspace' (online Google Sheets, requires OAuth + range)."
 
+[args.properties.path]
+type = "string"
+
+[args.properties.path.description]
+it = "Nome o percorso del foglio di destinazione. Su 'google_workspace' un valore senza '/' e' il NOME del foglio su Drive; con '/' e' un percorso locale. Esempio: \"spese-2026\". In alternativa a 'spreadsheet_id'."
+en = "Name or path of the destination sheet. On 'google_workspace' a value without '/' is the sheet NAME on Drive; with '/' it is a local path. Example: \"spese-2026\". Alternative to 'spreadsheet_id'."
+
 [output]
 schema_inline = """
 {

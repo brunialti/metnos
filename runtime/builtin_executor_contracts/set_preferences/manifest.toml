@@ -23,7 +23,7 @@ required = ["key", "value"]
 
 [args.properties.key]
 type = "string"
-enum = ["lang", "tone", "reply_length", "units", "sites_browser_mode", "sites_stealth", "sites_stealth_webdriver", "sites_stealth_user_agent", "sites_stealth_mobile", "sites_stealth_context_coherence", "sites_stealth_browser_apis", "sites_stealth_human_delays", "sites_stealth_focus_events", "sites_stealth_session_reuse"]
+enum = ["lang", "tone", "reply_length", "units", "sites_browser_mode", "sites_stealth", "sites_auto_allow_resources", "sites_stealth_webdriver", "sites_stealth_user_agent", "sites_stealth_mobile", "sites_stealth_context_coherence", "sites_stealth_browser_apis", "sites_stealth_human_delays", "sites_stealth_focus_events", "sites_stealth_session_reuse"]
 
 [args.properties.key.description]
 it = "Preferenza da impostare."
@@ -34,8 +34,8 @@ type = "string"
 enum = ["breve", "dettagliata", "en", "formale", "headless", "imperial", "informale", "it", "metric", "neutro", "normale", "off", "on", "side"]
 
 [args.properties.value.description]
-it = "Valore canonico ammesso per quella preferenza — lang: en|it; reply_length: breve|normale|dettagliata; sites_browser_mode: headless|side; sites_stealth: on|off; sites_stealth_browser_apis: on|off; sites_stealth_context_coherence: on|off; sites_stealth_focus_events: on|off; sites_stealth_human_delays: on|off; sites_stealth_mobile: on|off; sites_stealth_session_reuse: on|off; sites_stealth_user_agent: on|off; sites_stealth_webdriver: on|off; tone: neutro|informale|formale; units: metric|imperial"
-en = "Allowed canonical value for that preference — lang: en|it; reply_length: breve|normale|dettagliata; sites_browser_mode: headless|side; sites_stealth: on|off; sites_stealth_browser_apis: on|off; sites_stealth_context_coherence: on|off; sites_stealth_focus_events: on|off; sites_stealth_human_delays: on|off; sites_stealth_mobile: on|off; sites_stealth_session_reuse: on|off; sites_stealth_user_agent: on|off; sites_stealth_webdriver: on|off; tone: neutro|informale|formale; units: metric|imperial"
+it = "Valore canonico ammesso per quella preferenza — lang: en|it; reply_length: breve|normale|dettagliata; sites_auto_allow_resources: on|off; sites_browser_mode: headless|side; sites_stealth: on|off; sites_stealth_browser_apis: on|off; sites_stealth_context_coherence: on|off; sites_stealth_focus_events: on|off; sites_stealth_human_delays: on|off; sites_stealth_mobile: on|off; sites_stealth_session_reuse: on|off; sites_stealth_user_agent: on|off; sites_stealth_webdriver: on|off; tone: neutro|informale|formale; units: metric|imperial"
+en = "Allowed canonical value for that preference — lang: en|it; reply_length: breve|normale|dettagliata; sites_auto_allow_resources: on|off; sites_browser_mode: headless|side; sites_stealth: on|off; sites_stealth_browser_apis: on|off; sites_stealth_context_coherence: on|off; sites_stealth_focus_events: on|off; sites_stealth_human_delays: on|off; sites_stealth_mobile: on|off; sites_stealth_session_reuse: on|off; sites_stealth_user_agent: on|off; sites_stealth_webdriver: on|off; tone: neutro|informale|formale; units: metric|imperial"
 
 [output]
 schema_inline = "{ok: bool, results?: Array<object>, ok_count?: int, error?: str, error_class?: str, error_code?: str}"

@@ -199,6 +199,22 @@
     <div class="stealth-section">
     <div class="stealth-head">
       <div>
+        <h3>{{ msg("MSG_SETTINGS_AUTO_ALLOW_TITLE") }}</h3>
+      </div>
+      <label class="stealth-master" for="pref_sites_auto_allow_resources">
+        <input id="pref_sites_auto_allow_resources" type="checkbox"
+               name="sites_auto_allow_resources" value="on"
+               {% if prefs.get("sites_auto_allow_resources") == "on" %}checked{% endif %}>
+        <span>{{ msg("MSG_SETTINGS_AUTO_ALLOW_LABEL") }}</span>
+      </label>
+    </div>
+    <p class="muted" style="margin:.65rem 0 0">
+      {{ msg("MSG_SETTINGS_AUTO_ALLOW_HELP") }}
+    </p>
+    </div>
+    <div class="stealth-section">
+    <div class="stealth-head">
+      <div>
         <h3 id="stealth-title">{{ msg("MSG_SETTINGS_STEALTH_TITLE") }}</h3>
         <div class="muted">{{ msg("MSG_SETTINGS_STEALTH_DESCRIPTION") }}</div>
       </div>

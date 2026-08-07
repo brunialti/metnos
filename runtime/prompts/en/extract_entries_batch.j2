@@ -16,5 +16,5 @@ In every row copy the exact integer source_index as the first value. Use "" when
 Extract all relevant records, up to {{ max_per_text }} per source. When no source contains a record, records must be [] but seen_source_indexes must still contain all examined indexes.
 {% if instruction %}WHAT to extract: {{ instruction }}
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 only when all components are explicit; otherwise preserve the observed literal.
-{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to YYYY-MM-DD only when day, month, and year are explicit; otherwise preserve the observed literal.
+{% endif %}{% if date_only_fields %}Normalize DATE fields ({{ date_only_fields }}) to YYYY-MM-DD when day, month, and year are explicit. When the text shows day and month but NOT the year, use the current year ({{ current_year }}) and prefix an asterisk: "*{{ current_year }}-MM-DD". Leave "" only when no date can be derived.
 {% endif %}Do not leave records empty when at least one source mentions a person, organization, date, amount, or commitment. Output ONLY the JSON object, without prose, markdown, or <think>.

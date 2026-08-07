@@ -147,14 +147,28 @@ _DATE_FIELD_NAMES = {
 }
 
 
+# A date whose year the source never showed carries this marker. The year is
+# the current one, filled in so the value stays usable and comparable; the
+# marker keeps it honest — it says the year was not read, it was assumed.
+# Without it a site that omits the year on recent rows (a common convention)
+# left those rows blank, which claims "no date" about rows that showed one.
+_ASSUMED_YEAR_MARK = "*"
+
+
 def _normalize_extracted_date(field: str, value):
-    """Normalizza date complete osservate senza inventare parti mancanti."""
+    """Normalise complete observed dates without inventing missing parts."""
     if not isinstance(value, str) or not value.strip():
         return value
     key_parts = set(_field_key(field).split("_"))
     if not (key_parts & _DATE_FIELD_NAMES):
         return value
     raw = value.strip()
+    # The marker survives normalisation: it is part of what the value claims,
+    # not decoration. Strip it, normalise the date underneath, put it back.
+    if raw.startswith(_ASSUMED_YEAR_MARK):
+        inner = _normalize_extracted_date(field, raw[len(_ASSUMED_YEAR_MARK):])
+        inner = inner if isinstance(inner, str) else raw
+        return f"{_ASSUMED_YEAR_MARK}{inner.strip()}" if inner.strip() else ""
     # ISO già valido: conserva la granularità date-only vs datetime.
     try:
         iso_candidate = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
@@ -714,6 +728,7 @@ def _build_prompt(fields, instruction, max_per_text) -> str:
         max_per_text=max_per_text,
         datetime_fields=", ".join(date_time),
         date_only_fields=", ".join(date_only),
+        current_year=date.today().year,
         example_field=(fields[0] if fields else "field"),
     )
 
@@ -744,6 +759,7 @@ def _build_batch_prompt(fields, instruction, max_per_text) -> str:
         max_per_text=max_per_text,
         datetime_fields=", ".join(date_time),
         date_only_fields=", ".join(date_only),
+        current_year=date.today().year,
     )
 
 

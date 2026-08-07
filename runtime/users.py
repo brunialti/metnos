@@ -876,7 +876,7 @@ _SITE_STEALTH_PREF_KEYS = tuple(
     spec["preference_key"] for spec in _sites_stealth.preference_specs())
 PREF_KEYS = (
     "lang", "tone", "reply_length", "units", "sites_browser_mode",
-    "sites_stealth",
+    "sites_stealth", "sites_auto_allow_resources",
     *_SITE_STEALTH_PREF_KEYS,
 )
 PREF_ALLOWED = {
@@ -890,6 +890,14 @@ PREF_ALLOWED = {
     "sites_browser_mode": ("headless", "side"),
     # ADR 0191 P1: master stealth per-turno (opt-in, default off).
     "sites_stealth": ("on", "off"),
+    # Sblocco automatico delle risorse (6/8/2026, richiesta di Roberto:
+    # «un'opzione suicide»). Il confine di rete della sessione ammette per
+    # difetto SOLO gli host dichiarati, e abortisce il resto: e' cio' che ha reso
+    # bianca la pagina di login di Booking, che serve il proprio codice da
+    # `cf.bstatic.com`. Con questa preferenza accesa l'host bloccato viene
+    # ammesso da solo, senza chiedere niente — comodo e pericoloso, per questo
+    # e' opt-in, per utente, e ogni ammissione resta nel registro d'audit.
+    "sites_auto_allow_resources": ("on", "off"),
     # Le tecniche sono sotto-opzioni indipendenti generate dal registro
     # canonico del sidecar. Assenza = off; il master resta il ceiling utente.
     **{key: ("on", "off") for key in _SITE_STEALTH_PREF_KEYS},

@@ -21,7 +21,7 @@ en = "SCOPO: opens a persistent browser session ready for login and reading. PAT
 
 [code]
 files  = ["open_sites.py"]
-digest = "sha256:6a0b00b06ca44b11c9392244798edf78ac9c2ad7bfed46f6f59c8e76f082852b"
+digest = "sha256:47ab153190ccc7f39426b5c6eb169496958aabe143fde564ac36b50020839afa"
 
 [args]
 type     = "object"

@@ -1730,6 +1730,39 @@ def _process_resume_planner_with_dialog_values(
     return msg_out
 
 
+def _thermal_absence_message(thermal: dict, health: dict) -> str:
+    """Perche' non c'e' una temperatura, non solo che non c'e'.
+
+    Su Windows il kernel non espone la temperatura del pacchetto CPU: la
+    leggono i driver di LibreHardwareMonitor/OpenHardwareMonitor, che
+    l'executor consulta se il servizio gira o se la DLL e' indicata. Le zone
+    ACPI che restano non sono quella misura — verificato su un PC reale il
+    6/8/2026: le uniche zone esposte davano 0 K e 283 K, cioe' niente e 10 °C.
+    Senza questa riga la risposta e' vera ma cieca: «non disponibili» non
+    distingue «questa macchina non puo'» da «manca il backend», e la stessa
+    domanda torna.
+
+    Il messaggio nomina il programma e dichiara il CONFINE: quel programma e'
+    di terze parti e Metnos non lo installa per mandato — il client non cerca
+    ne' scarica binari durante un'invocazione, e la scelta di installarlo resta
+    di chi possiede la macchina (decisione di Roberto, 6/8/2026). Dire
+    «installa X» senza dire «io non lo faccio» lascerebbe credere che il
+    sistema possa arrangiarsi da solo.
+
+    Deterministico §7.9: `reason_code` dell'executor + sistema operativo
+    dichiarato dal device. Qualunque altro motivo (probe fallito, PowerShell
+    assente, output non valido) resta sul messaggio generico: la sua causa non
+    e' l'assenza di un backend, e suggerire un'installazione sarebbe una
+    diagnosi inventata.
+    """
+    reason = str((thermal or {}).get("reason_code") or "")
+    sistema = ((health or {}).get("system") or {})
+    so = str(sistema.get("os") or "").strip().lower()
+    if reason == "no_supported_sensor" and so.startswith("windows"):
+        return _msg("MSG_HEALTH_THERMAL_NO_BACKEND_WINDOWS")
+    return _msg("MSG_HEALTH_THERMAL_UNAVAILABLE")
+
+
 def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> str:
     """Rende la sezione health in 4-6 righe leggibili.
 
@@ -1906,12 +1939,12 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
         if therm_strs:
             out.append(_msg("MSG_HEALTH_THERMAL", body=" · ".join(therm_strs)))
         else:
-            out.append(_msg("MSG_HEALTH_THERMAL_UNAVAILABLE"))
+            out.append(_thermal_absence_message(thermal, h))
     elif (_keep is None or "thermal" in _keep):
         # Il device può essere raggiungibile ma non esporre sensori termici
         # (caso comune su Windows senza API/driver HW disponibili). Non
         # lasciare una risposta apparentemente vuota.
-        out.append(_msg("MSG_HEALTH_THERMAL_UNAVAILABLE"))
+        out.append(_thermal_absence_message(thermal, h))
     power = h.get("power") or {}
     if (_keep is None or "power" in _keep) and (
             power.get("available_cpu") or power.get("available_gpu")):

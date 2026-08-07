@@ -1,7 +1,10 @@
 """executor_aging.py — decay degli executor inattivi (3/5/2026).
 
 Simmetrico a `apply_ager` per i mnest (mnestoma). Ogni invocazione di un
-executor dal runtime fa `touch(name, ok)`; il task notturno `apply_executor_ager`
+executor dal runtime passa da `record_invocation(name, ok)`, che e' `touch()`
+con le due proprieta' che servono a un gancio di esercizio (niente registrazione
+sotto pytest, nessuna eccezione verso il chiamante); il task notturno
+`apply_executor_ager`
 porta gli executor inattivi a `deprecated → archived` secondo soglie:
 
   - inattivita' >= EXECUTOR_DEPRECATED_DAYS (default 30) → deprecated
@@ -20,6 +23,7 @@ Il loader (`runtime/loader.py`) consulta `executor_stats` al boot:
 """
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 from dataclasses import dataclass
@@ -28,6 +32,8 @@ from pathlib import Path
 
 import config as _C  # §7.11 — rispetta METNOS_USER_STATE
 from timefmt import now_iso_z
+
+log = logging.getLogger("metnos.executor_aging")
 
 DB_PATH = Path(
     os.environ.get(
@@ -236,6 +242,40 @@ def touch(name: str, ok: bool | None = None) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def record_invocation(name: str, ok: bool | None) -> None:
+    """Un'invocazione REALE dal runtime, dal choke-point centrale (ADR 0196).
+
+    Perche' non basta `touch()` (6/8/2026). Il gancio per-invocazione fu
+    cancellato il 4/7 con `af6c7b87` insieme al planner legacy e mai ricablato
+    in engine v3: per un mese `last_used_at` e' rimasto vuoto su 124 executor
+    su 193, mentre `apply_executor_ager` decideva le deprecazioni e
+    `change_observer` i rollback su numeri fermi. Un gancio che vive nel
+    runtime deve portarsi dietro due proprieta' che `touch()` non ha, ed e'
+    per questo che sta qui e non nel chiamante:
+
+      - NON registra sotto pytest. La suite invoca executor veri migliaia di
+        volte con casi costruiti a mano: sommarli al traffico reale falserebbe
+        l'unica misura su cui un executor viene deprecato. Stesso motivo, e
+        stessa forma, di `engine/guard_stats`.
+      - non solleva mai. Un contatore non deve far fallire l'invocazione che
+        sta contando.
+
+    Che cosa conta come chiamata: un'invocazione AMMESSA dal choke-point,
+    qualunque sia l'esito — compreso un rifiuto del runtime prima di eseguire
+    (placement, permesso negato, contesto mancante). L'instradamento a
+    quell'unita' e' avvenuto, ed e' esattamente cio' che l'aging deve vedere:
+    un executor a cui il planner arriva non e' inattivo, e deprecarlo
+    nasconderebbe una capacita' viva. `ok=None` = esito ignoto: `last_call_ok`
+    resta com'era, la chiamata conta lo stesso.
+    """
+    if not name or "PYTEST_CURRENT_TEST" in os.environ:
+        return
+    try:
+        touch(name, ok)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("executor_aging: uso di %s non registrato: %r", name, ex)
 
 
 def lookup(name: str) -> ExecutorStat | None:

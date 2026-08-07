@@ -16,5 +16,5 @@ In ogni riga copia come primo valore l'intero source_index esatto della sorgente
 Estrai tutti i record pertinenti, fino a {{ max_per_text }} per ciascuna sorgente. Se nessuna sorgente contiene record, records deve essere [] ma seen_source_indexes deve comunque contenere tutti gli indici esaminati.
 {% if instruction %}COSA estrarre: {{ instruction }}
 {% endif %}{% if datetime_fields %}Normalizza DATA/ORA ({{ datetime_fields }}) in ISO 8601 solo quando tutti i componenti sono espliciti; altrimenti conserva il valore letterale.
-{% endif %}{% if date_only_fields %}Normalizza DATA ({{ date_only_fields }}) in YYYY-MM-DD solo quando giorno, mese e anno sono espliciti; altrimenti conserva il valore letterale.
+{% endif %}{% if date_only_fields %}Normalizza DATA ({{ date_only_fields }}) in YYYY-MM-DD quando giorno, mese e anno sono espliciti. Se il testo mostra giorno e mese ma NON l'anno, usa l'anno corrente ({{ current_year }}) e premetti un asterisco: "*{{ current_year }}-MM-DD". Lascia "" solo se non si ricava nessuna data.
 {% endif %}Non lasciare records vuoto se almeno una sorgente cita una persona, organizzazione, data, importo o impegno. Output: SOLO l'oggetto JSON, senza prosa, markdown o <think>.

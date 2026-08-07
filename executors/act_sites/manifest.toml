@@ -22,7 +22,7 @@ en = "SCOPO: acts or navigates toward a goal in a web session, with confirmation
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:0dc7f25f661f7f1e3f939e5e82036f55687b8bbacb8c78ea9437111c135eba19"
+digest = "sha256:2e36536a3b5b6d7a6431548788517ba7b5aa480eb82d65b8f86b303feb165df7"
 
 [args]
 type = "object"
@@ -38,8 +38,14 @@ en = "Sessions produced by open_sites, normally via from_step. Exact IDs, never 
 [args.properties.action]
 type = "string"
 [args.properties.action.description]
-it = "Azione o fine in linguaggio naturale, senza selettori. Esempio: 'trova le fatture 2026' oppure 'compila e invia il modulo'."
-en = "Natural-language action or goal without selectors. Example: 'find the 2026 invoices' or 'fill and submit the form'."
+it = "Il FINE in linguaggio naturale, mai selettori. DEVI nominare la COSA da raggiungere, non solo il verbo: 'le mie prenotazioni', non 'vai'. DEVI dire 'mie/miei' quando la cosa sta nell'area personale: apre il menu dell'account invece di cercare in home. DEVI aggiungere il tratto che distingue, se c'e': 'passate', 'future', 'cancellate', un anno. NON DEVI nominare il sito ('su booking'): sulla sua pagina quel nome sta ovunque e non distingue niente. NON DEVI mettere due fini in una chiamata. OK: 'le mie prenotazioni future'. ERRORE: 'vai su booking e guarda'."
+en = "The GOAL in natural language, never selectors. DEVI name the THING to reach, not just the verb: 'my bookings', not 'go'. DEVI say 'my' when the thing lives in the personal area: it opens the account menu instead of searching the home page. DEVI add the distinguishing trait when there is one: 'past', 'upcoming', 'cancelled', a year. NON DEVI name the site ('on booking'): on its own pages that name is everywhere and distinguishes nothing. NON DEVI put two goals in one call. OK: 'my upcoming bookings'. ERRORE: 'go to booking and look'."
+
+[args.properties.done_when]
+type = "string"
+[args.properties.done_when.description]
+it = "Come si RICONOSCE di essere arrivati: cosa deve comparire nella pagina. Senza, si riconosce dal fine stesso, che a volte non basta. DEVI descrivere il contenuto atteso, non l'aspetto: 'l'elenco delle prenotazioni con le date', non 'la pagina giusta'. OK: done_when=\"elenco con destinazione e date\". ERRORE: done_when=\"ho finito\"."
+en = "How to RECOGNISE arrival: what must appear on the page. Without it, arrival is judged from the goal itself, which is sometimes not enough. DEVI describe the expected content, not the looks: 'the list of bookings with dates', not 'the right page'. OK: done_when=\"list with destination and dates\". ERRORE: done_when=\"I am done\"."
 
 [args.properties.value_ref]
 type = "string"

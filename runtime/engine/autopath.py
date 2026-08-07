@@ -158,6 +158,15 @@ def _conn() -> sqlite3.Connection:
             if col not in cols:
                 c.execute(f"ALTER TABLE {tab} ADD COLUMN {col} "
                           "TEXT NOT NULL DEFAULT ''")
+    # Piano GREZZO (6/8): l'uscita del proposer PRIMA della GUARD_PIPELINE.
+    # Senza, il corpus dei piani reali dice solo «la pipeline non peggiora un
+    # piano già riparato», non «questa riparazione serviva e chi la fa» — che è
+    # ciò che serve per confrontare una regola con la guardia che sostituisce.
+    # Vuoto per gli hit di cache: lì un piano grezzo non esiste. Additiva.
+    obs_cols = {r[1] for r in c.execute("PRAGMA table_info(observations)")}
+    if "framework_raw_json" not in obs_cols:
+        c.execute("ALTER TABLE observations ADD COLUMN framework_raw_json "
+                  "TEXT NOT NULL DEFAULT ''")
     # W1 learning-loop (ADR 0185): autopath SEMINATO da turni engine riusciti
     # e costosi (senza ✓ umano) = shadow=1; il primo feedback ✓ lo conferma
     # champion (la ri-promozione azzera shadow). Additiva preserva-dati.
@@ -444,11 +453,26 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
 
 def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
                         query: str = "", latency_ms: int = 0,
-                        catalog=None) -> str:
-    """Registra turno per future promote/demote."""
+                        catalog=None, framework_raw: dict | None = None) -> str:
+    """Registra turno per future promote/demote.
+
+    `framework_raw` = il piano come usciva dal proposer, PRIMA della
+    GUARD_PIPELINE, già in forma di dizionario (le guardie mutano il piano sul
+    posto: la fotografia va presa prima, non ricostruita dopo). Serve a sapere
+    che cosa ciascuna guardia ha davvero riparato: senza, il corpus contiene
+    solo piani già sani e non permette di confrontare una regola con la guardia
+    che dovrebbe sostituire. Assente per gli hit di cache — lì il piano non
+    nasce da un proposer.
+    """
     sig, ihash = _compute_intent_sig(intent)
     fhash = compute_framework_hash(framework)
     fjson = json.dumps(framework.to_dict(), ensure_ascii=False)
+    try:
+        rawjson = (json.dumps(framework_raw, ensure_ascii=False)
+                   if framework_raw is not None else "")
+    except Exception as ex:  # noqa: BLE001
+        log.warning("autopath: serializzazione del piano grezzo fallita: %r", ex)
+        rawjson = ""
     eb = _cluster.embed(query) if query else None
     cid = None
     if eb:
@@ -468,10 +492,10 @@ def record_observation(*, turn_id: str, intent: Intent, framework: Framework,
             c.execute(
                 "INSERT INTO observations(turn_id, intent_hash, intent_sig, "
                 "framework_json, framework_hash, cluster_id, embedding, "
-                "latency_ms, ts, tools_sig, pool_sig) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "latency_ms, ts, tools_sig, pool_sig, framework_raw_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (turn_id, ihash, sig, fjson, fhash, cid, eb, latency_ms, ts,
-                 _tsig, _psig))
+                 _tsig, _psig, rawjson))
             c.commit()
     except Exception as ex:
         log.warning("autopath.record_observation: %r", ex)

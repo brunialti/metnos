@@ -179,6 +179,22 @@ OPERATIONAL_ERROR_CLASSES = frozenset({
     "provider_unavailable", "service_unavailable", "exception",
     "browser_unavailable", "side_browser_unavailable", "navigation_failed",
     "index_missing", "schema_too_old",
+    # Il sidecar Playwright porta un'impronta del proprio codice: un processo
+    # avviato prima di una modifica ai moduli di confine diventa incompatibile
+    # per costruzione (`playwright_sidecar/contract.py`). E' lo stesso guasto di
+    # `sidecar_down` — un processo da riavviare — e stava fuori da questo
+    # insieme: il terminatore lo trattava come piano sbagliato e rispondeva
+    # «aggiungi dettagli concreti (percorso, nome, periodo)», cioe' chiedeva
+    # all'utente di riparare un guasto del servizio. Turno reale 71d4ac52,
+    # 6/8/2026, con il sidecar fermo dal 2/8.
+    "sidecar_contract_mismatch",
+    # Capacita' del servizio, non forma della richiesta: le sessioni browser
+    # hanno un tetto per utente (2) e uno globale (4), e scadono per inattivita'
+    # dopo 15 minuti. Chi chiede mentre il tetto e' pieno non ha scritto male
+    # la domanda — deve solo ritentare. Turno reale f50762f6, 6/8/2026: la
+    # sessione occupata era di un TEST, e l'utente ha letto «aggiungi dettagli
+    # concreti (percorso, nome, periodo)».
+    "quota_exceeded", "capacity",
 })
 
 

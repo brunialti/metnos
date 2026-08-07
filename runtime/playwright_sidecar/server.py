@@ -519,6 +519,7 @@ async def handle_session_open(request):
             stealth=(b.get("stealth") is True),
             stealth_techniques=b.get("stealth_techniques"),
             browser_mode=b.get("browser_mode", "headless"),
+            auto_allow_resources=bool(b.get("auto_allow_resources")),
             lang=b.get("lang"))
     return await _broker_call(request, _op)
 
@@ -529,7 +530,8 @@ async def handle_session_read(request):
             session_id=b.get("session_id", ""),
             owner=b.get("owner"),
             include_screenshot=bool(b.get("include_screenshot", True)),
-            include_forms=bool(b.get("include_forms", False)))
+            include_forms=bool(b.get("include_forms", False)),
+            goal=str(b.get("goal") or ""))
     return await _broker_call(request, _op)
 
 
@@ -567,7 +569,8 @@ async def handle_session_act(request):
             session_id=b.get("session_id", ""), owner=b.get("owner"),
             action=b.get("action", ""), value_ref=b.get("value_ref"),
             approval_token=b.get("approval_token"),
-            goal_query=b.get("goal_query"))
+            goal_query=b.get("goal_query"),
+            done_when=b.get("done_when"))
     return await _broker_call(request, _op)
 
 

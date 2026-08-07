@@ -1157,6 +1157,7 @@ async def admin_user_detail(request: web.Request) -> web.Response:
         stealth_options = users.sites_stealth_preference_specs()
         web_pref_keys = {
             "sites_browser_mode", "sites_stealth",
+            "sites_auto_allow_resources",
             *(item["preference_key"] for item in stealth_options),
         }
         html = render_template("user_detail.html", user=payload,
@@ -1187,14 +1188,17 @@ async def admin_user_prefs(request: web.Request) -> web.Response:
         "sites_stealth",
         *(item["preference_key"] for item in stealth_specs),
     )
-    web_keys = ("sites_browser_mode", *stealth_keys)
+    web_keys = ("sites_browser_mode", "sites_auto_allow_resources",
+                *stealth_keys)
     if data.get("_sites_web_browsing_group") == "1":
         browser_mode = str(data.get("sites_browser_mode") or "headless")
         r = users.set_pref(user_id, "sites_browser_mode", browser_mode)
         results.append(
             f"sites_browser_mode={browser_mode}" if r.get("ok")
             else f"sites_browser_mode: {r.get('error')}")
-        for key in stealth_keys:
+        # L'ordine dei primi due (modo browser, master stealth) e' parte
+        # del contratto della pagina: la nuova opzione si accoda.
+        for key in (*stealth_keys, "sites_auto_allow_resources"):
             val = "on" if data.get(key) == "on" else "off"
             r = users.set_pref(user_id, key, val)
             results.append(f"{key}={val}" if r.get("ok")

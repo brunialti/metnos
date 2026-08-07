@@ -77,6 +77,10 @@ def invoke(args: dict) -> dict:
                 "error": _msg("ERR_ARG_INVALID", arg="_browser_mode",
                               reason="headless|side"),
                 "error_class": "invalid_args", "entries": []}
+    # Sblocco automatico delle risorse: preferenza dell'utente (default off),
+    # runtime-owned come stealth e browser_mode. Il planner non puo' toccarla:
+    # un confine di rete non si decide per composizione del piano.
+    auto_allow_resources = bool(args.get("_auto_allow_resources"))
     # ADR 0191 fix #9: lingua del turno (runtime-resolved) per locale/timezone.
     lang = str(args.get("_lang") or "").strip() or None
     max_total = int(args.get("max_total") or 4)
@@ -118,7 +122,8 @@ def invoke(args: dict) -> dict:
                 task_owner_user_id=task_owner_user_id,
                 credential_mode=credential_mode, stealth=stealth,
                 stealth_techniques=stealth_techniques,
-                browser_mode=browser_mode, lang=lang)
+                browser_mode=browser_mode,
+                auto_allow_resources=auto_allow_resources, lang=lang)
             token = prepared.get("approval_token")
             if prepared.get("error_class") != "approval_required" or not token:
                 return {"ok": False,
@@ -145,6 +150,7 @@ def invoke(args: dict) -> dict:
                     "_stealth": stealth_pref,
                     "_stealth_techniques": stealth_techniques,
                     "_browser_mode": browser_mode,
+                    "_auto_allow_resources": auto_allow_resources,
                     "_lang": lang or "",
                     "_allowlist_tokens": pending_tokens,
                 }},
@@ -172,7 +178,8 @@ def invoke(args: dict) -> dict:
             task_owner_user_id=task_owner_user_id,
             credential_mode=credential_mode,
             stealth=stealth, stealth_techniques=stealth_techniques,
-            browser_mode=browser_mode, lang=lang)
+            browser_mode=browser_mode,
+            auto_allow_resources=auto_allow_resources, lang=lang)
         next_allowlist = (res.get("approved_allowlist")
                           if res.get("error_class") == "approval_required"
                           else attempt_allowlist)
@@ -202,13 +209,24 @@ def invoke(args: dict) -> dict:
             entries.append({
                 "session_id": None, "url": url, "title": "", "ok": False,
                 "reason_code": res.get("error_class") or "open_failed",
+                # Fatti diagnostici del broker (host aperti, attesa): servono a
+                # scrivere un messaggio che dica cosa sta succedendo, non solo
+                # che e' fallito. Nessun segreto: solo hostname e conteggi.
+                **{campo: res[campo] for campo in
+                   ("open_sessions", "open_hosts", "quota", "retry_after_s")
+                   if res.get(campo) is not None},
             })
 
     if pending_open:
-        # Il replay ricostruisce il vettore da zero: nessun context orfano
-        # resta aperto durante l'attesa del consenso.
+        # The replay rebuilds the vector from scratch, so no orphan context is
+        # left open while consent is awaited. Cleaning up after yourself must
+        # not destroy what you did not create: a REUSED session existed before
+        # this call and the running plan may already be acting on it. Closing
+        # it made the next step die with `session_lost` after a navigation
+        # that had actually succeeded (real turn ff47fa654af84d70, 2026-08-07).
         for entry in entries:
-            if entry.get("ok") and entry.get("session_id"):
+            if (entry.get("ok") and entry.get("session_id")
+                    and not entry.get("reused")):
                 session_client.session_close(
                     session_id=entry["session_id"], owner=owner)
         approval_dir = _ROOT / "executors" / "get_approval"
@@ -252,6 +270,19 @@ def invoke(args: dict) -> dict:
             out["error"] = _msg("MSG_SITES_RC_MANDATE_SCOPE_EXCEEDED")
         elif out["error_class"] == "side_browser_unavailable":
             out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+        elif out["error_class"] == "quota_exceeded":
+            # Dire «quota piena» senza dire quante, dove e per quanto lascia
+            # l'utente senza niente da fare. I tre fatti li abbiamo.
+            dett = next((e for e in entries
+                         if e.get("reason_code") == "quota_exceeded"), {})
+            siti = ", ".join(dett.get("open_hosts") or [])
+            minuti = max(1, int(round(int(dett.get("retry_after_s") or 0) / 60)))
+            out["error"] = (
+                _msg("MSG_SITES_RC_QUOTA_HOSTS", n=dett.get("open_sessions", 0),
+                     quota=dett.get("quota", 0), sites=siti, minutes=minuti)
+                if siti else
+                _msg("MSG_SITES_RC_QUOTA", n=dett.get("open_sessions", 0),
+                     quota=dett.get("quota", 0), minutes=minuti))
         else:
             out["error"] = _msg("ERR_OP_FAILED", reason="open_sites")
     return out

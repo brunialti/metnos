@@ -2826,6 +2826,12 @@ si sovrappone a uno MNM nei prossimi tre mesi?&raquo; viene risolta in
 sei passi: <code>read_events</code> &rarr; due <code>filter_entries</code>
 (uno per HLT, uno per MNM) &rarr;
 <code>filter_lists(op=overlap)</code> &rarr; risposta finale.
+Nell'estrazione le date escono in ISO 8601 quando giorno, mese e anno sono
+scritti nel testo. Molti siti l'anno lo omettono sulle righe recenti: in quel
+caso il valore porta l'anno corrente e un asterisco davanti
+(<code>*2026-05-29</code>), che dichiara l'anno come assunto e non letto. Il
+campo resta vuoto solo quando nessuna data e&rsquo; ricavabile: una data
+visibile non diventa mai un campo vuoto.
 </p>
 
 <p>

@@ -12,7 +12,7 @@ Presidi implementati ESATTAMENTE come da spec (zero variazione creativa):
   §3.1 FIX B — TTL in PAUSA finché `gate_pending` (attesa OTP/approvazione).
   §3.1 FIX C — timeout per-op (20s), cap contesti concorrenti (4), quota
                per-utente (2), lock per-sessione (un'op appesa non stalla le altre).
-  §3.1 FIX D — route() aborta fuori-allowlist; WebRTC neutralizzato;
+  §3.1 FIX D — route() abortisce fuori-allowlist; WebRTC neutralizzato;
                navigazione top-level data:/blob: bloccata.
   §3.2      — login delegato a credential_injection (origine verificata,
                destinazione risolta dal broker, no-segreto).
@@ -193,7 +193,10 @@ _MAX_ACTION_REPLANS = 2
 _MAX_LOGIN_ENTRY_STEPS = 4
 _MAX_PRIVACY_DISMISSALS = 2   # budget PROPRIO (non login-step): un overlay che
                              # riappare non deve affamare la navigazione login
-_MAX_GOAL_STEPS = 4
+_MAX_GOAL_STEPS = 4           # steps that MOVED something
+_MAX_GOAL_STERILE = 3         # own budget for empty steps: a click that moves
+                              # nothing must neither starve the four
+                              # exploration steps nor repeat forever
 _MAX_GOAL_CONTINUATIONS = 6
 _APPROVAL_RESULT_TTL_S = 120.0
 _DISCOVERABLE_RESOURCE_TYPES = frozenset({
@@ -851,9 +854,28 @@ def _observe_blocked_request(store: dict, host: str, resource_type: str,
         observation["parent_host"] = str(provenance["parent_host"])
 
 
+def _audit_auto_allow(ctx: dict | None, host: str, resource_type: str) -> None:
+    """Traccia la PRIMA ammissione automatica di un host.
+
+    Lo sblocco automatico toglie il gate, non la memoria: senza questa riga
+    «con chi ha parlato la sessione» diventerebbe irricostruibile proprio nel
+    modo d'uso piu' permissivo (§2.8)."""
+    try:
+        sites_audit.record("allowlist_auto_allow",
+                           owner=(ctx or {}).get("owner", ""),
+                           domain=(ctx or {}).get("domain", ""),
+                           added_host=host, resource_type=resource_type,
+                           source="user_pref_auto_allow")
+    except Exception:  # noqa: BLE001 — un audit non blocca una navigazione
+        pass
+
+
 def _make_route_guard(allowlist: set[str],
-                      blocked_requests: dict[str, dict] | None = None):
-    """Ritorna un handler `context.route` che ABORTA le richieste fuori
+                      blocked_requests: dict[str, dict] | None = None,
+                      auto_allow: bool = False,
+                      auto_allowed: set[str] | None = None,
+                      audit_ctx: dict | None = None):
+    """Ritorna un handler `context.route` che ABORTISCE le richieste fuori
     allowlist e la navigazione top-level `data:`/`blob:`.
 
     Gli host negati vengono osservati solo per una whitelist chiusa di tipi di
@@ -888,6 +910,21 @@ def _make_route_guard(allowlist: set[str],
                         _observe_blocked_request(
                             blocked_requests, host, resource_type,
                             _request_provenance(request))
+                    # Sblocco automatico (preferenza per-utente, default OFF).
+                    # L'utente ha scelto di rinunciare al gate: l'host entra
+                    # nell'allowlist VIVA della sessione — la closure osserva
+                    # lo stesso insieme — e ci resta per il resto della
+                    # sessione. Non e' silenzioso: la PRIMA ammissione di ogni
+                    # host finisce nel registro d'audit, cosi' «chi ha parlato
+                    # con chi» resta ricostruibile anche quando nessuno ha
+                    # dovuto approvare.
+                    if auto_allow and host:
+                        allowlist.add(host)
+                        if auto_allowed is not None and host not in auto_allowed:
+                            auto_allowed.add(host)
+                            _audit_auto_allow(audit_ctx, host, resource_type)
+                        await route.continue_()
+                        return
                     await route.abort()
                 return
             if scheme in ("about", "chrome-error"):
@@ -895,7 +932,7 @@ def _make_route_guard(allowlist: set[str],
             else:
                 await route.abort()
         except Exception:
-            # In dubbio: aborta (fail-closed sul confine di rete).
+            # In dubbio: abortisce (fail-closed sul confine di rete).
             try:
                 await route.abort()
             except Exception:
@@ -1080,7 +1117,8 @@ async def _reuse_compatible_session(*, owner: str, owner_user_id: str,
                 or entry.get("owner") != owner
                 or entry.get("owner_user_id") != owner_user_id
                 or entry.get("open_host") != open_host
-                or set(entry.get("allowlist") or ()) != set(allowlist)
+                or set(entry.get("allowlist_declared")
+                       or entry.get("allowlist") or ()) != set(allowlist)
                 or entry.get("label", "") != (session_label or "")
                 or entry.get("credential_mode") != credential_mode
                 or entry.get("browser_mode") != browser_mode
@@ -1128,6 +1166,7 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                   stealth: bool = False,
                   stealth_techniques=None,
                   browser_mode: str = "headless",
+                  auto_allow_resources: bool = False,
                   lang: str | None = None) -> dict:
     """Apre UNA sessione su `url` (§3.4 open_sites fa fan-out su N url).
 
@@ -1242,6 +1281,9 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
             return {"ok": False, "error": "invalid allowlist approval",
                     "error_class": "approval_invalid"}
     blocked_requests: dict[str, dict] = {}
+    # Host ammessi dallo sblocco automatico: serve solo a non ripetere
+    # la riga d'audit a ogni richiesta dello stesso host.
+    auto_allowed_hosts: set[str] = set()
     # ADR 0191 P1: il master e il ceiling delimitano l'insieme selezionato.
     # La superficie e' indipendente dalle tecniche. Solo LAUNCH sceglie la
     # variante WebDriver della superficie; CONTEXT/BEHAVIOR non la implicano.
@@ -1271,8 +1313,25 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 "error_class": "capacity"}
     owner_count = sum(1 for e in _sessions.values() if e.get("owner") == owner)
     if owner_count >= _PER_USER_QUOTA:
+        # «Quota piena» da sola non dice niente a chi legge. I fatti che
+        # servono per capire e per decidere sono tre, e li sappiamo tutti e
+        # tre: quante sessioni sono aperte, SU QUALI SITI, e fra quanto la
+        # piu' vecchia scade da sola (7/8/2026, richiesta di Roberto).
+        aperte = [e for e in _sessions.values() if e.get("owner") == owner]
+        ospiti = sorted({str(e.get("open_host") or "") for e in aperte if
+                         e.get("open_host")})
+        try:
+            attesa = max(0, int(min(
+                (_TTL_IDLE_S - (time.time() - float(e.get("last_used") or 0))
+                 for e in aperte), default=0)))
+        except Exception:  # noqa: BLE001 — un conto approssimato non blocca
+            attesa = 0
         return {"ok": False, "error": "per-user session quota reached",
-                "error_class": "quota_exceeded"}
+                "error_class": "quota_exceeded",
+                "open_sessions": len(aperte), "open_hosts": ospiti[:4],
+                "quota": _PER_USER_QUOTA,
+                "idle_release_s": int(_TTL_IDLE_S),
+                "retry_after_s": attesa}
     try:
         browser = await _browser_provider(
             browser_mode,
@@ -1297,7 +1356,12 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
                 techniques=effective_techniques):
             await context.add_init_script(_js)
         await context.route(
-            "**/*", _make_route_guard(allowlist, blocked_requests))
+            "**/*", _make_route_guard(
+                allowlist, blocked_requests,
+                auto_allow=bool(auto_allow_resources),
+                auto_allowed=auto_allowed_hosts,
+                audit_ctx={"owner": owner, "domain": _canonical_host(
+                    _host_of_url(url)), "session_label": session_label}))
         if hasattr(context, "route_web_socket"):
             async def _ws_guard(ws):
                 host = _host_of_url(ws.url)
@@ -1408,6 +1472,19 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         _host_of_url(url))
     _sessions[session_id] = {
         "context": context, "page": page, "allowlist": allowlist,
+        # Confine DICHIARATO all'apertura, congelato. `allowlist` e' il
+        # set VIVO che il guardiano muta quando lo sblocco automatico
+        # ammette un host: confrontare quello per il riuso significava
+        # non riusare mai piu' una sessione appena un asset veniva
+        # ammesso — e la richiesta successiva sbatteva nella quota
+        # (turno reale cfc1b52e, 7/8/2026).
+        "allowlist_declared": frozenset(allowlist),
+        # Pre-autorizzazione esplicita dell'utente (preferenza «sblocco
+        # automatico»): vale per la sessione, non oltre.
+        "auto_allow": bool(auto_allow_resources),
+        # Consensi gia dati in QUESTA sessione, per destinazione: chi ha
+        # appena detto «vai» a un posto non deve ridirlo per quel posto.
+        "approved_destinations": set(),
         # ADR 0191 P1: surface owner-bound + selezione FISSATA all'open per tutta
         # la sessione (il replay gate la riusa, non la ricalcola).
         "surface": browser_surface.PlaywrightSurface(
@@ -1489,7 +1566,8 @@ async def _capture_screenshot(entry: dict) -> str | None:
 
 async def op_read(*, session_id: str, owner: str | None = None,
                   include_screenshot: bool = True,
-                  include_forms: bool = False) -> dict:
+                  include_forms: bool = False,
+                  goal: str = "") -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error": validation_error,
@@ -1497,13 +1575,67 @@ async def op_read(*, session_id: str, owner: str | None = None,
     async with entry["lock"]:
         try:
             return await asyncio.wait_for(
-                _read_impl(entry, session_id, include_screenshot, include_forms),
+                _read_impl(entry, session_id, include_screenshot,
+                           include_forms, goal=goal),
                 timeout=_OP_TIMEOUT_S)
         except asyncio.TimeoutError:
             return {"ok": False, "error": "read timeout", "error_class": "timeout"}
 
 
-async def _read_impl(entry, session_id, include_screenshot, include_forms) -> dict:
+# Quante righe estranee si attraversano prima di considerare finita la
+# parte di pagina che riguarda il fine: fra due voci di un elenco ce ne
+# stanno una o due; fra l'elenco e il piede, decine.
+_MAX_VUOTO_TRATTO = 6
+# Quanto si aspetta che una pagina finisca di caricare prima di leggerla.
+_ATTESA_CARICAMENTO_S = 8.0
+
+
+def _goal_text_span(testo: str, goal: str, *, max_char: int = 1800) -> str:
+    """Il tratto di pagina che riguarda il fine: dalla prima all'ultima riga.
+
+    Perche' non i «blocchi di contenuto» (l'estrattore che serve a decidere se
+    il fine e' raggiunto): quello scarta per costruzione link e pulsanti, e un
+    elenco di prenotazioni E' fatto di link — misurato il 7/8/2026, restituiva
+    una riga su undici. E perche' non il testo pieno: sono per due terzi menu e
+    piede, cioe' il traboccamento che l'utente ha visto.
+
+    La regola e' una sola e non conosce siti: si prende dalla PRIMA riga che
+    tocca il fine all'ULTIMA che lo tocca, tenendo tutto ciò che sta in mezzo —
+    le righe interne (una citta', una data) non contengono la parola del fine
+    ma sono la risposta. Fuori restano l'intestazione e il piede, che il fine
+    non tocca. Tetto di caratteri dichiarato dal chiamante (§2.7).
+    """
+    # A movement verb ("go", "open") is how the request is phrased, not what
+    # is being looked for: without dropping it the span used to start at "Skip
+    # to main content", the first link of every accessible page in the world.
+    # `goal_tokens` now drops it for everyone (verbs are goal noise), so it is
+    # not redone by hand here: one single definition of what a token is.
+    voluti = set(action_resolver.goal_tokens(goal, navigation=True))
+    if not voluti:
+        return ""
+    righe = [r.strip() for r in str(testo or "").splitlines()]
+    toccate = [i for i, r in enumerate(righe)
+               if r and (voluti & set(
+                   action_resolver.goal_tokens(r, navigation=True)))]
+    if not toccate:
+        return ""
+    # Il tratto e' una CATENA, non un intervallo: si prosegue finche' i punti
+    # che toccano il fine restano vicini. Un piede di pagina che nomina i
+    # «viaggi» combacia col fine ma sta venti righe dopo l'ultima prenotazione:
+    # con l'intervallo secco ci finiva dentro mezzo sito (7/8/2026).
+    fine_catena = toccate[0]
+    for precedente, successivo in zip(toccate, toccate[1:]):
+        if successivo - precedente > _MAX_VUOTO_TRATTO:
+            break
+        fine_catena = successivo
+    else:
+        fine_catena = toccate[-1]
+    tratto = [r for r in righe[toccate[0]:fine_catena + 1] if r]
+    return "\n".join(tratto)[:max_char]
+
+
+async def _read_impl(entry, session_id, include_screenshot, include_forms,
+                     goal: str = "") -> dict:
     page = entry["page"]
     entry["web_content_ingested"] = True
     await _touch(entry)
@@ -1536,6 +1668,26 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms) -> di
         "ok": True, "session_id": session_id, "url": scrub_url(page.url),
         "title": title, "text": text, "sensitive": sensitive,
     }
+    if goal:
+        # Leggere mentre la pagina carica restituisce «Caricamento…» al posto
+        # del dato: il marcatore e' nel lessico (concetto `sites.loading_marker`)
+        # e vale per ogni lingua e ogni sito. Attesa BOUNDED, poi si legge
+        # comunque cio' che c'e' — mai un blocco.
+        scaduta = time.time() + _ATTESA_CARICAMENTO_S
+        marcatori = tuple(action_resolver.loading_marker_forms())
+        while marcatori and time.time() < scaduta:
+            minuscolo = text.lower()
+            if not any(m in minuscolo for m in marcatori):
+                break
+            try:
+                await page.wait_for_timeout(400)
+                text = await page.locator("body").inner_text(timeout=3000)
+            except Exception:  # noqa: BLE001
+                break
+        out["text"] = text
+        tratto = _goal_text_span(text, goal)
+        if tratto:
+            out["goal_span"] = tratto
     if collected:
         out["collected_page_count"] = len(collected) + 1
     if include_forms:
@@ -1608,6 +1760,18 @@ async def op_login(*, session_id: str, owner: str | None = None,
                     "reason_code": "approval_pending",
                     "session_id": session_id}
         await _touch(entry)
+        # Un login e' uno STATO, non un'azione: se lo stato c'e' gia',
+        # l'operazione e' gia' riuscita. Senza questa riga una sessione
+        # autenticata e riusata rientrava nella macchina di accesso, cercava un
+        # modulo che non c'e' — perche' l'utente e' dentro — e rispondeva «non
+        # ho trovato un modulo di login», chiudendo il turno su un successo
+        # (turno reale e43fefafb0a6463e, 7/8/2026). Il flag lo scrive solo un
+        # login verificato di questo processo, e il riuso di sessione lo
+        # pretende: non e' una supposizione.
+        if entry.get("authenticated"):
+            return {"ok": True, "logged_in": True,
+                    "reason_code": "already_authenticated",
+                    "session_id": session_id}
         entry["_sid"] = session_id
         flow = entry.get("login_flow")
         if (not isinstance(flow, dict) or flow.get("domain") != dom
@@ -1902,6 +2066,22 @@ def _page_signature(url: str) -> str:
     return hashlib.sha256((url or "").encode("utf-8")).hexdigest()
 
 
+def _goal_state_signature(url: str, candidates: list[dict]) -> str:
+    """What the pilot can observe from here: the place and the open controls.
+
+    It tells a step that moved something from an empty one. The place alone
+    would not do: revealing the account menu does NOT change the URL and is
+    real progress (real turn 2026-08-07, where that step opens the only way
+    into the personal area). The controls alone would not do either: two
+    different pages can expose the same menu.
+    """
+    posto = action_resolver.url_place_key(url)
+    controlli = sorted(
+        action_resolver.goal_candidate_key(item) for item in candidates)
+    return hashlib.sha256(
+        "\0".join([posto, *controlli]).encode("utf-8")).hexdigest()
+
+
 def _action_destination(primitive: str, target: str,
                         candidate: dict | None) -> tuple[str, str]:
     """Ritorna ``(url_redatto, host_esatto)`` per una possibile navigazione.
@@ -2107,9 +2287,14 @@ async def _page_satisfies_goal(entry: dict, target: str,
     except Exception:
         return False
     scope = scrub_url(entry["page"].url)
+    # Which state facets this page OFFERS as a control: that is what tells
+    # "I still have to press Past" from "here the upcoming ones have no name,
+    # only dates".
+    facce_offerte = action_resolver.offered_facet_tokens(candidates)
     if (isinstance(evidence, list)
             and action_resolver.page_satisfies_goal(
-                target, evidence, scope_text=scope)):
+                target, evidence, scope_text=scope,
+                facets_offered=facce_offerte)):
         return True
     interactive_labels = {
         action_resolver.normalize(str(
@@ -2135,7 +2320,8 @@ async def _page_satisfies_goal(entry: dict, target: str,
         if active_label:
             filtered_lines.append(active_label)
     return action_resolver.page_satisfies_goal(
-        target, filtered_lines, scope_text=scope)
+        target, filtered_lines, scope_text=scope,
+        facets_offered=facce_offerte)
 
 
 async def _goal_content_signature(entry: dict) -> str:
@@ -2645,6 +2831,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             entry.pop("collected_pages", None)
             flow = {"started": time.time(), "steps": 0, "approved": False,
                     "visited": set(), "history": [], "continuations": 0,
+                    "sterile": 0, "last_state": "",
                     "continuation_exhausted": set(),
                     "content_signatures": set(),
                     "collection": action_resolver.is_collection_search_request(
@@ -2654,14 +2841,38 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             flows[goal_flow_key] = flow
         elif action_resolver.is_collection_search_request(action):
             flow["collection"] = True
-        flow_steps = int(flow.get("steps", 0))
-        at_goal_limit = flow_steps >= _MAX_GOAL_STEPS
         candidates = await _enumerate_candidates(entry["page"])
+        url_corrente = getattr(entry.get("page"), "url", "") or ""
+        # The budget is spent on PROGRESS, not on attempts. If after a
+        # navigation exactly the previous state is observed, that step moved
+        # nothing: it does not consume one of the four exploration steps, but
+        # draws on a ceiling of its own, because not even nothing may repeat
+        # forever. The candidate that led nowhere is already among the
+        # visited ones, so it will not be picked again.
+        stato = _goal_state_signature(url_corrente, candidates)
+        if (flow.pop("navigazione_da_verificare", False)
+                and stato == flow.get("last_state")):
+            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
+            flow["sterile"] = int(flow.get("sterile", 0)) + 1
+        flow["last_state"] = stato
+        flow_steps = int(flow.get("steps", 0))
+        at_goal_limit = (flow_steps >= _MAX_GOAL_STEPS
+                         or int(flow.get("sterile", 0)) >= _MAX_GOAL_STERILE)
         excluded = set(flow.get("visited") or ())
+        # The place already occupied is not a destination: a link leading back
+        # here is not an exploration step. Derived on every pass rather than
+        # stored once, so it holds after a reload too — which clears the
+        # visited set without moving the pilot.
+        posto_corrente = action_resolver.url_place_key(url_corrente)
+        if posto_corrente:
+            excluded.add(posto_corrente)
+        # Il sito su cui siamo: serve a sapere se il fine distingue qualcosa
+        # qui dentro (un fine che coincide col nome del sito non distingue).
+        sito_corrente = _host_of_url(url_corrente)
         chosen = ({"ok": False, "error_class": "goal_step_limit"}
                   if at_goal_limit else action_resolver.choose_goal_candidate(
                       parsed.get("target", ""), candidates,
-                      excluded=excluded))
+                      excluded=excluded, site_host=sito_corrente))
         if not at_goal_limit and not chosen.get("ok"):
             scroll = action_resolver.choose_goal_scroll_candidate(
                 parsed.get("target", ""), candidates, excluded=excluded)
@@ -2670,16 +2881,25 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 candidates = await _enumerate_candidates(entry["page"])
                 chosen = action_resolver.choose_goal_candidate(
                     parsed.get("target", ""), candidates,
-                    excluded=excluded)
+                    excluded=excluded, site_host=sito_corrente)
+        # Il canale STRUTTURALE (aprire l'area personale) non e' un ripiego di
+        # cortesia riservato al primo passo: e' la mossa GIUSTA ogni volta che
+        # la classifica testuale non puo' decidere — perche' ha fallito, o
+        # perche' il fine non discrimina su questo sito. Limitarlo a
+        # `flow_steps == 0` lo rendeva irraggiungibile proprio dove serviva:
+        # al passo 0 vinceva il logo, e dal passo 1 in poi nessuno lo chiedeva
+        # piu' (turno reale 7/8/2026, quattro passi spesi per restare fermi).
         if (not at_goal_limit and not chosen.get("ok")
-                and entry.get("authenticated") and flow_steps == 0):
+                and entry.get("authenticated")):
             chosen = action_resolver.choose_authenticated_reveal_candidate(
-                candidates, excluded=excluded)
+                candidates, excluded=excluded,
+                account_only=flow_steps > 0)
         # Il contenitore puo' essere gia' la pagina corrente (URL diretto o
         # landing utile): verificare prima evita click artificiali. La prova
         # esclude i soli label interattivi, quindi un menu omonimo non basta.
         goal_satisfied = await _page_satisfies_goal(
-            entry, parsed.get("target", ""), candidates)
+            entry, entry.get("goal_done_when") or parsed.get("target", ""),
+            candidates)
         continuation = {"ok": False, "error_class": "selector_missing"}
         if goal_satisfied:
             continuation_excluded = set(
@@ -2971,6 +3191,53 @@ def _mandate_goal_matches(binding: dict, plan: dict) -> bool:
     query_tokens = set(action_resolver.goal_tokens(
         str(binding.get("query") or ""), navigation=True))
     return bool(target_tokens and target_tokens & query_tokens)
+
+
+_MOTIVI_NAVIGAZIONE = frozenset({
+    "navigation", "navigation_or_submit", "tainted_turn", "low_confidence",
+    "reveal_target", "allowlist_extension", "blocked_resources",
+})
+
+
+def _destinazione_di(plan: dict) -> str:
+    """Identita stabile del posto dove un piano porta: schema, host, percorso.
+
+    I parametri di query non fanno identita — Booking li riemette in ordine
+    diverso fra due render, e un consenso ricordato su quella stringa non
+    varrebbe mai due volte.
+    """
+    grezzo = str(plan.get("destination_url") or plan.get("target") or "")
+    if not grezzo:
+        return ""
+    try:
+        parti = urllib.parse.urlsplit(grezzo)
+    except ValueError:
+        return ""
+    if not parti.hostname:
+        return ""
+    return f"{parti.scheme.lower()}://{parti.hostname.lower()}{parti.path or '/'}"
+
+
+def _navigazione_preautorizzata(entry: dict, plan: dict) -> bool:
+    """Il consenso c'e gia: dato prima dall'utente, o dato qui poco fa.
+
+    Vale SOLO per la navigazione: i motivi di sensibilita del piano devono
+    stare tutti dentro la famiglia «mi sposto / rivelo un menu / ammetto una
+    risorsa». Un invio di modulo, una compilazione di credenziali o un
+    download non sono navigazione e continuano a chiedere — lo switch si
+    chiama suicida, non cieco.
+    """
+    motivi = set(plan.get("sensitivity_reasons") or ())
+    if not motivi <= _MOTIVI_NAVIGAZIONE:
+        return False
+    candidato = plan.get("candidate") or {}
+    if str(candidato.get("form_method") or "").upper() == "POST":
+        return False
+    if entry.get("auto_allow"):
+        return True
+    destinazione = _destinazione_di(plan)
+    return bool(destinazione
+                and destinazione in (entry.get("approved_destinations") or set()))
 
 
 def _mandate_allows_plan(entry: dict, plan: dict) -> bool:
@@ -3569,6 +3836,14 @@ def _browser_navigation_failure(url: str) -> str:
 
 
 async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
+    # Un consenso appena dato vale per QUESTA sessione e per QUEL posto: se il
+    # flusso ci ripassa (una riosservazione, un secondo passo che rientra),
+    # non si richiede all'utente cio' che ha appena concesso. La memoria muore
+    # con la sessione, e non copre nulla che non sia navigazione.
+    if not plan.get("_ripreso"):
+        destinazione = _destinazione_di(plan)
+        if destinazione and set(plan.get("sensitivity_reasons") or ()) <= _MOTIVI_NAVIGAZIONE:
+            entry.setdefault("approved_destinations", set()).add(destinazione)
     page = entry["page"]
     primitive = plan["primitive"]
     candidate = plan.get("candidate")
@@ -3908,8 +4183,21 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             goal_flow.setdefault("approval_source", "action")
         if plan.get("kind") == "goal_navigation":
             goal_flow["steps"] = int(goal_flow.get("steps", 0)) + 1
+            # The step is counted now, but it only counts if it moved
+            # something: the proof is read at the next observation, where the
+            # page controls are already enumerated and measuring costs
+            # nothing.
+            goal_flow["navigazione_da_verificare"] = True
             visited = goal_flow.setdefault("visited", set())
-            visited.add(action_resolver.goal_candidate_key(candidate or {}))
+            # Si segna il POSTO, non l'etichetta dell'elemento: la seconda
+            # cambia fra due render dello stesso link, il primo no. E si segna
+            # anche dove si e' arrivati, cosi' un collegamento che riporta
+            # indietro e' escluso senza doverlo riconoscere dal nome.
+            visited.add(action_resolver.goal_place_key(candidate or {}))
+            arrivo = action_resolver.url_place_key(
+                getattr(entry.get("page"), "url", "") or "")
+            if arrivo:
+                visited.add(arrivo)
             goal_flow.setdefault("history", []).append(str(
                 (candidate or {}).get("name")
                 or (candidate or {}).get("label") or "")[:160])
@@ -3989,6 +4277,15 @@ async def _handle_prepared_action(entry: dict, session_id: str, action: str,
     credential_scoped = isinstance(entry.get("credential_mandate"), dict)
     mandated = ((task_scoped or credential_scoped)
                 and _mandate_allows_plan(entry, plan))
+    # Due modi, entrambi dell'utente, di non farsi chiedere la stessa cosa:
+    #  - la pre-autorizzazione esplicita (preferenza «sblocco automatico», che
+    #    il proprietario ha chiesto valga anche per il consenso, non solo per
+    #    le risorse di rete);
+    #  - il consenso GIA dato in questa sessione per la stessa destinazione.
+    # Restano fuori per costruzione le cose che non sono navigazione: invio di
+    # modulo, compilazione di credenziali, download.
+    if not mandated and _navigazione_preautorizzata(entry, plan):
+        mandated = True
     if task_scoped and not mandated:
         entry.get("pending_actions", {}).pop(token, None)
         entry["gate_pending"] = False
@@ -4114,7 +4411,8 @@ async def _with_action_failure_evidence(entry: dict, result: dict) -> dict:
 async def op_act(*, session_id: str, owner: str | None, action: str,
                  value_ref: str | None = None,
                  approval_token: str | None = None,
-                 goal_query: str | None = None) -> dict:
+                 goal_query: str | None = None,
+                 done_when: str | None = None) -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error_class": validation_error}
@@ -4180,6 +4478,13 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
             if not goal_target:
                 return await _with_action_failure_evidence(
                     entry, {"ok": False, "error_class": "goal_unresolved"})
+        # Come si riconosce l'ARRIVO. Il fine dice dove andare; questo dice
+        # quando si e' arrivati, e sono due cose diverse: «le mie prenotazioni»
+        # nomina un posto, «l'elenco con destinazione e date» descrive cio' che
+        # deve comparire. Senza dichiarazione resta il fine a fare da criterio,
+        # che e' il comportamento di prima.
+        entry["goal_done_when"] = (done_when.strip()
+                                   if isinstance(done_when, str) else "")
         prepare_kwargs = ({"goal_target": goal_target}
                           if goal_target else {})
         prepared = await _prepare_action_with_resource_fallback(

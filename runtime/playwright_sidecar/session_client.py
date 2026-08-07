@@ -101,6 +101,7 @@ def session_open(*, owner: str, url: str, allowlist=None,
                  stealth: bool = False,
                  stealth_techniques: list[str] | None = None,
                  browser_mode: str = "headless",
+                 auto_allow_resources: bool = False,
                  lang: str | None = None,
                  **kw) -> dict:
     return _post("/session/open", {"owner": owner, "url": url,
@@ -115,13 +116,16 @@ def session_open(*, owner: str, url: str, allowlist=None,
                                    "stealth_techniques": (
                                        list(stealth_techniques or [])),
                                    "browser_mode": browser_mode,
+                                   "auto_allow_resources": bool(
+                                       auto_allow_resources),
                                    "lang": lang}, **kw)
 
 
 def session_read(*, session_id: str, owner: str | None = None,
                  include_screenshot: bool = True,
-                 include_forms: bool = False, **kw) -> dict:
+                 include_forms: bool = False, goal: str = "", **kw) -> dict:
     return _post("/session/read", {"session_id": session_id, "owner": owner,
+                                   "goal": goal,
                                    "include_screenshot": include_screenshot,
                                    "include_forms": include_forms}, **kw)
 
@@ -155,11 +159,12 @@ def session_close(*, session_id: str | None = None, owner: str | None = None,
 def session_act(*, session_id: str, owner: str, action: str,
                 value_ref: str | None = None,
                 approval_token: str | None = None,
-                goal_query: str | None = None, **kw) -> dict:
+                goal_query: str | None = None,
+                done_when: str | None = None, **kw) -> dict:
     return _post("/session/act", {
         "session_id": session_id, "owner": owner, "action": action,
         "value_ref": value_ref, "approval_token": approval_token,
-        "goal_query": goal_query,
+        "goal_query": goal_query, "done_when": done_when,
     }, **kw)
 
 

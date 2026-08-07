@@ -150,6 +150,35 @@ def required_source_context_fields(
     return sorted(missing)
 
 
+def carries_upstream_payload(args: dict | None) -> bool:
+    """Return whether these arguments already carry a producer's list payload.
+
+    ``from_step`` before resolution and ``entries`` after it are the two forms
+    of the same fact: this step reads what an earlier one produced.
+    """
+    if not isinstance(args, dict):
+        return False
+    step = args.get("from_step")
+    if isinstance(step, int) and not isinstance(step, bool) and step >= 1:
+        return True
+    return _is_provided(args.get("entries"))
+
+
+def projection_can_fill(consumer_schema: dict | None, arg_names) -> bool:
+    """Return whether projection could fill at least one of these arguments.
+
+    The vector payload always lands in an array property, so a disjunction that
+    contains one is satisfiable by piping alone and must not be rejected before
+    the producer has run.  A scalar-only disjunction is not: scalar context is
+    projected only when every source entry agrees, and its absence is reported
+    by :func:`required_source_context_fields` with a message of its own.
+    """
+    properties = _properties(consumer_schema)
+    if not properties:
+        return False
+    return any(_is_array_property(properties.get(name)) for name in arg_names)
+
+
 def consumer_match_arg(consumer_schema: dict | None,
                        entries: list) -> str | None:
     """Return the natural array argument for a list payload.

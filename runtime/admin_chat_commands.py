@@ -20,12 +20,33 @@ Determinismo §7.9: niente LLM. Solo dispatch tabellare.
 """
 from __future__ import annotations
 
+import re as _re
 from typing import Optional
 
 from messages import get as _msg  # §11 i18n
 
 
 PREFIX = "/admin"
+
+
+# Un comando ha una FORMA: prima parola `/parola`, senza altre barre e senza
+# punti. Serve a distinguerlo da un percorso assoluto — «/opt/metnos quanto
+# pesa?» e' una domanda, «/clear» no — senza dover elencare i comandi che
+# vivono nel client web (7/8/2026: il Tutor, che gira PRIMA del runtime, si
+# prendeva tutti i comandi non elencati qui e rispondeva «non ho una guida»).
+_FORMA_COMANDO = _re.compile(r"^/(?:\?|[a-z][a-z0-9_-]*)$")
+
+
+def is_command_shape(query: str) -> bool:
+    """True se la query E' un comando, anche se non lo conosciamo.
+
+    Chi non lo conosce risponde onestamente «ecco quelli che esistono»: e'
+    sempre meglio di un piano inventato dal planner o di una spiegazione del
+    Tutor costruita su una barra."""
+    if not isinstance(query, str):
+        return False
+    primo = query.strip().split(" ", 1)[0].lower()
+    return bool(_FORMA_COMANDO.match(primo))
 
 
 def matches(query: str) -> bool:
@@ -52,6 +73,11 @@ def dispatch(query: str, *,
     Ritorna stringa finale per la chat. None se la query non matcha.
     """
     if not matches(query):
+        # Forma di comando ma non nostro: o vive solo nel client web
+        # (`/clear`, `/reload`), o non esiste. In entrambi i casi la risposta
+        # onesta e' l'elenco di cio' che esiste (§2.8).
+        if is_command_shape(query):
+            return _global_help(actor=actor)
         return None
     q = query.strip()
     qlow = q.lower()

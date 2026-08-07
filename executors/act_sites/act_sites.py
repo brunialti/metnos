@@ -17,6 +17,8 @@ for p in (_RT, str(_ROOT / "executors" / "get_approval")):
 from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
+from playwright_sidecar.action_resolver import (  # noqa: E402
+    is_goal_navigation_request)
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -39,6 +41,12 @@ def _attachment(path: str, sensitive: bool) -> dict:
             "sensitive": sensitive}
 
 
+# Quanto testo della pagina d'arrivo entra nella risposta: abbastanza per
+# rispondere, non tanto da diventare un allegato mascherato (§2.7: oltre,
+# si dichiara il troncamento).
+_MAX_TESTO_ARRIVO = 4000
+
+
 def invoke(args: dict) -> dict:
     owner = os.environ.get("METNOS_ACTOR") or "host"
     channel = os.environ.get("METNOS_CHANNEL") or ""
@@ -51,6 +59,10 @@ def invoke(args: dict) -> dict:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="action"),
                 "error_class": "invalid_args", "results": []}
     goal_mode = args.get("_goal_mode") is True
+    # Come si riconosce l'arrivo. Se il planner non lo dichiara, resta il fine
+    # stesso a fare da criterio: e' il comportamento di prima, non un blocco.
+    done_when = args.get("done_when")
+    done_when = done_when.strip() if isinstance(done_when, str) else ""
     value_ref = args.get("value_ref")
     approval_tokens = args.get("approval_tokens") or {}
     if not isinstance(approval_tokens, dict):
@@ -63,7 +75,8 @@ def invoke(args: dict) -> dict:
         res = session_client.session_act(
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
             approval_token=approval_tokens.get(sid),
-            goal_query=(action if goal_mode else None))
+            goal_query=(action if goal_mode else None),
+            done_when=done_when or None)
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -72,10 +85,45 @@ def invoke(args: dict) -> dict:
             if shot:
                 attachments.append(_attachment(shot, bool(res.get("sensitive"))))
             continue
+        # ARRIVARE NON E' MOSTRARE. Una navigazione a obiettivo che riesce ha
+        # portato la sessione DOVE l'utente voleva guardare: fermarsi a
+        # «azione completata» significa rispondere «fatto» a chi aveva chiesto
+        # di vedere (§2.8). Il contenuto si prende dalla stessa sessione, con
+        # la stessa autorita' e senza screenshot: lo screenshot redatto e la
+        # galleria restano mestiere di `read_sites`, che qui non si duplica.
+        # Il marcatore `_goal_mode` lo mette il motore solo per certe
+        # richieste, ma la navigazione a obiettivo parte anche senza — la
+        # decide il testo dell'azione, con lo STESSO predicato che usa il
+        # broker. Legare la lettura al marcatore lasciava senza contenuto
+        # proprio i turni piu' comuni.
+        arrivo = {}
+        if res.get("ok") and (goal_mode or is_goal_navigation_request(action)):
+            try:
+                letto = session_client.session_read(
+                    session_id=sid, owner=owner, include_screenshot=False,
+                    goal=(done_when or action))
+                if letto.get("ok"):
+                    # I blocchi che riguardano il fine sono la risposta; il
+                    # corpo intero e' il ripiego quando il fine non seleziona
+                    # niente. Riversare la pagina non e' rispondere.
+                    tratto = str(letto.get("goal_span") or "")
+                    testo = tratto or str(letto.get("text") or "")
+                    arrivo = {"url": letto.get("url") or res.get("url"),
+                              "title": letto.get("title") or "",
+                              "text": testo[:_MAX_TESTO_ARRIVO]}
+                    if len(testo) > _MAX_TESTO_ARRIVO:
+                        arrivo["truncated"] = True
+                        arrivo["truncated_what"] = "text"
+                        arrivo["used"] = _MAX_TESTO_ARRIVO
+                        arrivo["available_total"] = len(testo)
+            except Exception:
+                arrivo = {}          # la lettura e' un di piu': mai un blocco
         results.append({
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
-            "primitive": res.get("primitive"), "url": res.get("url"),
+            "primitive": res.get("primitive"),
+            "url": arrivo.get("url") or res.get("url"),
+            **({k: v for k, v in arrivo.items() if k != "url"} if arrivo else {}),
             "reason_code": (None if res.get("ok") else
                             res.get("reason_code") or res.get("error_class")),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
@@ -102,6 +150,7 @@ def invoke(args: dict) -> dict:
             "on_approve": {"tool": "act_sites", "args": {
                 "session_ids": list(tokens), "action": action,
                 "approval_tokens": tokens,
+                **({"done_when": done_when} if done_when else {}),
                 **({"_goal_mode": True} if goal_mode else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
             }},
@@ -121,9 +170,21 @@ def invoke(args: dict) -> dict:
     if attachments:
         out["attachments"] = attachments
     if ok:
-        out["final_message_hint"] = _msg(
-            "MSG_SITES_ACTIONS_COMPLETED",
-            n=out["metadata"]["executed"])
+        # Se la navigazione ha portato del contenuto, il contenuto E' la
+        # risposta: «azioni completate: 1» sarebbe una ricevuta al posto di
+        # cio' che l'utente aveva chiesto di vedere.
+        arrivato = next((r for r in results if r.get("text")), None)
+        if arrivato:
+            out["final_message_hint"] = arrivato["text"]
+            if arrivato.get("truncated"):
+                out["truncated"] = True
+                out["truncated_what"] = arrivato.get("truncated_what")
+                out["used"] = arrivato.get("used")
+                out["available_total"] = arrivato.get("available_total")
+        else:
+            out["final_message_hint"] = _msg(
+                "MSG_SITES_ACTIONS_COMPLETED",
+                n=out["metadata"]["executed"])
     else:
         out["error_class"] = next((r["reason_code"] for r in results
                                    if r["reason_code"]), "action_failed")
@@ -133,6 +194,21 @@ def invoke(args: dict) -> dict:
             out["error"] = _msg("MSG_SITES_RC_UNAVAILABLE")
         elif out["error_class"] == "side_browser_unavailable":
             out["error"] = _msg("MSG_SITES_RC_SIDE_BROWSER_UNAVAILABLE")
+        elif out["error_class"] == "selector_ambiguous":
+            # Il broker rifiuta di INDOVINARE fra piu' elementi equivalenti, ed
+            # e' giusto cosi'. Ma i candidati li ha gia' in mano
+            # (`observed_candidates`: nome, ruolo, punteggio): tacerli lascia
+            # l'utente davanti a «operazione fallita» senza sapere che la
+            # scelta e' sua e quale sia. Qui si nominano, bounded.
+            nomi = []
+            for riga in results:
+                for candidato in (riga.get("observed_candidates") or [])[:5]:
+                    nome = str(candidato.get("name") or "").strip()
+                    if nome and nome not in nomi:
+                        nomi.append(nome)
+            out["error"] = (_msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS_LIST",
+                                 candidates=", ".join(f"«{n}»" for n in nomi[:5]))
+                            if nomi else _msg("MSG_SITES_RC_SELECTOR_AMBIGUOUS"))
         else:
             out["error"] = _msg("ERR_OP_FAILED", reason="act_sites")
         if str(out["error"]).startswith("<missing:"):

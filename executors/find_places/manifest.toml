@@ -27,7 +27,7 @@ en = "SCOPO: find real-world places by text query or coordinates. PATTERN: find_
 
 [code]
 files  = ["find_places.py"]
-digest = "sha256:481471157e35dfd2f5991ce08168832c4c32ebad0fbf0b9ba9d7d303608eca74"
+digest = "sha256:0ea5a5a6e7abb8130aac7784407f48285dfcc14aa03b203d46ad50c70fa8202c"
 
 [args]
 type     = "object"
@@ -79,16 +79,14 @@ schema_inline = """
   ok_count: int,
   fail_count: int,
   entries: Array<{
-    query: str,
-    matches: Array<{
-      name: str | null,
-      lat: float, lon: float,
-      address: str,
-      place_slug: str,
-      osm_type: str | null,
-      osm_id: int | null,
-      distance_km?: float
-    }>
+    name: str | null,
+    lat: float, lon: float,
+    address: str,
+    place_slug: str,
+    osm_type: str | null,
+    osm_id: int | null,
+    distance_km?: float,
+    query: str
   }>,
   failed: Array<{
     index: int, query: str | null,
@@ -104,9 +102,14 @@ default_view = "list"
 
 [presentation.list]
 mode = "table"
+# Le colonne seguono la forma PIATTA delle entries: una riga per luogo. Le
+# due colonne precedenti (`query`, `matches`) erano rimaste della forma
+# annidata, ritirata dal codice: la tabella mostrava il termine cercato e una
+# cella vuota per ogni risultato trovato.
 columns = [
-  { key = "query", source = "query", cell_max = 160 },
-  { key = "matches", source = "matches", cell_max = 240 },
+  { key = "name", source = "name", cell_max = 160 },
+  { key = "address", source = "address", cell_max = 240 },
+  { key = "distance_km", source = "distance_km", cell_max = 24 },
 ]
 max_rows = 200
 max_chars = 16000

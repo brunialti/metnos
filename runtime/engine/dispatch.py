@@ -685,14 +685,9 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         prod_1b = pi + 1          # indice 1-based del produttore
         k = prod_1b + 1           # indice 1-based dove vivra' l'extract
         # Rewiring from_step PRIMA dell'insert: chi consumava il produttore ora
-        # consuma l'extract; i ref a posizioni >= k slittano +1.
-        for s in steps:
-            fs = (getattr(s, "args", None) or {}).get("from_step")
-            if isinstance(fs, int):
-                if fs == prod_1b:
-                    s.args["from_step"] = k
-                elif fs >= k:
-                    s.args["from_step"] = fs + 1
+        # consuma l'extract. Lo SLITTAMENTO degli indici lo fa `insert_steps`
+        # (unico posto che rimappa from_step, ${stepN} e final_message insieme);
+        # qui resta solo il RICABLAGGIO, che e' semantica di questa guardia.
         # Deriva `fields` DETERMINISTICAMENTE dalla clausola «estrai X e Y»
         # quando sono espliciti. Se la query non li espone, l'executor inferisce
         # internamente un piccolo schema: il guard non conosce il dominio.
@@ -704,8 +699,15 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             ins_args["instruction"] = query
         if _bulk_sink:
             _apply_bulk_limits(ins_args, getattr(steps[pi], "tool", "") or "")
-        steps.insert(pi + 1, StepSpec(tool="extract_entries", args=ins_args))
         framework.steps = steps
+        new_step = StepSpec(tool="extract_entries", args=ins_args)
+        insert_steps(framework, pi + 1, [new_step])
+        for s in framework.steps:
+            if s is new_step:
+                continue
+            if (getattr(s, "args", None) or {}).get("from_step") == prod_1b:
+                s.args["from_step"] = k
+        steps = framework.steps
         log.info("[ensure_extract] extract_entries inserito @1b=%d (dopo "
                  "produttore @%d) fields=%s", k, prod_1b, _fields or "—")
         return framework
@@ -1093,16 +1095,13 @@ def _enrich_move_source_dir(framework: Framework, query: str,
                 continue  # glob esplicito = intento diverso, non toccare
             my_idx = steps.index(mv)              # 0-based
             old_mv_1b = my_idx + 1                # 1-based del move PRIMA dell'insert
-            steps.insert(my_idx, StepSpec(tool="find_files",
-                                          args={"base_path": src}))
-            # renumber: ogni from_step >= old_mv_1b (che puntava a move o oltre)
-            # slitta di 1 per l'inserimento. Il move stesso lo settiamo dopo.
-            for s in steps:
-                if s is mv:
-                    continue
-                sfs = (getattr(s, "args", None) or {}).get("from_step")
-                if isinstance(sfs, int) and sfs >= old_mv_1b:
-                    s.args["from_step"] = sfs + 1
+            # Lo slittamento degli indici e' di `insert_steps`: rimappa
+            # from_step, ${stepN} e final_message insieme. Il move si ricabla
+            # subito sotto, quindi il suo from_step slittato viene sovrascritto.
+            framework.steps = steps
+            insert_steps(framework, my_idx,
+                         [StepSpec(tool="find_files", args={"base_path": src})])
+            steps = framework.steps
             mv.args = {k: v for k, v in a.items()
                        if k not in ("entries", "paths")}
             mv.args["from_step"] = old_mv_1b      # = pos 1-based del find_files
@@ -1315,8 +1314,8 @@ def _align_framework_action_pairs(framework: Framework, intent, query: str,
                 log.info("[action_pair] %s → %s (coppia %s+%s scoperta)",
                          tool, target, verb, obj)
                 step.tool = target
-                covered.discard((nc.verb, nc.obj))
-                covered.add((verb, obj))
+                # La copertura si rilegge da `parsed`, che qui viene aggiornato:
+                # non esiste un insieme separato da tenere allineato.
                 parsed[id(step)] = (target, _ng.parse_name(target))
                 changed = True
                 break
@@ -2140,6 +2139,46 @@ def _remap_step_refs(obj, idx_map: dict):
             lambda m: m.group(1) + str(idx_map.get(int(m.group(2)), int(m.group(2)))),
             obj)
     return obj
+
+
+def insert_steps(framework: Framework, at: int, new_steps: list) -> Framework:
+    """Inserisce `new_steps` in posizione `at` (0-based) RIMAPPANDO TUTTO.
+
+    Unico modo ammesso di inserire uno step in un piano. `steps.insert()`
+    diretto e' vietato (test `test_no_direct_steps_insert`): ogni guardia che
+    lo faceva si costruiva la propria rimappa a mano, e ne rimappava un pezzo —
+    `_route_folder_size` aggiornava `from_step` e lasciava indietro
+    `${stepN.field}` e `final_message`, con la docstring che lo metteva per
+    iscritto. E' la classe-bug T3 dell'audit 21/7, «il fix a piu' alto ritorno
+    anti-regressione dell'intero audit».
+
+    Rimappa, con lo STESSO `idx_map`: gli args di ogni step preesistente, il
+    `final_message` e i `fillers`. Gli indici sono 1-based nei riferimenti
+    (`from_step: 3`, `${step3.path}`) e 0-based nella lista: uno step che oggi
+    sta in posizione `at` o dopo scala di `len(new_steps)`.
+
+    Gli args dei nuovi step NON vengono rimappati: chi li costruisce conosce
+    gia' la numerazione finale. Ritorna lo stesso framework, mutato sul posto.
+    """
+    steps = getattr(framework, "steps", None)
+    if steps is None or not new_steps:
+        return framework
+    at = max(0, min(int(at), len(steps)))
+    shift = len(new_steps)
+    idx_map = {i: (i if i <= at else i + shift)
+               for i in range(1, len(steps) + 1)}
+    for s in steps:
+        args = getattr(s, "args", None)
+        if isinstance(args, dict):
+            s.args = _remap_step_refs(args, idx_map)
+    fm = getattr(framework, "final_message", None)
+    if isinstance(fm, str) and fm:
+        framework.final_message = _remap_step_refs(fm, idx_map)
+    fillers = getattr(framework, "fillers", None)
+    if isinstance(fillers, dict) and fillers:
+        framework.fillers = _remap_step_refs(fillers, idx_map)
+    steps[at:at] = list(new_steps)
+    return framework
 
 
 def _contains_stepref(obj, pos: int) -> bool:
@@ -2978,6 +3017,10 @@ def _route_mail_delete_to_trash(framework: Framework,
 
 # Marcatori di pluralità: la query chiede PIÙ file con quel nome, non un path
 # univoco. «i/tutti i/ogni/gli file X» → X è un PATTERN da cercare, non UN path.
+# Verbi con cui l'utente chiede di VEDERE qualcosa: dopo una navigazione
+# a obiettivo il piano deve leggere, non solo arrivare.
+_READ_INTENT_VERBS = ("read", "find", "get", "list")
+
 _PLURAL_FILE_MARKERS = (
     "tutti i", "tutti gli", "i file", "gli file", "ogni file", "i files",
     "all the", "all ", "every ", "the files", "each ",
@@ -3035,9 +3078,13 @@ def _route_filename_pattern_to_find(framework: Framework, query: str,
                 if k in s.args:
                     find_args[k] = s.args[k]
             s.args = {k: v for k, v in s.args.items() if k != "paths"}
-            s.args["from_step"] = i + 1          # find inserito a i → step i+1
-            steps.insert(i, StepSpec(tool=find_twin, args=find_args))
+            # Prima non rimappava NULLA: ogni `from_step`/`${stepN}` a valle
+            # restava appeso alla numerazione vecchia. `insert_steps` lo fa.
             framework.steps = steps
+            insert_steps(framework, i,
+                         [StepSpec(tool=find_twin, args=find_args)])
+            steps = framework.steps
+            s.args["from_step"] = i + 1          # find inserito a i → step i+1
             log.info("[filename_pattern §4.3] %s(paths=[%r]) -> %s(pattern=%r)"
                      " + read(from_step)", tool, name, find_twin, name)
             break  # un solo aggancio per turno
@@ -3102,39 +3149,6 @@ _UNIVERSAL_GLOBS = frozenset({"*", "*.*", "**"})
 
 # Arg path-ish di SCOPE che il proposer/una cache possono avvelenare con un
 # path dell'install root (pattern-by-example / default appreso / piano cachato).
-_PATHISH_SCOPE_ARGS = ("base_path", "path")
-
-
-def _overwrite_phantom_install_args(framework: Framework,
-                                    query: str) -> Framework:
-    """§7.3 (turni 2cd8862a/e130c549): un arg path (`base_path`/`path`) che
-    punta DENTRO l'install root di Metnos (`/opt/metnos/executors/…`) e che la
-    query NON nomina è un FANTASMA — entra dal pattern-by-example del proposer,
-    da un default appreso avvelenato o da un piano L0 cachato rotto. Qui viene
-    RIMOSSO (i guard a valle — `_fill_clause_args` — lo ri-derivano dalla
-    clausola; senza, l'executor chiede/erra ONESTO). Gira anche sugli hit
-    cache (ADR 0174): ripara i piani già avvelenati. Se la query nomina
-    esplicitamente l'install root («conta le LOC di /opt/metnos/runtime») il
-    valore è legittimo e resta."""
-    try:
-        from args_resolver import _is_install_root_path
-        q = (query or "")
-        for s in framework.steps:
-            a = getattr(s, "args", None) or {}
-            for k in _PATHISH_SCOPE_ARGS:
-                v = a.get(k)
-                if isinstance(v, str) and _is_install_root_path(v) \
-                        and v.strip() not in q:
-                    log.info("[phantom_install] %s.%s=%r rimosso "
-                             "(install-root non nominato dalla query)",
-                             s.tool, k, v)
-                    a.pop(k, None)
-        return framework
-    except Exception as ex:  # noqa: BLE001 — best-effort
-        log.warning("overwrite_phantom_install_args noop (best-effort): %r", ex)
-        return framework
-
-
 def _dl_match(concept: str, text: str) -> bool:
     """Wrapper best-effort su detection_lexicon.match (§7.3): NL→canonico dal
     lessico seedato IT+EN, mai liste-sinonimi hardcoded. Import lazy (il modulo
@@ -3357,22 +3371,20 @@ def _route_folder_size(framework: Framework, query: str,
                     comp = StepSpec(tool="compute_entries",
                                     args={"from_step": idx, "op": "sum",
                                           "key": "size"})
-                    # renumber: ogni from_step >= idx+1 slitta di 1 (inseriamo
-                    # a posizione idx+1). L'unico consumer possibile è a valle.
-                    for s in steps:
-                        sfs = _args(s).get("from_step")
-                        if isinstance(sfs, int) and sfs >= idx + 1:
-                            s.args["from_step"] = sfs + 1
-                    steps.insert(idx, comp)
+                    # Lo slittamento e' di `insert_steps`: prima qui si
+                    # rimappava solo `from_step`, lasciando indietro
+                    # `${stepN.field}` e `final_message` — la classe-bug T3.
                     framework.steps = steps
+                    insert_steps(framework, idx, [comp])
+                    steps = framework.steps
                     changed = True
                     break   # una cartella-target per turno (caso reale)
 
         if changed:
-            # NB: il template final_message del proposer può essere STANTÌO
-            # rispetto al piano riscritto («…contengono N directory»), ma il
-            # finalizer presenta AUTORITATIVAMENTE la riduzione scalare
-            # (compute sum-size) prima del render — non serve toccarlo qui.
+            # NB: il TESTO del final_message può restare stantìo nel merito
+            # («…contengono N directory») — è il finalizer a presentare
+            # autoritativamente la riduzione scalare. I suoi RIFERIMENTI agli
+            # step, invece, li rinumera `insert_steps`.
             log.info("[folder_size §7.9] piano→find_files(recursive)+compute("
                      "sum,size): peso cartella = file ricorsivi")
         return framework
@@ -3661,6 +3673,20 @@ def _coerce_args_to_schema(framework: Framework,
         return framework
 
 
+def _strip_unknown_args(framework: Framework,
+                        catalog: Optional[list]) -> Framework:
+    """USCITA della pipeline: il piano che parte per l'executor e' conforme ai
+    manifest. Chiude il cricchetto dell'esenzione `guard_owned`, che all'ingresso
+    resta una tolleranza necessaria (un arg fuori-schema puo' essere la prova
+    che una guardia legge). Implementazione in `engine/coerce_args.py`."""
+    try:
+        from engine.coerce_args import strip_unknown_args
+        return strip_unknown_args(framework, catalog)
+    except Exception as ex:  # noqa: BLE001 — conformazione best-effort
+        log.warning("strip_unknown_args noop (best-effort): %r", ex)
+        return framework
+
+
 _IPV4_RE = re.compile(
     r"(?<![\w.])((?:25[0-5]|2[0-4]\d|1?\d?\d)"
     r"(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?::(\d{1,5}))?(?![\w.])")
@@ -3683,6 +3709,55 @@ def _site_url_from_host_token(text: str) -> Optional[str]:
     if port is not None and not (0 < int(port) <= 65535):
         return None
     return f"http://{host}:{port}" if port else f"http://{host}"
+
+
+def _ensure_site_goal_read(framework: Framework, intent,
+                           catalog: Optional[list]) -> Framework:
+    """Arrivare non e' mostrare: dopo una navigazione a obiettivo, si legge.
+
+    `act_sites` con un obiettivo NAVIGA e riporta «azione completata»; il
+    contenuto della pagina raggiunta lo legge `read_sites`, che e' anche il
+    solo a redigere lo screenshot. Un piano che si ferma all'arrivo risponde
+    «fatto» a chi aveva chiesto di VEDERE — misurato il 7/8/2026: il pilota
+    arrivava davvero su `mytrips`, e il turno finiva senza un dato.
+
+    E' la simmetrica di `ensure_site_session_precursor`, che ricostruisce cio'
+    che serve PRIMA; qui si chiude cio' che serve DOPO. Deterministica §7.9:
+    guarda la forma del piano e il verbo dell'intento, nessun lessico nuovo,
+    nessun nome di sito. No-op se un `read_sites` c'e' gia', se il tool manca
+    dal catalogo, o se l'intento non e' di lettura (una richiesta puramente
+    operativa — «prenota», «cancella» — non deve produrre una lettura).
+    """
+    try:
+        steps = list(getattr(framework, "steps", None) or [])
+        names = catalog_names(catalog)
+        if "read_sites" not in names:
+            return framework
+        if any((s.tool or "") == "read_sites" for s in steps):
+            return framework
+        verbi = {(a.get("verb") or "").lower()
+                 for a in (getattr(intent, "actions", None) or [])
+                 if isinstance(a, dict)}
+        verbi.add((getattr(intent, "verb", "") or "").lower())
+        if not (verbi & set(_READ_INTENT_VERBS)):
+            return framework
+        for pos, step in enumerate(steps, start=1):
+            if (step.tool or "") != "act_sites":
+                continue
+            args = step.args if isinstance(step.args, dict) else {}
+            if not (args.get("action") or args.get("goal")
+                    or args.get("_goal_mode")):
+                continue
+            insert_steps(framework, pos,
+                         [StepSpec(tool="read_sites",
+                                   args={"from_step": pos})])
+            log.info("[site_goal_read] act_sites(obiettivo) -> read_sites "
+                     "inserito dopo lo step %d", pos)
+            break
+        return framework
+    except Exception as ex:  # noqa: BLE001 — best-effort, il piano resta valido
+        log.warning("ensure_site_goal_read noop: %r", ex)
+        return framework
 
 
 def _ensure_site_session_precursor(framework: Framework, intent, query: str,
@@ -5549,12 +5624,6 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"step.tool", "args.kind"}),
           rationale="un valore-operazione (dedup) non è una categoria di filter_entries; prima del group dedup viene rimosso senza toccare altri predicati",
           adr="0177"),
-    Guard("overwrite_phantom_install_args",
-          lambda fw, i, q, c: _overwrite_phantom_install_args(fw, q),
-          scope="structure", writes=frozenset({"args.base_path", "args.path"}),
-          reads=frozenset({"query"}),
-          rationale="rimuove base_path/path install-root non nominati dalla query (default appreso avvelenato / cache stantia). Cat. C spec provenienza: rimovibile con evidenza journal «[phantom_install]» = 0 fire su >=14 giorni di traffico reale (finestra aperta 7/7/2026, verifica >=21/7)",
-          adr="0182"),
     Guard("align_framework_objects",
           lambda fw, i, q, c: _align_framework_objects(fw, i, c),
           scope="structure", writes=frozenset({"step.tool"}),
@@ -5597,6 +5666,12 @@ GUARD_PIPELINE: tuple = (
           scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "step.tool"}),
           rationale="spec sites F1/F2: login/read/act_sites richiedono open_sites; ricostruisce open→[login]→[read]→[act] preservando action/value_ref",
+          adr="sites-F2"),
+    Guard("ensure_site_goal_read",
+          lambda fw, i, q, c: _ensure_site_goal_read(fw, i, c),
+          scope="cross-clause", writes=frozenset({"step"}),
+          reads=frozenset({"intent.verb", "step.tool", "step.args", "catalog"}),
+          rationale="arrivare non e' mostrare: act_sites con obiettivo NAVIGA, il contenuto lo legge read_sites (che e' anche il solo a redigere). Simmetrica di ensure_site_session_precursor",
           adr="sites-F2"),
     Guard("decontaminate_reader_qualifier",
           lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),
@@ -5749,6 +5824,12 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"query", "catalog", "step.tool"}),
           rationale="vincolo no-overwrite uniforme: cartella per-turno, collision refusal e sink spreadsheet create-only per ogni dominio",
           adr="0177"),
+    Guard("strip_unknown_args",
+          lambda fw, i, q, c: _strip_unknown_args(fw, c),
+          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          reads=frozenset({"catalog"}),
+          rationale="ULTIMA per costruzione: l'esenzione guard_owned dell'ingresso e' per nome nudo e cresce a ogni guardia nuova (21 nomi, incluso path/mode/exist_ok/dst_folder, esenti su OGNI tool). Non si chiude all'ingresso senza accecare chi legge quegli arg come prova; si chiude qui, dove nessuno deve piu' leggerli. Ingresso tollerante, uscita conforme ai manifest",
+          adr="0177"),
 )
 
 
@@ -5756,8 +5837,13 @@ GUARD_PIPELINE: tuple = (
 # grammar-on-args. Un guard che MUTA il framework «spara» — meno spari con la
 # grammar-args = i guard diventano no-op perché l'LLM non produce più l'errore.
 # Strumentazione passiva (snapshot pre/post): NON cambia il comportamento dei
-# guard. Attiva solo con METNOS_GUARD_FIRE_COUNT=1 (default off, costo zero in
-# prod: to_dict per guard è O(steps)).
+# guard.
+#
+# ACCESA di default dal 6/8, e persistente (`engine/guard_stats.py`). Prima era
+# spenta e viveva solo in memoria di processo: nessuno sapeva quali guardie
+# sparassero ancora, quindi nessuna si poteva ritirare, quindi il loro numero
+# poteva solo salire. Costo misurato: 0,03 ms per piano (0,369 → 0,399 ms
+# sull'intera pipeline). Si spegne con METNOS_GUARD_FIRE_COUNT=0.
 _GUARD_FIRE_COUNTS: dict = {}
 
 
@@ -5781,7 +5867,12 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     import os as _os
     from . import is_v3
     _v3 = is_v3()
-    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "0") == "1"
+    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "1") == "1"
+    if _count:
+        try:
+            from . import guard_stats as _gs
+        except Exception:  # noqa: BLE001 — la misura non blocca mai un turno
+            _gs = None
     for _g in GUARD_PIPELINE:
         if _g.v3_only and not _v3:
             continue
@@ -5792,12 +5883,21 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
                 _before = None
             framework = _g.fn(framework, intent, query, catalog)
             try:
-                if _before is not None and framework.to_dict() != _before:
+                _fired = (_before is not None
+                          and framework.to_dict() != _before)
+                if _fired:
                     _GUARD_FIRE_COUNTS[_g.name] = _GUARD_FIRE_COUNTS.get(_g.name, 0) + 1
+                if _gs is not None and _before is not None:
+                    _gs.record(_g.name, _fired)
             except Exception:
                 pass
         else:
             framework = _g.fn(framework, intent, query, catalog)
+    if _count and _gs is not None:
+        try:
+            _gs.end_plan()
+        except Exception:  # noqa: BLE001
+            pass
     return framework
 
 
@@ -6845,6 +6945,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # tool-fratelli con object NON richiesto (es. find_pulls_github per clausola
     # {find,issues}); (2) enforce — appende le clausole RICHIESTE scoperte dopo
     # skeleton+re-propose. Stessa sequenza condivisa dagli hit cache L0/L1 (D3-B).
+    # Fotografia del piano GREZZO (6/8): le guardie mutano sul posto, quindi
+    # va presa qui. Serve a sapere che cosa ciascuna guardia ripara davvero —
+    # l'observation da sola registra un piano già sano.
+    _framework_raw = framework.to_dict()
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
 
@@ -6867,8 +6971,22 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # il re-propose del validator produce un piano FRESCO che le
                 # scavalcherebbe (regressione universale, non di un guard
                 # specifico). Ri-applicale — sono idempotenti.
-                framework = _apply_deterministic_structure_guards(
+                framework2 = _apply_deterministic_structure_guards(
                     framework2, intent, query, catalog)
+                # La ri-proposta si accetta solo se MIGLIORA. Il re-propose e'
+                # cieco (esclude l'hash fallito, non dice che cosa non andava),
+                # quindi puo' tornare un piano diverso e peggiore: misurato il
+                # 6/8 su «trova i file .md ... e leggili», dove il piano scartato
+                # era corretto e il rifatto sceglieva find_files_hash (duplicati)
+                # → «Nessun risultato trovato». Stesso criterio del re-propose
+                # dei verbi scoperti qui sopra, che accetta solo se copre di piu'.
+                _errs2 = Validator(catalog).check(framework2).errors
+                if len(_errs2) < len(vres.errors):
+                    framework = framework2
+                else:
+                    log.info("[L2 validator] ri-proposta SCARTATA: %d errori "
+                             "contro %d del piano originale",
+                             len(_errs2), len(vres.errors))
 
     # Preparazione UNIVERSALE pre-esecuzione (funzione condivisa, 10/7):
     # guards (idempotenti — 2ª passata no-op sul path normale) → output_policy
@@ -6895,7 +7013,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         try:
             _ap.record_observation(
                 turn_id=turn_id, intent=intent, framework=framework,
-                query=query, latency_ms=run.elapsed_ms, catalog=catalog)
+                query=query, latency_ms=run.elapsed_ms, catalog=catalog,
+                framework_raw=_framework_raw)
             # W1 learning-loop (ADR 0185): turno engine OK e COSTOSO ripetuto
             # → autopath SHADOW (senza aspettare il ✓ umano). Deterministico,
             # soglie METNOS_SEED_STEPS/METNOS_SEED_REPEAT; no-op se un

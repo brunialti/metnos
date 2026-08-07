@@ -128,6 +128,23 @@ def collect_summary(*, window_hours: int = 24) -> dict:
     p = _latest(LIFECYCLE_DIR, "proposals_cleanup_*.jsonl", since_ts=cutoff)
     out["proposals_cleanup"] = _section_from_file(p, _read_jsonl_first)
 
+    # Guardie dormienti: candidate al ritiro, non ritirate. Sta qui accanto
+    # agli executor invecchiati perche' e' lo stesso mestiere — una capacita'
+    # che non serve piu' va tolta — e perche' senza un posto dove comparire
+    # ogni giorno il ritiro resta un progetto che nessuno apre.
+    try:
+        from engine.guard_stats import (DORMANT_DAYS, DORMANT_MIN_SEEN,
+                                        dormant)
+        candidate = dormant()
+        out["guard_dormant"] = {
+            "path": None, "ts": None, "note": None,
+            "data": {"candidates": candidate, "days": DORMANT_DAYS,
+                     "min_seen": DORMANT_MIN_SEEN},
+        }
+    except Exception as ex:  # noqa: BLE001 — un riepilogo non fallisce per un contatore
+        out["guard_dormant"] = {"path": None, "ts": None, "data": None,
+                                "note": f"guard_stats non leggibile: {ex!r}"}
+
     return out
 
 
@@ -200,6 +217,21 @@ def format_summary(summary: dict, *, window_hours: int = 24) -> str:
             [_msg("MSG_LIFECYCLE_TABLE_OUTCOME"),
              _msg("MSG_LIFECYCLE_TABLE_N")],
             rows, align=["left", "right"]))
+
+    # guardie dormienti (candidate al ritiro, mai un verdetto: vedi guard_stats)
+    sec = summary.get("guard_dormant", {})
+    dati = sec.get("data") or {}
+    out_lines.append("")
+    out_lines.append(_msg("MSG_LIFECYCLE_SECTION_GUARDS"))
+    if not dati:
+        out_lines.append(f"  _{sec.get('note') or _msg('MSG_LIFECYCLE_NO_AUDIT')}_")
+    elif not dati.get("candidates"):
+        out_lines.append(f"  _{_msg('MSG_LIFECYCLE_GUARDS_NONE', days=dati.get('days', 0), seen=dati.get('min_seen', 0))}_")
+    else:
+        out_lines.append(format_table(
+            [_msg("MSG_LIFECYCLE_TABLE_GUARD"), _msg("MSG_LIFECYCLE_TABLE_N")],
+            [[r["name"], str(r["seen"])] for r in dati["candidates"][:10]],
+            align=["left", "right"]))
 
     # introvertiva
     out_lines.append("")

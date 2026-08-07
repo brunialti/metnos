@@ -21,6 +21,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, TypeVar
 
+from executor_aging import record_invocation
 from executor_metadata import DEFAULT_EXECUTION_POLICY
 from logging_setup import get_logger
 
@@ -415,6 +416,23 @@ class ExecutorScheduler:
                 name, self.effective_parallelism_class(executor), queue_ms,
                 run_ms, failed,
             )
+            # Lifecycle telemetry, not just process telemetry.  ``metrics``
+            # lives in RAM and dies with the daemon, while executor ageing
+            # (deprecate/archive) and change rollback decide on the persisted
+            # usage row.  This is the one point every subprocess, remote,
+            # in-process builtin and parallel-wave call crosses, so usage is
+            # recorded here; it runs after every slot is released so a disk
+            # write never extends the critical section.  Best effort by
+            # contract: the callee never raises and never records under pytest.
+            #
+            # ``code_path`` is what tells an executor apart from the internal
+            # slots this scheduler also admits: Tutor mode, probes and composer
+            # carry a name and an execution policy but no signed unit on disk.
+            # Recording those would invent a lifecycle for something that has
+            # none, and ageing iterates over every row it finds.
+            if getattr(executor, "code_path", None) is not None:
+                record_invocation(
+                    str(getattr(executor, "name", "") or ""), ok=not failed)
 
     def _thread_pool(self) -> ThreadPoolExecutor:
         with self._pool_lock:
