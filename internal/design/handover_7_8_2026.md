@@ -51,6 +51,43 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
 
 ## Da fare, in ordine di resa
 
+0. [ ] **UNA normalizzazione della richiesta, all'inizio** (idea di Roberto,
+   8/8 — ha priorita' sul resto). Oggi le liste di termini che ripuliscono il
+   fine sono sparse in tre punti del navigatore e in una decina di concetti
+   del lessico; l'accorpamento in un solo helper e' il minimo, ma la strada
+   vera e' un'altra: **una sola passata all'ingresso**, che chiede al modello
+   di (a) togliere articoli, preposizioni e tutto cio' che non definisce
+   l'azione, (b) portare i verbi all'infinito eliminando le flessioni, (c)
+   sostituire i verbi ambigui («mostra») con una forma canonica che dica quale
+   componente l'utente sta chiedendo. Da li' in poi tutti i consumatori
+   lavorano su una richiesta gia' pulita, e i filtri per-dominio smettono di
+   esistere invece di essere accorpati.
+
+   **Perche' non e' il riduttore gia' bocciato**: quello girava a OGNI
+   osservazione del pilota (fino a otto per azione) e ACCORCIAVA il fine,
+   perdendo faccette come «passate» o l'anno — per questo e' spento sul caso
+   comune. Questa gira **una volta**, sulla richiesta, e normalizza invece di
+   tagliare.
+
+   **Cosa non risolve, da tenere presente**: le parole che il pilota cerca
+   DENTRO la pagina devono stare nella lingua del sito. La mappatura
+   sostantivo→parola-del-sito (prenotazione/viaggio/booking) resta lavoro degli
+   alias del lessico, comunque la richiesta sia normalizzata.
+
+   **Accorpamento come ripiego** (se la passata unica non si fa): un solo
+   punto che risponda a «questa parola fa parte di cio' che cerco?», con tutte
+   le famiglie a radice dove la radice ha senso. Oggi solo i verbi di richiesta
+   lo sono (`text.request_verb`); articoli e preposizioni restano parole
+   intere, quantificatori e possessivi sono enumerati.
+
+   **Censimento fatto l'8/8** — liste che filtrano il fine: nel lessico
+   (traducibili, per lingua) `sites.goal_noise` 37, `..._articulated_preposition`
+   30, `goal_scope_quantifier` 12, `personal_goal_marker` 8, `text.request_verb`
+   2 regex a radice, piu' le tabelle di alias; NEL CODICE, e quindi NON
+   traducibili, restano due ripieghi in `action_resolver.py`:
+   `_VERBS_FALLBACK` e `_OVERLAY_DISMISS_FALLBACK`, usati solo se il lessico
+   manca.
+
 1. [ ] **Il fine come STRUTTURA** — analisi in
    `analysis_goal_come_struttura_7_8.md`. **NON e' piu' bloccato: Roberto ha
    deciso l'8/8**, tutte e quattro come raccomandato:
