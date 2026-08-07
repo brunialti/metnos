@@ -2481,7 +2481,8 @@ async def _local_llm_choose_goal_candidate(entry: dict, target: str,
         candidates, excluded=excluded)
     eligible = [candidate for candidate in eligible
                 if action_resolver.goal_candidate_is_admissible(
-                    target, candidate)]
+                    target, candidate,
+                    scope=str(entry.get("goal_scope") or ""))]
     eligible = action_resolver.prefer_verifiable_goal_candidates(eligible)
     by_id = {}
     observed = []

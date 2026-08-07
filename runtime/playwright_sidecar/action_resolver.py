@@ -492,16 +492,21 @@ GOAL_SCOPES = (SCOPE_PERSONAL, SCOPE_PUBLIC)
 def goal_is_personal(target: str, scope: str = "") -> bool:
     """Is the goal inside the user's own area of the site?
 
-    A declared scope WINS. The possession marker ("my", "mie") stays as the
-    fallback, and it is the most fragile signal in the file: a language
-    expresses possession in many ways, the goal reducer can strip it, and a
-    request phrased without it ("show me the bookings") used to be
-    indistinguishable from a public one — which is exactly where the pilot
-    failed to open the personal area.
+    A declared scope can only ADD the personal reading, never remove it.
+    Declaring `personale` settles the question, and that is the whole point of
+    the field: the possession marker ("my", "mie") is the most fragile signal
+    in this file — a language expresses possession in many ways, the goal
+    reducer can strip it, and a request phrased without it ("show me the
+    bookings") used to be indistinguishable from a public one, which is
+    exactly where the pilot failed to open the personal area.
+
+    Declaring `pubblico` does NOT erase the marker. The marker is evidence
+    from the user's own words; the scope is a label the planner attached. A
+    label that could switch off the guards the words earned would reopen, on
+    a single mislabelling, the failure this field exists to close.
     """
-    scope = str(scope or "").strip().lower()
-    if scope in GOAL_SCOPES:
-        return scope == SCOPE_PERSONAL
+    if str(scope or "").strip().lower() == SCOPE_PERSONAL:
+        return True
     return _is_personal_goal(target)
 
 
