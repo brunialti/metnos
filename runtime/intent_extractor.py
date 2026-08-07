@@ -87,6 +87,56 @@ def _demote_meta_object(verb, obj):
     return obj
 
 
+_READING_VERBS = ("read", "find", "list", "get")
+
+# One yes/no question, in English because the function is language independent.
+# It asks the ONLY thing the code cannot decide and the model can: whether a
+# clause with no source of its own points at the site the request just opened.
+_OPEN_SOURCE_PROBE = (
+    "A request opens a website and then asks for something.\n"
+    "Answer whether the LAST part asks for something to be found ON THAT "
+    "WEBSITE, or in a different place of the user's own (their calendar, "
+    "their mail, their files).\n"
+    "Answer with one word: SITE or ELSEWHERE.")
+
+
+def _bind_reads_to_open_source(query: str, actions: list, llm_call) -> list:
+    """A clause with no source of its own reads from the source already open.
+
+    "go to <site>, sign in and tell me my upcoming bookings" is one goal: the
+    last clause names content, not a place. The extractor read it as the
+    CALENDAR, the engine then inserted a calendar reader between the site read
+    and the extraction, and the chain died on empty entries while every step
+    reported ok (real turn bf9c9abfaae148f4).
+
+    Three cheaper levers were measured first and none works: the rule stated
+    in the prompt changed 0 of 13 control queries; the anaphora scaffold made
+    the whole extraction worse; and no deterministic test separates the two
+    cases, because "bookings" and "appointments" both resolve to no object at
+    all in the lexicon. What remains is the one question a model answers well
+    and code cannot answer at all, asked only where it applies: never on a
+    request without a site, never on a clause that names its own source.
+    """
+    if len(actions) < 2 or not callable(llm_call):
+        return actions
+    if not any(a.get("object") == "sites" for a in actions[:-1]):
+        return actions
+    ultima = actions[-1]
+    if (ultima.get("object") == "sites"
+            or ultima.get("verb") not in _READING_VERBS):
+        return actions
+    try:
+        risposta = llm_call(_OPEN_SOURCE_PROBE, query, max_tokens=4)
+        testo = (risposta if isinstance(risposta, str)
+                 else getattr(risposta, "text", "") or "")
+    except Exception:
+        return actions
+    if "site" in testo.strip().lower():
+        actions = list(actions)
+        actions[-1] = {**ultima, "object": "sites"}
+    return actions
+
+
 def extract_intent(query: str, llm_call) -> Optional[dict]:
     """Estrae verb+object dalla richiesta. Ritorna None se LLM o parsing fallisce.
 
@@ -296,6 +346,9 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # i18n, e il solo LLM copre il gold 25/25. Vedi rimozione anchors.py.
     if not verb and not obj:
         return None
+    actions = _bind_reads_to_open_source(query, actions, llm_call)
+    if actions:
+        verb, obj = actions[0].get("verb") or verb, actions[0].get("object") or obj
     out = {"verb": verb, "object": obj}
     # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):
     # dispatch la usa per il ranking pool per-clausola. Mono-azione → assente
