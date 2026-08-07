@@ -155,8 +155,20 @@ accoppiamento dimenticato:
    normalizzazione delle clausole puo' differire dal livello superiore
    (`475cb028`).
 
-Vale la pena rifarlo dopo ogni tranche: e' costato venti minuti e ha trovato
-piu' difetti dell'intera suite, che era verde su tutti e tre.
+4. Il marcatore dell'anno assunto (`*2026-05-29`) rompeva i CONFRONTI:
+   `filter_entries` sollevava e trattava la riga come senza data — un filtro
+   su un periodo scartava in silenzio proprio le righe che il marcatore
+   salvava — e `sort_entries` ordinava per il TESTO, mandando ogni valore
+   marcato a un capo della lista. Una sola definizione in `executor_helpers`
+   (`ASSUMED_YEAR_MARK`, `date_text`) e i due comparatori guardano sotto
+   (`21a5d4f6`).
+
+Vale la pena rifarlo dopo ogni tranche: e' costato meno di un'ora e ha trovato
+quattro difetti veri, su cui l'intera suite era verde.
+
+**La domanda che li ha trovati tutti e quattro**: *questo valore/segnale, chi
+altro lo legge, e con quale significato?* Un campo nuovo attraversa piu' mani
+di quante ne tocchi chi lo scrive.
 
 Sospetto NON confermato, lasciato scritto perche' non si ricerchi due volte:
 `goal_scope` e `goal_done_when` restano posati sull'`entry` di una sessione
