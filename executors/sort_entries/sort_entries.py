@@ -31,7 +31,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import run_stdio, date_text  # noqa: E402
 
 
 def invoke(args):
@@ -119,7 +119,7 @@ def invoke(args):
             value = _val(entry)
             if not isinstance(value, str):
                 return None
-            raw = value.strip().replace("Z", "+00:00")
+            raw = date_text(value).strip().replace("Z", "+00:00")
             try:
                 return datetime.fromisoformat(raw)
             except ValueError:
@@ -129,8 +129,11 @@ def invoke(args):
         unparsed = [entry for entry in have if _date_key(entry) is None]
         # ISO inputs may mix offset-aware datetimes and date-only values.
         # Their normalized textual prefix is chronologically sortable and
-        # avoids comparing aware and naive datetime objects.
-        dated.sort(key=lambda entry: str(_val(entry)), reverse=desc)
+        # avoids comparing aware and naive datetime objects. It is sortable as
+        # long as the text IS the date: an assumed-year mark in front of it is
+        # a statement about the date, not part of it, and taking it literally
+        # sent every marked value to one end of the list.
+        dated.sort(key=lambda entry: str(date_text(_val(entry))), reverse=desc)
         unparsed.sort(key=lambda entry: str(_val(entry)).casefold(), reverse=desc)
         unparsed_count = len(unparsed)
         sorted_entries = dated + unparsed + missing

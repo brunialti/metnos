@@ -27,6 +27,24 @@ from messages import get as _msg
 from worker_policy import bounded_worker_count
 
 
+# A date whose year the source never showed carries this mark: the year is the
+# current one, filled in so the value stays usable, and the mark keeps it
+# honest — it says the year was assumed, not read. It is a statement ABOUT the
+# date, not part of it, so whoever interprets the value AS a date must look
+# underneath. Without this, a filter on a period silently dropped exactly the
+# rows the mark existed to save (sites omit the year on recent rows).
+ASSUMED_YEAR_MARK = "*"
+
+
+def date_text(value):
+    """The date under an assumed-year mark, for parsing and comparison."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith(ASSUMED_YEAR_MARK):
+            return stripped[len(ASSUMED_YEAR_MARK):].strip()
+    return value
+
+
 def scalar_coordinate(value):
     """Un numero da un valore che il planner puo' aver reso plurale (§2.4).
 
