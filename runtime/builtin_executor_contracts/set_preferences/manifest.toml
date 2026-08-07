@@ -10,8 +10,8 @@ revertible = false
 lifecycle = "active"
 
 [description]
-it = "SCOPO: Imposta una preferenza personale su un valore ammesso. PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). NON: togliere una preferenza, azzerarla o riportarla al valore predefinito e' delete_preferences — mai questo tool con un valore inventato; non cambia la configurazione di sistema (admin) ne' lo stato di una skill (set_skills). OUT: results=[{key, value, applied}]."
-en = "SCOPO: Sets one personal preference to an allowed value. PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). NON: removing a preference, clearing it or restoring its default is delete_preferences — never this tool with an invented value; it does not change system configuration (admin) or skill state (set_skills). OUT: results=[{key, value, applied}]."
+it = "SCOPO: Imposta una preferenza personale su un valore ammesso. PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). NON: toglierla o riportarla al predefinito e' delete_preferences; mai un valore inventato; non tocca admin ne' set_skills. OUT: results=[{key, value, applied}]."
+en = "SCOPO: Sets one personal preference to an allowed value. PATTERN: set_preferences(key=\"reply_length\", value=\"breve\"). NON: removing it or restoring its default is delete_preferences; never an invented value; touches neither admin nor set_skills. OUT: results=[{key, value, applied}]."
 
 [code]
 files = ["../../user_preferences.py"]
