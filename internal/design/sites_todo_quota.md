@@ -38,6 +38,38 @@ quota piena fallisce con `quota_exceeded`.
 - **Persistenza**: se la quota deve essere una politica e non un limite di
   processo, va tenuta fuori dalla memoria del sidecar.
 
+## Riletto sul codice la notte del 7/8 — due dei quattro punti si ridimensionano
+
+Prima di rifare, ho riletto `_reuse_compatible_session` riga per riga. Delle
+otto condizioni di riuso, **sei sono autorita' o modo visibile**, non dettagli
+di configurazione: proprietario, utente logico, host, modo credenziali,
+mandato di task e mandato credenziale sono autorita'; `browser_mode` decide se
+l'utente VEDE la finestra; le tecniche stealth non si possono acquisire dopo.
+Allargare li' non e' comodita', e' concedere a una richiesta piu' di quanto
+abbia chiesto.
+
+Il confine di rete (`allowlist`) e' il caso interessante: la fragilita' vera —
+lo sblocco automatico che faceva crescere l'insieme VIVO e rompeva il riuso —
+e' gia' chiusa congelando `allowlist_declared`. Un ulteriore allentamento
+(riusare una sessione il cui confine e' un SOTTOINSIEME di quello richiesto)
+sarebbe difendibile, ma con lo sblocco automatico acceso il confine vivo
+cresce, e riusare quella sessione per una richiesta che lo sblocco NON ha
+concesso sarebbe un guadagno di privilegio silenzioso. Non si fa senza una
+decisione esplicita.
+
+Resta quindi in piedi il punto 1 (nessuno chiude a fine turno) con una
+tensione da sciogliere prima di scrivere codice: **chiudere a fine turno
+uccide il riuso fra turni**, cioe' costringe a rifare il login — e su un sito
+con verifica in due passaggi significa richiedere il codice all'utente ogni
+volta. Il TTL non e' pigrizia: e' cio' che rende possibile «entra nel sito» e
+poi, in un turno separato, «adesso mostrami X». Una chiusura a fine turno ha
+senso solo per le sessioni NON autenticate, che non hanno niente da
+riprendere.
+
+Il punto piu' redditizio e senza controindicazioni resta il 4: **poter chiudere
+le sessioni dicendolo**. `delete_sites` accetta gia' `all=True`; manca che il
+messaggio di quota piena dica all'utente quella frase.
+
 ## Dove guardare
 
 `runtime/playwright_sidecar/session_broker.py` — `op_open` (quota, riuso),
