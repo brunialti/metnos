@@ -17,6 +17,8 @@ for p in (_RT, str(_ROOT / "executors" / "get_approval")):
 from executor_helpers import run_stdio  # noqa: E402
 from messages import get as _msg  # noqa: E402
 from playwright_sidecar import session_client  # noqa: E402
+from playwright_sidecar.action_resolver import (  # noqa: E402
+    is_goal_navigation_request)
 
 
 def _collect_session_ids(args: dict) -> list[str]:
@@ -37,6 +39,12 @@ def _attachment(path: str, sensitive: bool) -> dict:
     return {"kind": "image", "path": path, "basename": Path(path).name,
             "mime": mimetypes.guess_type(path)[0] or "image/png",
             "sensitive": sensitive}
+
+
+# Quanto testo della pagina d'arrivo entra nella risposta: abbastanza per
+# rispondere, non tanto da diventare un allegato mascherato (§2.7: oltre,
+# si dichiara il troncamento).
+_MAX_TESTO_ARRIVO = 4000
 
 
 def invoke(args: dict) -> dict:
@@ -72,10 +80,45 @@ def invoke(args: dict) -> dict:
             if shot:
                 attachments.append(_attachment(shot, bool(res.get("sensitive"))))
             continue
+        # ARRIVARE NON E' MOSTRARE. Una navigazione a obiettivo che riesce ha
+        # portato la sessione DOVE l'utente voleva guardare: fermarsi a
+        # «azione completata» significa rispondere «fatto» a chi aveva chiesto
+        # di vedere (§2.8). Il contenuto si prende dalla stessa sessione, con
+        # la stessa autorita' e senza screenshot: lo screenshot redatto e la
+        # galleria restano mestiere di `read_sites`, che qui non si duplica.
+        # Il marcatore `_goal_mode` lo mette il motore solo per certe
+        # richieste, ma la navigazione a obiettivo parte anche senza — la
+        # decide il testo dell'azione, con lo STESSO predicato che usa il
+        # broker. Legare la lettura al marcatore lasciava senza contenuto
+        # proprio i turni piu' comuni.
+        arrivo = {}
+        if res.get("ok") and (goal_mode or is_goal_navigation_request(action)):
+            try:
+                letto = session_client.session_read(
+                    session_id=sid, owner=owner, include_screenshot=False,
+                    goal=action)
+                if letto.get("ok"):
+                    # I blocchi che riguardano il fine sono la risposta; il
+                    # corpo intero e' il ripiego quando il fine non seleziona
+                    # niente. Riversare la pagina non e' rispondere.
+                    tratto = str(letto.get("goal_span") or "")
+                    testo = tratto or str(letto.get("text") or "")
+                    arrivo = {"url": letto.get("url") or res.get("url"),
+                              "title": letto.get("title") or "",
+                              "text": testo[:_MAX_TESTO_ARRIVO]}
+                    if len(testo) > _MAX_TESTO_ARRIVO:
+                        arrivo["truncated"] = True
+                        arrivo["truncated_what"] = "text"
+                        arrivo["used"] = _MAX_TESTO_ARRIVO
+                        arrivo["available_total"] = len(testo)
+            except Exception:
+                arrivo = {}          # la lettura e' un di piu': mai un blocco
         results.append({
             "session_id": sid, "ok": bool(res.get("ok")),
             "executed": bool(res.get("executed")),
-            "primitive": res.get("primitive"), "url": res.get("url"),
+            "primitive": res.get("primitive"),
+            "url": arrivo.get("url") or res.get("url"),
+            **({k: v for k, v in arrivo.items() if k != "url"} if arrivo else {}),
             "reason_code": (None if res.get("ok") else
                             res.get("reason_code") or res.get("error_class")),
             **({"reason_detail": res.get("detail")} if res.get("detail") else {}),
@@ -121,9 +164,21 @@ def invoke(args: dict) -> dict:
     if attachments:
         out["attachments"] = attachments
     if ok:
-        out["final_message_hint"] = _msg(
-            "MSG_SITES_ACTIONS_COMPLETED",
-            n=out["metadata"]["executed"])
+        # Se la navigazione ha portato del contenuto, il contenuto E' la
+        # risposta: «azioni completate: 1» sarebbe una ricevuta al posto di
+        # cio' che l'utente aveva chiesto di vedere.
+        arrivato = next((r for r in results if r.get("text")), None)
+        if arrivato:
+            out["final_message_hint"] = arrivato["text"]
+            if arrivato.get("truncated"):
+                out["truncated"] = True
+                out["truncated_what"] = arrivato.get("truncated_what")
+                out["used"] = arrivato.get("used")
+                out["available_total"] = arrivato.get("available_total")
+        else:
+            out["final_message_hint"] = _msg(
+                "MSG_SITES_ACTIONS_COMPLETED",
+                n=out["metadata"]["executed"])
     else:
         out["error_class"] = next((r["reason_code"] for r in results
                                    if r["reason_code"]), "action_failed")

@@ -22,7 +22,7 @@ en = "SCOPO: acts or navigates toward a goal in a web session, with confirmation
 
 [code]
 files = ["act_sites.py"]
-digest = "sha256:8f3b5d178b2c9e0300b783bee7ba676cd2dbbfafd20ec3b54c03f8d031a4bc89"
+digest = "sha256:ec0c635acf0fb93b58b244e6b47251faef7cd2fac552a236b618498848778c85"
 
 [args]
 type = "object"

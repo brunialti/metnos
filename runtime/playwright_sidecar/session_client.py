@@ -123,8 +123,9 @@ def session_open(*, owner: str, url: str, allowlist=None,
 
 def session_read(*, session_id: str, owner: str | None = None,
                  include_screenshot: bool = True,
-                 include_forms: bool = False, **kw) -> dict:
+                 include_forms: bool = False, goal: str = "", **kw) -> dict:
     return _post("/session/read", {"session_id": session_id, "owner": owner,
+                                   "goal": goal,
                                    "include_screenshot": include_screenshot,
                                    "include_forms": include_forms}, **kw)
 

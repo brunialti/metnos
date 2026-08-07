@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 import os
 import sys
 from pathlib import Path
@@ -74,6 +75,42 @@ def _esegui(caso, cat):
     return out.to_dict()
 
 
+# L'oracolo deve essere stabile NEL TEMPO. Un piano che dice «oggi» riceve la
+# data corrente (`args_extractor._extract_date_keyword`): con un golden
+# congelato, il confronto diventa rosso il giorno dopo — successo il 7/8/2026,
+# e per un attimo e' sembrata una regressione delle guardie. Si rigioca il
+# corpus con lo STESSO istante in cui e' stato congelato: cosi' tutto il resto
+# resta esatto, e la sola cosa neutralizzata e' il calendario.
+_ISTANTE_GOLDEN = "2026-08-06T12:00:00+00:00"
+
+
+@contextmanager
+def _tempo_fermo(iso: str = _ISTANTE_GOLDEN):
+    from datetime import datetime as _dt, timezone as _tz
+    fisso = _dt.fromisoformat(iso)
+
+    class _Datetime(_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return fisso.astimezone(tz) if tz else fisso.replace(tzinfo=None)
+
+        @classmethod
+        def utcnow(cls):
+            return fisso.replace(tzinfo=None)
+
+    import args_extractor
+    import timefmt
+    originali = [(m, getattr(m, "datetime", None)) for m in (args_extractor, timefmt)]
+    for modulo, _ in originali:
+        modulo.datetime = _Datetime
+    try:
+        yield
+    finally:
+        for modulo, originale in originali:
+            if originale is not None:
+                modulo.datetime = originale
+
+
 def _impronta(d) -> str:
     return hashlib.sha256(
         json.dumps(d, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -88,7 +125,8 @@ def test_pipeline_riproduce_il_golden():
         f"il corpus ha {len(casi)} casi, il golden {len(golden)}: rigenera")
     diffs = []
     for i, caso in enumerate(casi):
-        got = _esegui(caso, cat)
+        with _tempo_fermo():
+            got = _esegui(caso, cat)
         if _impronta(got) != golden[i]:
             diffs.append(
                 f"caso {i} [{caso['sig']}] query={caso.get('query')!r}\n"
@@ -127,7 +165,8 @@ def test_il_corpus_esercita_ancora_le_guardie():
 
 def regen():
     cat = _catalog()
-    golden = [_impronta(_esegui(c, cat)) for c in _casi()]
+    with _tempo_fermo():
+        golden = [_impronta(_esegui(c, cat)) for c in _casi()]
     _GOLDEN.write_text(json.dumps(golden, indent=0))
     print(f"golden rigenerato: {len(golden)} casi → {_GOLDEN}")
 

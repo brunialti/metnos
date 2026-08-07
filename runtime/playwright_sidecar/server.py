@@ -530,7 +530,8 @@ async def handle_session_read(request):
             session_id=b.get("session_id", ""),
             owner=b.get("owner"),
             include_screenshot=bool(b.get("include_screenshot", True)),
-            include_forms=bool(b.get("include_forms", False)))
+            include_forms=bool(b.get("include_forms", False)),
+            goal=str(b.get("goal") or ""))
     return await _broker_call(request, _op)
 
 

@@ -1557,7 +1557,8 @@ async def _capture_screenshot(entry: dict) -> str | None:
 
 async def op_read(*, session_id: str, owner: str | None = None,
                   include_screenshot: bool = True,
-                  include_forms: bool = False) -> dict:
+                  include_forms: bool = False,
+                  goal: str = "") -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error": validation_error,
@@ -1565,13 +1566,67 @@ async def op_read(*, session_id: str, owner: str | None = None,
     async with entry["lock"]:
         try:
             return await asyncio.wait_for(
-                _read_impl(entry, session_id, include_screenshot, include_forms),
+                _read_impl(entry, session_id, include_screenshot,
+                           include_forms, goal=goal),
                 timeout=_OP_TIMEOUT_S)
         except asyncio.TimeoutError:
             return {"ok": False, "error": "read timeout", "error_class": "timeout"}
 
 
-async def _read_impl(entry, session_id, include_screenshot, include_forms) -> dict:
+# Quante righe estranee si attraversano prima di considerare finita la
+# parte di pagina che riguarda il fine: fra due voci di un elenco ce ne
+# stanno una o due; fra l'elenco e il piede, decine.
+_MAX_VUOTO_TRATTO = 6
+# Quanto si aspetta che una pagina finisca di caricare prima di leggerla.
+_ATTESA_CARICAMENTO_S = 8.0
+
+
+def _goal_text_span(testo: str, goal: str, *, max_char: int = 1800) -> str:
+    """Il tratto di pagina che riguarda il fine: dalla prima all'ultima riga.
+
+    Perche' non i «blocchi di contenuto» (l'estrattore che serve a decidere se
+    il fine e' raggiunto): quello scarta per costruzione link e pulsanti, e un
+    elenco di prenotazioni E' fatto di link — misurato il 7/8/2026, restituiva
+    una riga su undici. E perche' non il testo pieno: sono per due terzi menu e
+    piede, cioe' il traboccamento che l'utente ha visto.
+
+    La regola e' una sola e non conosce siti: si prende dalla PRIMA riga che
+    tocca il fine all'ULTIMA che lo tocca, tenendo tutto ciò che sta in mezzo —
+    le righe interne (una citta', una data) non contengono la parola del fine
+    ma sono la risposta. Fuori restano l'intestazione e il piede, che il fine
+    non tocca. Tetto di caratteri dichiarato dal chiamante (§2.7).
+    """
+    # `navigation=True` su ENTRAMBI i lati: il verbo di movimento («vai»,
+    # «apri») e' come si chiede, non che cosa si cerca — senza toglierlo il
+    # tratto partiva da «Vai al contenuto principale», che e' il primo link di
+    # ogni pagina accessibile del mondo.
+    verbi = action_resolver.action_verb_tokens()
+    voluti = set(action_resolver.goal_tokens(goal, navigation=True)) - verbi
+    if not voluti:
+        return ""
+    righe = [r.strip() for r in str(testo or "").splitlines()]
+    toccate = [i for i, r in enumerate(righe)
+               if r and (voluti & (set(
+                   action_resolver.goal_tokens(r, navigation=True)) - verbi))]
+    if not toccate:
+        return ""
+    # Il tratto e' una CATENA, non un intervallo: si prosegue finche' i punti
+    # che toccano il fine restano vicini. Un piede di pagina che nomina i
+    # «viaggi» combacia col fine ma sta venti righe dopo l'ultima prenotazione:
+    # con l'intervallo secco ci finiva dentro mezzo sito (7/8/2026).
+    fine_catena = toccate[0]
+    for precedente, successivo in zip(toccate, toccate[1:]):
+        if successivo - precedente > _MAX_VUOTO_TRATTO:
+            break
+        fine_catena = successivo
+    else:
+        fine_catena = toccate[-1]
+    tratto = [r for r in righe[toccate[0]:fine_catena + 1] if r]
+    return "\n".join(tratto)[:max_char]
+
+
+async def _read_impl(entry, session_id, include_screenshot, include_forms,
+                     goal: str = "") -> dict:
     page = entry["page"]
     entry["web_content_ingested"] = True
     await _touch(entry)
@@ -1604,6 +1659,26 @@ async def _read_impl(entry, session_id, include_screenshot, include_forms) -> di
         "ok": True, "session_id": session_id, "url": scrub_url(page.url),
         "title": title, "text": text, "sensitive": sensitive,
     }
+    if goal:
+        # Leggere mentre la pagina carica restituisce «Caricamento…» al posto
+        # del dato: il marcatore e' nel lessico (concetto `sites.loading_marker`)
+        # e vale per ogni lingua e ogni sito. Attesa BOUNDED, poi si legge
+        # comunque cio' che c'e' — mai un blocco.
+        scaduta = time.time() + _ATTESA_CARICAMENTO_S
+        marcatori = tuple(action_resolver.loading_marker_forms())
+        while marcatori and time.time() < scaduta:
+            minuscolo = text.lower()
+            if not any(m in minuscolo for m in marcatori):
+                break
+            try:
+                await page.wait_for_timeout(400)
+                text = await page.locator("body").inner_text(timeout=3000)
+            except Exception:  # noqa: BLE001
+                break
+        out["text"] = text
+        tratto = _goal_text_span(text, goal)
+        if tratto:
+            out["goal_span"] = tratto
     if collected:
         out["collected_page_count"] = len(collected) + 1
     if include_forms:

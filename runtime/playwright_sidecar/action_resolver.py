@@ -108,6 +108,19 @@ def is_collection_search_request(text: str) -> bool:
         return False
 
 
+def action_verb_tokens() -> frozenset[str]:
+    """I verbi d'azione del vocabolario chiuso, normalizzati.
+
+    Dicono COME si chiede (vai, apri, clicca), non CHE COSA si cerca: chi deve
+    riconoscere il contenuto del fine li toglie, altrimenti «vai alle mie
+    prenotazioni» combacia con «Vai al contenuto principale», che e' il primo
+    link di ogni pagina accessibile.
+    """
+    return frozenset(normalize(forma)
+                     for forme in _verbs().values() for forma in forme
+                     if normalize(forma))
+
+
 def normalize_target(text: str) -> str:
     target = normalize(text)
     for phrase in sorted(_target_noise(), key=len, reverse=True):
