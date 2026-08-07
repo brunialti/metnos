@@ -569,7 +569,8 @@ async def handle_session_act(request):
             session_id=b.get("session_id", ""), owner=b.get("owner"),
             action=b.get("action", ""), value_ref=b.get("value_ref"),
             approval_token=b.get("approval_token"),
-            goal_query=b.get("goal_query"))
+            goal_query=b.get("goal_query"),
+            done_when=b.get("done_when"))
     return await _broker_call(request, _op)
 
 

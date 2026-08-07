@@ -1476,6 +1476,12 @@ async def op_open(*, owner: str, url: str, allowlist_arg=None,
         # ammesso — e la richiesta successiva sbatteva nella quota
         # (turno reale cfc1b52e, 7/8/2026).
         "allowlist_declared": frozenset(allowlist),
+        # Pre-autorizzazione esplicita dell'utente (preferenza «sblocco
+        # automatico»): vale per la sessione, non oltre.
+        "auto_allow": bool(auto_allow_resources),
+        # Consensi gia dati in QUESTA sessione, per destinazione: chi ha
+        # appena detto «vai» a un posto non deve ridirlo per quel posto.
+        "approved_destinations": set(),
         # ADR 0191 P1: surface owner-bound + selezione FISSATA all'open per tutta
         # la sessione (il replay gate la riusa, non la ricalcola).
         "surface": browser_surface.PlaywrightSurface(
@@ -2845,7 +2851,8 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         # landing utile): verificare prima evita click artificiali. La prova
         # esclude i soli label interattivi, quindi un menu omonimo non basta.
         goal_satisfied = await _page_satisfies_goal(
-            entry, parsed.get("target", ""), candidates)
+            entry, entry.get("goal_done_when") or parsed.get("target", ""),
+            candidates)
         continuation = {"ok": False, "error_class": "selector_missing"}
         if goal_satisfied:
             continuation_excluded = set(
@@ -3137,6 +3144,53 @@ def _mandate_goal_matches(binding: dict, plan: dict) -> bool:
     query_tokens = set(action_resolver.goal_tokens(
         str(binding.get("query") or ""), navigation=True))
     return bool(target_tokens and target_tokens & query_tokens)
+
+
+_MOTIVI_NAVIGAZIONE = frozenset({
+    "navigation", "navigation_or_submit", "tainted_turn", "low_confidence",
+    "reveal_target", "allowlist_extension", "blocked_resources",
+})
+
+
+def _destinazione_di(plan: dict) -> str:
+    """Identita stabile del posto dove un piano porta: schema, host, percorso.
+
+    I parametri di query non fanno identita — Booking li riemette in ordine
+    diverso fra due render, e un consenso ricordato su quella stringa non
+    varrebbe mai due volte.
+    """
+    grezzo = str(plan.get("destination_url") or plan.get("target") or "")
+    if not grezzo:
+        return ""
+    try:
+        parti = urllib.parse.urlsplit(grezzo)
+    except ValueError:
+        return ""
+    if not parti.hostname:
+        return ""
+    return f"{parti.scheme.lower()}://{parti.hostname.lower()}{parti.path or '/'}"
+
+
+def _navigazione_preautorizzata(entry: dict, plan: dict) -> bool:
+    """Il consenso c'e gia: dato prima dall'utente, o dato qui poco fa.
+
+    Vale SOLO per la navigazione: i motivi di sensibilita del piano devono
+    stare tutti dentro la famiglia «mi sposto / rivelo un menu / ammetto una
+    risorsa». Un invio di modulo, una compilazione di credenziali o un
+    download non sono navigazione e continuano a chiedere — lo switch si
+    chiama suicida, non cieco.
+    """
+    motivi = set(plan.get("sensitivity_reasons") or ())
+    if not motivi <= _MOTIVI_NAVIGAZIONE:
+        return False
+    candidato = plan.get("candidate") or {}
+    if str(candidato.get("form_method") or "").upper() == "POST":
+        return False
+    if entry.get("auto_allow"):
+        return True
+    destinazione = _destinazione_di(plan)
+    return bool(destinazione
+                and destinazione in (entry.get("approved_destinations") or set()))
 
 
 def _mandate_allows_plan(entry: dict, plan: dict) -> bool:
@@ -3735,6 +3789,14 @@ def _browser_navigation_failure(url: str) -> str:
 
 
 async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
+    # Un consenso appena dato vale per QUESTA sessione e per QUEL posto: se il
+    # flusso ci ripassa (una riosservazione, un secondo passo che rientra),
+    # non si richiede all'utente cio' che ha appena concesso. La memoria muore
+    # con la sessione, e non copre nulla che non sia navigazione.
+    if not plan.get("_ripreso"):
+        destinazione = _destinazione_di(plan)
+        if destinazione and set(plan.get("sensitivity_reasons") or ()) <= _MOTIVI_NAVIGAZIONE:
+            entry.setdefault("approved_destinations", set()).add(destinazione)
     page = entry["page"]
     primitive = plan["primitive"]
     candidate = plan.get("candidate")
@@ -4155,6 +4217,15 @@ async def _handle_prepared_action(entry: dict, session_id: str, action: str,
     credential_scoped = isinstance(entry.get("credential_mandate"), dict)
     mandated = ((task_scoped or credential_scoped)
                 and _mandate_allows_plan(entry, plan))
+    # Due modi, entrambi dell'utente, di non farsi chiedere la stessa cosa:
+    #  - la pre-autorizzazione esplicita (preferenza «sblocco automatico», che
+    #    il proprietario ha chiesto valga anche per il consenso, non solo per
+    #    le risorse di rete);
+    #  - il consenso GIA dato in questa sessione per la stessa destinazione.
+    # Restano fuori per costruzione le cose che non sono navigazione: invio di
+    # modulo, compilazione di credenziali, download.
+    if not mandated and _navigazione_preautorizzata(entry, plan):
+        mandated = True
     if task_scoped and not mandated:
         entry.get("pending_actions", {}).pop(token, None)
         entry["gate_pending"] = False
@@ -4280,7 +4351,8 @@ async def _with_action_failure_evidence(entry: dict, result: dict) -> dict:
 async def op_act(*, session_id: str, owner: str | None, action: str,
                  value_ref: str | None = None,
                  approval_token: str | None = None,
-                 goal_query: str | None = None) -> dict:
+                 goal_query: str | None = None,
+                 done_when: str | None = None) -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error_class": validation_error}
@@ -4346,6 +4418,13 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
             if not goal_target:
                 return await _with_action_failure_evidence(
                     entry, {"ok": False, "error_class": "goal_unresolved"})
+        # Come si riconosce l'ARRIVO. Il fine dice dove andare; questo dice
+        # quando si e' arrivati, e sono due cose diverse: «le mie prenotazioni»
+        # nomina un posto, «l'elenco con destinazione e date» descrive cio' che
+        # deve comparire. Senza dichiarazione resta il fine a fare da criterio,
+        # che e' il comportamento di prima.
+        entry["goal_done_when"] = (done_when.strip()
+                                   if isinstance(done_when, str) else "")
         prepare_kwargs = ({"goal_target": goal_target}
                           if goal_target else {})
         prepared = await _prepare_action_with_resource_fallback(

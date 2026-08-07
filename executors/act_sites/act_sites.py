@@ -59,6 +59,10 @@ def invoke(args: dict) -> dict:
         return {"ok": False, "error": _msg("ERR_ARG_MISSING", arg="action"),
                 "error_class": "invalid_args", "results": []}
     goal_mode = args.get("_goal_mode") is True
+    # Come si riconosce l'arrivo. Se il planner non lo dichiara, resta il fine
+    # stesso a fare da criterio: e' il comportamento di prima, non un blocco.
+    done_when = args.get("done_when")
+    done_when = done_when.strip() if isinstance(done_when, str) else ""
     value_ref = args.get("value_ref")
     approval_tokens = args.get("approval_tokens") or {}
     if not isinstance(approval_tokens, dict):
@@ -71,7 +75,8 @@ def invoke(args: dict) -> dict:
         res = session_client.session_act(
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
             approval_token=approval_tokens.get(sid),
-            goal_query=(action if goal_mode else None))
+            goal_query=(action if goal_mode else None),
+            done_when=done_when or None)
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -96,7 +101,7 @@ def invoke(args: dict) -> dict:
             try:
                 letto = session_client.session_read(
                     session_id=sid, owner=owner, include_screenshot=False,
-                    goal=action)
+                    goal=(done_when or action))
                 if letto.get("ok"):
                     # I blocchi che riguardano il fine sono la risposta; il
                     # corpo intero e' il ripiego quando il fine non seleziona
@@ -145,6 +150,7 @@ def invoke(args: dict) -> dict:
             "on_approve": {"tool": "act_sites", "args": {
                 "session_ids": list(tokens), "action": action,
                 "approval_tokens": tokens,
+                **({"done_when": done_when} if done_when else {}),
                 **({"_goal_mode": True} if goal_mode else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
             }},
