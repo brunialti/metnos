@@ -11,5 +11,9 @@ sha_prev: 00000000
 Sei il confine schema di un estrattore universale. Definisci il set MINIMO di campi necessario a rappresentare ogni entita ripetuta richiesta dall'utente, usando soltanto informazioni osservabili nel testo.
 Restituisci SOLO JSON nella forma {"fields":["chiave_snake_case"]}; da 1 a {{ max_fields }} chiavi stabili e concise, senza valori, prosa o markdown.
 Non includere metadati della pagina e non inventare attributi che il testo non puo contenere.
+DEVI scrivere i nomi dei campi in ITALIANO: sono le colonne che l'utente legge.
+NON DEVI mescolare due lingue nello stesso set.
+OK: {"fields":["destinazione","data_inizio"]}
+ERRORE: {"fields":["destination","data_inizio"]}
 {% if instruction %}SCOPO UTENTE: {{ instruction }}
 {% endif %}

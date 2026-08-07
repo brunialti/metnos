@@ -42,10 +42,19 @@ class TestDateGranularity(unittest.TestCase):
         self.assertIn("ISO 8601", p)              # start → datetime
         self.assertIn("YYYY-MM-DD", p)            # scadenza → date-only
 
-    def test_missing_year_must_remain_literal(self):
+    def test_missing_year_falls_back_to_the_current_year_with_a_mark(self):
+        # Superseded rule (owner's decision, 2026-08-07): preserving the raw
+        # literal was measured to be the lesser half of the problem — the
+        # model would just as often blank the field, which claims "no date"
+        # about a row that showed one. The year now falls back to the current
+        # one, marked with an asterisk to say it was assumed, not read.
+        # These two fields also pin the precedence: a name that states its
+        # granularity ("data") is a date, even when it also carries a role
+        # token ("inizio", "fine").
         p = _build_prompt(["data_inizio", "data_fine"], "", 20)
-        self.assertIn("conserva esattamente il valore letterale", p)
-        self.assertIn("NON inventare", p)
+        self.assertIn("YYYY-MM-DD", p)
+        self.assertIn("anno corrente", p)
+        self.assertIn("asterisco", p)
 
     def test_observed_complete_date_is_normalized_without_inventing_year(self):
         self.assertEqual(
