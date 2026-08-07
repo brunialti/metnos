@@ -218,10 +218,15 @@ def invoke(args: dict) -> dict:
             })
 
     if pending_open:
-        # Il replay ricostruisce il vettore da zero: nessun context orfano
-        # resta aperto durante l'attesa del consenso.
+        # The replay rebuilds the vector from scratch, so no orphan context is
+        # left open while consent is awaited. Cleaning up after yourself must
+        # not destroy what you did not create: a REUSED session existed before
+        # this call and the running plan may already be acting on it. Closing
+        # it made the next step die with `session_lost` after a navigation
+        # that had actually succeeded (real turn ff47fa654af84d70, 2026-08-07).
         for entry in entries:
-            if entry.get("ok") and entry.get("session_id"):
+            if (entry.get("ok") and entry.get("session_id")
+                    and not entry.get("reused")):
                 session_client.session_close(
                     session_id=entry["session_id"], owner=owner)
         approval_dir = _ROOT / "executors" / "get_approval"
