@@ -63,7 +63,17 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
    4. **solo `act_sites`**, non `login_sites` (il cui fine implicito non ha
       varianti: sarebbe cerimonia senza informazione).
 
-   **Ricetta del primo campo** (`ambito`), nell'ordine:
+   **Stato: il primo campo `ambito` E' FATTO** (`2eacf43a`, pubblicato
+   `7f189a1`, suite 5871 verdi). Un solo predicato
+   `action_resolver.goal_is_personal(target, scope)` risponde alla domanda, e i
+   tre punti che consultavano il marcatore di possesso ci passano attraverso;
+   lo scope viaggia come `done_when` (executor → client → server → `op_act` →
+   `entry["goal_scope"]`); nel manifest la regola «di' mie/miei» e' diventata
+   il suo contrario. 6 test in `tests/runtime/sites/test_ambito_dichiarato.py`.
+   **Resta da fare la MISURA dal vivo** che lo promuove o lo boccia (sotto):
+   finora e' verificato solo a unita'.
+
+   **Ricetta seguita** (utile se si aggiunge un secondo campo):
    - `executors/act_sites/manifest.toml`: nuovo arg enum + descrizione a
      capitoli §2.5 (it/en), poi **re-sign** `executors/act_sites` (§7.10);
    - `act_sites.py` lo legge e lo inoltra; `session_client.session_act` e
@@ -75,11 +85,21 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
      `goal_candidate_is_admissible`, `choose_goal_candidate` (ripiego
      strutturale sull'area personale) e `page_satisfies_goal` (guardia home);
    - 🚨 moduli di confine toccati → **riavviare il sidecar**.
-   - **Misura che promuove il campo** (analisi §8): un fine su area personale
-     che NON contiene marcatori di possesso in nessuna lingua seminata. Oggi
-     l'euristica non puo' che fallire; col campo deve arrivare. Prova reale:
-     `internal/tools/e2e_sites_goal.py "vai su booking.com e mostrami le
-     prenotazioni"` (senza «mie»).
+   - ✅ **Verificato che il campo e' PRODUCIBILE**: la grammatica lo vincola
+     alla produzione, `propActSitesAmbito ::= "ambito" colon ("personale" |
+     "pubblico")` — il modello non puo' scrivere altro. Era l'assunto della
+     decisione 2 e regge.
+   - ⏳ **MISURA DAL VIVO ANCORA DA FARE** (analisi §8), l'unica cosa che
+     promuove o boccia il campo: un fine su area personale che **non contiene
+     marcatori di possesso**. Comando:
+     `./.venv/bin/python internal/tools/e2e_sites_goal.py "vai su booking.com e mostrami le prenotazioni"`
+     (senza «mie»). Che cosa guardare, in ordine: (1) il piano dichiara
+     `ambito="personale"` fra gli args di `act_sites`? (2) l'audit mostra il
+     passo sul menu dell'account? (3) arriva alla pagina e consegna i dati?
+     Se (1) e' no, il problema e' la descrizione nel manifest, non il codice.
+     **Blocco pratico**: su sessione nuova Booking chiede la verifica in due
+     passaggi, quindi serve il codice del proprietario. Alternativa senza
+     attesa: un sito con area personale ma senza 2FA.
    - Se `ambito` non rende, ci si ferma: gli altri tre campi (`filtro`,
      `portata`, `cosa`) non si fanno per simmetria.
 
