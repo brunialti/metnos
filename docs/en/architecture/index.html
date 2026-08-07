@@ -2797,6 +2797,12 @@ there an HLT appointment that overlaps with an MNM one in the next 3
 months?&raquo; &rarr; the planner builds in six steps
 <code>read_events &rarr; filter HLT &rarr; filter MNM &rarr;
 filter_lists(op=overlap) &rarr; final_answer</code>.
+In extraction, dates come out as ISO 8601 when day, month, and year are
+written in the text. Many sites omit the year on recent rows: there the value
+carries the current year with a leading asterisk (<code>*2026-05-29</code>),
+which states that the year was assumed rather than read. The field stays empty
+only when no date can be derived at all: a visible date never becomes an empty
+field.
 </p>
 
 <p>
