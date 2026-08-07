@@ -481,6 +481,30 @@ def _canonical_goal_text(text: str) -> str:
     return " ".join(normalized.split())
 
 
+# The declared scope of a goal. A closed enum, so the grammar can bind it at
+# production time; empty means the planner did not declare one and the old
+# heuristic still answers.
+SCOPE_PERSONAL = "personale"
+SCOPE_PUBLIC = "pubblico"
+GOAL_SCOPES = (SCOPE_PERSONAL, SCOPE_PUBLIC)
+
+
+def goal_is_personal(target: str, scope: str = "") -> bool:
+    """Is the goal inside the user's own area of the site?
+
+    A declared scope WINS. The possession marker ("my", "mie") stays as the
+    fallback, and it is the most fragile signal in the file: a language
+    expresses possession in many ways, the goal reducer can strip it, and a
+    request phrased without it ("show me the bookings") used to be
+    indistinguishable from a public one — which is exactly where the pilot
+    failed to open the personal area.
+    """
+    scope = str(scope or "").strip().lower()
+    if scope in GOAL_SCOPES:
+        return scope == SCOPE_PERSONAL
+    return _is_personal_goal(target)
+
+
 def _is_personal_goal(target: str) -> bool:
     normalized = normalize(target)
     return any(re.search(rf"\b{re.escape(form)}\b", normalized)
@@ -636,9 +660,11 @@ def _is_root_navigation(candidate: dict) -> bool:
             and _is_home_path(parsed.path or "/"))
 
 
-def goal_candidate_is_admissible(target: str, candidate: dict) -> bool:
+def goal_candidate_is_admissible(target: str, candidate: dict, *,
+                                 scope: str = "") -> bool:
     """Apply goal-level safety constraints to deterministic and model paths."""
-    return not (_is_personal_goal(target) and _is_root_navigation(candidate))
+    return not (goal_is_personal(target, scope)
+                and _is_root_navigation(candidate))
 
 
 # Un nome accessibile lungo come una frase e' PROSA, non una destinazione.
@@ -806,7 +832,7 @@ def goal_discriminates_on_site(target: str, site_host: str) -> bool:
 
 def choose_goal_candidate(target: str, candidates: list[dict], *,
                           excluded: set[str] | None = None,
-                          site_host: str = "") -> dict:
+                          site_host: str = "", scope: str = "") -> dict:
     """Sceglie un passo che copre una parte semantica del fine.
 
     I numeri restano vincoli terminali (anno/importo) e non penalizzano il nome
@@ -816,7 +842,7 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
         return {"ok": False, "error_class": "goal_not_discriminating",
                 "ranked": []}
     wanted = set(goal_tokens(target, navigation=True))
-    personal_goal = _is_personal_goal(target)
+    personal_goal = goal_is_personal(target, scope)
     account_forms = _concept_forms("sites.account_reveal_control")
     ranked = []
     ripieghi = []          # candidati che non toccano il fine: si usano solo se
@@ -824,7 +850,7 @@ def choose_goal_candidate(target: str, candidates: list[dict], *,
     eligible = prefer_verifiable_goal_candidates(
         goal_navigation_candidates(candidates, excluded=excluded))
     for candidate in eligible:
-        if not goal_candidate_is_admissible(target, candidate):
+        if not goal_candidate_is_admissible(target, candidate, scope=scope):
             continue
         present = set(goal_tokens(str(
             candidate.get("name") or candidate.get("label") or ""),
@@ -1088,7 +1114,8 @@ def _is_home_path(path: str) -> bool:
 
 def page_satisfies_goal(target: str, body_text: str | list[str], *,
                         scope_text: str = "",
-                        facets_offered: frozenset[str] = frozenset()) -> bool:
+                        facets_offered: frozenset[str] = frozenset(),
+                        scope: str = "") -> bool:
     wanted = set(goal_tokens(target))
     if not wanted:
         return False
@@ -1120,7 +1147,7 @@ def page_satisfies_goal(target: str, body_text: str | list[str], *,
     # really exposes it (a selected "Archived" tab) the facet keeps
     # discriminating, and the proof below demands it in full.
     if _is_home_path(path) and (
-            _is_personal_goal(target)
+            goal_is_personal(target, scope)
             or not (wanted - host_tokens - _goal_facet_tokens())):
         return False
     if isinstance(body_text, list):

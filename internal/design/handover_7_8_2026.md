@@ -51,12 +51,41 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
 
 ## Da fare, in ordine di resa
 
-1. [ ] **Il fine come STRUTTURA** — analisi pronta in
-   `analysis_goal_come_struttura_7_8.md`; **bloccato sulle 4 decisioni del §7**
-   che spettano a Roberto. Raccomandazione: campi piatti incrementali sullo
-   stampo di `done_when`, primo campo `ambito` (enum chiusa). Non lo chiude la
-   sonda dell'intent: sono due livelli diversi (la sonda decide DA DOVE
-   leggere, i campi decidono com'e' fatto il fine dentro `act_sites`).
+1. [ ] **Il fine come STRUTTURA** — analisi in
+   `analysis_goal_come_struttura_7_8.md`. **NON e' piu' bloccato: Roberto ha
+   deciso l'8/8**, tutte e quattro come raccomandato:
+   1. **campi piatti, uno per volta** (stampo di `done_when`), non un oggetto
+      `goal` unico;
+   2. **`ambito` = enum chiusa `personale` | `pubblico`** (la grammatica GBNF
+      vincola le enum alla produzione, ed e' estensibile a un terzo ambito);
+   3. i **nomi di argomento sono liberi**: §2.2 governa i nomi di executor, non
+      gli argomenti — nessuna escalation di vocabolario;
+   4. **solo `act_sites`**, non `login_sites` (il cui fine implicito non ha
+      varianti: sarebbe cerimonia senza informazione).
+
+   **Ricetta del primo campo** (`ambito`), nell'ordine:
+   - `executors/act_sites/manifest.toml`: nuovo arg enum + descrizione a
+     capitoli §2.5 (it/en), poi **re-sign** `executors/act_sites` (§7.10);
+   - `act_sites.py` lo legge e lo inoltra; `session_client.session_act` e
+     l'handler in `playwright_sidecar/server.py` lo trasportano; `op_act` lo
+     posa su `entry["goal_scope"]` (stesso stampo di `goal_done_when`);
+   - `action_resolver`: un solo predicato `_goal_is_personal(target, scope)`
+     — **lo scope dichiarato vince, il marcatore di possesso resta il
+     ripiego** — e da li' i tre punti che oggi chiamano `_is_personal_goal`:
+     `goal_candidate_is_admissible`, `choose_goal_candidate` (ripiego
+     strutturale sull'area personale) e `page_satisfies_goal` (guardia home);
+   - 🚨 moduli di confine toccati → **riavviare il sidecar**.
+   - **Misura che promuove il campo** (analisi §8): un fine su area personale
+     che NON contiene marcatori di possesso in nessuna lingua seminata. Oggi
+     l'euristica non puo' che fallire; col campo deve arrivare. Prova reale:
+     `internal/tools/e2e_sites_goal.py "vai su booking.com e mostrami le
+     prenotazioni"` (senza «mie»).
+   - Se `ambito` non rende, ci si ferma: gli altri tre campi (`filtro`,
+     `portata`, `cosa`) non si fanno per simmetria.
+
+   Nota: **non lo chiude la sonda dell'intent** — sono due livelli diversi (la
+   sonda decide DA DOVE leggere, i campi decidono com'e' fatto il fine dentro
+   `act_sites`).
 2. [x] ~~**Ripresa del piano dopo un gate**~~ — **era un fantasma, verificato
    l'8/8 sul codice.** Il meccanismo esiste in due forme, scelte dal contratto
    e non dal nome: `dispatch.py::_inject_gate_resume_if_paused` (riga ~6286)

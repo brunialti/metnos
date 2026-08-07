@@ -172,7 +172,15 @@ Controllati oggi sul codice, non assunti:
   `pool_sig` verificate a lettura (ADR 0182): un re-sign di `act_sites`
   invalida per costruzione, senza migrazioni.
 
-## 7. Decisioni che restano a Roberto
+## 7. Decisioni — PRESE da Roberto l'8/8/2026
+
+> Tutte e quattro come raccomandato. In sintesi: **campi piatti uno per
+> volta**; **`ambito` enum chiusa `personale`|`pubblico`**; i **nomi di
+> argomento sono liberi** (§2.2 governa i nomi di executor, non gli
+> argomenti); **solo `act_sites`**, non `login_sites`. La ricetta operativa
+> del primo campo sta in `handover_7_8_2026.md`.
+
+Le domande, per memoria di come si era arrivati a porle:
 
 1. **Si procede a campi piatti incrementali** (raccomandato) **o si vuole
    l'oggetto `goal` unico** in un colpo solo? Il secondo è più pulito da

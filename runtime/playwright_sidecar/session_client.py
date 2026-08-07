@@ -160,11 +160,13 @@ def session_act(*, session_id: str, owner: str, action: str,
                 value_ref: str | None = None,
                 approval_token: str | None = None,
                 goal_query: str | None = None,
-                done_when: str | None = None, **kw) -> dict:
+                done_when: str | None = None,
+                scope: str | None = None, **kw) -> dict:
     return _post("/session/act", {
         "session_id": session_id, "owner": owner, "action": action,
         "value_ref": value_ref, "approval_token": approval_token,
         "goal_query": goal_query, "done_when": done_when,
+        "scope": scope,
     }, **kw)
 
 
