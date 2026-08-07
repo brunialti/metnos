@@ -38,8 +38,8 @@ en = "Sessions produced by open_sites, normally via from_step. Exact IDs, never 
 [args.properties.action]
 type = "string"
 [args.properties.action.description]
-it = "Azione o fine in linguaggio naturale, senza selettori. Esempio: 'trova le fatture 2026' oppure 'compila e invia il modulo'."
-en = "Natural-language action or goal without selectors. Example: 'find the 2026 invoices' or 'fill and submit the form'."
+it = "Il FINE in linguaggio naturale, mai selettori. DEVI nominare la COSA da raggiungere, non solo il verbo: 'le mie prenotazioni', non 'vai'. DEVI dire 'mie/miei' quando la cosa sta nell'area personale: apre il menu dell'account invece di cercare in home. DEVI aggiungere il tratto che distingue, se c'e': 'passate', 'future', 'cancellate', un anno. NON DEVI nominare il sito ('su booking'): sulla sua pagina quel nome sta ovunque e non distingue niente. NON DEVI mettere due fini in una chiamata. OK: 'le mie prenotazioni future'. ERRORE: 'vai su booking e guarda'."
+en = "The GOAL in natural language, never selectors. DEVI name the THING to reach, not just the verb: 'my bookings', not 'go'. DEVI say 'my' when the thing lives in the personal area: it opens the account menu instead of searching the home page. DEVI add the distinguishing trait when there is one: 'past', 'upcoming', 'cancelled', a year. NON DEVI name the site ('on booking'): on its own pages that name is everywhere and distinguishes nothing. NON DEVI put two goals in one call. OK: 'my upcoming bookings'. ERRORE: 'go to booking and look'."
 
 [args.properties.value_ref]
 type = "string"
