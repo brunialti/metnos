@@ -41,14 +41,13 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
       (`facb8f4`, `6741326`, `25bc7a6`).
 - [x] Suite **5853 verdi** (`--ignore=tests/simulator/web`).
 
+- [x] **La quota piena dice come uscirne** — «chiudi le sessioni web», e il
+      test pin-a entrambe le meta' (che il messaggio la dica, e che la frase
+      instradi su `delete_sites`). `a3341ea8`, pubblicato `0b4972b`.
+
 ## In corso adesso
 
-- [ ] **Messaggio di quota piena che dice come risolverla.** Le 4 righe i18n
-      (`MSG_SITES_RC_QUOTA`, `MSG_SITES_RC_QUOTA_HOSTS` × it/en) sono GIA'
-      aggiornate nel DB vivo e nel seme di installazione: ora nominano la
-      frase «chiudi le sessioni web». Verificato con `prefilter.rank` che
-      quella frase instrada su `delete_sites` (primo su tre formulazioni).
-      **Manca**: il test che lo pin-a e il commit.
+- (niente in volo: albero pulito)
 
 ## Da fare, in ordine di resa
 
@@ -58,11 +57,18 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
    stampo di `done_when`, primo campo `ambito` (enum chiusa). Non lo chiude la
    sonda dell'intent: sono due livelli diversi (la sonda decide DA DOVE
    leggere, i campi decidono com'e' fatto il fine dentro `act_sites`).
-2. [ ] **Ripresa del piano dopo un gate** — dopo l'approvazione riparte solo
-   l'azione, non i passi che restavano. Da verificare sul codice prima di
-   toccare: `executors/get_approval/`, `runtime/orchestration.py`
-   (`on_approve`/`on_complete`), `runtime/dialog_pending.py`. Domanda chiave:
-   il piano residuo viene salvato da qualche parte, o e' perso per costruzione?
+2. [x] ~~**Ripresa del piano dopo un gate**~~ — **era un fantasma, verificato
+   l'8/8 sul codice.** Il meccanismo esiste in due forme, scelte dal contratto
+   e non dal nome: `dispatch.py::_inject_gate_resume_if_paused` (riga ~6286)
+   riscrive l'`on_complete` del dialogo o come `resume_executor_gate_tail`
+   — che PORTA i passi residui con i riferimenti rimappati, quando il ramo
+   approvato rilancia lo stesso executor che si e' fermato — o come
+   `resume_engine_gate`, che riesegue il turno con il gate pre-approvato.
+   Coperto da 9 riscontri in `tests/runtime/engine/test_orchestration.py`
+   («replays branch then only tail», «carries tail across repeated gates») e
+   da due asserzioni in `tests/runtime/sites/test_sites_security.py`.
+   Se un turno vero mostra il contrario, la cosa da consegnare e' **l'id del
+   turno**, non il sintomo: senza quello si insegue un fantasma.
 3. [ ] **Quota, il resto** — vedi `sites_todo_quota.md`, aggiornato stanotte:
    due dei quattro punti si ridimensionano (sei delle otto condizioni di riuso
    sono AUTORITA', non configurazione; la fragilita' del confine di rete e'
