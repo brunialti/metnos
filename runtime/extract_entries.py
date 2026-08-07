@@ -716,9 +716,16 @@ def _rows_to_records(entries: list) -> list:
 
 
 def _build_prompt(fields, instruction, max_per_text) -> str:
-    date_time = [f for f in fields if _DATETIME_FIELD_RE.search(f)]
-    date_only = [f for f in fields
-                 if _DATE_ONLY_FIELD_RE.search(f) and f not in date_time]
+    # A name that states its GRANULARITY wins over one that states its ROLE.
+    # `data_inizio` and `checkin_date` name the same thing, but the first also
+    # matched the datetime pattern (through "inizio") and so took the
+    # datetime branch, where the date-only rules — the assumed-year fallback
+    # among them — never applied. Same page, same request, two different
+    # answers depending on which language the model happened to name the
+    # column in (turns 558b0e9f and 771d5a78, 2026-08-07).
+    date_only = [f for f in fields if _DATE_ONLY_FIELD_RE.search(f)]
+    date_time = [f for f in fields
+                 if _DATETIME_FIELD_RE.search(f) and f not in date_only]
     import i18n
     import prompt_loader
     return prompt_loader.get(
@@ -741,11 +748,11 @@ def _build_batch_prompt(fields, instruction, max_per_text) -> str:
     model sees the carrier field as structural, while callers still receive
     exactly the public ``fields`` schema after parsing.
     """
-    date_time = [field for field in fields
-                 if _DATETIME_FIELD_RE.search(field)]
     date_only = [field for field in fields
-                 if (_DATE_ONLY_FIELD_RE.search(field)
-                     and field not in date_time)]
+                 if _DATE_ONLY_FIELD_RE.search(field)]
+    date_time = [field for field in fields
+                 if (_DATETIME_FIELD_RE.search(field)
+                     and field not in date_only)]
     import i18n
     import prompt_loader
     return prompt_loader.get(
