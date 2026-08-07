@@ -138,6 +138,32 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
    gia' chiusa). Resta la tensione: chiudere a fine turno ucciderebbe il riuso
    fra turni, e su un sito con 2FA significa richiedere il codice ogni volta.
 
+## Rilettura avversariale del proprio lavoro — resa misurata
+
+Rileggendo i commit della notte con una domanda sola («quale proprieta' rompe
+questo codice senza accorgersene?») sono usciti **tre difetti veri**, tutti
+della stessa famiglia — un segnale debole che scavalca uno forte, o un
+accoppiamento dimenticato:
+
+1. `ambito="pubblico"` cancellava il possessivo dell'utente e spegneva tre
+   guardie insieme (`834352b9`). Il campo ora puo' solo AGGIUNGERE il senso
+   personale.
+2. Il ramo del MODELLO applicava la guardia dei candidati senza lo scope
+   dichiarato, quello deterministico si': stessa domanda, due risposte
+   (`475cb028`).
+3. La sonda dell'intento riscriveva l'intento primario senza motivo, dove la
+   normalizzazione delle clausole puo' differire dal livello superiore
+   (`475cb028`).
+
+Vale la pena rifarlo dopo ogni tranche: e' costato venti minuti e ha trovato
+piu' difetti dell'intera suite, che era verde su tutti e tre.
+
+Sospetto NON confermato, lasciato scritto perche' non si ricerchi due volte:
+`goal_scope` e `goal_done_when` restano posati sull'`entry` di una sessione
+riusabile fra turni, ma `op_act` li riscrive a OGNI invocazione (anche a
+vuoto), quindi non c'e' valore stantio. Se un giorno un percorso li impostasse
+solo dentro un ramo condizionale, quella garanzia salta.
+
 ## Trappole che costano ore se non le sai
 
 - 🚨 **Moduli di confine del sidecar**: toccarne uno — anche solo un commento —
