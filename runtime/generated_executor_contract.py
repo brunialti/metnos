@@ -19,6 +19,9 @@ from executor_standard import STANDARD_ID, SUPPORTED_MANIFEST_FORMAT
 GENERATED_LIFECYCLES = frozenset({"active", "proposed", "synthesized"})
 
 
+from manifest_rules import RENDER_BUDGET, render_head
+
+
 class GeneratedContractError(ValueError):
     pass
 
@@ -42,6 +45,17 @@ def generated_contract_context(*, lifecycle: str = "active") -> dict[str, str]:
         "generated_header_toml": generated_header_toml(lifecycle=lifecycle),
         "execution_policy_toml": generated_execution_policy_toml(),
     }
+
+
+def _heads(manifest: dict):
+    """Every declared head of a manifest, one per language."""
+    desc = manifest.get("description")
+    if isinstance(desc, str):
+        yield "-", desc.strip().replace("\n", " ")
+    elif isinstance(desc, dict):
+        for lingua, testo in desc.items():
+            if isinstance(testo, str) and testo.strip():
+                yield lingua, testo.strip().replace("\n", " ")
 
 
 def validate_generated_manifest_text(
@@ -84,6 +98,19 @@ def validate_generated_manifest_text(
             and placement.get("min_sandbox") != "appcontainer"):
         raise GeneratedContractError(
             "generated remote executors must require min_sandbox=appcontainer")
+    # A head that does not fit the planner budget is truncated in SILENCE, so
+    # the manifest declares a boundary the model never reads. A generator has
+    # no way of noticing — nothing fails, nothing is logged where it writes —
+    # and it would keep producing the same defect for every executor it makes.
+    # The cut at `OUT:` is deliberate (that chapter addresses consumers, not
+    # the planner); what must fit is the part meant to be read.
+    for lingua, testa in _heads(manifest):
+        utile = testa[:testa.find("OUT:")] if "OUT:" in testa else testa
+        if len(render_head(testa).rstrip()) < len(utile.rstrip()):
+            raise GeneratedContractError(
+                f"generated description [{lingua}] does not fit the planner "
+                f"budget of {RENDER_BUDGET}: the tail of SCOPO/PATTERN/NON "
+                "would be dropped without warning")
     output = manifest.get("output") or {}
     schema = output.get("schema_inline") if isinstance(output, dict) else ""
     if isinstance(schema, str) and "entries" in schema:

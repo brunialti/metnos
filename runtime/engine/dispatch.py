@@ -3963,18 +3963,31 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # fine semantico. La query resta linguaggio naturale; la riduzione bounded
     # avviene dentro l'executor intelligente e il planner non vede nuovi tipi.
     if structured_record_request and not post_login_acts:
+        # Se nel piano si entra con le credenziali, ci si entra per vedere la
+        # PROPRIA area: e' il motivo per cui si fa un accesso. Dichiararlo
+        # risparmia al pilota di dedurlo da un possessivo nella frase, che in
+        # una richiesta ordinaria («mostrami le prenotazioni») non c'e'. E' un
+        # fatto del piano, non un indovinello.
         post_login_acts.append(StepSpec(tool="act_sites", args={
             "action": query, "_goal_mode": True,
+            **({"ambito": "personale"} if want_login else {}),
         }))
         want_act = True
 
     def _append_acts(source_steps) -> None:
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
+            # Conserva TUTTO cio' che il planner ha dichiarato, non una lista
+            # chiusa di tre: ogni campo aggiunto dopo che questa riga e' stata
+            # scritta veniva buttato via qui in silenzio — `done_when` e
+            # `ambito` non arrivavano mai all'executor, e il fine tornava a
+            # essere una stringa sola. Si sostituisce solo il modo in cui la
+            # sessione arriva: `from_step` al posto di `session_ids`.
             act_args = {"from_step": len(new_steps)}
-            for key in ("action", "value_ref", "_goal_mode"):
-                if original_args.get(key) is not None:
-                    act_args[key] = original_args[key]
+            act_args.update({
+                chiave: valore for chiave, valore in original_args.items()
+                if chiave not in ("from_step", "session_ids")
+                and valore is not None})
             new_steps.append(StepSpec(tool="act_sites", args=act_args))
 
     if want_login:

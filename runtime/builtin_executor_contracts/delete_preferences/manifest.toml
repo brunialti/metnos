@@ -10,8 +10,8 @@ revertible = false
 lifecycle = "active"
 
 [description]
-it = "SCOPO: Rimuove preferenze personali riportandole al valore predefinito. PATTERN: delete_preferences(keys=[\"tone\"]) oppure delete_preferences(all=true). USA QUESTO quando l'utente vuole togliere, azzerare o dimenticare una preferenza, o rimetterla al valore predefinito. NON: non cancella utenti (delete_persons) ne' task (delete_tasks). OUT: results=[{key, removed, previous}]."
-en = "SCOPO: Removes personal preferences, restoring their default value. PATTERN: delete_preferences(keys=[\"tone\"]) or delete_preferences(all=true). USE THIS when the user wants to remove, clear or forget a preference, or restore its default. NON: it does not delete users (delete_persons) or tasks (delete_tasks). OUT: results=[{key, removed, previous}]."
+it = "SCOPO: Rimuove preferenze personali riportandole al valore predefinito. PATTERN: delete_preferences(keys=[\"tone\"]) o delete_preferences(all=true). USA QUESTO per togliere, azzerare o dimenticare una preferenza. NON: non cancella utenti ne' task. OUT: results=[{key, removed, previous}]."
+en = "SCOPO: Removes personal preferences, restoring their default. PATTERN: delete_preferences(keys=[\"tone\"]) or delete_preferences(all=true). USE THIS to drop, clear or forget a preference. NON: it deletes neither users nor tasks. OUT: results=[{key, removed, previous}]."
 
 [code]
 files = ["../../user_preferences.py"]

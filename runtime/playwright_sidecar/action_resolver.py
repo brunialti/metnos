@@ -121,8 +121,15 @@ def action_verb_tokens() -> frozenset[str]:
                      if normalize(forma))
 
 
+# A bare domain in a goal names the SITE, which the manifest tells the planner
+# not to name: inside that site it distinguishes nothing, and normalisation
+# turns it into two words ("booking.com" -> "booking", "com") that no page
+# attests. It is dropped before the text becomes tokens.
+_DOMINIO = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
+
+
 def normalize_target(text: str) -> str:
-    target = normalize(text)
+    target = normalize(_DOMINIO.sub(" ", str(text or "")))
     for phrase in sorted(_target_noise(), key=len, reverse=True):
         target = re.sub(rf"\b{re.escape(phrase)}\b", " ", target)
     return " ".join(target.split())
@@ -459,6 +466,7 @@ def _goal_noise() -> set[str]:
             | set(_concept_forms("sites.goal_noise_articulated_preposition"))
             | set(_concept_forms("sites.goal_scope_quantifier"))
             | set(_concept_forms("sites.personal_goal_marker"))
+            | set(_concept_forms("sites.goal_request_verb"))
             | set(action_verb_tokens()))
 
 
@@ -1127,7 +1135,11 @@ def page_satisfies_goal(target: str, body_text: str | list[str], *,
     try:
         split = urllib.parse.urlsplit(scope_text)
         path = split.path.lower()
-        host_tokens = set(goal_tokens(split.hostname or ""))
+        # I punti si aprono PRIMA: qui l'host e' il soggetto, non un dominio
+        # citato dentro una frase, e il filtro che toglie i domini dai fini lo
+        # svuoterebbe (stessa forma gia' usata da `goal_discriminates_on_site`).
+        host_tokens = set(goal_tokens(
+            str(split.hostname or "").replace(".", " ")))
     except ValueError:
         path, host_tokens = "", set()
     # The HOME of a site talks about EVERYTHING: attesting a goal there proves

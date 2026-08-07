@@ -17,8 +17,8 @@ affinity    = [
 ]
 
 [description]
-it = "SCOPO: agisce o naviga verso un fine in una sessione web, con conferma se sensibile. PATTERN: login_sites -> act_sites(from_step=2, action=\"cerca fatture 2026\"). NON: pagina senza stato -> read_urls_html; CSS/XPath vietati. OUT: results=[{session_id,ok,executed,primitive,url?}]."
-en = "SCOPO: acts or navigates toward a goal in a web session, with confirmation when sensitive. PATTERN: login_sites -> act_sites(from_step=2, action=\"find invoices 2026\"). NON: stateless page -> read_urls_html; CSS/XPath forbidden. OUT: results=[{session_id,ok,executed,primitive,url?}]."
+it = "SCOPO: naviga a un fine dentro una sessione web, con conferma se sensibile. PATTERN: act_sites(from_step=2, action=\"fatture 2026\", ambito=\"personale\"). NON: pagina senza stato -> read_urls_html; niente CSS/XPath. OUT: results=[{session_id,ok,url}]."
+en = "SCOPO: reach a goal inside a web session, with consent when sensitive. PATTERN: act_sites(from_step=2, action=\"invoices 2026\", ambito=\"personale\"). NON: stateless page -> read_urls_html; no CSS/XPath. OUT: results=[{session_id,ok,url}]."
 
 [code]
 files = ["act_sites.py"]

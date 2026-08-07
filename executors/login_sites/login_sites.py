@@ -134,10 +134,17 @@ def invoke(args: dict) -> dict:
             msg = _reason_message(reason)
             if msg:
                 entry["message"] = msg
-            # Un fallimento definitivo non deve lasciare context orfani ne'
+            # Un FALLIMENTO definitivo non deve lasciare context orfani ne'
             # consumare la quota del turno successivo. 2FA/CAPTCHA restano
             # aperti per la continuazione assistita dall'utente.
-            if reason not in ("two_factor_required",
+            #
+            # Si chiude solo dopo un fallimento, ed e' cio' che questo commento
+            # ha sempre detto: la condizione invece guardava il solo codice, e
+            # da quando un login riuscito ne porta uno — `already_authenticated`,
+            # perche' essere gia' dentro e' uno STATO e non un errore — chiudeva
+            # la sessione appena riconosciuta come valida. Il passo dopo trovava
+            # `session_lost` (turni ff47fa654af84d70 e 9f6e712a24504032).
+            if not logged_in and reason not in ("two_factor_required",
                                "two_factor_push_required",
                                "captcha_required", "approval_pending"):
                 closed = session_client.session_close(
