@@ -84,3 +84,19 @@ standard usando gli stessi metadati canonici del catalogo runtime.
 The JSON report is the machine source and the adjacent Markdown file is only a
 view. A structurally ready executor still requires its behavioral, authority,
 paraphrase, regression, and E2E evidence before declaring conformance.
+
+## Measurement harnesses (added 2026-08-08)
+
+Small A/B benches that make a change provable instead of plausible. They run
+against the live instance and change nothing.
+
+- `misura_intent.py` — 13 control queries through the real intent extractor.
+  `--dump prima.json` before a change, `--confronta prima.json` after; the
+  output names every query whose clauses moved. Temperature 0 and a fixed seed
+  make the difference a difference, not noise. It is what showed that a rule
+  added to the intent prompt changed 0 of 13, and that the binary open-source
+  probe changes exactly 1 — the intended one.
+- `misura_ambito.py` — asks whether the planner DECLARES the goal scope.
+  **Known limitation**: it calls the proposer with a hand-written `Intent`, so
+  the plan it returns omits the domain precursors the engine adds in
+  production. Read its result as a hint, never as a verdict.

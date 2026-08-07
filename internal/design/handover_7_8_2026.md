@@ -100,6 +100,20 @@ Banchi di misura riusabili (nello scratchpad di sessione, copiarli se servono):
      **Blocco pratico**: su sessione nuova Booking chiede la verifica in due
      passaggi, quindi serve il codice del proprietario. Alternativa senza
      attesa: un sito con area personale ma senza 2FA.
+
+     **Tentativo offline dell'8/8, da NON ripetere cosi'**: chiamando
+     direttamente `proposer.propose(...)` con un `Intent` costruito a mano, il
+     piano che torna e' `open_sites → login_sites → read_sites →
+     describe_entries`, **senza `act_sites`** — e quindi senza nessun posto
+     dove `ambito` possa comparire. Non e' una bocciatura del campo: e' un
+     banco infedele, perche' in produzione l'intento arriva dall'estrattore e
+     il motore aggiunge i precursori del dominio, e li' `act_sites` c'e'
+     (turni veri con 6-8 passi). Se pero' anche il turno VERO senza possessivo
+     salta `act_sites`, allora il difetto e' a monte del campo: si sta leggendo
+     la home invece di navigare, ed e' quello da guardare per primo.
+     Lo script sta in `.../scratchpad/misura_ambito.py`; per renderlo fedele
+     servirebbe passare dall'estrattore d'intento vero, non da un `Intent`
+     scritto a mano.
    - Se `ambito` non rende, ci si ferma: gli altri tre campi (`filtro`,
      `portata`, `cosa`) non si fanno per simmetria.
 
