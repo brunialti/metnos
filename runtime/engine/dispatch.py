@@ -3963,8 +3963,14 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # fine semantico. La query resta linguaggio naturale; la riduzione bounded
     # avviene dentro l'executor intelligente e il planner non vede nuovi tipi.
     if structured_record_request and not post_login_acts:
+        # Se nel piano si entra con le credenziali, ci si entra per vedere la
+        # PROPRIA area: e' il motivo per cui si fa un accesso. Dichiararlo
+        # risparmia al pilota di dedurlo da un possessivo nella frase, che in
+        # una richiesta ordinaria («mostrami le prenotazioni») non c'e'. E' un
+        # fatto del piano, non un indovinello.
         post_login_acts.append(StepSpec(tool="act_sites", args={
             "action": query, "_goal_mode": True,
+            **({"ambito": "personale"} if want_login else {}),
         }))
         want_act = True
 

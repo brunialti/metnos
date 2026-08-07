@@ -4439,7 +4439,7 @@ def test_sites_guard_derives_http_from_bare_ip_for_login():
     assert out.steps[1].args == {"from_step": 1}
     assert out.steps[2].args == {
         "action": "login a 192.168.1.10 e dimmi i device attivi",
-        "_goal_mode": True, "from_step": 2}
+        "_goal_mode": True, "from_step": 2, "ambito": "personale"}
     assert out.steps[3].args == {
         "include_screenshot": False, "from_step": 3}
     assert out.steps[4].args["from_step"] == 4

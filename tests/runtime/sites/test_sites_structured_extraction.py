@@ -140,7 +140,11 @@ def test_sites_guard_recruits_read_and_extract_from_semantic_request():
         "extract_entries", "describe_entries",
     ]
     assert out.steps[2].args == {
-        "from_step": 2, "action": query, "_goal_mode": True}
+        "from_step": 2, "action": query, "_goal_mode": True,
+        # Si entra con le credenziali per vedere la PROPRIA area: e' un fatto
+        # del piano, e dichiararlo risparmia al pilota di dedurlo da un
+        # possessivo che in una richiesta ordinaria non c'e' (8/8/2026).
+        "ambito": "personale"}
     assert out.steps[3].args["from_step"] == 3
 
 
@@ -258,7 +262,11 @@ def test_canonical_live_query_gets_goal_before_typed_read():
         "extract_entries", "describe_entries",
     ]
     assert out.steps[2].args == {
-        "from_step": 2, "action": query, "_goal_mode": True}
+        "from_step": 2, "action": query, "_goal_mode": True,
+        # Si entra con le credenziali per vedere la PROPRIA area: e' un fatto
+        # del piano, e dichiararlo risparmia al pilota di dedurlo da un
+        # possessivo che in una richiesta ordinaria non c'e' (8/8/2026).
+        "ambito": "personale"}
     assert out.steps[3].args["from_step"] == 3
     assert out.steps[4].args["from_step"] == 4
     assert out.steps[5].args["from_step"] == 5

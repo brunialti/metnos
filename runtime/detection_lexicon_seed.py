@@ -424,6 +424,15 @@ def register_all() -> None:
     R("sites.account_reveal_control", "phrases", match_mode="word",
       it=["account", "menu account", "profilo", "menu profilo"],
       en=["account", "account menu", "profile", "profile menu"])
+    # Verbi con cui si CHIEDE una cosa all'assistente. Come quelli di
+    # movimento, dicono COME si chiede e non CHE COSA si cerca: se restano fra
+    # i token del fine, il pilota cerca in pagina una parola che nessuna pagina
+    # scrive («mostrami»), e non riconosce di essere arrivato.
+    R("sites.goal_request_verb", "phrases", match_mode="word",
+      it=["mostrami", "mostra", "fammi vedere", "dimmi", "dammi", "elencami",
+          "trovami", "cercami", "voglio vedere", "vedere"],
+      en=["show me", "show", "tell me", "give me", "list me", "find me",
+          "let me see", "i want to see"])
     R("sites.goal_term_alias", "mapping", match_mode="word",
       it={"booking": ["prenotazione", "prenotazioni", "viaggio", "viaggi",
                        "booking", "bookings", "trip", "trips"]},
