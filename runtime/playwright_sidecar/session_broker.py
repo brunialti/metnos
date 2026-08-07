@@ -2276,6 +2276,9 @@ async def _expand_collection_by_scrolling(entry: dict, flow: dict) -> bool:
 
 async def _page_satisfies_goal(entry: dict, target: str,
                                candidates: list[dict] | None = None) -> bool:
+    # The scope the planner declared, when it did. Empty means the resolver
+    # falls back to the possession marker, exactly as before.
+    scope = str(entry.get("goal_scope") or "")
     if not await _wait_for_content_settle(entry):
         return False
     try:
@@ -2286,15 +2289,15 @@ async def _page_satisfies_goal(entry: dict, target: str,
         body_text = await entry["page"].locator("body").inner_text(timeout=1500)
     except Exception:
         return False
-    scope = scrub_url(entry["page"].url)
+    scope_url = scrub_url(entry["page"].url)
     # Which state facets this page OFFERS as a control: that is what tells
     # "I still have to press Past" from "here the upcoming ones have no name,
     # only dates".
     facce_offerte = action_resolver.offered_facet_tokens(candidates)
     if (isinstance(evidence, list)
             and action_resolver.page_satisfies_goal(
-                target, evidence, scope_text=scope,
-                facets_offered=facce_offerte)):
+                target, evidence, scope_text=scope_url,
+                facets_offered=facce_offerte, scope=scope)):
         return True
     interactive_labels = {
         action_resolver.normalize(str(
@@ -2320,8 +2323,8 @@ async def _page_satisfies_goal(entry: dict, target: str,
         if active_label:
             filtered_lines.append(active_label)
     return action_resolver.page_satisfies_goal(
-        target, filtered_lines, scope_text=scope,
-        facets_offered=facce_offerte)
+        target, filtered_lines, scope_text=scope_url,
+        facets_offered=facce_offerte, scope=scope)
 
 
 async def _goal_content_signature(entry: dict) -> str:
@@ -2872,7 +2875,8 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
         chosen = ({"ok": False, "error_class": "goal_step_limit"}
                   if at_goal_limit else action_resolver.choose_goal_candidate(
                       parsed.get("target", ""), candidates,
-                      excluded=excluded, site_host=sito_corrente))
+                      excluded=excluded, site_host=sito_corrente,
+                      scope=str(entry.get("goal_scope") or "")))
         if not at_goal_limit and not chosen.get("ok"):
             scroll = action_resolver.choose_goal_scroll_candidate(
                 parsed.get("target", ""), candidates, excluded=excluded)
@@ -2881,7 +2885,8 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
                 candidates = await _enumerate_candidates(entry["page"])
                 chosen = action_resolver.choose_goal_candidate(
                     parsed.get("target", ""), candidates,
-                    excluded=excluded, site_host=sito_corrente)
+                    excluded=excluded, site_host=sito_corrente,
+                    scope=str(entry.get("goal_scope") or ""))
         # Il canale STRUTTURALE (aprire l'area personale) non e' un ripiego di
         # cortesia riservato al primo passo: e' la mossa GIUSTA ogni volta che
         # la classifica testuale non puo' decidere — perche' ha fallito, o
@@ -4412,7 +4417,8 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
                  value_ref: str | None = None,
                  approval_token: str | None = None,
                  goal_query: str | None = None,
-                 done_when: str | None = None) -> dict:
+                 done_when: str | None = None,
+                 scope: str | None = None) -> dict:
     entry, validation_error = _validate_owned(session_id, owner)
     if entry is None:
         return {"ok": False, "error_class": validation_error}
@@ -4485,6 +4491,14 @@ async def op_act(*, session_id: str, owner: str | None, action: str,
         # che e' il comportamento di prima.
         entry["goal_done_when"] = (done_when.strip()
                                    if isinstance(done_when, str) else "")
+        # WHERE the goal lives: the user's own area of the site, or the public
+        # one. Declared, it wins over the possession marker, which is the most
+        # fragile signal there is — a language expresses possession in many
+        # ways and the goal reducer can strip it. Undeclared, nothing changes.
+        dichiarato = str(scope or "").strip().lower()
+        entry["goal_scope"] = (dichiarato
+                               if dichiarato in action_resolver.GOAL_SCOPES
+                               else "")
         prepare_kwargs = ({"goal_target": goal_target}
                           if goal_target else {})
         prepared = await _prepare_action_with_resource_fallback(

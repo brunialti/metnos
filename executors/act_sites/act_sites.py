@@ -63,6 +63,12 @@ def invoke(args: dict) -> dict:
     # stesso a fare da criterio: e' il comportamento di prima, non un blocco.
     done_when = args.get("done_when")
     done_when = done_when.strip() if isinstance(done_when, str) else ""
+    # Dove sta il fine: nell'area personale o nella parte pubblica del sito.
+    # Dichiararlo evita di doverlo indovinare dal possesso («le MIE ...»), che
+    # e' il segnale piu' fragile: una lingua il possesso lo esprime in molti
+    # modi e il riduttore del fine puo' cancellarlo.
+    ambito = args.get("ambito")
+    ambito = ambito.strip().lower() if isinstance(ambito, str) else ""
     value_ref = args.get("value_ref")
     approval_tokens = args.get("approval_tokens") or {}
     if not isinstance(approval_tokens, dict):
@@ -76,7 +82,7 @@ def invoke(args: dict) -> dict:
             session_id=sid, owner=owner, action=action, value_ref=value_ref,
             approval_token=approval_tokens.get(sid),
             goal_query=(action if goal_mode else None),
-            done_when=done_when or None)
+            done_when=done_when or None, scope=ambito or None)
         if res.get("approval_required"):
             token = res.get("approval_token")
             if token:
@@ -151,6 +157,7 @@ def invoke(args: dict) -> dict:
                 "session_ids": list(tokens), "action": action,
                 "approval_tokens": tokens,
                 **({"done_when": done_when} if done_when else {}),
+                **({"ambito": ambito} if ambito else {}),
                 **({"_goal_mode": True} if goal_mode else {}),
                 **({"value_ref": value_ref} if value_ref is not None else {}),
             }},
