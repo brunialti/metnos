@@ -22,9 +22,21 @@ _SENZA_POSSESSO = "le prenotazioni"
 _CON_POSSESSO = "le mie prenotazioni"
 
 
-def test_lo_scope_dichiarato_vince_sull_euristica() -> None:
+def test_lo_scope_dichiarato_aggiunge_il_senso_personale() -> None:
     assert ar.goal_is_personal(_SENZA_POSSESSO, "personale") is True
-    assert ar.goal_is_personal(_CON_POSSESSO, "pubblico") is False
+
+
+def test_dichiarare_pubblico_non_cancella_le_parole_dell_utente() -> None:
+    """The field can only ADD the personal reading, never remove it.
+
+    The marker is evidence from the user's own words; the scope is a label the
+    planner attached. A label able to switch off the guards those words earned
+    would reopen, on a single mislabelling, the very failure this field exists
+    to close — the pilot stopping on a home page full of the word it was
+    looking for.
+    """
+    assert ar.goal_is_personal(_CON_POSSESSO, "pubblico") is True
+    assert ar.goal_is_personal(_SENZA_POSSESSO, "pubblico") is False
 
 
 def test_senza_dichiarazione_resta_il_possesso() -> None:
@@ -47,8 +59,7 @@ def test_la_home_non_soddisfa_un_fine_personale_dichiarato() -> None:
     """
     testo = "Benvenuto\nLe tue prenotazioni recenti\nRimini"
     url = "https://esempio.test/index.html"
-    assert ar.page_satisfies_goal(_SENZA_POSSESSO, testo, scope_text=url,
-                                  scope="pubblico")
+    assert ar.page_satisfies_goal(_SENZA_POSSESSO, testo, scope_text=url)
     assert not ar.page_satisfies_goal(_SENZA_POSSESSO, testo, scope_text=url,
                                       scope="personale")
 
