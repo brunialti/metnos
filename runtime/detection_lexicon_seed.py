@@ -424,15 +424,15 @@ def register_all() -> None:
     R("sites.account_reveal_control", "phrases", match_mode="word",
       it=["account", "menu account", "profilo", "menu profilo"],
       en=["account", "account menu", "profile", "profile menu"])
-    # Verbi con cui si CHIEDE una cosa all'assistente. Come quelli di
-    # movimento, dicono COME si chiede e non CHE COSA si cerca: se restano fra
-    # i token del fine, il pilota cerca in pagina una parola che nessuna pagina
-    # scrive («mostrami»), e non riconosce di essere arrivato.
-    R("sites.goal_request_verb", "phrases", match_mode="word",
-      it=["mostrami", "mostra", "fammi vedere", "dimmi", "dammi", "elencami",
-          "trovami", "cercami", "voglio vedere", "vedere"],
-      en=["show me", "show", "tell me", "give me", "list me", "find me",
-          "let me see", "i want to see"])
+    # Verbi con cui si CHIEDE qualcosa. A RADICE, come i gate del Tutor: una
+    # radice copre ogni flessione — imperativo, gerundio, riflessivo, pronome
+    # attaccato — senza enumerare le forme, e una lingua nuova porta le sue.
+    # Dicono COME si chiede, non CHE COSA si cerca.
+    R("text.request_verb", "regex",
+      it=[r"\b(?:mostr|elenc|dimm|damm|dic|d[ai]mmi|trov|cerc|legg|guard|"
+          r"visualizz|riassum|descriv|fatemi|famm|vogl|vorre|voglio|ved)\w*"],
+      en=[r"\b(?:show|list|tell|give|find|search|read|look|display|summar|"
+          r"describ|see|want|would like)\w*"])
     R("sites.goal_term_alias", "mapping", match_mode="word",
       it={"booking": ["prenotazione", "prenotazioni", "viaggio", "viaggi",
                        "booking", "bookings", "trip", "trips"]},

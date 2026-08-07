@@ -128,8 +128,27 @@ def action_verb_tokens() -> frozenset[str]:
 _DOMINIO = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b", re.IGNORECASE)
 
 
+def _request_verb_patterns():
+    if _detlex is None:
+        return ()
+    try:
+        return tuple(_detlex.regexes("text.request_verb"))
+    except Exception:
+        return ()
+
+
 def normalize_target(text: str) -> str:
-    target = normalize(_DOMINIO.sub(" ", str(text or "")))
+    grezzo = _DOMINIO.sub(" ", str(text or ""))
+    # I verbi con cui si chiede escono a RADICE, quindi ogni loro flessione se
+    # ne va con loro: «mostrami», «mostrandomi», «vorrei vedere». Enumerare le
+    # forme sarebbe un elenco che invecchia; la radice e' una regola.
+    for pattern in _request_verb_patterns():
+        try:
+            grezzo = pattern.sub(" ", grezzo) if hasattr(pattern, "sub") \
+                else re.sub(pattern, " ", grezzo, flags=re.IGNORECASE)
+        except Exception:
+            continue
+    target = normalize(grezzo)
     for phrase in sorted(_target_noise(), key=len, reverse=True):
         target = re.sub(rf"\b{re.escape(phrase)}\b", " ", target)
     return " ".join(target.split())
@@ -466,7 +485,6 @@ def _goal_noise() -> set[str]:
             | set(_concept_forms("sites.goal_noise_articulated_preposition"))
             | set(_concept_forms("sites.goal_scope_quantifier"))
             | set(_concept_forms("sites.personal_goal_marker"))
-            | set(_concept_forms("sites.goal_request_verb"))
             | set(action_verb_tokens()))
 
 
