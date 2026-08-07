@@ -450,10 +450,16 @@ def choose_candidate(target: str, candidates: list[dict], primitive: str) -> dic
 
 
 def _goal_noise() -> set[str]:
+    # Action verbs are noise for EVERYONE who has to recognise the content of
+    # a goal, not only for whoever crops the text that was read: "go to my
+    # bookings" matches "Skip to main content" on every accessible page in the
+    # world. Dropping them here — where what counts as a goal token is decided
+    # — holds once for every consumer instead of being redone by hand in each.
     return (set(_concept_forms("sites.goal_noise"))
             | set(_concept_forms("sites.goal_noise_articulated_preposition"))
             | set(_concept_forms("sites.goal_scope_quantifier"))
-            | set(_concept_forms("sites.personal_goal_marker")))
+            | set(_concept_forms("sites.personal_goal_marker"))
+            | set(action_verb_tokens()))
 
 
 def _canonical_goal_text(text: str) -> str:
@@ -479,6 +485,43 @@ def _is_personal_goal(target: str) -> bool:
     normalized = normalize(target)
     return any(re.search(rf"\b{re.escape(form)}\b", normalized)
                for form in _concept_forms("sites.personal_goal_marker"))
+
+
+def _goal_facet_tokens() -> frozenset[str]:
+    """Tokens that QUALIFY content without naming it.
+
+    "past", "upcoming", "cancelled" say HOW to filter what is being looked
+    for, not WHAT is being looked for: on their own they name no destination.
+    They are the lexicon canonicals, not a list written in here: a state added
+    to the lexicon is covered without touching this file.
+    """
+    if _detlex is None:
+        return frozenset()
+    try:
+        return frozenset(x for x in (normalize(canonical) for canonical
+                                     in _detlex.mapping("sites.goal_state_alias"))
+                         if x)
+    except Exception:
+        return frozenset()
+
+
+def offered_facet_tokens(candidates: list[dict] | None) -> frozenset[str]:
+    """The state facets this page OFFERS as a control to press.
+
+    They tell "not there yet" apart from "here the facet is not spelled out".
+    If a "Past" tab exists and past items are what is wanted, one step is
+    still pending; if no control names the wanted facet, the site expresses it
+    some other way — usually through dates — and demanding it in words would
+    make arrival impossible to prove.
+    """
+    facets = _goal_facet_tokens()
+    if not facets:
+        return frozenset()
+    offered: set[str] = set()
+    for candidate in (candidates or ()):
+        name = str(candidate.get("name") or candidate.get("label") or "")
+        offered |= set(goal_tokens(name, navigation=True)) & facets
+    return frozenset(offered)
 
 
 def goal_is_exhaustive(target: str) -> bool:
@@ -541,6 +584,36 @@ def goal_candidate_key(candidate: dict) -> str:
     stable = "\0".join(str(candidate.get(k) or "") for k in (
         "tag", "role", "name", "label", "href", "form_action"))
     return hashlib.sha256(stable.encode("utf-8")).hexdigest()
+
+
+def _place_key(identity: tuple[str, str, str]) -> str:
+    return hashlib.sha256("\0".join(identity).encode("utf-8")).hexdigest()
+
+
+def goal_place_key(candidate: dict) -> str:
+    """Identity of the PLACE a candidate leads to, not of its label.
+
+    `goal_candidate_key` signs the ELEMENT, raw href included: the same link
+    re-emitted with a different `label`/`sid` yields two keys, and an
+    anti-loop built on those fails to notice it has already been there.
+    What "the same place" means is already decided elsewhere in this file
+    (`_safe_navigation_identity`) and in the broker (`_destinazione_di`),
+    always the same way: scheme, host, path. A control that leads nowhere (a
+    JS button) has no place, and stays identified by itself.
+    """
+    identity = _safe_navigation_identity(candidate)
+    return (goal_candidate_key(candidate) if identity is None
+            else _place_key(identity))
+
+
+def url_place_key(url: str) -> str:
+    """The same identity as `goal_place_key`, for a place already reached.
+
+    Returns an empty string for anything that is not a web destination, so
+    the caller does not pollute the visited set with a non-place.
+    """
+    identity = _safe_navigation_identity({"href": url})
+    return "" if identity is None else _place_key(identity)
 
 
 def _is_root_navigation(candidate: dict) -> bool:
@@ -615,7 +688,11 @@ def goal_navigation_candidates(candidates: list[dict], *,
                 or tag in ("input", "textarea", "select")
                 or role in ("textbox", "searchbox")):
             continue
-        if goal_candidate_key(candidate) in excluded:
+        # `excluded` is a set of OPAQUE identities: navigation puts places in
+        # it, pagination puts exhausted controls in it. A candidate is excluded
+        # when either of its two identities is in there.
+        if (goal_candidate_key(candidate) in excluded
+                or goal_place_key(candidate) in excluded):
             continue
         nome = str(candidate.get("name") or candidate.get("label") or "")
         if not normalize(nome):
@@ -1010,31 +1087,61 @@ def _is_home_path(path: str) -> bool:
 
 
 def page_satisfies_goal(target: str, body_text: str | list[str], *,
-                        scope_text: str = "") -> bool:
+                        scope_text: str = "",
+                        facets_offered: frozenset[str] = frozenset()) -> bool:
     wanted = set(goal_tokens(target))
     if not wanted:
         return False
-    if len(wanted) == 1:
-        try:
-            split = urllib.parse.urlsplit(scope_text)
-            path = split.path.lower()
-            host_tokens = set(goal_tokens(split.hostname or ""))
-        except ValueError:
-            path, host_tokens = "", set()
-        # La HOME non "soddisfa" un goal a token singolo quando il goal e'
-        # personale (le mie X) OPPURE quando il token E' il brand del sito
-        # (es. «prenotazioni»→«booking» su booking.com, onnipresente ovunque):
-        # la sezione dedicata va aperta. Il riduttore goal LLM puo' spogliare il
-        # marker «mie», quindi il guard NON puo' dipenderne (bug reale Booking:
-        # target ridotto a «prenotazioni» → matchava il brand sulla home).
-        if _is_home_path(path) and (_is_personal_goal(target)
-                                    or wanted <= host_tokens):
-            return False
+    try:
+        split = urllib.parse.urlsplit(scope_text)
+        path = split.path.lower()
+        host_tokens = set(goal_tokens(split.hostname or ""))
+    except ValueError:
+        path, host_tokens = "", set()
+    # The HOME of a site talks about EVERYTHING: attesting a goal there proves
+    # nothing about having arrived anywhere, and the dedicated section still
+    # has to be opened. The guard already existed, but only applied to a goal
+    # of ONE token — and a goal of two tokens (the thing plus its facet) is the
+    # NORMAL case, not the exception.
+    #
+    # The criterion is not how many tokens the goal has: it is whether one of
+    # them still DISTINGUISHES once the site name (which is everywhere) and the
+    # state facets (which say how to filter, not what to look for) are removed.
+    # The "my" marker stays a sufficient but not necessary hint: the reducer can
+    # strip it, so the guard cannot lean on it alone.
+    #
+    # Real turn 2026-08-07: "the upcoming bookings" reduces to {future,
+    # booking}; on booking.com the home shows "Your next trip", the proof
+    # passed, and the pilot answered with the page slogan instead of opening
+    # the personal area.
+    #
+    # State facets count as non-distinctive ONLY here: saying "the past ones"
+    # names no destination, so it cannot prove arrival anywhere. Where the site
+    # really exposes it (a selected "Archived" tab) the facet keeps
+    # discriminating, and the proof below demands it in full.
+    if _is_home_path(path) and (
+            _is_personal_goal(target)
+            or not (wanted - host_tokens - _goal_facet_tokens())):
+        return False
     if isinstance(body_text, list):
         blocks = [normalize(str(block)) for block in body_text[:400]]
     else:
         blocks = [normalize(line) for line in str(body_text or "").splitlines()]
     blocks = [block for block in blocks if block]
+    # A state facet STOPS the pilot for two reasons only: a control leads to it
+    # (one step is still pending), or the page declares a different one (wrong
+    # section). Outside those two cases the site expresses it through the data
+    # rather than through words, and demanding it makes arrival impossible to
+    # prove: measured 2026-08-07 on Booking's trips, where the tabs on offer
+    # are "Past" and "Cancelled" while the UPCOMING ones are the default
+    # section, unnamed — only dates. The pilot reached it, failed to notice,
+    # and carried on until the step budget ran out.
+    wanted_facets = wanted & _goal_facet_tokens()
+    if wanted_facets and not (wanted_facets & set(facets_offered)):
+        declared = (_goal_facet_tokens()
+                    & set(goal_tokens(" ".join(blocks)[:200_000])))
+        if not (declared - wanted_facets):
+            wanted -= wanted_facets
     # Il goal deve essere attestato da una regione locale della pagina. Un menu
     # "Fatture" e un anno comparso molto piu' sotto non sono un risultato.
     for index in range(len(blocks)):

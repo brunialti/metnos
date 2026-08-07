@@ -193,7 +193,10 @@ _MAX_ACTION_REPLANS = 2
 _MAX_LOGIN_ENTRY_STEPS = 4
 _MAX_PRIVACY_DISMISSALS = 2   # budget PROPRIO (non login-step): un overlay che
                              # riappare non deve affamare la navigazione login
-_MAX_GOAL_STEPS = 4
+_MAX_GOAL_STEPS = 4           # steps that MOVED something
+_MAX_GOAL_STERILE = 3         # own budget for empty steps: a click that moves
+                              # nothing must neither starve the four
+                              # exploration steps nor repeat forever
 _MAX_GOAL_CONTINUATIONS = 6
 _APPROVAL_RESULT_TTL_S = 120.0
 _DISCOVERABLE_RESOURCE_TYPES = frozenset({
@@ -1602,18 +1605,18 @@ def _goal_text_span(testo: str, goal: str, *, max_char: int = 1800) -> str:
     ma sono la risposta. Fuori restano l'intestazione e il piede, che il fine
     non tocca. Tetto di caratteri dichiarato dal chiamante (§2.7).
     """
-    # `navigation=True` su ENTRAMBI i lati: il verbo di movimento («vai»,
-    # «apri») e' come si chiede, non che cosa si cerca — senza toglierlo il
-    # tratto partiva da «Vai al contenuto principale», che e' il primo link di
-    # ogni pagina accessibile del mondo.
-    verbi = action_resolver.action_verb_tokens()
-    voluti = set(action_resolver.goal_tokens(goal, navigation=True)) - verbi
+    # A movement verb ("go", "open") is how the request is phrased, not what
+    # is being looked for: without dropping it the span used to start at "Skip
+    # to main content", the first link of every accessible page in the world.
+    # `goal_tokens` now drops it for everyone (verbs are goal noise), so it is
+    # not redone by hand here: one single definition of what a token is.
+    voluti = set(action_resolver.goal_tokens(goal, navigation=True))
     if not voluti:
         return ""
     righe = [r.strip() for r in str(testo or "").splitlines()]
     toccate = [i for i, r in enumerate(righe)
-               if r and (voluti & (set(
-                   action_resolver.goal_tokens(r, navigation=True)) - verbi))]
+               if r and (voluti & set(
+                   action_resolver.goal_tokens(r, navigation=True)))]
     if not toccate:
         return ""
     # Il tratto e' una CATENA, non un intervallo: si prosegue finche' i punti
@@ -2063,6 +2066,22 @@ def _page_signature(url: str) -> str:
     return hashlib.sha256((url or "").encode("utf-8")).hexdigest()
 
 
+def _goal_state_signature(url: str, candidates: list[dict]) -> str:
+    """What the pilot can observe from here: the place and the open controls.
+
+    It tells a step that moved something from an empty one. The place alone
+    would not do: revealing the account menu does NOT change the URL and is
+    real progress (real turn 2026-08-07, where that step opens the only way
+    into the personal area). The controls alone would not do either: two
+    different pages can expose the same menu.
+    """
+    posto = action_resolver.url_place_key(url)
+    controlli = sorted(
+        action_resolver.goal_candidate_key(item) for item in candidates)
+    return hashlib.sha256(
+        "\0".join([posto, *controlli]).encode("utf-8")).hexdigest()
+
+
 def _action_destination(primitive: str, target: str,
                         candidate: dict | None) -> tuple[str, str]:
     """Ritorna ``(url_redatto, host_esatto)`` per una possibile navigazione.
@@ -2268,9 +2287,14 @@ async def _page_satisfies_goal(entry: dict, target: str,
     except Exception:
         return False
     scope = scrub_url(entry["page"].url)
+    # Which state facets this page OFFERS as a control: that is what tells
+    # "I still have to press Past" from "here the upcoming ones have no name,
+    # only dates".
+    facce_offerte = action_resolver.offered_facet_tokens(candidates)
     if (isinstance(evidence, list)
             and action_resolver.page_satisfies_goal(
-                target, evidence, scope_text=scope)):
+                target, evidence, scope_text=scope,
+                facets_offered=facce_offerte)):
         return True
     interactive_labels = {
         action_resolver.normalize(str(
@@ -2296,7 +2320,8 @@ async def _page_satisfies_goal(entry: dict, target: str,
         if active_label:
             filtered_lines.append(active_label)
     return action_resolver.page_satisfies_goal(
-        target, filtered_lines, scope_text=scope)
+        target, filtered_lines, scope_text=scope,
+        facets_offered=facce_offerte)
 
 
 async def _goal_content_signature(entry: dict) -> str:
@@ -2806,6 +2831,7 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             entry.pop("collected_pages", None)
             flow = {"started": time.time(), "steps": 0, "approved": False,
                     "visited": set(), "history": [], "continuations": 0,
+                    "sterile": 0, "last_state": "",
                     "continuation_exhausted": set(),
                     "content_signatures": set(),
                     "collection": action_resolver.is_collection_search_request(
@@ -2815,13 +2841,34 @@ async def _prepare_action(entry: dict, session_id: str, action: str,
             flows[goal_flow_key] = flow
         elif action_resolver.is_collection_search_request(action):
             flow["collection"] = True
-        flow_steps = int(flow.get("steps", 0))
-        at_goal_limit = flow_steps >= _MAX_GOAL_STEPS
         candidates = await _enumerate_candidates(entry["page"])
+        url_corrente = getattr(entry.get("page"), "url", "") or ""
+        # The budget is spent on PROGRESS, not on attempts. If after a
+        # navigation exactly the previous state is observed, that step moved
+        # nothing: it does not consume one of the four exploration steps, but
+        # draws on a ceiling of its own, because not even nothing may repeat
+        # forever. The candidate that led nowhere is already among the
+        # visited ones, so it will not be picked again.
+        stato = _goal_state_signature(url_corrente, candidates)
+        if (flow.pop("navigazione_da_verificare", False)
+                and stato == flow.get("last_state")):
+            flow["steps"] = max(0, int(flow.get("steps", 0)) - 1)
+            flow["sterile"] = int(flow.get("sterile", 0)) + 1
+        flow["last_state"] = stato
+        flow_steps = int(flow.get("steps", 0))
+        at_goal_limit = (flow_steps >= _MAX_GOAL_STEPS
+                         or int(flow.get("sterile", 0)) >= _MAX_GOAL_STERILE)
         excluded = set(flow.get("visited") or ())
+        # The place already occupied is not a destination: a link leading back
+        # here is not an exploration step. Derived on every pass rather than
+        # stored once, so it holds after a reload too — which clears the
+        # visited set without moving the pilot.
+        posto_corrente = action_resolver.url_place_key(url_corrente)
+        if posto_corrente:
+            excluded.add(posto_corrente)
         # Il sito su cui siamo: serve a sapere se il fine distingue qualcosa
         # qui dentro (un fine che coincide col nome del sito non distingue).
-        sito_corrente = _host_of_url(getattr(entry.get("page"), "url", "") or "")
+        sito_corrente = _host_of_url(url_corrente)
         chosen = ({"ok": False, "error_class": "goal_step_limit"}
                   if at_goal_limit else action_resolver.choose_goal_candidate(
                       parsed.get("target", ""), candidates,
@@ -4136,8 +4183,21 @@ async def _execute_plan(entry: dict, token: str, plan: dict) -> dict:
             goal_flow.setdefault("approval_source", "action")
         if plan.get("kind") == "goal_navigation":
             goal_flow["steps"] = int(goal_flow.get("steps", 0)) + 1
+            # The step is counted now, but it only counts if it moved
+            # something: the proof is read at the next observation, where the
+            # page controls are already enumerated and measuring costs
+            # nothing.
+            goal_flow["navigazione_da_verificare"] = True
             visited = goal_flow.setdefault("visited", set())
-            visited.add(action_resolver.goal_candidate_key(candidate or {}))
+            # Si segna il POSTO, non l'etichetta dell'elemento: la seconda
+            # cambia fra due render dello stesso link, il primo no. E si segna
+            # anche dove si e' arrivati, cosi' un collegamento che riporta
+            # indietro e' escluso senza doverlo riconoscere dal nome.
+            visited.add(action_resolver.goal_place_key(candidate or {}))
+            arrivo = action_resolver.url_place_key(
+                getattr(entry.get("page"), "url", "") or "")
+            if arrivo:
+                visited.add(arrivo)
             goal_flow.setdefault("history", []).append(str(
                 (candidate or {}).get("name")
                 or (candidate or {}).get("label") or "")[:160])

@@ -1631,8 +1631,13 @@ def test_site_search_is_a_goal_not_a_public_crawl():
     assert ar.goal_is_exhaustive("tutte le fatture 2026")
     assert ar.goal_is_exhaustive("all invoices 2026")
     assert ar.goal_tokens("tutte le fatture del 2026") == ("fatture", "2026")
+    # A movement verb is NOT a goal token: it says how the request is phrased,
+    # not what is being looked for. While it survived, "go to my bookings"
+    # matched "Skip to main content" — the first link of every accessible page
+    # — and on a real turn (2026-08-07) that was enough to make a goal look
+    # distinctive when it was not.
     assert ar.goal_tokens("vai ai miei documenti archiviati") == (
-        "vai", "documenti", "archived")
+        "documenti", "archived")
 
 
 def test_goal_resolution_prefers_semantic_control_over_pointer_wrapper():
