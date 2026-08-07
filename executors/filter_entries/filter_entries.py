@@ -40,7 +40,7 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio  # noqa: E402
+from executor_helpers import run_stdio, date_text  # noqa: E402
 
 
 def _ensure_list(v):
@@ -75,6 +75,7 @@ def _parse_compound_pattern(value):
 def _parse_iso_to_epoch(s):
     if not s:
         return None
+    s = date_text(s)
     try:
         # date pure ('2026-01-01') o datetime ('2026-01-01T10:00:00')
         if "T" not in s and " " not in s:
@@ -98,7 +99,7 @@ def _to_epoch(v):
     if isinstance(v, (int, float)):
         return float(v)
     if isinstance(v, str):
-        s = v.strip()
+        s = date_text(v).strip()
         if not s:
             return None
         try:

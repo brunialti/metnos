@@ -147,12 +147,11 @@ _DATE_FIELD_NAMES = {
 }
 
 
-# A date whose year the source never showed carries this marker. The year is
-# the current one, filled in so the value stays usable and comparable; the
-# marker keeps it honest — it says the year was not read, it was assumed.
-# Without it a site that omits the year on recent rows (a common convention)
-# left those rows blank, which claims "no date" about rows that showed one.
-_ASSUMED_YEAR_MARK = "*"
+# One definition of the mark, shared with whoever has to compare these values
+# as dates (`filter_entries`, `sort_entries`): the mark states that the year
+# was assumed rather than read, and a comparator that took it literally would
+# drop exactly the rows the mark exists to save.
+from executor_helpers import ASSUMED_YEAR_MARK as _ASSUMED_YEAR_MARK
 
 
 def _normalize_extracted_date(field: str, value):
