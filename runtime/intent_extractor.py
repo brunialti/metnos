@@ -346,9 +346,9 @@ def extract_intent(query: str, llm_call) -> Optional[dict]:
     # i18n, e il solo LLM copre il gold 25/25. Vedi rimozione anchors.py.
     if not verb and not obj:
         return None
+    # La sonda tocca solo l'ULTIMA clausola, e si applica da due in su: la
+    # clausola primaria non e' mai quella, quindi `verb`/`obj` non si toccano.
     actions = _bind_reads_to_open_source(query, actions, llm_call)
-    if actions:
-        verb, obj = actions[0].get("verb") or verb, actions[0].get("object") or obj
     out = {"verb": verb, "object": obj}
     # Esponi la decomposizione SOLO se compound reale (>=2 clausole distinte):
     # dispatch la usa per il ranking pool per-clausola. Mono-azione → assente
